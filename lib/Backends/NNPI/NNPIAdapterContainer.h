@@ -20,22 +20,28 @@
 #include "NNPIOptions.h"
 #include "glow/Backend/Backend.h"
 #include "nnpi_inference.h"
-#include <mutex>
+#include <shared_mutex>
+#include <unordered_map>
 
 namespace glow {
 class NNPIAdapterContainer {
 public:
-  NNPIAdapterContainer() : nnpiAdapter_(NNPI_INVALID_NNPIHANDLE) {}
-
+  NNPIAdapterContainer() : adapter_(NNPI_INVALID_NNPIHANDLE) {}
   ~NNPIAdapterContainer();
+  NNPIAdapter getHandle();
 
-  NNPIAdapter get(bool inferOnDevice);
+  void *allocateHostResource(size_t resourceSize);
+  void freeHostResource(void *ptr);
+  NNPIHostResource getResourceForPtr(void *ptr);
 
 private:
   /// NNPI Adapter handle.
-  NNPIAdapter nnpiAdapter_;
-  /// Lock to synchronize function adding/removing to/from the device manager.
-  std::mutex adapterMutex_;
+  NNPIAdapter adapter_;
+  /// Lock to synchronize function adding/removing to/from the device manager
+  /// and resource allocation.
+  std::shared_timed_mutex mutex_;
+  /// Host resources assicated with this adapter.
+  std::unordered_map<void *, NNPIHostResource> hostResourceMap_;
 };
 } // namespace glow
 #endif // GLOW_NNPI_ADAPTER_H

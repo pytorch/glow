@@ -45,11 +45,16 @@ template <typename Stream, typename E>
 Stream &operator<<(Stream &os, const llvm::ArrayRef<E> list) {
   os << '[';
   // Print the array without a trailing comma.
-  for (size_t i = 0, e = list.size(); i < e; i++) {
+  // Only up to `limit` elements will be printed.
+  for (size_t i = 0, e = list.size(), limit = 4; i < e && i <= limit; i++) {
     if (i) {
       os << ", ";
     }
-    os << list[i];
+    if (i == limit) {
+      os << "...";
+    } else {
+      os << list[i];
+    }
   }
   os << ']';
 
@@ -210,6 +215,11 @@ constexpr char startChar = '$';
 /// Char used for separating attribute name from attribute value.
 constexpr char sepChar = ':';
 
+/// Signifier used to separate C2 loader name from unique offset mapping.
+constexpr const char *offsetSepSig = "@";
+/// Signifier used to separate C2 end of a loader name to unique offset mapping.
+constexpr const char *offsetEndSig = "@@";
+
 /// Convert a string to int. \returns the int or Error if problem parsing.
 Expected<int> getIntFromStr(llvm::StringRef input);
 
@@ -234,6 +244,52 @@ void vectorReorder(std::vector<T> &v, std::vector<size_t> const &order) {
         std::swap(v[s], v[d]);
       }
   }
+}
+
+/// Simple scope guard implementation.
+class ScopeGuard {
+  /// Function to call when the destructor is called.
+  std::function<void()> endFun_;
+
+protected:
+  /// Whether the guard has been dismissed.
+  bool dismissed_{false};
+
+public:
+  /// Ctor that takes the function to call in destructor.
+  ScopeGuard(std::function<void()> &&fun)
+      : endFun_(std::move(fun)), dismissed_(false) {}
+
+  /// Make not copyable.
+  ScopeGuard(const ScopeGuard &) = delete;
+
+  /// Make not assignable.
+  ScopeGuard &operator=(const ScopeGuard &) = delete;
+
+  /// Dtor that calls \ref endFun_ if \ref dismissed_.
+  ~ScopeGuard() {
+    if (!dismissed_) {
+      endFun_();
+    }
+  }
+
+  /// Disables the guard.
+  void dismiss() { dismissed_ = true; }
+
+  /// Runs the function for the guard and dismissed. If already dismissed then
+  /// this is a no-op.
+  void runAndDismiss() {
+    if (!dismissed_) {
+      endFun_();
+      dismiss();
+    }
+  };
+};
+
+/// Helper function to return true if every element in array \p a is \p x.
+template <typename ElemTy>
+static bool isUniformArray(llvm::ArrayRef<ElemTy> a, ElemTy x) {
+  return std::all_of(a.begin(), a.end(), [x](ElemTy e) { return e == x; });
 }
 
 } // namespace glow

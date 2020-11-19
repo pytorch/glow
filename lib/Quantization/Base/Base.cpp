@@ -24,6 +24,23 @@
 namespace glow {
 namespace quantization {
 
+float getTensorAverageValue(const TensorProfilingParams &profParams) {
+  size_t numBins = profParams.histogram.size();
+  assert(numBins > 0 && "Histogram is empty!");
+  float histDelta = (profParams.max - profParams.min) / (float)(numBins);
+  float histOff = profParams.min + histDelta / 2.0;
+  float histAvg = 0.0;
+  float histSum = 0.0;
+  for (size_t idx = 0; idx < numBins; ++idx) {
+    float histBinCenter = histOff + histDelta * (float)idx;
+    float histBinCount = profParams.histogram[idx];
+    histAvg += histBinCenter * histBinCount;
+    histSum += histBinCount;
+  }
+  histAvg /= histSum;
+  return histAvg;
+}
+
 template <class eTy = int8_t>
 static void quantizeTensorUtil(Tensor *dest, const Tensor &src) {
   auto destH = dest->getHandle<eTy>();
@@ -39,7 +56,15 @@ static void quantizeTensorUtil(Tensor *dest, const Tensor &src) {
     break;
   }
   case ElemKind::Float16Ty: {
-    auto srcHandle = src.getHandle<float16>();
+    auto srcHandle = src.getHandle<float16_t>();
+    for (size_t i = 0, e = destH.size(); i < e; ++i) {
+      destH.raw(i) = quantization::quantize<eTy>(
+          static_cast<float>(srcHandle.raw(i)), TQP);
+    }
+    break;
+  }
+  case ElemKind::BFloat16Ty: {
+    auto srcHandle = src.getHandle<bfloat16_t>();
     for (size_t i = 0, e = destH.size(); i < e; ++i) {
       destH.raw(i) = quantization::quantize<eTy>(
           static_cast<float>(srcHandle.raw(i)), TQP);
@@ -84,7 +109,15 @@ static void dequantizeTensorUtil(Tensor *dest, const Tensor &src) {
     break;
   }
   case ElemKind::Float16Ty: {
-    auto destH = dest->getHandle<float16>();
+    auto destH = dest->getHandle<float16_t>();
+    for (size_t i = 0, e = destH.size(); i < e; ++i) {
+      destH.raw(i) = quantization::dequantize<eTy>(
+          static_cast<eTy>(srcHandle.raw(i)), TQP);
+    }
+    break;
+  }
+  case ElemKind::BFloat16Ty: {
+    auto destH = dest->getHandle<bfloat16_t>();
     for (size_t i = 0, e = destH.size(); i < e; ++i) {
       destH.raw(i) = quantization::dequantize<eTy>(
           static_cast<eTy>(srcHandle.raw(i)), TQP);
@@ -96,12 +129,59 @@ static void dequantizeTensorUtil(Tensor *dest, const Tensor &src) {
   }
 }
 
+/// Helper for dequantizing UInt8FusedQTy \p src to \p dest.
+template <typename DeqElemTy, typename ScaleOffsetTy>
+static void dequantizeFusedRowwiseTensorUtil(Tensor &dest, const Tensor &src) {
+  auto dims = dest.dims();
+  auto srcH = src.getHandle<uint8_t>();
+  auto destH = dest.getHandle<DeqElemTy>();
+  for (dim_t i = 0, e = dims[0]; i < e; ++i) {
+    float scale, offset;
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<ScaleOffsetTy>(i);
+    for (dim_t j = 0, f = dims[1]; j < f; ++j) {
+      destH.at({i, j}) =
+          static_cast<DeqElemTy>(quantization::dequantizeWithFloatOffset(
+              srcH.at({i, j}), scale, offset));
+    }
+  }
+}
+
 Tensor dequantizeTensor(const Tensor &tensor, ElemKind floatKind) {
-  assert(((floatKind == ElemKind::FloatTy) ||
-          (floatKind == ElemKind::Float16Ty)) &&
+  assert(isFloatElemKind(floatKind) &&
          "Non supported output floating point type");
-  Tensor tmp(floatKind, tensor.dims());
   auto Ty = tensor.getType().getElementType();
+
+  if (Ty == ElemKind::UInt8FusedQTy || Ty == ElemKind::UInt8FusedFP16QTy) {
+    const bool scaleOffsetFP16 = Ty == ElemKind::UInt8FusedFP16QTy;
+    const dim_t scaleOffsetSize =
+        scaleOffsetFP16 ? sizeof(float16_t) : sizeof(float);
+    assert(tensor.dims().size() == 2 && "Fused tensors should be 2D");
+    assert(tensor.dims()[1] > 2 * scaleOffsetSize &&
+           "Expected space for per-row scale/offset");
+    Tensor tmp(floatKind, {tensor.dims()[0],
+                           tensor.dims()[1] - (dim_t)(2 * scaleOffsetSize)});
+    switch (floatKind) {
+    case ElemKind::FloatTy:
+      if (scaleOffsetFP16) {
+        dequantizeFusedRowwiseTensorUtil<float, float16_t>(tmp, tensor);
+      } else {
+        dequantizeFusedRowwiseTensorUtil<float, float>(tmp, tensor);
+      }
+      break;
+    case ElemKind::Float16Ty:
+      if (scaleOffsetFP16) {
+        dequantizeFusedRowwiseTensorUtil<float16_t, float16_t>(tmp, tensor);
+      } else {
+        dequantizeFusedRowwiseTensorUtil<float16_t, float>(tmp, tensor);
+      }
+      break;
+    default:
+      llvm_unreachable("Cannot dequantize to the given type");
+    }
+    return tmp;
+  }
+
+  Tensor tmp(floatKind, tensor.dims());
   if (Ty == ElemKind::Int8QTy) {
     dequantizeTensorUtil<int8_t>(&tmp, tensor);
   } else if (Ty == ElemKind::UInt8QTy) {
@@ -116,20 +196,21 @@ Tensor dequantizeTensor(const Tensor &tensor, ElemKind floatKind) {
   return tmp;
 }
 
-Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input) {
+template <class T = float16_t>
+static Tensor tensor4BitsFusedRowwiseDequantizationUtil(const Tensor &input) {
   assert(input.dims().size() == 2 && "Input must be 2 dimensional.");
   // The output tensor should have the same raw as input tensor. Since the
   // quantized tensor is in the following format: | 4bit quantized data |
-  // float16_t scale | float16_t offset| The columns of dequantized float data
-  // should be (input.dims()[1] - 2*sizeof(float16_t)) * 2.
+  // T scale | T offset| The columns of dequantized float data
+  // should be (input.dims()[1] - 2*sizeof(T)) * 2.
   Tensor output(
       ElemKind::FloatTy,
-      {input.dims()[0], (dim_t)(input.dims()[1] - 2 * sizeof(float16_t)) * 2});
+      {input.dims()[0], (dim_t)(input.dims()[1] - 2 * sizeof(T)) * 2});
   auto srcH = input.getHandle<uint8_t>();
   auto destH = output.getHandle<float>();
   for (dim_t i = 0; i < input.dims()[0]; i++) {
-    float16_t scale, offset;
-    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float16_t>(i);
+    T scale, offset;
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<T>(i);
     for (dim_t j = 0; j < output.dims()[1]; j++) {
       bool isMSB = (j % 2 == 1);
       destH.at({i, j}) = dequantize4BitWithFloatOffset(
@@ -138,6 +219,16 @@ Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input) {
     }
   }
   return output;
+}
+
+Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input) {
+  auto Ty = input.getType().getElementType();
+  assert((Ty == ElemKind::UInt4FusedFP16QTy || Ty == ElemKind::UInt4FusedQTy) &&
+         "Unsupported 4bits fused rw quantization type.");
+  if (Ty == ElemKind::UInt4FusedFP16QTy) {
+    return tensor4BitsFusedRowwiseDequantizationUtil<float16_t>(input);
+  }
+  return tensor4BitsFusedRowwiseDequantizationUtil<float>(input);
 }
 
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
@@ -471,6 +562,32 @@ chooseQuantizationParams(TensorProfilingParams profParams, Schema schema,
   return result;
 }
 
+TensorQuantizationParams
+specializeBiasQuantizationParams(const TensorQuantizationParams &biasTQP,
+                                 const TensorQuantizationParams &inputTQP,
+                                 const TensorQuantizationParams &weightsTQP,
+                                 Schema schema, ElemKind biasQTy) {
+  // Choose bias offset. For int32 bias we always force offset 0 in order
+  // to simplify the implementation since the dynamic range allows it.
+  int32_t biasOffset = biasTQP.offset;
+  if (biasQTy == ElemKind::Int32QTy) {
+    biasOffset = 0;
+  }
+  // Choose bias scale. We try to force the bias scale value to the product
+  // scaleInput * scaleWeights but only if the resulting scale is larger
+  // (in order to avoid bias data saturation).
+  float scaleInput = inputTQP.scale;
+  float scaleWeights = weightsTQP.scale;
+  float biasScale = biasTQP.scale;
+  if (scaleInput * scaleWeights > biasScale) {
+    biasScale = scaleInput * scaleWeights;
+  }
+  // Validate new bias TQP and return.
+  TensorQuantizationParams biasTQPNew = {biasScale, biasOffset};
+  validateQuantizationParams(biasTQPNew, schema, biasQTy);
+  return biasTQPNew;
+}
+
 std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
                                   std::function<float(float)> f) {
   assert(inTy->getElementType() == outTy->getElementType() &&
@@ -494,6 +611,168 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
   }
 
   return mapping;
+}
+
+std::vector<TensorQuantizationParams>
+getTensorQuantizationParams(const Tensor &tensor, Schema qSchema, ElemKind qTy,
+                            dim_t qDim, dim_t qStep) {
+
+  // Validate tensor parameters.
+  assert(qDim < tensor.dims().size() &&
+         "Quantization dimension  exceeds max tensor dimension!");
+  assert(qStep > 0 &&
+         "Quantization step (granularity) must be greater than 0!");
+  assert((tensor.dims()[qDim] % qStep) == 0 &&
+         "Quantization step must divide dimension length!");
+  assert(tensor.getElementType() == ElemKind::FloatTy &&
+         "Tensor type should be float!");
+  dim_t groupNum = tensor.dims()[qDim] / qStep;
+
+  // Get tensor view with max of 6 dimensions.
+  auto dimsMax = expandDimsToMax(tensor.dims());
+  Tensor tensorMax = tensor.getUnowned(dimsMax);
+  auto tensorH = tensorMax.getHandle<float>();
+
+  // Find min/max for each quantization group.
+  std::vector<float> minArray(groupNum, std::numeric_limits<float>::max());
+  std::vector<float> maxArray(groupNum, std::numeric_limits<float>::lowest());
+  assert(dimsMax.size() == 6 &&
+         "Invalid number of dimensions for tensor expansion!");
+  for (dim_t idx0 = 0; idx0 < dimsMax[0]; idx0++) {
+    for (dim_t idx1 = 0; idx1 < dimsMax[1]; idx1++) {
+      for (dim_t idx2 = 0; idx2 < dimsMax[2]; idx2++) {
+        for (dim_t idx3 = 0; idx3 < dimsMax[3]; idx3++) {
+          for (dim_t idx4 = 0; idx4 < dimsMax[4]; idx4++) {
+            for (dim_t idx5 = 0; idx5 < dimsMax[5]; idx5++) {
+
+              // Current sample multidimensional index.
+              std::array<dim_t, 6> sampleIdx{
+                  {idx0, idx1, idx2, idx3, idx4, idx5}};
+
+              // Find quantization group to which this sample belongs.
+              dim_t groupIdx = (dim_t)(sampleIdx[qDim] / qStep);
+
+              // Adjust min/max for current group.
+              if (tensorH.at(sampleIdx) < minArray[groupIdx]) {
+                minArray[groupIdx] = tensorH.at(sampleIdx);
+              }
+              if (tensorH.at(sampleIdx) > maxArray[groupIdx]) {
+                maxArray[groupIdx] = tensorH.at(sampleIdx);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Compute the quantization parameters for each group.
+  std::vector<TensorQuantizationParams> TQP;
+  for (dim_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
+    TQP.push_back(chooseQuantizationParams(
+        {minArray[groupIdx], maxArray[groupIdx]}, qSchema, qTy));
+  }
+  return TQP;
+}
+
+void getTensorQuantizationParams(const Tensor &tensor, Tensor &scales,
+                                 Tensor &offsets, Schema qSchema, ElemKind qTy,
+                                 dim_t qDim, dim_t qStep) {
+  auto TQP = getTensorQuantizationParams(tensor, qSchema, qTy, qDim, qStep);
+  assert(scales.size() == TQP.size() && "Scales tensor size invalid!");
+  assert(offsets.size() == TQP.size() && "Offsets tensor size invalid!");
+  auto scalesH = scales.getHandle<float>();
+  auto offsetsH = offsets.getHandle<int32_t>();
+  for (dim_t idx = 0; idx < TQP.size(); idx++) {
+    scalesH.raw(idx) = TQP[idx].scale;
+    offsetsH.raw(idx) = TQP[idx].offset;
+  }
+}
+
+template <class eTy = int8_t>
+static void quantizeTensorImpl(Tensor *dest, const Tensor &src,
+                               llvm::ArrayRef<TensorQuantizationParams> TQP,
+                               dim_t qDim, dim_t qStep) {
+
+  // Validate tensor parameters.
+  assert(qDim < src.dims().size() &&
+         "Quantization dimension  exceeds max tensor dimension!");
+  assert(qStep > 0 &&
+         "Quantization step (granularity) must be greater than 0!");
+  assert((src.dims()[qDim] % qStep) == 0 &&
+         "Quantization step must divide dimension length!");
+  assert(src.getElementType() == ElemKind::FloatTy &&
+         "Tensor type should be float!");
+  assert(TQP.size() == (src.dims()[qDim] / qStep) &&
+         "TensorQuantizationParams array size invalid!");
+
+  // Get tensor views with maximum dimensions.
+  auto dimsMax = expandDimsToMax(src.dims());
+  Tensor srcMax = src.getUnowned(dimsMax);
+  auto srcH = srcMax.getHandle<float>();
+  Tensor destMax = dest->getUnowned(dimsMax);
+  auto destH = destMax.getHandle<eTy>();
+
+  // Perform quantization for each group.
+  assert(dimsMax.size() == 6 &&
+         "Invalid number of dimensions for tensor expansion!");
+  for (dim_t idx0 = 0; idx0 < dimsMax[0]; idx0++) {
+    for (dim_t idx1 = 0; idx1 < dimsMax[1]; idx1++) {
+      for (dim_t idx2 = 0; idx2 < dimsMax[2]; idx2++) {
+        for (dim_t idx3 = 0; idx3 < dimsMax[3]; idx3++) {
+          for (dim_t idx4 = 0; idx4 < dimsMax[4]; idx4++) {
+            for (dim_t idx5 = 0; idx5 < dimsMax[5]; idx5++) {
+
+              // Current sample multidimensional index.
+              std::array<dim_t, 6> sampleIdx{
+                  {idx0, idx1, idx2, idx3, idx4, idx5}};
+
+              // Find quantization group to which this sample belongs.
+              dim_t groupIdx = sampleIdx[qDim] / qStep;
+
+              // Quantize current sample with group specific quantization
+              // parameters.
+              destH.at(sampleIdx) = quantization::quantize<eTy>(
+                  srcH.at(sampleIdx), TQP[groupIdx]);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+Tensor quantizeTensor(const Tensor &tensor,
+                      llvm::ArrayRef<TensorQuantizationParams> TQP,
+                      ElemKind qTy, dim_t qDim, dim_t qStep) {
+  Tensor tensorQ(qTy, tensor.dims(), 1.0, 0);
+  assert(tensor.getType().isFPType() && "Type not supported yet");
+  if (qTy == ElemKind::Int8QTy) {
+    quantizeTensorImpl<int8_t>(&tensorQ, tensor, TQP, qDim, qStep);
+  } else if (qTy == ElemKind::UInt8QTy) {
+    quantizeTensorImpl<uint8_t>(&tensorQ, tensor, TQP, qDim, qStep);
+  } else if (qTy == ElemKind::Int16QTy) {
+    quantizeTensorImpl<int16_t>(&tensorQ, tensor, TQP, qDim, qStep);
+  } else if (qTy == ElemKind::Int32QTy) {
+    quantizeTensorImpl<int32_t>(&tensorQ, tensor, TQP, qDim, qStep);
+  } else {
+    llvm_unreachable("Quantization type not supported");
+  }
+  return tensorQ;
+}
+
+Tensor quantizeTensor(const Tensor &tensor, const Tensor &scales,
+                      const Tensor &offsets, ElemKind qTy, dim_t qDim,
+                      dim_t qStep) {
+  assert(scales.size() == offsets.size() &&
+         "Scales/Offsets tensor size invalid!");
+  auto scalesH = scales.getHandle<float>();
+  auto offsetsH = offsets.getHandle<int32_t>();
+  std::vector<TensorQuantizationParams> TQP;
+  for (dim_t idx = 0; idx < scales.size(); idx++) {
+    TQP.push_back({scalesH.raw(idx), offsetsH.raw(idx)});
+  }
+  return quantizeTensor(tensor, TQP, qTy, qDim, qStep);
 }
 
 bool isFloatPowerOf2(float val) {

@@ -95,8 +95,8 @@ NetworkComparatorBase::InOutTensors RecursiveLayerComparator::hookAndRun(
   // Copy the tensors from the bindings to the inference bindings
   // we feed to the Temp network.
   for (auto &PH : bindings->pairs()) {
-    auto iPH = inferBindings.getPlaceholderByName(PH.first->getName());
-    inferBindings.get(iPH)->assign(PH.second);
+    auto iPH = inferBindings.getPlaceholderByNameSlow(PH.first->getName());
+    inferBindings.get(iPH)->assign(&PH.second);
   }
   InOutTensors inOutTensors;
   for (const auto &P : hook.outputs) {
@@ -188,9 +188,9 @@ void IntermediateLayerComparator::hookNodesInPlace(
 void IntermediateLayerComparator::copyInputBindingsToHookedBindings(
     PlaceholderBindings &hookedBindigs, PlaceholderBindings &inputBindings) {
   // Copy tensors from input bindings to the bindings we use for Inference.
-  for (auto PH : inputBindings.pairs()) {
-    auto iPH = hookedBindigs.getPlaceholderByName(PH.first->getName());
-    hookedBindigs.get(iPH)->assign(PH.second);
+  for (auto &PH : inputBindings.pairs()) {
+    auto iPH = hookedBindigs.getPlaceholderByNameSlow(PH.first->getName());
+    hookedBindigs.get(iPH)->assign(&PH.second);
   }
 }
 
@@ -259,7 +259,7 @@ void IntermediateLayerComparator::fillSingleLayerInputs(
                            << " NodeType: " << inputNode->getKindName()
                            << "\n");
       Placeholder *PH =
-          refHookedBindings_.getPlaceholderByName(hookedPlaceholderName);
+          refHookedBindings_.getPlaceholderByNameSlow(hookedPlaceholderName);
       DCHECK(PH) << "Placeholder not found in the hooked bindings";
       Tensor *payloadTensor = refHookedBindings_.get(PH);
       Placeholder *singleLayerPH = singleLayerMod.createPlaceholder(
@@ -289,7 +289,8 @@ void IntermediateLayerComparator::runAndGetoutputSingleLayer(
   singleLayerExecEng.run(singleLayerBindings);
   for (Placeholder *PH : singleLayerOutputPHs) {
     singleLayerOutputs[PH->getName()] = singleLayerBindings.get(PH);
-    Placeholder *refPH = refHookedBindings_.getPlaceholderByName(PH->getName());
+    Placeholder *refPH =
+        refHookedBindings_.getPlaceholderByNameSlow(PH->getName());
     refOutputs[PH->getName()] = refHookedBindings_.get(refPH);
   }
 }

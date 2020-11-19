@@ -61,9 +61,8 @@ class ProtobufLoader;
 
 class LoaderExtension {
 public:
-  /// Called once after ONNX or Caffe2 model loading.
-  virtual void postModelLoad(Loader &, PlaceholderBindings &, ProtobufLoader &,
-                             llvm::StringMap<Placeholder *> &,
+  /// Called once after model loading.
+  virtual void postModelLoad(Loader &, PlaceholderBindings &,
                              TypeRef inputImageType) = 0;
   /// Called once at the beginning of the mini-batch inference.
   virtual void inferInitMiniBatch(Loader &, PlaceholderBindings &,
@@ -85,6 +84,8 @@ class Loader {
   std::string caffe2NetWeightFilename_;
   /// ONNX model file name.
   std::string onnxModelFilename_;
+  /// TensorFlowLite model file name.
+  std::string tfliteModelFilename_;
   /// Name of loaded function.
   std::string functionName_;
   /// Host Manager for running the model.
@@ -102,6 +103,12 @@ class Loader {
   LoweredInfoMap loweredMap_;
   /// List of Loader owned extension objects.
   std::vector<std::unique_ptr<LoaderExtension>> loaderExtensionList_;
+  /// A map from the original names of the model inputs to placeholders.
+  llvm::StringMap<Placeholder *> inputPlaceholderByName_;
+  /// A map from the original names of the model outputs to placeholders.
+  llvm::StringMap<Placeholder *> outputPlaceholderByName_;
+  /// Info produced after calling the \ref compile function.
+  CompilationInfo compilationInfo_;
 
 public:
   /// Getter for the hostManager, this can be useful for calling into the
@@ -130,6 +137,9 @@ public:
   /// Getter for the ONNX model file name.
   llvm::StringRef getOnnxModelFilename() { return onnxModelFilename_; }
 
+  /// Getter for the TensorFlowLite model file name.
+  llvm::StringRef getTFLiteModelFilename() { return tfliteModelFilename_; }
+
   /// Getter for the model path.
   /// \pre (modelPathOpt.size() == 1)
   static std::string getModelOptPath();
@@ -142,9 +152,24 @@ public:
   /// Loader.
   static quantization::QuantizationConfiguration getQuantizationConfiguration();
 
-  /// Load a Caffe2 or ONNX model into this Loader object according to the
-  /// Loader command line options.
-  std::unique_ptr<ProtobufLoader> loadModel();
+  /// Load a Caffe2, ONNX or TensorFlowLite model into this Loader object based
+  /// on the Loader command line options. If \p inputType is optionally given
+  /// then the model input is forced to have the given input type regardless of
+  /// the actual command line options (this requires for the model to have only
+  /// one input).
+  void loadModel(TypeRef inputType = nullptr);
+
+  /// \returns a map between the model input names and the input placeholders.
+  /// The placeholder map is available once \ref loadModel() is called.
+  const llvm::StringMap<Placeholder *> &getInputPlaceholderMap() const {
+    return inputPlaceholderByName_;
+  }
+
+  /// \returns a map between the model output names and the output placeholders.
+  /// The placeholder map is available once \ref loadModel() is called.
+  const llvm::StringMap<Placeholder *> &getOutputPlaceholderMap() const {
+    return outputPlaceholderByName_;
+  }
 
   /// Get the compilation options (context) for a given quantization \p mode.
   /// The options are initialized by the Loader command line arguments.
@@ -176,9 +201,8 @@ public:
 
   /// Register a loader extension.
   Loader &registerExtension(std::unique_ptr<LoaderExtension> ext);
-  /// Called once after ONNX or Caffe2 model loading.
-  void postModelLoad(PlaceholderBindings &bindings, ProtobufLoader &protoLoader,
-                     llvm::StringMap<Placeholder *> &, TypeRef inputImageType);
+  /// Called once after model loading.
+  void postModelLoad(PlaceholderBindings &bindings, TypeRef inputImageType);
   /// Called at the beginning of each mini-batch inference.
   void inferInitMiniBatch(PlaceholderBindings &bindings, size_t minibatchIndex,
                           size_t minibatchSize);

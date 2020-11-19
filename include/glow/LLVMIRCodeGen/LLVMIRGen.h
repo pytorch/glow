@@ -167,8 +167,8 @@ protected:
 
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
-  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
-                                const glow::Value *val);
+  virtual llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
+                                        const glow::Value *val);
   /// Emit the address of the buffer \p v inside a data-parallel kernel \p
   /// kernel using the mapping provided by \p bufferToArgNum.
   llvm::Value *emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
@@ -276,6 +276,9 @@ protected:
   createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
              llvm::Value *numElements) const;
 
+  /// \returns the backing tensor associated to the IR constant value \p value.
+  Tensor getTensorForConstantValue(Value *value);
+
 public:
   /// Destructor
   virtual ~LLVMIRGen() {}
@@ -305,10 +308,22 @@ public:
   /// and then creates and \returns the CallInst.
   /// \param builder the IR builder to be used for creating the Call
   /// instruction. \param callee the function to be called. \param args
-  /// arguments to be passed in this call. \returns generated Call instruction
+  /// arguments to be passed in this call. If \p checked is set, this helper
+  /// emits checks for the int result of the call and returns from the caller if
+  /// it is non-zero. If callee does not return an int result, \p checked has no
+  /// effect. \returns generated Call instruction
   virtual llvm::CallInst *createCall(llvm::IRBuilder<> &builder,
                                      llvm::Function *callee,
-                                     llvm::ArrayRef<llvm::Value *> args);
+                                     llvm::ArrayRef<llvm::Value *> args,
+                                     bool checked = false);
+  /// The checked version of createCall.
+  virtual llvm::CallInst *createCheckedCall(llvm::IRBuilder<> &builder,
+                                            llvm::Function *callee,
+                                            llvm::ArrayRef<llvm::Value *> args);
+  /// The unchecked version of createCall.
+  virtual llvm::CallInst *
+  createUncheckedCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
+                      llvm::ArrayRef<llvm::Value *> args);
   /// \returns a libjit API function by name.
   virtual llvm::Function *getFunction(const std::string &name);
   /// \returns a libjit API function by name and tensor element type.
@@ -380,6 +395,9 @@ public:
   /// \returns the sizeof(size_t) of the actual target-specific size_t type that
   /// was used to compile libjit into LLVM bitcode.
   unsigned getLibjitSizeTWidth() const;
+  /// \returns the sizeof(int) of the actual target-specific int type that
+  /// was used to compile libjit into LLVM bitcode.
+  unsigned getLibjitIntWidth() const;
   /// \returns true if a call is eligible for specialization.
   virtual bool isEligibleForSpecialization(const llvm::CallInst *call);
   /// \returns true if a global symbol \p GV needs to be preserved in the module
@@ -399,7 +417,40 @@ public:
   /// instruction \p I cannot be part of data-parallel kernels, because there is
   /// no support for this functionality in this backend yet.
   virtual bool canBePartOfDataParallelKernel(const glow::Instruction *I) const;
+  /// \returns a string which is printed at the end of the bundle header file
+  /// following the standard content produced by the bundle saver.
+  virtual std::string getBundleHeaderExtra() const;
 };
+
+template <typename T>
+llvm::Value *LLVMIRGen::emitConstSizeTArray(llvm::IRBuilder<> &builder,
+                                            llvm::ArrayRef<T> vals) {
+  assert(std::is_integral<T>() && "Can only convert integral type to size_t.");
+  auto SizeTType = builder.getIntNTy(getLibjitSizeTWidth());
+  std::vector<llvm::Constant *> elems;
+  for (auto I : vals) {
+    assert(I >= 0 && "Only allow casting positive values into size_t.");
+    assert(I <= std::numeric_limits<size_t>::max() &&
+           "Do not allow overflow of size_t.");
+    elems.push_back(llvm::ConstantInt::get(SizeTType, (size_t)I));
+  }
+  return emitConstArray(builder, elems, SizeTType);
+}
+
+template <typename T>
+llvm::Value *LLVMIRGen::emitConstDimTArray(llvm::IRBuilder<> &builder,
+                                           llvm::ArrayRef<T> vals) {
+  assert(std::is_integral<T>() && "Can only convert integral type to dim_t.");
+  auto DimTType = builder.getIntNTy(sizeof(dim_t) * 8);
+  std::vector<llvm::Constant *> elems;
+  for (auto I : vals) {
+    assert(I >= 0 && "Only allow casting positive values into size_t.");
+    assert(I <= std::numeric_limits<dim_t>::max() &&
+           "Do not allow overflow of size_t.");
+    elems.push_back(llvm::ConstantInt::get(DimTType, (dim_t)I));
+  }
+  return emitConstArray(builder, elems, DimTType);
+}
 
 } // namespace glow
 

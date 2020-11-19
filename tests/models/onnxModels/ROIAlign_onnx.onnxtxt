@@ -1,0 +1,114 @@
+ir_version: 6
+producer_name: "roiAlign-onnx-example"
+graph {
+  node {
+    input: "featureMap"
+    input: "boxes"
+    input: "batchIndices"
+    output: "result"
+    op_type: "RoiAlign"
+    attribute {
+      name: "mode"
+      s: "avg"
+      type: STRING
+    }
+    attribute {
+      name: "output_height"
+      i: 5
+      type: INT
+    }
+    attribute {
+      name: "output_width"
+      i: 5
+      type: INT
+    }
+    attribute {
+      name: "sampling_ratio"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "spatial_scale"
+      f: 1.0
+      type: FLOAT
+    }
+  }
+  name: "roiAlign-node"
+  input {
+    name: "featureMap"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "boxes"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "batchIndices"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "result"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  domain: ""
+  version: 10
+}

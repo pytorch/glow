@@ -14,6 +14,7 @@
  */
 
 #ifdef GLOW_WITH_NNPI
+BB.includeHeader("glow/NNPISpecificTypes.h");
 
 BB.newNode("NNPICustomDSP")
     .addMember(MemberType::VectorNodeValue, "Inputs")
@@ -26,6 +27,29 @@ BB.newNode("NNPICustomDSP")
     .setDocstring("This is an experimental NNPI-specific node representing a "
                   "custom DSP op");
 
-BB.includeBackendSpecificVerification("glow/NNPISpecificNodesVerification.h");
+BB.newNode("NNPICustomIA")
+    .addMember(MemberType::VectorNodeValue, "Inputs")
+    .addResultFromCtorArg() // for now use single output
+    .addMember(MemberType::String, "KernelName")
+    .addMember(MemberType::String, "IAPath")
+    .setDocstring("This is an experimental NNPI-specific node representing a "
+                  "custom IA op");
 
+BB.newNode("NNPILookupTable")
+    .addInput("Input")
+    .addInput("LookupTable")
+    .addMember(MemberType::Enum, "LookupType")
+    .addMember(MemberType::Float, "LowerRange")
+    .addMember(MemberType::Float, "UpperRange")
+    .addMember(MemberType::Float, "UpperMulFactor")
+    .addMember(MemberType::Float, "UpperOffset")
+    .addMember(MemberType::Float, "LowerMulFactor")
+    .addMember(MemberType::Float, "LowerOffset")
+    .addMember(MemberType::Float, "Delta")
+    .addMember(MemberType::Float, "Bias")
+    .addResultFromCtorArg() // for now use single output
+    .setDocstring("This is an experimental NNPI-specific node representing a "
+                  "LUT op");
+
+BB.includeBackendSpecificVerification("glow/NNPISpecificNodesVerification.h");
 #endif // GLOW_WITH_NNPI

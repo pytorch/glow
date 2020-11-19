@@ -31,7 +31,7 @@ class NodeInfo;
 
 class CPUBackend : public LLVMBackend {
 public:
-  CPUBackend() = default;
+  CPUBackend();
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
@@ -48,6 +48,7 @@ public:
       Function *F, CompilationContext &cctx,
       const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 
+  /// \returns whether the provided \p NI is supported by the backend.
   bool isOpSupported(const NodeInfo &NI) const override;
 
   bool shouldLower(const Node *N) const override;

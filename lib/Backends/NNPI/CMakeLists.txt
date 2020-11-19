@@ -83,16 +83,28 @@ if(NOT NNPI_INFERENCE_API)
   message(FATAL_ERROR "nnpi_inference include files  not found at ${NNPI_INF_LIB_DIR}")
 endif()
 
-find_path(NNPI_MG_API nnpiml.h ${NNPI_MG_SEARCH_PATH})
+find_path(NNPI_MG_API nnpi_ice_caps.h ${NNPI_MG_SEARCH_PATH})
 if(NOT NNPI_MG_API)
-  message(FATAL_ERROR "nnpiml include files not found at ${NNPI_MG_API_DIR}")
+  message(FATAL_ERROR "nnpi_ice_caps include files not found at ${NNPI_MG_API_DIR}")
 endif()
 
-find_library(NNPI_MG_LIB nnpiml ${NNPI_MG_LIB_SEARCH_PATH})
+find_library(NNPI_MG_LIB nnpi_icecaps ${NNPI_MG_LIB_SEARCH_PATH})
 if(NOT NNPI_MG_LIB)
-  message(FATAL_ERROR "nnpiml library not found at ${NNPI_MG_LIB_SEARCH_PATH}")
+  message(FATAL_ERROR "nnpi_icecaps library not found at ${NNPI_MG_LIB_SEARCH_PATH}")
 endif()
 
+file (STRINGS "${NNPI_TRANSFORMER_LIB}" verString REGEX "DL VERSION: ([0-9]+.[0-9]+)" LIMIT_COUNT 1)
+if (NOT DEFINED NNPI_MAJOR_VERSION)
+  string(REGEX MATCH "DL VERSION: ([0-9]+).[0-9]+.[0-9]+.[0-9]+" _ ${verString})
+  set(NNPI_MAJOR_VERSION ${CMAKE_MATCH_1})
+endif()
+if (NOT DEFINED NNPI_MINOR_VERSION)
+  string(REGEX MATCH "DL VERSION: [0-9]+.([0-9]+).[0-9]+.[0-9]+" _ ${verString})
+  set(NNPI_MINOR_VERSION ${CMAKE_MATCH_1})
+endif()
+
+message(STATUS "[NNPI] NNPI_MAJOR_VERSION          = ${NNPI_MAJOR_VERSION}")
+message(STATUS "[NNPI] NNPI_MINOR_VERSION          = ${NNPI_MINOR_VERSION}")
 message(STATUS "[NNPI] NNPI_API_DIR                = ${NNPI_API_DIR}")
 message(STATUS "[NNPI] NNPI_LIB_DIR                = ${NNPI_TRANSFORMER_LIB}")
 
@@ -112,6 +124,9 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${NNPI_MG_API}
 )
+
+add_definitions(-DNNPI_MAJOR_VERSION=${NNPI_MAJOR_VERSION})
+add_definitions(-DNNPI_MINOR_VERSION=${NNPI_MINOR_VERSION})
 
 SET_SOURCE_FILES_PROPERTIES(NNPIUtils_AVX512.cpp PROPERTIES COMPILE_FLAGS "-mavx512f -mavx512vl -mavx512bw")
 
@@ -137,6 +152,7 @@ target_link_libraries(NNPI
                       PRIVATE
                       Backend
                       Base
+                      Flags
                       Graph
                       GraphOptimizer
                       CodeGen
@@ -149,4 +165,3 @@ target_link_libraries(NNPI
 )
 
 set(linked_backends ${linked_backends} NNPI PARENT_SCOPE)
-

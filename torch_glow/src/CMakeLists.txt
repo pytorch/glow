@@ -11,15 +11,28 @@ message(STATUS "Using pytorch dir ${PYTORCH_DIR}")
 
 link_directories(${PYTORCH_DIR}/lib)
 
+add_library(PyTorchShapeInference
+                     ShapeInferenceEngine.cpp)
+target_compile_options(PyTorchShapeInference
+                      PRIVATE
+                        -frtti -fexceptions -DC10_USE_GLOG)
+target_link_libraries(PyTorchShapeInference
+                      PRIVATE
+                        torch_cpu
+                        c10)
+
 add_library(PyTorchModelLoader
                      CachingGraphRunner.cpp
                      CustomPyTorchOpLoader.cpp
                      GlowFuser.cpp
                      FuseKnownPatterns.cpp
                      GlowIValue.cpp
+                     InputMeta.cpp
                      PyTorchCommon.cpp
                      Registration.cpp
-                     PyTorchModelLoader.cpp)
+                     PyTorchModelLoader.cpp
+                     TorchGlowBackend.cpp
+                     GlowCompileSpec.cpp)
 target_compile_options(PyTorchModelLoader
                       PRIVATE
                         -frtti -fexceptions -DC10_USE_GLOG)
@@ -38,16 +51,8 @@ target_link_libraries(PyTorchModelLoader
                         Importer
                         GraphOptimizer
                         Quantization
-                        Runtime)
-
-add_library(PyTorchFileLoader
-                     PyTorchFileLoader.cpp)
-target_compile_options(PyTorchFileLoader
-                      PRIVATE
-                        -frtti -fexceptions -DC10_USE_GLOG)
-target_link_libraries(PyTorchFileLoader
-                      PUBLIC
-                        PyTorchModelLoader)
+                        Runtime
+                        PyTorchShapeInference)
 
 pybind11_add_module(_torch_glow
                       binding.cpp)
@@ -58,18 +63,7 @@ target_compile_options(_torch_glow
 target_link_libraries(_torch_glow
                       PRIVATE
                         PyTorchModelLoader
-                        TorchGlowTraining
                         Backends
-                        pybind11)
+                        torch_python)
 
-target_include_directories(PyTorchModelLoader PUBLIC
-                            ${PYTORCH_DIR}/include)
-
-target_include_directories(PyTorchFileLoader PUBLIC
-                            ${PYTORCH_DIR}/include)
-
-target_include_directories(_torch_glow PUBLIC
-                            ${PYTORCH_DIR}/include
-                            ${TORCH_GLOW}/src/training)
-
-add_subdirectory(training)
+include_directories(${PYTORCH_DIR}/include)

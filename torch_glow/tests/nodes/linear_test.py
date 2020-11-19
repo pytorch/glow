@@ -1,10 +1,18 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import unittest
+
 import torch
 import torch.nn.functional as F
+from tests import utils
 
-from tests.utils import jitVsGlow
-import unittest
+
+class SimpleLinearModule(torch.nn.Module):
+    def __init__(self):
+        super(SimpleLinearModule, self).__init__()
+
+    def forward(self, input, weight, bias=None):
+        return F.linear((input + input), weight, bias)
 
 
 class TestLinear(unittest.TestCase):
@@ -21,8 +29,10 @@ class TestLinear(unittest.TestCase):
         input = torch.randn(n, in_features)
         weight = torch.randn(out_features, in_features)
 
-        # expected_fused_ops has is empty because linear gets lowered to other ops
-        jitVsGlow(test_f, input, weight, expected_fused_ops={})
+        # fusible_ops has is empty because linear gets lowered to other ops
+        utils.compare_tracing_methods(
+            SimpleLinearModule(), input, weight, fusible_ops={}
+        )
 
     def test_linear_bias(self):
         """Test of the PyTorch aten::linear op on Glow."""
@@ -38,8 +48,10 @@ class TestLinear(unittest.TestCase):
         weight = torch.randn(out_features, in_features)
         bias = torch.randn(out_features)
 
-        # expected_fused_ops has is empty because linear gets lowered to other ops
-        jitVsGlow(test_f, input, weight, bias, expected_fused_ops={})
+        # fusible_ops has is empty because linear gets lowered to other ops
+        utils.compare_tracing_methods(
+            SimpleLinearModule(), input, weight, bias, fusible_ops={}
+        )
 
     def test_linear_broadcast(self):
         """Test of the PyTorch aten::linear op with broadcasting on Glow."""
@@ -54,5 +66,7 @@ class TestLinear(unittest.TestCase):
         input = torch.randn(n, 9, 7, in_features)
         weight = torch.randn(out_features, in_features)
 
-        # expected_fused_ops has is empty because linear gets lowered to other ops
-        jitVsGlow(test_f, input, weight, expected_fused_ops={})
+        # fusible_ops has is empty because linear gets lowered to other ops
+        utils.compare_tracing_methods(
+            SimpleLinearModule(), input, weight, fusible_ops={}
+        )

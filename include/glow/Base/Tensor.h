@@ -49,6 +49,14 @@ void genericTranspose(const Tensor *src, Tensor *dest,
 /// returned dims. For example, input {2,1,4} would result in {2,1,4,1,1,1}.
 ShapeVector expandDimsToMax(llvm::ArrayRef<dim_t> currDims);
 
+/// Helper function that \returns a ShapeVector obtained from \p dims by
+/// reducing (setting to 1) the dimensions given by \p axes. If the flag
+/// \p keepDims is also used then the reduced dimensions are kept, otherwise
+/// are pruned. For example, given the dimensions [2,3,4] and axes [0,2] the
+/// returned shape will be [1,3,1] for keepDims true and [3] for keepDims false.
+ShapeVector reduceDims(llvm::ArrayRef<dim_t> dims,
+                       llvm::ArrayRef<unsigned_t> axes, bool keepDims);
+
 namespace runtime {
 class DeviceManager;
 }
@@ -159,6 +167,20 @@ public:
 
   /// \returns the number of allocated bytes pointed to by \ref data_.
   size_t getUnpaddedSizeInBytes() const { return unpaddedSize_; }
+
+  /// \returns the number of real elements in a Tensor, not including extra
+  /// padding, or not including number of elements that do not exist outside of
+  /// a partial tensor shape. Note that Tensors cannot be both custom aligned
+  /// and partial.
+  size_t getRealNumElements() const {
+    // If custom alignment then return size from the handle.
+    if (size() < actualSize()) {
+      return size();
+    }
+    // Else assume no custom alignment, so return number of elements based on
+    // unpaddedSize_, i.e. accounts for partial Tensors.
+    return unpaddedSize_ / type_.getElementSize();
+  }
 
   /// \returns the type of the tensor.
   const Type &getType() const { return type_; }
@@ -482,6 +504,10 @@ public:
     // Set unpaddedSize_ to the actual number of bytes.
     unpaddedSize_ = unpaddedSize;
 
+    assert(!(size() < actualSize() &&
+             getSizeInBytes() != getUnpaddedSizeInBytes()) &&
+           "Custom aligned Tensors cannot also be partial");
+
 #ifdef GLOW_DEBUG_TENSOR_INIT
     PseudoRNG rng;
     init(InitKind::Broadcast, GLOW_DEBUG_TENSOR_INIT, rng);
@@ -634,6 +660,8 @@ public:
       return isEqualImpl<float>(other, allowedError, verbose);
     case ElemKind::Float16Ty:
       return isEqualImpl<float16_t>(other, allowedError, verbose);
+    case ElemKind::BFloat16Ty:
+      return isEqualImpl<bfloat16_t>(other, allowedError, verbose);
     case ElemKind::Int8QTy:
       return isEqualImpl<int8_t>(other, allowedError, verbose);
     case ElemKind::UInt8QTy:
@@ -655,6 +683,8 @@ public:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::UInt4FusedFP16QTy:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
+    case ElemKind::UInt4FusedQTy:
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::BoolTy:
       return isEqualImpl<bool>(other, allowedError, verbose);
     }
@@ -663,6 +693,33 @@ public:
     // always covers all possible values.
     llvm_unreachable("unreachable");
   }
+
+  /// \returns whether this Tensor is tiled (repeated) along \p axis for the
+  /// given tile size \p size. Some examples:
+  /// - A Tensor with size [2, 3] equal to [[1,2,3],[1,2,3]] is tiled along
+  ///   axis 0 for a tile size equal to 1.
+  /// - A Tensor with size [2, 4] equal to [[1, 2, 1, 2],[3, 4, 3, 4]] is tiled
+  ///   along axis 1 for a tile size equal to 2.
+  /// When the tile size matches the dimensions size this function returns TRUE.
+  /// If the \p fractional flag is optionally given that this function will also
+  /// perform fractional tiling verification (default is FALSE). Some examples:
+  /// - For a Tensor with size [5] equal to [1,2,3,1,2], axis 0 and tile size 3,
+  ///   this function returns TRUE if \p fractional is TRUE and returns FALSE if
+  ///   \p fractional is FALSE.
+  bool isTiled(unsigned_t axis, dim_t size = 1, bool fractional = false) const;
+
+  /// \returns whether this Tensor is tiled (repeated) along \p axes for the
+  /// given tile sizes \p sizes. Some examples:
+  /// - A Tensor with size [2, 4] equal to [[1,2,1,2],[1,2,1,2]] is tiled along
+  ///   axes {0,1} for the tile sizes {1,2}.
+  /// When the tile sizes match the dimension sizes this function returns TRUE.
+  /// If the \p fractional flag is optionally given that this function will also
+  /// perform fractional tiling verification (default is FALSE). Some examples:
+  /// - For a Tensor with size [5] equal to [1,2,3,1,2], axes {0} and sizes {3},
+  ///   this function returns TRUE if \p fractional is TRUE and returns FALSE if
+  ///   \p fractional is FALSE.
+  bool isTiled(llvm::ArrayRef<unsigned_t> axes, llvm::ArrayRef<dim_t> sizes,
+               bool fractional = false) const;
 
   /// Update the content and type of the tensor from the tensor \p t.
   void assign(const Tensor *t) {
@@ -683,6 +740,15 @@ public:
            "Do not support copying between different unpadded sized tensors");
     size_t bufferSize = type_.getSizeInBytes();
     std::copy(&t->getData()[0], &t->getData()[bufferSize], getData());
+  }
+
+  /// Update the raw data of the tensor from a raw buffer \p data.
+  void copyRawFrom(const char *data) {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
+    assert(data && "Null data pointer!");
+    assert(getData() != data && "Copying to self");
+    size_t bufferSize = type_.getSizeInBytes();
+    std::memcpy(getData(), data, bufferSize);
   }
 
   /// Update the content of the tensor with a slice from tensor \p t. A slice
@@ -752,7 +818,9 @@ public:
   /// \returns a copy of the Tensor but converted to \p newKind. Currently
   /// supports conversion for:
   /// - FloatTy to Float16Ty
+  /// - FloatTy to BFloat16Ty
   /// - Float16Ty to FloatTy
+  /// - BFloat16Ty to FloatTy
   /// - UInt8FusedQTy to UInt8FusedFP16QTy
   Tensor getCopyConvertedToType(ElemKind newKind) const;
 
@@ -909,18 +977,21 @@ private:
     auto const *myData = getUnsafePtr();
     auto const *otherData = other.getUnsafePtr();
     dim_t mismatchCount = 0;
-    for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
-      if (myData[i] != otherData[i]) {
-        if (!verbose) {
-          return false;
+
+    if (verbose) {
+      for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
+        if (myData[i] != otherData[i]) {
+          ++mismatchCount;
         }
-        ++mismatchCount;
       }
+      if (mismatchCount != 0) {
+        LOG(INFO) << "Tensors not bitwise equal: " << mismatchCount
+                  << " bytes out of " << getSizeInBytes() << " mismatched.";
+      }
+    } else {
+      mismatchCount = memcmp(myData, otherData, getSizeInBytes());
     }
-    if (mismatchCount != 0) {
-      LOG(INFO) << "Tensors not bitwise equal: " << mismatchCount
-                << " bytes out of " << getSizeInBytes() << " mismatched.";
-    }
+
     return mismatchCount == 0;
   }
 };
@@ -978,7 +1049,7 @@ class HandleIterator
 
   static HandleIterator end(HandleTy handle) {
     auto res = HandleIterator(handle);
-    res.idx_ = res.handle_->size();
+    res.idx_ = res.handle_->getRealNumElements();
     return res;
   }
 
@@ -1044,6 +1115,16 @@ inline size_t getFlattenedOffset(llvm::ArrayRef<dim_t> strides,
 
   return index;
 }
+
+/// Helper function which \returns true if a slice with the shape \p sliceShape
+/// referenced from a larger tensor with the shape \p tensorShape is contiguous
+/// in memory (assuming the tensor it is referenced from is contiguous). This
+/// happens when the slice dimensions:
+/// - Start with singleton dimensions (dimensions equal to 1).
+/// - Continue with a partially extracted dimension (one maximum).
+/// - End with fully extracted dimensions.
+bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
+                       llvm::ArrayRef<dim_t> tensorShape);
 
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
@@ -1158,6 +1239,9 @@ public:
   size_t getUnpaddedSizeInBytes() const {
     return tensor_->getUnpaddedSizeInBytes();
   }
+
+  /// \returns the number of unpadded elements in the underlying \ref tensor_.
+  size_t getRealNumElements() const { return tensor_->getRealNumElements(); }
 
   bool isInBounds(llvm::ArrayRef<dim_t> indices) const {
     return tensor_->isInBounds(indices);
@@ -1325,8 +1409,7 @@ public:
   /// row of \p input equals to norm of corresponding row of \p result.
   void initXavier(size_t filterSize, PseudoRNG &PRNG) {
     assert(filterSize > 0 && "invalid filter size");
-    assert((getElementType() == ElemKind::FloatTy ||
-            getElementType() == ElemKind::Float16Ty) &&
+    assert(getType().isFPType() &&
            "Only support floating point Xavier initialization.");
     double scale = std::sqrt(3.0 / double(filterSize));
     std::uniform_real_distribution<> dist(-scale, scale);
@@ -1340,7 +1423,7 @@ public:
   template <typename T = ElemTy>
   typename std::enable_if<std::is_floating_point<T>::value>::type
   randomize(float low, float high, PseudoRNG &PRNG) {
-    assert(low < high && "invalid range");
+    assert(low <= high && "invalid range");
     std::uniform_real_distribution<ElemTy> dist(low, high);
     for (auto &elem : *this) {
       elem = dist(PRNG);
@@ -1352,7 +1435,7 @@ public:
   template <typename T = ElemTy>
   typename std::enable_if<std::is_integral<T>::value>::type
   randomize(int low, int high, PseudoRNG &PRNG) {
-    assert(low < high && "invalid range");
+    assert(low <= high && "invalid range");
     assert(low >= std::numeric_limits<ElemTy>::lowest() &&
            high <= std::numeric_limits<ElemTy>::max() &&
            "Cannot initialize outside range of representable values.");
@@ -1389,7 +1472,7 @@ public:
   typename std::enable_if<!std::is_floating_point<T>::value &&
                           !std::is_integral<T>::value>::type
   randomize(float low, float high, PseudoRNG &PRNG) {
-    assert(low < high && "invalid range");
+    assert(low <= high && "invalid range");
     std::uniform_real_distribution<float> dist(low, high);
     for (auto &elem : *this) {
       elem = dist(PRNG);
@@ -1520,7 +1603,8 @@ private:
   /// \p T of a row \p rowIdx.
   template <typename T> ElemTy *getFusedRowScaleOffsetPtr(dim_t rowIdx) {
     switch (getElementType()) {
-    case ElemKind::UInt8FusedQTy: {
+    case ElemKind::UInt8FusedQTy:
+    case ElemKind::UInt4FusedQTy: {
       constexpr auto isFloat = std::is_same<float, T>::value;
       DCHECK(isFloat) << "Expected float scale/offset";
       break;

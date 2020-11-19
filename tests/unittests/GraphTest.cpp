@@ -94,6 +94,36 @@ TEST(Graph, clear) {
   EXPECT_EQ(M.getFunctions().size(), 0);
 }
 
+/// Check that the clear method works as expected.
+TEST(Graph, clearFunctions) {
+  Module M;
+
+  // Check that the module is initially empty.
+  EXPECT_EQ(M.getConstants().size(), 0);
+  EXPECT_EQ(M.getPlaceholders().size(), 0);
+  EXPECT_EQ(M.getFunctions().size(), 0);
+
+  // Create a few things.
+  Function *F = M.createFunction("main");
+  auto *PH = M.createPlaceholder(ElemKind::FloatTy, {1}, "placeholder", true);
+  auto *C = M.createConstant(ElemKind::FloatTy, {1}, "var");
+  auto *AN = F->createAdd("add", PH, C);
+  F->createSave("save", AN);
+
+  EXPECT_EQ(M.getConstants().size(), 1);
+  EXPECT_EQ(M.getPlaceholders().size(), 2); // Input PH and PH for Save
+  EXPECT_EQ(M.getFunctions().size(), 1);
+  EXPECT_EQ(F->getNodes().size(), 2); // Add, Save
+
+  M.clearFunctions();
+  EXPECT_EQ(M.getConstants().size(), 1);
+  EXPECT_EQ(M.getPlaceholders().size(), 2);
+  ASSERT_EQ(M.getFunctions().size(), 1);
+  // Same Function ptr should exist, just nothing left in them.
+  EXPECT_EQ(*M.getFunctions().begin(), F);
+  EXPECT_EQ(F->getNodes().size(), 0);
+}
+
 /// Test the graph nodes names and utilities.
 TEST(Graph, testGraphNames) {
   Module MD;
@@ -106,7 +136,7 @@ TEST(Graph, testGraphNames) {
   auto *top = F->createTopK("top", add, 5);
   Node *save = F->createSave("out", top->getValues());
 
-  EXPECT_TRUE(MD.getPlaceholderByName("op1"));
+  EXPECT_TRUE(MD.getPlaceholderByNameSlow("op1"));
   EXPECT_TRUE(MD.getConstantByName("op2"));
   EXPECT_TRUE(F->getNodeByName("add"));
   EXPECT_TRUE(F->getNodeByName("top"));
@@ -358,6 +388,135 @@ TEST(Graph, float16BatchNorm) {
       F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
         for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
           if (node.getType(idx)->getElementType() != ElemKind::Float16Ty) {
+            return false;
+          }
+        }
+        return true;
+      }));
+}
+
+/// Check that we can create convolution with bfloat16.
+TEST(Graph, bfloat16Conv) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Node *K = MD.createConstant(ElemKind::BFloat16Ty, {4, 320, 200, 3}, "input");
+
+  auto *conv = F->createConv(bindings, "Conv", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
+  EXPECT_TRUE(conv->verify());
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::BFloat16Ty);
+
+  auto backend = MockBackend();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  IRFunction M(F);
+
+  M.generateIR(backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<ConvolutionInst>(inst);
+                             });
+  ASSERT_TRUE(convIt != M.getInstrs().end());
+  const auto *convInst = llvm::cast<ConvolutionInst>(&*convIt);
+  EXPECT_EQ(convInst->getSrc()->getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(convInst->getFilter()->getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(convInst->getBias()->getElementType(), ElemKind::BFloat16Ty);
+}
+
+/// Check that we can create conv3D with bfloat16.
+TEST(Graph, bfloat16Conv3DLower) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Node *K =
+      MD.createConstant(ElemKind::BFloat16Ty, {4, 320, 200, 200, 3}, "input");
+
+  auto *conv = F->createConv3D(bindings, "Conv3D", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
+  EXPECT_TRUE(conv->verify());
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::BFloat16Ty);
+
+  auto backend = MockBackend();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  IRFunction M(F);
+
+  M.generateIR(backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<Convolution3DInst>(inst);
+                             });
+  ASSERT_TRUE(convIt == M.getInstrs().end());
+}
+
+/// Check that we can create conv3D with bfloat16.
+TEST(Graph, bfloat16Conv3DNoLower) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Node *K =
+      MD.createConstant(ElemKind::BFloat16Ty, {4, 320, 200, 200, 3}, "input");
+
+  auto *conv = F->createConv3D(bindings, "Conv3D", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
+  EXPECT_TRUE(conv->verify());
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::BFloat16Ty);
+
+  auto backend = MockBackendNoLowerConv3D();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  IRFunction M(F);
+
+  M.generateIR(backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<Convolution3DInst>(inst);
+                             });
+  ASSERT_TRUE(convIt != M.getInstrs().end());
+  const auto *convInst = llvm::cast<Convolution3DInst>(&*convIt);
+  EXPECT_EQ(convInst->getSrc()->getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(convInst->getFilter()->getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(convInst->getBias()->getElementType(), ElemKind::BFloat16Ty);
+}
+
+/// Check that we can create batchNorm with float16.
+TEST(Graph, bfloat16BatchNorm) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  auto *input = MD.createPlaceholder(ElemKind::BFloat16Ty, {1, 10, 20, 3},
+                                     "input", false);
+  BatchNormalizationNode *BN =
+      F->createBatchNormalization(bindings, "batch", input, 3, 0.0001, 0.9);
+
+  EXPECT_TRUE(BN->verify());
+  EXPECT_EQ(BN->getResult().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(BN->getScale().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(BN->getBias().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(BN->getMean().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(BN->getVar().getElementType(), ElemKind::BFloat16Ty);
+
+  auto backend = MockBackend();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  EXPECT_TRUE(std::all_of(
+      F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
+        for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
+          if (node.getType(idx)->getElementType() != ElemKind::BFloat16Ty) {
             return false;
           }
         }
@@ -701,8 +860,10 @@ static void compileAndRun(ExecutionEngine &EE, PlaceholderBindings &bindings,
                           llvm::StringRef outputName) {
   EE.compile(glow::CompilationMode::Infer);
   // Allocate stprage for placeholders and initialize inputs.
-  bindings.allocate(M.getPlaceholderByName(inputName))->getHandle().clear(2.0);
-  bindings.allocate(M.getPlaceholderByName(outputName));
+  bindings.allocate(M.getPlaceholderByNameSlow(inputName))
+      ->getHandle()
+      .clear(2.0);
+  bindings.allocate(M.getPlaceholderByNameSlow(outputName));
   EE.run(bindings);
 }
 
@@ -758,7 +919,7 @@ TEST(Graph, moduleCloneTest) {
     compileAndRun(originalEE, originalBindings, originalM, "input", resultName);
     // Store the result of running the original module.
     originalResult.assign(originalBindings.get(
-        originalBindings.getPlaceholderByName(resultName)));
+        originalBindings.getPlaceholderByNameSlow(resultName)));
     // The old module should be removed when this scope ends. Thus, if the
     // cloned module newM refers to any deleted nodes from the original module,
     // it would result in a dangling reference and most likely in a crash.
@@ -770,7 +931,7 @@ TEST(Graph, moduleCloneTest) {
   compileAndRun(clonedEE, clonedBindings, clonedM, "input", resultName);
   // Store the result of running the cloned module.
   clonedResult.assign(
-      clonedBindings.get(clonedBindings.getPlaceholderByName(resultName)));
+      clonedBindings.get(clonedBindings.getPlaceholderByNameSlow(resultName)));
   // The results of execution should be exactly the same in both cases.
   EXPECT_TRUE(originalResult.isEqual(clonedResult, 0));
 }
@@ -1967,6 +2128,7 @@ name : "input"
 layout : *
 output : float<4 x 320 x 200 x 100 x 3>
 trainable : 1
+static : 0
 users : 0
 )";
   EXPECT_EQ(mesN, expectMes);
@@ -1978,6 +2140,7 @@ users : 0
   // Test Function
   Placeholder *I =
       MD.createPlaceholder(ElemKind::FloatTy, {10, 10}, "input", true);
+  I->setStatic(true);
   Function *F2 = MD.createFunction("F2");
   F2->createTopK("topk", I, 3);
   std::string storageF1;
@@ -1997,6 +2160,7 @@ name : "input__1"
 layout : *
 output : float<10 x 10>
 trainable : 1
+static : 1
 users : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
@@ -2021,6 +2185,7 @@ name : "input__1"
 layout : *
 output : float<10 x 10>
 trainable : 1
+static : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());
@@ -2042,6 +2207,7 @@ name : "input__1"
 layout : *
 output : float<10 x 10>
 trainable : 1
+static : 1
 users : 1
 
 Placeholder
@@ -2049,6 +2215,7 @@ name : "input"
 layout : *
 output : float<4 x 320 x 200 x 100 x 3>
 trainable : 1
+static : 0
 users : 0
 
 Function : F2
@@ -2060,4 +2227,121 @@ Function : F
   llvm::raw_string_ostream osM2(storageM2);
   osM2 << MD;
   EXPECT_EQ(mesM, osM2.str());
+}
+
+/// Initialize tensor payload for testing purposes. The value at index i is set
+/// to i.
+template <typename ElemTy> static void initTensor(Tensor &T) {
+  Handle<ElemTy> handle = T.getHandle<ElemTy>();
+  float val = 0;
+  for (auto &elem : handle) {
+    elem = val;
+    val += 1.0;
+  }
+}
+
+// Test that randomizing Constants in a Function works.
+TEST(Graph, testRandomizeConstants) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  // Create tensors to be used in Constants
+  Tensor floatT(ElemKind::FloatTy, {10});
+  initTensor<float>(floatT);
+
+  Tensor halfT(ElemKind::Float16Ty, {10});
+  initTensor<float16_t>(halfT);
+
+  Tensor bfloat16T(ElemKind::BFloat16Ty, {10});
+  initTensor<bfloat16_t>(bfloat16T);
+
+  Tensor int8QT(ElemKind::Int8QTy, {10}, 1.0, 0);
+  initTensor<int8_t>(int8QT);
+
+  Tensor uint8QT(ElemKind::UInt8QTy, {10}, 1.0, 0);
+  initTensor<uint8_t>(uint8QT);
+
+  Tensor int16QT(ElemKind::Int16QTy, {10}, 1.0, 0);
+  initTensor<int16_t>(int16QT);
+
+  Tensor int32QT(ElemKind::Int32QTy, {10}, 1.0, 0);
+  initTensor<int32_t>(int32QT);
+
+  Tensor int32IT(ElemKind::Int32ITy, {10});
+  initTensor<int32_t>(int32IT);
+
+  Tensor int64IT(ElemKind::Int64ITy, {10});
+  initTensor<int64_t>(int64IT);
+
+  Tensor uint8FusedQT(ElemKind::UInt8FusedQTy, {16, 16}, 1.0, 0);
+  initTensor<uint8_t>(uint8FusedQT);
+
+  Tensor uint8FusedFP16QT(ElemKind::UInt8FusedFP16QTy, {16, 16}, 1.0, 0);
+  initTensor<uint8_t>(uint8FusedFP16QT);
+
+  Tensor uint4FusedFP16QT(ElemKind::UInt4FusedFP16QTy, {16, 16}, 1.0, 0);
+  initTensor<uint8_t>(uint4FusedFP16QT);
+
+  Tensor boolT(ElemKind::BoolTy, {10});
+  initTensor<bool>(boolT);
+
+  // Create Constants and use them in F
+  auto *floatC = MD.createConstant("floatC", floatT);
+  F->createAdd("add", floatC, floatC);
+
+  auto *halfC = MD.createConstant("halfC", halfT);
+  F->createAdd("add", halfC, halfC);
+
+  auto *bfloat16C = MD.createConstant("bloat16C", bfloat16T);
+  F->createAdd("add", bfloat16C, bfloat16C);
+
+  auto *int8QC = MD.createConstant("int8QC", int8QT);
+  F->createAdd("add", int8QC, int8QC);
+
+  auto *uint8QC = MD.createConstant("uint8QC", uint8QT);
+  F->createAdd("add", uint8QC, uint8QC);
+
+  auto *int16QC = MD.createConstant("int16QC", int16QT);
+  F->createAdd("add", int16QC, int16QC);
+
+  auto *int32QC = MD.createConstant("int32QC", int32QT);
+  F->createAdd("add", int32QC, int32QC);
+
+  auto *int32IC = MD.createConstant("int32IC", int32IT);
+  F->createAdd("add", int32IC, int32IC);
+
+  auto *int64IC = MD.createConstant("int64IC", int64IT);
+  F->createAdd("add", int64IC, int64IC);
+
+  auto *uint8FusedQC = MD.createConstant("uint8FusedQC", uint8FusedQT);
+  F->createAdd("add", uint8FusedQC, uint8FusedQC);
+
+  auto *uint8FusedFP16QC =
+      MD.createConstant("uint8FusedFP16QC", uint8FusedFP16QT);
+  F->createAdd("add", uint8FusedFP16QC, uint8FusedFP16QC);
+
+  auto *uint4FusedFP16QC =
+      MD.createConstant("uint4FusedFP16QC", uint4FusedFP16QT);
+  F->createAdd("add", uint4FusedFP16QC, uint4FusedFP16QC);
+
+  auto *boolC = MD.createConstant("boolC", boolT);
+  F->createAdd("add", boolC, boolC);
+
+  // Randomize Constants in F
+  F->randomizeConstants();
+
+  // Check that no Constant is the same as what it started as
+  EXPECT_FALSE(floatT.isEqual(floatC->getPayload()));
+  EXPECT_FALSE(halfT.isEqual(halfC->getPayload()));
+  EXPECT_FALSE(bfloat16T.isEqual(bfloat16C->getPayload()));
+  EXPECT_FALSE(int8QT.isEqual(int8QC->getPayload()));
+  EXPECT_FALSE(uint8QT.isEqual(uint8QC->getPayload()));
+  EXPECT_FALSE(int16QT.isEqual(int16QC->getPayload()));
+  EXPECT_FALSE(int32QT.isEqual(int32QC->getPayload()));
+  EXPECT_FALSE(int32IT.isEqual(int32IC->getPayload()));
+  EXPECT_FALSE(int64IT.isEqual(int64IC->getPayload()));
+  EXPECT_FALSE(uint8FusedQT.isEqual(uint8FusedQC->getPayload()));
+  EXPECT_FALSE(uint8FusedFP16QT.isEqual(uint8FusedFP16QC->getPayload()));
+  EXPECT_FALSE(uint4FusedFP16QT.isEqual(uint4FusedFP16QC->getPayload()));
+  EXPECT_FALSE(boolT.isEqual(boolC->getPayload()));
 }

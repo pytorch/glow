@@ -262,37 +262,191 @@ TEST(Optimizer, copyPropagationTranspose) {
       }));
 }
 
-/// Simple test where a single insert is replaced by a tensor view with offsets.
-TEST(Optimizer, insertOptimizer) {
+/// Test the isSliceContiguous utility function.
+TEST(Optimizer, isSliceContiguous) {
+  EXPECT_EQ(isSliceContiguous({1, 1, 1}, {3, 3, 3}), true);
+  EXPECT_EQ(isSliceContiguous({1, 1, 2}, {3, 3, 3}), true);
+  EXPECT_EQ(isSliceContiguous({1, 1, 3}, {3, 3, 3}), true);
+  EXPECT_EQ(isSliceContiguous({1, 2, 1}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({1, 2, 2}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({1, 2, 3}, {3, 3, 3}), true);
+  EXPECT_EQ(isSliceContiguous({1, 3, 1}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({1, 3, 2}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({1, 3, 3}, {3, 3, 3}), true);
+  EXPECT_EQ(isSliceContiguous({2, 1, 1}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({2, 1, 2}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({2, 1, 3}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({2, 2, 1}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({2, 2, 2}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({2, 2, 3}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({2, 3, 1}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({2, 3, 2}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({2, 3, 3}, {3, 3, 3}), true);
+  EXPECT_EQ(isSliceContiguous({3, 1, 1}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({3, 1, 2}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({3, 1, 3}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({3, 2, 1}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({3, 2, 2}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({3, 2, 3}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({3, 3, 1}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({3, 3, 2}, {3, 3, 3}), false);
+  EXPECT_EQ(isSliceContiguous({3, 3, 3}, {3, 3, 3}), true);
+}
+
+/// Utility function for testing the optimization of an InsertTensorInstruction
+/// to a TensorViewInstruction when the inserted tensor (slice) is contiguous.
+static void testInsertOptimizer(llvm::ArrayRef<dim_t> srcShape,
+                                llvm::ArrayRef<dim_t> destShape,
+                                llvm::ArrayRef<dim_t> offsets) {
   Module mod;
   Function *F = mod.createFunction("InsertOptimizer");
   IRFunction M(F);
   IRBuilder bb(&M);
 
-  auto *output =
-      bb.createWeightVar(glow::ElemKind::FloatTy, {4, 4, 5}, "output",
-                         WeightVar::MutabilityKind::Mutable);
-
-  auto *allocSrc = bb.createAllocActivationInst(
-      "allocSrc", glow::ElemKind::FloatTy, {3, 4, 5});
-
-  bb.createSplatInst("splatSrc", allocSrc, 1.0);
-  bb.createSplatInst("splatDest", output, 2.0);
-
-  bb.createInsertTensorInst("insert", output, allocSrc, {1, 0, 0}, 1, 0);
-
-  bb.createDeallocActivationInst("deallocSrc", allocSrc);
+  auto *dest = bb.createWeightVar(glow::ElemKind::FloatTy, destShape, "dest",
+                                  WeightVar::MutabilityKind::Mutable);
+  auto *srcAlloc = bb.createAllocActivationInst(
+      "srcAlloc", glow::ElemKind::FloatTy, srcShape);
+  bb.createSplatInst("srcSplat", srcAlloc, 1.0);
+  bb.createSplatInst("destSplat", dest, 2.0);
+  bb.createInsertTensorInst("insert", dest, srcAlloc, offsets, 1, 0);
+  bb.createDeallocActivationInst("deallocSrc", srcAlloc);
 
   optimize(M, MockBackend().shouldShareBuffers());
 
-  // After optimization, should be left with two splats and a tensorview; the
-  // insert, alloc, and dealloc should be gone.
   auto &instrs = M.getInstrs();
-  EXPECT_EQ(instrs.size(), 3);
-  EXPECT_TRUE(std::all_of(
-      instrs.begin(), instrs.end(), [](const Instruction &I) -> bool {
-        return isa<SplatInst>(&I) || isa<TensorViewInst>(&I);
-      }));
+  if (srcShape == destShape) {
+    // If the slice was fully inserted then we should be left with only the
+    // the source Splat.
+    EXPECT_EQ(instrs.size(), 1);
+    EXPECT_EQ(instrs.begin()->getName().str(), std::string("srcSplat"));
+  } else if (isSliceContiguous(srcShape, destShape)) {
+    // If the slice is contiguous then we should be left with 2 Splats and a
+    // TensorView. The Insert, Alloc and Dealloc should be gone.
+    EXPECT_EQ(instrs.size(), 3);
+    EXPECT_TRUE(std::all_of(
+        instrs.begin(), instrs.end(), [](const Instruction &I) -> bool {
+          return isa<SplatInst>(&I) || isa<TensorViewInst>(&I);
+        }));
+  } else {
+    // If the slice is not contiguous, we should be left with the original
+    // instructions: Alloc, 2 Splats, Insert, Dealloc.
+    EXPECT_EQ(instrs.size(), 5);
+  }
+}
+
+/// Simple test where a single Insert is replaced by a TensorView with offsets.
+TEST(Optimizer, insertOptimizer) {
+  testInsertOptimizer({1, 1, 1}, {3, 3, 3}, {0, 0, 0});
+  testInsertOptimizer({1, 1, 2}, {3, 3, 3}, {1, 1, 1});
+  testInsertOptimizer({1, 1, 3}, {3, 3, 3}, {2, 2, 0});
+  testInsertOptimizer({1, 2, 1}, {3, 3, 3}, {0, 0, 1});
+  testInsertOptimizer({1, 2, 2}, {3, 3, 3}, {1, 1, 0});
+  testInsertOptimizer({1, 2, 3}, {3, 3, 3}, {2, 0, 0});
+  testInsertOptimizer({1, 3, 1}, {3, 3, 3}, {0, 0, 0});
+  testInsertOptimizer({1, 3, 2}, {3, 3, 3}, {1, 0, 1});
+  testInsertOptimizer({1, 3, 3}, {3, 3, 3}, {2, 0, 0});
+  testInsertOptimizer({2, 1, 1}, {3, 3, 3}, {0, 0, 1});
+  testInsertOptimizer({2, 1, 2}, {3, 3, 3}, {1, 1, 0});
+  testInsertOptimizer({2, 1, 3}, {3, 3, 3}, {0, 2, 0});
+  testInsertOptimizer({2, 2, 1}, {3, 3, 3}, {1, 0, 0});
+  testInsertOptimizer({2, 2, 2}, {3, 3, 3}, {0, 1, 1});
+  testInsertOptimizer({2, 2, 3}, {3, 3, 3}, {1, 0, 0});
+  testInsertOptimizer({2, 3, 1}, {3, 3, 3}, {0, 0, 1});
+  testInsertOptimizer({2, 3, 2}, {3, 3, 3}, {1, 0, 0});
+  testInsertOptimizer({2, 3, 3}, {3, 3, 3}, {0, 0, 0});
+  testInsertOptimizer({3, 1, 1}, {3, 3, 3}, {0, 0, 0});
+  testInsertOptimizer({3, 1, 2}, {3, 3, 3}, {0, 1, 1});
+  testInsertOptimizer({3, 1, 3}, {3, 3, 3}, {0, 2, 0});
+  testInsertOptimizer({3, 2, 1}, {3, 3, 3}, {0, 0, 1});
+  testInsertOptimizer({3, 2, 2}, {3, 3, 3}, {0, 1, 0});
+  testInsertOptimizer({3, 2, 3}, {3, 3, 3}, {0, 0, 0});
+  testInsertOptimizer({3, 3, 1}, {3, 3, 3}, {0, 0, 0});
+  testInsertOptimizer({3, 3, 2}, {3, 3, 3}, {0, 0, 1});
+  testInsertOptimizer({3, 3, 3}, {3, 3, 3}, {0, 0, 0});
+}
+
+/// Utility function for testing the optimization of an ExtractTensorInstruction
+/// to a TensorViewInstruction when the inserted tensor (slice) is contiguous.
+static void testExtractOptimizer(llvm::ArrayRef<dim_t> destShape,
+                                 llvm::ArrayRef<dim_t> srcShape,
+                                 llvm::ArrayRef<dim_t> offsets) {
+  Module mod;
+  Function *F = mod.createFunction("ExtractOptimizer");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  auto *src = bb.createWeightVar(glow::ElemKind::FloatTy, srcShape, "src",
+                                 WeightVar::MutabilityKind::Mutable);
+  auto *dest = bb.createWeightVar(glow::ElemKind::FloatTy, destShape, "dest",
+                                  WeightVar::MutabilityKind::Mutable);
+  bb.createSplatInst("srcSplat", src, 1.0);
+  auto *destAlloc =
+      bb.createAllocActivationInst("dest", glow::ElemKind::FloatTy, destShape);
+  bb.createExtractTensorInst("extract", destAlloc, src, offsets);
+  bb.createCopyInst("save", dest, destAlloc);
+  bb.createDeallocActivationInst("deallocDest", destAlloc);
+
+  optimize(M, MockBackend().shouldShareBuffers());
+
+  auto &instrs = M.getInstrs();
+  if (destShape == srcShape) {
+    // If the slice was fully extracted then we should be left with a Splat
+    // and a Copy. The Alloc, Extract and Dealloc should be gone.
+    EXPECT_EQ(instrs.size(), 2);
+    EXPECT_TRUE(std::all_of(instrs.begin(), instrs.end(),
+                            [](const Instruction &I) -> bool {
+                              return isa<SplatInst>(&I) || isa<CopyInst>(&I);
+                            }));
+  } else if (isSliceContiguous(destShape, srcShape)) {
+    // If the extracted slice is contiguous then we should be left with a Splat,
+    // a TensorView and a Copy. The Extract, Alloc and Dealloc should be gone.
+    EXPECT_EQ(instrs.size(), 3);
+    EXPECT_TRUE(std::all_of(
+        instrs.begin(), instrs.end(), [](const Instruction &I) -> bool {
+          return isa<SplatInst>(&I) || isa<TensorViewInst>(&I) ||
+                 isa<CopyInst>(&I);
+        }));
+  } else {
+    // If the slice is not contiguous, we should be left with a Splat and an
+    // Extract. The Alloc, Copy and Dealloc should be gone.
+    EXPECT_EQ(instrs.size(), 2);
+    EXPECT_TRUE(std::all_of(
+        instrs.begin(), instrs.end(), [](const Instruction &I) -> bool {
+          return isa<SplatInst>(&I) || isa<ExtractTensorInst>(&I);
+        }));
+  }
+}
+
+/// Simple test where a single Extract is replaced by a TensorView with offsets.
+TEST(Optimizer, extractOptimizer) {
+  testExtractOptimizer({1, 1, 1}, {3, 3, 3}, {0, 0, 0});
+  testExtractOptimizer({1, 1, 2}, {3, 3, 3}, {1, 1, 1});
+  testExtractOptimizer({1, 1, 3}, {3, 3, 3}, {2, 2, 0});
+  testExtractOptimizer({1, 2, 1}, {3, 3, 3}, {0, 0, 1});
+  testExtractOptimizer({1, 2, 2}, {3, 3, 3}, {1, 1, 0});
+  testExtractOptimizer({1, 2, 3}, {3, 3, 3}, {2, 0, 0});
+  testExtractOptimizer({1, 3, 1}, {3, 3, 3}, {0, 0, 0});
+  testExtractOptimizer({1, 3, 2}, {3, 3, 3}, {1, 0, 1});
+  testExtractOptimizer({1, 3, 3}, {3, 3, 3}, {2, 0, 0});
+  testExtractOptimizer({2, 1, 1}, {3, 3, 3}, {0, 0, 1});
+  testExtractOptimizer({2, 1, 2}, {3, 3, 3}, {1, 1, 0});
+  testExtractOptimizer({2, 1, 3}, {3, 3, 3}, {0, 2, 0});
+  testExtractOptimizer({2, 2, 1}, {3, 3, 3}, {1, 0, 0});
+  testExtractOptimizer({2, 2, 2}, {3, 3, 3}, {0, 1, 1});
+  testExtractOptimizer({2, 2, 3}, {3, 3, 3}, {1, 0, 0});
+  testExtractOptimizer({2, 3, 1}, {3, 3, 3}, {0, 0, 1});
+  testExtractOptimizer({2, 3, 2}, {3, 3, 3}, {1, 0, 0});
+  testExtractOptimizer({2, 3, 3}, {3, 3, 3}, {0, 0, 0});
+  testExtractOptimizer({3, 1, 1}, {3, 3, 3}, {0, 0, 0});
+  testExtractOptimizer({3, 1, 2}, {3, 3, 3}, {0, 1, 1});
+  testExtractOptimizer({3, 1, 3}, {3, 3, 3}, {0, 2, 0});
+  testExtractOptimizer({3, 2, 1}, {3, 3, 3}, {0, 0, 1});
+  testExtractOptimizer({3, 2, 2}, {3, 3, 3}, {0, 1, 0});
+  testExtractOptimizer({3, 2, 3}, {3, 3, 3}, {0, 0, 0});
+  testExtractOptimizer({3, 3, 1}, {3, 3, 3}, {0, 0, 0});
+  testExtractOptimizer({3, 3, 2}, {3, 3, 3}, {0, 0, 1});
+  testExtractOptimizer({3, 3, 3}, {3, 3, 3}, {0, 0, 0});
 }
 
 /// This is representative of what a ConcatNode is IRGen'd into: src1 and src2

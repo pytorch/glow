@@ -17,6 +17,7 @@
 #define GLOW_BASE_PLACEHOLDERBINDINGS_H
 
 #include "glow/ExecutionContext/TraceEvents.h"
+#include "glow/Graph/Graph.h"
 #include "llvm/ADT/ArrayRef.h"
 
 #include <list>
@@ -38,17 +39,12 @@ class Placeholder;
 class PlaceholderBindings final {
 public:
   /// Maps placeholders to the tensors that back them.
-  using PlaceholderMap = std::unordered_map<Placeholder *, Tensor *>;
-
-  /// Maps Placeholder names to Placeholders.
-  using PlaceholderNameMap = llvm::StringMap<Placeholder *>;
+  using PlaceholderMap = std::unordered_map<Placeholder *, Tensor>;
+  using PlaceholderMapIterator = PlaceholderMap::iterator;
 
 private:
   /// Maps Placeholders to Tensors.
   PlaceholderMap map_;
-
-  /// Maps Placeholder names to Placeholders.
-  PlaceholderNameMap nameMap_;
 
 public:
   /// \returns true if \p A and \p B contain the same Placeholders mapped to
@@ -60,17 +56,16 @@ public:
 
   /// \returns the tensor that corresponds to Placeholder \p P or Null if the
   /// tensor is not found.
-  Tensor *get(Placeholder *P) const;
+  Tensor *get(Placeholder *P);
+  const Tensor *get(Placeholder *P) const;
 
   /// \returns the Placeholder named \name or null of the Placeholder is not
-  /// found.
-  Placeholder *getPlaceholderByName(llvm::StringRef name) const;
-
-  /// Inserts the Placeholder-Tensor pair.
-  void insert(Placeholder *P, Tensor &&T);
+  /// found. Note that this uses a linear search path. If you want to seatch by
+  /// name more quickly, consider building a map yourself.
+  Placeholder *getPlaceholderByNameSlow(llvm::StringRef name) const;
 
   /// Inserts the Placeholder-Tensor pair. This takes ownership of the Tensor.
-  void insert(Placeholder *P, Tensor *T);
+  PlaceholderMapIterator insert(Placeholder *P, Tensor &&T);
 
   /// Copy values from this PlaceholderBindings to another, \p dst, by \p name.
   /// This is useful when trained weights need to be transferred between
@@ -113,7 +108,14 @@ public:
   /// to a new Tensor, with their own memory.
   PlaceholderBindings clone() const;
 
+  /// \returns a copy of the PlaceholderBindings, with each placeholder mapped
+  /// to a new Tensor, with their own memory. However instead of the current
+  /// Placeholders in the current mapping, use the Placeholder with the same
+  /// name found in \p newPHs.
+  PlaceholderBindings clone(const PlaceholderList &newPHs) const;
+
   /// \returns the mapping between placeholder to tensors.
+  PlaceholderMap &pairs() { return map_; }
   const PlaceholderMap &pairs() const { return map_; }
 
   /// \returns the size in bytes of allocated Tensors owned by
@@ -122,8 +124,8 @@ public:
 
   /// Copies all Device Resident Tensors back to the host.
   void ensureOnHost() {
-    for (auto &ph : pairs()) {
-      ph.second->ensureOnHost();
+    for (auto &ph : map_) {
+      ph.second.ensureOnHost();
     }
   }
 
@@ -135,7 +137,7 @@ public:
                       llvm::ArrayRef<Tensor *> inputs);
 
   PlaceholderBindings(PlaceholderBindings &&other)
-      : map_(std::move(other.map_)), nameMap_(std::move(other.nameMap_)) {}
+      : map_(std::move(other.map_)) {}
 
   ~PlaceholderBindings() { clear(); };
 

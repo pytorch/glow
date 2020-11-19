@@ -1,0 +1,109 @@
+ir_version: 5
+producer_name: "onnx-example"
+graph {
+  name: "test-names"
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  node {
+    input: "data"
+    output: "clip"
+    name: "a"
+    op_type: "Clip"
+    attribute {
+      name: "min"
+      f: 20.0
+      type: FLOAT
+    }
+    attribute {
+      name: "max"
+      f: 60.0
+      type: FLOAT
+    }
+  }
+  node {
+    input: "clip"
+    name: "a__b"
+    output: "neg"
+    op_type: "Neg"
+  }
+  node {
+    input: "neg"
+    name: "a__1_"
+    output: "ceil"
+    op_type: "Ceil"
+  }
+  node {
+    input: "ceil"
+    name: "a__2"
+    output: "exp"
+    op_type: "Exp"
+  }
+  node {
+    input: "exp"
+    name: "a__3__3"
+    output: "floor"
+    op_type: "Floor"
+  }
+  node {
+    input: "floor"
+    output: "result"
+    name: "a__1"
+    op_type: "Clip"
+    attribute {
+      name: "min"
+      f: 20.0
+      type: FLOAT
+    }
+    attribute {
+      name: "max"
+      f: 60.0
+      type: FLOAT
+    }
+  }  
+  output {
+    name: "result"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}
+

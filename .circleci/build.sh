@@ -5,10 +5,10 @@
 set -ex
 
 # Add support for https apt sources.
-wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.29ubuntu0.1_amd64.deb
-echo "960a44449fa1ec082a75adee8d6f6fe15577627570edc722a1822e495a8b8c57  apt-transport-https_1.2.29ubuntu0.1_amd64.deb" | sha256sum -c
-sudo dpkg -i apt-transport-https_1.2.29ubuntu0.1_amd64.deb
-rm apt-transport-https_1.2.29ubuntu0.1_amd64.deb
+wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.32ubuntu0.1_amd64.deb
+echo "ad00ae237f42cc832db07139aad336d4fd0b9dafd66cf103190c951ddfce5913  apt-transport-https_1.2.32ubuntu0.1_amd64.deb" | sha256sum -c
+sudo dpkg -i apt-transport-https_1.2.32ubuntu0.1_amd64.deb
+rm apt-transport-https_1.2.32ubuntu0.1_amd64.deb
 
 export MAX_JOBS=8
 if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
@@ -58,9 +58,6 @@ install_fmt() {
 GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-dev libgflags-dev libjemalloc-dev libpthread-stubs0-dev libevent-dev libssl-dev"
 
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
-    sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
-    curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add -
-    echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main" | sudo tee -a /etc/apt/sources.list >/dev/null
     sudo apt-get update
 elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     # Install Glow dependencies
@@ -90,13 +87,13 @@ fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
 if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
-	sudo pip install cmake
+	sudo pip install cmake==3.17.3
 else
 	sudo apt-get install cmake
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
-sudo pip install ninja autopep8
+sudo pip install ninja
 hash cmake ninja
 
 # Build glow
@@ -146,6 +143,11 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     sudo apt-get install -y clang-format-7
+    cd /tmp
+    python3.6 -m virtualenv venv
+    source venv/bin/activate
+    pip install black
+    cd ${GLOW_DIR}
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
     cd /tmp
@@ -154,12 +156,15 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
     cd pytorch
     pip install -r requirements.txt
-    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=0 USE_FBGEMM=ON python setup.py install
+    pip install parameterized
+    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=1 USE_FBGEMM=ON python setup.py install
     cd ${GLOW_DIR}
     cd build
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
     install_pocl
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
+elif [[ "$CIRCLE_JOB" == "FEATURE_COMPILATION" ]]; then
+    CMAKE_ARGS+=("-DGLOW_USE_PNG_IF_REQUIRED=OFF")
 elif [[ "$CIRCLE_JOB" == "32B_DIM_T" ]]; then
     install_pocl
     CMAKE_ARGS+=("-DTENSOR_DIMS_32_BITS=ON -DGLOW_WITH_OPENCL=ON")

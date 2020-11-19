@@ -68,6 +68,9 @@ class HostManager final {
     /// The runtime generated ID for the run request.
     uint64_t requestID;
 
+    /// Timestamp for request creation.
+    uint64_t startTime;
+
     // Define greater than operator to allow sorting in priority_heap for queue
     // reqests. If priority is the same fall back to order of submission.
     bool operator>(const InferRequest &inferReq) const {
@@ -78,9 +81,10 @@ class HostManager final {
     }
     InferRequest(std::string networkName,
                  std::unique_ptr<ExecutionContext> context, ResultCBTy callback,
-                 uint64_t priority, uint64_t requestID)
+                 uint64_t priority, uint64_t requestID, uint64_t startTime = 0)
         : networkName{networkName}, context{std::move(context)},
-          callback{callback}, priority{priority}, requestID{requestID} {}
+          callback{callback}, priority{priority}, requestID{requestID},
+          startTime{startTime} {}
   };
 
   /// Count of current in-flight networks being run. Atomic to allow
@@ -103,7 +107,7 @@ class HostManager final {
   std::shared_timed_mutex inferQueueLock_;
 
   /// Configuration parameters for this Runtime Host.
-  const HostConfig config_{};
+  HostConfig config_{};
 
   std::unique_ptr<TraceContext> hostTraceContext_;
 
@@ -118,6 +122,12 @@ class HostManager final {
   /// a stable iteration order over devices.
   DeviceManagerMapTy devices_;
 
+  /// A vector of devices available for new networks to be added to.
+  std::vector<DeviceIDTy> availableDevices_;
+
+  /// A single threaded threadpool used by init() when initializing devices.
+  ThreadPool threadPool_{1};
+
   /// Executor class, this handles dispatching execution requests to the
   /// appropriate device managers for an inference request.
   std::unique_ptr<Executor> executor_;
@@ -125,6 +135,9 @@ class HostManager final {
   /// The provisioner owns the compiledFunctions and handles loading functions
   /// onto the devices.
   std::unique_ptr<Provisioner> provisioner_;
+
+  /// String const for logging max queue size in glow
+  static constexpr const char *kMaxQueueSize = "glow.queue.max.size";
 
   /// String const for logging total device memory usage.
   static constexpr const char *kDeviceMemoryUsed =
@@ -138,6 +151,10 @@ class HostManager final {
   static constexpr const char *kDeviceMemoryMax =
       "glow.devices.maximum_memory.total";
 
+  /// String const for logging device fatal errors.
+  static constexpr const char *kDeviceFatalError =
+      "glow.devices.fatal_compilation_error";
+
   /// Helper function to handle cleanup if an error occurs during addNetwork.
   /// This must be called while holding the a lock on networkLock_.
   void cleanupAddNetwork(llvm::ArrayRef<std::string> names);
@@ -150,6 +167,9 @@ class HostManager final {
 
   /// Method to calculate and export aggregate memory usage counters.
   void exportMemoryCounters();
+
+  /// Queue size stat update
+  void reportCurrentQueueSize(int32_t queueSize);
 
   /// Execution stats update.
   void updateExecutionStats(uint64_t startTime,
@@ -186,6 +206,14 @@ public:
   /// removes the network from any backends setup to execute it.
   /// \returns an Error indicating success or failure of the operation.
   Error removeNetwork(llvm::StringRef networkName);
+
+  /// Update the list of available devices.
+  void setAvailableDevices(const std::vector<DeviceIDTy> &devices);
+
+  /// For a given \p network returns all partitions of that network and the
+  /// devices each partition is assigned to.
+  std::unordered_map<std::string, std::vector<DeviceIDTy>>
+  getDevicePartitionMapping(llvm::StringRef network);
 
   /// Returns true if \p networkName is already added to the host.
   bool networkAdded(llvm::StringRef networkName);
@@ -249,7 +277,18 @@ public:
   /// Provisioner.
   Backend &getBackend(llvm::StringRef backendName) const;
 
+  /// \returns a reference to the Backend if only one Backend is found,
+  /// otherwise returns an Error.
+  Expected<Backend *> getBackend() const;
+
+  /// \returns the number of devices the HostManager owns.
+  size_t numDevices() const { return devices_.size(); }
+
   ~HostManager();
+
+  /// String const for logging current queue size in glow
+  static constexpr const char *kCurrentQueueSize10k =
+      "glow.queue.current.occupancy.10k";
 };
 
 /// If the device config file specified in loadDeviceConfigsFileOpt is
@@ -266,6 +305,19 @@ generateDeviceConfigs(unsigned int numDevices, llvm::StringRef backendName,
 bool loadDeviceConfigsFromFile(
     std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
     size_t memSize);
+
+/// Registry singleton for aquiring a HostManager.
+class HostManagerRegistry final {
+public:
+  void registerHostManager(HostManager *hostManager);
+  HostManager *getHostManager();
+
+private:
+  HostManager *hostManager_{nullptr};
+};
+
+/// Global singleton.
+std::shared_ptr<HostManagerRegistry> ManagerRegistry();
 
 } // namespace runtime
 } // namespace glow

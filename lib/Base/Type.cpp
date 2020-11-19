@@ -24,7 +24,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
 
   if (type.isQuantizedType()) {
     os << "[S:";
-    llvm::write_double(os, type.getScale(), llvm::FloatStyle::Fixed, 4);
+    llvm::write_double(os, type.getScale(), llvm::FloatStyle::Fixed, 9);
     os << " O:";
     os << type.getOffset();
     os << ']';
@@ -130,6 +130,41 @@ Type Type::fromString(llvm::StringRef str) {
   } else {
     return Type(elemTy, dims);
   }
+}
+
+std::pair<float, float> getQuantizedValueRange(float scale, int32_t offset,
+                                               ElemKind elementType) {
+  assert(isQuantizedElemKind(elementType) &&
+         "Can't get the quantized value range of a non-quantized type");
+
+  int64_t low = 0, high = 0;
+  switch (elementType) {
+  case ElemKind::Int32QTy: {
+    low = INT32_MIN;
+    high = INT32_MAX;
+    break;
+  }
+  case ElemKind::Int16QTy: {
+    low = INT16_MIN;
+    high = INT16_MAX;
+    break;
+  }
+  case ElemKind::Int8QTy: {
+    low = INT8_MIN;
+    high = INT8_MAX;
+    break;
+  }
+  case ElemKind::UInt8QTy: {
+    low = UINT8_MIN;
+    high = UINT8_MAX;
+    break;
+  }
+  default:;
+  }
+
+  float lowFloat = (low - offset) * scale;
+  float highFloat = (high - offset) * scale;
+  return std::make_pair(lowFloat, highFloat);
 }
 
 } // namespace glow

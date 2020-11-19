@@ -26,6 +26,7 @@
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
 #include <torch/csrc/jit/passes/inliner.h>
+#include <torch/csrc/jit/passes/remove_mutation.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
@@ -104,7 +105,13 @@ bool aliasChecks(torch::jit::Node *consumer, torch::jit::Node *producer,
   if (aliasDb.isMutable(consumer) && aliasDb.isMutable(producer)) {
     return true;
   }
-  if (aliasDb.isMutable(consumer) && aliasDb.hasInputWriters(producer)) {
+
+  // TODO: delete this once this is fixed by
+  // https://github.com/pytorch/pytorch/issues/43409
+  bool isC2Op = consumer->kind().is_caffe2();
+
+  if (!isC2Op &&
+      (aliasDb.isMutable(consumer) && aliasDb.hasInputWriters(producer))) {
     return false;
   }
   if (aliasDb.isMutable(producer) && aliasDb.hasOutputWriters(consumer)) {
@@ -263,30 +270,64 @@ void verifyFusions(const std::shared_ptr<torch::jit::Graph> graph,
   }
 }
 
+void setIncludeLastOffsets(std::shared_ptr<torch::jit::Graph> graph) {
+  c10::IValue ivalTrue(true);
+  torch::jit::Value *constantTrue = graph->insertConstant(ivalTrue);
+  for (auto *node : graph->nodes()) {
+    if (node->kind() == at::Symbol::fromQualString("aten::embedding_bag") ||
+        node->kind() == at::Symbol::fromQualString(
+                            "fb::embedding_bag_byte_rowwise_offsets") ||
+        node->kind() == at::Symbol::fromQualString(
+                            "fb::embedding_bag_4bit_rowwise_offsets") ||
+        node->kind() == at::Symbol::fromQualString(
+                            "quantized::embedding_bag_byte_rowwise_offsets") ||
+        node->kind() == at::Symbol::fromQualString(
+                            "quantized::embedding_bag_4bit_rowwise_offsets")) {
+
+      // locate constant for include_last_offset
+      int positionIndex = node->inputs().size() - 1;
+      const auto val = node->input(positionIndex);
+      assert(torch::jit::toIValue(val).has_value());
+      const auto ivalIncludeLastOffset = *torch::jit::toIValue(val);
+
+      assert(ivalIncludeLastOffset.isBool());
+      if (!ivalIncludeLastOffset.toBool()) {
+        node->replaceInput(positionIndex, constantTrue);
+        LOG_FIRST_N(WARNING, 1)
+            << "Set include_last_offset to True for "
+            << node->kind().toQualString() << " and all other occurrences";
+      }
+    }
+  }
+}
+
 void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
                         at::Symbol kind, const PyTorchLoaderSettings &settings,
                         IsSupportFunc fn) {
-  // Reason for node being blacklisted.
-  enum class NodeBlacklistReason {
-    Kind,
-    Index,
-  };
+  // Set include_last_offset all embedding_bag-like operators to be compatible
+  if (settings.setIncludeLastOffsets) {
+    setIncludeLastOffsets(graph);
+  }
 
-  std::unordered_map<const torch::jit::Node *, NodeBlacklistReason>
-      blacklistedNodes;
+  std::unordered_set<const torch::jit::Node *> indexBlacklistedNodes;
 
   size_t i = 0;
+  if (settings.enableRemoveMutation) {
+    RemoveListMutation(graph);
+    RemoveTensorMutation(graph);
+  }
   for (const torch::jit::Node *node : graph->nodes()) {
     if (settings.fusionStartIndex >= 0 && i < settings.fusionStartIndex) {
-      blacklistedNodes[node] = NodeBlacklistReason::Index;
+      indexBlacklistedNodes.insert(node);
     }
 
     if (settings.fusionEndIndex >= 0 && i >= settings.fusionEndIndex) {
-      blacklistedNodes[node] = NodeBlacklistReason::Index;
+      indexBlacklistedNodes.insert(node);
     }
-
-    if (settings.opBlacklist.count(node->kind())) {
-      blacklistedNodes[node] = NodeBlacklistReason::Kind;
+    if (settings.printJITIndex) {
+      std::vector<const torch::jit::Node *> groups;
+      std::cout << "index: " << i;
+      node->print(std::cout, 1, &groups, false);
     }
     i++;
   }
@@ -295,31 +336,30 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   const auto maxFusionMergeSize = settings.maxFusionMergeSize;
 
   // Wrap fn in function that first checks the blacklist.
-  IsSupportFunc nodeSupportedFn = [blacklist = std::move(blacklistedNodes),
-                                   fn](const torch::jit::Node *ptNode) {
-    if (blacklist.count(ptNode)) {
-      switch (blacklist.at(ptNode)) {
-      case NodeBlacklistReason::Kind:
-        LOG(INFO) << "Skipping " << ptNode->kind().toQualString()
-                  << " op because its kind is blacklisted";
-        break;
-      case NodeBlacklistReason::Index:
-        LOG(INFO) << "Skipping " << ptNode->kind().toQualString()
+  IsSupportFunc nodeSupportedFn =
+      [indexBlacklist = std::move(indexBlacklistedNodes),
+       opBlacklist = settings.opBlacklist, fn](const torch::jit::Node *ptNode) {
+        if (indexBlacklist.count(ptNode)) {
+          VLOG(1) << "Skipping " << ptNode->kind().toQualString()
                   << " op because it's outside of the fusion range";
-        break;
-      }
-      return false;
-    }
+          return false;
+        }
 
-    return fn(ptNode);
-  };
+        if (opBlacklist.count(ptNode->kind())) {
+          VLOG(1) << "Skipping " << ptNode->kind().toQualString()
+                  << " op because its kind is blacklisted";
+          return false;
+        }
+
+        return fn(ptNode);
+      };
 
   Inline(*graph);
 
   // Prepare the graph by fusing known patterns for the model loader.
   // TODO: this should be done only on Glow subgraphs to avoid modifying parts
   // of the graph that Glow will not be running.
-  fuseKnownPatterns(graph);
+  fuseKnownPatterns(graph, settings.opBlacklist);
 
   fuseJITNodesToGlow(graph, nodeSupportedFn, kind, maxFusionMergeSize);
 
@@ -334,19 +374,11 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   verifyFusions(graph, kind);
 }
 
+} // namespace
+
 void registDefaultGlowFusionSymbolOnce() {
   static std::once_flag onceFlag;
   std::call_once(onceFlag, []() { registerGlowOp(getGlowSymbol()); });
-}
-
-} // namespace
-
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph) {
-  registDefaultGlowFusionSymbolOnce();
-  auto symbol = getGlowSymbol();
-  const auto &settings = getPyTorchLoaderSettings();
-  return glowCustomFuseImpl(graph, symbol, settings,
-                            PyTorchModelLoader::isNodeSupported);
 }
 
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
@@ -357,13 +389,14 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
                             PyTorchModelLoader::isNodeSupported);
 }
 
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind) {
-  const auto &settings = getPyTorchLoaderSettings();
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
+                    const PyTorchLoaderSettings &settings, at::Symbol kind) {
   return glowCustomFuseImpl(graph, kind, settings,
                             PyTorchModelLoader::isNodeSupported);
 }
 
 void glowCustomFuseDebug(std::shared_ptr<torch::jit::Graph> graph,
+                         const PyTorchLoaderSettings &settings,
                          std::vector<std::string> acceptableKinds) {
   registDefaultGlowFusionSymbolOnce();
   auto symbol = getGlowSymbol();
@@ -377,8 +410,6 @@ void glowCustomFuseDebug(std::shared_ptr<torch::jit::Graph> graph,
   auto fn = [kindSet = std::move(kindSet)](const torch::jit::Node *node) {
     return kindSet.count(node->kind());
   };
-
-  const auto &settings = getPyTorchLoaderSettings();
 
   return glowCustomFuseImpl(graph, symbol, settings, fn);
 }

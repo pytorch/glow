@@ -99,18 +99,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 ArgMaxInst *IRBuilder::createArgMaxOp(llvm::StringRef name, Value *input,
                                       unsigned_t axis, bool keepDims,
                                       ElemKind outIndicesTy) {
-  auto idim = input->dims();
-
-  ShapeVector odim;
-  for (size_t i = 0, e = 4; i < e; i++) {
-    if (i == axis && !keepDims) {
-      continue;
-    } else {
-      odim.push_back(i == axis ? 1 : idim[i]);
-    }
-  }
-
-  // Allocate storage for flattened NCHW index of max element.
+  ShapeVector odim = reduceDims(input->dims(), {axis}, keepDims);
   Value *argmax =
       createAllocActivationInst(name.str() + ".argmax", outIndicesTy, odim);
   return createArgMaxInst(name, argmax, input, axis, keepDims);
@@ -120,7 +109,8 @@ AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
                                         llvm::ArrayRef<unsigned_t> kernels,
                                         llvm::ArrayRef<unsigned_t> strides,
                                         llvm::ArrayRef<unsigned_t> pads,
-                                        unsigned_t layout) {
+                                        unsigned_t layout,
+                                        bool countIncludePads) {
 
   TypeRef outTy;
 
@@ -139,7 +129,8 @@ AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
   }
 
   Value *dest = createAllocActivationInst("pool.res", outTy);
-  return createAvgPoolInst("pool", dest, input, kernels, strides, pads, layout);
+  return createAvgPoolInst("pool", dest, input, kernels, strides, pads, layout,
+                           countIncludePads);
 }
 
 CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(llvm::StringRef name,
@@ -194,14 +185,10 @@ TopKInst *IRBuilder::createTopKOp(llvm::StringRef name, Value *input, size_t k,
   outDims.back() = k;
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), outDims);
-  // Allocate enough scratch space to hold N values and N indices.
-  auto *scratch = createAllocActivationInst(name.str() + ".scratch",
-                                            outIndicesTy, {inDims.back() * 2});
-  createSplatInst(name.str() + ".zero.scratch", scratch, 0);
   auto *values = createAllocActivationInst(name.str() + ".values", outTy);
   auto *indices =
       createAllocActivationInst(name.str() + ".indices", outIndicesTy, outDims);
-  return createTopKInst(name.str(), values, indices, input, scratch, k);
+  return createTopKInst(name.str(), values, indices, input, k);
 }
 
 Value *IRBuilder::createReturnOp(Value *input) {

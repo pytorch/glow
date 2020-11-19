@@ -132,6 +132,33 @@ public:
   }
 };
 
+/// Check if a Constant node \p CN consists of a single repeating value of type
+/// \p ElemTy. If so, return the value in \p val.
+template <typename ElemTy = float>
+static bool isUniformConstant(const Constant &CN, ElemTy &val) {
+  if (!CN.getType()->isType<ElemTy>()) {
+    return false;
+  }
+  const auto handle = CN.getPayload().getHandle<ElemTy>();
+  for (size_t i = 1; i < handle.size(); i++) {
+    if (handle.raw(i) != handle.raw(0)) {
+      return false;
+    }
+  }
+  val = handle.raw(0);
+  return true;
+}
+
+#ifdef WIN32
+static int
+#else
+static int __attribute__((unused))
+#endif
+getMaxDimOtherThanBatch(const llvm::ArrayRef<dim_t> &dims) {
+  return std::distance(dims.begin(),
+                       std::max_element(dims.begin() + 1, dims.end()));
+}
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_UTILS_H

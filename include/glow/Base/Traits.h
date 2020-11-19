@@ -63,6 +63,8 @@ public:
 
   TypeRef getType() const { return Ty_; }
 
+  void setType(TypeRef Ty) { Ty_ = Ty; }
+
   llvm::ArrayRef<dim_t> dims() const { return Ty_->dims(); }
 
   size_t size() const { return Ty_->size(); }
@@ -112,7 +114,7 @@ public:
   const char *getKindName() const { return getKindName(kind_); }
 };
 
-using KindSet = llvm::SmallSet<Kinded::Kind, 4>;
+using KindSet = llvm::SmallSet<Kinded::Kind, 6>;
 
 /// Subclasses of this class represent an IR container, e.g. a function or a
 /// module.

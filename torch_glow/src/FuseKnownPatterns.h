@@ -21,7 +21,10 @@
 
 namespace glow {
 /// Fuse known node patterns in \p graph to assist the PyTorchModelLoader.
-void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
+/// Ignore any patterns that contain ops in \p opBlacklist.
+void fuseKnownPatterns(
+    std::shared_ptr<torch::jit::Graph> &graph,
+    const std::unordered_set<torch::jit::Symbol> &opBlacklist);
 
 /// Passes in detail namespace should not be used directly except for by
 /// unittests.

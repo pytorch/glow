@@ -66,9 +66,9 @@ public:
         {mod->uniqueType(ElemKind::FloatTy, {1, 3, 224, 224})}, *FI);
     auto hook = hookNode(FI, name);
     inferBindings.allocate(modI->getPlaceholders());
-    for (auto PH : bindings.pairs()) {
-      auto iPH = inferBindings.getPlaceholderByName(PH.first->getName());
-      inferBindings.get(iPH)->assign(PH.second);
+    for (const auto &PH : bindings.pairs()) {
+      auto iPH = inferBindings.getPlaceholderByNameSlow(PH.first->getName());
+      inferBindings.get(iPH)->assign(&PH.second);
     }
 
     std::list<Tensor *> outs;

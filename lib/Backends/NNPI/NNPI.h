@@ -48,6 +48,14 @@ public:
   bool supportsStaticPlaceholders() const override { return true; }
   std::unique_ptr<FunctionPassPipeline>
   getOptimizationPipeline() const override;
+  Expected<bool>
+  transformPostOptPipeline(Function *F,
+                           CompilationContext &cctx) const override;
+
+  /// Helper to lower nodes which need further lowering. This is useful for when
+  /// we need to lower Nodes based on precision, as we do lowering pre-precision
+  /// transformation. \returns whether \p F was modified.
+  bool lowerRequiredNodes(Function *F, CompilationContext &cctx) const;
 
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
@@ -71,6 +79,19 @@ public:
   virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
                              const runtime::DAGNode *root, bool enableP2P,
                              bool enableDRT) override;
+
+  /// Estimate performance cost for a given Node \p N.
+  /// \returns a unitless value to be used when comparing to other estimates.
+  /// or -1 if no estimate could be generated.
+  /// SparseLength and EmbeddingBag type nodes are supported.
+  double
+  estimateEmbeddingNode(const glow::NodeInfo &NI, bool fp32Accumulation = false,
+                        glow::LengthsMode lengthsMode = LengthsMode::Variable,
+                        float averageLength = NAN) const;
+
+  /// \returns a unitless value to be used when comparing Nodes or
+  /// error if no estimate can be generated.
+  Expected<double> estimateNodeCost(const glow::Node *node) const override;
   /// @}
 
 private:
@@ -87,8 +108,13 @@ private:
 /// These are used for parsing backend-specific node options.
 constexpr char numParallelChunksKey[] = "NNPI_numParallelChunks";
 constexpr char parallelTransformKindKey[] = "NNPI_parallelTransformKind";
-constexpr char extraEdgesKey[] = "NNPI_extraEdges";
+constexpr char extraEdgesTargetNameKey[] = "NNPI_extraEdgesTargetName";
+constexpr char extraEdgesTargetSuffixKey[] = "NNPI_extraEdgesTargetSuffix";
+constexpr char extraEdgesSourceSuffixKey[] = "NNPI_extraEdgesSourceSuffix";
 constexpr char coreAssignmentsKey[] = "NNPI_coreAssignments";
+constexpr char coreAssignmentsSuffixKey[] = "NNPI_coreAssignmentsSuffix";
+constexpr char tensorAssignmentNamesKey[] = "NNPI_tensorAssignmentNames";
+constexpr char tensorAssignmentValuesKey[] = "NNPI_tensorAssignmentValues";
 
 } // namespace glow
 #endif // GLOW_NNPI_BACKEND_H

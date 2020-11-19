@@ -16,7 +16,9 @@
 #ifndef GLOW_BASE_TENSOR_SERIALIZATION_H
 #define GLOW_BASE_TENSOR_SERIALIZATION_H
 
+#ifdef WITH_PNG
 #include "glow/Base/Image.h"
+#endif // WITH_PNG
 #include "glow/Base/Tensor.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -33,7 +35,13 @@ struct TensorSerializationOptions {
 /// Dump the content of \p tensor to a binary file \p filename using the options
 /// \p opts. The binary representation of data is guaranteed to preserve data
 /// precision (bit exactness) upon round-trips (dump/load).
-void dumpTensorToBinaryFile(Tensor &tensor, llvm::StringRef filename,
+void dumpTensorToBinaryFile(const Tensor &tensor, llvm::StringRef filename,
+                            const TensorSerializationOptions &opts);
+
+/// Dump the content of \p tensor to \p fs using the options \p opts. The binary
+/// representation of data is guaranteed to preserve data precision (bit
+/// exactness) upon round-trips (dump/load).
+void dumpTensorToBinaryFile(const Tensor &tensor, std::ofstream &fs,
                             const TensorSerializationOptions &opts);
 
 /// Load the content of \p tensor from a binary file \p filename using the
@@ -57,6 +65,8 @@ void dumpTensorToTextFile(Tensor &tensor, llvm::StringRef filename,
 /// exactness) upon round-trips (dump/load) but is used for human readability.
 void loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
                             const TensorSerializationOptions &opts);
+
+#ifdef WITH_PNG
 
 /// Load network input tensor (same one images are loaded into) from the tensor
 /// blobs files in \p filenames. All the loaded tensors are concatenated along
@@ -84,6 +94,7 @@ using InputTensorFileLoaderFn = std::function<void(
 /// Register input tensor loader function.
 void registerInputTensorFileLoader(InputTensorFileLoaderFn loader);
 
+#endif // WITH_PNG
 } // namespace glow
 
 #endif // GLOW_BASE_TENSOR_SERIALIZATION_H

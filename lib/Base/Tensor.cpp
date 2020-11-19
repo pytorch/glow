@@ -81,17 +81,28 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
   size_t numDims = shape.size();
   auto &Ty = handle.getType();
 
+  constexpr unsigned numDigsFP = 5;
+  const unsigned numDigs = std::is_integral<ElemTy>::value ? 0 : numDigsFP;
+
   // Check for 0-dimensional tensor.
   if (!numDims) {
     os << "[ Scalar containing: ";
-    llvm::write_double(os, handle.raw(0), llvm::FloatStyle::Fixed, 3);
+    llvm::write_double(os, handle.raw(0), llvm::FloatStyle::Fixed, numDigs);
     os << " ]\n";
     return;
   }
 
+  const size_t numRealElems = handle.getRealNumElements();
+
   // Output shape.
   dumpShape(shape, os);
+  if (numRealElems < handle.size()) {
+    os << " ; partial num elements: " << numRealElems;
+  }
   os << "\n";
+
+  // Output ElemKind.
+  os << "elemkind: " << Ty.getElementName() << "\n";
 
   // Check for tensor of size 0.
   if (handle.getUnpaddedSizeInBytes() == 0) {
@@ -101,11 +112,14 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
 
   ElemTy mx = handle.raw(0);
   ElemTy mn = handle.raw(0);
+  double avg = 0.0f;
 
   for (auto elem : handle) {
     mx = std::max(mx, elem);
     mn = std::min(mn, elem);
+    avg += (double)elem;
   }
+  avg /= numRealElems;
 
   // Check for zero tensor.
   if (mn == ElemTy(.0) && mx == ElemTy(.0)) {
@@ -115,14 +129,16 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
 
   // Output max and min.
   os << "max: ";
-  llvm::write_double(os, mx, llvm::FloatStyle::Fixed, 3);
+  llvm::write_double(os, mx, llvm::FloatStyle::Fixed, numDigs);
   os << "  min: ";
-  llvm::write_double(os, mn, llvm::FloatStyle::Fixed, 3);
+  llvm::write_double(os, mn, llvm::FloatStyle::Fixed, numDigs);
+  os << "  avg: ";
+  llvm::write_double(os, avg, llvm::FloatStyle::Fixed, numDigsFP);
   os << "\n";
 
   os << "[";
 
-  for (size_t i = 0, e = std::min<size_t>(maxNumElem, handle.size()); i < e;
+  for (size_t i = 0, e = std::min<size_t>(maxNumElem, numRealElems); i < e;
        i++) {
 
     // Print one open brace at the beginning of every row, slice, and tensor.
@@ -134,7 +150,7 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
     }
 
     // Print the value at the current index.
-    llvm::write_double(os, handle.raw(i), llvm::FloatStyle::Fixed, 3);
+    llvm::write_double(os, handle.raw(i), llvm::FloatStyle::Fixed, numDigs);
 
     // Print one closed brace at the end of every row, slice, or tensor.
     for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
@@ -156,7 +172,7 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
     }
   }
 
-  if (handle.size() > maxNumElem) {
+  if (numRealElems > maxNumElem) {
     os << "...";
   }
 
@@ -282,6 +298,125 @@ static void transposeSelectImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
     transposeGenericImpl(src, dest, srcCoor, destCoor, shuffle);
   }
 }
+
+template <class ElemTy>
+static bool isTiledImpl(const Tensor *tensor, unsigned_t axis, dim_t size,
+                        bool fractional) {
+  assert(axis < tensor->dims().size() && "Axis parameter invalid!");
+  assert(size <= tensor->dims()[axis] && "Size parameter invalid!");
+  assert(size >= 1 && "Size parameter invalid!");
+
+  // When the tile size matches the dimension size then we return true.
+  // This is because a tensor can be considered a tiled version of itself.
+  if (size == tensor->dims()[axis]) {
+    return true;
+  }
+
+  // If fractional tiling verification is disabled and the dimension size
+  // is NOT divisible by the tile size then we return false.
+  if (!fractional && ((tensor->dims()[axis] % size) != 0)) {
+    return false;
+  }
+
+  static_assert(max_tensor_dimensions == 6,
+                "Implementation assumes max_tensor_dimensions = 6.");
+
+  // Get tensor view with maximum number of dimensions.
+  auto dimsMax = expandDimsToMax(tensor->dims());
+  Tensor tensorMax = tensor->getUnowned(dimsMax);
+  auto tensorH = tensorMax.getHandle<ElemTy>();
+  for (dim_t idx0 = 0; idx0 < dimsMax[0]; ++idx0) {
+    for (dim_t idx1 = 0; idx1 < dimsMax[1]; ++idx1) {
+      for (dim_t idx2 = 0; idx2 < dimsMax[2]; ++idx2) {
+        for (dim_t idx3 = 0; idx3 < dimsMax[3]; ++idx3) {
+          for (dim_t idx4 = 0; idx4 < dimsMax[4]; ++idx4) {
+            for (dim_t idx5 = 0; idx5 < dimsMax[5]; ++idx5) {
+              std::vector<dim_t> idx = {idx0, idx1, idx2, idx3, idx4, idx5};
+              std::vector<dim_t> idxWrapped = idx;
+              idxWrapped[axis] = (idx[axis] % size);
+              double delta = tensorH.at(idx) - tensorH.at(idxWrapped);
+              // Since any comparison with NAN returns false, we use a negated
+              // condition so that this function correctly returns false when
+              // delta is NAN.
+              if (!(delta == 0.0)) {
+                return false;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+
+/// \returns a tensor with UInt8FusedQTy from \p T, whose type should be
+/// UInt4FusedFP16QTy, UInt4FusedQTy, or UInt8FusedFP16QTy.
+template <class scaleOffsetTy = float16_t>
+static Tensor convertToUInt8FusedQTy(const Tensor *T) {
+  const ElemKind origKind = T->getElementType();
+  // Supports UInt4FusedFP16QTy/UInt8FusedFP16QTy/UInt4FusedQTy -> UInt8FusedQTy
+  DCHECK((origKind == ElemKind::UInt4FusedFP16QTy ||
+          origKind == ElemKind::UInt4FusedQTy ||
+          origKind == ElemKind::UInt8FusedFP16QTy) &&
+         T->dims().size() == 2)
+      << "UInt4FusedFP16QTy, UInt4FusedQTy or UInt8FusedFP16QTy must be 2 "
+         "dimensional.";
+  bool is4Bit = (origKind == ElemKind::UInt4FusedFP16QTy ||
+                 origKind == ElemKind::UInt4FusedQTy);
+  const dim_t dataCol = T->dims()[1] - 2 * sizeof(scaleOffsetTy);
+  const dim_t numTotalRows = T->dims()[0];
+  const dim_t numTotalColumns = dataCol * (is4Bit ? 2 : 1) + 2 * sizeof(float);
+  Tensor tmp(ElemKind::UInt8FusedQTy, {numTotalRows, numTotalColumns}, 1.0, 0);
+  auto srcH = T->getHandle<uint8_t>();
+  auto dstH = tmp.getHandle<uint8_t>();
+  for (dim_t row = 0; row < T->dims()[0]; row++) {
+    // Copy scale and offset from src to dst.
+    scaleOffsetTy scale, offset;
+    std::tie(scale, offset) =
+        srcH.getFusedScaleOffsetFromRow<scaleOffsetTy>(row);
+    dstH.setFusedScaleOffsetInRow<float>(row, static_cast<float>(scale),
+                                         static_cast<float>(offset));
+    for (dim_t column = 0; column < dataCol; column++) {
+      if (is4Bit) {
+        auto src = srcH.at({row, column});
+        // Even column in new data uses value from LSB 4-bit from src data.
+        dstH.at({row, column * 2}) = src & 0x0F;
+        // Odd column in new data uses value from MSB 4-bit from dst data.
+        dstH.at({row, column * 2 + 1}) = (src >> 4) & 0x0F;
+      } else {
+        dstH.at({row, column}) = srcH.at({row, column});
+      }
+    }
+  }
+  return tmp;
+}
+
+/// \returns a tensor with UInt4FusedQTy from \p T, whose type should be
+/// UInt4FusedFP16QTy.
+static Tensor convertToUInt4FusedQTy(const Tensor *T) {
+  const ElemKind origKind = T->getElementType();
+  // Supports UInt4FusedFP16QTy -> UInt4FusedQTy.
+  DCHECK(origKind == ElemKind::UInt4FusedFP16QTy && T->dims().size() == 2)
+      << "UInt4FusedFP16QTy must be 2 dimensional.";
+  const dim_t dataCol = T->dims()[1] - 2 * sizeof(float16_t);
+  const dim_t numTotalRows = T->dims()[0];
+  const dim_t numTotalColumns = dataCol + 2 * sizeof(float);
+  Tensor tmp(ElemKind::UInt4FusedQTy, {numTotalRows, numTotalColumns}, 1.0, 0);
+  auto srcH = T->getHandle<uint8_t>();
+  auto dstH = tmp.getHandle<uint8_t>();
+  for (dim_t row = 0; row < T->dims()[0]; row++) {
+    // Copy scale and offset from src to dst.
+    float16_t scale, offset;
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float16_t>(row);
+    dstH.setFusedScaleOffsetInRow<float>(row, static_cast<float>(scale),
+                                         static_cast<float>(offset));
+    for (dim_t column = 0; column < dataCol; column++) {
+      dstH.at({row, column}) = srcH.at({row, column});
+    }
+  }
+  return tmp;
+}
 } // namespace
 
 void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
@@ -290,6 +425,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<float>(), os);
   case ElemKind::Float16Ty:
     return dumpAsciiGenericImpl(T->getHandle<float16_t>(), os);
+  case ElemKind::BFloat16Ty:
+    return dumpAsciiGenericImpl(T->getHandle<bfloat16_t>(), os);
   case ElemKind::Int8QTy:
     return dumpAsciiGenericImpl(T->getHandle<int8_t>(), os);
   case ElemKind::UInt8QTy:
@@ -308,6 +445,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
   case ElemKind::UInt4FusedFP16QTy:
     return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
+  case ElemKind::UInt4FusedQTy:
+    return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
   case ElemKind::BoolTy:
     return dumpAsciiGenericImpl(T->getHandle<bool>(), os);
   }
@@ -322,6 +461,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os,
     return dumpGenericImpl(T->getHandle<float>(), os, maxNumElem);
   case ElemKind::Float16Ty:
     return dumpGenericImpl(T->getHandle<float16_t>(), os, maxNumElem);
+  case ElemKind::BFloat16Ty:
+    return dumpGenericImpl(T->getHandle<bfloat16_t>(), os, maxNumElem);
   case ElemKind::Int8QTy:
     return dumpGenericImpl(T->getHandle<int8_t>(), os, maxNumElem);
   case ElemKind::UInt8QTy:
@@ -339,6 +480,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os,
   case ElemKind::UInt8FusedFP16QTy:
     return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::UInt4FusedFP16QTy:
+    return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
+  case ElemKind::UInt4FusedQTy:
     return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::BoolTy:
     return dumpGenericImpl(T->getHandle<bool>(), os, maxNumElem);
@@ -415,6 +558,11 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
     dest->reset(dest->getType());
   }
 
+  // fill with 0 for padding bytes.
+  if (src->actualSize() != dest->actualSize()) {
+    dest->zero();
+  }
+
   switch (src->getElementType()) {
   case ElemKind::FloatTy: {
     auto srcH = src->getHandle<float>();
@@ -425,6 +573,12 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
   case ElemKind::Float16Ty: {
     auto srcH = src->getHandle<float16_t>();
     auto destH = dest->getHandle<float16_t>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
+  case ElemKind::BFloat16Ty: {
+    auto srcH = src->getHandle<bfloat16_t>();
+    auto destH = dest->getHandle<bfloat16_t>();
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
@@ -473,6 +627,9 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
   case ElemKind::UInt4FusedFP16QTy: {
     llvm_unreachable("Transposing UInt4FusedFP16QTy is unsupported.");
   }
+  case ElemKind::UInt4FusedQTy: {
+    llvm_unreachable("Transposing UInt4FusedQTy is unsupported.");
+  }
   case ElemKind::BoolTy: {
     auto srcH = src->getHandle<bool>();
     auto destH = dest->getHandle<bool>();
@@ -486,6 +643,25 @@ ShapeVector glow::expandDimsToMax(llvm::ArrayRef<dim_t> currDims) {
   ShapeVector newDims(currDims.begin(), currDims.end());
   for (size_t i = newDims.size(); i < max_tensor_dimensions; i++) {
     newDims.push_back(1);
+  }
+  return newDims;
+}
+
+ShapeVector glow::reduceDims(llvm::ArrayRef<dim_t> dims,
+                             llvm::ArrayRef<unsigned_t> axes, bool keepDims) {
+  ShapeVector newDims;
+  for (unsigned_t dim = 0, end = dims.size(); dim < end; ++dim) {
+    auto it = std::find(axes.begin(), axes.end(), dim);
+    bool dimReduced = (it != axes.end());
+    if (dimReduced) {
+      if (keepDims) {
+        newDims.push_back(1);
+      } else {
+        continue;
+      }
+    } else {
+      newDims.push_back(dims[dim]);
+    }
   }
   return newDims;
 }
@@ -505,6 +681,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
     }
     case ElemKind::Float16Ty: {
       getHandle<float16_t>().clear(float16_t(val));
+      break;
+    }
+    case ElemKind::BFloat16Ty: {
+      getHandle<bfloat16_t>().clear(bfloat16_t(val));
       break;
     }
     case ElemKind::Int8QTy: {
@@ -549,6 +729,7 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
     break;                                                                     \
   }
       FUSED_CASE(UInt8FusedQTy, float);
+      FUSED_CASE(UInt4FusedQTy, float);
       FUSED_CASE(UInt8FusedFP16QTy, float16_t);
       FUSED_CASE(UInt4FusedFP16QTy, float16_t);
 #undef FUSED_CASE
@@ -571,6 +752,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       getHandle<float16_t>().initXavier(val, PRNG);
       break;
     }
+    case ElemKind::BFloat16Ty: {
+      getHandle<bfloat16_t>().initXavier(val, PRNG);
+      break;
+    }
     default: {
       llvm_unreachable("Undefined to Xavier-initialize non-Float Tensors.");
     }
@@ -589,15 +774,25 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
   assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   const ElemKind origKind = getElementType();
   DCHECK((origKind == ElemKind::FloatTy && newKind == ElemKind::Float16Ty) ||
+         (origKind == ElemKind::FloatTy && newKind == ElemKind::BFloat16Ty) ||
          (origKind == ElemKind::FloatTy && newKind == ElemKind::Int32ITy) ||
          (origKind == ElemKind::FloatTy && newKind == ElemKind::Int64ITy) ||
          (origKind == ElemKind::Float16Ty && newKind == ElemKind::FloatTy) ||
+         (origKind == ElemKind::BFloat16Ty && newKind == ElemKind::FloatTy) ||
          (origKind == ElemKind::Int64ITy && newKind == ElemKind::Int32ITy) ||
          (origKind == ElemKind::Int64ITy && newKind == ElemKind::FloatTy) ||
          (origKind == ElemKind::Int32ITy && newKind == ElemKind::Int64ITy) ||
          (origKind == ElemKind::Int32ITy && newKind == ElemKind::FloatTy) ||
          (origKind == ElemKind::UInt8FusedQTy &&
-          newKind == ElemKind::UInt8FusedFP16QTy))
+          newKind == ElemKind::UInt8FusedFP16QTy) ||
+         (origKind == ElemKind::UInt8FusedFP16QTy &&
+          newKind == ElemKind::UInt8FusedQTy) ||
+         (origKind == ElemKind::UInt4FusedFP16QTy &&
+          newKind == ElemKind::UInt8FusedQTy) ||
+         (origKind == ElemKind::UInt4FusedFP16QTy &&
+          newKind == ElemKind::UInt4FusedQTy) ||
+         (origKind == ElemKind::UInt4FusedQTy &&
+          newKind == ElemKind::UInt8FusedQTy))
       << "Conversion from " << Type::getElementName(origKind).str() << " to "
       << Type::getElementName(newKind).str() << " is not yet implemented";
 
@@ -607,6 +802,9 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
     case ElemKind::Float16Ty:
       tmp.copyWithCast<float16_t, float>(this);
       break;
+    case ElemKind::BFloat16Ty:
+      tmp.copyWithCast<bfloat16_t, float>(this);
+      break;
 
     case ElemKind::FloatTy:
       if (getElementType() == ElemKind::Int32ITy) {
@@ -615,6 +813,8 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
         tmp.copyWithCast<float, int64_t>(this);
       } else if (getElementType() == ElemKind::Float16Ty) {
         tmp.copyWithCast<float, float16_t>(this);
+      } else if (getElementType() == ElemKind::BFloat16Ty) {
+        tmp.copyWithCast<float, bfloat16_t>(this);
       } else if (getElementType() == ElemKind::FloatTy) {
         tmp.copyRawFrom(this);
       } else {
@@ -645,8 +845,22 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
     return tmp;
   }
 
-  // Handle Fused conversion. Currently only supports UInt8FusedQTy ->
-  // UInt8FusedFP16QTy.
+  // Handle Fused conversion.
+  if ((origKind == ElemKind::UInt8FusedFP16QTy ||
+       origKind == ElemKind::UInt4FusedFP16QTy) &&
+      newKind == ElemKind::UInt8FusedQTy) {
+    return convertToUInt8FusedQTy<float16_t>(this);
+  }
+  if (origKind == ElemKind::UInt4FusedQTy &&
+      newKind == ElemKind::UInt8FusedQTy) {
+    return convertToUInt8FusedQTy<float>(this);
+  }
+  if (origKind == ElemKind::UInt4FusedFP16QTy &&
+      newKind == ElemKind::UInt4FusedQTy) {
+    return convertToUInt4FusedQTy(this);
+  }
+
+  // Supports UInt8FusedQTy -> UInt8FusedFP16QTy.
   DCHECK(origKind == ElemKind::UInt8FusedQTy && dims().size() == 2)
       << "UInt8FusedQTy must be 2 dimensional.";
   Tensor tmp(newKind,
@@ -714,6 +928,77 @@ void Tensor::copyRawToDevice(const Tensor *t) {
   clearDeviceResidency();
   copyRawFrom(t);
   DM->transferToDevice(*this, locationContext);
+}
+
+bool Tensor::isTiled(unsigned_t axis, dim_t size, bool fractional) const {
+  switch (getElementType()) {
+  case ElemKind::FloatTy: {
+    return isTiledImpl<float>(this, axis, size, fractional);
+  }
+  case ElemKind::Float16Ty: {
+    return isTiledImpl<float16_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int8QTy: {
+    return isTiledImpl<int8_t>(this, axis, size, fractional);
+  }
+  case ElemKind::UInt8QTy: {
+    return isTiledImpl<uint8_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int16QTy: {
+    return isTiledImpl<int16_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int32QTy: {
+    return isTiledImpl<int32_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int32ITy: {
+    return isTiledImpl<int32_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int64ITy: {
+    return isTiledImpl<int64_t>(this, axis, size, fractional);
+  }
+  case ElemKind::BoolTy: {
+    return isTiledImpl<bool>(this, axis, size, fractional);
+  }
+  default:
+    llvm_unreachable("isTiled: Precision not supported!");
+  }
+}
+
+bool Tensor::isTiled(llvm::ArrayRef<unsigned_t> axes,
+                     llvm::ArrayRef<dim_t> sizes, bool fractional) const {
+  assert(axes.size() == sizes.size() &&
+         "Mismatch between axes and sizes length!");
+  for (size_t idx = 0, end = axes.size(); idx < end; ++idx) {
+    if (!isTiled(axes[idx], sizes[idx], fractional)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
+                       llvm::ArrayRef<dim_t> tensorShape) {
+  assert(sliceShape.size() == tensorShape.size() &&
+         "Array length mismatch for slice/tensor sizes!");
+  // Search first non-singleton slice dimension. If all the dimensions are
+  // singleton then by convention the first non-singleton dimension is the
+  // slice size.
+  size_t firstNonSingleDim = sliceShape.size();
+  for (size_t dim = 0, dimEnd = sliceShape.size(); dim < dimEnd; ++dim) {
+    if (sliceShape[dim] != 1) {
+      firstNonSingleDim = dim;
+      break;
+    }
+  }
+  // First non-singleton slice dimension can be partially or fully extracted.
+  // The following dimensions must be fully extracted.
+  for (size_t dim = firstNonSingleDim + 1, dimEnd = sliceShape.size();
+       dim < dimEnd; ++dim) {
+    if (sliceShape[dim] != tensorShape[dim]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace glow

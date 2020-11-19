@@ -52,6 +52,7 @@ if(GLOW_USE_LLD)
 endif()
 
 include(Glog)
+include(Gflags)
 include(GlowDefaults)
 include(GlowTestSupport)
 include(GlowExternalBackends)
@@ -59,9 +60,6 @@ include(SanitizerSupport)
 include(CoverageSupport)
 include(DoxygenSupport)
 include(FindBackends)
-if(GLOW_BUILD_ONNXIFI_DYNLIB)
-  include(Gflags)
-endif()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/CMakeGraphVizOptions.cmake
                ${CMAKE_CURRENT_BINARY_DIR}/CMakeGraphVizOptions.cmake COPYONLY)
@@ -101,6 +99,10 @@ execute_process(COMMAND
   OUTPUT_VARIABLE GIT_DATE
   ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
 add_definitions("-DGIT_DATE=\"${GIT_DATE}\"")
+
+# Compile definition for Glow build date in Y-M-D format.
+string(TIMESTAMP GLOW_BUILD_DATE "%Y-%m-%d")
+add_definitions("-DGLOW_BUILD_DATE=\"${GLOW_BUILD_DATE}\"")
 
 if(GLOW_USE_PNG_IF_REQUIRED)
   find_package(PNG)
@@ -257,7 +259,6 @@ if (GLOW_BUILD_PYTORCH_INTEGRATION)
   endif()
 
   add_subdirectory(torch_glow/src)
-  add_subdirectory(torch_glow/tests/unittests)
 endif()
 
 if (GLOW_WITH_BUNDLES AND NOT GLOW_WITH_CPU)

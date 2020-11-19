@@ -35,9 +35,11 @@ void registerDummyOperator(const char *opName) {
   torch::jit::RegisterOperators op({torch::jit::Operator(
       at::Symbol::fromQualString(opName),
       [](const torch::jit::Node *node) -> torch::jit::Operation {
-        LOG(FATAL) << "Operator \"" << (*node)
-                   << "\" has no implementation and is meant only as a "
-                      "placeholder while fusing ops to run with Glow";
+        return [node](torch::jit::Stack *stack) {
+          LOG(FATAL) << "Operator \"" << (*node)
+                     << "\" has no implementation and is meant only as a "
+                        "placeholder while fusing ops to run with Glow";
+        };
       },
       at::AliasAnalysisKind::PURE_FUNCTION)});
 }
@@ -165,6 +167,40 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
     fusedNode->insertBefore(inputNode);
     fusedNode->output()->copyMetadata(node->output());
     node->output()->replaceAllUsesWith(fusedNode->output());
+  }
+}
+
+// %786 : Tensor[] = fb::equally_split(%input.1, %785, %785)
+// %tensor.1 : Tensor = prim::ListUnpack(%786)
+// Remove split and ListUnpack when there's only one split and
+// fuse when there are multiple splits.
+void fuseSplit(std::shared_ptr<torch::jit::Graph> &graph) {
+  auto block = graph->block();
+  for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); ++it) {
+    auto *node = *it;
+    if (node->kind() != c10::prim::ListUnpack) {
+      continue;
+    }
+    auto *inputNode = node->input()->node();
+    std::string inputNodeKind = inputNode->kind().toQualString();
+    if (inputNodeKind != "fb::equally_split") {
+      continue;
+    }
+
+    if (node->outputs().size() == 1) {
+      node->output()->replaceAllUsesWith(inputNode->inputs()[0]);
+    } else {
+      auto symbol = "glow::fused_split";
+      auto *fusedNode =
+          graph->create(torch::jit::Symbol::fromQualString(symbol),
+                        inputNode->inputs(), node->outputs().size());
+      fusedNode->insertBefore(inputNode);
+      for (auto i = 0; i < node->outputs().size(); ++i) {
+        auto out = node->outputs()[i];
+        fusedNode->outputs()[i]->copyMetadata(out);
+        out->replaceAllUsesWith(fusedNode->outputs()[i]);
+      }
+    }
   }
 }
 
@@ -334,7 +370,22 @@ void fuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph) {
 }
 } // namespace detail
 
-void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
+/// \returns true if none of the symbols in \p symbolNames are contained in \p
+/// opBlacklist
+static bool
+noneInBlacklist(const std::unordered_set<torch::jit::Symbol> &opBlacklist,
+                std::vector<const char *> symbolNames) {
+  for (const char *symbolName : symbolNames) {
+    if (opBlacklist.count(at::Symbol::fromQualString(symbolName))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void fuseKnownPatterns(
+    std::shared_ptr<torch::jit::Graph> &graph,
+    const std::unordered_set<torch::jit::Symbol> &opBlacklist) {
   // Register dummy nodes used by custom fusers.
   static std::once_flag onceFlag;
   std::call_once(onceFlag, []() {
@@ -343,18 +394,41 @@ void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
     registerDummyOperator("glow::unpacked_quantized_conv3d");
     registerDummyOperator("glow::fused_stack");
     registerDummyOperator("glow::fused_linear");
+    registerDummyOperator("glow::fused_split");
   });
 
   detail::removeExceptions(graph);
   EliminateDeadCode(graph);
 
-  detail::fuseBranchedLinearPattern(graph);
-  EliminateDeadCode(graph);
+  if (noneInBlacklist(opBlacklist, {"aten::dim", "aten::eq", "prim::If",
+                                    "aten::t", "aten::mm", "aten::add",
+                                    "aten::matmul", "aten::add_"})) {
+    detail::fuseBranchedLinearPattern(graph);
+    EliminateDeadCode(graph);
+  }
 
-  detail::fuseConcat(graph);
-  detail::fuseConvPrepack(graph);
-  detail::fuseLinearPrepack(graph);
-  detail::fuseNumToTensorToNum(graph);
+  if (noneInBlacklist(opBlacklist,
+                      {"aten::cat", "prim::ListConstruct", "aten::stack"})) {
+    detail::fuseConcat(graph);
+  }
+
+  if (noneInBlacklist(opBlacklist,
+                      {"quantized::conv2d_prepack", "quantized::conv2d"})) {
+    detail::fuseConvPrepack(graph);
+  }
+
+  if (noneInBlacklist(opBlacklist,
+                      {"quantized::linear_prepack", "quantized::linear"})) {
+    detail::fuseLinearPrepack(graph);
+  }
+
+  if (noneInBlacklist(opBlacklist, {"prim::NumToTensor", "aten::Int"})) {
+    detail::fuseNumToTensorToNum(graph);
+  }
+
+  if (noneInBlacklist(opBlacklist, {"prim::ListUnpack", "fb::equally_split"})) {
+    detail::fuseSplit(graph);
+  }
 
   EliminateCommonSubexpression(graph);
   EliminateDeadCode(graph);

@@ -1,10 +1,11 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import GLOW_NODE_NAME, SUBGRAPH_ATTR
-import torch_glow
 import unittest
+
+import torch
+import torch_glow
+from tests.utils import GLOW_FUSION_GROUP
 
 
 class TestMaxFusionMergeSize(unittest.TestCase):
@@ -12,7 +13,7 @@ class TestMaxFusionMergeSize(unittest.TestCase):
         """Test Glow fuser maximum fusion merge size mechanism."""
 
         def f(a):
-            return (a * a * a * a * a * a)
+            return a * a * a * a * a * a
 
         torch_glow.disableFusionPass()
 
@@ -25,15 +26,15 @@ class TestMaxFusionMergeSize(unittest.TestCase):
         jit_f = torch.jit.trace(f, (a))
         jit_f_graph = jit_f.graph_for(a)
 
-        #print("before: ", jit_f_graph)
+        # print("before: ", jit_f_graph)
 
         torch_glow.glowCustomFuseDebug_(jit_f_graph)
 
-        #print("after: ", jit_f_graph)
+        # print("after: ", jit_f_graph)
 
         fusion_nodes = 0
         for node in jit_f_graph.nodes():
-            if node.kind() == GLOW_NODE_NAME:
+            if node.kind() == GLOW_FUSION_GROUP:
                 fusion_nodes += 1
 
         assert fusion_nodes > 1, "Expected more than one fusion group to be created"
@@ -44,7 +45,7 @@ class TestMaxFusionMergeSize(unittest.TestCase):
         """Test Glow fuser maximum fusion merge size mechanism set to zero."""
 
         def f(a):
-            return (a * a * a * a * a * a)
+            return a * a * a * a * a * a
 
         torch_glow.disableFusionPass()
 
@@ -57,15 +58,15 @@ class TestMaxFusionMergeSize(unittest.TestCase):
         jit_f = torch.jit.trace(f, (a))
         jit_f_graph = jit_f.graph_for(a)
 
-        #print("before: ", jit_f_graph)
+        # print("before: ", jit_f_graph)
 
         torch_glow.glowCustomFuseDebug_(jit_f_graph)
 
-        #print("after: ", jit_f_graph)
+        # print("after: ", jit_f_graph)
 
         fusion_nodes = 0
         for node in jit_f_graph.nodes():
-            if node.kind() == GLOW_NODE_NAME:
+            if node.kind() == GLOW_FUSION_GROUP:
                 fusion_nodes += 1
 
         assert fusion_nodes == 1, "Expected just one fusion group to be created"

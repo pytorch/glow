@@ -5,5 +5,6 @@ target_link_libraries(Provisioner
                       PRIVATE
                         Backend
                         Backends
+                        Flags
                         Graph
                         Runtime)

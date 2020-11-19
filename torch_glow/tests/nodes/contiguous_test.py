@@ -1,17 +1,22 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests import utils
+
+
+class SimpleContiguousModel(torch.nn.Module):
+    def forward(self, input):
+        return input.contiguous()
 
 
 class TestContiguous(unittest.TestCase):
     def test_contiguous_basic(self):
         """Test of the PyTorch contiguous Node on Glow."""
 
-        def contiguous_basic(a):
-            return a.contiguous()
-
         x = torch.randn(2, 2, 2)
 
-        jitVsGlow(contiguous_basic, x, expected_fused_ops={"aten::contiguous"})
+        utils.compare_tracing_methods(
+            SimpleContiguousModel(), x, fusible_ops={"aten::contiguous"}
+        )

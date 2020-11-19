@@ -16,7 +16,7 @@ graph {
     }
     attribute {
       name: "auto_pad"
-      s: "SAME_LOWER"
+      s: "SAME_UPPER"
       type: STRING
     }
     attribute {
@@ -35,10 +35,10 @@ graph {
     }
     attribute {
       name: "pads"
+      ints: 3
       ints: 2
-      ints: 2
-      ints: 2
-      ints: 2
+      ints: 1
+      ints: 0
       type: INTS
     }
     attribute {

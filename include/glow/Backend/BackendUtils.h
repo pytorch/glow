@@ -234,6 +234,9 @@ ContiguousPlaceholders getContiguousPlaceHolder(const ARR &holders,
 /// \returns true if \p V is capable of handling a partial tensor as input.
 bool allowsPartialInput(const Placeholder *V, const Function *F);
 
+/// \returns true if \p V requires last-element padding
+bool requiresPadding(const Placeholder *V, const Function *F);
+
 /// \returns true if \p V is used in \p F; false otherwise.
 bool usedInFunction(const Placeholder *V, const Function *F);
 

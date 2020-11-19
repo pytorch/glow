@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-#include "ExecutionState.h"
-
+#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
-#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
+#include "glow/Runtime/ErrorReporter.h"
 
 #include <queue>
 #include <unordered_set>
@@ -141,9 +140,15 @@ void ThreadPoolExecutor::run(const DAGNode *root,
 
 void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
                                         DAGNode *node) {
-  auto traceScopeStr = llvm::formatv("ThreadPoolExecutor::executeDAGNode {0:x}",
-                                     executionState->getRawResultContextPtr())
-                           .str();
+  std::string traceScopeStr;
+  bool tracingEnabled =
+      !!executionState->getRawResultContextPtr()->getTraceContext();
+  if (tracingEnabled) {
+    traceScopeStr = llvm::formatv("ThreadPoolExecutor::executeDAGNode {0:x}",
+                                  executionState->getRawResultContextPtr())
+                        .str();
+  }
+
   TRACE_EVENT_SCOPE(executionState->getRawResultContextPtr()->getTraceContext(),
                     TraceLevel::RUNTIME, traceScopeStr);
 
@@ -160,8 +165,12 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
 
   // Trace child node creation (to be able to identify function execution
   // origin).
-  std::string traceNodeChildCreateStr = llvm::formatv(
-      "ThreadPoolExecutor::executeDAGNode child node {0:x}", nodeCtx.get());
+  std::string traceNodeChildCreateStr;
+  if (tracingEnabled) {
+    traceNodeChildCreateStr = llvm::formatv(
+        "ThreadPoolExecutor::executeDAGNode child node {0:x}", nodeCtx.get());
+  }
+
   TRACE_EVENT_BEGIN(executionState->getRawResultContextPtr()->getTraceContext(),
                     TraceLevel::RUNTIME, traceNodeChildCreateStr);
   // Get the DeviceManager that can run the node.
@@ -243,7 +252,16 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
         executeDAGNode(executionState, child);
       }
     }
+  } else if (err && err.peekErrorValue() &&
+             err.peekErrorValue()->isFatalError()) {
+    std::string msg = err.peekErrorValue()->logToString();
+    auto reporters = ErrorReporterRegistry::ErrorReporters();
+    if (reporters) {
+      reporters->report(msg);
+    }
+    LOG(FATAL) << "Non-recoverable device error: " << msg;
   }
+
   // Return intermediateContext to executionState.
   executionState->returnUniqueNodeContextPtr(node, std::move(ctx));
 

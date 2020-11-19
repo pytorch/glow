@@ -32,8 +32,14 @@ Error memoryUsageValidation(
     const NodeToFunctionMap &partitions,
     const std::map<std::string, BackendInfo> &backendMap);
 
-/// Check if the current partition is a valid DAG. This check can only be called
-/// after a real partition is created and the DAG is generated.
+/// Verify number of input resources meet the backend constraints. Only intended
+/// for homogeneous backends.
+Error resourceCountValidation(
+    const NodeToFunctionMap &partitions,
+    const std::map<std::string, BackendInfo> &backendMap);
+
+/// Check if the current partition is a valid DAG. This check can only be
+/// called after a real partition is created and the DAG is generated.
 Error dagValidation(const DAG &dag);
 
 } // namespace glow

@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-#include "CommandLine.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 
 llvm::cl::OptionCategory &getLLVMBackendCat() {
   static llvm::cl::OptionCategory cpuBackendCat("Glow CPU Backend Options");
   return cpuBackendCat;
 }
 
-llvm::cl::opt<std::string> llvmTarget("target",
-                                      llvm::cl::desc("LLVM target to be used"));
+llvm::cl::opt<std::string>
+    llvmTarget("target", llvm::cl::desc("LLVM target triple to be used"));
 
 llvm::cl::opt<std::string>
     llvmArch("march", llvm::cl::desc("LLVM architecture to be used"));

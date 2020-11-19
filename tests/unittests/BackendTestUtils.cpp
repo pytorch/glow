@@ -118,7 +118,9 @@ setupInterpAndBackendConfigs(
     ElemKind interpElemKind, ElemKind backendElemKind,
     quantization::Schema schema, bool convertToRowwiseQuantization,
     CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
-    bool forceFP16AccumSLS, unsigned count) {
+    bool forceFP16AccumSLS, PrecisionConfiguration::Float16Format float16Format,
+    unsigned count, bool convertToChannelwiseQuantization,
+    bool skipQuantizeFCBias) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -137,10 +139,13 @@ setupInterpAndBackendConfigs(
       precConfigI.quantMode = QuantizationMode::Quantize;
       precConfigI.quantConfig.infos = NQII;
       precConfigI.quantConfig.enableRowwise = convertToRowwiseQuantization;
+      precConfigI.quantConfig.enableChannelwise =
+          convertToChannelwiseQuantization;
       precConfigI.quantConfig.schema = schema;
       precConfigI.quantConfig.precision = interpElemKind;
       precConfigI.quantConfig.assertAllNodesQuantized = true;
       precConfigI.quantConfig.precisionBias = biasElemKind;
+      precConfigI.quantConfig.skipQuantizeFCBias = skipQuantizeFCBias;
     }
 
     if (isQuantizedElemKind(backendElemKind)) {
@@ -151,10 +156,13 @@ setupInterpAndBackendConfigs(
       precConfigB.quantMode = QuantizationMode::Quantize;
       precConfigB.quantConfig.infos = NQIB;
       precConfigB.quantConfig.enableRowwise = convertToRowwiseQuantization;
+      precConfigB.quantConfig.enableChannelwise =
+          convertToChannelwiseQuantization;
       precConfigB.quantConfig.schema = schema;
       precConfigB.quantConfig.precision = backendElemKind;
       precConfigB.quantConfig.assertAllNodesQuantized = true;
       precConfigB.quantConfig.precisionBias = biasElemKind;
+      precConfigB.quantConfig.skipQuantizeFCBias = skipQuantizeFCBias;
     }
   }
 
@@ -216,24 +224,31 @@ void dispatchInference(const std::string &fname,
   contexts[0].release();
 }
 
-/// Helper that iterates over all of the Placeholders in \p PHs and converts the
-/// Tensor pair found in \p bindings to the same type as the Placeholder if
-/// necessary.
-static void convertBindingsToCorrectType(PlaceholderBindings &bindings,
-                                         PlaceholderList PHs) {
+/// Helper that iterates over all of the Placeholders from the function \p F
+/// and converts the Tensors found in \p bindings to the same type as the
+/// Placeholders if necessary.
+static void convertBindingsToCorrectType(Function *F,
+                                         PlaceholderBindings &bindings) {
+  PlaceholderList PHs = F->findPlaceholders();
   for (Placeholder *PH : PHs) {
     Tensor *T = bindings.get(PH);
     TypeRef newTy = PH->getType();
     if (T->getType().isEqual(newTy)) {
       continue;
     }
-    ElemKind newK = newTy->getElementType();
-    if (isQuantizedElemKind(newK)) {
-      Tensor QT = quantization::quantizeTensor(
-          *T, {newTy->getScale(), newTy->getOffset()}, newK);
-      T->assign(&QT);
+    // For input placeholders convert tensor type and values.
+    // For output placeholders convert only the tensor type.
+    if (isInput(PH, *F)) {
+      ElemKind newK = newTy->getElementType();
+      if (isQuantizedElemKind(newK)) {
+        Tensor QT = quantization::quantizeTensor(
+            *T, {newTy->getScale(), newTy->getOffset()}, newK);
+        T->assign(&QT);
+      } else {
+        T->convertToType(newK);
+      }
     } else {
-      T->convertToType(newK);
+      T->reset(*newTy);
     }
   }
 }
@@ -250,14 +265,13 @@ static Tensor convertToFloatIfNecessary(Tensor &T) {
   return T.getCopyConvertedToType(ElemKind::FloatTy);
 }
 
-void compareAgainstInterpreter(llvm::StringRef backendName,
-                               CreateAndInitFunction createAndInitFunction,
-                               ElemKind interpElemKind,
-                               ElemKind backendElemKind, float allowedError,
-                               unsigned count,
-                               bool convertToRowwiseQuantization,
-                               quantization::Schema schema,
-                               ElemKind biasElemKind, bool forceFP16AccumSLS) {
+void compareAgainstInterpreter(
+    llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
+    ElemKind interpElemKind, ElemKind backendElemKind, float allowedError,
+    unsigned count, bool convertToRowwiseQuantization,
+    quantization::Schema schema, ElemKind biasElemKind, bool forceFP16AccumSLS,
+    PrecisionConfiguration::Float16Format float16Format,
+    bool convertToChannelwiseQuantization, bool skipQuantizeFCBias) {
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
@@ -268,7 +282,8 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
             << Type::getElementName(interpElemKind).str() << " against "
             << backendName.str() << " with precision "
             << Type::getElementName(backendElemKind).str() << " with Bias "
-            << Type::getElementName(biasElemKind).str()
+            << (skipQuantizeFCBias ? "unquantized"
+                                   : Type::getElementName(biasElemKind).str())
             << " with FP16 AccumulationSLS " << forceFP16AccumSLS;
 
   // Create the same network on the interpreter and the backend being tested.
@@ -284,7 +299,8 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
       backendElemKind, schema, convertToRowwiseQuantization,
-      createAndInitFunction, biasElemKind, forceFP16AccumSLS, count);
+      createAndInitFunction, biasElemKind, forceFP16AccumSLS, float16Format,
+      count, convertToChannelwiseQuantization, skipQuantizeFCBias);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
@@ -310,10 +326,8 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   if (!convertToRowwiseQuantization) {
     // Now that we have compiled, precision transformation has occurred. Now
     // convert all mismatches for Placeholders given their original bindings.
-    convertBindingsToCorrectType(
-        iBindings, IEE.getSingleFunctionFromModule()->findPlaceholders());
-    convertBindingsToCorrectType(
-        bBindings, BEE.getSingleFunctionFromModule()->findPlaceholders());
+    convertBindingsToCorrectType(IEE.getSingleFunctionFromModule(), iBindings);
+    convertBindingsToCorrectType(BEE.getSingleFunctionFromModule(), bBindings);
   }
 
   IEE.run(iBindings);
@@ -503,6 +517,60 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
   out->assign(resultTensor);
 }
 
+int inferConvReluNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
+                     unsigned_t kernel, unsigned_t stride, unsigned_t pad,
+                     llvm::StringRef kind) {
+  PlaceholderBindings bindings;
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  Placeholder *inputP;
+  Placeholder *filterP;
+  Placeholder *biasP;
+  Placeholder *outP;
+  TypeRef OT;
+  if (inputs->getType().isQuantizedType()) {
+    auto &outType = out->getType();
+    auto &inType = inputs->getType();
+    auto &filterType = filter->getType();
+    auto &biasType = bias->getType();
+    inputP = createQuantizedPlaceholder(
+        mod, bindings, inputs, inType.getScale(), inType.getOffset(), "inputP");
+    filterP =
+        createQuantizedPlaceholder(mod, bindings, filter, filterType.getScale(),
+                                   filterType.getOffset(), "filterP");
+    biasP = createQuantizedPlaceholder(mod, bindings, bias, biasType.getScale(),
+                                       biasType.getOffset(), "biasP");
+    outP = createQuantizedPlaceholder(mod, bindings, out, outType.getScale(),
+                                      outType.getOffset(), "outP");
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
+                                    outType.getScale(), outType.getOffset());
+  } else {
+    inputP = createPlaceholder(mod, bindings, inputs, "inputP");
+    filterP = createPlaceholder(mod, bindings, filter, "filterP");
+    biasP = createPlaceholder(mod, bindings, bias, "biasP");
+    outP = createPlaceholder(mod, bindings, out, "outP");
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
+  }
+  auto *conv =
+      F->createConv("conv", inputP, filterP, biasP, OT, kernel, stride, pad, 1);
+  // Relu
+  auto *relu = F->createRELU("relu", conv);
+  auto *result = F->createSave("ret", relu, outP);
+  auto *resultTensor = bindings.get(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+
+  // check fusion depending on build option.
+  // EXPECT_EQ(conv->getFusedActivation(), FusedActivation::RELU);
+
+  updateInputPlaceholders(bindings, {inputP, filterP, biasP},
+                          {inputs, filter, bias});
+  EE.run(bindings);
+  out->assign(resultTensor);
+  return conv->getFusedActivation();
+}
+
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
                   llvm::ArrayRef<dim_t> shape1, llvm::ArrayRef<dim_t> shape2,
@@ -549,14 +617,15 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   trainingBindings.allocate(EET.getModule().getPlaceholders());
   inferBindings.allocate(EEI.getModule().getPlaceholders());
   bindings.copyTrainableWeightsTo(trainingBindings);
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
+  auto *res =
+      inferBindings.get(EEI.getModule().getPlaceholderByNameSlow("ret"));
 
   runBatch(EET, trainingBindings, 8, sampleCounter, {var1, var2},
            {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI.compile(CompilationMode::Infer);
-  var1 = inferBindings.getPlaceholderByName("var1");
-  var2 = inferBindings.getPlaceholderByName("var2");
+  var1 = inferBindings.getPlaceholderByNameSlow("var1");
+  var2 = inferBindings.getPlaceholderByNameSlow("var2");
   updateInputPlaceholders(inferBindings, {var1, var2}, {inputs, selected});
   EEI.run(inferBindings, fName);
   out->assign(res);
@@ -628,12 +697,12 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   runBatch(EET, trainingBindings, 8, sampleCounter, {var1, var2},
            {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(bindings);
-  var1 = bindings.getPlaceholderByName("var1");
-  var2 = bindings.getPlaceholderByName("var2");
+  var1 = bindings.getPlaceholderByNameSlow("var1");
+  var2 = bindings.getPlaceholderByNameSlow("var2");
   EEI.compile(CompilationMode::Infer);
 
   runBatch(EEI, bindings, 1, sampleCounter, {var1, var2}, {inputs, selected});
-  out->assign(bindings.get(bindings.getPlaceholderByName("ret")));
+  out->assign(bindings.get(bindings.getPlaceholderByNameSlow("ret")));
 }
 
 void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
@@ -682,13 +751,13 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   runBatch(EET, trainingBindings, 10, sampleCounter, {var1, var2},
            {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(bindings);
-  var1 = bindings.getPlaceholderByName("var1");
-  var2 = bindings.getPlaceholderByName("var2");
+  var1 = bindings.getPlaceholderByNameSlow("var1");
+  var2 = bindings.getPlaceholderByNameSlow("var2");
   EEI.compile(CompilationMode::Infer);
 
   updateInputPlaceholders(bindings, {var1, var2}, {inputs, selected});
   EEI.run(bindings);
-  out->assign(bindings.get(bindings.getPlaceholderByName("ret")));
+  out->assign(bindings.get(bindings.getPlaceholderByNameSlow("ret")));
 }
 
 void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
@@ -734,14 +803,15 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   trainingBindings.allocate(EET.getModule().getPlaceholders());
   inferBindings.allocate(EEI.getModule().getPlaceholders());
   bindings.copyTrainableWeightsTo(trainingBindings);
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
+  auto *res =
+      inferBindings.get(EEI.getModule().getPlaceholderByNameSlow("ret"));
 
   runBatch(EET, trainingBindings, 7, sampleCounter, {var1, var2},
            {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI.compile(CompilationMode::Infer);
-  var1 = inferBindings.getPlaceholderByName("var1");
-  var2 = inferBindings.getPlaceholderByName("var2");
+  var1 = inferBindings.getPlaceholderByNameSlow("var1");
+  var2 = inferBindings.getPlaceholderByNameSlow("var2");
   runBatch(EEI, inferBindings, 1, sampleCounter, {var1, var2},
            {inputs, selected}, fName);
   out->assign(res);
@@ -1012,9 +1082,10 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   EEI.compile(CompilationMode::Infer);
   inferBindings.allocate(EEI.getModule().getPlaceholders());
   trainingBindings.copyTrainableWeightsTo(inferBindings);
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
-  var1 = inferBindings.getPlaceholderByName("var1");
-  var2 = inferBindings.getPlaceholderByName("var2");
+  auto *res =
+      inferBindings.get(EEI.getModule().getPlaceholderByNameSlow("ret"));
+  var1 = inferBindings.getPlaceholderByNameSlow("var1");
+  var2 = inferBindings.getPlaceholderByNameSlow("var2");
   updateInputPlaceholders(inferBindings, {var1, var2}, {inputs, selected});
   EEI.run(inferBindings, fName);
   out->assign(res);
@@ -1323,6 +1394,11 @@ Constant *createRandomizedConstant(Module &mod, TypeRef type,
                                          mod.getPRNG());
     break;
   }
+  case ElemKind::BFloat16Ty: {
+    c->getHandle<bfloat16_t>().initXavier(c->getType()->size() * 2,
+                                          mod.getPRNG());
+    break;
+  }
   case ElemKind::Int32QTy: {
     c->getHandle<int32_t>().randomize(INT32_MIN, INT32_MAX, mod.getPRNG());
     break;
@@ -1370,4 +1446,18 @@ Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
   return c;
 }
 
+Placeholder *createFusedRowwiseQuantizedPlaceholder(Module &mod,
+                                                    llvm::ArrayRef<dim_t> dims,
+                                                    llvm::StringRef name,
+                                                    bool useFusedFP16) {
+  auto T = useFusedFP16 ? ElemKind::UInt8FusedFP16QTy : ElemKind::UInt8FusedQTy;
+  const dim_t sizeScaleOffset =
+      useFusedFP16 ? sizeof(float16_t) : sizeof(float);
+  constexpr float scale = 1.0f / 1275;
+  constexpr float offset = -0.1;
+  Placeholder *ph = mod.createPlaceholder(
+      T, {dims[0], dims[1] + 2 * sizeScaleOffset}, scale, offset, name, false);
+
+  return ph;
+}
 } // namespace glow

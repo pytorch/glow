@@ -62,6 +62,12 @@ void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
                       const Backend &B, const LoweredInfoMap &loweredMap = {},
                       const KindSet &doNotQuantizeKinds = {});
 
+/// Support quantized Sigmoid \p SN inside \p F by replacing it with an
+/// IntLookupTable. \returns final node in the chain implementing the quantized
+/// Sigmoid via the IntLookupTable.
+NodeValue replaceQuantizedSigmoidWithLookupTable(Function &F,
+                                                 const SigmoidNode &SN);
+
 } // namespace quantization
 } // namespace glow
 

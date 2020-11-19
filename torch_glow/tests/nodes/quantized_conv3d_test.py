@@ -1,17 +1,47 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import logging
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from tests import utils
 
-import logging
 
 logger = logging.getLogger("quantized conv3d test")
 logger.setLevel(logging.INFO)
 
 
+class UnpackedConv3dModel(torch.nn.Module):
+    def __init__(self, input_quantization, weight_quantization):
+        super(UnpackedConv3dModel, self).__init__()
+        self.input_quantization = input_quantization
+        self.weight_quantization = weight_quantization
+
+    def forward(self, tensor, weight, bias):
+        return torch.nn.quantized.DeQuantize()(
+            torch.nn.quantized.functional.conv3d(
+                self.input_quantization(tensor), self.weight_quantization(weight), bias
+            )
+        )
+
+
+class PackedConv3dModel(torch.nn.Sequential):
+    def __init__(self, quantization, convolution, dequantization, weight, bias):
+        # Due to the off-by-one error, we cannot let the weights, bias & input
+        # to be totally random.
+        convolution.weight.data.fill_(weight)
+        convolution.bias.data.fill_(bias)
+        super(PackedConv3dModel, self).__init__(
+            quantization, convolution, dequantization
+        )
+        self.eval()
+        self.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+        torch.quantization.prepare(self, inplace=True)
+        torch.quantization.convert(self, inplace=True)
+
+
 class TestQuantizedConv3d(unittest.TestCase):
+    @unittest.skip(reason="Requires freezing")
     def test_quantized_conv3d_unpacked(self):
         """Basic test of the PyTorch quantize::conv3d Node with unpacked weights on Glow."""
 
@@ -35,28 +65,36 @@ class TestQuantizedConv3d(unittest.TestCase):
         b_zero = torch.zeros(1)
         b = torch.randn(1)
 
-        jitVsGlow(
-            test_f,
+        utils.compare_tracing_methods(
+            UnpackedConv3dModel(
+                torch.nn.quantized.Quantize(1 / 16, 0, torch.quint8),
+                torch.nn.quantized.Quantize(1 / 16, 0, torch.qint8),
+            ),
             x,
             w,
             b,
-            expected_fused_ops={
+            fusible_ops={
                 "aten::quantize_per_tensor",
                 "glow::unpacked_quantized_conv3d",
                 "aten::dequantize",
             },
+            skip_to_glow=True,
         )
 
-        jitVsGlow(
-            test_f,
+        utils.compare_tracing_methods(
+            UnpackedConv3dModel(
+                torch.nn.quantized.Quantize(1 / 16, 0, torch.quint8),
+                torch.nn.quantized.Quantize(1 / 16, 0, torch.qint8),
+            ),
             x,
             w,
             b_zero,
-            expected_fused_ops={
+            fusible_ops={
                 "aten::quantize_per_tensor",
                 "glow::unpacked_quantized_conv3d",
                 "aten::dequantize",
             },
+            skip_to_glow=True,
         )
 
     def test_quantized_conv3d_packed_groupwise(self):
@@ -67,26 +105,17 @@ class TestQuantizedConv3d(unittest.TestCase):
         x = torch.cat((x, x, x))
         x = torch.cat((x, x, x))
         x = torch.reshape(x, [1, 3, 3, 5, 5])
-        q = torch.nn.quantized.Quantize(0.1, 2, torch.quint8)
-        conv = torch.nn.Conv3d(3, 3, kernel_size=1, stride=(1, 1, 1), groups=3)
-        dq = torch.nn.quantized.DeQuantize()
 
-        # Due to the off-by-one error, we cannot let the weights, bias & input
-        # to be totally random.
-        conv.weight.data.fill_(2.0)
-        conv.bias.data.fill_(1.0)
-
-        model = torch.nn.Sequential(q, conv, dq)
-        model.eval()
-        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-
-        torch.quantization.prepare(model, inplace=True)
-        torch.quantization.convert(model, inplace=True)
-
-        jitVsGlow(
-            model,
+        utils.compare_tracing_methods(
+            PackedConv3dModel(
+                torch.nn.quantized.Quantize(0.1, 2, torch.quint8),
+                torch.nn.Conv3d(3, 3, kernel_size=1, stride=(1, 1, 1), groups=3),
+                torch.nn.quantized.DeQuantize(),
+                2.0,
+                1.0,
+            ),
             x,
-            expected_fused_ops={
+            fusible_ops={
                 "aten::quantize_per_tensor",
                 "quantized::conv3d",
                 "aten::dequantize",
@@ -101,27 +130,18 @@ class TestQuantizedConv3d(unittest.TestCase):
         x = torch.cat((x, x, x))
         x = torch.cat((x, x, x))
         x = torch.reshape(x, [1, 3, 3, 5, 5])
-        q = torch.nn.quantized.Quantize(0.1, 2, torch.quint8)
-        conv = torch.nn.Conv3d(3, 3, kernel_size=1, stride=(1, 1, 1), groups=3)
-        dq = torch.nn.quantized.DeQuantize()
 
-        # Due to the off-by-one error, we cannot let the weights, bias & input
-        # to be totally random.
-        conv.weight.data.fill_(2.0)
-        conv.bias.data.fill_(1.0)
-
-        model = torch.nn.Sequential(q, conv, dq)
-        model.eval()
-        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-
-        torch.quantization.prepare(model, inplace=True)
-        torch.quantization.convert(model, inplace=True)
-
-        jitVsGlow(
-            model,
+        utils.compare_tracing_methods(
+            PackedConv3dModel(
+                torch.nn.quantized.Quantize(0.1, 2, torch.quint8),
+                torch.nn.Conv3d(3, 3, kernel_size=1, stride=(1, 1, 1), groups=3),
+                torch.nn.quantized.DeQuantize(),
+                2.0,
+                1.0,
+            ),
             x,
-            expected_fused_ops={"quantized::conv3d"},
-            black_list=["aten::quantize_per_tensor", "aten::dequantize"],
+            fusible_ops={"quantized::conv3d"},
+            fusion_blocklist=["aten::quantize_per_tensor", "aten::dequantize"],
         )
 
     def test_quantized_conv3d_packed_channelwise(self):
@@ -144,10 +164,10 @@ class TestQuantizedConv3d(unittest.TestCase):
 
             # TODO: acuracy needs to be investigated. Average acuracy is decent
             # but some elements have errors (possibly from rounding differences)
-            jitVsGlow(
+            utils.compare_tracing_methods(
                 model,
                 x,
-                expected_fused_ops={
+                fusible_ops={
                     "aten::quantize_per_tensor",
                     "quantized::conv3d",
                     "aten::dequantize",

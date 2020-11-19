@@ -130,6 +130,18 @@ TEST(Tensor, randomizeFloat16) {
   }
 }
 
+TEST(Tensor, randomizeBFloat16) {
+  PseudoRNG PRNG;
+  Tensor T(ElemKind::BFloat16Ty, {10, 10});
+  auto H = T.getHandle<bfloat16_t>();
+  H.randomize(-50, 50, PRNG);
+
+  // Check that all of the numbers fall in the range -50 to 50.
+  for (auto elem : H) {
+    EXPECT_NEAR(elem, 0, 50);
+  }
+}
+
 TEST(Tensor, clone) {
   Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
   auto H = T.getHandle<>();
@@ -177,6 +189,86 @@ TEST(Tensor, isZero) {
   {
     Tensor T = {0, 0, 0, 0, 0, 5};
     EXPECT_FALSE(T.getHandle<>().isZero());
+  }
+}
+
+TEST(Tensor, isTiled) {
+  // Single axis testing.
+  {
+    Tensor T(ElemKind::FloatTy, {2, 3});
+    T.getHandle() = {
+        1, 2, 3, 1, 2, 3,
+    };
+    EXPECT_TRUE(T.isTiled(0, 1));
+    EXPECT_TRUE(T.isTiled(0, 2));
+    EXPECT_FALSE(T.isTiled(1, 1));
+    EXPECT_FALSE(T.isTiled(1, 2));
+    EXPECT_TRUE(T.isTiled(1, 3));
+  }
+  {
+    Tensor T(ElemKind::FloatTy, {2, 4});
+    T.getHandle() = {1, 2, 1, 2, 3, 4, 3, 4};
+    EXPECT_FALSE(T.isTiled(0, 1));
+    EXPECT_TRUE(T.isTiled(0, 2));
+    EXPECT_FALSE(T.isTiled(1, 1));
+    EXPECT_TRUE(T.isTiled(1, 2));
+    EXPECT_FALSE(T.isTiled(1, 3));
+    EXPECT_TRUE(T.isTiled(1, 4));
+  }
+  {
+    Tensor T(ElemKind::FloatTy, {2, 4});
+    T.getHandle() = {1, 2, 1, 2, 1, 2, 1, 2};
+    EXPECT_TRUE(T.isTiled(0, 1));
+    EXPECT_TRUE(T.isTiled(0, 2));
+    EXPECT_FALSE(T.isTiled(1, 1));
+    EXPECT_TRUE(T.isTiled(1, 2));
+    EXPECT_FALSE(T.isTiled(1, 3));
+    EXPECT_TRUE(T.isTiled(1, 4));
+  }
+  {
+    Tensor T(ElemKind::FloatTy, {2, 4});
+    T.getHandle() = {1, 2, 1, 2, 3, 4, 3, 44};
+    EXPECT_FALSE(T.isTiled(0, 1));
+    EXPECT_TRUE(T.isTiled(0, 2));
+    EXPECT_FALSE(T.isTiled(1, 1));
+    EXPECT_FALSE(T.isTiled(1, 2));
+    EXPECT_FALSE(T.isTiled(1, 3));
+    EXPECT_TRUE(T.isTiled(1, 4));
+  }
+  {
+    Tensor T(ElemKind::FloatTy, {5});
+    T.getHandle() = {1, 2, 3, 1, 2};
+    EXPECT_FALSE(T.isTiled(0, 3));
+    EXPECT_TRUE(T.isTiled(0, 3, /* fractional */ true));
+  }
+  // Multiple axis testing.
+  {
+    Tensor T(ElemKind::FloatTy, {2, 3});
+    T.getHandle() = {
+        1, 2, 1, 1, 2, 1,
+    };
+    EXPECT_FALSE(T.isTiled({0, 1}, {1, 1}));
+    EXPECT_FALSE(T.isTiled({0, 1}, {1, 2}));
+    EXPECT_TRUE(T.isTiled({0, 1}, {1, 2}, /* fractional */ true));
+    EXPECT_TRUE(T.isTiled({0, 1}, {1, 3}));
+    EXPECT_FALSE(T.isTiled({0, 1}, {2, 1}));
+    EXPECT_FALSE(T.isTiled({0, 1}, {2, 2}));
+    EXPECT_TRUE(T.isTiled({0, 1}, {2, 2}, /* fractional */ true));
+    EXPECT_TRUE(T.isTiled({0, 1}, {2, 3}));
+  }
+  {
+    Tensor T(ElemKind::FloatTy, {2, 4});
+    T.getHandle() = {
+        1, 2, 1, 2, 1, 2, 1, 2,
+    };
+    EXPECT_FALSE(T.isTiled({0, 1}, {1, 1}));
+    EXPECT_TRUE(T.isTiled({0, 1}, {1, 2}));
+    EXPECT_FALSE(T.isTiled({0, 1}, {1, 3}));
+    EXPECT_TRUE(T.isTiled({0, 1}, {1, 4}));
+    EXPECT_FALSE(T.isTiled({0, 1}, {2, 1}));
+    EXPECT_TRUE(T.isTiled({0, 1}, {2, 2}));
+    EXPECT_FALSE(T.isTiled({0, 1}, {2, 3}));
+    EXPECT_TRUE(T.isTiled({0, 1}, {2, 4}));
   }
 }
 
@@ -397,6 +489,25 @@ TEST(Tensor, copyWithCast) {
   AH.randomize(-2.0, 2.0, PRNG);
 
   B.copyWithCast<float, float16_t>(&A);
+
+  EXPECT_EQ(A.size(), B.size());
+  for (size_t idx = 0, end = A.size(); idx != end; ++idx) {
+    EXPECT_NEAR(AH.raw(idx), BH.raw(idx), 0.0001);
+  }
+}
+
+/// Check that we can copy tensors across different types.
+TEST(Tensor, copyWithCastBFloat16) {
+  PseudoRNG PRNG;
+  Tensor A(ElemKind::BFloat16Ty, {10, 5, 3});
+  Tensor B(ElemKind::FloatTy, {10, 5, 3});
+
+  auto AH = A.getHandle<bfloat16_t>();
+  auto BH = B.getHandle<>();
+
+  AH.randomize(-2.0, 2.0, PRNG);
+
+  B.copyWithCast<float, bfloat16_t>(&A);
 
   EXPECT_EQ(A.size(), B.size());
   for (size_t idx = 0, end = A.size(); idx != end; ++idx) {
@@ -955,6 +1066,56 @@ TEST(Tensor, insertSlice) {
   EXPECT_TRUE(big.isEqual(expected));
 }
 
+/// Check that after converting to UInt8FusedQTy, the data, scale and offset are
+/// the same as original ones.
+template <class Ty>
+static void testConvertToUInt8FusedQTy(ElemKind fusedKind, dim_t row,
+                                       dim_t col) {
+  EXPECT_LT(row, 100);
+  EXPECT_LT(col, 100);
+  Tensor T(fusedKind, {row, col}, 1.0, 0);
+  auto dataCol = col - 2 * sizeof(Ty);
+  auto TH = T.getHandle<uint8_t>();
+  for (dim_t i = 0; i < row; i++) {
+    TH.setFusedScaleOffsetInRow<Ty>(i, i, i);
+    for (dim_t j = 0; j < dataCol; j++) {
+      TH.at({i, j}) = i + j;
+    }
+  }
+
+  Tensor newT = T.getCopyConvertedToType(ElemKind::UInt8FusedQTy);
+  auto newTH = newT.getHandle<uint8_t>();
+  bool is4Bit = fusedKind == ElemKind::UInt4FusedFP16QTy ||
+                fusedKind == ElemKind::UInt4FusedQTy;
+
+  // Check the converted dims.
+  auto expectedCol = dataCol * (is4Bit ? 2 : 1) + 2 * sizeof(float);
+  EXPECT_EQ(newTH.dims().size(), 2);
+  EXPECT_EQ(newTH.dims()[0], TH.dims()[0]);
+  EXPECT_EQ(newTH.dims()[1], expectedCol);
+
+  // Check the converted FP32 scale/offset are correctly cast from Fp16
+  // scale/offset.
+  for (dim_t i = 0; i < row; i++) {
+    float scale, offset;
+    std::tie(scale, offset) = newTH.getFusedScaleOffsetFromRow<float>(i);
+    EXPECT_EQ(scale, (float)i);
+    EXPECT_EQ(offset, (float)i);
+  }
+
+  // Check the converted data are the same as original ones.
+  for (dim_t i = 0; i < row; i++) {
+    for (dim_t j = 0; j < dataCol; j++) {
+      if (is4Bit) {
+        EXPECT_EQ(newTH.at({i, j * 2}), (i + j) & 0x0F);
+        EXPECT_EQ(newTH.at({i, j * 2 + 1}), ((i + j) >> 4) & 0x0F);
+      } else {
+        EXPECT_EQ(newTH.at({i, j}), i + j);
+      }
+    }
+  }
+}
+
 /// Check that after initializing a fused tensor to zero that the scale and
 /// offset are not changed and that the values for each row are set to that
 /// row's offset.
@@ -1120,6 +1281,11 @@ TEST(Tensor, GetFusedScaleOffset_UInt4FusedFP16QTy) {
   testGetSetFusedScaleOffset<float16_t>(ElemKind::UInt4FusedFP16QTy);
 }
 
+/// Test getting and setting fused scales and offsets from UInt4FusedQTy.
+TEST(Tensor, GetFusedScaleOffset_UInt4FusedQTy) {
+  testGetSetFusedScaleOffset<float>(ElemKind::UInt4FusedQTy);
+}
+
 /// Check if dump functions work for Tensor
 TEST(Tensor, dump) {
   Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
@@ -1128,8 +1294,9 @@ TEST(Tensor, dump) {
   llvm::raw_string_ostream osT1(storageT1);
   T.dump(osT1);
   std::string expectMes = R"(shape: ( 4 )
-max: 1515.200  min: 1.200
-[1.200, 12.100, 51.000, 1515.200, ]
+elemkind: float
+max: 1515.19995  min: 1.20000  avg: 394.87499
+[1.20000, 12.10000, 51.00000, 1515.19995, ]
 )";
   EXPECT_EQ(mes, expectMes);
   EXPECT_EQ(mes, osT1.str());
@@ -1139,8 +1306,9 @@ max: 1515.200  min: 1.200
   EXPECT_EQ(mes, osT2.str());
   T.dump(2);
   std::string expectMes2 = R"(shape: ( 4 )
-max: 1515.200  min: 1.200
-[1.200, 12.100, ...]
+elemkind: float
+max: 1515.19995  min: 1.20000  avg: 394.87499
+[1.20000, 12.10000, ...]
 )";
   std::string storageT3;
   llvm::raw_string_ostream osT3(storageT3);
@@ -1149,6 +1317,17 @@ max: 1515.200  min: 1.200
   std::string mes2 = T.toString(2);
   EXPECT_EQ(mes2, expectMes2);
   EXPECT_EQ(mes2, osT3.str());
+
+  // Get an unowned padded (partial) tensor sharing storage with T.
+  auto paddedType = Type::newShape(T.getType(), {256});
+  Tensor partialT(T.getUnsafePtr(), &paddedType, T.getSizeInBytes());
+  std::string expectPartial = R"(shape: ( 256 ) ; partial num elements: 4
+elemkind: float
+max: 1515.19995  min: 1.20000  avg: 394.87499
+[1.20000, 12.10000, 51.00000, ...]
+)";
+  std::string partialString = partialT.toString(3);
+  EXPECT_EQ(partialString, expectPartial);
 }
 
 /// Check Type serialization functions.
@@ -1167,13 +1346,21 @@ TEST(Tensor, typeSerialization) {
   testType(Type(ElemKind::UInt8FusedQTy, {1, 2, 3}, 1.5, 5));
   testType(Type(ElemKind::UInt8FusedFP16QTy, {1, 2, 3}, 1.6, 6));
   testType(Type(ElemKind::UInt4FusedFP16QTy, {1, 2, 3}, 1.7, 7));
+  testType(Type(ElemKind::UInt4FusedQTy, {1, 2, 3}, 1.7, 7));
   testType(Type(ElemKind::BoolTy, {1, 2, 3}));
 }
 
 /// Test unpadded size.
 TEST(Tensor, unpaddedSize) {
   Tensor partial(ElemKind::FloatTy, {11});
+  PseudoRNG PRNG;
+  partial.init(Tensor::InitKind::Broadcast, 5, PRNG);
   auto bytes = partial.getSizeInBytes();
+
+  auto H = partial.getHandle<float>();
+  for (const auto &e : H) {
+    EXPECT_EQ(e, 5);
+  }
 
   // Get an unowned padded tensor sharing storage with partial.
   auto paddedType = Type::newShape(partial.getType(), {256});
@@ -1181,6 +1368,14 @@ TEST(Tensor, unpaddedSize) {
   Tensor T(partial.getUnsafePtr(), &paddedType, bytes);
   EXPECT_EQ(T.getUnpaddedSizeInBytes(), bytes);
   EXPECT_EQ(T.getSizeInBytes(), paddedBytes);
+  EXPECT_EQ(T.getRealNumElements(), 11);
+  auto partialH = partial.getHandle<float>();
+  int numElemCount = 0;
+  for (const auto &e : partialH) {
+    EXPECT_EQ(e, 5);
+    numElemCount += 1;
+  }
+  EXPECT_EQ(numElemCount, 11);
 
   // Test that moving the padded tensor preserves properties.
   auto moved = std::move(T);
@@ -1204,8 +1399,8 @@ TEST(Tensor, unpaddedSize) {
   EXPECT_EQ(assigned.getSizeInBytes(), paddedBytes);
 
   // Check that when we reset a partial Tensor with the same Type but without
-  // specifying the reset should be partial that we do not have the same ptr, as
-  // it should have been reallocated.
+  // specifying the reset should be partial that we do not have the same ptr,
+  // as it should have been reallocated.
   char *oldPtr = assigned.getUnsafePtr();
   assigned.reset(paddedType);
   EXPECT_NE(assigned.getUnsafePtr(), oldPtr);
@@ -1316,8 +1511,9 @@ TEST(CustomAlignedTensor, getDimForPtr) {
   EXPECT_EQ(H.getDimForPtr(2, 3), 0);
 }
 
-// Check that we iterate over tensors correctly: unit test for a bug wherein we
-// used size() instead of actualSize() when treating the data as a raw pointer.
+// Check that we iterate over tensors correctly: unit test for a bug wherein
+// we used size() instead of actualSize() when treating the data as a raw
+// pointer.
 TEST(Tensor, sameAlignment) {
   Type Ty1(ElemKind::Float16Ty, {2, 1}, {4, 1});
   Type Ty2(ElemKind::Float16Ty, {2, 1}, {4, 1});
@@ -1335,8 +1531,8 @@ TEST(Tensor, sameAlignment) {
   EXPECT_FALSE(T1.isEqual(T2));
 }
 
-// Check that our tensor iteration is aware of padding: unit-test that checks we
-// iterate correctly when accessing elements in tensors that have different
+// Check that our tensor iteration is aware of padding: unit-test that checks
+// we iterate correctly when accessing elements in tensors that have different
 // alignment requirements.
 TEST(Tensor, differentAlignment) {
   Type Ty1(ElemKind::Float16Ty, {2, 1}, {4, 1});
@@ -1434,6 +1630,8 @@ TEST(Tensor, accessToRawTextFile) {
   }
 }
 
+#ifdef WITH_PNG
+
 /// Testing loading of input tensors from a file.
 static void tensorInputWriterLoader(ImageLayout outImageLayout,
                                     ImageLayout inImageLayout) {
@@ -1506,6 +1704,8 @@ TEST(Tensor, tensorCustomInputLoader) {
   EXPECT_EQ(testT.dims(), llvm::ArrayRef<dim_t>({1, 2, 3, 4}));
 }
 
+#endif // WITH_PNG
+
 // Check that write/read of tensors data from/to raw-binary files is
 // working properly.
 TEST(Tensor, accessToRawBinaryFile) {
@@ -1531,4 +1731,19 @@ TEST(Tensor, accessToRawBinaryFile) {
   for (size_t rcnt = 0; rcnt < tensorTest.actualSize(); rcnt++) {
     EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
   }
+}
+
+/// Test convert UInt4FusedFP16QTy tensor to a UInt8FusedQTy tensor.
+TEST(Tensor, typeConvert_UInt4FusedFP16QTy_To_UInt8FusedQTY) {
+  testConvertToUInt8FusedQTy<float16_t>(ElemKind::UInt4FusedFP16QTy, 10, 10);
+}
+
+/// Test convert UInt8FusedFP16QTy tensor to a UInt8FusedQTy tensor.
+TEST(Tensor, typeConvert_UInt8FusedFP16QTy_To_UInt8FusedQTy) {
+  testConvertToUInt8FusedQTy<float16_t>(ElemKind::UInt8FusedFP16QTy, 10, 10);
+}
+
+/// Test convert UInt4FusedQTy tensor to a UInt8FusedQTy tensor.
+TEST(Tensor, typeConvert_UInt4FusedQTy_To_UInt8FusedQTy) {
+  testConvertToUInt8FusedQTy<float>(ElemKind::UInt4FusedQTy, 10, 10);
 }

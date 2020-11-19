@@ -141,7 +141,8 @@ private:
                                        llvm::ArrayRef<unsigned_t> kernelSizes,
                                        llvm::ArrayRef<unsigned_t> strides,
                                        llvm::ArrayRef<unsigned_t> pads,
-                                       size_t group, size_t dilation);
+                                       size_t group,
+                                       llvm::ArrayRef<unsigned_t> dilation);
 
   template <typename ElemTy = float>
   void fwdConvolutionInstFloatImpl(Value *inV, Value *outV, Value *filterV,
@@ -149,7 +150,8 @@ private:
                                    llvm::ArrayRef<unsigned_t> kernelSizes,
                                    llvm::ArrayRef<unsigned_t> strides,
                                    llvm::ArrayRef<unsigned_t> pads,
-                                   size_t group, size_t dilation);
+                                   size_t group,
+                                   llvm::ArrayRef<unsigned_t> dilation);
 
   template <typename ElemTy, typename AccumulatorTy,
             typename BiasElemTy = int32_t>
@@ -174,10 +176,15 @@ private:
                                      llvm::ArrayRef<unsigned_t> kernelSizes,
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads,
-                                     size_t group, size_t dilation);
+                                     size_t group,
+                                     llvm::ArrayRef<unsigned_t> dilation);
 
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
+
+  void fwdAvgPool3DInstI8Impl(const AvgPoolInst *I);
+  template <typename ElemTy>
+  void fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I);
 
   void fwdAdaptiveAvgPoolInstI8Impl(const AdaptiveAvgPoolInst *I);
   template <typename ElemTy>
@@ -202,6 +209,16 @@ private:
                                                  Value *scalesV,
                                                  Value *offsetsV);
 
+  template <typename ElemTy, typename AccumulatorTy,
+            typename BiasElemTy = int32_t>
+  void fwdChannelwiseQuantizedConv2DInstImpl(
+      const ChannelwiseQuantizedConvolutionInst *I);
+
+  template <typename ElemTy, typename AccumulatorTy,
+            typename BiasElemTy = int32_t>
+  void fwdChannelwiseQuantizedConv3DInstImpl(
+      const ChannelwiseQuantizedConvolutionInst *I);
+
   void fwdElementAddInstI8Impl(const ElementAddInst *I);
   template <typename ElemTy>
   void fwdElementAddInstArithmeticImpl(const ElementAddInst *I);
@@ -216,6 +233,10 @@ private:
   template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
             typename CmpTy = ElemTy>
   void fwdElementCmpEQInstImpl(const ElementCmpEQInst *I);
+
+  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+            typename CmpTy = ElemTy>
+  void fwdElementCmpNEQInstImpl(const ElementCmpNEQInst *I);
 
   template <typename ElemTy>
   void fwdBatchOneHotImpl(const glow::BatchOneHotInst *I);
@@ -249,6 +270,10 @@ private:
   template <typename ElemTy>
   void fwdElementMinInstArithmeticImpl(const ElementMinInst *I);
 
+  template <typename ElemTy, typename InstKind>
+  void fwdUnaryArithmeticImpl(const InstKind *I,
+                              std::function<float(float)> func);
+
   template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
             typename CmpTy = ElemTy>
   void fwdElementCmpLTEInstImpl(const ElementCmpLTEInst *I);
@@ -276,8 +301,14 @@ private:
   void fwdElementExpInstFloatImpl(const ElementExpInst *I);
 
   template <typename ElemTy>
+  void fwdElementSignInstFloatImpl(const ElementSignInst *I);
+
+  template <typename ElemTy>
   void fwdElementSelectInstFloatImpl(const ElementSelectInst *I);
 
+  template <typename ElemTy, typename InstKind>
+  void fwdUnaryTrigonometricImpl(const InstKind *I,
+                                 std::function<float(float)> func);
   template <typename ElemTy>
   void fwdBatchedReduceAddInstFloatImpl(Value *batch, Value *dest,
                                         unsigned_t axis,
@@ -288,6 +319,11 @@ private:
   void fwdBatchedReduceMinInstImpl(Value *batch, Value *dest,
                                    const ShapeVector &eBatchDims,
                                    const ShapeVector &eDestDims, ElemTy max);
+
+  template <typename ElemTy>
+  void fwdBatchedReduceMaxInstImpl(Value *batch, Value *dest,
+                                   const ShapeVector &eBatchDims,
+                                   const ShapeVector &eDestDims, ElemTy min);
 
   template <typename ElemTy>
   void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,
@@ -346,6 +382,12 @@ private:
 
   void fwdMFCCInstFloatImpl(glow::MFCCInst const *I);
 
+  template <typename T>
+  void fwdROIAlignInstFloatImpl(glow::ROIAlignInst const *I);
+
+  template <typename T>
+  void fwdBBoxTransformInstFloatImpl(glow::BBoxTransformInst const *I);
+
   template <typename T, typename AccumT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(
       const EmbeddingBagByteRowwiseOffsetsInst *I);
@@ -359,6 +401,9 @@ private:
   template <typename ElemTy>
   void fwdBatchedPairwiseDotProductGradInstImpl(
       const glow::BatchedPairwiseDotProductGradInst *I);
+  void fwdAvgPool2DGradInst(const AvgPoolGradInst *I);
+  void fwdAvgPool3DGradInst(const AvgPoolGradInst *I);
+
   ///@}
 };
 

@@ -13,6 +13,7 @@ target_link_libraries(onnxifi-glow-lib
                         ExecutionContext
                         ExecutionEngine
                         Exporter
+                        Flags
                         Graph
                         HostManager
                         Importer
@@ -31,7 +32,6 @@ if(GLOW_BUILD_ONNXIFI_DYNLIB)
                 GlowOnnxifiManager.cpp
                 HostManagerOnnxifi.cpp
                 onnxifiGlow.cpp
-                Flags.cpp
                 InlineOnnxifi.cpp)
   set_target_properties(onnxifi-glow PROPERTIES OUTPUT_NAME "onnxifi")
 
@@ -41,6 +41,7 @@ if(GLOW_BUILD_ONNXIFI_DYNLIB)
                           ExecutionContext
                           ExecutionEngine
                           Exporter
+                          Flags
                           Graph
                           HostManager
                           Importer

@@ -177,6 +177,9 @@ public:
   /// operand \p srcIdx for writing the result of the operand at \p dstIdx.
   bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const { return false; }
 
+  /// \returns True if this instruction is not backend-specific.
+  bool isCanonical() const;
+
   /// \returns True if this instruction is data parallel.
   bool isDataParallel() const;
 
@@ -379,7 +382,8 @@ public:
   /// \returns a unique legal name that's based on the string \p name.  Legal
   /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
   llvm::StringRef uniqueName(llvm::StringRef name) {
-    return Module::uniqueName(name, stringTable_, stringTable_);
+    return Module::uniqueName(name, stringTable_, stringTable_,
+                              *G_->getParent()->getOriginalNames());
   }
 
   /// Verify the correctness of the function.

@@ -18,8 +18,10 @@
 #include "GlowOnnxifiManager.h"
 #include "llvm/Support/CommandLine.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
+#include <cstring>
 #include <glog/logging.h>
 
 /// Allow defining names for onnxifi implementation.
@@ -32,11 +34,10 @@
 namespace glow {
 namespace onnxifi {
 
-std::string GlowOnnxifiBackend = "";
 static llvm::cl::opt<std::string, /*external storage*/ true>
-    GlowOnnxifiBackendOpt("glow-onnxifi-backend",
-                          llvm::cl::desc("Glow backend used for ONNXIFI"),
-                          llvm::cl::location(GlowOnnxifiBackend));
+    GlowOnnxifiBackendOpt(
+        "glow-onnxifi-backend", llvm::cl::desc("Glow backend used for ONNXIFI"),
+        llvm::cl::location(glow::onnxifi::flags::BackendName));
 
 } // namespace onnxifi
 } // namespace glow
@@ -85,17 +86,18 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
-    auto backendName =
-        GlowOnnxifiBackend.empty() ? "Interpreter" : GlowOnnxifiBackend;
+    auto backendName = glow::onnxifi::flags::BackendName.empty()
+                           ? "Interpreter"
+                           : glow::onnxifi::flags::BackendName;
     LOG(INFO) << "ONNXIFI: Executing on " << backendName << " Glow backend";
     auto *quantizationBackendC2 =
         manager.createBackend(backendName,
                               /*useOnnx*/ false, /*forQuantization*/ true);
     backendIDs[0] = quantizationBackendC2;
   } else {
-    *numBackends = 1;
+    *numBackends = 2;
 
-    auto backendName = GlowOnnxifiBackend;
+    auto backendName = glow::onnxifi::flags::BackendName;
 
     if (backendName.empty()) {
       if (withNNPI) {
@@ -116,10 +118,11 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     }
 
     LOG(INFO) << "ONNXIFI: Executing on " << backendName << " Glow backend";
-    auto *executionBackend = manager.createBackend(backendName,
-                                                   /*useOnnx*/ false);
 
-    backendIDs[0] = executionBackend;
+    backendIDs[0] = manager.createBackend(backendName,
+                                          /*useOnnx*/ false);
+    backendIDs[1] = manager.createBackend(backendName,
+                                          /*useOnnx*/ true);
   }
 
   return ONNXIFI_STATUS_SUCCESS;
@@ -329,7 +332,10 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(onnxEvent event) {
 EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEventFor)(
     onnxEvent event, uint32_t timeoutMs, onnxEventState *eventState,
-    onnxStatus *eventStatus) {
+    onnxStatus *eventStatus, char *outMessage, size_t *outMessageLength) {
+  size_t maxMessageLength = *outMessageLength - 1;
+  *outMessageLength = 0;
+
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
 
   if (!eventState || !eventStatus) {
@@ -353,6 +359,15 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEventFor)(
     } else {
       *eventState = ONNXIFI_EVENT_STATE_NONSIGNALLED;
     }
+  }
+
+  const auto &message = glowEvent->getMessage();
+  if (message.size() > 0) {
+    std::strncpy(outMessage, message.c_str(), maxMessageLength);
+    // make sure the message is null termininated. strncpy will pad 0 iff
+    // message size is smaller than maxMessageLength.
+    outMessage[maxMessageLength] = '\0';
+    *outMessageLength = std::min(message.size(), maxMessageLength) + 1;
   }
 
   return ONNXIFI_STATUS_SUCCESS;
@@ -424,10 +439,22 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
     quantizationMode = glow::QuantizationMode::None;
   }
 
+  bool loadingGlowAOT = false;
+  if (auxPropertiesList) {
+    for (; *auxPropertiesList != ONNXIFI_GRAPH_PROPERTY_NONE;
+         auxPropertiesList++) {
+      if (*auxPropertiesList == ONNXIFI_OPTIMIZATION_AOT) {
+        loadingGlowAOT = true;
+      } else {
+        return ONNXIFI_STATUS_UNSUPPORTED_PROPERTY;
+      }
+    }
+  }
+
   auto *glowGraph = manager.createGraph(glowBackend, quantizationMode);
-  auto ret =
-      glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
-                           weightDescriptors, maxSeqLength, deferredBlobReader);
+  auto ret = glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
+                                  weightDescriptors, maxSeqLength,
+                                  deferredBlobReader, loadingGlowAOT);
   if (ret != ONNXIFI_STATUS_SUCCESS) {
     manager.release(glowGraph);
     return ret;

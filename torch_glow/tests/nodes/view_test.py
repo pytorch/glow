@@ -1,18 +1,27 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleViewModule(torch.nn.Module):
+    def __init__(self, *shape):
+        super(SimpleViewModule, self).__init__()
+        self.shape = shape
+
+    def forward(self, tensor):
+        return (tensor + tensor).view(self.shape)
 
 
 class TestView(unittest.TestCase):
-    def test_view(self):
-        """Test of the PyTorch reshape Node on Glow."""
-
-        def test_f(a):
-            b = a + a
-            return b.view([2, -1])
-
-        x = torch.rand(2, 3, 4)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::view"})
+    @parameterized.expand(
+        [
+            (SimpleViewModule(2, -1), torch.rand(2, 3, 4)),
+            (SimpleViewModule(-1, 2), torch.rand(2, 3, 4)),
+        ]
+    )
+    def test_simple(self, module, tensor):
+        utils.compare_tracing_methods(module, tensor, fusible_ops={"aten::view"})

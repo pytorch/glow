@@ -131,9 +131,9 @@ public:
 
     // Setup host manager
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backendStr_);
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
     configs.push_back(std::move(config));
-    hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+    hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
@@ -179,7 +179,8 @@ public:
         (float)(1.0 / std::sqrt(((double)hiddenSize_) / ((double)numHeads_)));
 
     // Softmax expected output. Not needed for inference
-    Tensor expected_Tensor(ElemKind::Int64ITy, {maxSequenceLength_ * batchSize_, 1});
+    Tensor expected_Tensor(ElemKind::Int64ITy,
+                           {maxSequenceLength_ * batchSize_, 1});
     Constant *expected = mod->createConstant("expected", expected_Tensor);
 
     // Weights/bias constants for FC1
@@ -423,6 +424,9 @@ int main(int argc, char *argv[]) {
       "Usage: BERTLayerBench maxSequenceLength batchSize hiddenSize numHeads "
       "numCores "
       "numReps numAsyncLaunches backendStr dtypeStr useInt8FCs\n");
+  printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
+         "environment variable\n");
+  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
   assert(argc == 11);
   size_t maxSequenceLength = atoi(argv[1]);
   size_t batchSize = atoi(argv[2]);

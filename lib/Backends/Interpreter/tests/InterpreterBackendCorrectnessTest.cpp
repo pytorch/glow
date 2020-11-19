@@ -20,4 +20,6 @@ using namespace glow;
 std::set<std::string> glow::backendTestBlacklist = {
     // Interpreter does not support kernel stacking yet.
     "dataParallelStackingTest/0",
+    "SymmetricQuantizedConvReluFusionTest/0",
+    "AsymmetricQuantizedConvReluFusionTest/0",
 };

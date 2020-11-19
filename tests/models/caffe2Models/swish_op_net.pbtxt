@@ -1,0 +1,9 @@
+name: "swish"
+op {
+  input: "input"
+  output: "swish_result"
+  name: ""
+  type: "Swish"
+}
+external_input: "input"
+external_output: "swish_result"

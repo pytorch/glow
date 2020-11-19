@@ -42,6 +42,9 @@ public:
   /// converted the loaded weight into a glow Tensor.
   virtual void setTypeInfo(std::map<std::string, Type> info) = 0;
 
+  /// \returns a reference to \ref typeInfo_, a map from string to Type info.
+  std::map<std::string, glow::Type> &getTypeInfo() { return typeInfo_; }
+
   /// Gets the name of the currently loaded weight.
   virtual std::string getName() = 0;
 
@@ -49,6 +52,9 @@ public:
   virtual Tensor *getTensor() = 0;
 
   virtual ~DeferredWeightLoader() = default;
+
+protected:
+  std::map<std::string, glow::Type> typeInfo_;
 };
 
 class DeferredWeightLoaderRegistry final {

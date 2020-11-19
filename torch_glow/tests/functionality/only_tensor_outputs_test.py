@@ -1,10 +1,11 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import GLOW_NODE_NAME
-import torch_glow
 import unittest
+
+import torch
+import torch_glow
+from tests.utils import GLOW_FUSION_GROUP
 
 
 class TestOnlyTensorOutputs(unittest.TestCase):
@@ -29,15 +30,18 @@ class TestOnlyTensorOutputs(unittest.TestCase):
         # supported, if it produces a non-tensor output to the fusion group it
         # would not be fused.
         torch_glow.glowCustomFuseDebug_(
-            jit_f_graph, ["prim::Constant", "aten::add", "aten::size", "aten::reshape"])
+            jit_f_graph, ["prim::Constant", "aten::add", "aten::size", "aten::reshape"]
+        )
 
         fusion_nodes = 0
         aten_sizes = 0
         for node in jit_f_graph.nodes():
-            if node.kind() == GLOW_NODE_NAME:
+            if node.kind() == GLOW_FUSION_GROUP:
                 fusion_nodes += 1
             if node.kind() == "aten::size":
                 aten_sizes += 1
 
-        assert fusion_nodes == 2, "Expected two fusion nodes to be split up with aten::size between them"
+        assert (
+            fusion_nodes == 2
+        ), "Expected two fusion nodes to be split up with aten::size between them"
         assert aten_sizes == 1, "Expected aten::size not to be fused"

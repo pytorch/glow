@@ -95,13 +95,11 @@ static bool checkSaveNode(Module &mod) {
 
 /// Serializes \p dagList and re-loads it. Compares the structure of the DAGs
 /// before/after and verify results are still the same given \p devices
-static void verifyDAGSerialization(DAGListTy &dagList, Module &origMod,
-                                   PlaceholderBindings &bindings,
-                                   llvm::ArrayRef<llvm::StringRef> inputNames,
-                                   llvm::StringRef resultName,
-                                   const std::vector<DeviceInfo> &devices,
-                                   llvm::ArrayRef<Tensor *> inputs,
-                                   const Tensor &ref) {
+static void verifyDAGSerialization(
+    DAGListTy &dagList, Module &origMod, PlaceholderBindings &bindings,
+    llvm::ArrayRef<llvm::StringRef> inputNames, llvm::StringRef resultName,
+    const std::vector<DeviceInfo> &devices, llvm::ArrayRef<Tensor *> inputs,
+    const Tensor &ref, ConstantFoldingRecordMap *constFoldRecord = nullptr) {
   llvm::SmallString<64> path;
   auto tempFileRes =
       llvm::sys::fs::createTemporaryFile("exporter", "output.onnx", path);
@@ -111,33 +109,65 @@ static void verifyDAGSerialization(DAGListTy &dagList, Module &origMod,
   std::string outputFilename(path.c_str());
   std::cout << "Writing to file: " << outputFilename << std::endl;
   {
+    // Note: do not include Constant data when we write out; we will reuse the
+    // Module so we don't need to save it.
     Error err = Error::empty();
+    llvm::StringMap<std::string> extraMetadataProps;
     ONNXModelWriter onnxWR(outputFilename, dagList, 7, 9, &err,
-                           /* textMode */ false, /* zipMode */ true);
+                           /* textMode */ false, /* zipMode */ false,
+                           /* includeConstantData */ false, extraMetadataProps,
+                           constFoldRecord ? *constFoldRecord
+                                           : ConstantFoldingRecordMap());
 
     if (ERR_TO_BOOL(std::move(err))) {
       llvm::errs() << "ONNXModelWriter failed to write model: "
-                   << outputFilename << ".\n";
+                   << outputFilename << "\n";
       llvm::sys::fs::remove(outputFilename);
       FAIL() << "Error exporting DAG.";
     }
   }
 
-  ExecutionEngine loadedEE("Interpreter", /* deviceMemory (16GB) */ 0x400000000,
+  // Create a new EE using the same module. Note that we assume devices are
+  // homogenous here.
+  ExecutionEngine loadedEE(devices[0].backendName, devices[0].availableMemory,
                            /* ignoreUserDeviceConfig */ false,
-                           /* numDevices */ 3);
+                           /* numDevices */ devices.size());
+  // Clone the original module into the one in the EE; we're going to
+  // deserialize the DAG into it as if we're reusing the same Module.
+  origMod.clone(&loadedEE.getModule());
   Module &loadedMod = loadedEE.getModule();
   CompilationContext loadedCctx;
   runtime::PrePartitionedConfig PPC;
   loadedCctx.prepartitionedConfig = &PPC;
   {
+    // Clear out Functions from Nodes. We will reuse the empty Functions.
+    loadedMod.clearFunctions();
+    // If we have a constant folding record then delete those Constants too
+    // since we're going to recreate them. Also delete the const fold Functions.
+    if (constFoldRecord) {
+      std::unordered_set<Function *> funsToDelete;
+      for (auto &pair : *constFoldRecord) {
+        Function *origF = pair.second->getParent();
+        funsToDelete.insert(origF);
+        Constant *C = loadedMod.getConstantByName(pair.first->getName());
+        ASSERT_TRUE(C);
+        loadedMod.eraseConstant(C);
+      }
+      for (Function *origF : funsToDelete) {
+        Function *loadedConstFoldF = loadedMod.getFunction(origF->getName());
+        ASSERT_TRUE(loadedConstFoldF);
+        loadedMod.eraseFunction(loadedConstFoldF);
+        origMod.eraseFunction(origF);
+      }
+    }
     Error err = Error::empty();
-    ONNXModelLoader onnxLD(outputFilename, {}, {}, loadedMod, "main", &PPC,
-                           &err, /* zipMode */ true,
-                           &loadedCctx.backendOpts.backendSpecificNodeInfo);
+    ONNXModelLoader onnxLD(
+        outputFilename, {}, {}, loadedMod, "main", &PPC, &err,
+        /* zipMode */ false, &loadedCctx.backendOpts.backendSpecificNodeInfo,
+        /* loadIntoExistingModule */ true);
     if (ERR_TO_BOOL(std::move(err))) {
-      llvm::errs() << "ONNXModelLoader failed to load model: "
-                   << outputFilename;
+      llvm::errs() << "ONNXModelLoader failed to load model: " << outputFilename
+                   << "\n";
       llvm::sys::fs::remove(outputFilename);
       FAIL() << "Error importing DAG.";
     }
@@ -216,19 +246,20 @@ static void verifyDAGSerialization(DAGListTy &dagList, Module &origMod,
   }
   EXPECT_EQ(origMod.toString(), loadedMod.toString());
 
+  // Now reset bindings and run, checking results are bitwise equal from before
+  // and after serialization. Note that we still use the same PPC -- it will
+  // re-partition/setup the same DAG inside compilation.
+  loadedEE.compile(loadedCctx);
   bindings.clear();
   bindings.allocate(loadedMod.getPlaceholders());
-  // Reset prepartitioned config since we've already partitioned.
-  loadedCctx.prepartitionedConfig = nullptr;
-  loadedEE.compile(loadedCctx);
   std::vector<Placeholder *> inPHs;
   for (const llvm::StringRef &inName : inputNames) {
-    inPHs.push_back(bindings.getPlaceholderByName(inName));
+    inPHs.push_back(bindings.getPlaceholderByNameSlow(inName));
   }
-  executeDAG(loadedDAG.root.get(), loadedMod, bindings, inPHs, inputs,
-             &loadedEE);
+  updateInputPlaceholders(bindings, inPHs, inputs);
+  loadedEE.run(bindings);
   Tensor test =
-      bindings.get(bindings.getPlaceholderByName(resultName))->clone();
+      bindings.get(bindings.getPlaceholderByNameSlow(resultName))->clone();
   EXPECT_TRUE(ref.isEqual(test, 0.0f));
 }
 
@@ -297,10 +328,11 @@ TEST_F(PartitionerTest, Basic1) {
   EER.compile(CompilationMode::Infer);
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
-  updateInputPlaceholders(bindings_, {bindings_.getPlaceholderByName("input")},
-                          {&in});
+  updateInputPlaceholders(bindings_,
+                          {bindings_.getPlaceholderByNameSlow("input")}, {&in});
   EER.run(bindings_);
-  Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+  Tensor ref =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
 
   std::vector<DeviceInfo> devices = {
       {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
@@ -316,14 +348,13 @@ TEST_F(PartitionerTest, Basic1) {
   bindings_.clear();
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
-  for (auto it = dagList->begin(); it != dagList->end(); ++it) {
-    executeDAG((*it).root.get(), EEP.getModule(), bindings_,
-               {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
-    Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
-    EXPECT_TRUE(ref.isEqual(test, 0.0f));
-    verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"},
-                           "ret", devices, {&in}, ref);
-  }
+  executeDAG(dagList->begin()->root.get(), EEP.getModule(), bindings_,
+             {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+  Tensor test =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
+  EXPECT_TRUE(ref.isEqual(test, 0.0f));
+  verifyDAGSerialization(dagList.get(), EEP.getModule(), bindings_, {"input"},
+                         "ret", devices, {&in}, ref);
 }
 
 /// This one tests the model with this feature: after BFS, there is one level,
@@ -384,11 +415,12 @@ TEST_F(PartitionerTest, Basic2) {
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
   updateInputPlaceholders(bindings_,
-                          {bindings_.getPlaceholderByName("input"),
-                           bindings_.getPlaceholderByName("input1")},
+                          {bindings_.getPlaceholderByNameSlow("input"),
+                           bindings_.getPlaceholderByNameSlow("input1")},
                           {&in, &in});
   EER.run(bindings_);
-  Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+  Tensor ref =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
 
   std::vector<DeviceInfo> devices = {{2048, "Interpreter"},
                                      {2048, "Interpreter"},
@@ -415,19 +447,17 @@ TEST_F(PartitionerTest, Basic2) {
   bindings_.clear();
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
-  for (auto it = dagList.begin(); it != dagList.end(); ++it) {
-    updateInputPlaceholders(bindings_,
-                            {bindings_.getPlaceholderByName("input"),
-                             bindings_.getPlaceholderByName("input1")},
-                            {&in, &in});
-    executeDAG((*it).root.get(), EEP.getModule(), bindings_,
-               {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
-    Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
-    ASSERT_TRUE(ref.isEqual(test, 0.0f));
-    verifyDAGSerialization(dagList, EEP.getModule(), bindings_,
-                           {"input", "input1"}, "ret", devices, {&in, &in},
-                           ref);
-  }
+  updateInputPlaceholders(bindings_,
+                          {bindings_.getPlaceholderByNameSlow("input"),
+                           bindings_.getPlaceholderByNameSlow("input1")},
+                          {&in, &in});
+  executeDAG(dagList.begin()->root.get(), EEP.getModule(), bindings_,
+             {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+  Tensor test =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
+  ASSERT_TRUE(ref.isEqual(test, 0.0f));
+  verifyDAGSerialization(dagList, EEP.getModule(), bindings_,
+                         {"input", "input1"}, "ret", devices, {&in, &in}, ref);
 }
 
 /// This one tests the error msg: if the number of partitions is larger than
@@ -486,8 +516,8 @@ TEST_F(PartitionerTest, Error1) {
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
   updateInputPlaceholders(bindings_,
-                          {bindings_.getPlaceholderByName("input"),
-                           bindings_.getPlaceholderByName("input1")},
+                          {bindings_.getPlaceholderByNameSlow("input"),
+                           bindings_.getPlaceholderByNameSlow("input1")},
                           {&in, &in});
   EER.run(bindings_);
 
@@ -645,6 +675,10 @@ public:
     return false;
   }
 
+  Expected<double> estimateNodeCost(const Node * /*node */) const override {
+    return 2.0;
+  }
+
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
     return nullptr;
@@ -677,7 +711,9 @@ static void createSimpleModule(Module &mod) {
   (void)save;
 }
 
-static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights) {
+static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights,
+                                       bool addClipAndLayerNorm,
+                                       dim_t numFCLayers) {
   mod.clear();
   auto *F = mod.createFunction("test");
 
@@ -697,7 +733,8 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights) {
 
   // Create SLS portion
   for (int table = 0; table < 5; table++) {
-    Tensor data(ElemKind::FloatTy, {tableEntries, tableWidth});
+    dim_t thisTableWidth = (table + 1) * tableWidth;
+    Tensor data(ElemKind::FloatTy, {tableEntries, thisTableWidth});
     auto *indices = mod.createPlaceholder(
         ElemKind::Int64ITy, {numIndices * batchSize}, "indices", false);
     if (!shareSplatWeights) {
@@ -707,9 +744,32 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights) {
     }
     auto *lengths = mod.createPlaceholder(ElemKind::Int32ITy, {batchSize},
                                           "lengths", false);
-    auto *output = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-        "SLS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy, false);
-    slsOutputs.push_back(output);
+    float avgLength = (table % 2) ? 12.0f : 10.0f;
+    auto *slsOutput = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+        "SLS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy, false,
+        /* lengthsMode */ LengthsMode::Variable, /* avgLength */ avgLength);
+
+    if (addClipAndLayerNorm) {
+      /* Clip */
+      auto *clipped = F->createClip("SLS_clipped", slsOutput, 0.0f, 70.0f);
+
+      /* Layer Norm*/
+      Tensor scaleT(ElemKind::FloatTy, {thisTableWidth});
+      scaleT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+      Constant *scaleC = mod.createConstant("LN_scale", std::move(scaleT));
+      Tensor biasT(ElemKind::FloatTy, {thisTableWidth});
+      biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+      Constant *biasC = mod.createConstant("LN_bias", std::move(biasT));
+      auto *layerNormed =
+          F->createLayerNormalization("LN", clipped, scaleC, biasC, 1e-5);
+
+      /* Clip */
+      auto *layerNormedClipped =
+          F->createClip("LN_clipped", layerNormed, 0.0f, 70.0f);
+      slsOutputs.push_back(layerNormedClipped);
+    } else {
+      slsOutputs.push_back(slsOutput);
+    }
   }
 
   // Create Concat
@@ -717,10 +777,12 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights) {
   Node *cur = (Node *)concat;
 
   // Create FC portion
-  for (dim_t layer = 0; layer < 4; layer++) {
-    Tensor FCWeights(ElemKind::FloatTy, {5 * tableWidth, 5 * tableWidth});
+  for (dim_t layer = 0; layer < numFCLayers; layer++) {
+    Tensor FCWeights(ElemKind::FloatTy, {15 * tableWidth, 15 * tableWidth});
+    FCWeights.getHandle().randomize(-0.5, 0.5, mod.getPRNG());
     Constant *weights = mod.createConstant("FCWeights", FCWeights);
-    Tensor FCBias(ElemKind::FloatTy, {5 * tableWidth});
+    Tensor FCBias(ElemKind::FloatTy, {15 * tableWidth});
+    FCBias.getHandle().randomize(-0.5, 0.5, mod.getPRNG());
     Constant *bias = mod.createConstant("FCBias", FCBias);
 
     auto *FC = F->createFullyConnected("FC", cur, weights, bias);
@@ -745,77 +807,176 @@ static bool findNodeInFunction(const Function *func,
 /// To check if the generated DAG is correct for the SparseNN Partiton
 /// unnittests. The network used for check is generated from function static
 /// void createSimpleSparseNNModule(Module &mod).
-static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod,
-                                        bool shareSplatWeights) {
+static void sparseNNPartitionValidation(const DAGListTy &dagList,
+                                        uint64_t deviceMemory, Module &mod,
+                                        bool shareSplatWeights,
+                                        bool addClipAndLayerNorm,
+                                        bool pairLNWithSLS) {
   int numOfCPUBackends = 0;
   int numOfSLSNodes = 0;
   int numOfFCNodes = 0;
+  std::unordered_set<uint64_t> slsPartitionSizes;
+  uint64_t nonSlsPartitionSize = 0;
   for (auto &dag : dagList) {
     for (auto &node : dag.nodes) {
-      if (node->backendName == "CPU") {
-        numOfCPUBackends++;
-        auto *func = mod.getFunction(node->name);
-        if (findNodeInFunction(
-                func,
-                Kinded::Kind::
-                    FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind)) {
-          numOfSLSNodes++;
-          EXPECT_EQ(node->logicalDevices.size(), 1);
-          if (shareSplatWeights) {
-            for (const Node &N : func->getNodes()) {
-              if (const auto *SLWS = llvm::dyn_cast<
-                      FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&N)) {
-                EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getWeights()));
-              }
+      ASSERT_TRUE(node->backendName == "CPU");
+      numOfCPUBackends++;
+      auto *func = mod.getFunction(node->name);
+      GraphMemInfo memInfo = getFunctionMemory(func);
+      if (findNodeInFunction(
+              func,
+              Kinded::Kind::
+                  FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind)) {
+        numOfSLSNodes++;
+        slsPartitionSizes.insert(memInfo.getTotalMemSize());
+        EXPECT_EQ(node->logicalDevices.size(), 1);
+        if (shareSplatWeights) {
+          for (const Node &N : func->getNodes()) {
+            if (const auto *SLWS = llvm::dyn_cast<
+                    FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&N)) {
+              EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getWeights()));
             }
           }
-        } else {
-          numOfFCNodes++;
-          EXPECT_EQ(node->logicalDevices.size(), 3);
         }
+        if (addClipAndLayerNorm && pairLNWithSLS) {
+          EXPECT_TRUE(findNodeInFunction(
+              func, Kinded::Kind::LayerNormalizationNodeKind));
+          EXPECT_TRUE(findNodeInFunction(func, Kinded::Kind::ClipNodeKind));
+        }
+      } else if (findNodeInFunction(func,
+                                    Kinded::Kind::FullyConnectedNodeKind)) {
+        nonSlsPartitionSize = memInfo.getTotalMemSize();
+        numOfFCNodes++;
+        EXPECT_EQ(node->logicalDevices.size(), 3);
+        if (addClipAndLayerNorm && !pairLNWithSLS) {
+          EXPECT_TRUE(findNodeInFunction(
+              func, Kinded::Kind::LayerNormalizationNodeKind));
+          EXPECT_TRUE(findNodeInFunction(func, Kinded::Kind::ClipNodeKind));
+        }
+      } else {
+        FAIL() << "Unexpected partition";
       }
     }
   }
+
   // 4 partitions (3 SLS + 1 FC)
   EXPECT_EQ(numOfCPUBackends, 4);
   EXPECT_EQ(numOfSLSNodes, 3);
   EXPECT_EQ(numOfFCNodes, 1);
+  for (uint64_t slsPartitionSize : slsPartitionSizes) {
+    EXPECT_LE(slsPartitionSize + nonSlsPartitionSize, deviceMemory);
+  }
 }
 
-static void testSimpleSparseNNPartitioning(Module &mod,
-                                           bool shareSplatWeights) {
-  createSimpleSparseNNModule(mod, shareSplatWeights);
+static void testSimpleSparseNNPartitioning(Module &mod, bool shareSplatWeights,
+                                           bool concatSLSOutputs,
+                                           bool balancePerfModel,
+                                           bool addClipAndLayerNorm,
+                                           bool pairLNWithSLS,
+                                           bool forceFailure = false) {
+  createSimpleSparseNNModule(mod, shareSplatWeights, addClipAndLayerNorm,
+                             forceFailure ? 5 : 4);
   BackendWithoutSub backend1, backend2, backend3;
   std::vector<Backend *> backends;
   backends.emplace_back(&backend1);
   backends.emplace_back(&backend2);
   backends.emplace_back(&backend3);
+  const uint64_t deviceMemory = 1250000;
   std::vector<DeviceInfo> devices = {
-      {400000, "CPU"}, {400000, "CPU"}, {400000, "CPU"}};
+      {deviceMemory, "CPU"}, {deviceMemory, "CPU"}, {deviceMemory, "CPU"}};
   Partitioner partitioner(&mod, devices, backends);
   CompilationContext cctx;
   cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
   cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards = 3;
-  cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard = 200;
-  cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats = true;
-  auto dagList = partitioner.partition(cctx);
-  ASSERT_TRUE((bool)dagList);
+  cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats = concatSLSOutputs;
+  cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel = balancePerfModel;
+  cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS = pairLNWithSLS;
+  Expected<DAGListTy> dagList = partitioner.partition(cctx);
+  bool failed = ERR_TO_BOOL(dagList.takeError());
+  if (forceFailure) {
+    EXPECT_TRUE(failed);
+    return;
+  }
   EXPECT_EQ(mod.getFunctions().size(), 4);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod));
-  sparseNNPartitionValidation(dagList.get(), mod, shareSplatWeights);
+  sparseNNPartitionValidation(*dagList, deviceMemory, mod, shareSplatWeights,
+                              addClipAndLayerNorm, pairLNWithSLS);
   mod.clear();
 }
 
 /// Test using user-defined backends for SparseNN partition.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false);
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ false,
+                                 /*pairLNWithSLS*/ false);
+}
+
+/// Test that this flag is a NOP when LN doesn't exist
+TEST_F(PartitionerTest, SimpleSparseNNPartitioningPairLNNOP) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ false,
+                                 /*pairLNWithSLS*/ true);
+}
+
+/// Test using user-defined backends for SparseNN partition.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioningClipAndLayerNormInNonSLS) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ true,
+                                 /*pairLNWithSLS*/ false);
+}
+
+/// Test using user-defined backends for SparseNN partition.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioningClipAndLayerNormInSLS) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ true,
+                                 /*pairLNWithSLS*/ true);
+}
+
+TEST_F(PartitionerTest, SimpleSparseNNPartitioning_ConcatSLSOutputs) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ true,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ true,
+                                 /*pairLNWithSLS*/ false);
 }
 
 /// Test using user-defined backends for SparseNN partition when weights are
 /// shared Splats by all SLSs.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning_SharedWeights) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ true);
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ true,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ true,
+                                 /*pairLNWithSLS*/ false);
+}
+
+/// Test using user-defined backends for SparseNN partition.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioningBalancePerfModel) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ true,
+                                 /*addClipAndLayerNorm*/ true,
+                                 /*pairLNWithSLS*/ false);
+}
+
+/// This test checks that we fail partitioning when we have a SLSPartition and
+/// NonSLSPartition that, when summed together, cannot fit inside a device.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioningExpectFailure) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ true,
+                                 /*pairLNWithSLS*/ true,
+                                 /*forceFailure*/ true);
 }
 
 /// To check if the generated DAG is correct for the Heterogeneous Partiton
@@ -1066,8 +1227,8 @@ TEST_F(PartitionerTest, graphMemInfoCalculation1) {
   nodes3.insert(CI);
   nodes3.insert(saveValues);
   nodes3.insert(saveIndices);
-  GraphMemInfo res1 = getGraphMemInfo(nodes2);
-  GraphMemInfo res2 = getGraphMemInfo(nodes3);
+  GraphMemInfo res1 = getGraphMemInfo(nodes2, 1);
+  GraphMemInfo res2 = getGraphMemInfo(nodes3, 1);
   GraphMemInfo ref1(48, 96, 0);
   GraphMemInfo ref2(96, 96, 0);
   EXPECT_EQ(res1, ref1);
@@ -1120,7 +1281,7 @@ TEST_F(PartitionerTest, graphMemInfoCalculation2) {
   EXPECT_EQ(res1, GraphMemInfo(64, 96, 1632));
   nodes1.insert(R2);
 
-  res1 = getGraphMemInfo(nodes1);
+  res1 = getGraphMemInfo(nodes1, 1);
   EXPECT_EQ(res1, GraphMemInfo(64, 96, 1632));
 
   res2 = updateGraphMemInfoByAddingNode(nodes2, res2, L1);
@@ -1147,7 +1308,7 @@ TEST_F(PartitionerTest, graphMemInfoCalculation2) {
   EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
   nodes2.insert(save);
 
-  res2 = getGraphMemInfo(nodes2);
+  res2 = getGraphMemInfo(nodes2, 1);
   EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
 }
 
@@ -1566,10 +1727,11 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
   EER.compile(CompilationMode::Infer);
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
-  updateInputPlaceholders(bindings_, {bindings_.getPlaceholderByName("input")},
-                          {&in});
+  updateInputPlaceholders(bindings_,
+                          {bindings_.getPlaceholderByNameSlow("input")}, {&in});
   EER.run(bindings_);
-  Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+  Tensor ref =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
 
   std::vector<DeviceInfo> devices = {
       {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
@@ -1585,14 +1747,13 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
   bindings_.clear();
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
-  for (auto it = dagList->begin(); it != dagList->end(); ++it) {
-    executeDAG((*it).root.get(), EEP.getModule(), bindings_,
-               {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
-    Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
-    EXPECT_TRUE(ref.isEqual(test, 0.0f));
-    verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"},
-                           "ret", devices, {&in}, ref);
-  }
+  executeDAG(dagList->begin()->root.get(), EEP.getModule(), bindings_,
+             {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+  Tensor test =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
+  EXPECT_TRUE(ref.isEqual(test, 0.0f));
+  verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"}, "ret",
+                         devices, {&in}, ref);
 }
 
 /// This tests the pre-partitioned flow.
@@ -1616,6 +1777,12 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   PPC.backendSpecificOpts.emplace_back(
       BackendSpecificOptions{{"opt2", "val2"}});
   PPC.backendSpecificOpts.emplace_back(BackendSpecificOptions{});
+  PPC.replicationCounts.push_back(3);
+  PPC.replicationCounts.push_back(4);
+  PPC.replicationCounts.push_back(1);
+  PPC.backendHints.push_back({7, {"a"}});
+  PPC.backendHints.push_back({8, {"b"}});
+  PPC.backendHints.push_back({9, {"c", "d"}});
 
   auto *I0 = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "I0", false);
   auto *I1 = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "I1", false);
@@ -1665,6 +1832,10 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   EXPECT_EQ(D0->backendSpecificOpts.at("opt0"), "val0");
   ASSERT_TRUE(D0->backendSpecificOpts.count("opt1"));
   EXPECT_EQ(D0->backendSpecificOpts.at("opt1"), "val1");
+  EXPECT_EQ(D0->replicationCount, 3);
+  EXPECT_EQ(D0->backendHints.executionUnits, 7);
+  ASSERT_EQ(D0->backendHints.SRAMPrioritization.size(), 1);
+  EXPECT_EQ(D0->backendHints.SRAMPrioritization[0], "a");
 
   ASSERT_EQ(D0->children.size(), 2);
   DAGNode *D1 = (D0->children[0]->name == F1->getName()) ? D0->children[0]
@@ -1680,6 +1851,10 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   EXPECT_EQ(D1->backendSpecificOpts.size(), 1);
   ASSERT_TRUE(D1->backendSpecificOpts.count("opt2"));
   EXPECT_EQ(D1->backendSpecificOpts.at("opt2"), "val2");
+  EXPECT_EQ(D1->replicationCount, 4);
+  EXPECT_EQ(D1->backendHints.executionUnits, 8);
+  ASSERT_EQ(D1->backendHints.SRAMPrioritization.size(), 1);
+  EXPECT_EQ(D1->backendHints.SRAMPrioritization[0], "b");
 
   DAGNode *D2 = (D1 == D0->children[0]) ? D0->children[1] : D0->children[0];
   ASSERT_EQ(D2->name, F2->getName());
@@ -1699,4 +1874,157 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
                 SMM->getPlaceholder()->getType()->getSizeInBytes() +
                 finalSave->getPlaceholder()->getType()->getSizeInBytes());
   EXPECT_EQ(D2->backendSpecificOpts.size(), 0);
+  EXPECT_EQ(D2->replicationCount, 1);
+  EXPECT_EQ(D2->backendHints.executionUnits, 9);
+  ASSERT_EQ(D2->backendHints.SRAMPrioritization.size(), 2);
+  EXPECT_EQ(D2->backendHints.SRAMPrioritization[0], "c");
+  EXPECT_EQ(D2->backendHints.SRAMPrioritization[1], "d");
+}
+
+/// Test that constant folding (de)serialization works along with partitioning.
+TEST_F(PartitionerTest, RecordedConstantFolding) {
+  ExecutionEngine EER, EEP;
+  EEP.setSkipModuleStrip(true);
+  constexpr float range = 2.0;
+  std::vector<ExecutionEngine *> engines{&EER, &EEP};
+  // Since compiling modifies the module and partitioning modifies the function,
+  // setup two EEs with identical functions for validation.
+  for (auto EE : engines) {
+    auto mod = &EE->getModule();
+    F_ = mod->createFunction("main");
+    auto *input =
+        mod->createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
+    auto *w1 = mod->createConstant(ElemKind::FloatTy, {32, 16}, "w1");
+    auto *b1 = mod->createConstant(ElemKind::FloatTy, {16}, "b1");
+    bindings_.allocate(input);
+    w1->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b1->getHandle<>().randomize(-range, range, mod->getPRNG());
+
+    // Initial FC.
+    Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
+    I = F_->createSigmoid("initial_sigmoid", I);
+
+    // Left branch. Note that w2 and b2 will be constant folded.
+    auto *w2 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+    auto *b2 = mod->createConstant(ElemKind::FloatTy, {16}, "b2");
+    w2->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b2->getHandle<>().randomize(-range, range, mod->getPRNG());
+    auto *w2Clip = F_->createClip("clip_w2", w2, -1, 1);
+    auto *b2Clip = F_->createClip("clip_b2", b2, -1, 1);
+    Node *L = F_->createFullyConnected("left_fc1", I, w2Clip, b2Clip);
+    L = F_->createSigmoid("left_sigmoid1", L);
+    auto *w3 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+    auto *b3 = mod->createConstant(ElemKind::FloatTy, {8}, "b3");
+    w3->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b3->getHandle<>().randomize(-range, range, mod->getPRNG());
+    L = F_->createFullyConnected("left_fc2", L, w3, b3);
+    L = F_->createSigmoid("left_sigmoid2", L);
+
+    // Right branch. Note that w4 will be constant folded.
+    auto *w4 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w4");
+    auto *b4 = mod->createConstant(ElemKind::FloatTy, {16}, "b4");
+    w4->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b4->getHandle<>().randomize(-range, range, mod->getPRNG());
+    auto *w4Sig = F_->createSigmoid("w4_sig", w4);
+    Node *R = F_->createFullyConnected("right_fc1", I, w4Sig, b4);
+    R = F_->createSigmoid("right_sigmoid1", R);
+    auto *w5 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+    auto *b5 = mod->createConstant(ElemKind::FloatTy, {8}, "b5");
+    w5->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b5->getHandle<>().randomize(-range, range, mod->getPRNG());
+    R = F_->createFullyConnected("right_fc2", R, w5, b5);
+    R = F_->createSigmoid("right_sigmoid2", R);
+
+    // Join branches.
+    auto *mul = F_->createMul("mul", L, R);
+    F_->createSave("ret", mul);
+  }
+
+  // Infer using the un-partitioned graph.
+  Tensor in(ElemKind::FloatTy, {1, 32});
+  in.getHandle<>().randomize(-range, range, EER.getModule().getPRNG());
+
+  EER.compile(CompilationMode::Infer);
+  bindings_.clear();
+  bindings_.allocate(EER.getModule().getPlaceholders());
+  updateInputPlaceholders(bindings_,
+                          {bindings_.getPlaceholderByNameSlow("input")}, {&in});
+  EER.run(bindings_);
+  Tensor ref =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
+
+  // Now try with partitioning, and partitioning + constant fold recording.
+  auto &modP = EEP.getModule();
+
+  CompilationContext cctx;
+  ASSERT_EQ(modP.getFunctions().size(), 1);
+  Function *origF = *modP.getFunctions().begin();
+  ConstantFoldingRecordMap record = constantFoldAndRecord(origF, cctx);
+  runDCEPass(origF, cctx);
+  // Expect 3 Constants were folded: w2, b2, and w4 from above.
+  ASSERT_EQ(record.size(), 3);
+
+  const DeviceInfo devI{3072, "Interpreter"};
+  std::vector<DeviceInfo> devices = {devI, devI, devI};
+  Partitioner myPartitioner(&modP, devices, /* optimized */ true);
+  EXPECT_TRUE(checkSaveNode(modP));
+
+  DAGListTy dagList;
+  ASSIGN_VALUE_OR_FAIL_TEST(dagList, myPartitioner.loadBalancedPartition(cctx));
+
+  ASSERT_EQ(dagList.size(), 1);
+  const auto &dag = *dagList.begin();
+  EXPECT_EQ(dag.nodes.size(), 3);
+
+  // Verify that we serialize and deserialize the DAG correctly including with
+  // the constant folding record, and that results are bitwise equal.
+  verifyDAGSerialization(dagList, modP, bindings_, {"input"}, "ret", devices,
+                         {&in}, ref, &record);
+
+  // Now run the original partitioned model and verify it also is bitwise equal.
+  bindings_.clear();
+  bindings_.allocate(modP.getPlaceholders());
+  EEP.compile(cctx);
+
+  executeDAG(dagList.begin()->root.get(), modP, bindings_,
+             {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+  Tensor test =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
+  EXPECT_TRUE(ref.isEqual(test, 0.0f));
+}
+
+/// This test verifies that resourceCount is being checked correctly, we set the
+/// resourceCount to 1 and expect an error.
+TEST_F(PartitionerTest, resourceCountValidationTest) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *add1 = F_->createAdd("add1", input1, input2);
+  auto *add2 = F_->createAdd("add2", add1, input3);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {{3072, "Interpreter", {}},
+                                     {3072, "Interpreter", {}}};
+
+  devices[0].inputCountMax = 1;
+  devices[1].inputCountMax = 1;
+  // User-defined partition: p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 2;
+  BackendHints bh1, bh2;
+  bh1.executionUnits = 2;
+  bh2.executionUnits = 3;
+  partitionConfig.backendHints = {bh1, bh2};
+  partitionConfig.backendNames = {"Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add2", 0}};
+  auto partitioner = Partitioner(&mod_, devices, false, partitionConfig);
+  CompilationContext cctx;
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
 }

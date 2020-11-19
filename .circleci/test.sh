@@ -69,6 +69,10 @@ case ${CIRCLE_JOB} in
     OPENCL)
         run_unit_tests check
         ;;
+    FEATURE_COMPILATION)
+        # FEATURE_COMPILATION is a compilation only CI job, thus tests
+        # are not requited.
+        ;;
     DEBUG)
         run_unit_tests check
         run_unit_tests test_unopt
@@ -97,6 +101,7 @@ case ${CIRCLE_JOB} in
     CHECK_CLANG_AND_PEP8_FORMAT)
         cd "${GLOW_SRC}"
         sudo ln -s /usr/bin/clang-format-7 /usr/bin/clang-format
+        source /tmp/venv/bin/activate
         ./utils/format.sh check
         ;;
     *)

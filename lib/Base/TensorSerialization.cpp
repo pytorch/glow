@@ -15,7 +15,9 @@
  */
 
 #include "glow/Base/TensorSerialization.h"
+#ifdef WITH_PNG
 #include "glow/Base/Image.h"
+#endif
 #include "glow/Graph/Graph.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -64,6 +66,8 @@ static void loadTensorFromTextFileImpl(Tensor &tensor, llvm::StringRef filename,
                       << handle.actualSize() << " elements!";
 }
 
+#ifdef WITH_PNG
+
 /// Helper method to load tensor files into the model input tensor.
 static void loadTensorFromFileWithType(Tensor &T, llvm::StringRef filename,
                                        ImageLayout imageLayout) {
@@ -102,17 +106,30 @@ static void loadTensorFromFileWithType(Tensor &T, llvm::StringRef filename,
 static InputTensorFileLoaderFn inputTensorFileLoader_ =
     loadTensorFromFileWithType;
 
+#endif // WITH_PNG
+
 } // namespace glow
+
+#ifdef WITH_PNG
 
 void glow::registerInputTensorFileLoader(InputTensorFileLoaderFn loader) {
   inputTensorFileLoader_ = loader;
 }
 
-void glow::dumpTensorToBinaryFile(Tensor &tensor, llvm::StringRef filename,
+#endif // WITH_PNG
+
+void glow::dumpTensorToBinaryFile(const Tensor &tensor,
+                                  llvm::StringRef filename,
                                   const TensorSerializationOptions &opts) {
   std::ofstream fs;
   fs.open(filename.data(), std::ios::binary);
   CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
+  dumpTensorToBinaryFile(tensor, fs, opts);
+  fs.close();
+}
+
+void glow::dumpTensorToBinaryFile(const Tensor &tensor, std::ofstream &fs,
+                                  const TensorSerializationOptions &opts) {
   CHECK(tensor.getUnsafePtr())
       << "Tensor not initialized before dumping to binary file!";
   // Dump tensor type.
@@ -122,7 +139,6 @@ void glow::dumpTensorToBinaryFile(Tensor &tensor, llvm::StringRef filename,
   }
   // Dump tensor data.
   fs.write(tensor.getUnsafePtr(), tensor.getSizeInBytes());
-  fs.close();
 }
 
 void glow::loadTensorFromBinaryFile(Tensor &tensor, llvm::StringRef filename,
@@ -180,6 +196,8 @@ void glow::dumpTensorToTextFile(Tensor &tensor, llvm::StringRef filename,
     return dumpTensorToTextFileImpl<float>(tensor, filename, fs);
   case ElemKind::Float16Ty:
     return dumpTensorToTextFileImpl<float16_t>(tensor, filename, fs);
+  case ElemKind::BFloat16Ty:
+    return dumpTensorToTextFileImpl<bfloat16_t>(tensor, filename, fs);
   case ElemKind::Int8QTy:
     return dumpTensorToTextFileImpl<int8_t>(tensor, filename, fs);
   case ElemKind::UInt8QTy:
@@ -197,6 +215,8 @@ void glow::dumpTensorToTextFile(Tensor &tensor, llvm::StringRef filename,
   case ElemKind::UInt8FusedFP16QTy:
     return dumpTensorToTextFileImpl<uint8_t>(tensor, filename, fs);
   case ElemKind::UInt4FusedFP16QTy:
+    return dumpTensorToTextFileImpl<uint8_t>(tensor, filename, fs);
+  case ElemKind::UInt4FusedQTy:
     return dumpTensorToTextFileImpl<uint8_t>(tensor, filename, fs);
   case ElemKind::BoolTy:
     return dumpTensorToTextFileImpl<bool>(tensor, filename, fs);
@@ -228,6 +248,8 @@ void glow::loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
     return loadTensorFromTextFileImpl<float>(tensor, filename, fs);
   case ElemKind::Float16Ty:
     return loadTensorFromTextFileImpl<float16_t>(tensor, filename, fs);
+  case ElemKind::BFloat16Ty:
+    return loadTensorFromTextFileImpl<bfloat16_t>(tensor, filename, fs);
   case ElemKind::Int8QTy:
     return loadTensorFromTextFileImpl<int8_t>(tensor, filename, fs);
   case ElemKind::UInt8QTy:
@@ -246,6 +268,8 @@ void glow::loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
     return loadTensorFromTextFileImpl<uint8_t>(tensor, filename, fs);
   case ElemKind::UInt4FusedFP16QTy:
     return loadTensorFromTextFileImpl<uint8_t>(tensor, filename, fs);
+  case ElemKind::UInt4FusedQTy:
+    return loadTensorFromTextFileImpl<uint8_t>(tensor, filename, fs);
   case ElemKind::BoolTy:
     return loadTensorFromTextFileImpl<bool>(tensor, filename, fs);
   default:
@@ -253,6 +277,8 @@ void glow::loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
   }
   fs.close();
 }
+
+#ifdef WITH_PNG
 
 void glow::loadInputImageFromFileWithType(
     const llvm::ArrayRef<std::string> &filenames, Tensor *inputData,
@@ -315,3 +341,5 @@ void glow::dumpInputTensorToFileWithType(
     outfile << e << " ";
   }
 }
+
+#endif // WITH_PNG

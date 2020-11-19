@@ -22,6 +22,7 @@
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -50,6 +51,13 @@ llvm::cl::list<std::string> inputImageFilenames(
                    "many times with new input filenames passed via stdin)"),
     llvm::cl::ZeroOrMore);
 
+llvm::cl::list<std::string> inputImageDirs(
+    "input-image-dir",
+    llvm::cl::desc(
+        "Name of directory containing images. Can be used multiple times."),
+    llvm::cl::value_desc("dir_name"), llvm::cl::Optional, llvm::cl::ZeroOrMore,
+    llvm::cl::cat(executorCat));
+
 llvm::cl::opt<std::string> inputImageListFile(
     "input-image-list-file",
     llvm::cl::desc(
@@ -71,9 +79,8 @@ llvm::cl::opt<unsigned> miniBatch(
         "mini-batches. The input model is compiled for an input tensor batch "
         "size equal to the specified mini-batch size and mini-batches of "
         "images are inferred separately. The number of input images must be a "
-        "multiple of the mini-batch size. By default, splitting the input "
-        "image list into mini-batches is deactivated."),
-    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(executorCat));
+        "multiple of the mini-batch size. By default, mini-batch is set to 1."),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(executorCat));
 
 llvm::cl::opt<unsigned> miniBatchThreads(
     "minibatch-threads",
@@ -102,12 +109,6 @@ llvm::cl::opt<unsigned> poolSize(
     "pool-size",
     llvm::cl::desc("Size of context pool for the benchmark; default:10"),
     llvm::cl::Optional, llvm::cl::init(10), llvm::cl::cat(executorCat));
-
-llvm::cl::opt<std::string> modelInputName(
-    "model-input-name",
-    llvm::cl::desc("The name of the variable for the model's input image."),
-    llvm::cl::value_desc("string_name"), llvm::cl::Required,
-    llvm::cl::cat(executorCat));
 
 llvm::cl::opt<bool> convertInAndOutToFp16(
     "convert-inout-to-fp16",
@@ -156,6 +157,29 @@ llvm::cl::opt<unsigned> repeatSingleBatchCount(
         "size and repeated n times. Otherwise the first minibatch is repeated "
         "and all other inputs are ignored."),
     llvm::cl::init(0), llvm::cl::cat(executorCat));
+
+/// Read all images from \p inputImageDir into \p inputImageFilenames.
+void parseInputDir(const std::string &inputImageDir) {
+  CHECK(llvm::sys::fs::is_directory(inputImageDir))
+      << strFormat("Path '%s' is not a directory!", inputImageDir.data());
+  std::error_code code;
+  llvm::sys::fs::directory_iterator dirIt(inputImageDir, code);
+  std::vector<std::string> imageFiles;
+  while (!code && dirIt != llvm::sys::fs::directory_iterator()) {
+    auto path = dirIt->path();
+    if (llvm::sys::fs::is_regular_file(path)) {
+      imageFiles.emplace_back(path);
+    }
+    dirIt.increment(code);
+  }
+  // The paths retrieved by the directory iterator are not sorted.
+  // Sort the paths alphabetically in increasing order and add them
+  // to the overall list of image filenames.
+  std::sort(imageFiles.begin(), imageFiles.end());
+  for (auto &imageFile : imageFiles) {
+    inputImageFilenames.push_back(imageFile);
+  }
+}
 
 /// Read all images from \p inputImageListFile in to \p inputImageFilenames.
 void parseInputList(const std::string &inputListFile) {
@@ -220,38 +244,17 @@ bool getNextMiniBatch(std::vector<std::string> &imageList,
   return true;
 }
 
-/// Creates and \returns the ProtobufLoader given \p loader and the
-/// \p inputImageType. Note that this must come after loading images for
-/// inference so that \p inputImageType is known.
-static std::unique_ptr<ProtobufLoader>
-createProtobufLoader(Loader &loader, TypeRef inputImageType) {
-  // The image name that the model expects must be passed on the command line.
-  const char *inputName = modelInputName.c_str();
-
-  // Create the model based on the input model format.
-  std::unique_ptr<ProtobufLoader> LD;
-  bool c2Model = !loader.getCaffe2NetDescFilename().empty();
-  if (c2Model) {
-    LD.reset(new Caffe2ModelLoader(
-        loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
-        {inputName}, {inputImageType}, *loader.getFunction()));
-  } else {
-    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {inputName},
-                                 {inputImageType}, *loader.getFunction()));
-  }
-
-  return LD;
-}
-
 /// Given \p loader, the \p bindings, and \p inputImageType, build the graph
 /// from the provided protobuf file found via \p loader. Then compiles and
 /// \returns a pair of pointers to the input Placeholder and output Nodes Map.
 std::pair<Placeholder *, llvm::StringMap<Placeholder *>>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
                                   const glow::Type &inputImageType) {
-  auto LD = createProtobufLoader(loader, &inputImageType);
-  llvm::StringMap<Placeholder *> outMap = LD->getOutputVarsMapping();
-  loader.postModelLoad(bindings, *LD.get(), outMap, &inputImageType);
+  // Load model.
+  loader.loadModel(&inputImageType);
+
+  // Post model loader transformation.
+  loader.postModelLoad(bindings, &inputImageType);
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());
@@ -275,11 +278,13 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
   cctx.backendOpts.autoInstrument = autoInstrument;
   loader.compile(cctx);
 
-  // The image name that the model expects must be passed on the command line.
-  const char *inputName = modelInputName.c_str();
-  Placeholder *inputImagePH =
-      llvm::cast<Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
+  // Get input/output placeholder maps.
+  llvm::StringMap<Placeholder *> inpMap = loader.getInputPlaceholderMap();
+  llvm::StringMap<Placeholder *> outMap = loader.getOutputPlaceholderMap();
 
+  // Get input placeholder (assumed unique).
+  CHECK(inpMap.size() == 1) << "Model is expected to have only 1 input!";
+  Placeholder *inputImagePH = inpMap.begin()->second;
   return std::make_pair(inputImagePH, outMap);
 }
 

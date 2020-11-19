@@ -1,31 +1,33 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-import torch_glow
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleSigmoidModel(torch.nn.Module):
+    def __init__(self, inplace=False):
+        super(SimpleSigmoidModel, self).__init__()
+        self.inplace = inplace
+
+    def forward(self, tensor):
+        if self.inplace:
+            other = tensor + tensor
+            return other.sigmoid_()
+        else:
+            other = tensor + tensor
+            return other.sigmoid()
 
 
 class TestSigmoid(unittest.TestCase):
-    def test_sigmoid_basic(self):
-        """Basic test of the PyTorch sigmoid Node on Glow"""
-
-        def sigmoid_basic(a):
-            c = a + a
-            return c.sigmoid()
-
-        x = torch.randn(6)
-
-        jitVsGlow(sigmoid_basic, x, expected_fused_ops={"aten::sigmoid"})
-
-    def test_sigmoid_inplace(self):
-        """Test of the inplace PyTorch sigmoid Node on Glow"""
-
-        def sigmoid_inplace(a):
-            c = a + a
-            return c.sigmoid_()
-
-        x = torch.randn(6)
-
-        jitVsGlow(sigmoid_inplace, x, expected_fused_ops={"aten::sigmoid_"})
+    @parameterized.expand(
+        [
+            ("basic", SimpleSigmoidModel(), torch.randn(6)),
+            ("inplace", SimpleSigmoidModel(inplace=True), torch.randn(6)),
+        ]
+    )
+    def test_sigmoid(self, _, module, tensor):
+        utils.compare_tracing_methods(module, tensor, fusible_ops={"aten::sigmoid"})

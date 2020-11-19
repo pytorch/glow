@@ -129,6 +129,13 @@ TEST_P(ConvSweepTest, ConvTest_Float16) {
                      0.005f);
 }
 
+/// Compare backend against the interpreter in FP16.
+TEST_P(ConvSweepTest, ConvTest_BFloat16) {
+  CHECK_IF_ENABLED();
+  testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::BFloat16Ty,
+                     0.005f);
+}
+
 //===--------------------------------------------------------------------===//
 //                   BatchMatMul Parameter Sweep Tests
 //===--------------------------------------------------------------------===//
@@ -208,6 +215,13 @@ TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Float16) {
                             0.005f);
 }
 
+/// Compare backend against the interpreter in FP16.
+TEST_P(BatchMatMulSweepTest, BatchMatMulTest_BFloat16) {
+  CHECK_IF_ENABLED();
+  testParamSweepBatchMatMul(GetParam(), ElemKind::FloatTy, ElemKind::BFloat16Ty,
+                            0.005f);
+}
+
 //===--------------------------------------------------------------------===//
 //                   FullyConnected Parameter Sweep Tests
 //===--------------------------------------------------------------------===//
@@ -280,6 +294,12 @@ TEST_P(FCSweepTest, FCTest_Int8) {
 TEST_P(FCSweepTest, FCTest_Float16) {
   CHECK_IF_ENABLED();
   testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f);
+}
+
+/// Compare backend against the interpreter in BFloat16.
+TEST_P(FCSweepTest, FCTest_BFloat16) {
+  CHECK_IF_ENABLED();
+  testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::BFloat16Ty, 0.005f);
 }
 
 //===--------------------------------------------------------------------===//
@@ -379,6 +399,16 @@ TEST_P(ConcatSweepTest, ConcatTest_Int8) {
 TEST_P(ConcatSweepTest, ConcatTest_Float16) {
   CHECK_IF_ENABLED();
   testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
+                       0.0001f);
+}
+
+/// Compare backend against the interpreter in BFloat16. Note that we do not use
+/// the same ElemKind for the Interpreter; this is because the backend will
+/// down/up convert the input/result anyway, so the comparison wouldn't be
+/// purely on data movement.
+TEST_P(ConcatSweepTest, ConcatTest_BFloat16) {
+  CHECK_IF_ENABLED();
+  testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::BFloat16Ty,
                        0.0001f);
 }
 

@@ -74,6 +74,8 @@ struct DeviceInfo {
   float peakSramBw;
   /// Peak ingress/egress PCI-E bandwidth from device in bytes/second.
   float peakPCIeBw;
+  /// Maximum amount of input resources defaults to 0 if there is no limit.
+  uint64_t inputCountMax{0};
 };
 
 /// Data structure that tracks how many outstanding work items remain for a
@@ -105,9 +107,18 @@ struct DAGNode {
 
   /// Map of deviceID to alternating state.
   std::map<DeviceIDTy, unsigned> alternateFunction;
-  /// Count of duplications for network.
+
+  /// Count of duplications for network, this is the number of replications of
+  /// the network on a single card.
   unsigned replicationCount{1};
+
+  /// Lock to protect against race conditions when getting the next duplicated
+  /// network name.
   std::mutex nameLock;
+
+  /// Count of instances of this network created by saturateHost. This will be
+  /// copies across cards.
+  unsigned instanceCount{1};
 
   /// Backend name for this network.
   std::string backendName;
@@ -253,7 +264,7 @@ struct DeviceConfig {
 /// and Executor.
 struct HostConfig {
   /// Number of outstanding or concurrent networks before queueing.
-  size_t maxActiveRequests{12};
+  size_t maxActiveRequests{48};
   /// Number of requests to queue up before refusing further requests.
   size_t maxQueueSize{100};
   /// Number of threads to allocate to the Executor.
@@ -299,8 +310,6 @@ struct PrePartitionedConfig {
   std::string funcName;
   /// Functions from the module which are partitioned.
   std::vector<Function *> funcs;
-  /// Names assigned to each partition.
-  std::vector<std::string> partitionNames;
   /// The logical IDs to assign to the partitions.
   std::vector<std::vector<DeviceIDTy>> logicalIDs;
   /// Backends that are used for each partition.
@@ -316,7 +325,6 @@ struct PrePartitionedConfig {
   /// for those vectors which need to have their parameter constructed.
   void resizeAndReserve(size_t size) {
     funcs.reserve(size);
-    partitionNames.reserve(size);
     logicalIDs.resize(size);
     backendNames.reserve(size);
     backendHints.reserve(size);
@@ -350,6 +358,7 @@ constexpr char nameSignifier[] = "name";
 constexpr char backendNameSignifier[] = "backendName";
 constexpr char executionUnitsSignifier[] = "BackendHint_executionUnits";
 constexpr char sizeSignifier[] = "size";
+constexpr char nodeOptSignifier[] = "NodeOpt";
 
 constexpr char numBackendSpecificOptsSignifier[] = "numBackendSpecificOpts";
 inline std::string getBackendSpecificOptKeySignifier(int idx) {

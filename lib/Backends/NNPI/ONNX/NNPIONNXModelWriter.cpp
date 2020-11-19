@@ -18,3 +18,13 @@ Error ONNXModelWriter::writeNNPICustomDSP(glow::NNPICustomDSPNode const *,
                                           GraphType &graph) {
   return MAKE_ERR("Unsupported Op for ONNX");
 }
+
+Error ONNXModelWriter::writeNNPICustomIA(glow::NNPICustomIANode const *,
+                                         GraphType &graph) {
+  return MAKE_ERR("Unsupported Op for ONNX");
+}
+
+Error ONNXModelWriter::writeNNPILookupTable(glow::NNPILookupTableNode const *,
+                                            GraphType &graph) {
+  return MAKE_ERR("Unsupported Op for ONNX");
+}

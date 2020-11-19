@@ -19,4 +19,12 @@ bool NNPICustomDSPNode::verify() const {
   return true; // actual verification to happen in the backend
 }
 
+bool NNPICustomIANode::verify() const {
+  return true; // actual verification to happen in the backend
+}
+
+bool NNPILookupTableNode::verify() const {
+  return true; // actual verification to happen in the backend
+}
+
 #endif // GLOW_WITH_NNPI

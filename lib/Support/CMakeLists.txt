@@ -7,6 +7,7 @@ add_library(Support
               ZipUtils.cpp)
 target_link_libraries(Support
                       PUBLIC
+                        Flags
                         LLVMSupport
                         Miniz
                         glog::glog

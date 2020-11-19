@@ -28,6 +28,7 @@
 #include <chrono>
 #include <cmath>
 #include <math.h>
+#include <numeric>
 
 #ifdef WIN32
 #include <corecrt_math_defines.h>
@@ -42,6 +43,9 @@ using namespace glow;
     break;                                                                     \
   case ElemKind::Float16Ty:                                                    \
     functionName<float16_t>(__VA_ARGS__);                                      \
+    break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    functionName<bfloat16_t>(__VA_ARGS__);                                     \
     break;                                                                     \
   case ElemKind::Int8QTy:                                                      \
     functionName<int8_t>(__VA_ARGS__);                                         \
@@ -73,6 +77,9 @@ using namespace glow;
   case ElemKind::Float16Ty:                                                    \
     functionName<float16_t>(__VA_ARGS__);                                      \
     break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    functionName<bfloat16_t>(__VA_ARGS__);                                     \
+    break;                                                                     \
   default:                                                                     \
     llvm_unreachable("Type is not supported");                                 \
   }
@@ -92,6 +99,13 @@ using namespace glow;
       functionName<float16, int64_t>(__VA_ARGS__);                             \
     } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
       functionName<float16, int32_t>(__VA_ARGS__);                             \
+    }                                                                          \
+    break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<bfloat16, int64_t>(__VA_ARGS__);                            \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<bfloat16, int32_t>(__VA_ARGS__);                            \
     }                                                                          \
     break;                                                                     \
   default:                                                                     \
@@ -117,6 +131,9 @@ using namespace glow;
     break;                                                                     \
   case ElemKind::Float16Ty:                                                    \
     functionName<float16_t>(__VA_ARGS__);                                      \
+    break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    functionName<bfloat16_t>(__VA_ARGS__);                                     \
     break;                                                                     \
   case ElemKind::Int32ITy:                                                     \
     functionName<int32_t>(__VA_ARGS__);                                        \
@@ -176,6 +193,8 @@ using namespace glow;
   static_assert(                                                               \
       std::is_floating_point<ElemTy>::value ||                                 \
           std::is_same<float16_t,                                              \
+                       typename std::remove_cv<ElemTy>::type>::value ||        \
+          std::is_same<bfloat16_t,                                             \
                        typename std::remove_cv<ElemTy>::type>::value,          \
       "This implementation is for floating-point values only")
 
@@ -183,6 +202,8 @@ using namespace glow;
   static_assert(                                                               \
       std::is_arithmetic<ElemTy>::value ||                                     \
           std::is_same<float16_t,                                              \
+                       typename std::remove_cv<ElemTy>::type>::value ||        \
+          std::is_same<bfloat16_t,                                             \
                        typename std::remove_cv<ElemTy>::type>::value,          \
       "This implementation is for arithmetic values only")
 
@@ -195,7 +216,8 @@ template <typename ElemTy>
 void BoundInterpreterFunction::fwdConvolutionInstFloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
-    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
+    llvm::ArrayRef<unsigned_t> pads, size_t group,
+    llvm::ArrayRef<unsigned_t> dilation) {
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(inV);
@@ -234,8 +256,8 @@ void BoundInterpreterFunction::fwdConvolutionInstFloatImpl(
             float sum = 0;
             for (dim_t fx = 0; fx < kdim.height; fx++) {
               for (dim_t fy = 0; fy < kdim.width; fy++) {
-                sdim_t ox = x + fx * dilation;
-                sdim_t oy = y + fy * dilation;
+                sdim_t ox = x + fx * dilation[0];
+                sdim_t oy = y + fy * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
@@ -264,7 +286,8 @@ template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
 void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
-    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
+    llvm::ArrayRef<unsigned_t> pads, size_t group,
+    llvm::ArrayRef<unsigned_t> dilation) {
   auto inW = getWeightHandle<ElemTy>(inV);
   auto outW = getWeightHandle<ElemTy>(outV);
   auto filterW = getWeightHandle<ElemTy>(filterV);
@@ -318,8 +341,8 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
             AccumulatorTy sum = 0;
             for (dim_t fx = 0; fx < kdim.height; fx++) {
               for (dim_t fy = 0; fy < kdim.width; fy++) {
-                sdim_t ox = x + fx * dilation;
-                sdim_t oy = y + fy * dilation;
+                sdim_t ox = x + fx * dilation[0];
+                sdim_t oy = y + fy * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
@@ -360,7 +383,8 @@ template <typename ElemTy>
 void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
-    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
+    llvm::ArrayRef<unsigned_t> pads, size_t group,
+    llvm::ArrayRef<unsigned_t> dilation) {
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(inV);
@@ -375,7 +399,6 @@ void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  assert(group == 1 && "Group must be 1.");
 
   dim_t inCperG = idim.c / group;
   dim_t outCperG = odim.c / group;
@@ -411,8 +434,8 @@ void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
 
             for (dim_t kx = 0; kx < kdim.height; kx++) {
               for (dim_t ky = 0; ky < kdim.width; ky++) {
-                ssize_t ax = x + kx * dilation;
-                ssize_t ay = y + ky * dilation;
+                ssize_t ax = x + kx * dilation[0];
+                ssize_t ay = y + ky * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ax < 0 || ay < 0 || ax >= ssize_t(odim.h) ||
@@ -482,7 +505,7 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
   auto biasG = getWeightHandle(I->getBiasGrad());
 
   size_t group = I->getGroup();
-  size_t dilation = I->getDilation();
+  auto dilation = I->getDilation();
 
   inG.clear();
   filterG.clear();
@@ -519,8 +542,8 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
             // For each element in the convolution-filter:
             for (dim_t fx = 0; fx < kdim.height; fx++) {
               for (dim_t fy = 0; fy < kdim.width; fy++) {
-                sdim_t ox = x + fx * dilation;
-                sdim_t oy = y + fy * dilation;
+                sdim_t ox = x + fx * dilation[0];
+                sdim_t oy = y + fy * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
@@ -753,21 +776,39 @@ void BoundInterpreterFunction::fwdConvolution3DGradInst(
   llvm_unreachable("not yet implemented");
 }
 
-void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
+//===----------------------------------------------------------------------===//
+//                       Channelwise quantized Convolution
+//===----------------------------------------------------------------------===//
+template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
+void BoundInterpreterFunction::fwdChannelwiseQuantizedConv2DInstImpl(
     const ChannelwiseQuantizedConvolutionInst *I) {
-  using AccumulatorTy = int32_t;
-
-  auto inW = getWeightHandle<int8_t>(I->getSrc());
-  auto outW = getWeightHandle<int8_t>(I->getDest());
-  auto filterW = getWeightHandle<int8_t>(I->getFilter());
-  auto biasW = getWeightHandle<int32_t>(I->getBias());
-  auto scalesW = getWeightHandle<float>(I->getScales());
-  auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto filterW = getWeightHandle<ElemTy>(I->getFilter());
+  auto biasW = getWeightHandle<BiasElemTy>(I->getBias());
+  auto filterScales = getWeightHandle<float>(I->getFilterScales());
+  auto filterOffsets = getWeightHandle<int32_t>(I->getFilterOffsets());
+  auto biasScales = getWeightHandle<float>(I->getBiasScales());
+  auto biasOffsets = getWeightHandle<int32_t>(I->getBiasOffsets());
 
   llvm::ArrayRef<unsigned_t> kernelSizes = I->getKernels();
   llvm::ArrayRef<unsigned_t> pads = I->getPads();
   llvm::ArrayRef<unsigned_t> strides = I->getStrides();
   dim_t group = I->getGroup();
+  llvm::ArrayRef<unsigned_t> dilation = I->getDilation();
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+  ShapeHW kdim(kernelSizes);
+  ShapeHW sdim(strides);
+
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  dim_t inCperG = idim.c / group;
+  dim_t outCperG = odim.c / group;
+
+  PaddingTLBR pdim(pads);
+
   auto &inTy = inW.getType();
   auto &outTy = outW.getType();
 
@@ -777,113 +818,120 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
   int32_t inOffset = inTy.getOffset();
   int32_t outOffset = outTy.getOffset();
 
-  bool isConv3d = (inW.dims().size() == 5);
-  if (isConv3d) {
-    ShapeNTHWC odim(outW.dims());
-    ShapeNTHWC idim(inW.dims());
-    ShapeTHW kdim(kernelSizes);
-    ShapeTHW sdim(strides);
+  // For each input in the batch:
+  for (dim_t n = 0; n < idim.n; n++) {
+    // For each group of input channels:
+    for (dim_t g = 0; g < group; g++) {
+      // For each output channel in the group:
+      for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
-    assert(idim.c % group == 0 && "Input channels must be divisible by group.");
-    assert(odim.c % group == 0 &&
-           "Output channels must be divisible by group.");
-    dim_t inCperG = idim.c / group;
-    dim_t outCperG = odim.c / group;
+        // Get channel wise quantization params.
+        int32_t filterOffset = filterOffsets.at(d);
+        float filterScale = filterScales.at(d);
+        int32_t biasOffset = biasOffsets.at(d);
+        float biasScale = biasScales.at(d);
+        float matMulScale = inScale * filterScale;
 
-    PaddingNFTBLR pdim(pads);
+        // For each convolution 'jump' in the input tensor:
+        sdim_t x = -sdim_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          sdim_t y = -sdim_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
-    // For each input in the batch:
-    for (dim_t n = 0; n < idim.n; n++) {
-      // For each group of input channels:
-      for (dim_t g = 0; g < group; g++) {
+            // For each element in the convolution-filter:
+            AccumulatorTy sum = 0;
+            for (dim_t fx = 0; fx < kdim.height; fx++) {
+              for (dim_t fy = 0; fy < kdim.width; fy++) {
+                sdim_t ox = x + fx * dilation[0];
+                sdim_t oy = y + fy * dilation[1];
 
-        // For each output channel in the group:
-        for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
-
-          // get channelwise qparams params
-          int32_t filterOffset = offsetsW.at(d);
-          float filterScale = scalesW.at(d);
-          float matMulScale = inScale * filterScale;
-          // For each convolution 'jump' in the input tensor:
-          sdim_t t = -sdim_t(pdim.near);
-          for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
-            sdim_t x = -sdim_t(pdim.top);
-            for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-              sdim_t y = -sdim_t(pdim.left);
-              for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
-
-                // For each element in the convolution-filter:
-                AccumulatorTy sum = 0;
-                for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
-                  for (dim_t fx = 0; fx < kdim.height; fx++) {
-                    for (dim_t fy = 0; fy < kdim.width; fy++) {
-                      sdim_t ot = t + ft;
-                      sdim_t ox = x + fx;
-                      sdim_t oy = y + fy;
-
-                      // Ignore index access below zero (this is due to
-                      // padding).
-                      if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
-                          ox >= ssize_t(idim.h) || oy >= sdim_t(idim.w)) {
-                        continue;
-                      }
-                      for (dim_t fd = 0; fd < inCperG; fd++) {
-
-                        AccumulatorTy F = filterW.at({d, ft, fx, fy, fd});
-                        AccumulatorTy I = inW.at({n, (dim_t)ot, (dim_t)ox,
-                                                  (dim_t)oy, g * inCperG + fd});
-                        // We represent the element multiplication with offset
-                        // as (value - offset).
-                        sum += (F - filterOffset) * (I - inOffset);
-                      }
-                    }
-                  }
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                    oy >= sdim_t(idim.w)) {
+                  continue;
                 }
 
-                // Add the channelwise quantized bias.
-                // NOTE: The bias of ChannelwiseQuantizedConvolution should be
-                // quantized such that each element is scaled to match the
-                // matMulScale (biasScale_i = scales_i * inScale).
-                sum += biasW.at({d});
+                // Accumulate along the filter depth.
+                for (dim_t fd = 0; fd < inCperG; fd++) {
+                  AccumulatorTy F = filterW.at({d, fx, fy, fd});
+                  AccumulatorTy I =
+                      inW.at({n, (dim_t)ox, (dim_t)oy, g * inCperG + fd});
+                  // We represent the element multiplication with offset as
+                  // (value - offset).
+                  sum += (F - filterOffset) * (I - inOffset);
+                }
+              }
+            }
 
-                // Scale the result back to the expected destination scale.
-                outW.at({n, at, ax, ay, d}) =
-                    quantization::clip<AccumulatorTy, int8_t>(std::round(
-                        float(sum) * (matMulScale / outScale) + outOffset));
-              } // W
-            }   // H
-          }     // T
-        }       // C
-      }         // G
-    }           // N
-  } else {
+            // Scale the bias to match the scale of the matrix multiplication.
+            sum += std::round(float(biasW.at({d}) - biasOffset) *
+                              (biasScale / matMulScale));
 
-    ShapeNHWC odim(outW.dims());
-    ShapeNHWC idim(inW.dims());
-    ShapeHW kdim(kernelSizes);
-    ShapeHW sdim(strides);
+            // Scale the result back to the expected destination scale.
+            outW.at({n, ax, ay, d}) = quantization::clip<AccumulatorTy, ElemTy>(
+                std::round(float(sum) * (matMulScale / outScale) + outOffset));
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
+}
 
-    assert(idim.c % group == 0 && "Input channels must be divisible by group.");
-    assert(odim.c % group == 0 &&
-           "Output channels must be divisible by group.");
-    dim_t inCperG = idim.c / group;
-    dim_t outCperG = odim.c / group;
+template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
+void BoundInterpreterFunction::fwdChannelwiseQuantizedConv3DInstImpl(
+    const ChannelwiseQuantizedConvolutionInst *I) {
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto filterW = getWeightHandle<ElemTy>(I->getFilter());
+  auto biasW = getWeightHandle<BiasElemTy>(I->getBias());
+  auto filterScales = getWeightHandle<float>(I->getFilterScales());
+  auto filterOffsets = getWeightHandle<int32_t>(I->getFilterOffsets());
+  auto biasScales = getWeightHandle<float>(I->getBiasScales());
+  auto biasOffsets = getWeightHandle<int32_t>(I->getBiasOffsets());
 
-    PaddingTLBR pdim(pads);
+  llvm::ArrayRef<unsigned_t> kernelSizes = I->getKernels();
+  llvm::ArrayRef<unsigned_t> pads = I->getPads();
+  llvm::ArrayRef<unsigned_t> strides = I->getStrides();
+  dim_t group = I->getGroup();
 
-    // For each input in the batch:
-    for (dim_t n = 0; n < idim.n; n++) {
-      // For each group of input channels:
-      for (dim_t g = 0; g < group; g++) {
+  ShapeNTHWC odim(outW.dims());
+  ShapeNTHWC idim(inW.dims());
+  ShapeTHW kdim(kernelSizes);
+  ShapeTHW sdim(strides);
 
-        // For each output channel in the group:
-        for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  dim_t inCperG = idim.c / group;
+  dim_t outCperG = odim.c / group;
 
-          // get channelwise qparams params
-          int32_t filterOffset = offsetsW.at(d);
-          float filterScale = scalesW.at(d);
-          float matMulScale = inScale * filterScale;
-          // For each convolution 'jump' in the input tensor:
+  PaddingNFTBLR pdim(pads);
+
+  auto &inTy = inW.getType();
+  auto &outTy = outW.getType();
+
+  float inScale = inTy.getScale();
+  float outScale = outTy.getScale();
+
+  int32_t inOffset = inTy.getOffset();
+  int32_t outOffset = outTy.getOffset();
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < idim.n; n++) {
+    // For each group of input channels:
+    for (dim_t g = 0; g < group; g++) {
+      // For each output channel in the group:
+      for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+
+        // Get channel wise quantization params.
+        int32_t filterOffset = filterOffsets.at(d);
+        float filterScale = filterScales.at(d);
+        int32_t biasOffset = biasOffsets.at(d);
+        float biasScale = biasScales.at(d);
+        float matMulScale = inScale * filterScale;
+
+        // For each convolution 'jump' in the input tensor:
+        sdim_t t = -sdim_t(pdim.near);
+        for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
           sdim_t x = -sdim_t(pdim.top);
           for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
             sdim_t y = -sdim_t(pdim.left);
@@ -891,43 +939,61 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
 
               // For each element in the convolution-filter:
               AccumulatorTy sum = 0;
-              for (dim_t fx = 0; fx < kdim.height; fx++) {
-                for (dim_t fy = 0; fy < kdim.width; fy++) {
-                  sdim_t ox = x + fx;
-                  sdim_t oy = y + fy;
+              for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+                for (dim_t fx = 0; fx < kdim.height; fx++) {
+                  for (dim_t fy = 0; fy < kdim.width; fy++) {
+                    sdim_t ot = t + ft;
+                    sdim_t ox = x + fx;
+                    sdim_t oy = y + fy;
 
-                  // Ignore index access below zero (this is due to padding).
-                  if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                      oy >= sdim_t(idim.w)) {
-                    continue;
-                  }
-                  for (dim_t fd = 0; fd < inCperG; fd++) {
+                    // Ignore index access below zero (this is due to
+                    // padding).
+                    if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                        ox >= ssize_t(idim.h) || oy >= sdim_t(idim.w)) {
+                      continue;
+                    }
 
-                    AccumulatorTy F = filterW.at({d, fx, fy, fd});
-                    AccumulatorTy I =
-                        inW.at({n, (dim_t)ox, (dim_t)oy, g * inCperG + fd});
-                    // We represent the element multiplication with offset as
-                    // (value - offset).
-                    sum += (F - filterOffset) * (I - inOffset);
+                    // Accumulate along the filter depth.
+                    for (dim_t fd = 0; fd < inCperG; fd++) {
+
+                      AccumulatorTy F = filterW.at({d, ft, fx, fy, fd});
+                      AccumulatorTy I = inW.at({n, (dim_t)ot, (dim_t)ox,
+                                                (dim_t)oy, g * inCperG + fd});
+                      // We represent the element multiplication with offset
+                      // as (value - offset).
+                      sum += (F - filterOffset) * (I - inOffset);
+                    }
                   }
                 }
               }
 
-              // Add the channelwise quantized bias.
-              // NOTE: The bias of ChannelwiseQuantizedConvolution should be
-              // quantized such that each element is scaled to match the
-              // matMulScale (biasScale_i = scales_i * inScale).
-              sum += biasW.at({d});
+              // Scale the bias to match the scale of the matrix multiplication.
+              sum += std::round(float(biasW.at({d}) - biasOffset) *
+                                (biasScale / matMulScale));
 
               // Scale the result back to the expected destination scale.
-              outW.at({n, ax, ay, d}) =
-                  quantization::clip<AccumulatorTy, int8_t>(std::round(
+              outW.at({n, at, ax, ay, d}) =
+                  quantization::clip<AccumulatorTy, ElemTy>(std::round(
                       float(sum) * (matMulScale / outScale) + outOffset));
             } // W
           }   // H
-        }     // C
-      }       // G
-    }         // N
+        }     // T
+      }       // C
+    }         // G
+  }           // N
+}
+
+void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
+    const ChannelwiseQuantizedConvolutionInst *I) {
+  bool isConv3D = (I->getSrc()->dims().size() == 5);
+  if (isConv3D) {
+    dispatchQuantizedWithAccumulationAndBiasImpl(
+        fwdChannelwiseQuantizedConv3DInstImpl, I->getSrc()->getElementType(),
+        I->getBias()->getElementType(), I);
+  } else {
+    dispatchQuantizedWithAccumulationAndBiasImpl(
+        fwdChannelwiseQuantizedConv2DInstImpl, I->getSrc()->getElementType(),
+        I->getBias()->getElementType(), I);
   }
 }
 
@@ -1045,7 +1111,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
   ShapeHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.height * kdim.width;
+  float rawFilterArea = kdim.height * kdim.width;
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1060,6 +1126,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
         ssize_t y = -ssize_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
           float sum = 0;
+          float filterArea = rawFilterArea;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
             for (dim_t fy = 0; fy < kdim.width; fy++) {
@@ -1069,12 +1136,17 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
               // Ignore index access below zero (this is due to padding).
               if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
                   oy >= ssize_t(idim.w)) {
+                if (!I->getCountIncludePads()) {
+                  filterArea--;
+                }
+
                 continue;
               }
 
               sum += float(inW.at({n, (dim_t)ox, (dim_t)oy, z}));
             }
           }
+          assert(filterArea != 0 && "filterArea can't be 0");
           outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
         } // W
       }   // H
@@ -1091,7 +1163,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
   ShapeHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.height * kdim.width;
+  float rawFilterArea = kdim.height * kdim.width;
 
   auto inW = getWeightHandle<int8_t>(I->getSrc());
   auto outW = getWeightHandle<int8_t>(I->getDest());
@@ -1110,6 +1182,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
         ssize_t y = -ssize_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
           int32_t sum = 0;
+          float filterArea = rawFilterArea;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
             for (dim_t fy = 0; fy < kdim.width; fy++) {
@@ -1119,12 +1192,17 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
               // Ignore index access below zero (this is due to padding).
               if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
                   oy >= ssize_t(idim.w)) {
+                if (!I->getCountIncludePads()) {
+                  filterArea--;
+                }
+
                 continue;
               }
 
               sum += inW.at({n, (dim_t)ox, (dim_t)oy, z}) - inQP.offset;
             }
           }
+          assert(filterArea != 0 && "filterArea can't be 0");
           // Instead of dividing by filterArea, just change scale.
           outW.at({n, ax, ay, z}) = quantization::clip<int32_t, int8_t>(
               std::round(float(sum) * (inQP.scale / outQP.scale / filterArea) +
@@ -1135,14 +1213,153 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
   }       // N
 }
 
-void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
-  if (I->getSrc()->getType()->isQuantizedType()) {
-    fwdAvgPoolInstI8Impl(I);
-    return;
-  }
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I) {
+  staticAssertFloatingPointType(ElemTy);
 
-  dispatchFloatingPointImpl(fwdAvgPoolInstFloatImpl,
-                            I->getSrc()->getElementType(), I);
+  ShapeNTHWC odim(I->getDest()->dims());
+  ShapeNTHWC idim(I->getSrc()->dims());
+
+  PaddingNFTBLR pdim(I->getPads());
+  ShapeTHW kdim(I->getKernels());
+  ShapeTHW sdim(I->getStrides());
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+  float rawFilterArea = kdim.temporal_frames * kdim.height * kdim.width;
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            float sum = 0;
+            float filterArea = rawFilterArea;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  sdim_t ot = t + ft;
+                  sdim_t ox = x + fx;
+                  sdim_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    if (!I->getCountIncludePads()) {
+                      filterArea--;
+                    }
+
+                    continue;
+                  }
+
+                  sum += float(inW.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}));
+                }
+              }
+            }
+            assert(filterArea != 0 && "filterArea can't be 0");
+            outW.at({n, at, ax, ay, z}) = ElemTy(sum / filterArea);
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
+  ShapeNTHWC odim(I->getDest()->dims());
+  ShapeNTHWC idim(I->getSrc()->dims());
+
+  PaddingNFTBLR pdim(I->getPads());
+  ShapeTHW kdim(I->getKernels());
+  ShapeTHW sdim(I->getStrides());
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+  float rawFilterArea = kdim.temporal_frames * kdim.height * kdim.width;
+
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  TensorQuantizationParams inQP{I->getSrc()->getType()->getScale(),
+                                I->getSrc()->getType()->getOffset()};
+  TensorQuantizationParams outQP{I->getDest()->getType()->getScale(),
+                                 I->getDest()->getType()->getOffset()};
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            int32_t sum = 0;
+            float filterArea = rawFilterArea;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  sdim_t ot = t + ft;
+                  sdim_t ox = x + fx;
+                  sdim_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    if (!I->getCountIncludePads()) {
+                      filterArea--;
+                    }
+
+                    continue;
+                  }
+
+                  sum += inW.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}) -
+                         inQP.offset;
+                }
+              }
+            }
+            // Instead of dividing by filterArea, just change scale.
+            assert(filterArea != 0 && "filterArea can't be 0");
+            outW.at({n, at, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(std::round(
+                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
+                    outQP.offset));
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
+  bool isConv3D = is3DData(ConvolutionLayout(I->getLayout()));
+  bool isQuantized = I->getSrc()->getType()->isQuantizedType();
+
+  if (isConv3D) {
+    if (isQuantized) {
+      fwdAvgPool3DInstI8Impl(I);
+    } else {
+      dispatchFloatingPointImpl(fwdAvgPool3DInstFloatImpl,
+                                I->getSrc()->getElementType(), I);
+    }
+  } else {
+    if (isQuantized) {
+      fwdAvgPoolInstI8Impl(I);
+    } else {
+      dispatchFloatingPointImpl(fwdAvgPoolInstFloatImpl,
+                                I->getSrc()->getElementType(), I);
+    }
+  }
 }
 
 template <typename ElemTy>
@@ -1338,7 +1555,7 @@ void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
   }       // N
 }
 
-void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
+void BoundInterpreterFunction::fwdAvgPool2DGradInst(const AvgPoolGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -1352,7 +1569,7 @@ void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
 
   inG.clear();
 
-  float filterArea = kdim.height * kdim.width;
+  float rawFilterArea = kdim.height * kdim.width;
 
   // For each input in the batch:
   for (dim_t n = 0; n < odim.n; n++) {
@@ -1364,7 +1581,22 @@ void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
       for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
         ssize_t y = -ssize_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+          float filterArea = rawFilterArea;
 
+          // Excludes the padding area in filterArea if the flag is false
+          if (!I->getCountIncludePads()) {
+            ssize_t pad_x = (-x > 0 ? -x : 0) +
+                            ((x + ssize_t(kdim.height) - ssize_t(idim.h)) > 0
+                                 ? (x + ssize_t(kdim.height) - ssize_t(idim.h))
+                                 : 0);
+            ssize_t pad_y = (-y > 0 ? -y : 0) +
+                            ((y + ssize_t(kdim.width) - ssize_t(idim.w)) > 0
+                                 ? (y + ssize_t(kdim.width) - ssize_t(idim.w))
+                                 : 0);
+            filterArea = rawFilterArea - pad_x * kdim.width -
+                         pad_y * kdim.height + pad_x * pad_y;
+          }
+          assert(filterArea != 0 && "filterArea can't be 0");
           float dy = outG.at({n, ax, ay, z}) / filterArea;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1386,12 +1618,110 @@ void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
   }       // N
 }
 
+void BoundInterpreterFunction::fwdAvgPool3DGradInst(const AvgPoolGradInst *I) {
+  auto inG = getWeightHandle(I->getSrcGrad());
+  auto outW = getWeightHandle(I->getDest());
+  auto outG = getWeightHandle(I->getDestGrad());
+
+  ShapeNTHWC odim(outW.dims());
+  ShapeNTHWC idim(inG.dims());
+
+  PaddingNFTBLR pdim(I->getPads());
+  ShapeTHW kdim(I->getKernels());
+  ShapeTHW sdim(I->getStrides());
+
+  inG.clear();
+
+  float rawFilterArea = kdim.temporal_frames * kdim.height * kdim.width;
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < odim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            float filterArea = rawFilterArea;
+
+            // Excludes the padding area in filterArea if the flag is false
+            if (!I->getCountIncludePads()) {
+              ssize_t pad_x =
+                  (-x > 0 ? -x : 0) +
+                  ((x + ssize_t(kdim.height) - ssize_t(idim.h)) > 0
+                       ? (x + ssize_t(kdim.height) - ssize_t(idim.h))
+                       : 0);
+              ssize_t pad_y = (-y > 0 ? -y : 0) +
+                              ((y + ssize_t(kdim.width) - ssize_t(idim.w)) > 0
+                                   ? (y + ssize_t(kdim.width) - ssize_t(idim.w))
+                                   : 0);
+              ssize_t pad_z =
+                  (-t > 0 ? -t : 0) +
+                  ((t + ssize_t(kdim.temporal_frames) - ssize_t(idim.t)) > 0
+                       ? (t + ssize_t(kdim.temporal_frames) - ssize_t(idim.t))
+                       : 0);
+              filterArea = rawFilterArea -
+                           pad_x * kdim.width * kdim.temporal_frames -
+                           pad_y * kdim.height * kdim.temporal_frames -
+                           pad_z * kdim.height * kdim.width +
+                           pad_x * pad_y * kdim.temporal_frames +
+                           pad_x * pad_z * kdim.width +
+                           pad_y * pad_z * kdim.height - pad_x * pad_y * pad_z;
+            }
+            assert(filterArea != 0 && "filterArea can't be 0");
+            float dy = outG.at({n, at, ax, ay, z}) / filterArea;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  ssize_t ot = t + ft;
+                  ssize_t ox = x + fx;
+                  ssize_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    continue;
+                  }
+                  inG.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}) += dy;
+                }
+              }
+            }
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
+  bool isConv3D = is3DData(ConvolutionLayout(I->getLayout()));
+
+  if (isConv3D) {
+    fwdAvgPool3DGradInst(I);
+  } else {
+    fwdAvgPool2DGradInst(I);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                       Activation functions
 //===----------------------------------------------------------------------===//
 
 void BoundInterpreterFunction::fwdReluInst(const ReluInst *) {
   DCHECK(!"Found ReluInst but Relu is lowered on Interpreter");
+}
+
+void BoundInterpreterFunction::fwdClipInst(const ClipInst *) {
+  DCHECK(!"Found ClipInst but Clip is lowered on Interpreter");
+}
+
+void BoundInterpreterFunction::fwdLeakyReluInst(const LeakyReluInst *) {
+  DCHECK(!"Found LeakyReluInst but LeakyRelu is lowered on Interpreter");
 }
 
 template <typename ElemTy>
@@ -1577,6 +1907,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<float16_t>().clear(I->getValue());
   }
 
+  if (k == ElemKind::BFloat16Ty) {
+    return T->getHandle<bfloat16_t>().clear(I->getValue());
+  }
+
   if (k == ElemKind::BoolTy) {
     return T->getHandle<bool>().clear(static_cast<bool>(I->getValue()));
   }
@@ -1617,6 +1951,7 @@ void BoundInterpreterFunction::fwdInsertTensorInst(
   TYPED_INSERT(int32_t, ElemKind::Int32ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
+  TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
   TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
@@ -1639,6 +1974,7 @@ void BoundInterpreterFunction::fwdExtractTensorInst(
   TYPED_INSERT(int64_t, ElemKind::Int64ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
+  TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32ITy);
@@ -2426,6 +2762,10 @@ void BoundInterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
     DIV_LOOP(float16_t);
     return;
   }
+  case ElemKind::BFloat16Ty: {
+    DIV_LOOP(bfloat16_t);
+    return;
+  }
   default:
     llvm_unreachable("Unsupported type for Div.");
   }
@@ -2522,6 +2862,139 @@ void BoundInterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
                          I->getDest()->getElementType(), I);
 }
 
+//===----------------------------------------------------------------------===//
+//                              Logical operations
+//===----------------------------------------------------------------------===//
+void BoundInterpreterFunction::fwdElementNotInst(const ElementNotInst *I) {
+  auto inpW = getWeightHandle<bool>(I->getSrc());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (!inpW.raw(i));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAndInst(const ElementAndInst *I) {
+  auto lhsW = getWeightHandle<bool>(I->getLHS());
+  auto rhsW = getWeightHandle<bool>(I->getRHS());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (lhsW.raw(i) && rhsW.raw(i));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementOrInst(const ElementOrInst *I) {
+  auto lhsW = getWeightHandle<bool>(I->getLHS());
+  auto rhsW = getWeightHandle<bool>(I->getRHS());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (lhsW.raw(i) || rhsW.raw(i));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementXorInst(const ElementXorInst *I) {
+  auto lhsW = getWeightHandle<bool>(I->getLHS());
+  auto rhsW = getWeightHandle<bool>(I->getRHS());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (lhsW.raw(i) ^ rhsW.raw(i));
+  }
+}
+
+//===----------------------------------------------------------------------===//
+//                         Unary arithmetic operations
+//===----------------------------------------------------------------------===//
+template <typename ElemTy, typename InstKind>
+void BoundInterpreterFunction::fwdUnaryArithmeticImpl(
+    const InstKind *I, std::function<float(float)> func) {
+  Value *inpV = I->getSrc();
+  Value *outV = I->getDest();
+  auto inpTy = inpV->getType();
+  auto outTy = outV->getType();
+  auto inpH = getWeightHandle<ElemTy>(inpV);
+  auto outH = getWeightHandle<ElemTy>(outV);
+
+  if (inpTy->isQuantizedType()) {
+    float inpScale = inpTy->getScale();
+    int32_t inpOffset = inpTy->getOffset();
+    float outScale = outTy->getScale();
+    int32_t outOffset = outTy->getOffset();
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal =
+          quantization::dequantize<ElemTy>(inpH.raw(i), {inpScale, inpOffset});
+      float outVal = func(inpVal);
+      outH.raw(i) =
+          quantization::quantize<ElemTy>(outVal, {outScale, outOffset});
+    }
+  } else {
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal = static_cast<float>(inpH.raw(i));
+      float outVal = func(inpVal);
+      outH.raw(i) = static_cast<ElemTy>(outVal);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAbsInst(const ElementAbsInst *I) {
+  auto func = [](float x) -> float { return std::abs(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementNegInst(const ElementNegInst *I) {
+  auto func = [](float x) -> float { return -x; };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementFloorInst(const ElementFloorInst *I) {
+  auto func = [](float x) -> float { return std::floor(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementSignInst(const ElementSignInst *I) {
+  auto func = [](float x) -> float { return ((x > 0) - (x < 0)); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementCeilInst(const ElementCeilInst *I) {
+  auto func = [](float x) -> float { return std::ceil(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementRoundInst(const ElementRoundInst *I) {
+  // Rounding mode required by ONNX, Numpy, TensorFlow is round to even which
+  // rounds to nearest even integer those values with fractional part 0.5.
+  auto func = [](float x) -> float { return std::nearbyintf(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementSqrtInst(const ElementSqrtInst *I) {
+  auto func = [](float x) -> float { return std::sqrt(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementRsqrtInst(const ElementRsqrtInst *I) {
+  auto func = [](float x) -> float { return 1 / std::sqrt(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementReciprocalInst(
+    const ElementReciprocalInst *I) {
+  auto func = [](float x) -> float { return 1 / x; };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementSinInst(const ElementSinInst *I) {
+  auto func = [](float x) -> float { return std::sin(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementCosInst(const ElementCosInst *I) {
+  auto func = [](float x) -> float { return std::cos(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+//===----------------------------------------------------------------------===//
+//                              Compare operations
+//===----------------------------------------------------------------------===//
 template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
           typename CmpTy, typename InstCmpKind>
 void BoundInterpreterFunction::fwdElementCmpHelperImpl(
@@ -2582,6 +3055,9 @@ void BoundInterpreterFunction::fwdElementCmpLTEInst(
   case ElemKind::Float16Ty:
     fwdElementCmpLTEInstImpl<float16_t, float16_t, float16_t>(I);
     break;
+  case ElemKind::BFloat16Ty:
+    fwdElementCmpLTEInstImpl<bfloat16_t, bfloat16_t, bfloat16_t>(I);
+    break;
   case ElemKind::Int32ITy:
     fwdElementCmpLTEInstImpl<int32_t, int32_t, float>(I);
     break;
@@ -2617,11 +3093,53 @@ void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
   case ElemKind::Float16Ty:
     fwdElementCmpEQInstImpl<float16_t, float16_t, float16_t>(I);
     break;
+  case ElemKind::BFloat16Ty:
+    fwdElementCmpEQInstImpl<bfloat16_t, bfloat16_t, bfloat16_t>(I);
+    break;
   case ElemKind::Int32ITy:
     fwdElementCmpEQInstImpl<int32_t, int32_t, float>(I);
     break;
   case ElemKind::Int64ITy:
     fwdElementCmpEQInstImpl<int64_t, int64_t, float>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
+}
+
+template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+          typename CmpTy>
+void BoundInterpreterFunction::fwdElementCmpNEQInstImpl(
+    const ElementCmpNEQInst *I) {
+  auto cmpHelper = [](CmpTy LHS, CmpTy RHS) -> bool { return !(LHS == RHS); };
+  fwdElementCmpHelperImpl<ElemTy, ElemOffsetTy, ElemScaleTy, CmpTy,
+                          ElementCmpNEQInst>(I, cmpHelper);
+}
+
+void BoundInterpreterFunction::fwdElementCmpNEQInst(
+    const ElementCmpNEQInst *I) {
+  auto *T = getTensor(I->getLHS());
+
+  if (T->getType().isQuantizedType()) {
+    fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    return;
+  }
+
+  switch (T->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdElementCmpNEQInstImpl<float, float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    fwdElementCmpNEQInstImpl<float16_t, float16_t, float16_t>(I);
+    break;
+  case ElemKind::BFloat16Ty:
+    fwdElementCmpNEQInstImpl<bfloat16_t, bfloat16_t, bfloat16_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdElementCmpNEQInstImpl<int32_t, int32_t, float>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdElementCmpNEQInstImpl<int64_t, int64_t, float>(I);
     break;
   default:
     llvm_unreachable("Type is not supported");
@@ -2650,6 +3168,9 @@ void BoundInterpreterFunction::fwdElementCmpLTInst(ElementCmpLTInst const *I) {
     break;
   case ElemKind::Float16Ty:
     fwdElementCmpLTInstImpl<float16_t, float16_t, float16_t>(I);
+    break;
+  case ElemKind::BFloat16Ty:
+    fwdElementCmpLTInstImpl<bfloat16_t, bfloat16_t, bfloat16_t>(I);
     break;
   case ElemKind::Int32ITy:
     fwdElementCmpLTInstImpl<int32_t, int32_t, float>(I);
@@ -2803,6 +3324,55 @@ void BoundInterpreterFunction::fwdModuloInst(glow::ModuloInst const *I) {
   dispatchIndexTypeImpl(fwdModuloInstImpl, I->getSrc()->getElementType(), I);
 }
 
+///=============== Trigonometric Operators===============
+template <typename ElemTy, typename InstKind>
+void BoundInterpreterFunction::fwdUnaryTrigonometricImpl(
+    const InstKind *I, std::function<float(float)> func) {
+  Value *inpV = I->getSrc();
+  Value *outV = I->getDest();
+  auto inpTy = inpV->getType();
+  auto outTy = outV->getType();
+  auto inpH = getWeightHandle<ElemTy>(inpV);
+  auto outH = getWeightHandle<ElemTy>(outV);
+
+  if (inpTy->isQuantizedType()) {
+    float inpScale = inpTy->getScale();
+    int32_t inpOffset = inpTy->getOffset();
+    float outScale = outTy->getScale();
+    int32_t outOffset = outTy->getOffset();
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal =
+          quantization::dequantize<ElemTy>(inpH.raw(i), {inpScale, inpOffset});
+      float outVal = func(inpVal);
+      outH.raw(i) =
+          quantization::quantize<ElemTy>(outVal, {outScale, outOffset});
+    }
+  } else {
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal = static_cast<float>(inpH.raw(i));
+      float outVal = func(inpVal);
+      outH.raw(i) = static_cast<ElemTy>(outVal);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAcosInst(const ElementAcosInst *I) {
+  auto func = [](float x) -> float { return std::acos(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
+
+void BoundInterpreterFunction::fwdElementAsinInst(const ElementAsinInst *I) {
+  auto func = [](float x) -> float { return std::asin(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
+
+void BoundInterpreterFunction::fwdElementAtanInst(const ElementAtanInst *I) {
+  auto func = [](float x) -> float { return std::atan(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
 //===----------------------------------------------------------------------===//
 //                       Mat Mul
 //===----------------------------------------------------------------------===//
@@ -2999,6 +3569,7 @@ void BoundInterpreterFunction::fwdFullyConnectedInst(
                               I->getSrc()->getElementType(), I);
   }
 }
+
 //===----------------------------------------------------------------------===//
 //                       Row-wise quantized FC
 //===----------------------------------------------------------------------===//
@@ -3251,67 +3822,87 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
                             eBatchDims, eDestDims);
 }
 
-template <typename ElemTy>
-void BoundInterpreterFunction::fwdBatchedReduceMinInstImpl(
-    Value *batch, Value *dest, const ShapeVector &eBatchDims,
-    const ShapeVector &eDestDims, ElemTy max) {
-  static_assert(max_tensor_dimensions == 6,
-                "Loops below assume max_tensor_dimensions = 6.");
-  // Get unowned handles of the batch and dest with these new expanded dims.
-  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
-  auto eDest = getTensor(dest)->getUnowned(eDestDims);
-  auto eBatchH = eBatch.getHandle<ElemTy>();
-  auto eDestH = eDest.getHandle<ElemTy>();
-  eDestH.clear(max);
-
-  unsigned int axes[max_tensor_dimensions];
-  for (dim_t i = 0; i < max_tensor_dimensions; i++) {
-    axes[i] = (eDestDims[i] > 1);
+/// Macro to define ReduceMin/Max kernel implementation.
+#define DEFINE_REDUCEMINMAX_INST_IMPL(func, compare)                           \
+  template <typename ElemTy>                                                   \
+  void BoundInterpreterFunction::fwdBatched##func##InstImpl(                   \
+      Value *batch, Value *dest, const ShapeVector &eBatchDims,                \
+      const ShapeVector &eDestDims, ElemTy init) {                             \
+    static_assert(max_tensor_dimensions == 6,                                  \
+                  "Loops below assume max_tensor_dimensions = 6.");            \
+    /* Get unowned handles of the batch and dest with these new expanded       \
+     * dims.*/                                                                 \
+    auto eBatch = getTensor(batch)->getUnowned(eBatchDims);                    \
+    auto eDest = getTensor(dest)->getUnowned(eDestDims);                       \
+    auto eBatchH = eBatch.getHandle<ElemTy>();                                 \
+    auto eDestH = eDest.getHandle<ElemTy>();                                   \
+    eDestH.clear(init);                                                        \
+                                                                               \
+    unsigned int axes[max_tensor_dimensions];                                  \
+    for (dim_t i = 0; i < max_tensor_dimensions; i++) {                        \
+      axes[i] = (eDestDims[i] > 1);                                            \
+    }                                                                          \
+                                                                               \
+    /* We can use this loop for all shapes. Use the same indices for both the  \
+     * batch and dest, except for setting the axis index in the dest to 0.*/   \
+    for (dim_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {         \
+      for (dim_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {       \
+        for (dim_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {     \
+          for (dim_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {   \
+            for (dim_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) { \
+              for (dim_t r = 0, dr = 0; r < eBatchDims[5];                     \
+                   r++, dr += axes[5]) {                                       \
+                dim_t destIndices[] = {dx, dy, dz, dw, dq, dr};                \
+                dim_t srcIndices[] = {x, y, z, w, q, r};                       \
+                eDestH.at(destIndices) =                                       \
+                    compare(eDestH.at(destIndices), eBatchH.at(srcIndices));   \
+              }                                                                \
+            }                                                                  \
+          }                                                                    \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
   }
 
-  // We can use this loop for all shapes. Use the same indices for both the
-  // batch and dest, except for setting the axis index in the dest to 0.
-  for (dim_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {
-    for (dim_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {
-      for (dim_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {
-        for (dim_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {
-          for (dim_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) {
-            for (dim_t r = 0, dr = 0; r < eBatchDims[5]; r++, dr += axes[5]) {
-              dim_t destIndices[] = {dx, dy, dz, dw, dq, dr};
-              dim_t srcIndices[] = {x, y, z, w, q, r};
-              eDestH.at(destIndices) =
-                  eDestH.at(destIndices) < eBatchH.at(srcIndices)
-                      ? eDestH.at(destIndices)
-                      : eBatchH.at(srcIndices);
-            }
-          }
-        }
-      }
-    }
-  }
-}
+/// Define fwdBatchedReduceMaxInstImpl.
+DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMax, std::max)
 
-void BoundInterpreterFunction::fwdBatchedReduceMinInst(
-    const glow::BatchedReduceMinInst *I) {
+/// Define fwdBatchedReduceMinInstImpl.
+DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
 
-  auto *batch = I->getBatch();
-  auto *dest = I->getDest();
-  const auto axes = I->getAxes();
+#undef DEFINE_REDUCEMINMAX_INST_IMPL
 
-  // Initialize both expanded batch and dest dims to the expanded batch
-  // dims. This allows us below to iterate over the tensor regardless of its
-  // shape using max_tensor_dimensions loops below.
-  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
-  ShapeVector eDestDims = eBatchDims;
-  // Set the destination axes dimensions (the one we are reducing) to 1.
-  for (dim_t i = 0; i < axes.size(); i++) {
-    eDestDims[axes[i]] = 1;
+/// Macro to define ReduceMin/Max instruction.
+#define DEFINE_REDUCEMINMAX_INST(func, init)                                   \
+  void BoundInterpreterFunction::fwdBatched##func##Inst(                       \
+      const glow::Batched##func##Inst *I) {                                    \
+                                                                               \
+    auto *batch = I->getBatch();                                               \
+    auto *dest = I->getDest();                                                 \
+    const auto axes = I->getAxes();                                            \
+                                                                               \
+    /* Initialize both expanded batch and dest dims to the expanded batch      \
+     dims. This allows us below to iterate over the tensor regardless of its   \
+     shape using max_tensor_dimensions loops below.*/                          \
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());                   \
+    ShapeVector eDestDims = eBatchDims;                                        \
+    /* Set the destination axes dimensions (the one we are reducing) to 1.*/   \
+    for (dim_t i = 0; i < axes.size(); i++) {                                  \
+      eDestDims[axes[i]] = 1;                                                  \
+    }                                                                          \
+                                                                               \
+    dispatchArithmeticImpl(fwdBatched##func##InstImpl,                         \
+                           batch->getElementType(), batch, dest, eBatchDims,   \
+                           eDestDims, init);                                   \
   }
 
-  dispatchArithmeticImpl(fwdBatchedReduceMinInstImpl, batch->getElementType(),
-                         batch, dest, eBatchDims, eDestDims,
-                         std::numeric_limits<int32_t>::max());
-}
+// Define fwdBatchedMinInst
+DEFINE_REDUCEMINMAX_INST(ReduceMin, std::numeric_limits<int32_t>::max())
+
+// Define fwdBatchedMaxInst
+DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
+
+#undef DEFINE_REDUCEMINMAX_INST
 
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
@@ -4210,55 +4801,97 @@ static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
   }
 }
 
-template <typename T>
-static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
-  auto argmaxH = argmaxW->getHandle<int64_t>();
-  auto inH = inW->getHandle<T>();
+template <typename inpType, typename outType>
+static void fwdArgMax(Tensor *inpT, Tensor *outT, size_t axis) {
 
-  auto idim = inW->dims();
+  // Get input/output handles with dimensions expanded to maximum.
+  ShapeVector inpDims = expandDimsToMax(inpT->dims());
+  ShapeVector outDims = inpDims;
+  outDims[axis] = 1;
+  auto eInpT = inpT->getUnowned(inpDims);
+  auto eOutT = outT->getUnowned(outDims);
+  auto inpH = eInpT.getHandle<inpType>();
+  auto outH = eOutT.getHandle<outType>();
 
-  dim_t a, b, c, d = 0;
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
 
-  dim_t *dim[4];
+  for (dim_t idx0 = 0; idx0 < outDims[0]; idx0++) {
+    for (dim_t idx1 = 0; idx1 < outDims[1]; idx1++) {
+      for (dim_t idx2 = 0; idx2 < outDims[2]; idx2++) {
+        for (dim_t idx3 = 0; idx3 < outDims[3]; idx3++) {
+          for (dim_t idx4 = 0; idx4 < outDims[4]; idx4++) {
+            for (dim_t idx5 = 0; idx5 < outDims[5]; idx5++) {
 
-  assert((axis >= 0) && (axis <= 3) && "Axis values should be between 0 and 3");
+              // Initialize maximum value/index.
+              inpType maxVal = std::numeric_limits<inpType>::lowest();
+              outType maxIdx = 0;
 
-  dim[(axis + 1) % 4] = &a;
-  dim[(axis + 2) % 4] = &b;
-  dim[(axis + 3) % 4] = &c;
-  dim[axis] = &d;
+              // Iterate input axis dimension.
+              for (dim_t axisIdx = 0; axisIdx < inpDims[axis]; axisIdx++) {
+                std::vector<dim_t> inpIdx = {idx0, idx1, idx2,
+                                             idx3, idx4, idx5};
+                inpIdx[axis] = axisIdx;
+                inpType inpVal = inpH.at(inpIdx);
+                if (inpVal > maxVal) {
+                  maxVal = inpVal;
+                  maxIdx = axisIdx;
+                }
+              }
 
-  dim_t odim[4] = {idim[0], idim[1], idim[2], idim[3]};
-  odim[axis] = 1;
-
-  for (a = 0; a < idim[(axis + 1) % 4]; a++) {
-    for (b = 0; b < idim[(axis + 2) % 4]; b++) {
-      for (c = 0; c < idim[(axis + 3) % 4]; c++) {
-        T max = std::numeric_limits<T>::min();
-        if (axis == 0) {
-          max = inH.at({0, *dim[1], *dim[2], *dim[3]});
-        } else if (axis == 1) {
-          max = inH.at({*dim[0], 0, *dim[2], *dim[3]});
-        } else if (axis == 2) {
-          max = inH.at({*dim[0], *dim[1], 0, *dim[3]});
-        } else {
-          max = inH.at({*dim[0], *dim[1], *dim[2], 0});
-        }
-
-        dim_t maxi = 0;
-
-        for (d = 0; d < idim[axis]; d++) {
-          T elem = inH.at({*dim[0], *dim[1], *dim[2], *dim[3]});
-          if (elem > max) {
-            max = elem;
-            maxi = d;
+              // Store maximum index.
+              outH.at({idx0, idx1, idx2, idx3, idx4, idx5}) = maxIdx;
+            }
           }
         }
-        *dim[axis] = 0;
-        dim_t ind = (*dim[0]) * odim[1] * odim[2] * odim[3] +
-                    (*dim[1]) * odim[2] * odim[3] + (*dim[2]) * odim[3] +
-                    (*dim[3]);
-        argmaxH.raw(ind) = maxi;
+      }
+    }
+  }
+}
+
+template <typename inpType, typename outType>
+static void fwdArgMin(Tensor *inpT, Tensor *outT, size_t axis) {
+
+  // Get input/output handles with dimensions expanded to maximum.
+  ShapeVector inpDims = expandDimsToMax(inpT->dims());
+  ShapeVector outDims = inpDims;
+  outDims[axis] = 1;
+  auto eInpT = inpT->getUnowned(inpDims);
+  auto eOutT = outT->getUnowned(outDims);
+  auto inpH = eInpT.getHandle<inpType>();
+  auto outH = eOutT.getHandle<outType>();
+
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
+
+  for (dim_t idx0 = 0; idx0 < outDims[0]; idx0++) {
+    for (dim_t idx1 = 0; idx1 < outDims[1]; idx1++) {
+      for (dim_t idx2 = 0; idx2 < outDims[2]; idx2++) {
+        for (dim_t idx3 = 0; idx3 < outDims[3]; idx3++) {
+          for (dim_t idx4 = 0; idx4 < outDims[4]; idx4++) {
+            for (dim_t idx5 = 0; idx5 < outDims[5]; idx5++) {
+
+              // Initialize minimum value/index.
+              inpType minVal = std::numeric_limits<inpType>::max();
+              outType minIdx = 0;
+
+              // Iterate input axis dimension.
+              for (dim_t axisIdx = 0; axisIdx < inpDims[axis]; axisIdx++) {
+                std::vector<dim_t> inpIdx = {idx0, idx1, idx2,
+                                             idx3, idx4, idx5};
+                inpIdx[axis] = axisIdx;
+                inpType inpVal = inpH.at(inpIdx);
+                if (inpVal < minVal) {
+                  minVal = inpVal;
+                  minIdx = axisIdx;
+                }
+              }
+
+              // Store minimum index.
+              outH.at({idx0, idx1, idx2, idx3, idx4, idx5}) = minIdx;
+            }
+          }
+        }
       }
     }
   }
@@ -4288,18 +4921,44 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
                                     indW->getElementType(), outW, indW, inW, k);
 }
 
-void BoundInterpreterFunction::fwdArgMaxInst(const ArgMaxInst *I) {
-  auto argmaxW = getTensor(I->getArgmax());
-  auto inW = getTensor(I->getInput());
-  size_t axis = I->getAxis();
-
-  if (inW->getType().isQuantizedType()) {
-    dispatchQuantizedImpl(fwdArgMax, inW->getElementType(), argmaxW, inW, axis);
-    return;
+#define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<float, int64_t>(__VA_ARGS__);                               \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<float, int32_t>(__VA_ARGS__);                               \
+    }                                                                          \
+    break;                                                                     \
+  case ElemKind::Int8QTy:                                                      \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<int8_t, int64_t>(__VA_ARGS__);                              \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<int8_t, int32_t>(__VA_ARGS__);                              \
+    }                                                                          \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
   }
-  dispatchFloatingPointImpl(fwdArgMax, inW->getElementType(), argmaxW, inW,
-                            axis);
+
+void BoundInterpreterFunction::fwdArgMaxInst(const ArgMaxInst *I) {
+  auto inpT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  size_t axis = I->getAxis();
+  auto inpElemType = inpT->getElementType();
+  auto outElemType = outT->getElementType();
+  DISPATCH_ARG_MIN_MAX(fwdArgMax, inpElemType, outElemType, inpT, outT, axis);
 }
+
+void BoundInterpreterFunction::fwdArgMinInst(const ArgMinInst *I) {
+  auto inpT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  size_t axis = I->getAxis();
+  auto inpElemType = inpT->getElementType();
+  auto outElemType = outT->getElementType();
+  DISPATCH_ARG_MIN_MAX(fwdArgMin, inpElemType, outElemType, inpT, outT, axis);
+}
+#undef DISPATCH_ARG_MIN_MAX
 
 //===----------------------------------------------------------------------===//
 //                  Tensor allocation operations
@@ -4461,20 +5120,53 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
     return;                                                                    \
   }
   CONVERT(float, float16_t, ElemKind::FloatTy, ElemKind::Float16Ty)
+  CONVERT(float, bfloat16_t, ElemKind::FloatTy, ElemKind::BFloat16Ty)
   CONVERT(float, bool, ElemKind::FloatTy, ElemKind::BoolTy)
   CONVERT(float, int32_t, ElemKind::FloatTy, ElemKind::Int32ITy)
   CONVERT(float, int64_t, ElemKind::FloatTy, ElemKind::Int64ITy)
   CONVERT(float16_t, float, ElemKind::Float16Ty, ElemKind::FloatTy)
+  CONVERT(float16_t, bfloat16_t, ElemKind::Float16Ty, ElemKind::BFloat16Ty)
   CONVERT(float16_t, int32_t, ElemKind::Float16Ty, ElemKind::Int32ITy)
   CONVERT(float16_t, int64_t, ElemKind::Float16Ty, ElemKind::Int64ITy)
+  CONVERT(bfloat16_t, float, ElemKind::BFloat16Ty, ElemKind::FloatTy)
+  CONVERT(bfloat16_t, float16_t, ElemKind::BFloat16Ty, ElemKind::Float16Ty)
+  CONVERT(bfloat16_t, int32_t, ElemKind::BFloat16Ty, ElemKind::Int32ITy)
+  CONVERT(bfloat16_t, int64_t, ElemKind::BFloat16Ty, ElemKind::Int64ITy)
   CONVERT(bool, float, ElemKind::BoolTy, ElemKind::FloatTy)
+  CONVERT(bool, bfloat16_t, ElemKind::BoolTy, ElemKind::BFloat16Ty)
   CONVERT(int32_t, float, ElemKind::Int32ITy, ElemKind::FloatTy)
   CONVERT(int32_t, float16_t, ElemKind::Int32ITy, ElemKind::Float16Ty)
+  CONVERT(int32_t, bfloat16_t, ElemKind::Int32ITy, ElemKind::BFloat16Ty)
   CONVERT(int32_t, int64_t, ElemKind::Int32ITy, ElemKind::Int64ITy)
   CONVERT(int64_t, float, ElemKind::Int64ITy, ElemKind::FloatTy)
   CONVERT(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty)
+  CONVERT(int64_t, bfloat16_t, ElemKind::Int64ITy, ElemKind::BFloat16Ty)
   CONVERT(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
+  CONVERT(bool, int32_t, ElemKind::BoolTy, ElemKind::Int32ITy)
 #undef CONVERT
+
+  if (srcElType == ElemKind::UInt8FusedQTy &&
+      destElType == ElemKind::UInt8FusedFP16QTy) {
+    Tensor result = source->getCopyConvertedToType(ElemKind::UInt8FusedFP16QTy);
+    dest->assign(&result);
+    return;
+  }
+
+  if ((srcElType == ElemKind::UInt8FusedFP16QTy ||
+       srcElType == ElemKind::UInt4FusedFP16QTy) &&
+      destElType == ElemKind::UInt8FusedQTy) {
+    Tensor result = source->getCopyConvertedToType(ElemKind::UInt8FusedQTy);
+    dest->assign(&result);
+    return;
+  }
+
+  if (srcElType == ElemKind::UInt4FusedFP16QTy &&
+      destElType == ElemKind::UInt4FusedQTy) {
+    Tensor result = source->getCopyConvertedToType(ElemKind::UInt4FusedQTy);
+    dest->assign(&result);
+    return;
+  }
+
   llvm_unreachable("Type not supported");
 }
 
@@ -5029,4 +5721,672 @@ void BoundInterpreterFunction::fwdMFCCInst(glow::MFCCInst const *I) {
   } else {
     llvm_unreachable("Type is not supported.");
   }
+}
+
+namespace {
+/// Positions of the input values to be used for bilinear interpolation for each
+/// sample point and the weights to use for each.
+template <typename T> struct BinGrid {
+  dim_t left;
+  dim_t top;
+  dim_t right;
+  dim_t bottom;
+  T leftW;
+  T topW;
+  T rightW;
+  T bottomW;
+};
+} // namespace
+
+/// Function to calculate the xy coordinates of the resized image (grid)
+/// Ref: https://arxiv.org/pdf/1703.06870.pdf and OnnxRuntime implementation
+/// \p featureMapHeight and \p featureMapWidth are the dimensions of the
+/// input feature map to the operator, \p outputHeight and \p outputWidth are
+/// the dimensions of the operator output tensor, \p samplingRatioH and \p
+/// samplingRatioW are the number of sampling points to use in each bin in the
+/// height and width directions respectively (total sample points is
+/// samplingRatioH * samplingRatioW), \p boxHeight and \p boxWidth are the
+/// height and width of the RoI box, \p yRef and \p xRef are the adjustment to
+/// be made for each sampling point, this is either the top left corer of the
+/// box for RoiAlign or a vector to be added to center point after rotation for
+/// RoiAlignRotated, \p rotated is true if the op is RoiAlignRotated, \p theta
+/// is the rotation angle in the case of RoiAlignRotated and is unused in
+/// RoiAlign, \p boxCenterH and \p boxCenterW are the center of the box used for
+/// rotation in the case of RoiAlignRotated and unused in the case of RoiAlign.
+/// \returns a vector of BinGrids, each one to be used to compute a single
+/// sample point value.
+template <typename T>
+static std::vector<BinGrid<T>> getROIAlignInterpolationCoordinates(
+    dim_t featureMapHeight, dim_t featureMapWidth, dim_t outputHeight,
+    dim_t outputWidth, dim_t samplingRatioH, dim_t samplingRatioW, T boxHeight,
+    T boxWidth, T yRef, T xRef, bool rotated, T theta, T boxCenterH,
+    T boxCenterW) {
+
+  T sinTheta = T(0.0f);
+  T cosTheta = T(0.0f);
+  if (rotated) {
+    sinTheta = T(std::sin(float(theta)));
+    cosTheta = T(std::cos(float(theta)));
+  }
+
+  std::vector<BinGrid<T>> binGrids;
+
+  // height and width of the each bin in the final output
+  const T binH = boxHeight / T(outputHeight);
+  const T binW = boxWidth / T(outputWidth);
+  const T roiBinSizeH = binH / T(samplingRatioH);
+  const T roiBinSizeW = binW / T(samplingRatioW);
+  for (dim_t oh = 0; oh < outputHeight; oh++) {
+    for (dim_t ow = 0; ow < outputWidth; ow++) {
+      for (dim_t gh = 0; gh < samplingRatioH; gh++) {
+        for (dim_t gw = 0; gw < samplingRatioW; gw++) {
+          // x,y coordinates or vector w.r.t input dimensions
+          T inY = yRef + (T(oh) * binH) + ((T(gh) + T(0.5f)) * roiBinSizeH);
+          T inX = xRef + (T(ow) * binW) + ((T(gw) + T(0.5f)) * roiBinSizeW);
+
+          // If ROI is rotated, rotate by theta around the box center then
+          // translate
+          if (rotated) {
+            T inYY = inY;
+            T inXX = inX;
+            inY = inYY * cosTheta - inXX * sinTheta + boxCenterH;
+            inX = inXX * cosTheta + inYY * sinTheta + boxCenterW;
+          }
+
+          // zero pad mal-formed boxes
+          if (inY < T(-1) || inY > T(featureMapHeight)) {
+            BinGrid<T> bg = BinGrid<T>{0, 0, 0, 0, 0, 0, 0, 0};
+            binGrids.push_back(bg);
+            continue;
+          }
+          if (inX < T(-1) || inX > T(featureMapWidth)) {
+            BinGrid<T> bg = BinGrid<T>{0, 0, 0, 0, 0, 0, 0, 0};
+            binGrids.push_back(bg);
+            continue;
+          }
+
+          // clip to input dimensions
+          T y = std::min(std::max(inY, T(0)), T(featureMapHeight - 1));
+          T x = std::min(std::max(inX, T(0)), T(featureMapWidth - 1));
+
+          // calc interpolation parameters
+          const dim_t yl = dim_t(std::floor(float(y)));
+          const dim_t xl = dim_t(std::floor(float(x)));
+          const dim_t yh = std::min(yl + 1, featureMapHeight - 1);
+          const dim_t xh = std::min(xl + 1, featureMapWidth - 1);
+
+          BinGrid<T> bg;
+          bg.left = xl;
+          bg.top = yl;
+          bg.right = xh;
+          bg.bottom = yh;
+
+          bg.rightW = x - T(xl);
+          bg.bottomW = y - T(yl);
+          bg.leftW = T(1.0) - bg.rightW;
+          bg.topW = T(1.0) - bg.bottomW;
+
+          binGrids.push_back(bg);
+        } // end of w
+      }   // end of h
+    }     // end of W
+  }       // end of H
+
+  return binGrids;
+}
+
+// Implementation of ROIAlign as described in
+// https://arxiv.org/pdf/1703.06870.pdf ROIAlign is similar to crop_and_resize +
+// pooling with minor modifications in the crop_and_resize.
+template <typename T>
+void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
+    glow::ROIAlignInst const *I) {
+  auto featureMap = I->getFeatureMap();
+  auto boxes = I->getBoxes();
+  auto batchIndices = I->getBatchIndices();
+  auto result = I->getResult();
+
+  auto boxesH = getTensor(boxes)->getHandle<T>();
+  auto featureMapH = getTensor(featureMap)->getHandle<T>();
+  auto resultH = getTensor(result)->getHandle<T>();
+
+  const bool rotated = I->getRotated();
+  const PoolingMode mode = PoolingMode(I->getMode());
+  const bool aligned = I->getAligned();
+  const dim_t samplingRatio = I->getSamplingRatio();
+  const T spatialScale = I->getSpatialScale();
+
+  const dim_t featureMapHeight = featureMapH.dims()[1];
+  const dim_t featureMapWidth = featureMapH.dims()[2];
+  const dim_t numBoxes = resultH.dims()[0];
+  const dim_t outputHeight = resultH.dims()[1];
+  const dim_t outputWidth = resultH.dims()[2];
+  const dim_t depth = resultH.dims()[3];
+
+  const T offset = aligned ? T(0.5) : T(0);
+
+  bool useSeparateBatchIndexVector = true;
+  dim_t boxesStartCol = 0;
+  if (rotated || boxes->dims()[1] == 5) {
+    boxesStartCol = 1;
+    useSeparateBatchIndexVector = false;
+  }
+
+  // Extract batch indices from batchIndices tensor if that is used (only used
+  // by ONNX which may provide Int64ITy tensors.)
+  std::vector<dim_t> batchIndicesExtracted;
+  if (useSeparateBatchIndexVector) {
+    Tensor *batchIndicesTensor = getTensor(batchIndices);
+    auto batchIndicesElemKind = batchIndicesTensor->getElementType();
+    for (dim_t b = 0; b < numBoxes; b++) {
+      if (batchIndicesElemKind == ElemKind::Int32ITy) {
+        batchIndicesExtracted.push_back(
+            batchIndicesTensor->getHandle<int32_t>().at({b}));
+      } else {
+        batchIndicesExtracted.push_back(
+            batchIndicesTensor->getHandle<int64_t>().at({b}));
+      }
+    }
+  }
+
+  for (dim_t b = 0; b < numBoxes; b++) {
+    dim_t batchIndex;
+    if (useSeparateBatchIndexVector) {
+      batchIndex = batchIndicesExtracted[b];
+    } else {
+      batchIndex = dim_t(float(boxesH.at({b, 0})));
+    }
+
+    // Values used to determine sampling points during bilinear interpolation.
+    // yRef and xRef have different interpreterations for rotated vs unrotated
+    // cases (vector vs coordinates) but are used very similarly.
+    T yRef;
+    T xRef;
+    T boxHeight;
+    T boxWidth;
+
+    // Values only used in rotated case.
+    T theta = T(0.0);
+    T boxCenterH = T(0.0);
+    T boxCenterW = T(0.0);
+
+    if (rotated) {
+      // Do not round
+      boxCenterW = boxesH.at({b, boxesStartCol + 0}) * spatialScale - offset;
+      boxCenterH = boxesH.at({b, boxesStartCol + 1}) * spatialScale - offset;
+      boxWidth = boxesH.at({b, boxesStartCol + 2}) * spatialScale;
+      boxHeight = boxesH.at({b, boxesStartCol + 3}) * spatialScale;
+      theta = boxesH.at({b, boxesStartCol + 4}) * T(M_PI) / T(180.0);
+
+      if (aligned) {
+        assert(boxWidth >= T(0.0) && boxHeight >= T(0.0) &&
+               "ROIs in ROIAlign must not have non-negative size!");
+      } else { // backward compatibility
+        // Force malformed ROIs to be 1x1
+        boxHeight = std::max(boxHeight, T(1.0));
+        boxWidth = std::max(boxWidth, T(1.0));
+      }
+
+      // These are computed wrt the center of RoI (x, y).
+      // Appropriate translation needs to be applied after.
+      yRef = (T(-1.0) * boxHeight) / T(2.0);
+      xRef = (T(-1.0) * boxWidth) / T(2.0);
+    } else {
+      llvm::SmallVector<T, 4> box = {
+          boxesH.at({b, boxesStartCol + 0}) * spatialScale - offset,
+          boxesH.at({b, boxesStartCol + 1}) * spatialScale - offset,
+          boxesH.at({b, boxesStartCol + 2}) * spatialScale - offset,
+          boxesH.at({b, boxesStartCol + 3}) * spatialScale - offset};
+
+      if (aligned) {
+        CHECK_GE(box[3] - box[1], T(0.0)) << "Roi height cannot be negative.";
+        CHECK_GE(box[2] - box[0], T(0.0)) << "Roi width cannot be negative.";
+      } else {
+        // Caffe2 backwards compatibility for mal-formed ROIs:
+        // Force ROI size to be at least 1x1.
+        box[2] = std::max(box[2], box[0] + T(1.0));
+        box[3] = std::max(box[3], box[1] + T(1.0));
+      }
+
+      yRef = box[1];
+      xRef = box[0];
+      boxHeight = (box[3] - box[1]);
+      boxWidth = (box[2] - box[0]);
+    }
+
+    const dim_t samplingRatioH =
+        (samplingRatio > 0) ? samplingRatio
+                            : std::ceil(float(boxHeight) / outputHeight);
+    const dim_t samplingRatioW = (samplingRatio > 0)
+                                     ? samplingRatio
+                                     : std::ceil(float(boxWidth) / outputWidth);
+
+    // get the xy coordinates in the resized image(grid)
+    std::vector<BinGrid<T>> binGrids = getROIAlignInterpolationCoordinates<T>(
+        featureMapHeight, featureMapWidth, outputHeight, outputWidth,
+        samplingRatioH, samplingRatioW, boxHeight, boxWidth, yRef, xRef,
+        rotated, theta, boxCenterH, boxCenterW);
+
+    uint64_t binCount = 0;
+    for (dim_t oh = 0; oh < outputHeight; ++oh) {
+      for (dim_t ow = 0; ow < outputWidth; ++ow) {
+        for (dim_t d = 0; d < depth; ++d) {
+          std::vector<T> values;
+          for (dim_t gh = 0; gh < samplingRatioH; ++gh) {
+            for (dim_t gw = 0; gw < samplingRatioW; ++gw) {
+              BinGrid<T> bg = binGrids[binCount++];
+              // The four values of  the i/p image surrounding the point of
+              // interest (POI) in the resized image
+              const T topLeft =
+                  featureMapH.at({batchIndex, bg.top, bg.left, d});
+              const T topRight =
+                  featureMapH.at({batchIndex, bg.top, bg.right, d});
+              const T bottomLeft =
+                  featureMapH.at({batchIndex, bg.bottom, bg.left, d});
+              const T bottomRight =
+                  featureMapH.at({batchIndex, bg.bottom, bg.right, d});
+
+              // bilinear interpolation
+              const T value = (topLeft * (bg.topW * bg.leftW)) +
+                              (topRight * (bg.topW * bg.rightW)) +
+                              (bottomLeft * (bg.bottomW * bg.leftW)) +
+                              (bottomRight * (bg.bottomW * bg.rightW));
+              // interpolation along vertical line
+              values.push_back(value);
+            } // end of w
+          }   // end of h
+              // {Average or Max} pooling
+          resultH.at({b, oh, ow, d}) =
+              (mode == PoolingMode::AVG)
+                  ? std::accumulate(values.begin(), values.end(), T(0.0)) /
+                        T(values.size())
+                  : *std::max_element(values.begin(), values.end());
+
+          binCount = binCount - (samplingRatioH * samplingRatioW);
+        } // end of d
+        binCount = binCount + (samplingRatioH * samplingRatioW);
+      } // end of W
+    }   // end of H
+  }     // end of b
+}
+
+void BoundInterpreterFunction::fwdROIAlignInst(glow::ROIAlignInst const *I) {
+  dispatchFloatingPointImpl(fwdROIAlignInstFloatImpl,
+                            I->getFeatureMap()->getElementType(), I);
+}
+
+// Forward transform that maps proposal boxes to ground-truth boxes using
+//     bounding-box regression deltas.
+// boxes: pixel coordinates of the bounding boxes
+//     size (M, 4), format [x1; y1; x2; y2], x2 >= x1, y2 >= y1
+// deltas: bounding box translations and scales
+//     size (M, 4), format [dx; dy; dw; dh]
+//     dx, dy: scale-invariant translation of the center of the bounding box
+//     dw, dh: log-space scaling of the width and height of the bounding box
+// weights: weights [wx, wy, ww, wh] for the deltas
+// bboxXformClip: minimum bounding box width and height in log-space after
+//     transofmration
+// correct_transform_coords: Correct bounding box transform coordates. Set to
+//     true to match the detectron code, set to false for backward
+//     compatibility
+// return: pixel coordinates of the bounding boxes
+//     size (M, 4), format [x1; y1; x2; y2]
+// see "Rich feature hierarchies for accurate object detection and semantic
+//     segmentation" Appendix C for more details
+// reference: detectron/lib/utils/boxes.py bbox_transform()
+template <typename T>
+static void bbox_transform_upright(
+    Handle<T> &boxesOut, const Handle<T> &boxes, const Handle<T> &deltas,
+    dim_t startRowBoxesOut, dim_t startColBoxesOut, dim_t startRowBoxes,
+    dim_t startColBoxes, dim_t startRowDeltas, dim_t startColDeltas, dim_t rows,
+    llvm::ArrayRef<float> weights, const T &bboxXformClip, T scaleBeforeInv,
+    const bool legacyPlusOne = false) {
+
+  if (boxes.dims()[0] == 0) {
+    return;
+  }
+
+  std::vector<T> widths(rows), heights(rows), ctrX(rows), ctrY(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    widths[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
+                    scaleBeforeInv -
+                boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv +
+                T(((legacyPlusOne) ? 1 : 0));
+    heights[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
+                     scaleBeforeInv -
+                 boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
+                     scaleBeforeInv +
+                 T(((legacyPlusOne) ? 1 : 0));
+
+    ctrX[i] = boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv +
+              T(0.5) * widths[i];
+    ctrY[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
+                  scaleBeforeInv +
+              T(0.5) * heights[i];
+  }
+
+  std::vector<T> dx(rows), dy(rows), dw(rows), dh(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    dx[i] = deltas.at({startRowDeltas + i, startColDeltas}) / T(weights[0]);
+    dy[i] = deltas.at({startRowDeltas + i, startColDeltas + dim_t(1)}) /
+            T(weights[1]);
+    dw[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(2)}) /
+                     T(weights[2]),
+                 bboxXformClip);
+    dh[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(3)}) /
+                     T(weights[3]),
+                 bboxXformClip);
+  }
+
+  std::vector<T> predCtrX(rows), predCtrY(rows), predW(rows), predH(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    predCtrX[i] = dx[i] * widths[i] + ctrX[i];
+    predCtrY[i] = dy[i] * heights[i] + ctrY[i];
+    predW[i] = T(std::exp(float(dw[i]))) * widths[i];
+    predH[i] = T(std::exp(float(dh[i]))) * heights[i];
+  }
+
+  for (dim_t i = 0; i < rows; i++) {
+    // x1
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut}) =
+        predCtrX[i] - T(0.5) * predW[i];
+    // x2
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(1)}) =
+        predCtrY[i] - T(0.5) * predH[i];
+    // y1
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(2)}) =
+        predCtrX[i] + T(0.5) * predW[i] - T(((legacyPlusOne) ? 1 : 0));
+    // y2
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(3)}) =
+        predCtrY[i] + T(0.5) * predH[i] - T(((legacyPlusOne) ? 1 : 0));
+  }
+}
+
+// Like bbox_transform_upright, but works on rotated boxes.
+// boxes: pixel coordinates of the bounding boxes
+//     size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+// deltas: bounding box translations and scales
+//     size (M, 5), format [dx; dy; dw; dh; da]
+//     dx, dy: scale-invariant translation of the center of the bounding box
+//     dw, dh: log-space scaling of the width and height of the bounding box
+//     da: delta for angle in radians
+// return: pixel coordinates of the bounding boxes
+//     size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+template <typename T>
+static void bbox_transform_rotated(
+    Handle<T> &boxesOut, const Handle<T> &boxes, const Handle<T> &deltas,
+    dim_t startRowBoxesOut, dim_t startColBoxesOut, dim_t startRowBoxes,
+    dim_t startColBoxes, dim_t startRowDeltas, dim_t startColDeltas, dim_t rows,
+    llvm::ArrayRef<float> weights, const T &bboxXformClip, T scaleBeforeInv,
+    const bool angleBoundOn, ssize_t angleBoundLo, ssize_t angleBoundHi) {
+
+  if (boxes.dims()[0] == 0) {
+    return;
+  }
+
+  const T PI = 3.1415926535897931;
+
+  std::vector<T> dx(rows), dy(rows), dw(rows), dh(rows), da(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    dx[i] = deltas.at({startRowDeltas + i, startColDeltas}) / T(weights[0]);
+    dy[i] = deltas.at({startRowDeltas + i, startColDeltas + dim_t(1)}) /
+            T(weights[1]);
+    dw[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(2)}) /
+                     T(weights[2]),
+                 bboxXformClip);
+    dh[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(3)}) /
+                     T(weights[3]),
+                 bboxXformClip);
+    // Convert back to degrees
+    da[i] = deltas.at({startRowDeltas + i, startColDeltas + dim_t(4)}) *
+            T(180.0) / PI;
+  }
+
+  for (dim_t i = 0; i < rows; i++) {
+    // new ctr_x
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut}) =
+        dx[i] * boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
+            scaleBeforeInv +
+        boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv;
+    // new ctr_y
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(1)}) =
+        dy[i] * boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
+            scaleBeforeInv +
+        boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
+            scaleBeforeInv;
+    // new width
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(2)}) =
+        T(std::exp(float(dw[i]))) *
+        boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
+        scaleBeforeInv;
+    // new height
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(3)}) =
+        T(std::exp(float(dh[i]))) *
+        boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
+        scaleBeforeInv;
+    // new angle
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(4)}) =
+        da[i] + boxes.at({startRowBoxes + i, startColBoxes + dim_t(4)});
+  }
+
+  if (angleBoundOn) {
+    const ssize_t period = angleBoundHi - angleBoundLo;
+
+    for (dim_t i = 0; i < rows; i++) {
+      if (ssize_t(boxesOut.at({startRowBoxesOut + i,
+                               startColBoxesOut + dim_t(4)})) < angleBoundLo) {
+        boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(4)}) +=
+            T(period);
+      } else if (ssize_t(boxesOut.at(
+                     {startRowBoxesOut + i, startColBoxesOut + dim_t(4)})) >
+                 angleBoundHi) {
+        boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(4)}) -=
+            T(period);
+      }
+    }
+  }
+}
+
+// Clip boxes to image boundaries
+// boxes: pixel coordinates of bounding box, size (M * 4)
+template <typename T>
+void clip_boxes_upright(Handle<T> &boxes, dim_t startRowBoxes,
+                        dim_t startColBoxes, dim_t rows, int height, int width,
+                        T scaleAfter, bool legacyPlusOne = false,
+                        std::vector<dim_t> uprightRows = {}) {
+  for (dim_t i = 0; i < rows; i++) {
+    if (uprightRows.size() == rows && !uprightRows[i]) {
+      continue;
+    }
+    // x1 >= 0 && x1 < width
+    boxes.at({startRowBoxes + i, startColBoxes}) =
+        scaleAfter *
+        std::max(std::min(boxes.at({startRowBoxes + i, startColBoxes}),
+                          T(width - int(((legacyPlusOne) ? 1 : 0)))),
+                 T(0));
+    // y1 >= 0 && y1 < height
+    boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
+        scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
+                                                 startColBoxes + dim_t(1)}),
+                                       T(height - ((legacyPlusOne) ? 1 : 0))),
+                              T(0));
+
+    // x2 >= 0 && x2 < width
+    boxes.at({startRowBoxes + i, startColBoxes + 2}) =
+        scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
+                                                 startColBoxes + dim_t(2)}),
+                                       T(width - ((legacyPlusOne) ? 1 : 0))),
+                              T(0));
+    // y2 >= 0 && y2 < height
+    boxes.at({startRowBoxes + i, startColBoxes + 3}) =
+        scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
+                                                 startColBoxes + dim_t(3)}),
+                                       T(height - ((legacyPlusOne) ? 1 : 0))),
+                              T(0));
+  }
+}
+
+// Similar to clip_boxes_upright but handles rotated boxes with angle info.
+// boxes: size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+//
+// Clipping is only performed for boxes that are almost upright
+// (within a given `angle_thresh` tolerance) to maintain backward compatibility
+// for non-rotated boxes.
+//
+// We don't clip rotated boxes due to a couple of reasons:
+// (1) There are potentially multiple ways to clip a rotated box to make it
+//     fit within the image.
+// (2) It's tricky to make the entire rectangular box fit within the image and
+//     still be able to not leave out pixels of interest.
+// Therefore, we rely on upstream ops like RoIAlignRotated safely handling this.
+template <typename T>
+void clip_boxes_rotated(Handle<T> &boxes, dim_t startRowBoxes,
+                        dim_t startColBoxes, dim_t rows, int imH, int imW,
+                        T scaleAfter, float angleThresh = 1.0,
+                        bool legacyPlusOne = false) {
+  std::vector<dim_t> uprightRows(rows, 0);
+  for (dim_t i = 0; i < rows; i++) {
+    if (std::abs(float(boxes.at(
+            {startRowBoxes + i, startColBoxes + dim_t(4)}))) <= angleThresh) {
+      const T ctrX = boxes.at({startRowBoxes + i, startColBoxes});
+      const T ctrY = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)});
+      const T width = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)});
+      const T height = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)});
+      boxes.at({startRowBoxes + i, startColBoxes}) =
+          ctrX - (width - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
+          ctrY - (height - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) =
+          ctrX + (width - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) =
+          ctrY + (height - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      uprightRows[i] = 1;
+    }
+  }
+  clip_boxes_upright(boxes, startRowBoxes, startColBoxes, rows, imH, imW,
+                     /* scaleAfter */ T(1.0), legacyPlusOne, uprightRows);
+
+  for (dim_t i = 0; i < rows; i++) {
+    if (uprightRows[i] == 1) {
+      const T x1 = boxes.at({startRowBoxes + i, startColBoxes});
+      const T y1 = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)});
+      const T x2 = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)});
+      const T y2 = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)});
+      boxes.at({startRowBoxes + i, startColBoxes}) = (x1 + x2) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
+          (y1 + y2) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) =
+          x2 - x1 + T(((legacyPlusOne) ? 1 : 0));
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) =
+          y2 - y1 + T(((legacyPlusOne) ? 1 : 0));
+    }
+
+    for (dim_t j = 0; j < 4; j++) {
+      boxes.at({startRowBoxes + i, startColBoxes + j}) *= scaleAfter;
+    }
+  }
+}
+
+template <typename T>
+void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
+    glow::BBoxTransformInst const *I) {
+  auto roiIn = I->getRois();
+  auto deltaIn = I->getDeltas();
+  auto imInfoIn = I->getImInfo();
+
+  auto boxOut = I->getBoxOut();
+  auto roiBatchSplits = I->getRoiBatchSplits();
+
+  auto weights = I->getWeights();
+  const dim_t boxDim = I->getRotated() ? 5 : 4;
+  auto applyScale = I->getApplyScale();
+  auto rotated = I->getRotated();
+  auto angleBoundOn = I->getAngleBoundOn();
+  auto angleBoundLo = I->getAngleBoundLo();
+  auto angleBoundHi = I->getAngleBoundHi();
+  auto angleThresh = I->getClipAngleThresh();
+  auto legacyPlusOne = I->getLegacyPlusOne();
+  const dim_t N = roiIn->dims()[0];
+  const dim_t numClasses = deltaIn->dims()[1] / boxDim;
+  const dim_t batchSize = imInfoIn->dims()[0];
+
+  auto roisH = getTensor(roiIn)->getHandle<T>();
+  auto deltasH = getTensor(deltaIn)->getHandle<T>();
+  auto roiBatchSplitsH = getTensor(roiBatchSplits)->getHandle<T>();
+
+  // Count the number of RoIs per batch
+  std::vector<int> numRoisPerBatch(batchSize, 0);
+  if (roiIn->dims()[1] == boxDim) {
+    numRoisPerBatch[0] = N;
+  } else {
+    for (dim_t i = 0; i < N; ++i) {
+      const int roiBatchId = roisH.at({i, 0});
+      numRoisPerBatch[roiBatchId]++;
+    }
+  }
+
+  auto imInfoH = getTensor(imInfoIn)->getHandle<T>();
+  auto boxOutH = getTensor(boxOut)->getHandle<T>();
+  getTensor(boxOut)->zero();
+
+  // Default value for minimum bounding box width and height after bounding
+  // box transformation (bbox_transform()) in log-space
+  const T bboxXformClip = std::log(1000.0 / 16.0);
+
+  // We assume roiIn and deltaIn over multiple batches are grouped
+  // together in increasing order as generated by GenerateProposalsOp
+  dim_t offset = 0;
+  for (dim_t i = 0; i < batchSize; ++i) {
+    const dim_t numRois = numRoisPerBatch[i];
+    const T scaleBefore = imInfoH.at({i, 2});
+    const T scaleAfter = applyScale ? scaleBefore : T(1.0);
+    dim_t imgH = dim_t(float(imInfoH.at({i, 0}) / scaleBefore) + 0.5);
+    dim_t imgW = dim_t(float(imInfoH.at({i, 1}) / scaleBefore) + 0.5);
+
+    // Apply for the rectangle starting at (startRowRoi, startColRoi)
+    // with height (Rows) of num_rois, and width (Cols) of boxDim.
+    dim_t startRowRoi = offset;
+    dim_t startColRoi = roiIn->dims()[1] != boxDim ? 1 : 0;
+    dim_t rows = numRois;
+    T scaleBeforeInv = T(1) / scaleBefore;
+
+    // scale before and after on the fly.
+    // Do not apply scale for angle in rotated boxes
+    for (dim_t k = 0; k < numClasses; k++) {
+      dim_t startRowDelta = offset;
+      dim_t startColDelta = k * boxDim;
+      if (rotated) {
+        bbox_transform_rotated<T>(boxOutH, roisH, deltasH, startRowDelta,
+                                  startColDelta, startRowRoi, startColRoi,
+                                  startRowDelta, startColDelta, rows, weights,
+                                  bboxXformClip, scaleBeforeInv, angleBoundOn,
+                                  angleBoundLo, angleBoundHi);
+        clip_boxes_rotated<T>(boxOutH, startRowDelta, startColDelta, rows, imgH,
+                              imgW, scaleAfter, angleThresh, legacyPlusOne);
+      } else {
+        bbox_transform_upright<T>(boxOutH, roisH, deltasH, startRowDelta,
+                                  startColDelta, startRowRoi, startColRoi,
+                                  startRowDelta, startColDelta, rows, weights,
+                                  bboxXformClip, scaleBeforeInv, legacyPlusOne);
+        clip_boxes_upright<T>(boxOutH, startRowDelta, startColDelta, rows, imgH,
+                              imgW, scaleAfter, legacyPlusOne);
+      }
+    }
+
+    offset += rows;
+  }
+
+  for (dim_t i = 0; i < batchSize; i++) {
+    roiBatchSplitsH.at({i}) = numRoisPerBatch[i];
+  }
+}
+
+void BoundInterpreterFunction::fwdBBoxTransformInst(
+    glow::BBoxTransformInst const *I) {
+  dispatchFloatingPointImpl(fwdBBoxTransformInstFloatImpl,
+                            I->getRois()->getElementType(), I);
 }

@@ -206,7 +206,7 @@ Error BoundInterpreterFunction::execute(IRFunction *F,
     // Find all virtually padded tensors so they can be replaced.
     std::vector<Placeholder *> virtualPadded;
     for (auto &ph : context->getPlaceholderBindings()->pairs()) {
-      if (ph.second->getUnpaddedSizeInBytes() < ph.second->getSizeInBytes()) {
+      if (ph.second.getUnpaddedSizeInBytes() < ph.second.getSizeInBytes()) {
         virtualPadded.push_back(ph.first);
       }
     }
@@ -214,8 +214,12 @@ Error BoundInterpreterFunction::execute(IRFunction *F,
     for (auto &ph : virtualPadded) {
       auto oldTensor = context->getPlaceholderBindings()->get(ph);
       Tensor paddedTensor(oldTensor->getType());
-      memcpy(paddedTensor.getUnsafePtr(), oldTensor->getUnsafePtr(),
-             oldTensor->getUnpaddedSizeInBytes());
+      if (oldTensor->getUnsafePtr()) {
+        memcpy(paddedTensor.getUnsafePtr(), oldTensor->getUnsafePtr(),
+               oldTensor->getUnpaddedSizeInBytes());
+      } else {
+        CHECK_EQ(oldTensor->getUnpaddedSizeInBytes(), 0);
+      }
       context->getPlaceholderBindings()->erase(ph);
       context->getPlaceholderBindings()->insert(ph, std::move(paddedTensor));
     }
@@ -227,7 +231,7 @@ Error BoundInterpreterFunction::execute(IRFunction *F,
         continue;
       }
 
-      externalTensors_[w] = ph.second;
+      externalTensors_[w] = &ph.second;
     }
   }
 

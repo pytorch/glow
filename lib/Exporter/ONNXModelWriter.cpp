@@ -19,14 +19,22 @@
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/ZipUtils.h"
 
-#include <float.h>
+#include <stack>
 
 #include "miniz.h"
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
 using namespace glow::runtime;
 using google::protobuf::RepeatedPtrField;
 
 namespace glow {
+#ifdef FACEBOOK_INTERNAL
+extern const char *revisionHash;
+#endif /* FACEBOOK_INTERNAL */
+
+#define NUM_FLOAT_DIGS 30
+
 namespace {
 template <bool IsInteger, bool IsEnum, typename T> struct AttributeAssigner {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr, const T &container);
@@ -59,6 +67,17 @@ template <> struct AttributeAssigner<false, false, llvm::StringRef> {
                      const llvm::StringRef container) {
     attr->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
     attr->set_s(container.str());
+  }
+};
+
+// Specialization for vector of strings.
+template <> struct AttributeAssigner<false, false, std::vector<std::string>> {
+  static void assign(ONNX_NAMESPACE::AttributeProto *attr,
+                     const std::vector<std::string> &container) {
+    attr->set_type(ONNX_NAMESPACE::AttributeProto::STRINGS);
+    for (auto &str : container) {
+      attr->add_strings(str);
+    }
   }
 };
 
@@ -122,13 +141,11 @@ void addValueAttribute(ONNX_NAMESPACE::NodeProto *proto,
                     T>::assign(attr, container);
 }
 
-/// Adds the type attributes from \p NV to \p proto. \p ioNum, \p isInput, and
+/// Adds the type attributes from \p ty to \p proto. \p ioNum, \p isInput, and
 /// \p addPrefix are used to format the name of the attribute.
-void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, TypeRef ty,
                        unsigned ioNum, bool isInput,
                        const std::string &addPrefix = "") {
-  const TypeRef ty = NV.getType();
-
   // Add ElemKind.
   auto *elemKindAttr = proto->add_attribute();
   elemKindAttr->set_name(
@@ -139,7 +156,7 @@ void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
   // Add Shape.
   addValueAttribute(proto,
                     getTypeAttrID(ioNum, shapeSignifier, isInput, addPrefix),
-                    NV.dims());
+                    ty->dims());
 
   // Write out scale/offset if quantized ElemKind.
   if (isQuantizedElemKind(ty->getElementType())) {
@@ -150,6 +167,14 @@ void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
         proto, getTypeAttrID(ioNum, qOffsetSignifier, isInput, addPrefix),
         ty->getOffset());
   }
+}
+
+/// Adds the type attributes from \p NV to \p proto. \p ioNum, \p isInput, and
+/// \p addPrefix are used to format the name of the attribute.
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue &NV,
+                       unsigned ioNum, bool isInput,
+                       const std::string &addPrefix = "") {
+  addTypeAttributes(proto, NV.getType(), ioNum, isInput, addPrefix);
 }
 
 /// Add the type attributes from the \p ioNum number input or output (depending
@@ -202,23 +227,6 @@ const TileNode *unwindTile(const TileNode *node, std::vector<size_t> *repeats,
     }
   }
   return tile;
-}
-
-/// Helper function to recursively get inputs for the broadcast node.
-/// Broadcast node get constructed as a chain of Reshape->Tile->...->Tile.
-const Node *unwindBroadcastInput(const TileNode *tile,
-                                 std::vector<size_t> *repeats,
-                                 ReportedNodes &reporter) {
-  tile = unwindTile(tile, repeats, reporter);
-  DCHECK(tile);
-
-  reporter.insert(tile);
-  if (const ReshapeNode *RN =
-          llvm::dyn_cast<ReshapeNode>(tile->getInput().getNode())) {
-    return RN;
-  } else {
-    return nullptr;
-  }
 }
 
 /// Writes all outputs from Node \p node to protobuf \p proto.
@@ -383,67 +391,32 @@ void writeTransposeInput(const Node *node, const Node *input,
   proto->add_input(newName);
 }
 /// Writes Arithmetic operators with name \p opName from Node \p node into
-/// provided graph protobuf \p graph, optionally reports intermediate nodes as
-/// visited, signaling that such nodes must be ignored,
-/// \returns error.
+/// provided graph protobuf \p graph. Arithmetic node may have been broadcasted,
+/// \p hasMultidirectionalBroadcast indicates the node can be multidirectional
+/// broadcast, if that's the case do not specify the axis or broadcast flag in
+/// protobuf, optionally reports intermediate nodes as visited, signaling that
+/// such nodes must be ignored, \returns error.
 template <typename T>
 Error writeArithmetic(const std::string &opName, const T *node,
-                      ONNX_TRAITS::GraphProto &graph, ReportedNodes &reporter) {
+                      ONNX_TRAITS::GraphProto &graph, ReportedNodes &reporter,
+                      bool hasMultidirectionalBroadcast) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
   proto->set_op_type(opName);
   outputsToProto(node, graph, proto);
 
   auto LHS = node->getLHS();
-  if (const TileNode *TN = llvm::dyn_cast<TileNode>(LHS.getNode())) {
-    reporter.insert(TN);
-    const ReshapeNode *RN = llvm::dyn_cast<ReshapeNode>(
-        unwindBroadcastInput(TN, nullptr /* repeats */, reporter));
-    RETURN_ERR_IF_NOT(RN, "Can't unwind Tile node.");
-    reporter.insert(RN);
-    LHS = RN->getInput();
+  if (const BroadcastNode *BN = llvm::dyn_cast<BroadcastNode>(LHS.getNode())) {
+    reporter.insert(BN);
+    LHS = BN->getInput();
   }
 
   int axis = -1;
   auto RHS = node->getRHS();
-  if (const TileNode *TN = llvm::dyn_cast<TileNode>(RHS.getNode())) {
-    reporter.insert(TN);
-    // unwind broadcast with tiles repeats.
-    std::vector<size_t> repeats;
-    const ReshapeNode *RN = llvm::dyn_cast<ReshapeNode>(
-        unwindBroadcastInput(TN, &repeats, reporter));
-    RETURN_ERR_IF_NOT(RN, "Can't unwind Tile node.");
-    reporter.insert(RN);
-    RHS = RN->getInput();
-
-    if (LHS.dims() != RHS.dims()) {
-      // Extract axis from available shapes, ie. input origin,
-      // reshape and target repeats.
-      llvm::ArrayRef<dim_t> origin = RHS.dims();
-      llvm::ArrayRef<dim_t> reshape = RN->getDims();
-      DCHECK(reshape.size() == repeats.size());
-      DCHECK(repeats.size() >= origin.size());
-
-      // Replace target repeats dimension if it equal 1 and the correspondent
-      // reshape dimension isn't.
-      for (size_t b = 0, e = repeats.size(); b < e; ++b) {
-        if (repeats[b] == 1 && reshape[b] != 1) {
-          repeats[b] = reshape[b];
-        }
-      }
-
-      for (int b = 0, e = repeats.size() - origin.size(); b <= e && axis == -1;
-           ++b) {
-        axis = b;
-        for (size_t i = 0; i < origin.size(); ++i) {
-          if (origin[i] != repeats[i + b] &&
-              (origin[i] != 1 || reshape[i + b] != 1)) {
-            axis = -1;
-            break;
-          }
-        }
-      }
-    }
+  if (const BroadcastNode *BN = llvm::dyn_cast<BroadcastNode>(RHS.getNode())) {
+    reporter.insert(BN);
+    RHS = BN->getInput();
+    axis = BN->getAxis();
   }
 
   proto->add_input(LHS.getNode()->getName());
@@ -451,7 +424,7 @@ Error writeArithmetic(const std::string &opName, const T *node,
 
   // Check if the shapes of LHS and RHS are different and broadcast attribute is
   // required.
-  if (LHS.dims() != RHS.dims()) {
+  if (LHS.dims() != RHS.dims() && !hasMultidirectionalBroadcast) {
     addValueAttribute(proto, "axis", axis);
     addValueAttribute(proto, "broadcast", 1UL);
   }
@@ -484,61 +457,74 @@ class ReverseGraphWalker {
     // Write constants first, even they should be placed at the end of the list,
     // we can visit them first, cause they will be written into ONNX
     // initializers, not nodes.
-    for (const auto *V : F.getParent()->getConstants()) {
-      reverseOrder_.push_back(V);
-      visited_.insert(V);
+    for (const auto *C : F.findConstants()) {
+      reverseOrder_.push_back(C);
+      visited_.insert(C);
     }
     // Start visiting all root nodes, i.e. nodes that do not have any users.
     for (auto &N : F.getNodes()) {
       if (N.getNumUsers() == 0) {
-        visitRecursively(&N);
+        visitIteratively(&N);
       }
     }
   }
 
-  void visitRecursively(const Node *N) {
-    // Check is node has been visited already.
-    if (visited_.count(N)) {
-      return;
-    }
+  void visitIteratively(const Node *rootNode) {
+    std::stack<const Node *> st;
+    st.push(rootNode);
+    while (st.size()) {
+      auto *N = st.top();
+      st.pop();
 
-    if (N->getKind() == Kinded::Kind::PlaceholderKind) {
-      // For Placeholder don't visit uses.
-      visited_.insert(N);
-      reverseOrder_.push_back(N);
-      return;
-    }
-
-    // First visit all users, if any.
-    for (const auto &use : N->getUsers()) {
-      const auto *UN = use.getUser();
-      // Check vacancy.
-      if (visited_.count(UN)) {
+      // Check is node has been visited already.
+      if (visited_.count(N)) {
         continue;
       }
 
-      visitRecursively(UN);
-
-      if (!visited_.count(UN)) {
-        visited_.insert(UN);
-        reverseOrder_.push_back(UN);
+      if (N->getKind() == Kinded::Kind::PlaceholderKind) {
+        // For Placeholder don't visit uses.
+        visited_.insert(N);
+        reverseOrder_.push_back(N);
+        continue;
       }
-    }
 
-    // Visit current node, if it's still vacant.
-    if (!visited_.count(N)) {
-      visited_.insert(N);
-      reverseOrder_.push_back(N);
-    }
+      // First visit all users, if any.
+      bool continueEarly = false;
+      for (const auto &use : N->getUsers()) {
+        const auto *UN = use.getUser();
+        // Check vacancy.
+        if (visited_.count(UN)) {
+          continue;
+        }
+        st.push(UN);
+        continueEarly = true;
+      }
+      if (continueEarly) {
+        continue;
+      }
 
-    // And then visit inputs of the current node.
-    for (unsigned b = 0, e = N->getNumInputs(); b < e; ++b) {
-      visitRecursively(N->getNthInput(b).getNode());
-    }
+      // Visit current node, if it's still vacant.
+      if (!visited_.count(N)) {
+        visited_.insert(N);
+        reverseOrder_.push_back(N);
+      }
 
-    // Additionally visit the predicate input if it exists.
-    if (N->hasPredicate()) {
-      visitRecursively(N->getPredicate().getNode());
+      // And then visit inputs of the current node.
+      for (unsigned b = 0, e = N->getNumInputs(); b < e; ++b) {
+        auto *UN = N->getNthInput(b).getNode();
+        if (visited_.count(UN)) {
+          continue;
+        }
+        st.push(UN);
+      }
+
+      // Additionally visit the predicate input if it exists.
+      if (N->hasPredicate()) {
+        auto *UN = N->getPredicate().getNode();
+        if (!visited_.count(UN)) {
+          st.push(UN);
+        }
+      }
     }
   }
 
@@ -556,6 +542,20 @@ static void addAttrToDocString(T *proto, const std::string &attrName,
 }
 
 } // namespace
+
+Error ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
+    llvm::StringMap<std::string> &extraMetadataProps,
+    const OriginNameToTQPMap &map) {
+  RETURN_ERR_IF_NOT(!extraMetadataProps.count("OriginNameToTQPMap"),
+                    "Already had OriginNameToTQPMap");
+  std::string str;
+  for (const auto &nameTQP : map) {
+    str += nameTQP.first + offsetSepSig +
+           std::to_string(nameTQP.second.offset) + offsetEndSig;
+  }
+  extraMetadataProps.try_emplace(originNameToUniqueOffsetMappingSignifier, str);
+  return Error::success();
+}
 
 bool ONNXModelWriter::isIntermediatePHForDAG(const Placeholder *PH) {
   if (!dagMode_) {
@@ -589,6 +589,68 @@ bool ONNXModelWriter::isIntermediatePHForDAG(const Placeholder *PH) {
   return isInputPH && isOutputPH;
 }
 
+/// Reverses the order of the nodes in \p nodes.
+static void
+reverseNodesOrder(RepeatedPtrField<ONNX_NAMESPACE::NodeProto> &nodes) {
+  for (size_t i = 0, n = nodes.size(); i < n / 2; ++i) {
+    nodes.SwapElements(i, n - i - 1);
+  }
+}
+
+bool ONNXModelWriter::isWritingConstFoldSubgraph() {
+  return graphProtoRoot_ != graphProto_;
+}
+
+Error ONNXModelWriter::writeConstantFoldingSubgraph(const Constant *C,
+                                                    SaveNode *SN) {
+  Function *constFoldFunction = SN->getParent();
+
+  // If we already wrote out this Function we can return early.
+  if (!processedConstFoldFunctions_.insert(constFoldFunction).second) {
+    return Error::success();
+  }
+
+  // Create new constant folding Node, which we add the subgraph to. Always add
+  // to the root as these are all loaded before loading any ops.
+  auto *constFoldNodeProto = graphProtoRoot_->add_node();
+  constFoldNodeProto->set_op_type(constFoldSubgraphNodeName);
+  const char *constFoldNodeName = constFoldFunction->getName().data();
+  constFoldNodeProto->set_name(constFoldNodeName);
+
+  // Now add the constant folding subgraph to the node.
+  auto *constFoldNodeSubgraph = constFoldNodeProto->add_attribute();
+  constFoldNodeSubgraph->set_name("ConstFoldSubgraph");
+  constFoldNodeSubgraph->set_type(ONNX_NAMESPACE::AttributeProto::GRAPH);
+
+  // Temporarily swap in the constant folding function and the graph proto from
+  // the constant folding subgraph node so we can write into it.
+  ONNX_TRAITS::GraphProto *origGraphProto = graphProto_;
+  graphProto_ = constFoldNodeSubgraph->mutable_g();
+  Function *origF = F_;
+  F_ = constFoldFunction;
+  // Make sure to restore original state of the writer when exiting this scope.
+  ScopeGuard restoreOrigStateGuard([&]() {
+    graphProto_ = origGraphProto;
+    F_ = origF;
+  });
+
+  // Now that we have setup the constant folding Function and proto to write
+  // into, write the function in.
+  RETURN_IF_ERR(writeFunction());
+
+  // Now set the output of the ConstFoldSubgraph node. Only output is the
+  // Constant it generates. Note that there are no inputs, as Constant inputs
+  // are self-contained to this graph as initializers.
+  constFoldNodeProto->add_output(C->getName().data());
+  addTypeAttributes(constFoldNodeProto, SN->getOutput(), SaveNode::OutputIdx,
+                    /* isInput */ false);
+
+  // Reverse the order of Nodes since we wrote them in reverse order.
+  reverseNodesOrder(*graphProto_->mutable_node());
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeFunction() {
   // Use pre order graph traversal.
   // If node is constant with uses, turned into "input" and create a tensor
@@ -617,19 +679,46 @@ Error ONNXModelWriter::writeFunction() {
         continue;
       }
       // Write global input, output only tensor shape.
-      auto *inputProto = graphProto_->add_input();
-      tensorShapeFromPlaceholder(PH, inputProto);
+      RETURN_IF_EXPECTED_IS_ERR(createProtoForIO(PH, /* isInput */ true));
     } else if (kind == Kinded::Kind::ConstantKind) {
       // Write global initializer, output tensor bytes.
       const auto *C = llvm::cast<Constant>(N);
-      auto *tensorProto = addInitializer(*graphProto_);
+
+      // Check if this constant came from constant folding that we recorded and
+      // want to serialize in the model. If so then we process it before the
+      // Constant itself so that it will be loaded first.
+      auto constFoldRecordIt = constFoldRecord_.find(C);
+      if (constFoldRecordIt != constFoldRecord_.end()) {
+        RETURN_IF_ERR(
+            writeConstantFoldingSubgraph(C, constFoldRecordIt->second));
+      }
+
+      // Note: Always add initializers to the root graph proto.
+      auto *tensorProto = addInitializer(*graphProtoRoot_);
+
+      // If we added a constant folding Node recording the constant folding that
+      // generated this initializer then point to it in the initializer.
+      if (constFoldRecordIt != constFoldRecord_.end()) {
+        SaveNode *SN = constFoldRecordIt->second;
+        // Point the original initializerProto to this Node so that it knows
+        // where to find the Function to replay the constant folding, along with
+        // the resNo needed from the Function.
+        auto *constFoldNodeNameProto = tensorProto->add_external_data();
+        constFoldNodeNameProto->set_key("ConstFoldNodeName");
+        constFoldNodeNameProto->set_value(SN->getParent()->getName().data());
+        auto *resNoProto = tensorProto->add_external_data();
+        resNoProto->set_key("ConstFoldResNo");
+        resNoProto->set_value(std::to_string(SN->getInput().getResNo()));
+      }
+
       // When using useGlowCustomOps we always use generateNodeOutputName for
       // all inputs and outputs.
       tensorProto->set_name(useGlowCustomOps_
                                 ? C->getOutput().generateNodeOutputName(
                                       /* stripResNoFor0thInput */ true)
                                 : C->getName().str());
-      writeTensor(C->getPayload(), tensorProto, useGlowCustomOps_);
+      writeTensor(C->getPayload(), tensorProto, useGlowCustomOps_,
+                  includeConstantData_);
       if (useGlowCustomOps_) {
         // Also include the layout in the initializer to be loaded later.
         addAttrToDocString(tensorProto, layoutSignifier, C->getLayout());
@@ -649,8 +738,13 @@ Error ONNXModelWriter::writeFunction() {
         proto->add_input(SN->getInput().generateNodeOutputName(
             /* stripResNoFor0thInput */ true));
         proto->add_output(PH->getName().data());
+        addTypeAttributes(proto, SN->getInput(), SaveNode::InputIdx,
+                          /* isInput */ true);
+        addTypeAttributes(proto, SN->getOutput(), SaveNode::OutputIdx,
+                          /* isInput */ false);
         // If dumping a DAG then add partition names to each op that's written.
-        if (dagMode_) {
+        // Also only do so when not writing a const fold subgraph.
+        if (dagMode_ && !isWritingConstFoldSubgraph()) {
           addValueAttribute(proto, "partitionName", F_->getName().str());
           // Skip writing Placeholders that are only intermediates -- these are
           // understood/recreated during reimporting based on an op's partition.
@@ -661,8 +755,9 @@ Error ONNXModelWriter::writeFunction() {
         }
       }
 
-      auto *out = graphProto_->add_output();
-      tensorShapeFromPlaceholder(PH, out);
+      ONNX_NAMESPACE::ValueInfoProto *out;
+      ASSIGN_VALUE_OR_RETURN_ERR(out,
+                                 createProtoForIO(PH, /* isInput */ false));
 
       // Use the doc string to specify the name that should be used for the
       // SaveNode to ensure it's kept the same between export and import.
@@ -686,15 +781,31 @@ void ONNXModelWriter::setupNewProto() {
   opsetImportProto->set_version(opsetVersion_);
   graphProto_ = modelProto_.mutable_graph();
   graphProto_->set_name("glow");
+  graphProtoRoot_ = graphProto_;
+}
+
+static Error writeModelToString(const ::google::protobuf::Message &modelProto,
+                                bool textMode, std::string *outputStringPtr) {
+  if (textMode) {
+    RETURN_ERR_IF_NOT(google::protobuf::TextFormat::PrintToString(
+                          modelProto, outputStringPtr),
+                      "Error writing to string");
+  } else {
+    ::google::protobuf::io::StringOutputStream zeroCopyOutput(outputStringPtr);
+    ::google::protobuf::io::CodedOutputStream codedOutput(&zeroCopyOutput);
+    modelProto.SerializeToCodedStream(&codedOutput);
+    RETURN_ERR_IF_NOT(!codedOutput.HadError(),
+                      "Can't write to the output string",
+                      ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
+  }
+  return Error::success();
 }
 
 Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
   // Nodes have been added in a reverse order from SaveNode up to the inputs,
   // we need to rearrange all nodes in the reverse order before serialization.
   auto *nodes = graphProto_->mutable_node();
-  for (size_t i = 0, n = nodes->size(); i < n / 2; ++i) {
-    nodes->SwapElements(i, n - i - 1);
-  }
+  reverseNodesOrder(*nodes);
 
   // useGlowCustomOps uses Identities differently than the normal writer, so
   // we do not want to do this if so.
@@ -714,9 +825,56 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
         i += k;
       }
     }
+  } else {
+#ifdef FACEBOOK_INTERNAL
+    addMetadataProp("GlowRevisionHash", revisionHash);
+#endif /* FACEBOOK_INTERNAL */
+  }
+
+  // If we have loadedPHNames_, then we buffered the non-static PH IO protobuf
+  // in inputValueInfos_ and outputValueInfos_. Now we write it all out in order
+  // according to indices provided in loadedPHNames_.
+  if (loadedPHNames_) {
+    RETURN_ERR_IF_NOT(
+        inputValueInfos_.size() + outputValueInfos_.size() ==
+            loadedPHNames_->size(),
+        strFormat("Number of buffered inputs and outputs %lu didn't match the "
+                  "number of loadedPHNames %lu",
+                  inputValueInfos_.size() + outputValueInfos_.size(),
+                  loadedPHNames_->size()));
+
+    // If we have the loaded PH names map, then we need to reorder the inputs
+    // and outputs to follow the same order as provided in the loadedPHNames_.
+    std::vector<const Placeholder *> orderedInputs(inputValueInfos_.size());
+    std::vector<const Placeholder *> orderedOutputs(outputValueInfos_.size());
+    for (const auto &pair : *loadedPHNames_) {
+      const Placeholder *PH = pair.first;
+      const unsigned orderIdx = pair.second.second;
+      if (inputValueInfos_.count(PH)) {
+        orderedInputs[orderIdx] = PH;
+      } else if (outputValueInfos_.count(PH)) {
+        orderedOutputs[orderIdx] = PH;
+      } else {
+        return MAKE_ERR("PH must either be in inputs or outputs: " +
+                        PH->getName().str());
+      }
+    }
+
+    // Now have IO in order matching loadedPHNames_, so finally write them out.
+    for (const Placeholder *PH : orderedInputs) {
+      auto *inputProto = graphProto_->add_input();
+      inputProto->MergeFrom(inputValueInfos_[PH]);
+    }
+    for (const Placeholder *PH : orderedOutputs) {
+      auto *outputProto = graphProto_->add_output();
+      outputProto->MergeFrom(outputValueInfos_[PH]);
+    }
   }
 
   if (zipMode_) {
+    RETURN_ERR_IF_NOT(
+        outputStringPtr_ == nullptr,
+        "OnnxModelWriter write to string for zip mode not supported");
     const bool compressed = false;
     ZipWriter zip(&ff_, name);
     std::stringstream ss;
@@ -746,17 +904,31 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
     ff_.close();
     return Error::success();
   } else {
-    return writeModel(modelProto_, textMode_);
+    if (outputStringPtr_ != nullptr) {
+      return writeModelToString(modelProto_, textMode_, outputStringPtr_);
+    } else {
+      return writeModel(modelProto_, textMode_);
+    }
   }
 }
 
-ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
-                                 size_t irVersion, size_t opsetVersion,
-                                 Error *errPtr, bool textMode, bool zipMode,
-                                 bool useGlowCustomOps)
+ONNXModelWriter::ONNXModelWriter(
+    const std::string &modelFilename, Function &F, size_t irVersion,
+    size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
+    bool useGlowCustomOps, bool includeConstantData,
+    const llvm::StringMap<std::string> &extraMetadataProps,
+    const ConstantFoldingRecordMap &constFoldRecord,
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo,
+    std::string *outputStringPtr)
     : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
       opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
-      useGlowCustomOps_(useGlowCustomOps), dagMode_(false) {
+      includeConstantData_(includeConstantData),
+      extraMetadataProps_(extraMetadataProps),
+      useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
+      constFoldRecord_(constFoldRecord),
+      backendSpecificNodeInfo_(backendSpecificNodeInfo),
+      loadedPHNames_(nullptr), staticPlaceholderTypes_(nullptr),
+      outputStringPtr_(outputStringPtr) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -765,6 +937,9 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
   // Lambda to setup the ONNXModelWriter and return any Errors that were raised.
   auto setup = [&]() -> Error {
     setupNewProto();
+    for (auto &prop : extraMetadataProps_) {
+      addMetadataProp(prop.getKey(), prop.second);
+    }
 
     RETURN_IF_ERR(writeFunction());
 
@@ -864,13 +1039,25 @@ Error ONNXModelWriter::writePartitionAndMetadataProps(
   return Error::success();
 }
 
-ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename,
-                                 DAGListTy &dagList, size_t irVersion,
-                                 size_t opsetVersion, Error *errPtr,
-                                 bool textMode, bool zipMode)
+ONNXModelWriter::ONNXModelWriter(
+    const std::string &modelFilename, DAGListTy &dagList, size_t irVersion,
+    size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
+    bool includeConstantData,
+    const llvm::StringMap<std::string> &extraMetadataProps,
+    const ConstantFoldingRecordMap &constFoldRecord,
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo,
+    const LoadedPlaceholderNameMap *loadedPHNames,
+    const std::map<std::string, Type> *staticPlaceholderTypes,
+    std::string *outputStringPtr)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
-      textMode_(textMode), useGlowCustomOps_(true), dagMode_(true) {
+      textMode_(textMode), includeConstantData_(includeConstantData),
+      extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
+      dagMode_(true), constFoldRecord_(constFoldRecord),
+      backendSpecificNodeInfo_(backendSpecificNodeInfo),
+      loadedPHNames_(loadedPHNames),
+      staticPlaceholderTypes_(staticPlaceholderTypes),
+      outputStringPtr_(outputStringPtr) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -879,6 +1066,9 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename,
   // Lambda to setup the ONNXModelWriter and return any Errors that were raised.
   auto setup = [&]() -> Error {
     setupNewProto();
+    for (auto &prop : extraMetadataProps_) {
+      addMetadataProp(prop.getKey(), prop.second);
+    }
 
     RETURN_ERR_IF_NOT(dagList.size() == 1, "Expect only one DAG.");
     const auto &dag = *dagList.begin();
@@ -924,11 +1114,14 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::FLOAT;
   case ElemKind::Float16Ty:
     return TensorType::FLOAT16;
+  case ElemKind::BFloat16Ty:
+    return TensorType::BFLOAT16;
   case ElemKind::Int8QTy:
     return TensorType::INT8;
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
   case ElemKind::UInt4FusedFP16QTy:
+  case ElemKind::UInt4FusedQTy:
   case ElemKind::UInt8QTy:
     return TensorType::UINT8;
   case ElemKind::Int16QTy:
@@ -948,12 +1141,12 @@ ONNXModelWriter::convertType(const Type &glowType) {
 template <typename T>
 static void addQuantParamsToDocString(T *out, const Type &type) {
   addAttrToDocString(out, qScaleSignifier,
-                     strFormat("%.*f", DBL_DIG - 1, type.getScale()));
+                     strFormat("%.*f", NUM_FLOAT_DIGS, type.getScale()));
   addAttrToDocString(out, qOffsetSignifier, std::to_string(type.getOffset()));
 }
 
 void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
-                                  bool useGlowCustomOps) {
+                                  bool useGlowCustomOps, bool includeData) {
   const auto &type = T.getType();
   out->set_data_type(convertType(type));
   const auto &dims = type.dims();
@@ -961,27 +1154,39 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
     out->add_dims(dims[b]);
   }
 
-  out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
+  if (includeData) {
+    out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
+  }
 
   if (useGlowCustomOps) {
     addAttrToDocString(out, elemKindSignifier, type.getElementName());
   }
 
   if (type.isQuantizedType()) {
-    // Note the use of DBL_DIG is to ensure all digits of the scale are printed.
     if (useGlowCustomOps) {
       addQuantParamsToDocString(out, type);
     } else {
       // Format is ElemKind:scale:offset.
       out->set_doc_string(strFormat("%s:%.*f:%d", type.getElementName().data(),
-                                    DBL_DIG - 1, T.getType().getScale(),
+                                    NUM_FLOAT_DIGS, T.getType().getScale(),
                                     T.getType().getOffset()));
     }
   }
 }
 
-void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
-                                                 ValueInfoType *valueProto) {
+Expected<ONNX_NAMESPACE::ValueInfoProto *>
+ONNXModelWriter::createProtoForIO(const Placeholder *PH, bool isInput) {
+  // If loadedPHNames_ then we have a specific order we need to write out IO
+  // protos. If so, buffer non-static IO that is not part of a constant folding
+  // subgraph into inputValueInfos_/outputValueInfos_ to later be written out in
+  // order inside finalizeAndWriteProto() based on loadedPHNames_.
+  ONNX_NAMESPACE::ValueInfoProto *valueProto;
+  if (!loadedPHNames_ || isWritingConstFoldSubgraph() || PH->isStatic()) {
+    valueProto = isInput ? graphProto_->add_input() : graphProto_->add_output();
+  } else {
+    valueProto = isInput ? &inputValueInfos_[PH] : &outputValueInfos_[PH];
+  }
+
   tensorShapeFromInput(PH->getName(), PH->getType(), valueProto);
 
   if (useGlowCustomOps_) {
@@ -994,11 +1199,51 @@ void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
     addAttrToDocString(valueProto, elemKindSignifier,
                        PH->getType()->getElementName());
 
+    // If we're writing out a Placeholder from the original input Function, then
+    // expect to find a corresponding input loaded PH name if they are
+    // provided. This is expected when the PH is not static (as otherwise it's
+    // input as a weight), when the Function being written isn't a constant
+    // folding subgraph (then we have PHs that are used just to save the const
+    // folding result), and when the PH isn't intermediate (then it's only
+    // visible/used by Glow when executing partitioned DAGs).
+    if (loadedPHNames_ && !PH->isStatic() && !isWritingConstFoldSubgraph() &&
+        !isIntermediatePHForDAG(PH)) {
+      auto it = loadedPHNames_->find(PH);
+      RETURN_ERR_IF_NOT(it != loadedPHNames_->end(),
+                        "Did not find associated loader name for " +
+                            PH->getName().str() + " while writing Function " +
+                            F_->getName().str());
+      addAttrToDocString(valueProto, loaderNameSignifier, it->second.first);
+    }
+
+    // If we have a type that was used for loading a static Placeholder, then
+    // serialize that type into a dummy node.
+    if (staticPlaceholderTypes_ && PH->isStatic()) {
+      auto it = staticPlaceholderTypes_->find(PH->getName().data());
+      RETURN_ERR_IF_NOT(it != staticPlaceholderTypes_->end(),
+                        "Did not find associated type for static PH " +
+                            PH->getName().str() + " while writing Function " +
+                            F_->getName().str());
+
+      // Create new static PH dummy node that carries the type that the static
+      // PH was loaded with. Note it has no inputs or outputs, howeverr there is
+      // a type appended for the output idx, and the node has the same name as
+      // the static PH to use when reloading.
+      auto *staticPHDummyNodeProto = graphProto_->add_node();
+      staticPHDummyNodeProto->set_op_type(staticPHDummyNodeName);
+      staticPHDummyNodeProto->set_name(PH->getName().data());
+
+      // Set the output type to be the one we found in staticPlaceholderTypes_.
+      addTypeAttributes(staticPHDummyNodeProto, &it->second, Storage::OutputIdx,
+                        /* isInput */ false);
+    }
+
     // Also include quantization params if necessary.
     if (PH->getType()->isQuantizedType()) {
       addQuantParamsToDocString(valueProto, *PH->getType());
     }
   }
+  return valueProto;
 }
 
 Error ONNXModelWriter::writeAllWithNode(const std::string &opName,
@@ -1033,8 +1278,8 @@ Error ONNXModelWriter::writePad(const PadNode *node, GraphType &graph) {
     addValueAttribute(proto, "mode", std::string("edge"));
     break;
   default:
-    RETURN_ERR("Pad: Invalid mode",
-               ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
+    return MAKE_ERR("Pad: Invalid mode",
+                    ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
   }
 
   addValueAttribute(proto, "pads", node->getPads());
@@ -1104,6 +1349,38 @@ Error ONNXModelWriter::writeMFCC(const MFCCNode *node, GraphType &graph) {
   return writeAllWithNode("MFCC", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeROIAlign(const ROIAlignNode *node,
+                                     GraphType &graph) {
+  auto *proto = graph.add_node();
+  switch (node->getMode()) {
+  case PoolingMode::AVG:
+    addValueAttribute(proto, "mode", std::string("avg"));
+    break;
+  case PoolingMode::MAX:
+    addValueAttribute(proto, "mode", std::string("max"));
+    break;
+  }
+  addValueAttribute(proto, "output_height", node->getOutputHeight());
+  addValueAttribute(proto, "output_width", node->getOutputWidth());
+  addValueAttribute(proto, "sampling_ratio", node->getSamplingRatio());
+  addValueAttribute(proto, "spatial_scale", node->getSpatialScale());
+  addValueAttribute(proto, "aligned", node->getAligned());
+  addValueAttribute(proto, "rotated", node->getRotated());
+  return writeAllWithNode("ROIAlign", node, graph, proto);
+}
+
+Error ONNXModelWriter::writeBBoxTransform(const BBoxTransformNode *node,
+                                          GraphType &graph) {
+  auto *proto = graph.add_node();
+  addValueAttribute(proto, "ApplyScale", node->getApplyScale());
+  addValueAttribute(proto, "Rotated", node->getRotated());
+  addValueAttribute(proto, "AngleBoundOn", node->getAngleBoundOn());
+  addValueAttribute(proto, "AngleBoundLo", node->getAngleBoundLo());
+  addValueAttribute(proto, "AngleBoundHi", node->getAngleBoundHi());
+  addValueAttribute(proto, "ClipAngleThresh", node->getClipAngleThresh());
+  return writeAllWithNode("BBoxTransform", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
                                         GraphType &graph) {
   // Loading convolution creates a sandwich with Transpose nodes for Input,
@@ -1136,9 +1413,7 @@ Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
   addValueAttribute(proto, "group", node->getGroup());
-  std::vector<unsigned_t> buffer(2, node->getDilation());
-  llvm::ArrayRef<unsigned_t> container(buffer);
-  addValueAttribute(proto, "dilations", container);
+  addValueAttribute(proto, "dilations", node->getDilation());
 
   const Node *input = node->getInput().getNode();
   if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {
@@ -1244,6 +1519,15 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   outputsToProto(node, graph, proto);
 
   return Error::success();
+}
+
+Error ONNXModelWriter::writeBatchedReduceMax(const BatchedReduceMaxNode *node,
+                                             GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Find dictionary entries.
+  addValueAttribute(proto, "axes", node->getAxes());
+
+  return writeAllWithNode("ReduceMax", node, graph, proto);
 }
 
 Error ONNXModelWriter::writeBatchedReduceMin(const BatchedReduceMinNode *node,
@@ -1372,7 +1656,7 @@ Error ONNXModelWriter::writePow(const PowNode *node, GraphType &graph) {
     } else if (value == 2.0f) {
       proto->set_op_type("Sqr");
     } else {
-      RETURN_ERR("Splat Node Value is invalid.");
+      return MAKE_ERR("Splat Node Value is invalid.");
     }
     break;
   }
@@ -1424,6 +1708,28 @@ Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node, GraphType &graph) {
   return Error::success();
 }
 
+Error ONNXModelWriter::writeArgMin(const ArgMinNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  Tensor axis(ElemKind::Int64ITy, {1});
+  Tensor keepDims(ElemKind::BoolTy, {1});
+  auto axisH = axis.getHandle<int64_t>();
+  auto keepDimsH = keepDims.getHandle<int8_t>();
+  axisH.raw(0) = node->getAxis();
+  keepDimsH.raw(0) = node->getKeepDims();
+
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name("axis");
+  writeTensor(axis, tensorProto, useGlowCustomOps_);
+
+  tensorProto = addInitializer(graph);
+  tensorProto->set_name("keepDims");
+  writeTensor(keepDims, tensorProto, useGlowCustomOps_);
+  RETURN_IF_ERR(writeAllWithNode("ArgMin", node, graph, proto));
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
@@ -1431,11 +1737,10 @@ Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
   proto->add_input(node->getInput().getNode()->getName());
 
   const auto *slope = node->getSlope().getNode();
-  if (const auto *tile = llvm::dyn_cast<TileNode>(slope)) {
-    reportedNodes_.insert(tile);
-    slope = unwindBroadcastInput(tile, nullptr /* repeats */, reportedNodes_);
-  }
-  if (const SplatNode *SN = llvm::dyn_cast<SplatNode>(slope)) {
+  if (const auto *BN = llvm::dyn_cast<BroadcastNode>(slope)) {
+    proto->add_input(BN->getInput().getNode()->getName());
+    reportedNodes_.insert(BN);
+  } else if (const SplatNode *SN = llvm::dyn_cast<SplatNode>(slope)) {
     // Conversion a scalar to a tensor is required.
     Tensor scalar = {SN->getValue()};
     auto *tensorProto = addInitializer(graph);
@@ -1443,11 +1748,8 @@ Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
     writeTensor(scalar, tensorProto, useGlowCustomOps_);
     proto->add_input(SN->getName());
     reportedNodes_.insert(SN);
-  } else if (const ReshapeNode *RN = llvm::dyn_cast<ReshapeNode>(slope)) {
-    proto->add_input(RN->getInput().getNode()->getName());
-    reportedNodes_.insert(RN);
   } else {
-    RETURN_ERR("Can't find Splat/Reshape Node as part of PRelu Node.");
+    return MAKE_ERR("Can't find Splat/Broadcast Node as part of PRelu Node.");
   }
 
   outputsToProto(node, graph, proto);
@@ -1484,10 +1786,21 @@ Error ONNXModelWriter::writeBatchMatMul(const BatchMatMulNode *node,
 Error ONNXModelWriter::writeReshape(const ReshapeNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
 
-  // Add ints type attribute.
-  addValueAttribute(proto, "shape", node->getDims());
+  // Converting arrayRef scale to a constant node
+  auto dims = node->getDims();
+  Tensor dimsTensor(ElemKind::Int64ITy, {(dim_t)dims.size()});
+  auto handleDims = dimsTensor.getHandle<int64_t>();
+  for (size_t b = 0, e = dims.size(); b < e; ++b) {
+    handleDims.raw(b) = dims[b];
+  }
 
-  return writeAllWithNode("Reshape", node, graph, proto);
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name(node->getName().str() + "_shape");
+  writeTensor(dimsTensor, tensorProto, useGlowCustomOps_);
+
+  RETURN_IF_ERR(writeAllWithNode("Reshape", node, graph, proto));
+  proto->add_input(node->getName().str() + "_shape");
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
@@ -1502,19 +1815,52 @@ Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
 Error ONNXModelWriter::writeResizeNearest(const ResizeNearestNode *node,
                                           GraphType &graph) {
   auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "Scale", node->getScale());
+  // Converting arrayRef scale to a constant node
+  auto scale = node->getScale();
+  Tensor scaleTensor(ElemKind::FloatTy, {(dim_t)scale.size()});
+  auto handleScale = scaleTensor.getHandle<float>();
+  for (size_t b = 0, e = scale.size(); b < e; ++b) {
+    handleScale.raw(b) = scale[b];
+  }
 
-  return writeAllWithNode(node->getName(), node, graph, proto);
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name(node->getName().str() + "_scale");
+  writeTensor(scaleTensor, tensorProto, useGlowCustomOps_);
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "coordinate_transformation_mode",
+                    std::string("asymmetric"));
+  addValueAttribute(proto, "mode", std::string("nearest"));
+  addValueAttribute(proto, "nearest_mode", std::string("floor"));
+
+  RETURN_IF_ERR(writeAllWithNode("Resize", node, graph, proto));
+  proto->add_input(node->getName().str() + "_scale");
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeResizeBilinear(const ResizeBilinearNode *node,
                                            GraphType &graph) {
   auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "Scale", node->getScale());
+  // Converting arrayRef scale to a constant node
+  auto scale = node->getScale();
+  Tensor scaleTensor(ElemKind::FloatTy, {(dim_t)scale.size()});
+  auto handleScale = scaleTensor.getHandle<float>();
+  for (size_t b = 0, e = scale.size(); b < e; ++b) {
+    handleScale.raw(b) = scale[b];
+  }
 
-  return writeAllWithNode(node->getName(), node, graph, proto);
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name(node->getName().str() + "_scale");
+  writeTensor(scaleTensor, tensorProto, useGlowCustomOps_);
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "coordinate_transformation_mode",
+                    std::string("asymmetric"));
+  addValueAttribute(proto, "mode", std::string("linear"));
+
+  RETURN_IF_ERR(writeAllWithNode("Resize", node, graph, proto));
+  proto->add_input(node->getName().str() + "_scale");
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node, GraphType &graph) {
@@ -1629,6 +1975,10 @@ void writeTensorwiseQuantizedPool(const T *node, const std::string &op,
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
 
+  if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
+    addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+  }
+
   proto->add_input(node->getInput().getNode()->getName());
   outputsToProto(node, graph, proto);
 
@@ -1655,7 +2005,8 @@ void writePool(const T *node, const std::string &op,
   // The similar algorithm will be applied for Result. If Transpose NHWC2NCHW
   // node is found for Result user then remove it, otherwise create a "mirror"
   // Transpose, i.e. NCHW2NHWC.
-  assert(node->getLayout() == NHWC && "can only write NHWC Pools");
+  assert((node->getLayout() == NHWC || node->getLayout() == NTHWC) &&
+         "can only write NHWC (2D) or NTHWC (3D) Pool ops");
 
   auto *proto = graph.add_node();
 
@@ -1669,6 +2020,10 @@ void writePool(const T *node, const std::string &op,
   addValueAttribute(proto, "kernel_shape", node->getKernels());
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
+
+  if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
+    addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+  }
 
   const Node *input = node->getInput().getNode();
   if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {
@@ -1800,21 +2155,29 @@ Error ONNXModelWriter::writeTouch(const TouchNode *node, GraphType &graph) {
   return writeAllWithNode("Touch", node, graph, proto);
 }
 
-Error ONNXModelWriter::writeAdd(const AddNode *node, GraphType &graph) {
-  return writeArithmetic("Add", node, graph, reportedNodes_);
-}
+// Exporting arithmetic node which may involve broadcasting.
+// Broadcast Node will be unwind.
+#define ARITHMETIC_NODE_WRITER(ONNXNAME, GLOWNAME)                             \
+  Error ONNXModelWriter::write##GLOWNAME(const GLOWNAME##Node *node,           \
+                                         GraphType &graph) {                   \
+    return writeArithmetic(#ONNXNAME, node, graph, reportedNodes_,             \
+                           hasMultidirectionalBroadcast(#ONNXNAME));           \
+  }
 
-Error ONNXModelWriter::writeDiv(const DivNode *node, GraphType &graph) {
-  return writeArithmetic("Div", node, graph, reportedNodes_);
-}
+ARITHMETIC_NODE_WRITER(Add, Add);
+ARITHMETIC_NODE_WRITER(Sub, Sub);
+ARITHMETIC_NODE_WRITER(Mul, Mul);
+ARITHMETIC_NODE_WRITER(Div, Div);
+ARITHMETIC_NODE_WRITER(Equal, CmpEQ)
+ARITHMETIC_NODE_WRITER(And, And)
+ARITHMETIC_NODE_WRITER(Or, Or)
+ARITHMETIC_NODE_WRITER(Xor, Xor)
+ARITHMETIC_NODE_WRITER(Less, CmpLT)
 
-Error ONNXModelWriter::writeMul(const MulNode *node, GraphType &graph) {
-  return writeArithmetic("Mul", node, graph, reportedNodes_);
-}
-
-Error ONNXModelWriter::writeSub(const SubNode *node, GraphType &graph) {
-  return writeArithmetic("Sub", node, graph, reportedNodes_);
-}
+// Ops that Onnx doesn't have
+ARITHMETIC_NODE_WRITER(CmpLTE, CmpLTE)
+ARITHMETIC_NODE_WRITER(FloorDiv, FloorDiv);
+#undef ARITHMETIC_NODE_WRITER
 
 // Default exporting algorithm.
 #define DEF_ALL_WRITER_NODE(NAME)                                              \
@@ -1824,14 +2187,33 @@ Error ONNXModelWriter::writeSub(const SubNode *node, GraphType &graph) {
   }
 
 // ONNX nodes with default exporting algorithm.
+DEF_ALL_WRITER_NODE(Not)
+DEF_ALL_WRITER_NODE(Abs)
+DEF_ALL_WRITER_NODE(Neg)
+DEF_ALL_WRITER_NODE(Floor)
+DEF_ALL_WRITER_NODE(Sign)
+DEF_ALL_WRITER_NODE(Ceil)
+DEF_ALL_WRITER_NODE(Round)
+DEF_ALL_WRITER_NODE(Sqrt)
+DEF_ALL_WRITER_NODE(Rsqrt)
+DEF_ALL_WRITER_NODE(Reciprocal)
+DEF_ALL_WRITER_NODE(Sin)
+DEF_ALL_WRITER_NODE(Cos)
+DEF_ALL_WRITER_NODE(LSTMUnit)
 DEF_ALL_WRITER_NODE(Min)
 DEF_ALL_WRITER_NODE(Max)
 DEF_ALL_WRITER_NODE(Log)
+DEF_ALL_WRITER_NODE(Asin)
+DEF_ALL_WRITER_NODE(Acos)
+DEF_ALL_WRITER_NODE(Atan)
 DEF_ALL_WRITER_NODE(Exp)
 DEF_ALL_WRITER_NODE(Relu)
+DEF_ALL_WRITER_NODE(LeakyRelu)
+DEF_ALL_WRITER_NODE(Gelu)
 DEF_ALL_WRITER_NODE(Tanh)
 DEF_ALL_WRITER_NODE(IsNaN)
 DEF_ALL_WRITER_NODE(Sigmoid)
+DEF_ALL_WRITER_NODE(Swish)
 DEF_ALL_WRITER_NODE(LengthsSum)
 DEF_ALL_WRITER_NODE(BatchOneHot)
 DEF_ALL_WRITER_NODE(LengthsToRanges)
@@ -1840,10 +2222,9 @@ DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(EmbeddingBag)
 
 // Glow nodes with default exporting algorithm.
-DEF_ALL_WRITER_NODE(CmpEQ)
-DEF_ALL_WRITER_NODE(CmpLTE)
-DEF_ALL_WRITER_NODE(CmpLT)
+DEF_ALL_WRITER_NODE(CmpNEQ)
 DEF_ALL_WRITER_NODE(BatchedAdd)
+DEF_ALL_WRITER_NODE(BatchedMul)
 DEF_ALL_WRITER_NODE(Dequantize)
 DEF_ALL_WRITER_NODE(Regression)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
@@ -1852,6 +2233,7 @@ DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(NonMaxSuppression)
 DEF_ALL_WRITER_NODE(ConvTranspose)
+DEF_ALL_WRITER_NODE(Logit)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
@@ -1911,7 +2293,7 @@ Error ONNXModelWriter::writeIntLookupTable(const IntLookupTableNode *node,
         proto, "values",
         llvm::ArrayRef<int8_t>(begin, begin + handle.actualSize()));
   } else {
-    RETURN_ERR("Mapping must be a constant type.");
+    return MAKE_ERR("Mapping must be a constant type.");
   }
 
   return writeAllWithNode("IntLookupTable", node, graph, proto);
@@ -1937,6 +2319,26 @@ Error ONNXModelWriter::writeRescaleQuantized(const RescaleQuantizedNode *node,
   return writeAllWithNode("RescaleQuantized", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeGemm(const GemmNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  proto->set_name(node->getName());
+  proto->set_op_type("Gemm");
+
+  proto->add_input(node->getA().getNode()->getName());
+  proto->add_input(node->getB().getNode()->getName());
+  if (node->getC().getNode()) {
+    proto->add_input(node->getC().getNode()->getName());
+  }
+
+  addValueAttribute(proto, "alpha", node->getAlpha());
+  addValueAttribute(proto, "beta", node->getBeta());
+  addValueAttribute(proto, "transA", node->getTransposeA());
+  addValueAttribute(proto, "transB", node->getTransposeB());
+
+  outputsToProto(node, graph, proto);
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
                                            GraphType &graph) {
   auto *proto = graph.add_node();
@@ -1944,12 +2346,31 @@ Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
   proto->set_op_type("FullyConnected");
 
   if (node->getInput().dims().size() != 2) {
-    RETURN_ERR("Don't support input dim other than 2");
+    return MAKE_ERR("Don't support input dim other than 2");
   }
   proto->add_input(node->getInput().getNode()->getName());
   proto->add_input(node->getWeights().getNode()->getName());
   proto->add_input(node->getBias().getNode()->getName());
   outputsToProto(node, graph, proto);
+  return Error::success();
+}
+
+Error ONNXModelWriter::writeVectorNorm(const VectorNormNode *node,
+                                       GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "axis", node->getAxis());
+
+  proto->set_name(node->getName());
+  proto->set_op_type("VectorNorm");
+  inputsToProto(node, proto);
+
+  // currently support p = 2 (Frobenius or i2)
+  addValueAttribute(proto, "p", node->getP());
+
+  outputsToProto(node, graph, proto);
+
   return Error::success();
 }
 
@@ -2048,6 +2469,7 @@ DEF_UNSUPPORTED_STORAGE(Storage)
   }
 
 DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProduct)
+DEF_UNSUPPORTED_NODE(Broadcast)
 DEF_UNSUPPORTED_NODE(SGD)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
@@ -2094,11 +2516,44 @@ Error ONNXModelWriter::writeGlowCustomOperator(const Node *node,
   RETURN_ERR_IF_NOT(opProto, "Did not have valid opProto.");
 
   // If dumping a DAG then add partition names to each op that's written.
-  if (dagMode_) {
+  if (dagMode_ && !isWritingConstFoldSubgraph()) {
     addValueAttribute(opProto, "partitionName", F_->getName().str());
   }
 
+  // Check if there is backendSpecificNodeInfo for node, and if so include it.
+  auto itF = backendSpecificNodeInfo_.find(node->getParent());
+  if (itF != backendSpecificNodeInfo_.end()) {
+    auto itN = itF->second.find(node);
+    if (itN != itF->second.end()) {
+      // We found backend-specific node info, so add it to the opProto.
+      for (const auto &optValPair : itN->second) {
+        addValueAttribute(opProto,
+                          std::string(nodeOptSignifier) + "_" +
+                              optValPair.getKey().data(),
+                          optValPair.getValue());
+      }
+    }
+  }
+
   return Error::success();
+}
+
+bool ONNXModelWriter::hasMultidirectionalBroadcast(
+    const llvm::StringRef typeName) {
+  // Before opset 7, broadcasting was unidirectional.
+  if (opsetVersion_ > 6) {
+    // List of ops that support multidirectional broadcast can be found at
+    // https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
+    if ((typeName == "Add") || (typeName == "Sub") || (typeName == "Mul") ||
+        (typeName == "Div") || (typeName == "Equal") ||
+        (typeName == "Greater") || (typeName == "Less") ||
+        (typeName == "Max") || (typeName == "Mean") || (typeName == "Min") ||
+        (typeName == "Mul") || (typeName == "Or") || (typeName == "Pow") ||
+        (typeName == "Sum") || (typeName == "Xor")) {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace glow

@@ -21,6 +21,7 @@
 #include "glow/IR/IR.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
+#include "glow/Importer/TFLiteModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Serialization.h"
@@ -39,14 +40,6 @@
 #include <sstream>
 
 using namespace glow;
-
-/// -enable-rowwise : Command line option to enable rowwise quantized
-/// fullyconnected in quantization producure.
-bool enableRowwiseOpt;
-static llvm::cl::opt<bool, true>
-    enableRowwiseF("enable-rowwise",
-                   llvm::cl::desc("Enable rowwise quantized fully connected."),
-                   llvm::cl::location(enableRowwiseOpt), llvm::cl::init(false));
 
 llvm::cl::OptionCategory loaderCat("Loader Options");
 
@@ -94,6 +87,11 @@ llvm::cl::list<std::string> modelInputsOpt(
         "    - bool (logic type)\n"),
     llvm::cl::value_desc("name,[type,[scale,offset],shape]"),
     llvm::cl::cat(loaderCat));
+
+llvm::cl::alias modelInputName("model-input-name",
+                               llvm::cl::desc("Alias for -model-input"),
+                               llvm::cl::aliasopt(modelInputsOpt),
+                               llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<bool>
     verbose("verbose",
@@ -160,6 +158,17 @@ llvm::cl::opt<ElemKind> quantizationPrecisionBias(
         clEnumValN(ElemKind::Int32QTy, "Int32", "Use Int32 bias quantization")),
     llvm::cl::init(ElemKind::Int32QTy), llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<bool>
+    enableRowwiseOpt("enable-rowwise",
+                     llvm::cl::desc("Enable rowwise quantized FullyConnected."),
+                     llvm::cl::Optional, llvm::cl::init(false),
+                     llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<bool> enableChannelwiseOpt(
+    "enable-channelwise",
+    llvm::cl::desc("Enable channelwise quantized Convolution."),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<std::string> loadProfileFileOpt(
     "load-profile",
     llvm::cl::desc("Load quantization profile file and quantize the graph"),
@@ -219,6 +228,15 @@ llvm::cl::opt<bool>
     convertToFP16("convert-to-fp16",
                   llvm::cl::desc("Run all floating-point computation in fp16."),
                   llvm::cl::init(false), llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<PrecisionConfiguration::Float16Format> fp16Format(
+    "fp16-format", llvm::cl::desc("fp16 format to use."),
+    llvm::cl::values(clEnumValN(PrecisionConfiguration::Float16Format::FP16,
+                                "fp16", "Use fp16"),
+                     clEnumValN(PrecisionConfiguration::Float16Format::BFloat16,
+                                "bfloat16", "Use bfloat16")),
+    llvm::cl::init(PrecisionConfiguration::Float16Format::FP16),
+    llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<bool> convertPlaceholdersOpt(
     "convert-placeholders",
@@ -350,6 +368,8 @@ static void getModelInputs(std::vector<std::string> &inputNames,
       kind = ElemKind::FloatTy;
     } else if (type.equals("float16")) {
       kind = ElemKind::Float16Ty;
+    } else if (type.equals("bfloat16")) {
+      kind = ElemKind::BFloat16Ty;
     } else if (type.equals("int8q")) {
       kind = ElemKind::Int8QTy;
     } else if (type.equals("int16q")) {
@@ -410,7 +430,7 @@ static void getModelInputs(std::vector<std::string> &inputNames,
   }
 }
 
-std::unique_ptr<ProtobufLoader> Loader::loadModel() {
+void Loader::loadModel(TypeRef inputType) {
 
   // Get model input names and types.
   std::vector<std::string> inputNames;
@@ -423,25 +443,61 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
     inputTypeRefs.push_back(&inputTypes[idx]);
   }
 
+  // Use explicit input type if given.
+  if (inputType != nullptr) {
+    CHECK(inputNameRefs.size() == 1)
+        << "Model is expected to have only 1 input!";
+    inputTypeRefs = {inputType};
+  }
+
   // Load the model based on the model format.
-  std::unique_ptr<ProtobufLoader> protoLoader;
   if (!getCaffe2NetDescFilename().empty()) {
     // For Caffe2 format the input placeholder names/types must be provided
     // explicitly (mandatory).
+    std::unique_ptr<ProtobufLoader> protoLoader;
     protoLoader.reset(new Caffe2ModelLoader(
         getCaffe2NetDescFilename(), getCaffe2NetWeightFilename(), inputNameRefs,
         inputTypeRefs, *getFunction()));
+    // Load the maps between original model names and the placeholders.
+    inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
+    outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
+  } else if (!getTFLiteModelFilename().empty()) {
+    // For TensorFlowLite format the input placeholder names/types are not
+    // provided since are used directly from the model.
+    auto tfliteLoader =
+        TFLiteModelLoader(getTFLiteModelFilename(), getFunction());
+    // Load the maps between original model names and the placeholders.
+    inputPlaceholderByName_ = tfliteLoader.getInputPlaceholderMap();
+    outputPlaceholderByName_ = tfliteLoader.getOutputPlaceholderMap();
+    // Since TensorFlowLite loader currently does not have the capability to
+    // enforce the input type (for batching) we must validate that when the
+    // input type is explicitly given it actually matches the model input type.
+    if (inputType != nullptr) {
+      CHECK(inputPlaceholderByName_.size() == 1)
+          << "Model is expected to have only 1 input!";
+      Placeholder *inpPH = inputPlaceholderByName_.begin()->second;
+      auto modelBatchSize = inpPH->getType()->dims()[0];
+      auto inputBatchSize = inputType->dims()[0];
+      CHECK(inputBatchSize == modelBatchSize)
+          << "Mismatch between the model batch size (" << modelBatchSize
+          << ") and the dataset batch size (" << inputBatchSize << ")! "
+          << "If you are using the 'image-classifier' tool set the "
+          << "dataset batch size with the option '-minibatch=" << modelBatchSize
+          << "'!";
+    }
   } else {
     // For ONNX format the input placeholders names/types can be optionally
     // provided but is not mandatory. If not provided (the arrays are empty)
     // they are derived automatically. One might want to provide explicitly
     // the input placeholder types in order to override the placeholder sizes
     // (one such example is the batch size).
+    std::unique_ptr<ProtobufLoader> protoLoader;
     protoLoader.reset(new ONNXModelLoader(getOnnxModelFilename(), inputNameRefs,
                                           inputTypeRefs, *getFunction()));
+    // Load the maps between original model names and the placeholders.
+    inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
+    outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
   }
-
-  return protoLoader;
 }
 
 static bool commandLineIsInvalid() {
@@ -498,6 +554,11 @@ static bool commandLineIsInvalid() {
 }
 
 void glow::parseCommandLine(int argc, char **argv) {
+  llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
+#ifdef GLOW_BUILD_DATE
+    os << "Glow Tools version: " << GLOW_BUILD_DATE << "\n";
+#endif
+  });
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
@@ -523,10 +584,13 @@ quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
   quantConfig.calibration = quantizationCalibrationOpt;
   quantConfig.calibrateConstants = calibrateConstantsOpt;
   quantConfig.enableRowwise = enableRowwiseOpt;
+  quantConfig.enableChannelwise = enableChannelwiseOpt;
   quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
   if (!loadProfileFileOpt.empty()) {
-    quantConfig.infos = deserializeProfilingInfosFromYaml(loadProfileFileOpt);
+    deserializeProfilingInfosFromYaml(
+        loadProfileFileOpt, quantConfig.graphPreLowerHash, quantConfig.infos);
   }
+  quantConfig.checkGraphPreLowerHash = true;
   return quantConfig;
 }
 
@@ -537,6 +601,7 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
   cctx.loweredInfoMap = &loweredMap_;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   precConfig.convertToFP16 = convertToFP16;
+  precConfig.float16Format = fp16Format;
 
   // Specific configurations.
   precConfig.quantMode = mode;
@@ -626,9 +691,10 @@ void Loader::compile(CompilationContext &cctx) {
     if (!llvm::sys::fs::is_directory(emitBundle)) {
       llvm::sys::fs::create_directory(emitBundle);
     }
-    // Emit IR for the graph, compile it and save as a bundle.
-    auto error = ::glow::optimizeFunction(F_, *backend_, cctx);
-    EXIT_ON_ERR(std::move(error));
+    // Emit IR for the graph, compile it and save as a bundle. Replicate the
+    // same optimizations seen during normal execution inside addNetwork().
+    EXIT_ON_ERR(::glow::optimizeFunctionBeforeLowering(F_, cctx));
+    EXIT_ON_ERR(::glow::optimizeFunction(F_, *backend_, cctx));
     backend_->save(F_, emitBundle, networkName,
                    mainEntryName.empty() ? networkName : mainEntryName);
   } else {
@@ -655,6 +721,8 @@ void Loader::compile(CompilationContext &cctx) {
       function->dumpDAG(filename.c_str());
     }
   }
+  // Store compilation info in the Loader.
+  compilationInfo_ = cctx.info;
 }
 
 void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
@@ -726,7 +794,8 @@ void Loader::generateAndSerializeProfilingInfos(PlaceholderBindings &bindings) {
     PI.insert(PI.end(), tmp.begin(), tmp.end());
   }
   std::sort(PI.begin(), PI.end(), comparePI);
-  serializeProfilingInfosToYaml(dumpProfileFileOpt, PI);
+  serializeProfilingInfosToYaml(dumpProfileFileOpt,
+                                compilationInfo_.graphPreLowerHash, PI);
 }
 
 Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
@@ -735,12 +804,9 @@ Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
 }
 
 void Loader::postModelLoad(PlaceholderBindings &bindings,
-                           ProtobufLoader &protoLoader,
-                           llvm::StringMap<Placeholder *> &placeholderMap,
                            TypeRef inputImageType) {
   for (auto &&ext : loaderExtensionList_) {
-    ext->postModelLoad(*this, bindings, protoLoader, placeholderMap,
-                       inputImageType);
+    ext->postModelLoad(*this, bindings, inputImageType);
   }
 }
 
@@ -764,7 +830,12 @@ Loader::Loader(llvm::ArrayRef<size_t> configDeviceIDs) {
       caffe2NetDescFilename_ = modelPathOpt[0] + "/predict_net.pb";
       caffe2NetWeightFilename_ = modelPathOpt[0] + "/init_net.pb";
     } else {
-      onnxModelFilename_ = modelPathOpt[0];
+      llvm::StringRef modelPath = modelPathOpt[0];
+      if (modelPath.endswith("tflite")) {
+        tfliteModelFilename_ = modelPath.str();
+      } else {
+        onnxModelFilename_ = modelPath.str();
+      }
     }
   } else {
     caffe2NetDescFilename_ = modelPathOpt[0];

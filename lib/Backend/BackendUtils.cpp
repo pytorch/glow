@@ -419,6 +419,11 @@ static bool allowsPartialInput(const Node *src, const Node *dst) {
     return src == SLS->getIndices() || src == SLS->getWeights();
   } else if (auto *SLS = llvm::dyn_cast<SparseLengthsSumNode>(dst)) {
     return src == SLS->getIndices();
+  } else if (auto *EBB = llvm::dyn_cast<EmbeddingBagNode>(dst)) {
+    return src == EBB->getIndices() || src == EBB->getWeights();
+  } else if (auto *EBB =
+                 llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(dst)) {
+    return src == EBB->getIndices() || src == EBB->getWeights();
   }
   return false;
 }
@@ -429,6 +434,32 @@ bool allowsPartialInput(const Placeholder *V, const Function *F) {
       continue;
     }
     if (!allowsPartialInput(*U.get(), U.getUser())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// \returns true if \p dst requires last-element padding for \p src
+/// It is assumed that \p src cannot be partial input
+static bool requiresPadding(const Node *src, const Node *dst) {
+  if (auto *EBB = llvm::dyn_cast<EmbeddingBagNode>(dst)) {
+    return src == EBB->getOffsets();
+  } else if (auto *EBB =
+                 llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(dst)) {
+    return src == EBB->getOffsets();
+  }
+  return false;
+}
+
+bool requiresPadding(const Placeholder *V, const Function *F) {
+  // TODO: this function is largely duplicated with allowsPartialInput()
+  // we should consider merging the two
+  for (auto const &U : V->getUsers()) {
+    if (U.getUser()->getParent() != F) {
+      continue;
+    }
+    if (!requiresPadding(*U.get(), U.getUser())) {
       return false;
     }
   }

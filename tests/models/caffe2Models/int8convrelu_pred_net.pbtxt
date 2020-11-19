@@ -27,11 +27,11 @@ op {
   }
   arg {
     name: "Y_scale"
-    f: 1
+    f: 1.5
   }
   arg {
     name: "Y_zero_point"
-    i: 0
+    i: 7
   }
 }
 external_output: "conv_out"

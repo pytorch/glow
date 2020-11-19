@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from torch.autograd import Variable
 import argparse
+
 import torch.onnx
 import torchvision
+from torch.autograd import Variable
+
 
 # Export ONNX model from PyTorch
 # Refer to https://pytorch.org/docs/stable/onnx.html

@@ -18,14 +18,14 @@
 # It currently allows to train either LeNet or an MLP on MNIST. We can then load
 # the pre-trained protobuf file into Glow to run.
 
-import numpy as np
 import os
 import shutil
-import caffe2.python.predictor.predictor_exporter as pe
 
+import caffe2.python.predictor.predictor_exporter as pe
+import numpy as np
+from caffe2.python import brew, core, model_helper, optimizer, workspace
 from caffe2.python.predictor import mobile_exporter
 
-from caffe2.python import brew, core, model_helper, optimizer, workspace
 
 # If you would like to see some really detailed initializations,
 # you can change --caffe2_log_level=0 to --caffe2_log_level=-1
@@ -41,9 +41,10 @@ USE_LENET_MODEL = True
 
 def DownloadResource(url, path):
     """Downloads resources from s3 by url and unzips them to the provided path"""
-    import requests
-    import zipfile
     import StringIO
+    import zipfile
+
+    import requests
 
     print("Downloading... {} to {}".format(url, path))
     r = requests.get(url, stream=True)
@@ -87,8 +88,7 @@ if db_missing:
             )
         )
         print(
-            "Unzip it and place the two database folders here: {}".format(
-                data_folder)
+            "Unzip it and place the two database folders here: {}".format(data_folder)
         )
         raise ex
 
@@ -158,32 +158,16 @@ def AddLeNetModel(model, data):
         model, data, "conv1", dim_in=1, dim_out=20, kernel=5, use_cudnn=False
     )
     # Image size: 24 x 24 -> 12 x 12
-    pool1 = model.net.MaxPool(
-        conv1,
-        "pool1",
-        kernel=2,
-        stride=2,
-        use_cudnn=False)
+    pool1 = model.net.MaxPool(conv1, "pool1", kernel=2, stride=2, use_cudnn=False)
     # Image size: 12 x 12 -> 8 x 8
     conv2 = brew.conv(
         model, pool1, "conv2", dim_in=20, dim_out=50, kernel=5, use_cudnn=False
     )
     # Image size: 8 x 8 -> 4 x 4
-    pool2 = model.net.MaxPool(
-        conv2,
-        "pool2",
-        kernel=2,
-        stride=2,
-        use_cudnn=False)
+    pool2 = model.net.MaxPool(conv2, "pool2", kernel=2, stride=2, use_cudnn=False)
     # 50 * 4 * 4 stands for dim_out from previous layer multiplied by the
     # image size
-    fc3 = brew.fc(
-        model,
-        pool2,
-        "fc3",
-        dim_in=50 * 4 * 4,
-        dim_out=500,
-        use_cudnn=False)
+    fc3 = brew.fc(model, pool2, "fc3", dim_in=50 * 4 * 4, dim_out=500, use_cudnn=False)
     fc3 = model.net.Relu(fc3, "relu3", use_cudnn=False)
     pred = brew.fc(model, fc3, "pred", 500, 10, use_cudnn=False)
     softmax = model.net.Softmax(pred, "softmax", use_cudnn=False)
@@ -291,12 +275,7 @@ pe_meta = pe.PredictorExportMeta(
 )
 
 # save the model to a file. Use minidb as the file format
-pe.save_to_db(
-    "minidb",
-    os.path.join(
-        root_folder,
-        "mnist_model.minidb"),
-    pe_meta)
+pe.save_to_db("minidb", os.path.join(root_folder, "mnist_model.minidb"), pe_meta)
 print("The deploy model is saved to: " + root_folder + "/mnist_model.minidb")
 
 workspace.RunNetOnce(deploy_model.param_init_net)
@@ -330,8 +309,7 @@ predict_net = pe.prepare_prediction_net(
 
 # verify that blobs are loaded back
 print(
-    "The blobs in the workspace after loading the model: {}".format(
-        workspace.Blobs())
+    "The blobs in the workspace after loading the model: {}".format(workspace.Blobs())
 )
 
 # feed the previously saved data to the loaded model

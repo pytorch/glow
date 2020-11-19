@@ -250,6 +250,8 @@ int ImageClassifierProcessResult::processOutputs(
     return processAndPrintResultsImpl<float>(SMT, imageList);
   case ElemKind::Float16Ty:
     return processAndPrintResultsImpl<float16_t>(SMT, imageList);
+  case ElemKind::BFloat16Ty:
+    return processAndPrintResultsImpl<bfloat16_t>(SMT, imageList);
   default:
     llvm_unreachable("Type not supported");
   }

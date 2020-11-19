@@ -23,6 +23,12 @@
 
 namespace glow {
 
+/// Smallest allowed scale in FP16 (at least for NNPI)
+constexpr float kMinScaleFP16 = 1.f / 65504.f;
+/// Minimum and maximum values for FP16:
+constexpr float kMinFP16 = -65504.0f;
+constexpr float kMaxFP16 = 65504.0f;
+
 /// Use a proxy type in case we need to change it in the future.
 using Float16Storage = uint16_t;
 class float16 {
@@ -52,6 +58,14 @@ public:
     *this = *this - b;
     return *this;
   }
+  float16 operator*=(const float16 &b) {
+    *this = *this * b;
+    return *this;
+  }
+  float16 operator/=(const float16 &b) {
+    *this = *this / b;
+    return *this;
+  }
 
   /// Comparisons.
   bool operator<(const float16 &b) const { return operator float() < float(b); }
@@ -65,8 +79,12 @@ public:
   /// Cast operators.
   operator double() const { return double(operator float()); }
   operator float() const { return fp16_ieee_to_fp32_value(data_); }
-  operator int64_t() const { return static_cast<int64_t>(data_); }
-  operator int32_t() const { return static_cast<int32_t>(data_); }
+  operator int64_t() const {
+    return static_cast<int64_t>(fp16_ieee_to_fp32_value(data_));
+  }
+  operator int32_t() const {
+    return static_cast<int32_t>(fp16_ieee_to_fp32_value(data_));
+  }
 }; // End class float16.
 
 /// Allow float16_t to be passed to an ostream.

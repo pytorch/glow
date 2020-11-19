@@ -44,7 +44,7 @@ namespace glow {
 /// Loads tensor \p T from the input \p in. \p useGlowCustomOps changes the
 /// format for doc_string format for adding meta information.
 Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
-                 bool useGlowCustomOps = false);
+                 bool useGlowCustomOps = false, const std::string &data = "");
 
 /// Parses as input file name \p fileName which is an ONNX file
 /// and \returns a parsed GraphProto.
@@ -111,6 +111,10 @@ class ONNXModelLoader
   /// \returns True if the operator\ op is successfully folded.
   Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
 
+  /// Helper function to print better log information for operator failure cases
+  const std::string opErrMsg(const ONNX_NAMESPACE::NodeProto &op,
+                             const std::string &errMsg);
+
   /// ONNX model ir_version;
   size_t irVersion_;
 
@@ -123,19 +127,49 @@ class ONNXModelLoader
   /// A set of inputs which will be static placeholders.
   std::unordered_set<std::string> staticInputs_;
 
+  /// A set of Functions used for ConstantFolding to be deleted after loading.
+  std::unordered_set<Function *> constFoldFuns_;
+
   /// Load ONNX NonZero Operator.
   /// Glow's requirement for static shapes results in required Constant
   /// input. Thus, the operator will be folded in the Importer.
   Error loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
                     const ArgumentDictionaryTy &dict);
 
+  /// Load Trigonometric Ops
+  Error loadAsin(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
+  Error loadAcos(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
+  Error loadAtan(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
   /// Load Constant ONNX operator.
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);
 
+  /// Helper function for ONNX range operator
+  template <typename T>
+  Error getRange(const ONNX_NAMESPACE::NodeProto &op, Constant *constT);
+
+  /// Load Range ONNX operator
+  Error loadRange(const ONNX_NAMESPACE::NodeProto &op,
+                  ArgumentDictionaryTy &dict);
+
   /// Load Slice ONNX operator.
   Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                   ArgumentDictionaryTy &dict);
+
+  /// Load Trignometric ONNX operators.
+  Error loadTrigonometricOps(const std::string &typeName,
+                             const ONNX_NAMESPACE::NodeProto &op,
+                             ArgumentDictionaryTy &dict);
+
+  /// Load Sign ONNX operator
+  Error loadSign(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
 
   /// Load Conv ONNX operator.
   Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
@@ -193,9 +227,9 @@ class ONNXModelLoader
   Error loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
                       ArgumentDictionaryTy &dict);
 
-  /// Load ArgMax ONNX operator.
-  Error loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
-                   ArgumentDictionaryTy &dict);
+  /// Load ArgMax and ArgMin ONNX operators.
+  Error loadArgMinMax(const ONNX_NAMESPACE::NodeProto &op,
+                      ArgumentDictionaryTy &dict, bool isMin);
 
   /// Load Upsample ONNX operator.
   Error loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
@@ -273,6 +307,10 @@ class ONNXModelLoader
   Error loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
 
+  /// Load Clip ONNX operator.
+  Error loadClip(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
   /// Load Glow specific operators, not defined in ONNX format
   /// Load Glow CmpEQ operator.
   Error loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
@@ -281,6 +319,10 @@ class ONNXModelLoader
   /// Load Glow CmpLTE operator.
   Error loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);
+
+  /// Load Mean ONNX operator
+  Error loadMean(const ONNX_NAMESPACE::NodeProto &op,
+                 ArgumentDictionaryTy &dict);
 
   /// Load Glow Select operator.
   Error loadSelect(const ONNX_NAMESPACE::NodeProto &op,
@@ -382,10 +424,16 @@ class ONNXModelLoader
   Error loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
 
+  // Load ROIAlign ONNX operator
+  Error loadROIAlign(const ONNX_NAMESPACE::NodeProto &op,
+                     ArgumentDictionaryTy &dict);
+
 protected:
-  /// Load the network operators from the GraphProto.
+  /// Loads operators from \p net. If \p loadingConstFoldSubgraph then the
+  /// current Function \ref G_ is assumed to be the one to load into.
   /// \returns Error if network cannot be loaded.
-  Error loadNetwork(ONNX_NAMESPACE::GraphProto &net);
+  Error loadNetwork(ONNX_NAMESPACE::GraphProto &net,
+                    bool loadingConstFoldSubgraph);
 
   /// Set the output nodes of the network \p net. Initializes the map from the
   /// names of the outputs to the save nodes that save each output.
@@ -403,18 +451,38 @@ protected:
   /// Load the network initializers from the GraphProto.
   Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
+  /// Given some initializer \p in, check if it has some constant folding node
+  /// associated with it in \p net. If so, deserializes the Function if not
+  /// already done, performs the constant folding, and \returns the Constant
+  /// created as a result to be used for this initializer.
+  Expected<Constant *>
+  replaySerializedConstFold(const ONNX_NAMESPACE::TensorProto &in,
+                            ONNX_NAMESPACE::GraphProto &net);
+
+  /// Given some \p outputName that maps to a NodeValue that we want to constant
+  /// fold, run it and assign the resulting Constant \p initializerName.
+  Expected<Constant *> runDeserializedConstFold(llvm::StringRef initializerName,
+                                                llvm::StringRef outputName);
+
   /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholdersForOnnx
   /// is true then this will load each graph input as a placeholder otherwise it
   /// will create an empty tensor for each input.
   Error loadInputs(ONNX_NAMESPACE::GraphProto &net,
                    bool loadInputsAsPlaceholdersForOnnx);
 
+  /// \returns whether there's an issue with pre-existing \p S with name \p
+  /// name, \p ty, \p layout, and \p trainable (for Placeholders).
+  Error verifyPreexistingStorage(const Storage *S, const std::string &name,
+                                 const Type &ty, const std::string &layout,
+                                 const bool trainable = false);
+
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// contents of the file \p filename and Error otherwise.
   /// Loads ModelProto from the file containing serialized protobuf.
   /// If \p zipMode then zip format will be expected/loaded.
   static Expected<ONNX_NAMESPACE::ModelProto>
-  loadProto(const std::string &filename, bool zipMode);
+  loadProto(const std::string &filename, bool zipMode,
+            const std::string *inputStringPtr);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// in-memory serialized protobuf.
@@ -434,6 +502,12 @@ protected:
   /// static placeholders if it's marked in the ValueInfoProto.
   Error collectStaticInputs(ONNX_NAMESPACE::GraphProto &net);
 
+  /// Looks through all ops in \p net for any dummy static PH nodes carrying the
+  /// type that was used for loading deferred weights initially. If found then
+  /// they're added to \ref staticPlaceholderTypes_. If \ref
+  /// staticPlaceholderTypes_ is a nullptr then this method is a no-op.
+  Error setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net);
+
   /// Creates a ONNX model loader to build \p F.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
   /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
@@ -444,7 +518,35 @@ protected:
   ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
                   const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
                   bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
-                  bool constFoldInLoader = true);
+                  bool constFoldInLoader = true,
+                  BackendSpecificNodeInfo *perNodeOpts = nullptr);
+
+  /// Creates a ONNX model loader to build \p mod.
+  /// Loads the ONNIXFI \p model from memory of \p modelSize size,
+  /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
+  /// descriptors. Converts inputs into placeholder if requested \p
+  /// loadInputsAsPlaceholdersForOnnx. Reports success/failure through optional
+  /// parameter \p errPtr. This constructor always overrides the default
+  /// constant folding in loader flag with \p constFoldInLoader.
+  /// Supports loading a DAG which was serialized, loading in DAGNode meta info
+  /// into \p PPC which can be later used to recreated the DAG. \p funName is
+  /// used to setup the DAG root node's name, or if the input model is not
+  /// partitioned then is used as the name of the single Function loaded. Loads
+  /// backend-specific node info annotations into \p perNodeOpts.
+  /// \p staticPlaceholderTypes will be filled with types to use for static
+  /// Placeholders if the proto being parsed contains such information;
+  /// otherwise it's left unchanged. If \p replaceDummyTQPs then any dummy TQPs
+  /// (represented by scale=0.f) will be replaced by updated TQPs found in
+  /// metadata_props, allowing for changing of TQPs of serialized models.
+  ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
+                  const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
+                  llvm::StringRef funName, runtime::PrePartitionedConfig *PPC,
+                  bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
+                  bool constFoldInLoader = true,
+                  BackendSpecificNodeInfo *perNodeOpts = nullptr,
+                  std::map<std::string, Type> *staticPlaceholderTypes = nullptr,
+                  bool replaceDummyTQPs = false,
+                  bool clipQuantRangeToFP16 = false);
 
   friend class ONNXIFIModelLoader;
 
@@ -455,10 +557,11 @@ protected:
   friend Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
                                     LoaderType *loader, const OpType &op);
 
-  /// Creates tensor \p T from the input \p in. Note, there is no data
-  /// associated with the Tensor. This method makes sure that the tensor is
-  /// created with the proper shape and element type.
-  Error setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in, Tensor *T);
+  /// \returns a Type with the proper shape and element type given \p in.
+  Expected<Type> getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in);
+
+  /// \returns a Type with the proper shape and element type given \p in.
+  Expected<Type> getTensorType(const ONNX_NAMESPACE::TensorProto &in);
 
   /// Load a model \p modelDef given \p tensorNames, \p types, \p B, and
   /// \p loadInputsAsPlaceholdersForOnnx.
@@ -473,6 +576,19 @@ protected:
   Error setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
                         runtime::PrePartitionedConfig &PPC,
                         llvm::StringRef rootName, int numPartitions);
+
+  /// Deletes the Functions in \ref constFoldFuns_ from \ref mod_.
+  void deleteConstFoldFunctions();
+
+  /// Sets up positional IO into \ref positionalInputNames_ and
+  /// \ref positionalOutputNames_ from \p graph.
+  void setupPositionalIO(const ONNX_NAMESPACE::GraphProto &graph);
+
+  /// Sets up \ref updatedTQPs_ based on metadata props found in \p modelDef as
+  /// well as \p weightsCount weights in \p weightDescriptors.
+  Error setupUpdatedTQPMap(ONNX_NAMESPACE::ModelProto &modelDef,
+                           uint32_t weightsCount,
+                           const onnxTensorDescriptorV1 *weightDescriptors);
 
 public:
   /// \returns ONNX model ir_version;
@@ -498,14 +614,18 @@ public:
   /// there otherwise if an error occurs it will abort.
   /// If \p disableConstFoldInLoader then constant folding will be disabled
   /// during loading. \p B will be used during function verification after
-  /// loading.
+  /// loading. If \p loadIntoExistingModule then all Functions and Storage is
+  /// expected to already exist, so they will be searched for according to the
+  /// proto being loaded instead of created as usual.
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
                   Error *errPtr = nullptr, bool zipMode = false,
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool disableConstFoldInLoader = false,
-                  const Backend *B = nullptr);
+                  bool loadIntoExistingModule = false,
+                  const Backend *B = nullptr,
+                  const std::string *inputStringPtr = nullptr);
 
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p mod.
@@ -520,7 +640,9 @@ public:
   /// there otherwise if an error occurs it will abort.
   /// If \p disableConstFoldInLoader then constant folding will be disabled
   /// during loading. \p B will be used during function verification after
-  /// loading.
+  /// loading. If \p loadIntoExistingModule then all Functions and Storage is
+  /// expected to already exist, so they will be searched for according to the
+  /// proto being loaded instead of created as usual.
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Module &mod,
@@ -528,12 +650,16 @@ public:
                   runtime::PrePartitionedConfig *PPC = nullptr,
                   Error *errPtr = nullptr, bool zipMode = false,
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
+                  bool loadIntoExistingModule = false,
                   bool disableConstFoldInLoader = false,
-                  const Backend *B = nullptr);
+                  const Backend *B = nullptr,
+                  const std::string *inputStringPtr = nullptr);
 
 private:
   /// Per-node options that may be specified in a proto.
   BackendSpecificNodeInfo *perNodeOpts_{nullptr};
+  /// Map from static PH names to the type it was originally loaded with.
+  std::map<std::string, Type> *staticPlaceholderTypes_;
 };
 
 } // namespace glow

@@ -101,13 +101,12 @@ TEST(TestSplitNodeOption, SplitNodeByChunkWeightsOptionTest) {
 ///===---------------------------------------------------------------------===//
 /// Utility function to create a simple network with a single Conv2D node using
 /// the function \p F and the bindings \p bindings.
-static Node *
-createConv2D(Function *F, PlaceholderBindings &bindings,
-             llvm::ArrayRef<dim_t> inputDims, llvm::ArrayRef<dim_t> filterDims,
-             llvm::ArrayRef<dim_t> biasDims, llvm::ArrayRef<dim_t> outputDims,
-             llvm::ArrayRef<unsigned_t> kernels,
-             llvm::ArrayRef<unsigned_t> strides,
-             llvm::ArrayRef<unsigned_t> pads, dim_t group, dim_t dilation) {
+static Node *createConv2D(
+    Function *F, PlaceholderBindings &bindings, llvm::ArrayRef<dim_t> inputDims,
+    llvm::ArrayRef<dim_t> filterDims, llvm::ArrayRef<dim_t> biasDims,
+    llvm::ArrayRef<dim_t> outputDims, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    dim_t group, llvm::ArrayRef<unsigned_t> dilation) {
   // Create input placeholder.
   auto &mod = *(F->getParent());
   auto *input =
@@ -149,7 +148,7 @@ static void splitConv2DBasic(Function *F, Function *&optF,
                             /* strides */ {1, 1},
                             /* pads */ {0, 0, 0, 0},
                             /* group */ 2,
-                            /* dilation */ 1);
+                            /* dilation */ {1, 1});
 
   // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
@@ -243,7 +242,7 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
                             /* strides */ {1, 1},
                             /* pads */ {2, 1, 3, 4},
                             /* group */ 1,
-                            /* dilation */ 2);
+                            /* dilation */ {2, 2});
 
   // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
@@ -308,7 +307,7 @@ static void splitConv2DGrouped(Function *F, Function *&optF,
                             /* strides */ {1, 1},
                             /* pads */ {0, 0, 0, 0},
                             /* group */ group,
-                            /* dilation */ 1);
+                            /* dilation */ {1, 1});
 
   // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
@@ -371,7 +370,7 @@ TEST_F(NodeSplitting, Conv2D_IllDefined_DimHW) {
                             /* strides */ {2, 2},
                             /* pads */ {1, 1, 0, 0},
                             /* group */ 1,
-                            /* dilation */ 1);
+                            /* dilation */ {1, 1});
 
   // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
@@ -404,7 +403,7 @@ TEST_F(NodeSplitting, Conv2D_MaxMem) {
                             /* strides */ {1, 1},
                             /* pads */ {0, 0, 0, 0},
                             /* group */ 2,
-                            /* dilation */ 1);
+                            /* dilation */ {1, 1});
 
   // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
@@ -447,7 +446,7 @@ TEST_F(NodeSplitting, Conv2D_NoSplit) {
                             /* strides */ {1, 1},
                             /* pads */ {0, 0, 0, 0},
                             /* group */ 2,
-                            /* dilation */ 1);
+                            /* dilation */ {1, 1});
 
   // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");

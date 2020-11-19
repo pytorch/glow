@@ -17,9 +17,11 @@
 #include "Importer.h"
 #include "InferencePool.h"
 #include "NNPI.h"
+#include "NNPIAdapterContainer.h"
 #include "NNPICompiledFunction.h"
 #include "NNPITracing.h"
 #include "NNPIUtils.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Support/Error.h"
 #include "nnpi_inference.h"
 #include "nnpi_transformer.h"
@@ -33,58 +35,39 @@
 namespace glow {
 namespace runtime {
 
-unsigned GlowNNPIMemory = 0;
-
-static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
-    GlowNNPIMemoryOpt("glow-nnpi-memory",
-                      llvm::cl::desc("Override the amount of DRAM to allocate "
-                                     "per NNPI device, in kilobytes"),
-                      llvm::cl::location(GlowNNPIMemory));
-
 DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
                                        NNPIAdapterContainer *adapter) {
   std::shared_ptr<NNPIDeviceOptions> deviceOptions =
       std::make_shared<NNPIDeviceOptions>(config.parameters);
-  NNPIAdapter nnpiAdapter = adapter->get(deviceOptions->inferOnDevice);
-  if (deviceOptions->inferOnDevice && nnpiAdapter == NNPI_INVALID_NNPIHANDLE) {
+  if (deviceOptions->inferOnDevice &&
+      adapter->getHandle() == NNPI_INVALID_NNPIHANDLE) {
     LOG(ERROR) << "Adapter allocation failed";
     return nullptr;
   }
-  return new NNPIDeviceManager(config, deviceOptions, nnpiAdapter);
+  return new NNPIDeviceManager(config, deviceOptions, adapter);
 }
 
 // 1K bytes.
-static constexpr uint64_t KB = 1 << 10;
+static constexpr uint64_t KB = 1000;
 
 //////////////////////////////////////////////////////////////////////////
 std::atomic<RunIdentifierTy> NNPIDeviceManager::runIdentifier_;
 
 NNPIDeviceManager::NNPIDeviceManager(
     const DeviceConfig &config,
-    std::shared_ptr<NNPIDeviceOptions> deviceOptions, NNPIAdapter adapter,
-    unsigned numInferenceWorkers)
-    : DeviceManager(config), numWorkersPerFunction_(numInferenceWorkers),
-      deviceId_(config_.deviceID), adapter_(adapter),
+    std::shared_ptr<NNPIDeviceOptions> deviceOptions,
+    NNPIAdapterContainer *adapter)
+    : DeviceManager(config), deviceId_(config_.deviceID), pAdapter_(adapter),
       device_(NNPI_INVALID_NNPIHANDLE), deviceOptions_(deviceOptions) {
-
   if (deviceOptions_->showVars) {
     LOG(INFO) << deviceOptions_->dumpStatus();
   }
   if (deviceOptions_->deviceId >= 0) {
     deviceId_ = static_cast<unsigned>(deviceOptions_->deviceId);
   }
-
-  if (!numWorkersPerFunction_) {
-    numWorkersPerFunction_ = 2;
+  if (flags::NNPITimeoutMs != 0) {
+    deviceOptions_->inferTimeout = flags::NNPITimeoutMs * 1000;
   }
-
-  if (deviceOptions_->numWorkers > 0) {
-    numWorkersPerFunction_ = deviceOptions_->numWorkers;
-  }
-
-  // Ice-ref not re-entrant for the same nnpiNetwork.
-  numWorkersPerFunction_ =
-      deviceOptions_->inferOnDevice ? numWorkersPerFunction_ : 1;
 }
 
 NNPIDeviceManager::~NNPIDeviceManager() {
@@ -132,11 +115,8 @@ Error NNPIDeviceManager::init() {
   if (deviceOptions_->inferOnDevice) {
     // Create NNPI device.
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
-        nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
+        nnpiDeviceContextCreate(pAdapter_->getHandle(), deviceId_, &device_),
         "Failed to create NNPI Device");
-    if (deviceOptions_->enabledDeviceTracing) {
-      deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
-    }
     NNPIDeviceInfo deviceInfo;
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceGetInfo(deviceId_, &deviceInfo),
@@ -152,8 +132,8 @@ Error NNPIDeviceManager::init() {
               << static_cast<int>(deviceInfo.fwVersion.minor) << "."
               << static_cast<int>(deviceInfo.fwVersion.dot);
   }
-  if (GlowNNPIMemory > 0) {
-    maxMemoryBytes_ = static_cast<uint64_t>(GlowNNPIMemory) * KB;
+  if (flags::NNPIMemory > 0) {
+    maxMemoryBytes_ = static_cast<uint64_t>(flags::NNPIMemory) * KB;
   } else if (deviceOptions_->deviceMemory > 0) {
     maxMemoryBytes_ = static_cast<uint64_t>(deviceOptions_->deviceMemory) * KB;
   }
@@ -201,13 +181,15 @@ void NNPIDeviceManager::addNetwork(const Module *module,
   for (const auto &func : functions) {
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
-    auto err = inferenceEnvs_[func.first].init(
-        numWorkersPerFunction_, adapter_, device_, deviceTracing_, func.second,
-        &staticPlaceholders_, deviceOptions_, func.first, deviceId_);
+    auto err = inferencePools_[func.first].init(
+        pAdapter_, device_, func.second, &staticPlaceholders_, deviceOptions_,
+        func.first, deviceId_);
     if (err) {
       functions_.erase(func.first);
+      inferencePools_.erase(func.first);
       lock.unlock();
       readyCB(module, std::move(err));
+      return;
     }
   }
 
@@ -226,9 +208,9 @@ void NNPIDeviceManager::evictNetwork(std::string functionName,
 
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize.
-    inferenceEnvs_.at(functionName)
+    inferencePools_.at(functionName)
         .stop(true); // First stop existing threads on this network.
-    inferenceEnvs_.erase(functionName);
+    inferencePools_.erase(functionName);
   } else {
     err =
         MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
@@ -263,12 +245,9 @@ NNPIDeviceManager::runFunction(std::string functionName,
                                runtime::ResultCBTy resultCB) {
   RunIdentifierTy runId = runIdentifier_++;
 
-  /// NNPI DeviceManager doesn't support Device Resident Tensors.
-  ctx->getPlaceholderBindings()->ensureOnHost();
-
   // Get thread env.
-  auto infEnv = inferenceEnvs_.find(functionName);
-  if (infEnv == inferenceEnvs_.end()) {
+  auto infEnv = inferencePools_.find(functionName);
+  if (infEnv == inferencePools_.end()) {
     resultCB(runId, MAKE_ERR("Function isn't ready on the device"),
              std::move(ctx));
     return runId;
@@ -278,14 +257,14 @@ NNPIDeviceManager::runFunction(std::string functionName,
 }
 
 Error NNPIDeviceManager::stop(bool block) {
-  for (auto &env : inferenceEnvs_) {
+  for (auto &env : inferencePools_) {
     env.second.stop(block);
   }
   return Error::success();
 }
 uint64_t NNPIDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
 uint64_t NNPIDeviceManager::getAvailableMemory() const {
-  if (GlowNNPIMemory == 0 && deviceOptions_->deviceMemory == 0 &&
+  if (flags::NNPIMemory == 0 && deviceOptions_->deviceMemory == 0 &&
       deviceOptions_->inferOnDevice) {
     NNPIDeviceStatus devStatus;
     NNPIInferenceErrorCode res = nnpiDeviceGetStatus(deviceId_, &devStatus);
@@ -293,7 +272,13 @@ uint64_t NNPIDeviceManager::getAvailableMemory() const {
       LOG_NNPI_INF_IF_ERROR(res, "Failed to read available memory from device.")
       return 0;
     }
-    return static_cast<uint64_t>(devStatus.availableUnprotectedMemory) * KB;
+    const auto availableMem =
+        static_cast<uint64_t>(devStatus.availableUnprotectedMemory) * KB;
+    if (availableMem == 0) {
+      LOG(WARNING) << "NNPI Device " << deviceId_
+                   << " available memory: " << availableMem;
+    }
+    return availableMem;
   }
   auto freeMemory = getMaximumMemory();
   for (const auto &p : functions_) {
@@ -324,8 +309,12 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
 };
 
 Error NNPIDeviceManager::startDeviceTrace(TraceContext *traceContext) {
-  if (!NNPIDeviceTracing::getForDevice(deviceId_)->start(traceContext,
-                                                         device_)) {
+  if (!NNPIDeviceTracing::getForDevice(deviceId_)->start(
+          traceContext, device_, true /* Software traces are always enabled. */,
+          deviceOptions_->hardwareTraces,
+          deviceOptions_->softwareTracesMaxBuffer,
+          deviceOptions_->hardwareTracesMaxBuffer,
+          deviceOptions_->rawTracesDumpPath)) {
     return MAKE_ERR("Failed to start NNPI device trace.");
   }
   return Error::success();
@@ -349,10 +338,14 @@ Error NNPIDeviceManager::bindContext(std::string functionName,
   }
 
   // Create inference context.
-  ASSERT_WITH_MSG(inferenceEnvs_.count(functionName), "Invalid function name.");
+  ASSERT_WITH_MSG(inferencePools_.count(functionName),
+                  "Invalid function name.");
   std::shared_ptr<InferenceContext> infCtx(
-      inferenceEnvs_.at(functionName).createDetachedInferenceContext(phUsage));
-  ASSERT_WITH_MSG(infCtx, "Failed to create detached context");
+      inferencePools_.at(functionName).createDetachedInferenceContext(phUsage));
+  ASSERT_WITH_MSG(
+      infCtx, "Failed to create detached context; NNPIDeviceManager status: " +
+                  getStatusStr() +
+                  "; with NNPIDeviceOptions: " + deviceOptions_->dumpStatus());
 
   // Set the inference context into NNPIDeviceBinding and store in the ExCtx.
   ctx->setDeviceBindings(std::make_unique<NNPIDeviceBindings>(infCtx));
@@ -374,6 +367,37 @@ void NNPIDeviceManager::addPlaceholderUsageCount(std::string functionName,
       phUsage[outputName].devices.insert(device_);
     }
   }
+}
+
+void *NNPIDeviceManager::allocateDeviceIOBuffer(dim_t size) {
+  if (deviceOptions_->inferOnDevice && !deviceOptions_->disableDeviceIOBuffer) {
+    return pAdapter_->allocateHostResource(size);
+  } else {
+    return DeviceManager::allocateDeviceIOBuffer(size);
+  }
+}
+
+void NNPIDeviceManager::freeAllocatedDeviceIOBuffer(void *buffer) {
+  if (deviceOptions_->inferOnDevice && !deviceOptions_->disableDeviceIOBuffer) {
+    return pAdapter_->freeHostResource(buffer);
+  } else {
+    return DeviceManager::freeAllocatedDeviceIOBuffer(buffer);
+  }
+}
+
+std::string NNPIDeviceManager::getStatusStr() const {
+  std::stringstream stream;
+  stream << "MaximumMemory: \"" << getMaximumMemory() << '"';
+  stream << ", AvailableMemory: \"" << getAvailableMemory() << '"';
+  stream << ", DeviceID: \"" << deviceId_ << '"';
+  stream << ", Functions: {";
+  for (const auto &func : functions_) {
+    stream << func.first << ",";
+  }
+  stream << "}, ";
+  stream << ", FunctionCost: \"" << functionCost_ << '"';
+  stream << ", RunIdentifier: \"" << runIdentifier_ << '"';
+  return stream.str();
 }
 
 } // namespace runtime

@@ -74,7 +74,7 @@ public:
       if (auto resOrErr = compile(function, opts)) {
         compiledFunctions.push_back(std::move(*resOrErr));
       } else {
-        return resOrErr.takeError();
+        RETURN_ERR(resOrErr.takeError());
       }
     }
     return Expected<std::vector<std::unique_ptr<CompiledFunction>>>(
@@ -196,6 +196,25 @@ public:
   }
 
   virtual size_t getTraceEventDataSize() const { return 0; }
+
+  /// Called outside/after the end of the optimization pipeline and before code
+  /// generation, giving the backend another opportunity to transform the graph
+  /// before IRGen. The backend may insert backend and device-specific
+  /// nodes. This is generally used to process backend-specific node info, as we
+  /// skip the optimization pipeline in such cases in order to preserve the Node
+  /// -> NodeInfo mapping. This is only called if not using the DAG optimizer.
+  /// The backend is responsible for cleaning up after itself. \returns an
+  /// Expected boolean for whether the graph was modified.
+  virtual Expected<bool>
+  transformPostOptPipeline(Function *F, CompilationContext &cctx) const {
+    return false;
+  }
+
+  /// \returns an estimate of the node cost in unitless terms, or an error
+  /// if the cost of the node is unknown
+  virtual Expected<double> estimateNodeCost(const Node *node) const {
+    return MAKE_ERR("Backend does not support estimateNodeCost");
+  }
 
   /// Create device manager corresponding to the backend based on the
   /// deviceConfig.

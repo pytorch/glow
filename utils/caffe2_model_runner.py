@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
+
 from caffe2.proto import caffe2_pb2
 from caffe2.python import workspace
 from google.protobuf import text_format
-import argparse
 
 
 def fix_tensor_fills(init_net_file):
@@ -27,11 +28,7 @@ def fix_tensor_fills(init_net_file):
             op.type = "GivenTensorInt64Fill"
         elif any("lengths" in x for x in op.output):
             op.type = "GivenTensorIntFill"
-    open(
-        init_net_file +
-        "txt",
-        "w").write(
-        text_format.MessageToString(init_net))
+    open(init_net_file + "txt", "w").write(text_format.MessageToString(init_net))
     open(init_net_file, "wb").write(init_net.SerializeToString())
 
 

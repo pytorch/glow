@@ -154,7 +154,7 @@ public:
   }
 
 protected:
-  void checkNumericalEquivalence(float allowedError = 0.0001) {
+  virtual void checkNumericalEquivalence(float allowedError = 0.0001) {
     // Check that the function and its optimized complement exist.
     ASSERT_TRUE(F_);
     ASSERT_TRUE(optimizedF_);
@@ -320,15 +320,22 @@ using CreateAndInitFunction =
 /// use, if applicable. \p parallelCount represents the number of times to clone
 /// the Function inside itself, so that testing can be done on architectures
 /// that have parallel compute engines. The bias is quantized using the
-/// precision \p biasElemKind. \p forceFP16AccumSLS is propagated into the
-/// precision config for compilation.
+/// precision \p biasElemKind. \p forceFP16AccumSLS and \p float16Format are
+/// propagated into the precision config for compilation. If \p
+/// convertToChannelwiseQuantization is enabled then nodes supporting
+/// channelwise quantization will be converted. If \p skipQuantizeFCBias then
+/// don't apply quantization to FC bias inputs.
 void compareAgainstInterpreter(
     llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
     ElemKind interpElemKind, ElemKind backendElemKind,
     float allowedError = 0.0001, unsigned parallelCount = 1,
     bool convertToRowwiseQuantization = false,
     quantization::Schema schema = quantization::Schema::Asymmetric,
-    ElemKind biasElemKind = ElemKind::Int32QTy, bool forceFP16AccumSLS = false);
+    ElemKind biasElemKind = ElemKind::Int32QTy, bool forceFP16AccumSLS = false,
+    PrecisionConfiguration::Float16Format float16Format =
+        PrecisionConfiguration::Float16Format::FP16,
+    bool convertToChannelwiseQuantization = false,
+    bool skipQuantizeFCBias = false);
 
 /// Given some \p FTP representing a Function with a single SaveNode and its
 /// Tensor output, duplicate the Nodes in the Function and their Placeholder
@@ -346,6 +353,10 @@ unsigned countNodeKind(Function *F, Kinded::Kind kind);
 
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   llvm::StringRef kind);
+
+int inferConvReluNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
+                     unsigned_t kernel, unsigned_t stride, unsigned_t pad,
+                     llvm::StringRef kind);
 
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
@@ -423,6 +434,11 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
 /// quantization scales and offsets (i.e. the last 8 bytes of each row
 /// contains the scale and offset).
 Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
+                                                    llvm::ArrayRef<dim_t> dims,
+                                                    llvm::StringRef name,
+                                                    bool useFusedFP16 = false);
+
+Placeholder *createFusedRowwiseQuantizedPlaceholder(Module &mod,
                                                     llvm::ArrayRef<dim_t> dims,
                                                     llvm::StringRef name,
                                                     bool useFusedFP16 = false);

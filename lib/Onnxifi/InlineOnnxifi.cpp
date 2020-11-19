@@ -16,6 +16,7 @@
 
 #include "InlineOnnxifi.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
@@ -25,8 +26,6 @@
 
 namespace glow {
 namespace onnxifi {
-
-extern bool GlowSaveOnnxifiModel;
 
 namespace {
 std::string getProfileFile(llvm::StringRef hash) {
@@ -43,19 +42,20 @@ void computeModelHash(const void *onnxModel, size_t onnxModelSize,
 }
 } // namespace
 
-onnxStatus
-InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
-                       uint32_t weightCount,
-                       const onnxTensorDescriptorV1 *weightDescriptors,
-                       uint32_t maxSeqLength, void * /*unused */) {
+onnxStatus InlineGraph::initGraph(
+    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, uint32_t maxSeqLength,
+    void * /*unused */, bool /*unused*/) {
   Module &mod = executionEngine_.getModule();
   // Note: Pass in a nullptr for PPC here because we do not currently support
   // pre-partitioned models here.
   std::unique_ptr<ONNXIFIModelLoader> loader;
+  PlaceholderBindings dummyBindings;
+  CompilationContext cctx{&dummyBindings, &loweredMap_};
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, mod, "function",
-      /* PPC */ nullptr, true /*loadInputsAsPlaceholdersForOnnx*/,
-      backendPtr_->getUseOnnx());
+      cctx, /* staticPlaceholderTypes */ nullptr,
+      true /*loadInputsAsPlaceholdersForOnnx*/, backendPtr_->getUseOnnx());
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
@@ -68,7 +68,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   function_ = *mod.getFunctions().begin();
 
   bindPlaceholders(*loader);
-  if (GlowSaveOnnxifiModel) {
+  if (flags::SaveModel) {
     saveOnnxifiModel(function_);
   }
 
@@ -76,15 +76,17 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   computeModelHash(onnxModel, onnxModelSize, modelHash_);
   optimize(function_, CompilationMode::Infer);
 
-  PlaceholderBindings dummyBindings;
-  CompilationContext cctx{&dummyBindings, &loweredMap_};
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   precConfig.quantMode = quantizationMode_;
 
   // If quantizing, load quantization infos and setup the schema.
   if (quantizationMode_ == QuantizationMode::Quantize) {
-    precConfig.quantConfig.infos =
-        deserializeProfilingInfosFromYaml(getProfileFile(modelHash_));
+    auto fileExists = deserializeProfilingInfosFromYaml(
+        getProfileFile(modelHash_), precConfig.quantConfig.graphPreLowerHash,
+        precConfig.quantConfig.infos);
+    if (!fileExists) {
+      return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+    }
     precConfig.quantConfig.schema = quantization::Schema::Symmetric;
   }
 
@@ -102,7 +104,8 @@ onnxStatus InlineGraph::run(std::unique_ptr<ExecutionContext> ctx,
   if (quantizationMode_ == QuantizationMode::Profile) {
     auto PI = quantization::generateNodeProfilingInfos(
         *(ctx->getPlaceholderBindings()), function_, loweredMap_);
-    serializeProfilingInfosToYaml(getProfileFile(modelHash_), PI);
+    serializeProfilingInfosToYaml(getProfileFile(modelHash_),
+                                  /* graphPreLowerHash */ 0, PI);
   }
 
   if (auto *traceContext = ctx->getTraceContext()) {

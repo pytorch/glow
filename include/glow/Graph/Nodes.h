@@ -198,16 +198,16 @@ public:
 inline std::pair<dim_t, dim_t> calculateConvPoolOutputDims(
     size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t dilation = 1) {
+    llvm::ArrayRef<unsigned_t> dilation = {1, 1}) {
   PaddingTLBR pdim(pads);
   ShapeHW kdim(kernels);
   ShapeHW sdim(strides);
   size_t outsx = ((sx + pdim.top + pdim.bottom - kdim.height -
-                   (kdim.height - 1) * (dilation - 1)) /
+                   (kdim.height - 1) * (dilation[0] - 1)) /
                       sdim.height +
                   1);
   size_t outsy = ((sy + pdim.left + pdim.right - kdim.width -
-                   (kdim.width - 1) * (dilation - 1)) /
+                   (kdim.width - 1) * (dilation[1] - 1)) /
                       sdim.width +
                   1);
   return {outsx, outsy};
@@ -239,14 +239,14 @@ inline ShapeTHW calculate3DConvPoolOutputDims(
 inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
     size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t dilation = 1) {
+    llvm::ArrayRef<unsigned_t> dilation = {1, 1}) {
   PaddingTLBR pdim(pads);
   ShapeHW kdim(kernels);
   ShapeHW sdim(strides);
 
-  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * dilation + 1 -
+  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * dilation[0] + 1 -
                  pdim.top - pdim.bottom;
-  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * dilation + 1 -
+  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * dilation[1] + 1 -
                  pdim.left - pdim.right;
 
   return {outsx, outsy};
@@ -259,7 +259,13 @@ enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
 enum class LengthsMode { Variable, AllOne };
 
 /// Convolution Layouts.
-enum ConvolutionLayout { NHWC = 0, NCHW };
+enum ConvolutionLayout { NHWC = 0, NCHW, NTHWC, NCTHW };
+inline bool is3DData(ConvolutionLayout layout) {
+  return (layout == NTHWC || layout == NCTHW);
+}
+
+/// Modes of pooling for RoiAlign operation.
+enum PoolingMode { AVG = 0, MAX };
 
 /// Activations fused into ConvolutionNode (not supported on all backends).
 enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
@@ -360,10 +366,15 @@ constexpr char layoutSignifier[] = "layout";
 constexpr char staticSignifier[] = "offline";
 constexpr char trainableSignifier[] = "trainable";
 constexpr char elemKindSignifier[] = "elemKind";
+constexpr char loaderNameSignifier[] = "loaderName";
 constexpr char saveNameSignifier[] = "saveName";
 constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
 constexpr char shapeSignifier[] = "shape";
+constexpr char originNameToUniqueOffsetMappingSignifier[] =
+    "originNameToUniqueOffsetMapping";
+constexpr char constFoldSubgraphNodeName[] = "Glow__ConstFoldSubgraph";
+constexpr char staticPHDummyNodeName[] = "Glow__StaticPHDummyNode";
 
 /// \returns the string ID for a type attribute property for a specific \p ioNum
 /// and \p signifier and whether \p isInput. E.g. to retrieve result number 0's

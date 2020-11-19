@@ -18,6 +18,7 @@
 
 #include "DimType.h"
 
+#include "glow/Support/BFloat16.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Float16.h"
 #include "glow/Support/Memory.h"
@@ -56,6 +57,9 @@ using unsigned_t = uint32_t;
 
 using float16_t = float16;
 static_assert(sizeof(float16_t) == 2, "Half precision should be 16-bit");
+
+using bfloat16_t = bfloat16;
+static_assert(sizeof(bfloat16_t) == 2, "bfloat16 should be 16-bit");
 
 using ShapeVector = llvm::SmallVector<dim_t, max_tensor_dimensions>;
 
@@ -364,6 +368,14 @@ inline bool operator==(const ShapeNHWTC &LHS, const ShapeNHWTC &RHS) {
   return LHS.equals(RHS);
 }
 
+inline bool operator==(const ShapeNTHWC &LHS, const ShapeNTHWC &RHS) {
+  return LHS.equals(RHS);
+}
+
+inline bool operator==(const ShapeNCTHW &LHS, const ShapeNCTHW &RHS) {
+  return LHS.equals(RHS);
+}
+
 /// An enum representing the type used by the elements of a tensor. The types of
 /// Handles for these tensors should match the element kind.
 /// When adding new type, note that this enum definition must match with
@@ -373,6 +385,8 @@ enum class ElemKind : unsigned char {
   FloatTy,
   // 16-bit float type (half, fp16)
   Float16Ty,
+  // 16-bit float type (bfloat16)
+  BFloat16Ty,
   // 8-bit quantized type (int8_t)
   Int8QTy,
   // unsigned 8-bit quantized type (uint8_t)
@@ -392,6 +406,9 @@ enum class ElemKind : unsigned char {
   // 4-bit quantized type with fused FP16 scale/offset (uint8_t, each byte
   // represents 2 4-bit quantized data)
   UInt4FusedFP16QTy,
+  // 4-bit quantized type with fused FP32 scale/offset (uint8_t, each byte
+  // represents 2 4-bit quantized data)
+  UInt4FusedQTy,
   // Bool type (bool)
   BoolTy,
 };
@@ -401,18 +418,19 @@ inline bool isQuantizedElemKind(ElemKind e) {
   return e == ElemKind::Int8QTy || e == ElemKind::UInt8QTy ||
          e == ElemKind::Int16QTy || e == ElemKind::Int32QTy ||
          e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||
-         e == ElemKind::UInt4FusedFP16QTy;
+         e == ElemKind::UInt4FusedFP16QTy || e == ElemKind::UInt4FusedQTy;
 }
 
 /// \returns whether \p e is a float ElemKind.
 inline bool isFloatElemKind(ElemKind e) {
-  return e == ElemKind::FloatTy || e == ElemKind::Float16Ty;
+  return e == ElemKind::FloatTy || e == ElemKind::Float16Ty ||
+         e == ElemKind::BFloat16Ty;
 }
 
 /// \returns whether \p e is a fused quantized ElemKind.
 inline bool isFusedQuantizedElemKind(ElemKind e) {
   return e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||
-         e == ElemKind::UInt4FusedFP16QTy;
+         e == ElemKind::UInt4FusedFP16QTy || e == ElemKind::UInt4FusedQTy;
 }
 
 /// \returns the scale and offset ElemKind used by the fused ElemKind \p e.
@@ -423,6 +441,11 @@ inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
   }
   return ElemKind::Float16Ty;
 }
+
+/// \returns the floating point value range that covers a quantized type (min
+/// first, max second) given \p scale, \p offset, and \p elementType.
+std::pair<float, float> getQuantizedValueRange(float scale, int32_t offset,
+                                               ElemKind elementType);
 
 /// A class that represents a type of a tensor.
 struct Type final {
@@ -506,8 +529,6 @@ struct Type final {
 
   /// Reshape existing type by taking shapes and strides of \p shapeType.
   static Type newShape(const Type &T, TypeRef shapeType) {
-    assert(T.getElementSize() == shapeType->getElementSize() &&
-           "Element size should be the same");
     Type ty;
     if (T.isQuantizedType()) {
       ty = Type(T.getElementType(), shapeType->dims(), T.getScale(),
@@ -542,37 +563,7 @@ struct Type final {
   /// \returns the floating point value range that covers a quantized type (min
   /// first, max second).
   std::pair<float, float> getQuantizedValueRange() const {
-    assert(isQuantizedType() &&
-           "Can't get the quantized value range of a non-quantized type");
-
-    int64_t low = 0, high = 0;
-    switch (elementType_) {
-    case ElemKind::Int32QTy: {
-      low = INT32_MIN;
-      high = INT32_MAX;
-      break;
-    }
-    case ElemKind::Int16QTy: {
-      low = INT16_MIN;
-      high = INT16_MAX;
-      break;
-    }
-    case ElemKind::Int8QTy: {
-      low = INT8_MIN;
-      high = INT8_MAX;
-      break;
-    }
-    case ElemKind::UInt8QTy: {
-      low = UINT8_MIN;
-      high = UINT8_MAX;
-      break;
-    }
-    default:;
-    }
-
-    float lowFloat = (low - offset_) * scale_;
-    float highFloat = (high - offset_) * scale_;
-    return std::make_pair(lowFloat, highFloat);
+    return ::glow::getQuantizedValueRange(scale_, offset_, elementType_);
   }
 
   /// \returns true if \p other is the same type. If \p allowDifferentShape then
@@ -604,8 +595,9 @@ struct Type final {
       }
     }
 
-    // Compare the scale and offset of integers.
-    if (isQuantizedType()) {
+    // Compare the scale and offset of integers. Fused types use dummy
+    // scale/offset, so can ignore them.
+    if (isQuantizedType() && !isFusedQuantizedType()) {
       if (scale_ != other.scale_ || offset_ != other.offset_) {
         return false;
       }
@@ -667,6 +659,8 @@ struct Type final {
       return std::is_same<ElemTy, float>::value;
     case ElemKind::Float16Ty:
       return std::is_same<ElemTy, float16_t>::value;
+    case ElemKind::BFloat16Ty:
+      return std::is_same<ElemTy, bfloat16_t>::value;
     case ElemKind::Int8QTy:
       return std::is_same<ElemTy, int8_t>::value;
     case ElemKind::UInt8QTy:
@@ -685,6 +679,8 @@ struct Type final {
       return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::UInt4FusedFP16QTy:
       return std::is_same<ElemTy, uint8_t>::value;
+    case ElemKind::UInt4FusedQTy:
+      return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::BoolTy:
       return std::is_same<ElemTy, bool>::value;
     }
@@ -694,12 +690,15 @@ struct Type final {
   /// \returns true if the type of this Tensor is one of the quantized types.
   bool isQuantizedType() const { return isQuantizedElemKind(elementType_); }
 
+  /// \returns true if the type of this Tensor is one of the fused quantized
+  /// types.
+  bool isFusedQuantizedType() const {
+    return isFusedQuantizedElemKind(elementType_);
+  }
+
   /// \returns true if the type of this Tensor is one of the floating point
   /// types.
-  bool isFPType() const {
-    return getElementType() == ElemKind::FloatTy ||
-           getElementType() == ElemKind::Float16Ty;
-  }
+  bool isFPType() const { return isFloatElemKind(getElementType()); }
 
   /// \return the size of the type element.
   unsigned getElementSize() const { return getElementSize(elementType_); }
@@ -730,6 +729,8 @@ struct Type final {
       return sizeof(float);
     case ElemKind::Float16Ty:
       return sizeof(float16_t);
+    case ElemKind::BFloat16Ty:
+      return sizeof(bfloat16_t);
     case ElemKind::Int8QTy:
       return sizeof(int8_t);
     case ElemKind::UInt8QTy:
@@ -748,6 +749,8 @@ struct Type final {
       return sizeof(uint8_t);
     case ElemKind::UInt4FusedFP16QTy:
       return sizeof(uint8_t);
+    case ElemKind::UInt4FusedQTy:
+      return sizeof(uint8_t);
     case ElemKind::BoolTy:
       return sizeof(bool);
     }
@@ -762,9 +765,9 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float",    "float16",      "i8",           "ui8",
-        "i16",      "i32",          "index32",      "index64",
-        "ui8fused", "ui8fusedfp16", "ui4fusedfp16", "bool",
+        "float",        "float16",      "bfloat16", "i8",      "ui8",
+        "i16",          "i32",          "index32",  "index64", "ui8fused",
+        "ui8fusedfp16", "ui4fusedfp16", "ui4fused", "bool",
     };
     return names[(int)Ty];
   }
@@ -777,6 +780,8 @@ struct Type final {
       return ElemKind::FloatTy;
     } else if (str == Type::getElementName(ElemKind::Float16Ty)) {
       return ElemKind::Float16Ty;
+    } else if (str == Type::getElementName(ElemKind::BFloat16Ty)) {
+      return ElemKind::BFloat16Ty;
     } else if (str == Type::getElementName(ElemKind::Int8QTy)) {
       return ElemKind::Int8QTy;
     } else if (str == Type::getElementName(ElemKind::UInt8QTy)) {
@@ -795,6 +800,8 @@ struct Type final {
       return ElemKind::UInt8FusedFP16QTy;
     } else if (str == Type::getElementName(ElemKind::UInt4FusedFP16QTy)) {
       return ElemKind::UInt4FusedFP16QTy;
+    } else if (str == Type::getElementName(ElemKind::UInt4FusedQTy)) {
+      return ElemKind::UInt4FusedQTy;
     } else if (str == Type::getElementName(ElemKind::BoolTy)) {
       return ElemKind::BoolTy;
     } else {

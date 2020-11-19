@@ -1,9 +1,12 @@
 ---
 # NOTE: there must be no spaces before the '-', so put the comma last.
-Checks: '*,
+InheritParentConfig: true
+Checks: '
 clang-diagnostic-*,
 modernize-*,
 clang-analyzer-*,
+-android-*,
+-fuchsia-*,
 -clang-analyzer-alpha*,
 -readability-named-parameter,
 -misc-unused-parameters,
@@ -12,6 +15,7 @@ clang-analyzer-*,
 -cppcoreguidelines-pro-type-union-access,
 -google-readability-casting,
 -readability-implicit-bool-cast,
+-readability-convert-member-functions-to-static,
 -google-readability-todo,
 -readability-braces-around-statements,
 -google-readability-braces-around-statements,
@@ -19,12 +23,21 @@ clang-analyzer-*,
 -misc-unused-using-decls,
 -modernize-pass-by-value,
 -modernize-raw-string-literal,
+-modernize-use-trailing-return-type,
+-modernize-use-nodiscard,
 -readability-else-after-return,
 -readability-implicit-bool-conversion,
 -cppcoreguidelines-pro-type-member-init,
 -hicpp-member-init,
--cppcoreguidelines-pro-bounds-array-to-pointer-decay
-  '
+-hicpp-no-array-decay,
+-hicpp-use-auto,
+-hicpp-vararg,
+-cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+-cppcoreguidelines-pro-type-vararg,
+-cppcoreguidelines-pro-type-reinterpret-cast,
+-cppcoreguidelines-owning-memory,
+-cppcoreguidelines-macro-usage,
+'
 WarningsAsErrors: ''
 HeaderFilterRegex: 'include/glow'
 AnalyzeTemporaryDtors: false

@@ -14,13 +14,15 @@
 
 # Load a pre-trained Caffe2 image classifier and run it on an image.
 
-from caffe2.python import workspace
 import argparse
 import collections
-import numpy as np
 import os
-import skimage.io
 import time
+
+import numpy as np
+import skimage.io
+from caffe2.python import workspace
+
 
 print("Required modules imported.")
 
@@ -28,10 +30,8 @@ cmd_line_parser = argparse.ArgumentParser(
     description="Run Caffe2 using provided models and inputs."
 )
 cmd_line_parser.add_argument(
-    "--image",
-    "-i",
-    required=True,
-    help="Image to be processed by the neural network")
+    "--image", "-i", required=True, help="Image to be processed by the neural network"
+)
 cmd_line_parser.add_argument(
     "--directory",
     "-d",
@@ -103,9 +103,7 @@ if MODEL not in list(model_props.keys()):
 
 MODEL_ROOT = args.directory
 IMAGE_LOCATION = args.image
-img = skimage.img_as_ubyte(
-    skimage.io.imread(IMAGE_LOCATION)).astype(
-        np.float32)
+img = skimage.img_as_ubyte(skimage.io.imread(IMAGE_LOCATION)).astype(np.float32)
 
 image_shape = np.array(img).shape
 
@@ -134,8 +132,9 @@ for w in range(0, model_props[MODEL].image_size):
     for h in range(0, model_props[MODEL].image_size):
         for c in range(0, model_props[MODEL].num_color_channels):
             # WHC -> CWH, RGB -> BGR
-            transposed_image[0][model_props[MODEL].num_color_channels -
-                                c - 1][w][h] = model_props[MODEL].image_mode_op(img[w][h][c])
+            transposed_image[0][model_props[MODEL].num_color_channels - c - 1][w][
+                h
+            ] = model_props[MODEL].image_mode_op(img[w][h][c])
 
 final_image = transposed_image
 
@@ -162,8 +161,7 @@ for i in range(0, args.iterations):
 end = time.time()
 if args.time:
     print(
-        "Wall time per iteration (s): {:0.4f}".format(
-            (end - start) / args.iterations)
+        "Wall time per iteration (s): {:0.4f}".format((end - start) / args.iterations)
     )
 
 max_idx = np.argmax(results[0][0])

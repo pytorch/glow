@@ -20,8 +20,11 @@
 #include <random>
 
 #include "Bench.h"
+
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+
+#include "tests/unittests/BackendTestUtils.h"
 
 using namespace glow;
 
@@ -50,16 +53,26 @@ struct GemmParam {
 
 class GemmBench : public Benchmark {
   GemmParam param_;
-  PlaceholderBindings bindings_;
+  ExecutionContext context_;
+  PlaceholderBindings &bindings_;
   std::unique_ptr<runtime::HostManager> hostManager_;
 
 public:
-  explicit GemmBench(GemmParam param_) : param_(param_) {}
+  explicit GemmBench(GemmParam param_)
+      : param_(param_), bindings_(*context_.getPlaceholderBindings()) {}
 
   void addGemmNode(std::unique_ptr<Module> &mod, Function *fn,
                    GemmParam param) {
     auto *input = mod->createPlaceholder(param.dtype_, {param.m_, param.k_},
                                          "input", false);
+    if (param.dtype_ == ElemKind::Float16Ty) {
+      bindings_.allocate(input)->getHandle<float16>().randomize(-1.f, 1.f,
+                                                                mod->getPRNG());
+    } else {
+      assert(param.dtype_ == ElemKind::FloatTy);
+      bindings_.allocate(input)->getHandle<float>().randomize(-1.f, 1.f,
+                                                              mod->getPRNG());
+    }
     auto *output = mod->createPlaceholder(param.dtype_, {param.m_, param.n_},
                                           "output", false);
     Node *cur = input;
@@ -87,10 +100,12 @@ public:
                                     "bias" + std::to_string(layer), false);
 
       if (param.dtype_ == ElemKind::Float16Ty) {
-        bindings_.allocate(weights)->getHandle<float16_t>().clear(1.0);
+        bindings_.allocate(weights)->getHandle<float16_t>().randomize(
+            -1.f, 1.f, mod->getPRNG());
         bindings_.allocate(bias)->getHandle<float16_t>().clear(32);
       } else if (param.dtype_ == ElemKind::FloatTy) {
-        bindings_.allocate(weights)->getHandle<float>().clear(1.0);
+        bindings_.allocate(weights)->getHandle<float>().randomize(
+            -1.f, 1.f, mod->getPRNG());
         bindings_.allocate(bias)->getHandle<float>().clear(32);
       }
 
@@ -145,24 +160,8 @@ public:
   }
 
   void run() override {
-    std::vector<std::promise<void>> promises(param_.numAsyncLaunches_);
-    std::vector<std::future<void>> futures;
-
-    // Launch a number of independent requests
-    for (auto &runPromise : promises) {
-      std::unique_ptr<ExecutionContext> contextPtr(new ExecutionContext);
-      futures.push_back(runPromise.get_future());
-      hostManager_->runNetwork(
-          "singleNode", std::move(contextPtr),
-          [&runPromise](runtime::RunIdentifierTy, Error err,
-                        std::unique_ptr<ExecutionContext> /* contextPtr */) {
-            EXIT_ON_ERR(std::move(err));
-            runPromise.set_value();
-          });
-    }
-    for (auto &fut : futures) {
-      fut.wait();
-    }
+    dispatchInference("singleNode", hostManager_.get(), context_,
+                      param_.numAsyncLaunches_);
   }
 
   void teardown() override {}
@@ -218,6 +217,9 @@ int main(int argc, char *argv[]) {
   printf("Usage: GemmBench m(Int) n(Int) k(Int) numLayers(Int) numReps(Int) "
          "numAsyncLaunches(Int) numSplits(Int) backendStr(String) "
          "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
+  printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
+         "environment variable\n");
+  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
 
   std::vector<GemmParam> params;
   std::string runHeader;

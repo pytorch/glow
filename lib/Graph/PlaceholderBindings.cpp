@@ -47,13 +47,12 @@ bool PlaceholderBindings::compare(const PlaceholderBindings *A,
   // in A and B, and check if they match. If not, return false.
   for (const auto &phTensorPair : phMapA) {
     auto *placeholder = phTensorPair.first;
-    const auto *tensorA = phTensorPair.second;
+    const auto &tensorA = phTensorPair.second;
     const auto *tensorB =
-        B->get(B->getPlaceholderByName(placeholder->getName()));
+        B->get(B->getPlaceholderByNameSlow(placeholder->getName()));
 
-    if (!tensorA || !tensorB ||
-        !tensorA->isEqual(*tensorB, allowedError,
-                          /* verbose */ true)) {
+    if (!tensorB || !tensorA.isEqual(*tensorB, allowedError,
+                                     /* verbose */ true)) {
       return false;
     }
   }
@@ -61,64 +60,51 @@ bool PlaceholderBindings::compare(const PlaceholderBindings *A,
   return true;
 }
 
-Tensor *PlaceholderBindings::get(Placeholder *P) const {
+const Tensor *PlaceholderBindings::get(Placeholder *P) const {
   auto it = map_.find(P);
   if (it == map_.end()) {
     return nullptr;
   }
 
-  return it->second;
+  return &it->second;
 }
 
-Placeholder *
-PlaceholderBindings::getPlaceholderByName(llvm::StringRef name) const {
-  auto nameIt = nameMap_.find(name);
-  if (nameIt == nameMap_.end()) {
+Tensor *PlaceholderBindings::get(Placeholder *P) {
+  auto it = map_.find(P);
+  if (it == map_.end()) {
     return nullptr;
   }
 
-  return nameIt->second;
+  return &it->second;
 }
 
-void PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
+Placeholder *
+PlaceholderBindings::getPlaceholderByNameSlow(llvm::StringRef name) const {
+  for (auto &kv : map_) {
+    if (kv.first->getName() == name) {
+      return kv.first;
+    }
+  }
+  return nullptr;
+}
+
+PlaceholderBindings::PlaceholderMapIterator
+PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
   DCHECK(T.getType().isEqual(*P->getType()))
       << "Placeholder " << P->getName().str() << " has type "
       << P->getType()->toString() << " but Tensor has type "
       << T.getType().toString() << "\n";
-  DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
-                         << "\" already registered";
-  // Take ownership over the tensor.
-  Tensor *t = new Tensor(std::move(T));
-  map_[P] = t;
-  nameMap_[P->getName()] = P;
-}
-
-void PlaceholderBindings::insert(Placeholder *P, Tensor *T) {
-  DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
-                         << "\" already registered";
-  map_[P] = T;
-  nameMap_[P->getName()] = P;
-}
-
-void PlaceholderBindings::update(Placeholder *P, Tensor &&T) {
-  DCHECK(map_.count(P)) << "Placeholder with name \"" << P->getName().str()
-                        << "\" is missing";
-  auto *tensor = map_[P];
-  if (auto *tensorPool = tensor->getOwningPool()) {
-    tensorPool->reclaim(tensor);
-  } else {
-    delete tensor;
-  }
-
-  // Take ownership over the tensor.
-  map_[P] = new Tensor(std::move(T));
+  auto ret = map_.emplace(P, std::move(T));
+  DCHECK(ret.second) << "Placeholder with name \"" << P->getName().str()
+                     << "\" already registered";
+  return ret.first;
 }
 
 void PlaceholderBindings::copyToTarget(llvm::StringRef name,
                                        PlaceholderBindings &dst) {
-  auto *srcPH = this->getPlaceholderByName(name);
+  auto *srcPH = this->getPlaceholderByNameSlow(name);
   DCHECK(srcPH) << name.str() << " does not exist in source";
-  auto *dstPH = dst.getPlaceholderByName(name);
+  auto *dstPH = dst.getPlaceholderByNameSlow(name);
   DCHECK(dstPH) << name.str() << " does not exist in destination";
   dst.erase(dstPH);
   dst.insert(dstPH, this->get(srcPH)->clone());
@@ -133,47 +119,50 @@ void PlaceholderBindings::copyTrainableWeightsTo(PlaceholderBindings &dst) {
 }
 
 size_t PlaceholderBindings::count(Placeholder *P) const {
-  DCHECK_EQ(map_.size(), nameMap_.size())
-      << "Placeholder map and name map out of sync";
   return map_.count(P);
 }
 
 void PlaceholderBindings::clear() {
   // Delete all of the tensors that are owned by the bindings.
-  for (auto PH : map_) {
-    if (auto *tensorPool = PH.second->getOwningPool()) {
-      tensorPool->reclaim(PH.second);
-    } else {
-      delete PH.second;
+  for (auto &PH : map_) {
+    if (auto *tensorPool = PH.second.getOwningPool()) {
+      tensorPool->reclaim(std::move(PH.second));
     }
   }
 
   map_.clear();
-  nameMap_.clear();
 }
 
 void PlaceholderBindings::erase(Placeholder *P) {
-  DCHECK(nameMap_.count(P->getName()))
-      << "Placeholder with name \"" << P->getName().str()
-      << "\" already registered";
-  nameMap_.erase(P->getName());
-
-  auto *T = map_[P];
-  if (auto *tensorPool = T->getOwningPool()) {
-    tensorPool->reclaim(T);
-  } else {
-    delete T;
+  auto &T = map_[P];
+  if (auto *tensorPool = T.getOwningPool()) {
+    tensorPool->reclaim(std::move(T));
   }
-
   map_.erase(P);
 }
 
 PlaceholderBindings PlaceholderBindings::clone() const {
   PlaceholderBindings cloned;
-  for (auto PH : map_) {
+  for (auto &PH : map_) {
     Placeholder *P = PH.first;
-    Tensor *T = PH.second;
-    cloned.insert(P, T->clone());
+    cloned.insert(P, PH.second.clone());
+  }
+
+  return cloned;
+}
+
+PlaceholderBindings
+PlaceholderBindings::clone(const PlaceholderList &newPHs) const {
+  PlaceholderBindings cloned;
+  for (const auto &PH : map_) {
+    Placeholder *P = PH.first;
+    const Tensor &T = PH.second;
+    auto newPHIt = std::find_if(newPHs.begin(), newPHs.end(), [=](auto *newPH) {
+      return newPH->getName() == P->getName();
+    });
+    DCHECK(newPHIt != newPHs.end())
+        << "Expected to find corresponding PH by name " << P->getName().data();
+    cloned.insert(*newPHIt, T.clone());
   }
 
   return cloned;
@@ -182,16 +171,15 @@ PlaceholderBindings PlaceholderBindings::clone() const {
 Tensor *PlaceholderBindings::allocate(Placeholder *P) {
   DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
                          << "\" already registered";
-  Tensor *T = new Tensor(P->getType());
+  Tensor T(P->getType());
 
   // If this Tensor needs to start zeroed, then zero it.
   if (P->allocZero()) {
-    T->zero();
+    T.zero();
   }
 
-  map_[P] = T;
-  nameMap_[P->getName()] = P;
-  return T;
+  auto ret = map_.emplace(P, std::move(T));
+  return &ret.first->second;
 }
 
 unsigned PlaceholderBindings::allocate(const std::list<Placeholder *> &lst) {
@@ -225,8 +213,8 @@ Placeholder *PlaceholderBindings::getFirstUnallocated(
 uint64_t PlaceholderBindings::getDataSize() const {
   uint64_t size = 0;
   for (const auto &PH : map_) {
-    Tensor *T = PH.second;
-    size += T->getSizeInBytes();
+    const auto &T = PH.second;
+    size += T.getSizeInBytes();
   }
   return size;
 }

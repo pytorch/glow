@@ -18,23 +18,75 @@
 using namespace glow;
 
 NNPIAdapterContainer::~NNPIAdapterContainer() {
-  std::unique_lock<std::mutex> lock(adapterMutex_);
-  if (nnpiAdapter_ != NNPI_INVALID_NNPIHANDLE) {
-    LOG_NNPI_INF_IF_ERROR(nnpiAdapterDestroy(nnpiAdapter_),
+  while (!hostResourceMap_.empty()) {
+    freeHostResource(hostResourceMap_.begin()->first);
+  }
+
+  std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+  if (adapter_ != NNPI_INVALID_NNPIHANDLE) {
+    LOG_NNPI_INF_IF_ERROR(nnpiAdapterDestroy(adapter_),
                           "Failed to destroy NNPI adapter");
-    nnpiAdapter_ = NNPI_INVALID_NNPIHANDLE;
+    adapter_ = NNPI_INVALID_NNPIHANDLE;
   }
 }
 
-NNPIAdapter NNPIAdapterContainer::get(bool inferOnDevice) {
-  std::unique_lock<std::mutex> lock(adapterMutex_);
-  if (inferOnDevice) {
-    if (nnpiAdapter_ == NNPI_INVALID_NNPIHANDLE) {
-      LOG_NNPI_INF_IF_ERROR(nnpiAdapterCreate(nullptr, &nnpiAdapter_),
-                            "Failed to create NNPI Adapter");
-    }
-  } else {
-    return NNPI_INVALID_NNPIHANDLE;
+NNPIAdapter NNPIAdapterContainer::getHandle() {
+  std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+  if (adapter_ == NNPI_INVALID_NNPIHANDLE) {
+    LOG_NNPI_INF_IF_ERROR(nnpiAdapterCreate(nullptr, &adapter_),
+                          "Failed to create NNPI Adapter");
   }
-  return nnpiAdapter_;
+  return adapter_;
+}
+
+void *NNPIAdapterContainer::allocateHostResource(size_t resourceSize) {
+  CHECK(adapter_ != NNPI_INVALID_NNPIHANDLE);
+  NNPIHostResource hostResource = NNPI_INVALID_NNPIHANDLE;
+  NNPIResourceDesc desc;
+  memset(&desc, 0, sizeof(desc));
+  desc.dataType = NNPI_INF_PRECISION_UINT8;
+  desc.layout = NNPI_INF_LAYOUT_NC;
+  desc.numDims = 2;
+  desc.dims[0] = resourceSize;
+  desc.dims[1] = 1;
+
+  LOG_NNPI_INF_IF_ERROR(nnpiHostResourceCreate(adapter_, &desc, &hostResource),
+                        "Failed to create NNPI host resource");
+  if (hostResource == NNPI_INVALID_NNPIHANDLE) {
+    return nullptr;
+  }
+
+  void *hostPtr = nullptr;
+  LOG_NNPI_INF_IF_ERROR(nnpiHostResourceLock(hostResource,
+                                             NNPI_LOCKLESS_QUERY_ADDRESS,
+                                             UINT32_MAX, &hostPtr),
+                        "Failed to lock host resource");
+  if (hostPtr == nullptr) {
+    return nullptr;
+  }
+
+  {
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    hostResourceMap_.insert({hostPtr, hostResource});
+    return hostPtr;
+  }
+}
+
+void NNPIAdapterContainer::freeHostResource(void *ptr) {
+  std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+  if (hostResourceMap_.count(ptr)) {
+    LOG_NNPI_INF_IF_ERROR(nnpiHostResourceDestroy(hostResourceMap_.at(ptr)),
+                          "Failed to destroy NNPI host resource");
+    hostResourceMap_.erase(ptr);
+  }
+}
+
+NNPIHostResource NNPIAdapterContainer::getResourceForPtr(void *ptr) {
+  std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+  auto it = hostResourceMap_.find(ptr);
+  if (it == hostResourceMap_.end()) {
+    return NNPI_INVALID_NNPIHANDLE;
+  } else {
+    return it->second;
+  }
 }

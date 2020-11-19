@@ -36,8 +36,8 @@ public:
                   runtime::ResultCBTy callback, uint64_t priority = 0) override;
 
   onnxStatus addNetwork(std::unique_ptr<Module> module,
-                        void *deferredBlobReader,
-                        runtime::PrePartitionedConfig *PPC);
+                        void *deferredBlobReader, CompilationContext &cctx,
+                        std::map<std::string, Type> &&staticPlaceholderTypes);
 
   onnxStatus removeNetwork(const Graph *graph) override;
 
@@ -61,12 +61,13 @@ public:
 
   /// Init Glow graph based on the ONNX model \p onnxModel and
   /// static trained weights \p weightDescriptors. Weights can be read in later
-  /// by a \p deferedBlobReader.
+  /// by a \p deferedBlobReader. \p loadingGlowAOT specifies if the model has
+  /// already been AOT optimized via Glow.
   onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
                        uint32_t weightCount,
                        const onnxTensorDescriptorV1 *weightDescriptors,
-                       uint32_t maxSeqLengths,
-                       void *deferedBlobReader) override;
+                       uint32_t maxSeqLengths, void *deferedBlobReader,
+                       bool loadingGlowAOT) override;
 
   /// Async run HostManagerGraph with the given ExecutionContext \p ctx then
   /// signal \p outputEvent when done. \p phNameToOnnxTensorOutputs is a mapping

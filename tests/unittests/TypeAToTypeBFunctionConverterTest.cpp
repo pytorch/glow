@@ -1136,8 +1136,8 @@ TEST(TypeAToTypeBFunctionConverter, skipConvertingFRWQSLWS) {
   EXPECT_TRUE(F->verify());
 }
 
-/// Test conversion of only Float16Ty inputs of Node and not UInt8FusedQTy.
-TEST(TypeAToTypeBFunctionConverter, convertOnlyFloat16Ty) {
+static void
+convertOnlyFloat16Ty(PrecisionConfiguration::Float16Format float16Format) {
   Module mod;
   Function *F = mod.createFunction("test");
   Tensor data(ElemKind::FloatTy, {3, 1});
@@ -1164,7 +1164,11 @@ TEST(TypeAToTypeBFunctionConverter, convertOnlyFloat16Ty) {
   PrecisionConfiguration precConfig;
   precConfig.convertToFP16 = true;
   precConfig.convertFusedToFP16 = false;
+  precConfig.float16Format = float16Format;
   convertFunctionToFloat16(F, precConfig);
+
+  ElemKind convertedElementType =
+      PrecisionConfiguration::getElementType(float16Format);
 
   // Should have added convert nodes for the weights and results.
   EXPECT_EQ(F->getNodes().size(), origSize + 2);
@@ -1177,7 +1181,7 @@ TEST(TypeAToTypeBFunctionConverter, convertOnlyFloat16Ty) {
       llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
           convertResult->getInput());
   ASSERT_NE(SLWS, nullptr);
-  EXPECT_EQ(SLWS->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(SLWS->getResult().getElementType(), convertedElementType);
 
   auto *origData = llvm::dyn_cast<Constant>(SLWS->getData());
   ASSERT_NE(origData, nullptr);
@@ -1185,7 +1189,7 @@ TEST(TypeAToTypeBFunctionConverter, convertOnlyFloat16Ty) {
 
   auto *convertWeights = llvm::dyn_cast<ConvertToNode>(SLWS->getWeights());
   ASSERT_NE(convertWeights, nullptr);
-  EXPECT_EQ(convertWeights->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(convertWeights->getResult().getElementType(), convertedElementType);
 
   auto *origWeights = llvm::dyn_cast<Constant>(convertWeights->getInput());
   ASSERT_NE(origWeights, nullptr);
@@ -1193,6 +1197,16 @@ TEST(TypeAToTypeBFunctionConverter, convertOnlyFloat16Ty) {
   EXPECT_EQ(weights, origWeights);
 
   EXPECT_TRUE(F->verify());
+}
+
+/// Test conversion of only FP16 inputs of Node and not UInt8FusedQTy.
+TEST(TypeAToTypeBFunctionConverter, convertOnlyFP16Ty) {
+  convertOnlyFloat16Ty(PrecisionConfiguration::Float16Format::FP16);
+}
+
+/// Test conversion of only BFloat16 inputs of Node and not UInt8FusedQTy.
+TEST(TypeAToTypeBFunctionConverter, convertOnlyBFloat16Ty) {
+  convertOnlyFloat16Ty(PrecisionConfiguration::Float16Format::BFloat16);
 }
 
 /// Test conversion of only UInt8FusedQTy inputs of Node and not Float16Ty.
@@ -1249,8 +1263,8 @@ TEST(TypeAToTypeBFunctionConverter, convertOnlyUInt8FusedQTy) {
   EXPECT_TRUE(F->verify());
 }
 
-// Test that we don't insert Clips around non-numeric nodes.
-TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAroundNonNumericNodes) {
+static void convertWithoutClipAroundNonNumericNodes(
+    PrecisionConfiguration::Float16Format float16Format) {
   Module mod;
   Function *F = mod.createFunction("test");
   const dim_t dims[] = {1, 5, 10, 15};
@@ -1267,6 +1281,7 @@ TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAroundNonNumericNodes) {
   PrecisionConfiguration precConfig;
   precConfig.convertToFP16 = true;
   precConfig.clipFP16 = true;
+  precConfig.float16Format = float16Format;
   convertFunctionToFloat16(F, precConfig);
 
   int numClips = 0;
@@ -1285,8 +1300,22 @@ TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAroundNonNumericNodes) {
   EXPECT_TRUE(F->verify());
 }
 
-// Test that we don't insert Clips at the output of Tanh or Sigmoid
-TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAfterTanhOrSigmoid) {
+// Test that we don't insert Clips around non-numeric nodes.
+TEST(TypeAToTypeBFunctionConverter,
+     convertWithFP16WithoutClipAroundNonNumericNodes) {
+  convertWithoutClipAroundNonNumericNodes(
+      PrecisionConfiguration::Float16Format::FP16);
+}
+
+// Test that we don't insert Clips around non-numeric nodes.
+TEST(TypeAToTypeBFunctionConverter,
+     convertWithBFloat16WithoutClipAroundNonNumericNodes) {
+  convertWithoutClipAroundNonNumericNodes(
+      PrecisionConfiguration::Float16Format::BFloat16);
+}
+
+static void convertWithoutClipAfterTanhOrSigmoid(
+    PrecisionConfiguration::Float16Format float16Format) {
   Module mod;
   Function *F = mod.createFunction("test");
   const dim_t dims[] = {10, 20};
@@ -1301,6 +1330,7 @@ TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAfterTanhOrSigmoid) {
   PrecisionConfiguration precConfig;
   precConfig.convertToFP16 = true;
   precConfig.clipFP16 = true;
+  precConfig.float16Format = float16Format;
   convertFunctionToFloat16(F, precConfig);
 
   int numClips = 0;
@@ -1319,9 +1349,22 @@ TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAfterTanhOrSigmoid) {
   EXPECT_TRUE(F->verify());
 }
 
-// Test that we don't insert Clips at the output of ConvertTo if its input is
-// fp16
-TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAfterFp16ConvertTo) {
+// Test that we don't insert Clips at the output of Tanh or Sigmoid
+TEST(TypeAToTypeBFunctionConverter,
+     convertWithFP16WithoutClipAfterTanhOrSigmoid) {
+  convertWithoutClipAfterTanhOrSigmoid(
+      PrecisionConfiguration::Float16Format::FP16);
+}
+
+// Test that we don't insert Clips at the output of Tanh or Sigmoid
+TEST(TypeAToTypeBFunctionConverter,
+     convertWithBFloat16WithoutClipAfterTanhOrSigmoid) {
+  convertWithoutClipAfterTanhOrSigmoid(
+      PrecisionConfiguration::Float16Format::BFloat16);
+}
+
+static void convertWithoutClipAfterFp16ConvertTo(
+    PrecisionConfiguration::Float16Format float16Format) {
   Module mod;
   Function *F = mod.createFunction("test");
   const dim_t dims[] = {10, 20};
@@ -1336,6 +1379,7 @@ TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAfterFp16ConvertTo) {
   PrecisionConfiguration precConfig;
   precConfig.convertToFP16 = true;
   precConfig.clipFP16 = true;
+  precConfig.float16Format = float16Format;
   convertFunctionToFloat16(F, precConfig);
 
   int numClips = 0;
@@ -1353,8 +1397,25 @@ TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAfterFp16ConvertTo) {
   EXPECT_TRUE(F->verify());
 }
 
+// Test that we don't insert Clips at the output of ConvertTo if its input is
+// fp16.
+TEST(TypeAToTypeBFunctionConverter,
+     convertWithFP16WithoutClipAfterFp16ConvertTo) {
+  convertWithoutClipAfterFp16ConvertTo(
+      PrecisionConfiguration::Float16Format::FP16);
+}
+
+// Test that we don't insert Clips at the output of ConvertTo if its input is
+// bfloat16.
+TEST(TypeAToTypeBFunctionConverter,
+     convertWithBFloat16WithoutClipAfterFp16ConvertTo) {
+  convertWithoutClipAfterFp16ConvertTo(
+      PrecisionConfiguration::Float16Format::BFloat16);
+}
+
 // Test that we only insert clips for outputs.
-TEST(TypeAToTypeBFunctionConverter, checkConvertOnlyOutputs) {
+static void
+checkConvertOnlyOutputs(PrecisionConfiguration::Float16Format float16Format) {
   Module mod;
   Function *F = mod.createFunction("test");
   Node *I = mod.createPlaceholder(ElemKind::FloatTy, {10}, "i", false);
@@ -1367,7 +1428,11 @@ TEST(TypeAToTypeBFunctionConverter, checkConvertOnlyOutputs) {
   precConfig.clipFP16SkipInputs = true;
   precConfig.convertPlaceholdersToFP16 = true;
   precConfig.convertConstantsToFP16 = true;
+  precConfig.float16Format = float16Format;
   convertFunctionToFloat16(F, precConfig);
+
+  ElemKind convertedElementType =
+      PrecisionConfiguration::getElementType(float16Format);
 
   // PH -> ConvertToFP16 -> Clip -> ConvertToFP32 -> ConvertToFP16 -> Relu ->
   // Clip -> ConvertToFP32 -> Save
@@ -1377,12 +1442,13 @@ TEST(TypeAToTypeBFunctionConverter, checkConvertOnlyOutputs) {
   EXPECT_EQ(convertRN->getResult().getType()->getElementType(),
             ElemKind::FloatTy);
   ClipNode *clipRN = llvm::dyn_cast<ClipNode>(convertRN->getInput());
+  convertRN->getInput().getNode()->dump();
   ASSERT_TRUE(clipRN);
   ASSERT_TRUE(clipRN->getInput() == RN->getResult());
   ConvertToNode *convert32To16 = llvm::dyn_cast<ConvertToNode>(RN->getInput());
   ASSERT_TRUE(convert32To16);
   EXPECT_EQ(convert32To16->getResult().getType()->getElementType(),
-            ElemKind::Float16Ty);
+            convertedElementType);
   ConvertToNode *convert16To32 =
       llvm::dyn_cast<ConvertToNode>(convert32To16->getInput());
   ASSERT_TRUE(convert16To32);
@@ -1393,13 +1459,24 @@ TEST(TypeAToTypeBFunctionConverter, checkConvertOnlyOutputs) {
   ConvertToNode *convertPH = llvm::dyn_cast<ConvertToNode>(clipPH->getInput());
   ASSERT_TRUE(convertPH);
   EXPECT_EQ(convertPH->getResult().getType()->getElementType(),
-            ElemKind::Float16Ty);
+            convertedElementType);
 
   EXPECT_TRUE(F->verify());
 }
 
 // Test that we only insert clips for outputs.
-TEST(TypeAToTypeBFunctionConverter, checkConvertClipStorage) {
+TEST(TypeAToTypeBFunctionConverter, checkWithFP16ConvertOnlyOutputs) {
+  checkConvertOnlyOutputs(PrecisionConfiguration::Float16Format::FP16);
+}
+
+// Test that we only insert clips for outputs.
+TEST(TypeAToTypeBFunctionConverter, checkWithBFloat16ConvertOnlyOutputs) {
+  checkConvertOnlyOutputs(PrecisionConfiguration::Float16Format::BFloat16);
+}
+
+// Test that we only insert clips for outputs.
+static void
+checkConvertClipStorage(PrecisionConfiguration::Float16Format float16Format) {
   Module mod;
   Function *F = mod.createFunction("test");
   Node *PH = mod.createPlaceholder(ElemKind::FloatTy, {10}, "ph", false);
@@ -1413,6 +1490,7 @@ TEST(TypeAToTypeBFunctionConverter, checkConvertClipStorage) {
   precConfig.clipFP16SkipInputs = true;
   precConfig.convertPlaceholdersToFP16 = true;
   precConfig.convertConstantsToFP16 = true;
+  precConfig.float16Format = float16Format;
   convertFunctionToFloat16(F, precConfig);
 
   ConvertToNode *convertFP32PH = llvm::dyn_cast<ConvertToNode>(SPH->getInput());
@@ -1432,4 +1510,110 @@ TEST(TypeAToTypeBFunctionConverter, checkConvertClipStorage) {
   ASSERT_TRUE(convertFP16C);
 
   EXPECT_TRUE(F->verify());
+}
+
+// Test that we only insert clips for outputs.
+TEST(TypeAToTypeBFunctionConverter, checkWithFP16ConvertClipStorage) {
+  checkConvertClipStorage(PrecisionConfiguration::Float16Format::FP16);
+}
+
+// Test that we only insert clips for outputs.
+TEST(TypeAToTypeBFunctionConverter, checkWithBFloat16ConvertClipStorage) {
+  checkConvertClipStorage(PrecisionConfiguration::Float16Format::BFloat16);
+}
+
+/// Check that quantized FC with FP32 bias doesn't have bias converted to FP16.
+TEST(TypeAToTypeBFunctionConverter, DoNotConvertFloatBiasWithIntInput) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  PlaceholderBindings bindings;
+
+  auto *input = mod.createPlaceholder(ElemKind::Int8QTy, {3, 8}, 0.05, -2,
+                                      "input", false);
+  auto *weight = mod.createConstant(ElemKind::Int8QTy, {8, 10}, 0.02, 3, "w");
+  auto *bias = mod.createConstant(ElemKind::FloatTy, {10}, "w");
+
+  auto *FC = F->createFullyConnected("FC", input, weight, bias);
+  F->createSave("save", FC);
+
+  std::string origGraph = F->toString();
+
+  PrecisionConfiguration precConfig;
+  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+                                          ElemKind::Float16Ty, precConfig);
+  converter.convert();
+
+  EXPECT_EQ(origGraph, F->toString());
+}
+
+/// Create a FRWQSLWS node with data type \p fusedKind and shape \p row and \p
+/// col, check if its data can be properly converted from UInt8FP16QTy to
+/// UInt8FusedQTy, or from UInt4FP16QTy to UInt4FusedQTy, and its indices can be
+/// properly coverted to Int64.
+static void testFRWQSLWSDataIndicesConvert(ElemKind fusedKind, dim_t row,
+                                           dim_t col) {
+  EXPECT_LT(row, 100);
+  EXPECT_LT(col, 100);
+
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Tensor data(ElemKind::FloatTy, {row, col});
+  auto dataH = data.getHandle();
+  for (dim_t i = 0; i < row; i++) {
+    for (dim_t j = 0; j < col; j++) {
+      dataH.at({i, j}) = 2.0 * i + 1.0 * j;
+    }
+  }
+
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int32ITy, {8}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                            /* isTrainable */ false);
+  auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths, fusedKind);
+  SaveNode *S = F->createSave("save", R);
+
+  size_t origSize = F->getNodes().size();
+  CompilationContext cctx;
+  PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  precConfig.convert4BitFusedToFP32 = true;
+  precConfig.convert8BitFusedToFP32 = true;
+  precConfig.convertIndicesToInt64 = true;
+  precConfig.forceFP16AccumSLS = false;
+
+  transformForPrecisionMode(MockBackend(), F, cctx);
+  // Should have added ConvertTo nodes for the Data and indices.
+  EXPECT_EQ(F->getNodes().size(), origSize + 2);
+
+  optimize(F, CompilationMode::Infer);
+  // Since data is a constant, after optimization, const folding should be
+  // applied and a new data is created. Therefore, only 1 ConverTo node is left
+  // for indices.
+  EXPECT_EQ(F->getNodes().size(), origSize + 1);
+
+  auto *SLWS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+          S->getInput());
+  ASSERT_NE(SLWS, nullptr);
+  if (fusedKind == ElemKind::UInt8FusedFP16QTy) {
+    EXPECT_EQ(SLWS->getData().getElementType(), ElemKind::UInt8FusedQTy);
+  } else {
+    EXPECT_EQ(SLWS->getData().getElementType(), ElemKind::UInt4FusedQTy);
+  }
+  EXPECT_EQ(SLWS->getIndices().getElementType(), ElemKind::Int64ITy);
+
+  EXPECT_TRUE(F->verify());
+}
+
+/// Testing converting UInt8FusedFP16QTy to UInt8FusedQTy.
+TEST(TypeAToTypeBFunctionConverter, FRWLWSConvert8Bit) {
+  testFRWQSLWSDataIndicesConvert(ElemKind::UInt8FusedFP16QTy, 10, 10);
+}
+
+/// Testing converting UInt4FusedFP16QTy to UInt4FusedQTy.
+TEST(TypeAToTypeBFunctionConverter, FRWLWSConvert4Bit) {
+  testFRWQSLWSDataIndicesConvert(ElemKind::UInt4FusedFP16QTy, 10, 10);
 }

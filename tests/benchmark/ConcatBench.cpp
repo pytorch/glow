@@ -158,6 +158,9 @@ int main(int argc, char *argv[]) {
          "numLayers(Int) numReps(Int) "
          "numAsyncLaunches(Int) backendStr(String) "
          "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
+  printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
+         "environment variable\n");
+  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
   assert(argc == 9 || argc == 10);
   size_t m = atoi(argv[1]);
   size_t n = atoi(argv[2]);

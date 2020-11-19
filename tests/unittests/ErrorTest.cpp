@@ -157,6 +157,16 @@ TEST(Error, ExpectedConversion) {
   EXPECT_EQ(barRes, 42);
 }
 
+TEST(Error, ReturnIfExpectedIsErr) {
+  auto retErr = [&]() -> Expected<int> { return MAKE_ERR("Error!"); };
+  auto test = [&]() -> Error {
+    RETURN_IF_EXPECTED_IS_ERR(retErr());
+    return Error::success();
+  };
+
+  EXPECT_TRUE(ERR_TO_BOOL(test()));
+}
+
 TEST(Error, PeekError) {
   const char *msg = "some error";
   auto err = MAKE_ERR(msg);
@@ -187,4 +197,13 @@ TEST(Error, WarningString) {
   auto str = ERR_TO_STRING(std::move(err), /*warning*/ true);
   EXPECT_NE(str.find("Warning"), std::string::npos)
       << "Expect warning to be present in message";
+}
+
+TEST(Error, StackMessages) {
+  const char *msg = "some message";
+  auto err = MAKE_ERR(msg);
+  ADD_MESSAGE_TO_ERR_STACK(err, "banana");
+  auto str = ERR_TO_STRING(std::move(err));
+  EXPECT_NE(str.find("banana"), std::string::npos)
+      << "Expect stack message to be present in message";
 }

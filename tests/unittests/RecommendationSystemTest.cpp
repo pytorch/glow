@@ -15,10 +15,12 @@
  */
 #include "BackendTestUtils.h"
 
+#include "glow/Base/TensorSerialization.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Partitioner/Partitioner.h"
+#include "glow/Runtime/DeferredWeightLoader.h"
 
 #include <algorithm>
 #include <cmath>
@@ -28,6 +30,7 @@
 #include "gtest/gtest.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 
 constexpr size_t MAX_MEMORY = 64e+9;
 
@@ -35,6 +38,10 @@ using namespace glow;
 
 namespace {
 llvm::cl::OptionCategory recSysTestCat("RecSys Category");
+
+llvm::cl::opt<bool> enableStaticPlaceholderOpt(
+    "enable-static-placeholder", llvm::cl::desc("Enable Static Placeholder."),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<unsigned> miniBatchOpt("mini-batch", llvm::cl::desc("Minibatch."),
                                      llvm::cl::Optional, llvm::cl::init(8),
@@ -126,7 +133,55 @@ llvm::cl::opt<std::string> traceDir(
     llvm::cl::desc("Directory used to store Glow trace events files. If not "
                    "used, tracing is not enabled."),
     llvm::cl::Optional, llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> dumpBinaryResults(
+    "dump-binary-results",
+    llvm::cl::desc("Dump raw binary Tensor results after execution."),
+    llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
+    "glow_global_fused_scale_offset_fp32",
+    llvm::cl::desc(
+        "Enable converting scale/offset in sls's input data from fp16 to fp32"),
+    llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 } // namespace
+
+class TestDeferredWeightLoader : public DeferredWeightLoader {
+public:
+  Error loadNextWeight() override {
+    position_++;
+    return Error::success();
+  }
+  Error setSrc(void *loaderObject) override { return Error::success(); }
+
+  Tensor *addWeight(TypeRef ty) {
+    // auto weight = Tensor(ty);
+    weights_.push_back(Tensor(ty));
+    return &weights_.at(weights_.size() - 1);
+  }
+
+  void addName(std::string name) { names_.push_back(name); }
+  void setTypeInfo(std::map<std::string, Type> info) override {}
+
+  std::string getName() override {
+    if (position_ >= int(names_.size())) {
+      return "";
+    }
+    return names_[position_];
+  }
+
+  Tensor *getTensor() override {
+    if (position_ >= int(weights_.size())) {
+      return nullptr;
+    }
+    return &weights_[position_];
+  }
+
+private:
+  std::vector<Tensor> weights_{};
+  std::vector<std::string> names_{};
+  int position_{-1};
+};
 
 /// Fills the tensor \p H with some stable random data with the seed \p seed
 /// and the range [-scale .. scale].
@@ -217,6 +272,7 @@ protected:
   std::vector<dim_t> topMLPIntermediateDims;
   size_t lengthsMin;
   size_t lengthsMax;
+  bool enableStaticPlaceholder;
 
   // Used to configure correct precision settings:
   bool quantizeSLWSData{false};
@@ -275,6 +331,7 @@ protected:
     denseDim = denseDimOpt;
     lengthsMin = 90;
     lengthsMax = 111;
+    enableStaticPlaceholder = enableStaticPlaceholderOpt;
 
     if (!tableSizesOpt.empty()) {
       if (!tableCountsOpt.empty()) {
@@ -325,6 +382,23 @@ protected:
   }
 
   void TearDown() override {
+    if (dumpBinaryResults) {
+      ASSERT_TRUE(resultTensor) << "Could not dump result tensor, was nullptr";
+      llvm::SmallString<64> path;
+      auto tempFileRes =
+          llvm::sys::fs::createTemporaryFile("result", "bin", path);
+      if (tempFileRes.value() != 0) {
+        FAIL() << "Failed to create temp file to write into.";
+      }
+      std::cout
+          << "Dumping binary results of "
+          << ::testing::UnitTest::GetInstance()->current_test_info()->name()
+          << " to " << path.data() << std::endl;
+      TensorSerializationOptions opts;
+      opts.withType = false;
+      dumpTensorToBinaryFile(*resultTensor, path, opts);
+    }
+
     resultTensor = nullptr;
     bindings_->clear();
 
@@ -517,7 +591,7 @@ protected:
   /// Creates a number of Sparse tables (FP32 or Int8Q), the Indices lookup and
   /// the SpareLengthsSum Node tying it together.
   void createSparseEmbeddings(Module &mod, PlaceholderBindings &bindings_,
-                              Function *F_,
+                              Function *F_, TestDeferredWeightLoader &loader,
                               llvm::ArrayRef<Placeholder *> lengths,
                               llvm::ArrayRef<dim_t> embSizes, dim_t embDim,
                               std::vector<NodeValue> &embeddings) {
@@ -537,9 +611,28 @@ protected:
 
       // output is size {MB, embDim}
       if (quantizeSLWSData) {
-        Constant *data = createRandomFusedRowwiseQuantizedConstant(
-            mod, {embSizes[i], embDim}, "data" + std::to_string(i),
-            useFP16SLWS);
+        Storage *data;
+        if (enableStaticPlaceholder) {
+          Placeholder *ph = createFusedRowwiseQuantizedPlaceholder(
+              mod, {embSizes[i], embDim}, "data" + std::to_string(i),
+              useFP16SLWS);
+
+          ph->setStatic(true);
+          auto *tensor = loader.addWeight(ph->getType());
+          tensor->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX,
+                                                 mod.getPRNG());
+          loader.addName("data" + std::to_string(i));
+
+          bindings_.allocate(ph);
+          updateInputPlaceholders(bindings_, {ph}, {tensor});
+
+          data = ph;
+        } else {
+          data = createRandomFusedRowwiseQuantizedConstant(
+              mod, {embSizes[i], embDim}, "data" + std::to_string(i),
+              useFP16SLWS);
+        }
+
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsSum(
             "RQSLWS" + std::to_string(i), data, indices, lengths[i],
             useFP16AccumSLWS);
@@ -551,9 +644,26 @@ protected:
               embeddings[i], ElemKind::FloatTy);
         }
       } else {
-        Constant *data =
-            createRandomizedConstant(mod, internalTypeF, {embSizes[i], embDim},
-                                     "data" + std::to_string(i));
+        Storage *data;
+        if (enableStaticPlaceholder) {
+          Placeholder *ph =
+              mod.createPlaceholder(ElemKind::FloatTy, {embSizes[i], embDim},
+                                    "data" + std::to_string(i), false);
+          ph->setStatic(true);
+          auto *tensor = loader.addWeight(ph->getType());
+          tensor->getHandle<float>().initXavier(tensor->getType().size() * 2,
+                                                mod.getPRNG());
+          loader.addName("data" + std::to_string(i));
+
+          bindings_.allocate(ph);
+          updateInputPlaceholders(bindings_, {ph}, {tensor});
+          data = ph;
+        } else {
+          data = createRandomizedConstant(mod, internalTypeF,
+                                          {embSizes[i], embDim},
+                                          "data" + std::to_string(i));
+        }
+
         embeddings[i] = F_->createSparseLengthsSum("sls" + std::to_string(i),
                                                    data, indices, lengths[i]);
       }
@@ -564,9 +674,9 @@ protected:
   /// the SpareLengthsSum Node tying it together.
   void createSparseWeightedGatherEmbeddings(
       Module &mod, PlaceholderBindings &bindings_, Function *F_,
-      llvm::ArrayRef<Placeholder *> lengths, llvm::ArrayRef<dim_t> tableSizes,
-      dim_t embeddingDim, std::vector<NodeValue> &embeddings,
-      uint32_t weightsSize = 1000) {
+      TestDeferredWeightLoader &loader, llvm::ArrayRef<Placeholder *> lengths,
+      llvm::ArrayRef<dim_t> tableSizes, dim_t embeddingDim,
+      std::vector<NodeValue> &embeddings, uint32_t weightsSize = 1000) {
     for (size_t i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
           bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
@@ -597,9 +707,28 @@ protected:
 
       // output is size {MB, embeddingDim_}
       if (quantizeSLWSData) {
-        Constant *data = createRandomFusedRowwiseQuantizedConstant(
-            mod, {tableSizes[i], embeddingDim}, "data" + std::to_string(i),
-            useFP16SLWS);
+        Storage *data;
+        if (enableStaticPlaceholder) {
+          Placeholder *ph = createFusedRowwiseQuantizedPlaceholder(
+              mod, {tableSizes[i], embeddingDim}, "data" + std::to_string(i),
+              useFP16SLWS);
+          ph->setStatic(true);
+          auto *tensor = loader.addWeight(ph->getType());
+          tensor->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX,
+                                                 mod.getPRNG());
+
+          loader.addName("data" + std::to_string(i));
+
+          bindings_.allocate(ph);
+          updateInputPlaceholders(bindings_, {ph}, {tensor});
+
+          data = ph;
+        } else {
+          data = createRandomFusedRowwiseQuantizedConstant(
+              mod, {tableSizes[i], embeddingDim}, "data" + std::to_string(i),
+              useFP16SLWS);
+        }
+
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
             "RQSLWS" + std::to_string(i), data, weights, indices, lengths[i],
             useFP16AccumSLWS);
@@ -611,10 +740,27 @@ protected:
               embeddings[i], ElemKind::FloatTy);
         }
       } else {
-        Constant *data = createRandomizedConstant(
-            mod,
-            mod.uniqueType(ElemKind::FloatTy, {tableSizes[i], embeddingDim}),
-            {tableSizes[i], embeddingDim}, "data" + std::to_string(i));
+        Storage *data;
+        if (enableStaticPlaceholder) {
+          Placeholder *ph = mod.createPlaceholder(
+              ElemKind::FloatTy, {tableSizes[i], embeddingDim},
+              "data" + std::to_string(i), false);
+          ph->setStatic(true);
+          auto *tensor = loader.addWeight(ph->getType());
+          tensor->getHandle<float>().initXavier(tensor->getType().size() * 2,
+                                                mod.getPRNG());
+          loader.addName("data" + std::to_string(i));
+
+          bindings_.allocate(ph);
+          updateInputPlaceholders(bindings_, {ph}, {tensor});
+          data = ph;
+        } else {
+          data = createRandomizedConstant(
+              mod,
+              mod.uniqueType(ElemKind::FloatTy, {tableSizes[i], embeddingDim}),
+              {tableSizes[i], embeddingDim}, "data" + std::to_string(i));
+        }
+
         embeddings[i] = F_->createSparseLengthsWeightedSum(
             "slws" + std::to_string(i), data, weights, indices, lengths[i]);
       }
@@ -623,7 +769,8 @@ protected:
 
   /// Builds a simple graph, \returns the Tensor output of the graph.
   Tensor *createSimpleRecSysGraph(Module &mod, PlaceholderBindings &bindings,
-                                  Function *F, llvm::ArrayRef<dim_t> embSizes,
+                                  Function *F, TestDeferredWeightLoader &loader,
+                                  llvm::ArrayRef<dim_t> embSizes,
                                   dim_t embDim) {
     EXPECT_EQ(tableSizes.size(), embSizes.size());
 
@@ -655,11 +802,11 @@ protected:
     // Sparse Embeddings
     std::vector<NodeValue> embeddings(lengths.size());
     if (gatherWeights) {
-      createSparseWeightedGatherEmbeddings(mod, bindings, F, lengths, embSizes,
-                                           embDim, embeddings);
+      createSparseWeightedGatherEmbeddings(mod, bindings, F, loader, lengths,
+                                           embSizes, embDim, embeddings);
     } else {
-      createSparseEmbeddings(mod, bindings, F, lengths, embSizes, embDim,
-                             embeddings);
+      createSparseEmbeddings(mod, bindings, F, loader, lengths, embSizes,
+                             embDim, embeddings);
     }
 
     // Interacting sparse and dense
@@ -716,6 +863,10 @@ protected:
       precConfig_.precisionModeKindSet.insert(
           Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
     }
+    if (fuseScaleOffsetFp32Opt) {
+      precConfig_.convert4BitFusedToFP32 = fuseScaleOffsetFp32Opt;
+      precConfig_.convert8BitFusedToFP32 = fuseScaleOffsetFp32Opt;
+    }
   }
 
   void printPerfSummary(std::vector<double> times) {
@@ -749,8 +900,10 @@ protected:
 
     // Generate the network.
     std::unique_ptr<Module> mod(new Module);
+    TestDeferredWeightLoader loader;
+
     F_ = mod->createFunction("main");
-    resultTensor = createSimpleRecSysGraph(*mod.get(), *bindings_, F_,
+    resultTensor = createSimpleRecSysGraph(*mod.get(), *bindings_, F_, loader,
                                            tableSizes, embeddingDim);
 
     Placeholder *concatPH = nullptr;
@@ -765,8 +918,11 @@ protected:
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
 
+    DeferredLoader()->registerLoader(&loader);
+
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
+    cctx.deferredWeightLoader = &loader;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
     // Run graph
@@ -821,9 +977,10 @@ protected:
     ExecutionContext contextI;
     // Create a new module for the interpreter run.
     std::unique_ptr<Module> modI(new Module);
+    TestDeferredWeightLoader loaderI;
     auto *IF = modI->createFunction("main");
     PlaceholderBindings *bindingsI = contextI.getPlaceholderBindings();
-    Tensor *resultIT = createSimpleRecSysGraph(*modI, *bindingsI, IF,
+    Tensor *resultIT = createSimpleRecSysGraph(*modI, *bindingsI, IF, loaderI,
                                                tableSizes, embeddingDim);
     bindingsI->allocate(modI->getPlaceholders());
 
@@ -833,9 +990,12 @@ protected:
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
 
+    DeferredLoader()->registerLoader(&loaderI);
+
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
+    cctx.deferredWeightLoader = &loaderI;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(modI), cctx));
     dispatchInference("main", hostManager.get(), contextI,
                       concurrentReqestsOpt);
@@ -859,18 +1019,24 @@ protected:
     // HostManager.
     PlaceholderBindings bindingsP;
     std::unique_ptr<Module> modP(new Module);
+    TestDeferredWeightLoader loaderP;
     // Since HostManager consumed the uniquePtr we grab a raw pointer to the
     // module so we can verify partitioning.
     Module *rawModule = modP.get();
     auto *funcP = modP->createFunction("main");
-    createSimpleRecSysGraph(*modP, bindingsP, funcP, tableSizes, embeddingDim);
+    createSimpleRecSysGraph(*modP, bindingsP, funcP, loaderP, tableSizes,
+                            embeddingDim);
 
     assert(memSize > 0 && "Must set partitionerPerDeviceMemCapacity > 0.");
     assert(numDevices > 0 && "Must set partitionerNumDevices > 0.");
     std::cout << numDevices << " devices of size " << memSize << "\n";
+
+    DeferredLoader()->registerLoader(&loaderP);
+
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
+    cctx.deferredWeightLoader = &loaderP;
     cctx.optimizationOpts.useSparseNNPartitioningScheme =
         useSparseNNPartitioning;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
@@ -893,34 +1059,39 @@ protected:
     bindings.clear();
     bindings.allocate(rawModule->getPlaceholders());
     bindingsP.allocate(rawModule->getPlaceholders());
-    for (auto PH : bindingsP.pairs()) {
+    for (const auto &PH : bindingsP.pairs()) {
       bindingsP.copyToTarget(PH.first->getName(), bindings);
     }
 
     dispatchInference("main", hostManager.get(), context, concurrentReqestsOpt);
 
-    Tensor *resultTensorP = bindings.get(bindings.getPlaceholderByName("save"));
+    Tensor *resultTensorP =
+        bindings.get(bindings.getPlaceholderByNameSlow("save"));
     EXPECT_TRUE(referenceResultT.isEqual(*resultTensorP));
   }
 
   /// Test SparseLengthsSum independently.
   void testSLSQuant() {
     std::unique_ptr<Module> mod(new Module);
+    TestDeferredWeightLoader loader;
     F_ = mod->createFunction("main");
     std::vector<Placeholder *> sparseLengths(1);
     sparseLengths[0] =
         mod->createPlaceholder(ElemKind::Int32ITy, {miniBatch}, "SL0", false);
 
     std::vector<NodeValue> embeddings(sparseLengths.size());
-    createSparseEmbeddings(*mod.get(), *bindings_, F_, sparseLengths,
+    createSparseEmbeddings(*mod.get(), *bindings_, F_, loader, sparseLengths,
                            tableSizes, embeddingDim, embeddings);
 
     auto *save = F_->createSave("save", embeddings[0]);
     Tensor *resultTensorLocal = bindings_->allocate(save->getPlaceholder());
 
+    DeferredLoader()->registerLoader(&loader);
+
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
+    cctx.deferredWeightLoader = &loader;
     auto configs = generateDeviceConfigs(1, getBackendName(), MAX_MEMORY);
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));

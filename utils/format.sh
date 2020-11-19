@@ -28,6 +28,7 @@ print_usage() {
 }
 
 fix_format() {
+  $CLANG_COMMAND -version
   find lib tests/unittests/ tools/ include examples torch_glow inference_engines externalbackends \
     -name \*.h -print0 \
     -o -name \*.hpp -print0 \
@@ -37,7 +38,7 @@ fix_format() {
     -o -name \*.cl -print0 \
   | xargs -0 -P8 -n1 $CLANG_COMMAND -i;
 
-  autopep8 -i -r -j -1 --exclude="*.eggs" --indent-size=4 torch_glow utils
+  python -m black -S torch_glow utils
 }
 
 check_format() {

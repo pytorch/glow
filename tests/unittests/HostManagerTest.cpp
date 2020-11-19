@@ -16,6 +16,7 @@
 #include "BackendTestUtils.h"
 
 #include "glow/ExecutionContext/ExecutionContext.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include "gtest/gtest.h"
@@ -30,7 +31,7 @@ using DAGNodePairTy = std::pair<std::vector<std::unique_ptr<DAGNode>>,
 
 class HostManagerTest : public ::testing::TestWithParam<std::string> {
 public:
-  void SetUp() { backendName_ = GetParam(); }
+  void SetUp() override { backendName_ = GetParam(); }
   std::string backendName_;
 };
 
@@ -265,7 +266,7 @@ TEST_P(HostManagerTest, runNetworkConcurrent) {
   auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
   auto *pow = F->createPow("Pow1", X, 2.0);
   F->createSave("save", pow);
-  auto *savePH = module->getPlaceholderByName("save");
+  auto *savePH = module->getPlaceholderByNameSlow("save");
 
   auto hostManager = createHostManager(backendName_);
   CompilationContext cctx;
@@ -307,7 +308,7 @@ TEST_P(HostManagerTest, testSaturateHost) {
   auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
   auto *pow = F->createPow("Pow1", X, 2.0);
   F->createSave("save", pow);
-  auto *savePH = module->getPlaceholderByName("save");
+  auto *savePH = module->getPlaceholderByNameSlow("save");
 
   std::vector<std::unique_ptr<DeviceConfig>> configs =
       generateConfigs(backendName_, 2);
@@ -820,7 +821,7 @@ TEST_P(HostManagerTest, testStaticAssignmentP2PandDRTConcurrent) {
   auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
   auto *pow = F->createPow("Pow1", X, 2.0);
   F->createSave("save", pow);
-  auto *savePH = module->getPlaceholderByName("save");
+  auto *savePH = module->getPlaceholderByNameSlow("save");
 
   std::vector<std::unique_ptr<DeviceConfig>> configs =
       generateConfigs(backendName_, 3);
@@ -867,6 +868,94 @@ TEST_P(HostManagerTest, testStaticAssignmentP2PandDRTConcurrent) {
   for (auto &r : ready) {
     r.wait();
   }
+}
+
+/// This tests that the HostMangaer registry works and is able to report what
+/// devices a network is loaded on.
+TEST_P(HostManagerTest, testHostManagerRegistry) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  F->createSave("save", pow);
+  module->getPlaceholderByNameSlow("save");
+
+  std::unique_ptr<Module> module2 = glow::make_unique<Module>();
+
+  Function *F2 = module2->createFunction("main2");
+  auto *X2 = module2->createPlaceholder(ElemKind::FloatTy, {3}, "X2", false);
+  auto *pow2 = F2->createPow("Pow2", X2, 2.0);
+  F2->createSave("save2", pow2);
+  module2->getPlaceholderByNameSlow("save2");
+
+  std::vector<std::unique_ptr<DeviceConfig>> configs =
+      generateConfigs(backendName_, 2);
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), HostConfig());
+
+  CompilationContext cctx;
+  cctx.saturateHost = true;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+  cctx.saturateHost = false;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module2), cctx)));
+  glow::runtime::ManagerRegistry()->registerHostManager(hostManager.get());
+  auto testHM = glow::runtime::ManagerRegistry()->getHostManager();
+  auto loading = testHM->getDevicePartitionMapping("main");
+  auto loading2 = testHM->getDevicePartitionMapping("main2");
+  EXPECT_EQ(loading["main"].size(), 2);
+  EXPECT_EQ(loading2["main2"].size(), 1);
+}
+
+TEST_P(HostManagerTest, testTimeout) {
+  CHECK_IF_ENABLED();
+
+#ifdef GLOW_WITH_NNPI
+  if (backendName_ == "NNPI") {
+    // Skip this test if running on ICEREF, since we want to test the device
+    // timeout.
+    auto useInfAPI = getenv("USE_INF_API");
+    if (!useInfAPI || strcmp(useInfAPI, "1")) {
+      GTEST_SKIP();
+    }
+    // Set the timeout to very short so we fail intentionally.
+    glow::runtime::flags::NNPITimeoutMs = 1;
+  }
+#endif
+
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Poww", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  context->getPlaceholderBindings()->allocate(save->getPlaceholder());
+
+  auto hostManager = createHostManager(backendName_);
+
+  CompilationContext cctx;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::promise<void> runNetwork;
+  auto ready = runNetwork.get_future();
+
+  std::unique_ptr<Error> runErr;
+  hostManager->runNetwork("main", std::move(context),
+                          [&runNetwork, &context, &runErr](
+                              RunIdentifierTy runID, Error err,
+                              std::unique_ptr<ExecutionContext> context_) {
+                            context = std::move(context_);
+                            runErr = glow::make_unique<Error>(std::move(err));
+                            runNetwork.set_value();
+                          });
+
+  ready.wait();
+  EXPECT_TRUE(ERR_TO_BOOL(std::move(*DCHECK_NOTNULL(runErr.get()))));
 }
 
 INSTANTIATE_BACKEND_TEST(HostManagerTest);

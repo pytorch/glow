@@ -23,11 +23,18 @@
 #include "glow/Graph/TensorLayout.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Quantization/Quantization.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 
+#include <cmath>
+#include <math.h>
 #include <numeric>
+
+#ifdef WIN32
+#include <corecrt_math_defines.h>
+#endif
 
 using namespace glow;
 using llvm::cast;
@@ -159,6 +166,111 @@ static void lowerRegressionGradNode(Function *F, CompilationContext &cctx,
                        expG);
 }
 
+static void lowerFloorDivNode(Function *F, CompilationContext &cctx,
+                              const FloorDivNode &node) {
+  LOG_SCOPE(F->getLogContext(), "lowerFloorDivNode")
+
+  NodeValue LHS = node.getLHS();
+  NodeValue RHS = node.getRHS();
+
+  auto *div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"),
+                           node.getResult().getType(), LHS, RHS);
+
+  auto *result = F->createFloor(DECORATE_NODE_NAME(node, "floor"),
+                                node.getResult().getType(), div);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), result);
+}
+
+static void lowerBatchedMulNode(Function *F, CompilationContext &cctx,
+                                const BatchedMulNode &node) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchedMulNode")
+
+  NodeValue batch = node.getBatch();
+  NodeValue slice = node.getSlice();
+  auto sliceReshapeSize = slice.dims().vec();
+  sliceReshapeSize.insert(sliceReshapeSize.begin(), 1);
+  slice = F->createReshape("slice_tiled", slice, sliceReshapeSize);
+  slice = F->createTile(
+      "slice_tiled", slice, batch.dims()[0], 0,
+      F->getParent()->uniqueTypeWithNewShape(slice.getType(), batch.dims()));
+
+  NodeValue mul =
+      F->createMul("batched_mul", node.getResult().getType(), batch, slice)
+          ->getResult();
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), mul);
+}
+
+static void lowerGemmNode(Function *F, CompilationContext &cctx,
+                          const GemmNode &GN) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerGemm")
+
+  NodeValue A = GN.getA();
+  NodeValue B = GN.getB();
+  NodeValue C = GN.getC();
+  NodeValue Y = GN.getResult();
+  float alpha = GN.getAlpha();
+  float beta = GN.getBeta();
+
+  // Transpose A (if required).
+  if (GN.getTransposeA()) {
+    A = F->createTranspose(DECORATE_NODE_NAME(GN, "TransposeA"), A, {1, 0});
+  }
+
+  // Transpose B (if required).
+  if (GN.getTransposeB()) {
+    B = F->createTranspose(DECORATE_NODE_NAME(GN, "TransposeB"), B, {1, 0});
+  }
+
+  // If Gemm is same as FullyConnected then lower to a FullyConnected node.
+  if (isGemmSameAsFullyConnected(&GN)) {
+    NodeValue newY =
+        F->createFullyConnected(GN.getName().str(), A, B, C, Y.getType());
+    replaceAllUsesOfWith(cctx.loweredInfoMap, GN.getResult(), newY);
+    return;
+  }
+
+  // Create MatMul for A * B.
+  NodeValue newY =
+      F->createMatMul(DECORATE_NODE_NAME(GN, "MatMul"), Y.getType(), A, B);
+
+  // Multiply with alpha (if required).
+  if (alpha != 1.0) {
+    auto *alphaSplat = F->createSplat(DECORATE_NODE_NAME(GN, "AlphaSplat"),
+                                      Y.getType(), alpha);
+    newY = F->createMul(DECORATE_NODE_NAME(GN, "AlphaMul"), alphaSplat, newY);
+  }
+
+  // Check if C operand is used.
+  bool isUsedC = C.getNode() && (beta != 0.f);
+  if (isUsedC) {
+    auto *splatC = llvm::dyn_cast<SplatNode>(C.getNode());
+    if (splatC && (splatC->getValue() == 0.f)) {
+      isUsedC = false;
+    }
+  }
+
+  // Add C (if used).
+  if (isUsedC) {
+    // Multiply with beta (if required).
+    if (beta != 1.0) {
+      auto *betaSplat = F->createSplat(DECORATE_NODE_NAME(GN, "BetaSplat"),
+                                       C.getType(), beta);
+      C = F->createMul(DECORATE_NODE_NAME(GN, "BetaMul"), betaSplat, C);
+    }
+    // Add C.
+    if (C.dims().size() == 1) {
+      newY = F->createBatchedAdd(DECORATE_NODE_NAME(GN, "AddC"), Y.getType(),
+                                 newY, C);
+    } else {
+      newY = F->createAdd(DECORATE_NODE_NAME(GN, "AddC"), Y.getType(), newY, C);
+    }
+  }
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, GN.getResult(), newY);
+}
+
 static void lowerFullyConnectedNode(Function *F, CompilationContext &cctx,
                                     const FullyConnectedNode &FC) {
   LOG_SCOPE(F->getLogContext(), "lowerFullyConnectedNode")
@@ -250,6 +362,35 @@ static void lowerTanhGradNode(Function *F, CompilationContext &cctx,
                        grad);
 }
 
+static void lowerSigmoidNode(Function *F, CompilationContext &cctx,
+                             const SigmoidNode &SN) {
+  LOG_SCOPE(F->getLogContext(), "lowerSigmoidNode")
+
+  if (SN.getInput().getType()->isQuantizedType()) {
+    NodeValue newReplacement =
+        quantization::replaceQuantizedSigmoidWithLookupTable(*F, SN);
+    if (cctx.loweredInfoMap) {
+      (*cctx.loweredInfoMap)[newReplacement.generateNodeOutputName()].insert(
+          NodeNameAndKind(SN.getName(), SigmoidNode::ResultIdx, SN.getKind()));
+    }
+  }
+}
+
+static void lowerAdaptiveAvgPoolNode(Function *F, CompilationContext &cctx,
+                                     const AdaptiveAvgPoolNode &AAP) {
+  LOG_SCOPE(F->getLogContext(), "lowerAdaptiveAvgPoolNode");
+  auto inDims = ShapeNHWC(AAP.getInput().getType()->dims());
+  auto outDims = ShapeNHWC(AAP.getResult().getType()->dims());
+  // If output is 1x1 (entire IFM is averaged) we can use the more simple
+  // AvgPool.
+  if (outDims.h == 1 && outDims.w == 1) {
+    auto *AP = F->createAvgPool(AAP.getName(), AAP.getInput(),
+                                {unsigned_t(inDims.h), unsigned_t(inDims.w)},
+                                /*strides*/ {1, 1}, /*pads*/ {0, 0, 0, 0});
+    replaceAllUsesOfWith(cctx.loweredInfoMap, AAP.getResult(), AP->getResult());
+  }
+}
+
 static void lowerSigmoidGradNode(Function *F, CompilationContext &cctx,
                                  const SigmoidGradNode &THG) {
   // Sigmoid grad is calculated as:
@@ -281,6 +422,23 @@ static void lowerReluNode(Function *F, CompilationContext &cctx,
   auto *relu = F->createMax(DECORATE_NODE_NAME(R, "max"),
                             R.getResult().getType(), zero, R.getInput());
   replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), relu);
+}
+
+static void lowerLeakyReluNode(Function *F, CompilationContext &cctx,
+                               const LeakyReluNode &LR) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerLeakyReluNode")
+
+  // Lower LeakyRelu to PRelu with Splat.
+  auto splatType = F->getParent()->uniqueType(*(LR.getInput().getType()));
+  SplatNode *splat =
+      F->createSplat(DECORATE_NODE_NAME(LR, "alpha"), splatType, LR.getAlpha());
+
+  auto outTy = F->getParent()->uniqueType(*(LR.getResult().getType()));
+  auto *prelu = F->createPRELU(DECORATE_NODE_NAME(LR, "prelu"), LR.getInput(),
+                               splat, outTy);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, LR.getResult(), prelu);
 }
 
 static void lowerPReluNode(Function *F, CompilationContext &cctx,
@@ -809,6 +967,45 @@ static void lowerBatchNormalizationGradNode(Function *F,
                        zeroSplat);
 }
 
+static void lowerConvolutionToFullyConnected(Function *F,
+                                             CompilationContext &cctx,
+                                             const ConvolutionNode &CN) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerConvolutionToFullyConnected");
+
+  NodeValue output = CN.getResult();
+  NodeValue input = CN.getInput();
+  NodeValue filter = CN.getFilter();
+  NodeValue bias = CN.getBias();
+
+  // Reshape input to 2D.
+  auto inpDims = ShapeNHWC(input.getType()->dims());
+  std::vector<dim_t> inpDimsFC = {inpDims.n * inpDims.h * inpDims.w, inpDims.c};
+  input = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeInput"), input,
+                           inpDimsFC);
+
+  // Reshape filter to 2D and Transpose.
+  auto filterDims = ShapeNHWC(filter.getType()->dims());
+  std::vector<dim_t> weightsDimsFC = {filterDims.n, filterDims.c};
+  NodeValue weights = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeWeights"),
+                                       filter, weightsDimsFC);
+  weights = F->createTranspose(DECORATE_NODE_NAME(CN, "TransposeWeights"),
+                               weights, {1, 0});
+
+  // Create FullyConnected node with same output type but 2D shape.
+  auto outDims = ShapeNHWC(output.getType()->dims());
+  std::vector<dim_t> outDimsFC = {outDims.n * outDims.h * outDims.w, outDims.c};
+  auto outTyFC =
+      F->getParent()->uniqueTypeWithNewShape(output.getType(), outDimsFC);
+  NodeValue outputFC = F->createFullyConnected(
+      CN.getName().str(), input, weights, bias, outTyFC, ShapeNHWC::DimC);
+
+  // Reshape the 2D output back to its original shape.
+  outputFC = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeOutput"), outputFC,
+                              output.getType()->dims());
+  replaceAllUsesOfWith(cctx.loweredInfoMap, output, outputFC);
+}
+
 static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
                                       const ConvolutionNode &BNG) {
   // When Group parameter is more than 1, ConvolutionNode can be represented as
@@ -1043,6 +1240,46 @@ static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(), DN);
 }
 
+static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
+                                const VectorNormNode &VN) {
+  LOG_SCOPE(F->getLogContext(), "lowerVectorNormNode")
+
+  auto input = VN.getInput();
+
+  auto axis = VN.getAxis();
+
+  assert(axis < input.dims().size() &&
+         "Axis to remove must fit inside dimensions of the provided dims.");
+
+  ShapeVector redDims(input.dims().begin(), input.dims().end());
+  redDims.erase(redDims.begin() + axis);
+
+  auto outTy =
+      F->getParent()->uniqueTypeWithNewShape(VN.getResult().getType(), redDims);
+
+  const size_t outNumElements = input.getType()->size() / input.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+
+  // pow(x, 2)
+  NodeValue pow = F->createPow(VN.getName().str() + ".pow_2", input, 2.0f);
+
+  // Create a batched add to sum up the values in the provided axis.
+  auto outTyBRA =
+      F->getParent()->uniqueTypeWithNewShape(input.getType(), redDims);
+
+  auto *BRA = F->createBatchedReduceAdd(VN.getName().str() + ".reduceAdd",
+                                        outTyBRA, pow, axis);
+
+  auto *exp = F->createSplat(VN.getName().str() + ".exp", outTy, 0.5f);
+
+  // Create a sqrt by leveraging pow(x, 0.5)
+  auto *SQ = F->createPow(VN.getName().str() + ".sqrt", outTy, BRA, exp);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, VN.getResult(), SQ);
+}
+
 /// Implement ReplaceNaN via a Select node with the input of \p RN as one of the
 /// inputs, a Splat node created using value from \p RN as the other input, and
 /// an IsNaN node as the comparator input.
@@ -1152,21 +1389,12 @@ static void lowerBatchBoxCoxNode(Function *F, CompilationContext &cctx,
   // Broadcast lambda1 and lambda2 so that they are both the same size as the
   // data.
   auto *BL1 =
-      F->createBroadcast(name.str() + ".broadcast", lambda1, data.dims(),
+      F->createBroadcast(name.str() + ".broadcast_1", lambda1, data.dims(),
                          /*axis=*/1);
   auto *BL2 =
-      F->createBroadcast(name.str() + ".broadcast", lambda2, data.dims(),
+      F->createBroadcast(name.str() + ".broadcast_2", lambda2, data.dims(),
                          /*axis=*/1);
-
-  // Broadcast is usually implemented via a Tile node returned from
-  // createBroadcast(). However, if the Broadcast was a noop then there is a
-  // Reshape instead of a Tile returned. Thus, get the index here to use based
-  // on the returned kinds from createBroadcast() above.
-  assert((llvm::isa<TileNode>(BL1) || llvm::isa<ReshapeNode>(BL1)) &&
-         "Broadcast is assumed to be either implemented via Tile or Reshape.");
-  TypeRef typeBL1 = llvm::isa<TileNode>(BL1)
-                        ? BL1->getType(TileNode::ResultIdx)
-                        : BL1->getType(ReshapeNode::ResultIdx);
+  TypeRef typeBL1 = BL1->getType(BroadcastNode::ResultIdx);
 
   // Add a small epsilon to lambda1 so that we can avoid dividing by zero
   // later. It doesn't matter that this is technically incorrect because the
@@ -1217,7 +1445,7 @@ static void lowerClipNode(Function *F, CompilationContext &cctx,
   auto *minClipped =
       F->createMax(name.str() + ".minClip", CN.getInput(), minSplat);
   auto *maxSplat = F->createSplat(name.str() + ".maxSplat", type, max);
-  auto result = F->createMin(name.str(), minClipped, maxSplat);
+  auto result = F->createMin(name.str(), type, minClipped, maxSplat);
   replaceAllUsesOfWith(cctx.loweredInfoMap, CN.getResult(), result);
 }
 
@@ -1241,7 +1469,7 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
   llvm::ArrayRef<unsigned_t> istr = C3DN.getStrides();
   PaddingNFTBLR ipad(C3DN.getPads());
   auto group = C3DN.getGroup();
-  auto dilation = 1;
+  unsigned_t dilation = 1;
   auto layout = ConvolutionLayout::NHWC;
 
   // Loop over T IFM dimension and concat OFM slices
@@ -1291,7 +1519,7 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
                          static_cast<unsigned int>(ipad.left),
                          static_cast<unsigned int>(ipad.bottom),
                          static_cast<unsigned int>(ipad.right)},
-                        group, dilation, layout);
+                        group, {dilation, dilation}, layout);
 
       VLOG(5) << "Partial output: " << partialOutput->dims(0) << std::endl;
 
@@ -1323,6 +1551,184 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, C3DN.getResult(), concatedOutput);
 }
 
+static void lowerSwishNode(Function *F, CompilationContext &cctx,
+                           const SwishNode &S) {
+  LOG_SCOPE(F->getLogContext(), "lowerSwishNode")
+
+  TypeRef sigOT = nullptr;
+  if (S.getInput().getType()->isQuantizedType()) {
+    // Make sure output is clipped in [0.0, 1.0] floating point range.
+    auto sigQP = glow::quantization::chooseQuantizationParams({0.0, 1.0});
+    sigOT = F->getParent()->uniqueType(ElemKind::Int8QTy, S.getResult().dims(),
+                                       sigQP.scale, sigQP.offset);
+  } else {
+    sigOT = S.getInput().getType();
+  }
+
+  SigmoidNode *sig =
+      F->createSigmoid(S.getName().str() + "_sig", sigOT, S.getInput());
+  MulNode *mul = F->createMul(S.getName().str() + "_mul",
+                              S.getResult().getType(), sig, S.getInput());
+  replaceAllUsesOfWith(cctx.loweredInfoMap, S.getResult(), mul->getResult());
+}
+
+/// Create a series of nodes with \p name that implements an element-wise
+/// logit transform. For each element of the \p input x, this is
+/// defined as:
+///
+/// y = log(x / (1 - x))
+///
+/// where the \p input is clamped in (\p eps, 1 - \p eps), and
+/// the transform parameter \p eps is a positive value (< 0.5)
+/// (needed to avoid degenerate probabilities of 0 or 1,
+/// which would result in taking the logarithm of zero).
+/// Implemented using element-wise Clip, Sub, Splat, Div, and Log nodes.
+static void lowerLogitNode(Function *F, CompilationContext &cctx,
+                           const LogitNode &L) {
+  LOG_SCOPE(F->getLogContext(), "lowerLogitNode")
+
+  const NodeValue input = L.getInput();
+  const float eps = L.getEpsilon();
+  const std::string name = L.getName().str();
+
+  // Compute clamped x using clip(x, eps, 1 - eps).
+  auto epsComplement = 1.0f - eps;
+  auto *MaxN = F->createClip(name + ".clip", input, eps, epsComplement);
+
+  // Compute the logit transform of clamped x,
+  // log(numerator / denominator),
+  // where numerator = clamped x = MaxN,
+  // and denominator = 1 - clamped x = 1 - MaxN.
+
+  // Compute denominator = 1 - clamped x.
+  auto *onesSplat = F->createSplat(name + ".onesSplat", input.getType(), 1.0f);
+
+  auto *SN = F->createSub(name + ".sub", onesSplat, MaxN);
+
+  // Compute the quotient = numerator / denominator.
+  auto *DN = F->createDiv(name + ".div", MaxN, SN);
+
+  // Compute and return the logit transform (the final node).
+  auto *LN = F->createLog(name + ".log", DN);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, L.getResult(), LN->getResult());
+}
+
+static void lowerGeluNode(Function *F, CompilationContext &cctx,
+                          const GeluNode &GN) {
+  NodeValue input = GN.getInput();
+  auto outTy = input.getType();
+  auto name = GN.getName().str();
+
+  Node *alphaSplat =
+      F->createSplat(name + ".alpha", outTy, M_2_SQRTPI * M_SQRT1_2);
+  Node *splat = F->createSplat(name + ".splat", outTy, 0.044715);
+  Node *splatHalf = F->createSplat(name + ".splatHalf", outTy, 0.5);
+  Node *splat1 = F->createSplat(name + ".splat1", outTy, 1.0);
+
+  // pow(x, 3)
+  NodeValue pow = F->createMul(name + ".pow", input,
+                               F->createMul(name + ".pow", input, input));
+
+  // pow(x, 3) * 0.044715
+  NodeValue mul = F->createMul(name + ".mul", pow, splat);
+
+  // x + pow(x, 3) * 0.044715
+  NodeValue add = F->createAdd(name + ".add", input, mul);
+
+  // (x * pow(x, 3) * 0.044715) * alpha
+  NodeValue mul2 = F->createMul(name + ".mul2", add, alphaSplat);
+
+  // tanh((x * pow(x, 3) * 0.044715) * alpha)
+  NodeValue tanh = F->createTanh(name + ".tanh", mul2);
+
+  // tanh((x * pow(x, 3) * 0.044715) * alpha) + 1
+  NodeValue add2 = F->createAdd(name + ".add2", tanh, splat1);
+
+  // (tanh((x * pow(x, 3) * 0.044715) * alpha) + 1) * 0.5
+  NodeValue mul3 = F->createMul(name + ".mul3", splatHalf, add2);
+
+  // (tanh((x * pow(x, 3) * 0.044715) * alpha) + 1) * 0.5 * x
+  NodeValue mul4 = F->createMul(name + ".mul4", mul3, input);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, GN.getResult(), mul4);
+}
+
+static void lowerLSTMUnitNode(Function *F, CompilationContext &cctx,
+                              const LSTMUnitNode &LUN) {
+  NodeValue input = LUN.getInput();
+  NodeValue inC = LUN.getC();
+
+  auto nameBase = LUN.getName().str();
+  auto name = [&nameBase](const char *s) {
+    return strFormat("%s.%s", nameBase.c_str(), s);
+  };
+  unsigned batchSize = input.dims()[0];
+  unsigned hiddenSize = input.dims()[1] / 4;
+
+  NodeValue inI =
+      F->createSlice(name("sliceI"), input, {0, 0}, {batchSize, hiddenSize});
+  NodeValue inF = F->createSlice(name("sliceF"), input, {0, hiddenSize},
+                                 {batchSize, 2 * hiddenSize});
+  NodeValue inG = F->createSlice(name("sliceG"), input, {0, 2 * hiddenSize},
+                                 {batchSize, 3 * hiddenSize});
+  NodeValue inO = F->createSlice(name("sliceO"), input, {0, 3 * hiddenSize},
+                                 {batchSize, 4 * hiddenSize});
+
+  inI = F->createSigmoid(name("sigmoid2"), inI);
+  inF = F->createSigmoid(name("sigmoid1"), inF);
+  inG = F->createTanh(name("tanh1"), inG);
+  inO = F->createSigmoid(name("sigmoid3"), inO);
+
+  auto newC = F->createAdd(name("addC"), F->createMul(name("mul1"), inF, inC),
+                           F->createMul(name("mul2"), inI, inG));
+
+  auto newH =
+      F->createMul(name("mulH"), inO, F->createTanh(name("tanh2"), newC));
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, LUN.getNthResult(0), newH);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, LUN.getNthResult(1), newC);
+}
+
+static void lowerBroadcastNode(Function *F, CompilationContext &cctx,
+                               const BroadcastNode &BN) {
+  const auto input = BN.getInput();
+  const auto newShape = BN.getTargetDim();
+  const auto axis = BN.getAxis();
+  const auto name = BN.getName();
+  const auto &origDims = input.dims();
+
+  // Iterate over the new shape; if the original shape had a dimension here
+  // (when considering the axis) then take original shape dim as the reshpe dim.
+  // Else the original shape had no dimensions here (after considering axis), so
+  // add the new dimension and broadcast in that direction.
+  std::array<dim_t, max_tensor_dimensions> reshapeDims;
+  for (dim_t i = 0; i < newShape.size(); i++) {
+    if (i >= axis && i < origDims.size() + axis) {
+      reshapeDims[i] = origDims[i - axis];
+    } else {
+      // Will broadcast this dimension to size from newShape.
+      reshapeDims[i] = 1;
+    }
+  }
+  // Reshape the input node to same number of dimensions as new shape, but
+  // with 1s in place of to-be-broadcasted dimensions.
+  Node *currNode =
+      F->createReshape(name.str() + ".reshape", input,
+                       llvm::ArrayRef<dim_t>(&reshapeDims[0], newShape.size()));
+
+  // Create a Tile (which is really a Concat) in each direction that needs to
+  // be broadcasted.
+  for (size_t i = 0; i < newShape.size(); i++) {
+    if (reshapeDims[i] == 1 && newShape[i] != 1) {
+      currNode = F->createTile(name.str() + ".tile" + std::to_string(i),
+                               currNode, newShape[i], i);
+    }
+  }
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BN.getResult(), currNode);
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
@@ -1336,9 +1742,11 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(MulGrad);
     CASE_LOWER(SubGrad);
     CASE_LOWER(DivGrad);
+    CASE_LOWER(Gemm);
     CASE_LOWER(FullyConnected);
     CASE_LOWER(FullyConnectedGrad);
     CASE_LOWER(Relu);
+    CASE_LOWER(LeakyRelu);
     CASE_LOWER(ReluGrad);
     CASE_LOWER(PRelu);
     CASE_LOWER(Pad);
@@ -1351,6 +1759,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
+    CASE_LOWER(VectorNorm);
     CASE_LOWER(Bucketize);
     CASE_LOWER(ChannelShuffle);
     CASE_LOWER(Tile);
@@ -1361,10 +1770,23 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchBoxCox);
     CASE_LOWER(Clip);
     CASE_LOWER(Convolution3D);
+    CASE_LOWER(Swish);
+    CASE_LOWER(Logit);
+    CASE_LOWER(Sigmoid);
+    CASE_LOWER(AdaptiveAvgPool);
+    CASE_LOWER(Gelu);
+    CASE_LOWER(FloorDiv);
+    CASE_LOWER(BatchedMul);
+    CASE_LOWER(LSTMUnit);
+    CASE_LOWER(Broadcast);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
       lowerGroupConvolutionNode(F, cctx, *CN);
+      return true;
+    }
+    if (isConvolutionSameAsFullyConnected(CN)) {
+      lowerConvolutionToFullyConnected(F, cctx, *CN);
       return true;
     }
   }

@@ -18,6 +18,7 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/Float16Converter.h"
+#include "glow/Converter/FusedRowwiseConverter.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
@@ -39,16 +40,18 @@
 #include "llvm/Support/CommandLine.h"
 
 #include <algorithm>
+#include <numeric>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 llvm::cl::OptionCategory graphOptCat("Graph Optimizations Options");
 llvm::cl::opt<unsigned> constDedupSizeOpt(
-    "const_dedup_size",
+    "const-dedup-size",
     llvm::cl::desc(
-        "Max number of elements allowed for deduplicating Constants"),
-    llvm::cl::Optional, llvm::cl::init(256), llvm::cl::cat(graphOptCat));
+        "Max number of elements allowed for deduplicating Constants. "
+        "A value equal to 0 means no limit. Default is 0."),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(graphOptCat));
 
 using namespace glow;
 using llvm::cast;
@@ -67,6 +70,44 @@ static bool shouldDeleteNode(Node *N) {
   }
 
   return true;
+}
+
+ConstantModificationPreventer::ConstantModificationPreventer(
+    Module &mod, CompilationContext &cctx)
+    : ScopeGuard([&]() {
+        // Ensure we cleanup Placeholder-Constant swap if necessary.
+        auto &PHs = mod_.getPlaceholders();
+        for (auto &pair : tmpPHToConstMap_) {
+          Placeholder *tmpPH = pair.first;
+          Constant *C = pair.second;
+          tmpPH->getOutput().replaceAllUsesOfWith(C->getOutput());
+          mod_.erasePlaceholder(std::find(PHs.begin(), PHs.end(), tmpPH));
+        }
+        cctx_.optimizationOpts.enableConstantFolding =
+            origEnableConstantFolding_;
+      }),
+      mod_(mod), cctx_(cctx),
+      origEnableConstantFolding_(cctx.optimizationOpts.enableConstantFolding) {
+  // By default dismiss until explicitly activated.
+  dismissed_ = true;
+}
+
+void ConstantModificationPreventer::activate() {
+  dismissed_ = false;
+  // Prevent Constant modification by temporarily replacing them with PHs.
+  for (Constant *C : mod_.getConstants()) {
+    // Note: These temp Placeholders are more like static Placeholders, but we
+    // don't want to set them as static here because optimizations may kick in
+    // to modify the type of the static Placeholder (see
+    // cctx.optimizationOpts.foldStaticPlaceholderConversions).
+    Placeholder *tmpPH = mod_.createPlaceholder(
+        C->getType(), C->getName().str() + "_SWAP_CONST_FOLD",
+        /* isTrainable */ false, C->getLayout());
+    tmpPHToConstMap_[tmpPH] = C;
+    C->getOutput().replaceAllUsesOfWith(tmpPH->getOutput());
+  }
+  // Disable constant folding temporarily; restored later by the scope guard.
+  cctx_.optimizationOpts.enableConstantFolding = false;
 }
 
 /// Helper that \returns whether all sibling Functions of \p F (other Functions
@@ -139,9 +180,7 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
   auto &nodes = F->getNodes();
-  auto &consts = F->getParent()->getConstants();
 
-  std::vector<ConstList::iterator> erasedConsts{};
   std::vector<NodesList::iterator> erasedNodes{};
 
   bool changed = false;
@@ -172,11 +211,25 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
     }
   }
 
+  // Don't remove unused Constants since many may be temporarily unused during
+  // optimizations.
+  if (cctx.optimizationOpts.delayAndRecordConstantModification) {
+    return changed;
+  }
+
   if (!shouldDeleteConstants(F)) {
     return changed;
   }
 
   // Delete unused Constants.
+  deleteUnusedConstants(*F->getParent());
+
+  return changed;
+}
+
+void glow::deleteUnusedConstants(Module &mod) {
+  auto &consts = mod.getConstants();
+  std::vector<ConstList::iterator> erasedConsts{};
   for (auto it = consts.begin(), e = consts.end(); it != e;) {
     if (!shouldDeleteNode(*it)) {
       ++it;
@@ -188,11 +241,9 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
 
   while (!erasedConsts.empty()) {
     auto it = erasedConsts.back();
-    F->getParent()->eraseConstant(it);
+    mod.eraseConstant(it);
     erasedConsts.pop_back();
   }
-
-  return changed;
 }
 
 /// \returns true if the \p shuffle corresponds to an identity operation, false
@@ -461,6 +512,16 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         auto outDims = RS->getResult().dims();
         unsigned_t newChannelIdx;
 
+        // Skip sinking if: 1) the input was less than 3 dimensions,
+        // because we need spatial dimensions in addition to batch
+        // and channel or 2) if it is 3D data because the reshapes
+        // are deliberately introduced to phrase 3D BatchNormalization
+        // as a 2D one.
+        if (RS->getInput().dims().size() < 3 ||
+            RS->getInput().dims().size() == 5) {
+          continue;
+        }
+
         // Reshape should not change the BatchNorm ChannelIdx dimensions.
         // Only NH[W]C and NCH[W] are allowed.
         if (BN->getChannelIdx() == outDims.size() - 1) {
@@ -569,6 +630,49 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       auto *newTR = F->createTranspose(TR->getName(), NCL, TR->getShuffle());
       newTR->setPredicate(node->getPredicate());
       CL->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
+    // Sink Transpose below LeakyRelu nodes.
+    if (auto *LR = dyn_cast<LeakyReluNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(LR->getInput());
+      if (!TR) {
+        continue;
+      }
+      auto newLROutTy = F->getParent()->uniqueTypeWithNewShape(
+          LR->getResult().getType(), TR->getInput().getType());
+      auto *newLR = F->createLeakyRELU(LR->getName(), newLROutTy,
+                                       TR->getInput(), LR->getAlpha());
+      newLR->setPredicate(node->getPredicate());
+      auto *newTR = F->createTranspose(TR->getName(), newLR, TR->getShuffle());
+      newTR->setPredicate(node->getPredicate());
+      LR->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
+    // Sink Transpose below PRelu with Splat.
+    if (auto *PN = dyn_cast<PReluNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(PN->getInput());
+      if (!TR) {
+        continue;
+      }
+      auto *SN = dyn_cast<SplatNode>(PN->getSlope());
+      if (!SN) {
+        continue;
+      }
+      auto newSNOutTy = F->getParent()->uniqueTypeWithNewShape(
+          SN->getResult().getType(), TR->getInput().getType());
+      auto newPNOutTy = F->getParent()->uniqueTypeWithNewShape(
+          PN->getResult().getType(), TR->getInput().getType());
+      auto *newSN = F->createSplat(SN->getName(), newSNOutTy, SN->getValue());
+      auto *newPN =
+          F->createPRELU(PN->getName(), TR->getInput(), newSN, newPNOutTy);
+      auto *newTR = F->createTranspose(TR->getName(), newPN, TR->getShuffle());
+      newPN->setPredicate(node->getPredicate());
+      newTR->setPredicate(node->getPredicate());
+      PN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
     }
@@ -924,6 +1028,36 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
     }
   } // For all nodes in the graph.
 
+  // Transformations to sink nodes below Slice. Outlined into a separate loop to
+  // prevent Transpose/Slice sinking to affect them.
+  for (auto &N : nodes) {
+    auto *node = &N;
+    // Sink BatchNorm below Slice.
+    if (auto *SN = dyn_cast<SliceNode>(node)) {
+      auto *BN = dyn_cast<BatchNormalizationNode>(SN->getInput());
+      if (!BN || !BN->hasOneUse()) {
+        continue;
+      }
+
+      // Don't support sinking below Slice which affects depth.
+      if (SN->getInput().dims()[BN->getChannelIdx()] !=
+          SN->getResult().dims()[BN->getChannelIdx()]) {
+        continue;
+      }
+
+      auto newSNType = F->getParent()->uniqueTypeWithNewShape(
+          BN->getInput().getType(), SN->getResult().dims());
+      auto *newSN = F->createSlice(SN->getName(), BN->getInput(),
+                                   SN->getStart(), newSNType);
+      auto *newBN = F->createBatchNormalization(
+          BN->getName(), newSN, BN->getBias(), BN->getScale(), BN->getMean(),
+          BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
+          BN->getMomentum());
+      SN->getResult().replaceAllUsesOfWith(newBN);
+      changed = true;
+    }
+  }
+
   return changed;
 }
 
@@ -1236,13 +1370,7 @@ bool MergeTransposeIntoMatMulOrFC::run(Function *F,
 /// are consecutive but Slice(0..10) Slice(20..30) are not.
 static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   // The slices must extract from the same input.
-  if (A->getInput().getNode() != B->getInput().getNode()) {
-    return false;
-  }
-
-  // The result element type must be identical.
-  if (A->getResult().getType()->getElementType() !=
-      B->getResult().getType()->getElementType()) {
+  if (A->getInput() != B->getInput()) {
     return false;
   }
 
@@ -1275,6 +1403,26 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   return true;
 }
 
+/// \returns True if the two slices \p A and \p B access consecutive spacial
+/// regions along some dimension. The dimension is stored in \p dim.
+/// For example, Slice((0, 0)..(1, 10)) Slice((1, 0)..(2, 10)) are consecutive
+/// along dim=0.
+static bool findConsecutiveSliceDim(SliceNode *A, SliceNode *B, int *dim) {
+  // The slices must extract from the same input.
+  if (A->getInput() != B->getInput()) {
+    return false;
+  }
+
+  for (size_t i = 0, e = A->getStart().size(); i < e; i++) {
+    if (areSlicesConsecutive(A, B, i)) {
+      *dim = i;
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool ConvertBroadcastedBatchMatMul::run(Function *F,
                                         const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -1288,11 +1436,38 @@ bool ConvertBroadcastedBatchMatMul::run(Function *F,
     NodeValue LHS = BMMN->getLHS();
     NodeValue RHS = BMMN->getRHS();
 
-    // If RHS is a Tile along axis 0 and the input's dims()[0] == 1, then the
-    // RHS is fully broadcasted and we can perform the optimization.
+    // If RHS is a Tile/Broadcast along axis 0 and the input's dims()[0] == 1,
+    // then the RHS is fully broadcasted and we can perform the optimization.
     TileNode *TN = dyn_cast<TileNode>(RHS);
-    if (!TN || TN->getAxis() != 0 || TN->getInput().dims()[0] != 1) {
+    BroadcastNode *BN = dyn_cast<BroadcastNode>(RHS);
+    if (!TN && !BN) {
       continue;
+    }
+    const unsigned_t axis = TN ? TN->getAxis() : BN->getAxis();
+    const dim_t dim0 = TN ? TN->getInput().dims()[0] : BN->getInput().dims()[0];
+    if (axis != 0 || dim0 != 1) {
+      continue;
+    }
+
+    // If this is a Broadcast, check if the first dimension is the only one
+    // that's tiled. If so, then we can treat this as the same as a
+    // Tile. Otherwise we must keep around a Broadcast for everything but the
+    // first dimension.
+    NodeValue singleTileNV;
+    if (BN) {
+      ShapeVector newBNDims(BN->getResult().dims().begin(),
+                            BN->getResult().dims().end());
+      newBNDims[0] = 1;
+      if (!BN->getInput().dims().equals(newBNDims)) {
+        BroadcastNode *newBN = F->createBroadcast(BN->getName(), BN->getInput(),
+                                                  newBNDims, /* axis */ 0);
+        singleTileNV = newBN->getResult();
+      } else {
+        // This Broadcast is equivalent to a Tile.
+        singleTileNV = BN->getInput();
+      }
+    } else {
+      singleTileNV = TN->getInput();
     }
 
     // Can now convert the broadcasted BatchMatMul to a MatMul.
@@ -1312,7 +1487,7 @@ bool ConvertBroadcastedBatchMatMul::run(Function *F,
         F->createReshape(name.str() + ".reshapeLHS", LHS, {numBatches * N, M});
     // Squeeze out the first dimension of the original Tile's input.
     ReshapeNode *squeezedRHS =
-        F->createSqueeze(name.str() + ".squeezedRHS", TN->getInput(), {0});
+        F->createSqueeze(name.str() + ".squeezedRHS", singleTileNV, {0});
 
     // Perform a normal matmul, implementing the batch matmul.
     MatMulNode *MMN = F->createMatMul(name, reshapeLHS, squeezedRHS);
@@ -1583,7 +1758,10 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
                       BatchNormalizationNode &BN) {
   static_assert(
       std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+          std::is_same<float16_t,
+                       typename std::remove_cv<ElemTy>::type>::value ||
+          std::is_same<bfloat16_t,
+                       typename std::remove_cv<ElemTy>::type>::value,
       "This implementation is for floating-point values only");
 
   Constant *filterC = getUniquelyUsedConstant(M, *CV.getFilter().getNode());
@@ -1716,6 +1894,9 @@ bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
         break;
       case ElemKind::Float16Ty:
         normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
+        break;
+      case ElemKind::BFloat16Ty:
+        normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
         break;
       default:
         llvm_unreachable("Type not supported");
@@ -2006,34 +2187,45 @@ bool FoldMatMulAddIntoFullyConnected::run(Function *F,
     auto *matMulNode_LHS = dyn_cast<MatMulNode>(addNode->getLHS());
     auto *matMulNode_RHS = dyn_cast<MatMulNode>(addNode->getRHS());
     auto *matMulNode = matMulNode_LHS ? matMulNode_LHS : matMulNode_RHS;
-    NodeValue biasNode = matMulNode_LHS ? addNode->getRHS() : addNode->getLHS();
+    NodeValue bias = matMulNode_LHS ? addNode->getRHS() : addNode->getLHS();
     if (!matMulNode) {
       continue;
     }
 
-    // The corresponding length of the FullyConnected Bias operand.
-    auto fcBiasLen = matMulNode->getRHS().dims()[1];
-
-    // TODO: If Bias is a constant 2D tensor (e.g. [2,10]) we should also
-    // verify if the Bias is broadcasted from a 1D tensor (e.g. [10]) in
-    // order to instantiate a batched FullyConnected using the Bias slice.
-
-    // Verify the bias size.
-    if (biasNode.getType()->size() != fcBiasLen) {
+    // Folding is allowed only if MatMul has one use.
+    if (!matMulNode->getResult().hasOneUse()) {
       continue;
     }
 
-    // Reshape the bias to 1D (if needed).
-    if (biasNode.dims().size() > 1) {
-      biasNode =
-          F->createReshape(biasNode.getNode()->getName().str() + ".reshape",
-                           biasNode, {biasNode.getType()->size()});
+    // The corresponding batch/length of the FullyConnected Bias operand.
+    assert(bias.dims().size() == 2 && "Bias should be 2D!");
+    auto biasBatch = bias.dims()[0];
+    auto biasLength = bias.dims()[1];
+    if (biasBatch == 1) {
+      // If bias is not batched then reshape to 1D.
+      bias = F->createReshape(bias.getNode()->getName().str() + ".reshape",
+                              bias, {bias.getType()->size()});
+    } else {
+      // If bias is batched then we must verify that the bias data
+      // is same for all batches. For this the bias must be a Constant.
+      auto *biasC = llvm::dyn_cast<Constant>(bias.getNode());
+      if (!biasC) {
+        continue;
+      }
+      if (!biasC->getPayload().isTiled(0)) {
+        continue;
+      }
+      // Slice batched 2D bias and reshape to 1D.
+      bias = F->createSlice(bias.getNode()->getName().str() + ".slice", bias,
+                            {0, 0}, {1, biasLength});
+      bias = F->createReshape(bias.getNode()->getName().str() + ".reshape",
+                              bias, {biasLength});
     }
 
     // Create a new FullyConnected node.
     auto *newFC = F->createFullyConnected(
-        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(),
-        biasNode, addNode->getResult().getType());
+        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(), bias,
+        addNode->getResult().getType());
     addNode->getResult().replaceAllUsesOfWith(newFC);
     changed = true;
   }
@@ -2259,13 +2451,14 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
 
 /// Simplify concat node.
 /// \returns a new simplified Concat node or nullptr.
-static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
+static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN,
+                                    const CompilationContext &cctx) {
   /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z),
   /// but only if dim1 == dim2
 
   LOG_SCOPE(F->getLogContext(), "simplifyConcatNode")
 
-  {
+  if (!cctx.optimizationOpts.skipConcatMerging) {
     auto inputs = CN->getInputs();
     // Check if any of the inputs are ConcatNode.
     llvm::SmallVector<NodeValue, 16> newInputs;
@@ -2276,6 +2469,13 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
       // Bail if it is not a ConcatNode or it is a concat node with a diffrent
       // dimension.
       if (!CNI || CNI->getDim() != CN->getDim()) {
+        continue;
+      }
+
+      // Preventing this from kicking in.
+      // Otherwise we will end up sequence of concats with more and more inputs,
+      // without really eliminating any.
+      if (CNI->getResult().getNumUsers() > 1) {
         continue;
       }
 
@@ -2401,6 +2601,171 @@ bool EliminateConcatSlice::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Eliminate Slice-Concat patterns which are unnecessary. E.g.:
+///            --  NodeSrc ---                               -NodeSrc-
+///          /        |       |                            /          |
+///       SliceA   SliceB   SliceC     ----->           SliceAB       SliceC
+///           \       /      |                             |           |
+/// NodeE  -  ConcatABE       NodeD              NodeE - ConcatABE   NodeD
+bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node &node = *it;
+    auto *CN = dyn_cast<ConcatNode>(&node);
+    if (!CN) {
+      continue;
+    }
+    // avoid 1) merging through operators other than Slices
+    // e.g. Slice(A)-Other-Slice(B), A and B are consecutive
+    // 2) merging Slices from different sources
+    // e.g. Slice(A1)-Slice(B1)-Slice(A2)-Slice(B2), A1 and A2, B1 and B2 are
+    // consecutive respectively
+    //
+    // Store consecutive slices along *any* dimension. If the consecutive
+    // slices' dimension is the same as the concat, the concat can be removed.
+    // If the slices' dimension is different from the concat, the nodes
+    // can be replaced with slice+reshape OR slice+transpose+reshape.
+    // The extra transpose is needed when the consecutive dimension is
+    // after the concat dimension.
+    std::vector<
+        std::pair<int /* dimension of slicing */, std::vector<SliceNode *>>>
+        consecutiveSlices;
+    std::vector<SliceNode *> currConsecutiveSlices;
+    SliceNode *lastSN = nullptr;
+    int lastDim = -1;
+    for (auto &concatInput : CN->getInputs()) {
+      auto *SN = dyn_cast<SliceNode>(concatInput.getNode());
+      // slices with multiple users will not be considered
+      if (!SN || SN->getResult().getNumUsers() > 1) {
+        if (currConsecutiveSlices.size()) {
+          consecutiveSlices.emplace_back(lastDim, currConsecutiveSlices);
+          currConsecutiveSlices.clear();
+        }
+        lastDim = -1;
+        lastSN = nullptr;
+        continue;
+      }
+      // slices with different sources will not be considered
+      int dim = -1;
+      if (lastSN && (lastSN->getInput() != SN->getInput() ||
+                     !findConsecutiveSliceDim(lastSN, SN, &dim))) {
+        consecutiveSlices.emplace_back(lastDim, currConsecutiveSlices);
+        currConsecutiveSlices.clear();
+      }
+      lastDim = dim;
+      lastSN = SN;
+      currConsecutiveSlices.emplace_back(SN);
+    }
+    if (currConsecutiveSlices.size()) {
+      consecutiveSlices.emplace_back(lastDim, currConsecutiveSlices);
+    }
+
+    // Mapping from old Slices to new Nodes where a Node can either be
+    // i) a merged Slice
+    // ii) a merged Slice + Reshape
+    // iii) a merged Slice + Transpose + Reshape
+    std::unordered_map<SliceNode *, Node *> oldSlicesToNewNodes;
+
+    for (const auto &slicePairs : consecutiveSlices) {
+      auto slicesDim = slicePairs.first;
+      auto &slices = slicePairs.second;
+
+      if (slices.size() <= 1) {
+        continue;
+      }
+      if (slicesDim != CN->getDim() &&
+          ((slicesDim != CN->getDim() + 1 && slicesDim != CN->getDim() - 1) ||
+           slices[0]->getResult().dims()[slicesDim] != 1)) {
+        // Optimizations are possible only if:
+        // 1) slices consecutive dimension is the same as concat dimension, or
+        // 2) slices consecutive dimension is adjacent to the concat dimension,
+        //    and the size of each slice along the consecutive dimension is 1.
+        //    NOTE: Checking the slicesDim dimension of 0th slice is
+        //    sufficient, as opposed to checking every slice. If the slices
+        //    can be concatenated (and they're being concatenated along a
+        //    different dimension), then each slicesDim dim must be equal.
+        continue;
+      }
+      if ((slicesDim == CN->getDim() + 1 && slices.size() <= 3) ||
+          (slicesDim == CN->getDim() - 1 && slices.size() <= 2)) {
+        // Optimization does not decrease the number of nodes.
+        continue;
+      }
+
+      SliceNode *firstSlice = slices.front();
+      auto *srcNode = firstSlice->getInput().getNode();
+      std::vector<dim_t> endDims;
+
+      for (size_t i = 0, e2 = firstSlice->getResult().dims().size(); i < e2;
+           i++) {
+        endDims.emplace_back(slices.back()->getStart()[i] +
+                             slices.back()->getResult().dims()[i]);
+      }
+      Node *newNode = nullptr;
+      auto *newSlice = F->createSlice(firstSlice->getName(), srcNode,
+                                      firstSlice->getStart(), endDims);
+
+      // Create a reshape node based on consecutive slice dimension and
+      // concat dimension.
+      if (slicesDim == CN->getDim() + 1 || slicesDim == CN->getDim() - 1) {
+        auto outputDimVec = newSlice->getResult().dims().vec();
+        outputDimVec[CN->getDim()] *= outputDimVec[slicesDim];
+        outputDimVec[slicesDim] = 1;
+        auto outputDims = llvm::makeArrayRef(outputDimVec);
+
+        Node *inputToReshape = nullptr;
+        if (slicesDim == CN->getDim() + 1) {
+          std::vector<unsigned_t> shuffle(outputDimVec.size());
+          std::iota(shuffle.begin(), shuffle.end(), 0);
+          std::swap(shuffle[slicesDim], shuffle[CN->getDim()]);
+          inputToReshape = F->createTranspose(
+              newSlice->getName().str() + "_Transpose", newSlice, shuffle);
+        } else {
+          inputToReshape = newSlice;
+        }
+        newNode = F->createReshape(newSlice->getName().str() + "_Reshape",
+                                   inputToReshape, outputDims);
+      } else {
+        newNode = newSlice;
+      }
+
+      for (auto *slice : slices) {
+        oldSlicesToNewNodes[slice] = newNode;
+      }
+
+      changed = true;
+    }
+    if (!oldSlicesToNewNodes.size()) {
+      continue;
+    }
+    // Replace the input Slices to CN with the merged Nodes.
+    std::vector<NodeValue> newConcatInputs;
+    const Node *lastNewNode = nullptr;
+    for (const auto &concatInput : CN->getInputs()) {
+      auto *SN = dyn_cast<SliceNode>(concatInput.getNode());
+      if (!SN || !oldSlicesToNewNodes.count(SN)) {
+        newConcatInputs.emplace_back(concatInput);
+      } else {
+        auto *newNode = oldSlicesToNewNodes[SN];
+        if (newNode != lastNewNode) {
+          lastNewNode = newNode;
+          newConcatInputs.emplace_back(newNode);
+        }
+      }
+    }
+    if (newConcatInputs.size() != CN->getInputs().size()) {
+      auto *newConcat =
+          F->createConcat(CN->getName(), newConcatInputs, CN->getDim());
+      CN->getResult().replaceAllUsesOfWith(newConcat);
+    }
+  }
+
+  return changed;
+}
+
 /// Optimize Concat nodes.
 bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -2413,7 +2778,7 @@ bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
     if (!CN) {
       continue;
     }
-    NodeValue newCN = simplifyConcatNode(F, CN);
+    NodeValue newCN = simplifyConcatNode(F, CN, cctx);
     if (newCN.getNode()) {
       CN->getResult().replaceAllUsesOfWith(newCN);
       changed = true;
@@ -2453,6 +2818,7 @@ bool FoldSlicesIntoConstants::run(Function *F, const CompilationContext &cctx) {
 
     TYPED_INSERT(float, ElemKind::FloatTy);
     TYPED_INSERT(float16_t, ElemKind::Float16Ty);
+    TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
     TYPED_INSERT(int8_t, ElemKind::Int8QTy);
     TYPED_INSERT(int16_t, ElemKind::Int16QTy);
     TYPED_INSERT(int32_t, ElemKind::Int32QTy);
@@ -2530,19 +2896,30 @@ bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
     if (!TN) {
       continue;
     }
-    auto *C = dyn_cast<Constant>(TN->getInput());
-    if (!C) {
+    auto *Q = dyn_cast<QuantizeNode>(TN->getInput());
+    auto *C = dyn_cast<Constant>(Q ? Q->getInput() : TN->getInput());
+    if (!C || (Q && !Q->hasOneUse())) {
       continue;
     }
     // Create a new Constant NC to hold the transposed result.
-    auto *NC = F->getParent()->createConstant(TN->getResult().getType(),
-                                              C->getName(), TN->getLayout());
+    auto cTy = F->getParent()->uniqueTypeWithNewShape(
+        C->getType(), TN->getResult().getType());
+    auto *NC =
+        F->getParent()->createConstant(cTy, C->getName(), TN->getLayout());
     // Transpose the value of C into NC.
     genericTranspose(&C->getPayload(), &NC->getPayloadMutable(),
                      TN->getShuffle());
     NC->getPayloadMutable().setType(NC->getType());
-    // Rewrite uses of TN to reference NC.
-    TN->getResult().replaceAllUsesOfWith(NC);
+    // Create a new transposed Quantize, if needed.
+    NodeValue NN(NC);
+    if (Q) {
+      auto qTy = F->getParent()->uniqueTypeWithNewShape(
+          Q->getResult().getType(), TN->getResult().dims());
+      auto *NQ = F->createQuantize(Q->getName(), NC, qTy);
+      NN = NodeValue(NQ);
+    }
+    // Rewrite uses of TN to reference NC or NQ.
+    TN->getResult().replaceAllUsesOfWith(NN);
     changed = true;
   }
   return changed;
@@ -2662,12 +3039,10 @@ static bool deduplicateConstants(Module *M) {
 
   bool changed = false;
   for (auto &C : M->getConstants()) {
-    // Only perform deduplication on consts of small enough size. Otherwise
-    // just skip them. constDedupSizeOpt defaults to 256 as a heuristic, to
-    // keep compile time reasonable.
+    // Only perform deduplication of consts with given max number of elements.
     size_t maxNumEls = constDedupSizeOpt;
     size_t numEls = C->getType()->size();
-    if (numEls > maxNumEls) {
+    if ((maxNumEls != 0) && (numEls > maxNumEls)) {
       continue;
     }
 
@@ -2697,7 +3072,10 @@ bool CSE::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   CSEVisitor visitor;
 
-  bool changed = deduplicateConstants(F->getParent());
+  bool changed = false;
+  if (cctx.optimizationOpts.enableConstantDeduplication) {
+    changed |= deduplicateConstants(F->getParent());
+  }
 
   // Perform CSE on all nodes.
   for (auto &N : F->getNodes()) {
@@ -2807,41 +3185,71 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
   return changed;
 }
 
-bool EliminateNoopTile::run(Function *F, const CompilationContext &cctx) {
-  LOG_SCOPE(F->getLogContext(), getName());
-  bool changed = false;
-
-  for (auto &node : F->getNodes()) {
-    if (auto *tileNode = dyn_cast<TileNode>(&node)) {
-      // If the TileNode tiles only once, eliminate it.
-      if (tileNode->getCount() == 1) {
-        tileNode->getResult().replaceAllUsesOfWith(tileNode->getInput());
-        changed = true;
-      }
-    }
+/// Gets Constant or returns nullptr if input is not Constant.
+/// Skips QuantizeNode if present.
+static Constant *getConstant(const NodeValue &NV) {
+  Node *N = NV.getNode();
+  if (isa<QuantizeNode>(N)) {
+    N = N->getNthInput(QuantizeNode::InputIdx);
   }
-
-  return changed;
+  return dyn_cast<Constant>(N);
 }
 
-/// Eliminate noop Slice(Node) -> Node.
-bool EliminateNoopSlice::run(Function *F, const CompilationContext &cctx) {
+/// Eliminate nodes which don't do anything useful.
+bool EliminateNoop::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
+  auto isNoop = [](const Node &node, NodeValue &input,
+                   NodeValue &output) -> bool {
+    // Auto-select input/output, if there is just one. For other cases it
+    // will be handled on per-operator basis below.
+    if (node.getNumInputs() == 1) {
+      input = node.getNthInput(0);
+    }
+    if (node.getNumResults() == 1) {
+      output = node.getNthResult(0);
+    }
+
+    // For some nodes it's enough just to compare input and output types to
+    // determine if they are noop.
+    if (isa<PadNode>(&node) || isa<SliceNode>(&node) || isa<TileNode>(&node) ||
+        isa<BroadcastNode>(&node)) {
+      return input.getType() == output.getType();
+    }
+
+    // Operator-specific analysis.
+    if (auto *APN = dyn_cast<AvgPoolNode>(&node)) {
+      input = APN->getInput();
+      return isUniformArray(APN->getKernels(), 1u) &&
+             isUniformArray(APN->getStrides(), 1u) &&
+             isUniformArray(APN->getPads(), 0u);
+    } else if (auto *MPN = dyn_cast<MaxPoolNode>(&node)) {
+      input = MPN->getInput();
+      output = MPN->getResult();
+      return isUniformArray(MPN->getKernels(), 1u) &&
+             isUniformArray(MPN->getStrides(), 1u) &&
+             isUniformArray(MPN->getPads(), 0u);
+    } else if (auto *SN = dyn_cast<SelectNode>(&node)) {
+      auto *cond = getConstant(SN->getCond());
+      bool val = false;
+      if (cond && isUniformConstant<bool>(*cond, val)) {
+        input = val ? SN->getLHS() : SN->getRHS();
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   for (auto &node : F->getNodes()) {
-    SliceNode *sliceNode = dyn_cast<SliceNode>(&node);
-    if (!sliceNode) {
-      continue;
+    NodeValue input, output;
+    if (isNoop(node, input, output)) {
+      assert(input != NodeValue() && output != NodeValue() &&
+             "Sanity check that input and output are set");
+      output.replaceAllUsesOfWith(input);
+      changed = true;
     }
-
-    // If input and result have different types then this is not a noop.
-    if (sliceNode->getInput().getType() != sliceNode->getResult().getType()) {
-      continue;
-    }
-
-    sliceNode->getResult().replaceAllUsesOfWith(sliceNode->getInput());
-    changed = true;
   }
 
   return changed;
@@ -2885,19 +3293,31 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
-    // Reshape(Constant) -> Constant'.
-    if (auto *C = dyn_cast<Constant>(inputNode)) {
-      // Create a new Constant with the type of the reshape.
+    // Reshape(Constant) -> Constant' or
+    // Reshape(Quantize(Constant)) -> Quantize'(Constant').
+    auto *Q = dyn_cast<QuantizeNode>(inputNode);
+    auto *C = dyn_cast<Constant>(Q ? Q->getInput() : inputNode);
+    if (C && (!Q || Q->hasOneUse())) {
+      // Create a new Constant with the dims of the reshape.
       auto layout =
           CanonicalTensorLayout::getInstance().getNthResultLayoutRequirements(
               reshapeNode, ReshapeNode::ResultIndices::ResultIdx);
-      auto *newC = F->getParent()->createConstant(
-          reshapeNode->getResult().getType(), C->getName(), layout);
+      auto cTy = F->getParent()->uniqueTypeWithNewShape(
+          C->getType(), reshapeNode->getResult().getType());
+      auto *newC = F->getParent()->createConstant(cTy, C->getName(), layout);
       // Create an unowned view of the original tensor with the correct shape,
       // and assign it to the new Constant.
       Tensor reshapedT = C->getPayload().getUnowned(reshapeNode->getDims());
       newC->assign(&reshapedT);
-      reshapeNode->getResult().replaceAllUsesOfWith(newC);
+      // Create a new Quantize with the dims of the reshape, if needed.
+      NodeValue newN(newC);
+      if (Q) {
+        auto qTy = F->getParent()->uniqueTypeWithNewShape(
+            Q->getResult().getType(), reshapeNode->getResult().dims());
+        auto *newQ = F->createQuantize(Q->getName(), newC, qTy);
+        newN = NodeValue(newQ);
+      }
+      reshapeNode->getResult().replaceAllUsesOfWith(newN);
       changed = true;
       continue;
     }
@@ -2992,10 +3412,13 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
   switch (tensor.getElementType()) {
   case ElemKind::FloatTy:
   case ElemKind::Float16Ty:
+  case ElemKind::BFloat16Ty:
     switch (dstTy->getElementType()) {
     case ElemKind::FloatTy:
-    case ElemKind::Float16Ty: {
-      // Plain conversion: {FloatTy, Float16Ty} -> {FloatTy, Float16Ty}.
+    case ElemKind::Float16Ty:
+    case ElemKind::BFloat16Ty: {
+      // Plain conversion:
+      // {FloatTy, Float16Ty, BFloat16Ty} -> {FloatTy, Float16Ty, BFloat16Ty}.
       Constant &constantToBeModified = modifyConstantTyAndGet();
       constantToBeModified.getPayloadMutable().convertToType(
           dstTy->getElementType());
@@ -3004,7 +3427,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
     case ElemKind::Int32QTy:
     case ElemKind::Int16QTy:
     case ElemKind::Int8QTy: {
-      // Quantization: {FloatTy, Float16Ty} -> Quantized type.
+      // Quantization: {FloatTy, Float16Ty, BFloat16Ty} -> Quantized type.
       Constant &constantToBeModified = modifyConstantTyAndGet();
       TensorQuantizationParams params{dstTy->getScale(), dstTy->getOffset()};
       Tensor &tensorToBeModified = constantToBeModified.getPayloadMutable();
@@ -3026,8 +3449,8 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       return constantToBeModified.getOutput();
     }
     default:
-      // Quantization: {FloatTy, Float16Ty} -> Int[16|32]QTy.
-      // Plain conversion: {FloatTy, Float16Ty} -> Int64ITy.
+      // Quantization: {FloatTy, Float16Ty, BFloat16Ty} -> Int[16|32]QTy.
+      // Plain conversion: {FloatTy, Float16Ty, BFloat16Ty} -> Int64ITy.
       return NodeValue();
     }
   case ElemKind::UInt8FusedQTy: {
@@ -3065,10 +3488,10 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
     // For now we don't see other quantize, dequantize, or rescale nodes
     // directly attached to constants.
     // Thus don't add code that will never be executed.
-    // Dequantization: Int[8|16|32]QTy -> {FloatTy, Float16Ty, Int64I}.
-    // Rescale: Int[8|16|32]QTy -> Int[8|16|32]QTy.
-    // Plain conversion: Int64ITy -> {FloatTy, Float16Ty}.
-    // Quantization: Int64ITy -> Int[8|16|32]QTy.
+    // Dequantization: Int[8|16|32]QTy -> {FloatTy, Float16Ty, BFloat16Ty,
+    // Int64I}. Rescale: Int[8|16|32]QTy -> Int[8|16|32]QTy. Plain conversion:
+    // Int64ITy -> {FloatTy, Float16Ty, BFloat16Ty}. Quantization: Int64ITy ->
+    // Int[8|16|32]QTy.
     return NodeValue();
   }
 }
@@ -3092,6 +3515,9 @@ static size_t numSignificantBits(ElemKind kind) {
   case ElemKind::Float16Ty:
     // Custom type with layout 0 00000 0000000000.
     return 10;
+  case ElemKind::BFloat16Ty:
+    // bfloat16 has 8 significant bits.
+    return 8;
   case ElemKind::Int16QTy:
     return std::numeric_limits<int16_t>::digits;
   case ElemKind::FloatTy:
@@ -3172,9 +3598,83 @@ static bool isUsedByNodeWithSideEffects(Node *N) {
   return false;
 }
 
+/// Helper that \returns whether \p NV cannot have its output quantization
+/// parameters changed. For example, Concats require all inputs to have the same
+/// quantization parameters, so we cannot change the quantization parameters of
+/// a Node if it is input into a Concat.
+static bool disallowQuantParamChange(const NodeValue &NV) {
+  for (auto &user : NV.getUsers()) {
+    if (isa<ConcatNode>(user.getUser())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// This is a specialized pass to use where we assume that quantized ranges are
+/// all inside the FP16 range. This means that if we have any clips outside the
+/// FP16 range we can safely remove them if adjacent to a quantized op.
+bool EliminateClipsOutsideFP16Range::run(Function *F,
+                                         const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  if (!cctx.precisionConfig.clipQuantRangeToFP16) {
+    return false;
+  }
+
+  bool changed = false;
+  for (Node &node : F->getNodes()) {
+    // Clip(Dequantize(Node)) -> Dequantize(Node)
+    if (ClipNode *clip = dyn_cast<ClipNode>(&node)) {
+      DequantizeNode *DQN = dyn_cast<DequantizeNode>(clip->getInput());
+      if (!DQN) {
+        continue;
+      }
+
+      // Can only eliminate the clip if its outside the FP16 range.
+      if (clip->getMin() > kMinFP16 || clip->getMax() < kMaxFP16) {
+        continue;
+      }
+
+      // We can safely skip the Clip at this point.
+      clip->getResult().replaceAllUsesOfWith(DQN->getResult());
+      changed = true;
+      continue;
+    }
+
+    // Quantize(Clip(Node)) -> Quantize(Node)
+    if (QuantizeNode *QN = dyn_cast<QuantizeNode>(&node)) {
+      ClipNode *clip = dyn_cast<ClipNode>(QN->getInput());
+      if (!clip) {
+        continue;
+      }
+
+      // Can only eliminate the clip if its outside the FP16 range.
+      if (clip->getMin() > kMinFP16 || clip->getMax() < kMaxFP16) {
+        continue;
+      }
+
+      // We can safely skip the Clip at this point.
+      QN->setNthInput(QuantizeNode::InputIdx, clip->getInput());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// When quantized operators and Clips are used together, we can often merge the
 /// Clip range and the Quantized range and remove the Clip.
 bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  // All of the optimizations here depend on the quantization parameters. If
+  // we've loaded dummy qparams then none should be performed.
+  if (cctx.precisionConfig.loadUniquedDummyQParams) {
+    return false;
+  }
+
   bool changed = false;
 
   // Change a quantized result type qResult to account for the range from clip.
@@ -3189,6 +3689,10 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     // Clip and do not need to change the type of qResult.
     if (newMin == qMinMax.first && newMax == qMinMax.second) {
       return true;
+    }
+
+    if (disallowQuantParamChange(qResult)) {
+      return false;
     }
 
     // At this point the quantization parameters must be changing, so if we do
@@ -3350,6 +3854,12 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
                                    const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
+  // This opt implies there to be changes to quantization, because we create an
+  // int relu that was previously float.
+  if (!cctx.optimizationOpts.enableQuantParamChanges) {
+    return false;
+  }
+
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *relu = llvm::dyn_cast<ReluNode>(&node);
@@ -3401,14 +3911,36 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
       continue;
     }
 
+    // If the quant FC is used by nodes with side effects then skip, since we
+    // may be changing the user's input qparam type.
+    bool skip = false;
+    for (FullyConnectedNode *FC : nodesToFuse) {
+      if (isUsedByNodeWithSideEffects(FC)) {
+        skip = true;
+        break;
+      }
+    }
+    if (skip) {
+      continue;
+    }
+
     // Now add quantized relus onto all of the FCs.
     for (FullyConnectedNode *FC : nodesToFuse) {
       const TypeRef FCTy = FC->getResult().getType();
-      // Use the same type as the FC for the Relu but with 0 as min.
-      const auto qParams = quantization::chooseQuantizationParams(
-          {0, FCTy->getQuantizedValueRange().second});
-      const TypeRef qReluTy = F->getParent()->uniqueType(
-          FCTy->getElementType(), FCTy->dims(), qParams.scale, qParams.offset);
+      TypeRef qReluTy = nullptr;
+      if (cctx.precisionConfig.loadUniquedDummyQParams) {
+        // Reuse the FC type, since we don't know its actual qparams during AOT
+        // optimization. When we the actual type later before deploying, we will
+        // do a final processing pass to set min to 0 via updateReluTypes().
+        qReluTy = FCTy;
+      } else {
+        // Use the same type as the FC for the Relu but with 0 as min.
+        const auto qParams = quantization::chooseQuantizationParams(
+            {0, FCTy->getQuantizedValueRange().second});
+        qReluTy =
+            F->getParent()->uniqueType(FCTy->getElementType(), FCTy->dims(),
+                                       qParams.scale, qParams.offset);
+      }
       ReluNode *qRelu = F->createRELU(relu->getName().str() + "_quant",
                                       FC->getResult(), qReluTy);
       FC->getResult().typeUnsafeReplaceAllUsesOfWith(qRelu->getResult(), F,
@@ -3538,7 +4070,8 @@ FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
 FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) *
     createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {
   return createNode<T>(F, PN->getName(), rescale->getInput(), PN->getKernels(),
-                       PN->getStrides(), PN->getPads());
+                       PN->getStrides(), PN->getPads(), NCHW,
+                       PN->getCountIncludePads());
 }
 FUNCTION_ENABLE_IF_TEMPLATE(MaxPool) *
     createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {
@@ -3602,7 +4135,8 @@ static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
 
 /// Sink Rescale nodes down when possible.
 /// \returns if anything was changed in the given function.
-static bool sinkRescaleQuantizedNode(Function *F) {
+static bool sinkRescaleQuantizedNode(Function *F,
+                                     const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "sinkRescaleQuantizedNode");
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -3667,7 +4201,10 @@ static bool sinkRescaleQuantizedNode(Function *F) {
     }
 
     if (auto *PN = dyn_cast<AvgPoolNode>(&node)) {
-      changed |= sinkDownRescaleToPoolingNode<AvgPoolNode>(*F, PN);
+      // AvgPool input and output scale/bias may differ.
+      if (!cctx.optimizationOpts.enableQuantParamChanges) {
+        changed |= sinkDownRescaleToPoolingNode<AvgPoolNode>(*F, PN);
+      }
       continue;
     }
 
@@ -3846,6 +4383,13 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
     }
 
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
+      // All cases below tend to change the output scale/bias of a Node. This
+      // may change the numerics of the op (even the range is narrower and so it
+      // should be more accurate).
+      if (!cctx.optimizationOpts.enableQuantParamChanges) {
+        continue;
+      }
+
       if (RS->getInput().getType() == RS->getResult().getType()) {
         // If rescale does not change the type, then simply drop it.
         changed = true;
@@ -3877,6 +4421,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
+      case Kinded::Kind::FullyConnectedNodeKind:
       case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
         changed = true;
         Node *newNode =
@@ -3911,11 +4456,14 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
     } // Handle RescaleQuantizedNode
   }   // For each item in the worklist.
 
-  changed |= optimizeQuantizedMaxSplat(F);
+  // This pass is based on real qparams, so skip this opt if using dummies.
+  if (!cctx.precisionConfig.loadUniquedDummyQParams) {
+    changed |= optimizeQuantizedMaxSplat(F);
+  }
 
   // If nothing has changed then sink rescale quantization nodes.
   if (!changed) {
-    changed = sinkRescaleQuantizedNode(F);
+    changed = sinkRescaleQuantizedNode(F, cctx);
   }
   return changed;
 }
@@ -4375,6 +4923,128 @@ bool FoldElemKindConversionIntoOutputs::run(Function *F,
   return changed;
 }
 
+/// Broadcasts are implemented via 1) Reshape followed by a series of Tiles 2)
+/// BroadcastNode. This helper unwinds Broadcast operation -- it \returns the
+/// original Node before the broadcasting \p N if the broadcast takes place
+/// between the 0th dimension to \p endDim. Otherwise, \p return \p N.
+static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
+  if (auto *BN = dyn_cast<BroadcastNode>(N)) {
+    const auto newShape = BN->getTargetDim();
+    const auto axis = BN->getAxis();
+    const auto &origDims = BN->getInput().dims();
+
+    if (origDims.size() + axis != newShape.size()) {
+      return N;
+    }
+
+    for (dim_t i = endDim; i < newShape.size(); i++) {
+      if (!(i >= axis && origDims[i - axis] == newShape[i])) {
+        return N;
+      }
+    }
+
+    return BN->getInput();
+  } else {
+    while (TileNode *TN = dyn_cast<TileNode>(N)) {
+      // Check that the axis of the current Tile is inside of the expected
+      // provided endDim.
+      if (TN->getAxis() >= endDim) {
+        return N;
+      }
+      // Applicable only if original dim is 1 in the Broadcast's Tile.
+      if (TN->getInput().dims()[TN->getAxis()] != 1) {
+        return N;
+      }
+      N = TN->getInput();
+    }
+    if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
+      return RN->getInput();
+    }
+  }
+
+  return N;
+}
+
+/// Looks for supported arithmetic ops following LayerNorm and folds them into
+/// the scale/bias of the LayerNorm if the scale/bias are single-use
+/// Splat/Constant, as we can then later on constant fold them in.
+bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    if (!isa<MulNode>(&N) && !isa<AddNode>(&N)) {
+      continue;
+    }
+    // Currently only support floating point, as otherwise there will be
+    // quantization parameter mismatches.
+    if (!isFloatElemKind(N.getElementType(ArithmeticNode::ResultIdx))) {
+      continue;
+    }
+
+    // Check if the Mul/Add is consuming an LN.
+    LayerNormalizationNode *LN =
+        dyn_cast<LayerNormalizationNode>(N.getNthInput(ArithmeticNode::LHSIdx));
+    if (!LN) {
+      continue;
+    }
+
+    // Check if the RHS is a Splat or Constant. It may have been broadcasted to
+    // the correct shape.
+    NodeValue RHS = unwindBroadcast(N.getNthInput(ArithmeticNode::RHSIdx),
+                                    LN->getResult().dims().size() -
+                                        LN->getScale().dims().size());
+
+    if (!isa<SplatNode>(RHS) && !isa<Constant>(RHS)) {
+      continue;
+    }
+
+    // Make sure the RHS that we want to merge into the LN's Scale/Bias have the
+    // same number of elements, since we're about to reshape them to match.
+    if (RHS.getType()->size() != LN->getScale().getType()->size()) {
+      continue;
+    }
+
+    // RHS may have already been fused with a Reshape to get ready for
+    // Tiling. Reshape RHS back here if necessary.
+    if (RHS.dims() != LN->getScale().dims()) {
+      RHS = F->createReshape(RHS.getNode()->getName().str() + "_squeezed", RHS,
+                             LN->getScale().dims());
+    }
+
+    if (MulNode *MN = dyn_cast<MulNode>(&N)) {
+      // Merge the Mul into a new Scale and Bias, multiplying by the original
+      // Mul RHS that followed the LayerNorm.
+      MulNode *newScale =
+          F->createMul(LN->getScale().getNode()->getName().str() + "_fuse_" +
+                           MN->getName().data(),
+                       LN->getScale(), RHS);
+      MulNode *newBias = F->createMul(LN->getBias().getNode()->getName().str() +
+                                          "_fuse_" + MN->getName().data(),
+                                      LN->getBias(), RHS);
+      LN->getScale().replaceAllUsesOfWith(newScale->getResult(), F, newScale);
+      LN->getBias().replaceAllUsesOfWith(newBias->getResult(), F, newBias);
+      MN->getResult().replaceAllUsesOfWith(LN->getResult());
+      changed = true;
+      continue;
+    }
+
+    if (AddNode *AN = dyn_cast<AddNode>(&N)) {
+      // Merge the Add into a new Bias, adding the original Add RHS that
+      // followed the LayerNorm.
+      AddNode *newBias = F->createAdd(LN->getBias().getNode()->getName().str() +
+                                          "_fuse_" + AN->getName().data(),
+                                      LN->getBias(), RHS);
+      LN->getBias().replaceAllUsesOfWith(newBias->getResult(), F, newBias);
+      AN->getResult().replaceAllUsesOfWith(LN->getResult());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// Looks for an activation directly following \p N from \p F that the backend
 /// \p B supports for fusion.
 template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
@@ -4407,12 +5077,26 @@ template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
     return false;
   }
 
+  // currently not to support asymmetric quantization fusion.
+  if (N->getResult().getType()->isQuantizedType() &&
+      ((N->getResult().getType()->getOffset() != 0) ||
+       (activationNV.getType()->getOffset() != 0))) {
+    return false;
+  }
+
   N->setFusedActivation(activationType);
+
+  // In only symmetric case, If Relu outScale is not equal to Conv outScale,
+  // Conv outScale is replaced by Relu outScale.
+  if (!(activationNV.getType()->isEqual(N->getResult().getType()))) {
+    N->getResult().setType(activationNV.getType());
+  }
+
   activationNV.replaceAllUsesOfWith(N->getResult());
   return true;
 }
 
-static bool foldActivations(Function *F, CompilationContext &cctx,
+static bool foldActivations(Function *F, const CompilationContext &cctx,
                             const Backend *B) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -4424,7 +5108,7 @@ static bool foldActivations(Function *F, CompilationContext &cctx,
   return changed;
 }
 
-void glow::fold(Function *F, CompilationContext &cctx, const Backend *B) {
+void glow::fold(Function *F, const CompilationContext &cctx, const Backend *B) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
   FunctionPassManager FPM("FoldFPM", createDefaultFoldPassPipeline());
@@ -4433,7 +5117,8 @@ void glow::fold(Function *F, CompilationContext &cctx, const Backend *B) {
   foldActivations(F, cctx, B);
 }
 
-void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
+void glow::optimize(Function *F, const CompilationContext &cctx,
+                    const Backend &B) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   FunctionPassManager FPM("TargetDependentGraphOptzFPM",
@@ -4441,7 +5126,7 @@ void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
   FPM.run(F, cctx);
 }
 
-void glow::optimize(Function *F, CompilationContext &cctx) {
+void glow::optimize(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   // Indicates if the given function is completely loaded. A temporary
@@ -4497,6 +5182,202 @@ static void setFP16AccumSLS(Function *F,
       continue;
     }
   } while (nodeIt != stopIt);
+}
+
+/// Look for Dequantize -> Swish -> Quantize, replace it with a quantized Swish.
+bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  if (!cctx.optimizationOpts.enableQuantParamChanges) {
+    return false;
+  }
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *SN = dyn_cast<SwishNode>(&N);
+    if (!SN || SN->getNumUsers() != 1) {
+      continue;
+    }
+
+    QuantizeNode *QN =
+        dyn_cast<QuantizeNode>((*SN->getUsers().begin()).getUser());
+    if (!QN) {
+      continue;
+    }
+
+    DequantizeNode *DN = dyn_cast<DequantizeNode>(SN->getInput());
+    if (!DN) {
+      continue;
+    }
+
+    SwishNode *newSN =
+        F->createSwish(SN->getName().str() + "_int", DN->getInput(),
+                       QN->getResult().getType());
+    QN->getResult().replaceAllUsesOfWith(newSN);
+    changed = true;
+  }
+  return changed;
+}
+
+/// Fold Min -> Max or Max -> Min to Clip
+/// We need to place this function after `OptimizeArithmeticNodes` in which the
+/// constant operator in commutative nodes is moved to the RHS, so that we can
+/// assume SplatNode is on the RHS of MinNode (MaxNode).
+/// Only if it's the following structure we do this optimization
+///
+///   someOtherInput  SplatNode
+///              \     /
+///  SplatNode   MinNode (MaxNode)
+///         \     /
+///         MaxNode (MinNode)
+///            |
+///           Out
+///
+/// ClipNode's min will be the SplatNode (maxSN) connected to the MaxNode.
+/// ClipNode's max will be the SplatNode (minSN) connected to the MinNode.
+bool FoldMinMaxToClip::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    MaxNode *maxNode = dyn_cast<MaxNode>(&N);
+    MinNode *minNode = dyn_cast<MinNode>(&N);
+    NodeValue otherInput;
+    NodeValue resultNV;
+    SplatNode *minSN = nullptr;
+    SplatNode *maxSN = nullptr;
+
+    // We assume SplatNode is on the RHS.
+    // If currect node is MinNode
+    //  - try casting the input to MaxNode and SplatNode.
+    //  - If LHS of MinNode is MaxNode
+    //    - try casting RHS of maxNode to SplatNode.
+    if (minNode) {
+      resultNV = minNode->getResult();
+      maxNode = dyn_cast<MaxNode>(
+          unwindBroadcast(minNode->getLHS(), minNode->getLHS().dims().size()));
+      minSN = dyn_cast<SplatNode>(
+          unwindBroadcast(minNode->getRHS(), minNode->getRHS().dims().size()));
+
+      if (maxNode) {
+        maxSN = dyn_cast<SplatNode>(unwindBroadcast(
+            maxNode->getRHS(), maxNode->getRHS().dims().size()));
+        otherInput =
+            unwindBroadcast(maxNode->getLHS(), maxNode->getLHS().dims().size());
+      }
+    } else if (maxNode) { // vice versa for MaxNode
+      resultNV = maxNode->getResult();
+      minNode = dyn_cast<MinNode>(
+          unwindBroadcast(maxNode->getLHS(), maxNode->getLHS().dims().size()));
+      maxSN = dyn_cast<SplatNode>(
+          unwindBroadcast(maxNode->getRHS(), maxNode->getRHS().dims().size()));
+
+      if (minNode) {
+        minSN = dyn_cast<SplatNode>(unwindBroadcast(
+            minNode->getRHS(), minNode->getRHS().dims().size()));
+        otherInput =
+            unwindBroadcast(minNode->getLHS(), minNode->getLHS().dims().size());
+      }
+    }
+
+    // If any of these is nullptr, it means the structure is not the same as
+    // above example.
+    if (!(minNode && maxNode && minSN && maxSN)) {
+      continue;
+    }
+
+    // If minSN is smaller than maxSN, which is really weird because every entry
+    // of the result will be a same number. In this case, we don't fold them.
+    if (minSN->getValue() < maxSN->getValue()) {
+      DLOG(INFO) << "Catch a combination of MinNode and MaxNode while MinSplat "
+                    "is smaller than MaxSplat, which would make all entries of "
+                    "the result tensor to be the same!";
+      continue;
+    }
+
+    // The second node is broadcasted and we need to broadcast the otherInput.
+    if (otherInput.dims() != resultNV.dims()) {
+      otherInput = F->createBroadcast(
+          otherInput.getNode()->getName().str() + ".broadcast", otherInput,
+          resultNV.dims(), resultNV.dims().size() - otherInput.dims().size());
+    }
+
+    // MinSN is the SplatNode input of MinNode while MaxSN is the SplatNode
+    // input of MaxNode. MinSN should be greater than MaxSN so we put MaxSN as
+    // the min of ClipNode.
+    auto minValue = maxSN->getValue();
+    auto maxValue = minSN->getValue();
+    ClipNode *CN = F->createClip(resultNV.getNode()->getName(), otherInput,
+                                 resultNV.getType(),
+                                 /* min */ minValue, /* max */ maxValue);
+    resultNV.replaceAllUsesOfWith(CN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Look for qparams with scale (when casted to fp16) == 0 and replace them with
+/// zero Splats.
+bool ReplaceZeroScaleFP16QuantNodes::run(Function *F,
+                                         const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  // Cannot run this opt if we're using dummy qparams.
+  if (cctx.precisionConfig.loadUniquedDummyQParams) {
+    return false;
+  }
+
+  auto processNV = [](Function *F, NodeValue resNV) {
+    const TypeRef resTy = resNV.getType();
+    if (resTy->isFusedQuantizedType() || !resTy->isQuantizedType()) {
+      return false;
+    }
+
+    // Check if we have a scale that's below the minimum allowed FP16 val.
+    if (resTy->getScale() >= kMinScaleFP16) {
+      return false;
+    }
+
+    // Skip if used by node with side effects, since we cannot change the
+    // qparams in such cases.
+    if (isUsedByNodeWithSideEffects(resNV.getNode())) {
+      return false;
+    }
+
+    // This NodeValue has scale = 0.f, which means the equivalent float result
+    // will always be equal to 0.f. So create a splat with value 0.f, scale 1.f,
+    // offset 0 instead.
+    auto splatTy = F->getParent()->uniqueType(resTy->getElementType(),
+                                              resTy->dims(), 1.f, 0);
+    auto *SN = F->createSplat(resNV.getNode()->getName().str() + ".splatted",
+                              splatTy, 0.f);
+
+    // Note: must use type unsafe replace because we've changed the qparams.
+    resNV.typeUnsafeReplaceAllUsesOfWith(SN->getResult(), F);
+    return true;
+  };
+
+  bool changed = false;
+  // Since we will be adding in new SplatNodes, reverse iterate to be safe.
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *N = &*it;
+    // For now only support nodes with single outputs.
+    if (N->getNumResults() != 1) {
+      continue;
+    }
+    NodeValue resNV = N->getNthResult(0);
+    changed |= processNV(F, resNV);
+  }
+  for (Placeholder *PH : F->findPlaceholders()) {
+    changed |= processNV(F, PH->getOutput());
+  }
+  for (Constant *C : F->findConstants()) {
+    changed |= processNV(F, C->getOutput());
+  }
+
+  return changed;
 }
 
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
@@ -4569,6 +5450,19 @@ void glow::transformForPrecisionMode(const Backend &B, Function *F,
   if (precConfig.forceFP16AccumSLS) {
     setFP16AccumSLS(F, precConfig);
   }
+
+  // Convert UInt4FusedFP16QTy/UInt8FusedFP16QTy to UInt8FusedQTy.
+  if (precConfig.convert4BitFusedToFP32 || precConfig.convert8BitFusedToFP32) {
+    LOG_SCOPE(F->getLogContext(), "glow::convertFunctionToFP32ScaleOffset");
+    convertFunctionToFP32ScaleOffset(F, precConfig);
+  }
+
+  // In FusedRowwiseQSLWS, convert its indices from Int32(if there is any) to
+  // Int64.
+  if (precConfig.convertIndicesToInt64) {
+    LOG_SCOPE(F->getLogContext(), "glow::convertFunctionIndicesToInt64");
+    convertFunctionIndicesToInt64(F, precConfig);
+  }
 }
 
 Error glow::optimizeFunctionBeforeLowering(Function *F,
@@ -4599,6 +5493,24 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
   return Error::success();
 }
 
+/// Error message to print when there is a graph hash checking error.
+static const char *graphPreLowerHashCheckErrMsg =
+    R"RAW(Graph hash mismatch!
+%s
+%s
+Potential causes:
+1. The profile YAML file was produced with an older version of the Glow tools
+   while the quantization of the model is performed with a newer version.
+2. The profile YAML file was produced for a different model than the model used
+   for quantization.
+3. The profile YAML file was produced for the same model but for a different
+   batch size. If the profile was generated using the 'image-classifier' Glow
+   tool you can select the batch size of the model during profiling using the
+   'minibatch' option. During quantization you can choose the batch size of the
+   model by choosing for each input placeholder the tensor size using the
+   'model-input' option.
+)RAW";
+
 // NOTE: When updating this function, please also update the documentation in
 // docs/GraphOptimizationPipeline.md
 Error glow::optimizeFunction(Function *F, const Backend &B,
@@ -4623,8 +5535,32 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
 
-  // Lower the graph into a sequence of low-level linear algebra operations.
+  // Graph hash check:
+  // - During PROFILING store the hash of the graph at this point of the
+  //   optimization pipeline. The hash will be exported in the YAML profile.
+  // - During QUANTIZATION the hash imported from the YAML profile is used to
+  //   verify the hash of the graph. This is helpful to catch mismatches between
+  //   the graph used during profiling/quantization.
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  if (precConfig.quantMode == QuantizationMode::Profile) {
+    cctx.info.graphPreLowerHash = F->getHash();
+  } else if (precConfig.quantMode == QuantizationMode::Quantize) {
+    const auto &quantConfig = cctx.precisionConfig.quantConfig;
+    if (quantConfig.checkGraphPreLowerHash) {
+      auto profileHash = quantConfig.graphPreLowerHash;
+      auto currentHash = F->getHash();
+      auto profileHashStr =
+          strFormat("Profile graph hash: 0x%" PRIX64, (uint64_t)(profileHash));
+      auto currentHashStr =
+          strFormat("Current graph hash: 0x%" PRIX64, (uint64_t)(currentHash));
+      RETURN_ERR_IF_NOT(profileHash == currentHash,
+                        strFormat(graphPreLowerHashCheckErrMsg,
+                                  profileHashStr.c_str(),
+                                  currentHashStr.c_str()));
+    }
+  }
+
+  // Lower the graph into a sequence of low-level linear algebra operations.
   if (precConfig.quantMode == QuantizationMode::Profile) {
     // When profiling, pass a nullptr for the backend, signaling that all nodes
     // should be lowered. loweredInfoMap logs what is lowered from what for
@@ -4643,6 +5579,10 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // Transform given precision mode; may quantize, convert to fp16, or
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
+
+  // Optimize the quantized graph because quantization nodes should be optimized
+  // before folding Activation into Conv.
+  ::glow::optimize(F, cctx);
 
   // Fold activations before lowering to enable cases which would not fuse after
   // lowering. This concerns particularly convolution&relu since relu will be
@@ -4696,7 +5636,18 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // We already started using backend specific verification when the function
   // state became lowered. Do one more verification pass to make sure everything
   // is in order and to bail if it is not.
-  if (!B.verify(*F, cctx.verboseCompile)) {
+  if (cctx.optimizationOpts.delayAndRecordConstantModification ||
+      cctx.optimizationOpts.skipBackendSupportCheck) {
+    // Only do verification without checking the backend's support if requested,
+    // or if we are disallowing constant modification (since this flag may have
+    // prevented a backend from supporting some Nodes, and may be supported
+    // after constant folding finishes). Expect the caller to verify that Nodes
+    // are supported by the backend later on in such cases.
+    RETURN_ERR_IF_NOT(F->verify(&B),
+                      "Verification after optimization failed for Function " +
+                          F->getName().str() + " and Backend " +
+                          B.getBackendName());
+  } else if (!B.verify(*F, cctx.verboseCompile)) {
     return MAKE_ERR(
         ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
         "Unsupported node(s) found after optimizing Function " +
@@ -4783,29 +5734,63 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 /// \p splitDim represents what dimension to split for each of the inputs to
 /// \p curNode. \p resultDim is the dimension on which we are splitting and then
 /// concatenating the results. \p resultIdx represents the result index from
-/// \p curNode that is being split and later concatenated. \returns an Expected
-/// of the ConcatNode that is created and replaces \p curNode, or otherwise an
-/// Error if parallelization had some issue.
+/// \p curNode that is being split and later concatenated. The size of the
+/// splits will be increased to a multiple of \p modelParallelSplitAlignment, if
+/// possible. If the result after aligning the splits is that the new aligned
+/// splits are larger than the original requested num splits, then the number of
+/// resulting splits may be less than requested. \returns an Expected of the
+/// ConcatNode that is created and replaces \p curNode, or otherwise an Error if
+/// parallelization had some issue.
 static Expected<ConcatNode *>
 parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
                           dim_t inputBatchIdx, dim_t resultIdx,
-                          llvm::ArrayRef<int> splitDims, size_t resultDim) {
+                          llvm::ArrayRef<int> splitDims, size_t resultDim,
+                          dim_t modelParallelSplitAlignment = 1) {
   const int inputIdx = splitDims[inputBatchIdx];
   CHECK_GE(inputIdx, 0) << "Input batch idx must be split";
   const dim_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
   const dim_t elemPerChunk = batchSize / numOfChunksNode;
   const dim_t remain = batchSize % numOfChunksNode;
+  // This alignment will create aligned splits. So for example, if we're
+  // splitting 190 by 3, then without alignment it would be {64, 63, 63}.
+  // With alignment of 64, it will be {64, 64, 62}
+  const dim_t alignedElemPerChunk =
+      ((elemPerChunk + (modelParallelSplitAlignment - 1)) /
+       modelParallelSplitAlignment) *
+      modelParallelSplitAlignment;
 
   RETURN_ERR_IF_NOT(
       batchSize >= numOfChunksNode,
       "Invalid parallelization; batchSize " + std::to_string(batchSize) +
-          "must be >= numOfChunksNode " + std::to_string(numOfChunksNode));
+          " must be >= numOfChunksNode " + std::to_string(numOfChunksNode) +
+          " for node " + curNode->getName().str() + " with kind " +
+          curNode->getKindName());
+
+  // Potentially modify numOfChunksNode, if the aligned size times current
+  // numOfChunksNode exceeds the total size
+  if (modelParallelSplitAlignment > 1) {
+    numOfChunksNode =
+        (batchSize + alignedElemPerChunk - 1) / alignedElemPerChunk;
+  }
 
   std::vector<NodeValue> newNodes(numOfChunksNode);
   for (dim_t i = 0; i < numOfChunksNode; ++i) {
     // Calculate the out type of this chunk.
-    const dim_t sliceStart = i * elemPerChunk + std::min(i, remain);
-    const dim_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+    dim_t sliceStart, sliceEnd;
+
+    if (modelParallelSplitAlignment > 1) {
+      // If we are using aligned splits, then slice by multiples of the
+      // alignment, leaving the rest to the last split. The last split is
+      // necessarily smaller than the other splits.
+      sliceStart = i * alignedElemPerChunk;
+      sliceEnd = (i < numOfChunksNode - 1) ? sliceStart + alignedElemPerChunk
+                                           : batchSize;
+    } else {
+      // Otherwise, distribute elements evenly across the splits and sprinkle
+      // the remainder evenly as well
+      sliceStart = i * elemPerChunk + std::min(i, remain);
+      sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+    }
     VLOG(1) << "\tChunk " << i << ": start: " << sliceStart
             << " end: " << sliceEnd << "\n";
     auto outDims = curNode->dims(resultIdx).vec();
@@ -4865,10 +5850,43 @@ parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
   return concat;
 }
 
+/// Specialized helper for parallelizing ConcatNode \p CN from \p F into
+/// \p numOfChunks.
+static Expected<ConcatNode *>
+parallelizeAndReplaceConcat(Function *F, ConcatNode *CN, dim_t numOfChunks) {
+  auto in = CN->getInputs();
+
+  const dim_t inputSize = in.size();
+  const dim_t elemPerChunk = inputSize / numOfChunks;
+  const dim_t remain = inputSize % numOfChunks;
+
+  RETURN_ERR_IF_NOT(
+      elemPerChunk > 0,
+      "When parallelizing a Concat, inputSize must be larger than numOfChunks");
+
+  auto startIt = in.begin();
+  std::vector<NodeValue> finalConcatInputs;
+  for (dim_t i = 0; i < numOfChunks; ++i) {
+    const dim_t sliceStart = i * elemPerChunk + std::min(i, remain);
+    const dim_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+
+    // Slice out the original Concat chunk's inputs, create a new Concat with
+    // the slice, and then add the new Concat to the final Concat's inputs.
+    std::vector<NodeValue> newInputs(startIt + sliceStart, startIt + sliceEnd);
+    ConcatNode *concatSlice = F->createConcat(CN->getName().str() + "_slice",
+                                              newInputs, CN->getDim());
+    finalConcatInputs.push_back(concatSlice);
+  }
+  ConcatNode *finalConcat = F->createConcat(CN->getName().str() + "_merge",
+                                            finalConcatInputs, CN->getDim());
+  CN->getResult().replaceAllUsesOfWith(finalConcat);
+  return finalConcat;
+}
+
 Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
     Function *F, const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
     const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
-    size_t numOfChunks) {
+    size_t numOfChunks, size_t modelParallelSplitAlignment) {
   // Since we will be transforming the original list of nodes, reverse iterate.
   auto &nodes = F->getNodes();
   size_t numProcessedNodes = 0;
@@ -4942,6 +5960,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     SigmoidNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::SoftMaxNodeKind: {
+        splitDims[SoftMaxNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, SoftMaxNode::InputIdx,
+                    SoftMaxNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::TanhNodeKind: {
         splitDims[TanhNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -4950,9 +5976,20 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           TanhNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::SwishNodeKind: {
+        splitDims[SwishNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          SwishNode::InputIdx,
+                                          SwishNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::TransposeNodeKind: {
         splitDims[TransposeNode::InputIdx] = 0;
-        unsigned_t resultDim = cast<TransposeNode>(curNode)->getShuffle()[0];
+        auto shuffleVec = cast<TransposeNode>(curNode)->getShuffle();
+        unsigned_t resultDim =
+            std::find(shuffleVec.begin(), shuffleVec.end(), 0) -
+            shuffleVec.begin();
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, TransposeNode::InputIdx,
@@ -4967,12 +6004,59 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           ReluNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::GeluNodeKind: {
+        splitDims[GeluNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          GeluNode::InputIdx,
+                                          GeluNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::ClipNodeKind: {
         splitDims[ClipNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           ClipNode::InputIdx,
                                           ClipNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::TileNodeKind: {
+        TileNode *TN = llvm::dyn_cast<TileNode>(curNode);
+        RETURN_ERR_IF_NOT(
+            TN->getAxis() != 0,
+            "Tile node cannot be split on axis 0 which is being replicated");
+        splitDims[TileNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          TileNode::InputIdx,
+                                          TileNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::BatchedReduceAddNodeKind: {
+        BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
+        splitDims[BatchedReduceAddNode::BatchIdx] =
+            (BR->getAxis() == 0) ? 1 : 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
+                    BatchedReduceAddNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ConcatNodeKind: {
+        ConcatNode *concat = llvm::cast<ConcatNode>(curNode);
+        RETURN_ERR_IF_NOT(concat->getDim() == 0,
+                          "Expected to Data parallelize for concat on dim 0");
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceConcat(F, concat, curNumOfChunks));
+        break;
+      }
+      case Kinded::Kind::LayerNormalizationNodeKind: {
+        splitDims[LayerNormalizationNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          LayerNormalizationNode::InputIdx,
+                                          LayerNormalizationNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::QuantizeNodeKind: {
@@ -5016,7 +6100,17 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, FullyConnectedNode::WeightsIdx,
-                    FullyConnectedNode::ResultIdx, splitDims, 1));
+                    FullyConnectedNode::ResultIdx, splitDims, /*resultDim*/ 1,
+                    modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::MatMulNodeKind: {
+        splitDims[MatMulNode::RHSIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, MatMulNode::RHSIdx,
+                    MatMulNode::ResultIdx, splitDims, /*resultDim*/ 1,
+                    modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
@@ -5025,20 +6119,71 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         }
         splitDims[ReluNode::InputIdx] = 1;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
-                                          ReluNode::InputIdx,
-                                          ReluNode::ResultIdx, splitDims, 1));
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ReluNode::InputIdx,
+                    ReluNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
-        if (curNode->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
+        auto *CL = llvm::cast<ClipNode>(curNode);
+        if (CL->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
           break;
         }
         splitDims[ClipNode::InputIdx] = 1;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
-                                          ClipNode::InputIdx,
-                                          ClipNode::ResultIdx, splitDims, 1));
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ClipNode::InputIdx,
+                    ClipNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::TileNodeKind: {
+        if (curNode->getNthInput(TileNode::InputIdx).dims().size() < 2) {
+          break;
+        }
+        TileNode *TN = llvm::dyn_cast<TileNode>(curNode);
+        RETURN_ERR_IF_NOT(
+            TN->getAxis() != 1,
+            "Tile node cannot be split on axis 1 which is being replicated");
+        splitDims[TileNode::InputIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, TileNode::InputIdx,
+                    TileNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::ConcatNodeKind: {
+        ConcatNode *concat = llvm::cast<ConcatNode>(curNode);
+        RETURN_ERR_IF_NOT(concat->getDim() == 1,
+                          "Expected to Model parallelize for concat on dim 1");
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceConcat(F, concat, curNumOfChunks));
+        break;
+      }
+      case Kinded::Kind::QuantizeNodeKind: {
+        if (curNode->getNthInput(QuantizeNode::InputIdx).dims().size() < 2) {
+          break;
+        }
+        splitDims[QuantizeNode::InputIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, QuantizeNode::InputIdx,
+                    QuantizeNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::DequantizeNodeKind: {
+        if (curNode->getNthInput(DequantizeNode::InputIdx).dims().size() < 2) {
+          break;
+        }
+        splitDims[DequantizeNode::InputIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, DequantizeNode::InputIdx,
+                    DequantizeNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       default:
@@ -5067,4 +6212,27 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     "Not all Nodes specified in parOpts were processed.");
 
   return replacedMap;
+}
+
+void glow::updateQuantReluTypes(Function *F) {
+  for (Node &N : F->getNodes()) {
+    // Look for quantized Relus that have negative min, and update their min to
+    // be zero.
+    auto *RN = llvm::dyn_cast<ReluNode>(&N);
+    if (!RN || !RN->getResult().getType()->isQuantizedType() ||
+        isUsedByNodeWithSideEffects(RN)) {
+      continue;
+    }
+    const TypeRef RNTy = RN->getResult().getType();
+
+    const auto qRange = RNTy->getQuantizedValueRange();
+    if (qRange.first >= 0) {
+      continue;
+    }
+    const auto qParams =
+        quantization::chooseQuantizationParams({0, qRange.second});
+    const TypeRef qReluTy = F->getParent()->uniqueType(
+        RNTy->getElementType(), RNTy->dims(), qParams.scale, qParams.offset);
+    RN->setType(ReluNode::ResultIdx, qReluTy);
+  }
 }

@@ -19,7 +19,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Type.h"
-
+#include "glow/Importer/CommonOperatorLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include <torch/csrc/jit/ir/ir.h>
@@ -28,27 +28,23 @@ DECLARE_bool(dumpFinalGlowGraph);
 
 namespace glow {
 
-/// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
-/// For PyTorch: 0 <= orig_fp32/scale_2 + offset_2 <= 255
-/// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
-const int32_t OFFSETSHIFT = 128;
+struct InputMeta;
 
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
 struct PyTorchLoaderSettings {
-  /// This should be used with CachingGraphRunner::warmCache. When this flag is
-  /// enabled, it assumes the glow graph is compiled ahead of time instead of
-  /// at PyTorch JIT runtime. And the registered glow operator will run
-  /// the precompiled results directly.
-  bool preCompilePyTorchModule = false;
+private:
+  void initSettings();
+
+public:
+  PyTorchLoaderSettings();
+  ~PyTorchLoaderSettings() {}
+
+  std::string toString() const;
 
   /// Whether or not run the custom pass that fuses jit nodes into a glow node.
   bool fusionPassEnabled = false;
-
-  /// The PyTorch symbol used to identify the Node that contains PyTorch
-  /// subgraphs that are compiled for running on Glow.
-  bool weightFreezingEnabled = true;
 
   /// Dump Glow dot graph to file after model loading is finished.
   bool dumpGlowDag = false;
@@ -82,11 +78,32 @@ struct PyTorchLoaderSettings {
   /// Convert fp32 fused opts to fp16 ops during Glow compilation.
   bool convertFusedToFP16 = false;
 
+  /// Print all JIT node indexes for debugging use.
+  bool printJITIndex = false;
+
+  /// Add clip operators after each fp16 ops during Glow compilation.
+  bool clipFP16 = false;
+
+  /// Force glow to skip clipping fp16 Node inputs to min/max
+  bool clipFP16SkipInputs = true;
+
+  /// Enable fp16 conversion for Placeholders
+  bool convertPlaceholdersToFP16 = true;
+
+  /// Enable fp16 conversion for Constants
+  bool convertConstantsToFP16 = true;
+
+  /// Force all SLS/SLWS ops to use FP16 accumulation.
+  bool forceFP16AccumSLS = true;
+
   /// Dump Glow dot graph to file after Glow compilation is finished.
   bool dumpFinalGlowGraph = false;
 
   /// Enable tracing inside of Glow.
   bool enableGlowTracing = false;
+
+  /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
+  bool enableRemoveMutation = true;
 
   /// Number of traces per json trace file dump.
   size_t numTracesPerDump = 1;
@@ -102,6 +119,9 @@ struct PyTorchLoaderSettings {
   /// and from the function to file as ONNX graphs.
   bool writeToOnnx = false;
 
+  /// Whether or not to use zip mode when writing graphs to ONNX files
+  bool onnxZipMode = false;
+
   /// Whether or not to do a numerical comparions of Glow and jit outputs
   bool jitVsGlowCompare = false;
 
@@ -111,6 +131,44 @@ struct PyTorchLoaderSettings {
   /// Whether not to set the saturateHost flag (use all available device) when
   /// adding networks to HostManager.
   bool saturateHost = false;
+
+  /// If true then randomize the Constants in the Function loaded by
+  /// PyTorchModelLoader.
+  bool randomizeConstants = false;
+
+  // If true then writing to Onnx without randomizing the constants is allowed.
+  // Otherwise, program will be abort if trying to write to Onnx without
+  // randomizing the constants.
+  bool writeWithoutRandomize = false;
+
+  /// Name of the Glow backend to use.
+  std::string backendName = "Interpreter";
+
+  /// Number of Glow devices to use.
+  int32_t numDevices = -1;
+
+  // Whether to run shape inference of meta input
+  bool runShapeInference = false;
+
+  /// Run Fusion flow within to_glow compile function
+  bool enableDebugFuser = false;
+
+  /// Whether to enforce module conversion to set include_last_offset for all
+  /// embedding-bag-like operators. This is default to true since it is
+  /// currently a requirement if we want to support partial inputs
+  bool setIncludeLastOffsets = true;
+
+  /// Call Glow's Function verifier after loading each JIT node to catch any
+  /// Glow graph errors as soon as possible during loading. This is disabled by
+  /// default because it can slow down model loading.
+  bool debugContinuouslyVerifyDuringModelLoading = false;
+};
+
+/// Represents different possible output types from to_glow modules.
+enum class GraphOutputType {
+  TENSORS,      // Single tensor or multiple tensors
+  TENSOR_TUPLE, // Single tuple of tensors
+  TENSOR_LIST,  // Single list of tensors
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
@@ -122,26 +180,27 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty);
 /// Given a c10 typekind \p ty, \returns a matching Glow ElemKind.
 ElemKind typeKindToElemKind(c10::TypeKind ty);
 
-/// \returns the PyTorchLoaderSettings singleton to be used throughout Glow's
-/// PyTorch model loading code.
-PyTorchLoaderSettings &getPyTorchLoaderSettings();
+/// Get a snapshot of the current global PyTorchLoaderSettings singleton
+PyTorchLoaderSettings getGlobalPyTorchLoaderSettingsSnapshot();
 
-/// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
-std::shared_ptr<runtime::HostManager> getHostManager();
+/// Get a mutable reference to the current global PyTorchLoaderSettings
+/// singleton, this should almost never be used outside of binding.cpp.
+PyTorchLoaderSettings &getGlobalPyTorchLoaderSettingsMutable();
 
-/// Set the active HostManager to one that owns \p numDevices of type
-/// \p backendName.
-void setHostManager(const std::string &backendName, size_t numDevices = 1);
-
-/// \returns the name of the device backend used by the active HostManager.
-const std::string &getBackendName();
-
-/// \returns the quantity of the device backends used by the active HostManager.
-size_t getBackendNumDevices();
+/// \returns the HostManager singleton used to run all PyTorch graphs with for
+/// the Glow backend \p backendName. The HostManager will have \p numDevices
+/// devices. If a previous HostManager is actively being used with the same
+/// backend but a different number of devices then this is an error. If
+/// numDevices is -1 then the active HostManager for the given backend will be
+/// returned, if no active HostManager is found then a HostManager with 1 device
+/// will be returned.
+std::shared_ptr<runtime::HostManager>
+getHostManager(const std::string &backendName, int32_t numDevices = -1);
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
-/// the subgraph that Glow will compile and run.
-const c10::Symbol &getGlowSymbol();
+/// the subgraph that Glow will compile and run. \p g is the PyTorch graph to
+/// lower, and if specified, will be used to generate unique symbol
+c10::Symbol getGlowSymbol(std::shared_ptr<torch::jit::Graph> g = nullptr);
 
 /// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
@@ -158,6 +217,17 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
+
+/// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
+/// raw string containing the meta data of the glow fuser node input.
+void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
+                   runtime::DeferredWeightLoader *loader,
+                   PyTorchLoaderSettings settings);
+
+/// Lower a pytorch \p module to glow before execution. \p inputMeta is a
+/// vector containing the meta data of the model inputs.
+void glowAOTFusionWithShapeInference(torch::jit::Module &module,
+                                     const std::vector<glow::InputMeta> &);
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in

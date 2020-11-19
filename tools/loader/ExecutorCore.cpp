@@ -134,6 +134,10 @@ Executor::Executor(std::string appName, int argc, char **argv) {
   // the ExecutionEngine and Function.
   parseCommandLine(argc, argv);
 
+  for (const auto &inputImageDir : inputImageDirs) {
+    parseInputDir(inputImageDir);
+  }
+
   if (!inputImageListFile.empty()) {
     CHECK_EQ(inputImageFilenames.size(), 0)
         << "When using -input-image-list-file all Input images must be "

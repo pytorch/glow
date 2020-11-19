@@ -41,6 +41,7 @@ add_library(Graph
 target_link_libraries(Graph
                       PUBLIC
                         Base
+                        Flags
                         Support
                         QuantizationBase
                         TensorPool)

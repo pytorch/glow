@@ -19,6 +19,7 @@
 #include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
@@ -80,10 +81,6 @@ llvm::cl::opt<unsigned> concurrentRequestsOpt(
     "concurrent_count", llvm::cl::desc("Number of concurrent requests."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<unsigned> numDevicesOpt(
-    "glow_num_devices", llvm::cl::desc("Number of devices for Glow backend"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
-
 llvm::cl::opt<float> deviceMemoryOpt(
     "glow_device_memory",
     llvm::cl::desc("Size of memory for a certain Glow backend device"),
@@ -94,32 +91,11 @@ llvm::cl::opt<float> thresholdOpt(
     "threshold", llvm::cl::desc("theshold for tensor numeric comparison"),
     llvm::cl::Optional, llvm::cl::init(1e-5), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<bool> glowDumpGraphOpt(
-    "glow_dump_graph",
-    llvm::cl::desc("Dump the glow Graph into files before compilation"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
 llvm::cl::opt<bool> glowDumpGraphAfterLoadOpt(
     "glow_dump_graph_after_load",
     llvm::cl::desc(
         "Dump the glow Graph into files immediately after loading from ONNX"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool>
-    globalFp16Opt("glow_global_fp16",
-                  llvm::cl::desc("Enable fp16 lowering for all ops on the net"),
-                  llvm::cl::Optional, llvm::cl::init(true),
-                  llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> globalFp16ConstantsOpt(
-    "glow_global_fp16_constants",
-    llvm::cl::desc("Enable fp16 conversion for Constants"), llvm::cl::Optional,
-    llvm::cl::init(true), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> globalFp16PlaceholdersOpt(
-    "glow_global_fp16_placeholders",
-    llvm::cl::desc("Enable fp16 conversion for Placeholders"),
-    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> sliceConcatFp32Opt(
     "glow_slice_concat_fp32",
@@ -132,80 +108,28 @@ llvm::cl::opt<bool> dumpOutputsOpt("dump_outputs",
                                    llvm::cl::Optional, llvm::cl::init(true),
                                    llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<bool> fuseScaleOffsetFp16Opt(
-    "glow_global_fused_scale_offset_fp16",
+llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
+    "glow_global_fused_scale_offset_fp32",
     llvm::cl::desc(
-        "Enable fp16 lowering for all op inputs using fused scale/offset"),
-    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
+        "Enable converting scale/offset in sls's input data from fp16 to fp32"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<bool>
-    ClipFp16Opt("glow_clip_fp16",
-                llvm::cl::desc("Force glow to clip fp16 values to min/max"),
-                llvm::cl::Optional, llvm::cl::init(true),
-                llvm::cl::cat(reproTestCat));
+llvm::cl::opt<bool> indicesInt64Opt(
+    "glow_global_indices_fp64",
+    llvm::cl::desc("Enable converting scale/offset in frwqslws's data from "
+                   "int32 to int64"));
 
-llvm::cl::opt<bool> ClipFp16SkipInputsOpt(
-    "glow_clip_fp16_skip_inputs",
-    llvm::cl::desc("Force glow to skip clipping fp16 Node inputs to min/max"),
-    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool>
-    forceFP16AccumSLSOpt("glow_global_force_sls_fp16_accum",
-                         llvm::cl::desc("Force FP16 accumulation for SLS ops"),
-                         llvm::cl::Optional, llvm::cl::init(true),
-                         llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> enablePartialTensor("glow_enable_partial_tensor",
-                                        llvm::cl::desc("Enable partial tensor"),
-                                        llvm::cl::Optional,
-                                        llvm::cl::init(true),
-                                        llvm::cl::cat(reproTestCat));
+llvm::cl::opt<bool, /* ExternalStorage */ true> enablePartialTensorOpt(
+    "glow_enable_partial_tensor", llvm::cl::desc("Enable partial tensor"),
+    llvm::cl::Optional, llvm::cl::location(glow::flags::EnablePartialTensors),
+    llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<unsigned> itersOpt(
     "iters", llvm::cl::desc("Number of times to loop over provided input."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> useSparseNNPartitioningScheme(
-    "glow_use_sparsenn_partitioning_scheme",
-    llvm::cl::desc("Enable SparseNN partitioning scheme"), llvm::cl::Optional,
-    llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> sparseNNPartitioningAddSLSConcats(
-    "glow_sparsenn_partitioning_add_sls_concats",
-    llvm::cl::desc("Add extra concats inside of SLS partitions for more "
-                   "efficient inter-partitition transfers"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCards(
-    "glow_snn_partitioning_num_cards",
-    llvm::cl::desc("Num cards used in SparseNN partitioning scheme"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> sparseNNPartitioningSchemeKBytesPerCard(
-    "glow_snn_partitioning_kbytes_per_card",
-    llvm::cl::desc("Num kbytes per card in SparseNN partitioning scheme"),
-    llvm::cl::Optional, llvm::cl::init(5000000), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresSLS(
-    "glow_snn_partitioning_num_cores_sls",
-    llvm::cl::desc("Num cores used for SLS in SparseNN partitioning scheme"),
-    llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresOther(
-    "glow_snn_partitioning_num_cores_other",
-    llvm::cl::desc(
-        "Num cores used for non-SLS in SparseNN partitioning scheme"),
-    llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> glowNNPINumParallelChunks(
-    "glow_nnpi_num_parallel_chunks",
-    llvm::cl::desc("Number of parallel splits to apply to certain ops"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> glowDumpTrace("glow_dump_debug_traces",
-                                  llvm::cl::desc("Dump glow trace"),
-                                  llvm::cl::Optional, llvm::cl::init(false),
-                                  llvm::cl::cat(reproTestCat));
+llvm::cl::opt<unsigned> durationMinOpt(
+    "duration_min", llvm::cl::desc("Running duration limit in minutes"),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> glowEnableDeviceTrace(
     "glow_enable_device_traces",
@@ -221,29 +145,6 @@ llvm::cl::opt<std::string>
                       llvm::cl::desc("Dump glow trace file"),
                       llvm::cl::Optional, llvm::cl::init(std::string("")),
                       llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<unsigned> glowMaxActiveRequests(
-    "glow_max_active_requests",
-    llvm::cl::desc(
-        "Number of active requests before host manager start queuing"),
-    llvm::cl::Optional, llvm::cl::init(48), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<unsigned> glowMaxQueueSize(
-    "glow_max_queue_size",
-    llvm::cl::desc(
-        "Max number of pending requeusts in glow's host manager queue before "
-        "rejecting new request"),
-    llvm::cl::Optional, llvm::cl::init(100), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<unsigned> glowExecutorThreads(
-    "glow_executor_threads",
-    llvm::cl::desc("Number of executor threads for host manager"),
-    llvm::cl::Optional, llvm::cl::init(10), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> glowSaturateHost(
-    "glow_saturate_host",
-    llvm::cl::desc("Duplicate netowrk on all available devices"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<int32_t>
     topKCompare("topk_compare",
@@ -276,11 +177,104 @@ llvm::cl::opt<float> cosineSimilarityThreshold(
 llvm::cl::opt<bool> onnxLoaderZipMode(
     "zip_mode", llvm::cl::desc("zipMode to use with OnnxModelLoader"),
     llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
+llvm::cl::opt<unsigned> replicationCountOpt(
+    "replication_count", llvm::cl::desc("Set the network replication count"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
+/// Explicitly show gflags help/version info, depending on \p foundHelpFlag and
+/// \p foundVersionFlag. llvm shows its own help/version info when it parses.
+void gflagsShowHelpVersion(bool foundHelpFlag, bool foundVersionFlag) {
+  const char *binName = gflags::ProgramInvocationShortName();
+  if (foundHelpFlag) {
+    gflags::SetUsageMessage(
+        strFormat("gflags for %s\nUSAGE: %s [options]:", binName, binName));
+    gflags::ShowUsageWithFlagsRestrict(binName, /* restrict_ */ "");
+    llvm::outs() << "\nLLVM CommandLine options:\n";
+  }
+  if (foundVersionFlag) {
+    llvm::outs() << "gflags version:\n";
+    const char *versionStr = gflags::VersionString();
+    llvm::outs() << binName;
+    if (versionStr && *versionStr) {
+      llvm::outs() << " version " << versionStr;
+    }
+    llvm::outs() << "\n\n";
+  }
+}
 
 void parseCommandLine(int argc, char **argv) {
+  // Use different defaults for some flags:
+  FLAGS_glow_global_fp16 = true;
+  FLAGS_glow_clip_fp16 = true;
+  FLAGS_glow_global_fused_scale_offset_fp16 = true;
+  FLAGS_glow_snn_partitioning_kbytes_per_card = 5000000;
+  FLAGS_glow_snn_partitioning_num_cores_sls = 6;
+  FLAGS_glow_snn_partitioning_num_cores_other = 6;
+
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
+
+  // Verify there's no unexpected overlap in flags by llvm/gflags.
+  const auto &llvmOpts = llvm::cl::getRegisteredOptions();
+  for (const auto &opt : llvmOpts) {
+    static const llvm::StringSet<> allowedInBoth = {"help", "version"};
+    if (allowedInBoth.count(opt.getKey())) {
+      continue;
+    }
+    gflags::CommandLineFlagInfo dummy;
+    CHECK(!gflags::GetCommandLineFlagInfo(opt.getKey().data(), &dummy))
+        << "Error: Repeated flag used by both llvm and gflags: "
+        << opt.getKey().data();
+  }
+
+  // Separate out llvm and gflags into their own argc/argv.
+  llvm::SmallVector<char *, 40> llvmArgv, gflagsArgv;
+  llvmArgv.push_back(argv[0]);
+  gflagsArgv.push_back(argv[0]);
+  bool foundHelpFlag = false;
+  bool foundVersionFlag = false;
+  for (int i = 1; i < argc; ++i) {
+    llvm::StringRef flagName(argv[i]);
+    // Positional args are always llvm cl args.
+    if (!flagName.startswith("-")) {
+      llvmArgv.push_back(argv[i]);
+      continue;
+    }
+
+    // Strip off leading '-'.
+    flagName = flagName.drop_while([](char c) -> bool { return c == '-'; });
+    // Look for everything leading up to '=', if any.
+    flagName = flagName.take_until([](char c) -> bool { return c == '='; });
+
+    // Now check if flagName is a gflag, otherwise assume it was from llvm. If
+    // help/version, always pass to llvm; we will also call gflags directly for
+    // them to print before llvm parses/prints, so that both gflags and llvm
+    // will print help/version.
+    gflags::CommandLineFlagInfo dummy;
+    if (!gflags::GetCommandLineFlagInfo(flagName.str().c_str(), &dummy) ||
+        flagName == "help" || flagName == "version") {
+      llvmArgv.push_back(argv[i]);
+      if (flagName == "help") {
+        foundHelpFlag = true;
+      } else if (flagName == "version") {
+        foundVersionFlag = true;
+      }
+    } else {
+      gflagsArgv.push_back(argv[i]);
+    }
+  }
+  int llvmArgc = static_cast<int>(llvmArgv.size());
+  int gflagsArgc = static_cast<int>(gflagsArgv.size());
+
+  // Now we can parse both llvm and gflags safely. All gflags should be
+  // legitimate. All other flags will be passed to llvm, which will complain
+  // about unknown ones.
+  char **gflagsArgvPtr = &gflagsArgv[0];
+  gflags::AllowCommandLineReparsing();
+  gflags::ParseCommandLineFlags(&gflagsArgc, &gflagsArgvPtr,
+                                /* remove_flags */ false);
+  gflagsShowHelpVersion(foundHelpFlag, foundVersionFlag);
   llvm::cl::ParseCommandLineOptions(
-      argc, argv,
+      llvmArgc, &llvmArgv[0],
       " The Glow compiler\n\n"
       "Glow is a compiler for neural network accelerators.\n");
 
@@ -321,7 +315,7 @@ public:
     }
 
     std::stringstream ss;
-    ss << "weight_" << i_++;
+    ss << "weight_" << i_;
     largeBuffer_ = zip_->getRecord(ss.str());
     ::ONNX_NAMESPACE::TensorProto t;
     t.ParseFromString(largeBuffer_);
@@ -337,8 +331,17 @@ public:
     }
     auto ty = typeInfo_[currentBlobName_];
 
+    ss.str("");
+    ss << "data_" << i_++;
+    largeBuffer_.clear();
+    if (zip_->hasRecord(ss.str())) {
+      largeBuffer_ = zip_->getRecord(ss.str());
+      LOG(INFO) << "Read weight data " << ss.str() << " of size "
+                << largeBuffer_.size();
+    }
     currentTensor_.reset(new ::glow::Tensor());
-    RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get()));
+    RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get(),
+                                     /*useGlowCustomOps*/ false, largeBuffer_));
     CHECK(currentTensor_->getType().isEqual(ty))
         << "Mismatched tensor type: " << currentTensor_->getType().toString()
         << " vs " << ty.toString();
@@ -361,7 +364,6 @@ public:
 private:
   std::unique_ptr<::glow::ZipReader> zip_;
   std::string largeBuffer_;
-  std::map<std::string, ::glow::Type> typeInfo_;
   std::string currentBlobName_;
   std::unique_ptr<::glow::Tensor> currentTensor_;
   size_t weightsToLoad_{0};
@@ -428,78 +430,122 @@ int run() {
   Error err = Error::empty();
   bool usingGlowCustomOps = false;
   CompilationContext cctx;
+  cctx.replicationCount = replicationCountOpt;
+  cctx.maxActiveRequestsPerInstance = glow::flags::MaxActiveRequestsPerInstance;
   runtime::PrePartitionedConfig PPC;
   cctx.prepartitionedConfig = &PPC;
   {
     ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *mod, "test", &PPC, &err,
                            onnxLoaderZipMode,
-                           &cctx.backendOpts.backendSpecificNodeInfo);
+                           &cctx.backendOpts.backendSpecificNodeInfo,
+                           /* loadIntoExistingModule */ false,
+                           /* disableConstFoldInLoader */ true);
     usingGlowCustomOps = onnxLD.usingGlowCustomOps();
   }
   CHECK(!ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
   llvm::outs() << "End onnx model load\n";
 
-  for (Function *F : mod->getFunctions()) {
-    F->dumpDAG(F->getName().str() + ".dot");
+  if (glowDumpGraphAfterLoadOpt) {
+    for (Function *F : mod->getFunctions()) {
+      F->dumpDAG(glow::flags::DumpGraphPath + F->getName().str() + ".dot");
+    }
   }
 
   // Build host manager and compile the module.
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
-  if (globalFp16Opt) {
-    precConfig.convertToFP16 = globalFp16Opt;
+  if (glow::flags::ConvertToFP16) {
+    precConfig.convertToFP16 = true;
     if (sliceConcatFp32Opt) {
       precConfig.precisionModeKindSet.insert(Kinded::Kind::SliceNodeKind);
       precConfig.precisionModeKindSet.insert(Kinded::Kind::ConcatNodeKind);
     }
     llvm::outs() << "Conversion to fp16 enabled\n";
   }
-  if (globalFp16PlaceholdersOpt) {
-    precConfig.convertPlaceholdersToFP16 = globalFp16PlaceholdersOpt;
+  if (glow::flags::ConvertPlaceholdersToFP16) {
+    precConfig.convertPlaceholdersToFP16 = true;
     llvm::outs() << "Conversion of Placeholders to fp16 enabled\n";
   }
-  if (globalFp16ConstantsOpt) {
-    precConfig.convertConstantsToFP16 = globalFp16ConstantsOpt;
+  if (glow::flags::ConvertConstantsToFP16) {
+    precConfig.convertConstantsToFP16 = true;
     llvm::outs() << "Conversion of Constants to fp16 enabled\n";
   }
-  if (fuseScaleOffsetFp16Opt) {
-    precConfig.convertFusedToFP16 = fuseScaleOffsetFp16Opt;
+  if (glow::flags::ConvertFusedScaleOffsetToFP16) {
+    precConfig.convertFusedToFP16 = true;
     llvm::outs() << "Conversion of fused scales/offsets to fp16 enabled\n";
   }
-  if (ClipFp16Opt) {
-    precConfig.clipFP16 = ClipFp16Opt;
+  if (fuseScaleOffsetFp32Opt) {
+    precConfig.convert4BitFusedToFP32 = fuseScaleOffsetFp32Opt;
+    precConfig.convert8BitFusedToFP32 = fuseScaleOffsetFp32Opt;
+    llvm::outs()
+        << "Conversion of fused scales/offsets to fp32 in frwqslws enabled\n";
+  }
+  if (indicesInt64Opt) {
+    precConfig.convertIndicesToInt64 = indicesInt64Opt;
+    llvm::outs() << "Conversion of indices to int64 enabled\n";
+  }
+  if (glow::flags::ClipToFP16) {
+    precConfig.clipFP16 = true;
     llvm::outs() << "Clipping to fp16 enabled\n";
   }
-  if (ClipFp16SkipInputsOpt) {
-    precConfig.clipFP16SkipInputs = ClipFp16SkipInputsOpt;
+  if (glow::flags::SkipInputsOnClipToFP16) {
+    precConfig.clipFP16SkipInputs = true;
     llvm::outs() << "Skipping clipping for fp16 Node inputs fp16\n";
   }
-  if (forceFP16AccumSLSOpt) {
+  if (glow::flags::ForceSLSToFP16Accum) {
     precConfig.forceFP16AccumSLS = true;
     llvm::outs() << "Forcing fp16 accumulation for SLS ops enabled\n";
   }
-  if (glowDumpGraphOpt) {
+  if (!glow::flags::EnableQuantParamChanges) {
+    cctx.optimizationOpts.enableQuantParamChanges = false;
+    LOG(INFO) << "Disabling quantization param changes during optimizations";
+  }
+  if (glow::flags::DumpGraph) {
     cctx.dumpFinalGraph = true;
+    cctx.dumpGraphPath = glow::flags::DumpGraphPath;
   }
 
-  if (useSparseNNPartitioningScheme) {
-    cctx.optimizationOpts.useSparseNNPartitioningScheme =
-        useSparseNNPartitioningScheme;
+  if (glow::flags::UseSparseNNPartitioningScheme) {
+    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
-        sparseNNPartitioningAddSLSConcats;
+        glow::flags::SparseNNPartitioningAddSLSConcats;
+    cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
+        glow::flags::SparseNNPartitioningBalancePerfModel;
+    cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
+        glow::flags::SparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
-        sparseNNPartitioningSchemeNumCards;
+        glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
-        sparseNNPartitioningSchemeKBytesPerCard;
+        glow::flags::SparseNNPartitioningSchemeSLSTableKBytesPerCard;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
-        sparseNNPartitioningSchemeNumCoresSLS;
+        glow::flags::SparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
-        sparseNNPartitioningSchemeNumCoresOther;
+        glow::flags::SparseNNPartitioningSchemeNumCoresOther;
   }
 
-  if (glowNNPINumParallelChunks > 1) {
+#ifdef GLOW_WITH_NNPI
+  if (glow::nnpi::flags::NumParallelChunks > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
-        std::to_string(glowNNPINumParallelChunks);
+        std::to_string(glow::nnpi::flags::NumParallelChunks);
+  }
+  if (glow::nnpi::flags::ModelParallelSplitAlignment > 1) {
+    cctx.backendOpts.backendSpecificOpts["NNPIModelParallelSplitAlignment"] =
+        std::to_string(glow::nnpi::flags::ModelParallelSplitAlignment);
+  }
+#endif
+
+  if (glow::flags::UseDAGOptimizer) {
+    cctx.callDAGOptimizer = true;
+    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+        glow::flags::DAGOptimizerNumParallelChunks;
+    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+        glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
+    cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
+        glow::flags::DAGOptimizerPlacementTaggingAlgorithm;
+  }
+
+  if (glow::flags::DelayAndRecordConstantModification) {
+    cctx.optimizationOpts.delayAndRecordConstantModification = true;
   }
 
   // Load deferred weights if applicable
@@ -530,16 +576,22 @@ int run() {
     cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
   }
 
-  auto configs = runtime::generateDeviceConfigs(numDevicesOpt, ExecutionBackend,
-                                                deviceMemoryOpt);
+  auto configs = runtime::generateDeviceConfigs(
+      glow::flags::NumDevices, ExecutionBackend, deviceMemoryOpt);
   runtime::HostConfig hostConfig;
-  hostConfig.maxActiveRequests = glowMaxActiveRequests;
-  hostConfig.maxQueueSize = glowMaxQueueSize;
-  hostConfig.executorThreads = glowExecutorThreads;
+  hostConfig.maxActiveRequests = glow::flags::MaxActiveRequests;
+  hostConfig.maxQueueSize = glow::flags::MaxQueueSize;
+  hostConfig.executorThreads = glow::flags::ExecutorThreads;
 
   auto hostManager =
       glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
-  cctx.saturateHost = glowSaturateHost;
+  if (glow::flags::EnablePartialTensors) {
+    CHECK(hostManager->getBackend(ExecutionBackend).supportsPartialTensors())
+        << "Backend " << ExecutionBackend
+        << " doesn't support partial tensor but enablePartialTensor is set to "
+           "true.";
+  }
+  cctx.saturateHost = glow::flags::SaturateHost;
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
   // Parse all input and output files ahead of inference.
@@ -584,290 +636,321 @@ int run() {
   }
 
   llvm::outs() << "Starting inference\n";
-  TraceContext mergedTraceContext(TraceLevel::STANDARD);
-  folly::CPUThreadPoolExecutor threadPool(concurrentRequestsOpt);
-  std::mutex mutex;
-  std::condition_variable cv;
-  int numTotalInferences = inputGroupSize * itersOpt;
-  int numFinishedInferences = 0;
+  auto nowTime = std::chrono::steady_clock::now();
+  auto endTimeDuration = nowTime + std::chrono::minutes(durationMinOpt);
+  do {
+    TraceContext mergedTraceContext(TraceLevel::STANDARD);
+    folly::CPUThreadPoolExecutor threadPool(concurrentRequestsOpt);
+    std::mutex mutex;
+    std::condition_variable cv;
+    int numTotalInferences = inputGroupSize * itersOpt;
+    int numFinishedInferences = 0;
 
-  std::list<InferenceResult> results;
-
-  // Whether to collect results and check accuracy
-  bool runAccuracyChecks =
-      !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
-
-  if (glowDumpTrace && glowEnableDeviceTrace) {
-    // Start device traces.
-    hostManager->setTraceContext(
-        glow::make_unique<TraceContext>(TraceLevel::STANDARD));
-    Error startErr = hostManager->startDeviceTrace();
-    if (ERR_TO_BOOL(std::move(startErr))) {
-      LOG(WARNING) << "Failed to start device traces";
-    }
-  }
-
-  auto startTime = std::chrono::steady_clock::now();
-  for (int ioIndex = 0, numInferencesIssued = 0;
-       numInferencesIssued < numTotalInferences;
-       ++numInferencesIssued, ioIndex = numInferencesIssued % inputGroupSize) {
-
-    results.emplace_back(InferenceResult());
-    auto &result = results.back();
-
-    threadPool.add([&parsedInputs, &nonStaticPlaceholderList, ioIndex,
-                    &mergedTraceContext, &hostManager, &result, &cv, &mutex,
-                    numTotalInferences, &numFinishedInferences,
-                    usingGlowCustomOps, runAccuracyChecks]() {
-      // Setup the inputs.
-      auto ctx = glow::make_unique<ExecutionContext>();
-
-      TraceContext *traceContext = nullptr;
-      if (glowDumpTrace) {
-        ctx->setTraceContext(
-            glow::make_unique<TraceContext>(TraceLevel::STANDARD));
-        traceContext = ctx->getTraceContext();
-        traceContext->setThreadName("Caller");
-      }
-      TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
-                        "Dispatch to prep input and dispatch");
-
-      auto &bindings = *ctx->getPlaceholderBindings();
-      bindings.clear();
-      bindings.allocate(nonStaticPlaceholderList);
-      const auto &ps = bindings.pairs();
-      for (const auto &kv : ps) {
-        VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();
-      }
-
-      const auto &inputGroup = parsedInputs[ioIndex];
-      // This holds the tensor that actually owns the data for all the partial
-      // inputs.
-      std::vector<Tensor> partialTensorPayloads;
-      fillPlaceholders(inputGroup, &bindings,
-                       enablePartialTensor ? &partialTensorPayloads : nullptr,
-                       usingGlowCustomOps);
-
-      std::promise<void> promise;
-      auto future = promise.get_future();
-
-      hostManager->runNetwork(
-          "test", std::move(ctx),
-          [&promise, index = ioIndex,
-           &result](runtime::RunIdentifierTy, Error err,
-                    std::unique_ptr<ExecutionContext> contextPtr) mutable {
-            result.error = std::move(err);
-            result.ctx = std::move(contextPtr);
-            result.index = index;
-            result.endTime = std::chrono::steady_clock::now();
-            promise.set_value();
-          });
-
-      // wait for glow to finish.
-      future.wait();
-      traceContext = result.ctx->getTraceContext();
-      if (traceContext) {
-        // merge() has internal lock and is thread safe.
-        mergedTraceContext.merge(traceContext);
-      }
-
-      if (!runAccuracyChecks) {
-        // if skipping correctness check, throw away the context to keep
-        // memory usage low.
-        result.ctx.reset();
-      }
-
-      std::unique_lock<std::mutex> lock(mutex);
-      if (++numFinishedInferences >= numTotalInferences) {
-        lock.unlock();
-        cv.notify_all();
-      }
-    });
-  }
-
-  // wait for all inferneces to finish
-  std::unique_lock<std::mutex> lock(mutex);
-  cv.wait(lock, [&]() { return numFinishedInferences >= numTotalInferences; });
-
-  auto endTime = startTime;
-  llvm::outs() << "All inferences done. Checking results\n";
-  for (auto &result : results) {
-    if (result.endTime > endTime) {
-      endTime = result.endTime;
+    // Figure out which placeholder is input.
+    std::unordered_set<std::string> inputTensorNames;
+    for (const auto &proto : parsedInputs[0].initializer()) {
+      inputTensorNames.insert(proto.name());
     }
 
-    if (result.error) {
-      llvm::outs() << "Inference failed!\n";
-      ++numFailed;
-    } else {
-      const auto &outputGroup = parsedOutputs[result.index];
-      ONNX_NAMESPACE::GraphProto outputG;
-      std::ofstream of;
-      if (dumpOutputsOpt) {
-        std::stringstream ss;
-        ss << "output_dump_" << result.index << ".onnx";
-        of.open(ss.str(), std::ios::binary);
-        CHECK(of) << "Cannot create output dump file: " << ss.str();
+    glow::PlaceholderList inputPlaceholderList;
+    std::copy_if(placeholderList.begin(), placeholderList.end(),
+                 std::back_inserter(inputPlaceholderList),
+                 [&](const glow::Placeholder *p) {
+                   return inputTensorNames.find(p->getName()) !=
+                          inputTensorNames.end();
+                 });
+
+    std::vector<Tensor> partialTensorPayloads;
+    std::vector<PlaceholderBindings> inputBindings;
+    for (const auto &inputGroup : parsedInputs) {
+      PlaceholderBindings bindings;
+      bindings.allocate(inputPlaceholderList);
+      fillPlaceholders(
+          inputGroup, &bindings,
+          glow::flags::EnablePartialTensors ? &partialTensorPayloads : nullptr,
+          usingGlowCustomOps);
+      inputBindings.emplace_back(std::move(bindings));
+    }
+
+    // Whether to collect results and check accuracy
+    bool runAccuracyChecks =
+        !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
+
+    if (glow::flags::DumpDebugTraces && glowEnableDeviceTrace) {
+      // Start device traces.
+      hostManager->setTraceContext(
+          glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+      Error startErr = hostManager->startDeviceTrace();
+      if (ERR_TO_BOOL(std::move(startErr))) {
+        LOG(WARNING) << "Failed to start device traces";
+      }
+    }
+
+    auto startTime = std::chrono::steady_clock::now();
+    std::list<InferenceResult> results;
+    for (int ioIndex = 0, numInferencesIssued = 0;
+         numInferencesIssued < numTotalInferences; ++numInferencesIssued,
+             ioIndex = numInferencesIssued % inputGroupSize) {
+
+      results.emplace_back();
+      auto &result = results.back();
+
+      threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
+                      &mergedTraceContext, &hostManager, &result, &cv, &mutex,
+                      numTotalInferences, &numFinishedInferences,
+                      runAccuracyChecks]() {
+        // Setup the inputs.
+        auto ctx = glow::make_unique<ExecutionContext>();
+
+        TraceContext *traceContext = nullptr;
+        if (glow::flags::DumpDebugTraces) {
+          ctx->setTraceContext(
+              glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+          traceContext = ctx->getTraceContext();
+          traceContext->setThreadName("Caller");
+        }
+        TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
+                          "Dispatch to prep input and dispatch");
+
+        // Set up input
+        auto &bindings = *ctx->getPlaceholderBindings();
+        bindings.clear();
+
+        for (const auto &binding : inputBindings[ioIndex].pairs()) {
+          auto *PH = binding.first;
+          bindings.insert(PH, binding.second.getUnowned());
+        }
+        // Allocate for output
+        bindings.allocate(nonStaticPlaceholderList);
+
+        std::promise<void> promise;
+        auto future = promise.get_future();
+
+        TRACE_EVENT_SCOPE_END();
+
+        hostManager->runNetwork(
+            "test", std::move(ctx),
+            [&promise, index = ioIndex,
+             &result](runtime::RunIdentifierTy, Error err,
+                      std::unique_ptr<ExecutionContext> contextPtr) mutable {
+              result.error = std::move(err);
+              result.ctx = std::move(contextPtr);
+              result.index = index;
+              result.endTime = std::chrono::steady_clock::now();
+              promise.set_value();
+            });
+
+        // wait for glow to finish.
+        future.wait();
+        traceContext = result.ctx->getTraceContext();
+        if (traceContext) {
+          // merge() has internal lock and is thread safe.
+          mergedTraceContext.merge(traceContext);
+        }
+
+        if (!runAccuracyChecks) {
+          // if skipping correctness check, throw away the context to keep
+          // memory usage low.
+          result.ctx.reset();
+        }
+
+        std::unique_lock<std::mutex> lock(mutex);
+        if (++numFinishedInferences >= numTotalInferences) {
+          lock.unlock();
+          cv.notify_all();
+        }
+      });
+    }
+
+    // wait for all inferneces to finish
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait(lock,
+            [&]() { return numFinishedInferences >= numTotalInferences; });
+
+    auto endTime = startTime;
+    llvm::outs() << "All inferences done. Checking results\n";
+    for (auto &result : results) {
+      if (result.endTime > endTime) {
+        endTime = result.endTime;
       }
 
-      if (runAccuracyChecks) {
-        CHECK(result.ctx);
-        const auto &bindings = *result.ctx->getPlaceholderBindings();
-        for (const auto &tp : outputGroup.initializer()) {
-          Tensor tensorRef;
-          auto error = loadTensor(tp, &tensorRef, usingGlowCustomOps);
-          CHECK(!ERR_TO_BOOL(std::move(error)))
-              << "Cannot load output ref tensor";
-          const auto *tensor =
-              bindings.get(bindings.getPlaceholderByName(tp.name()));
-          CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
+      if (result.error) {
+        llvm::outs() << "Inference failed!\n";
+        ++numFailed;
+      } else {
+        const auto &outputGroup = parsedOutputs[result.index];
+        ONNX_NAMESPACE::GraphProto outputG;
+        std::ofstream of;
+        if (dumpOutputsOpt) {
+          std::stringstream ss;
+          ss << "output_dump_" << result.index << ".onnx";
+          of.open(ss.str(), std::ios::binary);
+          CHECK(of) << "Cannot create output dump file: " << ss.str();
+        }
 
-          if (cosineSimilarityStats) {
-            cosineHist.addValue(cosineSimilarity(*tensor, tensorRef));
-          }
+        if (runAccuracyChecks) {
+          CHECK(result.ctx);
+          const auto &bindings = *result.ctx->getPlaceholderBindings();
+          for (const auto &tp : outputGroup.initializer()) {
+            Tensor tensorRef;
+            auto error = loadTensor(tp, &tensorRef, usingGlowCustomOps);
+            CHECK(!ERR_TO_BOOL(std::move(error)))
+                << "Cannot load output ref tensor";
+            const auto *tensor =
+                bindings.get(bindings.getPlaceholderByNameSlow(tp.name()));
+            CHECK(tensor) << "Missing " << tp.name()
+                          << " in output placeholder";
 
-          if (topKCompare > 0) {
-            numTotalTopKCompares++;
-            assert(tensor->size() == tensorRef.size());
-            auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
-            auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
-            assert(sortedResults.size() == topKCompare &&
-                   sortedResults.size() == topKCompare);
+            if (cosineSimilarityStats) {
+              cosineHist.addValue(cosineSimilarity(*tensor, tensorRef));
+            }
 
-            bool allKMatch = true;
-            std::stringstream ss;
-            for (auto i = 0; i < topKCompare; i++) {
-              if (sortedResults[i].second == sortedRefs[i].second) {
-                if (i == 0) {
-                  numTop1Matches++;
+            if (topKCompare > 0) {
+              numTotalTopKCompares++;
+              assert(tensor->size() == tensorRef.size());
+              auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
+              auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
+              assert(sortedResults.size() == topKCompare &&
+                     sortedResults.size() == topKCompare);
+
+              bool allKMatch = true;
+              std::stringstream ss;
+              for (auto i = 0; i < topKCompare; i++) {
+                if (sortedResults[i].second == sortedRefs[i].second) {
+                  if (i == 0) {
+                    numTop1Matches++;
+                  }
+                } else {
+                  allKMatch = false;
                 }
-              } else {
-                allKMatch = false;
+                if (logTopKResultsPerExample) {
+                  ss << i << ": Test result: " << sortedResults[i].second
+                     << " (p=" << sortedResults[i].first
+                     << ") Reference result: " << sortedRefs[i].second
+                     << " (p=" << sortedRefs[i].first << ")\n";
+                }
               }
               if (logTopKResultsPerExample) {
-                ss << i << ": Test result: " << sortedResults[i].second
-                   << " (p=" << sortedResults[i].first
-                   << ") Reference result: " << sortedRefs[i].second
-                   << " (p=" << sortedRefs[i].first << ")\n";
+                llvm::outs() << ss.str() << "\n";
+              }
+              if (allKMatch) {
+                numTopKMatches++;
               }
             }
-            if (logTopKResultsPerExample) {
-              llvm::outs() << ss.str() << "\n";
-            }
-            if (allKMatch) {
-              numTopKMatches++;
-            }
-          }
 
-          if (dumpOutputsOpt) {
-            auto *t = outputG.add_initializer();
-            ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
-            t->set_name(tp.name());
-          }
+            if (dumpOutputsOpt) {
+              auto *t = outputG.add_initializer();
+              ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
+              t->set_name(tp.name());
+            }
 
-          if (!skipCorrectnessCheck) {
-            bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
-            if (!equal) {
-              llvm::outs() << "Verification failed at input/output pair "
-                           << result.index << " for output tensor " << tp.name()
-                           << "\n";
-              ++numFailed;
-              break;
+            if (!skipCorrectnessCheck) {
+              bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
+              if (!equal) {
+                llvm::outs() << "Verification failed at input/output pair "
+                             << result.index << " for output tensor "
+                             << tp.name() << "\n";
+                ++numFailed;
+                break;
+              }
             }
           }
         }
-      }
 
-      if (dumpOutputsOpt) {
-        std::string buffer;
-        outputG.SerializeToString(&buffer);
-        of << buffer;
+        if (dumpOutputsOpt) {
+          std::string buffer;
+          outputG.SerializeToString(&buffer);
+          of << buffer;
+        }
       }
     }
-  }
 
-  if (glowDumpTrace) {
-    if (glowEnableDeviceTrace) {
-      // Stop device traces and collect events.
-      Error stopErr = hostManager->stopDeviceTrace();
-      if (ERR_TO_BOOL(std::move(stopErr))) {
-        LOG(WARNING) << "Failed to stop device traces.";
-      } else {
-        mergedTraceContext.merge(hostManager->getTraceContext());
+    if (glow::flags::DumpDebugTraces) {
+      if (glowEnableDeviceTrace) {
+        // Stop device traces and collect events.
+        Error stopErr = hostManager->stopDeviceTrace();
+        if (ERR_TO_BOOL(std::move(stopErr))) {
+          LOG(WARNING) << "Failed to stop device traces.";
+        } else {
+          mergedTraceContext.merge(hostManager->getTraceContext());
+        }
       }
-    }
-    llvm::SmallString<64> path;
-    if (glowDumpTraceFile.empty()) {
-      auto tempFileRes =
-          llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
-      if (tempFileRes.value() != 0) {
-        LOG(ERROR) << "Failed to create temp file for Glow trace events: "
-                   << tempFileRes;
+      llvm::SmallString<64> path;
+      if (glowDumpTraceFile.empty()) {
+        auto tempFileRes =
+            llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+        if (tempFileRes.value() != 0) {
+          LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+                     << tempFileRes;
+        } else {
+          LOG(INFO) << "Trace path=" << path.c_str();
+          mergedTraceContext.dump(path);
+        }
       } else {
         LOG(INFO) << "Trace path=" << path.c_str();
-        mergedTraceContext.dump(path);
-      }
-    } else {
-      LOG(INFO) << "Trace path=" << path.c_str();
-      mergedTraceContext.dump(glowDumpTraceFile);
-    }
-  }
-
-  if (!skipCorrectnessCheck) {
-    if (numFailed == 0) {
-      llvm::outs() << "All passed!\n";
-    } else {
-      llvm::outs() << numFailed << " inferences failed to match reference.\n";
-    }
-  }
-
-  if (topKCompare > 0) {
-    llvm::outs() << "Num top1 exact matches: " << numTop1Matches << "/"
-                 << numTotalTopKCompares << "\n";
-    llvm::outs() << "Num topK exact matches (k=" << topKCompare
-                 << "): " << numTopKMatches << "/" << numTotalTopKCompares
-                 << "\n";
-
-    if (top1Threshold > 0.0) {
-      float top1MatchRate = float(numTop1Matches) / numTotalTopKCompares;
-      if (top1MatchRate < top1Threshold) {
-        llvm::outs() << "Expected top1 match rate of at least " << top1Threshold
-                     << " but only achieved " << top1MatchRate << "\n";
-        return numTotalTopKCompares - numTop1Matches;
+        mergedTraceContext.dump(glowDumpTraceFile);
       }
     }
-  }
 
-  if (cosineSimilarityStats) {
-    float p50Similarity = cosineHist.getPercentileEstimate(0.5);
-    llvm::outs() << "cosine similarity stats:\n"
-                 << "p01: " << cosineHist.getPercentileEstimate(0.01) << "\n"
-                 << "p02: " << cosineHist.getPercentileEstimate(0.02) << "\n"
-                 << "p05: " << cosineHist.getPercentileEstimate(0.05) << "\n"
-                 << "p10: " << cosineHist.getPercentileEstimate(0.1) << "\n"
-                 << "p25: " << cosineHist.getPercentileEstimate(0.25) << "\n"
-                 << "p50: " << p50Similarity << "\n"
-                 << "p75: " << cosineHist.getPercentileEstimate(0.75) << "\n"
-                 << "p90: " << cosineHist.getPercentileEstimate(0.90) << "\n"
-                 << "p95: " << cosineHist.getPercentileEstimate(0.95) << "\n"
-                 << "p98: " << cosineHist.getPercentileEstimate(0.98) << "\n"
-                 << "p99: " << cosineHist.getPercentileEstimate(0.99) << "\n";
-    if (cosineSimilarityThreshold > 0.0) {
-      if (p50Similarity < cosineSimilarityThreshold) {
-        llvm::outs() << "Expected p50 cosine similarity of at least "
-                     << cosineSimilarityThreshold << " but only achieved "
-                     << p50Similarity << "\n";
-        return 1;
+    if (!skipCorrectnessCheck) {
+      if (numFailed == 0) {
+        llvm::outs() << "All passed!\n";
+      } else {
+        llvm::outs() << numFailed << " inferences failed to match reference.\n";
       }
     }
-  }
 
-  std::chrono::duration<double, std::milli> duration = endTime - startTime;
-  std::cout << "Total inference duration (ms): " << duration.count() << "\n";
-  std::cout << "Avg inference duration (ms): "
-            << duration.count() / numTotalInferences << "\n";
-  std::cout << "Avg inference per second: "
-            << numTotalInferences * 1000 / duration.count() << "\n";
+    if (topKCompare > 0) {
+      llvm::outs() << "Num top1 exact matches: " << numTop1Matches << "/"
+                   << numTotalTopKCompares << "\n";
+      llvm::outs() << "Num topK exact matches (k=" << topKCompare
+                   << "): " << numTopKMatches << "/" << numTotalTopKCompares
+                   << "\n";
+
+      if (top1Threshold > 0.0) {
+        float top1MatchRate = float(numTop1Matches) / numTotalTopKCompares;
+        if (top1MatchRate < top1Threshold) {
+          llvm::outs() << "Expected top1 match rate of at least "
+                       << top1Threshold << " but only achieved "
+                       << top1MatchRate << "\n";
+          return numTotalTopKCompares - numTop1Matches;
+        }
+      }
+    }
+
+    if (cosineSimilarityStats) {
+      float p50Similarity = cosineHist.getPercentileEstimate(0.5);
+      llvm::outs() << "cosine similarity stats:\n"
+                   << "p01: " << cosineHist.getPercentileEstimate(0.01) << "\n"
+                   << "p02: " << cosineHist.getPercentileEstimate(0.02) << "\n"
+                   << "p05: " << cosineHist.getPercentileEstimate(0.05) << "\n"
+                   << "p10: " << cosineHist.getPercentileEstimate(0.1) << "\n"
+                   << "p25: " << cosineHist.getPercentileEstimate(0.25) << "\n"
+                   << "p50: " << p50Similarity << "\n"
+                   << "p75: " << cosineHist.getPercentileEstimate(0.75) << "\n"
+                   << "p90: " << cosineHist.getPercentileEstimate(0.90) << "\n"
+                   << "p95: " << cosineHist.getPercentileEstimate(0.95) << "\n"
+                   << "p98: " << cosineHist.getPercentileEstimate(0.98) << "\n"
+                   << "p99: " << cosineHist.getPercentileEstimate(0.99) << "\n";
+      if (cosineSimilarityThreshold > 0.0) {
+        if (p50Similarity < cosineSimilarityThreshold) {
+          llvm::outs() << "Expected p50 cosine similarity of at least "
+                       << cosineSimilarityThreshold << " but only achieved "
+                       << p50Similarity << "\n";
+          return 1;
+        }
+      }
+    }
+    std::chrono::duration<double, std::milli> duration = endTime - startTime;
+    std::cout << "Total inference duration (ms): " << duration.count() << "\n";
+    std::cout << "Avg inference duration (ms): "
+              << duration.count() / numTotalInferences << "\n";
+    std::cout << "Avg inference per second: "
+              << numTotalInferences * 1000 / duration.count() << "\n";
+    nowTime = std::chrono::steady_clock::now();
+  } while (std::chrono::duration_cast<std::chrono::seconds>(nowTime -
+                                                            endTimeDuration)
+               .count() < 0);
 
   return numFailed;
 }

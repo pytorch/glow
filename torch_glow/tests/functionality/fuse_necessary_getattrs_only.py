@@ -1,8 +1,7 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import torch
-
-from tests.utils import GLOW_NODE_NAME
 import torch_glow
 
 
@@ -46,12 +45,10 @@ def test_fuse_necessary_getattrs_only():
     jit_m = torch.jit.trace(m, x)
     jit_m_graph = jit_m.graph_for(x)
 
-    print(jit_m_graph)
-
     # don't fuse aten::_convolutions
     torch_glow.glowCustomFuseDebug_(
-        jit_m_graph, ["prim::Constant", "prim::GetAttr", "aten::t", "aten::matmul", "aten::add_"])
-
-    print(jit_m_graph)
+        jit_m_graph,
+        ["prim::Constant", "prim::GetAttr", "aten::t", "aten::matmul", "aten::add_"],
+    )
 
     return m(x)

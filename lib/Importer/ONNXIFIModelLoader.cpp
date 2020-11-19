@@ -25,7 +25,8 @@ namespace glow {
 Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
-    llvm::StringRef netName, runtime::PrePartitionedConfig *PPC,
+    llvm::StringRef netName, CompilationContext &cctx,
+    std::map<std::string, Type> *staticPlaceholderTypes,
     bool loadInputsAsPlaceholdersForOnnx, bool use_onnx,
     bool constFoldInLoader) {
 
@@ -33,11 +34,16 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
   Error loaderConstructionErr = Error::empty();
 
   if (use_onnx) {
-    Function *F = mod.createFunction(netName);
-    std::unique_ptr<ONNXModelLoader> onnxLoader(
-        new ONNXModelLoader(model, modelSize, weightsCount, weightDescriptors,
-                            *F, loadInputsAsPlaceholdersForOnnx,
-                            &loaderConstructionErr, constFoldInLoader));
+    // If we're loading an ONNX model then we will always be replacing dummy
+    // TQPs if they're found.
+    cctx.precisionConfig.replaceDummyTQPs = true;
+    std::unique_ptr<ONNXModelLoader> onnxLoader(new ONNXModelLoader(
+        model, modelSize, weightsCount, weightDescriptors, mod, netName,
+        cctx.prepartitionedConfig, loadInputsAsPlaceholdersForOnnx,
+        &loaderConstructionErr, constFoldInLoader,
+        &cctx.backendOpts.backendSpecificNodeInfo, staticPlaceholderTypes,
+        cctx.precisionConfig.replaceDummyTQPs,
+        cctx.precisionConfig.clipQuantRangeToFP16));
     if (loaderConstructionErr) {
       return std::move(loaderConstructionErr);
     }
@@ -46,8 +52,12 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
   } else {
     // Use Caffe2 Model loader
     std::unique_ptr<Caffe2ModelLoader> c2Loader(new Caffe2ModelLoader(
-        model, modelSize, weightsCount, weightDescriptors, mod, netName, PPC,
-        &loaderConstructionErr, constFoldInLoader));
+        model, modelSize, weightsCount, weightDescriptors, mod, netName,
+        cctx.prepartitionedConfig, &loaderConstructionErr, constFoldInLoader,
+        cctx.precisionConfig.originNameToTQPMap,
+        cctx.precisionConfig.loadUniquedDummyQParams,
+        cctx.precisionConfig.zeroScaleFP16Clip,
+        cctx.precisionConfig.clipQuantRangeToFP16));
     if (loaderConstructionErr) {
       return std::move(loaderConstructionErr);
     }

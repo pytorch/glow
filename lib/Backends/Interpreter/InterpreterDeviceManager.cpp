@@ -16,6 +16,8 @@
 #include "glow/Backends/Interpreter/InterpreterDeviceManager.h"
 #include "glow/Backends/Interpreter/Interpreter.h"
 
+#include "glow/Flags/Flags.h"
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -23,20 +25,19 @@
 namespace glow {
 namespace runtime {
 
-unsigned GlowInterpreterMemory = 0;
 static llvm::cl::OptionCategory
     InterpreterBackendCat("Glow Interpreter Backend Options");
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true> interpreterMaxMemOpt(
     "interpreter-memory",
     llvm::cl::desc("Interpreter DeviceManager maximum memory in kilobytes"),
-    llvm::cl::location(GlowInterpreterMemory),
+    llvm::cl::location(flags::InterpreterMemory),
     llvm::cl::cat(InterpreterBackendCat));
 
 DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config) {
-  if (GlowInterpreterMemory) {
-    // Convert command line GlowInterpreterMemory to bytes from kilobytes.
+  if (flags::InterpreterMemory) {
+    // Convert command line InterpreterMemory to bytes from kilobytes.
     auto configNew = config;
-    configNew.setDeviceMemory(uint64_t{GlowInterpreterMemory} * 1024);
+    configNew.setDeviceMemory(uint64_t{flags::InterpreterMemory} * 1024);
     return new InterpreterDeviceManager(configNew);
   }
   return new InterpreterDeviceManager(config);

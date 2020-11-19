@@ -16,6 +16,7 @@
 #include "Base.h"
 
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -25,10 +26,6 @@
 
 namespace glow {
 namespace onnxifi {
-bool GlowSaveOnnxifiModel = false;
-bool GlowSaveOnnxifiIO = false;
-bool GlowEnablePartialTensors = true;
-bool GlowUseCustomOpsForExport = true;
 
 extern bool GlowDumpDebugTraces;
 
@@ -69,7 +66,7 @@ void saveOnnxifiModel(Function *F) {
   constexpr size_t kIrVer = 7, kOpsetVer = 9;
   {
     ONNXModelWriter onnxWR(fname, *F, kIrVer, kOpsetVer, &err, false, true,
-                           GlowUseCustomOpsForExport);
+                           glow::flags::UseCustomOpsForExport);
   }
   if (ERR_TO_BOOL(std::move(err))) {
     LOG(ERROR) << "ONNXModelWriter failed to write model: " << fname;
@@ -88,12 +85,13 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   // Constants, such as a Convolution's weights. In the future we should clean
   // this up so that we load Constants and Placeholders based on the actual
   // eventual input graph.
+  CompilationContext cctx;
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, 0 /*weightCount*/,
-      nullptr /*weightDescriptors*/, module, compatibilityFunctionName,
-      /* PPC */ nullptr, false /*loadInputsAsPlaceholdersForOnnx*/,
-      getUseOnnx(),
-      /*constFoldInLoader*/ false);
+      nullptr /*weightDescriptors*/, module, compatibilityFunctionName, cctx,
+      /* staticPlaceholderTypes */ nullptr,
+      /* loadInputsAsPlaceholdersForOnnx */ false, getUseOnnx(),
+      /* constFoldInLoader */ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
@@ -126,8 +124,9 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   }
 
   // Perform the normal optimization pipeline, returning an internal error if we
-  // encounter an issue during optimization.
-  CompilationContext cctx;
+  // encounter an issue during optimization. Skip backend support checking
+  // because we check it next below via acceptForExecution().
+  cctx.optimizationOpts.skipBackendSupportCheck = true;
   auto optErr = glow::optimizeFunction(function, *glowBackend_, cctx);
   if (optErr) {
     LOG(ERROR) << "Error during glow::optimizeFunction():\n" +
@@ -146,7 +145,6 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
     }
   }
-
   return ONNXIFI_STATUS_SUCCESS;
 }
 
@@ -192,7 +190,8 @@ void Graph::setZeroLengthSequence(dim_t maxSeqLength) {
   zeroLengthSequence_.zero();
 }
 
-void Graph::bindPlaceholders(const ONNXIFIModelLoader &loader) {
+bool Graph::bindPlaceholders(const ONNXIFIModelLoader &loader,
+                             LoadedPlaceholderNameMap *loadedPHNames) {
   onnxInputToPlaceholder_ = loader.getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader.getOutputVarsMapping();
   onnxInputNames_ = loader.getPositionalInputNames();
@@ -219,29 +218,59 @@ void Graph::bindPlaceholders(const ONNXIFIModelLoader &loader) {
   if (onnxOutputPlaceholders_.size() != onnxOutputToPlaceholder_.size()) {
     onnxOutputPlaceholders_.clear();
   }
+
+  // If requested, load all of the input/output PHs into loadedPHNames, which is
+  // essentially the onnxInputToPlaceholder_/onnxOutputToPlaceholder_ with
+  // keys/values swapped and combined in a single map.
+  if (loadedPHNames) {
+#define REVERSE_MAPPING(ORIG_VEC_, ORIG_MAP_)                                  \
+  if (ORIG_VEC_.size() > 0) {                                                  \
+    for (size_t i = 0, e = ORIG_VEC_.size(); i < e; i++) {                     \
+      auto &name = ORIG_VEC_[i];                                               \
+      auto it = ORIG_MAP_.find(name);                                          \
+      if (it == ORIG_MAP_.end()) {                                             \
+        LOG(ERROR) << "Issue finding matching positional PH for " << name;     \
+        return false;                                                          \
+      }                                                                        \
+      if (!loadedPHNames->emplace(it->second, std::make_pair(name, i))         \
+               .second) {                                                      \
+        LOG(ERROR)                                                             \
+            << "Loading model error due to input or output name reuse: "       \
+            << name;                                                           \
+        return false;                                                          \
+      }                                                                        \
+    }                                                                          \
+  }
+    REVERSE_MAPPING(onnxInputNames_, onnxInputToPlaceholder_);
+    REVERSE_MAPPING(onnxOutputNames_, onnxOutputToPlaceholder_);
+#undef REVERSE_MAPPING
+  }
+
+  return true;
 }
 
 onnxStatus Graph::adjustInputs(uint32_t inputsCount,
                                const onnxTensorDescriptorV1 *inputDescriptors,
                                ExecutionContext *ctx) {
   // Create tensors for input placeholders
+  auto &externalIOBindings = ctx->getExternalIOBindings();
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
     auto *inOnnxBuffer = reinterpret_cast<void *>(inOnnxTensor.buffer);
     Placeholder *inPhPtr;
 
-    if (onnxInputNames_.size() == inputsCount &&
-        onnxInputNames_[i] == inOnnxTensor.name) {
+    if (onnxInputNames_.size() == inputsCount) {
       inPhPtr = onnxInputPlaceholders_[i];
     } else {
       auto inPhIt = onnxInputToPlaceholder_.find(inOnnxTensor.name);
       if (inPhIt == onnxInputToPlaceholder_.end()) {
-        llvm::outs() << "235inputNameUnkown!!!\n";
+        LOG(ERROR) << "Input Name Unknown: " << inOnnxTensor.name;
         return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
       }
       inPhPtr = inPhIt->getValue();
     }
 
+    const bool quantizedInput = inPhPtr->getType()->isQuantizedType();
     std::vector<dim_t> inOnnxTensorDims(inOnnxTensor.dimensions);
     size_t inOnnxTensorSize = 1;
     for (unsigned j = 0; j < inOnnxTensor.dimensions; ++j) {
@@ -278,41 +307,84 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
                  << inPhPtr->getType()->getElementName().data();
       return ONNXIFI_STATUS_INVALID_DATATYPE;
     }
+    bool processed = true;
     size_t onnxBytes = inOnnxTensorSize * elementSize;
-    if (inPhPtr->dims().equals(inOnnxTensorDims)) {
-      ctx->getPlaceholderBindings()->insert(
-          inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
-    } else if (GlowEnablePartialTensors &&
-               backendPtr_->getBackend().supportsPartialTensors()) {
-      // We have a partial input buffer.  Create a padded unowned tensor that
-      // remembers the actual size of the input.
-      ctx->getPlaceholderBindings()->insert(
-          inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
-    } else if (!inOnnxBuffer && inPhPtr->getType()->size() <=
-                                    zeroLengthSequence_.getType().size()) {
-      ctx->getPlaceholderBindings()->insert(
-          inPhPtr, Tensor((void *)(zeroLengthSequence_.getUnsafePtr()),
-                          inPhPtr->getType()));
-    } else {
-      Tensor *inputTensor = tensorPool_.get(inPhPtr->getType());
-      if (!inputTensor) {
-        DLOG(FATAL) << "Tensorpool tensor not found for input "
-                    << inOnnxTensor.name;
-        return ONNXIFI_STATUS_INTERNAL_ERROR;
-      }
-      // We want fresh DeviceResidencyInfo for this fresh Tensor.
-      inputTensor->resetDeviceInfo();
-      // Copy the input from onnxTensorDescriptor unless it has a NULL buffer
-      // pointer (which is a valid case if the tensor is empty).
-      if (inOnnxBuffer) {
-        memcpy(inputTensor->getUnsafePtr(), inOnnxBuffer, onnxBytes);
-        // Pad remaining space with zeroes.
-        memset(inputTensor->getUnsafePtr() + onnxBytes, 0,
-               inputTensor->getSizeInBytes() - onnxBytes);
+    if (!quantizedInput) {
+      if (inPhPtr->dims().equals(inOnnxTensorDims)) {
+        externalIOBindings.emplace_back(
+            std::piecewise_construct, std::forward_as_tuple(inPhPtr),
+            std::forward_as_tuple(inOnnxBuffer, inPhPtr->getType()));
+      } else if (glow::flags::EnablePartialTensors &&
+                 backendPtr_->getBackend().supportsPartialTensors()) {
+        // We have a partial input buffer.  Create a padded unowned tensor that
+        // remembers the actual size of the input.
+        externalIOBindings.emplace_back(
+            std::piecewise_construct, std::forward_as_tuple(inPhPtr),
+            std::forward_as_tuple(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
+      } else if (!inOnnxBuffer && inPhPtr->getType()->size() <=
+                                      zeroLengthSequence_.getType().size()) {
+        externalIOBindings.emplace_back(
+            std::piecewise_construct, std::forward_as_tuple(inPhPtr),
+            std::forward_as_tuple((void *)(zeroLengthSequence_.getUnsafePtr()),
+                                  inPhPtr->getType()));
       } else {
-        inputTensor->zero();
+        processed = false;
       }
-      ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
+    } else {
+      processed = false;
+    }
+
+    if (processed) {
+      continue;
+    }
+
+    llvm::Optional<Tensor> inputTensorOpt = tensorPool_.get(inPhPtr->getType());
+    if (!inputTensorOpt.hasValue()) {
+      DLOG(FATAL) << "Tensorpool tensor not found for input "
+                  << inOnnxTensor.name;
+      return ONNXIFI_STATUS_INTERNAL_ERROR;
+    }
+    // We want fresh DeviceResidencyInfo for this fresh Tensor.
+    externalIOBindings.emplace_back(inPhPtr,
+                                    std::move(inputTensorOpt.getValue()));
+    Tensor &inputTensor = externalIOBindings.back().second;
+    inputTensor.resetDeviceInfo();
+
+    if (quantizedInput) {
+      // Right now we only support quantized input with one set of
+      // quantization parameters
+      bool supported = true;
+      if (inOnnxTensor.quantizationParams == 1) {
+        if (inOnnxTensor.dataType == ONNXIFI_DATATYPE_UINT8) {
+          inputTensor.zero();
+          if (inOnnxBuffer) {
+            auto TH = inputTensor.getHandle<int8_t>();
+            uint8_t *data = (uint8_t *)(inOnnxBuffer);
+            for (size_t k = 0; k < onnxBytes; ++k) {
+              TH.raw(k) = (int8_t)(data[k] - UINT8_TO_INT8_SHIFT);
+            }
+          }
+          continue;
+        } else if (inOnnxTensor.dataType != ONNXIFI_DATATYPE_INT8) {
+          supported = false;
+        }
+      } else {
+        supported = false;
+      }
+      if (!supported) {
+        return ONNXIFI_STATUS_INVALID_DATATYPE;
+      }
+    }
+
+    // Copy the input from onnxTensorDescriptor unless it has a NULL buffer
+    // pointer (which is a valid case if the tensor is empty).
+    if (inOnnxBuffer) {
+      memcpy(inputTensor.getUnsafePtr(), inOnnxBuffer, onnxBytes);
+      // Pad remaining space with zeroes.
+      memset(inputTensor.getUnsafePtr() + onnxBytes, 0,
+             inputTensor.getSizeInBytes() - onnxBytes);
+    } else {
+      inputTensor.zero();
     }
   }
   return ONNXIFI_STATUS_SUCCESS;
@@ -327,7 +399,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   auto ctx = glow::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
-  if (traceEvents || GlowDumpDebugTraces) {
+  if (traceEvents || glow::flags::DumpDebugTraces) {
     ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("Onnxifi");
@@ -342,7 +414,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   }
 
   size_t seq = 0;
-  if (GlowSaveOnnxifiIO) {
+  if (glow::onnxifi::flags::SaveIO) {
     seq = ioDumpCounter_++;
     std::stringstream ss;
     ss << "input_" << seq << ".onnx";
@@ -351,14 +423,14 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       LOG(ERROR) << "Cannot create input file " << ss.str();
     } else {
       ONNX_NAMESPACE::GraphProto inputG;
-      for (const auto &p : ctx->getPlaceholderBindings()->pairs()) {
+      for (const auto &p : ctx->getExternalIOBindings()) {
         auto *t = inputG.add_initializer();
-        const auto &inputTensor = *p.second;
+        const auto &inputTensor = p.second;
         size_t unpaddedSize = inputTensor.getUnpaddedSizeInBytes();
         size_t tensorSize = inputTensor.getSizeInBytes();
         if (unpaddedSize == tensorSize) {
           ONNXModelWriter::writeTensor(inputTensor, t,
-                                       GlowUseCustomOpsForExport);
+                                       glow::flags::UseCustomOpsForExport);
         } else {
           // If the input is a partial tensor, then save only the part that has
           // data.
@@ -366,7 +438,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
           auto dims = ty.dims().vec();
           dims[0] = dims[0] * unpaddedSize / tensorSize;
           const auto &resized = inputTensor.getUnowned(dims);
-          ONNXModelWriter::writeTensor(resized, t, GlowUseCustomOpsForExport);
+          ONNXModelWriter::writeTensor(resized, t,
+                                       glow::flags::UseCustomOpsForExport);
           VLOG(1) << "Writing partial tensor " << p.first->getName().str()
                   << " full size=" << inputTensor.getType().toString()
                   << " partial size=" << inputTensor.getUnpaddedSizeInBytes()
@@ -385,18 +458,19 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                           "setOnnxifiOutputs", soEvent);
 
   // Create tensors for output placeholders
+  auto &externalIOBindings = ctx->getExternalIOBindings();
   for (unsigned i = 0; i < outputsCount; ++i) {
-    const auto &outOnnxTensor = outputDescriptors[i];
+    auto &outOnnxTensor =
+        const_cast<onnxTensorDescriptorV1 &>(outputDescriptors[i]);
     auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
     Placeholder *outPhPtr;
 
-    if (outputsCount == onnxOutputNames_.size() &&
-        outOnnxTensor.name == onnxOutputNames_[i]) {
+    if (outputsCount == onnxOutputNames_.size()) {
       outPhPtr = onnxOutputPlaceholders_[i];
     } else {
       auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
       if (outPhIt == onnxOutputToPlaceholder_.end()) {
-        llvm::outs() << "395outputNameunknown!\n";
+        LOG(ERROR) << "Output name unknown: " << outOnnxTensor.name;
         return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
       }
       outPhPtr = outPhIt->getValue();
@@ -417,10 +491,18 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       return ONNXIFI_STATUS_INVALID_SHAPE;
     }
 
+    // Set quantized output scale/output. Do not support channelwise quantized
+    // output with multiple quantization parameters for now.
+    auto type = outPhPtr->getType();
+    if (outOnnxTensor.quantizationParams == 1 && type->isQuantizedType()) {
+      const_cast<float *>(outOnnxTensor.scales)[0] = type->getScale();
+      const_cast<int32_t *>(outOnnxTensor.biases)[0] = type->getOffset();
+    }
+
     // Create a Glow tensor backed by the memory from the provided onnxifi
     // tensor and bind it to the appropriate placeholder for the graph output.
     Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
-    ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(outputTensor));
+    externalIOBindings.emplace_back(outPhPtr, std::move(outputTensor));
   }
   TRACE_EVENT_SCOPE_END_NAMED(soEvent);
 
@@ -433,7 +515,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   // safe to access the trace context after calling into run().
   TRACE_EVENT_SCOPE_END();
   auto ret = run(std::move(ctx), outputEvent, traceEvents);
-  if (GlowSaveOnnxifiIO) {
+  if (glow::onnxifi::flags::SaveIO) {
     // We need to wait for the execution to finish in order to extract output
     // values.
     outputEvent->wait();
@@ -448,8 +530,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         const auto &outOnnxTensor = outputDescriptors[i];
         auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
         Placeholder *outPhPtr;
-        if (outputsCount == onnxOutputNames_.size() &&
-            onnxOutputNames_[i] == outOnnxTensor.name) {
+        if (outputsCount == onnxOutputNames_.size()) {
           outPhPtr = onnxOutputPlaceholders_[i];
         } else {
           auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
@@ -459,7 +540,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
         auto *t = inputG.add_initializer();
         ONNXModelWriter::writeTensor(outputTensor, t,
-                                     GlowUseCustomOpsForExport);
+                                     glow::flags::UseCustomOpsForExport);
         t->set_name(outPhPtr->getName());
       }
       std::string buffer;
