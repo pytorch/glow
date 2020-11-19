@@ -36,7 +36,7 @@ typedef std::vector<std::vector<int64_t>> TensorListShape;
 using ElemShape = boost::variant<TensorShape, TensorListShape>;
 
 struct TensorOutput {
-  TensorShape shape;
+  TensorShape shapeOrIntValues;
   c10::ScalarType dtype;
 };
 

@@ -119,7 +119,7 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     case c10::aten::sigmoid: {
       RETURN_ERR_IF_NOT(inputMetas.size() == 1,
                         "Expected 1 input shape for operators.");
-      tensorOutput.shape = inputMetas[0].shape<TensorShape>(),
+      tensorOutput.shapeOrIntValues = inputMetas[0].shape<TensorShape>(),
       tensorOutput.dtype = inputMetas[0].dtype;
       break;
     }
@@ -236,11 +236,12 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   if (kind == c10::prim::Constant || kind == c10::prim::dtype) {
     if (node->output()->type()->isSubtypeOf(at::TensorType::get())) {
       shapeMap_[node->output()].listOfShape.emplace_back(
-          std::move(tensorOutput.shape));
+          std::move(tensorOutput.shapeOrIntValues));
       shapeMap_[node->output()].dtype = tensorOutput.dtype;
     } else {
       shapeMap_[node->output()].listOfShape.emplace_back((TensorShape){1});
-      shapeMap_[node->output()].intValue = std::move(tensorOutput.shape);
+      shapeMap_[node->output()].intValue =
+          std::move(tensorOutput.shapeOrIntValues);
       shapeMap_[node->output()].dtype = tensorOutput.dtype;
     }
   } else if (kind == c10::prim::ListConstruct) {
@@ -261,15 +262,15 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     }
   } else if (kind == c10::aten::embedding_bag) {
     shapeMap_[node->output(0)].listOfShape.emplace_back(
-        std::move(tensorOutput.shape));
+        std::move(tensorOutput.shapeOrIntValues));
     shapeMap_[node->output(0)].dtype = tensorOutput.dtype;
   } else if (kind == c10::aten::chunk) {
     shapeMap_[node->output()].listOfShape.emplace_back(
         std::move(tensorListOutput.shape));
     shapeMap_[node->output()].dtype = tensorListOutput.dtype;
-  } else if (tensorOutput.shape.size() > 0) {
+  } else if (tensorOutput.shapeOrIntValues.size() > 0) {
     shapeMap_[node->output()].listOfShape.emplace_back(
-        std::move(tensorOutput.shape));
+        std::move(tensorOutput.shapeOrIntValues));
     shapeMap_[node->output()].dtype = tensorOutput.dtype;
   } else {
     for (int i = 0; i < node->outputs().size(); i++) {
@@ -449,7 +450,7 @@ ShapeInferenceEngine::primConstant(const torch::jit::Node *node) {
     return MAKE_ERR("Type not supported.");
   }
   TensorOutput output;
-  output.shape = shapeOrValue;
+  output.shapeOrIntValues = shapeOrValue;
   output.dtype = dtype;
   return output;
 }
@@ -478,7 +479,7 @@ ShapeInferenceEngine::binaryOp(const MetaStack &variableMetas) {
 
   /// One input is Scalar
   if (d1 == 1) {
-    output.shape = t0;
+    output.shapeOrIntValues = t0;
     return output;
   }
 
@@ -503,7 +504,7 @@ ShapeInferenceEngine::binaryOp(const MetaStack &variableMetas) {
     }
   }
 
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   return output;
 }
 
@@ -533,7 +534,7 @@ ShapeInferenceEngine::mm(const MetaStack &variableMetas) {
 
   TensorOutput output;
   TensorShape shape = {t0[0], t1[1]};
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }
@@ -567,7 +568,7 @@ ShapeInferenceEngine::bmm(const MetaStack &variableMetas) {
   }
   TensorOutput output;
   TensorShape shape = {t0[0], t0[1], t1[2]};
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }
@@ -596,7 +597,7 @@ ShapeInferenceEngine::addmm(const MetaStack &variableMetas) {
     const MetaStack &mmShape = {t1, t2};
     TensorOutput mmOutput;
     ASSIGN_VALUE_OR_RETURN_ERR(mmOutput, mm(mmShape));
-    t.listOfShape.emplace_back(std::move(mmOutput.shape));
+    t.listOfShape.emplace_back(std::move(mmOutput.shapeOrIntValues));
   }
 
   return binaryOp({t0, std::move(t)});
@@ -620,12 +621,12 @@ Expected<TensorOutput> ShapeInferenceEngine::t(const MetaStack &variableMetas) {
 
   /// 0-D or 1-D tensor: Same shape
   if (d0 == 1) {
-    output.shape = t0;
+    output.shapeOrIntValues = t0;
     return output;
     /// 2-D tensor: Transpose
   } else if (d0 == 2) {
     TensorShape shape{t0[1], t0[0]};
-    output.shape = shape;
+    output.shapeOrIntValues = shape;
     return output;
     /// >2-D tensor: Invalid input
   } else {
@@ -662,7 +663,7 @@ ShapeInferenceEngine::transpose(const MetaStack &variableMetas) {
   std::swap(shape[dim0], shape[dim1]);
 
   TensorOutput output;
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }
@@ -686,7 +687,7 @@ ShapeInferenceEngine::cat(const MetaStack &variableMetas) {
 
   // Hanlde the single input case
   if (tensorListShapes.size() == 1) {
-    output.shape = shape;
+    output.shapeOrIntValues = shape;
     return output;
   }
 
@@ -714,7 +715,7 @@ ShapeInferenceEngine::cat(const MetaStack &variableMetas) {
   for (int i = 1; i < tensorListShapes.size(); ++i)
     shape[dim] += tensorListShapes[i][dim];
 
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   return output;
 }
 
@@ -763,7 +764,7 @@ ShapeInferenceEngine::flatten(const MetaStack &variableMetas) {
 
   TensorOutput output;
   output.dtype = variableMetas[0].dtype;
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   return output;
 }
 
@@ -818,7 +819,7 @@ ShapeInferenceEngine::fusedConcat(const MetaStack &variableMetas, int64_t dim) {
   output.dtype = variableMetas[0].dtype;
 
   if (variableMetas.size() == 1) {
-    output.shape = variableMetas[0].shape<TensorShape>();
+    output.shapeOrIntValues = variableMetas[0].shape<TensorShape>();
     return output;
   }
 
@@ -843,7 +844,7 @@ ShapeInferenceEngine::fusedConcat(const MetaStack &variableMetas, int64_t dim) {
       }
     }
   }
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   return output;
 }
 
@@ -877,7 +878,7 @@ ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
   /// Check if the start or end dim out of the input dimension
   if (start >= inDims || end <= -inDims) {
     shape[dim] = 0;
-    output.shape = shape;
+    output.shapeOrIntValues = shape;
     return output;
   }
 
@@ -897,7 +898,7 @@ ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
 
   if (start >= end) {
     shape[dim] = 0;
-    output.shape = shape;
+    output.shapeOrIntValues = shape;
     return output;
   }
 
@@ -905,7 +906,7 @@ ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
   if ((end - start) % step) {
     shape[dim] += 1;
   }
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   return output;
 }
 
@@ -952,7 +953,7 @@ ShapeInferenceEngine::reshape(const MetaStack &variableMetas) {
 
   TensorOutput output;
   output.dtype = variableMetas[0].dtype;
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   return output;
 }
 
@@ -988,7 +989,7 @@ ShapeInferenceEngine::permute(const MetaStack &variableMetas) {
 
   TensorOutput output;
   output.dtype = variableMetas[0].dtype;
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   return output;
 }
 
@@ -1042,7 +1043,7 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
   output.dtype = variableMetas[0].dtype;
 
   if (variableMetas.size() == 1) {
-    output.shape = shape;
+    output.shapeOrIntValues = shape;
     return output;
   }
   int64_t inDims = shape.size();
@@ -1056,7 +1057,7 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
 
   shape.insert(shape.begin() + dim, variableMetas.size());
 
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   return output;
 }
 
@@ -1100,7 +1101,7 @@ ShapeInferenceEngine::embeddingBag(const MetaStack &variableMetas) {
   }
 
   TensorOutput output;
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   output.dtype = c10::ScalarType::Float;
   return output;
 }
@@ -1136,7 +1137,7 @@ ShapeInferenceEngine::quantizedEmbeddingBagByteRowwiseOffsets(
                        t0[1] - 8};
 
   TensorOutput output;
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   output.dtype = c10::ScalarType::Float;
   return output;
 }
@@ -1207,7 +1208,7 @@ Expected<TensorOutput> ShapeInferenceEngine::glowUnpackedQuantizedLinear(
   }
 
   TensorOutput output;
-  output.shape = outputShape;
+  output.shapeOrIntValues = outputShape;
   output.dtype = c10::ScalarType::QUInt8;
   return output;
 }
@@ -1239,8 +1240,9 @@ Expected<TensorOutput> ShapeInferenceEngine::embeddingBag4BitRowwiseOffsets(
   const TensorShape &offsetsShape = variableMetas[2].shape<TensorShape>();
 
   TensorOutput output;
-  output.shape = {offsetsShape[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
-                  (weightShape[1] - 4) * 2};
+  output.shapeOrIntValues = {offsetsShape[0] -
+                                 static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+                             (weightShape[1] - 4) * 2};
   output.dtype = c10::ScalarType::Float;
   return output;
 }
@@ -1273,7 +1275,7 @@ ShapeInferenceEngine::stack(const MetaStack &variableMetas) {
   shape.insert(shape.begin() + dim, shapes.size());
 
   TensorOutput output;
-  output.shape = shape;
+  output.shapeOrIntValues = shape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }
@@ -1316,7 +1318,7 @@ ShapeInferenceEngine::to(const MetaStack &variableMetas) {
   int32_t dtype = variableMetas[1].intValue[0];
 
   TensorOutput output;
-  output.shape = t;
+  output.shapeOrIntValues = t;
   output.dtype = static_cast<c10::ScalarType>(dtype);
   return output;
 }
@@ -1341,8 +1343,8 @@ ShapeInferenceEngine::lengthsToOffsets(const MetaStack &variableMetas) {
                               include_last_offset));
 
   TensorOutput output;
-  output.shape = t;
-  output.shape[0] += 1; // include last offset
+  output.shapeOrIntValues = t;
+  output.shapeOrIntValues[0] += 1; // include last offset
   output.dtype = variableMetas[0].dtype;
   return output;
 }
@@ -1360,7 +1362,7 @@ ShapeInferenceEngine::primDtype(const MetaStack &variableMetas) {
   int dtype = static_cast<int>(variableMetas[0].dtype);
 
   TensorOutput output;
-  output.shape = {dtype};
+  output.shapeOrIntValues = {dtype};
   output.dtype = c10::ScalarType::Int;
   return output;
 }
