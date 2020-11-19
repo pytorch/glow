@@ -575,6 +575,12 @@ compileImpl(const torch::jit::Module &origModule,
     torch::jit::ClearProfilingInformation(graph);
     torch::jit::EraseShapeInformation(graph);
     nameToOrigGraph[methodName] = graph->copy();
+    /* Note: The following LowerAllTuples call is a bit of a hack. The
+     * GraphExecutor that takes this copy of the graph would otherwise not have
+     * the tuples lowered, which would cause an issue, given that the two
+     * versions would have different output types.
+     */
+    LowerAllTuples(nameToOrigGraph[methodName]);
   }
 
   // JIT graph optimizations before freezing
