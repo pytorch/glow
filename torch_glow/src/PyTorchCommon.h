@@ -227,7 +227,9 @@ void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
 void glowAOTFusionWithShapeInference(torch::jit::Module &module,
-                                     const std::vector<glow::InputMeta> &);
+                                     const std::vector<glow::InputMeta> &meta,
+                                     runtime::DeferredWeightLoader *loader,
+                                     PyTorchLoaderSettings settings);
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in

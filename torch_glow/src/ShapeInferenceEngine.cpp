@@ -1309,8 +1309,8 @@ Expected<TensorOutput>
 ShapeInferenceEngine::to(const MetaStack &variableMetas) {
 
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 5,
-      strFormat("Expected 5 input, got %zu.", variableMetas.size()));
+      variableMetas.size() == 4 || variableMetas.size() == 5,
+      strFormat("Expected 4 or 5 input, got %zu.", variableMetas.size()));
 
   const TensorShape &t = variableMetas[0].shape<TensorShape>(); // input shape
   int32_t dtype = variableMetas[1].intValue[0];
