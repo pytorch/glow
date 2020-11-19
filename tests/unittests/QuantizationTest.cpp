@@ -280,6 +280,7 @@ template <class qtype>
 void quantizeTensorTest(
     ElemKind qTy, quantization::Schema schema,
     quantization::Calibration calibration = quantization::Calibration::None) {
+  // optimizeKL required histogram bins size to be atleast 255 so N is set to 256
   dim_t N = 256;
   float maxValue = 255.0;
   if (qTy == ElemKind::Int8QTy) {
