@@ -904,6 +904,13 @@ struct BBoxTransformInputs {
   };
 };
 
+struct RepeatInputs {
+  enum {
+    input = 0,
+    repeats,
+  };
+};
+
 } // namespace
 
 // static
@@ -986,6 +993,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::adaptive_avg_pool2d"},
        &PyTorchModelLoader::loadAdaptiveAvgPool2d},
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
+      {{"aten::repeat"}, &PyTorchModelLoader::loadRepeat},
       {{"aten::abs"}, &PyTorchModelLoader::loadAbs},
       {{"aten::upsample_nearest3d"}, &PyTorchModelLoader::loadUpsampleNearest},
       {{"aten::upsample_nearest2d"}, &PyTorchModelLoader::loadUpsampleNearest},
@@ -2854,6 +2862,46 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(
       outputs[0], F_.createReshape("reshape", input, castVector<dim_t>(shape)),
       dtype));
+}
+
+Error PyTorchModelLoader::loadRepeat(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[RepeatInputs::input]));
+
+  std::vector<int64_t> *repeats;
+  ASSIGN_VALUE_OR_RETURN_ERR(repeats, iValToIntList(getGlowIValueForValue(
+                                          inputs[RepeatInputs::repeats])));
+  RETURN_ERR_IF_NOT(repeats->size() >= input.dims().size(),
+                    "The rank of the input tensor must be greater than or "
+                    "equal to the size of repeats vector for aten::repeat");
+
+  const bool needsExpand = input.dims().size() < repeats->size();
+  glow::ReshapeNode *reshapeNode = nullptr;
+  if (needsExpand) {
+    const auto diff = repeats->size() - input.dims().size();
+    std::vector<dim_t> newDims;
+    for (size_t i = 0; i < diff; ++i) {
+      newDims.push_back(1);
+    }
+    newDims.insert(newDims.end(), input.dims().begin(), input.dims().end());
+    reshapeNode = F_.createReshape("reshape", input, newDims);
+  }
+
+  Node *node = needsExpand ? reshapeNode : input;
+  for (size_t i = 0; i < repeats->size(); ++i) {
+    const auto repeat = (*repeats)[i];
+    RETURN_ERR_IF_NOT(
+        repeat > 0,
+        "The value of repeat must be greater than 0 for aten::repeat");
+    node = F_.createTile("tile." + std::to_string(i), node, repeat, i);
+  }
+
+  RETURN_ERR(addValueMapping(outputs[0], node));
 }
 
 Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
