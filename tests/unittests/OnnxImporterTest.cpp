@@ -2293,16 +2293,24 @@ TEST_F(OnnxImporterTest, expandDims) {
   EXPECT_TRUE(reshape->getDims().equals({1, 2, 2, 1}));
 }
 
-/// Test loading Gather from an ONNX model.
-TEST_F(OnnxImporterTest, gather) {
-  ExecutionEngine EE;
+/// Helper method to run the gather operator test cases.
+/// \p filename contains the model .onnxtxt.
+/// \p dataShape: data Tensor dimensions.
+/// \p indicesShape: indices Tensor dimensions
+/// \p expectedValues : output Tensor values expected.
+template <class OpType>
+static void gatherTestHelper(llvm::StringRef fileName,
+                             llvm::ArrayRef<dim_t> dataShape,
+                             llvm::ArrayRef<dim_t> indicesShape,
+                             llvm::ArrayRef<dim_t> expectedDims) {
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/gather.onnxtxt");
-  auto *F = mod.createFunction("main");
+  Function *F = mod.createFunction("main");
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName.str();
   Placeholder *output;
-  Tensor data(ElemKind::FloatTy, {3, 2});
-  Tensor indices(ElemKind::Int32ITy, {2, 4});
+  Tensor data(ElemKind::FloatTy, dataShape);
+  Tensor indices(ElemKind::Int32ITy, indicesShape);
 
   {
     ONNXModelLoader onnxLD(netFilename, {"data", "indices"},
@@ -2310,13 +2318,31 @@ TEST_F(OnnxImporterTest, gather) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
   }
 
-  // Verify structure: PH/PH -> Gather -> Save -> PH.
-  ASSERT_EQ(mod.getPlaceholders().size(), 3);
-  ASSERT_EQ(F->getNodes().size(), 2);
-  auto *save = getSaveNodeFromDest(output);
-  auto *gather = llvm::dyn_cast<GatherNode>(save->getInput().getNode());
-  ASSERT_TRUE(gather);
-  EXPECT_TRUE(gather->getResult().dims().equals({2, 4, 2}));
+  // Verify structure: PH/PH -> Gather/GatherND -> Save -> PH.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *node = saveNode->getInput().getNode();
+  auto *nodeGather = llvm::dyn_cast<OpType>(node);
+  ASSERT_TRUE(nodeGather);
+  EXPECT_TRUE(nodeGather->getResult().dims().equals({expectedDims}));
+}
+
+/// Test loading gather op from a ONNX model.
+TEST_F(OnnxImporterTest, importGather) {
+  std::string filename("gather.onnxtxt");
+  std::vector<dim_t> dataShape = {3, 2};
+  std::vector<dim_t> indicesShape = {2, 4};
+  std::vector<dim_t> expectedDims = {2, 4, 2};
+  gatherTestHelper<GatherNode>(filename, dataShape, indicesShape, expectedDims);
+}
+
+/// Test loading gatherND op from a ONNX model.
+TEST_F(OnnxImporterTest, importGatherND) {
+  std::string filename("gatherND.onnxtxt");
+  std::vector<dim_t> dataShape = {2, 2, 2};
+  std::vector<dim_t> indicesShape = {2, 2};
+  std::vector<dim_t> expectedDims = {2, 2};
+  gatherTestHelper<GatherNDNode>(filename, dataShape, indicesShape,
+                                 expectedDims);
 }
 
 /// Test loading ScatterND from an ONNX model.

@@ -2483,6 +2483,31 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
       indices, batchDims));
 }
 
+GatherNDNode *Function::createGatherND(llvm::StringRef name, NodeValue data,
+                                       NodeValue indices) {
+  auto dDims = data.dims();
+  auto iDims = indices.dims();
+  int64_t lastIndicesDimension = iDims[iDims.size() - 1];
+  assert(dDims.size() > 0 && "data/input rank must be >= 1.");
+  assert(iDims.size() > 0 && "indices rank must be >= 1.");
+  assert(iDims[iDims.size() - 1] <= dDims.size() &&
+         "last dimension of indices can be at most rank of data/input");
+
+  int64_t outRank = dDims.size() + iDims.size() - lastIndicesDimension - 1;
+  std::vector<dim_t> outDimsGatherND(outRank);
+  size_t i = 0;
+  for (; i < iDims.size() - 1; i++) {
+    outDimsGatherND[i] = iDims[i];
+  }
+  for (size_t j = lastIndicesDimension; j < dDims.size(); i++, j++) {
+    outDimsGatherND[i] = dDims[j];
+  }
+
+  auto outTy =
+      getParent()->uniqueTypeWithNewShape(data.getType(), outDimsGatherND);
+  return addNode(new GatherNDNode(name, outTy, data, indices));
+}
+
 GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
                                                NodeValue data, NodeValue ranges,
                                                unsigned_t maxOutputSize) {

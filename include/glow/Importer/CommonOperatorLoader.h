@@ -1290,6 +1290,29 @@ protected:
     return Error::success();
   }
 
+  Error loadGatherND(const std::string &typeName, const OpType &op,
+                     const ArgumentDictionaryTy &dict) {
+
+    NodeValue data;
+    ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+
+    if (indices.getElementType() != ElemKind::Int64ITy &&
+        indices.getElementType() != ElemKind::Int32ITy) {
+      // If the index type is not Int32 or Int64 insert a conversion layer to
+      // introduce robustness against model problems. Constant Float indices
+      // will get converted to integer indices via constant folding pass.
+      indices = G_->createConvertTo(
+          loadOperatorName(op) + "_idx_convertToi32", indices,
+          G_->getParent()->uniqueType(ElemKind::Int32ITy, indices.dims()));
+    }
+
+    auto *GN = G_->createGatherND(loadOperatorName(op), data, indices);
+    RETURN_IF_ERR(addNodeAsOutput(op, GN));
+    return Error::success();
+  }
+
   Error loadGatherRanges(const std::string &typeName, const OpType &op,
                          ArgumentDictionaryTy &dict) {
     NodeValue data;
@@ -1557,6 +1580,10 @@ protected:
     }
     if (typeName == "Gather" || typeName == "BatchGather") {
       RETURN_IF_ERR(loadGatherOps(typeName, op, dict));
+      return true;
+    }
+    if (typeName == "GatherND") {
+      RETURN_IF_ERR(loadGatherND(typeName, op, dict));
       return true;
     }
     if (typeName == "GatherRanges") {
