@@ -2521,6 +2521,32 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
 }
 
+/// Mirroring the implementation in
+/// caffe2/aten/src/ATen/native/TypeProperties.cpp
+static inline c10::ScalarType promote_skip_undefined(c10::ScalarType a,
+                                                     c10::ScalarType b) {
+  if (a == c10::ScalarType::Undefined) {
+    return b;
+  }
+  if (b == c10::ScalarType::Undefined) {
+    return a;
+  }
+  return c10::promoteTypes(a, b);
+}
+
+Expected<c10::ScalarType> PyTorchModelLoader::getHigherType(
+
+    const c10::ArrayRef<const torch::jit::Value *> &values) noexcept {
+
+  c10::ScalarType higherType = c10::ScalarType::Undefined;
+  for (auto v : values) {
+    c10::ScalarType dtype;
+    RETURN_IF_ERR(getCorrectTypeMapping(dtype, v));
+    higherType = promote_skip_undefined(higherType, dtype);
+  }
+  return higherType;
+}
+
 Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -2536,6 +2562,10 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
   int64_t dim = ptNode->i(at::attr::dim);
 
   std::vector<glow::NodeValue> glowInputs;
+  c10::ScalarType higherType;
+  glow::ElemKind higherKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(higherType, getHigherType(inputs));
+  higherKind = scalarTypeToElemKind(higherType);
 
   // Get number of input dimensions
   glow::NodeValue glowInput0;
@@ -2560,7 +2590,14 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
                                 "values are in the range [-%ld, %ld]",
                                 origDim, numInputDims, numInputDims - 1));
 
-    glowInputs.push_back(std::move(glowInput));
+    if (!isQuantizedElemKind(higherKind) &&
+        glowInput.getElementType() != higherKind) {
+      glow::ConvertToNode *toNode =
+          F_.createConvertTo("upcastForConcat", glowInput, higherKind);
+      glowInputs.push_back(toNode->getResult());
+    } else {
+      glowInputs.push_back(std::move(glowInput));
+    }
   }
 
   RETURN_ERR(
@@ -2584,6 +2621,11 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(dim >= 0, "Negative stack dims not supported yet.");
 
   std::vector<glow::NodeValue> glowInputs;
+  c10::ScalarType higherType;
+  glow::ElemKind higherKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(higherType, getHigherType(inputs));
+  higherKind = scalarTypeToElemKind(higherType);
+
   for (size_t i = 0; i < inputs.size(); ++i) {
     glow::NodeValue glowInput;
     ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[i]));
@@ -2593,7 +2635,14 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
         dim < glowInput.dims().size() + 1,
         "Dim must be less than the rank of inputs plus the added dimension");
 
-    glowInputs.push_back(std::move(glowInput));
+    if (!isQuantizedElemKind(higherKind) &&
+        glowInput.getElementType() != higherKind) {
+      glow::ConvertToNode *toNode =
+          F_.createConvertTo("upcastForConcat", glowInput, higherKind);
+      glowInputs.push_back(toNode->getResult());
+    } else {
+      glowInputs.push_back(std::move(glowInput));
+    }
   }
 
   auto concat = F_.createConcat("stack_concat", glowInputs, dim)->getResult();

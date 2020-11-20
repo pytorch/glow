@@ -93,6 +93,12 @@ public:
   const PyTorchLoaderSettings &settings_;
 
 private:
+  /// Helper function to support upcasting in concat, we calculate the higher
+  /// type among a list of types. For example, the higher type of [half, float,
+  /// half, double] will be double. Similar to at::result_type().
+  Expected<c10::ScalarType> getHigherType(
+      const c10::ArrayRef<const torch::jit::Value *> &values) noexcept;
+
   /// Map from input placeholders to their location on the input stack.
   std::unordered_map<glow::Placeholder *, size_t>
       inputPlaceholdersReverseIndex_;
