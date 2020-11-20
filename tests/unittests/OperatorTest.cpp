@@ -1249,7 +1249,7 @@ createAndInitBasicMFCCTest(glow::PlaceholderBindings &bindings,
                               ElemKind::FloatTy, ElemKind::FloatTy, TOL);      \
   }
 
-TEST_MFCC(1, 17, 5e-5)
+TEST_MFCC(1, 17, 2e-4)
 TEST_MFCC(1, 33, 5e-5)
 TEST_MFCC(1, 65, 2e-5)
 TEST_MFCC(1, 129, 1e-5)
