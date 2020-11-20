@@ -2798,8 +2798,23 @@ TEST_F(OnnxImporterTest, importPadDefault) {
             PaddingMode::CONSTANT, 0.f, false);
 }
 
+TEST_F(OnnxImporterTest, importPadDefaultInputPads) {
+  // This test Pad in opset v11 where "pads" is passed through the 2nd input.
+  importPad("padDefaultInputPad.onnxtxt", "data", {4, 6, 5, 7} /* input */,
+            {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
+            PaddingMode::CONSTANT, 0.f, false);
+}
+
 TEST_F(OnnxImporterTest, importPadConstant) {
   importPad("padConstant.onnxtxt", "data", {4, 6, 5, 7} /* input */,
+            {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
+            PaddingMode::CONSTANT, 2.55f, false);
+}
+
+TEST_F(OnnxImporterTest, importPadConstantInput) {
+  // This tests Pad in opset v11 where "pads" is passed through the 2nd input
+  // and "value" through the 3rd input.
+  importPad("padConstantInput.onnxtxt", "data", {4, 6, 5, 7} /* input */,
             {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
             PaddingMode::CONSTANT, 2.55f, false);
 }

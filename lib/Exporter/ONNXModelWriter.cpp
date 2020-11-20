@@ -1282,13 +1282,43 @@ Error ONNXModelWriter::writePad(const PadNode *node, GraphType &graph) {
                     ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
   }
 
-  addValueAttribute(proto, "pads", node->getPads());
-  float value = node->getValue();
-  if (value != .0f) {
-    addValueAttribute(proto, "value", value);
-  }
+  if (opsetVersion_ <= 10) {
+    addValueAttribute(proto, "pads", node->getPads());
+    float value = node->getValue();
+    if (value != .0f) {
+      addValueAttribute(proto, "value", value);
+    }
+    return writeAllWithNode("Pad", node, graph, proto);
+  } else {
+    proto->set_name(node->getName());
+    proto->set_op_type("Pad");
+    // Input for data.
+    inputsToProto(node, proto);
 
-  return writeAllWithNode("Pad", node, graph, proto);
+    // Input for pads.
+    auto pads = node->getPads();
+    Tensor oneDimTensorPads(ElemKind::Int64ITy, {(dim_t)pads.size()});
+    auto oneDimTensorPadsH = oneDimTensorPads.getHandle<int64_t>();
+    for (size_t b = 0, e = oneDimTensorPads.size(); b < e; ++b) {
+      oneDimTensorPadsH.raw(b) = pads[b];
+    }
+    auto *tensorProto = addInitializer(graph);
+    tensorProto->set_name(node->getName().str() + "_pads");
+    writeTensor(oneDimTensorPads, tensorProto);
+    proto->add_input(node->getName().str() + "_pads");
+
+    // Input for value.
+    Tensor value(ElemKind::FloatTy, {1});
+    auto valueH = value.getHandle();
+    valueH.raw(0) = node->getValue();
+    tensorProto = addInitializer(graph);
+    tensorProto->set_name(node->getName().str() + "_value");
+    writeTensor(value, tensorProto);
+    proto->add_input(node->getName().str() + "_value");
+    // Output
+    outputsToProto(node, graph, proto);
+    return Error::success();
+  }
 }
 
 Error ONNXModelWriter::writeConcat(const ConcatNode *node, GraphType &graph) {
