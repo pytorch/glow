@@ -57,7 +57,8 @@ void ShapeInferenceEngine::getNodeInputShape(const torch::jit::Node *node,
                                              MetaStack &inputMetas) {
   for (auto input : node->inputs()) {
     auto it = shapeMap_.find(input);
-    CHECK(it != shapeMap_.end());
+    CHECK(it != shapeMap_.end())
+        << "Node: " << node->kind() << " input " << input->debugName();
     inputMetas.emplace_back(shapeMap_[input]);
   }
 }
@@ -326,17 +327,14 @@ Error ShapeInferenceEngine::runRecursively(
 
 Error ShapeInferenceEngine::run() {
   RETURN_ERR_IF_NOT(
-      inputs_.size() == graph_.inputs().size(),
+      inputs_.size() == graph_.inputs().size() ||
+          (inputs_.size() + 1 == graph_.inputs().size() &&
+           graph_.inputs()[0]->type()->is_module()),
       "Number of inputs mismatch between Graph and actual inputs");
   /// Put graph input into shape mapping
   RETURN_IF_ERR(runRecursively(graph_, inputs_));
   /// Extract output from shape mapping
-  if (!blockList_.empty()) {
-    LOG(INFO)
-        << "Skip generating graph output shapes since there are nodes blocked.";
-  } else {
-    generateGraphOutputShape();
-  }
+  RETURN_IF_ERR(generateGraphOutputShape());
   return Error::success();
 }
 
@@ -372,8 +370,12 @@ void ShapeInferenceEngine::printShapeMap() {
 Error ShapeInferenceEngine::getGraphInputShapeType(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> &inputs) {
+  int has_self = 0;
+  if (!graph.inputs().empty() && graph.inputs()[0]->type()->is_module()) {
+    has_self = 1;
+  }
   for (auto i = 0; i < inputs.size(); i++) {
-    auto gInName = graph.inputs()[i];
+    auto gInName = graph.inputs()[i + has_self];
     auto input = inputs[i];
     TensorShape shape = {};
     std::vector<int64_t> intValue = {};
@@ -403,12 +405,22 @@ Error ShapeInferenceEngine::getGraphInputShapeType(
   return Error::success();
 }
 
-void ShapeInferenceEngine::generateGraphOutputShape() {
+Error ShapeInferenceEngine::generateGraphOutputShape() {
   for (auto output : graph_.outputs()) {
     auto it = shapeMap_.find(output);
-    CHECK(it != shapeMap_.end());
+    if (it == shapeMap_.end()) {
+      if (!blockList_.empty()) {
+        LOG(WARNING) << "Some output shape is missing. Likely due to "
+                        "blockList. Clearing the output shape vector.";
+        outputShape_.clear();
+        return Error::success();
+      } else {
+        return MAKE_ERR("Unexpected missing shape for output.");
+      }
+    }
     outputShape_.emplace_back(it->second);
   }
+  return Error::success();
 }
 
 /// The \p prim::Constant may have multiple types of output, eg.

@@ -117,7 +117,7 @@ private:
                                const at::ArrayRef<torch::jit::IValue> &);
 
   /// Extract shape info of graph outputs from \p shapeMap_.
-  void generateGraphOutputShape();
+  Error generateGraphOutputShape();
 
   /// Extract shape info of node inputs from \p shapeMap_.
   void getNodeInputShape(const torch::jit::Node *node, MetaStack &inputMetas);
