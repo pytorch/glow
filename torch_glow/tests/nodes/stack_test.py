@@ -26,3 +26,16 @@ class TestStack(unittest.TestCase):
             torch.randn(2, 3, 4),
             skip_to_glow=True,
         )
+
+    def test_stack_different_types(self):
+        """Test stack between fp16 and fp32, which is supported in pytorch."""
+
+        x = torch.randn(2, 3, 4)
+        y = torch.randn(2, 3, 4, dtype=torch.half)
+
+        utils.compare_tracing_methods(
+            SimpleStackModel(),
+            x,
+            y,
+            skip_to_glow=True,
+        )
