@@ -505,8 +505,9 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
 // the entire model and would leverage glowAOTFusion() to run the partially
 // lowered model.
 void glowAOTFusionWithShapeInference(torch::jit::Module &model,
-                                     const InputMetaStack &metaStack) {
-  auto settings = glow::getGlobalPyTorchLoaderSettingsSnapshot();
+                                     const InputMetaStack &metaStack,
+                                     runtime::DeferredWeightLoader *loader,
+                                     const PyTorchLoaderSettings &settings) {
 
   auto graph = model.get_method("forward").function().graph();
 
@@ -589,7 +590,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
             itr->second.dtype, itr->second.shape<TensorShape>());
       }
 
-      e = runner->warmCache(metaStackForCompilation, settings, nullptr,
+      e = runner->warmCache(metaStackForCompilation, settings, loader,
                             /*useMaxSizeCompilation*/ true);
       if (e) {
         // If the graph is already compiled previously, warmCache() will report
@@ -607,11 +608,11 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
 
 void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    runtime::DeferredWeightLoader *loader,
-                   PyTorchLoaderSettings settings) {
+                   const PyTorchLoaderSettings &settings) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   if (FLAGS_inferShapeForCompilation) {
-    return glowAOTFusionWithShapeInference(model, metaStack);
+    return glowAOTFusionWithShapeInference(model, metaStack, loader, settings);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
