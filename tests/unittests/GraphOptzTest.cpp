@@ -1462,6 +1462,55 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithConstantOperand) {
   checkNumericalEquivalence();
 }
 
+/// Test sink Transpose below Add of which operands has the same element type
+/// and shape, but different scale and offset.
+TEST_F(GraphOptz, sinkQuantTransposeBelowArithmeticNodesWithConstantOperand) {
+  const dim_t origDims[] = {1, 5, 10, 15};
+  const dim_t transposedDims[] = {1, 15, 5, 10};
+
+  // Create graph where a Add take a Constant in LHS and Transpose in RHS.
+  // LHS and RHS has different scale and offset.
+  Constant *lhsC =
+      mod_.createConstant(ElemKind::Int8QTy, transposedDims, 0.2, 0, "C1");
+  lhsC->getHandle<int8_t>().randomize(-128, 127, mod_.getPRNG());
+
+  auto *inputP =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "Input", false);
+  auto *qTy = mod_.uniqueType(ElemKind::Int8QTy, origDims, 0.3, 2);
+  auto *quant = F_->createQuantize("Quant", inputP, qTy);
+  auto *rhsT = F_->createTranspose("RHS", quant, NHWC2NCHW);
+  auto *addQ = F_->createAdd("Add", lhsC, rhsT);
+  SaveNode *save = F_->createSave("Save", addQ);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Expecting Transpose->Output rather than Add->Output.
+  const auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *transpose = llvm::dyn_cast<TransposeNode>(saveOpt->getInput());
+  ASSERT_NE(transpose, nullptr);
+  auto *add = llvm::dyn_cast<AddNode>(transpose->getInput());
+  ASSERT_TRUE(add);
+  // Check that the dimensions of the input and output of the add have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(add->getResult().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getRHS().dims(), llvm::makeArrayRef(origDims));
+  quant = llvm::dyn_cast<QuantizeNode>(add->getRHS().getNode());
+  ASSERT_TRUE(quant);
+  EXPECT_EQ(quant->getInput().getNode(), inputP);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+
+  // Check that the original and optimized functions are numerically equivalent.
+  // This indirectly checks that the Constant has been transposed properly.
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(inputP)->getHandle().randomize(-128, 127, mod_.getPRNG());
+
+  checkNumericalEquivalence();
+}
+
 /// Check that the predicates are properly preserved while doing
 /// the add(transpose, transpose) => transpose(add).
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
