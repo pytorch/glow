@@ -2552,6 +2552,35 @@ SpaceToDepthNode *Function::createSpaceToDepth(llvm::StringRef name,
   return addNode(new SpaceToDepthNode(name, outTy, input, blockSize));
 }
 
+ReshapeNode *Function::createDepthToSpace(llvm::StringRef name, NodeValue input,
+                                          unsigned blockSize, bool isCRD) {
+  assert(blockSize > 0 && "Block size must be >= 1.");
+
+  auto inputDim = input.dims();
+  assert(inputDim.size() == 4 && "Dimension size of 4 is expected.");
+  dim_t N = inputDim[0];
+  dim_t H = inputDim[1];
+  dim_t W = inputDim[2];
+  dim_t C = inputDim[3];
+  assert(C % blockSize == 0 && "Depth should be divisible by block size.");
+
+  llvm::SmallVector<unsigned_t, 6> shuffle;
+  llvm::SmallVector<dim_t, 6> tmpShape;
+  llvm::SmallVector<dim_t, 4> outShape = {N, H * blockSize, W * blockSize,
+                                          C / (blockSize * blockSize)};
+  if (isCRD) {
+    tmpShape = {N, H, W, C / (blockSize * blockSize), blockSize, blockSize};
+    shuffle = D2S_CRD;
+  } else {
+    tmpShape = {N, H, W, blockSize, blockSize, C / (blockSize * blockSize)};
+    shuffle = D2S_DCR;
+  }
+
+  auto *RN1 = createReshape(name.str() + "_reshape_in", input, tmpShape);
+  auto *TN = createTranspose(name.str() + "_transpose", RN1, shuffle);
+  return createReshape(name.str() + "_reshape_out", TN, outShape);
+}
+
 ReshapeNode *Function::createUpsample(llvm::StringRef name, NodeValue input,
                                       dim_t numLeadingDims) {
   auto dims = input.dims();

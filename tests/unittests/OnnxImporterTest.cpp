@@ -1588,6 +1588,67 @@ TEST_F(OnnxImporterTest, reduceMinKeepDimsDefaultAxis) {
   testReductionOps("reduceMinDefaultAxis.onnxtxt", {1, 1, 1, 1}, {1});
 }
 
+static void testDepthToSpace(std::string &filename,
+                             const std::vector<dim_t> &expectedDims,
+                             const std::vector<float> &expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    // NCHW
+    Tensor x(ElemKind::FloatTy, {1, 8, 2, 3});
+    x.getHandle() = {0.,  1.,  2.,  3.,  4.,  5.,  9.,  10., 11., 12.,
+                     13., 14., 18., 19., 20., 21., 22., 23., 27., 28.,
+                     29., 30., 31., 32., 36., 37., 38., 39., 40., 41.,
+                     45., 46., 47., 48., 49., 50., 54., 55., 56., 57.,
+                     58., 59., 63., 64., 65., 66., 67., 68.};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < result.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading DepthToSpace with mode=CRD from an ONNX model.
+TEST_F(OnnxImporterTest, depthToSpaceCRD) {
+  std::string filename("depthToSpace_crd.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 2, 4, 6};
+  std::vector<float> expectedValues = {
+      0,  9,  1,  10, 2,  11, 18, 27, 19, 28, 20, 29, 3,  12, 4,  13,
+      5,  14, 21, 30, 22, 31, 23, 32, 36, 45, 37, 46, 38, 47, 54, 63,
+      55, 64, 56, 65, 39, 48, 40, 49, 41, 50, 57, 66, 58, 67, 59, 68};
+  testDepthToSpace(filename, expectedDims, expectedValues);
+}
+
+/// Test loading DepthToSpace with default mode(DCR) from an ONNX model.
+TEST_F(OnnxImporterTest, depthToSpaceDCR) {
+  std::string filename("depthToSpace.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 2, 4, 6};
+  std::vector<float> expectedValues = {
+      0,  18, 1,  19, 2,  20, 36, 54, 37, 55, 38, 56, 3,  21, 4,  22,
+      5,  23, 39, 57, 40, 58, 41, 59, 9,  27, 10, 28, 11, 29, 45, 63,
+      46, 64, 47, 65, 12, 30, 13, 31, 14, 32, 48, 66, 49, 67, 50, 68,
+  };
+  testDepthToSpace(filename, expectedDims, expectedValues);
+}
+
 /// Test loading SpaceToDepth op from an ONNX model.
 TEST_F(OnnxImporterTest, spaceToDepth) {
   ExecutionEngine EE{};
