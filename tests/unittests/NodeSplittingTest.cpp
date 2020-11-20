@@ -1930,15 +1930,84 @@ TEST_F(NodeSplitting, Conv2D_Relu_Recursive) {
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(splitMap,
-                            ::glow::splitNodeRecursively(relu, splitOption, 2));
+                            ::glow::splitNodeRecursively(relu, splitOption, 10));
   runDCEPass(F_, cctx_);
 
   F_->dumpDAG("graph_split.dot");
 
+  EXPECT_EQ(splitMap.size(), 2);
+  EXPECT_TRUE(splitMap.count(conv));
+  EXPECT_TRUE(splitMap.count(relu));
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a simple network with Conv2D, Relu and MaxPool recursively.
+TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive) {
+
+  // Conv2D params.
+  std::vector<dim_t> inputDims = {5, 7, 8, 2};
+  std::vector<dim_t> filterDims = {8, 2, 2, 1};
+  std::vector<dim_t> biasDims = {8};
+  std::vector<dim_t> outputDims = {5, 6, 7, 8};
+  std::vector<unsigned_t> kernels = {2, 2};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {0, 0, 0, 0};
+  dim_t group = 2;
+  std::vector<unsigned_t> dilation = {1, 1};
+
+  // MaxPool params.
+  std::vector<unsigned_t> poolKernels = {3, 3};
+  std::vector<unsigned_t> poolStrides = {2, 2};
+  std::vector<unsigned_t> poolPads = {1, 1, 1, 1};
+
+  // Create input placeholder.
+  auto &mod = *(F_->getParent());
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod.getPRNG());
+  // Create filter constant.
+  auto *filter = mod.createConstant(ElemKind::FloatTy, filterDims, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod.getPRNG());
+  // Create bias constant.
+  auto *bias = mod.createConstant(ElemKind::FloatTy, biasDims, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  // Create Conv2D.
+  auto *outTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
+  auto *conv = F_->createConv("conv", input, filter, bias, outTy, kernels,
+                              strides, pads, group, dilation);
+  // Create Relu.
+  auto *relu = F_->createRELU("relu", conv);
+  // Create MaxPool.
+  auto *pool = F_->createMaxPool("pool", relu, poolKernels, poolStrides, poolPads);
+  // Create Save.
+  SaveNode *save = F_->createSave("save", pool->getResult());
+  bindings_.allocate(save->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  F_->dumpDAG("graph_orig.dot");
+
+  // Split node recursively.
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitMap,
+                            ::glow::splitNodeRecursively(pool, splitOption, 10));
+  runDCEPass(F_, cctx_);
+
+  F_->dumpDAG("graph_split.dot");
+
+  EXPECT_EQ(splitMap.size(), 3);
+  EXPECT_TRUE(splitMap.count(conv));
+  EXPECT_TRUE(splitMap.count(relu));
+  EXPECT_TRUE(splitMap.count(pool));
   checkNumericalEquivalence(0);
 }
 
 // TODO1: Test recursive split where node has other uses.
-// TODO2: Test recursive split with large depth (check that split stops at
-// Constants/Placeholders)
-//
+// TODO2: Verify that when we recurse we only split the 0th output.
+// TODO3: Check recursive early stop due to unsupported node.
+// TODO4: Check returned output (maps) for all tests.

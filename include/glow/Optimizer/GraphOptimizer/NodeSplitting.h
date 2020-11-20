@@ -28,6 +28,10 @@
 
 namespace glow {
 
+/// Node output operand used for splitting. Currently we only support splitting
+/// the 1st output operand of a node.
+constexpr dim_t SplitNodeOutputIdx = 0;
+
 ///===---------------------------------------------------------------------===//
 ///                               SplitNodeOption
 ///===---------------------------------------------------------------------===//

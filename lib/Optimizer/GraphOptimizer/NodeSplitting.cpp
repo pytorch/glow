@@ -1494,14 +1494,15 @@ glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
       "At least the split option or the split constraint must be given!");
 
   // Split starting node.
-  std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_RETURN_ERR(splitNodes,
+  std::vector<Node *> splitNodesCurr;
+  ASSIGN_VALUE_OR_RETURN_ERR(splitNodesCurr,
                              splitNode(node, splitOption, splitConstraint));
-  splitMap[node] = splitNodes;
 
-  // If starting node was not split then return.
-  if (!splitNodes.size()) {
+  // If starting node was NOT split then return, otherwise add nodes to map.
+  if (!splitNodesCurr.size()) {
     return splitMap;
+  } else {
+    splitMap[node] = splitNodesCurr;
   }
 
   // Early return if depth is 1.
@@ -1509,62 +1510,71 @@ glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
     return splitMap;
   }
 
-  // --------------------------------------------------------------------------
-  for (auto splitNode : splitNodes) {
-    std::cout << "Split node: " << splitNode->getName().str() << "\n";
-  }
-  std::cout << "\n";
-  // --------------------------------------------------------------------------
+  // Iterate through all of the input operands and split them.
+  for (unsigned inpIdx = 0, e = node->getNumInputs(); inpIdx < e; ++inpIdx) {
 
-  // Iterate through all of the split nodes inputs.
-  for (unsigned inputIdx = 0; inputIdx < node->getNumInputs(); inputIdx++) {
-
-    // Find Slice nodes and ranges for the current input.
+    // Find parent node value and ranges for the current input.
     std::vector<SliceRange> inputRanges;
     NodeValue sliceInputNodeValue = nullptr;
-    for (const Node *splitNode : splitNodes) {
-      SliceNode *sliceNode =
-          dyn_cast<SliceNode>(splitNode->getNthInput(inputIdx).getNode());
-      assert(sliceNode && "SliceNode not found for split node input!");
-      inputRanges.push_back(SliceRange(sliceNode));
-      if (!sliceInputNodeValue.getNode()) {
-        sliceInputNodeValue = sliceNode->getInput();
+    for (const Node *splitNode : splitNodesCurr) {
+      // Get parent node value and range.
+      NodeValue inputNV = splitNode->getNthInput(inpIdx);
+      if (auto *sliceNode = dyn_cast<SliceNode>(inputNV)) {
+        inputNV = sliceNode->getInput();
+        inputRanges.push_back(SliceRange(sliceNode));
       } else {
-        assert(sliceInputNodeValue == sliceNode->getInput() &&
-               "SliceNodes do not have a common input!");
+        inputRanges.push_back(SliceRange(inputNV.getType()));
       }
-    }
-
-    // Slice input node value.
-    std::cout << "Slice input node: "
-              << sliceInputNodeValue.getNode()->getName().str() << "\n";
-    std::cout << "Range for input " << inputIdx << "\n";
-    for (auto range : inputRanges) {
-      std::cout << range.toString() << "\n";
+      // Verify that parent node value is common.
+      if (!sliceInputNodeValue) {
+        sliceInputNodeValue = inputNV;
+      } else {
+        RETURN_ERR_IF_NOT(
+            sliceInputNodeValue == inputNV,
+            "Input slices do not have a common parent node value!");
+      }
     }
 
     // If the node value which is sliced has other consumers than the SliceNodes
     // inserted during splitting then we do not split the node which produces
     // that node value.
-    // if (sliceInputNodeValue.getNumUsers() > splitNodes.size()) {
+    // if (sliceInputNodeValue.getNumUsers() > splitNodesCurr.size()) {
     //  std::cout << "We are not splitting this node!!\n";
     //  continue;
     //}
 
+    // Check that we split the 1st output operand of the parent node.
+    if (sliceInputNodeValue.getResNo() != SplitNodeOutputIdx) {
+      continue;
+    }
+
     // Split the input node of the SliceNodes using same slice ranges.
     auto splitInputOption = SplitNodeBySliceRanges(inputRanges);
     Node *splitInputNode = sliceInputNodeValue.getNode();
-
-    // ASSIGN_VALUE_OR_RETURN_ERR(splitMap[sliceInputNode],
-    //                           splitNode(sliceInputNode, &splitOption,
-    //                           nullptr));
-
     SplitNodeMap splitInputMap;
     ASSIGN_VALUE_OR_RETURN_ERR(
         splitInputMap, splitNodeRecursively(splitInputNode, &splitInputOption,
                                             splitConstraint, maxDepth - 1));
-
     splitMap.insert(splitInputMap.begin(), splitInputMap.end());
+
+    // Remove Slice and Insert nodes between adjacent split nodes.
+    if (splitMap.count(splitInputNode)) {
+      auto &splitNodesNext = splitMap[splitInputNode];
+      assert(splitNodesCurr.size() == splitNodesNext.size() &&
+             "Mismatch for number of split Nodes!");
+      // Create short circuit between inputs and output of adjacent nodes.
+      for (size_t idx = 0, len = splitNodesCurr.size(); idx < len; ++idx) {
+        NodeValue splitNodeNextOut = splitNodesNext[idx]->getNthResult(SplitNodeOutputIdx);
+        NodeValue splitNodeCurrInp = splitNodesCurr[idx]->getNthInput(inpIdx);
+        assert(splitNodeNextOut.getType()->isEqual(splitNodeCurrInp.getType()) &&
+               "Mismatch between input/output type when doing short-circuit!");
+        assert(splitNodeNextOut.getNumUsers() == 1 &&
+               "Split node output value has more than one use!");
+        assert(splitNodeCurrInp.getNumUsers() == 1 &&
+               "Split node input value has more than one use!");
+        splitNodeCurrInp.replaceAllUsesOfWith(splitNodeNextOut);
+      }
+    }
   }
 
   return splitMap;
