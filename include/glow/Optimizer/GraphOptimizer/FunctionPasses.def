@@ -61,6 +61,7 @@ FUN_PASS(OptimizeConcatQuantization)
 FUN_PASS(SinkConcatBelowQuantize)
 FUN_PASS(FoldLayerNormArithmetic)
 FUN_PASS(QuantizeSwish)
+FUN_PASS(ConvertFullyConnectedToConvolution)
 FUN_PASS(FoldMinMaxToClip)
 FUN_PASS(ReplaceZeroScaleFP16QuantNodes)
 
