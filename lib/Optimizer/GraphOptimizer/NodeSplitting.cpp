@@ -1472,9 +1472,7 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
 ///===---------------------------------------------------------------------===//
 // TODO1: For raw option we must add a verification that all the slice ranges
 //        cover the entire output operand.
-// TODO2: Dettach original node after splitting it.
-// TODO3: When spliting node we could delete the original node manually so
-//        we don't have to run a round of DCE afterwards!
+// TODO2: Dettach or delete original node after splitting it.
 
 Expected<SplitNodeMap>
 glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
