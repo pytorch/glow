@@ -68,6 +68,10 @@ class Caffe2ModelLoader
   /// Helper function to print better log information for operator failure cases
   const std::string opErrMsg(const caffe2::OperatorDef &op,
                              const std::string &errMsg);
+
+  /// Load the PRelu operator.
+  Error loadPRelu(const caffe2::OperatorDef &op, ArgumentDictionaryTy &dict);
+
   /// Load the Conv or ConvRelu operators.
   Error loadConv(const caffe2::OperatorDef &op, ArgumentDictionaryTy &dict);
 
