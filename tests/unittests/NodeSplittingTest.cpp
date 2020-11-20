@@ -1905,7 +1905,7 @@ static void splitConv2DReluRecursive(Function *F, Function *&optF,
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
-                                                          mod.getPRNG());
+                                                         mod.getPRNG());
   // Create filter constant.
   auto *filter = mod.createConstant(ElemKind::FloatTy, filterDims, "filter");
   filter->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
@@ -1917,7 +1917,7 @@ static void splitConv2DReluRecursive(Function *F, Function *&optF,
   // Create Conv2D.
   auto *outTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
   auto *conv = F->createConv("conv", input, filter, bias, outTy, kernels,
-                              strides, pads, group, dilation);
+                             strides, pads, group, dilation);
   // Create Relu.
   auto *relu = F->createRELU("relu", conv);
   // Create Save.
@@ -1929,8 +1929,9 @@ static void splitConv2DReluRecursive(Function *F, Function *&optF,
 
   // Split node recursively.
   SplitNodeMap splitMap;
-  ASSIGN_VALUE_OR_FAIL_TEST(splitMap,
-                            ::glow::splitNodeRecursively(relu, splitOption, /* maxDepth */ 10));
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap,
+      ::glow::splitNodeRecursively(relu, splitOption, /* maxDepth */ 10));
   runDCEPass(F, cctx);
 
   EXPECT_EQ(splitMap.size(), 2);
@@ -1968,21 +1969,25 @@ TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimC) {
 
 /// Test splitting Conv2D with Relu along H and W dimensions.
 TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimHW) {
-  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimH, ShapeNHWC::DimW}, {2, 2});
+  auto splitOption =
+      SplitNodeByNumChunks({ShapeNHWC::DimH, ShapeNHWC::DimW}, {2, 2});
   splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting Conv2D with Relu along H, W and C dimensions.
 TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimHWC) {
-  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC}, {2, 2, 2});
+  auto splitOption = SplitNodeByNumChunks(
+      {ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC}, {2, 2, 2});
   splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting Conv2D with Relu along N, H, W and C dimensions.
 TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimNHWC) {
-  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC}, {2, 2, 2, 2});
+  auto splitOption = SplitNodeByNumChunks(
+      {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC},
+      {2, 2, 2, 2});
   splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
   checkNumericalEquivalence(0);
 }
@@ -2013,7 +2018,7 @@ static void splitConv2DReluMaxPoolRecursive(Function *F, Function *&optF,
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
-                                                          mod.getPRNG());
+                                                         mod.getPRNG());
   // Create filter constant.
   auto *filter = mod.createConstant(ElemKind::FloatTy, filterDims, "filter");
   filter->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
@@ -2025,11 +2030,12 @@ static void splitConv2DReluMaxPoolRecursive(Function *F, Function *&optF,
   // Create Conv2D.
   auto *outTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
   auto *conv = F->createConv("conv", input, filter, bias, outTy, kernels,
-                              strides, pads, group, dilation);
+                             strides, pads, group, dilation);
   // Create Relu.
   auto *relu = F->createRELU("relu", conv);
   // Create MaxPool.
-  auto *pool = F->createMaxPool("pool", relu, poolKernels, poolStrides, poolPads);
+  auto *pool =
+      F->createMaxPool("pool", relu, poolKernels, poolStrides, poolPads);
   // Create Save.
   SaveNode *save = F->createSave("save", pool->getResult());
   bindings.allocate(save->getPlaceholder());
@@ -2039,8 +2045,9 @@ static void splitConv2DReluMaxPoolRecursive(Function *F, Function *&optF,
 
   // Split node recursively.
   SplitNodeMap splitMap;
-  ASSIGN_VALUE_OR_FAIL_TEST(splitMap,
-                            ::glow::splitNodeRecursively(pool, splitOption, /* maxDepth */ 10));
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap,
+      ::glow::splitNodeRecursively(pool, splitOption, /* maxDepth */ 10));
   runDCEPass(F, cctx);
 
   EXPECT_EQ(splitMap.size(), 3);
@@ -2052,49 +2059,60 @@ static void splitConv2DReluMaxPoolRecursive(Function *F, Function *&optF,
 /// Test splitting Conv2D with Relu and MaxPool along N dimension.
 TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimN) {
   auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimN}, {2});
-  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
   checkNumericalEquivalence(0);
 }
 
 /// Test splittingConv2D with Relu and MaxPool along H dimension.
 TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimH) {
   auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimH}, {2});
-  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting Conv2D with Relu and MaxPool along W dimension.
 TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimW) {
   auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimW}, {2});
-  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting Conv2D with Relu and MaxPool along C dimension.
 TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimC) {
   auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimC}, {2});
-  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting Conv2D with Relu and MaxPool along H and W dimensions.
 TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimHW) {
-  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimH, ShapeNHWC::DimW}, {2, 2});
-  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  auto splitOption =
+      SplitNodeByNumChunks({ShapeNHWC::DimH, ShapeNHWC::DimW}, {2, 2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting Conv2D with Relu and MaxPool along H, W and C dimensions.
 TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimHWC) {
-  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC}, {2, 2, 2});
-  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  auto splitOption = SplitNodeByNumChunks(
+      {ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC}, {2, 2, 2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting Conv2D with Relu and MaxPool along N, H, W and C dimensions.
 TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimNHWC) {
-  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC}, {2, 2, 2, 2});
-  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  auto splitOption = SplitNodeByNumChunks(
+      {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC},
+      {2, 2, 2, 2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
   checkNumericalEquivalence(0);
 }
 
@@ -2120,8 +2138,8 @@ TEST_F(NodeSplitting, Recursive_MaxDepth) {
   unsigned maxDepth = 2;
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeMap splitMap;
-  ASSIGN_VALUE_OR_FAIL_TEST(splitMap,
-                            ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth));
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth));
   runDCEPass(F_, cctx_);
 
   // Check node count.
@@ -2166,8 +2184,8 @@ TEST_F(NodeSplitting, Recursive_MultipleOutputUses) {
   unsigned maxDepth = 10;
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeMap splitMap;
-  ASSIGN_VALUE_OR_FAIL_TEST(splitMap,
-                            ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth));
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth));
   runDCEPass(F_, cctx_);
 
   // Check node count.
@@ -2215,11 +2233,12 @@ TEST_F(NodeSplitting, Recursive_StopConstraint) {
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeConstraint splitConstraint =
       [=](const Node *origNode, const std::vector<Node *> &splitNodes) -> bool {
-        return (origNode->getKind() != Kinded::Kind::ClipNodeKind);
-      };
+    return (origNode->getKind() != Kinded::Kind::ClipNodeKind);
+  };
   SplitNodeMap splitMap;
-  ASSIGN_VALUE_OR_FAIL_TEST(splitMap,
-                            ::glow::splitNodeRecursively(sigmoid, &splitOption, &splitConstraint, maxDepth));
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(sigmoid, &splitOption,
+                                             &splitConstraint, maxDepth));
   runDCEPass(F_, cctx_);
 
   // Check node count.
@@ -2240,6 +2259,44 @@ TEST_F(NodeSplitting, Recursive_StopConstraint) {
   checkNumericalEquivalence(0);
 }
 
+/// Verify that the recursive splitting stops when reaching unsupported node.
+TEST_F(NodeSplitting, Recursive_StopUnsupportedNode) {
+  std::vector<dim_t> inputDims = {1, 5, 5, 4};
+  std::vector<dim_t> outputDims = {1, 10, 10, 4};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  auto *outTy = mod_.uniqueType(ElemKind::FloatTy, outputDims);
+  auto *resize = F_->createResizeBilinear("resize", input, outTy);
+  Node *relu = F_->createRELU("relu", resize);
+  SaveNode *output = F_->createSave("output", relu);
+  bindings_.allocate(output->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  unsigned maxDepth = 10;
+  auto splitOption = SplitNodeByNumChunks({1}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(relu, splitOption, maxDepth));
+  runDCEPass(F_, cctx_);
+
+  // Check node count.
+  EXPECT_EQ(splitMap.size(), 1);
+  EXPECT_EQ(1, splitMap.count(relu));
+  EXPECT_EQ(0, splitMap.count(resize));
+  EXPECT_EQ(2, splitMap[relu].size());
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ResizeBilinearNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  checkNumericalEquivalence(0);
+}
+
 /// Verify that the recursive splitting only attempts to split the first output
 /// operand. In this example we verify that the recursive splitting does not
 /// attempt to split the ArgMax operand of MaxPool.
@@ -2249,7 +2306,8 @@ TEST_F(NodeSplitting, Recursive_OnlyFirstOutputOperand) {
   std::vector<unsigned_t> strides = {1, 1};
   std::vector<unsigned_t> pads = {1, 1, 1, 1};
 
-  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
                                                           mod_.getPRNG());
   auto *pool = F_->createMaxPool("pool", input, kernels, strides, pads);
@@ -2266,8 +2324,8 @@ TEST_F(NodeSplitting, Recursive_OnlyFirstOutputOperand) {
   unsigned maxDepth = 10;
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeMap splitMap;
-  ASSIGN_VALUE_OR_FAIL_TEST(splitMap,
-                            ::glow::splitNodeRecursively(relu, splitOption, maxDepth));
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(relu, splitOption, maxDepth));
   runDCEPass(F_, cctx_);
 
   // Check node count.
@@ -2282,5 +2340,3 @@ TEST_F(NodeSplitting, Recursive_OnlyFirstOutputOperand) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
   // Note: We do not run the inference since we do not support Relu for INT64.
 }
-
-// TODO2: Check recursive early stop due to unsupported node.

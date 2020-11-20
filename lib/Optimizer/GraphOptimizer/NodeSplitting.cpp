@@ -1473,6 +1473,7 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
 // TODO1: For raw option we must add a verification that all the slice ranges
 //        cover the entire output operand.
 // TODO2: Dettach or delete original node after splitting it.
+// TODO3: Add option to split single use nodes.
 
 Expected<SplitNodeMap>
 glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
@@ -1562,10 +1563,12 @@ glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
              "Mismatch for number of split Nodes!");
       // Create short circuit between inputs and output of adjacent nodes.
       for (size_t idx = 0, len = splitNodesCurr.size(); idx < len; ++idx) {
-        NodeValue splitNodeNextOut = splitNodesNext[idx]->getNthResult(SplitNodeOutputIdx);
+        NodeValue splitNodeNextOut =
+            splitNodesNext[idx]->getNthResult(SplitNodeOutputIdx);
         NodeValue splitNodeCurrInp = splitNodesCurr[idx]->getNthInput(inpIdx);
-        assert(splitNodeNextOut.getType()->isEqual(splitNodeCurrInp.getType()) &&
-               "Mismatch between input/output type when doing short-circuit!");
+        assert(
+            splitNodeNextOut.getType()->isEqual(splitNodeCurrInp.getType()) &&
+            "Mismatch between input/output type when doing short-circuit!");
         assert(splitNodeNextOut.getNumUsers() == 1 &&
                "Split node output value has more than one use!");
         assert(splitNodeCurrInp.getNumUsers() == 1 &&
