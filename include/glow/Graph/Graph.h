@@ -798,12 +798,13 @@ public:
   /// of the input \p input along the given axis \p axis.
   FlipNode *createFlip(llvm::StringRef name, NodeValue input, unsigned_t axis);
 
-  /// Create a series of nodes that implement a Broadcast operation. The \p
-  /// input Tensor is broadcasted based on \p newShape and along the \p axis,
-  /// which defines the offset from the leading dimension under which
-  /// broadcasting is performed.
-  Node *createBroadcast(llvm::StringRef name, NodeValue input,
-                        UnsignedArrayRef newShape, unsigned_t axis);
+  /// Create a Broadcast node that broadcasting the \p input Tensor based on
+  /// \p newShape and along the \p axis, which defines the offset between the
+  /// input dim and the newShape.
+  /// e.g. For input: [3] and newShape: [2, 3, 2], the axis will be 1.
+  ///      For input: [3] and newShape: [2, 2, 3], the axis will be 2.
+  BroadcastNode *createBroadcast(llvm::StringRef name, NodeValue input,
+                                 UnsignedArrayRef newShape, unsigned_t axis);
 
   /// Create concat node which concatenates input tensors along \p dimension.
   ConcatNode *createConcat(llvm::StringRef name,
@@ -1747,19 +1748,36 @@ public:
   LSTMUnitNode *createLSTMUnit(llvm::StringRef namePrefix, NodeValue Input,
                                NodeValue C);
 
+  /// Helper function create a PyTorch style LSTM for one direction, and returns
+  /// every output in a vector. \p T should be an iterator or reverse_iterator
+  /// of a NodeValue vector, and /p inputItr is an iterator pointer of the input
+  /// vector. \p Wx, \p Wh, \p Bx, \p Bh, \p H and \p C is i, f, g, o, hidden
+  /// state and cell state, whose shape should be the same to
+  /// createSingleDirectionLSTM.
+  template <class T>
+  std::vector<NodeValue> createSingleDirectionLSTM(
+      std::string nameBase, T inputItr, const int timeSteps, NodeValue Wx,
+      NodeValue Wh, NodeValue Bx, NodeValue Bh, NodeValue &H, NodeValue &C);
+
   /// Create PyTorch style LSTM with fixed weights and biases.
   /// The order of \p Wx \p Wh \p Bx and \p Bh is i, f, g, o,
   /// The \p inputs shape should be (numSteps, batchSize, hiddenSize),
   /// while \p Wx shape should be (inputSize, hiddenSize * 4),
   /// Wh shape should be (hiddenSize, hiddenSize * 4),
   /// \p Bx and \p Bh shape should be (hiddenSize * 4).
+  /// If \p isBidirectional == true, \p WxR, \p WhR, \p BxR and \p BhR
+  /// also need to be provided, indicates the reversed weights and biases.
   /// \p Ht and \p Ct are initial hidden state and cell.
   /// For more details, please read:
   /// https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html
   void createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue inputs,
                          NodeValue Wx, NodeValue Wh, NodeValue Bx, NodeValue Bh,
                          NodeValue &Ht, NodeValue &Ct, NodeValue &outputs,
-                         bool isBidirectional = false);
+                         bool isBidirectional = false,
+                         NodeValue WxR = NodeValue(),
+                         NodeValue WhR = NodeValue(),
+                         NodeValue BxR = NodeValue(),
+                         NodeValue BhR = NodeValue());
 
   /// Type definition for the direction of an RNN module (RNN, GRU, LSTM).
   enum class RnnDirection {

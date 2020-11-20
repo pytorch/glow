@@ -42,7 +42,8 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
         cctx.prepartitionedConfig, loadInputsAsPlaceholdersForOnnx,
         &loaderConstructionErr, constFoldInLoader,
         &cctx.backendOpts.backendSpecificNodeInfo, staticPlaceholderTypes,
-        cctx.precisionConfig.replaceDummyTQPs));
+        cctx.precisionConfig.replaceDummyTQPs,
+        cctx.precisionConfig.clipQuantRangeToFP16));
     if (loaderConstructionErr) {
       return std::move(loaderConstructionErr);
     }
@@ -54,7 +55,9 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
         model, modelSize, weightsCount, weightDescriptors, mod, netName,
         cctx.prepartitionedConfig, &loaderConstructionErr, constFoldInLoader,
         cctx.precisionConfig.originNameToTQPMap,
-        cctx.precisionConfig.loadUniquedDummyQParams));
+        cctx.precisionConfig.loadUniquedDummyQParams,
+        cctx.precisionConfig.zeroScaleFP16Clip,
+        cctx.precisionConfig.clipQuantRangeToFP16));
     if (loaderConstructionErr) {
       return std::move(loaderConstructionErr);
     }

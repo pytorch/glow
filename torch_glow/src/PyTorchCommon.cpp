@@ -65,6 +65,7 @@ DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
+DEFINE_bool(writeWithoutRandomize, false, "See PyTorchLoaderSettings");
 DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionStartIndex, -1, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionEndIndex, -1, "See PyTorchLoaderSettings");
@@ -76,9 +77,10 @@ DEFINE_string(backendSpecificOpts, "",
               "Comma separated list of key=value for building the "
               "BackendSpecificOptions map in BackendOptions in "
               "CompilationContext.");
+DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
+            "See PyTorchLoaderSettings");
 
 namespace glow {
-
 namespace {
 
 static int setGraphExecutorToLegacy() {
@@ -89,6 +91,11 @@ static int setGraphExecutorToLegacy() {
 }
 
 static const int USE_LEGACY_GE = setGraphExecutorToLegacy();
+
+PyTorchLoaderSettings &getPyTorchLoaderSettingsInternalOnly() {
+  static PyTorchLoaderSettings settings;
+  return settings;
+}
 
 } // namespace
 
@@ -135,11 +142,6 @@ getHostManager(const std::string &backendName, int32_t numDevices) {
     map_[backendName] = hostManager;
   }
   return hostManager;
-}
-
-std::shared_ptr<runtime::HostManager> getHostManager() {
-  auto &settings = getPyTorchLoaderSettings();
-  return getHostManager(settings.backendName, settings.numDevices);
 }
 
 /// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
@@ -255,19 +257,20 @@ void PyTorchLoaderSettings::initSettings() {
   convertPlaceholdersToFP16 = FLAGS_convertPlaceholdersToFP16;
   convertConstantsToFP16 = FLAGS_convertConstantsToFP16;
   forceFP16AccumSLS = FLAGS_forceFP16AccumSLS;
-
   replicationCount = FLAGS_replicationCount;
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
   randomizeConstants = FLAGS_randomizeConstants;
+  writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
   numDevices = FLAGS_torch_glow_num_devices;
   runShapeInference = FLAGS_runShapeInference;
   fusionStartIndex = FLAGS_fusionStartIndex;
   fusionEndIndex = FLAGS_fusionEndIndex;
   setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
-  inferShapeForCompilation = FLAGS_inferShapeForCompilation;
   enableRemoveMutation = FLAGS_enableRemoveMutation;
+  debugContinuouslyVerifyDuringModelLoading =
+      FLAGS_debugContinuouslyVerifyDuringModelLoading;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -294,175 +297,72 @@ void PyTorchLoaderSettings::initSettings() {
 
 PyTorchLoaderSettings::PyTorchLoaderSettings() { initSettings(); }
 
-namespace {
-Expected<bool> strToBool(const std::string &str) {
-  static std::unordered_set<std::string> trueVals = {"True", "true", "1"};
-  static std::unordered_set<std::string> falseVals = {"False", "false", "0"};
-  if (trueVals.count(str) > 0) {
-    return true;
-  }
-  if (falseVals.count(str) > 0) {
-    return false;
-  }
-  return MAKE_ERR(strFormat("Invalid truth value: %s", str.c_str()));
+PyTorchLoaderSettings getGlobalPyTorchLoaderSettingsSnapshot() {
+  return getPyTorchLoaderSettingsInternalOnly();
 }
-} // namespace
-
-PyTorchLoaderSettings &getPyTorchLoaderSettings() {
-  static PyTorchLoaderSettings settings;
-  return settings;
-}
-
-#define TRY_LOAD_BOOL_FROM_DICT(KEY_, DICT_)                                   \
-  if (DICT_.contains(#KEY_)) {                                                 \
-    auto res = strToBool(DICT_.at(#KEY_));                                     \
-    if (res) {                                                                 \
-      KEY_ = res.get();                                                        \
-    } else {                                                                   \
-      auto err = res.takeError();                                              \
-      LOG(FATAL) << "could not find bool value for key: " << #KEY_ << ". "     \
-                 << ERR_TO_STRING(std::move(err)) << std::endl;                \
-    }                                                                          \
-  }
-
-#define TRY_LOAD_INT_FROM_DICT(KEY_, DICT_)                                    \
-  if (DICT_.contains(#KEY_)) {                                                 \
-    KEY_ = std::stoi((DICT_.at(#KEY_)));                                       \
-  }
-
-#define TRY_LOAD_STR_FROM_DICT(KEY_, DICT_)                                    \
-  if (DICT_.contains(#KEY_)) {                                                 \
-    KEY_ = DICT_.at(#KEY_);                                                    \
-  }
-
-PyTorchLoaderSettings::PyTorchLoaderSettings(
-    torch::Dict<std::string, std::string> dict) {
-  initSettings();
-  TRY_LOAD_BOOL_FROM_DICT(convertToFP16, dict);
-  TRY_LOAD_BOOL_FROM_DICT(convertFusedToFP16, dict);
-  TRY_LOAD_BOOL_FROM_DICT(clipFP16, dict);
-  TRY_LOAD_BOOL_FROM_DICT(clipFP16SkipInputs, dict);
-  TRY_LOAD_BOOL_FROM_DICT(convertPlaceholdersToFP16, dict);
-  TRY_LOAD_BOOL_FROM_DICT(convertConstantsToFP16, dict);
-  TRY_LOAD_BOOL_FROM_DICT(forceFP16AccumSLS, dict);
-  TRY_LOAD_BOOL_FROM_DICT(saturateHost, dict);
-  TRY_LOAD_BOOL_FROM_DICT(randomizeConstants, dict);
-  TRY_LOAD_STR_FROM_DICT(backendOptionsFile, dict);
-  TRY_LOAD_INT_FROM_DICT(replicationCount, dict);
-  TRY_LOAD_BOOL_FROM_DICT(preCompilePyTorchModule, dict);
-  TRY_LOAD_BOOL_FROM_DICT(fusionPassEnabled, dict);
-  TRY_LOAD_BOOL_FROM_DICT(dumpGlowDag, dict);
-  TRY_LOAD_INT_FROM_DICT(minFusionGroupSize, dict);
-  TRY_LOAD_INT_FROM_DICT(maxFusionMergeSize, dict);
-  TRY_LOAD_INT_FROM_DICT(fusionStartIndex, dict);
-  TRY_LOAD_INT_FROM_DICT(fusionEndIndex, dict);
-  TRY_LOAD_BOOL_FROM_DICT(dumpFinalGlowGraph, dict);
-  TRY_LOAD_BOOL_FROM_DICT(enableGlowTracing, dict);
-  TRY_LOAD_BOOL_FROM_DICT(enableRemoveMutation, dict);
-  TRY_LOAD_INT_FROM_DICT(numTracesPerDump, dict);
-  TRY_LOAD_BOOL_FROM_DICT(writeToOnnx, dict);
-  TRY_LOAD_BOOL_FROM_DICT(onnxZipMode, dict);
-  TRY_LOAD_BOOL_FROM_DICT(jitVsGlowCompare, dict);
-  TRY_LOAD_BOOL_FROM_DICT(randomizeConstants, dict);
-  TRY_LOAD_STR_FROM_DICT(backendName, dict);
-  TRY_LOAD_INT_FROM_DICT(numDevices, dict);
-  TRY_LOAD_BOOL_FROM_DICT(runShapeInference, dict);
-  TRY_LOAD_BOOL_FROM_DICT(setIncludeLastOffsets, dict);
-  TRY_LOAD_BOOL_FROM_DICT(inferShapeForCompilation, dict);
-  TRY_LOAD_BOOL_FROM_DICT(enableDebugFuser, dict);
-  if (dict.contains("opBlacklist")) {
-    std::string commaSepOpsList = dict.at("opBlacklist");
-    if (!commaSepOpsList.empty()) {
-      auto kindStrings = splitString(commaSepOpsList);
-      for (const auto &kindString : kindStrings) {
-        opBlacklist.insert(torch::jit::Symbol::fromQualString(kindString));
-      }
-    }
-  }
-  if (dict.contains("backendSpecificOpts")) {
-    std::string commaSepOptsList = dict.at("backendSpecificOpts");
-    if (!commaSepOptsList.empty()) {
-      auto optsStrings = splitString(commaSepOptsList);
-      CHECK(optsStrings.size() % 2 == 0)
-          << "Found " << optsStrings.size()
-          << " elements. backendSpecificOpts must have equal number of keys "
-             "and values.";
-      for (auto it = optsStrings.begin(); it != optsStrings.end(); it++) {
-        std::string key = *it;
-        it++;
-        std::string val = *it;
-        backendSpecificOpts[key] = val;
-      }
-    }
-  }
-}
-
-#define INSERT_BOOL_TO_DICT(KEY_, DICT_)                                       \
-  DICT_.insert(#KEY_, KEY_ ? "true" : "false");
-
-#define INSERT_STR_TO_DICT(KEY_, DICT_) DICT_.insert(#KEY_, KEY_);
-
-#define INSERT_INT_TO_DICT(KEY_, DICT_)                                        \
-  DICT_.insert(#KEY_, std::to_string(KEY_));
-
-torch::Dict<std::string, std::string>
-PyTorchLoaderSettings::serializeToDict() const {
-  torch::Dict<std::string, std::string> dict;
-  INSERT_BOOL_TO_DICT(convertToFP16, dict);
-  INSERT_BOOL_TO_DICT(convertFusedToFP16, dict);
-  INSERT_BOOL_TO_DICT(clipFP16, dict);
-  INSERT_BOOL_TO_DICT(clipFP16SkipInputs, dict);
-  INSERT_BOOL_TO_DICT(convertPlaceholdersToFP16, dict);
-  INSERT_BOOL_TO_DICT(convertConstantsToFP16, dict);
-  INSERT_BOOL_TO_DICT(forceFP16AccumSLS, dict);
-  INSERT_BOOL_TO_DICT(saturateHost, dict);
-  INSERT_BOOL_TO_DICT(randomizeConstants, dict);
-  INSERT_STR_TO_DICT(backendOptionsFile, dict);
-  INSERT_INT_TO_DICT(replicationCount, dict);
-  INSERT_BOOL_TO_DICT(preCompilePyTorchModule, dict);
-  INSERT_BOOL_TO_DICT(fusionPassEnabled, dict);
-  INSERT_BOOL_TO_DICT(dumpGlowDag, dict);
-  INSERT_INT_TO_DICT(minFusionGroupSize, dict);
-  INSERT_INT_TO_DICT(maxFusionMergeSize, dict);
-  INSERT_INT_TO_DICT(fusionStartIndex, dict);
-  INSERT_BOOL_TO_DICT(enableRemoveMutation, dict);
-  INSERT_INT_TO_DICT(fusionEndIndex, dict);
-  INSERT_BOOL_TO_DICT(dumpFinalGlowGraph, dict);
-  INSERT_BOOL_TO_DICT(enableGlowTracing, dict);
-  INSERT_INT_TO_DICT(numTracesPerDump, dict);
-  INSERT_BOOL_TO_DICT(writeToOnnx, dict);
-  INSERT_BOOL_TO_DICT(onnxZipMode, dict);
-  INSERT_BOOL_TO_DICT(jitVsGlowCompare, dict);
-  INSERT_BOOL_TO_DICT(randomizeConstants, dict);
-  INSERT_STR_TO_DICT(backendName, dict);
-  INSERT_INT_TO_DICT(numDevices, dict);
-  INSERT_BOOL_TO_DICT(runShapeInference, dict);
-  INSERT_BOOL_TO_DICT(setIncludeLastOffsets, dict);
-  INSERT_BOOL_TO_DICT(enableDebugFuser, dict);
-  if (opBlacklist.size() > 0) {
-    std::stringstream commaSepOpsList;
-    for (const auto &op : opBlacklist) {
-      commaSepOpsList << op.toQualString() << ",";
-    }
-    dict.insert("opBlacklist", commaSepOpsList.str());
-  }
-  if (backendSpecificOpts.size() > 0) {
-    std::stringstream commaSepOptsList;
-    for (const auto &opt : backendSpecificOpts) {
-      commaSepOptsList << opt.first << "," << opt.second << ",";
-    }
-    dict.insert("backendSpecificOpts", commaSepOptsList.str());
-  }
-  return dict;
+PyTorchLoaderSettings &getGlobalPyTorchLoaderSettingsMutable() {
+  return getPyTorchLoaderSettingsInternalOnly();
 }
 
 std::string PyTorchLoaderSettings::toString() const {
-  auto dict = serializeToDict();
+#define INSERT_BOOL_TO_STREAM(value, stream)                                   \
+  (stream) << #value << ": " << ((value) ? "true" : "false") << std::endl;
+
+#define INSERT_VALUE_TO_STREAM(value, stream)                                  \
+  (stream) << #value << ": " << value << std::endl;
+
   std::stringstream s;
-  for (const auto &item : dict) {
-    s << item.key() << " : " << item.value() << std::endl;
+  s << std::endl;
+  INSERT_BOOL_TO_STREAM(convertToFP16, s);
+  INSERT_BOOL_TO_STREAM(convertFusedToFP16, s);
+  INSERT_BOOL_TO_STREAM(clipFP16, s);
+  INSERT_BOOL_TO_STREAM(clipFP16SkipInputs, s);
+  INSERT_BOOL_TO_STREAM(convertPlaceholdersToFP16, s);
+  INSERT_BOOL_TO_STREAM(convertConstantsToFP16, s);
+  INSERT_BOOL_TO_STREAM(forceFP16AccumSLS, s);
+  INSERT_BOOL_TO_STREAM(saturateHost, s);
+  INSERT_VALUE_TO_STREAM(backendOptionsFile, s);
+  INSERT_VALUE_TO_STREAM(replicationCount, s);
+  INSERT_BOOL_TO_STREAM(fusionPassEnabled, s);
+  INSERT_BOOL_TO_STREAM(dumpGlowDag, s);
+  INSERT_VALUE_TO_STREAM(minFusionGroupSize, s);
+  INSERT_VALUE_TO_STREAM(maxFusionMergeSize, s);
+  INSERT_VALUE_TO_STREAM(fusionStartIndex, s);
+  INSERT_BOOL_TO_STREAM(enableRemoveMutation, s);
+  INSERT_VALUE_TO_STREAM(fusionEndIndex, s);
+  INSERT_BOOL_TO_STREAM(dumpFinalGlowGraph, s);
+  INSERT_BOOL_TO_STREAM(enableGlowTracing, s);
+  INSERT_VALUE_TO_STREAM(numTracesPerDump, s);
+  INSERT_BOOL_TO_STREAM(writeToOnnx, s);
+  INSERT_BOOL_TO_STREAM(onnxZipMode, s);
+  INSERT_BOOL_TO_STREAM(jitVsGlowCompare, s);
+  INSERT_BOOL_TO_STREAM(randomizeConstants, s);
+  INSERT_BOOL_TO_STREAM(writeWithoutRandomize, s);
+  INSERT_VALUE_TO_STREAM(backendName, s);
+  INSERT_VALUE_TO_STREAM(numDevices, s);
+  INSERT_BOOL_TO_STREAM(runShapeInference, s);
+  INSERT_BOOL_TO_STREAM(setIncludeLastOffsets, s);
+  INSERT_BOOL_TO_STREAM(enableDebugFuser, s);
+  INSERT_BOOL_TO_STREAM(debugContinuouslyVerifyDuringModelLoading, s);
+
+  if (opBlacklist.size() > 0) {
+    s << "opBlacklist: [";
+    for (const auto &op : opBlacklist) {
+      s << op.toQualString() << ",";
+    }
+    s << "]" << std::endl;
+  }
+  if (backendSpecificOpts.size() > 0) {
+    s << "backendSpecificOpts: [";
+    for (const auto &kv : backendSpecificOpts) {
+      s << kv.first << "=" << kv.second << ",";
+    }
+    s << "]" << std::endl;
   }
   return s.str();
+
+#undef INSERT_VALUE_TO_STREAM
+#undef INSERT_BOOL_TO_STREAM
 }
 
 const c10::Symbol &getGlowSymbol() {
@@ -600,40 +500,14 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   }
 }
 
-std::vector<glow::InputMeta> loadInputMeta(const std::string &raw_data) {
-  if (raw_data.empty()) {
-    return {};
-  }
-  auto inputMeta = std::vector<glow::InputMeta>();
-  std::stringstream ss_raw(raw_data);
-
-  std::string line;
-  while (std::getline(ss_raw, line)) {
-    std::vector<glow::sdim_t> dims;
-    std::stringstream ss(line);
-    ss.ignore();
-    for (int i; ss >> i;) {
-      dims.push_back(i);
-      if (ss.peek() == ',' || ss.peek() == '[' || ss.peek() == ']') {
-        ss.ignore();
-      }
-    }
-    std::getline(ss_raw, line);
-    c10::ScalarType t = static_cast<c10::ScalarType>(std::stoi(line));
-    inputMeta.emplace_back(t, std::move(dims));
-  }
-  return inputMeta;
-}
-
 // Similar to glowAOTFusion() however supports multiple Glow subgraphs and
 // runners. We'd still need both since in some cases we may not be able to infer
 // the entire model and would leverage glowAOTFusion() to run the partially
 // lowered model.
-void glowAOTFusionWithShapeInference(
-    torch::jit::Module &model, const std::vector<glow::InputMeta> &inputMeta) {
-  glow::PyTorchLoaderSettings &glowLoaderSettings =
-      glow::getPyTorchLoaderSettings();
-  glowLoaderSettings.preCompilePyTorchModule = true;
+void glowAOTFusionWithShapeInference(torch::jit::Module &model,
+                                     const InputMetaStack &metaStack,
+                                     runtime::DeferredWeightLoader *loader,
+                                     const PyTorchLoaderSettings &settings) {
 
   auto graph = model.get_method("forward").function().graph();
 
@@ -646,12 +520,12 @@ void glowAOTFusionWithShapeInference(
   // model and expect the model can be lowered. However there
   // are cases where we cannot lower the entire model.
   // There could be multiple fused graphs and the inputs to
-  // each fused graph could be different from the inputMeta user
+  // each fused graph could be different from the metaStack user
   // provided. Therefore we leverage shape inference to populate
   // shape and type information over the entire model so we
   // could lower whatever we want.
   std::vector<torch::jit::IValue> inputs;
-  for (const auto &i : inputMeta) {
+  for (const auto &i : metaStack.inputMetas) {
     inputs.push_back(
         torch::empty(i.dims, torch::TensorOptions().dtype(i.type)));
   }
@@ -662,7 +536,7 @@ void glowAOTFusionWithShapeInference(
   std::string baseSymbol = glow::getGlowSymbol(nullptr).toQualString();
 
   // There could be multiple glow fusion nodes created.
-  glow::glowCustomFuse(graph);
+  glow::glowCustomFuse(graph, settings);
 
   ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol);
   auto e = shapeInf.run();
@@ -692,14 +566,15 @@ void glowAOTFusionWithShapeInference(
       // graph containing Glow fusion nodes and index each of them. The index
       // would be used as part of the key to find corresponding
       // cachingGraphRunner.
-      auto runner =
-          glow::setGraphRunnerForKey(kind + std::to_string(idx), [subgraph] {
+      auto runner = glow::setGraphRunnerForKey(
+          kind + std::to_string(idx), [subgraph, settings] {
             return std::make_unique<glow::CachingGraphRunner>(
-                subgraph, glow::getHostManager(),
-                glow::getPyTorchLoaderSettings());
+                subgraph,
+                getHostManager(settings.backendName, settings.numDevices),
+                settings, /*useRunOnly*/ true);
           });
 
-      std::vector<glow::InputMeta> perGraphInputMeta;
+      InputMetaStack metaStackForCompilation;
       auto graphInputValues = subgraph->inputs();
 
       for (size_t i = 0; i < graphInputValues.size(); ++i) {
@@ -711,11 +586,11 @@ void glowAOTFusionWithShapeInference(
         }
         // Only support tensor input for now
         // TODO Add support for other input types, e.g., tensor[]
-        perGraphInputMeta.emplace_back(itr->second.dtype,
-                                       itr->second.shape<TensorShape>());
+        metaStackForCompilation.inputMetas.emplace_back(
+            itr->second.dtype, itr->second.shape<TensorShape>());
       }
 
-      e = runner->warmCache(perGraphInputMeta, runner->getSettings(),
+      e = runner->warmCache(metaStackForCompilation, settings, loader,
                             /*useMaxSizeCompilation*/ true);
       if (e) {
         // If the graph is already compiled previously, warmCache() will report
@@ -731,16 +606,14 @@ void glowAOTFusionWithShapeInference(
   }
 }
 
-void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
-  auto inputMeta = glow::loadInputMeta(inputMetaStr);
+void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
+                   runtime::DeferredWeightLoader *loader,
+                   const PyTorchLoaderSettings &settings) {
+  InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   if (FLAGS_inferShapeForCompilation) {
-    return glowAOTFusionWithShapeInference(model, inputMeta);
+    return glowAOTFusionWithShapeInference(model, metaStack, loader, settings);
   }
-
-  glow::PyTorchLoaderSettings &glowLoaderSettings =
-      glow::getPyTorchLoaderSettings();
-  glowLoaderSettings.preCompilePyTorchModule = true;
 
   // We assume the model is flattened and only one graph will be lowered. In the
   // future we may need to support multiple graphs.
@@ -752,7 +625,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
 
   c10::Symbol symbol = glow::getGlowSymbol(graph);
   glow::registerGlowOp(symbol);
-  glow::glowCustomFuse(graph, symbol);
+  glow::glowCustomFuse(graph, settings, symbol);
 
   // this is the fuser subgraph to lower
   std::shared_ptr<torch::jit::Graph> subgraph;
@@ -769,12 +642,14 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
 
   // create the graph runner and warm its cache, this graph runner will be
   // picked up during operator registration
-  auto runner = glow::setGraphRunnerForKey(symbol.toQualString(), [subgraph] {
-    return std::make_unique<glow::CachingGraphRunner>(
-        subgraph, glow::getHostManager(), glow::getPyTorchLoaderSettings());
-  });
+  auto runner =
+      glow::setGraphRunnerForKey(symbol.toQualString(), [subgraph, settings] {
+        return std::make_unique<glow::CachingGraphRunner>(
+            subgraph, getHostManager(settings.backendName, settings.numDevices),
+            settings, /*useRunOnly*/ true);
+      });
 
-  auto e = runner->warmCache(inputMeta, runner->getSettings(),
+  auto e = runner->warmCache(metaStack, settings, loader,
                              /*useMaxSizeCompilation*/ true);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report

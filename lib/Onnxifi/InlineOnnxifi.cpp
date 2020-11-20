@@ -16,6 +16,7 @@
 
 #include "InlineOnnxifi.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
@@ -25,8 +26,6 @@
 
 namespace glow {
 namespace onnxifi {
-
-extern bool GlowSaveOnnxifiModel;
 
 namespace {
 std::string getProfileFile(llvm::StringRef hash) {
@@ -69,7 +68,7 @@ onnxStatus InlineGraph::initGraph(
   function_ = *mod.getFunctions().begin();
 
   bindPlaceholders(*loader);
-  if (GlowSaveOnnxifiModel) {
+  if (flags::SaveModel) {
     saveOnnxifiModel(function_);
   }
 

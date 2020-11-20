@@ -442,6 +442,11 @@ inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
   return ElemKind::Float16Ty;
 }
 
+/// \returns the floating point value range that covers a quantized type (min
+/// first, max second) given \p scale, \p offset, and \p elementType.
+std::pair<float, float> getQuantizedValueRange(float scale, int32_t offset,
+                                               ElemKind elementType);
+
 /// A class that represents a type of a tensor.
 struct Type final {
   /// Contains the dimensions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
@@ -558,37 +563,7 @@ struct Type final {
   /// \returns the floating point value range that covers a quantized type (min
   /// first, max second).
   std::pair<float, float> getQuantizedValueRange() const {
-    assert(isQuantizedType() &&
-           "Can't get the quantized value range of a non-quantized type");
-
-    int64_t low = 0, high = 0;
-    switch (elementType_) {
-    case ElemKind::Int32QTy: {
-      low = INT32_MIN;
-      high = INT32_MAX;
-      break;
-    }
-    case ElemKind::Int16QTy: {
-      low = INT16_MIN;
-      high = INT16_MAX;
-      break;
-    }
-    case ElemKind::Int8QTy: {
-      low = INT8_MIN;
-      high = INT8_MAX;
-      break;
-    }
-    case ElemKind::UInt8QTy: {
-      low = UINT8_MIN;
-      high = UINT8_MAX;
-      break;
-    }
-    default:;
-    }
-
-    float lowFloat = (low - offset_) * scale_;
-    float highFloat = (high - offset_) * scale_;
-    return std::make_pair(lowFloat, highFloat);
+    return ::glow::getQuantizedValueRange(scale_, offset_, elementType_);
   }
 
   /// \returns true if \p other is the same type. If \p allowDifferentShape then

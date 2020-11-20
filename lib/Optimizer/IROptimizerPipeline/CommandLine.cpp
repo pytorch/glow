@@ -57,3 +57,13 @@ llvm::cl::list<std::string> instrumentDebugOnly(
     llvm::cl::desc(
         "Instrument the IR for debugging, but only the listed instructions"),
     llvm::cl::CommaSeparated, llvm::cl::cat(IROptimizerCat));
+
+llvm::cl::opt<bool>
+    instrumentIR("instrument-ir",
+                 llvm::cl::desc("Instrument the IR instructions"),
+                 llvm::cl::init(false), llvm::cl::cat(IROptimizerCat));
+
+llvm::cl::list<std::string> instrumentIROnly(
+    "instrument-ir-only",
+    llvm::cl::desc("Instrument the IR but only the listed instructions names"),
+    llvm::cl::CommaSeparated, llvm::cl::cat(IROptimizerCat));

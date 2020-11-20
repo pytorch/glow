@@ -437,6 +437,7 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
         } else {
           // PlaceHolder for Input.
           ret.inMemSize += size;
+          ret.inputCount += 1;
         }
       }
       usedNodeValue.insert(nodeVal);
@@ -448,6 +449,7 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
       // to this subgraph. Therefore, when creating paritions, we need to add
       // a PlaceHolder for the data from outside.
       ret.inMemSize += nodeVal.getType()->getSizeInBytes();
+      ret.inputCount += 1;
       usedNodeValue.insert(nodeVal);
     }
   }
@@ -465,6 +467,7 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
       // into inMemSize. But afater newNode is added, the input size should be
       // removed.
       ret.inMemSize -= nodeVal.getType()->getSizeInBytes();
+      ret.inputCount -= 1;
       break;
     }
   }
@@ -500,6 +503,7 @@ GraphMemInfo getFunctionMemory(Function *func) {
     } else {
       if (isInput(place, *func)) {
         graphMem.inMemSize += place->getType()->getSizeInBytes();
+        graphMem.inputCount += 1;
       }
       if (isOutput(place, *func)) {
         graphMem.outMemSize += place->getType()->getSizeInBytes();
@@ -531,10 +535,14 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
               << "\t\t Name :\t" << subF->getName().str() << "\n"
               << "\t\t BackendKind :\t"
               << partitions.getPartitionBackendName(subF) << "\n"
+              << "\t\t context count :\t"
+              << partitions.getGraphMemInfo(subF).contextCount << "\n"
               << "\t\t total Memory :\t"
               << partitions.getGraphMemInfo(subF).getTotalMemSize() << "\n"
               << "\t\t\t input size:\t"
               << partitions.getGraphMemInfo(subF).inMemSize << "\n"
+              << "\t\t\t input count :\t"
+              << partitions.getGraphMemInfo(subF).inputCount << "\n"
               << "\t\t\t output size:\t"
               << partitions.getGraphMemInfo(subF).outMemSize << "\n"
               << "\t\t\t constant size:\t"

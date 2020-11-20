@@ -470,8 +470,8 @@ Error GlowIValue::fromIValue(const at::IValue &ival) {
     }
     fromTuple(std::move(tuple));
   } else {
-    RETURN_ERR(strFormat("Encountered unhandled IValue type: %s",
-                         ival.tagKind().data()));
+    return MAKE_ERR(strFormat("Encountered unhandled IValue type: %s",
+                              ival.tagKind().data()));
   }
   return Error::success();
 }
@@ -492,7 +492,7 @@ Expected<double> iValToDouble(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toDouble();
   } else {
-    return expectedIVal.takeError();
+    RETURN_ERR(expectedIVal.takeError());
   }
 }
 
@@ -502,7 +502,7 @@ Expected<int64_t> iValToInt(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toInt();
   } else {
-    return expectedIVal.takeError();
+    RETURN_ERR(expectedIVal.takeError());
   }
 }
 
@@ -512,7 +512,7 @@ Expected<bool> iValToBool(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toBool();
   } else {
-    return expectedIVal.takeError();
+    RETURN_ERR(expectedIVal.takeError());
   }
 }
 
@@ -523,7 +523,7 @@ iValToIntList(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toIntList();
   } else {
-    return expectedIVal.takeError();
+    RETURN_ERR(expectedIVal.takeError());
   }
 }
 
@@ -534,7 +534,7 @@ iValToDoubleList(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toDoubleList();
   } else {
-    return expectedIVal.takeError();
+    RETURN_ERR(expectedIVal.takeError());
   }
 }
 
@@ -545,7 +545,7 @@ iValToNodeValueList(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toNodeValueList();
   } else {
-    return expectedIVal.takeError();
+    RETURN_ERR(expectedIVal.takeError());
   }
 }
 
@@ -555,7 +555,7 @@ Expected<at::Tensor *> iValToPTTensor(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toPTTensor();
   } else {
-    return expectedIVal.takeError();
+    RETURN_ERR(expectedIVal.takeError());
   }
 }
 
@@ -564,7 +564,7 @@ iValToGenericMap(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toGenericMap();
   } else {
-    return expectedIVal.takeError();
+    RETURN_ERR(expectedIVal.takeError());
   }
 }
 
@@ -572,7 +572,7 @@ Expected<std::string *> iValToString(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toString();
   } else {
-    return expectedIVal.takeError();
+    RETURN_ERR(expectedIVal.takeError());
   }
 }
 

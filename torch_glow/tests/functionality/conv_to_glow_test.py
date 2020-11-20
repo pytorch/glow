@@ -1,12 +1,11 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch_glow
-from torch_glow import InputMeta, CompilationOptions, GlowCompileSpec
-import torch
 import unittest
-
 from collections import OrderedDict
+
+import torch
+import torch_glow
 
 
 def create_model(x, relu, bias=True):
@@ -54,15 +53,19 @@ def run_to_glow(m, x):
     """Trace the model m with input x and call to_glow"""
     traced_m = torch.jit.trace(m, (x))
 
-    input_meta = InputMeta()
-    input_meta.set(x.size(), torch.float32)
-    inputs = [input_meta]
-    options = CompilationOptions()
-    options.backend = "Interpreter"
-    spec = GlowCompileSpec()
-    spec.set(inputs, options)
+    spec = torch_glow.CompilationSpec()
+    spec.get_settings().set_glow_backend("Interpreter")
 
-    lowered_module = torch_glow.to_glow(traced_m, {"forward": spec})
+    compilation_group = torch_glow.CompilationGroup()
+    spec.compilation_groups_append(compilation_group)
+
+    input_spec = torch_glow.InputSpec()
+    input_spec.set_same_as(x)
+
+    compilation_group.input_sets_append([input_spec])
+
+    lowered_module = torch_glow.to_glow(traced_m, spec)
+
     return lowered_module
 
 

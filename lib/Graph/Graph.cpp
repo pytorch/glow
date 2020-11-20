@@ -1326,54 +1326,11 @@ FlipNode *Function::createFlip(llvm::StringRef name, NodeValue input,
   return addNode(new FlipNode(name, OT, input, axis));
 }
 
-Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
-                                UnsignedArrayRef newShape, unsigned_t axis) {
-  const auto &origDims = input.dims();
-
-  assert(axis + origDims.size() <= newShape.size() &&
-         "Axis must fit inside the newShape.");
-
-  // Iterate over the new shape; if the original shape had a dimension here
-  // (when considering the axis) then verify the dimension either matches the
-  // new shape (no action taken) or == 1 (broadcast in that direction). Else
-  // the original shape had no dimensions here (after considering axis), so
-  // add the new dimension and broadcast in that direction.
-  dim_t reshapeDims[max_tensor_dimensions];
-  for (dim_t i = 0; i < newShape.size(); i++) {
-    if (i >= axis && i < origDims.size() + axis) {
-      const int origIdx = i - axis;
-      if (origDims[origIdx] == newShape[i]) {
-        // Keep original dimensions; they are compatible.
-        reshapeDims[i] = origDims[origIdx];
-      } else if (origDims[origIdx] == 1) {
-        // Will broadcast this dimension to size from newShape.
-        reshapeDims[i] = 1;
-      } else {
-        // Incompatible dimensions for broadcasting
-        llvm_unreachable("Cannot broadcast with these dimensions.");
-      }
-    } else {
-      // Will broadcast this dimension to size from newShape.
-      reshapeDims[i] = 1;
-    }
-  }
-
-  // Reshape the input node to same number of dimensions as new shape, but
-  // with 1s in place of to-be-broadcasted dimensions.
-  Node *currNode =
-      createReshape(name.str() + ".reshape", input,
-                    llvm::ArrayRef<dim_t>(reshapeDims, newShape.size()));
-
-  // Create a Tile (which is really a Concat) in each direction that needs to
-  // be broadcasted.
-  for (size_t i = 0; i < newShape.size(); i++) {
-    if (reshapeDims[i] == 1 && newShape[i] != 1) {
-      currNode = createTile(name.str() + ".tile" + std::to_string(i), currNode,
-                            newShape[i], i);
-    }
-  }
-
-  return currNode;
+BroadcastNode *Function::createBroadcast(llvm::StringRef name, NodeValue input,
+                                         UnsignedArrayRef newShape,
+                                         unsigned_t axis) {
+  auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), newShape);
+  return addNode(new BroadcastNode(name, OT, input, axis, newShape.vec()));
 }
 
 /// \returns true if \p T1 and T2 has the exact same type except for dimension
@@ -1702,7 +1659,9 @@ UNARY_ARITHMETIC_FUN_DEF(Cos)
   NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
       llvm::StringRef name, TypeRef T, NodeValue LHS, NodeValue RHS) {         \
     DCHECK(LHS.dims() == RHS.dims())                                           \
-        << "Invalid operand shapes " << LHS.dims() << " vs " << RHS.dims();    \
+        << "Invalid operand shapes LHS:" << LHS.getNode()->getName().str()     \
+        << " RHS: " << RHS.getNode()->getName().str() << " " << LHS.dims()     \
+        << " vs " << RHS.dims();                                               \
     TypeRef OT = getParent()->uniqueType(*T);                                  \
     return addNode(new NODE_NAME_##Node(name, OT, LHS, RHS));                  \
   }
@@ -2799,16 +2758,14 @@ ClipNode *Function::createClip(llvm::StringRef name, NodeValue input, float min,
 
 ClipNode *Function::createClipMinMaxFP16(llvm::StringRef name,
                                          NodeValue input) {
-  constexpr float float16Min = -65504.0f;
-  constexpr float float16Max = 65504.0f;
-  return createClip(name, input, float16Min, float16Max);
+  return createClip(name, input, kMinFP16, kMaxFP16);
 }
 
 ClipNode *Function::createClipMinMaxBFloat16(llvm::StringRef name,
                                              NodeValue input) {
-  constexpr float float16Min = FLT_MIN;
-  constexpr float float16Max = FLT_MAX;
-  return createClip(name, input, float16Min, float16Max);
+  constexpr float bfloat16Min = FLT_MIN;
+  constexpr float bfloat16Max = FLT_MAX;
+  return createClip(name, input, bfloat16Min, bfloat16Max);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2998,13 +2955,6 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
       << "Unsupported element type for ChannelwiseQuantizedConvolution "
       << "filter: " << Type::getElementName(filterElemKind).str();
 
-  DCHECK(dyn_cast<Constant>(bias.getNode()))
-      << "Bias input to ChannelwiseQuantizedConvolutionNode must be a Constant";
-
-  DCHECK(dyn_cast<Constant>(filter.getNode()))
-      << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
-         "Constant";
-
   DCHECK(!filterScales.getNode() || dyn_cast<Constant>(filterScales.getNode()))
       << "Filter scales input to ChannelwiseQuantizedConvolutionNode must be "
          "null or Constant";
@@ -3035,6 +2985,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
         << "ChannelwiseQuantizedConvolution: If the input filter is "
         << "quantized then the filter scales/offsets must be provided!";
     Constant *filterC = dyn_cast<Constant>(filter.getNode());
+    DCHECK(filterC)
+        << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
     Constant *filterScalesC = getParent()->createConstant(
         ElemKind::FloatTy, {numChannels}, "filterScales");
     Constant *filterOffsetsC = getParent()->createConstant(
@@ -3051,6 +3004,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   // If input filter is FLOAT then quantize channel wise to filterElemQTy.
   if (quantizeFilter && filterElemKind == ElemKind::FloatTy) {
     Constant *filterC = dyn_cast<Constant>(filter.getNode());
+    DCHECK(filterC)
+        << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
     Constant *filterCQ = getParent()->createConstant(
         filterElemQTy, filterC->getType()->dims(), 1.0, 0, "filter");
     Constant *filterScalesC = dyn_cast<Constant>(filterScales.getNode());
@@ -3069,6 +3025,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
   if (!biasScales.getNode() || !biasOffsets.getNode()) {
     Constant *biasC = dyn_cast<Constant>(bias.getNode());
+    DCHECK(biasC)
+        << "Bias input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
     Constant *biasScalesC = getParent()->createConstant(
         ElemKind::FloatTy, {numChannels}, "biasScales");
     Constant *biasOffsetsC = getParent()->createConstant(
@@ -3111,6 +3070,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   // If input bias is FLOAT then quantize channel wise to biasElemQTy.
   if (quantizeBias && biasElemKind == ElemKind::FloatTy) {
     Constant *biasC = dyn_cast<Constant>(bias.getNode());
+    DCHECK(biasC)
+        << "Bias input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
     Constant *biasCQ = getParent()->createConstant(
         biasElemQTy, biasC->getType()->dims(), 1.0, 0, "bias");
     Constant *biasScalesC = dyn_cast<Constant>(biasScales.getNode());
@@ -3505,21 +3467,49 @@ LSTMUnitNode *Function::createLSTMUnit(llvm::StringRef namePrefix,
   return addNode(new LSTMUnitNode(namePrefix, Input, C));
 }
 
-void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
-                                 NodeValue Wx, NodeValue Wh, NodeValue Bx,
-                                 NodeValue Bh, NodeValue &Ht, NodeValue &Ct,
-                                 NodeValue &output, bool isBidirectional) {
-  std::string nameBase = namePrefix;
-  assert(isBidirectional == false && "bidirectional is not supported yet");
-  assert(input.dims().back() > 0 && "input dimensionality is zero");
+template <class T>
+std::vector<NodeValue> Function::createSingleDirectionLSTM(
+    std::string nameBase, T inputItr, const int timeSteps, NodeValue Wx,
+    NodeValue Wh, NodeValue Bx, NodeValue Bh, NodeValue &H, NodeValue &C) {
 
+  std::vector<NodeValue> Hs;
   auto name = [&nameBase](const char *s, int t) {
     return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
   };
+  for (unsigned t = 0; t < timeSteps; t++, inputItr++) {
+
+    auto *result = createAdd(
+        name("add", t), createFullyConnected(name("fc_1", t), H, Wh, Bh),
+        createFullyConnected(name("fc_2", t), *inputItr, Wx, Bx));
+
+    auto lstmUnitNode =
+        addNode(new LSTMUnitNode(name("lstm_unit", t), result, C));
+    H = lstmUnitNode->getNthResult(0);
+    C = lstmUnitNode->getNthResult(1);
+
+    Hs.push_back(
+        createReshape(name("H_reshape", t), H, {1, H.dims()[0], H.dims()[1]})
+            ->getResult());
+  }
+  return Hs;
+}
+
+void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
+                                 NodeValue Wx, NodeValue Wh, NodeValue Bx,
+                                 NodeValue Bh, NodeValue &Ht, NodeValue &Ct,
+                                 NodeValue &output, bool isBidirectional,
+                                 NodeValue WxR, NodeValue WhR, NodeValue BxR,
+                                 NodeValue BhR) {
+  std::string nameBase = namePrefix;
+  assert(input.dims().back() > 0 && "input dimensionality is zero");
+  assert((!isBidirectional || WxR != nullptr) &&
+         "Bidirectional LSTM must provide reverse weights & biases");
+
   std::vector<NodeValue> inputs, outputs;
-  unsigned batchSize, inputSize, timeSteps;
+  unsigned batchSize, inputSize, timeSteps, hiddenSize;
   batchSize = input.dims()[1];
   inputSize = input.dims()[2];
+  hiddenSize = Wh.dims()[0];
   timeSteps = input.dims()[0];
   // Input gate:
   //    I <- sigmoid(Wxi * x + Bxi + Whi * h + Bhi)
@@ -3534,28 +3524,79 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
   // Hidden state:
   //    h <- O . tanh(C)
 
-  std::vector<Node *> outputNodes;
+  auto name = [&nameBase](const char *s, int t) {
+    return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
+  };
   for (unsigned t = 0; t < timeSteps; t++) {
     auto inputSliced = createSlice(name("slice", t), input, {t, 0, 0},
                                    {t + 1, batchSize, inputSize})
                            ->getResult();
     inputSliced =
-        createReshape(name("reshape", t), inputSliced, {batchSize, inputSize});
-    auto *Result = createAdd(
-        name("add1", t), createFullyConnected(name("fc1", t), Ht, Wh, Bh),
-        createFullyConnected(name("fc2", t), inputSliced, Wx, Bx));
-
-    auto lstmUnitNode =
-        addNode(new LSTMUnitNode(name("lstm_unit", t), Result, Ct));
-    Ht = lstmUnitNode->getNthResult(0);
-    Ct = lstmUnitNode->getNthResult(1);
-
-    auto reshaped =
-        createReshape("output_reshape", Ht, {1, Ht.dims()[0], Ht.dims()[1]})
+        createReshape(name("reshape", t), inputSliced, {batchSize, inputSize})
             ->getResult();
-    outputs.push_back(reshaped);
+    inputs.push_back(inputSliced);
   }
-  output = createConcat("output_cat", outputs, 0)->getResult();
+  if (isBidirectional) {
+    // For bidirectional LSTM, we split H and C to two part, each direction a
+    // part. For each part we calculate them separately.
+    NodeValue Hforward, Hbackward, Cforward, Cbackward;
+    Hforward = createReshape("reshape_hforward",
+                             createSlice("slice_hforward", Ht, {0, 0, 0},
+                                         {1, batchSize, hiddenSize}),
+                             {batchSize, hiddenSize})
+                   ->getResult();
+    Hbackward = createReshape("reshape_hbackward",
+                              createSlice("slice_hbackward", Ht, {1, 0, 0},
+                                          {2, batchSize, hiddenSize}),
+                              {batchSize, hiddenSize})
+                    ->getResult();
+    Cforward = createReshape("reshape_cforward",
+                             createSlice("slice_cforward", Ct, {0, 0, 0},
+                                         {1, batchSize, hiddenSize}),
+                             {batchSize, hiddenSize})
+                   ->getResult();
+    Cbackward = createReshape("reshape_cbackward",
+                              createSlice("slice_cbackward", Ct, {1, 0, 0},
+                                          {2, batchSize, hiddenSize}),
+                              {batchSize, hiddenSize})
+                    ->getResult();
+
+    auto outputForwards =
+        createSingleDirectionLSTM<std::vector<NodeValue>::iterator>(
+            nameBase + "_lstm_forward", inputs.begin(), timeSteps, Wx, Wh, Bx,
+            Bh, Hforward, Cforward);
+    auto outputBackwards =
+        createSingleDirectionLSTM<std::vector<NodeValue>::reverse_iterator>(
+            nameBase + "_lstm_backward", inputs.rbegin(), timeSteps, WxR, WhR,
+            BxR, BhR, Hbackward, Cbackward);
+    std::reverse(outputBackwards.begin(), outputBackwards.end());
+    NodeValue outputForward = createConcat(
+        nameBase + "_lstm_forward_output_concat", outputForwards, 0);
+    NodeValue outputBackward = createConcat(
+        nameBase + "_lstm_backward_output_concat", outputBackwards, 0);
+    output =
+        createConcat("final_output_concat", {outputForward, outputBackward}, 2)
+            ->getResult();
+
+    auto reshape2dto3d = [=](NodeValue n, std::string nameStr) {
+      return createReshape(nameStr, n, {1, n.dims()[0], n.dims()[1]});
+    };
+    Ht = createConcat("Ht_Concat",
+                      {reshape2dto3d(Hforward, "final_Hforward_reshape"),
+                       reshape2dto3d(Hbackward, "final_Hbackward_reshape")},
+                      0)
+             ->getResult();
+    Ct = createConcat("Ct_Concat",
+                      {reshape2dto3d(Cforward, "final_Cforward_reshape"),
+                       reshape2dto3d(Cbackward, "final_Cbackward_reshape")},
+                      0)
+             ->getResult();
+
+  } else {
+    auto outputs = createSingleDirectionLSTM<std::vector<NodeValue>::iterator>(
+        nameBase + "_lstm", inputs.begin(), timeSteps, Wx, Wh, Bx, Bh, Ht, Ct);
+    output = createConcat(nameBase + "_lstm_output_concat", outputs, 0);
+  }
 };
 
 void Function::createLSTM(PlaceholderBindings &bindings,
@@ -5175,6 +5216,7 @@ Constant *Module::getConstantByName(llvm::StringRef name) const {
 
 void Function::randomizeConstants(
     const std::map<Kinded::Kind, std::set<unsigned>> &ignoredConstants) {
+  LOG(INFO) << "Randomize Constants............";
   for (Constant *c : getParent()->getConstants()) {
     bool usedHere = false;
     bool usedElsewhere = false;

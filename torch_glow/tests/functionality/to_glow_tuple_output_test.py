@@ -1,41 +1,72 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import io
 import unittest
 
 import torch
 import torch_glow
+from tests.utils import assertModulesEqual
 
 
-class Foo(torch.nn.Module):
+class TwoTupleModule(torch.nn.Module):
     def __init__(self):
-        super(Foo, self).__init__()
+        super(TwoTupleModule, self).__init__()
 
     def forward(self, x):
         y = 2 * x
-        return x, y
+        return (x, y)
+
+
+class OneTupleModule(torch.nn.Module):
+    def __init__(self):
+        super(OneTupleModule, self).__init__()
+
+    def forward(self, x):
+        y = 2 * x
+        return (y,)
 
 
 class TestToGlowTupleOutput(unittest.TestCase):
-    def test_to_glow_tuple_output(self):
-        a = torch.randn(4)
+    def tuple_test_helper(self, ModType):
+        input = torch.randn(4)
 
-        model = Foo()
-        torch_resA = model(a)
-        (tx, ty) = torch_resA
+        model = ModType()
 
-        metaA = torch_glow.InputMeta()
-        metaA.set_same_as(a)
-        inputA = [metaA]
+        spec = torch_glow.CompilationSpec()
+        spec.get_settings().set_glow_backend("Interpreter")
 
-        options = torch_glow.CompilationOptions()
-        options.backend = "Interpreter"
-        specA = torch_glow.GlowCompileSpec()
-        specA.set(inputA, options)
+        compilation_group = torch_glow.CompilationGroup()
+        spec.compilation_groups_append(compilation_group)
+
+        input_spec = torch_glow.InputSpec()
+        input_spec.set_same_as(input)
+
+        compilation_group.input_sets_append([input_spec])
 
         scripted_mod = torch.jit.script(model)
-        lowered_mod = torch_glow.to_glow(scripted_mod, [specA])
-        glow_resA = lowered_mod(a)
-        (gx, gy) = glow_resA
+        lowered_model = torch_glow.to_glow(scripted_mod, {"forward": spec})
 
-        assert torch.allclose(tx, gx)
-        assert torch.allclose(ty, gy)
+        # Run Glow model
+        g = lowered_model(input)
+
+        # Run reference model
+        t = model(input)
+
+        self.assertEqual(type(g), type(t))
+        self.assertEqual(len(g), len(t))
+
+        for (gi, ti) in zip(g, t):
+            self.assertTrue(torch.allclose(gi, ti))
+
+        # test module ser/de with tuple output
+        buffer = io.BytesIO()
+        torch.jit.save(lowered_model, buffer)
+        buffer.seek(0)
+        loaded_model = torch.jit.load(buffer)
+        assertModulesEqual(self, lowered_model, loaded_model)
+
+    def test_to_glow_one_tuple_output(self):
+        self.tuple_test_helper(OneTupleModule)
+
+    def test_to_glow_two_tuple_output(self):
+        self.tuple_test_helper(TwoTupleModule)

@@ -40,6 +40,7 @@
 #include "llvm/Support/CommandLine.h"
 
 #include <algorithm>
+#include <numeric>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -1438,11 +1439,38 @@ bool ConvertBroadcastedBatchMatMul::run(Function *F,
     NodeValue LHS = BMMN->getLHS();
     NodeValue RHS = BMMN->getRHS();
 
-    // If RHS is a Tile along axis 0 and the input's dims()[0] == 1, then the
-    // RHS is fully broadcasted and we can perform the optimization.
+    // If RHS is a Tile/Broadcast along axis 0 and the input's dims()[0] == 1,
+    // then the RHS is fully broadcasted and we can perform the optimization.
     TileNode *TN = dyn_cast<TileNode>(RHS);
-    if (!TN || TN->getAxis() != 0 || TN->getInput().dims()[0] != 1) {
+    BroadcastNode *BN = dyn_cast<BroadcastNode>(RHS);
+    if (!TN && !BN) {
       continue;
+    }
+    const unsigned_t axis = TN ? TN->getAxis() : BN->getAxis();
+    const dim_t dim0 = TN ? TN->getInput().dims()[0] : BN->getInput().dims()[0];
+    if (axis != 0 || dim0 != 1) {
+      continue;
+    }
+
+    // If this is a Broadcast, check if the first dimension is the only one
+    // that's tiled. If so, then we can treat this as the same as a
+    // Tile. Otherwise we must keep around a Broadcast for everything but the
+    // first dimension.
+    NodeValue singleTileNV;
+    if (BN) {
+      ShapeVector newBNDims(BN->getResult().dims().begin(),
+                            BN->getResult().dims().end());
+      newBNDims[0] = 1;
+      if (!BN->getInput().dims().equals(newBNDims)) {
+        BroadcastNode *newBN = F->createBroadcast(BN->getName(), BN->getInput(),
+                                                  newBNDims, /* axis */ 0);
+        singleTileNV = newBN->getResult();
+      } else {
+        // This Broadcast is equivalent to a Tile.
+        singleTileNV = BN->getInput();
+      }
+    } else {
+      singleTileNV = TN->getInput();
     }
 
     // Can now convert the broadcasted BatchMatMul to a MatMul.
@@ -1462,7 +1490,7 @@ bool ConvertBroadcastedBatchMatMul::run(Function *F,
         F->createReshape(name.str() + ".reshapeLHS", LHS, {numBatches * N, M});
     // Squeeze out the first dimension of the original Tile's input.
     ReshapeNode *squeezedRHS =
-        F->createSqueeze(name.str() + ".squeezedRHS", TN->getInput(), {0});
+        F->createSqueeze(name.str() + ".squeezedRHS", singleTileNV, {0});
 
     // Perform a normal matmul, implementing the batch matmul.
     MatMulNode *MMN = F->createMatMul(name, reshapeLHS, squeezedRHS);
@@ -3188,7 +3216,8 @@ bool EliminateNoop::run(Function *F, const CompilationContext &cctx) {
 
     // For some nodes it's enough just to compare input and output types to
     // determine if they are noop.
-    if (isa<PadNode>(&node) || isa<SliceNode>(&node) || isa<TileNode>(&node)) {
+    if (isa<PadNode>(&node) || isa<SliceNode>(&node) || isa<TileNode>(&node) ||
+        isa<BroadcastNode>(&node)) {
       return input.getType() == output.getType();
     }
 
@@ -3585,9 +3614,70 @@ static bool disallowQuantParamChange(const NodeValue &NV) {
   return false;
 }
 
+/// This is a specialized pass to use where we assume that quantized ranges are
+/// all inside the FP16 range. This means that if we have any clips outside the
+/// FP16 range we can safely remove them if adjacent to a quantized op.
+bool EliminateClipsOutsideFP16Range::run(Function *F,
+                                         const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  if (!cctx.precisionConfig.clipQuantRangeToFP16) {
+    return false;
+  }
+
+  bool changed = false;
+  for (Node &node : F->getNodes()) {
+    // Clip(Dequantize(Node)) -> Dequantize(Node)
+    if (ClipNode *clip = dyn_cast<ClipNode>(&node)) {
+      DequantizeNode *DQN = dyn_cast<DequantizeNode>(clip->getInput());
+      if (!DQN) {
+        continue;
+      }
+
+      // Can only eliminate the clip if its outside the FP16 range.
+      if (clip->getMin() > kMinFP16 || clip->getMax() < kMaxFP16) {
+        continue;
+      }
+
+      // We can safely skip the Clip at this point.
+      clip->getResult().replaceAllUsesOfWith(DQN->getResult());
+      changed = true;
+      continue;
+    }
+
+    // Quantize(Clip(Node)) -> Quantize(Node)
+    if (QuantizeNode *QN = dyn_cast<QuantizeNode>(&node)) {
+      ClipNode *clip = dyn_cast<ClipNode>(QN->getInput());
+      if (!clip) {
+        continue;
+      }
+
+      // Can only eliminate the clip if its outside the FP16 range.
+      if (clip->getMin() > kMinFP16 || clip->getMax() < kMaxFP16) {
+        continue;
+      }
+
+      // We can safely skip the Clip at this point.
+      QN->setNthInput(QuantizeNode::InputIdx, clip->getInput());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// When quantized operators and Clips are used together, we can often merge the
 /// Clip range and the Quantized range and remove the Clip.
 bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  // All of the optimizations here depend on the quantization parameters. If
+  // we've loaded dummy qparams then none should be performed.
+  if (cctx.precisionConfig.loadUniquedDummyQParams) {
+    return false;
+  }
+
   bool changed = false;
 
   // Change a quantized result type qResult to account for the range from clip.
@@ -3625,10 +3715,6 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     return true;
   };
 
-  const bool disallowNewQuantParams =
-      cctx.optimizationOpts.enableQuantParamChanges &&
-      !cctx.precisionConfig.loadUniquedDummyQParams;
-
   for (Node &node : F->getNodes()) {
     // Clip(Dequantize(Node)) -> Dequantize(Node)
     if (ClipNode *clip = dyn_cast<ClipNode>(&node)) {
@@ -3644,8 +3730,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
           DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1;
 
       // Try to update the quantize's type, otherwise skip this one.
-      if (!updateQuantizeNodeType(F, qResult, clip, skipIfQuantParamChange,
-                                  disallowNewQuantParams)) {
+      if (!updateQuantizeNodeType(
+              F, qResult, clip, skipIfQuantParamChange,
+              cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
 
@@ -3668,9 +3755,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
       const bool skipIfQuantParamChange = isUsedByNodeWithSideEffects(QN);
 
       // Try to update the quantize's type, otherwise skip this one.
-      if (!updateQuantizeNodeType(F, QN->getResult(), clip,
-                                  skipIfQuantParamChange,
-                                  disallowNewQuantParams)) {
+      if (!updateQuantizeNodeType(
+              F, QN->getResult(), clip, skipIfQuantParamChange,
+              cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
 
@@ -3772,8 +3859,7 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
 
   // This opt implies there to be changes to quantization, because we create an
   // int relu that was previously float.
-  if (!cctx.optimizationOpts.enableQuantParamChanges ||
-      cctx.precisionConfig.loadUniquedDummyQParams) {
+  if (!cctx.optimizationOpts.enableQuantParamChanges) {
     return false;
   }
 
@@ -3828,14 +3914,36 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
       continue;
     }
 
+    // If the quant FC is used by nodes with side effects then skip, since we
+    // may be changing the user's input qparam type.
+    bool skip = false;
+    for (FullyConnectedNode *FC : nodesToFuse) {
+      if (isUsedByNodeWithSideEffects(FC)) {
+        skip = true;
+        break;
+      }
+    }
+    if (skip) {
+      continue;
+    }
+
     // Now add quantized relus onto all of the FCs.
     for (FullyConnectedNode *FC : nodesToFuse) {
       const TypeRef FCTy = FC->getResult().getType();
-      // Use the same type as the FC for the Relu but with 0 as min.
-      const auto qParams = quantization::chooseQuantizationParams(
-          {0, FCTy->getQuantizedValueRange().second});
-      const TypeRef qReluTy = F->getParent()->uniqueType(
-          FCTy->getElementType(), FCTy->dims(), qParams.scale, qParams.offset);
+      TypeRef qReluTy = nullptr;
+      if (cctx.precisionConfig.loadUniquedDummyQParams) {
+        // Reuse the FC type, since we don't know its actual qparams during AOT
+        // optimization. When we the actual type later before deploying, we will
+        // do a final processing pass to set min to 0 via updateReluTypes().
+        qReluTy = FCTy;
+      } else {
+        // Use the same type as the FC for the Relu but with 0 as min.
+        const auto qParams = quantization::chooseQuantizationParams(
+            {0, FCTy->getQuantizedValueRange().second});
+        qReluTy =
+            F->getParent()->uniqueType(FCTy->getElementType(), FCTy->dims(),
+                                       qParams.scale, qParams.offset);
+      }
       ReluNode *qRelu = F->createRELU(relu->getName().str() + "_quant",
                                       FC->getResult(), qReluTy);
       FC->getResult().typeUnsafeReplaceAllUsesOfWith(qRelu->getResult(), F,
@@ -4354,7 +4462,10 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
     } // Handle RescaleQuantizedNode
   }   // For each item in the worklist.
 
-  changed |= optimizeQuantizedMaxSplat(F);
+  // This pass is based on real qparams, so skip this opt if using dummies.
+  if (!cctx.precisionConfig.loadUniquedDummyQParams) {
+    changed |= optimizeQuantizedMaxSplat(F);
+  }
 
   // If nothing has changed then sink rescale quantization nodes.
   if (!changed) {
@@ -4818,26 +4929,45 @@ bool FoldElemKindConversionIntoOutputs::run(Function *F,
   return changed;
 }
 
-/// Broadcasts are implemented via a series of Tiles. This helper unwinds them
-/// -- it \returns an original Node starting from \p N that was broadcasted from
-/// the 0th dimension up until \p endDim. Strips off base Reshape as well if
-/// there was one used before tiling.
+/// Broadcasts are implemented via 1) Reshape followed by a series of Tiles 2)
+/// BroadcastNode. This helper unwinds Broadcast operation -- it \returns the
+/// original Node before the broadcasting \p N if the broadcast takes place
+/// between the 0th dimension to \p endDim. Otherwise, \p return \p N.
 static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
-  while (TileNode *TN = dyn_cast<TileNode>(N)) {
-    // Check that the axis of the current Tile is inside of the expected
-    // provided endDim.
-    if (TN->getAxis() >= endDim) {
-      return nullptr;
+  if (auto *BN = dyn_cast<BroadcastNode>(N)) {
+    const auto newShape = BN->getTargetDim();
+    const auto axis = BN->getAxis();
+    const auto &origDims = BN->getInput().dims();
+
+    if (origDims.size() + axis != newShape.size()) {
+      return N;
     }
-    // Applicable only if original dim is 1 in the Broadcast's Tile.
-    if (TN->getInput().dims()[TN->getAxis()] != 1) {
-      return nullptr;
+
+    for (dim_t i = endDim; i < newShape.size(); i++) {
+      if (!(i >= axis && origDims[i - axis] == newShape[i])) {
+        return N;
+      }
     }
-    N = TN->getInput();
+
+    return BN->getInput();
+  } else {
+    while (TileNode *TN = dyn_cast<TileNode>(N)) {
+      // Check that the axis of the current Tile is inside of the expected
+      // provided endDim.
+      if (TN->getAxis() >= endDim) {
+        return N;
+      }
+      // Applicable only if original dim is 1 in the Broadcast's Tile.
+      if (TN->getInput().dims()[TN->getAxis()] != 1) {
+        return N;
+      }
+      N = TN->getInput();
+    }
+    if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
+      return RN->getInput();
+    }
   }
-  if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
-    return RN->getInput();
-  }
+
   return N;
 }
 
@@ -4852,7 +4982,6 @@ bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
     if (!isa<MulNode>(&N) && !isa<AddNode>(&N)) {
       continue;
     }
-
     // Currently only support floating point, as otherwise there will be
     // quantization parameter mismatches.
     if (!isFloatElemKind(N.getElementType(ArithmeticNode::ResultIdx))) {
@@ -4871,7 +5000,8 @@ bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
     NodeValue RHS = unwindBroadcast(N.getNthInput(ArithmeticNode::RHSIdx),
                                     LN->getResult().dims().size() -
                                         LN->getScale().dims().size());
-    if (!RHS.getNode()) {
+
+    if (!isa<SplatNode>(RHS) && !isa<Constant>(RHS)) {
       continue;
     }
 
@@ -4972,7 +5102,7 @@ template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
   return true;
 }
 
-static bool foldActivations(Function *F, CompilationContext &cctx,
+static bool foldActivations(Function *F, const CompilationContext &cctx,
                             const Backend *B) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -4989,7 +5119,7 @@ static bool foldActivations(Function *F, CompilationContext &cctx,
   return changed;
 }
 
-void glow::fold(Function *F, CompilationContext &cctx, const Backend *B) {
+void glow::fold(Function *F, const CompilationContext &cctx, const Backend *B) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
   FunctionPassManager FPM("FoldFPM", createDefaultFoldPassPipeline());
@@ -4998,7 +5128,8 @@ void glow::fold(Function *F, CompilationContext &cctx, const Backend *B) {
   foldActivations(F, cctx, B);
 }
 
-void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
+void glow::optimize(Function *F, const CompilationContext &cctx,
+                    const Backend &B) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   FunctionPassManager FPM("TargetDependentGraphOptzFPM",
@@ -5006,7 +5137,7 @@ void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
   FPM.run(F, cctx);
 }
 
-void glow::optimize(Function *F, CompilationContext &cctx) {
+void glow::optimize(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   // Indicates if the given function is completely loaded. A temporary
@@ -5096,6 +5227,167 @@ bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
     QN->getResult().replaceAllUsesOfWith(newSN);
     changed = true;
   }
+  return changed;
+}
+
+/// Fold Min -> Max or Max -> Min to Clip
+/// We need to place this function after `OptimizeArithmeticNodes` in which the
+/// constant operator in commutative nodes is moved to the RHS, so that we can
+/// assume SplatNode is on the RHS of MinNode (MaxNode).
+/// Only if it's the following structure we do this optimization
+///
+///   someOtherInput  SplatNode
+///              \     /
+///  SplatNode   MinNode (MaxNode)
+///         \     /
+///         MaxNode (MinNode)
+///            |
+///           Out
+///
+/// ClipNode's min will be the SplatNode (maxSN) connected to the MaxNode.
+/// ClipNode's max will be the SplatNode (minSN) connected to the MinNode.
+bool FoldMinMaxToClip::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    MaxNode *maxNode = dyn_cast<MaxNode>(&N);
+    MinNode *minNode = dyn_cast<MinNode>(&N);
+    NodeValue otherInput;
+    NodeValue resultNV;
+    SplatNode *minSN = nullptr;
+    SplatNode *maxSN = nullptr;
+
+    // We assume SplatNode is on the RHS.
+    // If currect node is MinNode
+    //  - try casting the input to MaxNode and SplatNode.
+    //  - If LHS of MinNode is MaxNode
+    //    - try casting RHS of maxNode to SplatNode.
+    if (minNode) {
+      resultNV = minNode->getResult();
+      maxNode = dyn_cast<MaxNode>(
+          unwindBroadcast(minNode->getLHS(), minNode->getLHS().dims().size()));
+      minSN = dyn_cast<SplatNode>(
+          unwindBroadcast(minNode->getRHS(), minNode->getRHS().dims().size()));
+
+      if (maxNode) {
+        maxSN = dyn_cast<SplatNode>(unwindBroadcast(
+            maxNode->getRHS(), maxNode->getRHS().dims().size()));
+        otherInput =
+            unwindBroadcast(maxNode->getLHS(), maxNode->getLHS().dims().size());
+      }
+    } else if (maxNode) { // vice versa for MaxNode
+      resultNV = maxNode->getResult();
+      minNode = dyn_cast<MinNode>(
+          unwindBroadcast(maxNode->getLHS(), maxNode->getLHS().dims().size()));
+      maxSN = dyn_cast<SplatNode>(
+          unwindBroadcast(maxNode->getRHS(), maxNode->getRHS().dims().size()));
+
+      if (minNode) {
+        minSN = dyn_cast<SplatNode>(unwindBroadcast(
+            minNode->getRHS(), minNode->getRHS().dims().size()));
+        otherInput =
+            unwindBroadcast(minNode->getLHS(), minNode->getLHS().dims().size());
+      }
+    }
+
+    // If any of these is nullptr, it means the structure is not the same as
+    // above example.
+    if (!(minNode && maxNode && minSN && maxSN)) {
+      continue;
+    }
+
+    // If minSN is smaller than maxSN, which is really weird because every entry
+    // of the result will be a same number. In this case, we don't fold them.
+    if (minSN->getValue() < maxSN->getValue()) {
+      DLOG(INFO) << "Catch a combination of MinNode and MaxNode while MinSplat "
+                    "is smaller than MaxSplat, which would make all entries of "
+                    "the result tensor to be the same!";
+      continue;
+    }
+
+    // The second node is broadcasted and we need to broadcast the otherInput.
+    if (otherInput.dims() != resultNV.dims()) {
+      otherInput = F->createBroadcast(
+          otherInput.getNode()->getName().str() + ".broadcast", otherInput,
+          resultNV.dims(), resultNV.dims().size() - otherInput.dims().size());
+    }
+
+    // MinSN is the SplatNode input of MinNode while MaxSN is the SplatNode
+    // input of MaxNode. MinSN should be greater than MaxSN so we put MaxSN as
+    // the min of ClipNode.
+    auto minValue = maxSN->getValue();
+    auto maxValue = minSN->getValue();
+    ClipNode *CN = F->createClip(resultNV.getNode()->getName(), otherInput,
+                                 resultNV.getType(),
+                                 /* min */ minValue, /* max */ maxValue);
+    resultNV.replaceAllUsesOfWith(CN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Look for qparams with scale (when casted to fp16) == 0 and replace them with
+/// zero Splats.
+bool ReplaceZeroScaleFP16QuantNodes::run(Function *F,
+                                         const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  // Cannot run this opt if we're using dummy qparams.
+  if (cctx.precisionConfig.loadUniquedDummyQParams) {
+    return false;
+  }
+
+  auto processNV = [](Function *F, NodeValue resNV) {
+    const TypeRef resTy = resNV.getType();
+    if (resTy->isFusedQuantizedType() || !resTy->isQuantizedType()) {
+      return false;
+    }
+
+    // Check if we have a scale that's below the minimum allowed FP16 val.
+    if (resTy->getScale() >= kMinScaleFP16) {
+      return false;
+    }
+
+    // Skip if used by node with side effects, since we cannot change the
+    // qparams in such cases.
+    if (isUsedByNodeWithSideEffects(resNV.getNode())) {
+      return false;
+    }
+
+    // This NodeValue has scale = 0.f, which means the equivalent float result
+    // will always be equal to 0.f. So create a splat with value 0.f, scale 1.f,
+    // offset 0 instead.
+    auto splatTy = F->getParent()->uniqueType(resTy->getElementType(),
+                                              resTy->dims(), 1.f, 0);
+    auto *SN = F->createSplat(resNV.getNode()->getName().str() + ".splatted",
+                              splatTy, 0.f);
+
+    // Note: must use type unsafe replace because we've changed the qparams.
+    resNV.typeUnsafeReplaceAllUsesOfWith(SN->getResult(), F);
+    return true;
+  };
+
+  bool changed = false;
+  // Since we will be adding in new SplatNodes, reverse iterate to be safe.
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *N = &*it;
+    // For now only support nodes with single outputs.
+    if (N->getNumResults() != 1) {
+      continue;
+    }
+    NodeValue resNV = N->getNthResult(0);
+    changed |= processNV(F, resNV);
+  }
+  for (Placeholder *PH : F->findPlaceholders()) {
+    changed |= processNV(F, PH->getOutput());
+  }
+  for (Constant *C : F->findConstants()) {
+    changed |= processNV(F, C->getOutput());
+  }
+
   return changed;
 }
 
@@ -5931,4 +6223,27 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     "Not all Nodes specified in parOpts were processed.");
 
   return replacedMap;
+}
+
+void glow::updateQuantReluTypes(Function *F) {
+  for (Node &N : F->getNodes()) {
+    // Look for quantized Relus that have negative min, and update their min to
+    // be zero.
+    auto *RN = llvm::dyn_cast<ReluNode>(&N);
+    if (!RN || !RN->getResult().getType()->isQuantizedType() ||
+        isUsedByNodeWithSideEffects(RN)) {
+      continue;
+    }
+    const TypeRef RNTy = RN->getResult().getType();
+
+    const auto qRange = RNTy->getQuantizedValueRange();
+    if (qRange.first >= 0) {
+      continue;
+    }
+    const auto qParams =
+        quantization::chooseQuantizationParams({0, qRange.second});
+    const TypeRef qReluTy = F->getParent()->uniqueType(
+        RNTy->getElementType(), RNTy->dims(), qParams.scale, qParams.offset);
+    RN->setType(ReluNode::ResultIdx, qReluTy);
+  }
 }

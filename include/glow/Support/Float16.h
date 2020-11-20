@@ -23,6 +23,12 @@
 
 namespace glow {
 
+/// Smallest allowed scale in FP16 (at least for NNPI)
+constexpr float kMinScaleFP16 = 1.f / 65504.f;
+/// Minimum and maximum values for FP16:
+constexpr float kMinFP16 = -65504.0f;
+constexpr float kMaxFP16 = 65504.0f;
+
 /// Use a proxy type in case we need to change it in the future.
 using Float16Storage = uint16_t;
 class float16 {

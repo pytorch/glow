@@ -513,27 +513,63 @@ with the option `-instrument-debug-format=<format>`:
     1.1, 2.2, 3.3, 4.4, 5.5, 6.6,
     ```
   The names of the dump files have a simple format `data[idx].bin` or `data[idx].txt`
-  but a separate meta file `debug.info` is dumped at compile-time which makes the
+  but a separate meta file `instrument-debug.info` is dumped at compile-time which makes the
   association between each binary file and the operand of the IR instruction to which
-  it belongs. The `debug.info` meta file might look like this:
+  it belongs. The `instrument-debug.info` meta file might look like this:
     ```
     Format: bin
     
-    Type: quantize
+    Kind: quantize
     Name: Conv_MobilenetV1_MobilenetV1_Conv2d_0_Conv2D__2_quantize
     [0] Dest:      data0000.bin    i8[S:0.0156 O:0][-2.000,1.984]<1 x 224 x 224 x 3>
     [1] Src:       data0001.bin    float<1 x 224 x 224 x 3>
     
-    Type: convolution
+    Kind: convolution
     Name: Conv_MobilenetV1_MobilenetV1_Conv2d_0_Conv2D__2
     [0] Dest:      data0002.bin    i8[S:0.2500 O:0][-32.000,31.750]<1 x 112 x 112 x 32>
     [1] Src:       data0003.bin    i8[S:0.0156 O:0][-2.000,1.984]<1 x 224 x 224 x 3>
     [2] Filter:    data0004.bin    i8[S:0.0312 O:0][-4.000,3.969]<32 x 3 x 3 x 3>
     [3] Bias:      data0005.bin    i32[S:0.0005 O:0][-1048576.000,1048576.000]<32>
     ```
-  All the dump files and the meta file `debug.info` are dumped in a folder `debug`
+  All the dump files and the meta file `instrument-debug.info` are dumped in a folder `debug`
   relative to the current directory at compile-time (if it does not exist it is created).
   You can choose a different directory with the option `-instrument-debug-dir=<dir>`.
+
+- A flexible option for debugging is to instrument the IR by using the option `-instrument-ir`
+which instruments the Glow instructions by adding callbacks before and after the execution of
+each instruction. The callbacks have the following API:
+    ```c++
+    void glow_instrument_before(int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize);
+    void glow_instrument_after (int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize);
+    ```
+  The prototype and more details about these callbacks are automatically printed in the bundle
+header file. These callbacks must be implemented by the bundle user application. A separate
+meta file `instrument-ir.info` is dumped at compile-time which provides more information about
+the instrumented instructions and makes the association between the callback IDs and the
+instructions being instrumented. The `instrument-ir.info` meta file might look like this:
+    ```
+    ID   : 0
+    Kind : 108 (quantize)
+    Name : Conv_MobilenetV1_MobilenetV1_Conv2d_0_Conv2D__2_quantize
+    Inp[0] Src:       float<1 x 224 x 224 x 3>
+    Out[0] Dest:      i8[S:0.0156 O:0][-2.000,1.984]<1 x 224 x 224 x 3>
+    
+    ID   : 1
+    Kind : 5 (convolution)
+    Name : Conv_MobilenetV1_MobilenetV1_Conv2d_0_Conv2D__2
+    Inp[0] Src:       i8[S:0.0156 O:0][-2.000,1.984]<1 x 224 x 224 x 3>
+    Inp[1] Filter:    i8[S:0.0312 O:0][-4.000,3.969]<32 x 3 x 3 x 3>
+    Inp[2] Bias:      i32[S:0.0005 O:0][-1048576.000,1048576.000]<32>
+    Out[0] Dest:      i8[S:0.2500 O:0][-32.000,31.750]<1 x 112 x 112 x 32>
+  ```
+  This instrumentation method allows:
+  - Target specific **profiling** by implementing the callbacks to use target specific clocks or
+    time measurement routines.
+  - Target specific **data dumping** mechanisms by implementing the callbacks to use target
+    specific dumping routines, e.g. serial connection or others.
+  - General **debugging** by allowing conditional breakpoints before/after each instruction.
+  This option is currently available only for the LLVM based backends.
+
 
 ## Bundle memory layout
 

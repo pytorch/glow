@@ -3,10 +3,10 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import unittest
 
-import torch_glow
 import torch
 import torch.nn.functional as F
-from tests.utils import jitVsGlow
+import torch_glow
+from tests import utils
 
 
 class TestJITVsGlowPath(unittest.TestCase):
@@ -15,8 +15,9 @@ class TestJITVsGlowPath(unittest.TestCase):
 
         torch_glow.enable_jit_vs_glow_compare()
 
-        def test_f(input, weight, bias=None):
-            return F.linear((input + input), weight, bias)
+        class TestModule(torch.nn.Module):
+            def forward(self, input, weight):
+                return F.linear((input + input), weight)
 
         n = 5
         in_features = 4
@@ -25,11 +26,11 @@ class TestJITVsGlowPath(unittest.TestCase):
         input = torch.randn(n, in_features)
         weight = torch.randn(out_features, in_features)
 
-        jitVsGlow(
-            test_f,
+        utils.compare_tracing_methods(
+            TestModule(),
             input,
             weight,
-            expected_fused_ops={"aten::add", "aten::t", "aten::matmul"},
+            fusible_ops={"aten::add", "aten::t", "aten::matmul"},
         )
 
     def test_jit_vs_glow_int_path(self):
@@ -37,25 +38,27 @@ class TestJITVsGlowPath(unittest.TestCase):
 
         torch_glow.enable_jit_vs_glow_compare()
 
-        def test_f(a, b):
-            c = a + b
-            return c
+        class TestModule(torch.nn.Module):
+            def forward(self, a, b):
+                c = a + b
+                return c
 
         a = torch.randn(5, 6).to(dtype=torch.int32)
         b = torch.randn(5, 6).to(dtype=torch.int32)
 
-        jitVsGlow(test_f, a, b, expected_fused_ops={"aten::add"})
+        utils.compare_tracing_methods(TestModule(), a, b, fusible_ops={"aten::add"})
 
     def test_jit_vs_glow_inplace(self):
         """Test JIT vs. Glow logging with in-place op"""
 
         torch_glow.enable_jit_vs_glow_compare()
 
-        def test_f(a, b):
-            a += b
-            return a
+        class TestModule(torch.nn.Module):
+            def forward(self, a, b):
+                a += b
+                return a
 
         a = torch.randn(5, 6)
         b = torch.randn(5, 6)
 
-        jitVsGlow(test_f, a, b, expected_fused_ops={"aten::add_"})
+        utils.compare_tracing_methods(TestModule(), a, b, fusible_ops={"aten::add_"})

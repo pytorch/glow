@@ -3,74 +3,100 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import unittest
 
-import torch_glow
 import torch
-from tests.utils import jitVsGlow
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleUpsampleModel(torch.nn.Module):
+    def __init__(self, *args, **kwargs):
+        super(SimpleUpsampleModel, self).__init__()
+        self.args = args
+        self.kwargs = kwargs
+
+    def forward(self, tensor):
+        return torch.nn.Upsample(*self.args, **self.kwargs)(tensor)
 
 
 class TestUpsample(unittest.TestCase):
-    def test_upsample3d_2x_size(self):
-        """Test of the PyTorch upsample Node on Glow."""
+    @parameterized.expand(
+        [
+            (
+                "3d_2x_size_nearest",
+                SimpleUpsampleModel(size=(8, 10, 12)),
+                torch.rand(2, 3, 4, 5, 6),
+            ),
+            (
+                "3d_2x_scale_factor_nearest",
+                SimpleUpsampleModel(scale_factor=(2, 2, 2)),
+                torch.rand(2, 3, 4, 5, 6),
+            ),
+            (
+                "3d_2x_single_scale_factor_nearest",
+                SimpleUpsampleModel(scale_factor=2),
+                torch.rand(2, 3, 4, 5, 6),
+            ),
+            (
+                "3d_not_2x_single_scale_factor_nearest",
+                SimpleUpsampleModel(scale_factor=5),
+                torch.rand(2, 3, 4, 5, 6),
+            ),
+            (
+                "3d_not_2x_scale_factor_nearest",
+                SimpleUpsampleModel(scale_factor=(1, 2, 3)),
+                torch.rand(2, 3, 4, 5, 6),
+            ),
+            (
+                "3d_not_2x_size_nearest",
+                SimpleUpsampleModel(size=(10, 12, 13)),
+                torch.rand(2, 3, 4, 5, 6),
+            ),
+        ]
+    )
+    def test_upsample_nearest3d(self, name, module, tensor):
+        utils.compare_tracing_methods(
+            module,
+            tensor,
+            fusible_ops=["aten::upsample_nearest3d"],
+        )
 
-        def test_f(a):
-            U = torch.nn.Upsample(size=(8, 10, 12))
-            return U(a)
-
-        x = torch.rand(2, 3, 4, 5, 6)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::upsample_nearest3d"})
-
-    def test_upsample3d_2x_scale_factor(self):
-        """Test of the PyTorch upsample Node on Glow."""
-
-        def test_f(a):
-            U = torch.nn.Upsample(scale_factor=(2, 2, 2))
-            return U(a)
-
-        x = torch.rand(2, 3, 4, 5, 6)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::upsample_nearest3d"})
-
-    def test_upsample3d_2x_single_scale_factor(self):
-        """Test of the PyTorch upsample Node on Glow."""
-
-        def test_f(a):
-            U = torch.nn.Upsample(scale_factor=2)
-            return U(a)
-
-        x = torch.rand(2, 3, 4, 5, 6)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::upsample_nearest3d"})
-
-    def test_upsample3d_not_2x_single_scale_factor(self):
-        """Test of the PyTorch upsample Node on Glow."""
-
-        def test_f(a):
-            U = torch.nn.Upsample(scale_factor=5)
-            return U(a)
-
-        x = torch.rand(2, 3, 4, 5, 6)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::upsample_nearest3d"})
-
-    def test_upsample3d_not_2x_scale_factor(self):
-        """Test of the PyTorch upsample Node on Glow."""
-
-        def test_f(a):
-            U = torch.nn.Upsample(scale_factor=(1, 2, 3))
-            return U(a)
-
-        x = torch.rand(2, 2, 2, 2, 2)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::upsample_nearest3d"})
-
-    def test_upsample3d_not_2x_size(self):
-        """Test of the PyTorch upsample Node on Glow."""
-
-        def test_f(a):
-            U = torch.nn.Upsample(size=(10, 12, 13))
-            return U(a)
-
-        x = torch.rand(2, 3, 4, 5, 6)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::upsample_nearest3d"})
+    @parameterized.expand(
+        [
+            (
+                "2d_2x_scale_factor_nearest",
+                SimpleUpsampleModel(scale_factor=(2, 2)),
+                torch.rand(1, 1, 3, 3),
+            ),
+            (
+                "2d_not_2x_scale_factor_nearest",
+                SimpleUpsampleModel(scale_factor=(3, 4)),
+                torch.rand(1, 1, 3, 3),
+            ),
+            (
+                "2d_2x_single_scale_factor_nearest",
+                SimpleUpsampleModel(scale_factor=2),
+                torch.rand(1, 1, 3, 3),
+            ),
+            (
+                "2d_not_2x_single_scale_factor_nearest",
+                SimpleUpsampleModel(scale_factor=3),
+                torch.rand(1, 1, 3, 3),
+            ),
+            (
+                "2d_2x_size_nearest",
+                SimpleUpsampleModel(size=(6, 6)),
+                torch.rand(1, 1, 3, 3),
+            ),
+            (
+                "2d_not_2x_size_nearest",
+                SimpleUpsampleModel(size=(4, 8)),
+                torch.rand(1, 1, 3, 3),
+            ),
+        ]
+    )
+    def test_upsample_nearest2d(self, name, module, tensor):
+        utils.compare_tracing_methods(
+            module,
+            tensor,
+            fusible_ops=["aten::upsample_nearest2d"],
+        )

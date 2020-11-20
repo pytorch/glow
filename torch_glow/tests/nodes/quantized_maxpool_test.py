@@ -3,49 +3,51 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleQuantizedMaxPoolModel(torch.nn.Module):
+    def __init__(self, scale, zero_point, dtype, kernel_size):
+        super(SimpleQuantizedMaxPoolModel, self).__init__()
+        self.scale = scale
+        self.zero_point = zero_point
+        self.dtype = dtype
+
+    def forward(self, tensor):
+        quantize = torch.nn.quantized.Quantize(
+            scale=self.scale, zero_point=self.zero_point, dtype=self.dtype
+        )
+        dequantize = torch.nn.quantized.DeQuantize()
+        maxpool = torch.nn.MaxPool2d(3)
+        dequantize = torch.nn.quantized.DeQuantize()
+        return dequantize(maxpool(quantize(tensor)))
 
 
 class TestQuantizedMaxPool(unittest.TestCase):
-    def test_quantized_maxpool(self):
-        """Basic test of the PyTorch quantized::max_pool2d Node on Glow."""
+    @parameterized.expand(
+        [
+            (
+                "basic",
+                SimpleQuantizedMaxPoolModel(1.0 / 128, 3, torch.quint8, 3),
+                torch.randn(1, 4, 5, 5),
+            ),
+            (
+                "cut_q",
+                SimpleQuantizedMaxPoolModel(1.0 / 128, 3, torch.quint8, 3),
+                torch.randn(1, 4, 5, 5),
+                {"aten::quantize_per_tensor"},
+            ),
+        ]
+    )
+    def test_quantized_maxpool(self, _, module, tensor, fusion_blocklist=None):
+        fusible_ops = {
+            "aten::max_pool2d",
+            "aten::quantize_per_tensor",
+            "aten::dequantize",
+        }
+        fusible_ops -= fusion_blocklist or set()
 
-        def test_f(a):
-            q = torch.nn.quantized.Quantize(
-                scale=1.0 / 128, zero_point=3, dtype=torch.quint8
-            )
-            dq = torch.nn.quantized.DeQuantize()
-            mp = torch.nn.MaxPool2d(3)
-            return dq(mp(q(a)))
-
-        inputs = torch.randn(1, 4, 5, 5)
-
-        jitVsGlow(
-            test_f,
-            inputs,
-            expected_fused_ops={
-                "aten::max_pool2d",
-                "aten::quantize_per_tensor",
-                "aten::dequantize",
-            },
-        )
-
-    def test_quantized_maxpool_cut_q(self):
-        """Basic test of the PyTorch quantized::max_pool2d Node on Glow, with quantize excluded. """
-
-        def test_f(a):
-            q = torch.nn.quantized.Quantize(
-                scale=1.0 / 128, zero_point=3, dtype=torch.quint8
-            )
-            dq = torch.nn.quantized.DeQuantize()
-            mp = torch.nn.MaxPool2d(3)
-            return dq(mp(q(a)))
-
-        inputs = torch.randn(1, 4, 5, 5)
-
-        jitVsGlow(
-            test_f,
-            inputs,
-            expected_fused_ops={"aten::max_pool2d", "aten::dequantize"},
-            black_list=["aten::quantize_per_tensor"],
+        utils.compare_tracing_methods(
+            module, tensor, fusible_ops=fusible_ops, fusion_blocklist=fusion_blocklist
         )

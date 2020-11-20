@@ -44,7 +44,7 @@ namespace glow {
 /// Loads tensor \p T from the input \p in. \p useGlowCustomOps changes the
 /// format for doc_string format for adding meta information.
 Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
-                 bool useGlowCustomOps = false);
+                 bool useGlowCustomOps = false, const std::string &data = "");
 
 /// Parses as input file name \p fileName which is an ONNX file
 /// and \returns a parsed GraphProto.
@@ -481,7 +481,8 @@ protected:
   /// Loads ModelProto from the file containing serialized protobuf.
   /// If \p zipMode then zip format will be expected/loaded.
   static Expected<ONNX_NAMESPACE::ModelProto>
-  loadProto(const std::string &filename, bool zipMode);
+  loadProto(const std::string &filename, bool zipMode,
+            const std::string *inputStringPtr);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// in-memory serialized protobuf.
@@ -544,7 +545,8 @@ protected:
                   bool constFoldInLoader = true,
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   std::map<std::string, Type> *staticPlaceholderTypes = nullptr,
-                  bool replaceDummyTQPs = false);
+                  bool replaceDummyTQPs = false,
+                  bool clipQuantRangeToFP16 = false);
 
   friend class ONNXIFIModelLoader;
 
@@ -622,7 +624,8 @@ public:
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool disableConstFoldInLoader = false,
                   bool loadIntoExistingModule = false,
-                  const Backend *B = nullptr);
+                  const Backend *B = nullptr,
+                  const std::string *inputStringPtr = nullptr);
 
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p mod.
@@ -649,7 +652,8 @@ public:
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool loadIntoExistingModule = false,
                   bool disableConstFoldInLoader = false,
-                  const Backend *B = nullptr);
+                  const Backend *B = nullptr,
+                  const std::string *inputStringPtr = nullptr);
 
 private:
   /// Per-node options that may be specified in a proto.

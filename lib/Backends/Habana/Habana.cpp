@@ -1051,7 +1051,8 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       break;
     }
     default: {
-      RETURN_ERR(strFormat("Unhandled node: %s", I.getDebugDesc().c_str()));
+      return MAKE_ERR(
+          strFormat("Unhandled node: %s", I.getDebugDesc().c_str()));
       break;
     }
     }

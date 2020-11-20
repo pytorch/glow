@@ -3,18 +3,21 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from tests import utils
+
+
+class SimpleFloorModule(torch.nn.Module):
+    def forward(self, a, b):
+        c = a + b
+        return torch.floor(c)
 
 
 class TestFloor(unittest.TestCase):
     def test_floor(self):
         """Basic test of the PyTorch floor Node on Glow."""
 
-        def test_f(a, b):
-            c = a + b
-            d = torch.floor(c)
-            return d
-
         x = torch.randn(3, 4, 5)
         y = torch.randn(3, 4, 5)
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::floor"})
+        utils.compare_tracing_methods(
+            SimpleFloorModule(), x, y, fusible_ops={"aten::floor"}
+        )

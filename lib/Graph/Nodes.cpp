@@ -564,8 +564,14 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
                                NodeValue offsets) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(weights, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
-  isValid &= checkType(offsets, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &= checkType(
+      offsets,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
                         size_t(1), dest.getNode());
@@ -1603,10 +1609,13 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
       indices,
       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
       parent);
-  // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
-  // Int64ITy.
+  // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and
+  // can be either Int64ITy or Int64ITy.
   if (isEmbeddingBagByteRowwiseOffsets) {
-    isValid &= checkType(lengths, ElemKind::Int64ITy, parent);
+    isValid &= checkType(
+        lengths,
+        llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+        parent);
   } else {
     isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
   }
@@ -2239,6 +2248,11 @@ bool BBoxTransformNode::verify() const {
                                deltasDims[1] % expectedBoxDim, dim_t(0), this);
   isValid &= expectCompareTrue("Weights must be a 1D vector of length 4",
                                weights.size(), size_t(4), this);
+  if (roisDims[1] == expectedBoxDim) {
+    isValid &= expectCompareTrue(
+        "The batch size should be 1 if there's no batch index in rois",
+        imInfoDims[0], dim_t(1), this);
+  }
   if (rotated && angleBoundOn) {
     isValid &= expectCompareTrue(
         "The difference between angleBoundHi and angleBoundLo "
@@ -2489,6 +2503,26 @@ bool BatchBoxCoxNode::verify() const {
     isValid &= expectCompareTrue("Data dim 1 must equal lambda dim",
                                  data.dims()[1], lambda1.dims()[0], this);
   }
+  return isValid;
+}
+
+bool BroadcastNode::verify() const {
+  const auto inputDims = getInput().dims();
+  const auto axis = getAxis();
+  const auto targetDims = getTargetDim();
+  bool isValid = (axis + inputDims.size() <= targetDims.size());
+
+  // Iterate over the new shape; if the original shape had a dimension here
+  // (when considering the axis) then verify the dimension either matches the
+  // new shape (no action taken) or == 1 (broadcast in that direction).
+  for (dim_t i = 0; i < targetDims.size(); i++) {
+    if (i >= axis && i < inputDims.size() + axis) {
+      const int origIdx = i - axis;
+      isValid &=
+          (inputDims[origIdx] == targetDims[i] || inputDims[origIdx] == 1);
+    }
+  }
+
   return isValid;
 }
 

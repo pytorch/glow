@@ -3,27 +3,29 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from tests import utils
+
+
+class SimpleQuantizedAvgPool3DModule(torch.nn.Module):
+    def __init__(self, scale, zero_point, dtype, kernel_size):
+        super(SimpleQuantizedAvgPool3DModule, self).__init__()
+        self.quantize = torch.nn.quantized.Quantize(
+            scale=scale, zero_point=zero_point, dtype=dtype
+        )
+        self.average_pool = torch.nn.AvgPool3d(kernel_size)
+
+    def forward(self, inputs):
+        return torch.nn.quantized.DeQuantize()(self.average_pool(self.quantize(inputs)))
 
 
 class TestQuantizedAvgPool3D(unittest.TestCase):
     def test_quantized_avgpool3d(self):
         """Basic test of the PyTorch quantized::avg_pool2d Node on Glow."""
 
-        def test_f(a):
-            q = torch.nn.quantized.Quantize(
-                scale=1.0 / 128, zero_point=3, dtype=torch.quint8
-            )
-            dq = torch.nn.quantized.DeQuantize()
-            ap = torch.nn.AvgPool3d(3)
-            return dq(ap(q(a)))
-
-        inputs = torch.randn(1, 2, 4, 5, 5)
-
-        jitVsGlow(
-            test_f,
-            inputs,
-            expected_fused_ops={
+        utils.compare_tracing_methods(
+            SimpleQuantizedAvgPool3DModule(1.0 / 128, 3, torch.quint8, 3),
+            torch.randn(1, 2, 4, 5, 5),
+            fusible_ops={
                 "aten::avg_pool3d",
                 "aten::quantize_per_tensor",
                 "aten::dequantize",
@@ -33,19 +35,9 @@ class TestQuantizedAvgPool3D(unittest.TestCase):
     def test_quantized_avgpool_cut_q_dq(self):
         """Basic test of the PyTorch quantized::avg_pool2d Node on Glow, with quantize and dequantize excluded. """
 
-        def test_f(a):
-            q = torch.nn.quantized.Quantize(
-                scale=1.0 / 128, zero_point=3, dtype=torch.quint8
-            )
-            dq = torch.nn.quantized.DeQuantize()
-            ap = torch.nn.AvgPool3d(3)
-            return dq(ap(q(a)))
-
-        inputs = torch.randn(1, 2, 4, 5, 5)
-
-        jitVsGlow(
-            test_f,
-            inputs,
-            expected_fused_ops={"aten::avg_pool3d"},
-            black_list=["aten::quantize_per_tensor", "aten::dequantize"],
+        utils.compare_tracing_methods(
+            SimpleQuantizedAvgPool3DModule(1.0 / 128, 3, torch.quint8, 3),
+            torch.randn(1, 2, 4, 5, 5),
+            fusible_ops={"aten::avg_pool3d"},
+            fusion_blocklist=["aten::quantize_per_tensor", "aten::dequantize"],
         )

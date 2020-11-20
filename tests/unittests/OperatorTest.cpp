@@ -2405,8 +2405,8 @@ TEST_P(OperatorTest, LSTMUnitFP16) {
     float cExpect = (float16_t)i * refSigmoidFp16(i + 1) +
                     refSigmoidFp16(i) * (float16_t)std::tanh(i + 2);
     float hExpect = (float16_t)std::tanh(cExpect) * refSigmoidFp16(i + 3);
-    EXPECT_NEAR(hHandle.raw(i), hExpect, 1E-5);
-    EXPECT_NEAR(cHandle.raw(i), cExpect, 1E-5);
+    EXPECT_NEAR(hHandle.raw(i), hExpect, 1E-3);
+    EXPECT_NEAR(cHandle.raw(i), cExpect, 1E-2);
   }
 }
 
@@ -2484,7 +2484,7 @@ TEST_P(OperatorTest, PyTorchLSTMFP16) {
                           0.9940, 0.9951, 0.9959, 0.9967, 0.9982, 0.9985,
                           0.9988, 0.9990, 0.9992, 0.9993, 0.9995, 0.9996};
   for (int i = 0; i < numSteps * minibatchSize * hiddenSize; i++) {
-    EXPECT_NEAR(saveH.raw(i), expectOutput[i], 1E-3);
+    EXPECT_NEAR(saveH.raw(i), expectOutput[i], 2E-3);
   }
 }
 
@@ -4044,7 +4044,6 @@ TEST_P(OperatorTest, broadcast) {
     EXPECT_EQ(broadcastedBHandle.dims()[i], dims_A[i]);
     EXPECT_EQ(broadcastedQBHandle.dims()[i], dims_A[i]);
   }
-
   // Look at the two values in X_B and verify in the three dimensions it was
   // broadcasted that the values were correctly broadcasted.
   const dim_t k_B = 0;
@@ -4861,6 +4860,34 @@ static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
   Tensor expectedT(DTy, {2, 4, 2});
   expectedT.getHandle<DataType>() = {1.0, 1.2, 2.3, 3.4, 1.0, 1.2, 2.3, 3.4,
                                      2.3, 3.4, 4.5, 5.7, 4.5, 5.7, 1.0, 1.2};
+
+  EXPECT_TRUE(resultT->isEqual(expectedT));
+}
+
+TEST_P(OperatorTest, GatherDataNonZeroDim) {
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "data", false);
+  auto dimension = 1;
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
+
+  bindings_.allocate(data)->getHandle<float>() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
+  };
+
+  bindings_.allocate(indices)->getHandle<int64_t>() = {0l, 2l};
+
+  auto *R = F_->createGather("gather", data, indices, dimension);
+
+  auto *result = F_->createSave("save", R);
+
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor *resultT = bindings_.get(result->getPlaceholder());
+  Tensor expectedT(ElemKind::FloatTy, {3, 2});
+  expectedT.getHandle<float>() = {1.0, 3.0, 4.0, 6.0, 7.0, 9.0};
 
   EXPECT_TRUE(resultT->isEqual(expectedT));
 }

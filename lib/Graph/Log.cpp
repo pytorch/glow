@@ -33,7 +33,7 @@ static constexpr auto logVersionNo_ = "v1.0.0";
 static llvm::cl::opt<bool, true>
     enableCompilationLogOpt("compilation-log",
                             llvm::cl::desc("Dump Compilation Log"),
-                            llvm::cl::location(GlowDumpCompilationLog));
+                            llvm::cl::location(flags::DumpCompilationLog));
 
 static llvm::cl::opt<bool> verboseCompilationLogOpt(
     "verbose-compilation", llvm::cl::init(false),
@@ -225,7 +225,7 @@ void LogContext::popLogScope() {
 }
 
 void LogContext::dumpLog(llvm::StringRef compileLogFilename) {
-  if (!GlowDumpCompilationLog) {
+  if (!flags::DumpCompilationLog) {
     return;
   }
 
@@ -249,7 +249,7 @@ void LogContext::dumpLog(llvm::StringRef compileLogFilename) {
 
 /// Logs the node creation with a list of input nodes.
 void LogContext::logNodeCreation(const Node &newNode, bool logIntoModule) {
-  if (!GlowDumpCompilationLog) {
+  if (!flags::DumpCompilationLog) {
     return;
   }
 
@@ -263,7 +263,7 @@ void LogContext::logNodeCreation(const Node &newNode, bool logIntoModule) {
 
 /// Logs the node deletion.
 void LogContext::logNodeDeletion(const Node &deletedNode, bool logIntoModule) {
-  if (!GlowDumpCompilationLog) {
+  if (!flags::DumpCompilationLog) {
     return;
   }
 
@@ -279,7 +279,7 @@ void LogContext::logNodeDeletion(const Node &deletedNode, bool logIntoModule) {
 void LogContext::logNodeInputChange(const Node &user,
                                     const NodeValue &prevOprVal,
                                     const NodeValue &newOprVal) {
-  if (!GlowDumpCompilationLog) {
+  if (!flags::DumpCompilationLog) {
     return;
   }
 

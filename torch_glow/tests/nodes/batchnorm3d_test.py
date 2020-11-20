@@ -4,7 +4,7 @@ import unittest
 
 import torch
 import torch.nn as nn
-from tests.utils import jitVsGlow
+from tests import utils
 
 
 class TestBatchNorm3D(unittest.TestCase):
@@ -30,7 +30,7 @@ class TestBatchNorm3D(unittest.TestCase):
         model.eval()
 
         inputs = torch.randn(1, num_channels, 4, 5, 5)
-        jitVsGlow(model, inputs, expected_fused_ops={"aten::batch_norm"})
+        utils.compare_tracing_methods(model, inputs, fusible_ops={"aten::batch_norm"})
 
     def test_batchnorm_with_weights(self):
         """
@@ -59,4 +59,4 @@ class TestBatchNorm3D(unittest.TestCase):
         model = SimpleBatchNorm(num_channels, weight, bias, running_mean, running_var)
         model.eval()
 
-        jitVsGlow(model, inputs, expected_fused_ops={"aten::batch_norm"})
+        utils.compare_tracing_methods(model, inputs, fusible_ops={"aten::batch_norm"})
