@@ -703,17 +703,22 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
       outputRanges[outputIdxMap.first] = outputCheckedRange.second;
     }
 
-    // Create input Slice nodes.
+    // Create input Slice nodes (only if necessary).
     for (const auto &inputIdxMap : inputIdxAndMaps) {
       auto inputIdx = inputIdxMap.first;
-      auto &inputRange = inputRanges[inputIdxMap.first];
-      Type outTy = Type::newShape(*(node->getNthInput(inputIdx).getType()),
-                                  inputRange.getSizes());
-      auto nodeName =
-          clone->getName().str() + ".SliceInput" + std::to_string(inputIdx);
-      auto *inputSlice = F->createSlice(nodeName, node->getNthInput(inputIdx),
-                                        inputRange.getStarts(), &outTy);
-      clone->setNthInput(inputIdx, inputSlice);
+      auto inputNodeValue = node->getNthInput(inputIdx);
+      auto &inputSliceRange = inputRanges[inputIdxMap.first];
+      TypeRef inpTy = inputNodeValue.getType();
+      Type outTy = Type::newShape(*(inpTy), inputSliceRange.getSizes());
+      if (outTy.isEqual(inpTy)) {
+        clone->setNthInput(inputIdx, inputNodeValue);
+      } else {
+        auto nodeName =
+            clone->getName().str() + ".SliceInput" + std::to_string(inputIdx);
+        auto *inputSlice = F->createSlice(nodeName, inputNodeValue,
+                                          inputSliceRange.getStarts(), &outTy);
+        clone->setNthInput(inputIdx, inputSlice);
+      }
     }
 
     // Set clone split output type. The original node output type is not
@@ -1465,15 +1470,14 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
 ///===---------------------------------------------------------------------===//
 ///                            splitNodeRecursively
 ///===---------------------------------------------------------------------===//
-#if 0
-
 // TODO1: For raw option we must add a verification that all the slice ranges
 //        cover the entire output operand.
-// TODO2: Do not insert Slice nodes for inputs which are used entirely!
+// TODO2: Dettach original node after splitting it.
+// TODO3: When spliting node we could delete the original node manually so
+//        we don't have to run a round of DCE afterwards!
 
 Expected<SplitNodeMap>
-glow::splitNodeRecursively(Node *node,
-                           const SplitNodeOption *splitOption,
+glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
                            const SplitNodeConstraint *splitConstraint,
                            unsigned maxDepth) {
   // Create split map.
@@ -1500,8 +1504,13 @@ glow::splitNodeRecursively(Node *node,
     return splitMap;
   }
 
+  // Early return if depth is 1.
+  if (maxDepth == 1) {
+    return splitMap;
+  }
+
   // --------------------------------------------------------------------------
-  for (auto splitNode: splitNodes) {
+  for (auto splitNode : splitNodes) {
     std::cout << "Split node: " << splitNode->getName().str() << "\n";
   }
   std::cout << "\n";
@@ -1513,54 +1522,61 @@ glow::splitNodeRecursively(Node *node,
     // Find Slice nodes and ranges for the current input.
     std::vector<SliceRange> inputRanges;
     NodeValue sliceInputNodeValue = nullptr;
-    for (const Node *splitNode: splitNodes) {
-      SliceNode *sliceNode = dyn_cast<SliceNode>(splitNode->getNthInput(inputIdx).getNode());
+    for (const Node *splitNode : splitNodes) {
+      SliceNode *sliceNode =
+          dyn_cast<SliceNode>(splitNode->getNthInput(inputIdx).getNode());
       assert(sliceNode && "SliceNode not found for split node input!");
       inputRanges.push_back(SliceRange(sliceNode));
       if (!sliceInputNodeValue.getNode()) {
         sliceInputNodeValue = sliceNode->getInput();
       } else {
-        assert(sliceInputNodeValue == sliceNode->getInput() && "SliceNodes do not have a common input!"); 
+        assert(sliceInputNodeValue == sliceNode->getInput() &&
+               "SliceNodes do not have a common input!");
       }
     }
 
     // Slice input node value.
-    std::cout << "Slice input node: " << sliceInputNodeValue.getNode()->getName().str() << "\n";
+    std::cout << "Slice input node: "
+              << sliceInputNodeValue.getNode()->getName().str() << "\n";
     std::cout << "Range for input " << inputIdx << "\n";
-    for (auto range: inputRanges) {
+    for (auto range : inputRanges) {
       std::cout << range.toString() << "\n";
     }
 
     // If the node value which is sliced has other consumers than the SliceNodes
     // inserted during splitting then we do not split the node which produces
     // that node value.
-    if (sliceInputNodeValue.getNumUsers() > splitNodes.size()) {
-      std::cout << "We are not splitting this node!!\n";
-      continue;
-    }
+    // if (sliceInputNodeValue.getNumUsers() > splitNodes.size()) {
+    //  std::cout << "We are not splitting this node!!\n";
+    //  continue;
+    //}
 
     // Split the input node of the SliceNodes using same slice ranges.
-    SplitNodeBySliceRanges splitOption = SplitNodeBySliceRanges(inputRanges);
-    Node *sliceInputNode = sliceInputNodeValue.getNode();
-    ASSIGN_VALUE_OR_RETURN_ERR(splitMap[sliceInputNode],
-                               splitNode(sliceInputNode, &splitOption, nullptr));
+    auto splitInputOption = SplitNodeBySliceRanges(inputRanges);
+    Node *splitInputNode = sliceInputNodeValue.getNode();
+
+    // ASSIGN_VALUE_OR_RETURN_ERR(splitMap[sliceInputNode],
+    //                           splitNode(sliceInputNode, &splitOption,
+    //                           nullptr));
+
+    SplitNodeMap splitInputMap;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        splitInputMap, splitNodeRecursively(splitInputNode, &splitInputOption,
+                                            splitConstraint, maxDepth - 1));
+
+    splitMap.insert(splitInputMap.begin(), splitInputMap.end());
   }
 
   return splitMap;
 }
 
 Expected<SplitNodeMap>
-glow::splitNodeRecursively(Node *node,
-                           const SplitNodeOption &splitOption,
+glow::splitNodeRecursively(Node *node, const SplitNodeOption &splitOption,
                            unsigned maxDepth) {
   return splitNodeRecursively(node, &splitOption, nullptr, maxDepth);
 }
 
-Expected<SplitNodeMap>
-glow::splitNodeRecursively(Node *node,
-                           const SplitNodeConstraint &splitConstraint,
-                           unsigned maxDepth) {
+Expected<SplitNodeMap> glow::splitNodeRecursively(
+    Node *node, const SplitNodeConstraint &splitConstraint, unsigned maxDepth) {
   return splitNodeRecursively(node, nullptr, &splitConstraint, maxDepth);
 }
-
-#endif

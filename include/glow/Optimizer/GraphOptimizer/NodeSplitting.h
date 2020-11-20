@@ -312,25 +312,18 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 ///===---------------------------------------------------------------------===//
 ///                            splitNodeRecursively
 ///===---------------------------------------------------------------------===//
-#if 0
-
 Expected<SplitNodeMap>
-splitNodeRecursively(Node *node,
-                     const SplitNodeOption *splitOption,
+splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
                      const SplitNodeConstraint *splitConstraint,
                      unsigned maxDepth);
 
-Expected<SplitNodeMap>
-splitNodeRecursively(Node *node,
-                     const SplitNodeOption &splitOption,
-                     unsigned maxDepth);
+Expected<SplitNodeMap> splitNodeRecursively(Node *node,
+                                            const SplitNodeOption &splitOption,
+                                            unsigned maxDepth);
 
 Expected<SplitNodeMap>
-splitNodeRecursively(Node *node,
-                     const SplitNodeConstraint &splitConstraint,
+splitNodeRecursively(Node *node, const SplitNodeConstraint &splitConstraint,
                      unsigned maxDepth);
-
-#endif
 
 } // namespace glow
 
