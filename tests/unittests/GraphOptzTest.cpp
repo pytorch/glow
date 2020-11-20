@@ -2834,6 +2834,44 @@ TEST_F(GraphFold, foldLeakyReluFromConst) {
   EXPECT_EQ(input, newPReluNode->getInput());
 }
 
+/// Test optimization of  Convolution nodes with small input tensors by reducing
+/// filters and removing redundant padding.
+TEST_F(GraphFold, optimizeSmallConv) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 16}, "input", true);
+  auto filter =
+      mod_.createConstant(ElemKind::FloatTy, {16, 5, 5, 16}, "filter");
+  auto bias = mod_.createConstant(ElemKind::FloatTy, {16}, "bias");
+
+  filter->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bias->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  auto *outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 1, 1, 16});
+  auto *CN = F_->createConv("conv", input, filter, bias, outTy, {5, 5}, {2, 2},
+                            {2, 1, 1, 2}, 1);
+  auto *save = F_->createSave("save", CN);
+
+  EXPECT_EQ(2, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+
+  const auto *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+
+  auto *newCN = llvm::dyn_cast<ConvolutionNode>(optSave->getInput());
+  ASSERT_TRUE(newCN);
+  // Kernel should be reduced.
+  EXPECT_TRUE(isUniformArray(newCN->getKernels(), 2u));
+  // Padding should be removed.
+  EXPECT_TRUE(isUniformArray(newCN->getPads(), 0u));
+  // Stride should be canonicalized to 1.
+  EXPECT_TRUE(isUniformArray(newCN->getStrides(), 1u));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
   const dim_t inputDims[] = {3, 136, 28, 28};
