@@ -3743,6 +3743,35 @@ TEST(onnx, ROIAlign_onnx) {
   }
 }
 
+/// Test loading and inference of ONNX MatMul operator with
+/// 4D inputs.
+TEST(onnx, MatMul4D) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/MatMul4D.onnxtxt");
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Placeholder *refOutput;
+
+  ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+  output = EXIT_ON_ERR(onnxLD.getOutputByName("Y"));
+  refOutput = EXIT_ON_ERR(onnxLD.getOutputByName("Yref"));
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto resultH = bindings.get(output)->getHandle();
+  auto refYH = bindings.get(refOutput)->getHandle();
+  std::vector<dim_t> outputShape = {1, 2, 3, 3};
+  float delta = 1e-03;
+  ASSERT_TRUE(resultH.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < resultH.getType().size(); i++) {
+    EXPECT_NEAR(resultH.raw(i), refYH.raw(i), delta);
+  }
+}
+
 TEST_F(OnnxImporterTest, importDimParamExplicit) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();

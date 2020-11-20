@@ -1838,11 +1838,23 @@ MatMulNode *Function::createMatMul(llvm::StringRef name, NodeValue lhs,
 
 BatchMatMulNode *Function::createBatchMatMul(llvm::StringRef name,
                                              NodeValue LHS, NodeValue RHS) {
+  const size_t numDimsLHS = LHS.dims().size();
+  if (numDimsLHS > 3) {
+    const size_t numDimsRHS = RHS.dims().size();
+    std::vector<dim_t> newLHSShape = {0, LHS.dims()[numDimsLHS - 2],
+                                      LHS.dims()[numDimsLHS - 1]};
+    newLHSShape[0] = LHS.getType()->size() / (newLHSShape[1] * newLHSShape[2]);
+    LHS = createReshape(name.str() + ".reshapeLHS3D", LHS, newLHSShape);
+    std::vector<dim_t> newRHSShape = {0, RHS.dims()[numDimsRHS - 2],
+                                      RHS.dims()[numDimsRHS - 1]};
+    newRHSShape[0] = RHS.getType()->size() / (newRHSShape[1] * newRHSShape[2]);
+    RHS = createReshape(name.str() + ".reshapeRHS3D", RHS, newRHSShape);
+  }
+
   const size_t numDimsRHS = RHS.dims().size();
   assert(LHS.dims().size() == 3 && "LHS must be 3 dimensional.");
   assert((numDimsRHS == 2 || numDimsRHS == 3) &&
          "RHS must be 2 or 3 dimensional.");
-
   // If necessary, expand the RHS input to be 3D by adding initial leading
   // dim.
   if (numDimsRHS == 2) {

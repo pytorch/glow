@@ -2599,9 +2599,19 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
-  /// For dimension size equal to 3 use batchedMatMul
-  if (LHS.dims().size() == 3) {
+  /// For dimension greater than 2 use batchedMatMul
+  if (LHS.dims().size() > 2) {
     Node *node = G_->createBatchMatMul(opName, LHS, RHS);
+    const size_t numDimsLHS = LHS.dims().size();
+    if (numDimsLHS > 3) {
+      const size_t numDimsRHS = RHS.dims().size();
+      std::vector<dim_t> finalShape;
+      for (auto d : LHS.dims()) {
+        finalShape.push_back(d);
+      }
+      finalShape[numDimsLHS - 1] = RHS.dims()[numDimsRHS - 1];
+      node = G_->createReshape(opName, node, finalShape);
+    }
     RETURN_IF_ERR(addNodeAsOutput(op, node));
   } else {
     Node *node = G_->createMatMul(opName, LHS, RHS);
