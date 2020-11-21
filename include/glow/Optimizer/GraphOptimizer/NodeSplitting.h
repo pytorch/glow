@@ -253,6 +253,7 @@ inline SplitNodeConstraint SplitNodeMaxMemConstraint(unsigned maxMem) {
 /// then an error is thrown. \returns a vector with the nodes obtained after
 /// splitting \p node. The node is split only if there is a splitting logic
 /// implemented for the node type, otherwise an empty vector is returned.
+/// NOTE: The original node is deleted from the graph after being split.
 Expected<std::vector<Node *>>
 splitNode(Node *node, const SplitNodeOption *splitOption,
           const SplitNodeConstraint *splitConstraint);
@@ -261,6 +262,7 @@ splitNode(Node *node, const SplitNodeOption *splitOption,
 /// \returns a vector with the nodes obtained after splitting \p node. The node
 /// is split only if there is a splitting logic implemented for the node type,
 /// otherwise an empty vector is returned.
+/// NOTE: The original node is deleted from the graph after being split.
 Expected<std::vector<Node *>> splitNode(Node *node,
                                         const SplitNodeOption &splitOption);
 
@@ -268,6 +270,7 @@ Expected<std::vector<Node *>> splitNode(Node *node,
 /// \returns a vector with the nodes obtained after splitting \p node. The node
 /// is split only if there is a splitting logic implemented for the node type,
 /// otherwise an empty vector is returned.
+/// NOTE: The original node is deleted from the graph after being split.
 Expected<std::vector<Node *>>
 splitNode(Node *node, const SplitNodeConstraint &splitConstraint);
 
@@ -295,6 +298,7 @@ using SplitNodeMap = std::unordered_map<Node *, std::vector<Node *>>;
 /// and the given split constraint map \p splitConstraintMap. \returns a split
 /// node map for those nodes which were actually split. This function does not
 /// split those nodes for which no option or constraint was found in the maps.
+/// NOTE: The original nodes are deleted from the graph after being split.
 Expected<SplitNodeMap>
 splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
            const SplitNodeConstraintMap &splitConstraintMap);
@@ -303,6 +307,7 @@ splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
 /// a split logic implemented using a common split option \p splitOption which
 /// will be used for all the nodes. \returns a split node map for those nodes
 /// which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
 Expected<SplitNodeMap> splitNodes(Function *F,
                                   const SplitNodeOption &splitOption);
 
@@ -310,6 +315,7 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 /// a split logic implemented using a common split constraint \p splitConstraint
 /// which will be used for all the nodes. \returns a split node map for those
 /// nodes which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
 Expected<SplitNodeMap> splitNodes(Function *F,
                                   const SplitNodeConstraint &splitConstraint);
 
@@ -323,11 +329,18 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 /// nodes is based on a custom option which inherits the slicing boundaries from
 /// the child node in order to create subgraphs which are completely parallel.
 /// The constraint \p splitConstraint applies to all the nodes being split.
+/// If \p singleUseOnly is given then the recursive split procedure stops when
+/// encountering a node which has multiple uses.
+/// The recursive split procedure stops either:
+/// - when the maximum depth has been reached.
+/// - when a node is encountered for which there is no split support.
+/// - when a node is encountered for which the split constraint is not met.
 /// \returns a split node map for those nodes which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
 Expected<SplitNodeMap>
 splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
                      const SplitNodeConstraint *splitConstraint,
-                     unsigned maxDepth);
+                     unsigned maxDepth, bool singleUseOnly = false);
 
 /// Function to perform a recursive node splitting starting with \p node and
 /// traversing the graph along the depth in order to split the parent nodes of
@@ -335,19 +348,26 @@ splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
 /// node is based on the option \p splitOption. The splitting of the parent
 /// nodes is based on a custom option which inherits the slicing boundaries from
 /// the child node in order to create subgraphs which are completely parallel.
+/// If \p singleUseOnly is given then the recursive split procedure stops when
+/// encountering a node which has multiple uses.
 /// \returns a split node map for those nodes which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
 Expected<SplitNodeMap> splitNodeRecursively(Node *node,
                                             const SplitNodeOption &splitOption,
-                                            unsigned maxDepth);
+                                            unsigned maxDepth,
+                                            bool singleUseOnly = false);
 
 /// Function to perform a recursive node splitting starting with \p node and
 /// traversing the graph along the depth in order to split the parent nodes of
 /// \p node up to a maximum depth of \p maxDepth.
 /// The constraint \p splitConstraint applies to all the nodes being split.
+/// If \p singleUseOnly is given then the recursive split procedure stops when
+/// encountering a node which has multiple uses.
 /// \returns a split node map for those nodes which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
 Expected<SplitNodeMap>
 splitNodeRecursively(Node *node, const SplitNodeConstraint &splitConstraint,
-                     unsigned maxDepth);
+                     unsigned maxDepth, bool singleUseOnly = false);
 
 } // namespace glow
 

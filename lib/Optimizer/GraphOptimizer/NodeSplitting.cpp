@@ -1483,14 +1483,11 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
 ///===---------------------------------------------------------------------===//
 ///                            splitNodeRecursively
 ///===---------------------------------------------------------------------===//
-// TODO1: Add option to split single use nodes.
-// TODO2: Manually delete the Slice nodes and the Insert when doing
-// short-circuit.
-// TODO3: Optimize function and verify function at the end.
-
-static Error splitNodeRecursivelyMain(
-    SplitNodeMap &splitMap, Node *node, const SplitNodeOption *splitOption,
-    const SplitNodeConstraint *splitConstraint, unsigned maxDepth) {
+static Error
+splitNodeRecursivelyMain(SplitNodeMap &splitMap, Node *node,
+                         const SplitNodeOption *splitOption,
+                         const SplitNodeConstraint *splitConstraint,
+                         unsigned maxDepth, bool singleUseOnly) {
 
   // Early return if depth is 0.
   if (maxDepth == 0) {
@@ -1525,6 +1522,7 @@ static Error splitNodeRecursivelyMain(
 
     // Find parent node value and ranges for the current input.
     std::vector<SliceRange> inputRanges;
+    inputRanges.reserve(splitNodesCurr.size());
     NodeValue sliceInputNodeValue = nullptr;
     for (const Node *splitNode : splitNodesCurr) {
       // Get parent node value and range.
@@ -1548,10 +1546,10 @@ static Error splitNodeRecursivelyMain(
     // If the node value which is sliced has other consumers than the SliceNodes
     // inserted during splitting then we do not split the node which produces
     // that node value.
-    // if (sliceInputNodeValue.getNumUsers() > splitNodesCurr.size()) {
-    //  std::cout << "We are not splitting this node!!\n";
-    //  continue;
-    //}
+    if (singleUseOnly &&
+        sliceInputNodeValue.getNumUsers() > splitNodesCurr.size()) {
+      continue;
+    }
 
     // Check that we split the 1st output operand of the parent node.
     if (sliceInputNodeValue.getResNo() != SplitNodeOutputIdx) {
@@ -1563,7 +1561,7 @@ static Error splitNodeRecursivelyMain(
     Node *splitInputNode = sliceInputNodeValue.getNode();
     RETURN_IF_ERR(splitNodeRecursivelyMain(splitMap, splitInputNode,
                                            &splitInputOption, splitConstraint,
-                                           maxDepth - 1));
+                                           maxDepth - 1, singleUseOnly));
 
     // Remove Slice and Insert nodes between adjacent split nodes.
     if (splitMap.count(splitInputNode)) {
@@ -1593,16 +1591,22 @@ static Error splitNodeRecursivelyMain(
 Expected<SplitNodeMap>
 glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
                            const SplitNodeConstraint *splitConstraint,
-                           unsigned maxDepth) {
+                           unsigned maxDepth, bool singleUseOnly) {
   Function *F = node->getParent();
   RETURN_ERR_IF_NOT(F, "Cannot split a node without a parent Function!");
 
   // Create split map.
   SplitNodeMap splitMap;
 
+  // Check if this node has single use only before splitting it.
+  if (singleUseOnly &&
+      node->getNthResult(SplitNodeOutputIdx).getNumUsers() > 1) {
+    return splitMap;
+  }
+
   // Split node recursively.
-  RETURN_IF_ERR(splitNodeRecursivelyMain(splitMap, node, splitOption,
-                                         splitConstraint, maxDepth));
+  RETURN_IF_ERR(splitNodeRecursivelyMain(
+      splitMap, node, splitOption, splitConstraint, maxDepth, singleUseOnly));
 
   // Perform DCE to cleanup.
   auto cctx = glow::CompilationContext();
@@ -1616,11 +1620,15 @@ glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
 
 Expected<SplitNodeMap>
 glow::splitNodeRecursively(Node *node, const SplitNodeOption &splitOption,
-                           unsigned maxDepth) {
-  return splitNodeRecursively(node, &splitOption, nullptr, maxDepth);
+                           unsigned maxDepth, bool singleUseOnly) {
+  return splitNodeRecursively(node, &splitOption, nullptr, maxDepth,
+                              singleUseOnly);
 }
 
-Expected<SplitNodeMap> glow::splitNodeRecursively(
-    Node *node, const SplitNodeConstraint &splitConstraint, unsigned maxDepth) {
-  return splitNodeRecursively(node, nullptr, &splitConstraint, maxDepth);
+Expected<SplitNodeMap>
+glow::splitNodeRecursively(Node *node,
+                           const SplitNodeConstraint &splitConstraint,
+                           unsigned maxDepth, bool singleUseOnly) {
+  return splitNodeRecursively(node, nullptr, &splitConstraint, maxDepth,
+                              singleUseOnly);
 }

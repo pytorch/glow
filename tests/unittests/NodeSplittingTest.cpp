@@ -2129,6 +2129,53 @@ TEST_F(NodeSplitting, Recursive_MaxDepth) {
   checkNumericalEquivalence(0);
 }
 
+/// Verify recursive splitting for nodes with single output uses.
+TEST_F(NodeSplitting, Recursive_SingleOutputUse) {
+  std::vector<dim_t> dims = {10, 10};
+
+  // Create network with chained unary operators.
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  Node *relu = F_->createRELU("relu", input);
+  Node *clip = F_->createClip("clip", relu, 1.0, 10.0);
+  Node *tanh = F_->createTanh("tanh", clip);
+  Node *sigmoid = F_->createSigmoid("sigmoid", tanh);
+  SaveNode *output1 = F_->createSave("output1", clip);
+  SaveNode *output2 = F_->createSave("output2", sigmoid);
+  bindings_.allocate(output1->getPlaceholder());
+  bindings_.allocate(output2->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  bool singleUseOnly = true;
+  unsigned maxDepth = 10;
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth,
+                                             singleUseOnly));
+
+  // Check node count.
+  EXPECT_EQ(splitMap.size(), 2);
+  EXPECT_EQ(0, splitMap.count(relu));
+  EXPECT_EQ(0, splitMap.count(clip));
+  EXPECT_EQ(1, splitMap.count(tanh));
+  EXPECT_EQ(1, splitMap.count(sigmoid));
+  EXPECT_EQ(2, splitMap[tanh].size());
+  EXPECT_EQ(2, splitMap[sigmoid].size());
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ClipNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::TanhNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::SigmoidNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  checkNumericalEquivalence(0);
+}
+
 /// Verify recursive splitting for nodes with multiple output uses.
 TEST_F(NodeSplitting, Recursive_MultipleOutputUses) {
   std::vector<dim_t> dims = {10, 10};
@@ -2150,11 +2197,13 @@ TEST_F(NodeSplitting, Recursive_MultipleOutputUses) {
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
 
   // Split nodes.
+  bool singleUseOnly = false;
   unsigned maxDepth = 10;
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth));
+      splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth,
+                                             singleUseOnly));
 
   // Check node count.
   EXPECT_EQ(splitMap.size(), 4);
