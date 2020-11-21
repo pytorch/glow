@@ -2542,7 +2542,9 @@ Expected<c10::ScalarType> PyTorchModelLoader::getHigherType(
   for (auto v : values) {
     c10::ScalarType dtype;
     RETURN_IF_ERR(getCorrectTypeMapping(dtype, v));
-    higherType = promote_skip_undefined(higherType, dtype);
+    if (dtype != c10::ScalarType::QInt8 && dtype != c10::ScalarType::QUInt8) {
+      higherType = promote_skip_undefined(higherType, dtype);
+    }
   }
   return higherType;
 }
@@ -2565,7 +2567,9 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
   c10::ScalarType higherType;
   glow::ElemKind higherKind;
   ASSIGN_VALUE_OR_RETURN_ERR(higherType, getHigherType(inputs));
-  higherKind = scalarTypeToElemKind(higherType);
+  if (higherType != c10::ScalarType::Undefined) {
+    higherKind = scalarTypeToElemKind(higherType);
+  }
 
   // Get number of input dimensions
   glow::NodeValue glowInput0;
@@ -2590,7 +2594,8 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
                                 "values are in the range [-%ld, %ld]",
                                 origDim, numInputDims, numInputDims - 1));
 
-    if (!isQuantizedElemKind(higherKind) &&
+    if (higherType != c10::ScalarType::Undefined &&
+        !isQuantizedElemKind(higherKind) &&
         glowInput.getElementType() != higherKind) {
       glow::ConvertToNode *toNode =
           F_.createConvertTo("upcastForConcat", glowInput, higherKind);
