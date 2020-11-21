@@ -15,6 +15,7 @@
  */
 
 #include "glow/Optimizer/GraphOptimizer/NodeSplitting.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include <algorithm>
 #include <numeric>
@@ -667,13 +668,18 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
   Function *F = node->getParent();
   RETURN_ERR_IF_NOT(F, "Cannot split a node without a parent Function!");
 
-  // Allocate output tensors used for merging the partial output slices.
+  // Allocate output tensors used for merging the partial outputs. We only merge
+  // the partial outputs for the output operands which are effectively used.
   std::vector<NodeValue> mergedOutputs(node->getNumResults());
   for (size_t outIdx = 0, outIdxEnd = node->getNumResults(); outIdx < outIdxEnd;
        outIdx++) {
-    auto nodeName =
-        node->getName().str() + ".TouchOutput" + std::to_string(outIdx);
-    mergedOutputs[outIdx] = F->createTouch(nodeName, node->getType(outIdx));
+    if (node->getNthResult(outIdx).getNumUsers()) {
+      auto nodeName =
+          node->getName().str() + ".TouchOutput" + std::to_string(outIdx);
+      mergedOutputs[outIdx] = F->createTouch(nodeName, node->getType(outIdx));
+    } else {
+      mergedOutputs[outIdx] = nullptr;
+    }
   }
 
   // Create split nodes.
@@ -749,22 +755,29 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     // Add clone to vector.
     splitNodes[sliceIdx] = clone;
 
-    // Merge the partial outputs of this clone.
+    // Merge the partial outputs of this clone (only if used).
     for (size_t outIdx = 0, outIdxEnd = node->getNumResults();
          outIdx < outIdxEnd; outIdx++) {
-      auto nodeName =
-          clone->getName().str() + ".MergeOutput" + std::to_string(outIdx);
-      mergedOutputs[outIdx] = F->createInsertTensor(
-          nodeName, mergedOutputs[outIdx], clone->getNthResult(outIdx),
-          outputRanges[outIdx].getStarts());
+      if (mergedOutputs[outIdx]) {
+        auto nodeName =
+            clone->getName().str() + ".MergeOutput" + std::to_string(outIdx);
+        mergedOutputs[outIdx] = F->createInsertTensor(
+            nodeName, mergedOutputs[outIdx], clone->getNthResult(outIdx),
+            outputRanges[outIdx].getStarts());
+      }
     }
   }
 
-  // Replace all the node outputs with the merged outputs.
+  // Replace all the node outputs with the merged outputs (only if used).
   for (size_t outIdx = 0, outIdxEnd = node->getNumResults(); outIdx < outIdxEnd;
        outIdx++) {
-    node->getNthResult(outIdx).replaceAllUsesOfWith(mergedOutputs[outIdx]);
+    if (mergedOutputs[outIdx]) {
+      node->getNthResult(outIdx).replaceAllUsesOfWith(mergedOutputs[outIdx]);
+    }
   }
+
+  // Erase original node.
+  F->eraseNode(node);
 
   return splitNodes;
 }
@@ -1406,8 +1419,8 @@ glow::splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
 
   // Since we will be transforming the original list of nodes, reverse iterate.
   auto &nodes = F->getNodes();
-  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
-    Node *node = &*it;
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
+    Node *node = &*(it++);
 
     // Find explicit split option for current node (if any).
     const SplitNodeOption *splitOption = nullptr;
@@ -1440,8 +1453,8 @@ Expected<SplitNodeMap> glow::splitNodes(Function *F,
   // Since we will be transforming the original list of nodes, reverse iterate.
   SplitNodeMap splitMap;
   auto &nodes = F->getNodes();
-  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
-    Node *node = &*it;
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
+    Node *node = &*(it++);
     const SplitNodeConstraint *splitConstraint = nullptr;
     ASSIGN_VALUE_OR_RETURN_ERR(splitMap[node],
                                splitNode(node, &splitOption, splitConstraint));
@@ -1456,8 +1469,8 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
   // Since we will be transforming the original list of nodes, reverse iterate.
   SplitNodeMap splitMap;
   auto &nodes = F->getNodes();
-  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
-    Node *node = &*it;
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
+    Node *node = &*(it++);
     const SplitNodeOption *splitOption = nullptr;
     ASSIGN_VALUE_OR_RETURN_ERR(splitMap[node],
                                splitNode(node, splitOption, &splitConstraint));
@@ -1470,21 +1483,18 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
 ///===---------------------------------------------------------------------===//
 ///                            splitNodeRecursively
 ///===---------------------------------------------------------------------===//
-// TODO1: For raw option we must add a verification that all the slice ranges
-//        cover the entire output operand.
-// TODO2: Dettach or delete original node after splitting it.
-// TODO3: Add option to split single use nodes.
+// TODO1: Add option to split single use nodes.
+// TODO2: Manually delete the Slice nodes and the Insert when doing
+// short-circuit.
+// TODO3: Optimize function and verify function at the end.
 
-Expected<SplitNodeMap>
-glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
-                           const SplitNodeConstraint *splitConstraint,
-                           unsigned maxDepth) {
-  // Create split map.
-  SplitNodeMap splitMap;
+static Error splitNodeRecursivelyMain(
+    SplitNodeMap &splitMap, Node *node, const SplitNodeOption *splitOption,
+    const SplitNodeConstraint *splitConstraint, unsigned maxDepth) {
 
   // Early return if depth is 0.
   if (maxDepth == 0) {
-    return splitMap;
+    return Error::success();
   }
 
   // We can do the splitting if at least the option or the constraint is given.
@@ -1499,18 +1509,19 @@ glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
 
   // If starting node was NOT split then return, otherwise add nodes to map.
   if (!splitNodesCurr.size()) {
-    return splitMap;
+    return Error::success();
   } else {
     splitMap[node] = splitNodesCurr;
   }
 
   // Early return if depth is 1.
   if (maxDepth == 1) {
-    return splitMap;
+    return Error::success();
   }
 
   // Iterate through all of the input operands and split them.
-  for (unsigned inpIdx = 0, e = node->getNumInputs(); inpIdx < e; ++inpIdx) {
+  unsigned inpNum = splitNodesCurr.front()->getNumInputs();
+  for (unsigned inpIdx = 0; inpIdx < inpNum; ++inpIdx) {
 
     // Find parent node value and ranges for the current input.
     std::vector<SliceRange> inputRanges;
@@ -1550,18 +1561,16 @@ glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
     // Split the input node of the SliceNodes using same slice ranges.
     auto splitInputOption = SplitNodeBySliceRanges(inputRanges);
     Node *splitInputNode = sliceInputNodeValue.getNode();
-    SplitNodeMap splitInputMap;
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        splitInputMap, splitNodeRecursively(splitInputNode, &splitInputOption,
-                                            splitConstraint, maxDepth - 1));
-    splitMap.insert(splitInputMap.begin(), splitInputMap.end());
+    RETURN_IF_ERR(splitNodeRecursivelyMain(splitMap, splitInputNode,
+                                           &splitInputOption, splitConstraint,
+                                           maxDepth - 1));
 
     // Remove Slice and Insert nodes between adjacent split nodes.
     if (splitMap.count(splitInputNode)) {
       auto &splitNodesNext = splitMap[splitInputNode];
       assert(splitNodesCurr.size() == splitNodesNext.size() &&
              "Mismatch for number of split Nodes!");
-      // Create short circuit between inputs and output of adjacent nodes.
+      // Create short circuit between inputs and outputs of adjacent nodes.
       for (size_t idx = 0, len = splitNodesCurr.size(); idx < len; ++idx) {
         NodeValue splitNodeNextOut =
             splitNodesNext[idx]->getNthResult(SplitNodeOutputIdx);
@@ -1578,6 +1587,30 @@ glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
     }
   }
 
+  return Error::success();
+}
+
+Expected<SplitNodeMap>
+glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
+                           const SplitNodeConstraint *splitConstraint,
+                           unsigned maxDepth) {
+  Function *F = node->getParent();
+  RETURN_ERR_IF_NOT(F, "Cannot split a node without a parent Function!");
+
+  // Create split map.
+  SplitNodeMap splitMap;
+
+  // Split node recursively.
+  RETURN_IF_ERR(splitNodeRecursivelyMain(splitMap, node, splitOption,
+                                         splitConstraint, maxDepth));
+
+  // Perform DCE to cleanup.
+  auto cctx = glow::CompilationContext();
+  glow::runDCEPass(F, cctx);
+
+  // Verify function after splitting nodes.
+  RETURN_ERR_IF_NOT(F->verify(),
+                    "Function is not valid after recursive node splitting!");
   return splitMap;
 }
 

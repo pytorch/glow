@@ -157,7 +157,6 @@ static void splitConv2DBasic(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -250,7 +249,6 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -314,7 +312,6 @@ static void splitConv2DGrouped(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimC}, {numChunks});
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), numChunks);
@@ -376,7 +373,6 @@ TEST_F(NodeSplitting, Conv2D_IllDefined_DimHW) {
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   dim_t totNumChunks = numChunks[0] * numChunks[1];
@@ -411,7 +407,6 @@ TEST_F(NodeSplitting, Conv2D_MaxMem) {
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes,
       ::glow::splitNode(node, SplitNodeMaxMemConstraint(splitMaxMemSize)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   auto totNumChunks = countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind);
@@ -450,7 +445,6 @@ TEST_F(NodeSplitting, Conv2D_NoSplit) {
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes, ::glow::splitNode(node, SplitNodeMaxMemConstraint(0)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), 0);
@@ -525,7 +519,6 @@ static void splitCWQConv2DBasic(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -620,7 +613,6 @@ static void splitCWQConv2DNonZeroPad(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -688,7 +680,6 @@ static void splitCWQConv2DGrouped(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimC}, {numChunks});
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), numChunks);
@@ -776,7 +767,6 @@ static void splitMaxPoolBasic(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -838,7 +828,6 @@ static void splitMaxPoolNonZeroPad(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -894,7 +883,6 @@ TEST_F(NodeSplitting, MaxPool_IllDefined_DimHW) {
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   dim_t totNumChunks = numChunks[0] * numChunks[1];
@@ -925,7 +913,6 @@ TEST_F(NodeSplitting, MaxPool_MaxMem) {
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes,
       ::glow::splitNode(node, SplitNodeMaxMemConstraint(splitMaxMemSize)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   auto totNumChunks = countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind);
@@ -970,7 +957,6 @@ TEST_F(NodeSplitting, MaxPool_Argmax_NoSplit) {
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes,
                             ::glow::splitNode(maxpool, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), 0);
@@ -999,7 +985,6 @@ TEST_F(NodeSplitting, MaxPool_NoSplit) {
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes, ::glow::splitNode(node, SplitNodeMaxMemConstraint(0)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), 0);
@@ -1058,7 +1043,6 @@ static void splitAvgPoolBasic(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1120,7 +1104,6 @@ static void splitAvgPoolNonZeroPad(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1176,7 +1159,6 @@ TEST_F(NodeSplitting, AvgPool_IllDefined_DimHW) {
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   dim_t totNumChunks = numChunks[0] * numChunks[1];
@@ -1207,7 +1189,6 @@ TEST_F(NodeSplitting, AvgPool_MaxMem) {
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes,
       ::glow::splitNode(node, SplitNodeMaxMemConstraint(splitMaxMemSize)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   auto totNumChunks = countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind);
@@ -1241,7 +1222,6 @@ TEST_F(NodeSplitting, AvgPool_NoSplit) {
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes, ::glow::splitNode(node, SplitNodeMaxMemConstraint(0)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), 0);
@@ -1288,7 +1268,6 @@ static void splitFullyConnected(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1351,7 +1330,6 @@ static void splitMatMul(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1414,7 +1392,6 @@ static void splitBatchMatMul(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1492,7 +1469,6 @@ static void splitBatchedAdd(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1564,7 +1540,6 @@ static void splitTranspose(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1662,7 +1637,6 @@ TEST_F(NodeSplitting, BinaryOps) {
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(splitMap, ::glow::splitNodes(F_, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(2, splitMap[add].size());
@@ -1728,7 +1702,6 @@ TEST_F(NodeSplitting, UnaryOps) {
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(splitMap, ::glow::splitNodes(F_, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(2, splitMap[relu].size());
@@ -1786,7 +1759,6 @@ static void splitConv2DNonOrthogonal(Function *F, Function *&optF,
   auto splitOption = SplitNodeBySliceRanges(sliceRanges);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Check node count.
   dim_t totNumChunks = sliceRanges.size();
@@ -1932,7 +1904,6 @@ static void splitConv2DReluRecursive(Function *F, Function *&optF,
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitMap,
       ::glow::splitNodeRecursively(relu, splitOption, /* maxDepth */ 10));
-  runDCEPass(F, cctx);
 
   EXPECT_EQ(splitMap.size(), 2);
   EXPECT_TRUE(splitMap.count(conv));
@@ -2048,7 +2019,6 @@ static void splitConv2DReluMaxPoolRecursive(Function *F, Function *&optF,
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitMap,
       ::glow::splitNodeRecursively(pool, splitOption, /* maxDepth */ 10));
-  runDCEPass(F, cctx);
 
   EXPECT_EQ(splitMap.size(), 3);
   EXPECT_TRUE(splitMap.count(conv));
@@ -2140,7 +2110,6 @@ TEST_F(NodeSplitting, Recursive_MaxDepth) {
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitMap.size(), 2);
@@ -2186,7 +2155,6 @@ TEST_F(NodeSplitting, Recursive_MultipleOutputUses) {
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitMap.size(), 4);
@@ -2239,7 +2207,6 @@ TEST_F(NodeSplitting, Recursive_StopConstraint) {
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitMap, ::glow::splitNodeRecursively(sigmoid, &splitOption,
                                              &splitConstraint, maxDepth));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitMap.size(), 2);
@@ -2282,7 +2249,6 @@ TEST_F(NodeSplitting, Recursive_StopUnsupportedNode) {
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitMap, ::glow::splitNodeRecursively(relu, splitOption, maxDepth));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitMap.size(), 1);
@@ -2326,7 +2292,6 @@ TEST_F(NodeSplitting, Recursive_OnlyFirstOutputOperand) {
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitMap, ::glow::splitNodeRecursively(relu, splitOption, maxDepth));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitMap.size(), 1);

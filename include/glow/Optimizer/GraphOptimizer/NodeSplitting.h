@@ -316,15 +316,35 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 ///===---------------------------------------------------------------------===//
 ///                            splitNodeRecursively
 ///===---------------------------------------------------------------------===//
+/// Function to perform a recursive node splitting starting with \p node and
+/// traversing the graph along the depth in order to split the parent nodes of
+/// \p node up to a maximum depth of \p maxDepth. The splitting of the starting
+/// node is based on the option \p splitOption. The splitting of the parent
+/// nodes is based on a custom option which inherits the slicing boundaries from
+/// the child node in order to create subgraphs which are completely parallel.
+/// The constraint \p splitConstraint applies to all the nodes being split.
+/// \returns a split node map for those nodes which were actually split.
 Expected<SplitNodeMap>
 splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
                      const SplitNodeConstraint *splitConstraint,
                      unsigned maxDepth);
 
+/// Function to perform a recursive node splitting starting with \p node and
+/// traversing the graph along the depth in order to split the parent nodes of
+/// \p node up to a maximum depth of \p maxDepth. The splitting of the starting
+/// node is based on the option \p splitOption. The splitting of the parent
+/// nodes is based on a custom option which inherits the slicing boundaries from
+/// the child node in order to create subgraphs which are completely parallel.
+/// \returns a split node map for those nodes which were actually split.
 Expected<SplitNodeMap> splitNodeRecursively(Node *node,
                                             const SplitNodeOption &splitOption,
                                             unsigned maxDepth);
 
+/// Function to perform a recursive node splitting starting with \p node and
+/// traversing the graph along the depth in order to split the parent nodes of
+/// \p node up to a maximum depth of \p maxDepth.
+/// The constraint \p splitConstraint applies to all the nodes being split.
+/// \returns a split node map for those nodes which were actually split.
 Expected<SplitNodeMap>
 splitNodeRecursively(Node *node, const SplitNodeConstraint &splitConstraint,
                      unsigned maxDepth);
