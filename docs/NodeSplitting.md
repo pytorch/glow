@@ -40,6 +40,10 @@ when an overlap is required between the operands. The split procedures have the 
 
 The node splitting tool set includes functions to split a single node or multiple nodes at once.
 
+The node splitting tools are part of the graph optimizer and can be found here:
+- `include/glow/Optimizer/GraphOptimizer/NodeSplitting.h`
+- `lib/Optimizer/GraphOptimizer/NodeSplitting.cpp`
+
 ### Recursive splitting
 
 A more powerful capability is to perform a recursive split that is starting from a node and traversing
