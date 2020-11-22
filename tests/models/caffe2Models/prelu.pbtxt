@@ -1,0 +1,10 @@
+name: "prelu"
+op {
+  input: "prelu_test_input"
+  input: "slope"
+  output: "prelu_test_output"
+  type: "PRelu"
+}
+external_input: "prelu_test_input"
+external_input: "slope"
+external_output: "prelu_test_output"

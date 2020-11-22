@@ -63,6 +63,11 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled = false;
   });
 
+  /// Get status of converting PyTorch subgraphs to Glow Functions.
+  m.def("getFusionPassEnabled", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled;
+  });
+
   /// Enable dumping Glow DAG to file after model loading finishes.
   m.def("enableDumpGlowDag",
         []() { getGlobalPyTorchLoaderSettingsMutable().dumpGlowDag = true; });
@@ -89,13 +94,21 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().convertToFP16 = false;
   });
 
-  /// Enable converting fp32 ops to fp16.
+  /// Get status of converting fp32 ops to fp16.
+  m.def("get_convert_to_fp16",
+        []() { return getGlobalPyTorchLoaderSettingsMutable().convertToFP16; });
+
+  /// Enable clipping of fp16.
   m.def("enable_clip_fp16",
         []() { getGlobalPyTorchLoaderSettingsMutable().clipFP16 = true; });
 
-  /// Disable converting fp32 ops to fp16.
+  /// Disable clipping of fp16.
   m.def("disable_clip_fp16",
         []() { getGlobalPyTorchLoaderSettingsMutable().clipFP16 = false; });
+
+  /// Get status of clipping fp16.
+  m.def("get_clip_fp16",
+        []() { return getGlobalPyTorchLoaderSettingsMutable().clipFP16; });
 
   /// Enable converting fp32 fused ops to fp16.
   m.def("enable_convert_fused_to_fp16", []() {
@@ -105,6 +118,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable converting fp32 fused ops to fp16.
   m.def("disable_convert_fused_to_fp16", []() {
     getGlobalPyTorchLoaderSettingsMutable().convertFusedToFP16 = false;
+  });
+
+  /// Get status of converting fp32 fused ops to fp16.
+  m.def("get_convert_fused_to_fp16", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().convertFusedToFP16;
   });
 
   /// Enable dumping the final Glow dag after compilation.
@@ -173,6 +191,16 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().randomizeConstants = false;
   });
 
+  /// Enable writing to Onnx without randomizing constants.
+  m.def("enable_write_without_randomize", []() {
+    getGlobalPyTorchLoaderSettingsMutable().writeWithoutRandomize = true;
+  });
+
+  /// Disable writing to Onnx without randomizing constants.
+  m.def("disable_write_without_randomize", []() {
+    getGlobalPyTorchLoaderSettingsMutable().writeWithoutRandomize = false;
+  });
+
   /// Enable check Glow vs jit correctness.
   m.def("enable_jit_vs_glow_compare", []() {
     getGlobalPyTorchLoaderSettingsMutable().jitVsGlowCompare = true;
@@ -209,6 +237,15 @@ PYBIND11_MODULE(_torch_glow, m) {
     for (const auto &kind : blacklist) {
       bl.insert(torch::jit::Symbol::fromQualString(kind));
     }
+  });
+
+  /// Get the fusion blacklist.
+  m.def("getFusionBlacklist", []() {
+    auto &symbols = getGlobalPyTorchLoaderSettingsMutable().opBlacklist;
+    std::vector<std::string> strings;
+    std::transform(symbols.begin(), symbols.end(), std::back_inserter(strings),
+                   [](torch::jit::Symbol s) { return s.toQualString(); });
+    return strings;
   });
 
   /// Clear the fusion blacklist.
@@ -301,5 +338,17 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable running fusion pass in to_glow as a debug flow
   m.def("disable_debug_fuser", []() {
     getGlobalPyTorchLoaderSettingsMutable().enableDebugFuser = false;
+  });
+
+  /// Enable continuously verifying Glow graph during model loading
+  m.def("enable_debug_continuously_verify_during_model_loading", []() {
+    getGlobalPyTorchLoaderSettingsMutable()
+        .debugContinuouslyVerifyDuringModelLoading = true;
+  });
+
+  /// Disable continuously verifying Glow graph during model loading
+  m.def("disable_debug_continuously_verify_during_model_loading", []() {
+    getGlobalPyTorchLoaderSettingsMutable()
+        .debugContinuouslyVerifyDuringModelLoading = false;
   });
 }

@@ -1,11 +1,11 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch_glow
-import torch
 import unittest
-
 from collections import OrderedDict
+
+import torch
+import torch_glow
 
 
 def create_model(x, relu, bias=True):

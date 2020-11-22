@@ -1,0 +1,29 @@
+name: "conv_test"
+op {
+  input: "gpu_0/data_0"
+  output: "qout"
+  type: "Int8Quantize"
+  arg {
+    name: "Y_scale"
+    f: 1.f
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 0
+  }
+}
+op {
+  input: "qout"
+  input: "rhs"
+  output: "out"
+  type: "Int8SumRelu"
+  arg {
+    name: "Y_scale"
+    f: 575.f
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 120
+  }
+}
+external_output: "out"

@@ -121,8 +121,7 @@ llvm::cl::opt<bool> indicesInt64Opt(
 
 llvm::cl::opt<bool, /* ExternalStorage */ true> enablePartialTensorOpt(
     "glow_enable_partial_tensor", llvm::cl::desc("Enable partial tensor"),
-    llvm::cl::Optional,
-    llvm::cl::location(glow::onnxifi::GlowEnablePartialTensors),
+    llvm::cl::Optional, llvm::cl::location(glow::flags::EnablePartialTensors),
     llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<unsigned> itersOpt(
@@ -316,7 +315,7 @@ public:
     }
 
     std::stringstream ss;
-    ss << "weight_" << i_++;
+    ss << "weight_" << i_;
     largeBuffer_ = zip_->getRecord(ss.str());
     ::ONNX_NAMESPACE::TensorProto t;
     t.ParseFromString(largeBuffer_);
@@ -332,8 +331,17 @@ public:
     }
     auto ty = typeInfo_[currentBlobName_];
 
+    ss.str("");
+    ss << "data_" << i_++;
+    largeBuffer_.clear();
+    if (zip_->hasRecord(ss.str())) {
+      largeBuffer_ = zip_->getRecord(ss.str());
+      LOG(INFO) << "Read weight data " << ss.str() << " of size "
+                << largeBuffer_.size();
+    }
     currentTensor_.reset(new ::glow::Tensor());
-    RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get()));
+    RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get(),
+                                     /*useGlowCustomOps*/ false, largeBuffer_));
     CHECK(currentTensor_->getType().isEqual(ty))
         << "Mismatched tensor type: " << currentTensor_->getType().toString()
         << " vs " << ty.toString();
@@ -423,8 +431,7 @@ int run() {
   bool usingGlowCustomOps = false;
   CompilationContext cctx;
   cctx.replicationCount = replicationCountOpt;
-  cctx.maxActiveRequestsPerInstance =
-      glow::onnxifi::GlowMaxActiveRequestsPerInstance;
+  cctx.maxActiveRequestsPerInstance = glow::flags::MaxActiveRequestsPerInstance;
   runtime::PrePartitionedConfig PPC;
   cctx.prepartitionedConfig = &PPC;
   {
@@ -441,14 +448,13 @@ int run() {
 
   if (glowDumpGraphAfterLoadOpt) {
     for (Function *F : mod->getFunctions()) {
-      F->dumpDAG(glow::onnxifi::GlowDumpGraphPath + F->getName().str() +
-                 ".dot");
+      F->dumpDAG(glow::flags::DumpGraphPath + F->getName().str() + ".dot");
     }
   }
 
   // Build host manager and compile the module.
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
-  if (glow::onnxifi::GlowFP16) {
+  if (glow::flags::ConvertToFP16) {
     precConfig.convertToFP16 = true;
     if (sliceConcatFp32Opt) {
       precConfig.precisionModeKindSet.insert(Kinded::Kind::SliceNodeKind);
@@ -456,15 +462,15 @@ int run() {
     }
     llvm::outs() << "Conversion to fp16 enabled\n";
   }
-  if (glow::onnxifi::GlowFP16Placeholders) {
+  if (glow::flags::ConvertPlaceholdersToFP16) {
     precConfig.convertPlaceholdersToFP16 = true;
     llvm::outs() << "Conversion of Placeholders to fp16 enabled\n";
   }
-  if (glow::onnxifi::GlowFP16Constants) {
+  if (glow::flags::ConvertConstantsToFP16) {
     precConfig.convertConstantsToFP16 = true;
     llvm::outs() << "Conversion of Constants to fp16 enabled\n";
   }
-  if (glow::onnxifi::GlowFusedScaleOffsetFP16) {
+  if (glow::flags::ConvertFusedScaleOffsetToFP16) {
     precConfig.convertFusedToFP16 = true;
     llvm::outs() << "Conversion of fused scales/offsets to fp16 enabled\n";
   }
@@ -478,65 +484,67 @@ int run() {
     precConfig.convertIndicesToInt64 = indicesInt64Opt;
     llvm::outs() << "Conversion of indices to int64 enabled\n";
   }
-  if (glow::onnxifi::GlowClipFP16) {
+  if (glow::flags::ClipToFP16) {
     precConfig.clipFP16 = true;
     llvm::outs() << "Clipping to fp16 enabled\n";
   }
-  if (glow::onnxifi::GlowClipFP16SkipInputs) {
+  if (glow::flags::SkipInputsOnClipToFP16) {
     precConfig.clipFP16SkipInputs = true;
     llvm::outs() << "Skipping clipping for fp16 Node inputs fp16\n";
   }
-  if (glow::onnxifi::GlowForceSLSAccumFP16) {
+  if (glow::flags::ForceSLSToFP16Accum) {
     precConfig.forceFP16AccumSLS = true;
     llvm::outs() << "Forcing fp16 accumulation for SLS ops enabled\n";
   }
-  if (!glow::onnxifi::GlowEnableQuantParamChanges) {
+  if (!glow::flags::EnableQuantParamChanges) {
     cctx.optimizationOpts.enableQuantParamChanges = false;
     LOG(INFO) << "Disabling quantization param changes during optimizations";
   }
-  if (glow::onnxifi::GlowDumpGraph) {
+  if (glow::flags::DumpGraph) {
     cctx.dumpFinalGraph = true;
-    cctx.dumpGraphPath = glow::onnxifi::GlowDumpGraphPath;
+    cctx.dumpGraphPath = glow::flags::DumpGraphPath;
   }
 
-  if (glow::onnxifi::GlowUseSparseNNPartitioningScheme) {
+  if (glow::flags::UseSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
-        glow::onnxifi::GlowSparseNNPartitioningAddSLSConcats;
+        glow::flags::SparseNNPartitioningAddSLSConcats;
     cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
-        glow::onnxifi::GlowSparseNNPartitioningBalancePerfModel;
+        glow::flags::SparseNNPartitioningBalancePerfModel;
     cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
-        glow::onnxifi::GlowSparseNNPartitioningPairLNWithSLS;
+        glow::flags::SparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
-        glow::onnxifi::GlowSparseNNPartitioningSchemeNumCards;
+        glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
-        glow::onnxifi::GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard;
+        glow::flags::SparseNNPartitioningSchemeSLSTableKBytesPerCard;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
-        glow::onnxifi::GlowSparseNNPartitioningSchemeNumCoresSLS;
+        glow::flags::SparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
-        glow::onnxifi::GlowSparseNNPartitioningSchemeNumCoresOther;
+        glow::flags::SparseNNPartitioningSchemeNumCoresOther;
   }
 
-  if (glow::onnxifi::GlowNNPINumParallelChunks > 1) {
+#ifdef GLOW_WITH_NNPI
+  if (glow::nnpi::flags::NumParallelChunks > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
-        std::to_string(glow::onnxifi::GlowNNPINumParallelChunks);
+        std::to_string(glow::nnpi::flags::NumParallelChunks);
   }
-  if (glow::onnxifi::GlowNNPIModelParallelSplitAlignment > 1) {
+  if (glow::nnpi::flags::ModelParallelSplitAlignment > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPIModelParallelSplitAlignment"] =
-        std::to_string(glow::onnxifi::GlowNNPIModelParallelSplitAlignment);
+        std::to_string(glow::nnpi::flags::ModelParallelSplitAlignment);
   }
+#endif
 
-  if (glow::onnxifi::GlowUseDAGOptimizer) {
+  if (glow::flags::UseDAGOptimizer) {
     cctx.callDAGOptimizer = true;
     cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
-        glow::onnxifi::GlowDAGOptimizerNumParallelChunks;
+        glow::flags::DAGOptimizerNumParallelChunks;
     cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
-        glow::onnxifi::GlowDAGOptimizerParallelizationTaggingAlgorithm;
+        glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
     cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
-        glow::onnxifi::GlowDAGOptimizerPlacementTaggingAlgorithm;
+        glow::flags::DAGOptimizerPlacementTaggingAlgorithm;
   }
 
-  if (glow::onnxifi::GlowDelayAndRecordConstantModification) {
+  if (glow::flags::DelayAndRecordConstantModification) {
     cctx.optimizationOpts.delayAndRecordConstantModification = true;
   }
 
@@ -569,21 +577,21 @@ int run() {
   }
 
   auto configs = runtime::generateDeviceConfigs(
-      glow::onnxifi::GlowNumDevices, ExecutionBackend, deviceMemoryOpt);
+      glow::flags::NumDevices, ExecutionBackend, deviceMemoryOpt);
   runtime::HostConfig hostConfig;
-  hostConfig.maxActiveRequests = glow::onnxifi::GlowMaxActiveRequests;
-  hostConfig.maxQueueSize = glow::onnxifi::GlowMaxQueueSize;
-  hostConfig.executorThreads = glow::onnxifi::GlowExecutorThreads;
+  hostConfig.maxActiveRequests = glow::flags::MaxActiveRequests;
+  hostConfig.maxQueueSize = glow::flags::MaxQueueSize;
+  hostConfig.executorThreads = glow::flags::ExecutorThreads;
 
   auto hostManager =
       glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
-  if (glow::onnxifi::GlowEnablePartialTensors) {
+  if (glow::flags::EnablePartialTensors) {
     CHECK(hostManager->getBackend(ExecutionBackend).supportsPartialTensors())
         << "Backend " << ExecutionBackend
         << " doesn't support partial tensor but enablePartialTensor is set to "
            "true.";
   }
-  cctx.saturateHost = glow::onnxifi::GlowSaturateHost;
+  cctx.saturateHost = glow::flags::SaturateHost;
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
   // Parse all input and output files ahead of inference.
@@ -657,11 +665,10 @@ int run() {
     for (const auto &inputGroup : parsedInputs) {
       PlaceholderBindings bindings;
       bindings.allocate(inputPlaceholderList);
-      fillPlaceholders(inputGroup, &bindings,
-                       glow::onnxifi::GlowEnablePartialTensors
-                           ? &partialTensorPayloads
-                           : nullptr,
-                       usingGlowCustomOps);
+      fillPlaceholders(
+          inputGroup, &bindings,
+          glow::flags::EnablePartialTensors ? &partialTensorPayloads : nullptr,
+          usingGlowCustomOps);
       inputBindings.emplace_back(std::move(bindings));
     }
 
@@ -669,7 +676,7 @@ int run() {
     bool runAccuracyChecks =
         !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
 
-    if (glow::onnxifi::GlowDumpDebugTraces && glowEnableDeviceTrace) {
+    if (glow::flags::DumpDebugTraces && glowEnableDeviceTrace) {
       // Start device traces.
       hostManager->setTraceContext(
           glow::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -696,7 +703,7 @@ int run() {
         auto ctx = glow::make_unique<ExecutionContext>();
 
         TraceContext *traceContext = nullptr;
-        if (glow::onnxifi::GlowDumpDebugTraces) {
+        if (glow::flags::DumpDebugTraces) {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
@@ -858,7 +865,7 @@ int run() {
       }
     }
 
-    if (glow::onnxifi::GlowDumpDebugTraces) {
+    if (glow::flags::DumpDebugTraces) {
       if (glowEnableDeviceTrace) {
         // Stop device traces and collect events.
         Error stopErr = hostManager->stopDeviceTrace();

@@ -41,15 +41,16 @@ struct DeviceInfo;
 using ConstantFoldingRecordMap = llvm::DenseMap<Constant *, SaveNode *>;
 
 /// Perform optimizations on the graph representation.
-void optimize(Function *F, CompilationContext &cctx);
+void optimize(Function *F, const CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
-void optimize(Function *F, CompilationContext &cctx, const Backend &B);
+void optimize(Function *F, const CompilationContext &cctx, const Backend &B);
 
 /// Delete unused Constants from \p mod.
 void deleteUnusedConstants(Module &mod);
 
 /// Fold nodes that were expressed lowered in the input model.
-void fold(Function *F, CompilationContext &cctx, const Backend *B = nullptr);
+void fold(Function *F, const CompilationContext &cctx,
+          const Backend *B = nullptr);
 
 /// Performs the actual constant quantization in function \p F.
 void convertQuantizedConstants(Function *F, CompilationContext &cctx);
@@ -195,6 +196,11 @@ parallelizeOps(Function *F,
                const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
                const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
                size_t numOfChunks = 1, size_t modelParallelSplitAlignment = 1);
+
+/// Update quantized Relu output types found in \p F that have negative min to
+/// have min of zero. This normally happens during graph optz, but during AOT
+/// the qparams can not be calculated AOT because all qparams are dummies.
+void updateQuantReluTypes(Function *F);
 
 } // namespace glow
 

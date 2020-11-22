@@ -1,128 +1,87 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleQuantizedLinearModel(torch.nn.Sequential):
+    def __init__(self, in_features, out_features, quantization, weight=None, bias=None):
+        linear = torch.nn.Linear(in_features, out_features)
+        if weight:
+            linear.weight.data.fill_(weight)
+        else:
+            linear.weight.data.random_(0, 100)
+        if bias:
+            linear.bias.data.fill_(bias)
+        else:
+            linear.bias.data.random_(0, 10)
+        super(SimpleQuantizedLinearModel, self).__init__(
+            quantization, linear, torch.nn.quantized.DeQuantize()
+        )
+        self.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+        torch.quantization.prepare(self, inplace=True)
+        torch.quantization.convert(self, inplace=True)
+
+
+def _make_input(size, duplications, shape, dtype=torch.float):
+    tensor = torch.tensor(range(size), dtype=dtype)
+    tensor = torch.cat(tuple(tensor for _ in range(duplications)))
+    tensor = torch.reshape(tensor, shape)
+    return tensor
 
 
 class TestQuantizedLinear(unittest.TestCase):
-    def test_quantized_linear_packed(self):
-        """Basic test of the PyTorch quantized::linear Node on Glow."""
-
-        q = torch.nn.quantized.Quantize(scale=1 / 25, zero_point=17, dtype=torch.quint8)
-        dq = torch.nn.quantized.DeQuantize()
-
-        linear = torch.nn.Linear(5, 5)
-
-        linear.weight.data.fill_(1.2)
-        linear.bias.data.fill_(3.0)
-
-        model = torch.nn.Sequential(q, linear, dq)
-        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-        torch.quantization.prepare(model, inplace=True)
-        torch.quantization.convert(model, inplace=True)
-
-        x = torch.tensor(range(5), dtype=torch.float)
-        x = torch.cat((x, x, x, x, x, x))
-        x = torch.reshape(x, [3, 2, 5])
-
-        jitVsGlow(
-            model,
-            x,
-            expected_fused_ops={
-                "aten::quantize_per_tensor",
-                "quantized::linear",
-                "aten::dequantize",
-            },
-        )
-
-    def test_quantized_linear_packed_dq_cut(self):
-        """Basic test of the PyTorch quantized::linear Node on Glow, with dequantize excluded. """
-
-        q = torch.nn.quantized.Quantize(scale=1 / 25, zero_point=17, dtype=torch.quint8)
-        dq = torch.nn.quantized.DeQuantize()
-
-        linear = torch.nn.Linear(5, 5)
-
-        linear.weight.data.fill_(1.2)
-        linear.bias.data.fill_(3.0)
-
-        model = torch.nn.Sequential(q, linear, dq)
-        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-        torch.quantization.prepare(model, inplace=True)
-        torch.quantization.convert(model, inplace=True)
-
-        x = torch.tensor(range(5), dtype=torch.float)
-        x = torch.cat((x, x, x, x, x))
-        x = torch.reshape(x, [5, 5])
-
-        jitVsGlow(
-            model,
-            x,
-            expected_fused_ops={"aten::quantize_per_tensor", "quantized::linear"},
-            black_list=["aten::dequantize"],
-        )
-
-    @unittest.skip(reason="random input could cause flaky")
-    def test_quantized_linear_random_input(self):
-        """Basic test of the PyTorch quantized::linear Node on Glow."""
-
-        def test_f(inputs, weights, bias=None):
-            q_int = torch.nn.quantized.Quantize(
-                scale=1 / 13, zero_point=0, dtype=torch.qint8
-            )
-            q_uint = torch.nn.quantized.Quantize(
-                scale=1 / 13, zero_point=10, dtype=torch.quint8
-            )
-
-            dq = torch.nn.quantized.DeQuantize()
-
-            q_inputs = q_uint(inputs)
-            q_weights = q_int(weights)
-
-            return dq(torch.nn.quantized.functional.linear(q_inputs, q_weights, bias))
-
-        for _ in range(100):
-            inputs = torch.randn(7, 7)
-            weights = torch.randn(7, 7)
-
-            bias = torch.tensor([1, 1, 1, 1, 1, 1, 1], dtype=torch.float) * 0.1
-
-            jitVsGlow(
-                test_f,
-                inputs,
-                weights,
-                bias,
-                expected_fused_ops={
-                    "glow::unpacked_quantized_linear",
-                    "aten::quantize_per_tensor",
-                    "aten::dequantize",
-                },
-            )
-
-    def test_quantized_linear_packed_rowwise(self):
-        """Basic test of the PyTorch quantized::linear Node with rowwise quantized
-        packed weights on Glow."""
-
-        linear = torch.nn.Linear(6, 5)
-        linear.weight.data.random_(0, 100)
-        linear.bias.data.random_(0, 10)
-
-        x = torch.tensor(range(36), dtype=torch.float)
-        x = torch.reshape(x, [3, 2, 6])
-
-        model = torch.quantization.QuantWrapper(linear)
-        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-        torch.quantization.prepare(model, inplace=True)
-        torch.quantization.convert(model, inplace=True)
-
-        jitVsGlow(
-            model,
-            x,
-            expected_fused_ops={
-                "aten::quantize_per_tensor",
-                "quantized::linear",
-                "aten::dequantize",
-            },
+    @parameterized.expand(
+        [
+            (
+                "basic",
+                SimpleQuantizedLinearModel(
+                    5,
+                    5,
+                    torch.nn.quantized.Quantize(
+                        scale=1 / 25, zero_point=17, dtype=torch.quint8
+                    ),
+                    1.2,
+                    3.0,
+                ),
+                _make_input(5, 6, [3, 2, 5]),
+            ),
+            (
+                "exclude_dq",
+                SimpleQuantizedLinearModel(
+                    5,
+                    5,
+                    torch.nn.quantized.Quantize(
+                        scale=1 / 25, zero_point=17, dtype=torch.quint8
+                    ),
+                    1.2,
+                    3.0,
+                ),
+                _make_input(5, 6, [3, 2, 5]),
+                {"aten::dequantize"},
+            ),
+            (
+                "rowwise",
+                SimpleQuantizedLinearModel(
+                    6,
+                    5,
+                    torch.nn.quantized.Quantize(
+                        scale=1 / 25, zero_point=17, dtype=torch.quint8
+                    ),
+                ),
+                _make_input(36, 1, [3, 2, 6]),
+                {"aten::dequantize"},
+            ),
+        ]
+    )
+    def test_quantized_linear(self, _, model, tensor, fusion_blocklist=None):
+        fusible_ops = {
+            "aten::quantize_per_tensor",
+            "quantized::linear",
+            "aten::dequantize",
+        }
+        fusible_ops -= fusion_blocklist or set()
+        utils.compare_tracing_methods(
+            model, tensor, fusible_ops=fusible_ops, fusion_blocklist=fusion_blocklist
         )

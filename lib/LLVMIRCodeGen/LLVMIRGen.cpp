@@ -476,6 +476,18 @@ llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
   return constArrayVar;
 }
 
+void LLVMIRGen::emitArrayStore(llvm::IRBuilder<> &builder,
+                               llvm::ArrayRef<llvm::Value *> vals,
+                               llvm::Value *basePtr, unsigned baseIdx) {
+  for (size_t idx = 0, end = vals.size(); idx < end; ++idx) {
+    assert(vals[idx]->getType()->getPointerTo() == basePtr->getType() &&
+           "Mismatch between pointer and value type!");
+    auto *storeIdx = builder.getInt32(idx + baseIdx);
+    auto *storeAddr = builder.CreateGEP(basePtr, storeIdx);
+    builder.CreateStore(vals[idx], storeAddr);
+  }
+}
+
 llvm::Value *LLVMIRGen::emitValueDims(llvm::IRBuilder<> &builder,
                                       const glow::Value *val) {
   auto dims = val->dims();
@@ -3171,6 +3183,107 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::InstrumentInstKind: {
+    auto *instrumentI = llvm::cast<InstrumentInst>(I);
+    auto *opInfo = instrumentI->getOperandsInfo();
+
+    // Instruction being instrumented.
+    Instruction *instrRef = instrumentI->getInstrRef();
+
+    // Emit instruction ID and instruction kind.
+    llvm::Type *intTy =
+        llvm::Type::getIntNTy(getLLVMContext(), getLibjitIntWidth());
+    auto *ID = llvm::ConstantInt::get(intTy, instrumentI->getID());
+    auto *kind = llvm::ConstantInt::get(intTy, (int)(instrRef->getKind()));
+
+    // Emit number of input and output operands.
+    auto inpNum = instrRef->getNumInputs();
+    auto outNum = instrRef->getNumOutputs();
+    auto opNum = inpNum + outNum;
+    auto *opInp = llvm::ConstantInt::get(intTy, inpNum);
+    auto *opOut = llvm::ConstantInt::get(intTy, outNum);
+
+    // Emit opInfo address as uint8_t*.
+    assert(opInfo->getType()->getSizeInBytes() >= 2 * sizeof(int64_t) &&
+           "Not enough memory allocated for instrumentation!");
+    auto *opInfoPtr = emitValueAddress(builder, opInfo);
+    opInfoPtr = builder.CreateBitCast(opInfoPtr, builder.getInt8PtrTy());
+
+    // Emit opAddr address as uint8_t** starting from offset 0.
+    auto *opAddrPtr =
+        builder.CreateGEP(opInfoPtr, llvm::ConstantInt::get(intTy, 0));
+    opAddrPtr = builder.CreateBitCast(opAddrPtr,
+                                      builder.getInt8PtrTy()->getPointerTo());
+
+    // Emit opSize address as int* starting from offset opNum * sizeof(int64_t).
+    auto *opSizePtr = builder.CreateGEP(
+        opInfoPtr, llvm::ConstantInt::get(intTy, opNum * sizeof(int64_t)));
+    opSizePtr = builder.CreateBitCast(opSizePtr, intTy->getPointerTo());
+
+    // Generate instrumentation.
+    auto instrumentKind = instrumentI->getInstrumentKind();
+    if (instrumentKind == InstrumentKind::Before) {
+
+      // Operands addresses and sizes.
+      std::vector<llvm::Value *> opAddrArray;
+      std::vector<llvm::Value *> opSizeArray;
+
+      // Get addresses and sizes for the input operands.
+      for (const auto &op : instrRef->getOperands()) {
+        if (op.second == OperandKind::Out) {
+          continue;
+        }
+        // Emit operand address as uint8_t* variable.
+        auto *opAddr = emitValueAddress(builder, op.first);
+        opAddr = builder.CreateBitCast(opAddr, builder.getInt8PtrTy());
+        opAddrArray.push_back(opAddr);
+        // Emit operand size in bytes as int constant.
+        auto *opSize = llvm::ConstantInt::get(
+            intTy, op.first->getType()->getSizeInBytes());
+        opSizeArray.push_back(opSize);
+      }
+      assert(opAddrArray.size() == inpNum && "Inconsistent size!");
+
+      // Get addresses and sizes for the output operands.
+      for (const auto &op : instrRef->getOperands()) {
+        if (op.second == OperandKind::In) {
+          continue;
+        }
+        // Emit operand address as uint8_t* variable.
+        auto *opAddr = emitValueAddress(builder, op.first);
+        opAddr = builder.CreateBitCast(opAddr, builder.getInt8PtrTy());
+        opAddrArray.push_back(opAddr);
+        // Emit operand size in bytes as int constant.
+        auto *opSize = llvm::ConstantInt::get(
+            intTy, op.first->getType()->getSizeInBytes());
+        opSizeArray.push_back(opSize);
+      }
+      assert(opAddrArray.size() == opNum && "Inconsistent size!");
+
+      // Write the addresses of the operands in the opAddr.
+      emitArrayStore(builder, opAddrArray, opAddrPtr);
+
+      // Write the sizes of the operands in opSize.
+      emitArrayStore(builder, opSizeArray, opSizePtr);
+
+      // Create callback call.
+      auto *F = getFunction("instrument_before");
+      createCall(builder, F, {ID, kind, opInp, opOut, opAddrPtr, opSizePtr});
+
+    } else if (instrumentKind == InstrumentKind::After) {
+
+      // Create callback call.
+      auto *F = getFunction("instrument_after");
+      createCall(builder, F, {ID, kind, opInp, opOut, opAddrPtr, opSizePtr});
+
+    } else {
+      llvm_unreachable("Instrumentation kind not supported!");
+    }
+    // Print the IR instrumentation callback API.
+    printInstrumentIR_ = true;
+    break;
+  }
+
   case Kinded::Kind::TraceEventInstKind: {
     auto *TEI = llvm::cast<TraceEventInst>(I);
     auto *data = TEI->getData();
@@ -3372,4 +3485,66 @@ bool LLVMIRGen::canBePartOfDataParallelKernel(
   return I->isDataParallel();
 }
 
-std::string LLVMIRGen::getBundleHeaderExtra() const { return ""; }
+/// Extra bundle header file content with the IR instrumentation callback API.
+static const char *instrumentIRApi =
+    R"RAW(
+// -----------------------------------------------------------------------------
+// Callback function used for Glow IR instruction instrumentation:
+// - This callback is called by the bundle BEFORE executing each instruction.
+// - This callback must be defined by the bundle user application.
+// ARGUMENTS:
+//   id     - Instruction instance ID.
+//   kind   - Instruction kind (type).
+//   opInp  - Number of input operands.
+//   opOut  - Number of output operands.
+//   opAddr - Array with addresses for all operands. The addresses are listed
+//            first for the input operands and then for the output operands.
+//            The array contains opInp + opOut addresses.
+//   opSize - Array with sizes (in bytes) for all operands. The sizes are listed
+//            first for the input operands and then for the output operands.
+//            The array contains opInp + opOut sizes.
+// NOTES:
+// - This callback should be used to dump only the input operands since the
+//   output operands are not yet computed/written when this callback is used.
+// - This callback uses C linkage therefore if the callback is implemented in a
+//   .cpp file you must enclose the implementation in extern "C" {}.
+// - Look in the metafile "instrument-ir.info" generated during compile-time
+//   to see more information about the instrumented instructions.
+// -----------------------------------------------------------------------------
+void glow_instrument_before(int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize);
+
+// -----------------------------------------------------------------------------
+// Callback function used for Glow IR instruction instrumentation:
+// - This callback is called by the bundle AFTER executing each instruction.
+// - This callback must be defined by the bundle user application.
+// ARGUMENTS:
+//   id     - Instruction instance ID.
+//   kind   - Instruction kind (type).
+//   opInp  - Number of input operands.
+//   opOut  - Number of output operands.
+//   opAddr - Array with addresses for all operands. The addresses are listed
+//            first for the input operands and then for the output operands.
+//            The array contains opInp + opOut addresses.
+//   opSize - Array with sizes (in bytes) for all operands. The sizes are listed
+//            first for the input operands and then for the output operands.
+//            The array contains opInp + opOut sizes.
+// NOTES:
+// - This callback should be used to dump only the output operands since some
+//   of the input operands might have been overwritten for instructions which
+//   perform in-place computation.
+// - This callback uses C linkage therefore if the callback is implemented in a
+//   .cpp file you must enclose the implementation in extern "C" {}.
+// - Look in the metafile "instrument-ir.info" generated during compile-time
+//   to see more information about the instrumented instructions.
+// -----------------------------------------------------------------------------
+void glow_instrument_after(int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize);
+)RAW";
+
+std::string LLVMIRGen::getBundleHeaderExtra() const {
+  std::string headerExtra = "";
+  // Print IR instrumentation callback API.
+  if (printInstrumentIR_) {
+    headerExtra += std::string(instrumentIRApi);
+  }
+  return headerExtra;
+}

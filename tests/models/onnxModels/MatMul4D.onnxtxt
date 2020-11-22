@@ -1,0 +1,173 @@
+ir_version: 6
+producer_name: "MatMul-onnx-example"
+graph {
+  node {
+    output: "a"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        dims: 2
+        dims: 3
+        dims: 4
+        data_type: 1
+        float_data: 4.0
+        float_data: 4.0
+        float_data: 1.0
+        float_data: 1.0
+        float_data: 4.0
+        float_data: 4.0
+        float_data: 1.0
+        float_data: 1.0
+        float_data: 0.0
+        float_data: 4.0
+        float_data: 2.0
+        float_data: 1.0
+        float_data: 2.0
+        float_data: 3.0
+        float_data: 2.0
+        float_data: 3.0
+        float_data: 0.0
+        float_data: 0.0
+        float_data: 3.0
+        float_data: 3.0
+        float_data: 3.0
+        float_data: 1.0
+        float_data: 1.0
+        float_data: 0.0
+        name: "const_tensor_1"
+      }
+      type: TENSOR
+    }
+  }
+  node {
+    output: "b"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        dims: 2
+        dims: 4
+        dims: 3
+        data_type: 1
+        float_data: 4.0
+        float_data: 0.0
+        float_data: 2.0
+        float_data: 0.0
+        float_data: 1.0
+        float_data: 4.0
+        float_data: 4.0
+        float_data: 4.0
+        float_data: 4.0
+        float_data: 4.0
+        float_data: 4.0
+        float_data: 0.0
+        float_data: 1.0
+        float_data: 3.0
+        float_data: 1.0
+        float_data: 0.0
+        float_data: 3.0
+        float_data: 4.0
+        float_data: 0.0
+        float_data: 2.0
+        float_data: 4.0
+        float_data: 0.0
+        float_data: 4.0
+        float_data: 1.0
+        name: "const_tensor_2"
+      }
+      type: TENSOR
+    }
+  }
+  node {
+    output: "Yref"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        dims: 2
+        dims: 3
+        dims: 3
+        data_type: 1
+        float_data: 24.0
+        float_data: 12.0
+        float_data: 28.0
+        float_data: 24.0
+        float_data: 12.0
+        float_data: 28.0
+        float_data: 12.0
+        float_data: 16.0
+        float_data: 24.0
+        float_data: 2.0
+        float_data: 31.0
+        float_data: 25.0
+        float_data: 0.0
+        float_data: 18.0
+        float_data: 15.0
+        float_data: 3.0
+        float_data: 14.0
+        float_data: 11.0
+        name: "const_tensor_3"
+      }
+      type: TENSOR
+    }
+  }
+  node {
+    input: "a"
+    input: "b"
+    output: "Y"
+    op_type: "MatMul"
+  }
+  name: "MatMul-test"
+  output {
+    name: "Y"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "Yref"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  domain: ""
+  version: 13
+}

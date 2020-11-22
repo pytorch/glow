@@ -798,12 +798,13 @@ public:
   /// of the input \p input along the given axis \p axis.
   FlipNode *createFlip(llvm::StringRef name, NodeValue input, unsigned_t axis);
 
-  /// Create a series of nodes that implement a Broadcast operation. The \p
-  /// input Tensor is broadcasted based on \p newShape and along the \p axis,
-  /// which defines the offset from the leading dimension under which
-  /// broadcasting is performed.
-  Node *createBroadcast(llvm::StringRef name, NodeValue input,
-                        UnsignedArrayRef newShape, unsigned_t axis);
+  /// Create a Broadcast node that broadcasting the \p input Tensor based on
+  /// \p newShape and along the \p axis, which defines the offset between the
+  /// input dim and the newShape.
+  /// e.g. For input: [3] and newShape: [2, 3, 2], the axis will be 1.
+  ///      For input: [3] and newShape: [2, 2, 3], the axis will be 2.
+  BroadcastNode *createBroadcast(llvm::StringRef name, NodeValue input,
+                                 UnsignedArrayRef newShape, unsigned_t axis);
 
   /// Create concat node which concatenates input tensors along \p dimension.
   ConcatNode *createConcat(llvm::StringRef name,
@@ -1431,6 +1432,12 @@ public:
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
                            NodeValue indices, unsigned_t batchDims = 0);
 
+  /// Given \p data tensor of rank r >= 1, \p indices tensor of rank q >= 1,
+  /// and batch_dims integer b, this operator gathers slices of data
+  /// into an output tensor of rank q + r - indices_shape[-1] - 1 - b.
+  GatherNDNode *createGatherND(llvm::StringRef name, NodeValue data,
+                               NodeValue indices);
+
   /// Create a node, performing GatherRanges operation:
   /// Gathers entries of \p data in groups specified by the "examples" in
   /// \p ranges. Each example in \p ranges contains a list of pairs of
@@ -1469,6 +1476,12 @@ public:
   /// H/blockSize, W/blockSize, C * blockSize * blockSize].
   SpaceToDepthNode *createSpaceToDepth(llvm::StringRef name, NodeValue input,
                                        unsigned blockSize);
+
+  /// Create a sequence of Reshape and Transpose nodes representing DepthToSpace
+  /// operator with \p blockSize in DCR or CRD mode based on \p isCRD flag.
+  /// Assumes input layout to be NHWC. \returns the last node in the sequence.
+  ReshapeNode *createDepthToSpace(llvm::StringRef name, NodeValue input,
+                                  unsigned blockSize, bool isCRD = false);
 
   /// Given \p input tensor, \returns an upsampled tensor which has
   /// doubled the size of dimensions N, N-1, N-2...N-numLeadingDims,
@@ -1747,19 +1760,36 @@ public:
   LSTMUnitNode *createLSTMUnit(llvm::StringRef namePrefix, NodeValue Input,
                                NodeValue C);
 
+  /// Helper function create a PyTorch style LSTM for one direction, and returns
+  /// every output in a vector. \p T should be an iterator or reverse_iterator
+  /// of a NodeValue vector, and /p inputItr is an iterator pointer of the input
+  /// vector. \p Wx, \p Wh, \p Bx, \p Bh, \p H and \p C is i, f, g, o, hidden
+  /// state and cell state, whose shape should be the same to
+  /// createSingleDirectionLSTM.
+  template <class T>
+  std::vector<NodeValue> createSingleDirectionLSTM(
+      std::string nameBase, T inputItr, const int timeSteps, NodeValue Wx,
+      NodeValue Wh, NodeValue Bx, NodeValue Bh, NodeValue &H, NodeValue &C);
+
   /// Create PyTorch style LSTM with fixed weights and biases.
   /// The order of \p Wx \p Wh \p Bx and \p Bh is i, f, g, o,
   /// The \p inputs shape should be (numSteps, batchSize, hiddenSize),
   /// while \p Wx shape should be (inputSize, hiddenSize * 4),
   /// Wh shape should be (hiddenSize, hiddenSize * 4),
   /// \p Bx and \p Bh shape should be (hiddenSize * 4).
+  /// If \p isBidirectional == true, \p WxR, \p WhR, \p BxR and \p BhR
+  /// also need to be provided, indicates the reversed weights and biases.
   /// \p Ht and \p Ct are initial hidden state and cell.
   /// For more details, please read:
   /// https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html
   void createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue inputs,
                          NodeValue Wx, NodeValue Wh, NodeValue Bx, NodeValue Bh,
                          NodeValue &Ht, NodeValue &Ct, NodeValue &outputs,
-                         bool isBidirectional = false);
+                         bool isBidirectional = false,
+                         NodeValue WxR = NodeValue(),
+                         NodeValue WhR = NodeValue(),
+                         NodeValue BxR = NodeValue(),
+                         NodeValue BhR = NodeValue());
 
   /// Type definition for the direction of an RNN module (RNN, GRU, LSTM).
   enum class RnnDirection {
@@ -2260,6 +2290,10 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 1u, 2u, 0u, 3u }
 #define CNHW2NHWC                                                              \
   { 1u, 2u, 3u, 0u }
+#define D2S_DCR                                                                \
+  { 0u, 1u, 3u, 2u, 4u, 5u }
+#define D2S_CRD                                                                \
+  { 0u, 1u, 4u, 2u, 5u, 3u }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
 

@@ -68,7 +68,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::TensorProto &in) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
-      RETURN_ERR("0 dimemsion is not supported");
+      return MAKE_ERR("0 dimemsion is not supported");
     }
     dim.push_back(d);
   }
@@ -89,7 +89,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::TensorProto &in) {
   } else if (in.data_type() == caffe2::TensorProto::INT8) {
     result.t->reset(ElemKind::Int8QTy, dim, 1.0, 0);
   } else {
-    RETURN_ERR(
+    return MAKE_ERR(
         strFormat("FP32/16, Int32/64, Int8/Uint8 are supported. Got type"
                   " %s for tensor %s.",
                   caffe2::TensorProto_DataType_Name(in.data_type()).c_str(),
@@ -104,13 +104,13 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::QTensorProto &in) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
-      RETURN_ERR("0 dimemsion qtensor is not supported");
+      return MAKE_ERR("0 dimemsion qtensor is not supported");
     }
     dim.push_back(d);
   }
 
   if (in.axis() != 1) {
-    RETURN_ERR("axis must be 1");
+    return MAKE_ERR("axis must be 1");
   }
 
   dim_t qparams = static_cast<dim_t>(in.scales().size());
@@ -171,7 +171,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::QTensorProto &in) {
                                            scale, offset));
     result.t->reset(*outTy);
   } else {
-    RETURN_ERR("Only int8, uint8, and int32 qtensors are supported");
+    return MAKE_ERR("Only int8, uint8, and int32 qtensors are supported");
   }
 
   return Expected<LoadWeightResult>(std::move(result));
@@ -225,7 +225,7 @@ static Expected<unsigned_t> getChannel(ArgumentDictionaryTy &dict) {
   } else if (order == "NCHW") {
     return 1;
   }
-  RETURN_ERR("Invalid order field");
+  return MAKE_ERR("Invalid order field");
 }
 
 static Expected<std::vector<unsigned_t>> getSizeHW(ArgumentDictionaryTy &dict,
@@ -308,6 +308,28 @@ const std::string Caffe2ModelLoader::opErrMsg(const caffe2::OperatorDef &op,
                                               const std::string &errMsg) {
   const std::string &opName = loadOperatorName(op);
   return strFormat(" [Operator-'%s'] : %s ", opName.c_str(), errMsg.c_str());
+}
+
+// Caffe2 PRelu
+// https://github.com/pytorch/pytorch/blob/master/caffe2/operators/prelu_op.cc
+Error Caffe2ModelLoader::loadPRelu(const caffe2::OperatorDef &op,
+                                   ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  NodeValue slope;
+  ASSIGN_VALUE_OR_RETURN_ERR(slope, getNodeValueByName(op.input(1)));
+
+  // Do broadcasting.
+  auto targetDim = in.dims();
+  // Set the axis assuming i/p is of NCHW format.
+  int axis = 1;
+  auto *finalSlope = G_->createBroadcast(opName, slope, targetDim, axis);
+  auto *R = G_->createPRELU(opName, in, finalSlope);
+  RETURN_IF_ERR(addNodeAsOutput(op, R));
+  return Error::success();
 }
 
 Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
@@ -720,6 +742,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return loadConv(op, dict);
   }
 
+  if (typeName == "PRelu") {
+    return loadPRelu(op, dict);
+  }
+
   if (typeName == "ConvTranspose") {
     return loadConvTranspose(op, dict);
   }
@@ -847,8 +873,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // definition.
       if (static_cast<LegacyPaddingMode>(mode) ==
           LegacyPaddingMode::CAFFE_LEGACY_POOLING) {
-        RETURN_ERR(opErrMsg(op, "MaxPool nodes with legacy caffe padding are "
-                                "deprecated and not supported."));
+        return MAKE_ERR(opErrMsg(op,
+                                 "MaxPool nodes with legacy caffe padding are "
+                                 "deprecated and not supported."));
       }
     }
 
@@ -893,7 +920,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       } else if (llvm::isa<AvgPoolNode>(node)) {
         resIdx = AvgPoolNode::ResultIdx;
       } else {
-        RETURN_ERR("Expected either Max or Avg Pool.");
+        return MAKE_ERR("Expected either Max or Avg Pool.");
       }
       // Transpose the output back.
       node = G_->createTranspose(opName, node->getNthResult(resIdx), NHWC2NCHW);
@@ -1340,7 +1367,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       break;
     }
     default:
-      RETURN_ERR(opErrMsg(op, "Unsupported Cast type."));
+      return MAKE_ERR(opErrMsg(op, "Unsupported Cast type."));
     }
 
     RETURN_IF_ERR(addNodeAsOutput(op, in));
@@ -1594,7 +1621,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
-  RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
+  return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
 template <class TensorProtoType>
@@ -1615,7 +1642,7 @@ Error Caffe2ModelLoader::loadInputsWithTensorProtoType(
   if (auto resOrErr = createAndSetTensorType(in)) {
     loadRes = std::move(*resOrErr);
   } else {
-    return resOrErr.takeError();
+    RETURN_ERR(resOrErr.takeError());
   }
 
   bool multiQParamsLoaded = loadRes.scales || loadRes.offsets;
@@ -1626,6 +1653,12 @@ Error Caffe2ModelLoader::loadInputsWithTensorProtoType(
 
   bool isInput = !initializers.count(in.name());
   if (isInput) {
+    RETURN_ERR_IF_NOT(!clipQuantRangeToFP16_ ||
+                          !loadRes.t->getType().isQuantizedType() ||
+                          loadRes.t->getType().isFusedQuantizedType(),
+                      "Do not support clipQuantRangeToFP16 with unfused "
+                      "quantized input Placeholders: " +
+                          in.name());
     Placeholder *placeholder;
     ASSIGN_VALUE_OR_RETURN_ERR(
         placeholder,
@@ -1829,7 +1862,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       RETURN_IF_ERR(
           fillTensor<int64_t>(T, ElemKind::Int64ITy, dim, values->ints()));
     } else {
-      RETURN_ERR(strFormat("Unhandled tensor fill type: %s", typeName.c_str()));
+      return MAKE_ERR(
+          strFormat("Unhandled tensor fill type: %s", typeName.c_str()));
     }
     RETURN_IF_ERR(createAndRegisterConstant(op.output().Get(0), std::move(T)));
     return Error::success();
@@ -1933,7 +1967,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
         // to convert it to int8 by subtracting 128.
         TypeRef ty;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            ty, loadQuantTy(o, ElemKind::Int8QTy, dim, dict));
+            ty, loadQuantTy(o, ElemKind::Int8QTy, dim, dict,
+                            /* skipClipQuantRangeToFP16 */ true));
         T.reset(*ty);
         auto TH = T.getHandle<int8_t>();
         std::string str = dict["values"]->s();
@@ -1943,13 +1978,31 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       } else {
         TypeRef ty;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            ty, loadQuantTy(o, ElemKind::Int32QTy, dim, dict));
+            ty, loadQuantTy(o, ElemKind::Int32QTy, dim, dict,
+                            /* skipClipQuantRangeToFP16 */ true));
         T.reset(*ty);
         auto TH = T.getHandle<int32_t>();
         for (auto num : dict["values"]->ints()) {
           TH.raw(i++) = num;
         }
       }
+
+      // If we're clipping quantized ranges tp FP16, then we need to rescale the
+      // Tensor and update its type.
+      if (clipQuantRangeToFP16_) {
+        const ElemKind k = T.getType().getElementType();
+        const auto qMinMax = getQuantizedValueRange(T.getType().getScale(),
+                                                    T.getType().getOffset(), k);
+        const float newMin = std::max(qMinMax.first, kMinFP16);
+        const float newMax = std::min(qMinMax.second, kMaxFP16);
+        if (newMin != qMinMax.first || newMax != qMinMax.second) {
+          auto rescaledT = glow::make_unique<Tensor>();
+          dispatchQuantizedImpl(rescaleQTensor, k, T, *rescaledT, newMin,
+                                newMax);
+          T = std::move(*rescaledT);
+        }
+      }
+
       RETURN_ERR_IF_NOT(
           i == T.size(),
           strFormat("The number of serialized values (%li) does not "
@@ -2027,7 +2080,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       break;
     }
     default:
-      RETURN_ERR("Unsupported datatype for ConstantFill.");
+      return MAKE_ERR("Unsupported datatype for ConstantFill.");
     }
 
     RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
@@ -2079,7 +2132,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
-  RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported weight kind"));
+  return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported weight kind"));
 }
 
 Error Caffe2ModelLoader::loadWeightsFromNet(caffe2::NetDef &net) {
@@ -2094,16 +2147,16 @@ Caffe2ModelLoader::Caffe2ModelLoader(Function &F, Error *errPtr)
   deleteUnusedConstants();
 }
 
-Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
-                                     const std::string &netWeightFilename,
-                                     llvm::ArrayRef<const char *> names,
-                                     llvm::ArrayRef<TypeRef> types, Function &F,
-                                     Error *errPtr,
-                                     OriginNameToTQPMap *originNameToTQPMap,
-                                     bool loadUniquedDummyQParams)
+Caffe2ModelLoader::Caffe2ModelLoader(
+    const std::string &netDescFilename, const std::string &netWeightFilename,
+    llvm::ArrayRef<const char *> names, llvm::ArrayRef<TypeRef> types,
+    Function &F, Error *errPtr, OriginNameToTQPMap *originNameToTQPMap,
+    bool loadUniquedDummyQParams, bool zeroScaleFP16Clip,
+    bool clipQuantRangeToFP16)
     : CommonOperatorLoader(names, types, &F, errPtr,
                            /* loadIntoExistingModule */ false,
-                           originNameToTQPMap, loadUniquedDummyQParams) {
+                           originNameToTQPMap, loadUniquedDummyQParams,
+                           zeroScaleFP16Clip, clipQuantRangeToFP16) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -2251,11 +2304,13 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
 Caffe2ModelLoader::Caffe2ModelLoader(
     const std::string &modelStr, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Module &dummyMod,
-    Error *errPtr, OriginNameToTQPMap *originNameToTQPMap)
-    : CommonOperatorLoader({}, {}, dummyMod, errPtr,
-                           /* loadIntoExistingModule */ false,
-                           originNameToTQPMap,
-                           /* loadUniquedDummyQParams */ false) {
+    Error *errPtr, OriginNameToTQPMap *originNameToTQPMap,
+    bool clipQuantRangeToFP16)
+    : CommonOperatorLoader(
+          {}, {}, dummyMod, errPtr,
+          /* loadIntoExistingModule */ false, originNameToTQPMap,
+          /* loadUniquedDummyQParams */ false, /* replaceDummyTQPs */ false,
+          /* zeroScaleFP16Clip */ false, clipQuantRangeToFP16) {
   if (errPtr && *errPtr) {
     return;
   }
@@ -2302,10 +2357,13 @@ Caffe2ModelLoader::Caffe2ModelLoader(
     const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
     llvm::StringRef funNamePrefix, runtime::PrePartitionedConfig *PPC,
     Error *errPtr, bool constFoldInLoader,
-    OriginNameToTQPMap *originNameToTQPMap, bool loadUniquedDummyQParams)
+    OriginNameToTQPMap *originNameToTQPMap, bool loadUniquedDummyQParams,
+    bool zeroScaleFP16Clip, bool clipQuantRangeToFP16)
     : CommonOperatorLoader({}, {}, mod, errPtr,
                            /* loadIntoExistingModule */ false,
-                           originNameToTQPMap, loadUniquedDummyQParams) {
+                           originNameToTQPMap, loadUniquedDummyQParams,
+                           /* replaceDummyTQPs */ false, zeroScaleFP16Clip,
+                           clipQuantRangeToFP16) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;

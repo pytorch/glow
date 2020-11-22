@@ -43,12 +43,6 @@ public:
 
   std::string toString() const;
 
-  /// This should be used with CachingGraphRunner::warmCache. When this flag is
-  /// enabled, it assumes the glow graph is compiled ahead of time instead of
-  /// at PyTorch JIT runtime. And the registered glow operator will run
-  /// the precompiled results directly.
-  bool preCompilePyTorchModule = false;
-
   /// Whether or not run the custom pass that fuses jit nodes into a glow node.
   bool fusionPassEnabled = false;
 
@@ -142,6 +136,11 @@ public:
   /// PyTorchModelLoader.
   bool randomizeConstants = false;
 
+  // If true then writing to Onnx without randomizing the constants is allowed.
+  // Otherwise, program will be abort if trying to write to Onnx without
+  // randomizing the constants.
+  bool writeWithoutRandomize = false;
+
   /// Name of the Glow backend to use.
   std::string backendName = "Interpreter";
 
@@ -159,8 +158,17 @@ public:
   /// currently a requirement if we want to support partial inputs
   bool setIncludeLastOffsets = true;
 
-  /// infer shape for entire model and run AOT compilation
-  bool inferShapeForCompilation = false;
+  /// Call Glow's Function verifier after loading each JIT node to catch any
+  /// Glow graph errors as soon as possible during loading. This is disabled by
+  /// default because it can slow down model loading.
+  bool debugContinuouslyVerifyDuringModelLoading = false;
+};
+
+/// Represents different possible output types from to_glow modules.
+enum class GraphOutputType {
+  TENSORS,      // Single tensor or multiple tensors
+  TENSOR_TUPLE, // Single tuple of tensors
+  TENSOR_LIST,  // Single list of tensors
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
@@ -210,18 +218,18 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
-/// Load the \p InputMeta data contains Glow fusion node's input size and type
-/// info from \p raw_data stored in string format.
-std::vector<glow::InputMeta> loadInputMeta(const std::string &raw_data);
-
 /// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
 /// raw string containing the meta data of the glow fuser node input.
-void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr);
+void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
+                   runtime::DeferredWeightLoader *loader,
+                   const PyTorchLoaderSettings &settings);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
 void glowAOTFusionWithShapeInference(torch::jit::Module &module,
-                                     const std::vector<glow::InputMeta> &);
+                                     const std::vector<glow::InputMeta> &meta,
+                                     runtime::DeferredWeightLoader *loader,
+                                     const PyTorchLoaderSettings &settings);
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in

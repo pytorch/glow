@@ -24,11 +24,11 @@ struct BlacklistInitializer {
   BlacklistInitializer() {
     const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
         {{"testStaticAssignmentP2PandDRTConcurrent/0",
-          TestBlacklist::AnyDeviceAnyEngine},
+          TestBlacklist::AnyDeviceSWEngine},
          {"testStaticAssignmentDeviceResidentTensorOnly/0",
-          TestBlacklist::AnyDeviceAnyEngine},
-         {"testStaticAssignmentP2PandDRT/0", TestBlacklist::AnyDeviceAnyEngine},
-         {"testStaticAssignmentP2POnly/0", TestBlacklist::AnyDeviceAnyEngine},
+          TestBlacklist::AnyDeviceSWEngine},
+         {"testStaticAssignmentP2PandDRT/0", TestBlacklist::AnyDeviceSWEngine},
+         {"testStaticAssignmentP2POnly/0", TestBlacklist::AnyDeviceSWEngine},
          {"ConcurrentAddRemoveUnique/0", TestBlacklist::AnyDeviceSWEngine}};
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

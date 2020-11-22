@@ -4,7 +4,7 @@ import unittest
 
 import torch
 import torch.nn as nn
-from tests.utils import jitVsGlow
+from tests import utils
 
 
 class TestLSTM(unittest.TestCase):
@@ -33,7 +33,9 @@ class TestLSTM(unittest.TestCase):
         c = torch.randn(1, 3, 10)
         model = SimpleLSTM()
 
-        jitVsGlow(model, inputs, h, c, expected_fused_ops={"aten::lstm"})
+        utils.compare_tracing_methods(
+            model, inputs, h, c, fusible_ops={"aten::lstm"}, skip_to_glow=True
+        )
 
     def test_lstm_no_bias(self):
         """Basic test of the PyTorch lstm Node with no bias on Glow."""
@@ -55,4 +57,27 @@ class TestLSTM(unittest.TestCase):
         h = torch.randn(1, 3, 10)
         c = torch.randn(1, 3, 10)
         model = SimpleNoBiasLSTM()
-        jitVsGlow(model, inputs, h, c, expected_fused_ops={"aten::lstm"})
+        utils.compare_tracing_methods(
+            model, inputs, h, c, fusible_ops={"aten::lstm"}, skip_to_glow=True
+        )
+
+    def test_lstm_bidirectional(self):
+        """Bidirectional test of the PyTorch lstm Node on Glow."""
+
+        class BidirectionalLSTM(nn.Module):
+            def __init__(self):
+                super(BidirectionalLSTM, self).__init__()
+                self.rnn = torch.nn.LSTM(8, 10, 1, bidirectional=True)
+                self.rnn.training = False
+
+            def forward(self, inputs, h, c):
+                return self.rnn(inputs, (h, c))
+
+        inputs = torch.randn(5, 3, 8)
+        h = torch.randn(2, 3, 10)
+        c = torch.randn(2, 3, 10)
+        model = BidirectionalLSTM()
+
+        utils.compare_tracing_methods(
+            model, inputs, h, c, fusible_ops={"aten::lstm"}, skip_to_glow=True
+        )

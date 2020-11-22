@@ -83,6 +83,7 @@ public:
   ~ZipReader();
   void init();
   std::string getRecord(const std::string &name);
+  bool hasRecord(const std::string &name);
 };
 
 /// Zip Writer

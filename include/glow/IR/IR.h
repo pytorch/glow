@@ -192,6 +192,12 @@ public:
   /// \returns the number of operands.
   unsigned getNumOperands() const { return ops_.size(); }
 
+  /// \returns the number of input operands (includes In and InOut operands).
+  unsigned getNumInputs() const;
+
+  /// \returns the number of output operands (includes Out and InOut operands).
+  unsigned getNumOutputs() const;
+
   /// \returns the operands of the instruction.
   llvm::ArrayRef<Operand> getOperands() const { return ops_; }
 
@@ -491,6 +497,16 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Value *V);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction &irf);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction *irf);
+
+/// IR instrumentation kind.
+enum class InstrumentKind : unsigned char {
+  /// Instrumentation before an instruction is executed.
+  Before,
+  /// Instrumentation after an instruction is executed.
+  After,
+};
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, InstrumentKind kind);
 
 } // namespace glow
 

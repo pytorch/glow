@@ -4,7 +4,7 @@ import unittest
 
 import torch
 import torch.nn as nn
-from tests.utils import jitVsGlow
+from tests import utils
 from torch.quantization import (
     DeQuantStub,
     QConfig,
@@ -68,10 +68,11 @@ class TestQuantizedBatchNorm3DRelu(unittest.TestCase):
         # Batchnorm introduced great accuracy issues, which could create up to
         # ~1e-2 difference in some rare cases. In order to prevent this test
         # to be flaky, atol is set to be 0.1.
-        jitVsGlow(
+        utils.compare_tracing_methods(
             model,
             inputs,
-            expected_fused_ops={"quantized::batch_norm3d_relu"},
+            fusible_ops={"quantized::batch_norm3d_relu"},
             atol=1e-1,
-            use_fp16=True,
+            fp16=True,
+            skip_to_glow=True,
         )
