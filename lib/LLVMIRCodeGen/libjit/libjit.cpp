@@ -747,7 +747,7 @@ static void libjit_max_pool_generic(const T *inW, T *outW, const dim_t *inWdims,
     for (size_t o_h = 0; o_h < outWdims[1]; o_h++, i_h_min += strideH) {
 
       // Effective kernel height limits.
-      ssize_t f_h_min = libjit_conv_flt_min(inWdims[1], kernelH, i_h_min);
+      ssize_t f_h_min = libjit_conv_flt_min(i_h_min);
       ssize_t f_h_max = libjit_conv_flt_max(inWdims[1], kernelH, i_h_min);
       ssize_t f_h_len = libjit_conv_flt_len(f_h_min, f_h_max);
       const T *inpPtrH = inW + (i_h_min + f_h_min) * inWdims[2] * inWdims[3];
@@ -757,7 +757,7 @@ static void libjit_max_pool_generic(const T *inW, T *outW, const dim_t *inWdims,
       for (size_t o_w = 0; o_w < outWdims[2]; o_w++, i_w_min += strideW) {
 
         // Effective kernel width limits.
-        ssize_t f_w_min = libjit_conv_flt_min(inWdims[2], kernelW, i_w_min);
+        ssize_t f_w_min = libjit_conv_flt_min(i_w_min);
         ssize_t f_w_max = libjit_conv_flt_max(inWdims[2], kernelW, i_w_min);
         ssize_t f_w_len = libjit_conv_flt_len(f_w_min, f_w_max);
         const T *inpPtr = inpPtrH + (i_w_min + f_w_min) * inWdims[3];
@@ -2556,7 +2556,7 @@ void libjit_avg_pool_f(const float *inW, float *outW, const dim_t *inWdims,
     for (size_t o_h = 0; o_h < outWdims[1]; o_h++, i_h_min += strideH) {
 
       // Effective kernel height limits.
-      ssize_t f_h_min = libjit_conv_flt_min(inWdims[1], kernelH, i_h_min);
+      ssize_t f_h_min = libjit_conv_flt_min(i_h_min);
       ssize_t f_h_max = libjit_conv_flt_max(inWdims[1], kernelH, i_h_min);
       ssize_t f_h_len = libjit_conv_flt_len(f_h_min, f_h_max);
       const float *inpPtrH =
@@ -2567,7 +2567,7 @@ void libjit_avg_pool_f(const float *inW, float *outW, const dim_t *inWdims,
       for (size_t o_w = 0; o_w < outWdims[2]; o_w++, i_w_min += strideW) {
 
         // Effective kernel width limits.
-        ssize_t f_w_min = libjit_conv_flt_min(inWdims[2], kernelW, i_w_min);
+        ssize_t f_w_min = libjit_conv_flt_min(i_w_min);
         ssize_t f_w_max = libjit_conv_flt_max(inWdims[2], kernelW, i_w_min);
         ssize_t f_w_len = libjit_conv_flt_len(f_w_min, f_w_max);
         const float *inpPtr = inpPtrH + (i_w_min + f_w_min) * inWdims[3];
@@ -2632,7 +2632,7 @@ void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
     for (size_t o_h = 0; o_h < outWdims[1]; o_h++, i_h_min += strideH) {
 
       // Effective kernel height limits.
-      ssize_t f_h_min = libjit_conv_flt_min(inWdims[1], kernelH, i_h_min);
+      ssize_t f_h_min = libjit_conv_flt_min(i_h_min);
       ssize_t f_h_max = libjit_conv_flt_max(inWdims[1], kernelH, i_h_min);
       ssize_t f_h_len = libjit_conv_flt_len(f_h_min, f_h_max);
       const int8_t *inpPtrH =
@@ -2643,7 +2643,7 @@ void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
       for (size_t o_w = 0; o_w < outWdims[2]; o_w++, i_w_min += strideW) {
 
         // Effective kernel width limits.
-        ssize_t f_w_min = libjit_conv_flt_min(inWdims[2], kernelW, i_w_min);
+        ssize_t f_w_min = libjit_conv_flt_min(i_w_min);
         ssize_t f_w_max = libjit_conv_flt_max(inWdims[2], kernelW, i_w_min);
         ssize_t f_w_len = libjit_conv_flt_len(f_w_min, f_w_max);
         const int8_t *inpPtr = inpPtrH + (i_w_min + f_w_min) * inWdims[3];

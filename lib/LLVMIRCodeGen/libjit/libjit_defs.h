@@ -146,15 +146,23 @@ inline int32_t libjit_div_round_i32(int32_t input, int32_t divider) {
 #define libjit_aligned_free(p) free(p)
 #endif
 
-/// Utilities used in AvgPool, MaxPool and Conv2D.
+/// This function computes the minimum filter index based on the the minimum
+/// input index \p inp_min.
 static inline __attribute__((always_inline)) ssize_t
-libjit_conv_flt_min(ssize_t inp_size, ssize_t flt_size, ssize_t inp_min) {
+libjit_conv_flt_min(ssize_t inp_min) {
   return MAX(0, -inp_min);
 }
+
+/// This function computes the maximum filter index based on the the input size
+/// \p inp_size, the filter size \p flt_size and the minimum input index
+/// \p inp_min.
 static inline __attribute__((always_inline)) ssize_t
 libjit_conv_flt_max(ssize_t inp_size, ssize_t flt_size, ssize_t inp_min) {
   return MIN(flt_size, inp_size - inp_min);
 }
+
+/// This function computes the effective filter length given the minimum filter
+/// index \p flt_min and the maximum filter index \p flt_max.
 static inline __attribute__((always_inline)) ssize_t
 libjit_conv_flt_len(ssize_t flt_min, ssize_t flt_max) {
   return MAX(0, flt_max - flt_min);
