@@ -1010,6 +1010,7 @@ public:
   DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Xor, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Or, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Pow, /* NUM_INPUTS */ 2)
 
 #define DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(NODE_NAME, NUM_INPUTS,            \
                                              OUTTYPEREF)                       \

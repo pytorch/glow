@@ -2962,6 +2962,98 @@ TEST_F(OnnxImporterTest, tile) {
   }
 }
 
+static void importPowTest(const std::string &netFilename, Tensor &x, Tensor &y,
+                          std::vector<dim_t> &expectedDims,
+                          std::vector<float> &expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+
+  ONNXModelLoader onnxLD(netFilename, {"base", "exp"},
+                         {&x.getType(), &y.getType()}, *F);
+  output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  bindings.allocate(mod.getPlaceholders());
+  updateInputPlaceholdersByName(bindings, &mod, {"base"}, {&x});
+  updateInputPlaceholdersByName(bindings, &mod, {"exp"}, {&y});
+
+  auto *outputT = bindings.get(output);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = outputT->getHandle();
+
+  EXPECT_TRUE(outputH.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(outputH.raw(i), expectedValues[i]);
+  }
+}
+
+TEST_F(OnnxImporterTest, pow_scalar_broadcast) {
+  Tensor x(ElemKind::FloatTy, {2, 3});
+  x.getHandle() = {1, 2, 3, 4, 5, 6};
+
+  Tensor y(ElemKind::FloatTy, {1});
+  y.getHandle() = {
+      3,
+  };
+
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/pow_scalar_broadcast.onnxtxt");
+
+  std::vector<dim_t> expectedDims = {2, 3};
+  std::vector<float> expectedValues = {
+      1., 8., 27., 64., 125, 216.,
+  };
+
+  importPowTest(netFilename, x, y, expectedDims, expectedValues);
+}
+
+TEST_F(OnnxImporterTest, pow_vector_broadcast) {
+  Tensor x(ElemKind::FloatTy, {2, 3});
+  x.getHandle() = {1, 2, 3, 4, 5, 6};
+
+  Tensor y(ElemKind::FloatTy, {3});
+  y.getHandle() = {
+      1,
+      2,
+      3,
+  };
+
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/pow_array_broadcast.onnxtxt");
+
+  std::vector<dim_t> expectedDims = {2, 3};
+  std::vector<float> expectedValues = {
+      1., 4., 27., 4., 25, 216.,
+  };
+
+  importPowTest(netFilename, x, y, expectedDims, expectedValues);
+}
+
+TEST_F(OnnxImporterTest, pow_element_wise) {
+  Tensor x(ElemKind::FloatTy, {3});
+  x.getHandle() = {1, 2, 3};
+
+  Tensor y(ElemKind::FloatTy, {3});
+  y.getHandle() = {4, 5, 6};
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/pow_element_wise.onnxtxt");
+
+  std::vector<dim_t> expectedDims = {3};
+  std::vector<float> expectedValues = {
+      1.,
+      32.,
+      729.,
+  };
+
+  importPowTest(netFilename, x, y, expectedDims, expectedValues);
+}
+
 TEST_F(OnnxImporterTest, topK) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
