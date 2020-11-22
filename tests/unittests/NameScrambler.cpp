@@ -59,7 +59,7 @@ llvm::cl::opt<unsigned>
 using namespace glow;
 
 constexpr size_t MAX_PROTO_SIZE = 0x7FFFFFFF;
-constexpr bool compressed = false;
+constexpr bool kCompressed = false;
 constexpr int kMaxTrial = 1000;
 
 void scrambleMethod2(std::string &str) {
@@ -167,7 +167,8 @@ void rewriteIO(const std::string &filename,
   of << buffer;
 }
 
-std::list<::ONNX_NAMESPACE::TensorProto> readWeights(ZipReader &zip) {
+std::list<::ONNX_NAMESPACE::TensorProto>
+readWeightsAndMaybeCopyData(ZipReader &zip, ZipWriter &zipO, bool compressed) {
   std::list<::ONNX_NAMESPACE::TensorProto> weights;
   auto numWeightsStr = zip.getRecord("weights");
   size_t numWeights = 0;
@@ -180,6 +181,13 @@ std::list<::ONNX_NAMESPACE::TensorProto> readWeights(ZipReader &zip) {
     weights.emplace_back();
     auto &t = weights.back();
     t.ParseFromString(buffer);
+
+    ss.str("");
+    ss << "data_" << i;
+    if (zip.hasRecord(ss.str())) {
+      buffer = zip.getRecord(ss.str());
+      zipO.writeRecord(ss.str(), buffer.c_str(), buffer.size(), compressed);
+    }
   }
   return weights;
 }
@@ -208,97 +216,106 @@ void scramble() {
   LOG(INFO) << "Input model: " << inputModelPathOpt;
   ::ONNX_NAMESPACE::ModelProto modelDef;
   std::list<::ONNX_NAMESPACE::TensorProto> weights;
-  {
-    ZipReader zip(inputModelPathOpt);
-    std::string buffer;
-    buffer = zip.getRecord("model");
-    modelDef.ParseFromString(buffer);
-    weights = readWeights(zip);
-  }
-
   std::unordered_map<std::string, std::string> name_map;
   std::unordered_map<std::string, std::string> node_map;
-  auto *g = modelDef.mutable_graph();
-  for (auto &n : *g->mutable_node()) {
-    for (auto &i : *n.mutable_input()) {
-      if (!name_map.count(i)) {
-        name_map.emplace(i, makeNewName(i));
+  {
+    LOG(INFO) << "Writing output model to " << outputModelPathOpt;
+    std::ofstream ffO(outputModelPathOpt,
+                      std::ios::out | std::ios::trunc | std::ios::binary);
+    CHECK(ffO);
+    ZipWriter zipO(&ffO, "test");
+    {
+      ZipReader zip(inputModelPathOpt);
+      std::string buffer;
+      buffer = zip.getRecord("model");
+      modelDef.ParseFromString(buffer);
+      weights = readWeightsAndMaybeCopyData(zip, zipO, kCompressed);
+    }
+
+    auto *g = modelDef.mutable_graph();
+    for (auto &n : *g->mutable_node()) {
+      for (auto &i : *n.mutable_input()) {
+        if (!name_map.count(i)) {
+          name_map.emplace(i, makeNewName(i));
+        }
+        i = name_map.at(i);
       }
-      i = name_map.at(i);
-    }
-    for (auto &o : *n.mutable_output()) {
-      if (!name_map.count(o)) {
-        name_map.emplace(o, makeNewName(o));
+      for (auto &o : *n.mutable_output()) {
+        if (!name_map.count(o)) {
+          name_map.emplace(o, makeNewName(o));
+        }
+        o = name_map.at(o);
       }
-      o = name_map.at(o);
-    }
-    const auto &name = n.name();
-    if (!node_map.count(name)) {
-      node_map.emplace(name, makeNewNodeName(name));
-    }
-    n.set_name(node_map.at(name));
-  }
-  for (auto &i : *g->mutable_input()) {
-    const auto &name = i.name();
-    if (!name_map.count(name)) {
-      name_map.emplace(name, makeNewName(name));
-    }
-    i.set_name(name_map.at(name));
-  }
-  for (auto &o : *g->mutable_output()) {
-    const auto &name = o.name();
-    if (!name_map.count(name)) {
-      name_map.emplace(name, makeNewName(name));
-    }
-    o.set_name(name_map.at(name));
-  }
-  for (auto &t : weights) {
-    const auto &name = t.name();
-    if (!name_map.count(name)) {
-      LOG(ERROR) << "It's a bit straight that weight " << name
-                 << " is not referenced in the net";
-      name_map.emplace(name, makeNewName(name));
-    }
-    t.set_name(name_map.at(name));
-  }
-  // Look for attributes of a list of strings matching a name and swap for
-  // scrambled version. Note that this should be fine because we currently only
-  // use a list of strings for vector<NodeValue>.
-  for (auto &n : *g->mutable_node()) {
-    for (auto &a : *n.mutable_attribute()) {
-      if (a.name() == "Predicate") {
-        LOG(FATAL) << "Predicate NodeValue unhandled.";
+      const auto &name = n.name();
+      if (!node_map.count(name)) {
+        node_map.emplace(name, makeNewNodeName(name));
       }
-      for (auto &s : *a.mutable_strings()) {
-        if (name_map.count(s)) {
-          s = name_map[s];
+      n.set_name(node_map.at(name));
+    }
+    for (auto &i : *g->mutable_input()) {
+      const auto &name = i.name();
+      if (!name_map.count(name)) {
+        name_map.emplace(name, makeNewName(name));
+      }
+      i.set_name(name_map.at(name));
+    }
+    for (auto &o : *g->mutable_output()) {
+      const auto &name = o.name();
+      if (!name_map.count(name)) {
+        name_map.emplace(name, makeNewName(name));
+      }
+      o.set_name(name_map.at(name));
+    }
+    for (auto &t : weights) {
+      const auto &name = t.name();
+      if (!name_map.count(name)) {
+        LOG(ERROR) << "It's a bit straight that weight " << name
+                   << " is not referenced in the net";
+        name_map.emplace(name, makeNewName(name));
+      }
+      t.set_name(name_map.at(name));
+    }
+    // Look for attributes of a list of strings matching a name and swap for
+    // scrambled version. Note that this should be fine because we currently
+    // only use a list of strings for vector<NodeValue>.
+    for (auto &n : *g->mutable_node()) {
+      for (auto &a : *n.mutable_attribute()) {
+        if (a.name() == "Predicate") {
+          LOG(FATAL) << "Predicate NodeValue unhandled.";
+        }
+        for (auto &s : *a.mutable_strings()) {
+          if (name_map.count(s)) {
+            s = name_map[s];
+          }
         }
       }
     }
-  }
 
-  {
-    LOG(INFO) << "Writing output model to " << outputModelPathOpt;
-    std::ofstream ff(outputModelPathOpt,
-                     std::ios::out | std::ios::trunc | std::ios::binary);
-    CHECK(ff);
-    ZipWriter zip(&ff, "test");
-    writeWeights(zip, weights, compressed);
+    writeWeights(zipO, weights, kCompressed);
     std::string largeBuffer;
     modelDef.SerializeToString(&largeBuffer);
-    zip.writeRecord("model", largeBuffer.c_str(), largeBuffer.size(),
-                    compressed);
-    zip.writeEndOfFile();
-    ff.flush();
-    ff.close();
+    zipO.writeRecord("model", largeBuffer.c_str(), largeBuffer.size(),
+                     kCompressed);
+    zipO.writeEndOfFile();
+    ffO.flush();
+    ffO.close();
   }
 
   if (!inputDeferredWeightsPathOpt.empty()) {
     weights.clear();
+    // Open the zip writer first in case we need to copy raw tensor data
+    // directly from zip reader
+    LOG(INFO) << "Writing output deferred weights to "
+              << outputDeferredWeightsPathOpt;
+    std::ofstream ffO(outputDeferredWeightsPathOpt,
+                      std::ios::out | std::ios::trunc | std::ios::binary);
+    CHECK(ffO);
+    ZipWriter zipO(&ffO, "test");
+
     {
       LOG(INFO) << "Input deferred weights: " << inputDeferredWeightsPathOpt;
       ZipReader zip(inputDeferredWeightsPathOpt);
-      weights = readWeights(zip);
+      weights = readWeightsAndMaybeCopyData(zip, zipO, kCompressed);
       for (auto &t : weights) {
         const auto &name = t.name();
         if (!name_map.count(name)) {
@@ -310,17 +327,10 @@ void scramble() {
       }
     }
 
-    // Write it out
-    LOG(INFO) << "Writing output deferred weights to "
-              << outputDeferredWeightsPathOpt;
-    std::ofstream ff(outputDeferredWeightsPathOpt,
-                     std::ios::out | std::ios::trunc | std::ios::binary);
-    CHECK(ff);
-    ZipWriter zip(&ff, "test");
-    writeWeights(zip, weights, compressed);
-    zip.writeEndOfFile();
-    ff.flush();
-    ff.close();
+    writeWeights(zipO, weights, kCompressed);
+    zipO.writeEndOfFile();
+    ffO.flush();
+    ffO.close();
   }
 
   size_t input_iter = inputPatternOpt.find("{}");

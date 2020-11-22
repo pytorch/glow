@@ -39,4 +39,10 @@ extern llvm::cl::opt<std::string> instrumentDebugFormat;
 /// Option to choose to instrument only the listed instructions.
 extern llvm::cl::list<std::string> instrumentDebugOnly;
 
+/// Option to enable the IR instrumentation (default false).
+extern llvm::cl::opt<bool> instrumentIR;
+
+/// Option to choose to instrument only the listed instructions.
+extern llvm::cl::list<std::string> instrumentIROnly;
+
 #endif // GLOW_OPTIMIZER_IROPTIMIZER_COMMANDLINE_H

@@ -310,6 +310,28 @@ const std::string Caffe2ModelLoader::opErrMsg(const caffe2::OperatorDef &op,
   return strFormat(" [Operator-'%s'] : %s ", opName.c_str(), errMsg.c_str());
 }
 
+// Caffe2 PRelu
+// https://github.com/pytorch/pytorch/blob/master/caffe2/operators/prelu_op.cc
+Error Caffe2ModelLoader::loadPRelu(const caffe2::OperatorDef &op,
+                                   ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  NodeValue slope;
+  ASSIGN_VALUE_OR_RETURN_ERR(slope, getNodeValueByName(op.input(1)));
+
+  // Do broadcasting.
+  auto targetDim = in.dims();
+  // Set the axis assuming i/p is of NCHW format.
+  int axis = 1;
+  auto *finalSlope = G_->createBroadcast(opName, slope, targetDim, axis);
+  auto *R = G_->createPRELU(opName, in, finalSlope);
+  RETURN_IF_ERR(addNodeAsOutput(op, R));
+  return Error::success();
+}
+
 Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -718,6 +740,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv" || typeName == "ConvRelu") {
     return loadConv(op, dict);
+  }
+
+  if (typeName == "PRelu") {
+    return loadPRelu(op, dict);
   }
 
   if (typeName == "ConvTranspose") {
@@ -1627,6 +1653,12 @@ Error Caffe2ModelLoader::loadInputsWithTensorProtoType(
 
   bool isInput = !initializers.count(in.name());
   if (isInput) {
+    RETURN_ERR_IF_NOT(!clipQuantRangeToFP16_ ||
+                          !loadRes.t->getType().isQuantizedType() ||
+                          loadRes.t->getType().isFusedQuantizedType(),
+                      "Do not support clipQuantRangeToFP16 with unfused "
+                      "quantized input Placeholders: " +
+                          in.name());
     Placeholder *placeholder;
     ASSIGN_VALUE_OR_RETURN_ERR(
         placeholder,
@@ -1935,7 +1967,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
         // to convert it to int8 by subtracting 128.
         TypeRef ty;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            ty, loadQuantTy(o, ElemKind::Int8QTy, dim, dict));
+            ty, loadQuantTy(o, ElemKind::Int8QTy, dim, dict,
+                            /* skipClipQuantRangeToFP16 */ true));
         T.reset(*ty);
         auto TH = T.getHandle<int8_t>();
         std::string str = dict["values"]->s();
@@ -1945,13 +1978,31 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       } else {
         TypeRef ty;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            ty, loadQuantTy(o, ElemKind::Int32QTy, dim, dict));
+            ty, loadQuantTy(o, ElemKind::Int32QTy, dim, dict,
+                            /* skipClipQuantRangeToFP16 */ true));
         T.reset(*ty);
         auto TH = T.getHandle<int32_t>();
         for (auto num : dict["values"]->ints()) {
           TH.raw(i++) = num;
         }
       }
+
+      // If we're clipping quantized ranges tp FP16, then we need to rescale the
+      // Tensor and update its type.
+      if (clipQuantRangeToFP16_) {
+        const ElemKind k = T.getType().getElementType();
+        const auto qMinMax = getQuantizedValueRange(T.getType().getScale(),
+                                                    T.getType().getOffset(), k);
+        const float newMin = std::max(qMinMax.first, kMinFP16);
+        const float newMax = std::min(qMinMax.second, kMaxFP16);
+        if (newMin != qMinMax.first || newMax != qMinMax.second) {
+          auto rescaledT = glow::make_unique<Tensor>();
+          dispatchQuantizedImpl(rescaleQTensor, k, T, *rescaledT, newMin,
+                                newMax);
+          T = std::move(*rescaledT);
+        }
+      }
+
       RETURN_ERR_IF_NOT(
           i == T.size(),
           strFormat("The number of serialized values (%li) does not "
@@ -2096,16 +2147,16 @@ Caffe2ModelLoader::Caffe2ModelLoader(Function &F, Error *errPtr)
   deleteUnusedConstants();
 }
 
-Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
-                                     const std::string &netWeightFilename,
-                                     llvm::ArrayRef<const char *> names,
-                                     llvm::ArrayRef<TypeRef> types, Function &F,
-                                     Error *errPtr,
-                                     OriginNameToTQPMap *originNameToTQPMap,
-                                     bool loadUniquedDummyQParams)
+Caffe2ModelLoader::Caffe2ModelLoader(
+    const std::string &netDescFilename, const std::string &netWeightFilename,
+    llvm::ArrayRef<const char *> names, llvm::ArrayRef<TypeRef> types,
+    Function &F, Error *errPtr, OriginNameToTQPMap *originNameToTQPMap,
+    bool loadUniquedDummyQParams, bool zeroScaleFP16Clip,
+    bool clipQuantRangeToFP16)
     : CommonOperatorLoader(names, types, &F, errPtr,
                            /* loadIntoExistingModule */ false,
-                           originNameToTQPMap, loadUniquedDummyQParams) {
+                           originNameToTQPMap, loadUniquedDummyQParams,
+                           zeroScaleFP16Clip, clipQuantRangeToFP16) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -2253,11 +2304,13 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
 Caffe2ModelLoader::Caffe2ModelLoader(
     const std::string &modelStr, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Module &dummyMod,
-    Error *errPtr, OriginNameToTQPMap *originNameToTQPMap)
-    : CommonOperatorLoader({}, {}, dummyMod, errPtr,
-                           /* loadIntoExistingModule */ false,
-                           originNameToTQPMap,
-                           /* loadUniquedDummyQParams */ false) {
+    Error *errPtr, OriginNameToTQPMap *originNameToTQPMap,
+    bool clipQuantRangeToFP16)
+    : CommonOperatorLoader(
+          {}, {}, dummyMod, errPtr,
+          /* loadIntoExistingModule */ false, originNameToTQPMap,
+          /* loadUniquedDummyQParams */ false, /* replaceDummyTQPs */ false,
+          /* zeroScaleFP16Clip */ false, clipQuantRangeToFP16) {
   if (errPtr && *errPtr) {
     return;
   }
@@ -2304,10 +2357,13 @@ Caffe2ModelLoader::Caffe2ModelLoader(
     const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
     llvm::StringRef funNamePrefix, runtime::PrePartitionedConfig *PPC,
     Error *errPtr, bool constFoldInLoader,
-    OriginNameToTQPMap *originNameToTQPMap, bool loadUniquedDummyQParams)
+    OriginNameToTQPMap *originNameToTQPMap, bool loadUniquedDummyQParams,
+    bool zeroScaleFP16Clip, bool clipQuantRangeToFP16)
     : CommonOperatorLoader({}, {}, mod, errPtr,
                            /* loadIntoExistingModule */ false,
-                           originNameToTQPMap, loadUniquedDummyQParams) {
+                           originNameToTQPMap, loadUniquedDummyQParams,
+                           /* replaceDummyTQPs */ false, zeroScaleFP16Clip,
+                           clipQuantRangeToFP16) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;

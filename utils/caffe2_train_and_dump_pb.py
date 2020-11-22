@@ -41,9 +41,10 @@ USE_LENET_MODEL = True
 
 def DownloadResource(url, path):
     """Downloads resources from s3 by url and unzips them to the provided path"""
-    import requests
-    import zipfile
     import StringIO
+    import zipfile
+
+    import requests
 
     print("Downloading... {} to {}".format(url, path))
     r = requests.get(url, stream=True)

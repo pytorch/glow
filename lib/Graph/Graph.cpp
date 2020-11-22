@@ -1326,54 +1326,11 @@ FlipNode *Function::createFlip(llvm::StringRef name, NodeValue input,
   return addNode(new FlipNode(name, OT, input, axis));
 }
 
-Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
-                                UnsignedArrayRef newShape, unsigned_t axis) {
-  const auto &origDims = input.dims();
-
-  assert(axis + origDims.size() <= newShape.size() &&
-         "Axis must fit inside the newShape.");
-
-  // Iterate over the new shape; if the original shape had a dimension here
-  // (when considering the axis) then verify the dimension either matches the
-  // new shape (no action taken) or == 1 (broadcast in that direction). Else
-  // the original shape had no dimensions here (after considering axis), so
-  // add the new dimension and broadcast in that direction.
-  dim_t reshapeDims[max_tensor_dimensions];
-  for (dim_t i = 0; i < newShape.size(); i++) {
-    if (i >= axis && i < origDims.size() + axis) {
-      const int origIdx = i - axis;
-      if (origDims[origIdx] == newShape[i]) {
-        // Keep original dimensions; they are compatible.
-        reshapeDims[i] = origDims[origIdx];
-      } else if (origDims[origIdx] == 1) {
-        // Will broadcast this dimension to size from newShape.
-        reshapeDims[i] = 1;
-      } else {
-        // Incompatible dimensions for broadcasting
-        llvm_unreachable("Cannot broadcast with these dimensions.");
-      }
-    } else {
-      // Will broadcast this dimension to size from newShape.
-      reshapeDims[i] = 1;
-    }
-  }
-
-  // Reshape the input node to same number of dimensions as new shape, but
-  // with 1s in place of to-be-broadcasted dimensions.
-  Node *currNode =
-      createReshape(name.str() + ".reshape", input,
-                    llvm::ArrayRef<dim_t>(reshapeDims, newShape.size()));
-
-  // Create a Tile (which is really a Concat) in each direction that needs to
-  // be broadcasted.
-  for (size_t i = 0; i < newShape.size(); i++) {
-    if (reshapeDims[i] == 1 && newShape[i] != 1) {
-      currNode = createTile(name.str() + ".tile" + std::to_string(i), currNode,
-                            newShape[i], i);
-    }
-  }
-
-  return currNode;
+BroadcastNode *Function::createBroadcast(llvm::StringRef name, NodeValue input,
+                                         UnsignedArrayRef newShape,
+                                         unsigned_t axis) {
+  auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), newShape);
+  return addNode(new BroadcastNode(name, OT, input, axis, newShape.vec()));
 }
 
 /// \returns true if \p T1 and T2 has the exact same type except for dimension
@@ -1702,7 +1659,9 @@ UNARY_ARITHMETIC_FUN_DEF(Cos)
   NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
       llvm::StringRef name, TypeRef T, NodeValue LHS, NodeValue RHS) {         \
     DCHECK(LHS.dims() == RHS.dims())                                           \
-        << "Invalid operand shapes " << LHS.dims() << " vs " << RHS.dims();    \
+        << "Invalid operand shapes LHS:" << LHS.getNode()->getName().str()     \
+        << " RHS: " << RHS.getNode()->getName().str() << " " << LHS.dims()     \
+        << " vs " << RHS.dims();                                               \
     TypeRef OT = getParent()->uniqueType(*T);                                  \
     return addNode(new NODE_NAME_##Node(name, OT, LHS, RHS));                  \
   }
@@ -1879,11 +1838,23 @@ MatMulNode *Function::createMatMul(llvm::StringRef name, NodeValue lhs,
 
 BatchMatMulNode *Function::createBatchMatMul(llvm::StringRef name,
                                              NodeValue LHS, NodeValue RHS) {
+  const size_t numDimsLHS = LHS.dims().size();
+  if (numDimsLHS > 3) {
+    const size_t numDimsRHS = RHS.dims().size();
+    std::vector<dim_t> newLHSShape = {0, LHS.dims()[numDimsLHS - 2],
+                                      LHS.dims()[numDimsLHS - 1]};
+    newLHSShape[0] = LHS.getType()->size() / (newLHSShape[1] * newLHSShape[2]);
+    LHS = createReshape(name.str() + ".reshapeLHS3D", LHS, newLHSShape);
+    std::vector<dim_t> newRHSShape = {0, RHS.dims()[numDimsRHS - 2],
+                                      RHS.dims()[numDimsRHS - 1]};
+    newRHSShape[0] = RHS.getType()->size() / (newRHSShape[1] * newRHSShape[2]);
+    RHS = createReshape(name.str() + ".reshapeRHS3D", RHS, newRHSShape);
+  }
+
   const size_t numDimsRHS = RHS.dims().size();
   assert(LHS.dims().size() == 3 && "LHS must be 3 dimensional.");
   assert((numDimsRHS == 2 || numDimsRHS == 3) &&
          "RHS must be 2 or 3 dimensional.");
-
   // If necessary, expand the RHS input to be 3D by adding initial leading
   // dim.
   if (numDimsRHS == 2) {
@@ -2524,6 +2495,31 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
       indices, batchDims));
 }
 
+GatherNDNode *Function::createGatherND(llvm::StringRef name, NodeValue data,
+                                       NodeValue indices) {
+  auto dDims = data.dims();
+  auto iDims = indices.dims();
+  int64_t lastIndicesDimension = iDims[iDims.size() - 1];
+  assert(dDims.size() > 0 && "data/input rank must be >= 1.");
+  assert(iDims.size() > 0 && "indices rank must be >= 1.");
+  assert(iDims[iDims.size() - 1] <= dDims.size() &&
+         "last dimension of indices can be at most rank of data/input");
+
+  int64_t outRank = dDims.size() + iDims.size() - lastIndicesDimension - 1;
+  std::vector<dim_t> outDimsGatherND(outRank);
+  size_t i = 0;
+  for (; i < iDims.size() - 1; i++) {
+    outDimsGatherND[i] = iDims[i];
+  }
+  for (size_t j = lastIndicesDimension; j < dDims.size(); i++, j++) {
+    outDimsGatherND[i] = dDims[j];
+  }
+
+  auto outTy =
+      getParent()->uniqueTypeWithNewShape(data.getType(), outDimsGatherND);
+  return addNode(new GatherNDNode(name, outTy, data, indices));
+}
+
 GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
                                                NodeValue data, NodeValue ranges,
                                                unsigned_t maxOutputSize) {
@@ -2566,6 +2562,35 @@ SpaceToDepthNode *Function::createSpaceToDepth(llvm::StringRef name,
                                inputDim[3] * blockSize * blockSize};
   auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
   return addNode(new SpaceToDepthNode(name, outTy, input, blockSize));
+}
+
+ReshapeNode *Function::createDepthToSpace(llvm::StringRef name, NodeValue input,
+                                          unsigned blockSize, bool isCRD) {
+  assert(blockSize > 0 && "Block size must be >= 1.");
+
+  auto inputDim = input.dims();
+  assert(inputDim.size() == 4 && "Dimension size of 4 is expected.");
+  dim_t N = inputDim[0];
+  dim_t H = inputDim[1];
+  dim_t W = inputDim[2];
+  dim_t C = inputDim[3];
+  assert(C % blockSize == 0 && "Depth should be divisible by block size.");
+
+  llvm::SmallVector<unsigned_t, 6> shuffle;
+  llvm::SmallVector<dim_t, 6> tmpShape;
+  llvm::SmallVector<dim_t, 4> outShape = {N, H * blockSize, W * blockSize,
+                                          C / (blockSize * blockSize)};
+  if (isCRD) {
+    tmpShape = {N, H, W, C / (blockSize * blockSize), blockSize, blockSize};
+    shuffle = D2S_CRD;
+  } else {
+    tmpShape = {N, H, W, blockSize, blockSize, C / (blockSize * blockSize)};
+    shuffle = D2S_DCR;
+  }
+
+  auto *RN1 = createReshape(name.str() + "_reshape_in", input, tmpShape);
+  auto *TN = createTranspose(name.str() + "_transpose", RN1, shuffle);
+  return createReshape(name.str() + "_reshape_out", TN, outShape);
 }
 
 ReshapeNode *Function::createUpsample(llvm::StringRef name, NodeValue input,
@@ -2799,16 +2824,14 @@ ClipNode *Function::createClip(llvm::StringRef name, NodeValue input, float min,
 
 ClipNode *Function::createClipMinMaxFP16(llvm::StringRef name,
                                          NodeValue input) {
-  constexpr float float16Min = -65504.0f;
-  constexpr float float16Max = 65504.0f;
-  return createClip(name, input, float16Min, float16Max);
+  return createClip(name, input, kMinFP16, kMaxFP16);
 }
 
 ClipNode *Function::createClipMinMaxBFloat16(llvm::StringRef name,
                                              NodeValue input) {
-  constexpr float float16Min = FLT_MIN;
-  constexpr float float16Max = FLT_MAX;
-  return createClip(name, input, float16Min, float16Max);
+  constexpr float bfloat16Min = FLT_MIN;
+  constexpr float bfloat16Max = FLT_MAX;
+  return createClip(name, input, bfloat16Min, bfloat16Max);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5275,6 +5298,7 @@ Constant *Module::getConstantByName(llvm::StringRef name) const {
 
 void Function::randomizeConstants(
     const std::map<Kinded::Kind, std::set<unsigned>> &ignoredConstants) {
+  LOG(INFO) << "Randomize Constants............";
   for (Constant *c : getParent()->getConstants()) {
     bool usedHere = false;
     bool usedElsewhere = false;

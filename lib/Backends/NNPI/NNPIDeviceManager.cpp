@@ -65,8 +65,8 @@ NNPIDeviceManager::NNPIDeviceManager(
   if (deviceOptions_->deviceId >= 0) {
     deviceId_ = static_cast<unsigned>(deviceOptions_->deviceId);
   }
-  if (GlowNNPITimeout != 0) {
-    deviceOptions_->inferTimeout = GlowNNPITimeout;
+  if (flags::NNPITimeoutMs != 0) {
+    deviceOptions_->inferTimeout = flags::NNPITimeoutMs * 1000;
   }
 }
 
@@ -132,8 +132,8 @@ Error NNPIDeviceManager::init() {
               << static_cast<int>(deviceInfo.fwVersion.minor) << "."
               << static_cast<int>(deviceInfo.fwVersion.dot);
   }
-  if (GlowNNPIMemory > 0) {
-    maxMemoryBytes_ = static_cast<uint64_t>(GlowNNPIMemory) * KB;
+  if (flags::NNPIMemory > 0) {
+    maxMemoryBytes_ = static_cast<uint64_t>(flags::NNPIMemory) * KB;
   } else if (deviceOptions_->deviceMemory > 0) {
     maxMemoryBytes_ = static_cast<uint64_t>(deviceOptions_->deviceMemory) * KB;
   }
@@ -264,7 +264,7 @@ Error NNPIDeviceManager::stop(bool block) {
 }
 uint64_t NNPIDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
 uint64_t NNPIDeviceManager::getAvailableMemory() const {
-  if (GlowNNPIMemory == 0 && deviceOptions_->deviceMemory == 0 &&
+  if (flags::NNPIMemory == 0 && deviceOptions_->deviceMemory == 0 &&
       deviceOptions_->inferOnDevice) {
     NNPIDeviceStatus devStatus;
     NNPIInferenceErrorCode res = nnpiDeviceGetStatus(deviceId_, &devStatus);

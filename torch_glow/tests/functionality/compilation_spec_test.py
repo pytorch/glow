@@ -1,11 +1,11 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch_glow
-import torch
+import pickle
 import unittest
 
-import pickle
+import torch
+import torch_glow
 
 
 class TestCompilationSpec(unittest.TestCase):

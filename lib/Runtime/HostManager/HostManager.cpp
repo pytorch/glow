@@ -43,6 +43,7 @@
 #include <queue>
 #include <shared_mutex>
 
+constexpr uint64_t P2PInputLimit = 256;
 using namespace glow;
 using namespace runtime;
 
@@ -78,14 +79,14 @@ llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
 llvm::cl::opt<bool, /* ExternalStorage */ true>
     enableDRT("enable-DRT", llvm::cl::desc("Enabled DRT support"),
               llvm::cl::Optional,
-              llvm::cl::location(glow::runtime::GlowEnableDRT),
+              llvm::cl::location(glow::runtime::flags::EnableDRT),
               llvm::cl::cat(hostManagerCat));
 
 /// Allows enabling P2P support.
 llvm::cl::opt<bool, /* ExternalStorage */ true>
     enableP2P("enable-P2P", llvm::cl::desc("Enabled P2P support"),
               llvm::cl::Optional,
-              llvm::cl::location(glow::runtime::GlowEnableP2P),
+              llvm::cl::location(glow::runtime::flags::EnableP2P),
               llvm::cl::cat(hostManagerCat));
 
 HostManager::HostManager() : HostManager(HostConfig{}) {}
@@ -160,7 +161,7 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
       devPromise.set_value(std::move(err));
     });
     if (devFuture.wait_for(std::chrono::milliseconds(
-            GlowDeviceInitTimeoutMs)) != std::future_status::timeout) {
+            flags::DeviceInitTimeoutMs)) != std::future_status::timeout) {
       RETURN_IF_ERR(devFuture.get());
     } else {
       // Device initialization is taking longer than expected, return an error.
@@ -175,10 +176,11 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   executor_.reset(
       new ThreadPoolExecutor(devices_, config_.executorThreads, "HostManager"));
   exportMemoryCounters();
-  if (GlowAvailableDevices.length()) {
+  if (flags::AvailableDevices.length()) {
     std::vector<unsigned> devices;
-    folly::split<char, std::string, unsigned>(',', GlowAvailableDevices,
-                                              devices, /* ignoreEmpty */ true);
+    folly::split<char, std::string, unsigned>(',', flags::AvailableDevices,
+                                              devices,
+                                              /* ignoreEmpty */ true);
     std::vector<runtime::DeviceIDTy> convertedDevs(devices.begin(),
                                                    devices.end());
     setAvailableDevices(convertedDevs);
@@ -311,6 +313,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       info.nonSupportedNodes =
           devices_[device]->getParamByName("nonSupportedNodes");
       info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
+      // If p2p is enabled update the inputCount limit.
+      if (cctx.enableP2P) {
+        info.inputCountMax = P2PInputLimit;
+      }
       deviceInfo.push_back(info);
     }
   }
@@ -375,6 +381,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     provisioner_.reset(new Provisioner(devices_));
     executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
+
   VLOG(1) << "Before replace dummy TQPs";
   // Now that we've partitioned and optimized, do some verification based on the
   // dummy mode we're using, if any.
@@ -383,6 +390,17 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     RETURN_IF_ERR(module->verifyDummyQParams(
         cctx.precisionConfig.loadUniquedDummyQParams));
   }
+
+  // If we are loading an AOT model where we are replacing dummy TQPs, then we
+  // may need to update Relu output types on FCs, since they should be set to
+  // use zero as min but the correct qparams could not be calculated AOT.
+  if (cctx.loadingAOTModel && cctx.precisionConfig.replaceDummyTQPs) {
+    LOG(INFO) << "Updating quantized Relu types given real TQPs";
+    for (Function *F : module->getFunctions()) {
+      updateQuantReluTypes(F);
+    }
+  }
+
   VLOG(1) << "Before constant folding";
   // If we prevented constant modification then run constant folding with
   // recording now. Record so that if we are going to serialize we can embed the
@@ -447,6 +465,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       }
     }
   }
+
   VLOG(1) << "Before serialize compile DAG";
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
@@ -465,6 +484,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       if (cctx.precisionConfig.originNameToTQPMap) {
         RETURN_IF_ERR(ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
             extraMetadataProps, *cctx.precisionConfig.originNameToTQPMap));
+      }
+      if (cctx.precisionConfig.clipQuantRangeToFP16) {
+        extraMetadataProps[clipQuantRangeToFP16Key] = "1";
       }
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(
@@ -546,8 +568,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       // Note: currently getNextNetworkExecutionState assumes that pool size is
       // >= currentInFlight requests, so we set pool size to maxActiveRequests.
       executor_->createPool(node.root.get(), config_.maxActiveRequests,
-                            cctx.enableP2P || GlowEnableP2P,
-                            cctx.enableDRT || GlowEnableDRT);
+                            cctx.enableP2P || flags::EnableP2P,
+                            cctx.enableDRT || flags::EnableDRT);
     }
   }
   // Clear constants contents from the module then put it in a

@@ -75,6 +75,9 @@ Expected<Function *> saveAndReloadFunction(
         useGlowCustomOps, includeConstantData, extraMetadataProps,
         constFoldRecord ? *constFoldRecord : ConstantFoldingRecordMap(),
         backendSpecificNodeInfo, (useString) ? &outputString : nullptr);
+    if (err) {
+      llvm::errs() << "Failed to write model\n";
+    }
     RETURN_IF_ERR(std::move(err));
   }
 
@@ -388,6 +391,7 @@ TEST(exporter, onnxModels) {
         name.find("NonMaxSuppression.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppressionSSD.onnxtxt") != std::string::npos ||
         name.find("ROIAlign_onnx.onnxtxt") != std::string::npos ||
+        name.find("MatMul4D.onnxtxt") != std::string::npos ||
         name.find("Less.onnxtxt") != std::string::npos ||
         name.find("Asin.onnxtxt") != std::string::npos ||
         name.find("Acos.onnxtxt") != std::string::npos ||
@@ -401,6 +405,7 @@ TEST(exporter, onnxModels) {
         name.find("scatterND.onnxtxt") != std::string::npos ||
         name.find("mscatterND.onnxtxt") != std::string::npos ||
         name.find("sign.onnxtxt") != std::string::npos ||
+        name.find("gatherND.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=

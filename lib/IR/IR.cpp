@@ -102,6 +102,26 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
   return ops_[idx];
 }
 
+unsigned Instruction::getNumInputs() const {
+  unsigned numInputs = 0;
+  for (const auto &op : ops_) {
+    if (op.second != OperandKind::Out) {
+      numInputs++;
+    }
+  }
+  return numInputs;
+}
+
+unsigned Instruction::getNumOutputs() const {
+  unsigned numOutputs = 0;
+  for (const auto &op : ops_) {
+    if (op.second != OperandKind::In) {
+      numOutputs++;
+    }
+  }
+  return numOutputs;
+}
+
 llvm::StringRef Instruction::getOperandName(unsigned idx) const {
   switch (getKind()) {
 #define DEF_INSTR(CLASS, NAME)                                                 \
@@ -745,6 +765,20 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction &irf) {
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction *irf) {
   assert(irf != nullptr && "Null Pointer.");
   irf->dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, InstrumentKind kind) {
+  switch (kind) {
+  case InstrumentKind::Before:
+    os << "Before";
+    break;
+  case InstrumentKind::After:
+    os << "After";
+    break;
+  default:
+    llvm_unreachable("Unknown instrumentation kind");
+  }
   return os;
 }
 } // namespace glow

@@ -18,7 +18,7 @@ class SimpleQuantizedReluModel(torch.nn.Module):
             scale=self.scale, zero_point=self.zero_point, dtype=self.dtype
         )
         dequantize = torch.nn.quantized.DeQuantize()
-        relu = torch.nn.quantized.ReLU()
+        relu = torch.nn.ReLU()
         return dequantize(relu(quantize(tensor)))
 
 

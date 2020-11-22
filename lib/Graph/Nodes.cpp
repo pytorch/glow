@@ -1903,6 +1903,21 @@ bool GatherNode::verify() const {
   return isValid;
 }
 
+bool GatherNDNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(
+      getIndices(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+  isValid &= expectCompareTrue(
+      "Mismatching number of dimensions", getResult().dims().size(),
+      getData().dims().size() + getIndices().dims().size() -
+          getIndices().dims()[getIndices().dims().size() - 1] - 1,
+      this);
+  isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
+                                           getData().getType(), this);
+  return isValid;
+}
+
 bool GatherRangesNode::verify() const {
   bool isValid = expectCompareTrue("Data must be 1D", getData().dims().size(),
                                    size_t(1), this);
@@ -2503,6 +2518,26 @@ bool BatchBoxCoxNode::verify() const {
     isValid &= expectCompareTrue("Data dim 1 must equal lambda dim",
                                  data.dims()[1], lambda1.dims()[0], this);
   }
+  return isValid;
+}
+
+bool BroadcastNode::verify() const {
+  const auto inputDims = getInput().dims();
+  const auto axis = getAxis();
+  const auto targetDims = getTargetDim();
+  bool isValid = (axis + inputDims.size() <= targetDims.size());
+
+  // Iterate over the new shape; if the original shape had a dimension here
+  // (when considering the axis) then verify the dimension either matches the
+  // new shape (no action taken) or == 1 (broadcast in that direction).
+  for (dim_t i = 0; i < targetDims.size(); i++) {
+    if (i >= axis && i < inputDims.size() + axis) {
+      const int origIdx = i - axis;
+      isValid &=
+          (inputDims[origIdx] == targetDims[i] || inputDims[origIdx] == 1);
+    }
+  }
+
   return isValid;
 }
 

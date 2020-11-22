@@ -1,12 +1,13 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
-from copy import deepcopy
+
+import itertools
 import os
-
-import torch_glow
-import torch
-
 from contextlib import contextmanager
+from copy import deepcopy
+
+import torch
+import torch_glow
 
 GLOW_FUSION_GROUP = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
@@ -92,15 +93,23 @@ def assert_equivalent(result, other_result, atol=5e-4, rtol=1e-3):
             assert_equivalent(a, b, atol=atol, rtol=rtol)
             for a, b in zip(result, other_result)
         )
-    elif torch.allclose(result, other_result, atol, rtol):
-        return True
+    elif other_result.dtype == torch.bool:
+        diff = torch.eq(result, other_result)
+        if torch.all(diff):
+            return True
+        else:
+            error = f"Diff:{diff}\n"
+            raise AssertionError(error)
     else:
-        diff = torch.abs(result - other_result)
-        error = f"First result:\n{result}\n"
-        error += f"Second result:\n{other_result}\n"
-        error += f"Diff:\n{diff}\n"
-        error += f"Max diff:\n{torch.max(diff)}"
-        raise AssertionError(error)
+        if torch.allclose(result, other_result, atol, rtol):
+            return True
+        else:
+            diff = torch.abs(result - other_result)
+            error = f"First result:\n{result}\n"
+            error += f"Second result:\n{other_result}\n"
+            error += f"Diff:\n{diff}\n"
+            error += f"Max diff:\n{torch.max(diff)}"
+            raise AssertionError(error)
 
 
 def compare_tracing_methods(
@@ -181,3 +190,9 @@ def assert_fused(fused_graph, *ops, accept_any=False, strict=False):
 
 def graph_contains_str(graph, substr):
     return graph.str().find(substr) >= 0
+
+
+# Verifies equal modules for save-load tests.
+def assertModulesEqual(case, mod1, mod2, message=None):
+    for p1, p2 in itertools.zip_longest(mod1.parameters(), mod2.parameters()):
+        case.assertTrue(p1.equal(p2), message)

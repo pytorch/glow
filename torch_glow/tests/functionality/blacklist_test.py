@@ -1,11 +1,11 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch_glow
-import torch
-
-from tests.utils import GLOW_FUSION_GROUP, SUBGRAPH_ATTR
 import unittest
+
+import torch
+import torch_glow
+from tests.utils import GLOW_FUSION_GROUP, SUBGRAPH_ATTR
 
 
 class TestBlackList(unittest.TestCase):

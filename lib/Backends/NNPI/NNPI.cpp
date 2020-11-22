@@ -76,10 +76,10 @@ bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
   // data inputs.
   switch (NI.getKind()) {
   case Kinded::Kind::SparseLengthsSumNodeKind:
-    return GlowNNPIAcceptUnarySLS ||
+    return nnpi::flags::AcceptUnarySLS ||
            !isUnaryLookup(NI.getInTy(SparseLengthsSumNode::DataIdx));
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
-    return GlowNNPIAcceptUnarySLS ||
+    return nnpi::flags::AcceptUnarySLS ||
            !isUnaryLookup(NI.getInTy(SparseLengthsWeightedSumNode::DataIdx));
 
   default:
@@ -120,10 +120,13 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+    break;
   case Kinded::Kind::SplatNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy});
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
   case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
@@ -135,6 +138,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
     break;
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+  case Kinded::Kind::NNPILookupTableNodeKind:
+  case Kinded::Kind::IntLookupTableNodeKind:
+    isNodePrecisionSupported = true;
+    break;
   case Kinded::Kind::BBoxTransformNodeKind:
     // RoiBatchSplits output should be FP16 in the Glow node and get
     // converted explicitly to FP32 in NNPI importer.
@@ -215,8 +222,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   }
   case Kinded::Kind::Convolution3DNodeKind:
     if (!NI.getInTy(Convolution3DNode::InputIdx)->isQuantizedType()) {
-      isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-          {ElemKind::FloatTy, ElemKind::Float16Ty});
+      isNodePrecisionSupported =
+          NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     } else {
       isNodePrecisionSupported =
           NI.allInputsAndOutputsHaveSameElemKind(
@@ -224,6 +231,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
           ((NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy) ||
            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
     }
+    break;
   case Kinded::Kind::QuantizeNodeKind:
     isNodePrecisionSupported =
         (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
@@ -241,20 +249,80 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
     break;
   case Kinded::Kind::ConvertToNodeKind: {
-    auto isConversionSupportedFor = [](ElemKind kind) {
-      switch (kind) {
-      case ElemKind::FloatTy:
+    auto isConversionSupportedFor = [](ElemKind kindFrom, ElemKind kindTo) {
+      switch (kindFrom) {
+
       case ElemKind::Float16Ty:
-      case ElemKind::Int32ITy:
+        switch (kindTo) {
+        case ElemKind::FloatTy:
+        case ElemKind::Int8QTy:
+        case ElemKind::UInt8QTy:
+        case ElemKind::BoolTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::FloatTy:
+        switch (kindTo) {
+        case ElemKind::Float16Ty:
+        case ElemKind::Int8QTy:
+        case ElemKind::UInt8QTy:
+        case ElemKind::BoolTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
       case ElemKind::Int64ITy:
+        switch (kindTo) {
+        case ElemKind::Int32ITy:
+        case ElemKind::FloatTy:
+        case ElemKind::Int8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::Int32ITy:
+        switch (kindTo) {
+        case ElemKind::Int64ITy:
+        case ElemKind::FloatTy:
+        case ElemKind::Int8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::Int32QTy:
+        switch (kindTo) {
+        case ElemKind::Float16Ty:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::UInt8QTy:
+      case ElemKind::Int8QTy:
         return true;
+
+      case ElemKind::UInt8FusedQTy:
+        return (kindTo == ElemKind::Float16Ty);
+      case ElemKind::UInt8FusedFP16QTy:
+        return (kindTo == ElemKind::Float16Ty);
       default:
         return false;
       }
+      return false;
     };
     isNodePrecisionSupported =
-        isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
-        isConversionSupportedFor(NI.getOutElemTy(ConvertToNode::ResultIdx));
+        isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx),
+                                 NI.getOutElemTy(ConvertToNode::ResultIdx));
     break;
   }
   case Kinded::Kind::FullyConnectedNodeKind:
@@ -534,6 +602,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::LogitNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+    break;
+  case Kinded::Kind::LSTMUnitNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     break;
@@ -1084,7 +1156,7 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
         F, numChunks, parOpts, opts.backendSpecificNodeInfo));
   } else {
     // Check for basic parallelization based on specified degree of parallelism.
-    defaultNumParallelChunks = glow::onnxifi::GlowNNPINumParallelChunks;
+    defaultNumParallelChunks = glow::nnpi::flags::NumParallelChunks;
 
     // GlowNNPINumParallelChunks set via flags takes precedence over backend
     // options in cctx.
@@ -1114,7 +1186,7 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
   }
 
   int32_t defaultModelParallelSplitAlignment =
-      glow::onnxifi::GlowNNPIModelParallelSplitAlignment;
+      glow::nnpi::flags::ModelParallelSplitAlignment;
 
   // GlowNNPIModelParallelSplitAlignment set via flags takes precedence over
   // backend options in cctx.
@@ -1149,6 +1221,19 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
+  // Do some verification prior to final compilation. Check that for all
+  // non-fused qparams, scales are not zero after FP16 conversion.
+  for (const Node &N : F->getNodes()) {
+    for (size_t i = 0, e = N.getNumResults(); i < e; i++) {
+      const TypeRef resTy = N.getNthResult(i).getType();
+      if (resTy->isQuantizedType() && !resTy->isFusedQuantizedType()) {
+        RETURN_ERR_IF_NOT(float(float16_t(resTy->getScale())) != 0.f,
+                          "Quantized type in node has zero FP16 scale: " +
+                              N.getDebugDesc());
+      }
+    }
+  }
+
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       glow::make_unique<NNPICompiledFunction>(F);
   auto compileHasError = compiledFunc->compile(F, opts);
@@ -1170,7 +1255,7 @@ NNPIBackend::getOptimizationPipeline() const {
   // not want to undo that by sinking Nodes back together.
   pipeline->removeAllInstancesOfPass(FunctionPassID::SinkCode);
 
-  // Quantize Swish when wrapped inS Quantize/Dequantize.
+  // Quantize Swish when wrapped in Quantize/Dequantize.
   pipeline->pushBack(FunctionPassID::QuantizeSwish);
 
   // Raise Clips above Shape Nodes (e.g. Reshape) to try to ensure fusion
@@ -1184,6 +1269,7 @@ NNPIBackend::getOptimizationPipeline() const {
 
   // Now that we've raised clips up try to optimize quantize-clip combos again.
   pipeline->pushBack(FunctionPassID::OptimizeQuantizeClip);
+  pipeline->pushBack(FunctionPassID::EliminateClipsOutsideFP16Range);
 
   // Now try to eliminate any redundant Clips.
   pipeline->pushBack(FunctionPassID::OptimizeClips);
@@ -1224,6 +1310,7 @@ NNPIBackend::getOptimizationPipeline() const {
   // Now try to also optimize clips next to quantizes since we raised quantizes
   // above concats.
   pipeline->pushBack(FunctionPassID::OptimizeQuantizeClip);
+  pipeline->pushBack(FunctionPassID::EliminateClipsOutsideFP16Range);
 
   // Now try to sink conversions below concats again in case the concat quantize
   // sinking didn't help.
@@ -1243,7 +1330,7 @@ bool NNPIBackend::lowerRequiredNodes(Function *F,
     bool shouldLowerNode = isNodeSupported(NI) == NodeSupportLevels::SUPPORTED;
     switch (N.getKind()) {
     case Kinded::Kind::BatchMatMulNodeKind:
-      shouldLowerNode |= GlowNNPILowerAllBatchMatMul;
+      shouldLowerNode |= nnpi::flags::LowerAllBatchMatMul;
       break;
     case Kinded::Kind::ConvertToNodeKind: {
       shouldLowerNode = false;
@@ -1399,15 +1486,24 @@ Expected<bool> NNPIBackend::transformPostLowering(
   kindSet.insert(Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
   kindSet.insert(Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
 
-  if (glow::onnxifi::GlowDisableNNPITransforms) {
+  if (glow::nnpi::flags::DisableTransforms) {
     return false;
   }
 
   bool changed = removeClipsBlockingFusion(F);
+  auto it =
+      cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
+  if (it != cctx.backendOpts.backendSpecificOpts.end() && it->second == "1") {
+    FunctionPassManager FPM(
+        "NNPI_ZeroScaleFP16Replace",
+        {FunctionPassID::ReplaceZeroScaleFP16QuantNodes, getDCEPassConfig()},
+        this);
+    changed |= FPM.run(F, cctx);
+  }
   changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
-  if (glow::onnxifi::GlowDisableNNPIPrivateTransforms) {
+  if (glow::nnpi::flags::DisablePrivateTransforms) {
     return changed;
   }
   changed |= transformPrivate(F, cctx);

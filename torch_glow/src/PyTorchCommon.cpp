@@ -65,6 +65,7 @@ DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
+DEFINE_bool(writeWithoutRandomize, false, "See PyTorchLoaderSettings");
 DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionStartIndex, -1, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionEndIndex, -1, "See PyTorchLoaderSettings");
@@ -76,6 +77,8 @@ DEFINE_string(backendSpecificOpts, "",
               "Comma separated list of key=value for building the "
               "BackendSpecificOptions map in BackendOptions in "
               "CompilationContext.");
+DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
+            "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -258,6 +261,7 @@ void PyTorchLoaderSettings::initSettings() {
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
   randomizeConstants = FLAGS_randomizeConstants;
+  writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
   numDevices = FLAGS_torch_glow_num_devices;
   runShapeInference = FLAGS_runShapeInference;
@@ -265,6 +269,8 @@ void PyTorchLoaderSettings::initSettings() {
   fusionEndIndex = FLAGS_fusionEndIndex;
   setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
   enableRemoveMutation = FLAGS_enableRemoveMutation;
+  debugContinuouslyVerifyDuringModelLoading =
+      FLAGS_debugContinuouslyVerifyDuringModelLoading;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -315,7 +321,6 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(convertConstantsToFP16, s);
   INSERT_BOOL_TO_STREAM(forceFP16AccumSLS, s);
   INSERT_BOOL_TO_STREAM(saturateHost, s);
-  INSERT_BOOL_TO_STREAM(randomizeConstants, s);
   INSERT_VALUE_TO_STREAM(backendOptionsFile, s);
   INSERT_VALUE_TO_STREAM(replicationCount, s);
   INSERT_BOOL_TO_STREAM(fusionPassEnabled, s);
@@ -332,11 +337,13 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(onnxZipMode, s);
   INSERT_BOOL_TO_STREAM(jitVsGlowCompare, s);
   INSERT_BOOL_TO_STREAM(randomizeConstants, s);
+  INSERT_BOOL_TO_STREAM(writeWithoutRandomize, s);
   INSERT_VALUE_TO_STREAM(backendName, s);
   INSERT_VALUE_TO_STREAM(numDevices, s);
   INSERT_BOOL_TO_STREAM(runShapeInference, s);
   INSERT_BOOL_TO_STREAM(setIncludeLastOffsets, s);
   INSERT_BOOL_TO_STREAM(enableDebugFuser, s);
+  INSERT_BOOL_TO_STREAM(debugContinuouslyVerifyDuringModelLoading, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
@@ -493,38 +500,14 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   }
 }
 
-std::vector<glow::InputMeta> loadInputMeta(const std::string &raw_data) {
-  if (raw_data.empty()) {
-    return {};
-  }
-  auto inputMeta = std::vector<glow::InputMeta>();
-  std::stringstream ss_raw(raw_data);
-
-  std::string line;
-  while (std::getline(ss_raw, line)) {
-    std::vector<glow::sdim_t> dims;
-    std::stringstream ss(line);
-    ss.ignore();
-    for (int i; ss >> i;) {
-      dims.push_back(i);
-      if (ss.peek() == ',' || ss.peek() == '[' || ss.peek() == ']') {
-        ss.ignore();
-      }
-    }
-    std::getline(ss_raw, line);
-    c10::ScalarType t = static_cast<c10::ScalarType>(std::stoi(line));
-    inputMeta.emplace_back(t, std::move(dims));
-  }
-  return inputMeta;
-}
-
 // Similar to glowAOTFusion() however supports multiple Glow subgraphs and
 // runners. We'd still need both since in some cases we may not be able to infer
 // the entire model and would leverage glowAOTFusion() to run the partially
 // lowered model.
-void glowAOTFusionWithShapeInference(
-    torch::jit::Module &model, const std::vector<glow::InputMeta> &inputMeta) {
-  auto settings = glow::getGlobalPyTorchLoaderSettingsSnapshot();
+void glowAOTFusionWithShapeInference(torch::jit::Module &model,
+                                     const InputMetaStack &metaStack,
+                                     runtime::DeferredWeightLoader *loader,
+                                     const PyTorchLoaderSettings &settings) {
 
   auto graph = model.get_method("forward").function().graph();
 
@@ -537,12 +520,12 @@ void glowAOTFusionWithShapeInference(
   // model and expect the model can be lowered. However there
   // are cases where we cannot lower the entire model.
   // There could be multiple fused graphs and the inputs to
-  // each fused graph could be different from the inputMeta user
+  // each fused graph could be different from the metaStack user
   // provided. Therefore we leverage shape inference to populate
   // shape and type information over the entire model so we
   // could lower whatever we want.
   std::vector<torch::jit::IValue> inputs;
-  for (const auto &i : inputMeta) {
+  for (const auto &i : metaStack.inputMetas) {
     inputs.push_back(
         torch::empty(i.dims, torch::TensorOptions().dtype(i.type)));
   }
@@ -591,7 +574,7 @@ void glowAOTFusionWithShapeInference(
                 settings, /*useRunOnly*/ true);
           });
 
-      std::vector<glow::InputMeta> perGraphInputMeta;
+      InputMetaStack metaStackForCompilation;
       auto graphInputValues = subgraph->inputs();
 
       for (size_t i = 0; i < graphInputValues.size(); ++i) {
@@ -603,11 +586,11 @@ void glowAOTFusionWithShapeInference(
         }
         // Only support tensor input for now
         // TODO Add support for other input types, e.g., tensor[]
-        perGraphInputMeta.emplace_back(itr->second.dtype,
-                                       itr->second.shape<TensorShape>());
+        metaStackForCompilation.inputMetas.emplace_back(
+            itr->second.dtype, itr->second.shape<TensorShape>());
       }
 
-      e = runner->warmCache(perGraphInputMeta, settings,
+      e = runner->warmCache(metaStackForCompilation, settings, loader,
                             /*useMaxSizeCompilation*/ true);
       if (e) {
         // If the graph is already compiled previously, warmCache() will report
@@ -624,11 +607,12 @@ void glowAOTFusionWithShapeInference(
 }
 
 void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
-                   PyTorchLoaderSettings settings) {
-  auto inputMeta = glow::loadInputMeta(inputMetaStr);
+                   runtime::DeferredWeightLoader *loader,
+                   const PyTorchLoaderSettings &settings) {
+  InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   if (FLAGS_inferShapeForCompilation) {
-    return glowAOTFusionWithShapeInference(model, inputMeta);
+    return glowAOTFusionWithShapeInference(model, metaStack, loader, settings);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
@@ -665,7 +649,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
             settings, /*useRunOnly*/ true);
       });
 
-  auto e = runner->warmCache(inputMeta, settings,
+  auto e = runner->warmCache(metaStack, settings, loader,
                              /*useMaxSizeCompilation*/ true);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report

@@ -35,21 +35,23 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
         llvm::cl::desc(
             "Enable a partitioner pass to optimize for "
             "load balance in addition to memory capacity constraints"),
-        llvm::cl::location(GlowEnableLoadBalancedPartitioning));
+        llvm::cl::location(glow::flags::EnableLoadBalancedPartitioning));
 } // namespace glow
 
 /// -log-partition - Command line option to dump Partitioner logs.
 static llvm::cl::OptionCategory PartitionerCat("Glow Partitioner Options");
-static llvm::cl::opt<bool, /* ExternalStorage */ true> logPartition(
-    "log-partition", llvm::cl::desc("Enable logging partition info"),
-    llvm::cl::location(glow::GlowLogPartition), llvm::cl::cat(PartitionerCat));
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    logPartition("log-partition",
+                 llvm::cl::desc("Enable logging partition info"),
+                 llvm::cl::location(glow::flags::LogPartition),
+                 llvm::cl::cat(PartitionerCat));
 
 /// -dump-partition - Command line option to dump the graph of each partitions
 /// by calling F->dumpDAG().
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     dumpPartition("dump-partition",
                   llvm::cl::desc("Enable dumping the graph of each partitions"),
-                  llvm::cl::location(glow::GlowDumpPartition),
+                  llvm::cl::location(glow::flags::DumpPartition),
                   llvm::cl::cat(PartitionerCat));
 
 using namespace glow;
@@ -377,6 +379,7 @@ void Partitioner::genBackendMap(
       // is the same.
       // TODO : will improve the algorithm for different memory size.
       backendInfo.memSize = deviceInfo_[i].availableMemory;
+      backendInfo.inputCountMax = deviceInfo_[i].inputCountMax;
       backendInfo.peakDramBw = deviceInfo_[i].peakDramBw;
       backendInfo.peakSramBw = deviceInfo_[i].peakSramBw;
       backendInfo.sramCapacity = deviceInfo_[i].sramCapacity;
@@ -627,6 +630,7 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
   partitionMap.clearLogicalDeviceID();
   logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
+  RETURN_IF_ERR(resourceCountValidation(partitionMap, backendMap_));
 
   partitions =
       doPartitioning(origName, {F_}, module_, partitionMap, /* saveDAG */ true,
@@ -902,6 +906,7 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
   }
 
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
+  RETURN_IF_ERR(resourceCountValidation(partitionMap, backendMap_));
 
   // Do partition.
   partitions = doPartitioning(F->getName(), {F}, module_, partitionMap,
@@ -976,6 +981,7 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
     }
   }
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
+  RETURN_IF_ERR(resourceCountValidation(partitionMap, backendMap_));
 
   // Copy in or validate all members of the PPC.
   RETURN_ERR_IF_NOT(
@@ -1518,7 +1524,7 @@ Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
     return quantizationProfilingPartition(cctx);
   }
 
-  if (!multiBackendNames_ && glow::GlowEnableLoadBalancedPartitioning) {
+  if (!multiBackendNames_ && glow::flags::EnableLoadBalancedPartitioning) {
     // Call load-balance partition flow.
     VLOG(1) << "Using Load balance Partition";
     return loadBalancedPartition(cctx);

@@ -30,6 +30,7 @@ IR_FUN_PASS(DebugInstrument)
 IR_FUN_PASS(PeepholeOptimizations)
 IR_FUN_PASS(IRVerify)
 IR_FUN_PASS(IRDumper)
+IR_FUN_PASS(IRInstrument)
 
 
 // NOTE: This pass must be last; it's used to count the total number of passes.

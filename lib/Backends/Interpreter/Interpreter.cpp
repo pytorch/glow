@@ -19,17 +19,13 @@
 
 #include "glow/Backend/BackendUtils.h"
 #include "glow/CodeGen/MemoryAllocator.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
 
-namespace glow {
-namespace runtime {
-extern unsigned GlowInterpreterMemory;
-}
-} // namespace glow
 using namespace glow;
 
 Expected<std::unique_ptr<CompiledFunction>>
@@ -474,6 +470,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             NI.getOutElemTy(GatherNode::ResultIdx)) &&
            ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
             (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
+
+  case Kinded::Kind::GatherNDNodeKind:
+    // Note: Data and Result can be any data type, but must match.
+    return ((NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int32ITy) ||
+            (NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int64ITy));
 
   case Kinded::Kind::BatchOneHotNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -973,9 +974,9 @@ void Interpreter::parseBackendSpecificOptions(
   auto interpreterMaxMemOpt =
       opts.backendSpecificOpts.find("interpreter-memory");
   if (interpreterMaxMemOpt != opts.backendSpecificOpts.end()) {
-    glow::runtime::GlowInterpreterMemory =
+    glow::runtime::flags::InterpreterMemory =
         std::stoi(interpreterMaxMemOpt->second);
     llvm::outs() << "Interpreter memory set to "
-                 << glow::runtime::GlowInterpreterMemory << "\n";
+                 << glow::runtime::flags::InterpreterMemory << "\n";
   }
 }

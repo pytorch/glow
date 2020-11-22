@@ -17,6 +17,7 @@
 #include "glow/Importer/ONNXModelLoader.h"
 
 #include "glow/Base/Tensor.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
@@ -855,6 +856,11 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
 
     // We must not have the input created yet, so do so.
     if (loadInputsAsPlaceholdersForOnnx) {
+      RETURN_ERR_IF_NOT(!clipQuantRangeToFP16_ || !ty.isQuantizedType() ||
+                            ty.isFusedQuantizedType(),
+                        "Do not support clipQuantRangeToFP16 with unfused "
+                        "quantized input Placeholders: " +
+                            in.name());
       Placeholder *inPH;
       ASSIGN_VALUE_OR_RETURN_ERR(
           inPH, createAndRegisterPlaceholder(in.name(), mod_.uniqueType(ty),
@@ -896,11 +902,16 @@ bool ONNXModelLoader::hasMultidirectionalBroadcast(
     const llvm::StringRef typeName) {
   // Before opset 7, broadcasting was unidirectional.
   if (opsetVersion_ > 6) {
+    // List of ops that support multidirectional broadcast can be found at
+    // https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
     if ((typeName == "Add") || (typeName == "Sub") || (typeName == "Mul") ||
-        (typeName == "Div")) {
+        (typeName == "Div") || (typeName == "Equal") ||
+        (typeName == "Greater") || (typeName == "Less") ||
+        (typeName == "Max") || (typeName == "Mean") || (typeName == "Min") ||
+        (typeName == "Mul") || (typeName == "Or") || (typeName == "Pow") ||
+        (typeName == "Sum") || (typeName == "Xor")) {
       return true;
     }
-    // TODO: some other operators also support multidirectional broadcasting.
   }
   return false;
 }
@@ -1267,6 +1278,27 @@ Error ONNXModelLoader::loadRange(const ONNX_NAMESPACE::NodeProto &op,
   } else {
     return MAKE_ERR("Data type not supported");
   }
+}
+
+Error ONNXModelLoader::loadPRelu(const ONNX_NAMESPACE::NodeProto &op,
+                                 ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  NodeValue slope;
+  ASSIGN_VALUE_OR_RETURN_ERR(slope, getNodeValueByName(op.input(1)));
+
+  // Do broadcasting.
+  auto targetDim = in.dims();
+  // Sets the axis of each inputs so that the trailing-most dimensions of
+  // input tensors and the target shape are aligned.
+  int axis = targetDim.size() - slope.dims().size();
+  auto *finalSlope = G_->createBroadcast(opName, slope, targetDim, axis);
+  auto *R = G_->createPRELU(opName, in, finalSlope);
+  RETURN_IF_ERR(addNodeAsOutput(op, R));
+  return Error::success();
 }
 
 Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
@@ -2567,9 +2599,19 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
-  /// For dimension size equal to 3 use batchedMatMul
-  if (LHS.dims().size() == 3) {
+  /// For dimension greater than 2 use batchedMatMul
+  if (LHS.dims().size() > 2) {
     Node *node = G_->createBatchMatMul(opName, LHS, RHS);
+    const size_t numDimsLHS = LHS.dims().size();
+    if (numDimsLHS > 3) {
+      const size_t numDimsRHS = RHS.dims().size();
+      std::vector<dim_t> finalShape;
+      for (auto d : LHS.dims()) {
+        finalShape.push_back(d);
+      }
+      finalShape[numDimsLHS - 1] = RHS.dims()[numDimsRHS - 1];
+      node = G_->createReshape(opName, node, finalShape);
+    }
     RETURN_IF_ERR(addNodeAsOutput(op, node));
   } else {
     Node *node = G_->createMatMul(opName, LHS, RHS);
@@ -2633,17 +2675,43 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
           ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   }
-  float value = 0.f; // Default
-  if (dict.count("value")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(value, loadFloat(dict.at("value")));
+
+  std::vector<int> pads;
+
+  if (this->opsetVersion_ > 10) {
+    // Get pads through input(1) from opset v11.
+    RETURN_ERR_IF_NOT(
+        op.input_size() > 1,
+        "Pad: The 'pads' is mandatory as input(1) from opsetv11.");
+    Constant *padC;
+    ASSIGN_VALUE_OR_RETURN_ERR(padC, getConstantByName(op.input(1)));
+    RETURN_ERR_IF_NOT(padC, "Support only constant pad");
+    helperSetter<int64_t, int>(padC, pads);
+  } else {
+    RETURN_ERR_IF_NOT(dict.count("pads"),
+                      "Pad: The 'pads' property is mandatory");
+    ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<int>(dict["pads"]));
   }
 
-  // Pads are mandatory.
-  std::vector<int> pads;
-  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<int>(dict["pads"]));
   RETURN_ERR_IF_NOT(
       (pads.size() == 2 * numDims),
       opErrMsg(op, " The 'pads' array must contain 2 values per dimensions"));
+
+  float value = 0.f;
+  if (this->opsetVersion_ > 10) {
+    if (op.input_size() > 2) {
+      Constant *valueC;
+      ASSIGN_VALUE_OR_RETURN_ERR(valueC, getConstantByName(op.input(2)));
+      RETURN_ERR_IF_NOT(valueC, "Support only constant value in Pad");
+      RETURN_ERR_IF_NOT(valueC->getElementType() == ElemKind::FloatTy,
+                        "Value in Pad should be float type.");
+      value = valueC->getPayload().getHandle().raw(0);
+    }
+  } else {
+    if (dict.count("value")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(value, loadFloat(dict.at("value")));
+    }
+  }
 
   // Compute the output type.
   std::vector<dim_t> outDims(numDims);
@@ -2696,6 +2764,38 @@ Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_->createConvertTo(opName, input, targetKind);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadDepthToSpace(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  dim_t blockSize = 0;
+  if (dict.count("blocksize")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(blockSize, loadInt(dict.at("blocksize")));
+  } else {
+    return MAKE_ERR("DepthToSpace: missing 'blocksize' attribute");
+  }
+
+  std::string mode = "DCR";
+  if (dict.count("mode")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(mode, loadStr(dict.at("mode")));
+  }
+
+  auto inputDim = input.dims();
+  RETURN_ERR_IF_NOT(inputDim.size() == 4,
+                    "DepthToSpace: dimension size of 4 is expected.");
+  RETURN_ERR_IF_NOT(inputDim[1] % blockSize == 0,
+                    "DepthToSpace: depth should be divisible by block size.");
+
+  std::string opName = loadOperatorName(op);
+  auto *TR1 = G_->createTranspose(opName, input, NCHW2NHWC);
+  auto *D2S = G_->createDepthToSpace(opName, TR1, blockSize, mode == "CRD");
+  auto *TR2 = G_->createTranspose(opName, D2S, NHWC2NCHW);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, TR2));
   return Error::success();
 }
 
@@ -4497,6 +4597,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Range") {
     return loadRange(op, dict);
   }
+  if (typeName == "PRelu") {
+    return loadPRelu(op, dict);
+  }
   if (typeName == "Slice") {
     return loadSlice(op, dict);
   }
@@ -4563,6 +4666,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "SpaceToDepth") {
     return loadSpaceToDepth(op, dict);
   }
+  if (typeName == "DepthToSpace") {
+    return loadDepthToSpace(op, dict);
+  }
   if (typeName == "ReduceL2") {
     return loadReduceL2(op, dict);
   }
@@ -4590,8 +4696,7 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Clip") {
     return loadClip(op, dict);
   }
-  // Glow specific operators
-  if (typeName == "CmpEQ") {
+  if (typeName == "Equal") {
     return loadCmpEQ(op, dict);
   }
   if (typeName == "CmpLTE") {
@@ -5142,10 +5247,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(
         modelDef, loadProto(modelDescFilename, zipMode, inputStringPtr));
-
     RETURN_IF_ERR(loadModel(modelDef, tensorNames, types, B,
                             /* loadInputsAsPlaceholdersForOnnx */ true));
-
     return Error::success();
   };
 
@@ -5311,7 +5414,8 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
   Error err(Error::success());
   Module dummyMod;
   Caffe2ModelLoader tmpLoader(qParamC2ProtoStr, weightsCount, weightDescriptors,
-                              dummyMod, &err, &originNameToTQPMap);
+                              dummyMod, &err, &originNameToTQPMap,
+                              clipQuantRangeToFP16_);
   RETURN_IF_ERR(err);
 
   // Now parse the originNameToUniqueOffsetMappingStr to find the original C2
@@ -5435,12 +5539,14 @@ ONNXModelLoader::ONNXModelLoader(
     llvm::StringRef funName, PrePartitionedConfig *PPC,
     bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader,
     BackendSpecificNodeInfo *perNodeOpts,
-    std::map<std::string, Type> *staticPlaceholderTypes, bool replaceDummyTQPs)
+    std::map<std::string, Type> *staticPlaceholderTypes, bool replaceDummyTQPs,
+    bool clipQuantRangeToFP16)
     : CommonOperatorLoader({}, {}, mod, errPtr,
                            /* loadIntoExistingModule */ true,
                            /* originNameToTQPMap */ nullptr,
                            /* loadUniquedDummyQParams */ false,
-                           replaceDummyTQPs),
+                           replaceDummyTQPs, /* zeroScaleFP16Clip */ false,
+                           clipQuantRangeToFP16),
       perNodeOpts_(perNodeOpts),
       staticPlaceholderTypes_(staticPlaceholderTypes) {
   // if errPtr already contains an error then don't continue with constructor
@@ -5460,6 +5566,18 @@ ONNXModelLoader::ONNXModelLoader(
     // If we're going to be replacing dummy TQPs then setup the updated TQP map,
     // which is used later on when loading each op.
     if (replaceDummyTQPs_) {
+      // Check if the model has specified that clipQuantRangeToFP16 should be
+      // overridden via the clipQuantRangeToFP16Key metadata prop. Do this
+      // before updating TQP map, because this will affect the qparams loaded.
+      for (const auto &keyVal : modelDef.metadata_props()) {
+        if (keyVal.key() == clipQuantRangeToFP16Key && keyVal.value() == "1") {
+          LOG(INFO) << "ONNXModelLoader found enabled "
+                    << clipQuantRangeToFP16Key;
+          clipQuantRangeToFP16_ = true;
+          break;
+        }
+      }
+
       RETURN_IF_ERR(
           setupUpdatedTQPMap(modelDef, weightsCount, weightDescriptors));
     }

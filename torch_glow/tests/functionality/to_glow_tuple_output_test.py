@@ -1,25 +1,36 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import io
 import unittest
 
 import torch
 import torch_glow
+from tests.utils import assertModulesEqual
 
 
-class Foo(torch.nn.Module):
+class TwoTupleModule(torch.nn.Module):
     def __init__(self):
-        super(Foo, self).__init__()
+        super(TwoTupleModule, self).__init__()
 
     def forward(self, x):
         y = 2 * x
-        return x, y
+        return (x, y)
+
+
+class OneTupleModule(torch.nn.Module):
+    def __init__(self):
+        super(OneTupleModule, self).__init__()
+
+    def forward(self, x):
+        y = 2 * x
+        return (y,)
 
 
 class TestToGlowTupleOutput(unittest.TestCase):
-    def test_to_glow_tuple_output(self):
+    def tuple_test_helper(self, ModType):
         input = torch.randn(4)
 
-        model = Foo()
+        model = ModType()
 
         spec = torch_glow.CompilationSpec()
         spec.get_settings().set_glow_backend("Interpreter")
@@ -36,10 +47,26 @@ class TestToGlowTupleOutput(unittest.TestCase):
         lowered_model = torch_glow.to_glow(scripted_mod, {"forward": spec})
 
         # Run Glow model
-        (gx, gy) = lowered_model(input)
+        g = lowered_model(input)
 
         # Run reference model
-        (tx, ty) = model(input)
+        t = model(input)
 
-        assert torch.allclose(tx, gx)
-        assert torch.allclose(ty, gy)
+        self.assertEqual(type(g), type(t))
+        self.assertEqual(len(g), len(t))
+
+        for (gi, ti) in zip(g, t):
+            self.assertTrue(torch.allclose(gi, ti))
+
+        # test module ser/de with tuple output
+        buffer = io.BytesIO()
+        torch.jit.save(lowered_model, buffer)
+        buffer.seek(0)
+        loaded_model = torch.jit.load(buffer)
+        assertModulesEqual(self, lowered_model, loaded_model)
+
+    def test_to_glow_one_tuple_output(self):
+        self.tuple_test_helper(OneTupleModule)
+
+    def test_to_glow_two_tuple_output(self):
+        self.tuple_test_helper(TwoTupleModule)

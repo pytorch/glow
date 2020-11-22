@@ -48,26 +48,37 @@ class TestQuantizedEmbeddingBag(unittest.TestCase):
     @parameterized.expand(
         [
             [
-                "{len}{bits}{weighted}{fp16}{backend}".format(
+                "{len}{bits}{weighted}{fp16}{sample_weights}{backend}".format(
                     len=num_lengths,
                     bits="_4bit" if is4bit else "_byte",
                     weighted="_weighted" if is_weighted else "",
                     fp16="_fp16" if use_fp16 else "",
+                    sample_weights="_sample_weights_fp16"
+                    if per_sample_weights_fp16 and is_weighted
+                    else "",
                     backend="_" + DEFAULT_BACKEND,
                 ),
                 num_lengths,
                 is4bit,
                 is_weighted,
                 use_fp16,
+                per_sample_weights_fp16,
             ]
             for num_lengths in [0, 8]
             for is4bit in [False, True]
             for is_weighted in [False, True]
             for use_fp16 in [False, True]
+            for per_sample_weights_fp16 in [False, True]
         ]
     )
     def test_embedding_bag_rowwise_offsets(
-        self, name, num_lengths, is4bit, is_weighted, use_fp16
+        self,
+        name,
+        num_lengths,
+        is4bit,
+        is_weighted,
+        use_fp16,
+        per_sample_weights_fp16,
     ):
         """Test of quantized::embedding_bag_byte_rowwise_offsets and
         quantized::embedding_bag_4bit_rowwise_offsets node on glow"""
@@ -120,9 +131,12 @@ class TestQuantizedEmbeddingBag(unittest.TestCase):
         ).long()
         offsets = torch.cat([torch.zeros([1]), torch.cumsum(lengths, 0)]).long()
 
+        per_sample_weights_type = (
+            np.float16 if per_sample_weights_fp16 and is4bit else np.float32
+        )
         per_sample_weights = torch.from_numpy(
             np.random.uniform(low=0.01, high=0.5, size=[len(indices)]).astype(
-                np.float32
+                per_sample_weights_type
             )
         )
 

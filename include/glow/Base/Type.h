@@ -442,6 +442,11 @@ inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
   return ElemKind::Float16Ty;
 }
 
+/// \returns the floating point value range that covers a quantized type (min
+/// first, max second) given \p scale, \p offset, and \p elementType.
+std::pair<float, float> getQuantizedValueRange(float scale, int32_t offset,
+                                               ElemKind elementType);
+
 /// A class that represents a type of a tensor.
 struct Type final {
   /// Contains the dimensions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
@@ -558,43 +563,16 @@ struct Type final {
   /// \returns the floating point value range that covers a quantized type (min
   /// first, max second).
   std::pair<float, float> getQuantizedValueRange() const {
-    assert(isQuantizedType() &&
-           "Can't get the quantized value range of a non-quantized type");
-
-    int64_t low = 0, high = 0;
-    switch (elementType_) {
-    case ElemKind::Int32QTy: {
-      low = INT32_MIN;
-      high = INT32_MAX;
-      break;
-    }
-    case ElemKind::Int16QTy: {
-      low = INT16_MIN;
-      high = INT16_MAX;
-      break;
-    }
-    case ElemKind::Int8QTy: {
-      low = INT8_MIN;
-      high = INT8_MAX;
-      break;
-    }
-    case ElemKind::UInt8QTy: {
-      low = UINT8_MIN;
-      high = UINT8_MAX;
-      break;
-    }
-    default:;
-    }
-
-    float lowFloat = (low - offset_) * scale_;
-    float highFloat = (high - offset_) * scale_;
-    return std::make_pair(lowFloat, highFloat);
+    return ::glow::getQuantizedValueRange(scale_, offset_, elementType_);
   }
 
   /// \returns true if \p other is the same type. If \p allowDifferentShape then
-  /// shapes will not be considered as part of the equal comparison.
+  /// shapes will not be considered as part of the equal comparison. If \p
+  /// allowDifferentScaleOffset is true, scale and offset will not be considered
+  /// as part of the equal comparison.
   bool isEqual(const Type &other, bool allowDifferentShape = false,
-               bool allowDifferentStrides = false) const {
+               bool allowDifferentStrides = false,
+               bool allowDifferentScaleOffset = false) const {
     // Element type must be the same.
     if (elementType_ != other.elementType_) {
       return false;
@@ -622,7 +600,8 @@ struct Type final {
 
     // Compare the scale and offset of integers. Fused types use dummy
     // scale/offset, so can ignore them.
-    if (isQuantizedType() && !isFusedQuantizedType()) {
+    if (isQuantizedType() && !isFusedQuantizedType() &&
+        !allowDifferentScaleOffset) {
       if (scale_ != other.scale_ || offset_ != other.offset_) {
         return false;
       }

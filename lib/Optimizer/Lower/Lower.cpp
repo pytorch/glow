@@ -1389,21 +1389,12 @@ static void lowerBatchBoxCoxNode(Function *F, CompilationContext &cctx,
   // Broadcast lambda1 and lambda2 so that they are both the same size as the
   // data.
   auto *BL1 =
-      F->createBroadcast(name.str() + ".broadcast", lambda1, data.dims(),
+      F->createBroadcast(name.str() + ".broadcast_1", lambda1, data.dims(),
                          /*axis=*/1);
   auto *BL2 =
-      F->createBroadcast(name.str() + ".broadcast", lambda2, data.dims(),
+      F->createBroadcast(name.str() + ".broadcast_2", lambda2, data.dims(),
                          /*axis=*/1);
-
-  // Broadcast is usually implemented via a Tile node returned from
-  // createBroadcast(). However, if the Broadcast was a noop then there is a
-  // Reshape instead of a Tile returned. Thus, get the index here to use based
-  // on the returned kinds from createBroadcast() above.
-  assert((llvm::isa<TileNode>(BL1) || llvm::isa<ReshapeNode>(BL1)) &&
-         "Broadcast is assumed to be either implemented via Tile or Reshape.");
-  TypeRef typeBL1 = llvm::isa<TileNode>(BL1)
-                        ? BL1->getType(TileNode::ResultIdx)
-                        : BL1->getType(ReshapeNode::ResultIdx);
+  TypeRef typeBL1 = BL1->getType(BroadcastNode::ResultIdx);
 
   // Add a small epsilon to lambda1 so that we can avoid dividing by zero
   // later. It doesn't matter that this is technically incorrect because the
@@ -1699,6 +1690,45 @@ static void lowerLSTMUnitNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, LUN.getNthResult(1), newC);
 }
 
+static void lowerBroadcastNode(Function *F, CompilationContext &cctx,
+                               const BroadcastNode &BN) {
+  const auto input = BN.getInput();
+  const auto newShape = BN.getTargetDim();
+  const auto axis = BN.getAxis();
+  const auto name = BN.getName();
+  const auto &origDims = input.dims();
+
+  // Iterate over the new shape; if the original shape had a dimension here
+  // (when considering the axis) then take original shape dim as the reshpe dim.
+  // Else the original shape had no dimensions here (after considering axis), so
+  // add the new dimension and broadcast in that direction.
+  std::array<dim_t, max_tensor_dimensions> reshapeDims;
+  for (dim_t i = 0; i < newShape.size(); i++) {
+    if (i >= axis && i < origDims.size() + axis) {
+      reshapeDims[i] = origDims[i - axis];
+    } else {
+      // Will broadcast this dimension to size from newShape.
+      reshapeDims[i] = 1;
+    }
+  }
+  // Reshape the input node to same number of dimensions as new shape, but
+  // with 1s in place of to-be-broadcasted dimensions.
+  Node *currNode =
+      F->createReshape(name.str() + ".reshape", input,
+                       llvm::ArrayRef<dim_t>(&reshapeDims[0], newShape.size()));
+
+  // Create a Tile (which is really a Concat) in each direction that needs to
+  // be broadcasted.
+  for (size_t i = 0; i < newShape.size(); i++) {
+    if (reshapeDims[i] == 1 && newShape[i] != 1) {
+      currNode = F->createTile(name.str() + ".tile" + std::to_string(i),
+                               currNode, newShape[i], i);
+    }
+  }
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BN.getResult(), currNode);
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
@@ -1748,6 +1778,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(FloorDiv);
     CASE_LOWER(BatchedMul);
     CASE_LOWER(LSTMUnit);
+    CASE_LOWER(Broadcast);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {

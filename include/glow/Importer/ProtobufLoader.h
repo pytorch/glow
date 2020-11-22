@@ -230,6 +230,11 @@ protected:
   /// Whether to try to replace dummy TQPs found during loading with real
   /// updated ones in \ref updatedTQPs_.
   bool replaceDummyTQPs_{false};
+  /// If true, when scales for qparams are loaded, they are clipped to
+  /// kMinScaleFP16 if below kMinScaleFP16.
+  bool zeroScaleFP16Clip_{false};
+  /// Whether to the range of any loaded qparams to min/max of FP16.
+  bool clipQuantRangeToFP16_{false};
 
   // Delete all Constants that have no users. This is useful because some
   // Constants may have been copied and modified during loading instead of used
@@ -290,7 +295,8 @@ protected:
   /// the offset is shifted by UINT8_TO_INT8_SHIFT to Int8.
   Expected<TypeRef> loadQuantTy(const std::string &name, ElemKind k,
                                 llvm::ArrayRef<dim_t> dims, float scale,
-                                int32_t offset, bool shiftUInt8ToInt8 = true);
+                                int32_t offset, bool shiftUInt8ToInt8 = true,
+                                bool skipClipQuantRangeToFP16 = false);
 
 public:
   /// \returns the NodeValue that was registered with the name \p name.  If
@@ -317,7 +323,8 @@ public:
                  Error *errPtr = nullptr, bool loadIntoExistingModule = false,
                  OriginNameToTQPMap *originNameToTQPMap = nullptr,
                  bool loadUniquedDummyQParams = false,
-                 bool replaceDummyTQPs = false);
+                 bool replaceDummyTQPs = false, bool zeroScaleFP16Clip = false,
+                 bool clipQuantRangeToFP16 = false);
 
   /// Constructs new ProtobufLoader object. It will populate the network into
   /// \p mod. The list \p types and \p names are used to initialize the inputs
@@ -331,7 +338,8 @@ public:
                  Error *errPtr = nullptr, bool loadIntoExistingModule = false,
                  OriginNameToTQPMap *originNameToTQPMap = nullptr,
                  bool loadUniquedDummyQParams = false,
-                 bool replaceDummyTQPs = false);
+                 bool replaceDummyTQPs = false, bool zeroScaleFP16Clip = false,
+                 bool clipQuantRangeToFP16 = false);
 
   ProtobufLoader(const ProtobufLoader &other) = delete;
   ProtobufLoader &operator=(const ProtobufLoader &) = delete;

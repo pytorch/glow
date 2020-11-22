@@ -94,6 +94,10 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.enableLightweightCompilation = compilationOptions.lightCompilation;
   config_.dumpDotFiles = compilationOptions.dumpDotFiles;
 
+  config_.forceWeightsOutOfLLC = compilationOptions.forceWeightsOutOfLLC;
+  config_.disableSlsAllLenOneCalcAtRunTime =
+      compilationOptions.disableSlsAllLenOneCalcAtRunTime;
+
   return Error::success();
 }
 
@@ -287,14 +291,14 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
                          std::to_string(opts.backendHints.executionUnits));
   }
 
-  if (glow::onnxifi::GlowDumpNNPICompilerData) {
+  if (glow::nnpi::flags::DumpCompilerData) {
     const std::string icetFName =
         std::string("icet_file_") + F->getName().str();
     insertOptLogOverride(*F, newOpts.backendSpecificOpts, "NNPI_CompiledFile",
                          icetFName);
   }
 
-  if (glow::onnxifi::GlowUsePerPartitionIcetConfig) {
+  if (glow::nnpi::flags::UsePerPartitionIcetConfig) {
     const std::string icetConfigFName =
         std::string("icet_config_") + F->getName().str() + std::string(".json");
     insertOptLogOverride(*F, newOpts.backendSpecificOpts,
@@ -338,11 +342,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   if (!compilationOptions_.disableConstFolding) {
     optConf.constantFolding = 1;
   }
-#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION < 1
-  config_.forceWeightsOutOfLLC = compilationOptions_.forceWeightsOutOfLLC;
-  config_.disableSlsAllLenOneCalcAtRunTime =
-      compilationOptions_.disableSlsAllLenOneCalcAtRunTime;
-#endif // NNPI < 1.1
 
   DBG_MEM_USAGE("NNPICompiledFunction call optimize <<");
   LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiNetworkOptimize(network_, &optConf),
@@ -384,8 +383,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   }
 
   if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
-    static std::mutex compileMutex;
-    std::lock_guard<std::mutex> guard(compileMutex);
     if (compilationFileName_.empty()) // Compile to memory.
     {
       NNPIStream outFileStream;
@@ -424,7 +421,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
     // Update compilation info after NNPI compilation.
     if (compilationOptions_.dumpCompilationInfo ||
-        compilationOptions_.lightCompilation || GlowDumpBackendSpecificIRJSON) {
+        compilationOptions_.lightCompilation ||
+        flags::DumpBackendSpecificIRJSON) {
       if (!updateCompilationInfo()) {
         // Only issuing a warning (soft fail)
         LOG(WARNING) << "Failed to update NNPI compilation info";

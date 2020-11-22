@@ -16,590 +16,623 @@
 
 #include <gflags/gflags.h>
 
+/* Flags should generally go in as specific of namespace as makes sense.
+ *  That is, if a flag is specific to torch_glow, it should go in the
+ * flags::torch_glow namespace. Flags that have a generic nature, but are not
+ * supported in specific contexts, can go in a specific domain. An example is
+ * AcceptUnarySLS living in the glow::nnpi::flags namespace, as that's the only
+ * domain for which it is supported. In the same vein, it is encouraged to make
+ * flags as generic as is possible.
+ */
 namespace glow {
-bool GlowEnableLoadBalancedPartitioning = false;
-bool GlowLogPartition = false;
-bool GlowDumpPartition = false;
-bool GlowDumpCompilationLog = false;
-bool GlowDumpBackendSpecificIRJSON = false;
-bool GlowNNPILowerAllBatchMatMul = false;
-bool GlowNNPIAcceptUnarySLS = false;
-bool GlowNNPISpecializeAllOneSLS = false;
+namespace flags {
 
-namespace onnxifi {
-int32_t GlowNumDevices = 0;
-int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
-int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
-int32_t GlowSparseNNPartitioningSchemeNumCoresSLS = 1;
-int32_t GlowSparseNNPartitioningSchemeNumCoresOther = 1;
-bool GlowDumpDebugTraces = false;
-int32_t GlowNumDebugTracesPerDump = 100;
-bool GlowSaturateHost = false;
-bool GlowFP16 = false;
-bool GlowFP16Placeholders = true;
-bool GlowFP16Constants = true;
-bool GlowEnableQuantParamChanges = true;
-bool GlowDumpGraph = false;
-std::string GlowDumpGraphPath = "./";
-bool GlowDumpInitialLoadedGraph = false;
-bool GlowUseDAGOptimizer = false;
-bool GlowUseDAGOptimizerAOT = false;
-std::string GlowDAGOptimizerPlacementTaggingAlgorithm = "None";
-std::string GlowDAGOptimizerParallelizationTaggingAlgorithm = "None";
-int32_t GlowDAGOptimizerNumParallelChunks = 1;
-bool GlowFusedScaleOffsetFP16 = false;
-bool GlowForceSLSAccumFP16 = false;
-bool GlowClipFP16 = false;
-bool GlowClipFP16SkipInputs = true;
-bool GlowUseSparseNNPartitioningScheme = false;
-bool GlowSparseNNPartitioningAddSLSConcats = false;
-bool GlowSparseNNPartitioningBalancePerfModel = false;
-bool GlowSparseNNPartitioningPairLNWithSLS = false;
-size_t GlowMaxActiveRequests = 48;
-size_t GlowMaxActiveRequestsPerInstance = 48;
-size_t GlowMaxQueueSize = 100;
-size_t GlowExecutorThreads = 10;
-bool GlowDelayAndRecordConstantModification = false;
-bool GlowUseTrackedDummyQuantParams = false;
-std::string GlowOnnxifiBackend = "";
-bool GlowSaveOnnxifiModel = false;
-bool GlowSaveOnnxifiIO = false;
-bool GlowSaveOnnxifiDAG = false;
-bool GlowEnablePartialTensors = true;
-bool GlowUseCustomOpsForExport = true;
-bool GlowDumpNNPICompilerData = false;
-bool GlowUsePerPartitionIcetConfig = false;
-bool GlowDisableNNPITransforms = false;
-bool GlowDisableNNPIPrivateTransforms = false;
-int32_t GlowNNPINumParallelChunks = 0;
-int32_t GlowNNPIModelParallelSplitAlignment = 1;
-std::string GlowBackendSpecificOpts = "";
-} // namespace onnxifi
+// Generic Constants
+int32_t NumDevices = 1;
+bool SaturateHost = false;
+bool EnableQuantParamChanges = true;
+size_t MaxActiveRequests = 48;
+size_t MaxActiveRequestsPerInstance = 48;
+size_t MaxQueueSize = 100;
+size_t ExecutorThreads = 10;
+bool DelayAndRecordConstantModification = false;
+bool UseTrackedDummyQuantParams = false;
+bool EnablePartialTensors = true;
+bool UseCustomOpsForExport = true;
+std::string BackendSpecificOpts = "";
+bool EnableLoadBalancedPartitioning = true;
+bool ClipZeroScaleFP16 = false;
 
-namespace runtime {
-unsigned GlowInterpreterMemory = 0;
-unsigned GlowCPUMemory = 0;
-unsigned GlowHabanaMemory = 7 << 20; // 7 GB.
-unsigned GlowNNPIMemory = 0;
-unsigned GlowNNPITimeout = 0;
-bool GlowEnableP2P = false;
-bool GlowEnableDRT = false;
-unsigned GlowDeviceInitTimeoutMs = 5000;
-std::string GlowAvailableDevices = "";
-} // namespace runtime
+// FP16 Constants
+bool ConvertToFP16 = false;
+bool ConvertPlaceholdersToFP16 = false;
+bool ConvertConstantsToFP16 = false;
+bool ConvertFusedScaleOffsetToFP16 = false;
+bool ClipToFP16 = false;
+bool SkipInputsOnClipToFP16 = true;
+bool ForceSLSToFP16Accum = true;
+bool ClipQuantRangeToFP16 = false;
 
+// Debug Constants
+int32_t NumDebugTracesPerDump = 100;
+bool DumpDebugTraces = false;
+bool LogPartition = true;
+bool DumpPartition = false;
+bool DumpCompilationLog = false;
+bool DumpBackendSpecificIRJSON = false;
+bool DumpGraph = false;
+std::string DumpGraphPath = "./";
+bool DumpInitialLoadedGraph = false;
+
+// Sparse NN Partitioning Scheme Constants
+int32_t SparseNNPartitioningSchemeNumCards = 1;
+int64_t SparseNNPartitioningSchemeSLSTableKBytesPerCard = 1;
+int32_t SparseNNPartitioningSchemeNumCoresSLS = 1;
+int32_t SparseNNPartitioningSchemeNumCoresOther = 1;
+bool UseSparseNNPartitioningScheme = false;
+bool SparseNNPartitioningAddSLSConcats = false;
+bool SparseNNPartitioningBalancePerfModel = false;
+bool SparseNNPartitioningPairLNWithSLS = false;
+
+// Dag Optimizer Constants
+bool UseDAGOptimizer = false;
+bool UseDAGOptimizerAOT = false;
+int32_t DAGOptimizerNumParallelChunks = 1;
+std::string DAGOptimizerPlacementTaggingAlgorithm = "None";
+std::string DAGOptimizerParallelizationTaggingAlgorithm = "None";
+
+} // namespace flags
 } // namespace glow
 
-//===--------------------------------------------------------------------===//
-//                    gflags config for all above flags
-//===--------------------------------------------------------------------===//
+#ifdef GLOW_WITH_NNPI
 
-DEFINE_int32(glow_num_devices, 1, "Number of devices for Glow backend");
-DEFINE_validator(glow_num_devices, [](const char *flagname, int32_t value) {
-  glow::onnxifi::GlowNumDevices = value;
+namespace glow {
+namespace nnpi {
+namespace flags {
+int32_t ModelParallelSplitAlignment = 1;
+int32_t NumParallelChunks = 0; // Zero val for an ugly hack in NNPI.cpp
+bool LowerAllBatchMatMul = false;
+bool AcceptUnarySLS = false;
+bool SpecializeAllOneSLS = false;
+bool DisableTransforms = false;
+bool DisablePrivateTransforms = false;
+bool DumpCompilerData = false;
+bool UsePerPartitionIcetConfig = false;
+
+} // namespace flags
+} // namespace nnpi
+} // namespace glow
+
+#endif /* GLOW_WITH_NNPI */
+
+namespace glow {
+namespace torch_glow {
+namespace flags {
+bool ImaginaryFlag = false; // Placeholder flag
+}
+} // namespace torch_glow
+} // namespace glow
+
+namespace glow {
+namespace onnxifi {
+namespace flags {
+std::string BackendName = "";
+bool SaveModel = false;
+bool SaveIO = false;
+bool SaveDAG = false;
+} // namespace flags
+} // namespace onnxifi
+} // namespace glow
+
+namespace glow {
+namespace runtime {
+namespace flags {
+
+#ifdef GLOW_WITH_CPU
+unsigned CPUMemory = 0;
+#endif
+
+#ifdef GLOW_WITH_HABANA
+unsigned HabanaMemory = 7 << 20;
+#endif
+
+#ifdef GLOW_WITH_NNPI
+unsigned NNPIMemory = 16 << 20;
+unsigned NNPITimeoutMs = 0;
+#endif
+
+std::string AvailableDevices = "";
+unsigned InterpreterMemory = 0;
+bool EnableP2P = false;
+bool EnableDRT = false;
+unsigned DeviceInitTimeoutMs = 5000;
+} // namespace flags
+} // namespace runtime
+} // namespace glow
+
+/*
+ * Note: Validators are used to assign instead of direct assignment because
+ * direct assignment seems to result in a static order initialization fiasco.
+ */
+DEFINE_int32(glow_num_devices, glow::flags::NumDevices,
+             "Number of devices for Glow backend");
+DEFINE_validator(glow_num_devices, [](const char *, int32_t val) {
+  glow::flags::NumDevices = val;
   return true;
 });
-
-DEFINE_int32(
-    glow_snn_partitioning_num_cards, 1,
-    "Number of devices to distribute tables across in SparseNN partitioning");
+DEFINE_int32(glow_snn_partitioning_num_cards,
+             glow::flags::SparseNNPartitioningSchemeNumCards,
+             "Number of devices to distribute tables across in SparseNN "
+             "partitioning");
 DEFINE_validator(glow_snn_partitioning_num_cards,
-                 [](const char * /* flagname */, int32_t value) {
-                   glow::onnxifi::GlowSparseNNPartitioningSchemeNumCards =
-                       value;
+                 [](const char *, int32_t val) {
+                   glow::flags::SparseNNPartitioningSchemeNumCards = val;
                    return true;
                  });
-
-DEFINE_int32(glow_snn_partitioning_kbytes_per_card, 1,
+DEFINE_int32(glow_snn_partitioning_kbytes_per_card,
+             glow::flags::SparseNNPartitioningSchemeSLSTableKBytesPerCard,
              "Bytes per card used for SLS tables in SparseNN partitioning");
-DEFINE_validator(
-    glow_snn_partitioning_kbytes_per_card,
-    [](const char * /* flagname */, int32_t value) {
-      glow::onnxifi::GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard =
-          value;
-      return true;
-    });
-
+DEFINE_validator(glow_snn_partitioning_kbytes_per_card, [](const char *,
+                                                           int32_t val) {
+  glow::flags::SparseNNPartitioningSchemeSLSTableKBytesPerCard = val;
+  return true;
+});
 DEFINE_int32(
-    glow_snn_partitioning_num_cores_sls, 1,
+    glow_snn_partitioning_num_cores_sls,
+    glow::flags::SparseNNPartitioningSchemeNumCoresSLS,
     "Number of cores to assign to SLS partition in SparseNN partitioning");
 DEFINE_validator(glow_snn_partitioning_num_cores_sls,
-                 [](const char * /* flagname */, int32_t value) {
-                   glow::onnxifi::GlowSparseNNPartitioningSchemeNumCoresSLS =
-                       value;
+                 [](const char *, int32_t val) {
+                   glow::flags::SparseNNPartitioningSchemeNumCoresSLS = val;
                    return true;
                  });
-
 DEFINE_int32(
-    glow_snn_partitioning_num_cores_other, 1,
+    glow_snn_partitioning_num_cores_other,
+    glow::flags::SparseNNPartitioningSchemeNumCoresOther,
     "Number of cores to assign to non-SLS partition in SparseNN partitioning");
 DEFINE_validator(glow_snn_partitioning_num_cores_other,
-                 [](const char * /* flagname */, int32_t value) {
-                   glow::onnxifi::GlowSparseNNPartitioningSchemeNumCoresOther =
-                       value;
+                 [](const char *, int32_t val) {
+                   glow::flags::SparseNNPartitioningSchemeNumCoresOther = val;
                    return true;
                  });
-
-DEFINE_bool(glow_dump_debug_traces, false, "Dump traces to /tmp");
-DEFINE_validator(glow_dump_debug_traces, [](const char *flagname, bool value) {
-  glow::onnxifi::GlowDumpDebugTraces = value;
+DEFINE_bool(glow_dump_debug_traces, glow::flags::DumpDebugTraces,
+            "Dump traces to /tmp");
+DEFINE_validator(glow_dump_debug_traces, [](const char *, bool val) {
+  glow::flags::DumpDebugTraces = val;
   return true;
 });
-DEFINE_int32(glow_num_debug_traces_per_dump, 100,
+DEFINE_int32(glow_num_debug_traces_per_dump, glow::flags::NumDebugTracesPerDump,
              "Maximum number of traces in each debug dump.");
-DEFINE_validator(glow_num_debug_traces_per_dump,
-                 [](const char * /* flagname */, int32_t value) {
-                   glow::onnxifi::GlowNumDebugTracesPerDump = value;
-                   return true;
-                 });
-
-DEFINE_string(glow_onnxifi_backend, "", "Glow backend used for ONNXIFI");
+DEFINE_validator(glow_num_debug_traces_per_dump, [](const char *, int32_t val) {
+  glow::flags::NumDebugTracesPerDump = val;
+  return true;
+});
+DEFINE_string(glow_onnxifi_backend, glow::onnxifi::flags::BackendName,
+              "Glow backend used for ONNXIFI");
 DEFINE_validator(glow_onnxifi_backend,
-                 [](const char *flagname, const std::string &value) {
-                   glow::onnxifi::GlowOnnxifiBackend = value;
+                 [](const char *, const std::string &val) {
+                   glow::onnxifi::flags::BackendName = val;
                    return true;
                  });
-
 DEFINE_string(
-    glow_available_devices, "",
+    glow_available_devices, glow::runtime::flags::AvailableDevices,
     "Comma separated list of devices which should be used, example 2,3,4");
 DEFINE_validator(glow_available_devices,
-                 [](const char * /* unused */, const std::string &value) {
-                   glow::runtime::GlowAvailableDevices = value;
+                 [](const char *, const std::string &val) {
+                   glow::runtime::flags::AvailableDevices = val;
                    return true;
                  });
-
-DEFINE_bool(glow_global_fp16, false,
+DEFINE_bool(glow_global_fp16, glow::flags::ConvertToFP16,
             "Enable fp16 lowering for all ops on the net");
-DEFINE_validator(glow_global_fp16, [](const char * /* unused */, bool value) {
-  glow::onnxifi::GlowFP16 = value;
+DEFINE_validator(glow_global_fp16, [](const char *, bool val) {
+  glow::flags::ConvertToFP16 = val;
   return true;
 });
-
-DEFINE_bool(glow_global_fp16_placeholders, true,
+DEFINE_bool(torch_glow_imaginary_flag, glow::torch_glow::flags::ImaginaryFlag,
+            "Enable fp16 lowering for all ops on the net");
+DEFINE_validator(torch_glow_imaginary_flag, [](const char *, bool val) {
+  glow::torch_glow::flags::ImaginaryFlag = val;
+  return true;
+});
+DEFINE_bool(glow_global_fp16_placeholders,
+            glow::flags::ConvertPlaceholdersToFP16,
             "Enable fp16 conversion for Placeholders");
-DEFINE_validator(glow_global_fp16_placeholders,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowFP16Placeholders = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_global_fp16_constants, true,
+DEFINE_validator(glow_global_fp16_placeholders, [](const char *, bool val) {
+  glow::flags::ConvertPlaceholdersToFP16 = val;
+  return true;
+});
+DEFINE_bool(glow_global_fp16_constants, glow::flags::ConvertConstantsToFP16,
             "Enable fp16 conversion for Constants");
-DEFINE_validator(glow_global_fp16_constants,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowFP16Constants = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_global_fused_scale_offset_fp16, false,
+DEFINE_validator(glow_global_fp16_constants, [](const char *, bool val) {
+  glow::flags::ConvertConstantsToFP16 = val;
+  return true;
+});
+DEFINE_bool(glow_global_fused_scale_offset_fp16,
+            glow::flags::ConvertFusedScaleOffsetToFP16,
             "Enable fp16 lowering for all op inputs using fused scale/offset");
 DEFINE_validator(glow_global_fused_scale_offset_fp16,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowFusedScaleOffsetFP16 = value;
+                 [](const char *, bool val) {
+                   glow::flags::ConvertFusedScaleOffsetToFP16 = val;
                    return true;
                  });
-
 DEFINE_bool(
-    glow_global_force_sls_fp16_accum, true,
+    glow_global_force_sls_fp16_accum, glow::flags::ForceSLSToFP16Accum,
     "Force all SLS/SLWS ops to use FP16 accumulation. True by default.");
-DEFINE_validator(glow_global_force_sls_fp16_accum,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowForceSLSAccumFP16 = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_enable_quant_param_changes, true,
+DEFINE_validator(glow_global_force_sls_fp16_accum, [](const char *, bool val) {
+  glow::flags::ForceSLSToFP16Accum = val;
+  return true;
+});
+DEFINE_bool(glow_enable_quant_param_changes,
+            glow::flags::EnableQuantParamChanges,
             "Enable quantization param changes during optimizations");
-DEFINE_validator(glow_enable_quant_param_changes,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowEnableQuantParamChanges = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_use_sparsenn_partitioning_scheme, false,
+DEFINE_validator(glow_enable_quant_param_changes, [](const char *, bool val) {
+  glow::flags::EnableQuantParamChanges = val;
+  return true;
+});
+DEFINE_bool(glow_use_sparsenn_partitioning_scheme,
+            glow::flags::UseSparseNNPartitioningScheme,
             "Force glow to use SparseNN partitioning scheme");
 DEFINE_validator(glow_use_sparsenn_partitioning_scheme,
-                 [](const char * /* flagname */, bool value) {
-                   glow::onnxifi::GlowUseSparseNNPartitioningScheme = value;
+                 [](const char *, bool val) {
+                   glow::flags::UseSparseNNPartitioningScheme = val;
                    return true;
                  });
-
-DEFINE_bool(glow_sparsenn_partitioning_add_sls_concats, false,
+DEFINE_bool(glow_sparsenn_partitioning_add_sls_concats,
+            glow::flags::SparseNNPartitioningAddSLSConcats,
             "Add extra concats inside of SLS partitions for more efficient "
             "inter-partitition transfers");
 DEFINE_validator(glow_sparsenn_partitioning_add_sls_concats,
-                 [](const char * /* flagname */, bool value) {
-                   glow::onnxifi::GlowSparseNNPartitioningAddSLSConcats = value;
+                 [](const char *, bool val) {
+                   glow::flags::SparseNNPartitioningAddSLSConcats = val;
                    return true;
                  });
-
-DEFINE_bool(glow_sparsenn_partitioning_balance_perf_model, false,
+DEFINE_bool(glow_sparsenn_partitioning_balance_perf_model,
+            glow::flags::SparseNNPartitioningBalancePerfModel,
             "Balance SLS tables across cards using a perf model");
 DEFINE_validator(glow_sparsenn_partitioning_balance_perf_model,
-                 [](const char * /* flagname */, bool value) {
-                   glow::onnxifi::GlowSparseNNPartitioningBalancePerfModel =
-                       value;
+                 [](const char *, bool val) {
+                   glow::flags::SparseNNPartitioningBalancePerfModel = val;
                    return true;
                  });
-
-DEFINE_bool(glow_sparsenn_partitioning_pair_ln_with_sls, false,
+DEFINE_bool(glow_sparsenn_partitioning_pair_ln_with_sls,
+            glow::flags::SparseNNPartitioningPairLNWithSLS,
             "Put layer normalization nodes immediately following SLS into SLS "
             "Partitions");
 DEFINE_validator(glow_sparsenn_partitioning_pair_ln_with_sls,
-                 [](const char * /* flagname */, bool value) {
-                   glow::onnxifi::GlowSparseNNPartitioningPairLNWithSLS = value;
+                 [](const char *, bool val) {
+                   glow::flags::SparseNNPartitioningPairLNWithSLS = val;
                    return true;
                  });
-
-DEFINE_bool(glow_clip_fp16, false, "Force glow to clip fp16 values to min/max");
-DEFINE_validator(glow_clip_fp16, [](const char *flagname, bool value) {
-  glow::onnxifi::GlowClipFP16 = value;
+DEFINE_bool(glow_clip_fp16, glow::flags::ClipToFP16,
+            "Force glow to clip fp16 values to min/max");
+DEFINE_validator(glow_clip_fp16, [](const char *, bool val) {
+  glow::flags::ClipToFP16 = val;
   return true;
 });
-
-DEFINE_bool(glow_clip_fp16_skip_inputs, true,
+DEFINE_bool(glow_clip_fp16_skip_inputs, glow::flags::SkipInputsOnClipToFP16,
             "Force glow to skip clipping fp16 Node inputs to min/max");
-DEFINE_validator(glow_clip_fp16_skip_inputs,
-                 [](const char *flagname, bool value) {
-                   glow::onnxifi::GlowClipFP16SkipInputs = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_saturate_host, false,
+DEFINE_validator(glow_clip_fp16_skip_inputs, [](const char *, bool val) {
+  glow::flags::SkipInputsOnClipToFP16 = val;
+  return true;
+});
+DEFINE_bool(glow_saturate_host, glow::flags::SaturateHost,
             "Try to use all available devices on the host");
-DEFINE_validator(glow_saturate_host, [](const char *flagname, bool value) {
-  glow::onnxifi::GlowSaturateHost = value;
+DEFINE_validator(glow_saturate_host, [](const char *, bool val) {
+  glow::flags::SaturateHost = val;
   return true;
 });
-
 DEFINE_bool(
-    glow_save_onnxifi_dag, false,
+    glow_save_onnxifi_dag, glow::onnxifi::flags::SaveDAG,
     "Whether to serialize the DAG that has been optimized and partitioned.");
-DEFINE_validator(glow_save_onnxifi_dag, [](const char *flagname, bool value) {
-  glow::onnxifi::GlowSaveOnnxifiDAG = value;
+DEFINE_validator(glow_save_onnxifi_dag, [](const char *, bool val) {
+  glow::onnxifi::flags::SaveDAG = val;
   return true;
 });
-
 DEFINE_bool(
-    glow_delay_and_record_constant_modification, false,
+    glow_delay_and_record_constant_modification,
+    glow::flags::DelayAndRecordConstantModification,
     "Whether to delay and record constant modification for serialization.");
 DEFINE_validator(glow_delay_and_record_constant_modification,
-                 [](const char *flagname, bool value) {
-                   glow::onnxifi::GlowDelayAndRecordConstantModification =
-                       value;
+                 [](const char *, bool val) {
+                   glow::flags::DelayAndRecordConstantModification = val;
                    return true;
                  });
-
-DEFINE_bool(glow_use_tracked_dummy_quant_params, false,
+DEFINE_bool(glow_use_tracked_dummy_quant_params,
+            glow::flags::UseTrackedDummyQuantParams,
             "Whether to use uniqued dummy quant params when loading the model, "
             "which are then mapped to loaded names for serialization.");
 DEFINE_validator(glow_use_tracked_dummy_quant_params,
-                 [](const char *flagname, bool value) {
-                   glow::onnxifi::GlowUseTrackedDummyQuantParams = value;
+                 [](const char *, bool val) {
+                   glow::flags::UseTrackedDummyQuantParams = val;
                    return true;
                  });
-
-DEFINE_int32(glow_max_active_requests, 48,
-             "Number of max active requests before host manager start queuing");
-DEFINE_validator(glow_max_active_requests,
-                 [](const char *flagname, int32_t value) {
-                   glow::onnxifi::GlowMaxActiveRequests = value;
-                   return true;
-                 });
-
-DEFINE_int32(glow_max_active_requests_per_instance, 48,
-             "Number of max active requests per instance of a network.");
-DEFINE_validator(glow_max_active_requests_per_instance,
-                 [](const char * /* unused */, int32_t value) {
-                   glow::onnxifi::GlowMaxActiveRequestsPerInstance = value;
-                   return true;
-                 });
-
-DEFINE_int32(
-    glow_max_queue_size, 100,
-    "Max number of pending requeusts in glow's host manager queue before "
-    "rejecting new request");
-DEFINE_validator(glow_max_queue_size, [](const char *flagname, int32_t value) {
-  glow::onnxifi::GlowMaxQueueSize = value;
+DEFINE_bool(glow_clip_zero_scale_fp16, glow::flags::ClipZeroScaleFP16,
+            "Whether to clip qparam scales below 1/65504 to that val.");
+DEFINE_validator(glow_clip_zero_scale_fp16, [](const char *, bool val) {
+  glow::flags::ClipZeroScaleFP16 = val;
   return true;
 });
-
-DEFINE_int32(glow_executor_threads, 10,
-             "Number of executor threads for host manager");
-DEFINE_validator(glow_executor_threads,
-                 [](const char *flagname, int32_t value) {
-                   glow::onnxifi::GlowExecutorThreads = value;
+DEFINE_bool(glow_clip_quant_range_to_fp16, glow::flags::ClipQuantRangeToFP16,
+            "Whether to clip quantization parameters inside the fp16 range.");
+DEFINE_validator(glow_clip_quant_range_to_fp16, [](const char *, bool val) {
+  glow::flags::ClipQuantRangeToFP16 = val;
+  return true;
+});
+DEFINE_int32(glow_max_active_requests, glow::flags::MaxActiveRequests,
+             "Number of max active requests before host manager start queuing");
+DEFINE_validator(glow_max_active_requests, [](const char *, int32_t val) {
+  glow::flags::MaxActiveRequests = val;
+  return true;
+});
+DEFINE_int32(glow_max_active_requests_per_instance,
+             glow::flags::MaxActiveRequestsPerInstance,
+             "Number of max active requests per instance of a network.");
+DEFINE_validator(glow_max_active_requests_per_instance,
+                 [](const char *, int32_t val) {
+                   glow::flags::MaxActiveRequestsPerInstance = val;
                    return true;
                  });
-
-DEFINE_bool(glow_partitioner_enable_load_balance, true,
+DEFINE_int32(
+    glow_max_queue_size, glow::flags::MaxQueueSize,
+    "Max number of pending requeusts in glow's host manager queue before "
+    "rejecting new request");
+DEFINE_validator(glow_max_queue_size, [](const char *, int32_t val) {
+  glow::flags::MaxQueueSize = val;
+  return true;
+});
+DEFINE_int32(glow_executor_threads, glow::flags::ExecutorThreads,
+             "Number of executor threads for host manager");
+DEFINE_validator(glow_executor_threads, [](const char *, int32_t val) {
+  glow::flags::ExecutorThreads = val;
+  return true;
+});
+DEFINE_bool(glow_partitioner_enable_load_balance,
+            glow::flags::EnableLoadBalancedPartitioning,
             "Enable a partitioner pass to optimize for load balance in "
             "addition to memory capacity constraints");
 DEFINE_validator(glow_partitioner_enable_load_balance,
-                 [](const char *flagname, bool value) {
-                   glow::GlowEnableLoadBalancedPartitioning = value;
+                 [](const char *, bool val) {
+                   glow::flags::EnableLoadBalancedPartitioning = val;
                    return true;
                  });
-
-DEFINE_bool(glow_save_onnxifi_model, false,
+DEFINE_bool(glow_save_onnxifi_model, glow::onnxifi::flags::SaveModel,
             "Package the glow function and weights right before lowering");
-DEFINE_validator(glow_save_onnxifi_model,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowSaveOnnxifiModel = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_save_onnxifi_io, false,
-            "Save the input and output result around ONNXIFI boundary");
-DEFINE_validator(glow_save_onnxifi_io,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowSaveOnnxifiIO = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_enable_partial_tensors, true,
-            "Save the input and output result around ONNXIFI boundary");
-DEFINE_validator(glow_enable_partial_tensors,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowEnablePartialTensors = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_use_custom_ops_for_export, true,
-            "Use custom ONNX ops when exporting Glow protos.");
-DEFINE_validator(glow_use_custom_ops_for_export,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowUseCustomOpsForExport = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_dump_graph, false,
-            "Dump the glow Graph into files before compilation");
-DEFINE_validator(glow_dump_graph, [](const char * /* unused */, bool value) {
-  glow::onnxifi::GlowDumpGraph = value;
+DEFINE_validator(glow_save_onnxifi_model, [](const char *, bool val) {
+  glow::onnxifi::flags::SaveModel = val;
   return true;
 });
-
-DEFINE_string(glow_dump_graph_path, "./",
+DEFINE_bool(glow_save_onnxifi_io, glow::onnxifi::flags::SaveIO,
+            "Save the input and output result around ONNXIFI boundary");
+DEFINE_validator(glow_save_onnxifi_io, [](const char *, bool val) {
+  glow::onnxifi::flags::SaveIO = val;
+  return true;
+});
+DEFINE_bool(glow_enable_partial_tensors, glow::flags::EnablePartialTensors,
+            "Save the input and output result around ONNXIFI boundary");
+DEFINE_validator(glow_enable_partial_tensors, [](const char *, bool val) {
+  glow::flags::EnablePartialTensors = val;
+  return true;
+});
+DEFINE_bool(glow_use_custom_ops_for_export, glow::flags::UseCustomOpsForExport,
+            "Use custom ONNX ops when exporting Glow protos.");
+DEFINE_validator(glow_use_custom_ops_for_export, [](const char *, bool val) {
+  glow::flags::UseCustomOpsForExport = val;
+  return true;
+});
+DEFINE_bool(glow_dump_graph, glow::flags::DumpGraph,
+            "Dump the glow Graph into files before compilation");
+DEFINE_validator(glow_dump_graph, [](const char *, bool val) {
+  glow::flags::DumpGraph = val;
+  return true;
+});
+DEFINE_string(glow_dump_graph_path, glow::flags::DumpGraphPath,
               "Directory path for the dumped graphs.");
 DEFINE_validator(glow_dump_graph_path,
-                 [](const char * /* unused */, const std::string &value) {
-                   glow::onnxifi::GlowDumpGraphPath = value;
+                 [](const char *, const std::string &val) {
+                   glow::flags::DumpGraphPath = val;
                    return true;
                  });
-
-DEFINE_bool(glow_dump_initial_loaded_graph, false,
+DEFINE_bool(glow_dump_initial_loaded_graph, glow::flags::DumpInitialLoadedGraph,
             "Dump the glow Graph right after onnxification");
-DEFINE_validator(glow_dump_initial_loaded_graph,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowDumpInitialLoadedGraph = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_use_dag_optimizer, false, "Whether to call the DAG optimizer");
-DEFINE_validator(glow_use_dag_optimizer,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowUseDAGOptimizer = value;
-                   return true;
-                 });
-
-DEFINE_int32(glow_dag_optimizer_num_parallel_chunks, 1,
+DEFINE_validator(glow_dump_initial_loaded_graph, [](const char *, bool val) {
+  glow::flags::DumpInitialLoadedGraph = val;
+  return true;
+});
+DEFINE_bool(glow_use_dag_optimizer, glow::flags::UseDAGOptimizer,
+            "Whether to call the DAG optimizer");
+DEFINE_validator(glow_use_dag_optimizer, [](const char *, bool val) {
+  glow::flags::UseDAGOptimizer = val;
+  return true;
+});
+DEFINE_bool(glow_use_dag_optimizer_aot, glow::flags::UseDAGOptimizerAOT,
+            "Whether to call the DAG optimizer AOT");
+DEFINE_validator(glow_use_dag_optimizer_aot, [](const char *, bool val) {
+  glow::flags::UseDAGOptimizerAOT = val;
+  return true;
+});
+DEFINE_int32(glow_dag_optimizer_num_parallel_chunks,
+             glow::flags::DAGOptimizerNumParallelChunks,
              "Number of parallel chunks for DAGOptimizer parallelization");
 DEFINE_validator(glow_dag_optimizer_num_parallel_chunks,
-                 [](const char * /* flagname */, int32_t value) {
-                   glow::onnxifi::GlowDAGOptimizerNumParallelChunks = value;
+                 [](const char *, int32_t val) {
+                   glow::flags::DAGOptimizerNumParallelChunks = val;
                    return true;
                  });
-
-DEFINE_string(glow_dag_optimizer_placement_tagging_algorithm, "None",
+DEFINE_string(glow_dag_optimizer_placement_tagging_algorithm,
+              glow::flags::DAGOptimizerPlacementTaggingAlgorithm,
               "Name of placement tagging algorithm to run in DAGOptimizer");
 DEFINE_validator(glow_dag_optimizer_placement_tagging_algorithm,
-                 [](const char * /* flagname */, const std::string &value) {
-                   glow::onnxifi::GlowDAGOptimizerPlacementTaggingAlgorithm =
-                       value;
+                 [](const char *, const std::string &val) {
+                   glow::flags::DAGOptimizerPlacementTaggingAlgorithm = val;
                    return true;
                  });
 
 DEFINE_string(
-    glow_dag_optimizer_parallelization_tagging_algorithm, "None",
-    "Name of parallelization tagging algorithm to run in DAGOptimizer");
-DEFINE_validator(
     glow_dag_optimizer_parallelization_tagging_algorithm,
-    [](const char * /* flagname */, const std::string &value) {
-      glow::onnxifi::GlowDAGOptimizerParallelizationTaggingAlgorithm = value;
-      return true;
-    });
-
+    glow::flags::DAGOptimizerParallelizationTaggingAlgorithm,
+    "Name of parallelization tagging algorithm to run in DAGOptimizer");
+DEFINE_validator(glow_dag_optimizer_parallelization_tagging_algorithm,
+                 [](const char *, const std::string &val) {
+                   glow::flags::DAGOptimizerParallelizationTaggingAlgorithm =
+                       val;
+                   return true;
+                 });
 #ifdef GLOW_WITH_NNPI
 // Defined in glow/lib/Backends/NNPI/NNPI.cpp
-DEFINE_bool(glow_use_per_partition_icet_config, false,
+DEFINE_bool(glow_use_per_partition_icet_config,
+            glow::nnpi::flags::UsePerPartitionIcetConfig,
             "Read an icet_config.json file for each partition");
 DEFINE_validator(glow_use_per_partition_icet_config,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowUsePerPartitionIcetConfig = value;
+                 [](const char *, bool val) {
+                   glow::nnpi::flags::UsePerPartitionIcetConfig = val;
                    return true;
                  });
-DEFINE_bool(glow_dump_nnpi_compiler_data, false,
+DEFINE_bool(glow_dump_nnpi_compiler_data, glow::nnpi::flags::DumpCompilerData,
             "Dump the NNPI compiler data into files before NNPI compilation");
-DEFINE_validator(glow_dump_nnpi_compiler_data,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowDumpNNPICompilerData = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_nnpi_specialize_all_one_sls, false,
-            "Whether to import SLS ops with AllOne attribute to NNPI.");
-DEFINE_validator(glow_nnpi_specialize_all_one_sls,
-                 [](const char * /*unused*/, bool value) {
-                   glow::GlowNNPISpecializeAllOneSLS = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_disable_nnpi_transforms, false,
-            "Disable running NNPIBackend::transformPostLowering().");
-DEFINE_validator(glow_disable_nnpi_transforms,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowDisableNNPITransforms = value;
-                   return true;
-                 });
-DEFINE_bool(glow_disable_nnpi_private_transforms, false,
-            "Disable running NNPIBackend::transformPrivate().");
-DEFINE_validator(glow_disable_nnpi_private_transforms,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowDisableNNPIPrivateTransforms = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_nnpi_lower_all_batch_matmul, false,
-            "Whether to override default lowering for NNPI and always lower "
-            "BatchMatMul to a series of MatMuls.");
-DEFINE_validator(glow_nnpi_lower_all_batch_matmul,
-                 [](const char * /* unused */, bool value) {
-                   glow::GlowNNPILowerAllBatchMatMul = value;
-                   return true;
-                 });
-DEFINE_bool(glow_nnpi_accept_unary_sls, false,
-            "Whether to accept unary SLS ops during ONNXIFI loading.");
-DEFINE_validator(glow_nnpi_accept_unary_sls,
-                 [](const char * /* unused */, bool value) {
-                   glow::GlowNNPIAcceptUnarySLS = value;
-                   return true;
-                 });
-DEFINE_int32(glow_nnpi_num_parallel_chunks, 0,
-             "Number of parallel chunks for NNPI");
-DEFINE_validator(glow_nnpi_num_parallel_chunks,
-                 [](const char * /* flagname */, int32_t value) {
-                   glow::onnxifi::GlowNNPINumParallelChunks = value;
-                   return true;
-                 });
-DEFINE_int32(glow_nnpi_model_parallel_split_alignment, 1,
-             "Alignment value for model parallel splits");
-DEFINE_validator(glow_nnpi_model_parallel_split_alignment,
-                 [](const char * /* flagname */, int32_t value) {
-                   glow::onnxifi::GlowNNPIModelParallelSplitAlignment = value;
-                   return true;
-                 });
-#endif /* GLOW_WITH_NNPI */
-
-DEFINE_int32(glow_interpreter_memory, 0,
-             "Amount of DRAM to allocate per Interpreter in KiB");
-DEFINE_validator(glow_interpreter_memory, [](const char *, int32_t value) {
-  glow::runtime::GlowInterpreterMemory = value;
+DEFINE_validator(glow_dump_nnpi_compiler_data, [](const char *, bool val) {
+  glow::nnpi::flags::DumpCompilerData = val;
   return true;
 });
+DEFINE_bool(glow_nnpi_specialize_all_one_sls,
+            glow::nnpi::flags::SpecializeAllOneSLS,
+            "Whether to import SLS ops with AllOne attribute to NNPI.");
+DEFINE_validator(glow_nnpi_specialize_all_one_sls, [](const char *, bool val) {
+  glow::nnpi::flags::SpecializeAllOneSLS = val;
+  return true;
+});
+DEFINE_bool(glow_disable_nnpi_transforms, glow::nnpi::flags::DisableTransforms,
+            "Disable running NNPIBackend::transformPostLowering().");
+DEFINE_validator(glow_disable_nnpi_transforms, [](const char *, bool val) {
+  glow::nnpi::flags::DisableTransforms = val;
+  return true;
+});
+DEFINE_bool(glow_disable_nnpi_private_transforms,
+            glow::nnpi::flags::DisablePrivateTransforms,
+            "Disable running NNPIBackend::transformPrivate().");
+DEFINE_validator(glow_disable_nnpi_private_transforms,
+                 [](const char *, bool val) {
+                   glow::nnpi::flags::DisablePrivateTransforms = val;
+                   return true;
+                 });
+DEFINE_bool(glow_nnpi_lower_all_batch_matmul,
+            glow::nnpi::flags::LowerAllBatchMatMul,
+            "Whether to override default lowering for NNPI and always lower "
+            "BatchMatMul to a series of MatMuls.");
+DEFINE_validator(glow_nnpi_lower_all_batch_matmul, [](const char *, bool val) {
+  glow::nnpi::flags::LowerAllBatchMatMul = val;
+  return true;
+});
+DEFINE_bool(glow_nnpi_accept_unary_sls, glow::nnpi::flags::AcceptUnarySLS,
+            "Whether to accept unary SLS ops during ONNXIFI loading.");
+DEFINE_validator(glow_nnpi_accept_unary_sls, [](const char *, bool val) {
+  glow::nnpi::flags::AcceptUnarySLS = val;
+  return true;
+});
+DEFINE_int32(glow_nnpi_num_parallel_chunks,
+             glow::nnpi::flags::NumParallelChunks,
+             "Number of parallel chunks for NNPI");
+DEFINE_validator(glow_nnpi_num_parallel_chunks, [](const char *, int32_t val) {
+  glow::nnpi::flags::NumParallelChunks = val;
+  return true;
+});
+DEFINE_int32(glow_nnpi_model_parallel_split_alignment,
+             glow::nnpi::flags::ModelParallelSplitAlignment,
+             "Alignment value for model parallel splits");
+DEFINE_validator(glow_nnpi_model_parallel_split_alignment,
+                 [](const char *, int32_t val) {
+                   glow::nnpi::flags::ModelParallelSplitAlignment = val;
+                   return true;
+                 });
+DEFINE_int32(glow_nnpi_memory, glow::runtime::flags::NNPIMemory,
+             "Amount of DRAM to allocate per NNPI device in KiB");
+DEFINE_validator(glow_nnpi_memory, [](const char *, int32_t val) {
+  glow::runtime::flags::NNPIMemory = val;
+  return true;
+});
+DEFINE_int32(glow_nnpi_timeout_ms, glow::runtime::flags::NNPITimeoutMs,
+             "Timeout threshold for inferecnce in milliseconds. Default 0 "
+             "means infinity");
+DEFINE_validator(glow_nnpi_timeout_ms, [](const char *, int32_t val) {
+  glow::runtime::flags::NNPITimeoutMs = val;
+  return true;
+});
+#endif /* GLOW_WITH_NNPI */
 
+DEFINE_int32(glow_interpreter_memory, glow::runtime::flags::InterpreterMemory,
+             "Amount of DRAM to allocate per Interpreter in KiB");
+DEFINE_validator(glow_interpreter_memory, [](const char *, int32_t val) {
+  glow::runtime::flags::InterpreterMemory = val;
+  return true;
+});
 #ifdef GLOW_WITH_CPU
-DEFINE_int32(glow_cpu_memory, 0, "Amount of DRAM to allocate per CPU in KiB");
-DEFINE_validator(glow_cpu_memory, [](const char *, int32_t value) {
-  glow::runtime::GlowCPUMemory = value;
+DEFINE_int32(glow_cpu_memory, glow::runtime::flags::CPUMemory,
+             "Amount of DRAM to allocate per CPU in KiB");
+DEFINE_validator(glow_cpu_memory, [](const char *, int32_t val) {
+  glow::runtime::flags::CPUMemory = val;
   return true;
 });
 #endif
 
 #ifdef GLOW_WITH_HABANA
-DEFINE_int32(glow_habana_memory, 7 << 20,
+DEFINE_int32(glow_habana_memory, glow::runtime::flags::HabanaMemory,
              "Amount of DRAM to allocate per Habana device in KiB");
-DEFINE_validator(glow_habana_memory, [](const char *flagname, int32_t value) {
-  glow::runtime::GlowHabanaMemory = value;
+DEFINE_validator(glow_habana_memory, [](const char *, int32_t val) {
+  glow::runtime::flags::HabanaMemory = val;
   return true;
 });
 #endif
 
-#ifdef GLOW_WITH_NNPI
-DEFINE_int32(glow_nnpi_memory, 16 << 20,
-             "Amount of DRAM to allocate per NNPI device in KiB");
-DEFINE_validator(glow_nnpi_memory, [](const char *flagname, int32_t value) {
-  glow::runtime::GlowNNPIMemory = value;
+DEFINE_bool(glow_log_partition, glow::flags::LogPartition,
+            "Enable logging partition info");
+DEFINE_validator(glow_log_partition, [](const char *, bool val) {
+  glow::flags::LogPartition = val;
   return true;
 });
-
-DEFINE_int32(glow_nnpi_timeout_ms, 0,
-             "Timeout threshold for inferecnce in milliseconds. Default 0 "
-             "means infinity");
-DEFINE_validator(glow_nnpi_timeout_ms,
-                 [](const char * /*unused*/, int32_t value) {
-                   glow::runtime::GlowNNPITimeout = value * 1000;
-                   return true;
-                 });
-
-#endif
-
-DEFINE_bool(glow_log_partition, true, "Enable logging partition info");
-DEFINE_validator(glow_log_partition, [](const char * /*unused*/, bool value) {
-  glow::GlowLogPartition = value;
+DEFINE_bool(glow_enable_p2p, glow::runtime::flags::EnableP2P,
+            "Enable peer to peer support");
+DEFINE_validator(glow_enable_p2p, [](const char *, bool val) {
+  glow::runtime::flags::EnableP2P = val;
   return true;
 });
-
-DEFINE_bool(glow_enable_p2p, false, "Enable peer to peer support");
-DEFINE_validator(glow_enable_p2p, [](const char * /*unused*/, bool value) {
-  glow::runtime::GlowEnableP2P = value;
+DEFINE_bool(glow_enable_drt, glow::runtime::flags::EnableDRT,
+            "Enable device resident tensor support");
+DEFINE_validator(glow_enable_drt, [](const char *, bool val) {
+  glow::runtime::flags::EnableDRT = val;
   return true;
 });
-
-DEFINE_bool(glow_enable_drt, false, "Enable device resident tensor support");
-DEFINE_validator(glow_enable_drt, [](const char * /*unused*/, bool value) {
-  glow::runtime::GlowEnableDRT = value;
-  return true;
-});
-
-DEFINE_int32(glow_device_init_timeout_ms, 5000,
+DEFINE_int32(glow_device_init_timeout_ms,
+             glow::runtime::flags::DeviceInitTimeoutMs,
              "Timeout threshold for device initialization in milliseconds. "
              "Default 5000");
-DEFINE_validator(glow_device_init_timeout_ms,
-                 [](const char * /*unused*/, int32_t value) {
-                   glow::runtime::GlowDeviceInitTimeoutMs = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_dump_partition, false,
-            "Enable dumping the graph of each partition");
-DEFINE_validator(glow_dump_partition, [](const char * /*unused*/, bool value) {
-  glow::GlowDumpPartition = value;
+DEFINE_validator(glow_device_init_timeout_ms, [](const char *, int32_t val) {
+  glow::runtime::flags::DeviceInitTimeoutMs = val;
   return true;
 });
-
-DEFINE_bool(glow_dump_compilation_log, false,
+DEFINE_bool(glow_dump_partition, glow::flags::DumpPartition,
+            "Enable dumping the graph of each partition");
+DEFINE_validator(glow_dump_partition, [](const char *, bool val) {
+  glow::flags::DumpPartition = val;
+  return true;
+});
+DEFINE_bool(glow_dump_compilation_log, glow::flags::DumpCompilationLog,
             "Dump the glow compilation log into /tmp during compilation");
-DEFINE_validator(glow_dump_compilation_log,
-                 [](const char * /*unused*/, bool value) {
-                   glow::GlowDumpCompilationLog = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_dump_backend_specific_ir_json, false,
+DEFINE_validator(glow_dump_compilation_log, [](const char *, bool val) {
+  glow::flags::DumpCompilationLog = val;
+  return true;
+});
+DEFINE_bool(glow_dump_backend_specific_ir_json,
+            glow::flags::DumpBackendSpecificIRJSON,
             "Dump the backend-specific IR JSON file");
 DEFINE_validator(glow_dump_backend_specific_ir_json,
-                 [](const char * /*unused*/, bool value) {
-                   glow::GlowDumpBackendSpecificIRJSON = value;
+                 [](const char *, bool val) {
+                   glow::flags::DumpBackendSpecificIRJSON = val;
                    return true;
                  });
-
-DEFINE_string(glow_backend_specific_opts, "",
+DEFINE_string(glow_backend_specific_opts, glow::flags::BackendSpecificOpts,
               "Glow backend specific options. Comma separated list of "
               "key=value pairs, e.g. key1=val1,key2=val2.");
 DEFINE_validator(glow_backend_specific_opts,
-                 [](const char *flagname, const std::string &value) {
-                   glow::onnxifi::GlowBackendSpecificOpts = value;
+                 [](const char *, const std::string &val) {
+                   glow::flags::BackendSpecificOpts = val;
                    return true;
                  });

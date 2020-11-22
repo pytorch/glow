@@ -191,6 +191,16 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().randomizeConstants = false;
   });
 
+  /// Enable writing to Onnx without randomizing constants.
+  m.def("enable_write_without_randomize", []() {
+    getGlobalPyTorchLoaderSettingsMutable().writeWithoutRandomize = true;
+  });
+
+  /// Disable writing to Onnx without randomizing constants.
+  m.def("disable_write_without_randomize", []() {
+    getGlobalPyTorchLoaderSettingsMutable().writeWithoutRandomize = false;
+  });
+
   /// Enable check Glow vs jit correctness.
   m.def("enable_jit_vs_glow_compare", []() {
     getGlobalPyTorchLoaderSettingsMutable().jitVsGlowCompare = true;
@@ -328,5 +338,17 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable running fusion pass in to_glow as a debug flow
   m.def("disable_debug_fuser", []() {
     getGlobalPyTorchLoaderSettingsMutable().enableDebugFuser = false;
+  });
+
+  /// Enable continuously verifying Glow graph during model loading
+  m.def("enable_debug_continuously_verify_during_model_loading", []() {
+    getGlobalPyTorchLoaderSettingsMutable()
+        .debugContinuouslyVerifyDuringModelLoading = true;
+  });
+
+  /// Disable continuously verifying Glow graph during model loading
+  m.def("disable_debug_continuously_verify_during_model_loading", []() {
+    getGlobalPyTorchLoaderSettingsMutable()
+        .debugContinuouslyVerifyDuringModelLoading = false;
   });
 }

@@ -2036,6 +2036,68 @@ void BoundInterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
 }
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdGatherNDInstImpl(
+    const glow::GatherNDInst *I) {
+
+  Tensor *dataT = getTensor(I->getData());
+  auto &dataTy = dataT->getType();
+  Tensor *indicesT = getTensor(I->getIndices());
+  Tensor *outT = getTensor(I->getDest());
+  auto &indicesTy = indicesT->getType();
+
+  // Get the last dimension of indices Tensor
+  const int64_t lastIndicesDimension =
+      indicesTy.dims()[indicesTy.dims().size() - 1];
+
+  size_t outP = 0;
+  dim_t elementSize = dataTy.getElementSize();
+
+  // The size of the each slice that we gather
+  dim_t dataSliceSize = 1;
+  for (size_t i = lastIndicesDimension; i < dataTy.dims().size(); i++) {
+    dataSliceSize *= dataTy.dims()[i];
+  }
+  // Calculate number of such slices that we gather
+  dim_t numOfSlices = 1;
+  for (size_t i = 0; i < indicesTy.dims().size() - 1; i++) {
+    numOfSlices *= indicesTy.dims()[i];
+  }
+
+  dim_t dataSliceSizeInBytes = dataSliceSize * elementSize;
+
+  for (dim_t i = 0, end = numOfSlices; i < end; i++) {
+    dim_t x = indicesT->getHandle<ElemTy>().raw(i * dataSliceSize);
+
+    for (size_t j = 1; j < lastIndicesDimension; j++) {
+      x = (x * dataTy.dims()[j]) +
+          indicesT->getHandle<ElemTy>().raw(i * dataSliceSize + j);
+    }
+
+    if (lastIndicesDimension < dataTy.dims().size()) {
+      x = x * dataTy.dims()[lastIndicesDimension];
+    }
+
+    std::copy(&dataT->getUnsafePtr()[x * elementSize],
+              &dataT->getUnsafePtr()[x * elementSize + dataSliceSizeInBytes],
+              &outT->getUnsafePtr()[outP]);
+    outP += dataSliceSizeInBytes;
+  }
+}
+
+void BoundInterpreterFunction::fwdGatherNDInst(const glow::GatherNDInst *I) {
+  switch (I->getIndices()->getElementType()) {
+  case ElemKind::Int64ITy:
+    fwdGatherNDInstImpl<int64_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdGatherNDInstImpl<int32_t>(I);
+    break;
+  default:
+    llvm_unreachable("Unsupported type for indices input of Gather.");
+  }
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdGatherRangesInstImpl(
     const glow::GatherRangesInst *I) {
   Tensor *dataT = getTensor(I->getData());
@@ -5021,6 +5083,13 @@ void BoundInterpreterFunction::fwdTraceEventInst(const TraceEventInst *I) {
   IH.raw(index) = std::chrono::duration_cast<std::chrono::microseconds>(
                       std::chrono::steady_clock::now().time_since_epoch())
                       .count();
+}
+
+void BoundInterpreterFunction::fwdInstrumentInst(const InstrumentInst *I) {
+  // The instrument instruction is not implemented on the Interpreter backend.
+  // We cannot throw error though because the Interpreter can be potentially
+  // used when constant folding parts of the graph while compiling for the
+  // CPU backend with IR instrumentation.
 }
 
 //===----------------------------------------------------------------------===//
