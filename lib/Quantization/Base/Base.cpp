@@ -610,6 +610,9 @@ void specializeBiasWeightsQuantizationParams(
   } else {
     if (biasQTy == ElemKind::Int32QTy) {
       weightsScale = biasScale / inputScale;
+      // The division above does not always ensure that biasScale equals the
+      // product inputScale * weightsScale because float32 division is not
+      // that accurate. Instead we force the equality explicitly.
       biasScale = inputScale * weightsScale;
     }
   }
