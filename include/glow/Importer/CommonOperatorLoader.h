@@ -443,6 +443,34 @@ protected:
     return Error::success();
   }
 
+  /// Loads Pow operator, given its protobuf representation and parsed args.
+  Error loadPow(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    NodeValue base;
+    ASSIGN_VALUE_OR_RETURN_ERR(base, getNodeValueByName(op.input(0)));
+
+    Node *R;
+    if (op.input_size() > 1) {
+      NodeValue exp;
+      ASSIGN_VALUE_OR_RETURN_ERR(exp, getNodeValueByName(op.input(1)));
+      // Do broadcasting.
+      auto targetDim = base.dims();
+      // Sets the axis of each inputs so that the trailing-most dimensions of
+      // input tensors and the target shape are aligned.
+      int axis = targetDim.size() - exp.dims().size();
+      auto *finalExp = G_->createBroadcast(opName, exp, targetDim, axis);
+      R = G_->createPow(opName, base, finalExp);
+
+    } else {
+      float exp;
+      ASSIGN_VALUE_OR_RETURN_ERR(exp, loadInt(dict["exp"]));
+      R = G_->createPow(opName, base, exp);
+    }
+
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
+    return Error::success();
+  }
+
   /// Loads Sqrt operator, given its protobuf representation and parsed args.
   Error loadSqrt(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
@@ -1573,6 +1601,10 @@ protected:
     }
     if (typeName == "Not") {
       RETURN_IF_ERR(loadNotOp(typeName, op));
+      return true;
+    }
+    if (typeName == "Pow") {
+      RETURN_IF_ERR(loadPow(op, dict));
       return true;
     }
 
