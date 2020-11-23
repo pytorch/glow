@@ -450,7 +450,6 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(base, getNodeValueByName(op.input(0)));
     NodeValue exp;
     ASSIGN_VALUE_OR_RETURN_ERR(exp, getNodeValueByName(op.input(1)));
-    auto targetDim = base.dims();
     auto R = G_->createNodeWithBroadcast<PowNode>(opName, -1, base, exp);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
