@@ -46,9 +46,9 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
   // Always allocate buffers properly aligned to hold values of any type.
   uint64_t segmentSize = alignedSize(size, alignment_);
   uint64_t prev = 0;
-  for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
+  for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
     if (it->begin_ - prev >= segmentSize) {
-      allocations_.emplace(it, prev, prev + segmentSize);
+      segments_.emplace(it, prev, prev + segmentSize);
       maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + segmentSize);
       setHandle(prev, size, handle);
       return prev;
@@ -63,7 +63,7 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
     return npos;
   }
 
-  allocations_.emplace_back(prev, prev + segmentSize);
+  segments_.emplace_back(prev, prev + segmentSize);
   maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + segmentSize);
   setHandle(prev, size, handle);
   return prev;
@@ -78,7 +78,7 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
   uint64_t startAddress = 0;
   uint64_t begin = 0;
   llvm::SmallVector<std::pair<Segment, Handle>, 16> evictionCandidates;
-  for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
+  for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
     // Skip any allocations below the start address.
     if (it->begin_ < startAddress) {
       continue;
@@ -138,9 +138,9 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle,
 
 void MemoryAllocator::deallocate(Handle handle) {
   auto ptr = getAddress(handle);
-  for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
+  for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
     if (it->begin_ == ptr) {
-      allocations_.erase(it);
+      segments_.erase(it);
       addrToHandle_.erase(ptr);
       handleToAllocInfo_.erase(handle);
       return;
@@ -183,4 +183,360 @@ void MemoryAllocator::setHandle(uint64_t ptr, uint64_t size, Handle handle) {
   assert(!hasHandle(ptr) && "The address has an associated handle already");
   addrToHandle_[ptr] = handle;
   handleToAllocInfo_.insert(std::make_pair(handle, Segment(ptr, ptr + size)));
+}
+
+void MemoryAllocator::setHandle(Segment segment, Handle handle) {
+  uint64_t ptr = segment.begin_;
+  uint64_t size = segment.end_ - segment.begin_;
+  setHandle(ptr, size, handle);
+}
+
+// -----------------------------------------------------------------------------
+//                                 UTILS
+// -----------------------------------------------------------------------------
+/// Address pair including a [start, stop) address interval.
+typedef std::pair<uint64_t, uint64_t> AddressPair;
+
+/// Returns the value of size rounded to nearest upper multiple of alignment.
+//uint64_t alignedSize(uint64_t size, size_t alignment) {
+//  uint64_t mod = size % alignment;
+//  return mod ? size + alignment - mod : size;
+//}
+
+/// Utility function to verify if two integer intervals overlap. Each interval
+/// is described by a half-open interval [begin, end).
+template <class T>
+inline bool intervalsOverlap(T begin1, T end1, T begin2, T end2) {
+  return (std::max(begin1, begin2) < std::min(end1, end2));
+}
+
+/// Utility function to verify allocations.
+/// TODO: Refactor this for early return in case of invalid allocations!
+bool verifyAllocations(const std::vector<Allocation> &allocArray) {
+
+  bool valid = true;
+
+  // Allocation array length must be even.
+  size_t allocNum = allocArray.size();
+  valid &= (allocNum % 2 == 0);
+
+  // Number of ALLOC must be equal to number of FREE.
+  std::list<size_t> allocIdxList;
+  for (size_t idx = 0; idx < allocNum; idx++) {
+    if (allocArray[idx].alloc_) {
+      allocIdxList.push_back(idx);
+    }
+  }
+  valid &= (allocIdxList.size() == (allocNum / 2));
+
+  // Verify each ALLOC has an associated FREE which follows it.
+  // Verify each ALLOC has a unique handle.
+  std::list<MemoryHandle> allocHandleList;
+  for (auto allocIdx: allocIdxList) {
+    // Find a FREE instruction associated to this ALLOC.
+    auto allocHandle = allocArray[allocIdx].handle_;
+    bool freeFound = false;
+    for (size_t idx = allocIdx + 1; idx < allocNum; idx++) {
+      if ((!allocArray[idx].alloc_) && (allocArray[idx].handle_ == allocHandle)) {
+        freeFound = true;
+        break;
+      }
+    }
+    valid &= freeFound;
+    // Verify ALLOC handle is unique.
+    auto it = std::find(allocHandleList.begin(), allocHandleList.end(), allocHandle);
+    valid &= (it == allocHandleList.end());
+    allocHandleList.push_back(allocHandle);
+  }
+
+  return valid;
+}
+
+// TODO
+// 1. Validate that output segments are consistent!
+// 2. Add "allocate" flavors using IDs instead of Handles.
+// 3. Compute and return allocation efficiency.
+
+/// \returns the total memory usage, or MemoryAllocator::npos, if the
+/// allocation failed.
+uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
+
+  // Reset memory allocator object.
+  reset();
+
+  // Verify allocations.
+  assert(verifyAllocations(allocArray) && "Allocation array invalid!");
+
+  // If allocation array is empty then return early.
+  size_t allocNum = allocArray.size();
+  if (allocNum == 0) {
+    return 0;
+  }
+
+  // Number of buffers/segments to allocate.
+  assert((allocNum % 2 == 0) && "The allocation array must have an even number of entries!");
+  size_t buffNum = allocNum / 2;
+
+  // Map Handles to consecutive unique IDs between 0 and numBuff - 1 since this
+  // makes the algorithm implementation easier/faster by using IDs as vector indices.
+  std::unordered_map<Handle, size_t> handleToIdMap;
+  std::vector<Handle> idToHandleMap(buffNum);
+  size_t id = 0;
+  for (const auto &alloc: allocArray) {
+    // We only map the Handles of ALLOCs.
+    if (alloc.alloc_) {
+      idToHandleMap[id] = alloc.handle_;
+      handleToIdMap[alloc.handle_] = id;
+      id++;
+    }
+  }
+  assert(id == buffNum && "Inconsistent Handle to ID mapping!");
+
+  // -----------------------------------------------------------------------
+  // Get overall information about all the buffers.
+  // -----------------------------------------------------------------------
+  // Array with the size for each buffer.
+  std::vector<uint64_t> buffSizeArray(buffNum);
+
+  // Array with the start/stop time (both inclusive) for each buffer.
+  std::vector<uint64_t> buffTimeStart(buffNum);
+  std::vector<uint64_t> buffTimeStop(buffNum);
+
+  // The maximum total required memory of all the live buffers reached during
+  // all allocation time steps. Note that this is the best size any allocation
+  // algorithm can hope for and is used to compute the allocation efficiency.
+  uint64_t liveSizeMax = 0;
+
+  // Array with the total required memory of all the live buffers for each allocation time step.
+  std::vector<uint64_t> liveBuffSizeArray(allocNum);
+
+  // Array with lists of IDs of all the live buffers for each allocation time step.
+  std::vector<std::list<uint64_t>> liveBuffIdListArray(allocNum);
+
+  // Gather information.
+  {
+    uint64_t liveBuffSize = 0;
+    std::list<uint64_t> liveBuffIdList;
+    for (size_t allocIdx = 0; allocIdx < allocNum; allocIdx++) {
+
+    // Current buffer handle and mapped ID.
+    auto buffHandle = allocArray[allocIdx].handle_;
+    auto buffId = handleToIdMap[buffHandle];
+
+    // Current buffer size. We only use the buffer size of an ALLOC request.
+    // For a FREE request we use the buffer size of the associated ALLOC.
+    // We round the requested buffer size using the alignment.
+    uint64_t buffSize;
+    if (allocArray[allocIdx].alloc_) {
+      buffSize = alignedSize(allocArray[allocIdx].size_, alignment_);
+    } else {
+      buffSize = buffSizeArray[buffId];
+    }
+
+    // Update buffer information.
+    if (allocArray[allocIdx].alloc_) {
+      buffSizeArray[buffId] = buffSize;
+      buffTimeStart[buffId] = allocIdx;
+    } else {
+      buffTimeStop[buffId] = allocIdx;
+    }
+
+    // Update liveness information.
+    if (allocArray[allocIdx].alloc_) {
+      liveBuffSize = liveBuffSize + buffSize;
+      liveBuffIdList.push_back(buffId);
+    } else {
+      liveBuffSize = liveBuffSize - buffSize;
+      auto it = std::find(liveBuffIdList.begin(), liveBuffIdList.end(), buffId);
+      assert(it != liveBuffIdList.end() && "Buffer ID not found for removal!");
+      liveBuffIdList.erase(it);
+    }
+    liveSizeMax = std::max(liveSizeMax, liveBuffSize);
+    liveBuffSizeArray[allocIdx] = liveBuffSize;
+    liveBuffIdListArray[allocIdx] = liveBuffIdList;
+    }
+    assert(liveBuffSize == 0 && "Mismatch between total allocated and deallocated size!");
+    assert(liveBuffIdList.empty() && "Mismatch between total allocated and deallocated buffers!");
+  }
+
+  // If the theoretical required memory is larger than the available memory size
+  // then we return early.
+  if (poolSize_ && (liveSizeMax > poolSize_)) {
+    return npos;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Allocate all the buffers.
+  // ---------------------------------------------------------------------------
+  // Local list of allocated IDs and segments.
+  std::list<std::pair<size_t, Segment>> idSegList;
+
+  // The maximum total memory used for segment allocation.
+  uint64_t usedSizeMax = 0;
+
+  // Allocate all buffers.
+  for (size_t buffIdx = 0; buffIdx < buffNum; buffIdx++) {
+
+    // -----------------------------------------------------------------------
+    // Select buffer to allocate:
+    // 1. Find maximum live allocation size.
+    // 2. Take largest buffer from the maximum live allocation.
+    // 3. If multiple buffers with same size, take the buffer with highest
+    //    live interval.
+    // -----------------------------------------------------------------------
+
+    // Find maximum total live allocation.
+    auto liveBuffSizeMaxIt = std::max_element(liveBuffSizeArray.begin(), liveBuffSizeArray.end());
+    auto liveBuffSizeMaxIdx = std::distance(liveBuffSizeArray.begin(), liveBuffSizeMaxIt);
+    auto &liveBuffIdList = liveBuffIdListArray[liveBuffSizeMaxIdx];
+
+    // Find buffer with maximum size within the maximum allocation.
+    uint64_t buffIdMax = 0;
+    uint64_t buffSizeMax = 0;
+    for (auto buffIdIter: liveBuffIdList) {
+      // If size is the same choose buffer with maximum live interval.
+      if (buffSizeArray[buffIdIter] == buffSizeMax) {
+        auto currTime = buffTimeStop[buffIdMax] - buffTimeStart[buffIdMax];
+        auto iterTime = buffTimeStop[buffIdIter] - buffTimeStart[buffIdIter];
+        if (iterTime > currTime) {
+          buffIdMax = buffIdIter;
+        }
+      }
+      // Choose largest buffer.
+      if (buffSizeArray[buffIdIter] > buffSizeMax) {
+        buffSizeMax = buffSizeArray[buffIdIter];
+        buffIdMax = buffIdIter;
+      }
+    }
+
+    // Current segment ID and size.
+    auto currSegId = buffIdMax;
+    auto currSegSize = buffSizeMax;
+
+    // -----------------------------------------------------------------------
+    // Find previously allocated segments which overlap with the current segment
+    // in time, that is segments which are alive at the same time with the
+    // current segment. We keep only those segments and store them in buffers.
+    // We also sort the found segments in increasing order of the stop address.
+    // Note: The number of previous segments is usually small.
+    // -----------------------------------------------------------------------
+
+    // We initialize the "previous segments" buffers with a virtual segment of
+    // size 0 since this will simplify the logic used in the following section.
+    std::vector<AddressPair> prevSegAddr = {AddressPair(0, 0)};
+
+    for (const auto &idSeg: idSegList) {
+
+      // Previously allocated segment.
+      auto prevSegId = idSeg.first;
+      auto prevSeg = idSeg.second;
+
+      // Verify if the previous segment overlaps with current segment in time.
+      bool overlap = intervalsOverlap(buffTimeStart[currSegId],
+                                        buffTimeStop[currSegId],
+                                    buffTimeStart[prevSegId],
+                                    buffTimeStop[prevSegId]);
+
+      // If segment overlaps with previous then store the previous segment.
+        if (overlap) {
+          prevSegAddr.push_back(AddressPair(prevSeg.begin_,
+                                            prevSeg.end_));
+        }
+    }
+
+    // Order segments in the increasing order of the stop address.
+    std::sort(prevSegAddr.begin(), prevSegAddr.end(), [](const AddressPair &a, const AddressPair &b) {
+          return a.second < b.second;
+    });
+
+    // -----------------------------------------------------------------------
+    // Find a position for the current segment by trying to allocate at the
+    // end of all the previously allocated segments which were previously
+    // found. Since the previous segments are ordered by their stop address
+    // in ascending order this procedure is guaranteed to find a place at
+    // least at the end of the last segment.
+    // -----------------------------------------------------------------------
+
+    uint64_t currSegAddrStart = 0;
+    uint64_t currSegAddrStop  = 0;
+
+    for (size_t prevSegIdx = 0; prevSegIdx < prevSegAddr.size();  prevSegIdx++) {
+
+      // Try to place current segment after this previously allocated segment.
+      currSegAddrStart = prevSegAddr[prevSegIdx].second;
+      currSegAddrStop = currSegAddrStart + currSegSize;
+
+        // Verify if this placement overlaps with all the other segments.
+      // Note that this verification with all the previous segments is required
+      // because the previous segments can overlap between themselves.
+        bool overlap = false;
+        for (size_t ovrSegIdx = 0; ovrSegIdx < prevSegAddr.size(); ovrSegIdx++) {
+          // Check overlap.
+          overlap = overlap || intervalsOverlap(currSegAddrStart,
+                                                currSegAddrStop,
+                                          prevSegAddr[ovrSegIdx].first,
+                                          prevSegAddr[ovrSegIdx].second);
+          // Early break if overlaps.
+          if (overlap) {
+              break;
+          }
+        }
+
+        // If no overlap than we found the solution for the placement.
+        if (!overlap) {
+          break;
+        }
+    }
+
+    // Update maximum used size.
+    usedSizeMax = std::max(usedSizeMax, currSegAddrStop);
+
+    // If max available memory is surpassed with the new segment then we stop
+    // the allocation and return.
+    if (poolSize_ && (usedSizeMax > poolSize_)) {
+      return npos;
+    }
+
+    // Allocate current segment.
+    Segment currSeg(currSegAddrStart, currSegAddrStop);
+    idSegList.push_back(std::pair<size_t, Segment>(currSegId, currSeg));
+
+    // Update buffer information.
+    for (size_t allocIdx = buffTimeStart[currSegId]; allocIdx < buffTimeStop[currSegId]; allocIdx++) {
+      // Update total live sizes.
+        liveBuffSizeArray[allocIdx] = liveBuffSizeArray[allocIdx] - buffSizeArray[currSegId];
+        // Update total live IDs.
+        auto &allocIds = liveBuffIdListArray[allocIdx];
+        auto it = std::find(allocIds.begin(), allocIds.end(), currSegId);
+        assert(it != allocIds.end() && "Buffer ID not found for removal!");
+        allocIds.erase(it);
+    }
+  }
+
+  // Verify again that all the buffers were allocated.
+  for (size_t allocIdx = 0; allocIdx < allocNum; allocIdx++) {
+    assert(liveBuffSizeArray[allocIdx] == 0 && "Not all buffers were allocated!");
+    assert(liveBuffIdListArray[allocIdx].empty() && "Not all buffers were allocated!");
+  }
+
+  // Print statistics.
+#if 0
+  float allocEfficiency = (float)(liveSizeMax) / (float)(usedSizeMax);
+  printf("liveSizeMax: %I64d\n", liveSizeMax);
+  printf("usedSizeMax: %I64d\n", usedSizeMax);
+  printf("allocEff   : %f\n", allocEfficiency);
+#endif
+
+  // Update the segments, handles and the max used memory.
+  for (const auto &idSeg: idSegList) {
+    auto id = idSeg.first;
+    auto segment = idSeg.second;
+    auto handle = idToHandleMap[id];
+    // Add segment.
+    segments_.push_back(segment);
+    // Add segment handle.
+    setHandle(segment, handle);
+  }
+  maxMemoryAllocated_ = usedSizeMax;
+  return usedSizeMax;
 }

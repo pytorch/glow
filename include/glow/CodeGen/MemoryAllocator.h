@@ -27,11 +27,38 @@
 
 namespace glow {
 
+/// Type that should be used as a handle for memory segments for identification.
+/// TODO: Replace the Handle from allocator with this one.
+using MemoryHandle = const void *;
+
+/// Allocation structure which represents a request to allocate or free
+/// a memory region (buffer) within a given MemoryAllocator instance.
+struct Allocation {
+
+  /// Allocation handle which uniquely identifies the buffer to be allocated.
+  /// The provided handle must be unique for each buffer.
+  MemoryHandle handle_;
+
+  /// Allocation request type flag: true for ALLOC, false for FREE.
+  bool alloc_;
+
+  /// Allocation buffer size in bytes. This field is mandatory for ALLOC
+  /// and is ignored for FREE.
+  uint64_t size_;
+
+  Allocation(MemoryHandle handle, bool alloc, uint64_t size) :
+      handle_(handle), alloc_(alloc), size_(size) {}
+
+  Allocation(size_t id, bool alloc, uint64_t size) :
+      handle_((MemoryHandle)(id)), alloc_(alloc), size_(size) {}
+};
+
 /// A POD struct that represents a single half-open allocation [start .. end).
-class Segment {
-public:
+struct Segment {
+
   /// The allocation starts at this address.
   uint64_t begin_;
+
   /// The allocation ends before this address (half-open interval).
   uint64_t end_;
 
@@ -65,14 +92,14 @@ public:
 
   void reset() {
     maxMemoryAllocated_ = 0;
-    allocations_.clear();
+    segments_.clear();
     handleToAllocInfo_.clear();
     addrToHandle_.clear();
   }
 
   /// \returns True if the value \p idx is within the currently allocated range.
   bool contains(uint64_t idx) const {
-    for (auto &s : allocations_) {
+    for (auto &s : segments_) {
       if (s.contains(idx)) {
         return true;
       }
@@ -96,6 +123,8 @@ public:
   uint64_t allocate(uint64_t size, Handle handle,
                     const std::set<Handle> &mustNotEvict,
                     std::vector<Handle> &evicted);
+
+  uint64_t allocate(const std::vector<Allocation> &allocArray);
 
   /// \returns the handle currently associated with the allocation at \p
   /// address.
@@ -136,7 +165,7 @@ private:
   /// The name of the memory region.
   std::string name_;
   /// A list of live buffers.
-  std::list<Segment> allocations_;
+  std::list<Segment> segments_;
   /// The size of the memory region that we can allocate segments into.
   uint64_t poolSize_;
   /// This is the high water mark for the allocated memory.
@@ -156,8 +185,12 @@ private:
   /// candidates.
   void evictFirstFit(uint64_t size, const std::set<Handle> &mustNotEvict,
                      std::vector<Handle> &evicted);
+
   /// Associates a \p handle with an allocated address \p ptr and size \p size.
   void setHandle(uint64_t ptr, uint64_t size, Handle handle);
+
+  /// Associates a \p handle with a \p segment.
+  void setHandle(Segment segment, Handle handle);
 };
 
 } // namespace glow
