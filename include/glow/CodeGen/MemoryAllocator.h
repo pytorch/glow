@@ -46,11 +46,11 @@ struct Allocation {
   /// and is ignored for FREE.
   uint64_t size_;
 
-  Allocation(MemoryHandle handle, bool alloc, uint64_t size) :
-      handle_(handle), alloc_(alloc), size_(size) {}
+  Allocation(MemoryHandle handle, bool alloc, uint64_t size)
+      : handle_(handle), alloc_(alloc), size_(size) {}
 
-  Allocation(size_t id, bool alloc, uint64_t size) :
-      handle_((MemoryHandle)(id)), alloc_(alloc), size_(size) {}
+  Allocation(size_t id, bool alloc, uint64_t size)
+      : handle_((MemoryHandle)(id)), alloc_(alloc), size_(size) {}
 };
 
 /// A POD struct that represents a single half-open allocation [start .. end).
@@ -93,8 +93,8 @@ public:
   void reset() {
     maxMemoryAllocated_ = 0;
     segments_.clear();
-    handleToAllocInfo_.clear();
-    addrToHandle_.clear();
+    handleToSegmentMap_.clear();
+    addrToHandleMap_.clear();
   }
 
   /// \returns True if the value \p idx is within the currently allocated range.
@@ -107,23 +107,31 @@ public:
     return false;
   }
 
-  /// Allocate a region of size \p size and associate a \p handle with it.
+  /// Allocate a segment of size \p size and associate a \p handle with it.
   /// \returns the allocated pointer, or MemoryAllocator::npos, if the
   /// allocation failed.
   uint64_t allocate(uint64_t size, Handle handle);
 
-  /// Allocate a region of size \p size and associate a handle \p Handle with
+  /// Allocate a segment of size \p size and associate a handle \p Handle with
   /// it. If the allocation is not possible, the allocator should try to evict
   /// some entries that are not needed at the moment, but it is not allowed to
   /// evict any entries from \p mustNotEvict set. All evicted entries are stored
   /// in the \p evicted set.
-  ///
   /// \returns the allocated pointer, or MemoryAllocator::npos, if the
   /// allocation failed.
   uint64_t allocate(uint64_t size, Handle handle,
                     const std::set<Handle> &mustNotEvict,
                     std::vector<Handle> &evicted);
 
+  /// Allocate the segments associated with the allocation array \p allocArray.
+  /// This method has an improved memory allocation efficiency because all
+  /// the allocations are requested at once and the algorithm can improve the
+  /// allocation efficiency by allocating first the larger segments and so
+  /// avoiding early fragmentation. Upon function return use ONLY the function
+  /// \ref getSegment to retrieve the allocated segments based on the handles
+  /// used in \p allocArray.
+  /// \returns the total memory usage, or MemoryAllocator::npos, if the
+  /// allocation failed.
   uint64_t allocate(const std::vector<Allocation> &allocArray);
 
   /// \returns the handle currently associated with the allocation at \p
@@ -133,6 +141,9 @@ public:
   /// \returns true if there is a handle currently associated with the
   /// allocation at \p address.
   bool hasHandle(uint64_t ptr) const;
+
+  /// \returns the segment currently associated with the \p handle.
+  Segment getSegment(Handle handle) const;
 
   /// \returns the address currently associated with the \p handle.
   uint64_t getAddress(Handle handle) const;
@@ -164,19 +175,25 @@ public:
 private:
   /// The name of the memory region.
   std::string name_;
-  /// A list of live buffers.
+
+  /// A list of allocated segments.
   std::list<Segment> segments_;
+
   /// The size of the memory region that we can allocate segments into.
   uint64_t poolSize_;
+
   /// This is the high water mark for the allocated memory.
   uint64_t maxMemoryAllocated_{0};
+
   /// The alignment boundary for each segment allocation.
   size_t alignment_;
+
   /// Maps allocated addresses to the currently associated handles.
-  std::unordered_map<uint64_t, Handle> addrToHandle_;
+  std::unordered_map<uint64_t, Handle> addrToHandleMap_;
+
   /// Maps handles to the allocation information about the memory block
   /// currently associated with them.
-  std::unordered_map<Handle, Segment> handleToAllocInfo_;
+  std::unordered_map<Handle, Segment> handleToSegmentMap_;
 
   /// Tries to evict some entries that are not needed at the moment to free
   /// enough memory for the allocation of \p size bytes, but it is not allowed
@@ -188,9 +205,6 @@ private:
 
   /// Associates a \p handle with an allocated address \p ptr and size \p size.
   void setHandle(uint64_t ptr, uint64_t size, Handle handle);
-
-  /// Associates a \p handle with a \p segment.
-  void setHandle(Segment segment, Handle handle);
 };
 
 } // namespace glow
