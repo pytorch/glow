@@ -93,12 +93,14 @@ public:
   /// A reserved value to mark invalid allocation.
   static const uint64_t npos;
 
-  explicit MemoryAllocator(const std::string &name, uint64_t poolSize,
+  explicit MemoryAllocator(const std::string &name, uint64_t memorySize,
                            size_t alignment = TensorAlignment)
-      : name_(name), poolSize_(poolSize), alignment_{alignment} {}
+      : name_(name), memorySize_(memorySize), alignment_{alignment} {}
 
   void reset() {
-    maxMemoryAllocated_ = 0;
+    liveSize_ = 0;
+    maxUsedSize_ = 0;
+    maxLiveSize_ = 0;
     segments_.clear();
     handleToSegmentMap_.clear();
     addrToHandleMap_.clear();
@@ -130,7 +132,7 @@ public:
                     const std::set<Handle> &mustNotEvict,
                     std::vector<Handle> &evicted);
 
-  /// Allocate the segments associated with the allocation array \p allocArray.
+  /// Allocate all the segments associated with the allocations \p allocArray.
   /// This method has an improved memory allocation efficiency because all
   /// the allocations are requested at once and the algorithm can improve the
   /// allocation efficiency by allocating first the larger segments and so
@@ -166,15 +168,20 @@ public:
   /// Frees the allocation associated with \p handle.
   void deallocate(Handle handle);
 
-  /// \returns the high water mark for the allocated memory.
-  uint64_t getMaxMemoryUsage() const { return maxMemoryAllocated_; }
+  /// \returns the total size (in bytes) of the memory.
+  uint64_t getMemorySize() const { return memorySize_; }
 
-  /// \returns the size of the whole memory region that we can allocate segments
-  /// into.
-  uint64_t getMemorySize() const { return poolSize_; }
+  /// \returns the maximum memory usage (in bytes).
+  uint64_t getMaxMemoryUsage() const { return maxUsedSize_; }
 
   /// \returns the alignment boundary used to align segments.
   size_t getAlignment() const { return alignment_; }
+
+  /// \returns the allocation efficiency as a float between 0.0 and 1.0
+  /// which quantifies the efficiency of the allocation algorithm. An
+  /// efficiency value of 1.0 means the best theoretically possible. The
+  /// efficiency is not always 1.0 due to memory fragmentation. 
+  float getAllocationEfficiency() const;
 
   /// \returns the name of the memory region.
   const std::string &getName() const { return name_; }
@@ -186,11 +193,23 @@ private:
   /// A list of allocated segments.
   std::list<Segment> segments_;
 
-  /// The size of the memory region that we can allocate segments into.
-  uint64_t poolSize_;
+  /// The total size (in bytes) of the memory region. A value of 0 means unlimited size (infinite).
+  uint64_t memorySize_;
 
-  /// This is the high water mark for the allocated memory.
-  uint64_t maxMemoryAllocated_{0};
+  /// The maximum size (in bytes) used for segment allocation (memory usage).
+  uint64_t maxUsedSize_{0};
+
+  /// The maximum size (in bytes) for all simultaneously alive segments during
+  /// allocation. This is a theoretical size and is the best (minimum) memory
+  /// usage we can get with any allocation algorithm since it ignores memory
+  /// fragmentation. Since maxLiveSize_ <= maxUsedSize_ we can use this to
+  /// compute an allocation efficiency as maxLiveSize_ / maxUsedSize_.
+  uint64_t maxLiveSize_{0};
+
+  /// Current size (in bytes) for all the live segments currently allocated.
+  /// This is automatically updated for each call to \ref allocate or
+  /// \ref deallocate.
+  uint64_t liveSize_{0};
 
   /// The alignment boundary for each segment allocation.
   size_t alignment_;
@@ -203,8 +222,8 @@ private:
   std::unordered_map<Handle, Segment> handleToSegmentMap_;
 
   /// \returns the effective size used for allocating a segment which depends
-  /// on the requested segment memory size \p size and the alignment used by
-  /// this allocator instance.
+  /// on the requested allocation size \p size and the alignment used by this
+  /// allocator instance.
   uint64_t getEffectiveSize(uint64_t size) const;
 
   /// Tries to evict some entries that are not needed at the moment to free
@@ -218,7 +237,12 @@ private:
   /// Associates a \p handle with an allocated address \p ptr and size \p size.
   void setHandle(uint64_t ptr, uint64_t size, Handle handle);
 
+  /// Function to verify the allocation requests before allocating the segments.
+  /// \returns true if allocations are valid and false otherwise.
   bool verifyAllocations(const std::vector<Allocation> &allocArray);
+
+  /// Function to verify the segments after allocating them.
+  /// \returns true if segments are valid and false otherwise.
   bool verifySegments(const std::vector<Allocation> &allocArray);
 };
 

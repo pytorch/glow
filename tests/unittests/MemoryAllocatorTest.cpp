@@ -352,7 +352,7 @@ TEST(MemAlloc, testAlignment) {
 // TODO4: Test returned information.
 // TODO5: Negative testing using "ASSERT_DEATH_IF_SUPPORTED".
 
-// Test for memory allocation for model cifar10_quant.tflite.
+/// Test memory allocation for model cifar10_quant.tflite.
 TEST(MemAlloc, testMemAllocForModel1) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
@@ -386,9 +386,10 @@ TEST(MemAlloc, testMemAllocForModel1) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(6)), 1024);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(7)), 64);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(8)), 64);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model lenet_quant.tflite.
+/// Test memory allocation for model lenet_quant.tflite.
 TEST(MemAlloc, testMemAllocForModel2) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
@@ -419,9 +420,10 @@ TEST(MemAlloc, testMemAllocForModel2) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(5)), 512);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(6)), 64);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(7)), 64);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model mobilenet_v1_0.25_224.tflite.
+/// Test memory allocation for model mobilenet_v1_0.25_224.tflite.
 TEST(MemAlloc, testMemAllocForModel3) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
@@ -518,9 +520,10 @@ TEST(MemAlloc, testMemAllocForModel3) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(27)), 50176);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(28)), 1024);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(29)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model mobilenet_v1_0.50_224.tflite.
+/// Test memory allocation for model mobilenet_v1_0.50_224.tflite.
 TEST(MemAlloc, testMemAllocForModel4) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
@@ -617,9 +620,10 @@ TEST(MemAlloc, testMemAllocForModel4) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(27)), 100352);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(28)), 2048);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(29)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model mobilenet_v1_0.75_224.tflite.
+/// Test memory allocation for model mobilenet_v1_0.75_224.tflite.
 TEST(MemAlloc, testMemAllocForModel5) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
@@ -716,9 +720,10 @@ TEST(MemAlloc, testMemAllocForModel5) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(27)), 150528);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(28)), 3072);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(29)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model mobilenet_v1_1.00_224.tflite.
+/// Test memory allocation for model mobilenet_v1_1.00_224.tflite.
 TEST(MemAlloc, testMemAllocForModel6) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
@@ -815,10 +820,183 @@ TEST(MemAlloc, testMemAllocForModel6) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(27)), 200704);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(28)), 4096);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(29)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model mobilenet_v2_0.35_224.tflite.
+/// Test memory allocation for model mobilenet_v1_ssd.onnx.
 TEST(MemAlloc, testMemAllocForModel7) {
+  MemoryAllocator MA("mem", 0, 64);
+  // Define allocation array.
+  std::vector<Allocation> allocArray;
+  allocArray.reserve(106);
+  allocArray.push_back(Allocation(1, 1, 1080000));
+  allocArray.push_back(Allocation(2, 1, 2880000));
+  allocArray.push_back(Allocation(1, 0, 0));
+  allocArray.push_back(Allocation(3, 1, 2880000));
+  allocArray.push_back(Allocation(2, 0, 0));
+  allocArray.push_back(Allocation(4, 1, 5760000));
+  allocArray.push_back(Allocation(3, 0, 0));
+  allocArray.push_back(Allocation(5, 1, 1440000));
+  allocArray.push_back(Allocation(4, 0, 0));
+  allocArray.push_back(Allocation(6, 1, 2880000));
+  allocArray.push_back(Allocation(5, 0, 0));
+  allocArray.push_back(Allocation(7, 1, 2880000));
+  allocArray.push_back(Allocation(6, 0, 0));
+  allocArray.push_back(Allocation(8, 1, 2880000));
+  allocArray.push_back(Allocation(7, 0, 0));
+  allocArray.push_back(Allocation(9, 1, 739328));
+  allocArray.push_back(Allocation(8, 0, 0));
+  allocArray.push_back(Allocation(10, 1, 1478656));
+  allocArray.push_back(Allocation(9, 0, 0));
+  allocArray.push_back(Allocation(11, 1, 1478656));
+  allocArray.push_back(Allocation(10, 0, 0));
+  allocArray.push_back(Allocation(12, 1, 1478656));
+  allocArray.push_back(Allocation(11, 0, 0));
+  allocArray.push_back(Allocation(13, 1, 369664));
+  allocArray.push_back(Allocation(12, 0, 0));
+  allocArray.push_back(Allocation(14, 1, 739328));
+  allocArray.push_back(Allocation(13, 0, 0));
+  allocArray.push_back(Allocation(15, 1, 739328));
+  allocArray.push_back(Allocation(14, 0, 0));
+  allocArray.push_back(Allocation(16, 1, 739328));
+  allocArray.push_back(Allocation(15, 0, 0));
+  allocArray.push_back(Allocation(17, 1, 739328));
+  allocArray.push_back(Allocation(16, 0, 0));
+  allocArray.push_back(Allocation(18, 1, 739328));
+  allocArray.push_back(Allocation(17, 0, 0));
+  allocArray.push_back(Allocation(19, 1, 739328));
+  allocArray.push_back(Allocation(18, 0, 0));
+  allocArray.push_back(Allocation(20, 1, 739328));
+  allocArray.push_back(Allocation(19, 0, 0));
+  allocArray.push_back(Allocation(21, 1, 739328));
+  allocArray.push_back(Allocation(20, 0, 0));
+  allocArray.push_back(Allocation(22, 1, 739328));
+  allocArray.push_back(Allocation(21, 0, 0));
+  allocArray.push_back(Allocation(23, 1, 739328));
+  allocArray.push_back(Allocation(22, 0, 0));
+  allocArray.push_back(Allocation(24, 1, 739328));
+  allocArray.push_back(Allocation(23, 0, 0));
+  allocArray.push_back(Allocation(25, 1, 204800));
+  allocArray.push_back(Allocation(26, 1, 409600));
+  allocArray.push_back(Allocation(25, 0, 0));
+  allocArray.push_back(Allocation(27, 1, 409600));
+  allocArray.push_back(Allocation(26, 0, 0));
+  allocArray.push_back(Allocation(28, 1, 409600));
+  allocArray.push_back(Allocation(27, 0, 0));
+  allocArray.push_back(Allocation(29, 1, 102400));
+  allocArray.push_back(Allocation(30, 1, 51200));
+  allocArray.push_back(Allocation(29, 0, 0));
+  allocArray.push_back(Allocation(31, 1, 12800));
+  allocArray.push_back(Allocation(32, 1, 9216));
+  allocArray.push_back(Allocation(31, 0, 0));
+  allocArray.push_back(Allocation(33, 1, 4608));
+  allocArray.push_back(Allocation(34, 1, 4096));
+  allocArray.push_back(Allocation(33, 0, 0));
+  allocArray.push_back(Allocation(35, 1, 2048));
+  allocArray.push_back(Allocation(36, 1, 1024));
+  allocArray.push_back(Allocation(35, 0, 0));
+  allocArray.push_back(Allocation(37, 1, 512));
+  allocArray.push_back(Allocation(38, 1, 2048));
+  allocArray.push_back(Allocation(39, 1, 4544));
+  allocArray.push_back(Allocation(40, 1, 12608));
+  allocArray.push_back(Allocation(41, 1, 50432));
+  allocArray.push_back(Allocation(42, 1, 181952));
+  allocArray.push_back(Allocation(43, 1, 252032));
+  allocArray.push_back(Allocation(42, 0, 0));
+  allocArray.push_back(Allocation(41, 0, 0));
+  allocArray.push_back(Allocation(40, 0, 0));
+  allocArray.push_back(Allocation(39, 0, 0));
+  allocArray.push_back(Allocation(38, 0, 0));
+  allocArray.push_back(Allocation(37, 0, 0));
+  allocArray.push_back(Allocation(43, 0, 0));
+  allocArray.push_back(Allocation(44, 1, 128));
+  allocArray.push_back(Allocation(36, 0, 0));
+  allocArray.push_back(Allocation(45, 1, 384));
+  allocArray.push_back(Allocation(34, 0, 0));
+  allocArray.push_back(Allocation(46, 1, 896));
+  allocArray.push_back(Allocation(32, 0, 0));
+  allocArray.push_back(Allocation(47, 1, 2432));
+  allocArray.push_back(Allocation(30, 0, 0));
+  allocArray.push_back(Allocation(48, 1, 9600));
+  allocArray.push_back(Allocation(28, 0, 0));
+  allocArray.push_back(Allocation(49, 1, 34688));
+  allocArray.push_back(Allocation(24, 0, 0));
+  allocArray.push_back(Allocation(50, 1, 48000));
+  allocArray.push_back(Allocation(49, 0, 0));
+  allocArray.push_back(Allocation(48, 0, 0));
+  allocArray.push_back(Allocation(47, 0, 0));
+  allocArray.push_back(Allocation(46, 0, 0));
+  allocArray.push_back(Allocation(45, 0, 0));
+  allocArray.push_back(Allocation(44, 0, 0));
+  allocArray.push_back(Allocation(51, 1, 24000));
+  allocArray.push_back(Allocation(52, 1, 24000));
+  allocArray.push_back(Allocation(50, 0, 0));
+  allocArray.push_back(Allocation(53, 1, 24000));
+  allocArray.push_back(Allocation(52, 0, 0));
+  allocArray.push_back(Allocation(53, 0, 0));
+  allocArray.push_back(Allocation(51, 0, 0));
+  // Perform allocation.
+  uint64_t usedSize = MA.allocate(allocArray);
+  // Verifications.
+  EXPECT_EQ(usedSize, 8640000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(1)), 1080000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(2)), 2880000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(3)), 2880000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(4)), 5760000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(5)), 1440000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(6)), 2880000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(7)), 2880000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(8)), 2880000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(9)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(10)), 1478656);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(11)), 1478656);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(12)), 1478656);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(13)), 369664);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(14)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(15)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(16)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(17)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(18)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(19)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(20)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(21)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(22)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(23)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(24)), 739328);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(25)), 204800);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(26)), 409600);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(27)), 409600);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(28)), 409600);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(29)), 102400);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(30)), 51200);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(31)), 12800);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(32)), 9216);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(33)), 4608);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(34)), 4096);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(35)), 2048);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(36)), 1024);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(37)), 512);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(38)), 2048);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(39)), 4544);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(40)), 12608);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(41)), 50432);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(42)), 181952);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(43)), 252032);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(44)), 128);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(45)), 384);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(46)), 896);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(47)), 2432);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(48)), 9600);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(49)), 34688);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(50)), 48000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(51)), 24000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 24000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 24000);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
+}
+
+/// Test memory allocation for model mobilenet_v2_0.35_224.tflite.
+TEST(MemAlloc, testMemAllocForModel8) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
   std::vector<Allocation> allocArray;
@@ -989,10 +1167,11 @@ TEST(MemAlloc, testMemAllocForModel7) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 250880);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 5120);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(54)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model mobilenet_v2_0.50_224.tflite.
-TEST(MemAlloc, testMemAllocForModel8) {
+/// Test memory allocation for model mobilenet_v2_0.50_224.tflite.
+TEST(MemAlloc, testMemAllocForModel9) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
   std::vector<Allocation> allocArray;
@@ -1163,10 +1342,11 @@ TEST(MemAlloc, testMemAllocForModel8) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 250880);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 5120);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(54)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 0.937500);
 }
 
-// Test for memory allocation for model mobilenet_v2_0.75_224.tflite.
-TEST(MemAlloc, testMemAllocForModel9) {
+/// Test memory allocation for model mobilenet_v2_0.75_224.tflite.
+TEST(MemAlloc, testMemAllocForModel10) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
   std::vector<Allocation> allocArray;
@@ -1337,10 +1517,11 @@ TEST(MemAlloc, testMemAllocForModel9) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 250880);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 5120);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(54)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model mobilenet_v2_1.00_224.tflite.
-TEST(MemAlloc, testMemAllocForModel10) {
+/// Test memory allocation for model mobilenet_v2_1.00_224.tflite.
+TEST(MemAlloc, testMemAllocForModel11) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
   std::vector<Allocation> allocArray;
@@ -1511,10 +1692,11 @@ TEST(MemAlloc, testMemAllocForModel10) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 250880);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 5120);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(54)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model mobilenet_v2_1.30_224.tflite.
-TEST(MemAlloc, testMemAllocForModel11) {
+/// Test memory allocation for model mobilenet_v2_1.30_224.tflite.
+TEST(MemAlloc, testMemAllocForModel12) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
   std::vector<Allocation> allocArray;
@@ -1685,10 +1867,11 @@ TEST(MemAlloc, testMemAllocForModel11) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 326144);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 6656);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(54)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model mobilenet_v2_1.40_224.tflite.
-TEST(MemAlloc, testMemAllocForModel12) {
+/// Test memory allocation for model mobilenet_v2_1.40_224.tflite.
+TEST(MemAlloc, testMemAllocForModel13) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
   std::vector<Allocation> allocArray;
@@ -1859,10 +2042,300 @@ TEST(MemAlloc, testMemAllocForModel12) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 351232);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 7168);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(54)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
-// Test for memory allocation for model resnet50_v1.tflite.
-TEST(MemAlloc, testMemAllocForModel13) {
+/// Test memory allocation for model mobilenet_v2_ssd_lite.onnx.
+TEST(MemAlloc, testMemAllocForModel14) {
+  MemoryAllocator MA("mem", 0, 64);
+  // Define allocation array.
+  std::vector<Allocation> allocArray;
+  allocArray.reserve(184);
+  allocArray.push_back(Allocation(1, 1, 1080000));
+  allocArray.push_back(Allocation(2, 1, 2880000));
+  allocArray.push_back(Allocation(1, 0, 0));
+  allocArray.push_back(Allocation(3, 1, 2880000));
+  allocArray.push_back(Allocation(2, 0, 0));
+  allocArray.push_back(Allocation(4, 1, 1440000));
+  allocArray.push_back(Allocation(3, 0, 0));
+  allocArray.push_back(Allocation(5, 1, 8640000));
+  allocArray.push_back(Allocation(4, 0, 0));
+  allocArray.push_back(Allocation(6, 1, 2160000));
+  allocArray.push_back(Allocation(5, 0, 0));
+  allocArray.push_back(Allocation(7, 1, 540032));
+  allocArray.push_back(Allocation(6, 0, 0));
+  allocArray.push_back(Allocation(8, 1, 3240000));
+  allocArray.push_back(Allocation(9, 1, 3240000));
+  allocArray.push_back(Allocation(8, 0, 0));
+  allocArray.push_back(Allocation(10, 1, 540032));
+  allocArray.push_back(Allocation(9, 0, 0));
+  allocArray.push_back(Allocation(10, 0, 0));
+  allocArray.push_back(Allocation(11, 1, 3240000));
+  allocArray.push_back(Allocation(7, 0, 0));
+  allocArray.push_back(Allocation(12, 1, 831744));
+  allocArray.push_back(Allocation(11, 0, 0));
+  allocArray.push_back(Allocation(13, 1, 184832));
+  allocArray.push_back(Allocation(12, 0, 0));
+  allocArray.push_back(Allocation(14, 1, 1108992));
+  allocArray.push_back(Allocation(15, 1, 1108992));
+  allocArray.push_back(Allocation(14, 0, 0));
+  allocArray.push_back(Allocation(16, 1, 184832));
+  allocArray.push_back(Allocation(15, 0, 0));
+  allocArray.push_back(Allocation(16, 0, 0));
+  allocArray.push_back(Allocation(17, 1, 1108992));
+  allocArray.push_back(Allocation(18, 1, 1108992));
+  allocArray.push_back(Allocation(17, 0, 0));
+  allocArray.push_back(Allocation(19, 1, 184832));
+  allocArray.push_back(Allocation(18, 0, 0));
+  allocArray.push_back(Allocation(19, 0, 0));
+  allocArray.push_back(Allocation(20, 1, 1108992));
+  allocArray.push_back(Allocation(13, 0, 0));
+  allocArray.push_back(Allocation(21, 1, 277248));
+  allocArray.push_back(Allocation(20, 0, 0));
+  allocArray.push_back(Allocation(22, 1, 92416));
+  allocArray.push_back(Allocation(21, 0, 0));
+  allocArray.push_back(Allocation(23, 1, 554496));
+  allocArray.push_back(Allocation(24, 1, 554496));
+  allocArray.push_back(Allocation(23, 0, 0));
+  allocArray.push_back(Allocation(25, 1, 92416));
+  allocArray.push_back(Allocation(24, 0, 0));
+  allocArray.push_back(Allocation(25, 0, 0));
+  allocArray.push_back(Allocation(26, 1, 554496));
+  allocArray.push_back(Allocation(27, 1, 554496));
+  allocArray.push_back(Allocation(26, 0, 0));
+  allocArray.push_back(Allocation(28, 1, 92416));
+  allocArray.push_back(Allocation(27, 0, 0));
+  allocArray.push_back(Allocation(28, 0, 0));
+  allocArray.push_back(Allocation(29, 1, 554496));
+  allocArray.push_back(Allocation(30, 1, 554496));
+  allocArray.push_back(Allocation(29, 0, 0));
+  allocArray.push_back(Allocation(31, 1, 92416));
+  allocArray.push_back(Allocation(30, 0, 0));
+  allocArray.push_back(Allocation(31, 0, 0));
+  allocArray.push_back(Allocation(32, 1, 554496));
+  allocArray.push_back(Allocation(22, 0, 0));
+  allocArray.push_back(Allocation(33, 1, 554496));
+  allocArray.push_back(Allocation(32, 0, 0));
+  allocArray.push_back(Allocation(34, 1, 138624));
+  allocArray.push_back(Allocation(33, 0, 0));
+  allocArray.push_back(Allocation(35, 1, 831744));
+  allocArray.push_back(Allocation(36, 1, 831744));
+  allocArray.push_back(Allocation(35, 0, 0));
+  allocArray.push_back(Allocation(37, 1, 138624));
+  allocArray.push_back(Allocation(36, 0, 0));
+  allocArray.push_back(Allocation(37, 0, 0));
+  allocArray.push_back(Allocation(38, 1, 831744));
+  allocArray.push_back(Allocation(39, 1, 831744));
+  allocArray.push_back(Allocation(38, 0, 0));
+  allocArray.push_back(Allocation(40, 1, 138624));
+  allocArray.push_back(Allocation(39, 0, 0));
+  allocArray.push_back(Allocation(40, 0, 0));
+  allocArray.push_back(Allocation(41, 1, 831744));
+  allocArray.push_back(Allocation(34, 0, 0));
+  allocArray.push_back(Allocation(42, 1, 230400));
+  allocArray.push_back(Allocation(43, 1, 64000));
+  allocArray.push_back(Allocation(42, 0, 0));
+  allocArray.push_back(Allocation(44, 1, 384000));
+  allocArray.push_back(Allocation(45, 1, 384000));
+  allocArray.push_back(Allocation(44, 0, 0));
+  allocArray.push_back(Allocation(46, 1, 64000));
+  allocArray.push_back(Allocation(45, 0, 0));
+  allocArray.push_back(Allocation(46, 0, 0));
+  allocArray.push_back(Allocation(47, 1, 384000));
+  allocArray.push_back(Allocation(48, 1, 384000));
+  allocArray.push_back(Allocation(47, 0, 0));
+  allocArray.push_back(Allocation(49, 1, 64000));
+  allocArray.push_back(Allocation(48, 0, 0));
+  allocArray.push_back(Allocation(49, 0, 0));
+  allocArray.push_back(Allocation(50, 1, 384000));
+  allocArray.push_back(Allocation(43, 0, 0));
+  allocArray.push_back(Allocation(51, 1, 384000));
+  allocArray.push_back(Allocation(50, 0, 0));
+  allocArray.push_back(Allocation(52, 1, 128000));
+  allocArray.push_back(Allocation(51, 0, 0));
+  allocArray.push_back(Allocation(53, 1, 512000));
+  allocArray.push_back(Allocation(52, 0, 0));
+  allocArray.push_back(Allocation(54, 1, 102400));
+  allocArray.push_back(Allocation(55, 1, 25600));
+  allocArray.push_back(Allocation(54, 0, 0));
+  allocArray.push_back(Allocation(56, 1, 51200));
+  allocArray.push_back(Allocation(55, 0, 0));
+  allocArray.push_back(Allocation(57, 1, 12800));
+  allocArray.push_back(Allocation(58, 1, 4608));
+  allocArray.push_back(Allocation(57, 0, 0));
+  allocArray.push_back(Allocation(59, 1, 9216));
+  allocArray.push_back(Allocation(58, 0, 0));
+  allocArray.push_back(Allocation(60, 1, 4608));
+  allocArray.push_back(Allocation(61, 1, 2048));
+  allocArray.push_back(Allocation(60, 0, 0));
+  allocArray.push_back(Allocation(62, 1, 4096));
+  allocArray.push_back(Allocation(61, 0, 0));
+  allocArray.push_back(Allocation(63, 1, 1024));
+  allocArray.push_back(Allocation(64, 1, 256));
+  allocArray.push_back(Allocation(63, 0, 0));
+  allocArray.push_back(Allocation(65, 1, 256));
+  allocArray.push_back(Allocation(64, 0, 0));
+  allocArray.push_back(Allocation(66, 1, 512));
+  allocArray.push_back(Allocation(67, 1, 4096));
+  allocArray.push_back(Allocation(68, 1, 2048));
+  allocArray.push_back(Allocation(67, 0, 0));
+  allocArray.push_back(Allocation(69, 1, 9216));
+  allocArray.push_back(Allocation(70, 1, 4544));
+  allocArray.push_back(Allocation(69, 0, 0));
+  allocArray.push_back(Allocation(71, 1, 51200));
+  allocArray.push_back(Allocation(72, 1, 12608));
+  allocArray.push_back(Allocation(71, 0, 0));
+  allocArray.push_back(Allocation(73, 1, 512000));
+  allocArray.push_back(Allocation(74, 1, 50432));
+  allocArray.push_back(Allocation(73, 0, 0));
+  allocArray.push_back(Allocation(75, 1, 831744));
+  allocArray.push_back(Allocation(76, 1, 181952));
+  allocArray.push_back(Allocation(75, 0, 0));
+  allocArray.push_back(Allocation(77, 1, 252032));
+  allocArray.push_back(Allocation(76, 0, 0));
+  allocArray.push_back(Allocation(74, 0, 0));
+  allocArray.push_back(Allocation(72, 0, 0));
+  allocArray.push_back(Allocation(70, 0, 0));
+  allocArray.push_back(Allocation(68, 0, 0));
+  allocArray.push_back(Allocation(66, 0, 0));
+  allocArray.push_back(Allocation(77, 0, 0));
+  allocArray.push_back(Allocation(78, 1, 128));
+  allocArray.push_back(Allocation(65, 0, 0));
+  allocArray.push_back(Allocation(79, 1, 4096));
+  allocArray.push_back(Allocation(62, 0, 0));
+  allocArray.push_back(Allocation(80, 1, 384));
+  allocArray.push_back(Allocation(79, 0, 0));
+  allocArray.push_back(Allocation(81, 1, 9216));
+  allocArray.push_back(Allocation(59, 0, 0));
+  allocArray.push_back(Allocation(82, 1, 896));
+  allocArray.push_back(Allocation(81, 0, 0));
+  allocArray.push_back(Allocation(83, 1, 51200));
+  allocArray.push_back(Allocation(56, 0, 0));
+  allocArray.push_back(Allocation(84, 1, 2432));
+  allocArray.push_back(Allocation(83, 0, 0));
+  allocArray.push_back(Allocation(85, 1, 512000));
+  allocArray.push_back(Allocation(53, 0, 0));
+  allocArray.push_back(Allocation(86, 1, 9600));
+  allocArray.push_back(Allocation(85, 0, 0));
+  allocArray.push_back(Allocation(87, 1, 831744));
+  allocArray.push_back(Allocation(41, 0, 0));
+  allocArray.push_back(Allocation(88, 1, 34688));
+  allocArray.push_back(Allocation(87, 0, 0));
+  allocArray.push_back(Allocation(89, 1, 48000));
+  allocArray.push_back(Allocation(88, 0, 0));
+  allocArray.push_back(Allocation(86, 0, 0));
+  allocArray.push_back(Allocation(84, 0, 0));
+  allocArray.push_back(Allocation(82, 0, 0));
+  allocArray.push_back(Allocation(80, 0, 0));
+  allocArray.push_back(Allocation(78, 0, 0));
+  allocArray.push_back(Allocation(90, 1, 24000));
+  allocArray.push_back(Allocation(91, 1, 24000));
+  allocArray.push_back(Allocation(89, 0, 0));
+  allocArray.push_back(Allocation(92, 1, 24000));
+  allocArray.push_back(Allocation(91, 0, 0));
+  allocArray.push_back(Allocation(92, 0, 0));
+  allocArray.push_back(Allocation(90, 0, 0));
+  // Perform allocation.
+  uint64_t usedSize = MA.allocate(allocArray);
+  // Verifications.
+  EXPECT_EQ(usedSize, 10800000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(1)), 1080000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(2)), 2880000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(3)), 2880000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(4)), 1440000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(5)), 8640000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(6)), 2160000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(7)), 540032);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(8)), 3240000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(9)), 3240000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(10)), 540032);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(11)), 3240000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(12)), 831744);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(13)), 184832);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(14)), 1108992);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(15)), 1108992);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(16)), 184832);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(17)), 1108992);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(18)), 1108992);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(19)), 184832);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(20)), 1108992);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(21)), 277248);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(22)), 92416);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(23)), 554496);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(24)), 554496);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(25)), 92416);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(26)), 554496);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(27)), 554496);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(28)), 92416);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(29)), 554496);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(30)), 554496);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(31)), 92416);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(32)), 554496);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(33)), 554496);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(34)), 138624);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(35)), 831744);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(36)), 831744);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(37)), 138624);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(38)), 831744);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(39)), 831744);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(40)), 138624);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(41)), 831744);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(42)), 230400);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(43)), 64000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(44)), 384000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(45)), 384000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(46)), 64000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(47)), 384000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(48)), 384000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(49)), 64000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(50)), 384000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(51)), 384000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 128000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 512000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(54)), 102400);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(55)), 25600);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(56)), 51200);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(57)), 12800);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(58)), 4608);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(59)), 9216);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(60)), 4608);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(61)), 2048);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(62)), 4096);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(63)), 1024);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(64)), 256);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(65)), 256);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(66)), 512);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(67)), 4096);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(68)), 2048);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(69)), 9216);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(70)), 4544);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(71)), 51200);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(72)), 12608);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(73)), 512000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(74)), 50432);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(75)), 831744);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(76)), 181952);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(77)), 252032);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(78)), 128);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(79)), 4096);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(80)), 384);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(81)), 9216);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(82)), 896);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(83)), 51200);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(84)), 2432);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(85)), 512000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(86)), 9600);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(87)), 831744);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(88)), 34688);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(89)), 48000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(90)), 24000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(91)), 24000);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(92)), 24000);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
+}
+
+/// Test memory allocation for model resnet50_v1.tflite.
+TEST(MemAlloc, testMemAllocForModel15) {
   MemoryAllocator MA("mem", 0, 64);
   // Define allocation array.
   std::vector<Allocation> allocArray;
@@ -2051,4 +2524,526 @@ TEST(MemAlloc, testMemAllocForModel13) {
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(58)), 8192);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(59)), 8192);
   EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(60)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
+}
+
+/// Test memory allocation for model resnet50_v2.tflite.
+TEST(MemAlloc, testMemAllocForModel16) {
+  MemoryAllocator MA("mem", 0, 64);
+  // Define allocation array.
+  std::vector<Allocation> allocArray;
+  allocArray.reserve(148);
+  allocArray.push_back(Allocation(1, 1, 3211264));
+  allocArray.push_back(Allocation(2, 1, 802816));
+  allocArray.push_back(Allocation(1, 0, 0));
+  allocArray.push_back(Allocation(3, 1, 3211264));
+  allocArray.push_back(Allocation(4, 1, 802816));
+  allocArray.push_back(Allocation(2, 0, 0));
+  allocArray.push_back(Allocation(5, 1, 802816));
+  allocArray.push_back(Allocation(4, 0, 0));
+  allocArray.push_back(Allocation(6, 1, 3211264));
+  allocArray.push_back(Allocation(5, 0, 0));
+  allocArray.push_back(Allocation(6, 0, 0));
+  allocArray.push_back(Allocation(7, 1, 3211264));
+  allocArray.push_back(Allocation(8, 1, 802816));
+  allocArray.push_back(Allocation(7, 0, 0));
+  allocArray.push_back(Allocation(9, 1, 802816));
+  allocArray.push_back(Allocation(8, 0, 0));
+  allocArray.push_back(Allocation(10, 1, 3211264));
+  allocArray.push_back(Allocation(9, 0, 0));
+  allocArray.push_back(Allocation(10, 0, 0));
+  allocArray.push_back(Allocation(11, 1, 3211264));
+  allocArray.push_back(Allocation(12, 1, 802816));
+  allocArray.push_back(Allocation(11, 0, 0));
+  allocArray.push_back(Allocation(13, 1, 200704));
+  allocArray.push_back(Allocation(12, 0, 0));
+  allocArray.push_back(Allocation(14, 1, 802816));
+  allocArray.push_back(Allocation(13, 0, 0));
+  allocArray.push_back(Allocation(15, 1, 802816));
+  allocArray.push_back(Allocation(3, 0, 0));
+  allocArray.push_back(Allocation(14, 0, 0));
+  allocArray.push_back(Allocation(16, 1, 1605632));
+  allocArray.push_back(Allocation(17, 1, 401408));
+  allocArray.push_back(Allocation(15, 0, 0));
+  allocArray.push_back(Allocation(18, 1, 401408));
+  allocArray.push_back(Allocation(17, 0, 0));
+  allocArray.push_back(Allocation(19, 1, 1605632));
+  allocArray.push_back(Allocation(18, 0, 0));
+  allocArray.push_back(Allocation(19, 0, 0));
+  allocArray.push_back(Allocation(20, 1, 1605632));
+  allocArray.push_back(Allocation(21, 1, 401408));
+  allocArray.push_back(Allocation(20, 0, 0));
+  allocArray.push_back(Allocation(22, 1, 401408));
+  allocArray.push_back(Allocation(21, 0, 0));
+  allocArray.push_back(Allocation(23, 1, 1605632));
+  allocArray.push_back(Allocation(22, 0, 0));
+  allocArray.push_back(Allocation(23, 0, 0));
+  allocArray.push_back(Allocation(24, 1, 1605632));
+  allocArray.push_back(Allocation(25, 1, 401408));
+  allocArray.push_back(Allocation(24, 0, 0));
+  allocArray.push_back(Allocation(26, 1, 401408));
+  allocArray.push_back(Allocation(25, 0, 0));
+  allocArray.push_back(Allocation(27, 1, 1605632));
+  allocArray.push_back(Allocation(26, 0, 0));
+  allocArray.push_back(Allocation(27, 0, 0));
+  allocArray.push_back(Allocation(28, 1, 1605632));
+  allocArray.push_back(Allocation(29, 1, 401408));
+  allocArray.push_back(Allocation(28, 0, 0));
+  allocArray.push_back(Allocation(30, 1, 100352));
+  allocArray.push_back(Allocation(29, 0, 0));
+  allocArray.push_back(Allocation(31, 1, 401408));
+  allocArray.push_back(Allocation(30, 0, 0));
+  allocArray.push_back(Allocation(32, 1, 401408));
+  allocArray.push_back(Allocation(16, 0, 0));
+  allocArray.push_back(Allocation(31, 0, 0));
+  allocArray.push_back(Allocation(33, 1, 802816));
+  allocArray.push_back(Allocation(34, 1, 200704));
+  allocArray.push_back(Allocation(32, 0, 0));
+  allocArray.push_back(Allocation(35, 1, 200704));
+  allocArray.push_back(Allocation(34, 0, 0));
+  allocArray.push_back(Allocation(36, 1, 802816));
+  allocArray.push_back(Allocation(35, 0, 0));
+  allocArray.push_back(Allocation(36, 0, 0));
+  allocArray.push_back(Allocation(37, 1, 802816));
+  allocArray.push_back(Allocation(38, 1, 200704));
+  allocArray.push_back(Allocation(37, 0, 0));
+  allocArray.push_back(Allocation(39, 1, 200704));
+  allocArray.push_back(Allocation(38, 0, 0));
+  allocArray.push_back(Allocation(40, 1, 802816));
+  allocArray.push_back(Allocation(39, 0, 0));
+  allocArray.push_back(Allocation(40, 0, 0));
+  allocArray.push_back(Allocation(41, 1, 802816));
+  allocArray.push_back(Allocation(42, 1, 200704));
+  allocArray.push_back(Allocation(41, 0, 0));
+  allocArray.push_back(Allocation(43, 1, 200704));
+  allocArray.push_back(Allocation(42, 0, 0));
+  allocArray.push_back(Allocation(44, 1, 802816));
+  allocArray.push_back(Allocation(43, 0, 0));
+  allocArray.push_back(Allocation(44, 0, 0));
+  allocArray.push_back(Allocation(45, 1, 802816));
+  allocArray.push_back(Allocation(46, 1, 200704));
+  allocArray.push_back(Allocation(45, 0, 0));
+  allocArray.push_back(Allocation(47, 1, 200704));
+  allocArray.push_back(Allocation(46, 0, 0));
+  allocArray.push_back(Allocation(48, 1, 802816));
+  allocArray.push_back(Allocation(47, 0, 0));
+  allocArray.push_back(Allocation(48, 0, 0));
+  allocArray.push_back(Allocation(49, 1, 802816));
+  allocArray.push_back(Allocation(50, 1, 200704));
+  allocArray.push_back(Allocation(49, 0, 0));
+  allocArray.push_back(Allocation(51, 1, 200704));
+  allocArray.push_back(Allocation(50, 0, 0));
+  allocArray.push_back(Allocation(52, 1, 802816));
+  allocArray.push_back(Allocation(51, 0, 0));
+  allocArray.push_back(Allocation(52, 0, 0));
+  allocArray.push_back(Allocation(53, 1, 802816));
+  allocArray.push_back(Allocation(54, 1, 200704));
+  allocArray.push_back(Allocation(53, 0, 0));
+  allocArray.push_back(Allocation(55, 1, 50176));
+  allocArray.push_back(Allocation(54, 0, 0));
+  allocArray.push_back(Allocation(56, 1, 200704));
+  allocArray.push_back(Allocation(55, 0, 0));
+  allocArray.push_back(Allocation(57, 1, 200704));
+  allocArray.push_back(Allocation(33, 0, 0));
+  allocArray.push_back(Allocation(56, 0, 0));
+  allocArray.push_back(Allocation(58, 1, 401408));
+  allocArray.push_back(Allocation(59, 1, 100352));
+  allocArray.push_back(Allocation(57, 0, 0));
+  allocArray.push_back(Allocation(60, 1, 100352));
+  allocArray.push_back(Allocation(59, 0, 0));
+  allocArray.push_back(Allocation(61, 1, 401408));
+  allocArray.push_back(Allocation(60, 0, 0));
+  allocArray.push_back(Allocation(61, 0, 0));
+  allocArray.push_back(Allocation(62, 1, 401408));
+  allocArray.push_back(Allocation(63, 1, 100352));
+  allocArray.push_back(Allocation(62, 0, 0));
+  allocArray.push_back(Allocation(64, 1, 100352));
+  allocArray.push_back(Allocation(63, 0, 0));
+  allocArray.push_back(Allocation(65, 1, 401408));
+  allocArray.push_back(Allocation(64, 0, 0));
+  allocArray.push_back(Allocation(65, 0, 0));
+  allocArray.push_back(Allocation(66, 1, 401408));
+  allocArray.push_back(Allocation(67, 1, 100352));
+  allocArray.push_back(Allocation(66, 0, 0));
+  allocArray.push_back(Allocation(68, 1, 100352));
+  allocArray.push_back(Allocation(67, 0, 0));
+  allocArray.push_back(Allocation(69, 1, 401408));
+  allocArray.push_back(Allocation(68, 0, 0));
+  allocArray.push_back(Allocation(69, 0, 0));
+  allocArray.push_back(Allocation(70, 1, 57344));
+  allocArray.push_back(Allocation(58, 0, 0));
+  allocArray.push_back(Allocation(71, 1, 57344));
+  allocArray.push_back(Allocation(71, 0, 0));
+  allocArray.push_back(Allocation(72, 1, 8192));
+  allocArray.push_back(Allocation(70, 0, 0));
+  allocArray.push_back(Allocation(73, 1, 8192));
+  allocArray.push_back(Allocation(73, 0, 0));
+  allocArray.push_back(Allocation(74, 1, 4032));
+  allocArray.push_back(Allocation(72, 0, 0));
+  allocArray.push_back(Allocation(74, 0, 0));
+  // Perform allocation.
+  uint64_t usedSize = MA.allocate(allocArray);
+  // Verifications.
+  EXPECT_EQ(usedSize, 8028160);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(1)), 3211264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(2)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(3)), 3211264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(4)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(5)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(6)), 3211264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(7)), 3211264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(8)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(9)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(10)), 3211264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(11)), 3211264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(12)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(13)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(14)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(15)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(16)), 1605632);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(17)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(18)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(19)), 1605632);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(20)), 1605632);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(21)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(22)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(23)), 1605632);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(24)), 1605632);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(25)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(26)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(27)), 1605632);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(28)), 1605632);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(29)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(30)), 100352);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(31)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(32)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(33)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(34)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(35)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(36)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(37)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(38)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(39)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(40)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(41)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(42)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(43)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(44)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(45)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(46)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(47)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(48)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(49)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(50)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(51)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 802816);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(54)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(55)), 50176);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(56)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(57)), 200704);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(58)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(59)), 100352);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(60)), 100352);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(61)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(62)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(63)), 100352);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(64)), 100352);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(65)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(66)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(67)), 100352);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(68)), 100352);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(69)), 401408);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(70)), 57344);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(71)), 57344);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(72)), 8192);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(73)), 8192);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(74)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 0.900000);
+}
+
+/// Test memory allocation for model xception.tflite.
+TEST(MemAlloc, testMemAllocForModel17) {
+  MemoryAllocator MA("mem", 0, 64);
+  // Define allocation array.
+  std::vector<Allocation> allocArray;
+  allocArray.reserve(182);
+  allocArray.push_back(Allocation(1, 1, 2841728));
+  allocArray.push_back(Allocation(2, 1, 5531904));
+  allocArray.push_back(Allocation(1, 0, 0));
+  allocArray.push_back(Allocation(3, 1, 5531904));
+  allocArray.push_back(Allocation(4, 1, 11063808));
+  allocArray.push_back(Allocation(3, 0, 0));
+  allocArray.push_back(Allocation(5, 1, 11063808));
+  allocArray.push_back(Allocation(4, 0, 0));
+  allocArray.push_back(Allocation(6, 1, 11063808));
+  allocArray.push_back(Allocation(5, 0, 0));
+  allocArray.push_back(Allocation(7, 1, 2803712));
+  allocArray.push_back(Allocation(6, 0, 0));
+  allocArray.push_back(Allocation(8, 1, 2803712));
+  allocArray.push_back(Allocation(2, 0, 0));
+  allocArray.push_back(Allocation(8, 0, 0));
+  allocArray.push_back(Allocation(9, 1, 1401856));
+  allocArray.push_back(Allocation(10, 1, 2803712));
+  allocArray.push_back(Allocation(7, 0, 0));
+  allocArray.push_back(Allocation(11, 1, 5607424));
+  allocArray.push_back(Allocation(10, 0, 0));
+  allocArray.push_back(Allocation(12, 1, 5607424));
+  allocArray.push_back(Allocation(11, 0, 0));
+  allocArray.push_back(Allocation(13, 1, 5607424));
+  allocArray.push_back(Allocation(12, 0, 0));
+  allocArray.push_back(Allocation(14, 1, 1401856));
+  allocArray.push_back(Allocation(13, 0, 0));
+  allocArray.push_back(Allocation(9, 0, 0));
+  allocArray.push_back(Allocation(15, 1, 1051264));
+  allocArray.push_back(Allocation(16, 1, 1401856));
+  allocArray.push_back(Allocation(14, 0, 0));
+  allocArray.push_back(Allocation(17, 1, 3986560));
+  allocArray.push_back(Allocation(16, 0, 0));
+  allocArray.push_back(Allocation(18, 1, 3986560));
+  allocArray.push_back(Allocation(17, 0, 0));
+  allocArray.push_back(Allocation(19, 1, 3986560));
+  allocArray.push_back(Allocation(18, 0, 0));
+  allocArray.push_back(Allocation(20, 1, 1051264));
+  allocArray.push_back(Allocation(19, 0, 0));
+  allocArray.push_back(Allocation(15, 0, 0));
+  allocArray.push_back(Allocation(21, 1, 1051264));
+  allocArray.push_back(Allocation(22, 1, 1051264));
+  allocArray.push_back(Allocation(21, 0, 0));
+  allocArray.push_back(Allocation(23, 1, 1051264));
+  allocArray.push_back(Allocation(22, 0, 0));
+  allocArray.push_back(Allocation(24, 1, 1051264));
+  allocArray.push_back(Allocation(23, 0, 0));
+  allocArray.push_back(Allocation(25, 1, 1051264));
+  allocArray.push_back(Allocation(24, 0, 0));
+  allocArray.push_back(Allocation(26, 1, 1051264));
+  allocArray.push_back(Allocation(25, 0, 0));
+  allocArray.push_back(Allocation(27, 1, 1051264));
+  allocArray.push_back(Allocation(26, 0, 0));
+  allocArray.push_back(Allocation(20, 0, 0));
+  allocArray.push_back(Allocation(28, 1, 1051264));
+  allocArray.push_back(Allocation(29, 1, 1051264));
+  allocArray.push_back(Allocation(28, 0, 0));
+  allocArray.push_back(Allocation(30, 1, 1051264));
+  allocArray.push_back(Allocation(29, 0, 0));
+  allocArray.push_back(Allocation(31, 1, 1051264));
+  allocArray.push_back(Allocation(30, 0, 0));
+  allocArray.push_back(Allocation(32, 1, 1051264));
+  allocArray.push_back(Allocation(31, 0, 0));
+  allocArray.push_back(Allocation(33, 1, 1051264));
+  allocArray.push_back(Allocation(32, 0, 0));
+  allocArray.push_back(Allocation(34, 1, 1051264));
+  allocArray.push_back(Allocation(33, 0, 0));
+  allocArray.push_back(Allocation(27, 0, 0));
+  allocArray.push_back(Allocation(35, 1, 1051264));
+  allocArray.push_back(Allocation(36, 1, 1051264));
+  allocArray.push_back(Allocation(35, 0, 0));
+  allocArray.push_back(Allocation(37, 1, 1051264));
+  allocArray.push_back(Allocation(36, 0, 0));
+  allocArray.push_back(Allocation(38, 1, 1051264));
+  allocArray.push_back(Allocation(37, 0, 0));
+  allocArray.push_back(Allocation(39, 1, 1051264));
+  allocArray.push_back(Allocation(38, 0, 0));
+  allocArray.push_back(Allocation(40, 1, 1051264));
+  allocArray.push_back(Allocation(39, 0, 0));
+  allocArray.push_back(Allocation(41, 1, 1051264));
+  allocArray.push_back(Allocation(40, 0, 0));
+  allocArray.push_back(Allocation(34, 0, 0));
+  allocArray.push_back(Allocation(42, 1, 1051264));
+  allocArray.push_back(Allocation(43, 1, 1051264));
+  allocArray.push_back(Allocation(42, 0, 0));
+  allocArray.push_back(Allocation(44, 1, 1051264));
+  allocArray.push_back(Allocation(43, 0, 0));
+  allocArray.push_back(Allocation(45, 1, 1051264));
+  allocArray.push_back(Allocation(44, 0, 0));
+  allocArray.push_back(Allocation(46, 1, 1051264));
+  allocArray.push_back(Allocation(45, 0, 0));
+  allocArray.push_back(Allocation(47, 1, 1051264));
+  allocArray.push_back(Allocation(46, 0, 0));
+  allocArray.push_back(Allocation(48, 1, 1051264));
+  allocArray.push_back(Allocation(47, 0, 0));
+  allocArray.push_back(Allocation(41, 0, 0));
+  allocArray.push_back(Allocation(49, 1, 1051264));
+  allocArray.push_back(Allocation(50, 1, 1051264));
+  allocArray.push_back(Allocation(49, 0, 0));
+  allocArray.push_back(Allocation(51, 1, 1051264));
+  allocArray.push_back(Allocation(50, 0, 0));
+  allocArray.push_back(Allocation(52, 1, 1051264));
+  allocArray.push_back(Allocation(51, 0, 0));
+  allocArray.push_back(Allocation(53, 1, 1051264));
+  allocArray.push_back(Allocation(52, 0, 0));
+  allocArray.push_back(Allocation(54, 1, 1051264));
+  allocArray.push_back(Allocation(53, 0, 0));
+  allocArray.push_back(Allocation(55, 1, 1051264));
+  allocArray.push_back(Allocation(54, 0, 0));
+  allocArray.push_back(Allocation(48, 0, 0));
+  allocArray.push_back(Allocation(56, 1, 1051264));
+  allocArray.push_back(Allocation(57, 1, 1051264));
+  allocArray.push_back(Allocation(56, 0, 0));
+  allocArray.push_back(Allocation(58, 1, 1051264));
+  allocArray.push_back(Allocation(57, 0, 0));
+  allocArray.push_back(Allocation(59, 1, 1051264));
+  allocArray.push_back(Allocation(58, 0, 0));
+  allocArray.push_back(Allocation(60, 1, 1051264));
+  allocArray.push_back(Allocation(59, 0, 0));
+  allocArray.push_back(Allocation(61, 1, 1051264));
+  allocArray.push_back(Allocation(60, 0, 0));
+  allocArray.push_back(Allocation(62, 1, 1051264));
+  allocArray.push_back(Allocation(61, 0, 0));
+  allocArray.push_back(Allocation(55, 0, 0));
+  allocArray.push_back(Allocation(63, 1, 1051264));
+  allocArray.push_back(Allocation(64, 1, 1051264));
+  allocArray.push_back(Allocation(63, 0, 0));
+  allocArray.push_back(Allocation(65, 1, 1051264));
+  allocArray.push_back(Allocation(64, 0, 0));
+  allocArray.push_back(Allocation(66, 1, 1051264));
+  allocArray.push_back(Allocation(65, 0, 0));
+  allocArray.push_back(Allocation(67, 1, 1051264));
+  allocArray.push_back(Allocation(66, 0, 0));
+  allocArray.push_back(Allocation(68, 1, 1051264));
+  allocArray.push_back(Allocation(67, 0, 0));
+  allocArray.push_back(Allocation(69, 1, 1051264));
+  allocArray.push_back(Allocation(68, 0, 0));
+  allocArray.push_back(Allocation(62, 0, 0));
+  allocArray.push_back(Allocation(70, 1, 1051264));
+  allocArray.push_back(Allocation(71, 1, 1051264));
+  allocArray.push_back(Allocation(70, 0, 0));
+  allocArray.push_back(Allocation(72, 1, 1051264));
+  allocArray.push_back(Allocation(71, 0, 0));
+  allocArray.push_back(Allocation(73, 1, 1051264));
+  allocArray.push_back(Allocation(72, 0, 0));
+  allocArray.push_back(Allocation(74, 1, 1051264));
+  allocArray.push_back(Allocation(73, 0, 0));
+  allocArray.push_back(Allocation(75, 1, 1051264));
+  allocArray.push_back(Allocation(74, 0, 0));
+  allocArray.push_back(Allocation(76, 1, 1051264));
+  allocArray.push_back(Allocation(75, 0, 0));
+  allocArray.push_back(Allocation(69, 0, 0));
+  allocArray.push_back(Allocation(77, 1, 409600));
+  allocArray.push_back(Allocation(78, 1, 1051264));
+  allocArray.push_back(Allocation(76, 0, 0));
+  allocArray.push_back(Allocation(79, 1, 1051264));
+  allocArray.push_back(Allocation(78, 0, 0));
+  allocArray.push_back(Allocation(80, 1, 1051264));
+  allocArray.push_back(Allocation(79, 0, 0));
+  allocArray.push_back(Allocation(81, 1, 1478656));
+  allocArray.push_back(Allocation(80, 0, 0));
+  allocArray.push_back(Allocation(82, 1, 409600));
+  allocArray.push_back(Allocation(81, 0, 0));
+  allocArray.push_back(Allocation(77, 0, 0));
+  allocArray.push_back(Allocation(83, 1, 409600));
+  allocArray.push_back(Allocation(82, 0, 0));
+  allocArray.push_back(Allocation(84, 1, 614400));
+  allocArray.push_back(Allocation(83, 0, 0));
+  allocArray.push_back(Allocation(85, 1, 614400));
+  allocArray.push_back(Allocation(84, 0, 0));
+  allocArray.push_back(Allocation(86, 1, 819200));
+  allocArray.push_back(Allocation(85, 0, 0));
+  allocArray.push_back(Allocation(87, 1, 81920));
+  allocArray.push_back(Allocation(86, 0, 0));
+  allocArray.push_back(Allocation(88, 1, 81920));
+  allocArray.push_back(Allocation(88, 0, 0));
+  allocArray.push_back(Allocation(89, 1, 8192));
+  allocArray.push_back(Allocation(87, 0, 0));
+  allocArray.push_back(Allocation(90, 1, 8192));
+  allocArray.push_back(Allocation(90, 0, 0));
+  allocArray.push_back(Allocation(91, 1, 4032));
+  allocArray.push_back(Allocation(89, 0, 0));
+  allocArray.push_back(Allocation(91, 0, 0));
+  // Perform allocation.
+  uint64_t usedSize = MA.allocate(allocArray);
+  // Verifications.
+  EXPECT_EQ(usedSize, 27659520);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(1)), 2841728);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(2)), 5531904);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(3)), 5531904);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(4)), 11063808);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(5)), 11063808);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(6)), 11063808);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(7)), 2803712);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(8)), 2803712);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(9)), 1401856);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(10)), 2803712);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(11)), 5607424);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(12)), 5607424);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(13)), 5607424);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(14)), 1401856);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(15)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(16)), 1401856);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(17)), 3986560);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(18)), 3986560);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(19)), 3986560);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(20)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(21)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(22)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(23)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(24)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(25)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(26)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(27)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(28)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(29)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(30)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(31)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(32)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(33)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(34)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(35)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(36)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(37)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(38)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(39)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(40)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(41)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(42)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(43)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(44)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(45)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(46)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(47)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(48)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(49)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(50)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(51)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(52)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(53)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(54)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(55)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(56)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(57)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(58)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(59)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(60)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(61)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(62)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(63)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(64)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(65)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(66)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(67)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(68)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(69)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(70)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(71)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(72)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(73)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(74)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(75)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(76)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(77)), 409600);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(78)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(79)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(80)), 1051264);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(81)), 1478656);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(82)), 409600);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(83)), 409600);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(84)), 614400);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(85)), 614400);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(86)), 819200);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(87)), 81920);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(88)), 81920);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(89)), 8192);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(90)), 8192);
+  EXPECT_EQ(MA.getSize(reinterpret_cast<void *>(91)), 4032);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }

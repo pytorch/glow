@@ -42,6 +42,14 @@ static_assert(std::is_unsigned<decltype(MemoryAllocator::npos)>{},
 
 const uint64_t MemoryAllocator::npos = -1;
 
+float MemoryAllocator::getAllocationEfficiency() const {
+  if (maxUsedSize_ != 0) {
+    return static_cast<float>(maxLiveSize_) / static_cast<float>(maxUsedSize_);
+  } else {
+    return 0;
+  }
+};
+
 uint64_t MemoryAllocator::getEffectiveSize(uint64_t size) const {
   return alignedSize(size, alignment_);
 }
@@ -53,7 +61,9 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
   for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
     if (it->begin_ - prev >= segmentSize) {
       segments_.emplace(it, prev, prev + segmentSize);
-      maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + segmentSize);
+      maxUsedSize_ = std::max(maxUsedSize_, prev + segmentSize);
+      liveSize_ += segmentSize;
+      maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
       setHandle(prev, size, handle);
       return prev;
     }
@@ -63,12 +73,14 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
   // the new allocation to the end of the stack.
 
   // Check that we are not allocating memory beyond the pool size.
-  if (poolSize_ && (prev + segmentSize) > poolSize_) {
+  if (memorySize_ && (prev + segmentSize) > memorySize_) {
     return npos;
   }
 
   segments_.emplace_back(prev, prev + segmentSize);
-  maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + segmentSize);
+  maxUsedSize_ = std::max(maxUsedSize_, prev + segmentSize);
+  liveSize_ += segmentSize;
+  maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
   setHandle(prev, size, handle);
   return prev;
 }
@@ -108,7 +120,7 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
 
   if ((!evictionCandidates.empty() &&
        evictionCandidates.back().first.end_ - begin >= size) ||
-      (!hasSeenNonEvicted && poolSize_ >= size)) {
+      (!hasSeenNonEvicted && memorySize_ >= size)) {
     // Now evict all eviction candidates.
     for (auto &candidate : evictionCandidates) {
       auto &curHandle = candidate.second;
@@ -145,6 +157,8 @@ void MemoryAllocator::deallocate(Handle handle) {
   for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
     if (it->begin_ == ptr) {
       segments_.erase(it);
+      liveSize_ -= it->size();
+      maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
       addrToHandleMap_.erase(ptr);
       handleToSegmentMap_.erase(handle);
       return;
@@ -191,12 +205,8 @@ void MemoryAllocator::setHandle(uint64_t ptr, uint64_t size, Handle handle) {
   handleToSegmentMap_.insert(std::make_pair(handle, Segment(ptr, ptr + size)));
 }
 
-// -----------------------------------------------------------------------------
-//                                 UTILS
-// -----------------------------------------------------------------------------
-/// Utility function to verify allocations. \returns true if allocation are
-/// valid and false otherwise.
-bool MemoryAllocator::verifyAllocations(const std::vector<Allocation> &allocArray) {
+bool MemoryAllocator::verifyAllocations(
+    const std::vector<Allocation> &allocArray) {
 
   // Allocation array length must be even.
   size_t allocNum = allocArray.size();
@@ -244,10 +254,8 @@ bool MemoryAllocator::verifyAllocations(const std::vector<Allocation> &allocArra
   return true;
 }
 
-/// Utility function to verify segments. \returns true if segments are valid
-/// and false otherwise. The allocations are assumed to be already verified.
-// TODO: Here we must use the effective size of the allocation.
-bool MemoryAllocator::verifySegments(const std::vector<Allocation> &allocArray) {
+bool MemoryAllocator::verifySegments(
+    const std::vector<Allocation> &allocArray) {
 
   // Verify number of segments.
   if (handleToSegmentMap_.size() != (allocArray.size() / 2)) {
@@ -270,7 +278,8 @@ bool MemoryAllocator::verifySegments(const std::vector<Allocation> &allocArray) 
     }
   }
 
-  // Allocations which are simultaneously alive must be assigned non-overlapping segments.
+  // Allocations which are simultaneously alive must be assigned non-overlapping
+  // segments.
   std::list<MemoryHandle> liveHandleList;
   for (const auto &alloc : allocArray) {
     auto allocHandle = alloc.handle_;
@@ -281,7 +290,8 @@ bool MemoryAllocator::verifySegments(const std::vector<Allocation> &allocArray) 
       for (const auto &liveHandle : liveHandleList) {
         auto liveIt = handleToSegmentMap_.find(liveHandle);
         Segment liveSeg = liveIt->second;
-        bool segOverlap = intervalsOverlap(seg.begin_, seg.end_, liveSeg.begin_, liveSeg.end_);
+        bool segOverlap = intervalsOverlap(seg.begin_, seg.end_, liveSeg.begin_,
+                                           liveSeg.end_);
         if (segOverlap) {
           return false;
         }
@@ -290,7 +300,8 @@ bool MemoryAllocator::verifySegments(const std::vector<Allocation> &allocArray) 
       liveHandleList.push_back(allocHandle);
     } else {
       // Remove handle from live handles.
-      auto it = std::find(liveHandleList.begin(), liveHandleList.end(), allocHandle);
+      auto it =
+          std::find(liveHandleList.begin(), liveHandleList.end(), allocHandle);
       assert(it != liveHandleList.end() && "Handle not found for removal!");
       liveHandleList.erase(it);
     }
@@ -302,8 +313,7 @@ bool MemoryAllocator::verifySegments(const std::vector<Allocation> &allocArray) 
 
 // TODO:
 // 1. Add "allocate" flavors using IDs instead of Handles.
-// 2. Compute and return allocation efficiency.
-// 3. Remove addrToHandleMap_ from allocator.
+// 2. Remove addrToHandleMap_ from allocator.
 
 uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
 
@@ -415,7 +425,7 @@ uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
 
   // If the theoretical required memory is larger than the available memory size
   // then we return early.
-  if (poolSize_ && (liveSizeMax > poolSize_)) {
+  if (memorySize_ && (liveSizeMax > memorySize_)) {
     return npos;
   }
 
@@ -548,7 +558,7 @@ uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
 
     // If max available memory is surpassed with the new segment then we stop
     // the allocation and return.
-    if (poolSize_ && (usedSizeMax > poolSize_)) {
+    if (memorySize_ && (usedSizeMax > memorySize_)) {
       return npos;
     }
 
@@ -578,15 +588,7 @@ uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
            "Not all buffers were allocated!");
   }
 
-  // Print statistics.
-#if 0
-  float allocEfficiency = (float)(liveSizeMax) / (float)(usedSizeMax);
-  printf("liveSizeMax: %I64d\n", liveSizeMax);
-  printf("usedSizeMax: %I64d\n", usedSizeMax);
-  printf("allocEff   : %f\n", allocEfficiency);
-#endif
-
-  // Update the segments, handles and the max used memory.
+  // Update the segments, handles and the max used/live memory.
   for (const auto &idSeg : idSegList) {
     size_t id = idSeg.first;
     Segment segment = idSeg.second;
@@ -594,7 +596,9 @@ uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
     segments_.push_back(segment);
     handleToSegmentMap_.insert(std::make_pair(handle, segment));
   }
-  maxMemoryAllocated_ = usedSizeMax;
+  maxUsedSize_ = usedSizeMax;
+  maxLiveSize_ = liveSizeMax;
+  liveSize_ = 0;
 
   // Verify segments.
   assert(verifySegments(allocArray) && "Segments are invalid!");
