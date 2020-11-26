@@ -350,6 +350,7 @@ TEST(MemAlloc, testAlignment) {
 // TOOD2: Test alignment of allocated segments
 // TODO3: Test getter methods using handle for size, address, segment.
 // TODO4: Test returned information.
+// TODO5: Negative testing using "ASSERT_DEATH_IF_SUPPORTED".
 
 // Test for memory allocation for model cifar10_quant.tflite.
 TEST(MemAlloc, testMemAllocForModel1) {

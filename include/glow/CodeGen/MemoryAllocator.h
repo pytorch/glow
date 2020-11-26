@@ -27,6 +27,13 @@
 
 namespace glow {
 
+/// Utility function to verify if two contiguous integer intervals overlap. Each
+/// interval is described by a half-open interval [begin, end).
+template <class T>
+inline bool intervalsOverlap(T begin1, T end1, T begin2, T end2) {
+  return (std::max(begin1, begin2) < std::min(end1, end2));
+}
+
 /// Type that should be used as a handle for memory segments for identification.
 /// TODO: Replace the Handle from allocator with this one.
 using MemoryHandle = const void *;
@@ -195,6 +202,11 @@ private:
   /// currently associated with them.
   std::unordered_map<Handle, Segment> handleToSegmentMap_;
 
+  /// \returns the effective size used for allocating a segment which depends
+  /// on the requested segment memory size \p size and the alignment used by
+  /// this allocator instance.
+  uint64_t getEffectiveSize(uint64_t size) const;
+
   /// Tries to evict some entries that are not needed at the moment to free
   /// enough memory for the allocation of \p size bytes, but it is not allowed
   /// to evict any entries from \p mustNotEvict set. All evicted entries are
@@ -205,6 +217,9 @@ private:
 
   /// Associates a \p handle with an allocated address \p ptr and size \p size.
   void setHandle(uint64_t ptr, uint64_t size, Handle handle);
+
+  bool verifyAllocations(const std::vector<Allocation> &allocArray);
+  bool verifySegments(const std::vector<Allocation> &allocArray);
 };
 
 } // namespace glow
