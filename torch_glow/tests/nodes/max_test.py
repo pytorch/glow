@@ -1,19 +1,23 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests import utils
+
+
+class SimpleMaxModule(torch.nn.Module):
+    def __init__(self):
+        super(SimpleMaxModule, self).__init__()
+
+    def forward(self, a, b):
+        return torch.max(a + a, b + b)
 
 
 class TestMax(unittest.TestCase):
     def test_elementwise_max(self):
         """Test of the PyTorch max Node on Glow."""
 
-        def test_f(a, b):
-            c = torch.max(a, b)
-            return torch.max(c, c)
-
-        x = torch.randn(4)
-        y = torch.randn(4)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::max"})
+        utils.compare_tracing_methods(
+            SimpleMaxModule(), torch.randn(4), torch.randn(4), fusible_ops={"aten::max"}
+        )

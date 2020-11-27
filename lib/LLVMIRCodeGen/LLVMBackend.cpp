@@ -15,8 +15,8 @@
  */
 
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
-#include "BundleSaver.h"
-#include "CommandLine.h"
+#include "glow/LLVMIRCodeGen/BundleSaver.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 #include "glow/LLVMIRCodeGen/LLVMCompiledFunction.h"
 
 #include "glow/Backend/BackendUtils.h"
@@ -519,7 +519,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
             (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
              ElemKind::Int64ITy)) ||
            ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::FloatTy) &&
-            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::BoolTy));
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::BoolTy)) ||
+           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::BoolTy) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::Int32ITy));
 
   default:
     return false;
@@ -541,6 +543,35 @@ LLVMBackendOptions::LLVMBackendOptions() {
 }
 
 LLVMBackend::LLVMBackend() {}
+
+std::string LLVMBackend::getHostTarget() {
+  return llvm::sys::getDefaultTargetTriple();
+}
+
+std::string LLVMBackend::getHostCPU() {
+  auto cpu_name = llvm::sys::getHostCPUName();
+  // Skip avx512 because LLVM does not support it well.
+  cpu_name.consume_back("-avx512");
+  return cpu_name.str();
+}
+
+llvm::SmallVector<std::string, 0> LLVMBackend::getHostFeatures() {
+  llvm::SmallVector<std::string, 0> result;
+  llvm::StringMap<bool> hostFeatures;
+  if (llvm::sys::getHostCPUFeatures(hostFeatures)) {
+    for (auto &feature : hostFeatures) {
+      if (feature.second) {
+        llvm::StringRef fn = feature.first();
+        // Skip avx512 because LLVM does not support it well.
+        if (fn.startswith("avx512")) {
+          continue;
+        }
+        result.push_back(fn);
+      }
+    }
+  }
+  return result;
+}
 
 /// Emit the entry point for JIT called "jitmain".
 /// Function has the following API:
@@ -652,20 +683,27 @@ void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  BundleSaver bundleSaver(*this, outputDir, bundleName);
-  bundleSaver.save(mainEntryName, IR.get());
-  bundleSaver.produceBundle();
+  auto bundleSaver = createBundleSaver(*this, outputDir, bundleName);
+  bundleSaver->save(mainEntryName, IR.get());
+  bundleSaver->produceBundle();
 }
 
 void LLVMBackend::saveFunctions(llvm::ArrayRef<BundleEntry> entries,
                                 llvm::StringRef outputDir,
                                 llvm::StringRef bundleName) const {
-  BundleSaver bundleSaver(*this, outputDir, bundleName);
+  auto bundleSaver = createBundleSaver(*this, outputDir, bundleName);
   std::vector<std::unique_ptr<glow::IRFunction>> irFunctions;
   for (auto &entry : entries) {
     auto IR = generateAndOptimizeIR(entry.func, *this, shouldShareBuffers());
-    bundleSaver.save(entry.name, IR.get());
+    bundleSaver->save(entry.name, IR.get());
     irFunctions.emplace_back(std::move(IR));
   }
-  bundleSaver.produceBundle();
+  bundleSaver->produceBundle();
+}
+
+std::unique_ptr<BundleSaver>
+LLVMBackend::createBundleSaver(const LLVMBackend &llvmBackend,
+                               llvm::StringRef outputDir,
+                               llvm::StringRef bundleName) const {
+  return glow::make_unique<BundleSaver>(llvmBackend, outputDir, bundleName);
 }

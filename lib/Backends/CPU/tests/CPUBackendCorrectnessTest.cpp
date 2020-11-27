@@ -17,4 +17,7 @@
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {};
+std::set<std::string> glow::backendTestBlacklist = {
+    "SymmetricQuantizedConvReluFusionTest/0",
+    "AsymmetricQuantizedConvReluFusionTest/0",
+};

@@ -19,5 +19,9 @@ op {
     name: "pad"
     i: 1
   }
+  arg {
+    name: "count_include_pad"
+    i: 0
+  }
 }
 external_output: "output"

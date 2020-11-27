@@ -28,13 +28,14 @@
 namespace glow {
 
 class AllocationsInfo;
+class BundleSaver;
 class PlaceholderBindings;
 class LLVMIRGen;
 
 /// LLVM backend options used to configure e.g. the LLVM TargetMachine, ORC JIT
 /// or BundleSaver.
 class LLVMBackendOptions {
-  /// Target used by this backend.
+  /// Target triple used by this backend.
   std::string target_;
   /// Arch used by this backend.
   std::string arch_;
@@ -57,9 +58,9 @@ class LLVMBackendOptions {
 
 public:
   LLVMBackendOptions();
-  /// \returns target used by this backend.
+  /// \returns target triple used by this backend.
   llvm::StringRef getTarget() const { return target_; }
-  /// Sets target used by this backend.
+  /// Sets target triple used by this backend.
   void setTarget(llvm::StringRef target) { target_ = target; }
   /// \returns arch used by this backend.
   llvm::StringRef getArch() const { return arch_; }
@@ -126,6 +127,15 @@ public:
   ///@{
   virtual ~LLVMBackend() override = default;
 
+  /// \returns the LLVM target triple for the host.
+  static std::string getHostTarget();
+
+  /// \returns the LLVM CPU name for the host.
+  static std::string getHostCPU();
+
+  /// \returns the LLVM CPU feature list for the host.
+  static llvm::SmallVector<std::string, 0> getHostFeatures();
+
   /// \returns LLVM backend options.
   const LLVMBackendOptions &getOptions() const { return options_; }
 
@@ -170,6 +180,17 @@ public:
   /// \returns backend-specific LLVMIRGen instance.
   virtual std::unique_ptr<LLVMIRGen>
   createIRGen(const IRFunction *IR, AllocationsInfo &allocationsInfo) const = 0;
+
+  /// Method that creates a BundleSaver. This gives the possibility to
+  /// create a backend that inherits from the LLVMBackend backend, while
+  /// providing a specific version of the BundleSaver derived from BundleSaver.
+  /// \param llvmBackend backend to be used to produce in a bundle.
+  /// \param outputDir output directory for the bundle.
+  /// \param bundleName the name of the bundle.
+  /// \returns backend-specific BundleSaver instance.
+  virtual std::unique_ptr<BundleSaver>
+  createBundleSaver(const LLVMBackend &llvmBackend, llvm::StringRef outputDir,
+                    llvm::StringRef bundleName) const;
 
 protected:
   /// Method that creates a CompiledFunction.

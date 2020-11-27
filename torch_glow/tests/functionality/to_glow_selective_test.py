@@ -3,9 +3,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import unittest
 
-import torch_glow
-from torch_glow import InputMeta, CompilationOptions, GlowCompileSpec
 import torch
+import torch_glow
 
 
 class Qux(torch.nn.Module):
@@ -76,14 +75,18 @@ class TestSelectiveToGlow(unittest.TestCase):
         b = torch.zeros(4) + 7
         torch_res = model(a, b)
 
-        input_meta = InputMeta()
-        input_meta.set_same_as(a)
-        inputs = [input_meta, input_meta]
+        spec = torch_glow.CompilationSpec()
+        spec.get_settings().set_glow_backend("Interpreter")
 
-        options = CompilationOptions()
-        options.backend = "Interpreter"
-        spec = GlowCompileSpec()
-        spec.set(inputs, options)
+        compilation_group = torch_glow.CompilationGroup()
+        spec.compilation_groups_append(compilation_group)
+
+        a_spec = torch_glow.InputSpec()
+        a_spec.set_same_as(a)
+        b_spec = torch_glow.InputSpec()
+        b_spec.set_same_as(b)
+
+        compilation_group.input_sets_append([a_spec, b_spec])
 
         glow_mod = torch_glow.to_glow_selective(
             model, {"foo.bar": (spec, (a, b)), "qux": (spec, (a, b))}

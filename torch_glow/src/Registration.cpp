@@ -17,6 +17,8 @@
 #include "CachingGraphRunner.h"
 #include "GlowFuser.h"
 #include "PyTorchCommon.h"
+
+#include "glow/Runtime/ErrorReporter.h"
 #include "glow/Support/Error.h"
 
 #include <c10/util/hash.h>
@@ -111,32 +113,39 @@ void registerGlowOp(const c10::Symbol &symbol) {
   torch::jit::RegisterOperators op({torch::jit::Operator(
       symbol,
       [](const torch::jit::Node *node) -> torch::jit::Operation {
+        // NOTE: do not read or write global PyTorchLoaderSettings here for any
+        // AOT path, instead associate settings with the CachingGraphRunner
+        // created for the AOT case.
+
         std::string key = node->kind().toQualString();
-        if (getPyTorchLoaderSettings().inferShapeForCompilation) {
+
+        // How to find a graphRunner:
+        // 1. See if a key based on fusion node symbol string has been
+        // registered, which is usually done in AOT fashion
+        // 2. Same as 1 but check if the key was registered with an index
+        // 3. Otherwise, create a new graphRunner for this graph
+        std::shared_ptr<CachingGraphRunner> graphRunner =
+            getGraphRunnerForKey(key);
+
+        if (!graphRunner) {
           // All Glow fusion nodes would have the same kind and there isn't a
           // good native way to differentiate them at runtime. Therefore we scan
           // the graph containing Glow fusion nodes and index each of them. The
           // index would be used as part of the key to find corresponding
           // cachingGraphRunner.
           int idx = findIndex(node);
-          key += std::to_string(idx);
-        }
-
-        // How to find a graphRunner:
-        // 1. See if a key based on fusion node symbol string has been
-        // registered, which is usually done in AOT fashion
-        // 2. If not, create a graphRunner with graph hash as a key
-        std::shared_ptr<CachingGraphRunner> graphRunner;
-        if (!graphRunner) {
-          graphRunner = getGraphRunnerForKey(key);
+          auto keyWithIndex = key + std::to_string(idx);
+          graphRunner = getGraphRunnerForKey(keyWithIndex);
         }
 
         // If no preloaded graph runner was created for this node, create a new
         // empty one.
         if (!graphRunner) {
+          auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
           graphRunner = std::make_unique<CachingGraphRunner>(
-              node->g(at::attr::Subgraph), getHostManager(),
-              getPyTorchLoaderSettings());
+              node->g(at::attr::Subgraph),
+              getHostManager(settings.backendName, settings.numDevices),
+              settings);
         }
 
         return [graphRunner =
@@ -154,11 +163,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
             oldSigTermHandler = signal(SIGTERM, SIG_DFL);
           }
 
-          if (graphRunner->getSettings().preCompilePyTorchModule) {
-            err = graphRunner->runOnly(*stack);
-          } else {
-            err = graphRunner->run(*stack);
-          }
+          err = graphRunner->run(*stack);
 
           // Restore old signal handlers.
           if (oldSigIntHandler != nullptr && oldSigIntHandler != SIG_ERR &&
@@ -170,9 +175,18 @@ void registerGlowOp(const c10::Symbol &symbol) {
             signal(SIGTERM, oldSigTermHandler);
           }
 
-          if (static_cast<bool>(err)) {
+          if (err) {
+            if (err.peekErrorValue()->isFatalError()) {
+              std::string msg = err.peekErrorValue()->logToString();
+              auto reporters = ErrorReporterRegistry::ErrorReporters();
+              if (reporters) {
+                reporters->report(msg);
+              }
+              LOG(FATAL) << "Non-recoverable device error: " << msg;
+            }
+
             // PyTorch framework expects an exception been thrown here.
-            throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
+            throw std::runtime_error(ERR_TO_STRING(std::move(err)));
           }
         };
       },
@@ -183,7 +197,8 @@ void registerGlowFusionPass(std::function<bool()> enablePassFn) {
   torch::jit::RegisterPass pass([enablePassFn = std::move(enablePassFn)](
                                     std::shared_ptr<torch::jit::Graph> &g) {
     if (enablePassFn()) {
-      glow::glowCustomFuse(g, getGlowSymbol());
+      auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
+      glow::glowCustomFuse(g, settings, getGlowSymbol());
     }
   });
 }

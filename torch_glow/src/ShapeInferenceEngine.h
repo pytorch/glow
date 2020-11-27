@@ -17,8 +17,10 @@
 #ifndef GLOW_TORCH_GLOW_SRC_SHAPEINFERENCEENGINE_H
 #define GLOW_TORCH_GLOW_SRC_SHAPEINFERENCEENGINE_H
 
+#include "boost/variant.hpp"
 #include <string>
 #include <unordered_set>
+
 #include <vector>
 
 #include "glow/Support/Error.h"
@@ -29,13 +31,32 @@
 /// expected by PyTorch.
 namespace glow {
 
+typedef std::vector<int64_t> TensorShape;
+typedef std::vector<std::vector<int64_t>> TensorListShape;
+using ElemShape = boost::variant<TensorShape, TensorListShape>;
+
+struct TensorOutput {
+  TensorShape shapeOrIntValues;
+  c10::ScalarType dtype;
+};
+
+struct TensorListOutput {
+  TensorListShape shape;
+  c10::ScalarType dtype;
+};
+
 struct VariableMeta {
-  /// Store shape info of Tensor, Scalar, and IntList
-  std::vector<int64_t> shape;
+  /// For Tensor, Tensor[], store the shape in \p listOfShape[0]
+  /// For tuple(Tensor, Tensor[], ...), store shapes in \p listOfShape
+  std::vector<ElemShape> listOfShape;
   /// Store Int and IntList value
   std::vector<int64_t> intValue;
   /// Data type
   c10::ScalarType dtype = c10::ScalarType::Float;
+
+  template <typename T> const T &shape() const {
+    return boost::get<T>(listOfShape[0]);
+  }
 };
 
 using MetaStack = std::vector<VariableMeta>;
@@ -47,7 +68,7 @@ public:
                        const std::string &fusionNodeSymbol = "ShapeInf");
 
   /// Get all VariableMeta for outputs of the given graph.
-  const std::vector<std::vector<int64_t>> &getGraphOutputShape();
+  const MetaStack &getGraphOutputShape();
 
   /// Get the Variable Map which uses const torch::jit::Value * as a key,
   /// VariableMeta as a value.
@@ -73,8 +94,11 @@ private:
   /// integers in a graph.
   std::unordered_map<const torch::jit::Value *, VariableMeta> shapeMap_;
 
+  /// A set containing all ops that should be skipped during shape inference
+  std::unordered_set<std::string> blockList_;
+
   /// Store shapes of all the outputs in a graph.
-  std::vector<std::vector<int64_t>> outputShape_;
+  MetaStack outputShape_;
 
   /// Offset flag for aten::embedding_bag and embedding_bag_byte_rowwise_offsets
   /// In Glow, \p hasEndOffset_ always true
@@ -88,12 +112,12 @@ private:
   /// %5: [2 4]
   void printShapeMap();
 
-  /// Put shape info of actual graph inputs into \p shapeMap_.
-  Error getGraphIntputShape(const torch::jit::Graph &,
-                            const at::ArrayRef<torch::jit::IValue> &);
+  /// Put shape/type info of actual graph inputs into \p shapeMap_.
+  Error getGraphInputShapeType(const torch::jit::Graph &,
+                               const at::ArrayRef<torch::jit::IValue> &);
 
   /// Extract shape info of graph outputs from \p shapeMap_.
-  void generateGraphOutputShape();
+  Error generateGraphOutputShape();
 
   /// Extract shape info of node inputs from \p shapeMap_.
   void getNodeInputShape(const torch::jit::Node *node, MetaStack &inputMetas);
@@ -102,48 +126,65 @@ private:
   Error shapeOnNode(const torch::jit::Node *node);
 
   // Shape inference for prim::Constant
-  static Expected<std::vector<int64_t>>
-  primConstant(const torch::jit::Node *node);
+  static Expected<TensorOutput> primConstant(const torch::jit::Node *node);
   // Shape inference for aten::add, aten::mul, aten::pow
-  static Expected<std::vector<int64_t>>
-  binaryOp(const MetaStack &variableMetas);
+  static Expected<TensorOutput> binaryOp(const MetaStack &variableMetas);
   // Shape inference for aten::mm
-  static Expected<std::vector<int64_t>> mm(const MetaStack &variableMetas);
+  static Expected<TensorOutput> mm(const MetaStack &variableMetas);
   // Shape inference for aten::bmm
-  static Expected<std::vector<int64_t>> bmm(const MetaStack &variableMetas);
+  static Expected<TensorOutput> bmm(const MetaStack &variableMetas);
   // Shape inference for aten::addmm
-  static Expected<std::vector<int64_t>> addmm(const MetaStack &variableMetas);
+  static Expected<TensorOutput> addmm(const MetaStack &variableMetas);
   // Shape inference for aten::t
-  static Expected<std::vector<int64_t>> t(const MetaStack &variableMetas);
+  static Expected<TensorOutput> t(const MetaStack &variableMetas);
   // Shape inference for prim::ConstantChunk
-  static Expected<std::vector<std::vector<int64_t>>>
+  static Expected<TensorListOutput>
   constantChunk(const MetaStack &variableMetas, int64_t chunks, int64_t dim);
   // Shape inference for prim::FusedConcat
-  static Expected<std::vector<int64_t>>
-  fusedConcat(const MetaStack &variableMetas, int64_t dim);
+  static Expected<TensorOutput> fusedConcat(const MetaStack &variableMetas,
+                                            int64_t dim);
   // Shape inference for prim::ListConstruct
-  static Expected<std::vector<int64_t>>
+  static Expected<TensorListOutput>
   listConstruct(const MetaStack &variableMetas);
   // Shape inference for aten::permute
-  static Expected<std::vector<int64_t>> permute(const MetaStack &variableMetas);
+  static Expected<TensorOutput> permute(const MetaStack &variableMetas);
   // Shape inference for aten::reshape
-  static Expected<std::vector<int64_t>> reshape(const MetaStack &variableMetas);
+  static Expected<TensorOutput> reshape(const MetaStack &variableMetas);
   // Shape inference for aten::slice
-  static Expected<std::vector<int64_t>> slice(const MetaStack &variableMetas);
+  static Expected<TensorOutput> slice(const MetaStack &variableMetas);
+  // Shape inference for aten::cat
+  static Expected<TensorOutput> cat(const MetaStack &variableMetas);
   // Shape inference for aten::transpose
-  static Expected<std::vector<int64_t>>
-  transpose(const MetaStack &variableMetas);
+  static Expected<TensorOutput> transpose(const MetaStack &variableMetas);
   // Shape inference for aten::flatten
-  static Expected<std::vector<int64_t>> flatten(const MetaStack &variableMetas);
+  static Expected<TensorOutput> flatten(const MetaStack &variableMetas);
   // Shape inference for glow::fused_stack
-  static Expected<std::vector<int64_t>>
-  fusedStack(const MetaStack &variableMetas, int64_t dim);
-  // Shape inference for fb::embedding_bag_byte_rowwise_offsets
-  static Expected<std::vector<int64_t>>
-  embeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
+  static Expected<TensorOutput> fusedStack(const MetaStack &variableMetas,
+                                           int64_t dim);
+  // Shape inference for quantized::embedding_bag_byte_rowwise_offsets
+  static Expected<TensorOutput>
+  quantizedEmbeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
+  // Shape inference for fb::embedding_bag_4bit_rowwise_offsets
+  static Expected<TensorOutput>
+  embeddingBag4BitRowwiseOffsets(const MetaStack &variableMetas);
+  // Shape inference for quantized::linear
+  static Expected<TensorOutput>
+  glowUnpackedQuantizedLinear(const MetaStack &variableMetas);
   // Shape inference for aten::embedding_bag
-  static Expected<std::vector<int64_t>>
-  embeddingBag(const MetaStack &variableMetas);
+  static Expected<TensorOutput> embeddingBag(const MetaStack &variableMetas);
+  // Shape inference for aten::chuck
+  static Expected<TensorListOutput> chunk(const MetaStack &variableMetas);
+  // Shape inference for aten::stack
+  static Expected<TensorOutput> stack(const MetaStack &variableMetas);
+  // Shape inference for prim::listunpack
+  static Expected<TensorListOutput> listUnpack(const MetaStack &variableMetas);
+  // Shape inference for aten::to
+  static Expected<TensorOutput> to(const MetaStack &variableMetas);
+  // Shape inference for fb::lengths_to_offsets
+  static Expected<TensorOutput>
+  lengthsToOffsets(const MetaStack &variableMetas);
+  // Shape inference for prim::dtype
+  static Expected<TensorOutput> primDtype(const MetaStack &variableMetas);
 };
 
 } // namespace glow

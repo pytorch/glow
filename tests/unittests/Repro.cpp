@@ -19,6 +19,7 @@
 #include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
@@ -80,10 +81,6 @@ llvm::cl::opt<unsigned> concurrentRequestsOpt(
     "concurrent_count", llvm::cl::desc("Number of concurrent requests."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<unsigned> numDevicesOpt(
-    "glow_num_devices", llvm::cl::desc("Number of devices for Glow backend"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
-
 llvm::cl::opt<float> deviceMemoryOpt(
     "glow_device_memory",
     llvm::cl::desc("Size of memory for a certain Glow backend device"),
@@ -94,36 +91,11 @@ llvm::cl::opt<float> thresholdOpt(
     "threshold", llvm::cl::desc("theshold for tensor numeric comparison"),
     llvm::cl::Optional, llvm::cl::init(1e-5), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<bool> glowDumpGraphOpt(
-    "glow_dump_graph",
-    llvm::cl::desc("Dump the glow Graph into files before compilation"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<std::string> glowDumpGraphPathOpt(
-    "glow_dump_graph_path", llvm::cl::desc("Path for dumped glow graphs."),
-    llvm::cl::Optional, llvm::cl::init("./"), llvm::cl::cat(reproTestCat));
-
 llvm::cl::opt<bool> glowDumpGraphAfterLoadOpt(
     "glow_dump_graph_after_load",
     llvm::cl::desc(
         "Dump the glow Graph into files immediately after loading from ONNX"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool>
-    globalFp16Opt("glow_global_fp16",
-                  llvm::cl::desc("Enable fp16 lowering for all ops on the net"),
-                  llvm::cl::Optional, llvm::cl::init(true),
-                  llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> globalFp16ConstantsOpt(
-    "glow_global_fp16_constants",
-    llvm::cl::desc("Enable fp16 conversion for Constants"), llvm::cl::Optional,
-    llvm::cl::init(true), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> globalFp16PlaceholdersOpt(
-    "glow_global_fp16_placeholders",
-    llvm::cl::desc("Enable fp16 conversion for Placeholders"),
-    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> sliceConcatFp32Opt(
     "glow_slice_concat_fp32",
@@ -136,39 +108,21 @@ llvm::cl::opt<bool> dumpOutputsOpt("dump_outputs",
                                    llvm::cl::Optional, llvm::cl::init(true),
                                    llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<bool> fuseScaleOffsetFp16Opt(
-    "glow_global_fused_scale_offset_fp16",
+llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
+    "glow_global_fused_scale_offset_fp32",
     llvm::cl::desc(
-        "Enable fp16 lowering for all op inputs using fused scale/offset"),
-    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
+        "Enable converting scale/offset in sls's input data from fp16 to fp32"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<bool>
-    ClipFp16Opt("glow_clip_fp16",
-                llvm::cl::desc("Force glow to clip fp16 values to min/max"),
-                llvm::cl::Optional, llvm::cl::init(true),
-                llvm::cl::cat(reproTestCat));
+llvm::cl::opt<bool> indicesInt64Opt(
+    "glow_global_indices_fp64",
+    llvm::cl::desc("Enable converting scale/offset in frwqslws's data from "
+                   "int32 to int64"));
 
-llvm::cl::opt<bool> ClipFp16SkipInputsOpt(
-    "glow_clip_fp16_skip_inputs",
-    llvm::cl::desc("Force glow to skip clipping fp16 Node inputs to min/max"),
-    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool>
-    forceFP16AccumSLSOpt("glow_global_force_sls_fp16_accum",
-                         llvm::cl::desc("Force FP16 accumulation for SLS ops"),
-                         llvm::cl::Optional, llvm::cl::init(true),
-                         llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> enableQuantParamChangesOpt(
-    "glow_enable_quant_param_changes",
-    llvm::cl::desc("Enable quantization param changes during optimizations"),
-    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> enablePartialTensor("glow_enable_partial_tensor",
-                                        llvm::cl::desc("Enable partial tensor"),
-                                        llvm::cl::Optional,
-                                        llvm::cl::init(true),
-                                        llvm::cl::cat(reproTestCat));
+llvm::cl::opt<bool, /* ExternalStorage */ true> enablePartialTensorOpt(
+    "glow_enable_partial_tensor", llvm::cl::desc("Enable partial tensor"),
+    llvm::cl::Optional, llvm::cl::location(glow::flags::EnablePartialTensors),
+    llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<unsigned> itersOpt(
     "iters", llvm::cl::desc("Number of times to loop over provided input."),
@@ -176,91 +130,6 @@ llvm::cl::opt<unsigned> itersOpt(
 llvm::cl::opt<unsigned> durationMinOpt(
     "duration_min", llvm::cl::desc("Running duration limit in minutes"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> useSparseNNPartitioningScheme(
-    "glow_use_sparsenn_partitioning_scheme",
-    llvm::cl::desc("Enable SparseNN partitioning scheme"), llvm::cl::Optional,
-    llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> sparseNNPartitioningAddSLSConcats(
-    "glow_sparsenn_partitioning_add_sls_concats",
-    llvm::cl::desc("Add extra concats inside of SLS partitions for more "
-                   "efficient inter-partitition transfers"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> sparseNNPartitioningBalancePerfModel(
-    "glow_sparsenn_partitioning_balance_perf_model",
-    llvm::cl::desc("Balance SLS tables across cards using a perf model"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> sparseNNPartitioningPairLNWithSLS(
-    "glow_sparsenn_partitioning_pair_ln_with_sls",
-    llvm::cl::desc("Place layer normalization nodes immediately following SLS "
-                   "into SLS partitions"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCards(
-    "glow_snn_partitioning_num_cards",
-    llvm::cl::desc("Num cards used in SparseNN partitioning scheme"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> sparseNNPartitioningSchemeKBytesPerCard(
-    "glow_snn_partitioning_kbytes_per_card",
-    llvm::cl::desc("Num kbytes per card in SparseNN partitioning scheme"),
-    llvm::cl::Optional, llvm::cl::init(5000000), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresSLS(
-    "glow_snn_partitioning_num_cores_sls",
-    llvm::cl::desc("Num cores used for SLS in SparseNN partitioning scheme"),
-    llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresOther(
-    "glow_snn_partitioning_num_cores_other",
-    llvm::cl::desc(
-        "Num cores used for non-SLS in SparseNN partitioning scheme"),
-    llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> glowNNPINumParallelChunks(
-    "glow_nnpi_num_parallel_chunks",
-    llvm::cl::desc("Number of parallel splits to apply to certain ops in glow"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> glowNNPIModelParallelSplitAlignment(
-    "glow_nnpi_model_parallel_split_alignment",
-    llvm::cl::desc("Alignment value for model parallel splits"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> glowUseDagOptimizer(
-    "glow_use_dag_optimizer", llvm::cl::desc("Use the DAG optimizer in Glow"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<int32_t> glowDAGOptimizerNumParallelChunks(
-    "glow_dag_optimizer_num_parallel_chunks",
-    llvm::cl::desc(
-        "Number of parallel splits to apply to certain ops in dag_optimizer"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<std::string> glowDAGOptimizerParallelizationTaggingAlgorithm(
-    "glow_dag_optimizer_parallelization_tagging_algorithm",
-    llvm::cl::desc("Algorithm for tagging parallelization in DAGOptimizer"),
-    llvm::cl::Optional, llvm::cl::init(std::string("None")),
-    llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<std::string> glowDAGOptimizerPlacementTaggingAlgorithm(
-    "glow_dag_optimizer_placement_tagging_algorithm",
-    llvm::cl::desc("Algorithm for tagging placement in DAGOptimizer"),
-    llvm::cl::Optional, llvm::cl::init(std::string("None")),
-    llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> glowDelayAndRecordConstantModification(
-    "glow_delay_and_record_constant_modification",
-    llvm::cl::desc("Delay and record constant modification"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> glowDumpTrace("glow_dump_debug_traces",
-                                  llvm::cl::desc("Dump glow trace"),
-                                  llvm::cl::Optional, llvm::cl::init(false),
-                                  llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> glowEnableDeviceTrace(
     "glow_enable_device_traces",
@@ -276,34 +145,6 @@ llvm::cl::opt<std::string>
                       llvm::cl::desc("Dump glow trace file"),
                       llvm::cl::Optional, llvm::cl::init(std::string("")),
                       llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<unsigned> glowMaxActiveRequests(
-    "glow_max_active_requests",
-    llvm::cl::desc(
-        "Number of active requests before host manager start queuing"),
-    llvm::cl::Optional, llvm::cl::init(48), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<unsigned> glowMaxActiveRequestsPerInstance(
-    "glow_max_active_requests_per_instance",
-    llvm::cl::desc("Number of active requests per network instance."),
-    llvm::cl::Optional, llvm::cl::init(48), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<unsigned> glowMaxQueueSize(
-    "glow_max_queue_size",
-    llvm::cl::desc(
-        "Max number of pending requeusts in glow's host manager queue before "
-        "rejecting new request"),
-    llvm::cl::Optional, llvm::cl::init(100), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<unsigned> glowExecutorThreads(
-    "glow_executor_threads",
-    llvm::cl::desc("Number of executor threads for host manager"),
-    llvm::cl::Optional, llvm::cl::init(10), llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> glowSaturateHost(
-    "glow_saturate_host",
-    llvm::cl::desc("Duplicate netowrk on all available devices"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<int32_t>
     topKCompare("topk_compare",
@@ -340,14 +181,36 @@ llvm::cl::opt<unsigned> replicationCountOpt(
     "replication_count", llvm::cl::desc("Set the network replication count"),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
-/// Used to sink unused opts by llvm::cl into. All flags in here are verified to
-/// be valid gflags, or else the program aborts.
-llvm::cl::list<std::string>
-    sinkUnusedOpts("glow_sink_unused", llvm::cl::desc("Sink unused opts."),
-                   llvm::cl::Optional, llvm::cl::ReallyHidden, llvm::cl::Sink,
-                   llvm::cl::ZeroOrMore, llvm::cl::cat(reproTestCat));
+/// Explicitly show gflags help/version info, depending on \p foundHelpFlag and
+/// \p foundVersionFlag. llvm shows its own help/version info when it parses.
+void gflagsShowHelpVersion(bool foundHelpFlag, bool foundVersionFlag) {
+  const char *binName = gflags::ProgramInvocationShortName();
+  if (foundHelpFlag) {
+    gflags::SetUsageMessage(
+        strFormat("gflags for %s\nUSAGE: %s [options]:", binName, binName));
+    gflags::ShowUsageWithFlagsRestrict(binName, /* restrict_ */ "");
+    llvm::outs() << "\nLLVM CommandLine options:\n";
+  }
+  if (foundVersionFlag) {
+    llvm::outs() << "gflags version:\n";
+    const char *versionStr = gflags::VersionString();
+    llvm::outs() << binName;
+    if (versionStr && *versionStr) {
+      llvm::outs() << " version " << versionStr;
+    }
+    llvm::outs() << "\n\n";
+  }
+}
 
 void parseCommandLine(int argc, char **argv) {
+  // Use different defaults for some flags:
+  FLAGS_glow_global_fp16 = true;
+  FLAGS_glow_clip_fp16 = true;
+  FLAGS_glow_global_fused_scale_offset_fp16 = true;
+  FLAGS_glow_snn_partitioning_kbytes_per_card = 5000000;
+  FLAGS_glow_snn_partitioning_num_cores_sls = 6;
+  FLAGS_glow_snn_partitioning_num_cores_other = 6;
+
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
 
   // Verify there's no unexpected overlap in flags by llvm/gflags.
@@ -363,21 +226,57 @@ void parseCommandLine(int argc, char **argv) {
         << opt.getKey().data();
   }
 
-  // Tell gflags to ignore unknown flags, allowing them to be parsed by llvm.
+  // Separate out llvm and gflags into their own argc/argv.
+  llvm::SmallVector<char *, 40> llvmArgv, gflagsArgv;
+  llvmArgv.push_back(argv[0]);
+  gflagsArgv.push_back(argv[0]);
+  bool foundHelpFlag = false;
+  bool foundVersionFlag = false;
+  for (int i = 1; i < argc; ++i) {
+    llvm::StringRef flagName(argv[i]);
+    // Positional args are always llvm cl args.
+    if (!flagName.startswith("-")) {
+      llvmArgv.push_back(argv[i]);
+      continue;
+    }
+
+    // Strip off leading '-'.
+    flagName = flagName.drop_while([](char c) -> bool { return c == '-'; });
+    // Look for everything leading up to '=', if any.
+    flagName = flagName.take_until([](char c) -> bool { return c == '='; });
+
+    // Now check if flagName is a gflag, otherwise assume it was from llvm. If
+    // help/version, always pass to llvm; we will also call gflags directly for
+    // them to print before llvm parses/prints, so that both gflags and llvm
+    // will print help/version.
+    gflags::CommandLineFlagInfo dummy;
+    if (!gflags::GetCommandLineFlagInfo(flagName.str().c_str(), &dummy) ||
+        flagName == "help" || flagName == "version") {
+      llvmArgv.push_back(argv[i]);
+      if (flagName == "help") {
+        foundHelpFlag = true;
+      } else if (flagName == "version") {
+        foundVersionFlag = true;
+      }
+    } else {
+      gflagsArgv.push_back(argv[i]);
+    }
+  }
+  int llvmArgc = static_cast<int>(llvmArgv.size());
+  int gflagsArgc = static_cast<int>(gflagsArgv.size());
+
+  // Now we can parse both llvm and gflags safely. All gflags should be
+  // legitimate. All other flags will be passed to llvm, which will complain
+  // about unknown ones.
+  char **gflagsArgvPtr = &gflagsArgv[0];
   gflags::AllowCommandLineReparsing();
-  gflags::ParseCommandLineFlags(&argc, &argv, /* remove_flags */ false);
+  gflags::ParseCommandLineFlags(&gflagsArgc, &gflagsArgvPtr,
+                                /* remove_flags */ false);
+  gflagsShowHelpVersion(foundHelpFlag, foundVersionFlag);
   llvm::cl::ParseCommandLineOptions(
-      argc, argv,
+      llvmArgc, &llvmArgv[0],
       " The Glow compiler\n\n"
       "Glow is a compiler for neural network accelerators.\n");
-
-  // Now check that all of the LLVM-ignored flags were valid gflags.
-  for (const std::string &optStr : sinkUnusedOpts) {
-    llvm::StringRef optName = llvm::StringRef(optStr).rsplit("=").first;
-    optName.consume_front("-");
-    optName.consume_front("-");
-    gflags::GetCommandLineFlagInfoOrDie(optName.str().data());
-  }
 
   if (top1Threshold > 0.0 && topKCompare == 0) {
     topKCompare = 1;
@@ -416,7 +315,7 @@ public:
     }
 
     std::stringstream ss;
-    ss << "weight_" << i_++;
+    ss << "weight_" << i_;
     largeBuffer_ = zip_->getRecord(ss.str());
     ::ONNX_NAMESPACE::TensorProto t;
     t.ParseFromString(largeBuffer_);
@@ -432,8 +331,17 @@ public:
     }
     auto ty = typeInfo_[currentBlobName_];
 
+    ss.str("");
+    ss << "data_" << i_++;
+    largeBuffer_.clear();
+    if (zip_->hasRecord(ss.str())) {
+      largeBuffer_ = zip_->getRecord(ss.str());
+      LOG(INFO) << "Read weight data " << ss.str() << " of size "
+                << largeBuffer_.size();
+    }
     currentTensor_.reset(new ::glow::Tensor());
-    RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get()));
+    RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get(),
+                                     /*useGlowCustomOps*/ false, largeBuffer_));
     CHECK(currentTensor_->getType().isEqual(ty))
         << "Mismatched tensor type: " << currentTensor_->getType().toString()
         << " vs " << ty.toString();
@@ -523,7 +431,7 @@ int run() {
   bool usingGlowCustomOps = false;
   CompilationContext cctx;
   cctx.replicationCount = replicationCountOpt;
-  cctx.maxActiveRequestsPerInstance = glowMaxActiveRequestsPerInstance;
+  cctx.maxActiveRequestsPerInstance = glow::flags::MaxActiveRequestsPerInstance;
   runtime::PrePartitionedConfig PPC;
   cctx.prepartitionedConfig = &PPC;
   {
@@ -540,92 +448,103 @@ int run() {
 
   if (glowDumpGraphAfterLoadOpt) {
     for (Function *F : mod->getFunctions()) {
-      F->dumpDAG(glowDumpGraphPathOpt + F->getName().str() + ".dot");
+      F->dumpDAG(glow::flags::DumpGraphPath + F->getName().str() + ".dot");
     }
   }
 
   // Build host manager and compile the module.
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
-  if (globalFp16Opt) {
-    precConfig.convertToFP16 = globalFp16Opt;
+  if (glow::flags::ConvertToFP16) {
+    precConfig.convertToFP16 = true;
     if (sliceConcatFp32Opt) {
       precConfig.precisionModeKindSet.insert(Kinded::Kind::SliceNodeKind);
       precConfig.precisionModeKindSet.insert(Kinded::Kind::ConcatNodeKind);
     }
     llvm::outs() << "Conversion to fp16 enabled\n";
   }
-  if (globalFp16PlaceholdersOpt) {
-    precConfig.convertPlaceholdersToFP16 = globalFp16PlaceholdersOpt;
+  if (glow::flags::ConvertPlaceholdersToFP16) {
+    precConfig.convertPlaceholdersToFP16 = true;
     llvm::outs() << "Conversion of Placeholders to fp16 enabled\n";
   }
-  if (globalFp16ConstantsOpt) {
-    precConfig.convertConstantsToFP16 = globalFp16ConstantsOpt;
+  if (glow::flags::ConvertConstantsToFP16) {
+    precConfig.convertConstantsToFP16 = true;
     llvm::outs() << "Conversion of Constants to fp16 enabled\n";
   }
-  if (fuseScaleOffsetFp16Opt) {
-    precConfig.convertFusedToFP16 = fuseScaleOffsetFp16Opt;
+  if (glow::flags::ConvertFusedScaleOffsetToFP16) {
+    precConfig.convertFusedToFP16 = true;
     llvm::outs() << "Conversion of fused scales/offsets to fp16 enabled\n";
   }
-  if (ClipFp16Opt) {
-    precConfig.clipFP16 = ClipFp16Opt;
+  if (fuseScaleOffsetFp32Opt) {
+    precConfig.convert4BitFusedToFP32 = fuseScaleOffsetFp32Opt;
+    precConfig.convert8BitFusedToFP32 = fuseScaleOffsetFp32Opt;
+    llvm::outs()
+        << "Conversion of fused scales/offsets to fp32 in frwqslws enabled\n";
+  }
+  if (indicesInt64Opt) {
+    precConfig.convertIndicesToInt64 = indicesInt64Opt;
+    llvm::outs() << "Conversion of indices to int64 enabled\n";
+  }
+  if (glow::flags::ClipToFP16) {
+    precConfig.clipFP16 = true;
     llvm::outs() << "Clipping to fp16 enabled\n";
   }
-  if (ClipFp16SkipInputsOpt) {
-    precConfig.clipFP16SkipInputs = ClipFp16SkipInputsOpt;
+  if (glow::flags::SkipInputsOnClipToFP16) {
+    precConfig.clipFP16SkipInputs = true;
     llvm::outs() << "Skipping clipping for fp16 Node inputs fp16\n";
   }
-  if (forceFP16AccumSLSOpt) {
+  if (glow::flags::ForceSLSToFP16Accum) {
     precConfig.forceFP16AccumSLS = true;
     llvm::outs() << "Forcing fp16 accumulation for SLS ops enabled\n";
   }
-  if (!enableQuantParamChangesOpt) {
+  if (!glow::flags::EnableQuantParamChanges) {
     cctx.optimizationOpts.enableQuantParamChanges = false;
     LOG(INFO) << "Disabling quantization param changes during optimizations";
   }
-  if (glowDumpGraphOpt) {
+  if (glow::flags::DumpGraph) {
     cctx.dumpFinalGraph = true;
-    cctx.dumpGraphPath = glowDumpGraphPathOpt;
+    cctx.dumpGraphPath = glow::flags::DumpGraphPath;
   }
 
-  if (useSparseNNPartitioningScheme) {
-    cctx.optimizationOpts.useSparseNNPartitioningScheme =
-        useSparseNNPartitioningScheme;
+  if (glow::flags::UseSparseNNPartitioningScheme) {
+    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
-        sparseNNPartitioningAddSLSConcats;
+        glow::flags::SparseNNPartitioningAddSLSConcats;
     cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
-        sparseNNPartitioningBalancePerfModel;
+        glow::flags::SparseNNPartitioningBalancePerfModel;
     cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
-        sparseNNPartitioningPairLNWithSLS;
+        glow::flags::SparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
-        sparseNNPartitioningSchemeNumCards;
+        glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
-        sparseNNPartitioningSchemeKBytesPerCard;
+        glow::flags::SparseNNPartitioningSchemeSLSTableKBytesPerCard;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
-        sparseNNPartitioningSchemeNumCoresSLS;
+        glow::flags::SparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
-        sparseNNPartitioningSchemeNumCoresOther;
+        glow::flags::SparseNNPartitioningSchemeNumCoresOther;
   }
 
-  if (glowNNPINumParallelChunks > 1) {
+#ifdef GLOW_WITH_NNPI
+  if (glow::nnpi::flags::NumParallelChunks > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
-        std::to_string(glowNNPINumParallelChunks);
+        std::to_string(glow::nnpi::flags::NumParallelChunks);
   }
-  if (glowNNPIModelParallelSplitAlignment > 1) {
+  if (glow::nnpi::flags::ModelParallelSplitAlignment > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPIModelParallelSplitAlignment"] =
-        std::to_string(glowNNPIModelParallelSplitAlignment);
+        std::to_string(glow::nnpi::flags::ModelParallelSplitAlignment);
   }
+#endif
 
-  if (glowUseDagOptimizer) {
+  if (glow::flags::UseDAGOptimizer) {
     cctx.callDAGOptimizer = true;
     cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
-        glowDAGOptimizerNumParallelChunks;
+        glow::flags::DAGOptimizerNumParallelChunks;
     cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
-        glowDAGOptimizerParallelizationTaggingAlgorithm;
+        glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
     cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
-        glowDAGOptimizerPlacementTaggingAlgorithm;
+        glow::flags::DAGOptimizerPlacementTaggingAlgorithm;
   }
 
-  if (glowDelayAndRecordConstantModification) {
+  if (glow::flags::DelayAndRecordConstantModification) {
     cctx.optimizationOpts.delayAndRecordConstantModification = true;
   }
 
@@ -657,16 +576,22 @@ int run() {
     cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
   }
 
-  auto configs = runtime::generateDeviceConfigs(numDevicesOpt, ExecutionBackend,
-                                                deviceMemoryOpt);
+  auto configs = runtime::generateDeviceConfigs(
+      glow::flags::NumDevices, ExecutionBackend, deviceMemoryOpt);
   runtime::HostConfig hostConfig;
-  hostConfig.maxActiveRequests = glowMaxActiveRequests;
-  hostConfig.maxQueueSize = glowMaxQueueSize;
-  hostConfig.executorThreads = glowExecutorThreads;
+  hostConfig.maxActiveRequests = glow::flags::MaxActiveRequests;
+  hostConfig.maxQueueSize = glow::flags::MaxQueueSize;
+  hostConfig.executorThreads = glow::flags::ExecutorThreads;
 
   auto hostManager =
       glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
-  cctx.saturateHost = glowSaturateHost;
+  if (glow::flags::EnablePartialTensors) {
+    CHECK(hostManager->getBackend(ExecutionBackend).supportsPartialTensors())
+        << "Backend " << ExecutionBackend
+        << " doesn't support partial tensor but enablePartialTensor is set to "
+           "true.";
+  }
+  cctx.saturateHost = glow::flags::SaturateHost;
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
   // Parse all input and output files ahead of inference.
@@ -740,9 +665,10 @@ int run() {
     for (const auto &inputGroup : parsedInputs) {
       PlaceholderBindings bindings;
       bindings.allocate(inputPlaceholderList);
-      fillPlaceholders(inputGroup, &bindings,
-                       enablePartialTensor ? &partialTensorPayloads : nullptr,
-                       usingGlowCustomOps);
+      fillPlaceholders(
+          inputGroup, &bindings,
+          glow::flags::EnablePartialTensors ? &partialTensorPayloads : nullptr,
+          usingGlowCustomOps);
       inputBindings.emplace_back(std::move(bindings));
     }
 
@@ -750,7 +676,7 @@ int run() {
     bool runAccuracyChecks =
         !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
 
-    if (glowDumpTrace && glowEnableDeviceTrace) {
+    if (glow::flags::DumpDebugTraces && glowEnableDeviceTrace) {
       // Start device traces.
       hostManager->setTraceContext(
           glow::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -777,7 +703,7 @@ int run() {
         auto ctx = glow::make_unique<ExecutionContext>();
 
         TraceContext *traceContext = nullptr;
-        if (glowDumpTrace) {
+        if (glow::flags::DumpDebugTraces) {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
@@ -939,7 +865,7 @@ int run() {
       }
     }
 
-    if (glowDumpTrace) {
+    if (glow::flags::DumpDebugTraces) {
       if (glowEnableDeviceTrace) {
         // Stop device traces and collect events.
         Error stopErr = hostManager->stopDeviceTrace();

@@ -74,7 +74,7 @@ public:
       if (auto resOrErr = compile(function, opts)) {
         compiledFunctions.push_back(std::move(*resOrErr));
       } else {
-        return resOrErr.takeError();
+        RETURN_ERR(resOrErr.takeError());
       }
     }
     return Expected<std::vector<std::unique_ptr<CompiledFunction>>>(

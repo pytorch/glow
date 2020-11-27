@@ -1,15 +1,14 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch_glow
-from torch_glow import InputMeta, CompilationOptions, GlowCompileSpec
-import torch
 import unittest
-
 from collections import OrderedDict
 
+import torch
+import torch_glow
 
-def create_model(x, relu):
+
+def create_model(x, relu, bias=True):
     """ x is an example input, relu is whether or not to include a fused relu"""
 
     with torch.no_grad():
@@ -17,7 +16,10 @@ def create_model(x, relu):
 
         conv_op = None
         if x_size == 4:
-            conv_op = torch.nn.Conv2d(3, 10, 3)
+            if bias:
+                conv_op = torch.nn.Conv2d(3, 10, 3)
+            else:
+                conv_op = torch.nn.Conv2d(3, 10, 3, bias=False)
         elif x_size == 5:
             conv_op = torch.nn.Conv3d(3, 10, 3)
         else:
@@ -25,7 +27,8 @@ def create_model(x, relu):
             exit(1)
 
         conv_op.weight.random_(-1, 1)
-        conv_op.bias.data.random_(-1, 1)
+        if bias:
+            conv_op.bias.data.random_(-1, 1)
 
         model = None
         if relu:
@@ -50,15 +53,19 @@ def run_to_glow(m, x):
     """Trace the model m with input x and call to_glow"""
     traced_m = torch.jit.trace(m, (x))
 
-    input_meta = InputMeta()
-    input_meta.set(x.size(), torch.float32)
-    inputs = [input_meta]
-    options = CompilationOptions()
-    options.backend = "Interpreter"
-    spec = GlowCompileSpec()
-    spec.set(inputs, options)
+    spec = torch_glow.CompilationSpec()
+    spec.get_settings().set_glow_backend("Interpreter")
 
-    lowered_module = torch_glow.to_glow(traced_m, {"forward": spec})
+    compilation_group = torch_glow.CompilationGroup()
+    spec.compilation_groups_append(compilation_group)
+
+    input_spec = torch_glow.InputSpec()
+    input_spec.set_same_as(x)
+
+    compilation_group.input_sets_append([input_spec])
+
+    lowered_module = torch_glow.to_glow(traced_m, spec)
+
     return lowered_module
 
 
@@ -81,4 +88,9 @@ class TestConvToGlow(unittest.TestCase):
     def test_conv3d_relu_to_glow(self):
         x = torch.randn([1, 3, 30, 30, 30])
         m = create_model(x, True)
+        run_to_glow(m, x)
+
+    def test_conv2d_to_glow_empty_bias(self):
+        x = torch.randn([1, 3, 30, 30])
+        m = create_model(x, False, False)
         run_to_glow(m, x)

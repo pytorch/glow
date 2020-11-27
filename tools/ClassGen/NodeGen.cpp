@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Unsigned, "Group", /* addSetter */ true)
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .addMember(MEMBER_TYPE_INFO(glow::ConvolutionLayout), "Layout")
       .addFusedActivation()
       .addResultFromCtorArg()
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .addResultFromCtorArg()
       .setDocstring(
           "Performs 2D Convolution using a given Input, Filter, and "
@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .addResultFromCtorArg()
       .setDocstring("Performs 2D Transposed Convolution using a given Input,"
                     "Filter, and Bias tensors, as well as provided Kernels,"
@@ -188,6 +188,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Enum, "Layout")
+      .addMember(MemberType::Boolean, "CountIncludePads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring(
@@ -603,6 +604,13 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring(
           "Adds the 'Slice' operand to each one of the slices in the batch.");
+
+  BB.newNode("BatchedMul")
+      .addInput("Batch")
+      .addInput("Slice")
+      .addResultFromCtorArg()
+      .setDocstring("Multiplies the 'Slice' operand to each one of the slices "
+                    "in the batch.");
 
   BB.newNode("MatMul")
       .addInput("LHS")
@@ -1020,6 +1028,15 @@ int main(int argc, char **argv) {
                     "batch and will concat the result of the gather operation "
                     "on each sample in the batch.");
 
+  BB.newNode("GatherND")
+      .addInput("Data")
+      .addInput("Indices")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Given Data tensor of rank r >= 1, Indices tensor of rank q >= 1 "
+          "This operator gathers slices of Data into "
+          "an output tensor of rank q + r - Indices_shape[-1] - 1 .");
+
   BB.newNode("GatherRanges")
       .addInput("Data")
       .addInput("Ranges")
@@ -1101,6 +1118,15 @@ int main(int argc, char **argv) {
           "Output tensor with resized spatial dimensions using bilinear "
           "neighbor interpolation. The Output tensor is of shape "
           "floor(input_dimension * scale)");
+
+  BB.newNode("Broadcast")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::VectorDimT, "TargetDim")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Broadcast the Input tensor to TargetDim using Axis to indicate the "
+          "offset between Input dimension and TargetDim");
 
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
@@ -1246,6 +1272,19 @@ int main(int argc, char **argv) {
                     "tensor. The input shape {D_0, D_1, ... D_n} results in "
                     "the outputs {D_0, D_1, ... D_n-1, K}, sorted in "
                     "non-decreasing order.");
+
+  BB.newNode("LSTMUnit")
+      .addInput("Input")
+      .addInput("C")
+      .addResult("C.getType()", "newC")
+      .addResult("C.getType()", "newH")
+      .setDocstring(
+          "A LSTM unit node, take Input as I, F, G, O,"
+          "takes F from forget gate, I from input gate,"
+          "O from output gate, G from cell gate and C from cell state. "
+          "Calulates newC = sigmoid(F) * C + sigmoid(I) * tanh(G), "
+          "newH = tanh(newC) * sigmoid(O).");
+
   //===--------------------------------------------------------------------===//
   //                Conversions
   //===--------------------------------------------------------------------===//

@@ -242,11 +242,14 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                Error *errPtr, bool loadIntoExistingModule,
                                OriginNameToTQPMap *originNameToTQPMap,
                                bool loadUniquedDummyQParams,
-                               bool replaceDummyTQPs)
+                               bool replaceDummyTQPs, bool zeroScaleFP16Clip,
+                               bool clipQuantRangeToFP16)
     : G_(nullptr), mod_(mod), loadIntoExistingModule_(loadIntoExistingModule),
       originNameToTQPMap_(originNameToTQPMap),
       loadUniquedDummyQParams_(loadUniquedDummyQParams),
-      replaceDummyTQPs_(replaceDummyTQPs) {
+      replaceDummyTQPs_(replaceDummyTQPs),
+      zeroScaleFP16Clip_(zeroScaleFP16Clip),
+      clipQuantRangeToFP16_(clipQuantRangeToFP16) {
   setupLoader(tensorNames, types, errPtr);
 }
 
@@ -255,12 +258,15 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                Error *errPtr, bool loadIntoExistingModule,
                                OriginNameToTQPMap *originNameToTQPMap,
                                bool loadUniquedDummyQParams,
-                               bool replaceDummyTQPs)
+                               bool replaceDummyTQPs, bool zeroScaleFP16Clip,
+                               bool clipQuantRangeToFP16)
     : G_(F), mod_(*F->getParent()),
       loadIntoExistingModule_(loadIntoExistingModule),
       originNameToTQPMap_(originNameToTQPMap),
       loadUniquedDummyQParams_(loadUniquedDummyQParams),
-      replaceDummyTQPs_(replaceDummyTQPs) {
+      replaceDummyTQPs_(replaceDummyTQPs),
+      zeroScaleFP16Clip_(zeroScaleFP16Clip),
+      clipQuantRangeToFP16_(clipQuantRangeToFP16) {
   setupLoader(tensorNames, types, errPtr);
 }
 
@@ -289,6 +295,10 @@ void ProtobufLoader::setupLoader(llvm::ArrayRef<const char *> tensorNames,
                         "Input names have duplicate");
       TypeRef T = types[i];
       if (T->isQuantizedType() && !T->isFusedQuantizedType()) {
+        RETURN_ERR_IF_NOT(!clipQuantRangeToFP16_,
+                          strFormat("Do not support clipQuantRangeToFP16 with "
+                                    "unfused quantized input Placeholders: %s",
+                                    tensorNames[i]));
         // Note: Never shift here, because these are the types that were already
         // imported/defined based on Glow.
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -325,7 +335,8 @@ Expected<TypeRef> ProtobufLoader::loadQuantTy(const std::string &name,
                                               ElemKind k,
                                               llvm::ArrayRef<dim_t> dims,
                                               float scale, int32_t offset,
-                                              bool shiftUInt8ToInt8) {
+                                              bool shiftUInt8ToInt8,
+                                              bool skipClipQuantRangeToFP16) {
   // If we have Int8QTy, we may have loaded as UInt8, and so will need to shift
   // to align to Glow's Int8QTy.
   if (k == ElemKind::Int8QTy && shiftUInt8ToInt8) {
@@ -335,6 +346,22 @@ Expected<TypeRef> ProtobufLoader::loadQuantTy(const std::string &name,
   // If we don't have a map to track dummy unique offsets to loader names, then
   // just load as normal with the actual scale/offset we loaded.
   if (!loadUniquedDummyQParams_) {
+    // If clipping qparams to fp16 range then do so here.
+    if (clipQuantRangeToFP16_ && !skipClipQuantRangeToFP16) {
+      const auto qMinMax = getQuantizedValueRange(scale, offset, k);
+      const float newMin = std::max(qMinMax.first, kMinFP16);
+      const float newMax = std::min(qMinMax.second, kMaxFP16);
+      const TensorQuantizationParams newQParams = chooseQuantizationParams(
+          {newMin, newMax}, quantization::Asymmetric, k);
+      scale = newQParams.scale;
+      offset = newQParams.offset;
+    }
+    // If we are clipping qparam scales below the kMinScaleFP16 threshold to
+    // kMinScaleFP16 then do so here.
+    if (zeroScaleFP16Clip_ && scale < kMinScaleFP16) {
+      scale = kMinScaleFP16;
+    }
+
     if (originNameToTQPMap_) {
       bool inserted =
           originNameToTQPMap_

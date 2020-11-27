@@ -373,7 +373,7 @@ TEST(Quantization, quantizeTensorSymmetricPwr2Int32) {
 }
 
 /// Test 4-bit fused rowwise quantization.
-TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
+template <typename T> void fused4BitRowwiseQuantizationTest(ElemKind qTy) {
   // Create an FP32 tensor with 12 elements and initialize it
   // with numbers from the following test inputs here.
   // 1. Input that contains at least one +ve, one -ve and zero.
@@ -386,7 +386,8 @@ TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
   for (const auto &delta : deltas) {
     Tensor inputFP32(ElemKind::FloatTy, {2, 6});
     Tensor dequantized(ElemKind::FloatTy, {2, 6});
-    Tensor quantized(ElemKind::UInt4FusedFP16QTy, {2, 7}, /* dummy scale */ 1.0,
+    dim_t col = inputFP32.dims()[1] / 2 + 2 * sizeof(T);
+    Tensor quantized(qTy, {2, col}, /* dummy scale */ 1.0,
                      /* dummy offset */ 0);
     Handle<float> inputH = inputFP32.getHandle<float>();
     for (dim_t i = 0; i < 2; i++) {
@@ -395,8 +396,7 @@ TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
       }
     }
 
-    quantization::tensorFusedRowwiseQuantization<float16_t>(inputFP32,
-                                                            quantized);
+    quantization::tensorFusedRowwiseQuantization<T>(inputFP32, quantized);
     dequantized =
         quantization::tensor4BitsFusedRowwiseDequantization(quantized);
 
@@ -407,6 +407,16 @@ TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
       }
     }
   }
+}
+
+/// Test 4-bit fused rowwise fp32 scale/offset quantization.
+TEST(Quantization, fused4BitsFP32RowwiseQuantizeTensor) {
+  fused4BitRowwiseQuantizationTest<float>(ElemKind::UInt4FusedQTy);
+}
+
+/// Test 4-bit fused rowwise fp16 quantization.
+TEST(Quantization, fused4BitsFP16RowwiseQuantizeTensor) {
+  fused4BitRowwiseQuantizationTest<float16_t>(ElemKind::UInt4FusedFP16QTy);
 }
 
 /// When quantizing a scalar the quantization should not lose precision: the
@@ -618,7 +628,7 @@ static void quantizeSimpleConvGraph(ElemKind quantizationPrecision,
   auto *bias = mod.createConstant(ElemKind::FloatTy, {2}, "bias");
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});
   PlaceholderBindings bindings;
-  bindings.allocate(input);
+  bindings.allocate(input)->getHandle().randomize(0.f, 2.f, mod.getPRNG());
   filter->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
   bias->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
 
@@ -677,7 +687,7 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
 
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {3}, "input", true);
   PlaceholderBindings bindings;
-  bindings.allocate(input);
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
 
   // Note: Intentionally add successive reshapes so the GraphOptimizer merges
   // them and creates a new one. This way the newly created Reshape will be
@@ -739,7 +749,7 @@ enableRowwiseQuantizedFullyConnected(ElemKind quantizationPrecision,
   auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 2}, "weights", true);
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {2}, "bias", true);
   PlaceholderBindings bindings;
-  bindings.allocate(input);
+  bindings.allocate(input)->getHandle().randomize(0.2f, 2.f, mod.getPRNG());
   bindings.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
   bindings.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
 
@@ -827,8 +837,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   auto *FC = F->createFullyConnected(bindings, "FC", input, 100);
   auto *res = F->createSave("save", FC);
   bindings.allocate(res->getPlaceholder());
-  bindings.allocate(input);
-  bindings.get(input)->getHandle().randomize(-1.0, 6.0, mod.getPRNG());
+  bindings.allocate(input)->getHandle().randomize(-1.f, 6.f, mod.getPRNG());
 
   ::glow::convertPlaceholdersToConstants(F, bindings,
                                          {input, res->getPlaceholder()});
@@ -945,7 +954,7 @@ static void enableChannelwiseQuantizedConv2D(ElemKind qPrec, ElemKind qPrecBias,
   std::vector<unsigned_t> strides = {1, 1};
   std::vector<unsigned_t> pads = {0, 0, 0, 0};
   dim_t group = 2;
-  dim_t dilation = 1;
+  std::vector<unsigned_t> dilation = {1, 1};
 
   // Create input placeholder.
   auto *input =
@@ -2557,7 +2566,7 @@ static FullyConnectedNode *createSimpleFCNet(PlaceholderBindings &bindings,
   auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "weights", true);
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {3}, "bias", true);
 
-  bindings.allocate(input);
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
   bindings.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
   bindings.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
 

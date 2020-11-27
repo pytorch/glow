@@ -216,6 +216,8 @@ void glow::dumpTensorToTextFile(Tensor &tensor, llvm::StringRef filename,
     return dumpTensorToTextFileImpl<uint8_t>(tensor, filename, fs);
   case ElemKind::UInt4FusedFP16QTy:
     return dumpTensorToTextFileImpl<uint8_t>(tensor, filename, fs);
+  case ElemKind::UInt4FusedQTy:
+    return dumpTensorToTextFileImpl<uint8_t>(tensor, filename, fs);
   case ElemKind::BoolTy:
     return dumpTensorToTextFileImpl<bool>(tensor, filename, fs);
   default:
@@ -265,6 +267,8 @@ void glow::loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
   case ElemKind::UInt8FusedFP16QTy:
     return loadTensorFromTextFileImpl<uint8_t>(tensor, filename, fs);
   case ElemKind::UInt4FusedFP16QTy:
+    return loadTensorFromTextFileImpl<uint8_t>(tensor, filename, fs);
+  case ElemKind::UInt4FusedQTy:
     return loadTensorFromTextFileImpl<uint8_t>(tensor, filename, fs);
   case ElemKind::BoolTy:
     return loadTensorFromTextFileImpl<bool>(tensor, filename, fs);

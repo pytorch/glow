@@ -1,0 +1,22 @@
+name: "init"
+op {
+  output: "rhs"
+  type: "Int8GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 4
+    ints: 2
+  }
+  arg {
+    name: "values"
+    s: "\1\1\1\1\1\1\1\1"
+  }
+  arg {
+    name: "Y_scale"
+    f: 7e-10
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 13
+  }
+}

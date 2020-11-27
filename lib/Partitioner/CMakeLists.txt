@@ -8,5 +8,6 @@ add_library(Partitioner
 target_link_libraries(Partitioner
                       PRIVATE
                         Backends
+                        Flags
                         Graph
                         GraphOptimizer)

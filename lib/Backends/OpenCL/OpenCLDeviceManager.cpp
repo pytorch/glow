@@ -186,10 +186,10 @@ Error OpenCLDeviceManager::findBestDevice(cl_platform_id platformId,
   cl_uint num{0};
   cl_int err = clGetDeviceIDs(platformId, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   if (err != CL_SUCCESS) {
-    RETURN_ERR("clGetDeviceIDs Failed");
+    return MAKE_ERR("clGetDeviceIDs Failed");
   }
   if ((deviceId > 0 && num < deviceId) || num == 0) {
-    RETURN_ERR("Should have at least one GPU/CPU/FPGA for running OpenCL");
+    return MAKE_ERR("Should have at least one GPU/CPU/FPGA for running OpenCL");
   }
 
   // Enumerate all available devices.
@@ -197,7 +197,7 @@ Error OpenCLDeviceManager::findBestDevice(cl_platform_id platformId,
   err = clGetDeviceIDs(platformId, CL_DEVICE_TYPE_ALL, num, devices.data(),
                        nullptr);
   if (err != CL_SUCCESS) {
-    RETURN_ERR("clGetDeviceIDs Failed");
+    return MAKE_ERR("clGetDeviceIDs Failed");
   }
 
   // If the deviceId was set on the command line, use that.
@@ -215,7 +215,7 @@ Error OpenCLDeviceManager::findBestDevice(cl_platform_id platformId,
       err = clGetDeviceInfo(id, CL_DEVICE_TYPE, sizeof(cl_bitfield), &type,
                             nullptr);
       if (err != CL_SUCCESS) {
-        RETURN_ERR("clGetDeviceInfo Failed");
+        return MAKE_ERR("clGetDeviceInfo Failed");
       }
 
       // prefer the highest device type, and tiebreak on the the highest device
@@ -247,11 +247,11 @@ Error OpenCLDeviceManager::init() {
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
   if (err != CL_SUCCESS) {
-    RETURN_ERR("clGetPlatformIDs Failed.");
+    return MAKE_ERR("clGetPlatformIDs Failed.");
   }
 
   if (numPlatforms < clPlatformId) {
-    RETURN_ERR("Should have at least one platform for running OpenCL");
+    return MAKE_ERR("Should have at least one platform for running OpenCL");
   }
 
   std::vector<cl_platform_id> platform_ids(numPlatforms);
@@ -265,14 +265,14 @@ Error OpenCLDeviceManager::init() {
   }
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   if (!context_) {
-    RETURN_ERR("clCreateContext Failed");
+    return MAKE_ERR("clCreateContext Failed");
   }
 
   cl_ulong mem_size;
   err = clGetDeviceInfo(deviceId_, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong),
                         &mem_size, NULL);
   if (err != CL_SUCCESS) {
-    RETURN_ERR("Error getting device memory limit");
+    return MAKE_ERR("Error getting device memory limit");
   }
 
   // If limited by deviceConfig, should allow less deviceMemory
@@ -287,14 +287,14 @@ Error OpenCLDeviceManager::init() {
   err = clGetDeviceInfo(deviceId_, CL_DEVICE_LOCAL_MEM_TYPE,
                         sizeof(localMemType), &localMemType, NULL);
   if (err != CL_SUCCESS) {
-    RETURN_ERR("Error getting device local memory type.");
+    return MAKE_ERR("Error getting device local memory type.");
   }
   if (localMemType == CL_LOCAL) {
     cl_ulong localMemSize;
     err = clGetDeviceInfo(deviceId_, CL_DEVICE_LOCAL_MEM_SIZE,
                           sizeof(localMemSize), &localMemSize, NULL);
     if (err != CL_SUCCESS) {
-      RETURN_ERR("Error getting device local memory type.");
+      return MAKE_ERR("Error getting device local memory type.");
     }
     localMemSize_ = localMemSize;
   }

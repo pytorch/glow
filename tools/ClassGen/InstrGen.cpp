@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .addMember(MEMBER_TYPE_INFO(ConvolutionLayout), "Layout")
       .addMember(MEMBER_TYPE_INFO(FusedActivation), "FusedActivation")
       .autoIRGen()
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "Filter", "ElemKind::Int8QTy"});
@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"});
 
@@ -169,6 +169,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Layout")
+      .addMember(MemberType::Boolean, "CountIncludePads")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest", "Src"}, {"Dest", "Src"});
@@ -928,6 +929,13 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
       .autoIRGen();
 
+  BB.newInstr("GatherND")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoIRGen();
+
   BB.newInstr("GatherRanges")
       .addOperand("Output", OperandKind::Out)
       .addOperand("Lengths", OperandKind::Out)
@@ -1000,6 +1008,18 @@ int main(int argc, char **argv) {
   BB.newInstr("TraceEvent")
       .addOperand("Data", OperandKind::In)
       .addMember(MemberType::Unsigned, "Index")
+      .autoVerify(VerifyKind::NoVerify);
+
+  /// Instruction used to instrument other instructions. InstrRef is a reference
+  /// of the instruction being instrumented, ID is a unique identifier assigned
+  /// to the instrumented instruction and InstrumentKind is the instrumentation
+  /// kind/type. OperandsInfo is a temporary buffer used to store the addresses
+  /// and the sizes of the operands for the instrumented instruction.
+  BB.newInstr("Instrument")
+      .addOperand("OperandsInfo", OperandKind::Out)
+      .addMember(MEMBER_TYPE_INFO(glow::Instruction *), "InstrRef")
+      .addMember(MemberType::Unsigned, "ID")
+      .addMember(MEMBER_TYPE_INFO(glow::InstrumentKind), "InstrumentKind")
       .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//

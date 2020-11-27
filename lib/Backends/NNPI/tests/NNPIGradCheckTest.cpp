@@ -30,6 +30,8 @@ struct BlacklistInitializer {
             {"gradientCheckGroupConv/0", TestBlacklist::AnyDeviceAnyEngine},
             {"gradientCheckDilatedConv/0", TestBlacklist::AnyDeviceAnyEngine},
             {"gradientCheckAvgPool/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckAvgPoolCountExcludePads/0",
+             TestBlacklist::AnyDeviceAnyEngine},
             {"gradientCheckMaxPool/0", TestBlacklist::AnyDeviceAnyEngine},
             {"gradientCheckAdaptiveAvgPool/0",
              TestBlacklist::AnyDeviceAnyEngine},

@@ -1,41 +1,34 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleToModel(torch.nn.Module):
+    def __init__(self, *conversions):
+        super(SimpleToModel, self).__init__()
+        self.conversions = conversions
+
+    def forward(self, tensor):
+        for conversion_type in self.conversions:
+            tensor = tensor.to(conversion_type)
+        return tensor
 
 
 class TestTo(unittest.TestCase):
-    def test_to_basic(self):
-        """Test of the PyTorch to Node on Glow."""
-
-        def test_f(a):
-            b = a.to(torch.int)
-            c = b.to(torch.float)
-            return c
-
-        x = torch.randn(1, 2, 3, 4)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::to"})
-
-    def test_to_int(self):
-        """Test of the PyTorch to Node on Glow with int output."""
-
-        def test_f(a):
-            ai = a.to(torch.int)
-            return ai
-
-        x = torch.randn(1, 2, 3, 4)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::to"})
-
-    def test_to_float(self):
-        """Test of the PyTorch to Node on Glow with float output."""
-
-        def test_f(a):
-            ai = a.to(torch.float)
-            return ai
-
-        x = torch.randint(100, (1, 2, 3, 4))
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::to"})
+    @parameterized.expand(
+        [
+            ("to_int", SimpleToModel(torch.int), torch.randn(1, 2, 3, 4)),
+            ("to_float", SimpleToModel(torch.float), torch.randn(1, 2, 3, 4)),
+            (
+                "to_int_to_float",
+                SimpleToModel(torch.int, torch.float),
+                torch.randn(1, 2, 3, 4),
+            ),
+        ]
+    )
+    def test_to(self, _, module, tensor):
+        utils.compare_tracing_methods(module, tensor, fusible_ops={"aten::to"})

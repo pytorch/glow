@@ -16,6 +16,7 @@
 #include "Base.h"
 
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -25,10 +26,6 @@
 
 namespace glow {
 namespace onnxifi {
-bool GlowSaveOnnxifiModel = false;
-bool GlowSaveOnnxifiIO = false;
-bool GlowEnablePartialTensors = true;
-bool GlowUseCustomOpsForExport = true;
 
 extern bool GlowDumpDebugTraces;
 
@@ -69,7 +66,7 @@ void saveOnnxifiModel(Function *F) {
   constexpr size_t kIrVer = 7, kOpsetVer = 9;
   {
     ONNXModelWriter onnxWR(fname, *F, kIrVer, kOpsetVer, &err, false, true,
-                           GlowUseCustomOpsForExport);
+                           glow::flags::UseCustomOpsForExport);
   }
   if (ERR_TO_BOOL(std::move(err))) {
     LOG(ERROR) << "ONNXModelWriter failed to write model: " << fname;
@@ -317,7 +314,7 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
         externalIOBindings.emplace_back(
             std::piecewise_construct, std::forward_as_tuple(inPhPtr),
             std::forward_as_tuple(inOnnxBuffer, inPhPtr->getType()));
-      } else if (GlowEnablePartialTensors &&
+      } else if (glow::flags::EnablePartialTensors &&
                  backendPtr_->getBackend().supportsPartialTensors()) {
         // We have a partial input buffer.  Create a padded unowned tensor that
         // remembers the actual size of the input.
@@ -402,7 +399,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   auto ctx = glow::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
-  if (traceEvents || GlowDumpDebugTraces) {
+  if (traceEvents || glow::flags::DumpDebugTraces) {
     ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("Onnxifi");
@@ -417,7 +414,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   }
 
   size_t seq = 0;
-  if (GlowSaveOnnxifiIO) {
+  if (glow::onnxifi::flags::SaveIO) {
     seq = ioDumpCounter_++;
     std::stringstream ss;
     ss << "input_" << seq << ".onnx";
@@ -433,7 +430,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         size_t tensorSize = inputTensor.getSizeInBytes();
         if (unpaddedSize == tensorSize) {
           ONNXModelWriter::writeTensor(inputTensor, t,
-                                       GlowUseCustomOpsForExport);
+                                       glow::flags::UseCustomOpsForExport);
         } else {
           // If the input is a partial tensor, then save only the part that has
           // data.
@@ -441,7 +438,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
           auto dims = ty.dims().vec();
           dims[0] = dims[0] * unpaddedSize / tensorSize;
           const auto &resized = inputTensor.getUnowned(dims);
-          ONNXModelWriter::writeTensor(resized, t, GlowUseCustomOpsForExport);
+          ONNXModelWriter::writeTensor(resized, t,
+                                       glow::flags::UseCustomOpsForExport);
           VLOG(1) << "Writing partial tensor " << p.first->getName().str()
                   << " full size=" << inputTensor.getType().toString()
                   << " partial size=" << inputTensor.getUnpaddedSizeInBytes()
@@ -517,7 +515,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   // safe to access the trace context after calling into run().
   TRACE_EVENT_SCOPE_END();
   auto ret = run(std::move(ctx), outputEvent, traceEvents);
-  if (GlowSaveOnnxifiIO) {
+  if (glow::onnxifi::flags::SaveIO) {
     // We need to wait for the execution to finish in order to extract output
     // values.
     outputEvent->wait();
@@ -542,7 +540,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
         auto *t = inputG.add_initializer();
         ONNXModelWriter::writeTensor(outputTensor, t,
-                                     GlowUseCustomOpsForExport);
+                                     glow::flags::UseCustomOpsForExport);
         t->set_name(outPhPtr->getName());
       }
       std::string buffer;

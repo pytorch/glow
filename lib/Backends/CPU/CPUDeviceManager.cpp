@@ -16,6 +16,8 @@
 #include "CPUDeviceManager.h"
 #include "CPUFunction.h"
 
+#include "glow/Flags/Flags.h"
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -23,18 +25,16 @@
 namespace glow {
 namespace runtime {
 
-unsigned GlowCPUMemory = 0;
-
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowCPUMemoryOpt(
     "cpu-memory",
     llvm::cl::desc("CPU DeviceManager maximum memory in kilobytes."),
-    llvm::cl::location(GlowCPUMemory));
+    llvm::cl::location(flags::CPUMemory));
 
 DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
-  if (GlowCPUMemory) {
+  if (flags::CPUMemory) {
     // Convert command line GlowCPUMemory to bytes from kilobytes.
     auto configNew = config;
-    configNew.setDeviceMemory(uint64_t{GlowCPUMemory} * 1024);
+    configNew.setDeviceMemory(uint64_t{flags::CPUMemory} * 1024);
     return new CPUDeviceManager(configNew);
   }
   return new CPUDeviceManager(config);

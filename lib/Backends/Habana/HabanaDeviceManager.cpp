@@ -16,6 +16,7 @@
 
 #include "HabanaDeviceManager.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Runtime/StatsExporter.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -33,12 +34,10 @@ using namespace glow::runtime;
 namespace glow {
 namespace runtime {
 
-unsigned GlowHabanaMemory = 7 << 20; // 7 GB.
-
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowHabanaMemoryOpt(
     "glow-habana-memory",
     llvm::cl::desc("Amount of DRAM to allocate per Habana device in kilobytes"),
-    llvm::cl::location(GlowHabanaMemory));
+    llvm::cl::location(flags::HabanaMemory));
 
 DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
   return new HabanaDeviceManager(config);
@@ -95,7 +94,7 @@ Error HabanaDeviceManager::init() {
   // Acquire a device to work with for the lifetime of this instance.
   synStatus status = synAcquireDevice(&deviceId_, nullptr);
   if (status != synSuccess) {
-    RETURN_ERR("Failed to acquire device");
+    return MAKE_ERR("Failed to acquire device");
   }
 
   numActiveDevices_++;
@@ -109,7 +108,7 @@ Error HabanaDeviceManager::init() {
   waitPool_ = glow::make_unique<ThreadPool>(numWaiters_);
 
   if (!runPool_ || !waitPool_) {
-    RETURN_ERR("Failed to create HabanaDeviceManager thread pools");
+    return MAKE_ERR("Failed to create HabanaDeviceManager thread pools");
   }
 
   return Error::success();
@@ -118,13 +117,13 @@ Error HabanaDeviceManager::init() {
 Error HabanaDeviceManager::updateMemoryUsage() {
   // TODO: Use synGetMemInfo once implemented.
 
-  // Use GlowHabanaMemory if it is defined from GFLAGS or llvm params,
+  // Use HabanaMemory if it is defined from GFLAGS or llvm params,
   // otherwise, fall back to what config says.
   uint64_t defaultMemory = 7 << 20;
-  if (GlowHabanaMemory == defaultMemory && config_.getDeviceMemory() != 0) {
+  if (flags::HabanaMemory == defaultMemory && config_.getDeviceMemory() != 0) {
     totalMemory_ = config_.getDeviceMemory();
   } else {
-    totalMemory_ = uint64_t{GlowHabanaMemory} * 1024;
+    totalMemory_ = uint64_t{flags::HabanaMemory} * 1024;
   }
   freeMemory_ = totalMemory_;
 

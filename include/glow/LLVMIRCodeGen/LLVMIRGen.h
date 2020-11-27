@@ -165,10 +165,13 @@ protected:
   /// the bitcode.
   llvm::StringRef libjitBC_;
 
+  /// Whether to print the IR instrumentation callback API.
+  bool printInstrumentIR_{false};
+
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
-  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
-                                const glow::Value *val);
+  virtual llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
+                                        const glow::Value *val);
   /// Emit the address of the buffer \p v inside a data-parallel kernel \p
   /// kernel using the mapping provided by \p bufferToArgNum.
   llvm::Value *emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
@@ -216,6 +219,15 @@ protected:
   llvm::Value *emitConstArray(llvm::IRBuilder<> &builder,
                               llvm::ArrayRef<llvm::Constant *> vals,
                               llvm::Type *elemTy);
+
+  /// Generates LLVM IR to store all the LLVM IR values \p vals consecutively
+  /// starting with the base pointer given by \p basePtr and the relative base
+  /// index \p baseIdx. The LLVM IR values \p vals must have same type T and the
+  /// type of the base pointer must be T*.
+  void emitArrayStore(llvm::IRBuilder<> &builder,
+                      llvm::ArrayRef<llvm::Value *> vals, llvm::Value *basePtr,
+                      unsigned baseIdx = 0);
+
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder,

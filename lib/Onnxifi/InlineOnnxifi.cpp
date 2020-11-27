@@ -16,6 +16,7 @@
 
 #include "InlineOnnxifi.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
@@ -25,8 +26,6 @@
 
 namespace glow {
 namespace onnxifi {
-
-extern bool GlowSaveOnnxifiModel;
 
 namespace {
 std::string getProfileFile(llvm::StringRef hash) {
@@ -43,11 +42,10 @@ void computeModelHash(const void *onnxModel, size_t onnxModelSize,
 }
 } // namespace
 
-onnxStatus
-InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
-                       uint32_t weightCount,
-                       const onnxTensorDescriptorV1 *weightDescriptors,
-                       uint32_t maxSeqLength, void * /*unused */) {
+onnxStatus InlineGraph::initGraph(
+    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, uint32_t maxSeqLength,
+    void * /*unused */, bool /*unused*/) {
   Module &mod = executionEngine_.getModule();
   // Note: Pass in a nullptr for PPC here because we do not currently support
   // pre-partitioned models here.
@@ -70,7 +68,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   function_ = *mod.getFunctions().begin();
 
   bindPlaceholders(*loader);
-  if (GlowSaveOnnxifiModel) {
+  if (flags::SaveModel) {
     saveOnnxifiModel(function_);
   }
 

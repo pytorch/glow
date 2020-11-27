@@ -683,6 +683,8 @@ public:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::UInt4FusedFP16QTy:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
+    case ElemKind::UInt4FusedQTy:
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::BoolTy:
       return isEqualImpl<bool>(other, allowedError, verbose);
     }
@@ -975,18 +977,21 @@ private:
     auto const *myData = getUnsafePtr();
     auto const *otherData = other.getUnsafePtr();
     dim_t mismatchCount = 0;
-    for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
-      if (myData[i] != otherData[i]) {
-        if (!verbose) {
-          return false;
+
+    if (verbose) {
+      for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
+        if (myData[i] != otherData[i]) {
+          ++mismatchCount;
         }
-        ++mismatchCount;
       }
+      if (mismatchCount != 0) {
+        LOG(INFO) << "Tensors not bitwise equal: " << mismatchCount
+                  << " bytes out of " << getSizeInBytes() << " mismatched.";
+      }
+    } else {
+      mismatchCount = memcmp(myData, otherData, getSizeInBytes());
     }
-    if (mismatchCount != 0) {
-      LOG(INFO) << "Tensors not bitwise equal: " << mismatchCount
-                << " bytes out of " << getSizeInBytes() << " mismatched.";
-    }
+
     return mismatchCount == 0;
   }
 };
@@ -1598,7 +1603,8 @@ private:
   /// \p T of a row \p rowIdx.
   template <typename T> ElemTy *getFusedRowScaleOffsetPtr(dim_t rowIdx) {
     switch (getElementType()) {
-    case ElemKind::UInt8FusedQTy: {
+    case ElemKind::UInt8FusedQTy:
+    case ElemKind::UInt4FusedQTy: {
       constexpr auto isFloat = std::is_same<float, T>::value;
       DCHECK(isFloat) << "Expected float scale/offset";
       break;

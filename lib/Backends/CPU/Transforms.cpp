@@ -55,7 +55,8 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
   }
 
   // This optimization is not supported with Dilation currently.
-  if (CN->getDilation() != 1) {
+  if (!std::all_of(CN->getDilation().begin(), CN->getDilation().end(),
+                   [](unsigned_t i) { return i == 1; })) {
     return nullptr;
   }
 

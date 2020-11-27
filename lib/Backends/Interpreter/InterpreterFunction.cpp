@@ -214,8 +214,12 @@ Error BoundInterpreterFunction::execute(IRFunction *F,
     for (auto &ph : virtualPadded) {
       auto oldTensor = context->getPlaceholderBindings()->get(ph);
       Tensor paddedTensor(oldTensor->getType());
-      memcpy(paddedTensor.getUnsafePtr(), oldTensor->getUnsafePtr(),
-             oldTensor->getUnpaddedSizeInBytes());
+      if (oldTensor->getUnsafePtr()) {
+        memcpy(paddedTensor.getUnsafePtr(), oldTensor->getUnsafePtr(),
+               oldTensor->getUnpaddedSizeInBytes());
+      } else {
+        CHECK_EQ(oldTensor->getUnpaddedSizeInBytes(), 0);
+      }
       context->getPlaceholderBindings()->erase(ph);
       context->getPlaceholderBindings()->insert(ph, std::move(paddedTensor));
     }

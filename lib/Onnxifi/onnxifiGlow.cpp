@@ -18,6 +18,7 @@
 #include "GlowOnnxifiManager.h"
 #include "llvm/Support/CommandLine.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
 #include <cstring>
@@ -33,11 +34,10 @@
 namespace glow {
 namespace onnxifi {
 
-std::string GlowOnnxifiBackend = "";
 static llvm::cl::opt<std::string, /*external storage*/ true>
-    GlowOnnxifiBackendOpt("glow-onnxifi-backend",
-                          llvm::cl::desc("Glow backend used for ONNXIFI"),
-                          llvm::cl::location(GlowOnnxifiBackend));
+    GlowOnnxifiBackendOpt(
+        "glow-onnxifi-backend", llvm::cl::desc("Glow backend used for ONNXIFI"),
+        llvm::cl::location(glow::onnxifi::flags::BackendName));
 
 } // namespace onnxifi
 } // namespace glow
@@ -86,8 +86,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
-    auto backendName =
-        GlowOnnxifiBackend.empty() ? "Interpreter" : GlowOnnxifiBackend;
+    auto backendName = glow::onnxifi::flags::BackendName.empty()
+                           ? "Interpreter"
+                           : glow::onnxifi::flags::BackendName;
     LOG(INFO) << "ONNXIFI: Executing on " << backendName << " Glow backend";
     auto *quantizationBackendC2 =
         manager.createBackend(backendName,
@@ -96,7 +97,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   } else {
     *numBackends = 2;
 
-    auto backendName = GlowOnnxifiBackend;
+    auto backendName = glow::onnxifi::flags::BackendName;
 
     if (backendName.empty()) {
       if (withNNPI) {
@@ -438,10 +439,22 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
     quantizationMode = glow::QuantizationMode::None;
   }
 
+  bool loadingGlowAOT = false;
+  if (auxPropertiesList) {
+    for (; *auxPropertiesList != ONNXIFI_GRAPH_PROPERTY_NONE;
+         auxPropertiesList++) {
+      if (*auxPropertiesList == ONNXIFI_OPTIMIZATION_AOT) {
+        loadingGlowAOT = true;
+      } else {
+        return ONNXIFI_STATUS_UNSUPPORTED_PROPERTY;
+      }
+    }
+  }
+
   auto *glowGraph = manager.createGraph(glowBackend, quantizationMode);
-  auto ret =
-      glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
-                           weightDescriptors, maxSeqLength, deferredBlobReader);
+  auto ret = glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
+                                  weightDescriptors, maxSeqLength,
+                                  deferredBlobReader, loadingGlowAOT);
   if (ret != ONNXIFI_STATUS_SUCCESS) {
     manager.release(glowGraph);
     return ret;

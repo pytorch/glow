@@ -1,76 +1,39 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleMulModule(torch.nn.Module):
+    def __init__(self):
+        super(SimpleMulModule, self).__init__()
+
+    def forward(self, left, right):
+        other = left.mul(right.item() if right.size() == torch.Size([]) else right)
+        return other.mul(other)
 
 
 class TestMul(unittest.TestCase):
-    def test_mul_basic(self):
+    @parameterized.expand(
+        [
+            ("basic", torch.randn(4), torch.randn(4)),
+            ("broadcast", torch.randn(8, 3, 4, 2), torch.randn(4, 2)),
+            ("broadcast", torch.randn(8, 3, 4, 2), torch.randn(1, 2)),
+            ("broadcast", torch.randn(4, 2), torch.randn(8, 3, 4, 2)),
+            ("float", torch.randn(4, 2), torch.tensor(3.2)),
+            ("int", torch.randn(4, 2), torch.tensor(22), True),
+        ]
+    )
+    def test_mul(self, _, left, right, skip_to_glow=False):
         """Basic test of the PyTorch mul Node on Glow."""
 
-        def test_f(a, b):
-            c = a.mul(b)
-            return c.mul(c)
-
-        x = torch.randn(4)
-        y = torch.randn(4)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::mul"})
-
-    def test_mul_broadcast_1(self):
-        """Test of the PyTorch mul Node on Glow with broadcasting."""
-
-        def test_f(a, b):
-            c = a.mul(b)
-            return c.mul(c)
-
-        x = torch.randn(8, 3, 4, 2)
-        y = torch.randn(4, 2)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::mul"})
-
-    def test_mul_broadcast_2(self):
-        """Test of the PyTorch mul Node on Glow with broadcasting."""
-
-        def test_f(a, b):
-            c = a.mul(b)
-            return c.mul(c)
-
-        x = torch.randn(8, 3, 4, 2)
-        y = torch.randn(1, 2)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::mul"})
-
-    def test_mul_broadcast_3(self):
-        """Test of the PyTorch mul Node on Glow with broadcasting."""
-
-        def test_f(a, b):
-            c = a.mul(b)
-            return c.mul(c)
-
-        x = torch.randn(4, 2)
-        y = torch.randn(8, 3, 4, 2)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::mul"})
-
-    def test_mul_float(self):
-        """Test of the PyTorch aten::mul Node with a float argument"""
-
-        def test_f(a):
-            return (a + a).mul(3.9)
-
-        x = torch.randn(4)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::mul"})
-
-    def test_mul_int(self):
-        """Test of the PyTorch aten::mul Node with an int argument"""
-
-        def test_f(a):
-            return (a + a).mul(20)
-
-        x = torch.randn(4)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::mul"})
+        utils.compare_tracing_methods(
+            SimpleMulModule(),
+            left,
+            right,
+            fusible_ops={"aten::mul"},
+            skip_to_glow=skip_to_glow,
+        )

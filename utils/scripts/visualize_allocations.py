@@ -15,7 +15,9 @@
 # limitations under the License.
 
 import sys
+
 from PIL import Image
+
 
 # This script is used to visualize memory allocations in the Glow compiler.
 #

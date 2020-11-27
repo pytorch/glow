@@ -480,6 +480,14 @@ static void setupSplitParallelizationTestFCReluNNPI(
     nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_0");
     nodeInfo[CI]["NNPI_coreAssignments"].push_back("3");
     nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_1");
+
+    // Assign some tensors to memory levels
+    nodeInfo[TN]["NNPI_tensorAssignmentNames"].push_back("tensor1");
+    nodeInfo[TN]["NNPI_tensorAssignmentValues"].push_back("LLC");
+    nodeInfo[TN]["NNPI_tensorAssignmentNames"].push_back("tensor2");
+    nodeInfo[TN]["NNPI_tensorAssignmentValues"].push_back("SRAM");
+    nodeInfo[TN]["NNPI_tensorAssignmentNames"].push_back("tensor3");
+    nodeInfo[TN]["NNPI_tensorAssignmentValues"].push_back("DRAM");
   }
 }
 
@@ -672,15 +680,16 @@ TEST_F(NNPIOptPipelineTest, DataParallelLNClip) {
   checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
-// BatchedReduceAdd Model Parallel reducing dim 0
-TEST_F(NNPIOptPipelineTest, ModelParallelBatchedReduceAdd) {
+// BatchedReduceAdd Data Parallel, reducing dim 0
+TEST_F(NNPIOptPipelineTest, ParallelBatchedReduceAddReduceDim0) {
   auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {20, 64, 8}, "input", false);
+      mod_.createPlaceholder(ElemKind::Float16Ty, {20, 64, 6}, "input", false);
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
                                                               mod_.getPRNG());
 
   auto *reduced = F_->createBatchedReduceAdd("BR", input, {0});
-  F_->createSave("ret", reduced);
+  auto *clipped = F_->createClip("clip", reduced, -10.0f, 10.0f);
+  F_->createSave("ret", clipped);
 
   // Should split BatchedReduceAdd by 8
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
@@ -690,18 +699,21 @@ TEST_F(NNPIOptPipelineTest, ModelParallelBatchedReduceAdd) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
             8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
   checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
-// BatchedReduceAdd Model Parallel reducing dim 1
-TEST_F(NNPIOptPipelineTest, DataParallelBatchedReduceAdd) {
+// BatchedReduceAdd Data Parallel reducing dim 1
+TEST_F(NNPIOptPipelineTest, ParallelBatchedReduceAddReduceDim1) {
   auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 20, 8}, "input", false);
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 20, 6}, "input", false);
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
                                                               mod_.getPRNG());
 
   auto *reduced = F_->createBatchedReduceAdd("BR", input, {1});
-  F_->createSave("ret", reduced);
+  auto *clipped = F_->createClip("clip", reduced, -10.0f, 10.0f);
+  F_->createSave("ret", clipped);
 
   // Should split BatchedReduceAdd by 8
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
@@ -711,6 +723,8 @@ TEST_F(NNPIOptPipelineTest, DataParallelBatchedReduceAdd) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
             8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
   checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
@@ -722,6 +736,10 @@ TEST_F(NNPIOptPipelineTest, QuantizeFCDequantize) {
       ElemKind::Int8QTy, {1024, 1024}, 0.2, 0, "weights");
   auto *bias = F_->getParent()->createConstant(ElemKind::Int32QTy, {1024}, 0.2,
                                                0, "bias");
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-127, 127,
+                                                             mod_.getPRNG());
+  bias->getPayloadMutable().getHandle<int32_t>().randomize(-127, 127,
+                                                           mod_.getPRNG());
 
   auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {32, 1024}, 0.2, 0);
   auto *quantized = F_->createQuantize("quantize", input, outTy);
@@ -734,6 +752,9 @@ TEST_F(NNPIOptPipelineTest, QuantizeFCDequantize) {
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
       std::to_string(8);
   cloneAndCompile();
+
+  F_->dumpDAG("tmp0.dot");
+  optimizedF_->dumpDAG("tmp1.dot");
 
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::QuantizeNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 8);
@@ -804,7 +825,10 @@ TEST_F(NNPIOptPipelineTest, SwishSmallBatch) {
 TEST_F(NNPIOptPipelineTest, SoftMax) {
   auto *input0 =
       mod_.createPlaceholder(ElemKind::Float16Ty, {512, 2048}, "input", false);
-  auto selected = mod_.createConstant(ElemKind::Int64ITy, {512, 1}, "selected");
+  auto *selected =
+      mod_.createConstant(ElemKind::Int64ITy, {512, 1}, "selected");
+  selected->getPayloadMutable().getHandle<int64_t>().randomize(-10, 10,
+                                                               mod_.getPRNG());
   auto *SFMX = F_->createSoftMax("softmax", input0, selected);
   F_->createSave("ret", SFMX);
 

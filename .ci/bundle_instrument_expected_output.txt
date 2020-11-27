@@ -1,0 +1,4 @@
+Number of instructions: 10
+Number of data dumps: 28
+Result: 0
+Confidence: 0.991618

@@ -96,6 +96,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize Pad nodes
       {FunctionPassID::MergePadIntoConvolution},
 
+      // Optimize Convolution nodes with small input tensors.
+      {FunctionPassID::OptimizeSmallConv},
+
       // Merge multiple matmul nodes into a single large matmul.
       {FunctionPassID::MergeMatMul},
 
@@ -107,6 +110,9 @@ createDefaultGraphOptimizationPassPipeline() {
 
       // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
       {FunctionPassID::ConvertBroadcastedBatchMatMul},
+
+      // Eliminate nodes which do not do anything.
+      {FunctionPassID::EliminateNoop},
 
       // Perform Common Subexpression Elimination.
       {FunctionPassID::CSE},
@@ -167,6 +173,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Try to remove unnecessary Split-Concat operations
       {FunctionPassID::EliminateSliceConcat},
 
+      // Perform Common Subexpression Elimination.
+      {FunctionPassID::CSE},
+
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };
@@ -187,6 +196,11 @@ createFP16GraphOptimizationPassPipeline() {
 
 std::unique_ptr<FunctionPassPipeline> createDefaultFoldPassPipeline() {
   std::initializer_list<FunctionPassConfig> configs{
+      // Optimize arithmetic nodes based on algebraic identities.
+      // In this function, constant operators in communative nodes are moved to
+      // the RHS. Some folding functions depend on this. (e.g. FoldMinMaxToClip)
+      {FunctionPassID::OptimizeArithmeticNodes},
+
       // Get Reshape nodes merged into constants to simplify folding.
       {FunctionPassID::OptimizeReshape},
 
@@ -198,6 +212,9 @@ std::unique_ptr<FunctionPassPipeline> createDefaultFoldPassPipeline() {
 
       // Fold MatMul->Add into FullyConnected.
       {FunctionPassID::FoldMatMulAddIntoFullyConnected},
+
+      // Fold Min + Max to Clip
+      {FunctionPassID::FoldMinMaxToClip},
 
       // Perform Dead Code Elimination.
       getDCEPassConfig(),

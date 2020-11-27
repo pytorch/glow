@@ -74,6 +74,8 @@ struct DeviceInfo {
   float peakSramBw;
   /// Peak ingress/egress PCI-E bandwidth from device in bytes/second.
   float peakPCIeBw;
+  /// Maximum amount of input resources defaults to 0 if there is no limit.
+  uint64_t inputCountMax{0};
 };
 
 /// Data structure that tracks how many outstanding work items remain for a

@@ -34,28 +34,37 @@ namespace {
 /// inputTensorTypes, writes the function to file and reads it back using the
 /// ONNXModelWriter and ONNXModelReader respectively then \returns the
 /// reloaded function. \p useGlowCustomOps is used for determining the format
-/// for ONNXModelWriter to write with.
+/// for ONNXModelWriter to write with. \p useString is used to use strings
+/// rather than files for reading and writing functions.
 Expected<Function *> saveAndReloadFunction(
     Module &reloadMod, Function *F,
     llvm::ArrayRef<const char *> inputTensorNames,
     llvm::ArrayRef<TypeRef> inputTensorTypes, size_t irVer = 5,
     size_t opsetVer = 10, bool zipMode = false, bool useGlowCustomOps = false,
-    bool includeConstantData = true,
+    bool useString = false, bool includeConstantData = true,
     ConstantFoldingRecordMap *constFoldRecord = nullptr,
     CompilationContext *reloadCctx = nullptr,
     const BackendSpecificNodeInfo &backendSpecificNodeInfo = {},
     const OriginNameToTQPMap &originNameToTQPMap = {}) {
-  llvm::SmallString<64> path;
-  auto tempFileRes = llvm::sys::fs::createTemporaryFile(
-      "exporter", zipMode ? "output.zip" : "output.onnxtxt", path);
+  std::string outputString;
+  std::string outputFilename = zipMode ? "output.zip" : "output.onnxtxt";
 
-  RETURN_ERR_IF_NOT(tempFileRes.value() == 0,
-                    "Failed to create temp file to write into.");
+  if (!useString) {
+    llvm::SmallString<64> path;
 
-  std::string outputFilename(path.c_str());
+    auto tempFileRes =
+        llvm::sys::fs::createTemporaryFile("exporter", outputFilename, path);
+
+    RETURN_ERR_IF_NOT(tempFileRes.value() == 0,
+                      "Failed to create temp file to write into.");
+
+    outputFilename = path.c_str();
+  }
   ScopeGuard cleanup([&]() { llvm::sys::fs::remove(outputFilename); });
-
-  // Write model to file.
+  if (useString) {
+    cleanup.dismiss();
+  }
+  // Write model to file or string.
   {
     Error err = Error::empty();
     llvm::StringMap<std::string> extraMetadataProps;
@@ -65,7 +74,10 @@ Expected<Function *> saveAndReloadFunction(
         outputFilename, *F, irVer, opsetVer, &err, !zipMode, zipMode,
         useGlowCustomOps, includeConstantData, extraMetadataProps,
         constFoldRecord ? *constFoldRecord : ConstantFoldingRecordMap(),
-        backendSpecificNodeInfo);
+        backendSpecificNodeInfo, (useString) ? &outputString : nullptr);
+    if (err) {
+      llvm::errs() << "Failed to write model\n";
+    }
     RETURN_IF_ERR(std::move(err));
   }
 
@@ -105,7 +117,9 @@ Expected<Function *> saveAndReloadFunction(
         outputFilename, inputTensorNames, inputTensorTypes, *R, &err, zipMode,
         reloadCctx ? &reloadCctx->backendOpts.backendSpecificNodeInfo : nullptr,
         /* disableConstFoldInLoader */ true,
-        /* loadIntoExistingModule */ !includeConstantData);
+        /* loadIntoExistingModule */ !includeConstantData,
+        /* Backend */ nullptr,
+        /* inputStringPtr */ (useString) ? &outputString : nullptr);
 
     if (err) {
       llvm::errs() << "ONNXModelLoader failed to reload model: "
@@ -140,7 +154,8 @@ Expected<Function *> saveAndReloadFunction(
 /// Loads model from ONNX format file \p name into glow Function.
 /// On success exports glow graph to the output file in "extended" ONNX format,
 /// i.e. some glow operators don't have presentation in vanilla ONNX standard.
-void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
+void testLoadAndSaveONNXModel(const std::string &name, bool zipMode,
+                              bool useString) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -166,7 +181,7 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
 
   Module reloadMod;
   FAIL_TEST_IF_ERR(saveAndReloadFunction(reloadMod, F, {}, {}, irVer, opsetVer,
-                                         zipMode, useGlowCustomOps)
+                                         zipMode, useGlowCustomOps, useString)
                        .takeError());
 }
 
@@ -289,6 +304,7 @@ protected:
                      reloadMod, F_, {}, {}, 7, 9,
                      /* zipMode */ false,
                      /* useGlowCustomOps */ true,
+                     /* useString */ false,
                      /* includeConstantData */ false, &record, &reloadCctx,
                      cctx_.backendOpts.backendSpecificNodeInfo));
 
@@ -332,6 +348,7 @@ protected:
 
 TEST(exporter, onnxModels) {
   std::string inputDirectory(GLOW_DATA_PATH "tests/models/onnxModels");
+  std::cout << "inputDirectory: " << inputDirectory << std::endl;
   std::error_code code;
   for (llvm::sys::fs::directory_iterator dirIt(inputDirectory, code);
        !code && dirIt != llvm::sys::fs::directory_iterator();
@@ -358,6 +375,9 @@ TEST(exporter, onnxModels) {
         name.find("ArgMaxDefault.onnxtxt") != std::string::npos ||
         name.find("ArgMaxKeepDim.onnxtxt") != std::string::npos ||
         name.find("ArgMaxNoKeepDim.onnxtxt") != std::string::npos ||
+        name.find("ArgMinDefault.onnxtxt") != std::string::npos ||
+        name.find("ArgMinKeepDim.onnxtxt") != std::string::npos ||
+        name.find("ArgMinNoKeepDim.onnxtxt") != std::string::npos ||
         name.find("upsampleOpset7.onnxtxt") != std::string::npos ||
         name.find("upsampleOpset9.onnxtxt") != std::string::npos ||
         name.find("resizeNearestV11compat.onnxtxt") != std::string::npos ||
@@ -371,6 +391,7 @@ TEST(exporter, onnxModels) {
         name.find("NonMaxSuppression.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppressionSSD.onnxtxt") != std::string::npos ||
         name.find("ROIAlign_onnx.onnxtxt") != std::string::npos ||
+        name.find("MatMul4D.onnxtxt") != std::string::npos ||
         name.find("Less.onnxtxt") != std::string::npos ||
         name.find("Asin.onnxtxt") != std::string::npos ||
         name.find("Acos.onnxtxt") != std::string::npos ||
@@ -379,9 +400,12 @@ TEST(exporter, onnxModels) {
         name.find("Cos.onnxtxt") != std::string::npos ||
         name.find("abs.onnxtxt") != std::string::npos ||
         name.find("log.onnxtxt") != std::string::npos ||
+        name.find("RangeInt32.onnxtxt") != std::string::npos ||
+        name.find("RangeFloat.onnxtxt") != std::string::npos ||
         name.find("scatterND.onnxtxt") != std::string::npos ||
         name.find("mscatterND.onnxtxt") != std::string::npos ||
         name.find("sign.onnxtxt") != std::string::npos ||
+        name.find("gatherND.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=
@@ -395,6 +419,8 @@ TEST(exporter, onnxModels) {
         name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
             std::string::npos ||
         name.find("convTransposeAsymmetric.onnxtxt") != std::string::npos ||
+        name.find("Mean.onnxtxt") != std::string::npos ||
+        name.find("Mean_broadcast.onnxtxt") != std::string::npos ||
         name.find("NonZero.onnxtxt") != std::string::npos ||
         name.find("logicalAnd.onnxtxt") != std::string::npos ||
         name.find("logicalAndBcast.onnxtxt") != std::string::npos ||
@@ -420,6 +446,7 @@ TEST(exporter, onnxModels) {
     }
     if (name.find("constant.onnxtxt") != std::string::npos ||
         name.find("shape.onnxtxt") != std::string::npos ||
+        name.find("bool_from_int.onnxtxt") != std::string::npos ||
         name.find("sum1.onnxtxt") != std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.
       llvm::outs() << "Ignore empty graph file: " << name << "\n";
@@ -455,8 +482,12 @@ TEST(exporter, onnxModels) {
     // Disable constant folding for these tests.
     setConstantFoldLoaderOpsFlag(false);
 
-    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ true);
-    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false);
+    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ true,
+                             /* useString */ false);
+    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false,
+                             /* useString */ false);
+    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false,
+                             /* useString */ true);
 
     // Reset the custom symbol used.
     if (customOnnxDefineSymbol) {
@@ -512,7 +543,7 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       "cqconv", input, weightsConstant, biasConstant, filterScalesConstant,
       filterOffsetsConstant, /* biasScales */ nullptr,
       /* biasOffsets */ nullptr, outTy, kernels, strides, pads, groups,
-      dilation);
+      {dilation, dilation});
 
   auto *save = F->createSave("save_out", cqConv);
 
@@ -598,7 +629,7 @@ TEST(exporter, QuantizedConvolution) {
       {batchSize, outSize.first, outSize.second, outChannels}, 3.8, 4);
 
   auto *qConv = F->createConv("qconv", input, weights, bias, outTy, kernels,
-                              strides, pads, groups, dilation);
+                              strides, pads, groups, {dilation, dilation});
 
   auto *save = F->createSave("save_out", qConv);
 
@@ -741,6 +772,8 @@ TEST(exporter, QuantizedAvgPool) {
   EXPECT_EQ(avgPoolReloaded->getKernels(), avgPool->getKernels());
   EXPECT_EQ(avgPoolReloaded->getStrides(), avgPool->getStrides());
   EXPECT_EQ(avgPoolReloaded->getPads(), avgPool->getPads());
+  EXPECT_EQ(avgPoolReloaded->getCountIncludePads(),
+            avgPool->getCountIncludePads());
 }
 
 TEST(exporter, QuantizedAdaptiveAvgPool) {
@@ -1074,6 +1107,7 @@ TEST(exporter, TestUniqueOffsetMapSerialization) {
       R, saveAndReloadFunction(reloadMod, F, {"input"}, {I->getType()}, 7, 9,
                                /* zipMode */ false,
                                /* useGlowCustomOps */ true,
+                               /* useString */ false,
                                /* includeConstantData */ true,
                                /* record */ nullptr, /* reloadCctx */ nullptr,
                                /* backendSpecificNodeInfo */ {},

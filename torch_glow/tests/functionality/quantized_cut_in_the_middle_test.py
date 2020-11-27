@@ -3,9 +3,9 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import unittest
 
-import torch_glow
 import torch
-from tests.utils import GLOW_NODE_NAME
+import torch_glow
+from tests.utils import GLOW_FUSION_GROUP
 
 
 class TestQuantizedCut(unittest.TestCase):
@@ -42,12 +42,13 @@ class TestQuantizedCut(unittest.TestCase):
             # Cut using blacklist functionality
             blacklist = ["quantized::add_relu"]
             torch_glow.setFusionBlacklist(blacklist)
+            torch_glow.setGlowBackend("Interpreter")
             traced_model = torch.jit.trace(fun, (a, b, c, d))
             for node in traced_model.graph_for(a, b, c, d).nodes():
                 kind = node.kind()
                 # Make sure the blacklist is working
                 assert (
-                    kind == GLOW_NODE_NAME
+                    kind == GLOW_FUSION_GROUP
                     or kind in blacklist
                     or kind == "prim::Constant"
                 )

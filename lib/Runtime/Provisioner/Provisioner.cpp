@@ -17,6 +17,7 @@
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Backend/CompiledFunction.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Support/Debug.h"
@@ -36,11 +37,6 @@ std::string getReplicatedName(std::string name, unsigned count) {
   return name + "_replicated" + std::to_string(count);
 }
 } // namespace
-
-namespace glow {
-extern bool GlowDumpCompilationLog;
-extern bool GlowDumpBackendSpecificIRJSON;
-} // namespace glow
 
 namespace {
 // STL sorting algorithm cannot inline predicate if it got provided as a regular
@@ -78,6 +74,9 @@ Error Provisioner::checkActiveNetworks(
 
   std::lock_guard<std::mutex> networkLock(functionsLock_);
   for (auto &network : networks) {
+    LOG(INFO) << "Checking for active networks when adding: "
+              << network.root->name;
+
     for (auto &node : network.nodes) {
       //  Check to see if another thread is actively working on the same
       //  networks.
@@ -91,6 +90,8 @@ Error Provisioner::checkActiveNetworks(
                                       node->name)
                             .str());
       }
+      LOG(INFO) << "Adding partition name: " << node->name
+                << " to activeFunctions_";
       localActiveNames.push_back(node->name);
       activeFunctions_.insert(node->name);
     }
@@ -261,6 +262,7 @@ static Error propagateBackendSpecificNodeInfo(
 
 Error Provisioner::provision(DAGListTy &networks, Module &module,
                              CompilationContext &cctx) {
+  VLOG(1) << "Started provisioner";
 
   // Check that the requested networks don't collide with the names of any other
   // networks being added.
@@ -314,12 +316,13 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   auto deviceAssignments = generateDeviceAssignments(
       logicalDeviceSize, deviceMemoryMap, logicalDevices);
 
+  VLOG(1) << "Before device assignment";
   // Check for errors.
   if (!deviceAssignments) {
     // If and error occured, clean up provisioning state and return
     // the error.
     cleanupProvision(localActiveNames, {});
-    return deviceAssignments.takeError();
+    RETURN_ERR(deviceAssignments.takeError());
   }
   auto assignments = std::move(*deviceAssignments);
 
@@ -358,6 +361,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       }
     }
   }
+  VLOG(1) << "Before compile";
 
   // Compile and load.
   // This is done one logical device at a time. All functions in a logical
@@ -420,7 +424,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
               backends_[deviceBackendName]->compile(clonedFunction, options);
           if (!compiledOrErr2) {
             cleanupProvision(localActiveNames, {});
-            return compiledOrErr2.takeError();
+            RETURN_ERR(compiledOrErr2.takeError());
           }
           auto compiled2 = std::move(*compiledOrErr2);
           functionMap.emplace(replicatedName, compiled2.get());
@@ -440,7 +444,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           function->dumpDAG(fname);
         }
 
-        if (GlowDumpCompilationLog) {
+        if (glow::flags::DumpCompilationLog) {
           llvm::SmallString<64> path;
           std::string prefix =
               llvm::formatv("{0}-{1}", cctx.compilationLogPrefix,
@@ -462,12 +466,12 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           // If and error occured, clean up provisioning state and return
           // the error.
           cleanupProvision(localActiveNames, {});
-          return compiledOrErr.takeError();
+          RETURN_ERR(compiledOrErr.takeError());
         }
         auto compiled = std::move(*compiledOrErr);
 
         // Dump backend-specific IR
-        if (GlowDumpBackendSpecificIRJSON) {
+        if (glow::flags::DumpBackendSpecificIRJSON) {
           compiled->dumpJSON(strFormat("%sbackend_specific_ir_%s.json",
                                        cctx.dumpGraphPath.c_str(),
                                        function->getName().str().c_str()));
@@ -500,6 +504,8 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         }
       }
     }
+    VLOG(1) << "After compile";
+
     // Now that the functions are compiled add them to their assigned device
     // then cleanup.
     std::promise<void> addPromise;
@@ -522,6 +528,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     for (auto &node : logicalDevices[logicalDevice]) {
       addedNetworks[physicalDevice].push_back(node->name);
     }
+    VLOG(1) << "Added networks";
 
     // Free up memory no longer needed by the compiledFunction.
     for (auto &func : compiledFunctions) {
@@ -571,7 +578,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     auto err = loader->loadNextWeight();
     if (err) {
       cleanupProvision(localActiveNames, addedNetworks);
-      return err;
+      RETURN_ERR(err);
     }
     std::string weightName = loader->getName();
     // Load weights while there are weights to be loaded.
@@ -631,7 +638,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       err = loader->loadNextWeight();
       if (err) {
         cleanupProvision(localActiveNames, addedNetworks);
-        return err;
+        RETURN_ERR(err);
       }
       weightName = loader->getName();
       // Remove PH from map, this way we can know that we've added all static
@@ -707,6 +714,8 @@ void Provisioner::cleanupProvision(
     bool failure) {
   std::lock_guard<std::mutex> functionLock(functionsLock_);
   for (auto &name : names) {
+    LOG(INFO) << "Removing partition name: " << name
+              << " from activeFunctions_\n";
     activeFunctions_.erase(name);
     if (failure) {
       // Remove any functions added before the failure.

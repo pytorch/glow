@@ -1,204 +1,198 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import sys
+import itertools
+import os
+from contextlib import contextmanager
+from copy import deepcopy
 
-import torch_glow
 import torch
+import torch_glow
 
-GLOW_NODE_NAME = "glow::FusionGroup"
+GLOW_FUSION_GROUP = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
+BACKEND_NAME_KEY = "BACKEND_NAME"
+INTERPRETER = "Interpreter"
+DEFAULT_BACKEND = os.environ.get(BACKEND_NAME_KEY, "Interpreter")
 
 
-def jitVsGlow(
-    f,
+def get_backend_name():
+    return os.environ.get(BACKEND_NAME_KEY, INTERPRETER)
+
+
+@contextmanager
+def ephemeral_torchglow_settings(
+    fp16=False, backend=DEFAULT_BACKEND, fusion=False, blocklist=None
+):
+    old_fp16 = torch_glow.get_convert_to_fp16()
+    old_clip = torch_glow.get_clip_fp16()
+    old_convert_fused = torch_glow.get_convert_fused_to_fp16()
+    old_backend = torch_glow.getGlowBackendName()
+    old_blocklist = torch_glow.getFusionBlacklist()
+    old_fusion = torch_glow.getFusionPassEnabled()
+    try:
+        if fusion:
+            torch_glow.enableFusionPass()
+        else:
+            torch_glow.disableFusionPass()
+        if fp16:
+            torch_glow.enable_convert_to_fp16()
+            torch_glow.enable_convert_fused_to_fp16()
+            torch_glow.enable_clip_fp16()
+        else:
+            torch_glow.disable_convert_to_fp16()
+            torch_glow.disable_convert_fused_to_fp16()
+            torch_glow.disable_clip_fp16()
+        if blocklist is None:
+            torch_glow.clearFusionBlacklist()
+        else:
+            torch_glow.setFusionBlacklist(list(blocklist))
+        torch_glow.setGlowBackend(backend)
+        yield
+    finally:
+        torch_glow.enable_convert_to_fp16() if old_fp16 else torch_glow.disable_convert_to_fp16()
+        torch_glow.enable_clip_fp16() if old_clip else torch_glow.disable_clip_fp16()
+        torch_glow.enable_convert_fused_to_fp16() if old_convert_fused else torch_glow.disable_convert_fused_to_fp16()
+        torch_glow.enableFusionPass() if old_fusion else torch_glow.disableFusionPass()
+        torch_glow.setGlowBackend(old_backend)
+        torch_glow.setFusionBlacklist(old_blocklist)
+
+
+def check_skip(case):
+    backend = DEFAULT_BACKEND
+    supported = {INTERPRETER}
+    try:
+        supported = supported | case.supported_backends
+    except AttributeError:
+        pass
+
+    if backend not in supported:
+        case.skipTest("Skipping tests for backend: " + backend)
+
+
+def generate_glow_spec(module, backend, *inputs):
+    spec = torch_glow.CompilationSpec()
+    spec.get_settings().set_glow_backend(backend)
+    compilation_group = torch_glow.CompilationGroup()
+    spec.compilation_groups_append(compilation_group)
+
+    input_specs = []
+    for input in inputs:
+        input_spec = torch_glow.InputSpec()
+        input_spec.set_same_as(input)
+        input_specs.append(input_spec)
+    compilation_group.input_sets_append(input_specs)
+    return spec
+
+
+def assert_equivalent(result, other_result, atol=5e-4, rtol=1e-3):
+    if isinstance(result, tuple) or isinstance(other_result, tuple):
+        assert isinstance(result, tuple) and isinstance(other_result, tuple)
+        assert len(result) == len(other_result)
+        return all(
+            assert_equivalent(a, b, atol=atol, rtol=rtol)
+            for a, b in zip(result, other_result)
+        )
+    elif other_result.dtype == torch.bool:
+        diff = torch.eq(result, other_result)
+        if torch.all(diff):
+            return True
+        else:
+            error = f"Diff:{diff}\n"
+            raise AssertionError(error)
+    else:
+        if torch.allclose(result, other_result, atol, rtol):
+            return True
+        else:
+            diff = torch.abs(result - other_result)
+            error = f"First result:\n{result}\n"
+            error += f"Second result:\n{other_result}\n"
+            error += f"Diff:\n{diff}\n"
+            error += f"Max diff:\n{torch.max(diff)}"
+            raise AssertionError(error)
+
+
+def compare_tracing_methods(
+    module,
     *inputs,
-    expected_fused_ops,
-    accept_all_ops=False,
-    check_trace=True,
     atol=5e-4,
     rtol=1e-3,
-    black_list=None,
-    use_script=False,
-    use_fp16=False
+    reference=None,
+    fusible_ops=None,
+    fusion_blocklist=None,
+    fp16=False,
+    scripted=False,
+    check_trace=True,
+    skip_to_glow=False,  # Ugly hack, TODO: Remove
 ):
-    """
-    Runs the given inputs *inputs on f both with and without lowering f to Glow,
-    compares the results, and checks that ops in expected_fused_ops were indeed
-    lowered to Glow.
-    """
-    if use_script:
-        scriptVsGlow(
-            f,
-            atol,
-            rtol,
-            *inputs,
-            expected_fused_ops=expected_fused_ops,
-            accept_all_ops=accept_all_ops,
-            black_list=black_list,
-            use_fp16=use_fp16,
-        )
-    else:
-        traceVsGlow(
-            f,
-            f,
-            check_trace,
-            atol,
-            rtol,
-            *inputs,
-            expected_fused_ops=expected_fused_ops,
-            accept_all_ops=accept_all_ops,
-            black_list=black_list,
-            use_fp16=use_fp16,
-        )
+    if not isinstance(module, torch.nn.Module):
+        raise AssertionError("to_glow only supports nn.Modules")
 
+    def trace(mod, ins):
+        if scripted:
+            return torch.jit.script(mod)
+        else:
+            return torch.jit.trace(mod, ins, check_trace=check_trace)
 
-def checkResult(torch_res, glow_res, atol, rtol):
-    if isinstance(torch_res, tuple) or isinstance(glow_res, tuple):
-        assert isinstance(torch_res, tuple) and isinstance(glow_res, tuple)
-        assert len(torch_res) == len(glow_res)
-        for i in range(len(torch_res)):
-            print("torch shape: {}".format(torch_res[i].shape), file=sys.stderr)
-            print("glow shape: {}".format(glow_res[i].shape), file=sys.stderr)
-            assert torch.allclose(torch_res[i], glow_res[i], atol=atol, rtol=rtol)
-    else:
-        print("torch shape: {}".format(torch_res.shape), file=sys.stderr)
-        print("glow shape: {}".format(glow_res.shape), file=sys.stderr)
-        is_all_close = torch.allclose(torch_res, glow_res, atol=atol, rtol=rtol)
-        if not is_all_close:
-            print("torch_res\n", torch_res)
-            print("glow_res\n", glow_res)
-            diff = torch.abs(glow_res - torch_res)
-            print("diff\n", diff)
-            print(
-                "diff histogram (100 buckets from 0.0 to 1.0)\n",
-                torch.histc(diff, bins=100, min=0, max=1),
+    with torch.no_grad():
+        with ephemeral_torchglow_settings(
+            fusion=True, fp16=fp16, blocklist=fusion_blocklist
+        ):
+            fusion_inputs = deepcopy(inputs)
+            fusion_trace = trace(module, fusion_inputs)
+            assert_fused(
+                fusion_trace.graph_for(*fusion_inputs),
+                *(fusible_ops or []),
+                accept_any=fusible_ops is None,
             )
-            print("max diff\n", torch.max(diff))
-        assert is_all_close
-
-
-def checkExpectedOps(glow_graph, expected_fused_ops, accept_all_ops):
-    with torch.no_grad():
-        expected_fused_ops_seen = set()
-
-        # Whether or not at least one node was fused to Glow.
-        nodes_were_fused = False
-
-        # Check that ops that were *not* fused are *not* in expected_fused_ops
-        for node in glow_graph.nodes():
-            kind = node.kind()
-            if kind != GLOW_NODE_NAME:
-                # If the node is not a Glow fusion group, check that it is
-                # *not* in expected_fused_ops
-                assert (
-                    accept_all_ops or kind not in expected_fused_ops
-                ), "Expected {} to be fused".format(kind)
+            fusion_result = fusion_trace(*fusion_inputs)
+        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+            if scripted:
+                torchscript_result = module(*deepcopy(inputs))
             else:
-                # If the node is a Glow fusion group, record which ops from
-                # expected_fused_ops were in it
-
-                # Get the definition of the fusion group
-                glow_group = node.g(SUBGRAPH_ATTR)
-
-                # Put all nodes that are in the group and in expected_fused_ops
-                # into expected_fused_ops_seen
-                for fused_node in glow_group.nodes():
-                    nodes_were_fused = True
-                    fused_node_kind = fused_node.kind()
-
-                    if accept_all_ops or fused_node_kind in expected_fused_ops:
-                        expected_fused_ops_seen.add(fused_node_kind)
-
-        assert nodes_were_fused, "Expected some nodes to be fused to Glow"
-
-        # If the sizes of expected_fused_ops and expected_fused_ops_seen are
-        # different, some ops in expected_fused_ops are not in the graph at all
-        assert accept_all_ops or len(expected_fused_ops) == len(
-            expected_fused_ops_seen
-        ), "Expected all of expected_fused_ops to be in the graph"
+                torchscript_inputs = deepcopy(inputs)
+                torchscript_trace = trace(module, torchscript_inputs)
+                torchscript_result = torchscript_trace(*torchscript_inputs)
+        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+            if not skip_to_glow:
+                glow_inputs = deepcopy(inputs)
+                glow_spec = generate_glow_spec(module, DEFAULT_BACKEND, *glow_inputs)
+                glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
+                glow_result = glow_trace(*glow_inputs)
+        if reference:
+            assert_equivalent(reference, fusion_trace, atol=atol, rtol=rtol)
+            assert_equivalent(reference, torchscript_result, atol=atol, rtol=rtol)
+            if not skip_to_glow:
+                assert_equivalent(reference, glow_result, atol=atol, rtol=rtol)
+        # This is written out manually instead of using combinations in order to aid
+        # debugging. TODO: Clean up.
+        assert_equivalent(fusion_result, torchscript_result, atol=atol, rtol=rtol)
+        if not skip_to_glow:
+            assert_equivalent(fusion_result, glow_result, atol=atol, rtol=rtol)
+            assert_equivalent(torchscript_result, glow_result, atol=atol, rtol=rtol)
 
 
-def traceVsGlow(
-    f_torch,
-    f_glow,
-    check_trace,
-    atol,
-    rtol,
-    *inputs,
-    expected_fused_ops=None,
-    accept_all_ops=False,
-    black_list=None,
-    use_fp16=False
-):
-    if black_list is None:
-        black_list = []
+def assert_fused(fused_graph, *ops, accept_any=False, strict=False):
+    expected = set(ops)
+    fused = set()
     with torch.no_grad():
-        torch_glow.disableFusionPass()
-
-        torch_trace = torch.jit.trace(f_torch, inputs, check_trace=check_trace)
-        torch_res = torch_trace(*inputs)
-
-        torch_glow.enableFusionPass()
-        torch_glow.setFusionBlacklist(black_list)
-
-        if use_fp16:
-            torch_glow.enable_convert_to_fp16()
-        else:
-            torch_glow.disable_convert_to_fp16()
-
-        glow_trace = torch.jit.trace(f_glow, inputs, check_trace=check_trace)
-        glow_res = glow_trace(*inputs)
-
-        # check that there are no Glow nodes in the torch graph
-        torch_graph = torch_trace.graph_for(*inputs)
-        print("torch_graph,", torch_graph)
-
-        num_glow_nodes = len(torch_graph.findAllNodes(GLOW_NODE_NAME))
-        assert num_glow_nodes == 0, "Expected no Glow nodes, found {}".format(
-            num_glow_nodes
-        )
-
-        glow_graph = glow_trace.graph_for(*inputs)
-        print("glow_graph,", glow_graph)
-
-    checkExpectedOps(glow_graph, expected_fused_ops, accept_all_ops)
-    checkResult(torch_res, glow_res, atol, rtol)
-
-
-def scriptVsGlow(
-    f,
-    atol,
-    rtol,
-    *inputs,
-    expected_fused_ops=None,
-    accept_all_ops=False,
-    black_list=None,
-    use_fp16=False
-):
-    if black_list is None:
-        black_list = []
-    with torch.no_grad():
-
-        torch_res = f(*inputs)
-
-        torch_glow.enableFusionPass()
-        torch_glow.setFusionBlacklist(black_list)
-
-        if use_fp16:
-            torch_glow.enable_convert_to_fp16()
-        else:
-            torch_glow.disable_convert_to_fp16()
-
-        glow_trace = torch.jit.script(f)
-        glow_res = glow_trace(*inputs)
-
-        glow_graph = glow_trace.graph_for(*inputs)
-        print("glow_graph,", glow_graph)
-
-    checkExpectedOps(glow_graph, expected_fused_ops, accept_all_ops)
-    checkResult(torch_res, glow_res, atol, rtol)
+        for node in fused_graph.nodes():
+            kind = node.kind()
+            if kind == GLOW_FUSION_GROUP:
+                fused.update(map(lambda n: n.kind(), node.g(SUBGRAPH_ATTR).nodes()))
+            else:
+                assert kind not in expected, f"Expected {kind} to be fused"
+    missing = set() if (accept_any and fused) else expected - fused
+    unexpected = set() if (accept_any or not strict) else fused - expected
+    assert not unexpected, f"Expected fusion of {expected}, but {fused} was fused."
+    assert not missing, f"Expected fusion of {expected}, but only {fused} was fused."
 
 
 def graph_contains_str(graph, substr):
     return graph.str().find(substr) >= 0
+
+
+# Verifies equal modules for save-load tests.
+def assertModulesEqual(case, mod1, mod2, message=None):
+    for p1, p2 in itertools.zip_longest(mod1.parameters(), mod2.parameters()):
+        case.assertTrue(p1.equal(p2), message)

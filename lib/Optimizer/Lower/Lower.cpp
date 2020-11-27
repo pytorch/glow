@@ -173,11 +173,32 @@ static void lowerFloorDivNode(Function *F, CompilationContext &cctx,
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
 
-  auto *div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"), LHS, RHS);
+  auto *div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"),
+                           node.getResult().getType(), LHS, RHS);
 
-  auto *result = F->createFloor(DECORATE_NODE_NAME(node, "floor"), div);
+  auto *result = F->createFloor(DECORATE_NODE_NAME(node, "floor"),
+                                node.getResult().getType(), div);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), result);
+}
+
+static void lowerBatchedMulNode(Function *F, CompilationContext &cctx,
+                                const BatchedMulNode &node) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchedMulNode")
+
+  NodeValue batch = node.getBatch();
+  NodeValue slice = node.getSlice();
+  auto sliceReshapeSize = slice.dims().vec();
+  sliceReshapeSize.insert(sliceReshapeSize.begin(), 1);
+  slice = F->createReshape("slice_tiled", slice, sliceReshapeSize);
+  slice = F->createTile(
+      "slice_tiled", slice, batch.dims()[0], 0,
+      F->getParent()->uniqueTypeWithNewShape(slice.getType(), batch.dims()));
+
+  NodeValue mul =
+      F->createMul("batched_mul", node.getResult().getType(), batch, slice)
+          ->getResult();
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), mul);
 }
 
 static void lowerGemmNode(Function *F, CompilationContext &cctx,
@@ -1368,21 +1389,12 @@ static void lowerBatchBoxCoxNode(Function *F, CompilationContext &cctx,
   // Broadcast lambda1 and lambda2 so that they are both the same size as the
   // data.
   auto *BL1 =
-      F->createBroadcast(name.str() + ".broadcast", lambda1, data.dims(),
+      F->createBroadcast(name.str() + ".broadcast_1", lambda1, data.dims(),
                          /*axis=*/1);
   auto *BL2 =
-      F->createBroadcast(name.str() + ".broadcast", lambda2, data.dims(),
+      F->createBroadcast(name.str() + ".broadcast_2", lambda2, data.dims(),
                          /*axis=*/1);
-
-  // Broadcast is usually implemented via a Tile node returned from
-  // createBroadcast(). However, if the Broadcast was a noop then there is a
-  // Reshape instead of a Tile returned. Thus, get the index here to use based
-  // on the returned kinds from createBroadcast() above.
-  assert((llvm::isa<TileNode>(BL1) || llvm::isa<ReshapeNode>(BL1)) &&
-         "Broadcast is assumed to be either implemented via Tile or Reshape.");
-  TypeRef typeBL1 = llvm::isa<TileNode>(BL1)
-                        ? BL1->getType(TileNode::ResultIdx)
-                        : BL1->getType(ReshapeNode::ResultIdx);
+  TypeRef typeBL1 = BL1->getType(BroadcastNode::ResultIdx);
 
   // Add a small epsilon to lambda1 so that we can avoid dividing by zero
   // later. It doesn't matter that this is technically incorrect because the
@@ -1457,7 +1469,7 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
   llvm::ArrayRef<unsigned_t> istr = C3DN.getStrides();
   PaddingNFTBLR ipad(C3DN.getPads());
   auto group = C3DN.getGroup();
-  auto dilation = 1;
+  unsigned_t dilation = 1;
   auto layout = ConvolutionLayout::NHWC;
 
   // Loop over T IFM dimension and concat OFM slices
@@ -1507,7 +1519,7 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
                          static_cast<unsigned int>(ipad.left),
                          static_cast<unsigned int>(ipad.bottom),
                          static_cast<unsigned int>(ipad.right)},
-                        group, dilation, layout);
+                        group, {dilation, dilation}, layout);
 
       VLOG(5) << "Partial output: " << partialOutput->dims(0) << std::endl;
 
@@ -1642,6 +1654,81 @@ static void lowerGeluNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, GN.getResult(), mul4);
 }
 
+static void lowerLSTMUnitNode(Function *F, CompilationContext &cctx,
+                              const LSTMUnitNode &LUN) {
+  NodeValue input = LUN.getInput();
+  NodeValue inC = LUN.getC();
+
+  auto nameBase = LUN.getName().str();
+  auto name = [&nameBase](const char *s) {
+    return strFormat("%s.%s", nameBase.c_str(), s);
+  };
+  unsigned batchSize = input.dims()[0];
+  unsigned hiddenSize = input.dims()[1] / 4;
+
+  NodeValue inI =
+      F->createSlice(name("sliceI"), input, {0, 0}, {batchSize, hiddenSize});
+  NodeValue inF = F->createSlice(name("sliceF"), input, {0, hiddenSize},
+                                 {batchSize, 2 * hiddenSize});
+  NodeValue inG = F->createSlice(name("sliceG"), input, {0, 2 * hiddenSize},
+                                 {batchSize, 3 * hiddenSize});
+  NodeValue inO = F->createSlice(name("sliceO"), input, {0, 3 * hiddenSize},
+                                 {batchSize, 4 * hiddenSize});
+
+  inI = F->createSigmoid(name("sigmoid2"), inI);
+  inF = F->createSigmoid(name("sigmoid1"), inF);
+  inG = F->createTanh(name("tanh1"), inG);
+  inO = F->createSigmoid(name("sigmoid3"), inO);
+
+  auto newC = F->createAdd(name("addC"), F->createMul(name("mul1"), inF, inC),
+                           F->createMul(name("mul2"), inI, inG));
+
+  auto newH =
+      F->createMul(name("mulH"), inO, F->createTanh(name("tanh2"), newC));
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, LUN.getNthResult(0), newH);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, LUN.getNthResult(1), newC);
+}
+
+static void lowerBroadcastNode(Function *F, CompilationContext &cctx,
+                               const BroadcastNode &BN) {
+  const auto input = BN.getInput();
+  const auto newShape = BN.getTargetDim();
+  const auto axis = BN.getAxis();
+  const auto name = BN.getName();
+  const auto &origDims = input.dims();
+
+  // Iterate over the new shape; if the original shape had a dimension here
+  // (when considering the axis) then take original shape dim as the reshpe dim.
+  // Else the original shape had no dimensions here (after considering axis), so
+  // add the new dimension and broadcast in that direction.
+  std::array<dim_t, max_tensor_dimensions> reshapeDims;
+  for (dim_t i = 0; i < newShape.size(); i++) {
+    if (i >= axis && i < origDims.size() + axis) {
+      reshapeDims[i] = origDims[i - axis];
+    } else {
+      // Will broadcast this dimension to size from newShape.
+      reshapeDims[i] = 1;
+    }
+  }
+  // Reshape the input node to same number of dimensions as new shape, but
+  // with 1s in place of to-be-broadcasted dimensions.
+  Node *currNode =
+      F->createReshape(name.str() + ".reshape", input,
+                       llvm::ArrayRef<dim_t>(&reshapeDims[0], newShape.size()));
+
+  // Create a Tile (which is really a Concat) in each direction that needs to
+  // be broadcasted.
+  for (size_t i = 0; i < newShape.size(); i++) {
+    if (reshapeDims[i] == 1 && newShape[i] != 1) {
+      currNode = F->createTile(name.str() + ".tile" + std::to_string(i),
+                               currNode, newShape[i], i);
+    }
+  }
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BN.getResult(), currNode);
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
@@ -1689,6 +1776,9 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(AdaptiveAvgPool);
     CASE_LOWER(Gelu);
     CASE_LOWER(FloorDiv);
+    CASE_LOWER(BatchedMul);
+    CASE_LOWER(LSTMUnit);
+    CASE_LOWER(Broadcast);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {

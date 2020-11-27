@@ -17,8 +17,8 @@
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 #include "glow/Base/DimType.h"
 
-#include "CommandLine.h"
 #include "glow/LLVMIRCodeGen/AllocationsInfo.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
 
 #include "glow/Graph/Graph.h"
@@ -58,33 +58,6 @@ llvm::cl::opt<bool>
 /// Limitation of number of arguments for `emitDataParallelKernel`.
 constexpr static size_t kArgLimit = 64;
 
-/// Generate the LLVM machine attribute list for the host.
-static llvm::SmallVector<std::string, 0> getHostMachineAttributes() {
-  llvm::SmallVector<std::string, 0> result;
-  llvm::StringMap<bool> hostFeatures;
-  if (llvm::sys::getHostCPUFeatures(hostFeatures)) {
-    for (auto &feature : hostFeatures) {
-      if (feature.second) {
-        llvm::StringRef fn = feature.first();
-        // Skip avx512 because LLVM does not support it well.
-        if (fn.startswith("avx512")) {
-          continue;
-        }
-        result.push_back(fn);
-      }
-    }
-  }
-  return result;
-}
-
-/// Returns the CPU hostname.
-static llvm::StringRef getHostCpuName() {
-  auto cpu_name = llvm::sys::getHostCPUName();
-  // Skip avx512 because LLVM does not support it well.
-  cpu_name.consume_back("-avx512");
-  return cpu_name;
-}
-
 /// Query the TargetMachine to get the pointer size in bits
 static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
   return TM.getPointerSize(0) * 8;
@@ -122,7 +95,8 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
                   .setRelocationModel(opts.getRelocModel())
                   .setTargetOptions(targetOpts)
                   .selectTarget(llvm::Triple(), opts.getArch(),
-                                getHostCpuName(), getHostMachineAttributes()));
+                                LLVMBackend::getHostCPU(),
+                                LLVMBackend::getHostFeatures()));
   } else {
     TM_.reset(llvm::EngineBuilder()
                   .setCodeModel(opts.getCodeModel())
@@ -246,6 +220,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
   case ElemKind::UInt8FusedFP16QTy:
     return builder.getInt8Ty();
   case ElemKind::UInt4FusedFP16QTy:
+    return builder.getInt8Ty();
+  case ElemKind::UInt4FusedQTy:
     return builder.getInt8Ty();
   case ElemKind::BoolTy:
     static_assert(sizeof(bool) == sizeof(int8_t),
@@ -380,6 +356,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::UInt4FusedFP16QTy:
     T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
+  case ElemKind::UInt4FusedQTy:
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
+    break;
   case ElemKind::BoolTy:
     T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
@@ -497,6 +476,18 @@ llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
   return constArrayVar;
 }
 
+void LLVMIRGen::emitArrayStore(llvm::IRBuilder<> &builder,
+                               llvm::ArrayRef<llvm::Value *> vals,
+                               llvm::Value *basePtr, unsigned baseIdx) {
+  for (size_t idx = 0, end = vals.size(); idx < end; ++idx) {
+    assert(vals[idx]->getType()->getPointerTo() == basePtr->getType() &&
+           "Mismatch between pointer and value type!");
+    auto *storeIdx = builder.getInt32(idx + baseIdx);
+    auto *storeAddr = builder.CreateGEP(basePtr, storeIdx);
+    builder.CreateStore(vals[idx], storeAddr);
+  }
+}
+
 llvm::Value *LLVMIRGen::emitValueDims(llvm::IRBuilder<> &builder,
                                       const glow::Value *val) {
   auto dims = val->dims();
@@ -558,6 +549,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
   case ElemKind::UInt8FusedFP16QTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::UInt4FusedFP16QTy:
+    return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::UInt4FusedQTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::BoolTy:
     return builder.getInt8(static_cast<int8_t>(val));
@@ -2086,7 +2079,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstDimTArray(builder, CI->getStrides());
     auto *pads = emitConstDimTArray(builder, CI->getPads());
     auto *group = emitConstDimT(builder, CI->getGroup());
-    auto *dilation = emitConstDimT(builder, CI->getDilation());
+    auto *dilation = emitConstDimTArray(builder, CI->getDilation());
 
     auto destDepth = dest->dims()[3];
 
@@ -2176,7 +2169,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstDimTArray(builder, CG->getStrides());
     auto *pads = emitConstDimTArray(builder, CG->getPads());
     auto *group = emitConstDimT(builder, CG->getGroup());
-    auto *dilation = emitConstDimT(builder, CG->getDilation());
+    auto *dilation = emitConstDimTArray(builder, CG->getDilation());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
     createCall(builder, F,
@@ -2206,7 +2199,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstDimTArray(builder, CI->getStrides());
     auto *pads = emitConstDimTArray(builder, CI->getPads());
     auto *group = emitConstDimT(builder, CI->getGroup());
-    auto *dilation = emitConstDimT(builder, CI->getDilation());
+    auto *dilation = emitConstDimTArray(builder, CI->getDilation());
 
     const char *kernelName = "conv_transpose";
 
@@ -2316,7 +2309,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstDimTArray(builder, CQCI->getStrides());
     auto *pads = emitConstDimTArray(builder, CQCI->getPads());
     auto *group = emitConstDimT(builder, CQCI->getGroup());
-    auto *dilation = emitConstDimT(builder, CQCI->getDilation());
+    auto *dilation = emitConstDimTArray(builder, CQCI->getDilation());
 
     auto *destOffset = emitConstI32(builder, destTy->getOffset());
     auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
@@ -2566,26 +2559,44 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *srcTy = src->getType();
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-      // Reduce resulting scale by a factor of PA->getKernels()[0] *
-      // PA->getKernels()[1] since each subtensor value is divided by the area
-      // of kernel.
-      auto outScaleParam = quantization::quantizeScaleOffset32To8(
-          srcTy->getScale() / destTy->getScale() /
-              (PA->getKernels()[0] * PA->getKernels()[1]),
-          destTy->getOffset());
-      auto *outPre = emitConstI32(builder, outScaleParam.pre);
-      auto *outPost = emitConstI32(builder, outScaleParam.post);
-      auto *outScale = emitConstI32(builder, outScaleParam.scale);
+
+      // if the flag is false, we can't pre-calculate the reduced scale
+      // because the kernel area will change since pads are excluded.
+      if (!PA->getCountIncludePads()) {
+        auto *srcScale = emitConstF32(builder, srcTy->getScale());
+        auto *destScale = emitConstF32(builder, destTy->getScale());
+
+        auto *F =
+            getFunction("avg_pool_count_exclude_pad", dest->getElementType());
+        createCall(builder, F,
+                   {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
+                    srcOffset, destOffset, srcScale, destScale});
+      } else {
+        // Reduce resulting scale by a factor of PA->getKernels()[0] *
+        // PA->getKernels()[1] since each subtensor value is divided by the area
+        // of kernel.
+        auto outScaleParam = quantization::quantizeScaleOffset32To8(
+            srcTy->getScale() / destTy->getScale() /
+                (PA->getKernels()[0] * PA->getKernels()[1]),
+            destTy->getOffset());
+        auto *outPre = emitConstI32(builder, outScaleParam.pre);
+        auto *outPost = emitConstI32(builder, outScaleParam.post);
+        auto *outScale = emitConstI32(builder, outScaleParam.scale);
+
+        auto *F = getFunction("avg_pool", dest->getElementType());
+        createCall(builder, F,
+                   {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
+                    destOffset, srcOffset, outPre, outPost, outScale});
+      }
+
+      break;
+    } else {
+      auto *countIncludePads = emitConstI1(builder, PA->getCountIncludePads());
 
       auto *F = getFunction("avg_pool", dest->getElementType());
       createCall(builder, F,
                  {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
-                  destOffset, srcOffset, outPre, outPost, outScale});
-      break;
-    } else {
-      auto *F = getFunction("avg_pool", dest->getElementType());
-      createCall(builder, F,
-                 {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
+                  countIncludePads});
       break;
     }
   }
@@ -2618,11 +2629,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *kernels = emitConstDimTArray(builder, PAG->getKernels());
     auto *strides = emitConstDimTArray(builder, PAG->getStrides());
     auto *pads = emitConstDimTArray(builder, PAG->getPads());
+    auto *countIncludePads = emitConstI1(builder, PAG->getCountIncludePads());
 
     auto *F = getFunction("avg_pool_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcGradDims, destDims, kernels,
-                strides, pads});
+                strides, pads, countIncludePads});
     break;
   }
 
@@ -3180,6 +3192,107 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::InstrumentInstKind: {
+    auto *instrumentI = llvm::cast<InstrumentInst>(I);
+    auto *opInfo = instrumentI->getOperandsInfo();
+
+    // Instruction being instrumented.
+    Instruction *instrRef = instrumentI->getInstrRef();
+
+    // Emit instruction ID and instruction kind.
+    llvm::Type *intTy =
+        llvm::Type::getIntNTy(getLLVMContext(), getLibjitIntWidth());
+    auto *ID = llvm::ConstantInt::get(intTy, instrumentI->getID());
+    auto *kind = llvm::ConstantInt::get(intTy, (int)(instrRef->getKind()));
+
+    // Emit number of input and output operands.
+    auto inpNum = instrRef->getNumInputs();
+    auto outNum = instrRef->getNumOutputs();
+    auto opNum = inpNum + outNum;
+    auto *opInp = llvm::ConstantInt::get(intTy, inpNum);
+    auto *opOut = llvm::ConstantInt::get(intTy, outNum);
+
+    // Emit opInfo address as uint8_t*.
+    assert(opInfo->getType()->getSizeInBytes() >= 2 * sizeof(int64_t) &&
+           "Not enough memory allocated for instrumentation!");
+    auto *opInfoPtr = emitValueAddress(builder, opInfo);
+    opInfoPtr = builder.CreateBitCast(opInfoPtr, builder.getInt8PtrTy());
+
+    // Emit opAddr address as uint8_t** starting from offset 0.
+    auto *opAddrPtr =
+        builder.CreateGEP(opInfoPtr, llvm::ConstantInt::get(intTy, 0));
+    opAddrPtr = builder.CreateBitCast(opAddrPtr,
+                                      builder.getInt8PtrTy()->getPointerTo());
+
+    // Emit opSize address as int* starting from offset opNum * sizeof(int64_t).
+    auto *opSizePtr = builder.CreateGEP(
+        opInfoPtr, llvm::ConstantInt::get(intTy, opNum * sizeof(int64_t)));
+    opSizePtr = builder.CreateBitCast(opSizePtr, intTy->getPointerTo());
+
+    // Generate instrumentation.
+    auto instrumentKind = instrumentI->getInstrumentKind();
+    if (instrumentKind == InstrumentKind::Before) {
+
+      // Operands addresses and sizes.
+      std::vector<llvm::Value *> opAddrArray;
+      std::vector<llvm::Value *> opSizeArray;
+
+      // Get addresses and sizes for the input operands.
+      for (const auto &op : instrRef->getOperands()) {
+        if (op.second == OperandKind::Out) {
+          continue;
+        }
+        // Emit operand address as uint8_t* variable.
+        auto *opAddr = emitValueAddress(builder, op.first);
+        opAddr = builder.CreateBitCast(opAddr, builder.getInt8PtrTy());
+        opAddrArray.push_back(opAddr);
+        // Emit operand size in bytes as int constant.
+        auto *opSize = llvm::ConstantInt::get(
+            intTy, op.first->getType()->getSizeInBytes());
+        opSizeArray.push_back(opSize);
+      }
+      assert(opAddrArray.size() == inpNum && "Inconsistent size!");
+
+      // Get addresses and sizes for the output operands.
+      for (const auto &op : instrRef->getOperands()) {
+        if (op.second == OperandKind::In) {
+          continue;
+        }
+        // Emit operand address as uint8_t* variable.
+        auto *opAddr = emitValueAddress(builder, op.first);
+        opAddr = builder.CreateBitCast(opAddr, builder.getInt8PtrTy());
+        opAddrArray.push_back(opAddr);
+        // Emit operand size in bytes as int constant.
+        auto *opSize = llvm::ConstantInt::get(
+            intTy, op.first->getType()->getSizeInBytes());
+        opSizeArray.push_back(opSize);
+      }
+      assert(opAddrArray.size() == opNum && "Inconsistent size!");
+
+      // Write the addresses of the operands in the opAddr.
+      emitArrayStore(builder, opAddrArray, opAddrPtr);
+
+      // Write the sizes of the operands in opSize.
+      emitArrayStore(builder, opSizeArray, opSizePtr);
+
+      // Create callback call.
+      auto *F = getFunction("instrument_before");
+      createCall(builder, F, {ID, kind, opInp, opOut, opAddrPtr, opSizePtr});
+
+    } else if (instrumentKind == InstrumentKind::After) {
+
+      // Create callback call.
+      auto *F = getFunction("instrument_after");
+      createCall(builder, F, {ID, kind, opInp, opOut, opAddrPtr, opSizePtr});
+
+    } else {
+      llvm_unreachable("Instrumentation kind not supported!");
+    }
+    // Print the IR instrumentation callback API.
+    printInstrumentIR_ = true;
+    break;
+  }
+
   case Kinded::Kind::TraceEventInstKind: {
     auto *TEI = llvm::cast<TraceEventInst>(I);
     auto *data = TEI->getData();
@@ -3381,4 +3494,66 @@ bool LLVMIRGen::canBePartOfDataParallelKernel(
   return I->isDataParallel();
 }
 
-std::string LLVMIRGen::getBundleHeaderExtra() const { return ""; }
+/// Extra bundle header file content with the IR instrumentation callback API.
+static const char *instrumentIRApi =
+    R"RAW(
+// -----------------------------------------------------------------------------
+// Callback function used for Glow IR instruction instrumentation:
+// - This callback is called by the bundle BEFORE executing each instruction.
+// - This callback must be defined by the bundle user application.
+// ARGUMENTS:
+//   id     - Instruction instance ID.
+//   kind   - Instruction kind (type).
+//   opInp  - Number of input operands.
+//   opOut  - Number of output operands.
+//   opAddr - Array with addresses for all operands. The addresses are listed
+//            first for the input operands and then for the output operands.
+//            The array contains opInp + opOut addresses.
+//   opSize - Array with sizes (in bytes) for all operands. The sizes are listed
+//            first for the input operands and then for the output operands.
+//            The array contains opInp + opOut sizes.
+// NOTES:
+// - This callback should be used to dump only the input operands since the
+//   output operands are not yet computed/written when this callback is used.
+// - This callback uses C linkage therefore if the callback is implemented in a
+//   .cpp file you must enclose the implementation in extern "C" {}.
+// - Look in the metafile "instrument-ir.info" generated during compile-time
+//   to see more information about the instrumented instructions.
+// -----------------------------------------------------------------------------
+void glow_instrument_before(int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize);
+
+// -----------------------------------------------------------------------------
+// Callback function used for Glow IR instruction instrumentation:
+// - This callback is called by the bundle AFTER executing each instruction.
+// - This callback must be defined by the bundle user application.
+// ARGUMENTS:
+//   id     - Instruction instance ID.
+//   kind   - Instruction kind (type).
+//   opInp  - Number of input operands.
+//   opOut  - Number of output operands.
+//   opAddr - Array with addresses for all operands. The addresses are listed
+//            first for the input operands and then for the output operands.
+//            The array contains opInp + opOut addresses.
+//   opSize - Array with sizes (in bytes) for all operands. The sizes are listed
+//            first for the input operands and then for the output operands.
+//            The array contains opInp + opOut sizes.
+// NOTES:
+// - This callback should be used to dump only the output operands since some
+//   of the input operands might have been overwritten for instructions which
+//   perform in-place computation.
+// - This callback uses C linkage therefore if the callback is implemented in a
+//   .cpp file you must enclose the implementation in extern "C" {}.
+// - Look in the metafile "instrument-ir.info" generated during compile-time
+//   to see more information about the instrumented instructions.
+// -----------------------------------------------------------------------------
+void glow_instrument_after(int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize);
+)RAW";
+
+std::string LLVMIRGen::getBundleHeaderExtra() const {
+  std::string headerExtra = "";
+  // Print IR instrumentation callback API.
+  if (printInstrumentIR_) {
+    headerExtra += std::string(instrumentIRApi);
+  }
+  return headerExtra;
+}

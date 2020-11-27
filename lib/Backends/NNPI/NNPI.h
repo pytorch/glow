@@ -113,6 +113,8 @@ constexpr char extraEdgesTargetSuffixKey[] = "NNPI_extraEdgesTargetSuffix";
 constexpr char extraEdgesSourceSuffixKey[] = "NNPI_extraEdgesSourceSuffix";
 constexpr char coreAssignmentsKey[] = "NNPI_coreAssignments";
 constexpr char coreAssignmentsSuffixKey[] = "NNPI_coreAssignmentsSuffix";
+constexpr char tensorAssignmentNamesKey[] = "NNPI_tensorAssignmentNames";
+constexpr char tensorAssignmentValuesKey[] = "NNPI_tensorAssignmentValues";
 
 } // namespace glow
 #endif // GLOW_NNPI_BACKEND_H

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "CommandLine.h"
 #include "glow/LLVMIRCodeGen/AllocationsInfo.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRUtils.h"
@@ -490,6 +490,14 @@ void LLVMIRGen::generateModuleDebugInfo() {
 
   // Finalize the debug info.
   DIBuilder_->finalize();
+
+  // Fix function attributes related issues.
+  for (auto &FF : getModule()) {
+    // Optnone requires NoInline.
+    if (FF.hasFnAttribute(llvm::Attribute::AttrKind::OptimizeNone)) {
+      FF.addFnAttr(llvm::Attribute::AttrKind::NoInline);
+    }
+  }
 
   // Verify the module to see if there are any errors due to the debug
   // information.

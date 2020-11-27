@@ -20,6 +20,7 @@
 #include <ATen/core/ivalue.h>
 
 #include "glow/Base/Tensor.h"
+#include "glow/Graph/NodeValue.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
 
@@ -58,6 +59,7 @@ public:
     PTTensor,
     GenericMap,
     String,
+    NodeValueList,
   };
 
 private:
@@ -72,6 +74,7 @@ private:
     std::vector<int64_t> *asIntList;
     std::vector<double> *asDoubleList;
     std::vector<bool> *asBoolList;
+    std::vector<glow::NodeValue> *asNodeValueList;
     std::vector<GlowIValue> *asTuple;
     at::Tensor *asPTTensor;
     GlowIValueMap *asGenericMap;
@@ -126,6 +129,7 @@ public:
   bool isIntList() const;
   bool isDoubleList() const;
   bool isBoolList() const;
+  bool isNodeValueList() const;
   bool isTuple() const;
   bool isPTTensor() const;
   bool isGenericMap() const;
@@ -165,6 +169,14 @@ public:
 
   /// \returns Payload a vector of bools or error if the tag is not BoolList.
   Expected<const std::vector<bool> *> toBoolList() const;
+
+  /// \returns Payload a vector of glow::NodeValue or error if the tag is not
+  /// NodeValueList.
+  Expected<std::vector<glow::NodeValue> *> toNodeValueList();
+
+  /// \returns Payload a vector of glow::NodeValue or error if the tag is not
+  /// NodeValueList.
+  Expected<const std::vector<glow::NodeValue> *> toNodeValueList() const;
 
   /// \returns Payload a vector of GlowIValues or error if the tag is not Tuple.
   Expected<std::vector<GlowIValue> *> toTuple();
@@ -223,6 +235,9 @@ public:
   /// Set the tag to BoolList.
   void fromBoolList(std::vector<bool> boolList);
 
+  /// Set the tag to NodeValueList.
+  void fromNodeValueList(std::vector<glow::NodeValue> nodeValueList);
+
   /// Set the tag to Tuple.
   void fromTuple(std::vector<GlowIValue> glowIValList);
 
@@ -257,6 +272,11 @@ iValToIntList(Expected<GlowIValue *> expectedIVal);
 /// propogate any Errors.
 Expected<std::vector<double> *>
 iValToDoubleList(Expected<GlowIValue *> expectedIVal);
+
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toNodeValueList,
+/// propogate any Errors.
+Expected<std::vector<glow::NodeValue> *>
+iValToNodeValueList(Expected<GlowIValue *> expectedIVal);
 
 /// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toPTTensor,
 /// propogate any Errors.

@@ -3,19 +3,24 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from tests import utils
 
 
 class TestQuantizedConv2d(unittest.TestCase):
+    @unittest.skip(reason="Requires freezing")
     def test_quantized_conv2d_unpacked(self):
         """Basic test of the PyTorch quantize::conv2d Node with unpacked weights on Glow."""
 
-        def test_f(a, w, b):
-            qu = torch.nn.quantized.Quantize(1 / 16, 0, torch.quint8)
-            qi = torch.nn.quantized.Quantize(1 / 16, 0, torch.qint8)
-            dq = torch.nn.quantized.DeQuantize()
-            conv = torch.nn.quantized.functional.conv2d
-            return dq(conv(qu(a), qi(w), b))
+        class SimpleQuantizedConvModel(torch.nn.Module):
+            def __init__(self):
+                super(SimpleQuantizedConvModel, self).__init__()
+
+            def forward(self, a, w, b):
+                qu = torch.nn.quantized.Quantize(1 / 16, 0, torch.quint8)
+                qi = torch.nn.quantized.Quantize(1 / 16, 0, torch.qint8)
+                dq = torch.nn.quantized.DeQuantize()
+                conv = torch.nn.quantized.functional.conv2d
+                return dq(conv(qu(a), qi(w), b))
 
         # TODO
         # Due to the quantization error between
@@ -30,28 +35,30 @@ class TestQuantizedConv2d(unittest.TestCase):
         b_zero = torch.zeros(1)
         b = torch.randn(1)
 
-        jitVsGlow(
-            test_f,
+        utils.compare_tracing_methods(
+            SimpleQuantizedConvModel(),
             x,
             w,
             b,
-            expected_fused_ops={
+            fusible_ops={
                 "aten::quantize_per_tensor",
                 "glow::unpacked_quantized_conv2d",
                 "aten::dequantize",
             },
+            skip_to_glow=True,
         )
 
-        jitVsGlow(
-            test_f,
+        utils.compare_tracing_methods(
+            SimpleQuantizedConvModel(),
             x,
             w,
             b_zero,
-            expected_fused_ops={
+            fusible_ops={
                 "aten::quantize_per_tensor",
                 "glow::unpacked_quantized_conv2d",
                 "aten::dequantize",
             },
+            skip_to_glow=True,
         )
 
     def test_quantized_conv2d_packed_groupwise(self):
@@ -77,10 +84,10 @@ class TestQuantizedConv2d(unittest.TestCase):
         torch.quantization.prepare(model, inplace=True)
         torch.quantization.convert(model, inplace=True)
 
-        jitVsGlow(
+        utils.compare_tracing_methods(
             model,
             x,
-            expected_fused_ops={
+            fusible_ops={
                 "aten::quantize_per_tensor",
                 "quantized::conv2d",
                 "aten::dequantize",
@@ -110,11 +117,12 @@ class TestQuantizedConv2d(unittest.TestCase):
         torch.quantization.prepare(model, inplace=True)
         torch.quantization.convert(model, inplace=True)
 
-        jitVsGlow(
+        utils.compare_tracing_methods(
             model,
             x,
-            expected_fused_ops={"quantized::conv2d"},
-            black_list=["aten::quantize_per_tensor", "aten::dequantize"],
+            fusible_ops={"quantized::conv2d"},
+            fusion_blocklist=["aten::quantize_per_tensor", "aten::dequantize"],
+            skip_to_glow=True,
         )
 
     def test_quantized_conv2d_packed_channelwise(self):
@@ -137,10 +145,10 @@ class TestQuantizedConv2d(unittest.TestCase):
 
             # TODO: acuracy needs to be investigated. Average acuracy is decent
             # but some elements have errors (possibly from rounding differences)
-            jitVsGlow(
+            utils.compare_tracing_methods(
                 model,
                 x,
-                expected_fused_ops={
+                fusible_ops={
                     "aten::quantize_per_tensor",
                     "quantized::conv2d",
                     "aten::dequantize",
@@ -183,10 +191,10 @@ class TestQuantizedConv2d(unittest.TestCase):
             model.forward(x)
             torch.quantization.convert(model, inplace=True)
 
-            jitVsGlow(
+            utils.compare_tracing_methods(
                 model,
                 x,
-                expected_fused_ops={
+                fusible_ops={
                     "aten::quantize_per_tensor",
                     "quantized::conv2d",
                     "aten::dequantize",
@@ -233,12 +241,13 @@ class TestQuantizedConv2d(unittest.TestCase):
             model.forward(x)
             torch.quantization.convert(model, inplace=True)
 
-            jitVsGlow(
+            utils.compare_tracing_methods(
                 model,
                 x,
-                expected_fused_ops={
+                fusible_ops={
                     "aten::quantize_per_tensor",
                     "quantized::conv2d",
                     "aten::dequantize",
                 },
+                skip_to_glow=True,
             )

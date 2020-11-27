@@ -5,35 +5,60 @@ from collections import namedtuple
 
 import torch
 import torch.nn.functional as F
-from tests.utils import jitVsGlow
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleConv2dModule(torch.nn.Module):
+    def __init__(self, stride=1, padding=0, dilation=1, groups=1):
+        super(SimpleConv2dModule, self).__init__()
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+
+    def forward(self, inputs, filters, bias=None):
+        conv = F.conv2d(
+            inputs,
+            filters,
+            bias=bias,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=self.groups,
+        )
+        return F.relu(conv)
 
 
 class TestConv2d(unittest.TestCase):
-    def test_conv2d_basic(self):
-        """Basic test of the PyTorch conv2d Node on Glow."""
+    @parameterized.expand(
+        [
+            (
+                "basic",
+                SimpleConv2dModule(padding=1),
+                torch.randn(1, 4, 5, 5),
+                torch.randn(8, 4, 3, 3),
+            ),
+            (
+                "with_bias",
+                SimpleConv2dModule(padding=1),
+                torch.randn(1, 4, 5, 5),
+                torch.randn(8, 4, 3, 3),
+                torch.randn(8),
+            ),
+            (
+                "nonsquare_dilation",
+                SimpleConv2dModule(padding=1, dilation=[1, 2]),
+                torch.randn(1, 4, 5, 5),
+                torch.randn(8, 4, 3, 3),
+            ),
+        ]
+    )
+    def test_conv2d(self, _, module, inputs, filters, bias=None):
+        """Basic test of the PyTorch conv3d Node on Glow."""
 
-        def test_f(inputs, filters):
-            conv = F.conv2d(inputs, filters, padding=1)
-            return F.relu(conv)
-
-        inputs = torch.randn(1, 4, 5, 5)
-        filters = torch.randn(8, 4, 3, 3)
-
-        jitVsGlow(test_f, inputs, filters, expected_fused_ops={"aten::_convolution"})
-
-    def test_conv2d_with_bias(self):
-        """Test of the PyTorch conv2d Node with a provided bias tensor."""
-
-        def test_f(inputs, filters, bias):
-            conv = F.conv2d(inputs, filters, bias)
-            return F.relu(conv)
-
-        inputs = torch.randn(1, 4, 5, 5)
-        filters = torch.randn(8, 4, 3, 3)
-        bias = torch.randn(8)
-
-        jitVsGlow(
-            test_f, inputs, filters, bias, expected_fused_ops={"aten::_convolution"}
+        utils.compare_tracing_methods(
+            module, inputs, filters, fusible_ops={"aten::_convolution"}
         )
 
     @unittest.skip(reason="not ready")
@@ -70,6 +95,6 @@ class TestConv2d(unittest.TestCase):
             inputs = torch.randn(2, 4, setting.h, setting.w)
             filters = torch.randn(8, 4 / setting.g, 3, 3)
 
-            jitVsGlow(
-                test_f, inputs, filters, expected_fused_ops={"aten::_convolution"}
+            utils.compare_tracing_methods(
+                test_f, inputs, filters, fusible_ops={"aten::_convolution"}
             )

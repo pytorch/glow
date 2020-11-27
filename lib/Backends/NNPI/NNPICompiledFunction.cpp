@@ -21,20 +21,13 @@
 #include "nnpi_transformer.h"
 
 #include "glow/Backend/BackendUtils.h"
+#include "glow/Flags/Flags.h"
 
 #include <sstream>
 
 #include "llvm/ADT/StringSet.h"
 
 using namespace glow;
-
-namespace glow {
-namespace onnxifi {
-extern bool GlowDumpNNPICompilerData;
-extern bool GlowUsePerPartitionIcetConfig;
-} // namespace onnxifi
-extern bool GlowDumpBackendSpecificIRJSON;
-} // namespace glow
 
 /// Update device network config from the compilation config
 static NNPIDeviceNetworkConfig parseDeviceNetworkConfig(
@@ -100,6 +93,10 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.disableSLSOffloadToIA = compilationOptions.disableSLSOffloadToIA;
   config_.enableLightweightCompilation = compilationOptions.lightCompilation;
   config_.dumpDotFiles = compilationOptions.dumpDotFiles;
+
+  config_.forceWeightsOutOfLLC = compilationOptions.forceWeightsOutOfLLC;
+  config_.disableSlsAllLenOneCalcAtRunTime =
+      compilationOptions.disableSlsAllLenOneCalcAtRunTime;
 
   return Error::success();
 }
@@ -185,6 +182,44 @@ Error NNPICompiledFunction::setupCompilationHints(
       }
     }
 
+    // Read tensor assignments
+    auto tensorAssignmentNamesIt = nodeInfo.find(tensorAssignmentNamesKey);
+    auto tensorAssignmentValuesIt = nodeInfo.find(tensorAssignmentValuesKey);
+    if ((tensorAssignmentNamesIt != nodeInfo.end()) &&
+        (tensorAssignmentValuesIt != nodeInfo.end())) {
+      auto tensorAssignmentNames = tensorAssignmentNamesIt->second;
+      auto tensorAssignmentValues = tensorAssignmentValuesIt->second;
+      RETURN_ERR_IF_NOT(
+          tensorAssignmentNames.size() == tensorAssignmentValues.size(),
+          strFormat("Node %s tensorAssignmentsNames has length %zu, but "
+                    "tensorAssignmentValues has length %zu",
+                    N->getName().data(), tensorAssignmentNames.size(),
+                    tensorAssignmentValues.size()));
+
+      for (dim_t i = 0; i < tensorAssignmentNames.size(); i++) {
+        const std::string &memoryLevel = tensorAssignmentValues[i];
+        RETURN_ERR_IF_NOT((memoryLevel == "SRAM") || (memoryLevel == "LLC") ||
+                              (memoryLevel == "DRAM"),
+                          strFormat("Memory level must be either SRAM, LLC, or "
+                                    "DRAM. Unknown level: %s",
+                                    memoryLevel.data()));
+
+        const std::string &tensorName = tensorAssignmentNames[i];
+
+        NNPICompilationHint hint;
+        hint.type = NNPI_HINT_TENSOR_PLACEMENT;
+        strncpy(hint.tensorPlacement.tensorName, tensorName.c_str(),
+                sizeof(NNPIObjectName));
+        hint.tensorPlacement.allocationType = (memoryLevel == "SRAM")
+                                                  ? NNPI_ALLOCATION_SRAM
+                                                  : (memoryLevel == "LLC")
+                                                        ? NNPI_ALLOCATION_LLC
+                                                        : NNPI_ALLOCATION_DRAM;
+        hint.tensorPlacement.priority = 0.0f;
+        hints.emplace_back(hint);
+      }
+    }
+
     // Read extra edges
     auto extraEdgesTargetNameIt = nodeInfo.find(extraEdgesTargetNameKey);
     auto extraEdgesTargetSuffixIt = nodeInfo.find(extraEdgesTargetSuffixKey);
@@ -256,14 +291,14 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
                          std::to_string(opts.backendHints.executionUnits));
   }
 
-  if (glow::onnxifi::GlowDumpNNPICompilerData) {
+  if (glow::nnpi::flags::DumpCompilerData) {
     const std::string icetFName =
         std::string("icet_file_") + F->getName().str();
     insertOptLogOverride(*F, newOpts.backendSpecificOpts, "NNPI_CompiledFile",
                          icetFName);
   }
 
-  if (glow::onnxifi::GlowUsePerPartitionIcetConfig) {
+  if (glow::nnpi::flags::UsePerPartitionIcetConfig) {
     const std::string icetConfigFName =
         std::string("icet_config_") + F->getName().str() + std::string(".json");
     insertOptLogOverride(*F, newOpts.backendSpecificOpts,
@@ -348,8 +383,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   }
 
   if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
-    static std::mutex compileMutex;
-    std::lock_guard<std::mutex> guard(compileMutex);
     if (compilationFileName_.empty()) // Compile to memory.
     {
       NNPIStream outFileStream;
@@ -388,7 +421,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
     // Update compilation info after NNPI compilation.
     if (compilationOptions_.dumpCompilationInfo ||
-        compilationOptions_.lightCompilation || GlowDumpBackendSpecificIRJSON) {
+        compilationOptions_.lightCompilation ||
+        flags::DumpBackendSpecificIRJSON) {
       if (!updateCompilationInfo()) {
         // Only issuing a warning (soft fail)
         LOG(WARNING) << "Failed to update NNPI compilation info";
@@ -630,6 +664,7 @@ std::string NNPICompilationInfo::dump(const std::string &functionName) const {
 static const std::string tensorToJSON(const NNPICompiledTensor &tensor) {
   std::stringstream fs;
   fs << "{" << std::endl;
+  fs << "\"name\" : \"" << tensor.name << "\"," << std::endl;
   fs << "\"type\" : \"" << tensor.type << "\"," << std::endl;
   fs << "\"alloc\" : \"" << dumpAllocType(tensor.allocType) << "\","
      << std::endl;

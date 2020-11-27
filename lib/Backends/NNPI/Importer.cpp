@@ -16,6 +16,7 @@
 #include "Importer.h"
 #include "DebugMacros.h"
 #include "NNPI.h"
+#include "glow/Flags/Flags.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
@@ -29,20 +30,6 @@
 #include "llvm/Support/CommandLine.h"
 
 using namespace glow;
-
-namespace glow {
-llvm::cl::OptionCategory optionsForNNPIImporter("NNPI Importer Options");
-
-bool GlowNNPISpecializeAllOneSLS = false;
-static llvm::cl::opt<bool, /* ExternalStorage */ true>
-    GlowNNPISpecializeAllOneSLSOpt(
-        "glow_nnpi_specialize_all_one_sls",
-        llvm::cl::desc(
-            "Whether to import SLS ops with AllOne attribute to NNPI."),
-        llvm::cl::location(GlowNNPISpecializeAllOneSLS), llvm::cl::Optional,
-        llvm::cl::init(false), llvm::cl::cat(optionsForNNPIImporter));
-
-} // namespace glow
 
 const std::string NNPIImporter::internalName_("_NNPI_");
 
@@ -58,7 +45,7 @@ static std::string nodeValueName(const glow::NodeValue &nv) {
 
 NNPIErrorCode glow::NNPIImporter::convertLengthsModeToLengthType(
     glow::LengthsMode mode, NNPI_LENGTH_TYPE &lengthType) {
-  if (!GlowNNPISpecializeAllOneSLS) {
+  if (!nnpi::flags::SpecializeAllOneSLS) {
     mode = LengthsMode::Variable;
   }
   switch (mode) {
@@ -423,6 +410,9 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::MaxPoolNodeKind:
       return true;
     case Kinded::Kind::FullyConnectedNodeKind:
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+    case Kinded::Kind::ROIAlignNodeKind:
+#endif
       return (v->getType()->dims().size() == 4);
     default: // Do nothing.
       break;
@@ -590,13 +580,19 @@ public:
     uint32_t dilation[convDims];
 
     ConvolutionNode *conv2DNode = llvm::dyn_cast<ConvolutionNode>(glowConv);
+    if (conv2DNode) {
+      LOG_AND_RETURN_IF_NOT(ERROR,
+                            conv2DNode->getDilation()[0] == 1 &&
+                                conv2DNode->getDilation()[1] == 1,
+                            "Dilation is not supported", NNPI_INVALID_PARAM);
+    }
     for (size_t i = 0; i < convDims; i++) {
       kernel[i] = glowConv->getKernels()[i];
       stride[i] = glowConv->getStrides()[i];
       if (conv2DNode) {
         paddingStart[i] = glowConv->getPads()[i];
         paddingEnd[i] = glowConv->getPads()[convDims + i];
-        dilation[i] = conv2DNode->getDilation();
+        dilation[i] = 1;
       } else {
         paddingStart[i] = glowConv->getPads()[i * 2];
         paddingEnd[i] = glowConv->getPads()[i * 2 + 1];
@@ -695,6 +691,10 @@ public:
     std::vector<uint32_t> paddingStart(numDims);
     std::vector<uint32_t> paddingEnd(numDims);
     std::vector<uint32_t> stride(numDims);
+    bool countIncludePads = 1;
+    if (auto *APN = llvm::dyn_cast<AvgPoolNode>(glowPool)) {
+      countIncludePads = APN->getCountIncludePads();
+    }
 
     for (size_t i = 0; i < numDims; i++) {
       kernel[i] = glowPool->getKernels()[i];
@@ -728,7 +728,7 @@ public:
         nodeValueName(glowPool->getInput()).c_str(),
         nodeValueName(glowPool->getResult()).c_str(), NULL, kernel.data(),
         paddingStart.data(), paddingEnd.data(), stride.data(), numDims,
-        poolType, 0, 0);
+        poolType, !countIncludePads, 0);
   }
 };
 
@@ -1364,7 +1364,7 @@ public:
         nodeValueName(glowSLS->getData()).c_str(),
         nodeValueName(glowSLS->getResult()).c_str(), NULL,
         nodeValueName(glowSLS->getIndices()).c_str(),
-        nodeValueName(glowSLS->getLengths()).c_str(), false, false,
+        nodeValueName(glowSLS->getLengths()).c_str(), 0, 0,
         glowSLS->getAvgLength(), lengthType);
   }
 };
@@ -1397,7 +1397,7 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), false, false,
+        nodeValueName(glowSLWS->getLengths()).c_str(), 0, 0,
         glowSLWS->getAvgLength(), lengthType);
   }
 };
@@ -1436,7 +1436,7 @@ public:
         nodeValueName(glowEmbeddingBag->getResult()).c_str(),
         nodeValueName(glowEmbeddingBag->getWeights()).c_str(),
         nodeValueName(glowEmbeddingBag->getIndices()).c_str(),
-        nodeValueName(glowEmbeddingBag->getOffsets()).c_str(), false, true,
+        nodeValueName(glowEmbeddingBag->getOffsets()).c_str(), 0, 1,
         glowEmbeddingBag->getAvgLength(), lengthType);
   }
 };
@@ -1479,7 +1479,7 @@ public:
         nodeValueName(glowEBBRO->getResult()).c_str(),
         nodeValueName(glowEBBRO->getWeights()).c_str(),
         nodeValueName(glowEBBRO->getIndices()).c_str(),
-        nodeValueName(glowEBBRO->getOffsets()).c_str(), usFp32Accum, true,
+        nodeValueName(glowEBBRO->getOffsets()).c_str(), usFp32Accum, 1,
         glowEBBRO->getAvgLength(), lengthType);
   }
 };
@@ -1764,6 +1764,27 @@ public:
   }
 };
 
+class BatchMulNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBatchMul = llvm::dyn_cast<BatchedMulNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBatchMul, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    NNPIObjectName inputNames[2];
+    snprintf(inputNames[0], NNPI_MAX_STRING_LEN, "%s",
+             nodeValueName(glowBatchMul->getBatch()).c_str());
+    snprintf(inputNames[1], NNPI_MAX_STRING_LEN, "%s",
+             nodeValueName(glowBatchMul->getSlice()).c_str());
+    importer.setUsedTensors({nodeValueName(glowBatchMul->getBatch()),
+                             nodeValueName(glowBatchMul->getSlice())},
+                            {nodeValueName(glowBatchMul->getResult())});
+    return nnpiNetworkAddElementwiseOp(
+        importer.getNetwork(), glowBatchMul->getName().begin(), inputNames, 2,
+        nodeValueName(glowBatchMul->getResult()).c_str(), NNPI_ELTWISE_MUL);
+  }
+};
+
 class RQSLWSNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -1805,7 +1826,7 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, 0,
         glowSLWS->getAvgLength(), lengthType);
   }
 };
@@ -1841,7 +1862,7 @@ public:
         nodeValueName(glowSLWS->getData()).c_str(),
         nodeValueName(glowSLWS->getResult()).c_str(), NULL,
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, 0,
         glowSLWS->getAvgLength(), lengthType);
   }
 };
@@ -1879,7 +1900,7 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, 0,
         glowSLWS->getAvgLength(), lengthType);
   }
 };
@@ -2135,6 +2156,186 @@ public:
   }
 };
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+class IntLookupTableNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowLUT = llvm::dyn_cast<IntLookupTableNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowLUT, "Bad node type", NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowLUT->getInput()),
+                             nodeValueName(glowLUT->getMapping())},
+                            {nodeValueName(glowLUT->getResult())});
+
+    NNPILookupDesc lookupDesc;
+    lookupDesc.lookupType = NNPI_LOOKUP_TYPE::NNPI_LOOKUP_DIRECT_LUT;
+
+    auto res = nnpiNetworkAddLookupTableOp(
+        importer.getNetwork(), glowLUT->getName().begin(),
+        nodeValueName(glowLUT->getInput()).c_str(),
+        nodeValueName(glowLUT->getMapping()).c_str(),
+        nodeValueName(glowLUT->getResult()).c_str(), &lookupDesc);
+    return res;
+  }
+};
+
+class NNPILookupTableNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowLUT = llvm::dyn_cast<NNPILookupTableNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowLUT, "Bad node type", NNPI_INVALID_PARAM);
+
+    NNPILookupDesc lookupDesc;
+    lookupDesc.lookupType =
+        static_cast<NNPI_LOOKUP_TYPE>(glowLUT->getLookupType());
+    lookupDesc.lowerRange = glowLUT->getLowerRange();
+    lookupDesc.upperRange = glowLUT->getUpperRange();
+    lookupDesc.upperMulFactor = glowLUT->getUpperMulFactor();
+    lookupDesc.upperOffset = glowLUT->getUpperOffset();
+    lookupDesc.lowerMulFactor = glowLUT->getLowerMulFactor();
+    lookupDesc.lowerOffset = glowLUT->getLowerOffset();
+    lookupDesc.delta = glowLUT->getDelta();
+    lookupDesc.bias = glowLUT->getBias();
+
+    auto res = nnpiNetworkAddLookupTableOp(
+        importer.getNetwork(), glowLUT->getName().begin(),
+        nodeValueName(glowLUT->getInput()).c_str(),
+        nodeValueName(glowLUT->getLookupTable()).c_str(),
+        nodeValueName(glowLUT->getResult()).c_str(), &lookupDesc);
+    return res;
+  }
+};
+
+class BBoxTransformNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBboxTransform = llvm::dyn_cast<BBoxTransformNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBboxTransform, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {nodeValueName(glowBboxTransform->getRois()),
+         nodeValueName(glowBboxTransform->getDeltas()),
+         nodeValueName(glowBboxTransform->getImInfo())},
+        {nodeValueName(glowBboxTransform->getBoxOut()),
+         nodeValueName(glowBboxTransform->getRoiBatchSplits())});
+
+    // 4 elements as weights format is [wx, wy, ww, wh]
+
+    float weights[4] = {0};
+    llvm::ArrayRef<float> glowWeights = glowBboxTransform->getWeights();
+    for (int i = 0; i < glowWeights.size(); i++) {
+      weights[i] = glowWeights[i];
+    }
+
+    auto convertName = NNPIImporter::internalName_ +
+                       glowBboxTransform->getName().str() +
+                       "_RoiBatchSplits_ConvertToFP16";
+
+    std::string roiBatchSplitsFp32TensorName =
+        NNPIImporter::internalName_ + "roi_batch_splits_convert";
+
+    auto *roiBatchSplitsFP32Type = n->getParent()->getParent()->uniqueType(
+        ElemKind::FloatTy,
+        glowBboxTransform->getRoiBatchSplits().getType()->dims());
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(roiBatchSplitsFp32TensorName, roiBatchSplitsFP32Type),
+        "failed to create BBoxTransform RoiBatchSplits convert");
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        nnpiNetworkAddBBoxTransformOp(
+            importer.getNetwork(), glowBboxTransform->getName().begin(),
+            nodeValueName(glowBboxTransform->getRois()).c_str(),
+            nodeValueName(glowBboxTransform->getDeltas()).c_str(),
+            nodeValueName(glowBboxTransform->getImInfo()).c_str(),
+            nodeValueName(glowBboxTransform->getBoxOut()).c_str(),
+            roiBatchSplitsFp32TensorName.c_str(), weights,
+            glowBboxTransform->getApplyScale(), glowBboxTransform->getRotated(),
+            glowBboxTransform->getAngleBoundOn(),
+            glowBboxTransform->getAngleBoundLo(),
+            glowBboxTransform->getAngleBoundHi(),
+            glowBboxTransform->getClipAngleThresh(),
+            glowBboxTransform->getLegacyPlusOne()),
+        "Failed to add bboxTransform node");
+
+    return nnpiNetworkAddConvertOp(
+        importer.getNetwork(), convertName.c_str(),
+        roiBatchSplitsFp32TensorName.c_str(),
+        nodeValueName(glowBboxTransform->getRoiBatchSplits()).c_str());
+  }
+};
+
+class ROIAlignNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowRoiAlign = llvm::dyn_cast<ROIAlignNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowRoiAlign, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    // Batch Indices tensor dropped here, mode should always be PoolingMode::AVG
+    // PoolingMode::MAX mode is not supported.
+    importer.setUsedTensors({nodeValueName(glowRoiAlign->getFeatureMap()),
+                             nodeValueName(glowRoiAlign->getBoxes())},
+                            {nodeValueName(glowRoiAlign->getResult())});
+
+    // Set output of ROI to use NHWC.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowRoiAlign->getResult()),
+                          glowRoiAlign->getResult().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+
+    // Set Feature Map to use NHWC.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowRoiAlign->getFeatureMap()),
+                          glowRoiAlign->getFeatureMap().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+
+    auto mode = glowRoiAlign->getMode();
+    LOG_AND_RETURN_IF_NOT(ERROR, mode == PoolingMode::AVG,
+                          "Only avg mode is supported!", NNPI_INVALID_PARAM);
+
+    auto pooledHeight = glowRoiAlign->getOutputHeight();
+    auto pooledWidth = glowRoiAlign->getOutputWidth();
+    auto spatialScale = glowRoiAlign->getSpatialScale();
+    auto samplingRatio = glowRoiAlign->getSamplingRatio();
+    auto aligned = glowRoiAlign->getAligned();
+    auto rotated = glowRoiAlign->getRotated();
+
+    return nnpiNetworkAddRoiAlignOp(
+        importer.getNetwork(), glowRoiAlign->getName().begin(),
+        nodeValueName(glowRoiAlign->getFeatureMap()).c_str(),
+        nodeValueName(glowRoiAlign->getBoxes()).c_str(),
+        nodeValueName(glowRoiAlign->getResult()).c_str(),
+        (uint32_t)pooledHeight, (uint32_t)pooledWidth, (float)spatialScale,
+        (int32_t)samplingRatio, (BOOL)aligned, (BOOL)rotated);
+  }
+};
+
+class LSTMUnitNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowLSTMUnitNode = llvm::dyn_cast<LSTMUnitNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowLSTMUnitNode, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowLSTMUnitNode->getInput()),
+                             nodeValueName(glowLSTMUnitNode->getC())},
+                            {nodeValueName(glowLSTMUnitNode->getnewC()),
+                             nodeValueName(glowLSTMUnitNode->getnewH())});
+
+    return nnpiNetworkAddLSTMUnitOp(
+        importer.getNetwork(), glowLSTMUnitNode->getName().begin(),
+        nodeValueName(glowLSTMUnitNode->getInput()).c_str(),
+        nodeValueName(glowLSTMUnitNode->getC()).c_str(),
+        nodeValueName(glowLSTMUnitNode->getnewH()).c_str(),
+        nodeValueName(glowLSTMUnitNode->getnewC()).c_str());
+  }
+};
+#endif // NNPI >= 1.1
+
 //////////////////////////////////////////////////////////////////////////
 namespace {
 std::unordered_map<
@@ -2219,6 +2420,7 @@ std::unordered_map<
     {"ReplaceNaN", glow::make_unique<ReplaceNaNNodeImporter>()},
     {"GatherRanges", glow::make_unique<GatherRangesNodeImporter>()},
     {"BatchedAdd", glow::make_unique<BatchAddNodeImporter>()},
+    {"BatchedMul", glow::make_unique<BatchMulNodeImporter>()},
     {"RowwiseQuantizedSparseLengthsWeightedSum",
      glow::make_unique<RQSLWSNodeImporter>()},
     {"FusedRowwiseQuantizedSparseLengthsWeightedSum",
@@ -2239,8 +2441,15 @@ std::unordered_map<
     {"Logit", glow::make_unique<LogitNodeImporter>()},
     {"Modulo", glow::make_unique<ModuloNodeImporter>()},
     {"Swish", glow::make_unique<SwishNodeImporter>()},
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+    {"ROIAlign", glow::make_unique<ROIAlignNodeImporter>()},
+    {"BBoxTransform", glow::make_unique<BBoxTransformNodeImporter>()},
+    {"NNPILookupTable", glow::make_unique<NNPILookupTableNodeImporter>()},
+    {"IntLookupTable", glow::make_unique<IntLookupTableNodeImporter>()},
+    {"LSTMUnit", glow::make_unique<LSTMUnitNodeImporter>()},
+#endif // NNPI >= 1.1
 };
-}
+} // namespace
 
 const std::unordered_map<std::string, std::unique_ptr<INNPINodeImporter>>
     NNPIImporter::nodeImporters_ = {

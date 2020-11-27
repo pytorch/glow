@@ -3,9 +3,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import unittest
 
-import torch_glow
-from torch_glow import InputMeta, CompilationOptions, GlowCompileSpec
 import torch
+import torch_glow
 
 
 class Model(torch.nn.Module):
@@ -21,17 +20,24 @@ def run_model(m, input, randomize):
     torch_glow.disableFusionPass()
     traced_m = torch.jit.trace(m, input)
 
-    input_meta = InputMeta()
-    input_meta.set_same_as(input)
-    inputs = [input_meta]
-    options = CompilationOptions()
-    options.backend = "Interpreter"
-    options.randomize_constants = randomize
-    spec = GlowCompileSpec()
-    spec.set(inputs, options)
+    if randomize:
+        torch_glow.enable_randomize_constants()
+    else:
+        torch_glow.disable_randomize_constants()
+
+    spec = torch_glow.CompilationSpec()
+    spec.get_settings().set_glow_backend("Interpreter")
+
+    compilation_group = torch_glow.CompilationGroup()
+    spec.compilation_groups_append(compilation_group)
+
+    input_spec = torch_glow.InputSpec()
+    input_spec.set_same_as(input)
+
+    compilation_group.input_sets_append([input_spec])
 
     glow_m = torch_glow.to_glow(traced_m, {"forward": spec})
-    return glow_m.forward(input)
+    return glow_m(input)
 
 
 class TestRandomizeWeights(unittest.TestCase):

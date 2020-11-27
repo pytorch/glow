@@ -34,6 +34,9 @@ set(LIBJIT_CPU_COMPILE_OPTIONS
   # -target armv7-neon-linux-gnueabihf
   # -I/usr/arm-linux-gnueabihf/include/c++/7.4.0/arm-linux-gnueabihf/
   ${LLVMCPURuntimeExtraFlags}
+
+  # Include LIBJIT external functions (callbacks).
+  -DGLOW_LIBJIT_EXTERNAL_FUNCTIONS
 )
 
 # Add CPU LIBJIT.
@@ -63,6 +66,7 @@ target_link_libraries(CPUBackend
                         Backend
                         Base
                         CodeGen
+                        Flags
                         Graph
                         IR
                         IROptimizer

@@ -44,7 +44,7 @@ namespace glow {
 /// Loads tensor \p T from the input \p in. \p useGlowCustomOps changes the
 /// format for doc_string format for adding meta information.
 Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
-                 bool useGlowCustomOps = false);
+                 bool useGlowCustomOps = false, const std::string &data = "");
 
 /// Parses as input file name \p fileName which is an ONNX file
 /// and \returns a parsed GraphProto.
@@ -111,6 +111,10 @@ class ONNXModelLoader
   /// \returns True if the operator\ op is successfully folded.
   Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
 
+  /// Helper function to print better log information for operator failure cases
+  const std::string opErrMsg(const ONNX_NAMESPACE::NodeProto &op,
+                             const std::string &errMsg);
+
   /// ONNX model ir_version;
   size_t irVersion_;
 
@@ -145,6 +149,18 @@ class ONNXModelLoader
   /// Load Constant ONNX operator.
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);
+
+  /// Helper function for ONNX range operator
+  template <typename T>
+  Error getRange(const ONNX_NAMESPACE::NodeProto &op, Constant *constT);
+
+  /// Load Range ONNX operator
+  Error loadRange(const ONNX_NAMESPACE::NodeProto &op,
+                  ArgumentDictionaryTy &dict);
+
+  /// Load PRelu ONNX operator.
+  Error loadPRelu(const ONNX_NAMESPACE::NodeProto &op,
+                  ArgumentDictionaryTy &dict);
 
   /// Load Slice ONNX operator.
   Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
@@ -215,9 +231,9 @@ class ONNXModelLoader
   Error loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
                       ArgumentDictionaryTy &dict);
 
-  /// Load ArgMax ONNX operator.
-  Error loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
-                   ArgumentDictionaryTy &dict);
+  /// Load ArgMax and ArgMin ONNX operators.
+  Error loadArgMinMax(const ONNX_NAMESPACE::NodeProto &op,
+                      ArgumentDictionaryTy &dict, bool isMin);
 
   /// Load Upsample ONNX operator.
   Error loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
@@ -267,6 +283,10 @@ class ONNXModelLoader
   Error loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
                      const ArgumentDictionaryTy &dict);
 
+  /// Load DepthToSpace ONNX operator.
+  Error loadDepthToSpace(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
   /// Load ConstantOfShape ONNX operator.
   Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
                             ArgumentDictionaryTy &dict, bool isSplat);
@@ -295,6 +315,10 @@ class ONNXModelLoader
   Error loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
 
+  /// Load Clip ONNX operator.
+  Error loadClip(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
   /// Load Glow specific operators, not defined in ONNX format
   /// Load Glow CmpEQ operator.
   Error loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
@@ -303,6 +327,10 @@ class ONNXModelLoader
   /// Load Glow CmpLTE operator.
   Error loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);
+
+  /// Load Mean ONNX operator
+  Error loadMean(const ONNX_NAMESPACE::NodeProto &op,
+                 ArgumentDictionaryTy &dict);
 
   /// Load Glow Select operator.
   Error loadSelect(const ONNX_NAMESPACE::NodeProto &op,
@@ -461,7 +489,8 @@ protected:
   /// Loads ModelProto from the file containing serialized protobuf.
   /// If \p zipMode then zip format will be expected/loaded.
   static Expected<ONNX_NAMESPACE::ModelProto>
-  loadProto(const std::string &filename, bool zipMode);
+  loadProto(const std::string &filename, bool zipMode,
+            const std::string *inputStringPtr);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// in-memory serialized protobuf.
@@ -524,7 +553,8 @@ protected:
                   bool constFoldInLoader = true,
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   std::map<std::string, Type> *staticPlaceholderTypes = nullptr,
-                  bool replaceDummyTQPs = false);
+                  bool replaceDummyTQPs = false,
+                  bool clipQuantRangeToFP16 = false);
 
   friend class ONNXIFIModelLoader;
 
@@ -602,7 +632,8 @@ public:
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool disableConstFoldInLoader = false,
                   bool loadIntoExistingModule = false,
-                  const Backend *B = nullptr);
+                  const Backend *B = nullptr,
+                  const std::string *inputStringPtr = nullptr);
 
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p mod.
@@ -629,7 +660,8 @@ public:
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool loadIntoExistingModule = false,
                   bool disableConstFoldInLoader = false,
-                  const Backend *B = nullptr);
+                  const Backend *B = nullptr,
+                  const std::string *inputStringPtr = nullptr);
 
 private:
   /// Per-node options that may be specified in a proto.

@@ -21,5 +21,10 @@ op {
     name: "pad"
     i: 1
   }
+  arg {
+    name: "dilations"
+    ints: 2
+    ints: 2
+  }
 }
 external_output: "conv_out"

@@ -109,6 +109,18 @@ size_t ZipReader::getRecordID(const std::string &name) {
   return result;
 }
 
+bool ZipReader::hasRecord(const std::string &name) {
+  std::stringstream ss;
+  ss << archive_name_ << "/" << name;
+  mz_zip_reader_locate_file(ar_.get(), ss.str().c_str(), nullptr, 0);
+  bool result = ar_->m_last_error != MZ_ZIP_FILE_NOT_FOUND;
+  if (!result) {
+    ar_->m_last_error = MZ_ZIP_NO_ERROR;
+  }
+  valid("attempting to locate file ", name.c_str());
+  return result;
+}
+
 std::string ZipReader::getRecord(const std::string &name) {
   size_t key = getRecordID(name);
   mz_zip_archive_file_stat stat;

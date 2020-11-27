@@ -3,9 +3,9 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import unittest
 
-import torch_glow
 import torch
-from tests.utils import GLOW_NODE_NAME
+import torch_glow
+from tests.utils import GLOW_FUSION_GROUP
 
 
 class TestOnlyTensorOutputs(unittest.TestCase):
@@ -36,7 +36,7 @@ class TestOnlyTensorOutputs(unittest.TestCase):
         fusion_nodes = 0
         aten_sizes = 0
         for node in jit_f_graph.nodes():
-            if node.kind() == GLOW_NODE_NAME:
+            if node.kind() == GLOW_FUSION_GROUP:
                 fusion_nodes += 1
             if node.kind() == "aten::size":
                 aten_sizes += 1

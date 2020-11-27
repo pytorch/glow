@@ -71,9 +71,55 @@ TEST_F(Caffe2ImporterTest, importExp) {
                           [](float a) { return std::exp(a); });
 }
 
+/// Test loading PReLU op from a Caffe2 model.
+/// The input is N*C*H*W (1*2*3*3), the slope is 2.
+TEST_F(Caffe2ImporterTest, importPReLU) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/prelu.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, {1, 2, 3, 3});
+    data.getHandle() = {-2.0, -0.5, 0, 1, 2, 3,  4,  5,  6,
+                        -1.5, -2.5, 7, 8, 9, 10, 11, 12, 13};
+    Tensor slope(ElemKind::FloatTy, {2});
+    slope.getHandle() = {0.1, 0.2};
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"prelu_test_input", "slope"},
+                               {&data.getType(), &slope.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"prelu_test_input", "slope"},
+                                  {&data, &slope});
+  }
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+
+  EE.run(bindings);
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {1, 2, 3, 3};
+  std::vector<float> expectedValues = {-0.2, -0.05, 0, 1, 2, 3,  4,  5,  6,
+                                       -0.3, -0.5,  7, 8, 9, 10, 11, 12, 13};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
 /// Test loading conv op from a Caffe2 model.
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
-/// stride is 1, pad is 1, group is 1.
+/// stride is 1, pad is 1, group is 1, dilation is 2.
 TEST_F(Caffe2ImporterTest, importConv) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -105,11 +151,10 @@ TEST_F(Caffe2ImporterTest, importConv) {
 
   EE.run(bindings);
   auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
-  std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
-                                       11, 22, 26, 15, 8, 15, 17, 10};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 3};
+  std::vector<float> expectedValues = {6, 10, 6, 10, 18, 10, 6, 10, 6};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 4 * 4; i++)
+  for (size_t i = 0; i < 3 * 3; i++)
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
 }
 
@@ -254,15 +299,16 @@ TEST_F(Caffe2ImporterTest, convGroupQuantized) {
   ASSERT_TRUE(groupwiseConv);
 
   // Check params.
-  std::vector<unsigned> expectedKernelsAndStrides = {1, 1};
+  std::vector<unsigned> expectedKernelsStridesAndDilation = {1, 1};
   std::vector<unsigned> expectedPads = {1, 1, 1, 1};
   EXPECT_EQ(groupwiseConv->getKernels(),
-            llvm::makeArrayRef(expectedKernelsAndStrides));
+            llvm::makeArrayRef(expectedKernelsStridesAndDilation));
   EXPECT_EQ(groupwiseConv->getStrides(),
-            llvm::makeArrayRef(expectedKernelsAndStrides));
+            llvm::makeArrayRef(expectedKernelsStridesAndDilation));
   EXPECT_EQ(groupwiseConv->getPads(), llvm::makeArrayRef(expectedPads));
   EXPECT_EQ(groupwiseConv->getGroup(), 2);
-  EXPECT_EQ(groupwiseConv->getDilation(), 1);
+  EXPECT_EQ(groupwiseConv->getDilation(),
+            llvm::makeArrayRef(expectedKernelsStridesAndDilation));
 
   // Check constant inputs.
   Constant *filterConstant =
@@ -581,6 +627,7 @@ TEST_F(Caffe2ImporterTest, avgPoolNHWC) {
   auto *avgPoolNode =
       llvm::dyn_cast<AvgPoolNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(avgPoolNode);
+  ASSERT_FALSE(avgPoolNode->getCountIncludePads());
 
   // We have 2 placeholders:  1 input and 1 output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -622,6 +669,7 @@ TEST_F(Caffe2ImporterTest, avgPool) {
   auto *avgPoolNode =
       llvm::dyn_cast<AvgPoolNode>(transNode1->getInput().getNode());
   ASSERT_TRUE(avgPoolNode);
+  ASSERT_TRUE(avgPoolNode->getCountIncludePads());
   auto *transNode2 =
       llvm::dyn_cast<TransposeNode>(avgPoolNode->getInput().getNode());
   ASSERT_TRUE(transNode2);
@@ -2142,41 +2190,36 @@ TEST_F(Caffe2ImporterTest, elementwiseLinear) {
   //            X           w            b
   //            |           |            |
   //            |           v            v
-  //            |        Reshape      Reshape
+  //            |       Broadcast    Broadcast
   //            |           |            |
-  //            |           v            v
-  //            |         Tile         Tile
-  //            |         /             /
-  //            v  v------             /
-  //            Mul                   /
-  //             |   /---------------
+  //            |           |            |
+  //            |           /            /
+  //            v  v-------             /
+  //            Mul                    /
+  //             |   /----------------
   //             v  v
   //             Add
   //              |
   //              v
   //             Save
 
-  EXPECT_EQ(F->getNodes().size(), 7);
+  EXPECT_EQ(F->getNodes().size(), 5);
   auto *save = getSaveNodeFromDest(output);
   auto *add = llvm::dyn_cast<AddNode>(save->getInput().getNode());
   ASSERT_TRUE(add);
   auto *mul = llvm::dyn_cast<MulNode>(add->getLHS().getNode());
   ASSERT_TRUE(mul);
-  auto *bTile = llvm::dyn_cast<TileNode>(add->getRHS().getNode());
-  ASSERT_TRUE(bTile);
-  EXPECT_EQ(bTile->getAxis(), 1);
+  auto *bBN = llvm::dyn_cast<BroadcastNode>(add->getRHS().getNode());
+  ASSERT_TRUE(bBN);
+  EXPECT_EQ(bBN->getAxis(), 0);
   auto *XPH = llvm::dyn_cast<Placeholder>(mul->getRHS().getNode());
   EXPECT_EQ(XPH, mod.getPlaceholderByNameSlow("X"));
-  auto *wTile = llvm::dyn_cast<TileNode>(mul->getLHS().getNode());
-  ASSERT_TRUE(wTile);
-  EXPECT_EQ(wTile->getAxis(), 1);
-  auto *bReshape = llvm::dyn_cast<ReshapeNode>(bTile->getInput().getNode());
-  ASSERT_TRUE(bReshape);
-  auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
-  ASSERT_TRUE(wReshape);
-  auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
+  auto *wBN = llvm::dyn_cast<BroadcastNode>(mul->getLHS().getNode());
+  ASSERT_TRUE(wBN);
+  EXPECT_EQ(wBN->getAxis(), 0);
+  auto *wPH = llvm::dyn_cast<Placeholder>(wBN->getInput().getNode());
   EXPECT_EQ(wPH, mod.getPlaceholderByNameSlow("w"));
-  auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
+  auto *bPH = llvm::dyn_cast<Placeholder>(bBN->getInput().getNode());
   EXPECT_EQ(bPH, mod.getPlaceholderByNameSlow("b"));
 
   // We have three inputs and one output.
@@ -2222,41 +2265,36 @@ TEST_F(Caffe2ImporterTest, elementwiseLinearUnspecifiedAxis) {
   //            X           w            b
   //            |           |            |
   //            |           v            v
-  //            |        Reshape      Reshape
+  //            |       Broadcast    Broadcast
   //            |           |            |
-  //            |           v            v
-  //            |         Tile         Tile
-  //            |         /             /
-  //            v  v------             /
-  //            Mul                   /
-  //             |   /---------------
+  //            |           |            |
+  //            |           /            /
+  //            v  v-------             /
+  //            Mul                    /
+  //             |   /----------------
   //             v  v
   //             Add
   //              |
   //              v
   //             Save
 
-  EXPECT_EQ(F->getNodes().size(), 7);
+  EXPECT_EQ(F->getNodes().size(), 5);
   auto *save = getSaveNodeFromDest(output);
   auto *add = llvm::dyn_cast<AddNode>(save->getInput().getNode());
   ASSERT_TRUE(add);
   auto *mul = llvm::dyn_cast<MulNode>(add->getLHS().getNode());
   ASSERT_TRUE(mul);
-  auto *bTile = llvm::dyn_cast<TileNode>(add->getRHS().getNode());
-  ASSERT_TRUE(bTile);
-  EXPECT_EQ(bTile->getAxis(), 0);
+  auto *bBN = llvm::dyn_cast<BroadcastNode>(add->getRHS().getNode());
+  ASSERT_TRUE(bBN);
+  EXPECT_EQ(bBN->getAxis(), 1);
   auto *XPH = llvm::dyn_cast<Placeholder>(mul->getRHS().getNode());
   EXPECT_EQ(XPH, mod.getPlaceholderByNameSlow("X"));
-  auto *wTile = llvm::dyn_cast<TileNode>(mul->getLHS().getNode());
-  ASSERT_TRUE(wTile);
-  EXPECT_EQ(wTile->getAxis(), 0);
-  auto *bReshape = llvm::dyn_cast<ReshapeNode>(bTile->getInput().getNode());
-  ASSERT_TRUE(bReshape);
-  auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
-  ASSERT_TRUE(wReshape);
-  auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
+  auto *wBN = llvm::dyn_cast<BroadcastNode>(mul->getLHS().getNode());
+  ASSERT_TRUE(wBN);
+  EXPECT_EQ(wBN->getAxis(), 1);
+  auto *wPH = llvm::dyn_cast<Placeholder>(wBN->getInput().getNode());
   EXPECT_EQ(wPH, mod.getPlaceholderByNameSlow("w"));
-  auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
+  auto *bPH = llvm::dyn_cast<Placeholder>(bBN->getInput().getNode());
   EXPECT_EQ(bPH, mod.getPlaceholderByNameSlow("b"));
 
   // We have three inputs and one output.
@@ -2302,41 +2340,36 @@ TEST_F(Caffe2ImporterTest, elementwiseImplicitBroadcast) {
   //            X           w            b
   //            |           |            |
   //            |           v            v
-  //            |        Reshape      Reshape
+  //            |       Broadcast    Broadcast
   //            |           |            |
-  //            |           v            v
-  //            |         Tile         Tile
-  //            |         /             /
-  //            v  v------             /
-  //            Mul                   /
-  //             |   /---------------
+  //            |           |            |
+  //            |           /            /
+  //            v  v-------             /
+  //            Mul                    /
+  //             |   /----------------
   //             v  v
   //             Add
   //              |
   //              v
   //             Save
 
-  EXPECT_EQ(F->getNodes().size(), 7);
+  EXPECT_EQ(F->getNodes().size(), 5);
   auto *save = getSaveNodeFromDest(output);
   auto *add = llvm::dyn_cast<AddNode>(save->getInput().getNode());
   ASSERT_TRUE(add);
   auto *mul = llvm::dyn_cast<MulNode>(add->getLHS().getNode());
   ASSERT_TRUE(mul);
-  auto *bTile = llvm::dyn_cast<TileNode>(add->getRHS().getNode());
-  ASSERT_TRUE(bTile);
-  EXPECT_EQ(bTile->getAxis(), 0);
+  auto *bBN = llvm::dyn_cast<BroadcastNode>(add->getRHS().getNode());
+  ASSERT_TRUE(bBN);
+  EXPECT_EQ(bBN->getAxis(), 1);
   auto *XPH = llvm::dyn_cast<Placeholder>(mul->getLHS().getNode());
   EXPECT_EQ(XPH, mod.getPlaceholderByNameSlow("X"));
-  auto *wTile = llvm::dyn_cast<TileNode>(mul->getRHS().getNode());
-  ASSERT_TRUE(wTile);
-  EXPECT_EQ(wTile->getAxis(), 0);
-  auto *bReshape = llvm::dyn_cast<ReshapeNode>(bTile->getInput().getNode());
-  ASSERT_TRUE(bReshape);
-  auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
-  ASSERT_TRUE(wReshape);
-  auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
+  auto *wBN = llvm::dyn_cast<BroadcastNode>(mul->getRHS().getNode());
+  ASSERT_TRUE(wBN);
+  EXPECT_EQ(wBN->getAxis(), 1);
+  auto *wPH = llvm::dyn_cast<Placeholder>(wBN->getInput().getNode());
   EXPECT_EQ(wPH, mod.getPlaceholderByNameSlow("w"));
-  auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
+  auto *bPH = llvm::dyn_cast<Placeholder>(bBN->getInput().getNode());
   EXPECT_EQ(bPH, mod.getPlaceholderByNameSlow("b"));
 
   // We have three inputs and one output.
@@ -3714,4 +3747,123 @@ TEST_F(Caffe2ImporterTest, importInt8ConvReluTrackedDummyQParams) {
 /// we correctly have mapped the quant params to the name it came from.
 TEST_F(Caffe2ImporterTest, importInt8ConvReluTrackedRealQParams) {
   testImportTrackedQParams(/* loadUniquedDummyQParams */ false);
+}
+
+/// Check that we clip a Node with 0.f scale to kMinScaleFP16 correctly.
+TEST_F(Caffe2ImporterTest, ClipZeroScaleFP16QuantOpt) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/int8sumrelu_tiny_scale_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/int8sumrelu_tiny_scale_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::Int8QTy, {4, 2}, 1.f, 0);
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"gpu_0/data_0"}, {&data.getType()},
+        *F, /* errPtr */ nullptr, /* originNameToTQPMap */ nullptr,
+        /* loadUniquedDummyQParams */ false,
+        /* zeroScaleFP16Clip */ true);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // input-=> add => relu => save
+  // const/
+  EXPECT_EQ(F->getNodes().size(), 3);
+  auto *save = getSaveNodeFromDest(output);
+
+  // Verify that the structure is as expected *except* that the tiny scales that
+  // are loaded have been replaced by kMinScaleFP16.
+  auto *relu = llvm::dyn_cast<ReluNode>(save->getInput().getNode());
+  ASSERT_TRUE(relu);
+  EXPECT_EQ(relu->getResult().getType()->getScale(), kMinScaleFP16);
+  EXPECT_EQ(relu->getResult().getType()->getOffset(), 5 - UINT8_TO_INT8_SHIFT);
+  auto *add = llvm::dyn_cast<AddNode>(relu->getInput().getNode());
+  ASSERT_TRUE(add);
+  EXPECT_EQ(add->getResult().getType()->getScale(), kMinScaleFP16);
+  EXPECT_EQ(add->getResult().getType()->getOffset(), 5 - UINT8_TO_INT8_SHIFT);
+  auto *input = llvm::dyn_cast<Placeholder>(add->getLHS().getNode());
+  ASSERT_TRUE(input);
+  auto *val = llvm::dyn_cast<Constant>(add->getRHS().getNode());
+  ASSERT_TRUE(val);
+  EXPECT_EQ(val->getOutput().getType()->getScale(), kMinScaleFP16);
+  EXPECT_EQ(val->getOutput().getType()->getOffset(), 13 - UINT8_TO_INT8_SHIFT);
+
+  EE.compile(CompilationMode::Infer);
+}
+
+/// Check that we clip a Node with 0.f scale to kMinScaleFP16 correctly.
+TEST_F(Caffe2ImporterTest, ClipLargeQRangeToFP16) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/int8sumrelu_large_range_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/int8sumrelu_large_range_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, {4, 2});
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"gpu_0/data_0"}, {&data.getType()},
+        *F, /* errPtr */ nullptr, /* originNameToTQPMap */ nullptr,
+        /* loadUniquedDummyQParams */ false,
+        /* zeroScaleFP16Clip */ false, /* clipQuantRangeToFP16 */ true);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // input=> quant-=> add => relu => save
+  //         const/
+  EXPECT_EQ(F->getNodes().size(), 4);
+  auto *save = getSaveNodeFromDest(output);
+
+  auto clippedQP = quantization::chooseQuantizationParams({kMinFP16, kMaxFP16});
+
+  // Verify that the structure is as expected *except* that the range is
+  // adjusted for clipping to fp16.
+  auto *relu = llvm::dyn_cast<ReluNode>(save->getInput().getNode());
+  ASSERT_TRUE(relu);
+  EXPECT_EQ(relu->getResult().getType()->getScale(), clippedQP.scale);
+  EXPECT_EQ(relu->getResult().getType()->getOffset(), clippedQP.offset);
+  auto *add = llvm::dyn_cast<AddNode>(relu->getInput().getNode());
+  ASSERT_TRUE(add);
+  EXPECT_EQ(add->getResult().getType()->getScale(), clippedQP.scale);
+  EXPECT_EQ(add->getResult().getType()->getOffset(), clippedQP.offset);
+  auto *quant = llvm::dyn_cast<QuantizeNode>(add->getLHS().getNode());
+  ASSERT_TRUE(quant);
+  EXPECT_EQ(quant->getResult().getType()->getScale(), 1.f);
+  EXPECT_EQ(quant->getResult().getType()->getOffset(), 0 - UINT8_TO_INT8_SHIFT);
+  EXPECT_TRUE(llvm::isa<Placeholder>(quant->getInput().getNode()));
+  auto *C = llvm::dyn_cast<Constant>(add->getRHS().getNode());
+  ASSERT_TRUE(C);
+  EXPECT_EQ(C->getOutput().getType()->getScale(), clippedQP.scale);
+  EXPECT_EQ(C->getOutput().getType()->getOffset(), clippedQP.offset);
+
+  EE.compile(CompilationMode::Infer);
 }

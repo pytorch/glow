@@ -37,4 +37,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "smallConv/0",
     "softmaxGradTest/0",
     "tinyResnet/0",
+    "SymmetricQuantizedConvReluFusionTest/0",
+    "AsymmetricQuantizedConvReluFusionTest/0",
 };

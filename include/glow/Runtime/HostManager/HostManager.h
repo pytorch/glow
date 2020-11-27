@@ -151,6 +151,10 @@ class HostManager final {
   static constexpr const char *kDeviceMemoryMax =
       "glow.devices.maximum_memory.total";
 
+  /// String const for logging device fatal errors.
+  static constexpr const char *kDeviceFatalError =
+      "glow.devices.fatal_compilation_error";
+
   /// Helper function to handle cleanup if an error occurs during addNetwork.
   /// This must be called while holding the a lock on networkLock_.
   void cleanupAddNetwork(llvm::ArrayRef<std::string> names);

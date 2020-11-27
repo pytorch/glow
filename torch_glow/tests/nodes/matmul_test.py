@@ -1,105 +1,54 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
 import random
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleMatmulModule(torch.nn.Module):
+    def __init__(self):
+        super(SimpleMatmulModule, self).__init__()
+
+    def forward(self, a, b):
+        return a.matmul(b + b)
 
 
 class TestMatMul(unittest.TestCase):
-    def test_matmul_1d_1d(self):
+    @parameterized.expand(
+        [
+            ("1d_1d", torch.randn(4), torch.randn(4)),
+            ("1d_2d", torch.randn(4), torch.randn(4, 9)),
+            ("1d_3d", torch.randn(4), torch.randn(3, 4, 9)),
+            ("1d_4d", torch.randn(4), torch.randn(5, 3, 4, 9)),
+            ("2d_1d", torch.randn(9, 4), torch.randn(4)),
+            ("3d_1d", torch.randn(6, 9, 4), torch.randn(4)),
+            ("4d_1d", torch.randn(2, 6, 9, 4), torch.randn(4)),
+        ]
+    )
+    def test_matmul(self, _, left, right):
         """Test of aten::matmul with two 1d inputs Glow."""
 
-        def test_f(a, b):
-            return a.matmul(b + b)
-
-        x = torch.randn(4)
-        y = torch.randn(4)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::matmul"})
-
-    def test_matmul_2d_1d(self):
-        """Test of aten::matmul with 2d and 1d inputs Glow."""
-
-        def test_f(a, b):
-            return a.matmul(b + b)
-
-        x = torch.randn(9, 4)
-        y = torch.randn(4)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::matmul"})
-
-    def test_matmul_3d_1d(self):
-        """Test of aten::matmul with 2d and 1d inputs Glow."""
-
-        def test_f(a, b):
-            return a.matmul(b + b)
-
-        x = torch.randn(6, 9, 4)
-        y = torch.randn(4)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::matmul"})
-
-    def test_matmul_4d_1d(self):
-        """Test of aten::matmul with 2d and 1d inputs Glow."""
-
-        def test_f(a, b):
-            return a.matmul(b + b)
-
-        x = torch.randn(2, 6, 9, 4)
-        y = torch.randn(4)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::matmul"})
-
-    def test_matmul_1d_2d(self):
-        """Test of aten::matmul with 1d and 2d inputs Glow."""
-
-        def test_f(a, b):
-            return a.matmul(b + b)
-
-        x = torch.randn(4)
-        y = torch.randn(4, 9)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::matmul"})
-
-    def test_matmul_1d_3d(self):
-        """Test of aten::matmul with 1d and 2d inputs Glow."""
-
-        def test_f(a, b):
-            return a.matmul(b + b)
-
-        x = torch.randn(4)
-        y = torch.randn(3, 4, 9)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::matmul"})
-
-    def test_matmul_1d_4d(self):
-        """Test of aten::matmul with 1d and 2d inputs Glow."""
-
-        def test_f(a, b):
-            return a.matmul(b + b)
-
-        x = torch.randn(4)
-        y = torch.randn(5, 3, 4, 9)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::matmul"})
+        utils.compare_tracing_methods(
+            SimpleMatmulModule(), left, right, fusible_ops={"aten::matmul"}
+        )
 
     def test_matmul_nd_nd(self):
         """Test of aten::matmul with >2d and >2d inputs Glow."""
-
-        def test_f(a, b):
-            return a.matmul(b + b)
 
         def do_test(lhsDims, rhsDims):
             lhs = torch.randn(lhsDims)
             rhs = torch.randn(rhsDims)
 
-            jitVsGlow(test_f, lhs, rhs, expected_fused_ops={"aten::matmul"})
+            utils.compare_tracing_methods(
+                SimpleMatmulModule(), lhs, rhs, fusible_ops={"aten::matmul"}
+            )
 
         def randomDimsOfRank(rank):
             dims = []
-            for i in range(rank):
+            for _ in range(rank):
                 dim = random.randint(2, 9)
                 dims.append(dim)
             return dims

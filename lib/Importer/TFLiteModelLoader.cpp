@@ -185,7 +185,7 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
           biasC->setPayloadType(newBiasTy);
         }
       } else if (tfliteBiasScaleCheckThrowErrorOpt) {
-        RETURN_ERR(
+        return MAKE_ERR(
             strFormat("TensorFlowLite: ERROR: Bias scale value was expected "
                       "to be exactly %E (inputScale * weightsScale) but found "
                       "%E instead! Relative absolute error is %E!\n",
@@ -194,9 +194,10 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
     }
     int32_t biasOffset = biasTy->getOffset();
     if (biasOffset != 0) {
-      RETURN_ERR(strFormat("TensorFlowLite: Bias offset value was expected to "
-                           "be 0 but found %d instead!",
-                           biasOffset));
+      return MAKE_ERR(
+          strFormat("TensorFlowLite: Bias offset value was expected to "
+                    "be 0 but found %d instead!",
+                    biasOffset));
     }
   }
   return Error::success();
@@ -257,7 +258,7 @@ TFLiteModelLoader::getTensorElemKind(const tflite::Tensor *tensor) {
     if (isQuantized) {
       return ElemKind::Int8QTy;
     } else {
-      RETURN_ERR("TensorFlowLite: Non-quantized INT8 type not supported!");
+      return MAKE_ERR("TensorFlowLite: Non-quantized INT8 type not supported!");
     }
   }
   case tflite::TensorType_UINT8: {
@@ -269,14 +270,16 @@ TFLiteModelLoader::getTensorElemKind(const tflite::Tensor *tensor) {
         return ElemKind::UInt8QTy;
       }
     } else {
-      RETURN_ERR("TensorFlowLite: Non-quantized UINT8 type not supported!");
+      return MAKE_ERR(
+          "TensorFlowLite: Non-quantized UINT8 type not supported!");
     }
   }
   case tflite::TensorType_INT16: {
     if (isQuantized) {
       return ElemKind::Int16QTy;
     } else {
-      RETURN_ERR("TensorFlowLite: Non-quantized INT16 type not supported!");
+      return MAKE_ERR(
+          "TensorFlowLite: Non-quantized INT16 type not supported!");
     }
   }
   case tflite::TensorType_INT32: {
@@ -288,7 +291,7 @@ TFLiteModelLoader::getTensorElemKind(const tflite::Tensor *tensor) {
   }
   case tflite::TensorType_INT64: {
     if (isQuantized) {
-      RETURN_ERR("TensorFlowLite: Quantized INT64 type not supported!");
+      return MAKE_ERR("TensorFlowLite: Quantized INT64 type not supported!");
     } else {
       return ElemKind::Int64ITy;
     }
@@ -300,9 +303,10 @@ TFLiteModelLoader::getTensorElemKind(const tflite::Tensor *tensor) {
     return ElemKind::BoolTy;
   }
   default:
-    RETURN_ERR(strFormat("TensorFlowLite: Tensor '%s' type '%s' not supported!",
-                         getTensorName(tensor).c_str(),
-                         tflite::EnumNameTensorType(tensor->type())));
+    return MAKE_ERR(
+        strFormat("TensorFlowLite: Tensor '%s' type '%s' not supported!",
+                  getTensorName(tensor).c_str(),
+                  tflite::EnumNameTensorType(tensor->type())));
   }
 }
 
@@ -822,8 +826,9 @@ Error TFLiteModelLoader::addActivation(NodeValue &value,
     value = F_->createTanh(actName, value);
     return Error::success();
   }
-  RETURN_ERR(strFormat("TensorFlowLite: Activation type '%s' is not supported!",
-                       actType.c_str()));
+  return MAKE_ERR(
+      strFormat("TensorFlowLite: Activation type '%s' is not supported!",
+                actType.c_str()));
 }
 
 const std::string TFLiteModelLoader::opErrMsg(const OperatorInfo &opInfo,
@@ -852,7 +857,7 @@ Expected<T> TFLiteModelLoader::loadAxis(const OperatorInfo &opInfo,
     ASSIGN_VALUE_OR_RETURN_ERR(
         axisVal, getPositiveAxis<T>(static_cast<int>(axisH.raw(0)), value));
   } else {
-    RETURN_ERR(opErrMsg(opInfo, "Axis should have INT32 or INT64 type!"));
+    return MAKE_ERR(opErrMsg(opInfo, "Axis should have INT32 or INT64 type!"));
   }
   return axisVal;
 }
@@ -880,7 +885,8 @@ Expected<std::vector<T>> TFLiteModelLoader::loadAxes(const OperatorInfo &opInfo,
           axesVal[idx],
           getPositiveAxis<T>(static_cast<int>(axesH.raw(idx)), value));
     } else {
-      RETURN_ERR(opErrMsg(opInfo, "Axis should have INT32 or INT64 type!"));
+      return MAKE_ERR(
+          opErrMsg(opInfo, "Axis should have INT32 or INT64 type!"));
     }
   }
   return axesVal;
@@ -908,7 +914,7 @@ TFLiteModelLoader::loadArray(const OperatorInfo &opInfo, NodeValue value) {
       auto valueH = valueC->getPayload().getHandle<int64_t>();
       valueV[idx] = static_cast<T>(valueH.raw(idx));
     } else {
-      RETURN_ERR(opErrMsg(opInfo, "Array type not supported!"));
+      return MAKE_ERR(opErrMsg(opInfo, "Array type not supported!"));
     }
   }
   return valueV;
@@ -1021,7 +1027,7 @@ Expected<bool> TFLiteModelLoader::isConv2DPerAxisQuantized(
         // Modify bias scale.
         biasScalesH.raw(idx) = matMulScale;
       } else if (tfliteBiasScaleCheckThrowErrorOpt) {
-        RETURN_ERR(opErrMsg(
+        return MAKE_ERR(opErrMsg(
             opInfo,
             strFormat("ERROR: Bias scale value was expected "
                       "to be exactly %E (inputScale * weightsScale) but found "
@@ -1211,8 +1217,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
     return loadUnaryArithmetic(op, opInfo);
   }
 
-  RETURN_ERR(strFormat("TensorFlowLite: Operator type '%s' is not supported!",
-                       opInfo.type.c_str()));
+  return MAKE_ERR(
+      strFormat("TensorFlowLite: Operator type '%s' is not supported!",
+                opInfo.type.c_str()));
 }
 
 Error TFLiteModelLoader::loadUnaryArithmetic(const tflite::Operator *op,
@@ -1269,7 +1276,7 @@ Error TFLiteModelLoader::loadUnaryArithmetic(const tflite::Operator *op,
   } else if (opCode == tflite::BuiltinOperator_DEQUANTIZE) {
     output = F_->createDequantize(opInfo.name, input, outTy);
   } else {
-    RETURN_ERR(opErrMsg(opInfo, "Unsupported unary arithmetic operator!"));
+    return MAKE_ERR(opErrMsg(opInfo, "Unsupported unary arithmetic operator!"));
   }
   return setOutputNodeValue(op, output);
 }
@@ -1342,7 +1349,8 @@ Error TFLiteModelLoader::loadBinaryArithmetic(const tflite::Operator *op,
   } else if (opCode == tflite::BuiltinOperator_LOGICAL_OR) {
     output = F_->createOr(opInfo.name, LHS, RHS);
   } else {
-    RETURN_ERR(opErrMsg(opInfo, "Unsupported binary arithmetic operator!"));
+    return MAKE_ERR(
+        opErrMsg(opInfo, "Unsupported binary arithmetic operator!"));
   }
   return setOutputNodeValue(op, output);
 }
@@ -1377,7 +1385,7 @@ Error TFLiteModelLoader::loadPool2D(const tflite::Operator *op,
         getSamePads(inputShape.w, outputShape.w, kernels[1], strides[1]);
     pads = {padsTB.first, padsLR.first, padsTB.second, padsLR.second};
   } else {
-    RETURN_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
+    return MAKE_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
   }
 
   auto opCode = opInfo.code;
@@ -1389,7 +1397,7 @@ Error TFLiteModelLoader::loadPool2D(const tflite::Operator *op,
     auto *node = F_->createMaxPool(opInfo.name, input, kernels, strides, pads);
     output = node->getResult();
   } else {
-    RETURN_ERR(opErrMsg(opInfo, "Unsupported Pool2D operator!"));
+    return MAKE_ERR(opErrMsg(opInfo, "Unsupported Pool2D operator!"));
   }
 
   RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
@@ -1479,13 +1487,8 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
                               strides[1], dilations[1]);
     pads = {padsTB.first, padsLR.first, padsTB.second, padsLR.second};
   } else {
-    RETURN_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
+    return MAKE_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
   }
-
-  // TODO: Remove this when Conv2D supports multiple dilations.
-  RETURN_ERR_IF_NOT(dilations[0] == dilations[1],
-                    opErrMsg(opInfo, "Non square dilation not supported!"));
-  unsigned_t dilation = dilations[0];
 
   // There are TensorFlowLite models which have only the weights quantized
   // to INT8 (the rest of the operands being FLOAT32). Since Glow does not
@@ -1519,13 +1522,13 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
     output = F_->createChannelwiseQuantizedConv(
         opInfo.name, input, filter, bias, filterScales, filterOffsets,
         biasScales, biasOffsets, outTy, kernels, strides, pads, /* group */ 1,
-        dilation, /* quantizeFilter */ false, /* quantizeBias */ false);
+        dilations, /* quantizeFilter */ false, /* quantizeBias */ false);
   } else {
     // Check bias quantization parameters.
     RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, filter, bias));
     // Create Convolution node.
     output = F_->createConv(opInfo.name, input, filter, bias, outTy, kernels,
-                            strides, pads, /* group */ 1, dilation);
+                            strides, pads, /* group */ 1, dilations);
   }
 
   RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
@@ -1572,13 +1575,8 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
                               strides[1], dilations[1]);
     pads = {padsTB.first, padsLR.first, padsTB.second, padsLR.second};
   } else {
-    RETURN_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
+    return MAKE_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
   }
-
-  // TODO: Remove this when Conv2D supports multiple dilations.
-  RETURN_ERR_IF_NOT(dilations[0] == dilations[1],
-                    opErrMsg(opInfo, "Non square dilation not supported!"));
-  unsigned_t dilation = dilations[0];
 
   // Convolution group is inputChannels / filterChannels = inputChannels.
   unsigned_t group = input.dims().back();
@@ -1638,14 +1636,14 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
     // Create ChannelwiseQuantizedConvolution node.
     output = F_->createChannelwiseQuantizedConv(
         opInfo.name, input, filter, bias, filterScales, filterOffsets,
-        biasScales, biasOffsets, outTy, kernels, strides, pads, group, dilation,
-        /* quantizeFilter */ false, /* quantizeBias */ false);
+        biasScales, biasOffsets, outTy, kernels, strides, pads, group,
+        dilations, /* quantizeFilter */ false, /* quantizeBias */ false);
   } else {
     // Check bias quantization parameters.
     RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, filter, bias));
     // Create Convolution node.
     output = F_->createConv(opInfo.name, input, filter, bias, outTy, kernels,
-                            strides, pads, group, dilation);
+                            strides, pads, group, dilations);
   }
 
   RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
@@ -1877,7 +1875,7 @@ Error TFLiteModelLoader::loadReduce(const tflite::Operator *op,
             F_->createExpandDims(opInfo.name + ".Expand", output, {axisVal});
       }
     } else {
-      RETURN_ERR(opErrMsg(opInfo, "Unsupported Reduce operator!"));
+      return MAKE_ERR(opErrMsg(opInfo, "Unsupported Reduce operator!"));
     }
   }
   return setOutputNodeValue(op, output);
@@ -1933,7 +1931,7 @@ Error TFLiteModelLoader::loadArg(const tflite::Operator *op,
     output = F_->createArgMin(opInfo.name, input, axisVal, /* keepDims */ false,
                               outTy->getElementType());
   } else {
-    RETURN_ERR(opErrMsg(opInfo, "Unsupported Arg operator!"));
+    return MAKE_ERR(opErrMsg(opInfo, "Unsupported Arg operator!"));
   }
   return setOutputNodeValue(op, output);
 }

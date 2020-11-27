@@ -141,7 +141,8 @@ private:
                                        llvm::ArrayRef<unsigned_t> kernelSizes,
                                        llvm::ArrayRef<unsigned_t> strides,
                                        llvm::ArrayRef<unsigned_t> pads,
-                                       size_t group, size_t dilation);
+                                       size_t group,
+                                       llvm::ArrayRef<unsigned_t> dilation);
 
   template <typename ElemTy = float>
   void fwdConvolutionInstFloatImpl(Value *inV, Value *outV, Value *filterV,
@@ -149,7 +150,8 @@ private:
                                    llvm::ArrayRef<unsigned_t> kernelSizes,
                                    llvm::ArrayRef<unsigned_t> strides,
                                    llvm::ArrayRef<unsigned_t> pads,
-                                   size_t group, size_t dilation);
+                                   size_t group,
+                                   llvm::ArrayRef<unsigned_t> dilation);
 
   template <typename ElemTy, typename AccumulatorTy,
             typename BiasElemTy = int32_t>
@@ -174,7 +176,8 @@ private:
                                      llvm::ArrayRef<unsigned_t> kernelSizes,
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads,
-                                     size_t group, size_t dilation);
+                                     size_t group,
+                                     llvm::ArrayRef<unsigned_t> dilation);
 
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
@@ -330,6 +333,7 @@ private:
   void fwdLengthsSumInstFloatImpl(const LengthsSumInst *I);
 
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
+  template <typename ElemTy> void fwdGatherNDInstImpl(const GatherNDInst *I);
   template <typename ElemTy>
   void fwdGatherRangesInstImpl(const GatherRangesInst *I);
   template <typename ElemTy>
@@ -382,6 +386,7 @@ private:
   template <typename T>
   void fwdROIAlignInstFloatImpl(glow::ROIAlignInst const *I);
 
+  template <typename T>
   void fwdBBoxTransformInstFloatImpl(glow::BBoxTransformInst const *I);
 
   template <typename T, typename AccumT>

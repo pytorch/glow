@@ -1,0 +1,16 @@
+name: "conv_test"
+op {
+  input: "gpu_0/data_0"
+  input: "rhs"
+  output: "out"
+  type: "Int8SumRelu"
+  arg {
+    name: "Y_scale"
+    f: 1e-11
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 5
+  }
+}
+external_output: "out"

@@ -57,10 +57,26 @@ TEST(Float16, mul) {
   EXPECT_EQ(a * b, float16(float(a) * float(b)));
 }
 
+TEST(Float16, mulEqual) {
+  float16 a = 3.5;
+  float16 b = 3.0;
+  float16 aMulB = a * b;
+  a *= b;
+  EXPECT_EQ(a, aMulB);
+}
+
 TEST(Float16, div) {
   float16 a = 16.5;
   float16 b = -3.0;
   EXPECT_EQ(a / b, float16(float(a) / float(b)));
+}
+
+TEST(Float16, divEqual) {
+  float16 a = 16.5;
+  float16 b = -3.0;
+  float16 aDivB = a / b;
+  a /= b;
+  EXPECT_EQ(a, aDivB);
 }
 
 TEST(Float16, gt) {
@@ -98,3 +114,18 @@ TEST(Float16, le) {
   EXPECT_EQ(a <= b, float(a) <= float(b));
   EXPECT_TRUE(a <= b);
 }
+
+template <typename T> static void testConvertTo() {
+  float16 a = 19.3;
+  T b = static_cast<T>(19.3);
+  EXPECT_NEAR(T(a), b, 1);
+}
+
+#define TEST_CONVERT_TO(DEST_TYPE)                                             \
+  TEST(Float16, CONVERT_TO_##DEST_TYPE) { testConvertTo<DEST_TYPE>(); }
+TEST_CONVERT_TO(float)
+TEST_CONVERT_TO(double)
+TEST_CONVERT_TO(int32_t)
+TEST_CONVERT_TO(int64_t)
+
+#undef TEST_CONVERT_TO

@@ -130,6 +130,7 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
       FF.setDLLStorageClass(llvm::GlobalValue::DefaultStorageClass);
     }
 
+    // Remove NoInline attribute.
     FF.removeFnAttr(llvm::Attribute::AttrKind::NoInline);
 
     // LinkOnce linkage seems to cause problems to OrcJIT on some OS platforms.

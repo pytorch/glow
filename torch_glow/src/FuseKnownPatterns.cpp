@@ -170,6 +170,40 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
   }
 }
 
+// %786 : Tensor[] = fb::equally_split(%input.1, %785, %785)
+// %tensor.1 : Tensor = prim::ListUnpack(%786)
+// Remove split and ListUnpack when there's only one split and
+// fuse when there are multiple splits.
+void fuseSplit(std::shared_ptr<torch::jit::Graph> &graph) {
+  auto block = graph->block();
+  for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); ++it) {
+    auto *node = *it;
+    if (node->kind() != c10::prim::ListUnpack) {
+      continue;
+    }
+    auto *inputNode = node->input()->node();
+    std::string inputNodeKind = inputNode->kind().toQualString();
+    if (inputNodeKind != "fb::equally_split") {
+      continue;
+    }
+
+    if (node->outputs().size() == 1) {
+      node->output()->replaceAllUsesWith(inputNode->inputs()[0]);
+    } else {
+      auto symbol = "glow::fused_split";
+      auto *fusedNode =
+          graph->create(torch::jit::Symbol::fromQualString(symbol),
+                        inputNode->inputs(), node->outputs().size());
+      fusedNode->insertBefore(inputNode);
+      for (auto i = 0; i < node->outputs().size(); ++i) {
+        auto out = node->outputs()[i];
+        fusedNode->outputs()[i]->copyMetadata(out);
+        out->replaceAllUsesWith(fusedNode->outputs()[i]);
+      }
+    }
+  }
+}
+
 void removeExceptions(std::shared_ptr<torch::jit::Graph> &graph) {
   return removeExceptionsImpl(graph->block());
 }
@@ -360,6 +394,7 @@ void fuseKnownPatterns(
     registerDummyOperator("glow::unpacked_quantized_conv3d");
     registerDummyOperator("glow::fused_stack");
     registerDummyOperator("glow::fused_linear");
+    registerDummyOperator("glow::fused_split");
   });
 
   detail::removeExceptions(graph);
@@ -389,6 +424,10 @@ void fuseKnownPatterns(
 
   if (noneInBlacklist(opBlacklist, {"prim::NumToTensor", "aten::Int"})) {
     detail::fuseNumToTensorToNum(graph);
+  }
+
+  if (noneInBlacklist(opBlacklist, {"prim::ListUnpack", "fb::equally_split"})) {
+    detail::fuseSplit(graph);
   }
 
   EliminateCommonSubexpression(graph);

@@ -516,7 +516,27 @@ static void libjit_transpose_generic(const T *inW, T *outW, const dim_t *idim,
   const unsigned tileSize = 64;
 
   // Source coordinate.
-  dim_t SC[5];
+  dim_t SC[6];
+
+  if (numDims == 6) {
+    for (dim_t x = 0; x < odim[0]; x++)
+      for (dim_t y = 0; y < odim[1]; y++)
+        for (dim_t z = 0; z < odim[2]; z++)
+          for (dim_t w = 0; w < odim[3]; w++)
+            for (dim_t q = 0; q < odim[4]; q++)
+              for (dim_t r = 0; r < odim[5]; r++) {
+                SC[shuffle[0]] = x;
+                SC[shuffle[1]] = y;
+                SC[shuffle[2]] = z;
+                SC[shuffle[3]] = w;
+                SC[shuffle[4]] = q;
+                SC[shuffle[5]] = r;
+                outW[libjit_getXYZWQR(odim, x, y, z, w, q, r)] =
+                    inW[libjit_getXYZWQR(idim, SC[0], SC[1], SC[2], SC[3],
+                                         SC[4], SC[5])];
+              }
+    return;
+  }
 
   if (numDims == 5) {
     for (dim_t x = 0; x < odim[0]; x++)
@@ -2526,7 +2546,6 @@ void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
                      inOffset;
             }
           }
-
           outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = libjit_clip(
               libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset));
         } // C
@@ -2535,16 +2554,64 @@ void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
   }       // N
 }
 
-void libjit_avg_pool_f(const float *inW, float *outW, const dim_t *inWdims,
-                       const dim_t *outWdims, dim_t *kernelSizes,
-                       dim_t *strides, dim_t *pads) {
+void libjit_avg_pool_count_exclude_pad_i8(
+    const int8_t *inW, int8_t *outW, const dim_t *inWdims,
+    const dim_t *outWdims, dim_t *kernelSizes, dim_t *strides, dim_t *pads,
+    int32_t inOffset, int32_t outOffset, float inScale, float outScale) {
   dim_t pad_t = pads[0];
   dim_t pad_l = pads[1];
   dim_t stride_h = strides[0];
   dim_t stride_w = strides[1];
   dim_t kernel_h = kernelSizes[0];
   dim_t kernel_w = kernelSizes[1];
-  float filterArea = kernel_h * kernel_w;
+
+  float rawFilterArea = kernel_h * kernel_w;
+  // For each input in the batch:
+  for (dim_t n = 0; n < outWdims[0]; n++) {
+    // For each (x,y) step in the input/output tensor:
+    sdim_t x = -sdim_t(pad_t);
+    for (dim_t ax = 0; ax < outWdims[1]; x += stride_h, ax++) {
+      sdim_t y = -sdim_t(pad_l);
+      for (dim_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
+        // For each layer in the output tensor:
+        for (dim_t z = 0; z < inWdims[3]; z++) {
+          int32_t sum = 0;
+          float filterArea = rawFilterArea;
+
+          for (dim_t fx = 0; fx < kernel_h; fx++) {
+            for (dim_t fy = 0; fy < kernel_w; fy++) {
+              sdim_t ox = x + fx;
+              sdim_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= (sdim_t)inWdims[1] ||
+                  oy >= (sdim_t)inWdims[2]) {
+                filterArea--;
+                continue;
+              }
+              sum += inW[libjit_getXYZW(inWdims, n, (dim_t)ox, (dim_t)oy, z)] -
+                     inOffset;
+            }
+          }
+          assert(filterArea != 0 && "FilterArea can't be 0");
+          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = libjit_clip(round(
+              float(sum) * (inScale / outScale / filterArea) + outOffset));
+        } // C
+      }   // W
+    }     // H
+  }       // N
+}
+
+void libjit_avg_pool_f(const float *inW, float *outW, const dim_t *inWdims,
+                       const dim_t *outWdims, dim_t *kernelSizes,
+                       dim_t *strides, dim_t *pads, bool countIncludePads) {
+  dim_t pad_t = pads[0];
+  dim_t pad_l = pads[1];
+  dim_t stride_h = strides[0];
+  dim_t stride_w = strides[1];
+  dim_t kernel_h = kernelSizes[0];
+  dim_t kernel_w = kernelSizes[1];
+  float rawFilterArea = kernel_h * kernel_w;
   // For each input in the batch:
   for (dim_t n = 0; n < outWdims[0]; n++) {
     // For each (x,y) step in the input/output tensor:
@@ -2556,6 +2623,7 @@ void libjit_avg_pool_f(const float *inW, float *outW, const dim_t *inWdims,
         for (dim_t z = 0; z < inWdims[3]; z++) {
 
           float sum = 0;
+          float filterArea = rawFilterArea;
 
           for (dim_t fx = 0; fx < kernel_h; fx++) {
             for (dim_t fy = 0; fy < kernel_w; fy++) {
@@ -2565,6 +2633,10 @@ void libjit_avg_pool_f(const float *inW, float *outW, const dim_t *inWdims,
               // Ignore index access below zero (this is due to padding).
               if (ox < 0 || oy < 0 || ox >= (sdim_t)inWdims[1] ||
                   oy >= (sdim_t)inWdims[2]) {
+                if (!countIncludePads) {
+                  filterArea--;
+                }
+
                 continue;
               }
 
@@ -2572,6 +2644,7 @@ void libjit_avg_pool_f(const float *inW, float *outW, const dim_t *inWdims,
             }
           }
 
+          assert(filterArea != 0 && "FilterArea shouldn't be 0");
           outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = sum / filterArea;
         } // C
       }   // W
@@ -2620,14 +2693,15 @@ void libjit_adaptive_avg_pool_f(const float *inW, float *outW,
 
 void libjit_avg_pool_grad_f(float *inG, const float *outG, const dim_t *inGdims,
                             const dim_t *outWdims, dim_t *kernels,
-                            dim_t *strides, dim_t *pads) {
+                            dim_t *strides, dim_t *pads,
+                            bool countIncludePads) {
   dim_t pad_t = pads[0];
   dim_t pad_l = pads[1];
   dim_t stride_h = strides[0];
   dim_t stride_w = strides[1];
   dim_t kernel_h = kernels[0];
   dim_t kernel_w = kernels[1];
-  float kernelArea = kernel_h * kernel_w;
+  float rawKernelArea = kernel_h * kernel_w;
 
   // NHWC format is assumed
   for (dim_t n = 0; n < outWdims[0]; n++) {
@@ -2643,6 +2717,22 @@ void libjit_avg_pool_grad_f(float *inG, const float *outG, const dim_t *inGdims,
       for (dim_t ax = 0; ax < outWdims[1]; x += stride_h, ax++) {
         sdim_t y = -(sdim_t)pad_l;
         for (dim_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
+          float kernelArea = rawKernelArea;
+
+          if (!countIncludePads) {
+            sdim_t pad_x = (-x > 0 ? -x : 0) +
+                           ((x + sdim_t(kernel_h) - sdim_t(inGdims[1])) > 0
+                                ? (x + sdim_t(kernel_h) - sdim_t(inGdims[1]))
+                                : 0);
+            sdim_t pad_y = (-y > 0 ? -y : 0) +
+                           ((y + sdim_t(kernel_w) - sdim_t(inGdims[2])) > 0
+                                ? (y + sdim_t(kernel_w) - sdim_t(inGdims[2]))
+                                : 0);
+            kernelArea = rawKernelArea - pad_x * kernel_w - pad_y * kernel_h +
+                         pad_x * pad_y;
+          }
+
+          assert(kernelArea != 0 && "KernelArea shouldn't be 0");
           float df = outG[libjit_getXYZW(outWdims, n, ax, ay, z)] / kernelArea;
           for (dim_t kx = 0; kx < kernel_h; kx++) {
             for (dim_t ky = 0; ky < kernel_w; ky++) {
@@ -3009,6 +3099,12 @@ void libjit_convertTo_u_i32(int64_t *dstPtr, const int32_t *srcPtr,
                             const dim_t *dims, dim_t numDims) {
   libjit_copy_kernel_with_conversion<int64_t, int32_t>(dstPtr, srcPtr, dims,
                                                        numDims);
+}
+
+void libjit_convertTo_i32_b(int32_t *dstPtr, const bool *srcPtr,
+                            const dim_t *dims, dim_t numDims) {
+  libjit_copy_kernel_with_conversion<int32_t, bool>(dstPtr, srcPtr, dims,
+                                                    numDims);
 }
 
 /// Update min/max values \p compInfo and histogram \p existingHistogram with
@@ -3407,4 +3503,27 @@ void libjit_mfcc_f(void *scratch, float *coefficients, const float *spectrogram,
     spectrogram += winSize;
   }
 }
+
+#ifdef GLOW_LIBJIT_EXTERNAL_FUNCTIONS
+/// Glow IR instrumentation external callbacks.
+void glow_instrument_before(int id, int kind, int opInp, int opOut,
+                            uint8_t **opAddr, int *opSize);
+void glow_instrument_after(int id, int kind, int opInp, int opOut,
+                           uint8_t **opAddr, int *opSize);
+
+__attribute__((noinline)) void libjit_instrument_before(int id, int kind,
+                                                        int opInp, int opOut,
+                                                        uint8_t **opAddr,
+                                                        int *opSize) {
+  glow_instrument_before(id, kind, opInp, opOut, opAddr, opSize);
+}
+
+__attribute__((noinline)) void libjit_instrument_after(int id, int kind,
+                                                       int opInp, int opOut,
+                                                       uint8_t **opAddr,
+                                                       int *opSize) {
+  glow_instrument_after(id, kind, opInp, opOut, opAddr, opSize);
+}
+#endif
+
 } // extern "C"

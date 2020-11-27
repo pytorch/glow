@@ -526,8 +526,8 @@ TEST_P(GradCheck, gradientCheckGroupConv) {
   gradientCheckGroupConv(4, 2, EET_, EEI_);
 }
 
-static void gradientCheckDilatedConv(dim_t depth, dim_t group, dim_t dilation,
-                                     ExecutionEngine &EET_,
+static void gradientCheckDilatedConv(dim_t depth, dim_t group,
+                                     unsigned_t dilation, ExecutionEngine &EET_,
                                      ExecutionEngine &EEI_) {
   PlaceholderBindings bindings;
   dim_t numDim = 10;
@@ -545,8 +545,8 @@ static void gradientCheckDilatedConv(dim_t depth, dim_t group, dim_t dilation,
     Ex = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, depth},
                                "exp", false);
 
-    Node *O =
-        F->createConv(bindings, "conv", A, depth, 2, 1, 1, group, dilation);
+    Node *O = F->createConv(bindings, "conv", A, depth, 2, 1, 1, group,
+                            {dilation, dilation});
     O = F->createRegression("reg", O, Ex);
     result = F->createSave("ret", O);
   }
@@ -586,6 +586,43 @@ TEST_P(GradCheck, gradientCheckAvgPool) {
                                 false);
 
     Node *O = F->createAvgPool("pool", A, 3, 3, 1);
+    O = F->createTanh("tanh", O);
+    O = F->createFullyConnected(bindings, "fc", O, numOutputElem);
+    O = F->createRegression("reg", O, Exp);
+    result = F->createSave("ret", O);
+  }
+
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 2});
+  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
+
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
+  auto &mod = EET_.getModule();
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
+
+  performGradCheck(EET_, EEI_, bindings, result->getPlaceholder(), A, Exp,
+                   &inputs, &outputs, 0.001, 0.004);
+}
+
+TEST_P(GradCheck, gradientCheckAvgPoolCountExcludePads) {
+  CHECK_IF_ENABLED();
+  PlaceholderBindings bindings;
+  dim_t numDim = 10;
+  dim_t numOutputElem = 10;
+  Placeholder *A, *Exp;
+  SaveNode *result;
+  for (auto *EE : engines_) {
+    auto &mod = EE->getModule();
+    bindings.clear();
+    Function *F = mod.createFunction("main");
+    A = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, 2}, "A",
+                              false);
+    Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                                false);
+
+    Node *O = F->createAvgPool("pool", A, 3, 3, 1, NHWC,
+                               /* countIncludePads */ false);
     O = F->createTanh("tanh", O);
     O = F->createFullyConnected(bindings, "fc", O, numOutputElem);
     O = F->createRegression("reg", O, Exp);

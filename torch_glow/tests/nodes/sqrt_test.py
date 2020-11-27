@@ -1,31 +1,34 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests import utils
+
+
+class SimpleSqrtModel(torch.nn.Module):
+    def __init__(self, inplace=False):
+        super(SimpleSqrtModel, self).__init__()
+        self.inplace = inplace
+
+    def forward(self, tensor):
+        if self.inplace:
+            other = tensor.sqrt_()
+            return other.sqrt_()
+        else:
+            tensor = torch.sqrt(tensor)
+            return torch.sqrt(tensor)
 
 
 class TestSqrt(unittest.TestCase):
     def test_sqrt_basic(self):
         """Test of the PyTorch sqrt Node on Glow."""
 
-        def test_f(a):
-            b = torch.sqrt(a)
-            return torch.sqrt(b)
-
         # Make sure the input is positive and not super close to zero.
-        x = torch.rand(4) + 5
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::sqrt"})
+        utils.compare_tracing_methods(SimpleSqrtModel(), torch.rand(4) + 5)
 
     def test_sqrt_inplace(self):
         """Test of the PyTorch inplace sqrt Node on Glow."""
 
-        def test_f(a):
-            b = a.sqrt_()
-            return b.sqrt_()
-
         # Make sure the input is positive and not super close to zero.
-        x = torch.rand(4) + 5
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::sqrt_"})
+        utils.compare_tracing_methods(SimpleSqrtModel(inplace=True), torch.rand(4) + 5)

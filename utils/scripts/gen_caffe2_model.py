@@ -21,6 +21,7 @@ from caffe2.proto import caffe2_pb2
 from caffe2.python import utils
 from google.protobuf import text_format
 
+
 # Define a weights network
 weights = caffe2_pb2.NetDef()
 weights.name = "init"

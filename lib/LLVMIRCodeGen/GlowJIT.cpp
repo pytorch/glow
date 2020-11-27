@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "CommandLine.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 
 #include "glow/LLVMIRCodeGen/GlowJIT.h"
 #include "glow/Support/Debug.h"
@@ -84,7 +84,8 @@ public:
     // Inform the debugger about the loaded object file. This should allow for
     // more complete stack traces under debugger. And even it should even enable
     // the stepping functionality on platforms supporting it.
-#if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
+#if LLVM_VERSION_MAJOR == 7 || LLVM_VERSION_MAJOR == 10 ||                     \
+    (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
     // This fails sometimes with the following assertion:
     // lib/ExecutionEngine/GDBRegistrationListener.cpp:168: virtual void
     // {anonymous}::GDBJITRegistrationListener::NotifyObjectEmitted(const

@@ -54,7 +54,7 @@ void libjit_quantized_conv2d_generic(
     const dim_t *strides, const dim_t *pads, dim_t group, int32_t outOffset,
     int32_t inOffset, int32_t filterOffset, int32_t biasOffset, int32_t biasPre,
     int32_t biasPost, int32_t biasScale, int32_t outPre, int32_t outPost,
-    int32_t outScale, unsigned depthUnroll, dim_t dilation) {
+    int32_t outScale, unsigned depthUnroll, const dim_t *dilation) {
   dim_t inChannels = inWdims[3];
   dim_t outChannels = outWdims[3];
   dim_t inCperG = inChannels / group;
@@ -89,8 +89,8 @@ void libjit_quantized_conv2d_generic(
             // For each element in the convolution-filter:
             for (size_t fx = 0; fx < kernel_h; fx++) {
               for (size_t fy = 0; fy < kernel_w; fy++) {
-                ssize_t ox = x + fx * dilation;
-                ssize_t oy = y + fy * dilation;
+                ssize_t ox = x + fx * dilation[0];
+                ssize_t oy = y + fy * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
@@ -150,7 +150,7 @@ void libjit_channelwise_quantized_conv2d_generic(
     ElemTy *outW, const ElemTy *inW, const ElemTy *filterW,
     const BiasElemTy *biasW, const dim_t *outWdims, const dim_t *inWdims,
     const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernels,
-    const dim_t *strides, const dim_t *pads, dim_t group, dim_t dilation,
+    const dim_t *strides, const dim_t *pads, dim_t group, const dim_t *dilation,
     int32_t outOffset, int32_t inOffset, int32_t *filterOffsetsPtr,
     int32_t *biasOffsetsPtr, const int32_t *biasPrePtr,
     const int32_t *biasPostPtr, const int32_t *biasScalePtr,
@@ -198,8 +198,8 @@ void libjit_channelwise_quantized_conv2d_generic(
             // For each element in the convolution-filter:
             for (dim_t fx = 0; fx < kernel_h; fx++) {
               for (dim_t fy = 0; fy < kernel_w; fy++) {
-                sdim_t ox = x + fx * dilation;
-                sdim_t oy = y + fy * dilation;
+                sdim_t ox = x + fx * dilation[0];
+                sdim_t oy = y + fy * dilation[1];
 
                 // Ignore access outside the input tensor (due to padding).
                 if (ox < 0 || oy < 0 || ox >= (sdim_t)inWdims[1] ||
@@ -239,7 +239,7 @@ void libjit_channelwise_quantized_conv3d_generic(
     ElemTy *outW, const ElemTy *inW, const ElemTy *filterW,
     const BiasElemTy *biasW, const dim_t *outWdims, const dim_t *inWdims,
     const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernels,
-    const dim_t *strides, const dim_t *pads, dim_t group, dim_t dilation,
+    const dim_t *strides, const dim_t *pads, dim_t group, const dim_t *dilation,
     int32_t outOffset, int32_t inOffset, int32_t *filterOffsetsPtr,
     int32_t *biasOffsetsPtr, const int32_t *biasPrePtr,
     const int32_t *biasPostPtr, const int32_t *biasScalePtr,
@@ -346,7 +346,7 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
                      const dim_t *inWdims, const dim_t *filterWdims,
                      const dim_t *biasWdims, const dim_t *kernelSizes,
                      const dim_t *strides, const dim_t *pads, dim_t group,
-                     unsigned depthUnroll, dim_t dilation) {
+                     unsigned depthUnroll, const dim_t *dilation) {
   dim_t inChannels = inWdims[3];
   dim_t outChannels = outWdims[3];
   dim_t inCperG = inChannels / group;
@@ -405,8 +405,10 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
 
                   // Calculate the specific input x,y that we process in this
                   // iteration.
-                  sdim_t inx = (sdim_t)outx * stride_h - pad_t + fx * dilation;
-                  sdim_t iny = (sdim_t)outy * stride_w - pad_l + fy * dilation;
+                  sdim_t inx =
+                      (sdim_t)outx * stride_h - pad_t + fx * dilation[0];
+                  sdim_t iny =
+                      (sdim_t)outy * stride_w - pad_l + fy * dilation[1];
 
                   // Ignore index access below zero (this is due to padding).
                   if (inx < 0 || iny < 0 || inx >= (sdim_t)inWdims[1] ||
@@ -466,7 +468,7 @@ void libjit_conv2d_i8_i32(
     const dim_t *strides, const dim_t *pads, dim_t group, int32_t outOffset,
     int32_t inOffset, int32_t filterOffset, int32_t biasOffset, int32_t biasPre,
     int32_t biasPost, int32_t biasScale, int32_t outPre, int32_t outPost,
-    int32_t outScale, unsigned depthUnroll, dim_t dilation) {
+    int32_t outScale, unsigned depthUnroll, const dim_t *dilation) {
   libjit_quantized_conv2d_generic<int8_t, int32_t>(
       outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
       kernelSizes, strides, pads, group, outOffset, inOffset, filterOffset,
@@ -483,7 +485,7 @@ void libjit_conv2d_i8_i8(int8_t *outW, const int8_t *inW, const int8_t *filterW,
                          int32_t filterOffset, int32_t biasOffset,
                          int32_t biasPre, int32_t biasPost, int32_t biasScale,
                          int32_t outPre, int32_t outPost, int32_t outScale,
-                         unsigned depthUnroll, dim_t dilation) {
+                         unsigned depthUnroll, const dim_t *dilation) {
   libjit_quantized_conv2d_generic<int8_t, int8_t>(
       outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
       kernelSizes, strides, pads, group, outOffset, inOffset, filterOffset,
@@ -495,7 +497,7 @@ void libjit_channelwise_quantized_conv2d_i8_i32(
     int8_t *outW, const int8_t *inW, const int8_t *filterW,
     const int32_t *biasW, const dim_t *outWdims, const dim_t *inWdims,
     const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernels,
-    const dim_t *strides, const dim_t *pads, dim_t group, dim_t dilation,
+    const dim_t *strides, const dim_t *pads, dim_t group, const dim_t *dilation,
     int32_t outOffset, int32_t inOffset, int32_t *filterOffsetsPtr,
     int32_t *biasOffsetsPtr, const int32_t *biasPrePtr,
     const int32_t *biasPostPtr, const int32_t *biasScalePtr,
@@ -512,7 +514,7 @@ void libjit_channelwise_quantized_conv2d_i8_i8(
     int8_t *outW, const int8_t *inW, const int8_t *filterW, const int8_t *biasW,
     const dim_t *outWdims, const dim_t *inWdims, const dim_t *filterWdims,
     const dim_t *biasWdims, const dim_t *kernels, const dim_t *strides,
-    const dim_t *pads, dim_t group, dim_t dilation, int32_t outOffset,
+    const dim_t *pads, dim_t group, const dim_t *dilation, int32_t outOffset,
     int32_t inOffset, int32_t *filterOffsetsPtr, int32_t *biasOffsetsPtr,
     const int32_t *biasPrePtr, const int32_t *biasPostPtr,
     const int32_t *biasScalePtr, const int32_t *outPrePtr,
@@ -528,7 +530,7 @@ void libjit_channelwise_quantized_conv3d_i8_i32(
     int8_t *outW, const int8_t *inW, const int8_t *filterW,
     const int32_t *biasW, const dim_t *outWdims, const dim_t *inWdims,
     const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernels,
-    const dim_t *strides, const dim_t *pads, dim_t group, dim_t dilation,
+    const dim_t *strides, const dim_t *pads, dim_t group, const dim_t *dilation,
     int32_t outOffset, int32_t inOffset, int32_t *filterOffsetsPtr,
     int32_t *biasOffsetsPtr, const int32_t *biasPrePtr,
     const int32_t *biasPostPtr, const int32_t *biasScalePtr,
@@ -545,7 +547,7 @@ void libjit_channelwise_quantized_conv3d_i8_i8(
     int8_t *outW, const int8_t *inW, const int8_t *filterW, const int8_t *biasW,
     const dim_t *outWdims, const dim_t *inWdims, const dim_t *filterWdims,
     const dim_t *biasWdims, const dim_t *kernels, const dim_t *strides,
-    const dim_t *pads, dim_t group, dim_t dilation, int32_t outOffset,
+    const dim_t *pads, dim_t group, const dim_t *dilation, int32_t outOffset,
     int32_t inOffset, int32_t *filterOffsetsPtr, int32_t *biasOffsetsPtr,
     const int32_t *biasPrePtr, const int32_t *biasPostPtr,
     const int32_t *biasScalePtr, const int32_t *outPrePtr,
@@ -562,7 +564,8 @@ void libjit_conv_transpose_f(float *outW, const float *inW,
                              const dim_t *outWdims, const dim_t *inWdims,
                              const dim_t *filterWdims, const dim_t *biasWdims,
                              const dim_t *kernels, const dim_t *strides,
-                             const dim_t *pads, dim_t group, dim_t dilation) {
+                             const dim_t *pads, dim_t group,
+                             const dim_t *dilation) {
   // NHWC format is assumed
   dim_t p = sizeof(float);
   memset(outW, 0, outWdims[0] * outWdims[1] * outWdims[2] * outWdims[3] * p);
@@ -593,8 +596,8 @@ void libjit_conv_transpose_f(float *outW, const float *inW,
 
             for (dim_t kx = 0; kx < kernel_h; kx++) {
               for (dim_t ky = 0; ky < kernel_w; ky++) {
-                ssize_t ax = x + kx * dilation;
-                ssize_t ay = y + ky * dilation;
+                ssize_t ax = x + kx * dilation[0];
+                ssize_t ay = y + ky * dilation[1];
 
                 if (ax < 0 || ay < 0 || ax >= (ssize_t)outWdims[1] ||
                     ay >= (ssize_t)outWdims[2]) {
@@ -621,7 +624,8 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
                                const float *filterW, const dim_t *outGdims,
                                const dim_t *inWdims, const dim_t *filterGdims,
                                const dim_t *kernels, const dim_t *strides,
-                               const dim_t *pads, dim_t group, dim_t dilation) {
+                               const dim_t *pads, dim_t group,
+                               const dim_t *dilation) {
   // NHWC format is assumed
   // Clear inG, filterG, and biasG
   dim_t p = sizeof(float);
@@ -652,8 +656,8 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
 
             for (dim_t kx = 0; kx < kernel_h; kx++) {
               for (dim_t ky = 0; ky < kernel_w; ky++) {
-                ssize_t ax = x + kx * dilation;
-                ssize_t ay = y + ky * dilation;
+                ssize_t ax = x + kx * dilation[0];
+                ssize_t ay = y + ky * dilation[1];
 
                 if (ax < 0 || ay < 0 || ax >= (ssize_t)inWdims[1] ||
                     ay >= (ssize_t)inWdims[2]) {
