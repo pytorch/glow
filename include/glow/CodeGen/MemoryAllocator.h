@@ -34,17 +34,16 @@ inline bool intervalsOverlap(T begin1, T end1, T begin2, T end2) {
   return (std::max(begin1, begin2) < std::min(end1, end2));
 }
 
-/// Type that should be used as a handle for memory segments for identification.
-/// TODO: Replace the Handle from allocator with this one.
-using MemoryHandle = const void *;
-
 /// Allocation structure which represents a request to allocate or free
 /// a memory region (buffer) within a given MemoryAllocator instance.
 struct Allocation {
 
+  /// Type that should be used as a handle.
+  using Handle = const void *;
+
   /// Allocation handle which uniquely identifies the buffer to be allocated.
   /// The provided handle must be unique for each buffer.
-  MemoryHandle handle_;
+  Handle handle_;
 
   /// Allocation request type flag: true for ALLOC, false for FREE.
   bool alloc_;
@@ -53,11 +52,11 @@ struct Allocation {
   /// and is ignored for FREE.
   uint64_t size_;
 
-  Allocation(MemoryHandle handle, bool alloc, uint64_t size)
+  Allocation(Handle handle, bool alloc, uint64_t size)
       : handle_(handle), alloc_(alloc), size_(size) {}
 
   Allocation(size_t id, bool alloc, uint64_t size)
-      : handle_((MemoryHandle)(id)), alloc_(alloc), size_(size) {}
+      : handle_((Handle)(id)), alloc_(alloc), size_(size) {}
 };
 
 /// A POD struct that represents a single half-open allocation [start .. end).

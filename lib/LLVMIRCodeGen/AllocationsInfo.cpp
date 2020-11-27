@@ -100,20 +100,35 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   // Maps activations and views to some offset within the heap.
   llvm::DenseMap<const Value *, uint64_t> activationAddr;
 
-  // Assign device-space addresses to the activations.
+  // Get allocation/deallocation sequence.
+  std::list<Allocation> allocList;
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      size_t addr = activationsAllocator.allocate(numBytes, A);
+      allocList.push_back(Allocation(A, /* alloc */ true, numBytes));
+      continue;
+    }
+    if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
+      auto *A = D->getAlloc();
+      allocList.push_back(Allocation(A, /* alloc */ false, 0));
+      continue;
+    }
+  }
+
+  // Allocate all segments at once for better allocation efficiency.
+  activationsAllocator.allocateAll(allocList);
+
+  // Map addresses of allocated segments.
+  for (const auto &I : F->getInstrs()) {
+    if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
+      uint64_t addr = activationsAllocator.getAddress(A);
       assert(!activationAddr.count(A) && "Allocation already made!");
       activationAddr[A] = addr;
       continue;
     }
-
     if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
       auto *A = D->getAlloc();
       assert(activationAddr.count(A) && "Invalid deallocation!");
-      activationsAllocator.deallocate(A);
       continue;
     }
   }

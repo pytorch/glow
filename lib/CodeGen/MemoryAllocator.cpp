@@ -226,7 +226,7 @@ bool MemoryAllocator::verifyAllocations(
 
   // Verify each ALLOC has an associated FREE following it.
   // Verify each ALLOC has a unique handle.
-  std::list<MemoryHandle> allocHandleList;
+  std::list<Handle> allocHandleList;
   for (auto allocIt = allocList.begin(); allocIt != allocList.end();
        ++allocIt) {
     if (!allocIt->alloc_) {
@@ -282,7 +282,7 @@ bool MemoryAllocator::verifySegments(
 
   // Allocations which are simultaneously alive must be assigned non-overlapping
   // segments.
-  std::list<MemoryHandle> liveHandleList;
+  std::list<Handle> liveHandleList;
   for (const auto &alloc : allocList) {
     auto allocHandle = alloc.handle_;
     if (alloc.alloc_) {
