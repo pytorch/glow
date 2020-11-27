@@ -405,8 +405,73 @@ TEST(MemAlloc, testAllocateAllAlignment) {
   EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
 }
 
-// TODO1: Test allocation of multiple models
-// TODO2: Negative testing using "ASSERT_DEATH_IF_SUPPORTED".
+/// Test invalid number of allocations for allocateAll.
+TEST(MemAlloc, testAllocateAllInvalidNumAllocs) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.push_back(Allocation(handle, true, 10));
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
+                            "Allocations are invalid!");
+#endif
+}
+
+/// Test invalid FREE before ALLOC for allocateAll.
+TEST(MemAlloc, testAllocateAllInvalidFreeBeforeAlloc) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.push_back(Allocation(handle, false, 0));
+  allocList.push_back(Allocation(handle, true, 10));
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
+                            "Allocations are invalid!");
+#endif
+}
+
+/// Test invalid handles for allocateAll.
+TEST(MemAlloc, testAllocateAllInvalidHandles1) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.push_back(Allocation(handle, true, 10));
+  allocList.push_back(Allocation(handle, true, 10));
+  allocList.push_back(Allocation(handle, false, 0));
+  allocList.push_back(Allocation(handle, false, 0));
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
+                            "Allocations are invalid!");
+#endif
+}
+
+/// Test invalid handles for allocateAll.
+TEST(MemAlloc, testAllocateAllInvalidHandles2) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.push_back(Allocation(handle0, true, 10));
+  allocList.push_back(Allocation(handle0, true, 10));
+  allocList.push_back(Allocation(handle1, false, 0));
+  allocList.push_back(Allocation(handle1, false, 0));
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
+                            "Allocations are invalid!");
+#endif
+}
+
+/// Test segment size 0 for allocateAll.
+TEST(MemAlloc, testAllocateAllSize0) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.push_back(Allocation(handle, true, 0));
+  allocList.push_back(Allocation(handle, false, 0));
+  uint64_t usedSize = MA.allocateAll(allocList);
+  EXPECT_EQ(usedSize, 0);
+  EXPECT_EQ(MA.getSize(handle), 0);
+}
 
 /// Test memory allocation for model cifar10_quant.tflite.
 TEST(MemAlloc, testAllocateAllForModel1) {

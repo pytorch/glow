@@ -227,7 +227,8 @@ bool MemoryAllocator::verifyAllocations(
   // Verify each ALLOC has an associated FREE following it.
   // Verify each ALLOC has a unique handle.
   std::list<MemoryHandle> allocHandleList;
-  for (auto allocIt = allocList.begin(); allocIt != allocList.end(); ++allocIt) {
+  for (auto allocIt = allocList.begin(); allocIt != allocList.end();
+       ++allocIt) {
     if (!allocIt->alloc_) {
       continue;
     }

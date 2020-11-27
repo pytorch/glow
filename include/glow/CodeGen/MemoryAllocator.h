@@ -183,7 +183,7 @@ public:
   /// \returns the allocation efficiency as a float between 0.0 and 1.0
   /// which quantifies the efficiency of the allocation algorithm. An
   /// efficiency value of 1.0 means the best theoretically possible. The
-  /// efficiency is not always 1.0 due to memory fragmentation. 
+  /// efficiency is not always 1.0 due to memory fragmentation.
   float getAllocationEfficiency() const;
 
   /// \returns the name of the memory region.
@@ -196,7 +196,8 @@ private:
   /// A list of allocated segments.
   std::list<Segment> segments_;
 
-  /// The total size (in bytes) of the memory region. A value of 0 means unlimited size (infinite).
+  /// The total size (in bytes) of the memory region. A value of 0 means
+  /// unlimited size (infinite).
   uint64_t memorySize_;
 
   /// The maximum size (in bytes) used for segment allocation (memory usage).
