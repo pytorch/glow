@@ -206,35 +206,36 @@ void MemoryAllocator::setHandle(uint64_t ptr, uint64_t size, Handle handle) {
 }
 
 bool MemoryAllocator::verifyAllocations(
-    const std::vector<Allocation> &allocArray) {
+    const std::list<Allocation> &allocList) const {
 
-  // Allocation array length must be even.
-  size_t allocNum = allocArray.size();
-  if (allocNum % 2) {
+  // Allocations length must be even.
+  if (allocList.size() % 2) {
     return false;
   }
 
   // Number of ALLOC must be equal to number of FREE.
-  std::list<size_t> allocIdxList;
-  for (size_t idx = 0; idx < allocNum; ++idx) {
-    if (allocArray[idx].alloc_) {
-      allocIdxList.push_back(idx);
+  size_t numAlloc = 0;
+  for (const auto &alloc : allocList) {
+    if (alloc.alloc_) {
+      numAlloc++;
     }
   }
-  if (allocIdxList.size() != (allocNum / 2)) {
+  if (numAlloc != (allocList.size() / 2)) {
     return false;
   }
 
   // Verify each ALLOC has an associated FREE following it.
   // Verify each ALLOC has a unique handle.
   std::list<MemoryHandle> allocHandleList;
-  for (auto allocIdx : allocIdxList) {
+  for (auto allocIt = allocList.begin(); allocIt != allocList.end(); ++allocIt) {
+    if (!allocIt->alloc_) {
+      continue;
+    }
     // Find a FREE instruction associated to this ALLOC.
-    auto allocHandle = allocArray[allocIdx].handle_;
+    auto allocHandle = allocIt->handle_;
     bool freeFound = false;
-    for (size_t idx = allocIdx + 1; idx < allocNum; ++idx) {
-      if ((!allocArray[idx].alloc_) &&
-          (allocArray[idx].handle_ == allocHandle)) {
+    for (auto it = allocIt; it != allocList.end(); ++it) {
+      if ((!it->alloc_) && (it->handle_ == allocHandle)) {
         freeFound = true;
         break;
       }
@@ -243,9 +244,9 @@ bool MemoryAllocator::verifyAllocations(
       return false;
     }
     // Verify ALLOC handle is unique.
-    auto it =
+    auto handleIt =
         std::find(allocHandleList.begin(), allocHandleList.end(), allocHandle);
-    if (it != allocHandleList.end()) {
+    if (handleIt != allocHandleList.end()) {
       return false;
     }
     allocHandleList.push_back(allocHandle);
@@ -255,16 +256,16 @@ bool MemoryAllocator::verifyAllocations(
 }
 
 bool MemoryAllocator::verifySegments(
-    const std::vector<Allocation> &allocArray) {
+    const std::list<Allocation> &allocList) const {
 
   // Verify number of segments.
-  if (handleToSegmentMap_.size() != (allocArray.size() / 2)) {
+  if (handleToSegmentMap_.size() != (allocList.size() / 2)) {
     return false;
   }
 
   // Segments handles should match allocation handles.
   // Segments sizes should match allocation sizes (with alignment).
-  for (const auto &alloc : allocArray) {
+  for (const auto &alloc : allocList) {
     if (!alloc.alloc_) {
       continue;
     }
@@ -281,7 +282,7 @@ bool MemoryAllocator::verifySegments(
   // Allocations which are simultaneously alive must be assigned non-overlapping
   // segments.
   std::list<MemoryHandle> liveHandleList;
-  for (const auto &alloc : allocArray) {
+  for (const auto &alloc : allocList) {
     auto allocHandle = alloc.handle_;
     if (alloc.alloc_) {
       // Verify current segment is not overlapping with the other live segments.
@@ -315,23 +316,23 @@ bool MemoryAllocator::verifySegments(
 // 1. Add "allocate" flavors using IDs instead of Handles.
 // 2. Remove addrToHandleMap_ from allocator.
 
-uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
+uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
 
   // Reset memory allocator object.
   reset();
 
   // Verify allocations.
-  assert(verifyAllocations(allocArray) && "Allocations are invalid!");
+  assert(verifyAllocations(allocList) && "Allocations are invalid!");
 
-  // If allocation array is empty then return early.
-  size_t allocNum = allocArray.size();
+  // If allocation list is empty then return early.
+  size_t allocNum = allocList.size();
   if (allocNum == 0) {
     return 0;
   }
 
   // Number of buffers/segments to allocate.
   assert((allocNum % 2 == 0) &&
-         "The allocation array must have an even number of entries!");
+         "The allocation list must have an even number of entries!");
   size_t buffNum = allocNum / 2;
 
   // Map Handles to consecutive unique IDs between 0 and numBuff - 1 since this
@@ -339,16 +340,18 @@ uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
   // indices.
   std::unordered_map<Handle, size_t> handleToIdMap;
   std::vector<Handle> idToHandleMap(buffNum);
-  size_t id = 0;
-  for (const auto &alloc : allocArray) {
-    // We only map the Handles of ALLOCs.
-    if (alloc.alloc_) {
-      idToHandleMap[id] = alloc.handle_;
-      handleToIdMap[alloc.handle_] = id;
-      id++;
+  {
+    size_t id = 0;
+    for (const auto &alloc : allocList) {
+      // We only map the Handles of ALLOCs.
+      if (alloc.alloc_) {
+        idToHandleMap[id] = alloc.handle_;
+        handleToIdMap[alloc.handle_] = id;
+        id++;
+      }
     }
+    assert(id == buffNum && "Inconsistent Handle to ID mapping!");
   }
-  assert(id == buffNum && "Inconsistent Handle to ID mapping!");
 
   // -----------------------------------------------------------------------
   // Get overall information about all the buffers.
@@ -375,26 +378,27 @@ uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
 
   // Gather information.
   {
+    uint64_t allocIdx = 0;
     uint64_t liveBuffSize = 0;
     std::list<uint64_t> liveBuffIdList;
-    for (size_t allocIdx = 0; allocIdx < allocNum; allocIdx++) {
+    for (const auto &alloc : allocList) {
 
       // Current buffer handle and mapped ID.
-      auto buffHandle = allocArray[allocIdx].handle_;
+      auto buffHandle = alloc.handle_;
       auto buffId = handleToIdMap[buffHandle];
 
       // Current buffer size. We only use the buffer size of an ALLOC request.
       // For a FREE request we use the buffer size of the associated ALLOC.
       // We round the requested buffer size using the alignment.
       uint64_t buffSize;
-      if (allocArray[allocIdx].alloc_) {
-        buffSize = getEffectiveSize(allocArray[allocIdx].size_);
+      if (alloc.alloc_) {
+        buffSize = getEffectiveSize(alloc.size_);
       } else {
         buffSize = buffSizeArray[buffId];
       }
 
       // Update buffer information.
-      if (allocArray[allocIdx].alloc_) {
+      if (alloc.alloc_) {
         buffSizeArray[buffId] = buffSize;
         buffTimeStart[buffId] = allocIdx;
       } else {
@@ -402,7 +406,7 @@ uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
       }
 
       // Update liveness information.
-      if (allocArray[allocIdx].alloc_) {
+      if (alloc.alloc_) {
         liveBuffSize = liveBuffSize + buffSize;
         liveBuffIdList.push_back(buffId);
       } else {
@@ -416,6 +420,7 @@ uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
       liveSizeMax = std::max(liveSizeMax, liveBuffSize);
       liveBuffSizeArray[allocIdx] = liveBuffSize;
       liveBuffIdListArray[allocIdx] = liveBuffIdList;
+      allocIdx++;
     }
     assert(liveBuffSize == 0 &&
            "Mismatch between total allocated and deallocated size!");
@@ -601,7 +606,7 @@ uint64_t MemoryAllocator::allocate(const std::vector<Allocation> &allocArray) {
   liveSize_ = 0;
 
   // Verify segments.
-  assert(verifySegments(allocArray) && "Segments are invalid!");
+  assert(verifySegments(allocList) && "Segments are invalid!");
 
   return usedSizeMax;
 }

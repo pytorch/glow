@@ -132,16 +132,19 @@ public:
                     const std::set<Handle> &mustNotEvict,
                     std::vector<Handle> &evicted);
 
-  /// Allocate all the segments associated with the allocations \p allocArray.
+  /// Allocate all the segments associated with the allocations \p allocList.
   /// This method has an improved memory allocation efficiency because all
   /// the allocations are requested at once and the algorithm can improve the
   /// allocation efficiency by allocating first the larger segments and so
-  /// avoiding early fragmentation. Upon function return use ONLY the function
-  /// \ref getSegment to retrieve the allocated segments based on the handles
-  /// used in \p allocArray.
-  /// \returns the total memory usage, or MemoryAllocator::npos, if the
+  /// avoiding early fragmentation. The given allocations must be consistent,
+  /// each ALLOC request must be associated with a FREE request following it
+  /// with the same handle and all the handles must be unique for each
+  /// ALLOC/FREE pair. This function is intended to be used only once for a
+  /// a given MemoryAllocator instance. Upon function return information about
+  /// the allocated segments can be retrieved with \ref getSegment().
+  /// \returns the total memory usage or MemoryAllocator::npos if the
   /// allocation failed.
-  uint64_t allocate(const std::vector<Allocation> &allocArray);
+  uint64_t allocateAll(const std::list<Allocation> &allocList);
 
   /// \returns the handle currently associated with the allocation at \p
   /// address.
@@ -237,13 +240,14 @@ private:
   /// Associates a \p handle with an allocated address \p ptr and size \p size.
   void setHandle(uint64_t ptr, uint64_t size, Handle handle);
 
-  /// Function to verify the allocation requests before allocating the segments.
-  /// \returns true if allocations are valid and false otherwise.
-  bool verifyAllocations(const std::vector<Allocation> &allocArray);
+  /// Function to verify the allocations before allocating the segments with
+  /// \ref allocateAll. \returns true if allocations are valid and false
+  /// otherwise.
+  bool verifyAllocations(const std::list<Allocation> &allocList) const;
 
-  /// Function to verify the segments after allocating them.
+  /// Function to verify the segments allocated with \ref allocateAll.
   /// \returns true if segments are valid and false otherwise.
-  bool verifySegments(const std::vector<Allocation> &allocArray);
+  bool verifySegments(const std::list<Allocation> &allocList) const;
 };
 
 } // namespace glow
