@@ -127,7 +127,9 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     case c10::aten::sub:
     case c10::aten::pow:
     case c10::aten::mul:
-    case c10::aten::add: {
+    case c10::aten::add:
+    case c10::aten::div:
+    case c10::aten::rsub: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, binaryOp(inputMetas));
       break;
     }
