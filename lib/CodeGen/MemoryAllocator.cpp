@@ -434,8 +434,8 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   // ---------------------------------------------------------------------------
   // Allocate all the buffers.
   // ---------------------------------------------------------------------------
-  // Local list of allocated IDs and segments.
-  std::list<std::pair<size_t, Segment>> idSegList;
+  // Local map between allocated IDs and segments.
+  std::unordered_map<size_t, Segment> idSegMap;
 
   // The maximum total memory used for segment allocation.
   uint64_t usedSizeMax = 0;
@@ -477,8 +477,12 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
       }
     }
 
-    // Current segment ID and size.
+    // Current segment ID chosen for allocation.
     auto currSegId = buffIdMax;
+
+    // Check that this segment was not previously allocated.
+    assert(idSegMap.find(currSegId) == idSegMap.end() &&
+           "Segment previously allocated!");
 
     // -----------------------------------------------------------------------
     // Find previously allocated segments which overlap with the current segment
@@ -493,7 +497,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
     // size 0 since this will simplify the logic used in the following section.
     std::vector<AddressPair> prevSegAddr = {AddressPair(0, 0)};
 
-    for (const auto &idSeg : idSegList) {
+    for (const auto &idSeg : idSegMap) {
 
       // Previously allocated segment.
       auto prevSegId = idSeg.first;
@@ -565,9 +569,9 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
 
     // Allocate current segment.
     Segment currSeg(currSegAddrStart, currSegAddrStop);
-    idSegList.push_back(std::pair<size_t, Segment>(currSegId, currSeg));
+    idSegMap.insert(std::make_pair(currSegId, currSeg));
 
-    // Update buffer information.
+    // Update buffer liveness information.
     for (size_t allocIdx = buffTimeStart[currSegId];
          allocIdx < buffTimeStop[currSegId]; allocIdx++) {
       // Update total live sizes.
@@ -590,7 +594,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   }
 
   // Update the segments, handles and the max used/live memory.
-  for (const auto &idSeg : idSegList) {
+  for (const auto &idSeg : idSegMap) {
     size_t id = idSeg.first;
     Segment segment = idSeg.second;
     Handle handle = idToHandleMap[id];
