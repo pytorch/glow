@@ -109,6 +109,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
                                glowUnpackedQuantizedLinear(inputMetas));
   } else if (symbol == "fb::lengths_to_offsets") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsToOffsets(inputMetas));
+  } else if (symbol == "fb::fast_gather") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fastGather(inputMetas));
   } else {
     switch (kind) {
     case c10::prim::Constant: {
@@ -1376,6 +1378,31 @@ ShapeInferenceEngine::primDtype(const MetaStack &variableMetas) {
   TensorOutput output;
   output.shapeOrIntValues = {dtype};
   output.dtype = c10::ScalarType::Int;
+  return output;
+}
+
+/*
+ * fb::fast_gather(Tensor input, Tensor indices) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 input, got %zu.", variableMetas.size()));
+
+  const auto &t0 = variableMetas[0].shape<TensorShape>();
+  const auto &t1 = variableMetas[1].shape<TensorShape>();
+
+  // suppose t0 = [d1, d2, ..., dm], t1 = [D1, D2, ..., Dn]
+  // the result shape will be [D1, D2, ..., Dn, d2, ..., dm]
+  TensorShape shape = t1;
+  for (int i = 1; i < t0.size(); i++) {
+    shape.emplace_back(t0[i]);
+  }
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
   return output;
 }
 } // namespace glow
