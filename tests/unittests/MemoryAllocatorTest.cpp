@@ -473,6 +473,28 @@ TEST(MemAlloc, testAllocateAllSize0) {
   EXPECT_EQ(MA.getSize(handle), 0);
 }
 
+/// Test empty allocs for allocateAll.
+TEST(MemAlloc, testAllocateAllEmptyAlloc) {
+  MemoryAllocator MA("test", 0, 64);
+  std::list<Allocation> allocList;
+  uint64_t usedSize = MA.allocateAll(allocList);
+  EXPECT_EQ(usedSize, 0);
+}
+
+/// Test memory overflow for allocateAll.
+TEST(MemAlloc, testAllocateAllMemOverflow) {
+  MemoryAllocator MA("test", 10, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.push_back(Allocation(handle, true, 100));
+  allocList.push_back(Allocation(handle, false, 0));
+  uint64_t usedSize = MA.allocateAll(allocList);
+  EXPECT_EQ(usedSize, MemoryAllocator::npos);
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.getSize(handle), "Unknown handle");
+#endif
+}
+
 /// Test memory allocation for model cifar10_quant.tflite.
 TEST(MemAlloc, testAllocateAllForModel1) {
   MemoryAllocator MA("mem", 0, 64);

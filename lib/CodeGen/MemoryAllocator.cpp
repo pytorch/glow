@@ -313,10 +313,6 @@ bool MemoryAllocator::verifySegments(
   return true;
 }
 
-// TODO:
-// 1. Add "allocate" flavors using IDs instead of Handles.
-// 2. Remove addrToHandleMap_ from allocator.
-
 uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
 
   // Reset memory allocator object.
@@ -483,7 +479,6 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
 
     // Current segment ID and size.
     auto currSegId = buffIdMax;
-    auto currSegSize = buffSizeMax;
 
     // -----------------------------------------------------------------------
     // Find previously allocated segments which overlap with the current segment
@@ -536,7 +531,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
 
       // Try to place current segment after this previously allocated segment.
       currSegAddrStart = prevSegAddr[prevSegIdx].second;
-      currSegAddrStop = currSegAddrStart + currSegSize;
+      currSegAddrStop = currSegAddrStart + buffSizeArray[currSegId];
 
       // Verify if this placement overlaps with all the other segments.
       // Note that this verification with all the previous segments is required
@@ -601,6 +596,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
     Handle handle = idToHandleMap[id];
     segments_.push_back(segment);
     handleToSegmentMap_.insert(std::make_pair(handle, segment));
+    addrToHandleMap_[segment.begin_] = handle;
   }
   maxUsedSize_ = usedSizeMax;
   maxLiveSize_ = liveSizeMax;
