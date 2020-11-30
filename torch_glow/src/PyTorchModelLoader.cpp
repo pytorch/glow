@@ -3053,10 +3053,15 @@ Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
-  // dimSize = 4 for Upsample 2D and dimSize = 5 for Upsample 3D
   auto dimSize = input.dims().size();
+  // dimSize = 4 for Upsample 2D and dimSize = 5 for Upsample 3D
   RETURN_ERR_IF_NOT(dimSize == 4 || dimSize == 5,
                     "Expecting 4D or 5D input Tensor");
+
+  if (dimSize == 4)
+    input = F_.createTranspose("transpose_input", input, NCHW2NHWC);
+  else
+    input = F_.createTranspose("transpose_input", input, NCTHW2NTHWC);
 
   // inputs can be (inputTensor, outputSize, outputScale) or (inputTensor,
   // outputSize, outputScale_d (for 3D), outputScale_w, outputScale_h)
@@ -3091,11 +3096,11 @@ Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
                         glow::strFormat("Expected %zu scale factors.  Got %zu.",
                                         dimSize - 2, scaleFactors->size()));
       for (int i = 0; i < dimSize - 2; ++i) {
-        outputSizeBuf.push_back(input.dims()[i + 2] * scaleFactors->at(i));
+        outputSizeBuf.push_back(input.dims()[i + 1] * scaleFactors->at(i));
       }
     } else { // outputScale is a separate value for each dim
       double scaleFactor;
-      for (int i = 2; i < dimSize; i++) {
+      for (int i = 1; i < dimSize; i++) {
         ASSIGN_VALUE_OR_RETURN_ERR(
             scaleFactor, iValToDouble(getGlowIValueForValue(inputs[2])));
         outputSizeBuf.push_back(input.dims()[i] * scaleFactor);
@@ -3108,10 +3113,10 @@ Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
   // Upsample 3D
   if (dimSize == 5) {
     dim_t ia = input.dims()[0];
-    dim_t ib = input.dims()[1];
-    dim_t ix = input.dims()[2];
-    dim_t iy = input.dims()[3];
-    dim_t iz = input.dims()[4];
+    dim_t ib = input.dims()[4];
+    dim_t ix = input.dims()[1];
+    dim_t iy = input.dims()[2];
+    dim_t iz = input.dims()[3];
     dim_t ox = (dim_t)(*outputSize)[0];
     dim_t oy = (dim_t)(*outputSize)[1];
     dim_t oz = (dim_t)(*outputSize)[2];
@@ -3119,6 +3124,11 @@ Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
     // Special case when output size is 2x input in all 3 dims
     bool isUpsample2x = (ox == 2 * ix) && (oy == 2 * iy) && (oz == 2 * iz);
     if (isUpsample2x) {
+      // FIXME: this transpose can be avoided if there's a check in
+      // the beginning of this function and the initial transpose to NHWC is not
+      // done. However, it is currently needed as createUpsample expects NCHW
+      // inputs while createResizeNearest expects NHWC inputs.
+      input = F_.createTranspose("transpose_input", input, NTHWC2NCTHW);
       c10::ScalarType dtype;
       RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
       RETURN_ERR(addValueMapping(
@@ -3133,35 +3143,39 @@ Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
                      splitOutputs);
       for (auto &splitOutput : splitOutputs) {
         auto *reshape1 = F_.createReshape("upsample_nearest3d_reshape1",
-                                          splitOutput, {ib, ix, iy, iz});
+                                          splitOutput, {ix, iy, iz, ib});
         auto resizeTy = F_.getParent()->uniqueTypeWithNewShape(
-            input.getType(), {ib, ox, oy, oz});
+            input.getType(), {ox, oy, oz, ib});
         auto *resize = F_.createResizeNearest("upsample_nearest3d_resize",
                                               reshape1, resizeTy);
         auto *reshape2 = F_.createReshape("upsample_nearest3d_reshape2", resize,
-                                          {1, ib, ox, oy, oz});
+                                          {1, ox, oy, oz, ib});
         concatInputs.push_back(reshape2);
       }
       c10::ScalarType dtype;
       RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-      RETURN_ERR(addValueMapping(
-          outputs[0],
-          F_.createConcat("upsample_nearest3d_concat", concatInputs, 0),
-          dtype));
+      auto *concatNode =
+          F_.createConcat("upsample_nearest3d_concat", concatInputs, 0);
+      auto *output =
+          F_.createTranspose("transpose_output", concatNode, NTHWC2NCTHW);
+      RETURN_ERR(addValueMapping(outputs[0], output, dtype));
     }
   } else { // Upsample 2D
     dim_t iN = input.dims()[0];
-    dim_t iC = input.dims()[1];
+    dim_t iC = input.dims()[3];
     dim_t oH = (dim_t)(*outputSize)[0];
     dim_t oW = (dim_t)(*outputSize)[1];
 
     TypeRef outTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
-                                                           {iN, iC, oH, oW});
+                                                           {iN, oH, oW, iC});
     c10::ScalarType dtype;
     RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-    RETURN_ERR(addValueMapping(
-        outputs[0], F_.createResizeNearest("upsample_nearest2d", input, outTy),
-        dtype));
+    auto *resizeNearestNode =
+        F_.createResizeNearest("upsample_nearest2d", input, outTy);
+
+    auto *output =
+        F_.createTranspose("transpose_output", resizeNearestNode, NHWC2NCHW);
+    RETURN_ERR(addValueMapping(outputs[0], output, dtype));
   }
 }
 
