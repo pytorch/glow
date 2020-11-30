@@ -98,6 +98,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   if (symbol == "glow::fused_stack") {
     int64_t dim = node->i(at::attr::dim);
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fusedStack(inputMetas, dim));
+  } else if (symbol == "glow::fused_split") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorListOutput, fusedSplit(inputMetas));
   } else if (symbol == "quantized::embedding_bag_byte_rowwise_offsets") {
     ASSIGN_VALUE_OR_RETURN_ERR(
         tensorOutput, quantizedEmbeddingBagByteRowwiseOffsets(inputMetas));
@@ -1074,6 +1076,42 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
   shape.insert(shape.begin() + dim, variableMetas.size());
 
   output.shapeOrIntValues = shape;
+  return output;
+}
+
+/**
+ * glow::fused_split(Tensor input, int num_splits, int dim) -> Tensor[]
+ */
+Expected<TensorListOutput>
+ShapeInferenceEngine::fusedSplit(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected Three input, got %zu.", variableMetas.size()));
+  int64_t numSplit = variableMetas[1].intValue[0];
+  int64_t dim = variableMetas[2].intValue[0];
+
+  const auto &inputTensorShape = variableMetas[0].shape<TensorShape>();
+
+  /// Convert dim into positive
+  int64_t inDimSize = inputTensorShape.size();
+  dim = at::maybe_wrap_dim(dim, inDimSize);
+
+  RETURN_ERR_IF_NOT(
+      inputTensorShape[dim] % numSplit == 0,
+      strFormat("Expected dimension size could be evenly "
+                "divieded by numSplit, got dimSize %long and numSplit %long",
+                inputTensorShape[dim], numSplit));
+
+  RETURN_ERR_IF_NOT(numSplit > 0,
+                    strFormat("Expected numSplit is larger than 0"));
+
+  TensorShape elementShape = inputTensorShape;
+  elementShape[dim] = inputTensorShape[dim] / numSplit;
+  TensorListShape resShapes(numSplit, elementShape);
+
+  TensorListOutput output;
+  output.dtype = variableMetas[0].dtype;
+  output.shape = resShapes;
   return output;
 }
 
