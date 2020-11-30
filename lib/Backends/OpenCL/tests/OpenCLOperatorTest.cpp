@@ -601,4 +601,11 @@ std::set<std::string> glow::backendTestBlacklist = {
     "VectorNorm_Float16/0",
     "VectorNorm_Float16Ty/0",
     "NonSquareDilationConvTranspose/0",
-    "NonSquareDilationConv2D/0"};
+    "NonSquareDilationConv2D/0",
+    "AvgPool2DLargePads_FloatTy_CountIncludePads/0",
+    "AvgPool2DLargePads_FloatTy_CountExcludePads/0",
+    "AvgPool2DLargePads_Int8QTy_CountIncludePads/0",
+    "AvgPool2DLargePads_Int8QTy_CountExcludePads/0",
+    "MaxPool2DLargePads_FloatTy/0",
+    "MaxPool2DLargePads_Int8QTy/0",
+};
