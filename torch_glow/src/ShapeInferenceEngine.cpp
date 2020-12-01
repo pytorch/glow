@@ -113,6 +113,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
                                glowUnpackedQuantizedLinear(inputMetas));
   } else if (symbol == "fb::lengths_to_offsets") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsToOffsets(inputMetas));
+  } else if (symbol == "fb::simple_embedding_bag_sum") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, embeddingBag(inputMetas));
   } else if (symbol == "fb::fast_gather") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fastGather(inputMetas));
   } else if (symbol == "fb::lengths_range") {
@@ -271,7 +273,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       shapeMap_[node->output()].intValue = std::move(tensorListOutput.shape[0]);
       shapeMap_[node->output()].dtype = tensorListOutput.dtype;
     }
-  } else if (kind == c10::aten::embedding_bag) {
+  } else if (kind == c10::aten::embedding_bag ||
+             symbol == "fb::simple_embedding_bag_sum") {
     shapeMap_[node->output(0)].listOfShape.emplace_back(
         std::move(tensorOutput.shapeOrIntValues));
     shapeMap_[node->output(0)].dtype = tensorOutput.dtype;
