@@ -1032,6 +1032,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::to"}, &PyTorchModelLoader::loadTo},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
+      {{"fb::simple_embedding_bag_sum"}, &PyTorchModelLoader::loadEmbeddingBag},
       {{"fb::glow_embedding_bag"}, &PyTorchModelLoader::loadGlowEmbeddingBag},
       {{"fb::glow_embedding_bag_byte_rowwise_offsets"},
        &PyTorchModelLoader::loadGlowEmbeddingBagByteRowwiseOffsets},
