@@ -3772,18 +3772,18 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
                          {input.dims()[0], input.dims()[1],
                           input.dims()[2] * input.dims()[3], input.dims()[4]});
 
-    glow::BatchNormalizationNode *bn =
-        F_.createBatchNormalization("bn", twoD, biasC, weightsC, meanC, varC,
-                                    channelIdx, epsilon, momentum);
+    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
+        "bn", twoD->getType(0), twoD, biasC, weightsC, meanC, varC, channelIdx,
+        epsilon, momentum);
 
     glow::ReshapeNode *threeD =
         F_.createReshape("bn_NCHW2NCTHW", bn, input.dims());
 
     output = threeD->getResult();
   } else {
-    glow::BatchNormalizationNode *bn =
-        F_.createBatchNormalization("batchnorm", input, biasC, weightsC, meanC,
-                                    varC, channelIdx, epsilon, momentum);
+    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
+        "batchnorm", input.getType(), input, biasC, weightsC, meanC, varC,
+        channelIdx, epsilon, momentum);
     output = bn->getResult();
   }
 
@@ -3865,9 +3865,9 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
     glow::DequantizeNode *dq = F_.createDequantize(
         "bn3d_quant_dequantize", input_reshape, ElemKind::FloatTy);
 
-    glow::BatchNormalizationNode *bn =
-        F_.createBatchNormalization("bn3d_quant", dq, biasC, weightsC, meanC,
-                                    varC, channelIdx, epsilon, momentum);
+    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
+        "bn3d_quant", dq->getType(0), dq, biasC, weightsC, meanC, varC,
+        channelIdx, epsilon, momentum);
 
     glow::ReshapeNode *output_reshape =
         F_.createReshape("bn3d_quant_NCHW2NCTHW", bn, input.dims());
@@ -3884,9 +3884,9 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
     glow::DequantizeNode *dq = F_.createDequantize("bn3d_quant_dequantize",
                                                    input, ElemKind::Float16Ty);
 
-    glow::BatchNormalizationNode *bn =
-        F_.createBatchNormalization("bn2d_quant", dq, biasC, weightsC, meanC,
-                                    varC, channelIdx, epsilon, momentum);
+    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
+        "bn2d_quant", dq->getType(0), dq, biasC, weightsC, meanC, varC,
+        channelIdx, epsilon, momentum);
 
     const auto outType = F_.getParent()->uniqueType(
         glow::ElemKind::Int8QTy, input.dims(), output_scale, output_zero_point);

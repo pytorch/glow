@@ -891,11 +891,10 @@ public:
                    unsigned_t axis, llvm::ArrayRef<dim_t> split,
                    std::vector<SliceNode *> &outputs);
 
-  BatchNormalizationNode *
-  createBatchNormalization(llvm::StringRef name, NodeValue input,
-                           NodeValue beta, NodeValue scale, NodeValue mean,
-                           NodeValue var, unsigned_t channelIdx = 0,
-                           float epsilon = 1e-5, float momentum = 0.9);
+  BatchNormalizationNode *createBatchNormalization(
+      llvm::StringRef name, TypeRef resType, NodeValue input, NodeValue beta,
+      NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx = 0,
+      float epsilon = 1e-5, float momentum = 0.9);
 
   /// Creates and \returns a LayerNormalizationNode that computes the layer
   /// normalization of the inner most layers of \p input based on the shape of

@@ -2474,8 +2474,8 @@ Error ONNXModelLoader::loadBatchNormalization(
     ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(epsilonIt->second));
   }
 
-  auto *node = G_->createBatchNormalization(opName, in, bias, scale, mean, var,
-                                            1, epsilon);
+  auto *node = G_->createBatchNormalization(opName, in.getType(), in, bias,
+                                            scale, mean, var, 1, epsilon);
 
   // BatchNormalization has 4 optional outputs that are not supported by glow.
   // Then: 1/ In case the optional outputs are present and used by other

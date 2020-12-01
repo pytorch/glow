@@ -1586,11 +1586,12 @@ void Function::createSplit(llvm::StringRef name, NodeValue input,
 }
 
 BatchNormalizationNode *Function::createBatchNormalization(
-    llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue scale,
-    NodeValue mean, NodeValue var, unsigned_t channelIdx, float epsilon,
-    float momentum) {
-  return addNode(new BatchNormalizationNode(name, input, scale, beta, mean, var,
-                                            channelIdx, epsilon, momentum));
+    llvm::StringRef name, TypeRef resType, NodeValue input, NodeValue beta,
+    NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx,
+    float epsilon, float momentum) {
+  return addNode(new BatchNormalizationNode(name, resType, input, scale, beta,
+                                            mean, var, channelIdx, epsilon,
+                                            momentum));
 }
 
 LayerNormalizationNode *Function::createLayerNormalization(llvm::StringRef name,
@@ -2864,8 +2865,10 @@ BatchNormalizationNode *Function::createBatchNormalization(
   bindings.allocate(variance)->init(Tensor::InitKind::Broadcast, 1.0,
                                     getPRNG());
 
-  return createBatchNormalization(name, input, beta, scale, mean, variance,
-                                  channelIdx, epsilon, momentum);
+  auto resultType = getParent()->uniqueType(inputTy, input.dims());
+
+  return createBatchNormalization(name, resultType, input, beta, scale, mean,
+                                  variance, channelIdx, epsilon, momentum);
 }
 
 ConvolutionNode *Function::createConv(

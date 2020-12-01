@@ -553,10 +553,11 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           continue;
         }
 
+        auto bnOutTy = RS->getInput().getType();
         auto *newBN = F->createBatchNormalization(
-            BN->getName(), RS->getInput(), BN->getBias(), BN->getScale(),
-            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
-            BN->getMomentum());
+            BN->getName(), bnOutTy, RS->getInput(), BN->getBias(),
+            BN->getScale(), BN->getMean(), BN->getVar(), newChannelIdx,
+            BN->getEpsilon(), BN->getMomentum());
         RS->setNthInput(ReshapeNode::InputIdx, newBN);
         BN->getResult().replaceAllUsesOfWith(RS);
         changed = true;
@@ -572,9 +573,9 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         unsigned_t newChannelIdx = TR->getShuffle()[idx];
 
         auto *NewBN = F->createBatchNormalization(
-            BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
-            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
-            BN->getMomentum());
+            BN->getName(), TR->getInput().getType(), TR->getInput(),
+            BN->getBias(), BN->getScale(), BN->getMean(), BN->getVar(),
+            newChannelIdx, BN->getEpsilon(), BN->getMomentum());
         NewBN->setPredicate(node->getPredicate());
         auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle(),
                                          TR->getLayout());
@@ -1055,8 +1056,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       auto *newSN = F->createSlice(SN->getName(), BN->getInput(),
                                    SN->getStart(), newSNType);
       auto *newBN = F->createBatchNormalization(
-          BN->getName(), newSN, BN->getBias(), BN->getScale(), BN->getMean(),
-          BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
+          BN->getName(), newSNType, newSN, BN->getBias(), BN->getScale(),
+          BN->getMean(), BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
           BN->getMomentum());
       SN->getResult().replaceAllUsesOfWith(newBN);
       changed = true;
@@ -2166,8 +2167,9 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
     auto mean = F->getParent()->createConstant("BN.mean", meanT);
 
     // Create a BN with new parameters.
-    auto *nBN = F->createBatchNormalization("BatchNorm", &node, newBias,
-                                            newScale, mean, variance, 3, 0, 0);
+    auto *nBN =
+        F->createBatchNormalization("BatchNorm", chainEnd.getType(), &node,
+                                    newBias, newScale, mean, variance, 3, 0, 0);
     chainEnd.replaceAllUsesOfWith(nBN);
     changed = true;
   }
@@ -2230,8 +2232,9 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
 
     // Create a BN with new parameters.
     auto *newBN = F->createBatchNormalization(
-        BN->getName(), BN->getInput(), newBiasN, newScaleN, BN->getMean(),
-        BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
+        BN->getName(), chainEnd.getType(), BN->getInput(), newBiasN, newScaleN,
+        BN->getMean(), BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
+        BN->getMomentum());
 
     chainEnd.replaceAllUsesOfWith(newBN);
     changed = true;

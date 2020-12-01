@@ -179,6 +179,13 @@ private:
                                      size_t group,
                                      llvm::ArrayRef<unsigned_t> dilation);
 
+  template <typename ElemTy = float>
+  void fwdBatchNormalizationFloatImpl(const BatchNormalizationInst *I,
+                                      int numDims);
+  template <typename ParamTy = float16_t>
+  void fwdBatchNormalizationI8Impl(const BatchNormalizationInst *I,
+                                   int numDims);
+
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
 

@@ -948,8 +948,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     unsigned_t channel;
     ASSIGN_VALUE_OR_RETURN_ERR(channel, getChannel(dict));
-    auto *node = G_->createBatchNormalization(opName, in, bias, scale, mean,
-                                              var, channel, epsilon);
+    auto *node = G_->createBatchNormalization(
+        opName, in.getType(), in, bias, scale, mean, var, channel, epsilon);
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
