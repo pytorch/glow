@@ -189,6 +189,8 @@ private:
   static Expected<TensorOutput> primDtype(const MetaStack &variableMetas);
   // Shape inference for fb::fast_gather
   static Expected<TensorOutput> fastGather(const MetaStack &variableMetas);
+  // Shape inference for fb::lengths_range
+  static Expected<TensorOutput> lengthsRange(const MetaStack &variableMetas);
 };
 
 } // namespace glow

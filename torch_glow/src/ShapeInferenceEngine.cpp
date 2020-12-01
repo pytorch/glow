@@ -13,6 +13,8 @@
 #include "glow/Support/Support.h"
 
 DEFINE_string(shapeInferenceOpBlocklist, "", "Ops to skip shape inference");
+DEFINE_int32(max_feature_length, -1, "max feature length");
+DEFINE_int32(max_batch_size, -1, "max batch size");
 
 namespace glow {
 
@@ -113,6 +115,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsToOffsets(inputMetas));
   } else if (symbol == "fb::fast_gather") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fastGather(inputMetas));
+  } else if (symbol == "fb::lengths_range") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsRange(inputMetas));
   } else {
     switch (kind) {
     case c10::prim::Constant: {
@@ -1442,6 +1446,38 @@ ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
 
   TensorOutput output;
   output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * fb::lengths_range(Tensor input, int[]? shape) -> Int,
+ * e.g. max_feature_length = 200, max_batch_size = 32
+ * input: [2, 3]
+ * original output: [0, 1, 0, 1, 2]
+ * output after update: [0, 1, ..., 200, ] * 32
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 inputs, got %zu.", variableMetas.size()));
+  RETURN_ERR_IF_NOT(
+      FLAGS_max_batch_size > 0,
+      strFormat("Expected max_batch_size > 0, got %d.", FLAGS_max_batch_size));
+  RETURN_ERR_IF_NOT(FLAGS_max_batch_size >=
+                        variableMetas[0].shape<TensorShape>()[0],
+                    strFormat("Expected max_batch_size > input tensor length, "
+                              "got max_batch_size %d, input tensor length %zu.",
+                              FLAGS_max_batch_size,
+                              variableMetas[0].shape<TensorShape>()[0]));
+  RETURN_ERR_IF_NOT(FLAGS_max_feature_length > 0,
+                    strFormat("Expected max_feature_length > 0, got %d.",
+                              FLAGS_max_feature_length));
+
+  TensorOutput output;
+  output.shapeOrIntValues = {FLAGS_max_batch_size * FLAGS_max_feature_length};
   output.dtype = variableMetas[0].dtype;
   return output;
 }
