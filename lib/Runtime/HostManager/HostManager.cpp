@@ -23,6 +23,7 @@
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Runtime/DeviceHealthMonitor.h"
+#include "glow/Runtime/ErrorReporter.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RequestData.h"
@@ -107,7 +108,14 @@ HostManager::HostManager(
     : config_(hostConfig),
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
-  EXIT_ON_ERR(init(std::move(deviceConfigs)));
+  auto reporters = ErrorReporterRegistry::ErrorReporters();
+
+  auto err = init(std::move(deviceConfigs));
+  if (reporters && err) {
+    std::string msg = err.peekErrorValue()->logToString();
+    reporters->report(msg);
+  }
+  EXIT_ON_ERR(std::move(err));
   statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
 }
 
