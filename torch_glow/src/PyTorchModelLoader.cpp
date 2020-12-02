@@ -927,7 +927,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
       {{"aten::Int"}, &PyTorchModelLoader::loadInt},
       {{"aten::arange"}, &PyTorchModelLoader::loadArange},
-      {{"aten::zeros"}, &PyTorchModelLoader::loadZeros},
+      {{"aten::zeros"}, &PyTorchModelLoader::loadZerosOrOnes<0>},
+      {{"aten::ones"}, &PyTorchModelLoader::loadZerosOrOnes<1>},
+      {{"aten::zeros_like"}, &PyTorchModelLoader::loadZerosOrOnesLike<0>},
+      {{"aten::ones_like"}, &PyTorchModelLoader::loadZerosOrOnesLike<1>},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
       {{"aten::floor_divide", "aten::floor_divide_"},
@@ -2890,7 +2893,25 @@ Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
 }
 
-Error PyTorchModelLoader::loadZeros(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadZerosOrOnesHelper(
+    const torch::jit::Node *ptNode,
+    c10::ArrayRef<const torch::jit::Value *> outputs,
+    llvm::ArrayRef<glow::dim_t> inputDims, float splatValue) {
+  int32_t dtype;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dtype, iValToInt(getGlowIValueForValue(ptNode->namedInput("dtype"))));
+  auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+
+  auto output =
+      F_.createSplat(splatValue == 1 ? "ones" : "zeros",
+                     F_.getParent()->uniqueType(glowElemKind, inputDims),
+                     splatValue)
+          ->getResult();
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+template <int SplatValue>
+Error PyTorchModelLoader::loadZerosOrOnes(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
@@ -2904,17 +2925,22 @@ Error PyTorchModelLoader::loadZeros(const torch::jit::Node *ptNode) {
   }
   llvm::ArrayRef<glow::dim_t> inputSizeArrayRef(inputSizeGlow);
 
-  int32_t dtype;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dtype, iValToInt(getGlowIValueForValue(inputs[ZerosInputs::dtype])));
-  auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+  RETURN_ERR(loadZerosOrOnesHelper(ptNode, outputs, inputSizeArrayRef,
+                                   static_cast<float>(SplatValue)));
+}
 
-  auto output =
-      F_.createSplat(
-            "zeros",
-            F_.getParent()->uniqueType(glowElemKind, inputSizeArrayRef), 0)
-          ->getResult();
-  return addValueMapping(outputs[0], output);
+template <int SplatValue>
+Error PyTorchModelLoader::loadZerosOrOnesLike(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  const auto inputDims = input.dims();
+
+  RETURN_ERR(loadZerosOrOnesHelper(ptNode, outputs, inputDims,
+                                   static_cast<float>(SplatValue)));
 }
 
 Error PyTorchModelLoader::loadArange(const torch::jit::Node *ptNode) {

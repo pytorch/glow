@@ -18,3 +18,17 @@ class TestZero(unittest.TestCase):
         x = torch.randn(2, 3, 4)
 
         utils.compare_tracing_methods(TestModule(), x, fusible_ops={"aten::zeros"})
+
+
+class TestOnes(unittest.TestCase):
+    def test_ones_basic(self):
+        """Basic test of the PyTorch ones Node on Glow."""
+
+        class TestModule(torch.nn.Module):
+            def forward(self, a):
+                b = torch.ones(a.size(), dtype=torch.float)
+                return a + b
+
+        x = torch.randn(2, 3, 4)
+
+        utils.compare_tracing_methods(TestModule(), x, fusible_ops={"aten::ones"})
