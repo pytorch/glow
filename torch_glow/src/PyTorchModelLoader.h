@@ -394,6 +394,10 @@ private:
   // \returns error on failure.
   Error loadLengthsRange(const torch::jit::Node *ptNode);
 
+  // Load a PyTorch torchvision::roi_align op.
+  // \returns error on failure.
+  Error loadRoiAlignTorch(const torch::jit::Node *ptNode);
+
   // Load a PyTorch _caffe2::RoIAlign op.
   // \returns error on failure.
   Error loadRoiAlign(const torch::jit::Node *ptNode);
