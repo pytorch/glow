@@ -477,9 +477,20 @@ private:
   /// \returns error on failure.
   Error loadArange(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch zeros node.
+  Error loadZerosOrOnesHelper(const torch::jit::Node *ptNode,
+                              c10::ArrayRef<const torch::jit::Value *> outputs,
+                              llvm::ArrayRef<glow::dim_t> inputDims,
+                              float splatValue);
+
+  /// Load a PyTorch zeros or ones node.
   /// \returns error on failure.
-  Error loadZeros(const torch::jit::Node *ptNode);
+  template <int SplatValue>
+  Error loadZerosOrOnes(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch zeros_like or ones_like node.
+  /// \returns error on failure.
+  template <int SplatValue>
+  Error loadZerosOrOnesLike(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch sub node.
   /// \returns error on failure.
