@@ -177,9 +177,18 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         (elemType == ElemKind::Int8QTy || elemType == ElemKind::FloatTy ||
          elemType == ElemKind::Float16Ty);
 
-    isNodePrecisionSupported &= NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty},
-        {BatchNormalizationNode::InputIdx});
+    isNodePrecisionSupported = isNodePrecisionSupported &&
+                               NI.allInputsAndOutputsHaveSameElemKind(
+                                   {ElemKind::FloatTy, ElemKind::Float16Ty},
+                                   {BatchNormalizationNode::InputIdx},
+                                   {BatchNormalizationNode::ResultIdx});
+
+    isNodePrecisionSupported =
+        isNodePrecisionSupported &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {elemType},
+            {BatchNormalizationNode::ScaleIdx, BatchNormalizationNode::BiasIdx,
+             BatchNormalizationNode::MeanIdx, BatchNormalizationNode::VarIdx});
     break;
   }
   case Kinded::Kind::AvgPoolNodeKind:

@@ -583,8 +583,8 @@ TEST_F(GraphOptz, MergeBatchNormalizationWithArithmeticChainTest) {
   llvm::cast<Constant>(addC)->getHandle<float>().clear(addV);
   llvm::cast<Constant>(divC)->getHandle<float>().clear(divV);
 
-  BatchNormalizationNode *bn =
-      F_->createBatchNormalization("batch", input, beta, gamma, mean, var, 3);
+  BatchNormalizationNode *bn = F_->createBatchNormalization(
+      "batch", input->getType(), input, beta, gamma, mean, var, 3);
 
   auto *sub = F_->createSub("sub", bn, subC);
   auto *mul = F_->createMul("mul", sub, mulC);
@@ -975,7 +975,7 @@ public:
   NodeValue getNodeFromInput(TestSinkTransposeNodesKind testNode, Node *T) {
     switch (testNode) {
     case TestSinkTransposeNodesKind::BatchNormalization: {
-      return F_->createBatchNormalization(bindings_, "batch", T, 3, 0.0001, 0.9)
+      return F_->createBatchNormalization(bindings_, "batch", T, 1, 0.0001, 0.9)
           ->getResult();
     }
     case TestSinkTransposeNodesKind::Relu: {
