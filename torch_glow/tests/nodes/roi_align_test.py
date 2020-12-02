@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
+import torchvision
 from parameterized import parameterized
 from tests import utils
 
@@ -38,6 +39,7 @@ class SimpleRoiAlignModel(torch.nn.Module):
         pooled_w=6,
         sampling_ratio=2,
         aligned=True,
+        use_torchvision=False,
     ):
         super(SimpleRoiAlignModel, self).__init__()
         self.kwargs = {
@@ -48,20 +50,46 @@ class SimpleRoiAlignModel(torch.nn.Module):
             "sampling_ratio": sampling_ratio,
             "aligned": aligned,
         }
+        self.use_torchvision = use_torchvision
 
     def forward(self, features, rois):
-        return torch.ops._caffe2.RoIAlign(features, rois, **self.kwargs)
+        if self.use_torchvision:
+            return torchvision.ops.roi_align(
+                features,
+                rois,
+                (self.kwargs["pooled_h"], self.kwargs["pooled_w"]),
+                spatial_scale=self.kwargs["spatial_scale"],
+                sampling_ratio=self.kwargs["sampling_ratio"],
+                aligned=self.kwargs["aligned"],
+            )
+        else:
+            return torch.ops._caffe2.RoIAlign(features, rois, **self.kwargs)
 
 
 class TestRoiAlign(unittest.TestCase):
     @parameterized.expand(
         [
             ("basic", SimpleRoiAlignModel("NCHW"), torch.randn(1, 3, 16, 20)),
+            (
+                "basic_torchvision",
+                SimpleRoiAlignModel("NCHW", use_torchvision=True),
+                torch.randn(1, 3, 16, 20),
+            ),
             ("nhwc", SimpleRoiAlignModel("NHWC"), torch.randn(1, 16, 20, 3)),
             ("batched", SimpleRoiAlignModel("NCHW"), torch.randn(4, 3, 16, 20)),
             (
+                "batched_torchvision",
+                SimpleRoiAlignModel("NCHW", use_torchvision=True),
+                torch.randn(4, 3, 16, 20),
+            ),
+            (
                 "scaled",
                 SimpleRoiAlignModel("NCHW", spatial_scale=0.0625),
+                torch.randn(1, 3, 224, 224),
+            ),
+            (
+                "scaled_torchvision",
+                SimpleRoiAlignModel("NCHW", spatial_scale=0.0625, use_torchvision=True),
                 torch.randn(1, 3, 224, 224),
             ),
             (
@@ -70,8 +98,18 @@ class TestRoiAlign(unittest.TestCase):
                 torch.randn(1, 3, 16, 20),
             ),
             (
+                "unaligned_torchvision",
+                SimpleRoiAlignModel("NCHW", aligned=False, use_torchvision=True),
+                torch.randn(1, 3, 16, 20),
+            ),
+            (
                 "dynamic_sampling",
                 SimpleRoiAlignModel("NCHW", sampling_ratio=0),
+                torch.randn(1, 3, 16, 20),
+            ),
+            (
+                "dynamic_sampling_torchvision",
+                SimpleRoiAlignModel("NCHW", sampling_ratio=0, use_torchvision=True),
                 torch.randn(1, 3, 16, 20),
             ),
         ]
@@ -82,7 +120,14 @@ class TestRoiAlign(unittest.TestCase):
         kwargs.pop("C")
         rois = rand_rois(count=250, **kwargs)
         utils.compare_tracing_methods(
-            module, features, rois, fusible_ops={"_caffe2::RoIAlign"}
+            module,
+            features,
+            rois,
+            fusible_ops={
+                "torchvision::roi_align"
+                if module.use_torchvision
+                else "_caffe2::RoIAlign"
+            },
         )
 
     def test_roi_align_fp16(self):

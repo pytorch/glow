@@ -1040,6 +1040,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"fb::embedding_bag_4bit_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
       {{"fb::fast_gather"}, &PyTorchModelLoader::loadFastGather},
+      {{"torchvision::roi_align"}, &PyTorchModelLoader::loadRoiAlignTorch},
       {{"_caffe2::RoIAlign"}, &PyTorchModelLoader::loadRoiAlign},
       {{"_caffe2::RoIAlignRotated"}, &PyTorchModelLoader::loadRoiAlignRotated},
       {{"_caffe2::BBoxTransform"}, &PyTorchModelLoader::loadBBoxTransform},
@@ -5685,6 +5686,62 @@ Error PyTorchModelLoader::loadLengthsRange(const torch::jit::Node *ptNode) {
   // TODO: fix UINT_MAX
   auto *LRF = F_.createLengthsRangeFill("LengthsRange", lengths, UINT_MAX);
   RETURN_ERR(addValueMapping(outputs[0], LRF->getResult()));
+}
+
+Error PyTorchModelLoader::loadRoiAlignTorch(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  // Input assumed to be in NCHW format because PyTorch expects input as such
+  input = F_.createTranspose("roi_align_input_transposed", input, NCHW2NHWC);
+
+  glow::NodeValue boxes;
+  ASSIGN_VALUE_OR_RETURN_ERR(boxes, getGlowNodeValueForValue(inputs[1]));
+
+  float spatialScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(spatialScale,
+                             iValToDouble(getGlowIValueForValue(inputs[2])));
+
+  int64_t outputHeight;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputHeight,
+                             iValToInt(getGlowIValueForValue(inputs[3])));
+
+  int64_t outputWidth;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputWidth,
+                             iValToInt(getGlowIValueForValue(inputs[4])));
+
+  int64_t samplingRatio;
+  ASSIGN_VALUE_OR_RETURN_ERR(samplingRatio,
+                             iValToInt(getGlowIValueForValue(inputs[5])));
+  samplingRatio = std::max(samplingRatio, 0L);
+  bool aligned;
+  ASSIGN_VALUE_OR_RETURN_ERR(aligned,
+                             iValToBool(getGlowIValueForValue(inputs[6])));
+
+  std::vector<int64_t> batchDummy(boxes.dims()[0]);
+  glow::Tensor t(
+      F_.getParent()->uniqueType(ElemKind::Int64ITy, {boxes.dims()[0]}));
+  t.getHandle<int64_t>() = batchDummy;
+
+  // Create a dummy BatchIndices tensor because this input is not used in
+  // PyTorch/Caffe2.
+  auto dummyBatchIndices = F_.getParent()->createConstant(
+      "dummy_batch_indices", t // {boxes.dims()[0]},
+  );
+
+  NodeValue output =
+      F_.createROIAlign("RoiAlign", input, boxes, dummyBatchIndices,
+                        static_cast<dim_t>(outputHeight),
+                        static_cast<dim_t>(outputWidth), samplingRatio,
+                        spatialScale, aligned, false)
+          ->getResult();
+
+  output = F_.createTranspose("roi_align_output_transposed", output, NHWC2NCHW);
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadRoiAlignImpl(const torch::jit::Node *ptNode,
