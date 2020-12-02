@@ -933,6 +933,9 @@ TEST_P(HostManagerTest, testTimeout) {
   auto *XTensor = context->getPlaceholderBindings()->allocate(X);
   XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Poww", X, 2.0);
+  for (unsigned i = 0; i < 1000; i++) {
+    pow = F->createPow("pow" + std::to_string(i), pow, 1.0);
+  }
   auto *save = F->createSave("save", pow);
   context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 

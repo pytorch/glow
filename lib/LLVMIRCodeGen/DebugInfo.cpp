@@ -491,6 +491,14 @@ void LLVMIRGen::generateModuleDebugInfo() {
   // Finalize the debug info.
   DIBuilder_->finalize();
 
+  // Fix function attributes related issues.
+  for (auto &FF : getModule()) {
+    // Optnone requires NoInline.
+    if (FF.hasFnAttribute(llvm::Attribute::AttrKind::OptimizeNone)) {
+      FF.addFnAttr(llvm::Attribute::AttrKind::NoInline);
+    }
+  }
+
   // Verify the module to see if there are any errors due to the debug
   // information.
   bool brokenDebugInfo = false;

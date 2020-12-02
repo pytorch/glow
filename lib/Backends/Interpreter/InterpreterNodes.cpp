@@ -1028,8 +1028,12 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
         sdim_t y = -sdim_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
+          // When the MaxPool window includes only padding pixels then for that
+          // window by convention we return 0.
           bool first = true;
-          T max_value = 0;
+          T max_value = outW->getType().isQuantizedType()
+                            ? static_cast<T>(outW->getType().getOffset())
+                            : static_cast<T>(0);
           dim_t argmaxNHWC = 0;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1146,8 +1150,11 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
               sum += float(inW.at({n, (dim_t)ox, (dim_t)oy, z}));
             }
           }
-          assert(filterArea != 0 && "filterArea can't be 0");
-          outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
+          if (filterArea == 0) {
+            outW.at({n, ax, ay, z}) = ElemTy(0);
+          } else {
+            outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
+          }
         } // W
       }   // H
     }     // C
@@ -1202,11 +1209,16 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
               sum += inW.at({n, (dim_t)ox, (dim_t)oy, z}) - inQP.offset;
             }
           }
-          assert(filterArea != 0 && "filterArea can't be 0");
-          // Instead of dividing by filterArea, just change scale.
-          outW.at({n, ax, ay, z}) = quantization::clip<int32_t, int8_t>(
-              std::round(float(sum) * (inQP.scale / outQP.scale / filterArea) +
-                         outQP.offset));
+          if (filterArea == 0) {
+            outW.at({n, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(outQP.offset);
+          } else {
+            // Instead of dividing by filterArea, just change scale.
+            outW.at({n, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(std::round(
+                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
+                    outQP.offset));
+          }
         } // W
       }   // H
     }     // C
@@ -2029,6 +2041,68 @@ void BoundInterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
     break;
   case ElemKind::Int32ITy:
     fwdGatherInstImpl<int32_t>(I);
+    break;
+  default:
+    llvm_unreachable("Unsupported type for indices input of Gather.");
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdGatherNDInstImpl(
+    const glow::GatherNDInst *I) {
+
+  Tensor *dataT = getTensor(I->getData());
+  auto &dataTy = dataT->getType();
+  Tensor *indicesT = getTensor(I->getIndices());
+  Tensor *outT = getTensor(I->getDest());
+  auto &indicesTy = indicesT->getType();
+
+  // Get the last dimension of indices Tensor
+  const int64_t lastIndicesDimension =
+      indicesTy.dims()[indicesTy.dims().size() - 1];
+
+  size_t outP = 0;
+  dim_t elementSize = dataTy.getElementSize();
+
+  // The size of the each slice that we gather
+  dim_t dataSliceSize = 1;
+  for (size_t i = lastIndicesDimension; i < dataTy.dims().size(); i++) {
+    dataSliceSize *= dataTy.dims()[i];
+  }
+  // Calculate number of such slices that we gather
+  dim_t numOfSlices = 1;
+  for (size_t i = 0; i < indicesTy.dims().size() - 1; i++) {
+    numOfSlices *= indicesTy.dims()[i];
+  }
+
+  dim_t dataSliceSizeInBytes = dataSliceSize * elementSize;
+
+  for (dim_t i = 0, end = numOfSlices; i < end; i++) {
+    dim_t x = indicesT->getHandle<ElemTy>().raw(i * dataSliceSize);
+
+    for (size_t j = 1; j < lastIndicesDimension; j++) {
+      x = (x * dataTy.dims()[j]) +
+          indicesT->getHandle<ElemTy>().raw(i * dataSliceSize + j);
+    }
+
+    if (lastIndicesDimension < dataTy.dims().size()) {
+      x = x * dataTy.dims()[lastIndicesDimension];
+    }
+
+    std::copy(&dataT->getUnsafePtr()[x * elementSize],
+              &dataT->getUnsafePtr()[x * elementSize + dataSliceSizeInBytes],
+              &outT->getUnsafePtr()[outP]);
+    outP += dataSliceSizeInBytes;
+  }
+}
+
+void BoundInterpreterFunction::fwdGatherNDInst(const glow::GatherNDInst *I) {
+  switch (I->getIndices()->getElementType()) {
+  case ElemKind::Int64ITy:
+    fwdGatherNDInstImpl<int64_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdGatherNDInstImpl<int32_t>(I);
     break;
   default:
     llvm_unreachable("Unsupported type for indices input of Gather.");

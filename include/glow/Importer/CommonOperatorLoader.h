@@ -411,29 +411,6 @@ protected:
     return Error::success();
   }
 
-  /// Loads PRELU operator, given its protobuf representation and parsed args.
-  /// Follows undirectional broadcasting described here:
-  /// https://github.com/onnx/onnx/blob/fb1a80692c1ab0bd27b1072f2e7bffacba336777/docs/Broadcasting.md
-  Error loadPRelu(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
-
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-
-    NodeValue slope;
-    ASSIGN_VALUE_OR_RETURN_ERR(slope, getNodeValueByName(op.input(1)));
-
-    // Do broadcasting.
-    auto targetDim = in.dims();
-    // Sets the axis of each inputs so that the trailing-most dimensions of
-    // input tensors and the target shape are aligned.
-    int axis = targetDim.size() - slope.dims().size();
-    auto *finalSlope = G_->createBroadcast(opName, slope, targetDim, axis);
-    auto *R = G_->createPRELU(opName, in, finalSlope);
-    RETURN_IF_ERR(addNodeAsOutput(op, R));
-    return Error::success();
-  }
-
 #define LOAD_UNARY_OP(OPNAME)                                                  \
   Error load##OPNAME(const OpType &op, ArgumentDictionaryTy &dict) {           \
     const std::string &opName = loadOperatorName(op);                          \
@@ -1290,6 +1267,29 @@ protected:
     return Error::success();
   }
 
+  Error loadGatherND(const std::string &typeName, const OpType &op,
+                     const ArgumentDictionaryTy &dict) {
+
+    NodeValue data;
+    ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+
+    if (indices.getElementType() != ElemKind::Int64ITy &&
+        indices.getElementType() != ElemKind::Int32ITy) {
+      // If the index type is not Int32 or Int64 insert a conversion layer to
+      // introduce robustness against model problems. Constant Float indices
+      // will get converted to integer indices via constant folding pass.
+      indices = G_->createConvertTo(
+          loadOperatorName(op) + "_idx_convertToi32", indices,
+          G_->getParent()->uniqueType(ElemKind::Int32ITy, indices.dims()));
+    }
+
+    auto *GN = G_->createGatherND(loadOperatorName(op), data, indices);
+    RETURN_IF_ERR(addNodeAsOutput(op, GN));
+    return Error::success();
+  }
+
   Error loadGatherRanges(const std::string &typeName, const OpType &op,
                          ArgumentDictionaryTy &dict) {
     NodeValue data;
@@ -1396,10 +1396,6 @@ protected:
                                        ArgumentDictionaryTy &dict) {
     if (typeName == "Relu") {
       RETURN_IF_ERR(loadRelu(op, dict));
-      return true;
-    }
-    if (typeName == "PRelu") {
-      RETURN_IF_ERR(loadPRelu(op, dict));
       return true;
     }
     if (typeName == "Sigmoid") {
@@ -1557,6 +1553,10 @@ protected:
     }
     if (typeName == "Gather" || typeName == "BatchGather") {
       RETURN_IF_ERR(loadGatherOps(typeName, op, dict));
+      return true;
+    }
+    if (typeName == "GatherND") {
+      RETURN_IF_ERR(loadGatherND(typeName, op, dict));
       return true;
     }
     if (typeName == "GatherRanges") {

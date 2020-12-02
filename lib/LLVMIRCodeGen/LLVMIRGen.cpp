@@ -2532,8 +2532,16 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *pads = emitConstDimTArray(builder, PM->getPads());
 
     auto *F = getFunction("max_pool", dest->getElementType());
-    createCall(builder, F,
-               {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
+
+    if (src->getType()->isQuantizedType()) {
+      auto *destOffset = emitConstI32(builder, dest->getType()->getOffset());
+      createCall(builder, F,
+                 {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
+                  destOffset});
+    } else {
+      createCall(builder, F,
+                 {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
+    }
     break;
   }
 
@@ -2626,52 +2634,35 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *kernels = emitConstDimTArray(builder, PA->getKernels());
     auto *strides = emitConstDimTArray(builder, PA->getStrides());
     auto *pads = emitConstDimTArray(builder, PA->getPads());
+    auto *countIncludePads = emitConstI1(builder, PA->getCountIncludePads());
+
+    auto *F = getFunction("avg_pool", dest->getElementType());
 
     if (src->getType()->isQuantizedType()) {
       auto *destTy = dest->getType();
       auto *srcTy = src->getType();
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-
-      // if the flag is false, we can't pre-calculate the reduced scale
-      // because the kernel area will change since pads are excluded.
-      if (!PA->getCountIncludePads()) {
-        auto *srcScale = emitConstF32(builder, srcTy->getScale());
-        auto *destScale = emitConstF32(builder, destTy->getScale());
-
-        auto *F =
-            getFunction("avg_pool_count_exclude_pad", dest->getElementType());
-        createCall(builder, F,
-                   {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
-                    srcOffset, destOffset, srcScale, destScale});
-      } else {
-        // Reduce resulting scale by a factor of PA->getKernels()[0] *
-        // PA->getKernels()[1] since each subtensor value is divided by the area
-        // of kernel.
-        auto outScaleParam = quantization::quantizeScaleOffset32To8(
-            srcTy->getScale() / destTy->getScale() /
-                (PA->getKernels()[0] * PA->getKernels()[1]),
-            destTy->getOffset());
-        auto *outPre = emitConstI32(builder, outScaleParam.pre);
-        auto *outPost = emitConstI32(builder, outScaleParam.post);
-        auto *outScale = emitConstI32(builder, outScaleParam.scale);
-
-        auto *F = getFunction("avg_pool", dest->getElementType());
-        createCall(builder, F,
-                   {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
-                    destOffset, srcOffset, outPre, outPost, outScale});
+      // When we count the padding pixels in the normalizing factor we include
+      // the filter area in the scaling parameters since it is a constant.
+      float scale = srcTy->getScale() / destTy->getScale();
+      if (PA->getCountIncludePads()) {
+        scale = scale / (PA->getKernels()[0] * PA->getKernels()[1]);
       }
-
-      break;
+      auto outScaleParam = quantization::quantizeScaleOffset32To8(scale, 0);
+      auto *outPre = emitConstI32(builder, outScaleParam.pre);
+      auto *outPost = emitConstI32(builder, outScaleParam.post);
+      auto *outScale = emitConstI32(builder, outScaleParam.scale);
+      createCall(builder, F,
+                 {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
+                  countIncludePads, destOffset, srcOffset, outPre, outPost,
+                  outScale});
     } else {
-      auto *countIncludePads = emitConstI1(builder, PA->getCountIncludePads());
-
-      auto *F = getFunction("avg_pool", dest->getElementType());
       createCall(builder, F,
                  {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
                   countIncludePads});
-      break;
     }
+    break;
   }
 
   case Kinded::Kind::AdaptiveAvgPoolInstKind: {

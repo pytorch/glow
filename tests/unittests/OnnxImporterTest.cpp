@@ -1588,6 +1588,67 @@ TEST_F(OnnxImporterTest, reduceMinKeepDimsDefaultAxis) {
   testReductionOps("reduceMinDefaultAxis.onnxtxt", {1, 1, 1, 1}, {1});
 }
 
+static void testDepthToSpace(std::string &filename,
+                             const std::vector<dim_t> &expectedDims,
+                             const std::vector<float> &expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    // NCHW
+    Tensor x(ElemKind::FloatTy, {1, 8, 2, 3});
+    x.getHandle() = {0.,  1.,  2.,  3.,  4.,  5.,  9.,  10., 11., 12.,
+                     13., 14., 18., 19., 20., 21., 22., 23., 27., 28.,
+                     29., 30., 31., 32., 36., 37., 38., 39., 40., 41.,
+                     45., 46., 47., 48., 49., 50., 54., 55., 56., 57.,
+                     58., 59., 63., 64., 65., 66., 67., 68.};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < result.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading DepthToSpace with mode=CRD from an ONNX model.
+TEST_F(OnnxImporterTest, depthToSpaceCRD) {
+  std::string filename("depthToSpace_crd.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 2, 4, 6};
+  std::vector<float> expectedValues = {
+      0,  9,  1,  10, 2,  11, 18, 27, 19, 28, 20, 29, 3,  12, 4,  13,
+      5,  14, 21, 30, 22, 31, 23, 32, 36, 45, 37, 46, 38, 47, 54, 63,
+      55, 64, 56, 65, 39, 48, 40, 49, 41, 50, 57, 66, 58, 67, 59, 68};
+  testDepthToSpace(filename, expectedDims, expectedValues);
+}
+
+/// Test loading DepthToSpace with default mode(DCR) from an ONNX model.
+TEST_F(OnnxImporterTest, depthToSpaceDCR) {
+  std::string filename("depthToSpace.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 2, 4, 6};
+  std::vector<float> expectedValues = {
+      0,  18, 1,  19, 2,  20, 36, 54, 37, 55, 38, 56, 3,  21, 4,  22,
+      5,  23, 39, 57, 40, 58, 41, 59, 9,  27, 10, 28, 11, 29, 45, 63,
+      46, 64, 47, 65, 12, 30, 13, 31, 14, 32, 48, 66, 49, 67, 50, 68,
+  };
+  testDepthToSpace(filename, expectedDims, expectedValues);
+}
+
 /// Test loading SpaceToDepth op from an ONNX model.
 TEST_F(OnnxImporterTest, spaceToDepth) {
   ExecutionEngine EE{};
@@ -2293,16 +2354,24 @@ TEST_F(OnnxImporterTest, expandDims) {
   EXPECT_TRUE(reshape->getDims().equals({1, 2, 2, 1}));
 }
 
-/// Test loading Gather from an ONNX model.
-TEST_F(OnnxImporterTest, gather) {
-  ExecutionEngine EE;
+/// Helper method to run the gather operator test cases.
+/// \p filename contains the model .onnxtxt.
+/// \p dataShape: data Tensor dimensions.
+/// \p indicesShape: indices Tensor dimensions
+/// \p expectedValues : output Tensor values expected.
+template <class OpType>
+static void gatherTestHelper(llvm::StringRef fileName,
+                             llvm::ArrayRef<dim_t> dataShape,
+                             llvm::ArrayRef<dim_t> indicesShape,
+                             llvm::ArrayRef<dim_t> expectedDims) {
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/gather.onnxtxt");
-  auto *F = mod.createFunction("main");
+  Function *F = mod.createFunction("main");
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName.str();
   Placeholder *output;
-  Tensor data(ElemKind::FloatTy, {3, 2});
-  Tensor indices(ElemKind::Int32ITy, {2, 4});
+  Tensor data(ElemKind::FloatTy, dataShape);
+  Tensor indices(ElemKind::Int32ITy, indicesShape);
 
   {
     ONNXModelLoader onnxLD(netFilename, {"data", "indices"},
@@ -2310,13 +2379,31 @@ TEST_F(OnnxImporterTest, gather) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
   }
 
-  // Verify structure: PH/PH -> Gather -> Save -> PH.
-  ASSERT_EQ(mod.getPlaceholders().size(), 3);
-  ASSERT_EQ(F->getNodes().size(), 2);
-  auto *save = getSaveNodeFromDest(output);
-  auto *gather = llvm::dyn_cast<GatherNode>(save->getInput().getNode());
-  ASSERT_TRUE(gather);
-  EXPECT_TRUE(gather->getResult().dims().equals({2, 4, 2}));
+  // Verify structure: PH/PH -> Gather/GatherND -> Save -> PH.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *node = saveNode->getInput().getNode();
+  auto *nodeGather = llvm::dyn_cast<OpType>(node);
+  ASSERT_TRUE(nodeGather);
+  EXPECT_TRUE(nodeGather->getResult().dims().equals({expectedDims}));
+}
+
+/// Test loading gather op from a ONNX model.
+TEST_F(OnnxImporterTest, importGather) {
+  std::string filename("gather.onnxtxt");
+  std::vector<dim_t> dataShape = {3, 2};
+  std::vector<dim_t> indicesShape = {2, 4};
+  std::vector<dim_t> expectedDims = {2, 4, 2};
+  gatherTestHelper<GatherNode>(filename, dataShape, indicesShape, expectedDims);
+}
+
+/// Test loading gatherND op from a ONNX model.
+TEST_F(OnnxImporterTest, importGatherND) {
+  std::string filename("gatherND.onnxtxt");
+  std::vector<dim_t> dataShape = {2, 2, 2};
+  std::vector<dim_t> indicesShape = {2, 2};
+  std::vector<dim_t> expectedDims = {2, 2};
+  gatherTestHelper<GatherNDNode>(filename, dataShape, indicesShape,
+                                 expectedDims);
 }
 
 /// Test loading ScatterND from an ONNX model.
@@ -2711,8 +2798,23 @@ TEST_F(OnnxImporterTest, importPadDefault) {
             PaddingMode::CONSTANT, 0.f, false);
 }
 
+TEST_F(OnnxImporterTest, importPadDefaultInputPads) {
+  // This test Pad in opset v11 where "pads" is passed through the 2nd input.
+  importPad("padDefaultInputPad.onnxtxt", "data", {4, 6, 5, 7} /* input */,
+            {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
+            PaddingMode::CONSTANT, 0.f, false);
+}
+
 TEST_F(OnnxImporterTest, importPadConstant) {
   importPad("padConstant.onnxtxt", "data", {4, 6, 5, 7} /* input */,
+            {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
+            PaddingMode::CONSTANT, 2.55f, false);
+}
+
+TEST_F(OnnxImporterTest, importPadConstantInput) {
+  // This tests Pad in opset v11 where "pads" is passed through the 2nd input
+  // and "value" through the 3rd input.
+  importPad("padConstantInput.onnxtxt", "data", {4, 6, 5, 7} /* input */,
             {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
             PaddingMode::CONSTANT, 2.55f, false);
 }
@@ -3653,6 +3755,35 @@ TEST(onnx, ROIAlign_onnx) {
   ASSERT_TRUE(resultH.dims() == (llvm::ArrayRef<dim_t>)outputShape);
   for (size_t i = 0; i < resultH.getType().size(); i++) {
     EXPECT_NEAR(resultH.raw(i), expectedResult[i], delta);
+  }
+}
+
+/// Test loading and inference of ONNX MatMul operator with
+/// 4D inputs.
+TEST(onnx, MatMul4D) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/MatMul4D.onnxtxt");
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Placeholder *refOutput;
+
+  ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+  output = EXIT_ON_ERR(onnxLD.getOutputByName("Y"));
+  refOutput = EXIT_ON_ERR(onnxLD.getOutputByName("Yref"));
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto resultH = bindings.get(output)->getHandle();
+  auto refYH = bindings.get(refOutput)->getHandle();
+  std::vector<dim_t> outputShape = {1, 2, 3, 3};
+  float delta = 1e-03;
+  ASSERT_TRUE(resultH.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < resultH.getType().size(); i++) {
+    EXPECT_NEAR(resultH.raw(i), refYH.raw(i), delta);
   }
 }
 

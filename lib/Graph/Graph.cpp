@@ -1838,11 +1838,23 @@ MatMulNode *Function::createMatMul(llvm::StringRef name, NodeValue lhs,
 
 BatchMatMulNode *Function::createBatchMatMul(llvm::StringRef name,
                                              NodeValue LHS, NodeValue RHS) {
+  const size_t numDimsLHS = LHS.dims().size();
+  if (numDimsLHS > 3) {
+    const size_t numDimsRHS = RHS.dims().size();
+    std::vector<dim_t> newLHSShape = {0, LHS.dims()[numDimsLHS - 2],
+                                      LHS.dims()[numDimsLHS - 1]};
+    newLHSShape[0] = LHS.getType()->size() / (newLHSShape[1] * newLHSShape[2]);
+    LHS = createReshape(name.str() + ".reshapeLHS3D", LHS, newLHSShape);
+    std::vector<dim_t> newRHSShape = {0, RHS.dims()[numDimsRHS - 2],
+                                      RHS.dims()[numDimsRHS - 1]};
+    newRHSShape[0] = RHS.getType()->size() / (newRHSShape[1] * newRHSShape[2]);
+    RHS = createReshape(name.str() + ".reshapeRHS3D", RHS, newRHSShape);
+  }
+
   const size_t numDimsRHS = RHS.dims().size();
   assert(LHS.dims().size() == 3 && "LHS must be 3 dimensional.");
   assert((numDimsRHS == 2 || numDimsRHS == 3) &&
          "RHS must be 2 or 3 dimensional.");
-
   // If necessary, expand the RHS input to be 3D by adding initial leading
   // dim.
   if (numDimsRHS == 2) {
@@ -2483,6 +2495,31 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
       indices, batchDims));
 }
 
+GatherNDNode *Function::createGatherND(llvm::StringRef name, NodeValue data,
+                                       NodeValue indices) {
+  auto dDims = data.dims();
+  auto iDims = indices.dims();
+  int64_t lastIndicesDimension = iDims[iDims.size() - 1];
+  assert(dDims.size() > 0 && "data/input rank must be >= 1.");
+  assert(iDims.size() > 0 && "indices rank must be >= 1.");
+  assert(iDims[iDims.size() - 1] <= dDims.size() &&
+         "last dimension of indices can be at most rank of data/input");
+
+  int64_t outRank = dDims.size() + iDims.size() - lastIndicesDimension - 1;
+  std::vector<dim_t> outDimsGatherND(outRank);
+  size_t i = 0;
+  for (; i < iDims.size() - 1; i++) {
+    outDimsGatherND[i] = iDims[i];
+  }
+  for (size_t j = lastIndicesDimension; j < dDims.size(); i++, j++) {
+    outDimsGatherND[i] = dDims[j];
+  }
+
+  auto outTy =
+      getParent()->uniqueTypeWithNewShape(data.getType(), outDimsGatherND);
+  return addNode(new GatherNDNode(name, outTy, data, indices));
+}
+
 GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
                                                NodeValue data, NodeValue ranges,
                                                unsigned_t maxOutputSize) {
@@ -2525,6 +2562,35 @@ SpaceToDepthNode *Function::createSpaceToDepth(llvm::StringRef name,
                                inputDim[3] * blockSize * blockSize};
   auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
   return addNode(new SpaceToDepthNode(name, outTy, input, blockSize));
+}
+
+ReshapeNode *Function::createDepthToSpace(llvm::StringRef name, NodeValue input,
+                                          unsigned blockSize, bool isCRD) {
+  assert(blockSize > 0 && "Block size must be >= 1.");
+
+  auto inputDim = input.dims();
+  assert(inputDim.size() == 4 && "Dimension size of 4 is expected.");
+  dim_t N = inputDim[0];
+  dim_t H = inputDim[1];
+  dim_t W = inputDim[2];
+  dim_t C = inputDim[3];
+  assert(C % blockSize == 0 && "Depth should be divisible by block size.");
+
+  llvm::SmallVector<unsigned_t, 6> shuffle;
+  llvm::SmallVector<dim_t, 6> tmpShape;
+  llvm::SmallVector<dim_t, 4> outShape = {N, H * blockSize, W * blockSize,
+                                          C / (blockSize * blockSize)};
+  if (isCRD) {
+    tmpShape = {N, H, W, C / (blockSize * blockSize), blockSize, blockSize};
+    shuffle = D2S_CRD;
+  } else {
+    tmpShape = {N, H, W, blockSize, blockSize, C / (blockSize * blockSize)};
+    shuffle = D2S_DCR;
+  }
+
+  auto *RN1 = createReshape(name.str() + "_reshape_in", input, tmpShape);
+  auto *TN = createTranspose(name.str() + "_transpose", RN1, shuffle);
+  return createReshape(name.str() + "_reshape_out", TN, outShape);
 }
 
 ReshapeNode *Function::createUpsample(llvm::StringRef name, NodeValue input,
@@ -2977,10 +3043,14 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   dim_t qDim = 0;
   dim_t qStep = 1;
 
+  // Whether filter/bias quantization parameters were explicitly provided.
+  bool filterQParamsGiven = filterScales.getNode() && filterOffsets.getNode();
+  bool biasQParamsGiven = biasScales.getNode() && biasOffsets.getNode();
+
   // If input filter is FLOAT and filterScales/filterOffsets are NOT provided
   // then compute them automatically for given schema and filterElemQTy.
   // If input filter is QUANTIZED then filterScales/filterOffsets are mandatory.
-  if (!filterScales.getNode() || !filterOffsets.getNode()) {
+  if (!filterQParamsGiven) {
     DCHECK(filterElemKind == ElemKind::FloatTy)
         << "ChannelwiseQuantizedConvolution: If the input filter is "
         << "quantized then the filter scales/offsets must be provided!";
@@ -3001,29 +3071,12 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     filterOffsets = NodeValue(filterOffsetsC);
   }
 
-  // If input filter is FLOAT then quantize channel wise to filterElemQTy.
-  if (quantizeFilter && filterElemKind == ElemKind::FloatTy) {
-    Constant *filterC = dyn_cast<Constant>(filter.getNode());
-    DCHECK(filterC)
-        << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
-           "Constant to quantize it";
-    Constant *filterCQ = getParent()->createConstant(
-        filterElemQTy, filterC->getType()->dims(), 1.0, 0, "filter");
-    Constant *filterScalesC = dyn_cast<Constant>(filterScales.getNode());
-    Constant *filterOffsetsC = dyn_cast<Constant>(filterOffsets.getNode());
-    // Quantize filter channelwise.
-    filterCQ->getPayloadMutable() = quantization::quantizeTensor(
-        filterC->getPayload(), filterScalesC->getPayload(),
-        filterOffsetsC->getPayload(), filterElemQTy, qDim, qStep);
-    filter = NodeValue(filterCQ);
-  }
-
   // If input bias is FLOAT and biasScales/biasOffsets are NOT provided
   // then compute them automatically for given schema and biasElemQTy.
   // If input bias is QUANTIZED and biasScales/biasOffsets are NOT provided
   // then assume the channel wise quantization parameters are implicitly:
   // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
-  if (!biasScales.getNode() || !biasOffsets.getNode()) {
+  if (!biasQParamsGiven) {
     Constant *biasC = dyn_cast<Constant>(bias.getNode());
     DCHECK(biasC)
         << "Bias input to ChannelwiseQuantizedConvolutionNode must be a "
@@ -3041,19 +3094,32 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     auto inputScale = input.getType()->getScale();
     auto inputOffset = input.getType()->getOffset();
     if (biasElemKind == ElemKind::FloatTy) {
+      auto biasH = biasC->getPayload().getHandle<float>();
       // Get bias channelwise TensorQuantizationParams.
       quantization::getTensorQuantizationParams(
           biasC->getPayload(), biasScalesC->getPayloadMutable(),
           biasOffsetsC->getPayloadMutable(), schema, biasElemQTy, qDim, qStep);
       // Specialize the bias channelwise TensorQuantizationParams.
       for (dim_t idx = 0; idx < numChannels; idx++) {
-        auto biasTQPNew = specializeBiasQuantizationParams(
-            {biasScalesH.raw(idx), biasOffsetsH.raw(idx)},
-            {inputScale, inputOffset},
-            {filterScalesH.raw(idx), filterOffsetsH.raw(idx)}, schema,
-            biasElemQTy);
-        biasScalesH.raw(idx) = biasTQPNew.scale;
-        biasOffsetsH.raw(idx) = biasTQPNew.offset;
+        bool biasZero = (biasH.raw(idx) == 0.f);
+        TensorQuantizationParams biasTQP = {biasScalesH.raw(idx),
+                                            biasOffsetsH.raw(idx)};
+        TensorQuantizationParams inputTQP = {inputScale, inputOffset};
+        TensorQuantizationParams filterTQP = {filterScalesH.raw(idx),
+                                              filterOffsetsH.raw(idx)};
+        if (filterQParamsGiven) {
+          // Specialize only bias quantization parameters.
+          biasTQP = specializeBiasQuantizationParams(
+              biasTQP, inputTQP, filterTQP, schema, biasElemQTy, biasZero);
+        } else {
+          // Specialize bias and weights quantization parameters.
+          specializeBiasWeightsQuantizationParams(
+              biasTQP, inputTQP, filterTQP, schema, biasElemQTy, biasZero);
+        }
+        biasScalesH.raw(idx) = biasTQP.scale;
+        biasOffsetsH.raw(idx) = biasTQP.offset;
+        filterScalesH.raw(idx) = filterTQP.scale;
+        filterOffsetsH.raw(idx) = filterTQP.offset;
       }
     } else {
       // Set implicit bias channelwise TensorQuantizationParams.
@@ -3065,6 +3131,23 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     }
     biasScales = NodeValue(biasScalesC);
     biasOffsets = NodeValue(biasOffsetsC);
+  }
+
+  // If input filter is FLOAT then quantize channel wise to filterElemQTy.
+  if (quantizeFilter && filterElemKind == ElemKind::FloatTy) {
+    Constant *filterC = dyn_cast<Constant>(filter.getNode());
+    DCHECK(filterC)
+        << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
+    Constant *filterCQ = getParent()->createConstant(
+        filterElemQTy, filterC->getType()->dims(), 1.0, 0, "filter");
+    Constant *filterScalesC = dyn_cast<Constant>(filterScales.getNode());
+    Constant *filterOffsetsC = dyn_cast<Constant>(filterOffsets.getNode());
+    // Quantize filter channelwise.
+    filterCQ->getPayloadMutable() = quantization::quantizeTensor(
+        filterC->getPayload(), filterScalesC->getPayload(),
+        filterOffsetsC->getPayload(), filterElemQTy, qDim, qStep);
+    filter = NodeValue(filterCQ);
   }
 
   // If input bias is FLOAT then quantize channel wise to biasElemQTy.

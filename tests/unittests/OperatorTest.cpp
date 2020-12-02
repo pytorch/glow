@@ -1249,7 +1249,7 @@ createAndInitBasicMFCCTest(glow::PlaceholderBindings &bindings,
                               ElemKind::FloatTy, ElemKind::FloatTy, TOL);      \
   }
 
-TEST_MFCC(1, 17, 5e-5)
+TEST_MFCC(1, 17, 2e-4)
 TEST_MFCC(1, 33, 5e-5)
 TEST_MFCC(1, 65, 2e-5)
 TEST_MFCC(1, 129, 1e-5)
@@ -5004,6 +5004,163 @@ TEST_P(OperatorTest, GatherDataInt8IdxInt32) {
 TEST_P(OperatorTest, GatherDataInt8IdxInt64) {
   CHECK_IF_ENABLED();
   gatherInt8InputTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+#endif
+
+/// Helper for testing GatherND with different \p ITy / \p IndexType.
+template <typename DataType, typename IndexType>
+static void gatherNDFloatInputTest(glow::PlaceholderBindings &bindings,
+                                   glow::Module &mod, glow::Function *F,
+                                   glow::ExecutionEngine &EE, ElemKind DTy,
+                                   ElemKind ITy) {
+  /*
+    Data = [
+         [
+           [0.0,1.0],
+           [2.0,3.0]
+         ],
+         [
+           [4.0,5.0],
+           [6.0,7.0]
+         ]
+    ]
+
+    INDICES = [
+            [0,1],
+            [1,0]
+    ]
+
+    OUTPUT = [
+            [2.0,3.0],
+            [4.0,5.0]
+    ]
+  */
+  auto *data = mod.createPlaceholder(DTy, {2, 2, 2}, "data", false);
+  auto *indices = mod.createPlaceholder(ITy, {2, 2}, "indices", false);
+
+  bindings.allocate(data)->getHandle<DataType>() = {
+      0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f,
+  };
+  bindings.allocate(indices)->getHandle<IndexType>() = {
+      0,
+      1,
+      1,
+      0,
+  };
+
+  auto *R = F->createGatherND("gatherND", data, indices);
+
+  auto *result = F->createSave("save", R);
+  bindings.allocate(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor *resultT = bindings.get(result->getPlaceholder());
+  Tensor expectedT(DTy, {2, 2});
+  expectedT.getHandle<DataType>() = {2.0, 3.0, 4.0, 5.0};
+
+  EXPECT_TRUE(resultT->isEqual(expectedT));
+}
+
+/// Test that Gather works with Float data and Int32 indices.
+TEST_P(OperatorTest, GatherNDDataFloatIdxInt32) {
+  CHECK_IF_ENABLED();
+  gatherNDFloatInputTest<float, int32_t>(bindings_, mod_, F_, EE_,
+                                         ElemKind::FloatTy, ElemKind::Int32ITy);
+}
+
+#if DIM_T_BITWIDTH >= 64
+/// Test that Gather works with Float data and Int64 indices.
+TEST_P(OperatorTest, GatherNDDataFloatIdxInt64) {
+  CHECK_IF_ENABLED();
+  gatherNDFloatInputTest<float, int64_t>(bindings_, mod_, F_, EE_,
+                                         ElemKind::FloatTy, ElemKind::Int64ITy);
+}
+#endif
+
+/// Test that Gather works with Float16 data and Int32 indices.
+TEST_P(OperatorTest, GatherDataNDFloat16IdxInt32) {
+  CHECK_IF_ENABLED();
+  gatherNDFloatInputTest<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
+}
+
+/// Test that Gather works with Float16 data and Int64 indices.
+TEST_P(OperatorTest, GatherNDDataFloat16IdxInt64) {
+  CHECK_IF_ENABLED();
+  gatherNDFloatInputTest<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
+}
+
+/// Helper for testing GatherND with different \p ITy / \p IndexType.
+template <typename IndexType>
+static void gatherNDInt8InputTest(glow::PlaceholderBindings &bindings,
+                                  glow::Module &mod, glow::Function *F,
+                                  glow::ExecutionEngine &EE, ElemKind ITy) {
+  /*
+    Data = [
+         [
+           [0,1],
+           [2,3]
+         ],
+         [
+           [4,5],
+           [6,7]
+         ]
+    ]
+
+    INDICES = [
+           [[0,1],
+            [1,0]]
+    ]
+
+    OUTPUT = [
+            [2,3],
+            [4,5]
+    ]
+  */
+
+  auto *data = mod.createPlaceholder(ElemKind::Int8QTy, {2, 2, 2}, 1.0, 0,
+                                     "data", false);
+  auto *indices = mod.createPlaceholder(ITy, {2, 1, 2}, "indices", false);
+
+  bindings.allocate(data)->getHandle<int8_t>() = {
+      0, 1, 2, 3, 4, 5, 6, 7,
+  };
+  bindings.allocate(indices)->getHandle<IndexType>() = {
+      0,
+      1,
+      1,
+      0,
+  };
+
+  auto *R = F->createGatherND("gather", data, indices);
+
+  auto *result = F->createSave("save", R);
+  bindings.allocate(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor *resultT = bindings.get(result->getPlaceholder());
+  Tensor expectedT(ElemKind::Int8QTy, {2, 1, 2}, 1.0, 0);
+  expectedT.getHandle<int8_t>() = {2, 3, 4, 5};
+
+  EXPECT_TRUE(resultT->isEqual(expectedT));
+}
+
+/// Test that Gather works with Int8 data and Int32 indices.
+TEST_P(OperatorTest, GatherNDDataInt8IdxInt32) {
+  CHECK_IF_ENABLED();
+  gatherNDInt8InputTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+#if DIM_T_BITWIDTH >= 64
+/// Test that Gather works with Int8 data and Int64 indices.
+TEST_P(OperatorTest, GatherNDDataInt8IdxInt64) {
+  CHECK_IF_ENABLED();
+  gatherNDInt8InputTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 #endif
 
@@ -9553,7 +9710,7 @@ static void testChannelwiseQuantizedConv2D(
   auto refH = bindings.get(saveRef->getPlaceholder())->getHandle();
   for (dim_t idx = 0; idx < refH.size(); idx++) {
     float errVal = std::abs(refH.raw(idx) - outH.raw(idx));
-    EXPECT_TRUE(errVal < 0.05);
+    EXPECT_LT(errVal, 0.05f);
   }
 }
 
@@ -9604,6 +9761,201 @@ TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TTF, ElemKind::Int8QTy,
 TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TTT, ElemKind::Int8QTy,
              ElemKind::Int32QTy, true, true, true)
 #undef TEST_CWQCONV
+
+/// Test ChannelwiseQuantizedConv2D corner case with INT32 bias with
+/// very small filter data which would cause a bias up-shift and saturation
+/// if not properly handled. This kind of corner case is very commonly found
+/// in numerically ill-defined depthwise convolutions in MobileNet.
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D_Int32Bias_SmallFilterData) {
+  CHECK_IF_ENABLED();
+
+  std::vector<dim_t> inputDims = {1, 5, 5, 8};
+  std::vector<dim_t> filterDims = {8, 3, 3, 1};
+  std::vector<dim_t> biasDims = {8};
+  std::vector<dim_t> outputDims = {1, 5, 5, 8};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {1, 1, 1, 1};
+  dim_t group = 8;
+  std::vector<unsigned_t> dilation = {1, 1};
+  ElemKind elemQKind = ElemKind::Int8QTy;
+  ElemKind biasElemQKind = ElemKind::Int32QTy;
+  quantization::Schema schema = quantization::Schema::Asymmetric;
+
+  // Create input placeholder.
+  auto *inputF =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "inputF", false);
+  bindings_.allocate(inputF)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+
+  // Quantize input.
+  auto inputTQP =
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
+  auto *inputQTy =
+      mod_.uniqueType(elemQKind, inputDims, inputTQP.scale, inputTQP.offset);
+  auto *inputQ = F_->createQuantize("inputQ", inputF, inputQTy);
+
+  // Create float filter constant with small values.
+  auto *filterF = mod_.createConstant(ElemKind::FloatTy, filterDims, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1e-5, 1e-5,
+                                                            mod_.getPRNG());
+
+  // Create float bias constant.
+  auto *biasF = mod_.createConstant(ElemKind::FloatTy, biasDims, "biasF");
+  biasF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+
+  // Create ChannelwiseQuantizedConvolution and Dequantize.
+  auto outTQP =
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
+  auto *outQTy =
+      mod_.uniqueType(elemQKind, outputDims, outTQP.scale, outTQP.offset);
+  ChannelwiseQuantizedConvolutionNode *outQ =
+      F_->createChannelwiseQuantizedConv(
+          "CWQConv", inputQ, filterF, biasF, nullptr, nullptr, nullptr, nullptr,
+          outQTy, kernels, strides, pads, group, dilation,
+          /* quantizeFilter */ true,
+          /* quantizeBias */ true, schema, elemQKind, biasElemQKind);
+  DequantizeNode *out =
+      F_->createDequantize("dequantize", outQ, ElemKind::FloatTy);
+  SaveNode *saveOut = F_->createSave("saveOut", out);
+  bindings_.allocate(saveOut->getPlaceholder());
+
+  // Create reference floating-point Convolution.
+  auto *refTy = mod_.uniqueType(ElemKind::FloatTy, outputDims);
+  ConvolutionNode *refF =
+      F_->createConv("Conv", inputF, filterF, biasF, refTy, kernels, strides,
+                     pads, group, dilation);
+  SaveNode *saveRef = F_->createSave("saveRef", refF);
+  bindings_.allocate(saveRef->getPlaceholder());
+
+  // Check bias/filter quantization parameters.
+  float inputScale = inputTQP.scale;
+  auto *biasScalesC = llvm::dyn_cast<Constant>(outQ->getBiasScales().getNode());
+  EXPECT_TRUE(biasScalesC);
+  auto biasScalesH = biasScalesC->getPayload().getHandle<float>();
+  auto *filterScalesC =
+      llvm::dyn_cast<Constant>(outQ->getFilterScales().getNode());
+  EXPECT_TRUE(filterScalesC);
+  auto filterScalesH = filterScalesC->getPayload().getHandle<float>();
+  auto *biasOffsetsC =
+      llvm::dyn_cast<Constant>(outQ->getBiasOffsets().getNode());
+  EXPECT_TRUE(biasOffsetsC);
+  auto biasOffsetsH = biasOffsetsC->getPayload().getHandle<int32_t>();
+  for (dim_t idx = 0; idx < biasScalesH.size(); idx++) {
+    EXPECT_EQ(biasOffsetsH.raw(idx), 0);
+    EXPECT_EQ(biasScalesH.raw(idx), inputScale * filterScalesH.raw(idx));
+  }
+
+  // Compile and run.
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  // Check error.
+  auto outH = bindings_.get(saveOut->getPlaceholder())->getHandle();
+  auto refH = bindings_.get(saveRef->getPlaceholder())->getHandle();
+  for (dim_t idx = 0; idx < refH.size(); idx++) {
+    float errVal = std::abs(refH.raw(idx) - outH.raw(idx));
+    EXPECT_LT(errVal, 0.005f);
+  }
+}
+
+/// Test ChannelwiseQuantizedConv2D corner case with INT32 bias with
+/// zero bias data which would cause filter data underflow when quantized
+/// if not properly handled. This happens when we have a convolution
+/// where bias is not used.
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D_Int32Bias_ZeroBiasData) {
+  CHECK_IF_ENABLED();
+
+  std::vector<dim_t> inputDims = {1, 5, 5, 8};
+  std::vector<dim_t> filterDims = {8, 3, 3, 1};
+  std::vector<dim_t> biasDims = {8};
+  std::vector<dim_t> outputDims = {1, 5, 5, 8};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {1, 1, 1, 1};
+  dim_t group = 8;
+  std::vector<unsigned_t> dilation = {1, 1};
+  ElemKind elemQKind = ElemKind::Int8QTy;
+  ElemKind biasElemQKind = ElemKind::Int32QTy;
+  quantization::Schema schema = quantization::Schema::Asymmetric;
+
+  // Create input placeholder.
+  auto *inputF =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "inputF", false);
+  bindings_.allocate(inputF)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+
+  // Quantize input.
+  auto inputTQP =
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
+  auto *inputQTy =
+      mod_.uniqueType(elemQKind, inputDims, inputTQP.scale, inputTQP.offset);
+  auto *inputQ = F_->createQuantize("inputQ", inputF, inputQTy);
+
+  // Create float filter constant.
+  auto *filterF = mod_.createConstant(ElemKind::FloatTy, filterDims, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                            mod_.getPRNG());
+
+  // Create float bias constant with zero data.
+  auto *biasF = mod_.createConstant(ElemKind::FloatTy, biasDims, "biasF");
+  biasF->getPayloadMutable().zero();
+
+  // Create ChannelwiseQuantizedConvolution and Dequantize.
+  auto outTQP =
+      quantization::chooseQuantizationParams({-3.0, 3.0}, schema, elemQKind);
+  auto *outQTy =
+      mod_.uniqueType(elemQKind, outputDims, outTQP.scale, outTQP.offset);
+  ChannelwiseQuantizedConvolutionNode *outQ =
+      F_->createChannelwiseQuantizedConv(
+          "CWQConv", inputQ, filterF, biasF, nullptr, nullptr, nullptr, nullptr,
+          outQTy, kernels, strides, pads, group, dilation,
+          /* quantizeFilter */ true,
+          /* quantizeBias */ true, schema, elemQKind, biasElemQKind);
+  DequantizeNode *out =
+      F_->createDequantize("dequantize", outQ, ElemKind::FloatTy);
+  SaveNode *saveOut = F_->createSave("saveOut", out);
+  bindings_.allocate(saveOut->getPlaceholder());
+
+  // Create reference floating-point Convolution.
+  auto *refTy = mod_.uniqueType(ElemKind::FloatTy, outputDims);
+  ConvolutionNode *refF =
+      F_->createConv("Conv", inputF, filterF, biasF, refTy, kernels, strides,
+                     pads, group, dilation);
+  SaveNode *saveRef = F_->createSave("saveRef", refF);
+  bindings_.allocate(saveRef->getPlaceholder());
+
+  // Check bias/filter quantization parameters.
+  float inputScale = inputTQP.scale;
+  auto *biasScalesC = llvm::dyn_cast<Constant>(outQ->getBiasScales().getNode());
+  EXPECT_TRUE(biasScalesC);
+  auto biasScalesH = biasScalesC->getPayload().getHandle<float>();
+  auto *filterScalesC =
+      llvm::dyn_cast<Constant>(outQ->getFilterScales().getNode());
+  EXPECT_TRUE(filterScalesC);
+  auto filterScalesH = filterScalesC->getPayload().getHandle<float>();
+  auto *biasOffsetsC =
+      llvm::dyn_cast<Constant>(outQ->getBiasOffsets().getNode());
+  EXPECT_TRUE(biasOffsetsC);
+  auto biasOffsetsH = biasOffsetsC->getPayload().getHandle<int32_t>();
+  for (dim_t idx = 0; idx < biasScalesH.size(); idx++) {
+    EXPECT_EQ(biasOffsetsH.raw(idx), 0);
+    EXPECT_EQ(biasScalesH.raw(idx), inputScale * filterScalesH.raw(idx));
+  }
+
+  // Compile and run.
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  // Check error.
+  auto outH = bindings_.get(saveOut->getPlaceholder())->getHandle();
+  auto refH = bindings_.get(saveRef->getPlaceholder())->getHandle();
+  for (dim_t idx = 0; idx < refH.size(); idx++) {
+    float errVal = std::abs(refH.raw(idx) - outH.raw(idx));
+    EXPECT_LT(errVal, 0.05f);
+  }
+}
 
 /// Utility function to test numerically the ChannelwiseQuantizedConvolution2D
 /// against Interpreter implementation.
@@ -10611,6 +10963,77 @@ TEST_P(OperatorTest, AvgPoolCountExcludePads) {
   out.getHandle() = {2., 3., 5., 6.};
   EXPECT_TRUE(out.isEqual(*result));
 }
+
+/// Create a simple AvgPool network with large pads.
+template <bool countIncludePads>
+static FunctionTensorPair
+createAndInitAvgPool2DLargePads(glow::PlaceholderBindings &bindings,
+                                glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::vector<dim_t> inputDims = {3, 4, 5, 6};
+  std::vector<unsigned_t> kernels = {2, 3};
+  std::vector<unsigned_t> strides = {1, 2};
+  std::vector<unsigned_t> pads = {4, 5, 6, 7};
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  AvgPoolNode *pool =
+      F->createAvgPool("pool", input, kernels, strides, pads,
+                       ConvolutionLayout::NHWC, countIncludePads);
+  SaveNode *save = F->createSave("save", pool);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+/// AvgPool2D tests with large pads.
+/// Compare with the Interpreter float implementation.
+#define TEST_AVG_POOL2D_LARGE_PADS(NAME, TYPE, COUNT_INCLUDE_PADS, TOL)        \
+  TEST_P(OperatorStatelessTest, AvgPool2DLargePads_##NAME) {                   \
+    CHECK_IF_ENABLED();                                                        \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(), createAndInitAvgPool2DLargePads<COUNT_INCLUDE_PADS>, \
+        ElemKind::FloatTy, ElemKind::TYPE, TOL);                               \
+  }
+TEST_AVG_POOL2D_LARGE_PADS(FloatTy_CountIncludePads, FloatTy, true, 1e-5)
+TEST_AVG_POOL2D_LARGE_PADS(FloatTy_CountExcludePads, FloatTy, false, 1e-5)
+TEST_AVG_POOL2D_LARGE_PADS(Int8QTy_CountIncludePads, Int8QTy, true, 0.005)
+TEST_AVG_POOL2D_LARGE_PADS(Int8QTy_CountExcludePads, Int8QTy, false, 0.01)
+#undef TEST_AVG_POOL2D_LARGE_PADS
+
+/// Create a simple MaxPool network with large pads.
+static FunctionTensorPair
+createAndInitMaxPool2DLargePads(glow::PlaceholderBindings &bindings,
+                                glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::vector<dim_t> inputDims = {3, 4, 5, 6};
+  std::vector<unsigned_t> kernels = {2, 3};
+  std::vector<unsigned_t> strides = {1, 2};
+  std::vector<unsigned_t> pads = {4, 5, 6, 7};
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  MaxPoolNode *pool = F->createMaxPool("pool", input, kernels, strides, pads);
+  SaveNode *save = F->createSave("save", pool->getResult());
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+/// MaxPool2D tests with large pads.
+/// Compare with the Interpreter float implementation.
+#define TEST_MAX_POOL2D_LARGE_PADS(NAME, TYPE, TOL)                            \
+  TEST_P(OperatorStatelessTest, MaxPool2DLargePads_##NAME) {                   \
+    CHECK_IF_ENABLED();                                                        \
+    compareAgainstInterpreter(getBackendName(),                                \
+                              createAndInitMaxPool2DLargePads,                 \
+                              ElemKind::FloatTy, ElemKind::TYPE, TOL);         \
+  }
+TEST_MAX_POOL2D_LARGE_PADS(FloatTy, FloatTy, 1e-5)
+TEST_MAX_POOL2D_LARGE_PADS(Int8QTy, Int8QTy, 0.005)
+#undef TEST_MAX_POOL2D_LARGE_PADS
 
 /// Verify that the AdaptiveAvgPool operator works correctly.
 TEST_P(OperatorTest, AdaptiveAvgPool) {

@@ -96,6 +96,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize Pad nodes
       {FunctionPassID::MergePadIntoConvolution},
 
+      // Optimize Convolution nodes with small input tensors.
+      {FunctionPassID::OptimizeSmallConv},
+
       // Merge multiple matmul nodes into a single large matmul.
       {FunctionPassID::MergeMatMul},
 

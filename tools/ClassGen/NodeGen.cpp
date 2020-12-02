@@ -1029,6 +1029,15 @@ int main(int argc, char **argv) {
                     "batch and will concat the result of the gather operation "
                     "on each sample in the batch.");
 
+  BB.newNode("GatherND")
+      .addInput("Data")
+      .addInput("Indices")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Given Data tensor of rank r >= 1, Indices tensor of rank q >= 1 "
+          "This operator gathers slices of Data into "
+          "an output tensor of rank q + r - Indices_shape[-1] - 1 .");
+
   BB.newNode("GatherRanges")
       .addInput("Data")
       .addInput("Ranges")

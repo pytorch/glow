@@ -158,6 +158,10 @@ class ONNXModelLoader
   Error loadRange(const ONNX_NAMESPACE::NodeProto &op,
                   ArgumentDictionaryTy &dict);
 
+  /// Load PRelu ONNX operator.
+  Error loadPRelu(const ONNX_NAMESPACE::NodeProto &op,
+                  ArgumentDictionaryTy &dict);
+
   /// Load Slice ONNX operator.
   Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                   ArgumentDictionaryTy &dict);
@@ -278,6 +282,10 @@ class ONNXModelLoader
   /// Load ReduceL2 ONNX operator
   Error loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
                      const ArgumentDictionaryTy &dict);
+
+  /// Load DepthToSpace ONNX operator.
+  Error loadDepthToSpace(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
 
   /// Load ConstantOfShape ONNX operator.
   Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,

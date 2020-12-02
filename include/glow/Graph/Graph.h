@@ -1432,6 +1432,12 @@ public:
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
                            NodeValue indices, unsigned_t batchDims = 0);
 
+  /// Given \p data tensor of rank r >= 1, \p indices tensor of rank q >= 1,
+  /// and batch_dims integer b, this operator gathers slices of data
+  /// into an output tensor of rank q + r - indices_shape[-1] - 1 - b.
+  GatherNDNode *createGatherND(llvm::StringRef name, NodeValue data,
+                               NodeValue indices);
+
   /// Create a node, performing GatherRanges operation:
   /// Gathers entries of \p data in groups specified by the "examples" in
   /// \p ranges. Each example in \p ranges contains a list of pairs of
@@ -1470,6 +1476,12 @@ public:
   /// H/blockSize, W/blockSize, C * blockSize * blockSize].
   SpaceToDepthNode *createSpaceToDepth(llvm::StringRef name, NodeValue input,
                                        unsigned blockSize);
+
+  /// Create a sequence of Reshape and Transpose nodes representing DepthToSpace
+  /// operator with \p blockSize in DCR or CRD mode based on \p isCRD flag.
+  /// Assumes input layout to be NHWC. \returns the last node in the sequence.
+  ReshapeNode *createDepthToSpace(llvm::StringRef name, NodeValue input,
+                                  unsigned blockSize, bool isCRD = false);
 
   /// Given \p input tensor, \returns an upsampled tensor which has
   /// doubled the size of dimensions N, N-1, N-2...N-numLeadingDims,
@@ -2278,6 +2290,10 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 1u, 2u, 0u, 3u }
 #define CNHW2NHWC                                                              \
   { 1u, 2u, 3u, 0u }
+#define D2S_DCR                                                                \
+  { 0u, 1u, 3u, 2u, 4u, 5u }
+#define D2S_CRD                                                                \
+  { 0u, 1u, 4u, 2u, 5u, 3u }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
 

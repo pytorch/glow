@@ -728,53 +728,78 @@ static void libjit_arg_min_generic(const inpT *inpW, outT *outW,
 template <typename T>
 static void libjit_max_pool_generic(const T *inW, T *outW, const dim_t *inWdims,
                                     const dim_t *outWdims, dim_t *kernelSizes,
-                                    dim_t *strides, dim_t *pads) {
-  dim_t pad_t = pads[0];
-  dim_t pad_l = pads[1];
-  dim_t stride_h = strides[0];
-  dim_t stride_w = strides[1];
-  dim_t kernel_h = kernelSizes[0];
-  dim_t kernel_w = kernelSizes[1];
-  // For each sample in the batch:
-  for (dim_t n = 0; n < outWdims[0]; n++) {
-    // For each (x,y) step in the input/output tensor:
-    sdim_t x = -(sdim_t)pad_t;
-    for (dim_t ax = 0; ax < outWdims[1]; x += stride_h, ax++) {
-      sdim_t y = -(sdim_t)pad_l;
-      for (dim_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
+                                    dim_t *strides, dim_t *pads, T defVal) {
 
-        // For each layer in the output tensor:
-        for (dim_t z = 0; z < inWdims[3]; z++) {
-          int first = 1;
-          T max = 0;
+  size_t kernelH = kernelSizes[0];
+  size_t kernelW = kernelSizes[1];
 
-          // For each element in the pool filter:
-          for (dim_t fx = 0; fx < kernel_h; fx++) {
-            for (dim_t fy = 0; fy < kernel_w; fy++) {
-              sdim_t ox = x + fx;
-              sdim_t oy = y + fy;
+  size_t strideH = strides[0];
+  size_t strideW = strides[1];
 
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= (sdim_t)inWdims[1] ||
-                  oy >= (sdim_t)inWdims[2]) {
-                continue;
-              }
+  size_t padT = pads[0];
+  size_t padL = pads[1];
 
-              float val =
-                  inW[libjit_getXYZW(inWdims, n, (dim_t)ox, (dim_t)oy, z)];
+  // For each input in the batch.
+  for (size_t n = 0; n < inWdims[0]; n++) {
 
-              if (first || (val >= max)) {
-                first = 0;
-                max = val;
-              }
+    // For each output height.
+    ssize_t i_h_min = -(ssize_t)padT;
+    for (size_t o_h = 0; o_h < outWdims[1]; o_h++, i_h_min += strideH) {
+
+      // Effective kernel height limits.
+      ssize_t f_h_min = libjit_conv_flt_min(i_h_min);
+      ssize_t f_h_max = libjit_conv_flt_max(inWdims[1], kernelH, i_h_min);
+      ssize_t f_h_len = libjit_conv_flt_len(f_h_min, f_h_max);
+      const T *inpPtrH = inW + (i_h_min + f_h_min) * inWdims[2] * inWdims[3];
+
+      // For each output width.
+      ssize_t i_w_min = -(ssize_t)padL;
+      for (size_t o_w = 0; o_w < outWdims[2]; o_w++, i_w_min += strideW) {
+
+        // Effective kernel width limits.
+        ssize_t f_w_min = libjit_conv_flt_min(i_w_min);
+        ssize_t f_w_max = libjit_conv_flt_max(inWdims[2], kernelW, i_w_min);
+        ssize_t f_w_len = libjit_conv_flt_len(f_w_min, f_w_max);
+        const T *inpPtr = inpPtrH + (i_w_min + f_w_min) * inWdims[3];
+
+        // For each output channel.
+        for (size_t o_c = 0; o_c < outWdims[3]; o_c++) {
+
+          // Initialize max.
+          T max = std::numeric_limits<T>::lowest();
+
+          // For each kernel height.
+          for (size_t f_h = 0; f_h < f_h_len; f_h++) {
+
+            // For each kernel width.
+            for (size_t f_w = 0; f_w < f_w_len; f_w++) {
+
+              // Take maximum along the kernel width.
+              max = std::max(max, *inpPtr);
+              inpPtr += inWdims[3];
             }
+
+            // Advance input pointer for next kernel height.
+            inpPtr = inpPtr - f_w_len * inWdims[3] + inWdims[2] * inWdims[3];
           }
 
-          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = max;
-        } // C
-      }   // W
-    }     // H
-  }       // N
+          // Store max. If the effective pooling window size is empty then we
+          // return the default value.
+          if (f_h_len > 0 && f_w_len > 0) {
+            *outW++ = max;
+          } else {
+            *outW++ = defVal;
+          }
+
+          // Advance input pointer for next output channel.
+          inpPtr = inpPtr - f_h_len * inWdims[2] * inWdims[3] + 1;
+        }
+      }
+    }
+
+    // Advance input pointer for next batch.
+    inW += inWdims[1] * inWdims[2] * inWdims[3];
+  }
 }
 
 template <typename T, typename T2>
@@ -2366,16 +2391,16 @@ void libjit_local_response_normalization_grad_f(
 
 void libjit_max_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
                         const dim_t *outWdims, dim_t *kernelSizes,
-                        dim_t *strides, dim_t *pads) {
+                        dim_t *strides, dim_t *pads, int32_t outOffset) {
   libjit_max_pool_generic(inW, outW, inWdims, outWdims, kernelSizes, strides,
-                          pads);
+                          pads, static_cast<int8_t>(outOffset));
 }
 
 void libjit_max_pool_f(const float *inW, float *outW, const dim_t *inWdims,
                        const dim_t *outWdims, dim_t *kernelSizes,
                        dim_t *strides, dim_t *pads) {
   libjit_max_pool_generic(inW, outW, inWdims, outWdims, kernelSizes, strides,
-                          pads);
+                          pads, static_cast<float>(0));
 }
 
 void libjit_max_pool_argmax_i8_u(const int8_t *inW, int8_t *outW,
@@ -2510,146 +2535,164 @@ void libjit_resizebilinear_u(int64_t *dst, const int64_t *src,
   libjit_resizebilinear_generic(dst, src, scale, inWdims, outWdims);
 }
 
-void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
-                        const dim_t *outWdims, dim_t *kernelSizes,
-                        dim_t *strides, dim_t *pads, int32_t outOffset,
-                        int32_t inOffset, int32_t outPre, int32_t outPost,
-                        int32_t outScale) {
-  dim_t pad_t = pads[0];
-  dim_t pad_l = pads[1];
-  dim_t stride_h = strides[0];
-  dim_t stride_w = strides[1];
-  dim_t kernel_h = kernelSizes[0];
-  dim_t kernel_w = kernelSizes[1];
-  // For each input in the batch:
-  for (dim_t n = 0; n < outWdims[0]; n++) {
-    // For each (x,y) step in the input/output tensor:
-    sdim_t x = -sdim_t(pad_t);
-    for (dim_t ax = 0; ax < outWdims[1]; x += stride_h, ax++) {
-      sdim_t y = -sdim_t(pad_l);
-      for (dim_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
-        // For each layer in the output tensor:
-        for (dim_t z = 0; z < inWdims[3]; z++) {
-          int32_t sum = 0;
-
-          for (dim_t fx = 0; fx < kernel_h; fx++) {
-            for (dim_t fy = 0; fy < kernel_w; fy++) {
-              sdim_t ox = x + fx;
-              sdim_t oy = y + fy;
-
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= (sdim_t)inWdims[1] ||
-                  oy >= (sdim_t)inWdims[2]) {
-                continue;
-              }
-              sum += inW[libjit_getXYZW(inWdims, n, (dim_t)ox, (dim_t)oy, z)] -
-                     inOffset;
-            }
-          }
-          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = libjit_clip(
-              libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset));
-        } // C
-      }   // W
-    }     // H
-  }       // N
-}
-
-void libjit_avg_pool_count_exclude_pad_i8(
-    const int8_t *inW, int8_t *outW, const dim_t *inWdims,
-    const dim_t *outWdims, dim_t *kernelSizes, dim_t *strides, dim_t *pads,
-    int32_t inOffset, int32_t outOffset, float inScale, float outScale) {
-  dim_t pad_t = pads[0];
-  dim_t pad_l = pads[1];
-  dim_t stride_h = strides[0];
-  dim_t stride_w = strides[1];
-  dim_t kernel_h = kernelSizes[0];
-  dim_t kernel_w = kernelSizes[1];
-
-  float rawFilterArea = kernel_h * kernel_w;
-  // For each input in the batch:
-  for (dim_t n = 0; n < outWdims[0]; n++) {
-    // For each (x,y) step in the input/output tensor:
-    sdim_t x = -sdim_t(pad_t);
-    for (dim_t ax = 0; ax < outWdims[1]; x += stride_h, ax++) {
-      sdim_t y = -sdim_t(pad_l);
-      for (dim_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
-        // For each layer in the output tensor:
-        for (dim_t z = 0; z < inWdims[3]; z++) {
-          int32_t sum = 0;
-          float filterArea = rawFilterArea;
-
-          for (dim_t fx = 0; fx < kernel_h; fx++) {
-            for (dim_t fy = 0; fy < kernel_w; fy++) {
-              sdim_t ox = x + fx;
-              sdim_t oy = y + fy;
-
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= (sdim_t)inWdims[1] ||
-                  oy >= (sdim_t)inWdims[2]) {
-                filterArea--;
-                continue;
-              }
-              sum += inW[libjit_getXYZW(inWdims, n, (dim_t)ox, (dim_t)oy, z)] -
-                     inOffset;
-            }
-          }
-          assert(filterArea != 0 && "FilterArea can't be 0");
-          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = libjit_clip(round(
-              float(sum) * (inScale / outScale / filterArea) + outOffset));
-        } // C
-      }   // W
-    }     // H
-  }       // N
-}
-
 void libjit_avg_pool_f(const float *inW, float *outW, const dim_t *inWdims,
                        const dim_t *outWdims, dim_t *kernelSizes,
                        dim_t *strides, dim_t *pads, bool countIncludePads) {
-  dim_t pad_t = pads[0];
-  dim_t pad_l = pads[1];
-  dim_t stride_h = strides[0];
-  dim_t stride_w = strides[1];
-  dim_t kernel_h = kernelSizes[0];
-  dim_t kernel_w = kernelSizes[1];
-  float rawFilterArea = kernel_h * kernel_w;
-  // For each input in the batch:
-  for (dim_t n = 0; n < outWdims[0]; n++) {
-    // For each (x,y) step in the input/output tensor:
-    sdim_t x = -(sdim_t)pad_t;
-    for (dim_t ax = 0; ax < outWdims[1]; x += stride_h, ax++) {
-      sdim_t y = -(sdim_t)pad_l;
-      for (dim_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
-        // For each layer in the output tensor:
-        for (dim_t z = 0; z < inWdims[3]; z++) {
 
+  size_t kernelH = kernelSizes[0];
+  size_t kernelW = kernelSizes[1];
+
+  size_t strideH = strides[0];
+  size_t strideW = strides[1];
+
+  size_t padT = pads[0];
+  size_t padL = pads[1];
+
+  // For each input in the batch.
+  for (size_t n = 0; n < inWdims[0]; n++) {
+
+    // For each output height.
+    ssize_t i_h_min = -(ssize_t)padT;
+    for (size_t o_h = 0; o_h < outWdims[1]; o_h++, i_h_min += strideH) {
+
+      // Effective kernel height limits.
+      ssize_t f_h_min = libjit_conv_flt_min(i_h_min);
+      ssize_t f_h_max = libjit_conv_flt_max(inWdims[1], kernelH, i_h_min);
+      ssize_t f_h_len = libjit_conv_flt_len(f_h_min, f_h_max);
+      const float *inpPtrH =
+          inW + (i_h_min + f_h_min) * inWdims[2] * inWdims[3];
+
+      // For each output width.
+      ssize_t i_w_min = -(ssize_t)padL;
+      for (size_t o_w = 0; o_w < outWdims[2]; o_w++, i_w_min += strideW) {
+
+        // Effective kernel width limits.
+        ssize_t f_w_min = libjit_conv_flt_min(i_w_min);
+        ssize_t f_w_max = libjit_conv_flt_max(inWdims[2], kernelW, i_w_min);
+        ssize_t f_w_len = libjit_conv_flt_len(f_w_min, f_w_max);
+        const float *inpPtr = inpPtrH + (i_w_min + f_w_min) * inWdims[3];
+
+        // For each output channel.
+        for (size_t o_c = 0; o_c < outWdims[3]; o_c++) {
+
+          // Initialize sum.
           float sum = 0;
-          float filterArea = rawFilterArea;
 
-          for (dim_t fx = 0; fx < kernel_h; fx++) {
-            for (dim_t fy = 0; fy < kernel_w; fy++) {
-              sdim_t ox = x + fx;
-              sdim_t oy = y + fy;
+          // For each kernel height.
+          for (size_t f_h = 0; f_h < f_h_len; f_h++) {
 
-              // Ignore index access below zero (this is due to padding).
-              if (ox < 0 || oy < 0 || ox >= (sdim_t)inWdims[1] ||
-                  oy >= (sdim_t)inWdims[2]) {
-                if (!countIncludePads) {
-                  filterArea--;
-                }
+            // For each kernel width.
+            for (size_t f_w = 0; f_w < f_w_len; f_w++) {
 
-                continue;
-              }
+              // Accumulate along the kernel width.
+              sum += (*inpPtr);
+              inpPtr += inWdims[3];
+            }
 
-              sum += inW[libjit_getXYZW(inWdims, n, (dim_t)ox, (dim_t)oy, z)];
+            // Advance input pointer for next kernel height.
+            inpPtr = inpPtr - f_w_len * inWdims[3] + inWdims[2] * inWdims[3];
+          }
+
+          // Normalize and store.
+          float area =
+              countIncludePads ? (kernelH * kernelW) : (f_h_len * f_w_len);
+          *outW++ = (area == 0) ? 0 : sum / area;
+
+          // Advance input pointer for next output channel.
+          inpPtr = inpPtr - f_h_len * inWdims[2] * inWdims[3] + 1;
+        }
+      }
+    }
+
+    // Advance input pointer for next batch.
+    inW += inWdims[1] * inWdims[2] * inWdims[3];
+  }
+}
+
+void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
+                        const dim_t *outWdims, dim_t *kernelSizes,
+                        dim_t *strides, dim_t *pads, bool countIncludePads,
+                        int32_t outOffset, int32_t inOffset, int32_t outPre,
+                        int32_t outPost, int32_t outScale) {
+
+  size_t kernelH = kernelSizes[0];
+  size_t kernelW = kernelSizes[1];
+
+  size_t strideH = strides[0];
+  size_t strideW = strides[1];
+
+  size_t padT = pads[0];
+  size_t padL = pads[1];
+
+  // For each input in the batch.
+  for (size_t n = 0; n < inWdims[0]; n++) {
+
+    // For each output height.
+    ssize_t i_h_min = -(ssize_t)padT;
+    for (size_t o_h = 0; o_h < outWdims[1]; o_h++, i_h_min += strideH) {
+
+      // Effective kernel height limits.
+      ssize_t f_h_min = libjit_conv_flt_min(i_h_min);
+      ssize_t f_h_max = libjit_conv_flt_max(inWdims[1], kernelH, i_h_min);
+      ssize_t f_h_len = libjit_conv_flt_len(f_h_min, f_h_max);
+      const int8_t *inpPtrH =
+          inW + (i_h_min + f_h_min) * inWdims[2] * inWdims[3];
+
+      // For each output width.
+      ssize_t i_w_min = -(ssize_t)padL;
+      for (size_t o_w = 0; o_w < outWdims[2]; o_w++, i_w_min += strideW) {
+
+        // Effective kernel width limits.
+        ssize_t f_w_min = libjit_conv_flt_min(i_w_min);
+        ssize_t f_w_max = libjit_conv_flt_max(inWdims[2], kernelW, i_w_min);
+        ssize_t f_w_len = libjit_conv_flt_len(f_w_min, f_w_max);
+        const int8_t *inpPtr = inpPtrH + (i_w_min + f_w_min) * inWdims[3];
+
+        // For each output channel.
+        for (size_t o_c = 0; o_c < outWdims[3]; o_c++) {
+
+          // Initialize sum.
+          int32_t sum = 0;
+
+          // For each kernel height.
+          for (size_t f_h = 0; f_h < f_h_len; f_h++) {
+
+            // For each kernel width.
+            for (size_t f_w = 0; f_w < f_w_len; f_w++) {
+
+              // Accumulate along the kernel width.
+              sum += (*inpPtr) - inOffset;
+              inpPtr += inWdims[3];
+            }
+
+            // Advance input pointer for next kernel height.
+            inpPtr = inpPtr - f_w_len * inWdims[3] + inWdims[2] * inWdims[3];
+          }
+
+          // Normalize and store.
+          if (countIncludePads) {
+            sum = libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
+            *outW++ = libjit_clip(sum);
+          } else {
+            int32_t area = f_h_len * f_w_len;
+            if (area == 0) {
+              *outW++ = outOffset;
+            } else {
+              sum = libjit_scale_i32i8(sum, outPre, outPost, outScale, 0);
+              sum = libjit_div_round_i32(sum, area) + outOffset;
+              *outW++ = libjit_clip(sum);
             }
           }
 
-          assert(filterArea != 0 && "FilterArea shouldn't be 0");
-          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = sum / filterArea;
-        } // C
-      }   // W
-    }     // H
-  }       // N
+          // Advance input pointer for next output channel.
+          inpPtr = inpPtr - f_h_len * inWdims[2] * inWdims[3] + 1;
+        }
+      }
+    }
+
+    // Advance input pointer for next batch.
+    inW += inWdims[1] * inWdims[2] * inWdims[3];
+  }
 }
 
 void libjit_adaptive_avg_pool_f(const float *inW, float *outW,

@@ -142,16 +142,21 @@ invertShuffle(llvm::ArrayRef<unsigned_t> shuffle) {
 static TransposeNode *insertMatchingTransposeAfterConstant(Function *F,
                                                            Constant *C,
                                                            TransposeNode *TR) {
-  auto *CT = C->getOutput().getType();
-  auto *TRT = TR->getResult().getType();
-  DCHECK(CT->isEqual(TRT));
+  const auto *CT = C->getOutput().getType();
+  const auto *TRT = TR->getResult().getType();
+  DCHECK(CT->isEqual(*TRT, /* allowDifferentShape */ false,
+                     /* allowDifferentStride */ false,
+                     /* allowDifferentScaleOffset */ true));
 
   auto &T = C->getPayload();
 
-  // In order for a new Transpose node with the same shuffle as TR to
-  // be created at the output of the Constant, a new Constant should
-  // created that has the same type as the input to TR.
-  auto *NC = F->getParent()->createConstant(TR->getInput().getType(),
+  // In order for a new Transpose node with the same shuffle as TR to be created
+  // at the output of the Constant, a new Constant with the same dimension as
+  // the input of TR should be created. Note that the original scale and offset
+  // should be kept for quantized types.
+  auto newConstTy =
+      F->getParent()->uniqueTypeWithNewShape(CT, TR->getInput().dims());
+  auto *NC = F->getParent()->createConstant(newConstTy,
                                             C->getName().str() + ".transposed");
 
   // The payload of the original Constant C has the same type as the
@@ -1056,6 +1061,70 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       SN->getResult().replaceAllUsesOfWith(newBN);
       changed = true;
     }
+  }
+
+  return changed;
+}
+
+/// Remove unnecessary padding and reduce filters for Convolution nodes with
+/// small input tensors.
+bool OptimizeSmallConv::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *CN = dyn_cast<ConvolutionNode>(&N);
+    if (!CN) {
+      continue;
+    }
+
+    // Consider a Convolution "small", if its output is 1x1.
+    // The transformation doesn't support dilation.
+    auto dilation = CN->getDilation();
+    ShapeNHWC odim(CN->getResult().dims());
+    if (odim.h > 1 || odim.w > 1 || !isUniformArray(dilation, 1u)) {
+      continue;
+    }
+
+    // Dealing with stride=1 Convoltuion nodes is generally easier, so try
+    // to canonicalize stride to 1 if possible.
+    ShapeNHWC idim(CN->getInput().dims());
+    std::vector<unsigned_t> strides(CN->getStrides());
+    std::vector<unsigned_t> kernels(CN->getKernels());
+    std::vector<unsigned_t> pads(CN->getPads());
+    auto newOutHW = calculateConvPoolOutputDims(idim.h, idim.w, kernels, {1, 1},
+                                                pads, dilation);
+    if (newOutHW.first == 1 && newOutHW.second == 1) {
+      strides = {1, 1};
+    }
+
+    // Slice off redundant filter parts.
+    auto filters = CN->getFilter();
+    auto *C = dyn_cast<Constant>(filters);
+    if (C && isUniformArray(llvm::makeArrayRef(strides), 1u) &&
+        !isUniformArray(llvm::makeArrayRef(pads), 0u)) {
+      ShapeNHWC fdim(filters.dims());
+      PaddingTLBR p(llvm::makeArrayRef(pads));
+      dim_t start[] = {0u, p.top, p.left, 0u};
+      dim_t end[] = {fdim.n, fdim.h - p.bottom, fdim.w - p.right, fdim.c};
+      auto *SN = F->createSlice(C->getName(), C, start, end);
+      filters = SN->getResult();
+      kernels = {unsigned_t(idim.h), unsigned_t(idim.w)};
+      pads = {0, 0, 0, 0};
+    }
+
+    // Check if this node needs any changes.
+    if (filters == CN->getFilter() &&
+        llvm::makeArrayRef(strides) == CN->getStrides()) {
+      continue;
+    }
+
+    auto *newCN =
+        F->createConv(CN->getName(), CN->getInput(), filters, CN->getBias(),
+                      CN->getResult().getType(), kernels, strides, pads,
+                      CN->getGroup(), dilation);
+
+    CN->getResult().replaceAllUsesOfWith(newCN->getResult());
+    changed = true;
   }
 
   return changed;
@@ -5225,6 +5294,56 @@ bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
         F->createSwish(SN->getName().str() + "_int", DN->getInput(),
                        QN->getResult().getType());
     QN->getResult().replaceAllUsesOfWith(newSN);
+    changed = true;
+  }
+  return changed;
+}
+
+/// Convert a FullyConnected node to a 1x1 Convolution.
+bool ConvertFullyConnectedToConvolution::run(Function *F,
+                                             const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *FCN = dyn_cast<FullyConnectedNode>(&N);
+    if (!FCN) {
+      continue;
+    }
+
+    NodeValue output = FCN->getResult();
+    NodeValue input = FCN->getInput();
+    NodeValue filter = FCN->getWeights();
+    NodeValue bias = FCN->getBias();
+
+    // Reshape input from 2D to 4D.
+    auto inpDims = ShapeHW(input.getType()->dims());
+    std::vector<dim_t> inpDimsCN = {inpDims.height, 1, 1, inpDims.width};
+    input = F->createReshape(FCN->getName(), input, inpDimsCN);
+
+    // Transpose filter and reshape from 2D to 4D.
+    filter = F->createTranspose(FCN->getName(), filter, {1, 0});
+    auto filterDims = ShapeHW(filter.getType()->dims());
+    std::vector<dim_t> filterDimsCN = {filterDims.height, 1, 1,
+                                       filterDims.width};
+    filter = F->createReshape(FCN->getName(), filter, filterDimsCN);
+
+    // Create Conv2D node with same output type but 4D shape.
+    auto outDims = ShapeHW(output.getType()->dims());
+    std::vector<dim_t> outDimsCN = {outDims.height, 1, 1, outDims.width};
+    auto outTyCN =
+        F->getParent()->uniqueTypeWithNewShape(output.getType(), outDimsCN);
+    NodeValue outputCN =
+        F->createConv(FCN->getName(), input, filter, bias, outTyCN,
+                      /* kernels */ {1, 1},
+                      /* strides */ {1, 1},
+                      /* pads */ {0, 0, 0, 0},
+                      /* group */ 1);
+
+    // Reshape the 4D output back to its original 2D shape.
+    outputCN =
+        F->createReshape(FCN->getName(), outputCN, output.getType()->dims());
+    FCN->getResult().replaceAllUsesOfWith(outputCN);
     changed = true;
   }
   return changed;
