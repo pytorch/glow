@@ -46,7 +46,7 @@ bool ClipZeroScaleFP16 = false;
 // FP16 Constants
 bool ConvertToFP16 = false;
 bool ConvertPlaceholdersToFP16 = false;
-bool ConvertConstantsToFP16 = false;
+bool ConvertConstantsToFP16 = true;
 bool ConvertFusedScaleOffsetToFP16 = false;
 bool ClipToFP16 = false;
 bool SkipInputsOnClipToFP16 = true;
