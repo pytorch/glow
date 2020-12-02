@@ -12122,7 +12122,7 @@ createAndInitConv2DWithActivation(glow::PlaceholderBindings &bindings,
 /// For this we compare with the Interpreter reference float implementation.
 #define TEST_CONV2D_ACTIVATION(ACTIVATION, TYPE, TOL)                          \
   TEST_P(OperatorStatelessTest, Conv2D_##ACTIVATION##_##TYPE) {                \
-    ENABLED_BACKENDS("CPU");                                                   \
+    ENABLED_BACKENDS("Interpreter", "CPU");                                    \
     compareAgainstInterpreter(                                                 \
         getBackendName(),                                                      \
         createAndInitConv2DWithActivation<FusedActivation::ACTIVATION>,        \
@@ -12147,7 +12147,7 @@ TEST_CONV2D_ACTIVATION(LEAKY_RELU, Int8QTy, 0.01)
 /// For this we compare with the Interpreter reference float implementation.
 #define TEST_CWQ_CONV2D_ACTIVATION(ACTIVATION, TYPE, TOL)                      \
   TEST_P(OperatorStatelessTest, CWQConv2D_##ACTIVATION##_##TYPE) {             \
-    ENABLED_BACKENDS("CPU");                                                   \
+    ENABLED_BACKENDS("Interpreter", "CPU");                                    \
     compareAgainstInterpreter(                                                 \
         getBackendName(),                                                      \
         createAndInitConv2DWithActivation<FusedActivation::ACTIVATION>,        \
