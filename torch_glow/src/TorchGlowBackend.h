@@ -47,6 +47,10 @@ public:
   c10::impl::GenericList execute(c10::IValue handle,
                                  c10::impl::GenericList inputs) override;
 
+  static void
+  preview(torch::jit::Module mod, c10::impl::GenericDict method_compile_spec,
+          c10::optional<torch::jit::Stack> inputStack = c10::nullopt);
+
 private:
   std::unordered_map<int64_t, std::pair<std::unique_ptr<CachingGraphRunner>,
                                         std::unique_ptr<JITGraphRunner>>>
