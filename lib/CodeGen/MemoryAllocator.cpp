@@ -443,12 +443,12 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   // Allocate all buffers.
   for (size_t buffIdx = 0; buffIdx < buffNum; buffIdx++) {
 
+#if 1
     // -----------------------------------------------------------------------
     // Select buffer to allocate:
     // 1. Find maximum live allocation size.
-    // 2. Take largest buffer from the maximum live allocation.
-    // 3. If multiple buffers with same size, take the buffer with highest
-    //    live interval.
+    // 2. Find buffer with maximum size.
+    // 3. If multiple buffers with same size, find maximum live interval.
     // -----------------------------------------------------------------------
 
     // Find maximum total live allocation.
@@ -462,23 +462,69 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
     uint64_t buffIdMax = 0;
     uint64_t buffSizeMax = 0;
     for (auto buffIdIter : liveBuffIdList) {
+      auto buffSizeIter = buffSizeArray[buffIdIter];
+      // Choose buffer with maximum size.
+      if (buffSizeIter > buffSizeMax) {
+        buffSizeMax = buffSizeIter;
+        buffIdMax = buffIdIter;
+      }
       // If size is the same choose buffer with maximum live interval.
-      if (buffSizeArray[buffIdIter] == buffSizeMax) {
+      if (buffSizeIter == buffSizeMax) {
         auto currTime = buffTimeStop[buffIdMax] - buffTimeStart[buffIdMax];
         auto iterTime = buffTimeStop[buffIdIter] - buffTimeStart[buffIdIter];
         if (iterTime > currTime) {
           buffIdMax = buffIdIter;
         }
       }
-      // Choose largest buffer.
-      if (buffSizeArray[buffIdIter] > buffSizeMax) {
-        buffSizeMax = buffSizeArray[buffIdIter];
+    }
+
+    // Current segment ID chosen for allocation.
+    auto currSegId = buffIdMax;
+#endif
+
+#if 0
+    // -----------------------------------------------------------------------
+    // Select buffer to allocate:
+    // 1. Find maximum live allocation size.
+    // 2. Find buffer with maximum live interval.
+    // 3. If multiple buffers with same live interval, find maximum size.
+    // -----------------------------------------------------------------------
+
+    // Find maximum total live allocation.
+    auto liveBuffSizeMaxIt =
+        std::max_element(liveBuffSizeArray.begin(), liveBuffSizeArray.end());
+    auto liveBuffSizeMaxIdx =
+        std::distance(liveBuffSizeArray.begin(), liveBuffSizeMaxIt);
+    auto &liveBuffIdList = liveBuffIdListArray[liveBuffSizeMaxIdx];
+
+    // Find buffer with maximum live interval within the maximum allocation.
+    uint64_t buffIdMax = 0;
+    uint64_t buffTimeMax = 0;
+    for (auto buffIdIter : liveBuffIdList) {
+      auto buffTimeIter = buffTimeStop[buffIdIter] - buffTimeStart[buffIdIter];
+      // Choose buffer with maximum live interval.
+      if (buffTimeIter > buffTimeMax) {
+        buffTimeMax = buffTimeIter;
         buffIdMax = buffIdIter;
+      }
+      // If live interval is the same choose buffer with maximum size.
+      if (buffTimeIter == buffTimeMax) {
+        auto currSize = buffSizeArray[buffIdMax];
+        auto iterSize = buffSizeArray[buffIdIter];
+        if (iterSize > currSize) {
+          buffIdMax = buffIdIter;
+        }
       }
     }
 
     // Current segment ID chosen for allocation.
     auto currSegId = buffIdMax;
+#endif
+
+#if 0
+    // Naive approach.
+    auto currSegId = buffIdx;
+#endif
 
     // Check that this segment was not previously allocated.
     assert(idSegMap.find(currSegId) == idSegMap.end() &&
