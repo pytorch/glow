@@ -4011,9 +4011,7 @@ Error PyTorchModelLoader::loadDequantize(const torch::jit::Node *ptNode) {
   glow::DequantizeNode *dn =
       F_.createDequantize("dequantize", input, ElemKind::FloatTy);
 
-  c10::ScalarType dtype;
-  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  RETURN_ERR(addValueMapping(outputs[0], dn->getResult(), dtype));
+  RETURN_ERR(addValueMapping(outputs[0], dn->getResult()));
 }
 
 Error PyTorchModelLoader::loadQuantizedConvRelu(
