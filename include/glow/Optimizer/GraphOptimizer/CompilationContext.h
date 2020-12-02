@@ -128,6 +128,9 @@ struct PrecisionConfiguration {
   /// are clipped inside the FP16 range.
   bool clipQuantRangeToFP16{false};
 
+  /// Whether to run External Quantization pass
+  bool externalQuantization{false};
+
   /// Converts a float16 \p format into an ElemKind.
   static ElemKind getElementType(Float16Format format) {
     switch (format) {

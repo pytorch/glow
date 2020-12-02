@@ -102,6 +102,13 @@ But in addition to those there are quantization specific optimizations:
     with updated quantized weights based on the quantization parameters from the
     Quantize node.
 
+  * External Quantization Pass
+
+    In external quantization, nodes are added in model loader with the assumption of INT8 support
+    from the backend. If the backend doesn't support a node in INT8, this pass converts that node to FP32
+    or FP16 depending upon the convert-to-fp16 flag. Along with data type modification, it adds
+    dequantization and quantization nodes respectively at the input and the output of the target node.
+
   * RescaleQuantized(Max(X,Y)) -> Max(RescaleQuantized(X), RescaleQuantized(Y))
 
     It's OK to rescale the operands because even if the output range is smaller then truncation

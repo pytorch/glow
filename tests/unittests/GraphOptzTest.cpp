@@ -2306,7 +2306,9 @@ static SaveNode *getUniqueSaveNode(Function *F) {
 
 /// Mock backend that requests the pre-quantization of constants.
 class MockBackendPrequantizeConst : public MockBackend {
-  bool shouldPreQuantizeConstants() const override { return true; }
+  bool shouldPreQuantizeConstants(CompilationContext &cctx) const override {
+    return true;
+  }
   bool isOpSupported(const NodeInfo &) const override { return true; }
   Expected<bool>
   transformPostLowering(Function *F, CompilationContext &,
@@ -2321,7 +2323,9 @@ class MockBackendPrequantizeConst : public MockBackend {
 };
 /// Mock backend that requests the non pre-quantization of constants.
 class MockBackendNotPrequantizeConst : public MockBackend {
-  bool shouldPreQuantizeConstants() const override { return false; }
+  bool shouldPreQuantizeConstants(CompilationContext &cctx) const override {
+    return false;
+  }
   bool isOpSupported(const NodeInfo &) const override { return true; }
   Expected<bool>
   transformPostLowering(Function *F, CompilationContext &,
@@ -6575,4 +6579,32 @@ TEST_F(GraphOptz, TestUpdateQuantReluTypes) {
   EXPECT_NE(reluRange.first, fcRange.first);
   EXPECT_EQ(reluRange.first, 0);
   EXPECT_EQ(reluRange.second, fcRange.second);
+}
+
+TEST_F(GraphOptz, mergeQuantizeDequantizeToConvertTo) {
+  // Quantize followed by Dequantize can be replaced with ConvertTo
+  // if there is mismatch in element types of Quantize node input and
+  // Dequantize node output.
+  // Check that we are combining Quantize and Dequantize-pairs.
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 5}, "input", true);
+  auto *Q = F_->createQuantize("quantize", input, ElemKind::Int8QTy, 0.5, 10);
+  auto *D = F_->createDequantize("dequantize", Q, ElemKind::Float16Ty);
+  F_->createSave("out", D);
+
+  // QUantize, Dequantize, and Save nodes
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+  // Only ConvertTo and Save nodes should remain
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Check the graph structure
+  auto *SN = F_->getNodeByName("out_save");
+  EXPECT_NE(nullptr, SN);
+  auto *S = llvm::dyn_cast<SaveNode>(SN);
+  EXPECT_NE(nullptr, S);
+  auto *newN = S->getInput().getNode();
+  EXPECT_NE(nullptr, newN);
+  EXPECT_NE(nullptr, llvm::dyn_cast<ConvertToNode>(newN));
 }

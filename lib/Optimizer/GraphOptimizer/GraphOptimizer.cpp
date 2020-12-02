@@ -4425,7 +4425,16 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       if (auto *Q = dyn_cast<QuantizeNode>(DQ->getInput())) {
         // Dequantize(Quantize(X)) -> X
         changed = true;
-        DQ->getResult().replaceAllUsesOfWith(Q->getInput());
+        NodeValue newInput = Q->getInput();
+        // Add ConvertTo node if there is mismatch in the element types
+        // of Quantize node input and Dequantize node output
+        // This case may arise in mixed mode execution of Int8 and FP16
+        if (Q->getInput().getElementType() !=
+            DQ->getResult().getElementType()) {
+          newInput = F->createConvertTo(newInput.getNode()->getName(), newInput,
+                                        DQ->getResult().getElementType());
+        }
+        DQ->getResult().replaceAllUsesOfWith(newInput);
         continue;
       }
       // Fold the rescale into the following Dequantize.
@@ -4560,6 +4569,116 @@ void glow::convertQuantizedConstants(Function *F, CompilationContext &cctx) {
     Q->getResult().replaceAllUsesOfWith(NC);
   }
 
+  // Perform Dead Code Elimination.
+  runDCEPass(F, cctx);
+}
+
+// External quantization pass, If the backend doesn't support a node in INT8,
+// convert that node to FP32 or FP16 depending upon the convert-to-fp16 flag.
+// Along with data type modification, add dequantization and quantization nodes
+// respectively at the input and the output of the target node.
+void glow::externalQuantizationPass(const Backend &B, Function *F,
+                                    CompilationContext &cctx) {
+
+  const PrecisionConfiguration &precConfig = cctx.precisionConfig;
+
+  for (Node &node : F->getNodes()) {
+    bool isFP16Supported = false;
+    bool isSupported = B.isOpSupported(node);
+
+    // check if all of the outputs of node are quantized type
+    bool isAllResQuantized = true;
+    for (size_t i = 0, e = node.getNumResults(); i < e; i++) {
+      if (node.getType(i)->isFPType()) {
+        isAllResQuantized = false;
+        break;
+      }
+    }
+
+    if (!isSupported && isAllResQuantized) {
+      // Check for FP16 support of the node
+      if (precConfig.convertToFP16) {
+        std::vector<TypeRef> inputTypes, outputTypes;
+        TypeRef inpType = nullptr, outType = nullptr;
+
+        for (size_t i = 0, e = node.getNumResults(); i < e; i++) {
+          if (node.getType(i)->isQuantizedType()) {
+            outType =
+                F->getParent()->uniqueType(ElemKind::Float16Ty, node.dims(i));
+          } else {
+            outType = node.getType(i);
+          }
+          outputTypes.push_back(outType);
+        }
+
+        for (size_t i = 0, e = node.getNumInputs(); i < e; i++) {
+          if (node.getNthInput(i).getType()->isQuantizedType()) {
+            inpType = F->getParent()->uniqueType(ElemKind::Float16Ty,
+                                                 node.getNthInput(i).dims());
+          } else {
+            inpType = node.getNthInput(i).getType();
+          }
+          inputTypes.push_back(inpType);
+        }
+
+        NodeInfo fp16node = NodeInfo(node.getKind(), inputTypes, outputTypes);
+        isFP16Supported = B.isOpSupported(fp16node);
+      }
+
+      // Create a Cloned Node
+      Node *clonedNode = node.clone();
+      TypeRef newTy = nullptr;
+      for (size_t i = 0, e = node.getNumResults(); i < e; i++) {
+        if (node.getType(i)->isQuantizedType()) {
+          if (isFP16Supported) {
+            newTy =
+                F->getParent()->uniqueType(ElemKind::Float16Ty, node.dims(i));
+          } else {
+            newTy = F->getParent()->uniqueType(ElemKind::FloatTy, node.dims(i));
+          }
+        } else {
+          newTy = node.getType(i);
+        }
+        clonedNode->setType(i, newTy);
+      }
+      F->addNode(clonedNode);
+
+      // Add input dequantize node
+      for (size_t i = 0, e = node.getNumInputs(); i < e; i++) {
+        auto input = node.getNthInput(i);
+        TypeRef inTy = nullptr;
+        if (input.getType()->isQuantizedType()) {
+          if (isFP16Supported) {
+            inTy = F->getParent()->uniqueType(ElemKind::Float16Ty,
+                                              input.getType()->dims());
+          } else {
+            inTy = F->getParent()->uniqueType(ElemKind::FloatTy,
+                                              input.getType()->dims());
+          }
+          std::string deqName =
+              node.getName().str() + "_dequantize" + std::to_string(i);
+          auto *DQ = F->createDequantize(deqName, input, inTy);
+          clonedNode->setNthInput(i, DQ);
+        } else {
+          clonedNode->setNthInput(i, input);
+        }
+      }
+
+      // Add output quantize node
+      unsigned numres = clonedNode->getNumResults();
+      for (size_t i = 0, e = numres; i < e; i++) {
+        auto result = clonedNode->getNthResult(i);
+        if (result.getType()->isFPType()) {
+          std::string quantName =
+              node.getName().str() + "_quantize" + std::to_string(i);
+          auto *Q = F->createQuantize(quantName, result, node.getType(i));
+          node.getNthResult(i).replaceAllUsesOfWith(Q);
+        } else {
+          node.getNthResult(i).replaceAllUsesOfWith(result);
+        }
+      }
+    }
+  }
   // Perform Dead Code Elimination.
   runDCEPass(F, cctx);
 }
@@ -5733,7 +5852,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
     }
   }
 
-  if (B.shouldPreQuantizeConstants()) {
+  if (B.shouldPreQuantizeConstants(cctx)) {
     // Do the actual float ->fix-point conversion of constant tensors before
     // Post-lowering.
     ::glow::convertQuantizedConstants(F, cctx);
@@ -5742,7 +5861,14 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // Allow the backend to transform the graph after lowering.
   RETURN_IF_EXPECTED_IS_ERR(B.transformPostLowering(F, cctx, devInfo));
 
-  if (!B.shouldPreQuantizeConstants()) {
+  // Convert unsupported INT8 node to FP16 or FP32 and add dequantization and
+  // quantization nodes at the input and output of the corresponding node.
+  if (cctx.precisionConfig.externalQuantization) {
+    runDCEPass(F, cctx);
+    ::glow::externalQuantizationPass(B, F, cctx);
+  }
+
+  if (!B.shouldPreQuantizeConstants(cctx)) {
     // Do the actual float ->fix-point conversion of constant tensors after
     // Post-lowering.
     ::glow::convertQuantizedConstants(F, cctx);

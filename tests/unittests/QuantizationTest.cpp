@@ -2888,6 +2888,70 @@ TEST(Quantization, CheckAssertQuantization) {
   }
 }
 
+// Test for external Quantization with no rescale
+TEST(Quantization, ExternalQuatization) {
+  ExecutionEngine EE{};
+  PlaceholderBindings bindings;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("foo");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
+  auto IH = bindings.allocate(input)->getHandle();
+  IH = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+  auto filter =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
+  auto FH = bindings.allocate(filter)->getHandle();
+  FH = {0, 0, 0, 1, 1, 1, 0, 0, 0};
+
+  auto *zeroBias = mod.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings.allocate(zeroBias)->zero();
+
+  QuantizeNode *QNInp =
+      F->createQuantize("quant_input", input, ElemKind::Int8QTy, 1, 0);
+
+  QuantizeNode *QNWeight =
+      F->createQuantize("quant_weight", filter, ElemKind::Int8QTy, 1, 0);
+
+  QuantizeNode *QNBias =
+      F->createQuantize("quant_bias", zeroBias, ElemKind::Int8QTy, 1, 0);
+
+  auto outTy = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0);
+
+  ConvolutionNode *CN =
+      F->createConv("Conv", QNInp, QNWeight, QNBias, outTy, 3, 1, 1, 1);
+
+  DequantizeNode *DN = F->createDequantize("deq_conv", CN, ElemKind::FloatTy);
+
+  QuantizeNode *QNLog =
+      F->createQuantize("quant_log", DN, ElemKind::Int8QTy, 1, 0);
+
+  auto outTyLog = mod.uniqueType(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0);
+
+  LogNode *log = F->createLog("log", QNLog, outTyLog);
+
+  DequantizeNode *finalDN =
+      F->createDequantize("deq_final", log, ElemKind::FloatTy);
+
+  auto *save = F->createSave("ret", finalDN);
+  bindings.allocate(save->getPlaceholder());
+  CompilationContext cctx;
+  cctx.precisionConfig.convertToFP16 = true;
+  cctx.precisionConfig.externalQuantization = true;
+
+  EE.compile(cctx);
+  EE.run(bindings);
+  auto result = bindings.get(save->getPlaceholder());
+  auto outTyFinal = mod.uniqueType(ElemKind::FloatTy, {1, 3, 3, 1});
+
+  Tensor expected(outTyFinal);
+  expected.getHandle() = {0.693, 1.098, 0.693, 0.693, 1.098,
+                          0.693, 0.693, 1.098, 0.693};
+
+  EXPECT_TRUE(expected.isEqual(*result, 0.001));
+}
+
 /// Check that we can quantize nodes that have some quantized outputs as unused,
 /// e.g. a TopK node where values is unused but indices is.
 TEST(Quantization, QuantizationZeroUsersResult) {

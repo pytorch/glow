@@ -55,6 +55,12 @@ void fold(Function *F, const CompilationContext &cctx,
 /// Performs the actual constant quantization in function \p F.
 void convertQuantizedConstants(Function *F, CompilationContext &cctx);
 
+/// Performs External Quantization pass which convert unsupported INT8 node
+/// for given backend to FP16 or FP32 and add dequantization and
+/// quantization nodes at the input and output of the corresponding node.
+void externalQuantizationPass(const Backend &B, Function *F,
+                              CompilationContext &cctx);
+
 /// Lower the high-level neural network nodes found in \p F into low-level
 /// linear algebra operators. If \p B is not a nullptr then it can prevent
 /// lowering of a node via \ref Backend::shouldLower(); otherwise everything
