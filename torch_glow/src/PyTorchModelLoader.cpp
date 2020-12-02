@@ -1148,7 +1148,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"quantized::batch_norm3d_relu"},
        &PyTorchModelLoader::loadQuantizedBatchNorm3dRelu},
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
-      {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
+      {{"aten::max_pool2d", "aten::max_pool2d_with_indices"},
+       &PyTorchModelLoader::loadMaxPool2d},
       {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool2d},
       {{"aten::avg_pool3d"}, &PyTorchModelLoader::loadAvgPool3d},
       {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul},
@@ -4547,7 +4548,12 @@ Error PyTorchModelLoader::loadQuantizedConvUnpackedImpl(
 Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, -1));
+
+  bool withIndices = false;
+  if (outputs.size() == 2) {
+    withIndices = true;
+  }
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -4597,9 +4603,18 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   }
 
   glow::MaxPoolNode *mp =
-      F_.createMaxPool("maxpool2d", input, kernels, strides, pads);
+      F_.createMaxPool("maxpool2d", input, kernels, strides, pads,
+                       /* elemTyAMT */ ElemKind::Int64ITy, /* layout */ NHWC,
+                       /* flattenIndices */ !withIndices);
   glow::NodeValue output = mp->getResult();
   output = F_.createTranspose("maxpool2d_output_transposed", output, NHWC2NCHW);
+
+  TransposeNode *transposeNode = nullptr;
+  if (withIndices) {
+    transposeNode = F_.createTranspose("maxpool2d_indices_transposed",
+                                       mp->getArgmax(), NHWC2NCHW);
+    RETURN_IF_ERR(addValueMapping(outputs[1], transposeNode));
+  }
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[MaxPoolInputs::input]));
