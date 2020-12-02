@@ -37,19 +37,33 @@ namespace {
 /// read from quantized pytorch model, we need to subtract 128(i.e. INT8_MIN) to
 /// make the activations becomes int8_t.
 
+template <typename T> struct get32BitType;
+
+template <> struct get32BitType<double> { using type = float; };
+
+template <> struct get32BitType<int64_t> { using type = int; };
+
 /// Downcast a double to a float.
-Expected<float> to32Bit(double val) {
-  RETURN_ERR_IF_NOT(val <= std::numeric_limits<float>::max() ||
-                        val >= std::numeric_limits<float>::lowest(),
-                    glow::strFormat("Value %f is out of limit.", val));
-  return Expected<float>(static_cast<float>(val));
+template <typename InTy = double, typename OutTy = float>
+Expected<OutTy> to32Bit(InTy val) {
+  static_assert(
+      (std::is_same<InTy, double>::value &&
+       std::is_same<OutTy, float>::value) ||
+          (std::is_same<InTy, int64_t>::value &&
+           std::is_same<OutTy, int>::value),
+      "Expected double input and float output or int64_t input and int output");
+  RETURN_ERR_IF_NOT(val <= std::numeric_limits<OutTy>::max() ||
+                        val >= std::numeric_limits<OutTy>::lowest(),
+                    "Value " + std::to_string(val) + " is out of limit.");
+  return Expected<OutTy>(static_cast<OutTy>(val));
 }
 
 /// Unwrap a Expected and call to32Bit(double) or any contained return
 /// Error.
-Expected<float> to32Bit(Expected<double> expectedVal) {
+template <typename InTy = double, typename OutTy = float>
+Expected<OutTy> to32Bit(Expected<InTy> expectedVal) {
   if (expectedVal) {
-    return to32Bit(*expectedVal);
+    return to32Bit<InTy, OutTy>(*expectedVal);
   } else {
     RETURN_ERR(expectedVal.takeError());
   }
@@ -960,7 +974,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::logical_not"}, &PyTorchModelLoader::loadLogicalNot},
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
-      {{"aten::clamp"}, &PyTorchModelLoader::loadClamp},
+      {{"aten::clamp", "aten::clamp_"}, &PyTorchModelLoader::loadClamp},
       {{"aten::cos"}, &PyTorchModelLoader::loadCos},
       {{"aten::sin"}, &PyTorchModelLoader::loadSin},
       {{"aten::acos"}, &PyTorchModelLoader::loadAcos},
@@ -4380,6 +4394,22 @@ Error PyTorchModelLoader::loadAvgPool3d(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
+template <typename T, typename ConvertFunc>
+Error loadClampHelper(GlowIValue *minIVal, GlowIValue *maxIVal, float &min,
+                      float &max, ConvertFunc &&convertFunc) {
+  T minFullPrecision;
+  ASSIGN_VALUE_OR_RETURN_ERR(minFullPrecision, convertFunc(minIVal));
+  auto min32Bit = to32Bit<T, typename get32BitType<T>::type>(minFullPrecision);
+  ASSIGN_VALUE_OR_RETURN_ERR(min, std::move(min32Bit));
+
+  T maxFullPrecision;
+  ASSIGN_VALUE_OR_RETURN_ERR(maxFullPrecision, convertFunc(maxIVal));
+  auto max32Bit = to32Bit<T, typename get32BitType<T>::type>(maxFullPrecision);
+  ASSIGN_VALUE_OR_RETURN_ERR(max, std::move(max32Bit));
+
+  return Error::success();
+}
+
 Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -4389,17 +4419,21 @@ Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[ClampInputs::input]));
 
-  double minDouble;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      minDouble, iValToDouble(getGlowIValueForValue(inputs[ClampInputs::min])));
-  float min;
-  ASSIGN_VALUE_OR_RETURN_ERR(min, to32Bit(minDouble));
+  GlowIValue *minIVal, *maxIVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(minIVal,
+                             getGlowIValueForValue(inputs[ClampInputs::min]));
+  ASSIGN_VALUE_OR_RETURN_ERR(maxIVal,
+                             getGlowIValueForValue(inputs[ClampInputs::max]));
 
-  double maxDouble;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      maxDouble, iValToDouble(getGlowIValueForValue(inputs[ClampInputs::max])));
-  float max;
-  ASSIGN_VALUE_OR_RETURN_ERR(max, to32Bit(maxDouble));
+  float min, max;
+  const auto inputElemType = input.getElementType();
+  if (inputElemType == glow::ElemKind::FloatTy) {
+    RETURN_IF_ERR(
+        loadClampHelper<double>(minIVal, maxIVal, min, max, &iValToDouble));
+  } else {
+    RETURN_IF_ERR(
+        loadClampHelper<int64_t>(minIVal, maxIVal, min, max, &iValToInt));
+  }
 
   auto output = F_.createClip("clip", input, min, max);
   RETURN_ERR(addValueMapping(outputs[0], output));
