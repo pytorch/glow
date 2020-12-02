@@ -610,4 +610,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "AvgPool2DLargePads_Int8QTy_CountExcludePads/0",
     "MaxPool2DLargePads_FloatTy/0",
     "MaxPool2DLargePads_Int8QTy/0",
+    "NonFlattenedIndicesMaxPoolWithArgmaxTransposed/0",
+    "NonFlattenedIndicesQuantizedMaxPoolWithArgmaxTransposed/0",
 };

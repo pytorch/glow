@@ -1004,7 +1004,7 @@ template <class T>
 static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
                        llvm::ArrayRef<unsigned_t> kernelSizes,
                        llvm::ArrayRef<unsigned_t> strides,
-                       llvm::ArrayRef<unsigned_t> pads) {
+                       llvm::ArrayRef<unsigned_t> pads, bool flattenIndices) {
   ShapeNHWC odim(outW->dims());
   ShapeNHWC idim(inW->dims());
   Handle<T> inHandle = inW->getHandle<T>();
@@ -1052,8 +1052,14 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
                 first = false;
                 max_value = val;
                 if (argmaxW) {
-                  argmaxNHWC = &inHandle.at({n, (dim_t)ox, (dim_t)oy, z}) -
-                               &inHandle.raw(0);
+                  if (flattenIndices) {
+                    argmaxNHWC = &inHandle.at({n, (dim_t)ox, (dim_t)oy, z}) -
+                                 &inHandle.raw(0);
+                  } else {
+                    argmaxNHWC = &inHandle.at({n, (dim_t)ox, (dim_t)oy, z}) -
+                                 &inHandle.at({n, 0, 0, z});
+                    argmaxNHWC /= idim.c;
+                  }
                 }
               }
             }
@@ -1077,13 +1083,13 @@ void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
   if (inW->getType().isQuantizedType()) {
     dispatchQuantizedImpl(fwdMaxPool, inW->getType().getElementType(), inW,
                           outW, nullptr, I->getKernels(), I->getStrides(),
-                          I->getPads());
+                          I->getPads(), true);
     return;
   }
 
   dispatchFloatingPointImpl(fwdMaxPool, inW->getType().getElementType(), inW,
                             outW, nullptr, I->getKernels(), I->getStrides(),
-                            I->getPads());
+                            I->getPads(), true);
 }
 
 void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
@@ -1095,12 +1101,12 @@ void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
   if (inW->getType().isQuantizedType()) {
     dispatchQuantizedImpl(fwdMaxPool, inW->getType().getElementType(), inW,
                           outW, argmaxW, I->getKernels(), I->getStrides(),
-                          I->getPads());
+                          I->getPads(), I->getFlattenIndices());
     return;
   }
   dispatchFloatingPointImpl(fwdMaxPool, inW->getType().getElementType(), inW,
                             outW, argmaxW, I->getKernels(), I->getStrides(),
-                            I->getPads());
+                            I->getPads(), I->getFlattenIndices());
 }
 
 template <typename ElemTy>

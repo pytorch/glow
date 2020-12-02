@@ -156,7 +156,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto argMax = P->getArgmax();
     auto *V = builder_.createMaxPoolWithArgmaxOp(
         N->getName(), in, P->getKernels(), P->getStrides(), P->getPads(),
-        P->getLayout(), argMax.getElementType());
+        P->getLayout(), argMax.getElementType(), P->getFlattenIndices());
     Value *dest = V->getDest();
     Value *argmax = V->getArgmax();
     nodeToInstr_[N] = V;
@@ -182,7 +182,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     builder_.createMaxPoolWithArgmaxGradInst(
         N->getName(), outW, inW, PI->getArgmax(), outG, inG, PG->getKernels(),
-        PG->getStrides(), PG->getPads(), PG->getLayout());
+        PG->getStrides(), PG->getPads(), PG->getLayout(), true);
     registerIR(PG->getGradOfInputNamedInput(), inG);
     break;
   }

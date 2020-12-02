@@ -506,6 +506,8 @@ struct BlacklistInitializer {
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
 #endif
+      {"NonFlattenedIndicesMaxPoolWithArgmaxTransposed/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"NonFlattenedIndicesQuantizedMaxPoolWithArgmaxTransposed/0", TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

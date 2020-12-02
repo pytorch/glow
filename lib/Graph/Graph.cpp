@@ -937,12 +937,10 @@ ConvTransposeNode *Function::createConvTranspose(
                              pads, group, dilation);
 }
 
-MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
-                                     llvm::ArrayRef<unsigned_t> kernels,
-                                     llvm::ArrayRef<unsigned_t> strides,
-                                     llvm::ArrayRef<unsigned_t> pads,
-                                     ElemKind elemTyAMT,
-                                     ConvolutionLayout layout) {
+MaxPoolNode *Function::createMaxPool(
+    llvm::StringRef name, NodeValue input, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    ElemKind elemTyAMT, ConvolutionLayout layout, bool flattenIndices) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   checkKernelSize(idim, kernels, pads);
 
@@ -953,18 +951,20 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
   auto AMT = getParent()->uniqueType(
       elemTyAMT, {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(
-      new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads, layout));
+  return addNode(new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads,
+                                 layout, flattenIndices));
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      unsigned_t kernel, unsigned_t stride,
                                      unsigned_t pad, ElemKind elemTyAMT,
-                                     ConvolutionLayout layout) {
+                                     ConvolutionLayout layout,
+                                     bool flattenIndices) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createMaxPool(name, input, kernels, strides, pads, elemTyAMT, layout);
+  return createMaxPool(name, input, kernels, strides, pads, elemTyAMT, layout,
+                       flattenIndices);
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
