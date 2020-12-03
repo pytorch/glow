@@ -441,6 +441,7 @@ Error ShapeInferenceEngine::generateGraphOutputShape() {
 /// Float(1:1) = prim::Constant[value={0}]()
 /// bool = prim::Constant[value=0]()
 /// None = prim::Constant()
+/// int[] = prim::Constant[value=[1,2,3]]()
 /// Tensor = prim::Constant[value= <Tensor>]()
 /// If the output is a tensor, return shape info and dtype;
 /// Else, return the value and dtype.
@@ -471,8 +472,12 @@ ShapeInferenceEngine::primConstant(const torch::jit::Node *node) {
       shapeOrValue.emplace_back(s);
     }
     dtype = t.scalar_type();
+  } else if (type->isSubtypeOf(at::ListType::ofInts())) {
+    dtype = c10::ScalarType::Int;
+    shapeOrValue = node->ival(at::attr::value).toIntVector();
   } else {
-    return MAKE_ERR("Type not supported.");
+    LOG(ERROR) << "Got " << *type;
+    return MAKE_ERR("Type not supported");
   }
   TensorOutput output;
   output.shapeOrIntValues = shapeOrValue;
