@@ -13179,12 +13179,11 @@ static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
   bindings.allocate(indices)->getHandle<IndexType>() = {
-      2, 0, 1, 2, 0, 0, 0, 0,
+      0, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
-      2, 0, 2, 1, 3,
+      200, 0, 2, 1, 3,
   };
-
   auto *R = F->createSparseLengthsSum("SLS", data, indices, lengths);
 
   auto *S = F->createSave("save", R);
@@ -13277,7 +13276,7 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings_.allocate(lengths)->getHandle<int32_t>() = {
-      2, 0, 2, 1, 3,
+      200, 0, 2, 1, 3,
   };
 
   auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
@@ -13430,7 +13429,7 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings_.allocate(lengths)->getHandle<int32_t>() = {
-      3,
+      300,
       0,
       3,
       2,
@@ -13476,7 +13475,7 @@ static void addEmbeddingBagPartialInputs(
         1, 0, 2, 0, 1, 2, 2, 0, 13, 10,
     };
     offsetsTensorReal.getHandle<int64_t>() = {
-        0, 3, 3, 6,
+        0, 300, 3, 6,
         8, // extra end offset
     };
 
@@ -14572,7 +14571,7 @@ static void testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
-      3,
+      300,
       0,
       3,
       2,
