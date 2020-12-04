@@ -461,6 +461,10 @@ private:
   /// \returns error on failure.
   Error loadFloorDiv(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch remainder node.
+  /// \returns error on failure.
+  Error loadRemainder(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch add node.
   /// \returns error on failure.
   Error loadAdd(const torch::jit::Node *ptNode);
