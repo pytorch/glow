@@ -31,8 +31,11 @@ extern "C" {
 
 #define JIT_MAGIC_VALUE 555
 
-// JIT test dispatch function.
-__attribute__((noinline)) void libjit_JITTestDispatch(float *src, float *dest) {
+//------------------------------------------------------------------------------
+// JIT c++ constructors test dispatch function.
+//------------------------------------------------------------------------------
+__attribute__((noinline)) void
+libjit_JITTestDispatch_testCppConstructors(float *src, float *dest) {
   if (*src == 0.f) {
     libjit_WriteGlobalMap();
   } else {
@@ -41,5 +44,15 @@ __attribute__((noinline)) void libjit_JITTestDispatch(float *src, float *dest) {
   }
 
   *dest = JIT_MAGIC_VALUE + *src;
+}
+
+//------------------------------------------------------------------------------
+// JIT weak symbol test
+//------------------------------------------------------------------------------
+__attribute__((weak)) float weak_sym = -1.0;
+
+__attribute__((noinline)) void libjit_JITTestDispatch_testWeakSym(float *src,
+                                                                  float *dest) {
+  *dest = *src * weak_sym;
 }
 }

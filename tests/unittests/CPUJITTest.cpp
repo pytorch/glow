@@ -54,7 +54,7 @@ class MockLLVMIRGen : public CPULLVMIRGen {
       auto *dest = AN->getDest();
       auto *srcPtr = emitValueAddress(builder, src);
       auto *destPtr = emitValueAddress(builder, dest);
-      auto *F = getFunction("JITTestDispatch");
+      auto *F = getFunction("JITTestDispatch_" + AN->getName().str());
       createCall(builder, F, {srcPtr, destPtr});
       return true;
     }
@@ -137,6 +137,32 @@ TEST(CPUJITTest, testCppConstructors) {
   inputT->getHandle().clear(0);
   Tensor expectedT(inputT->getType());
   expectedT.getHandle().clear(JIT_MAGIC_VALUE + 0);
+  auto *outputT = bindings.allocate(saveNode->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  EXPECT_TRUE(outputT->isEqual(expectedT));
+}
+#endif // ! WIN32
+
+#ifndef WIN32
+// Test 0: test that the libjit code can use global C++ objects.
+TEST(CPUJITTest, testWeakSym) {
+  glow::ExecutionEngine EE("MockCPUBackend");
+  Module &M = EE.getModule();
+  Function *F = M.createFunction("F");
+
+  // Create a simple graph.
+  auto *inputPH = M.createPlaceholder(ElemKind::FloatTy, {1}, "input", false);
+  Node *addNode = F->createLog("testWeakSym", inputPH);
+  auto *saveNode = F->createSave("output", addNode);
+
+  const float testVal = 1.23;
+
+  PlaceholderBindings bindings;
+  auto *inputT = bindings.allocate(inputPH);
+  inputT->getHandle().clear(testVal);
+  Tensor expectedT(inputT->getType());
+  expectedT.getHandle().clear(-testVal);
   auto *outputT = bindings.allocate(saveNode->getPlaceholder());
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);

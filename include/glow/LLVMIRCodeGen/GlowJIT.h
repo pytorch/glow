@@ -63,6 +63,10 @@ private:
 #endif
 #endif
 
+  /// Set of VModuleKeys for all modules in the CompileLayer. Needed in order to
+  /// iterate over available modules in some versions of resolveSymbol.
+  llvm::DenseSet<llvm::orc::VModuleKey> vModKeys_;
+
   std::shared_ptr<SymbolResolver> resolver_;
 #endif
 #if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
@@ -78,6 +82,12 @@ private:
   std::vector<LegacyCtorDtorRunner<decltype(compileLayer_)>>
       irStaticDestructorRunners_;
 #endif
+
+  /// \returns the JITSymbol for the symbol named \p name. Differs from
+  /// findSymbol in that it handles resolving symbols outside of the
+  /// CompileLayer (e.g. in process symbols, overridden symbols).
+  /// Called indirectly by the ObjectLinkingLayer.
+  JITSymbol resolveSymbol(const std::string &name);
 
   /// \returns the mangled name for the C++ global symbol \p name.
   std::string mangle(const std::string &name);
