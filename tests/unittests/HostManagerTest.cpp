@@ -24,6 +24,10 @@
 #include <future>
 #include <thread>
 
+#ifndef GLOW_DATA_PATH
+#define GLOW_DATA_PATH
+#endif
+
 using namespace glow;
 using namespace glow::runtime;
 using DAGNodePairTy = std::pair<std::vector<std::unique_ptr<DAGNode>>,
@@ -868,6 +872,46 @@ TEST_P(HostManagerTest, testStaticAssignmentP2PandDRTConcurrent) {
   for (auto &r : ready) {
     r.wait();
   }
+}
+
+// Thist test generates deviceConfigs
+TEST_P(HostManagerTest, generateDeviceConfigs) {
+  CHECK_IF_ENABLED();
+  size_t memSize = 0;
+  unsigned int numDevices = 1;
+
+  // reference
+  auto devConfigsRef = generateConfigs(backendName_, numDevices);
+  ASSERT_TRUE(!devConfigsRef.empty());
+
+  // tested method
+  auto devConfigs = generateDeviceConfigs(numDevices, backendName_, memSize);
+  ASSERT_TRUE(!devConfigs.empty());
+
+  ASSERT_EQ(devConfigs.size(), devConfigsRef.size());
+  ASSERT_EQ(devConfigs[0]->backendName, devConfigsRef[0]->backendName);
+  ASSERT_EQ(devConfigs[0]->hasName(), devConfigsRef[0]->hasName());
+  ASSERT_EQ(devConfigs[0]->getDeviceMemory(),
+            devConfigsRef[0]->getDeviceMemory());
+}
+
+// Thist test loads deviceConfigs from file
+TEST_P(HostManagerTest, loadDeviceConfigsFromDeviceConfigsYamlFile) {
+  CHECK_IF_ENABLED();
+
+  std::string yamlFilename(GLOW_DATA_PATH "tests/runtime_test/cpuConfigs.yaml");
+  size_t memSize = 0;
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+  auto result = loadDeviceConfigsFromDeviceConfigsYamlFile(
+      configs, yamlFilename, memSize);
+  ASSERT_EQ(result, LoadFromFileResult::LoadedDeviceConfigsFile);
+  ASSERT_TRUE(configs[0]->name == "Device1");
+  ASSERT_TRUE(configs[0]->backendName == "CPU");
+  ASSERT_TRUE(configs[0]->parameters["platformID"] == "1");
+  ASSERT_TRUE(configs[0]->parameters["deviceID"] == "0");
+  ASSERT_TRUE(configs[1]->name == "Device2");
+  ASSERT_TRUE(configs[1]->backendName == "CPU");
+  ASSERT_TRUE(configs[1]->parameters["platformID"] == "1");
 }
 
 /// This tests that the HostMangaer registry works and is able to report what

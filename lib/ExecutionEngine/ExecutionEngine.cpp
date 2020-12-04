@@ -26,6 +26,7 @@
 #include <future>
 
 using namespace glow;
+using LoadFromFileResult = runtime::LoadFromFileResult;
 
 ExecutionEngine::ExecutionEngine(llvm::StringRef backend, uint64_t deviceMemory,
                                  bool ignoreUserDeviceConfig,
@@ -49,12 +50,17 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend,
   }
 
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  if (!ignoreUserDeviceConfig_ &&
-      loadDeviceConfigsFromFile(configs, deviceMemory_)) {
-    // Loaded from file, so verify that there is just a single device configured
-    // and that it matches the expected backend name.
-    CHECK_EQ(configs.size(), 1)
-        << "Expected a single device for the ExecutionEngine";
+  auto result = LoadFromFileResult::NoConfigLoaded;
+  if (!ignoreUserDeviceConfig_) {
+    result = loadDeviceConfigsFromFile(configs, deviceMemory_);
+  }
+  if (result != LoadFromFileResult::NoConfigLoaded) {
+    if (result == LoadFromFileResult::LoadedDeviceConfigsFile) {
+      // Loaded from file, so verify that there is just a single device
+      // configured and that it matches the expected backend name.
+      CHECK_EQ(configs.size(), 1)
+          << "Expected a single device for the ExecutionEngine";
+    }
     CHECK(backendName_ == configs[0]->backendName)
         << "Expected backend name to match the ExecutionEngine";
   } else {

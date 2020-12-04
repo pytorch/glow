@@ -317,13 +317,25 @@ std::vector<std::unique_ptr<runtime::DeviceConfig>>
 generateDeviceConfigs(unsigned int numDevices, llvm::StringRef backendName,
                       size_t memSize = 0);
 
+/// Enum describing if loadDeviceConfigsFromFile loaded device config
+/// from DeviceConfig file, or if no config
+/// was loaded at all.
+enum class LoadFromFileResult { LoadedDeviceConfigsFile, NoConfigLoaded };
+
 /// Attempts to load user-specified DeviceConfigs file
 /// \ref loadDeviceConfigsFileOpt. If the path exists then \p configs will be
 /// loaded with DeviceConfigs given that file and \p memSize, and the function
-/// \returns true. Otherwise \returns false with \p configs untouched.
-bool loadDeviceConfigsFromFile(
+/// \returns LoadFromFileResult::LoadedDeviceConfigsFile.
+/// Otherwise \returns LoadFromFileResult::NoConfigLoaded with
+/// \p configs untouched.
+LoadFromFileResult loadDeviceConfigsFromFile(
     std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
     size_t memSize);
+
+/// Loads user-specified DeviceConfigs from DeviceConfigs yaml \p filenName.
+LoadFromFileResult loadDeviceConfigsFromDeviceConfigsYamlFile(
+    std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
+    llvm::StringRef fileName, size_t memSize);
 
 /// Registry singleton for aquiring a HostManager.
 class HostManagerRegistry final {

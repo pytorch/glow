@@ -138,6 +138,9 @@ public:
   /// Name of a YAML file containing backend specific options.
   std::string backendOptionsFile;
 
+  /// Name of a YAML file containing device configuration options.
+  std::string deviceConfigsFile;
+
   /// Whether not to set the saturateHost flag (use all available device) when
   /// adding networks to HostManager.
   bool saturateHost = false;
@@ -202,14 +205,14 @@ PyTorchLoaderSettings getGlobalPyTorchLoaderSettingsSnapshot();
 PyTorchLoaderSettings &getGlobalPyTorchLoaderSettingsMutable();
 
 /// \returns the HostManager singleton used to run all PyTorch graphs with for
-/// the Glow backend \p backendName. The HostManager will have \p numDevices
-/// devices. If a previous HostManager is actively being used with the same
-/// backend but a different number of devices then this is an error. If
-/// numDevices is -1 then the active HostManager for the given backend will be
-/// returned, if no active HostManager is found then a HostManager with 1 device
-/// will be returned.
+/// the Glow backend \p backendName. The HostManager will have \p
+/// settings.numDevices devices. If a previous HostManager is actively being
+/// used with the same backend but a different number of devices then this is an
+/// error. If numDevices is -1 then the active HostManager for the given backend
+/// will be returned, if no active HostManager is found then a HostManager with
+/// 1 device will be returned.
 std::shared_ptr<runtime::HostManager>
-getHostManager(const std::string &backendName, int32_t numDevices = -1);
+getHostManager(const PyTorchLoaderSettings &settings);
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run. \p g is the PyTorch graph to

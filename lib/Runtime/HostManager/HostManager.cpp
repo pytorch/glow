@@ -1078,7 +1078,8 @@ std::vector<std::unique_ptr<runtime::DeviceConfig>>
 runtime::generateDeviceConfigs(unsigned int numDevices,
                                llvm::StringRef backendName, size_t memSize) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  if (!loadDeviceConfigsFromFile(configs, memSize)) {
+  if (loadDeviceConfigsFromFile(configs, memSize) ==
+      LoadFromFileResult::NoConfigLoaded) {
     // If there is no device config file, use numDevices to generate the
     // configs.
     for (unsigned int i = 0; i < numDevices; ++i) {
@@ -1091,26 +1092,33 @@ runtime::generateDeviceConfigs(unsigned int numDevices,
   return configs;
 }
 
-bool runtime::loadDeviceConfigsFromFile(
+LoadFromFileResult runtime::loadDeviceConfigsFromFile(
     std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
     size_t memSize) {
-  if (loadDeviceConfigsFileOpt.empty()) {
-    return false;
+  LoadFromFileResult loadedFromFile = LoadFromFileResult::NoConfigLoaded;
+
+  if (!loadDeviceConfigsFileOpt.empty()) {
+    loadedFromFile = loadDeviceConfigsFromDeviceConfigsYamlFile(
+        configs, loadDeviceConfigsFileOpt, memSize);
   }
 
-  std::vector<DeviceConfigHelper> lists;
-  lists = deserializeDeviceConfigFromYaml(loadDeviceConfigsFileOpt);
-  for (unsigned int i = 0; i < lists.size(); ++i) {
-    std::string configBackendName = lists[i].backendName_;
-    std::string name = lists[i].name_;
-    auto parameters = getBackendParams(lists[i].parameters_.str);
-    auto config = glow::make_unique<runtime::DeviceConfig>(configBackendName,
-                                                           name, parameters);
-    config->deviceID = i;
+  return loadedFromFile;
+}
+
+LoadFromFileResult runtime::loadDeviceConfigsFromDeviceConfigsYamlFile(
+    std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
+    llvm::StringRef fileName, size_t memSize) {
+  std::vector<DeviceConfigHelper> lists =
+      deserializeDeviceConfigFromYaml(fileName);
+  for (const DeviceConfigHelper &element : lists) {
+    std::string parametersBlock = element.parameters_.str;
+    auto parameters = getBackendParams(parametersBlock);
+    auto config = glow::make_unique<runtime::DeviceConfig>(
+        element.backendName_, element.name_, parameters);
     config->setDeviceMemory(memSize);
     configs.push_back(std::move(config));
   }
-  return true;
+  return LoadFromFileResult::LoadedDeviceConfigsFile;
 }
 
 Backend &HostManager::getBackend(llvm::StringRef backendName) const {

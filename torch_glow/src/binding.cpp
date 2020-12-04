@@ -311,6 +311,11 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().backendOptionsFile = yamlFile;
   });
 
+  /// Inform host manager to load device configs from YAML file.
+  m.def("loadDeviceConfigs", [](const std::string &yamlFile) {
+    getGlobalPyTorchLoaderSettingsMutable().deviceConfigsFile = yamlFile;
+  });
+
   /// Calls all of the fusion passes that get run before the PyTorchModelLoader
   /// run.
   /// NOTE: This is only exposed for testing.
