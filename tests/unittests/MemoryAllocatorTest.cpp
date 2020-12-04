@@ -4702,13 +4702,13 @@ TEST(MemAlloc, testAllocateAllForModel46) {
   allocs.push_back(Allocation(53, 0, 0));
   allocs.push_back(Allocation(54, 0, 0));
   uint64_t usedSize = MA.allocateAll(allocs);
-  EXPECT_EQ(usedSize, 1048576);
+  EXPECT_EQ(usedSize, 983040);
   for (const auto &alloc : allocs) {
     if (alloc.alloc_) {
       EXPECT_EQ(MA.getSize(alloc.handle_), alignedSize(alloc.size_, 64));
     }
   };
-  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 0.937500);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
 /// Test memory allocation for model mobilenet_v2_0.50_160.tflite.
@@ -4824,13 +4824,13 @@ TEST(MemAlloc, testAllocateAllForModel47) {
   allocs.push_back(Allocation(53, 0, 0));
   allocs.push_back(Allocation(54, 0, 0));
   uint64_t usedSize = MA.allocateAll(allocs);
-  EXPECT_EQ(usedSize, 1638400);
+  EXPECT_EQ(usedSize, 1536000);
   for (const auto &alloc : allocs) {
     if (alloc.alloc_) {
       EXPECT_EQ(MA.getSize(alloc.handle_), alignedSize(alloc.size_, 64));
     }
   };
-  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 0.937500);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
 /// Test memory allocation for model mobilenet_v2_0.50_192.tflite.
@@ -4946,13 +4946,13 @@ TEST(MemAlloc, testAllocateAllForModel48) {
   allocs.push_back(Allocation(53, 0, 0));
   allocs.push_back(Allocation(54, 0, 0));
   uint64_t usedSize = MA.allocateAll(allocs);
-  EXPECT_EQ(usedSize, 2359296);
+  EXPECT_EQ(usedSize, 2211840);
   for (const auto &alloc : allocs) {
     if (alloc.alloc_) {
       EXPECT_EQ(MA.getSize(alloc.handle_), alignedSize(alloc.size_, 64));
     }
   };
-  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 0.937500);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
 /// Test memory allocation for model mobilenet_v2_0.50_224.tflite.
@@ -5068,13 +5068,13 @@ TEST(MemAlloc, testAllocateAllForModel49) {
   allocs.push_back(Allocation(53, 0, 0));
   allocs.push_back(Allocation(54, 0, 0));
   uint64_t usedSize = MA.allocateAll(allocs);
-  EXPECT_EQ(usedSize, 3211264);
+  EXPECT_EQ(usedSize, 3010560);
   for (const auto &alloc : allocs) {
     if (alloc.alloc_) {
       EXPECT_EQ(MA.getSize(alloc.handle_), alignedSize(alloc.size_, 64));
     }
   };
-  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 0.937500);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
 /// Test memory allocation for model mobilenet_v2_0.50_96.tflite.
@@ -5190,13 +5190,13 @@ TEST(MemAlloc, testAllocateAllForModel50) {
   allocs.push_back(Allocation(53, 0, 0));
   allocs.push_back(Allocation(54, 0, 0));
   uint64_t usedSize = MA.allocateAll(allocs);
-  EXPECT_EQ(usedSize, 589824);
+  EXPECT_EQ(usedSize, 552960);
   for (const auto &alloc : allocs) {
     if (alloc.alloc_) {
       EXPECT_EQ(MA.getSize(alloc.handle_), alignedSize(alloc.size_, 64));
     }
   };
-  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 0.937500);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
 /// Test memory allocation for model mobilenet_v2_0.75_128.tflite.
@@ -9180,13 +9180,13 @@ TEST(MemAlloc, testAllocateAllForModel76) {
   allocs.push_back(Allocation(72, 0, 0));
   allocs.push_back(Allocation(74, 0, 0));
   uint64_t usedSize = MA.allocateAll(allocs);
-  EXPECT_EQ(usedSize, 8028160);
+  EXPECT_EQ(usedSize, 7225344);
   for (const auto &alloc : allocs) {
     if (alloc.alloc_) {
       EXPECT_EQ(MA.getSize(alloc.handle_), alignedSize(alloc.size_, 64));
     }
   };
-  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 0.900000);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.000000);
 }
 
 /// Test memory allocation for model vgg16_ssd.onnx.
