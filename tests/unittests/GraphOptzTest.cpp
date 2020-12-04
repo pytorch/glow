@@ -6576,3 +6576,43 @@ TEST_F(GraphOptz, TestUpdateQuantReluTypes) {
   EXPECT_EQ(reluRange.first, 0);
   EXPECT_EQ(reluRange.second, fcRange.second);
 }
+
+// Check that we are able to merge some small FCs into a larger one.
+TEST_F(GraphOptz, mergeFCs) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {10, 10, 10}, 1.0, 0,
+                                       "input", false);
+  auto *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {10, 10}, 1.0, 0, "weights");
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  auto *bias = mod_.createConstant(ElemKind::Int32QTy, {10}, 1.0, 0, "bias");
+  bias->getPayloadMutable().getHandle<int32_t>().randomize(-10, 10,
+                                                           mod_.getPRNG());
+
+  // Split the input to a bunch of small slices.
+  std::vector<NodeValue> inputs;
+  for (dim_t i = 0; i < 10; i++) {
+    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
+    auto *R = F_->createReshape("reshape", K, {10, 10});
+    auto *FC = F_->createFullyConnected("mm", R, weights, bias);
+    inputs.push_back(FC);
+  }
+
+  auto *CN = F_->createConcat("merge", inputs, 0);
+  auto *DN = F_->createDequantize("dq", CN, ElemKind::FloatTy);
+  F_->createSave("save", DN);
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind), 10);
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Check that all of the FCs are merged into a single FC node.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind),
+            1);
+  // Also check other opts eliminated slices/concats.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SliceNodeKind), 0);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 0);
+
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}

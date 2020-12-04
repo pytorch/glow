@@ -99,6 +99,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize Convolution nodes with small input tensors.
       {FunctionPassID::OptimizeSmallConv},
 
+      // Merge multiple FC nodes into a single large FC.
+      {FunctionPassID::MergeFullyConnected},
+
       // Merge multiple matmul nodes into a single large matmul.
       {FunctionPassID::MergeMatMul},
 
@@ -172,6 +175,12 @@ createDefaultGraphOptimizationPassPipeline() {
 
       // Try to remove unnecessary Split-Concat operations
       {FunctionPassID::EliminateSliceConcat},
+
+      // Eliminate nodes which do not do anything.
+      {FunctionPassID::EliminateNoop},
+
+      // Optimize reshapes introduced during above optimizations.
+      {FunctionPassID::OptimizeReshape},
 
       // Perform Common Subexpression Elimination.
       {FunctionPassID::CSE},

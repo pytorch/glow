@@ -1257,6 +1257,100 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Merge two or more FCs that share the same weight and bias input into a
+/// single large FC. The large FC is more likely to utilize the hardware. The
+/// result of the big FC is the concatenated results.
+bool MergeFullyConnected::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+
+  // Record the list of FCs that use each node value as the FC input.
+  llvm::DenseMap<Node *, std::vector<FullyConnectedNode *>> weightToFCUsers;
+
+  // Type for the initial FC.
+  TypeRef outTy = nullptr;
+  // Bias for the initial FC.
+  NodeValue bias = nullptr;
+
+  // Collect the list of nodes that are used by the  multiplier.
+  for (auto &node : nodes) {
+    if (auto *FC = dyn_cast<FullyConnectedNode>(&node)) {
+      if (!outTy) {
+        outTy = FC->getResult().getType();
+        bias = FC->getBias();
+      } else {
+        // If any FC has a different bias than the first FC then the opt is not
+        // applicable.
+        if (bias != FC->getBias()) {
+          continue;
+        }
+
+        const TypeRef otherTy = FC->getResult().getType();
+        // If any FC has a different output type (including qparams) than the
+        // first FC then the opt is not applicable.
+        if (outTy->getElementType() != otherTy->getElementType()) {
+          continue;
+        }
+        if (outTy->isQuantizedType() &&
+            (outTy->getScale() != otherTy->getScale() ||
+             outTy->getOffset() != otherTy->getOffset())) {
+          continue;
+        }
+      }
+
+      weightToFCUsers[FC->getWeights().getNode()].push_back(FC);
+    }
+  }
+
+  // Merge FC inputs.
+  for (auto &it : weightToFCUsers) {
+    auto &FCs = it.second;
+
+    // Collects the inputs values to merge.
+    std::vector<NodeValue> inputs;
+
+    for (auto *FC : FCs) {
+      auto input = FC->getInput();
+      // The operands to the FC should not depend on one another or else we
+      // won't be able to get rid of the original FC.
+      if (mayDependOnAny(inputs, input.getNode())) {
+        continue;
+      }
+      inputs.push_back(input);
+    }
+
+    // We need to have at least two matrices to merge.
+    if (inputs.size() < 2) {
+      continue;
+    }
+
+    // Also check the bias dependencies.
+    if (mayDependOnAny(inputs, bias.getNode())) {
+      continue;
+    }
+
+    // Merge the FC:
+    auto *CC = F->createConcat(
+        inputs[0].getNode()->getName().str() + ".mergeInputs", inputs, 0);
+    auto *FC = F->createFullyConnected(FCs[0]->getName().str() + ".mergedFC",
+                                       CC, it.first, bias);
+
+    // Slice back out the results to replace each original FC:
+    dim_t R = FC->getResult().dims()[1];
+    dim_t start = 0;
+    for (auto *origFC : FCs) {
+      dim_t H = origFC->getResult().dims()[0];
+      auto *ex = F->createSlice(FC->getName().str() + ".extract", FC,
+                                {start, 0}, {start + H, R});
+      start += H;
+      origFC->getResult().replaceAllUsesOfWith(ex);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
@@ -3288,6 +3382,11 @@ bool EliminateNoop::run(Function *F, const CompilationContext &cctx) {
     if (isa<PadNode>(&node) || isa<SliceNode>(&node) || isa<TileNode>(&node) ||
         isa<BroadcastNode>(&node)) {
       return input.getType() == output.getType();
+    }
+
+    // If a concat node has a single input to concat then it's a noop.
+    if (auto *CN = dyn_cast<ConcatNode>(&node)) {
+      return CN->getInputs().size() == 1;
     }
 
     // Operator-specific analysis.
