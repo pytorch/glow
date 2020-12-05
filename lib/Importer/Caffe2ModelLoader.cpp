@@ -503,7 +503,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   // Construct the bias constant if one wasn't found.
   if (!bias.getNode()) {
     TypeRef bTy = mod_.uniqueType(ElemKind::Int32QTy, {depth}, 1.0, 0);
-    bias = G_->createSplat("conv.bias", bTy, 0.f);
+    bias = G_->createSplat(opName + "_conv.bias", bTy, 0.f);
   }
 
   RETURN_ERR_IF_NOT(
@@ -540,7 +540,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
 
       auto biasTy = mod_.uniqueType(ElemKind::Int32QTy, bias.dims(), biasScale,
                                     biasOffset);
-      bias = G_->createQuantize("conv.bias", bias, biasTy);
+      bias = G_->createQuantize(opName + "_conv.bias", bias, biasTy);
     }
 
     node = G_->createConv(opName, finalIn, w, bias, outTy, kernels, strides,
@@ -707,7 +707,7 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
   // Construct the bias constant if one wasn't found.
   if (!bias.getNode()) {
     TypeRef bTy = mod_.uniqueType(ElemKind::FloatTy, {depth});
-    bias = G_->createSplat("conv.bias", bTy, 0.f);
+    bias = G_->createSplat(opName + "_conv.bias", bTy, 0.f);
   }
 
   TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
@@ -1113,18 +1113,19 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     } else if (typeName == "FbFCPacked") {
       auto fp16InputType =
           mod_.uniqueType(ElemKind::Float16Ty, in.getType()->dims());
-      in = G_->createConvertTo("ConvertInput", in, fp16InputType);
+      in = G_->createConvertTo(opName + ".ConvertInput", in, fp16InputType);
 
       auto fp16BiasType =
           mod_.uniqueType(ElemKind::Float16Ty, B->getType()->dims());
-      auto *fp16Bias = G_->createConvertTo("ConvertBias", B, fp16BiasType);
+      auto *fp16Bias =
+          G_->createConvertTo(opName + ".ConvertBias", B, fp16BiasType);
       TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
                                    {in.dims()[0], B->getType()->dims()[0]});
 
       auto fc = G_->createFullyConnected(opName, in, W, fp16Bias, OT, axis);
       auto outputType =
           mod_.uniqueType(ElemKind::FloatTy, fc->getResult().dims());
-      node = G_->createConvertTo("ConvertOutput", fc, outputType);
+      node = G_->createConvertTo(opName + ".ConvertOutput", fc, outputType);
     } else {
       node = G_->createFullyConnected(opName, in, W, B, axis);
     }
@@ -1151,7 +1152,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           opErrMsg(op, strFormat("Cannot reshape from size %lu to size %lu",
                                  totalOriginalOutputSize, totalReshapeSize)));
 
-      node = G_->createReshape("fc.out", node, reshapeDims);
+      node = G_->createReshape(opName + ".fc.out", node, reshapeDims);
     }
 
     // Save the outputs:
@@ -1379,7 +1380,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto convertedType =
         mod_.uniqueType(ElemKind::FloatTy, in.getType()->dims());
-    auto *R = G_->createConvertTo("ConvertInput", in, convertedType);
+    auto *R = G_->createConvertTo(opName + ".ConvertInput", in, convertedType);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -1393,8 +1394,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(slices, getNodeValueByName(op.input(2)));
 
     assert(indices.dims().size() == 1 && "Indices should be 1-dimensional!");
-    NodeValue indices2D =
-        G_->createReshape("indices.2d", indices, {indices.dims()[0], 1});
+    NodeValue indices2D = G_->createReshape(opName + ".indices.2d", indices,
+                                            {indices.dims()[0], 1});
     Node *SAN = G_->createScatterData(opName, data, indices2D, slices);
     RETURN_IF_ERR(addNodeAsOutput(op, SAN));
     return Error::success();
