@@ -5511,8 +5511,9 @@ Error PyTorchModelLoader::loadGlowEmbeddingBag(const torch::jit::Node *ptNode) {
                           inputs[GlowEmbeddingBagInputs::weight_qualname])));
   std::vector<glow::dim_t> dims{numEmbedding, embeddingDim};
   glow::Type phType(ElemKind::FloatTy, dims);
+  auto legalizedWeightQualName = glow::legalizeName(*weightQualName);
   glow::Placeholder *ph =
-      F_.getParent()->createPlaceholder(&phType, *weightQualName,
+      F_.getParent()->createPlaceholder(&phType, legalizedWeightQualName,
                                         /*isTrainable*/ false);
   ph->setStatic(true);
   glow::NodeValue indices;
