@@ -6576,3 +6576,37 @@ TEST_F(GraphOptz, TestUpdateQuantReluTypes) {
   EXPECT_EQ(reluRange.first, 0);
   EXPECT_EQ(reluRange.second, fcRange.second);
 }
+
+TEST_F(GraphOptz, TestUpdateQuantReluTypesChained) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 0.11, -1,
+                                       "input", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::Int8QTy, {32, 32}, 0.2, 3,
+                                         "weights", false);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::Int32QTy, {32}, 0.01, 2, "bias", false);
+  auto *addW =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {128}, 0.3, -4, "addw", false);
+
+  auto *fc = F_->createFullyConnected("fc", input, weights, bias);
+  auto *qRelu = F_->createRELU("relu", fc->getResult());
+  auto *qConcat = F_->createConcat("concat", {qRelu, qRelu}, 0);
+  auto *qReshape = F_->createReshape("reshape", qConcat, {128});
+  auto *qAdd = F_->createAdd("add", qReshape, addW);
+  F_->createSave("save", qAdd);
+
+  updateQuantReluTypes(F_);
+
+  const auto fcRange = fc->getResult().getType()->getQuantizedValueRange();
+  const auto reluRange = qRelu->getResult().getType()->getQuantizedValueRange();
+  EXPECT_NE(reluRange.first, fcRange.first);
+  EXPECT_EQ(reluRange.first, 0);
+  EXPECT_EQ(reluRange.second, fcRange.second);
+
+  // Check that the relu's type now also matches that of the chain of shape
+  // users after it.
+  const TypeRef qReluTy = qRelu->getResult().getType();
+  EXPECT_EQ(qReluTy->getScale(), qConcat->getResult().getType()->getScale());
+  EXPECT_EQ(qReluTy->getOffset(), qConcat->getResult().getType()->getOffset());
+  EXPECT_EQ(qReluTy->getScale(), qReshape->getResult().getType()->getScale());
+  EXPECT_EQ(qReluTy->getOffset(), qReshape->getResult().getType()->getOffset());
+}

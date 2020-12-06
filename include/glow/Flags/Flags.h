@@ -35,6 +35,7 @@ extern bool EnablePartialTensors;
 extern bool UseCustomOpsForExport;
 extern std::string BackendSpecificOpts;
 extern bool EnableLoadBalancedPartitioning;
+extern bool SkipProvisioning;
 
 // FP16 Constants
 extern bool ConvertToFP16;
@@ -70,7 +71,6 @@ extern bool SparseNNPartitioningPairLNWithSLS;
 
 // Dag Optimizer Constants
 extern bool UseDAGOptimizer;
-extern bool UseDAGOptimizerAOT;
 extern int32_t DAGOptimizerNumParallelChunks;
 extern std::string DAGOptimizerPlacementTaggingAlgorithm;
 extern std::string DAGOptimizerParallelizationTaggingAlgorithm;

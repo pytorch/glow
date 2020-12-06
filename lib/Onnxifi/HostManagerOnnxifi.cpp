@@ -133,7 +133,7 @@ onnxStatus HostManagerBackend::addNetwork(
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   cctx.maxActiveRequestsPerInstance = glow::flags::MaxActiveRequestsPerInstance;
 
-  if (glow::flags::UseDAGOptimizerAOT || deferredBlobReader) {
+  if (glow::flags::SkipProvisioning || deferredBlobReader) {
     // Generate a map of type date for all static placeholders. Do this
     // regardless of whether we have deferredBlobReader because we don't have
     // one for AOT but we still want to use this info for serialization.
@@ -238,10 +238,10 @@ onnxStatus HostManagerBackend::addNetwork(
         glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
     cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
         glow::flags::DAGOptimizerNumParallelChunks;
-    if (glow::flags::UseDAGOptimizerAOT) {
-      LOG(INFO) << "Using AOT mode for DAG optimizer.";
-      cctx.useDAGOptimizerAOTMode = true;
-    }
+  }
+  if (glow::flags::SkipProvisioning) {
+    LOG(INFO) << "Will skip provisioning (likely due to AOT opt).";
+    cctx.skipProvisioning = true;
   }
   if (glow::onnxifi::flags::SaveDAG) {
     LOG(INFO) << "Serializing DAG after optimization and partitioning.";

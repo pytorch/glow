@@ -135,6 +135,17 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize away intermediate type conversions.
       {FunctionPassID::OptimizeConversions},
 
+      // Eliminate clips outside the FP16 range. This is a specialized pass that
+      // is disabled by default.
+      {FunctionPassID::EliminateClipsOutsideFP16Range},
+
+      // Look for float Relus that we can fuse up into quantized FCs.
+      {FunctionPassID::OptimizeQuantFCFloatRelu},
+
+      // Eliminate clips outside the FP16 range. This is a specialized pass that
+      // is disabled by default.
+      {FunctionPassID::EliminateClipsOutsideFP16Range},
+
       // Optimize away intermediate consecutive Clips.
       {FunctionPassID::OptimizeClips},
 
@@ -187,6 +198,17 @@ createFP16GraphOptimizationPassPipeline() {
   std::initializer_list<FunctionPassConfig> configs{
       // Optimize away intermediate type conversions.
       {FunctionPassID::OptimizeConversions},
+
+      // Eliminate clips outside the FP16 range. This is a specialized pass that
+      // is disabled by default.
+      {FunctionPassID::EliminateClipsOutsideFP16Range},
+
+      // Look for float Relus that we can fuse up into quantized FCs.
+      {FunctionPassID::OptimizeQuantFCFloatRelu},
+
+      // Eliminate clips outside the FP16 range. This is a specialized pass that
+      // is disabled by default.
+      {FunctionPassID::EliminateClipsOutsideFP16Range},
 
       // Optimize away intermediate consecutive Clips.
       {FunctionPassID::OptimizeClips},
