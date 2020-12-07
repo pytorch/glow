@@ -215,6 +215,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, to(inputMetas));
       break;
     }
+    case c10::aten::sum: {
+      ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, sum(inputMetas));
+      break;
+    }
     case c10::prim::dtype: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, primDtype(inputMetas));
       break;
@@ -662,6 +666,37 @@ Expected<TensorOutput> ShapeInferenceEngine::t(const MetaStack &variableMetas) {
   } else {
     return MAKE_ERR(strFormat("Expected tensor <= 2-D, got %zu-D.", d0));
   }
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::sum(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 4,
+      strFormat("Expected Four input, got %zu.", variableMetas.size()));
+  // TODO: @hwwang T80910607 Only support None dtype (4th argument)
+  RETURN_ERR_IF_NOT(variableMetas[3].intValue.size() == 0 and
+                        variableMetas[3].dtype == c10::ScalarType::Undefined,
+                    "Only support 4th arugment of aten::sum operator is None");
+  const auto &t0 = variableMetas[0].shape<TensorShape>();
+  auto dims = variableMetas[1].intValue;
+  bool include_dim = variableMetas[2].intValue[0];
+
+  TensorShape shape;
+  for (int i = 0; i < t0.size(); i++) {
+    if (std::find(dims.begin(), dims.end(), i) != dims.end()) {
+      if (include_dim) {
+        shape.push_back(1);
+      } else {
+        continue;
+      }
+    } else {
+      shape.push_back(t0[i]);
+    }
+  }
+  TensorOutput output;
+  output.dtype = variableMetas[0].dtype;
+  output.shapeOrIntValues = shape;
+  return output;
 }
 
 /**

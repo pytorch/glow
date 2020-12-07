@@ -137,6 +137,8 @@ private:
   static Expected<TensorOutput> addmm(const MetaStack &variableMetas);
   // Shape inference for aten::t
   static Expected<TensorOutput> t(const MetaStack &variableMetas);
+  // Shape inference for aten::sum
+  static Expected<TensorOutput> sum(const MetaStack &variableMetas);
   // Shape inference for prim::ConstantChunk
   static Expected<TensorListOutput>
   constantChunk(const MetaStack &variableMetas, int64_t chunks, int64_t dim);
