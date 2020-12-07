@@ -556,6 +556,18 @@ private:
   /// \returns error on failure.
   Error loadFusedConcat(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch fb::broadcast_cat node fused with a prim::ListConstruct
+  /// into a glow::fused_broadcast_cat node.
+  /// \returns error on failure.
+  Error loadFusedBroadcastConcat(const torch::jit::Node *ptNode);
+
+  /// Helper function for both \p loadFusedConcat and \p
+  /// loadFusedBroadcastConcat with a flag \p doBroadcast to select whether
+  /// broadcast is enabled for concat.
+  /// \returns error on failure.
+  Error loadFusedConcatHelper(const torch::jit::Node *ptNode,
+                              bool doBroadcast = false);
+
   /// Load a PyTorch prim::stack node fused with a prim::ListConstruct into a
   /// glow:FusedStack node.
   /// \returns error on failure.
