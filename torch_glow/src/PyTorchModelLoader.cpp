@@ -5939,7 +5939,7 @@ Error PyTorchModelLoader::loadRoiAlignImpl(const torch::jit::Node *ptNode,
   // PyTorch/Caffe2.
   auto dummyBatchIndices =
       F_.getParent()
-          ->createConstant(ElemKind::Int32ITy, {rois.dims()[0]},
+          ->createConstant(ElemKind::Int64ITy, {rois.dims()[0]},
                            "dummy_batch_indices")
           ->getOutput();
 
