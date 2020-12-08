@@ -507,9 +507,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
 
     // If we're using AOT DAG optimizer then skip provisioning.
-    if (cctx.callDAGOptimizer && cctx.useDAGOptimizerAOTMode) {
-      LOG(INFO) << "Skipping provisioning because DAG optimizer and AOT mode "
-                   "were enabled.";
+    if (cctx.skipProvisioning ||
+        (cctx.callDAGOptimizer && cctx.useDAGOptimizerAOTMode)) {
+      LOG(INFO) << "Host manager skipping provisioning";
       {
         std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
         cleanupAddNetwork(names);

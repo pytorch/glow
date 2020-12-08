@@ -1242,6 +1242,7 @@ bool TileNode::verify() const {
     isValid &= expectCompareTrue(msg.c_str(), src.dims()[i] * mul,
                                  dest.dims()[i], this);
   }
+  isValid &= checkTypeIgnoreShape(src, dest, this);
   return isValid;
 }
 
@@ -2543,6 +2544,7 @@ bool BroadcastNode::verify() const {
           (inputDims[origIdx] == targetDims[i] || inputDims[origIdx] == 1);
     }
   }
+  isValid &= checkTypeIgnoreShape(getInput(), getResult(), this);
 
   return isValid;
 }
