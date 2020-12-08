@@ -127,8 +127,7 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
       continue;
     }
     if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
-      auto *A = D->getAlloc();
-      assert(activationAddr.count(A) && "Invalid deallocation!");
+      assert(activationAddr.count(D->getAlloc()) && "Invalid deallocation!");
       continue;
     }
   }
