@@ -264,18 +264,16 @@ public:
 
   /// \returns whether the backend supports fusing \p activation into \p parent.
   bool supportsFusedActivation(Node *parent, Node *activation) const override {
-    // Only support convolution+relu fusions for now.
-    if (!(parent->getKind() == Kinded::Kind::ConvolutionNodeKind &&
-          activation->getKind() == Kinded::Kind::ReluNodeKind)) {
+    // Only support fusion of Convolution + Relu for now.
+    auto *CN = llvm::dyn_cast<ConvolutionNode>(parent);
+    auto *RN = llvm::dyn_cast<ReluNode>(activation);
+    if (!CN || !RN) {
       return false;
     }
-    // Only support Relu with symmetric activation.
-    if (parent->getNthResult(0).getType()->isQuantizedType() &&
-        ((parent->getNthResult(0).getType()->getOffset() != 0) ||
-         (activation->getNthResult(0).getType()->getOffset() != 0))) {
-      return false;
-    }
-    return true;
+    // If quantized Relu, only support symmetric activation.
+    return !CN->getResult().getType()->isQuantizedType() ||
+           (CN->getResult().getType()->getOffset() == 0 &&
+            RN->getResult().getType()->getOffset() == 0);
   }
 
 private:

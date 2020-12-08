@@ -81,32 +81,27 @@ bool CPUBackend::shouldLower(const Node *N) const {
 
 bool CPUBackend::supportsFusedActivation(Node *parent, Node *activation) const {
   // CPU backend only supports fusing activations into Convolution and
-  if (parent->getKind() != Kinded::Kind::ConvolutionNodeKind &&
-      parent->getKind() !=
-          Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind) {
+  // ChannelwiseQuantizedConvolution.
+  if (!llvm::isa<ConvolutionNode>(parent) &&
+      !llvm::isa<ChannelwiseQuantizedConvolutionNode>(parent)) {
     return false;
   }
-
-  // Get activation output type.
-  if (activation->getNumResults() != 1) {
-    return false;
-  }
-  auto *actOutTy = activation->getNthResult(0).getType();
 
   // Only the following activations can be fused.
   // Additionally Tanh/Sigmoid are fused only for floating-point type. For
   // quantized type Lookup Tables should be used instead.
   switch (activation->getKind()) {
   case Kinded::Kind::ReluNodeKind:
-    return true;
   case Kinded::Kind::ClipNodeKind:
-    return true;
-  case Kinded::Kind::SigmoidNodeKind:
-    return actOutTy->isFPType();
-  case Kinded::Kind::TanhNodeKind:
-    return actOutTy->isFPType();
   case Kinded::Kind::LeakyReluNodeKind:
     return true;
+  case Kinded::Kind::SigmoidNodeKind:
+    return llvm::cast<SigmoidNode>(activation)
+        ->getResult()
+        .getType()
+        ->isFPType();
+  case Kinded::Kind::TanhNodeKind:
+    return llvm::cast<TanhNode>(activation)->getResult().getType()->isFPType();
   default:
     return false;
   }
