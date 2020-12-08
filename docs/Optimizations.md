@@ -160,6 +160,22 @@ But in addition to those there are quantization specific optimizations:
     possible value from the operand can be calculated based on the quantization
     parameters which represent quantization range [min, max] in fp32.
 
+  * Quantize(ConvertTo(X)) -> Quantize(X)
+
+    A sequence of ConvertTo operation followed by Quantize operation
+    is replaced by a Quantize operation.
+
+  * ConvertTo(Dequantize(X)) -> Dequantize(X)
+
+    A sequence of Dequantize operation followed by ConvertTo operation
+    is replaced by a Dequanize operation.
+
+  * Dequantize(Quantize(X))
+
+    A sequence of Quantize operation followed by Dequantize operation can be
+    replaced with ConvertTo operation if there is mismatch in element types
+    of Quantize node input and Dequantize node output.
+
 #### Configuring a graph optimization pipeline
 
 The graph optimizations listed above are each formulated as a FunctionPass,

@@ -41,6 +41,11 @@ class TensorProto;
 
 namespace glow {
 
+/// ONNX precision config op types which requires
+/// special attention while updating precision based on opset
+/// May want to add more later
+enum class PrecisionConfigSpecialOpType { Resize, NonMaxSuppression };
+
 /// Loads tensor \p T from the input \p in. \p useGlowCustomOps changes the
 /// format for doc_string format for adding meta information.
 Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
@@ -628,6 +633,12 @@ protected:
                            uint32_t weightsCount,
                            const onnxTensorDescriptorV1 *weightDescriptors);
 
+  /// Check if input precision can be updated using
+  /// \ref inputsPrecisionConfigSpecialOpTypeMap_. Operator inputs mapped as
+  /// attributes while creating GLOW node should be excluded while updating
+  /// precision.
+  bool canUpdatePrecision(llvm::StringRef opType, int inputId);
+
 public:
   /// \returns ONNX model ir_version;
   size_t getIrVersion() const { return irVersion_; };
@@ -704,6 +715,15 @@ private:
   BackendSpecificNodeInfo *perNodeOpts_{nullptr};
   /// Map from static PH names to the type it was originally loaded with.
   std::map<std::string, Type> *staticPlaceholderTypes_;
+  /// Map from op type to onnx op type enum, for which few inputs mapped as
+  /// attributes while creating GLOW node, used while updating input precision
+  std::map<std::string, PrecisionConfigSpecialOpType>
+      inputsPrecisionConfigSpecialOpTypeMap_ = {
+          {"Resize", PrecisionConfigSpecialOpType::Resize},
+          {"NonMaxSuppressionV4",
+           PrecisionConfigSpecialOpType::NonMaxSuppression},
+          {"NonMaxSuppression",
+           PrecisionConfigSpecialOpType::NonMaxSuppression}};
 };
 
 } // namespace glow

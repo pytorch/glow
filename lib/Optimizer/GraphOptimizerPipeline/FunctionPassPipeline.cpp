@@ -181,6 +181,9 @@ createDefaultGraphOptimizationPassPipeline() {
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
 
+      // Conv Batch Norm precision to FP16 if preceding Conv is set to FP16
+      {FunctionPassID::ConvertBatchNormPrecision},
+
       // Merge batch normalization operations.
       // Do after transpose constant folding, as weight transposes can prevent
       // the optimization from triggering.

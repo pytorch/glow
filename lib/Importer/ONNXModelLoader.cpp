@@ -1741,7 +1741,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
 
   // If a serialized bias wasn't found then create a zero bias.
   if (!bias) {
-    Tensor biasTensor(ElemKind::FloatTy, {depth});
+    Tensor biasTensor(in.getElementType(), {depth});
     biasTensor.zero();
     bias = mod_.createConstant("conv.bias", std::move(biasTensor));
   }
@@ -1763,7 +1763,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
                                            pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = mod_.uniqueType(in.getElementType(), outDims);
 
   auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
                               kernelShape, strides, pads, group, dilations);
@@ -5610,6 +5610,8 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net,
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
+    const std::string &opOutputName = op.output(0);
+    const std::string &opTypeName = op.op_type();
 
     // Always ignore these since they're dummy nodes used to just carry meta
     // info that is processed via setupOrigStaticTypeMap().
@@ -5650,9 +5652,38 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net,
         continue;
       }
     }
-    RETURN_IF_ERR(loadOperator(op));
-  }
 
+    // Find if opOutPutName is specified to set in fp16. Node precision can
+    // be set to fp16 by updating the node output TypeRef. Node inputs which
+    // are float type can be set to fp16 by adding convertToFP16 node, for
+    // nodes that are deriving its output TypeRef from its input will be set
+    // to fp16.
+    // For nodes whose output TypeRef is set explicitly to ElemKind::FloatTy
+    // requires changes at individual operator loader level(e.x convolution)
+    auto opOutNameItr = std::find(
+        modelLoaderPrecisionConfig_.fp16OpInstanceNames.begin(),
+        modelLoaderPrecisionConfig_.fp16OpInstanceNames.end(), opOutputName);
+
+    // If opOutPutName is specified to run in fp16, get all input and output
+    // names of the respective operator to add convertTo nodes while loading
+    // the operator.
+    if (opOutNameItr != modelLoaderPrecisionConfig_.fp16OpInstanceNames.end()) {
+      for (unsigned inputId = 0; inputId < op.input_size(); inputId++) {
+        if (canUpdatePrecision(opTypeName, inputId)) {
+          operatorPrecisionUpdateInputOutputNames_.push_back(op.input(inputId));
+        }
+      }
+      for (unsigned outputId = 0; outputId < op.output_size(); outputId++) {
+        operatorPrecisionUpdateInputOutputNames_.push_back(op.output(outputId));
+      }
+    }
+
+    RETURN_IF_ERR(loadOperator(op));
+
+    // Clear before loading next operator to avoid adding more than one
+    // ConvertTo nodes the same operator.
+    operatorPrecisionUpdateInputOutputNames_.clear();
+  }
   return Error::success();
 }
 
@@ -6022,6 +6053,33 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
     updatedTQPs_[idx] = it->second;
   }
   return Error::success();
+}
+
+bool ONNXModelLoader::canUpdatePrecision(llvm::StringRef opType, int inputId) {
+  // Return true if input precision can be updated. Operator inputs mapped as
+  // attributes while creating GLOW node should be excluded while updating
+  // precision.
+  if (inputsPrecisionConfigSpecialOpTypeMap_.count(opType) == 0) {
+    return true;
+  }
+  switch (inputsPrecisionConfigSpecialOpTypeMap_[opType]) {
+  case PrecisionConfigSpecialOpType::Resize:
+    if (opsetVersion_ >= 11 && inputId == 2) {
+      return false;
+    } else if (opsetVersion_ < 11 && inputId == 1) {
+      return false;
+    } else {
+      return true;
+    }
+  case PrecisionConfigSpecialOpType::NonMaxSuppression:
+    if (inputId == 2 || inputId == 3 || inputId == 4) {
+      return false;
+    } else {
+      return true;
+    }
+  default:
+    return true;
+  }
 }
 
 ONNXModelLoader::ONNXModelLoader(

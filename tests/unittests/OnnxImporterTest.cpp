@@ -5522,3 +5522,157 @@ TEST_F(OnnxImporterTest, softmax13) {
                0.11920292, 0.880797, 0.880797, 0.11920292, 0.11920292, 0.880797,
                0.880797, 0.11920292, 0.11920292, 0.880797, 0.880797});
 }
+
+TEST_F(OnnxImporterTest, mixedPrecisionConfig) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/mixedPrecision.onnxtxt");
+  PlaceholderBindings bindings;
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {1, 3, 28, 28});
+
+  // Precision config info used in model loader
+  std::string precisionConfigFile(
+      GLOW_DATA_PATH "tests/models/onnxModels/mixedPrecision.yaml");
+  setModelLoaderPrecisionOpt(precisionConfigFile);
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&data.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    EXPECT_EQ(mod.getPlaceholders().size(), 2);
+    bindings.allocate(mod.getPlaceholders());
+  }
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  setConstantFoldLoaderOpsFlag(false);
+  auto result = bindings.get(output)->getHandle();
+  std::vector<dim_t> expectedDims = {1, 16, 26, 26};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+
+  // This Model has three operators
+  // Here Conv and ReLu are specified in the yaml file to run in fp16.
+  //  Input: Placeholder(float)
+  //      |
+  //      V
+  // ConvertTo(float->float16)
+  //      |
+  //      V
+  //  Convolution(float16)
+  //      |
+  //      V
+  // ConvertTo(float16->float)
+  //      |
+  //      V
+  //  BatchNorm(float)
+  //      |
+  //      V
+  // ConvertTo(float->float16)
+  //      |
+  //      V
+  //  ReLu(float16)
+  //      |
+  //      V
+  // ConvertTo(float16->float)
+  //      |
+  //      V
+  //  Output: Placeholder(float)
+  // Check in the Glow graph the corresponding nodes are in FP16.
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConvertToNodeKind), 2);
+  for (auto &node : F->getNodes()) {
+    if (auto *MN = llvm::dyn_cast<MaxNode>(&node)) {
+      EXPECT_EQ(MN->getResult().getElementType(), ElemKind::Float16Ty);
+    } else if (auto *CN = llvm::dyn_cast<ConvolutionNode>(&node)) {
+      EXPECT_EQ(CN->getResult().getElementType(), ElemKind::Float16Ty);
+      auto *TN = llvm::dyn_cast<TransposeNode>(CN->getInput());
+      ASSERT_NE(nullptr, TN);
+      EXPECT_TRUE(llvm::isa<ConvertToNode>(TN->getInput()));
+    } else if (auto *CT = llvm::dyn_cast<ConvertToNode>(&node)) {
+      if (CT->getResult().getElementType() == ElemKind::FloatTy) {
+        EXPECT_TRUE(llvm::isa<MaxNode>(CT->getInput()));
+      }
+    }
+  }
+}
+
+TEST_F(OnnxImporterTest, mixedPrecisionConfigMultipleUsers) {
+  // This test checks when a list of node instances set to run in fp16
+  // has multiple users among which one user is not specified to run in fp16
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/mixedPrecisionMultUsers.onnxtxt");
+  PlaceholderBindings bindings;
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {1, 3, 28, 28});
+
+  // Precision config info used in model loader
+  std::string precisionConfigFile(
+      GLOW_DATA_PATH "tests/models/onnxModels/mixedPrecisionMultUsers.yaml");
+  setModelLoaderPrecisionOpt(precisionConfigFile);
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&data.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    EXPECT_EQ(mod.getPlaceholders().size(), 2);
+    bindings.allocate(mod.getPlaceholders());
+  }
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  setConstantFoldLoaderOpsFlag(false);
+
+  auto result = bindings.get(output)->getHandle();
+  std::vector<dim_t> expectedDims = {1, 16, 26, 26};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+
+  // This Model has five operators
+  // Here ReLu and BatchNorm appearing followed by ReLu
+  // are specified in the yaml file to run in fp16.
+  // ReLu node has two users and one among them is set to fp16
+  //        Input: Placeholder(float)
+  //                    |
+  //                    V
+  //              Convolution(float)
+  //                    |
+  //                    V
+  //            BatchNorm(float)
+  //                    |
+  //                    V
+  //        ConvertTo(float->float16)
+  //                    |
+  //                    V
+  //            ReLu(float16)
+  //            /       \
+  //    +------+         +--------+
+  //    |                         |
+  // BatchNorm(float16)           V
+  //    |                 ConvertTo(float16->float)
+  //    |                         |
+  //    V                         |
+  // ConvertTo(float16->float)    |
+  //    |                         |
+  //    +-------------+    +------|
+  //                  |    |
+  //                  V    V
+  //                Add(float)
+  //                    |
+  //                    V
+  //        Output: Placeholder(float)
+  // Check in the Glow graph the corresponding nodes are in FP16 and
+  // check Add node Element type is FloatTy.
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConvertToNodeKind), 3);
+  for (auto &node : F->getNodes()) {
+    if (auto *MN = llvm::dyn_cast<MaxNode>(&node)) {
+      EXPECT_EQ(MN->getResult().getElementType(), ElemKind::Float16Ty);
+      EXPECT_TRUE(llvm::isa<ConvertToNode>(MN->getLHS()));
+    } else if (auto *BN = llvm::dyn_cast<BatchNormalizationNode>(&node)) {
+      EXPECT_EQ(BN->getResult().getElementType(), ElemKind::Float16Ty);
+    } else if (auto *AN = llvm::dyn_cast<AddNode>(&node)) {
+      EXPECT_EQ(AN->getResult().getElementType(), ElemKind::FloatTy);
+      EXPECT_TRUE(llvm::isa<ConvertToNode>(AN->getLHS()));
+      EXPECT_TRUE(llvm::isa<ConvertToNode>(AN->getRHS()));
+    }
+  }
+}

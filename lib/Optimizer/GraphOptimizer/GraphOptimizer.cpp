@@ -507,6 +507,23 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   for (auto &N : nodes) {
     auto *node = &N;
 
+    // Sink Transpose below ConvertTo node.
+    if (auto *CT = dyn_cast<ConvertToNode>(node)) {
+      if (auto *TR = dyn_cast<TransposeNode>(CT->getInput())) {
+        auto convertToOutTy = F->getParent()->uniqueTypeWithNewShape(
+            CT->getResult().getType(), TR->getInput().getType());
+        auto *NCT =
+            F->createConvertTo(CT->getName(), TR->getInput(), convertToOutTy);
+        NCT->setPredicate(node->getPredicate());
+        auto *NTR = F->createTranspose(TR->getName(), NCT, TR->getShuffle(),
+                                       TR->getLayout());
+        NTR->setPredicate(node->getPredicate());
+        CT->getResult().replaceAllUsesOfWith(NTR);
+        changed = true;
+        continue;
+      }
+    }
+
     // Sink Reshape/Transpose below BatchNormalization.
     if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
 
@@ -4551,7 +4568,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
   // Add all of the interesting nodes to the worklist.
   for (auto &node : F->getNodes()) {
     if (isa<QuantizeNode>(node) || isa<DequantizeNode>(node) ||
-        isa<RescaleQuantizedNode>(node)) {
+        isa<RescaleQuantizedNode>(node) || isa<ConvertToNode>(node)) {
       worklist.push_back(&node);
     }
   }
@@ -4591,13 +4608,34 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
         Q->getResult().replaceAllUsesOfWith(newSN);
         continue;
       }
+
+      // ConvertTo followed by Quantize can be replaced with Quantize
+      if (auto *CT = dyn_cast<ConvertToNode>(Q->getInput())) {
+        if (CT->getInput().getType()->isFPType()) {
+          changed = true;
+          auto *newQ = F->createQuantize(Q->getName(), CT->getInput(),
+                                         Q->getResult().getType());
+          Q->getResult().replaceAllUsesOfWith(newQ);
+          worklist.push_back(newQ);
+          continue;
+        }
+      }
     }
 
     if (auto *DQ = dyn_cast<DequantizeNode>(node)) {
       if (auto *Q = dyn_cast<QuantizeNode>(DQ->getInput())) {
         // Dequantize(Quantize(X)) -> X
         changed = true;
-        DQ->getResult().replaceAllUsesOfWith(Q->getInput());
+        NodeValue newInput = Q->getInput();
+        // Add ConvertTo node if there is mismatch in the element types
+        // of Quantize node input and Dequantize node output
+        // This case may arise in mixed mode execution of Int8 and FP16
+        if (Q->getInput().getElementType() !=
+            DQ->getResult().getElementType()) {
+          newInput = F->createConvertTo(newInput.getNode()->getName(), newInput,
+                                        DQ->getResult().getElementType());
+        }
+        DQ->getResult().replaceAllUsesOfWith(newInput);
         continue;
       }
       // Fold the rescale into the following Dequantize.
@@ -4620,6 +4658,20 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
             SN->getName(), DQ->getResult().getType(), SN->getValue());
         DQ->getResult().replaceAllUsesOfWith(newSN);
         continue;
+      }
+    }
+
+    // Dequantize followed by ConvertTo can be replaced with Dequantize
+    if (auto *CT = dyn_cast<ConvertToNode>(node)) {
+      if (auto *DQ = dyn_cast<DequantizeNode>(CT->getInput())) {
+        if (CT->getResult().getType()->isFPType()) {
+          changed = true;
+          auto *newDQ = F->createDequantize(CT->getName(), DQ->getInput(),
+                                            CT->getResult().getType());
+          CT->getResult().replaceAllUsesOfWith(newDQ);
+          worklist.push_back(newDQ);
+          continue;
+        }
       }
     }
 
@@ -5681,6 +5733,73 @@ bool ReplaceZeroScaleFP16QuantNodes::run(Function *F,
     changed |= processNV(F, C->getOutput());
   }
 
+  return changed;
+}
+
+/// If BatchNorm type is FP32 and preceding Conv is FP16, convert BatchNorm
+/// precision to FP16, to allow BatchNorm to fuse into Convolution
+bool ConvertBatchNormPrecision::run(Function *F,
+                                    const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *BN = dyn_cast<BatchNormalizationNode>(&node);
+    if (!BN) {
+      continue;
+    }
+    auto *CT = dyn_cast<ConvertToNode>(BN->getInput());
+    if (!CT ||
+        CT->getResult().getType()->getElementType() != ElemKind::FloatTy) {
+      continue;
+    }
+    auto *CV = dyn_cast<ConvolutionNode>(CT->getInput());
+    if (!CV ||
+        CV->getResult().getType()->getElementType() != ElemKind::Float16Ty ||
+        CV->getNumUsers() > 1) {
+      continue;
+    }
+    // Expecting constant as const folding took place already.
+    auto *biasC = dyn_cast<Constant>(BN->getBias());
+    auto *scaleC = dyn_cast<Constant>(BN->getScale());
+    auto *meanC = dyn_cast<Constant>(BN->getMean());
+    auto *varC = dyn_cast<Constant>(BN->getVar());
+    if (!scaleC || !biasC || !meanC || !varC) {
+      continue;
+    }
+
+    // Convert BN Constant inputs only if element type is float
+    if (biasC->getType()->getElementType() != ElemKind::FloatTy ||
+        scaleC->getType()->getElementType() != ElemKind::FloatTy ||
+        meanC->getType()->getElementType() != ElemKind::FloatTy ||
+        varC->getType()->getElementType() != ElemKind::FloatTy) {
+      continue;
+    }
+
+    auto newBiasTy =
+        F->getParent()->uniqueType(ElemKind::Float16Ty, BN->getBias().dims());
+    auto newScaleTy =
+        F->getParent()->uniqueType(ElemKind::Float16Ty, BN->getScale().dims());
+    auto newMeanTy =
+        F->getParent()->uniqueType(ElemKind::Float16Ty, BN->getMean().dims());
+    auto newVarTy =
+        F->getParent()->uniqueType(ElemKind::Float16Ty, BN->getVar().dims());
+
+    auto newBiasC = convertConstant(*F->getParent(), *biasC, newBiasTy);
+    auto newScaleC = convertConstant(*F->getParent(), *scaleC, newScaleTy);
+    auto newMeanC = convertConstant(*F->getParent(), *meanC, newMeanTy);
+    auto newVarC = convertConstant(*F->getParent(), *varC, newVarTy);
+
+    Node *newBiasN = newBiasC, *newScaleN = newScaleC;
+    Node *newMeanN = newMeanC, *newVarN = newVarC;
+    auto *newBN = F->createBatchNormalization(
+        BN->getName(), CT->getInput().getType(), CT->getInput(), newBiasN,
+        newScaleN, newMeanN, newVarN, BN->getChannelIdx(), BN->getEpsilon(),
+        BN->getMomentum());
+    std::string nodeName = newBN->getName().str() + "_convToFP32";
+    auto *BNCT = F->createConvertTo(nodeName, newBN, ElemKind::FloatTy);
+    BN->getResult().replaceAllUsesOfWith(BNCT);
+    changed = true;
+  }
   return changed;
 }
 

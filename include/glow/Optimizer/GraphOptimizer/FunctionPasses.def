@@ -66,6 +66,7 @@ FUN_PASS(QuantizeSwish)
 FUN_PASS(ConvertFullyConnectedToConvolution)
 FUN_PASS(FoldMinMaxToClip)
 FUN_PASS(ReplaceZeroScaleFP16QuantNodes)
+FUN_PASS(ConvertBatchNormPrecision)
 
 
 // NOTE: This pass must be last; it's used to count the total number of passes.

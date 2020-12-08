@@ -7325,3 +7325,120 @@ TEST_F(GraphOptz, OptConvertToDequantize) {
                                                        mod_.getPRNG());
   checkNumericalEquivalence(0.007f);
 }
+
+TEST_F(GraphOptz, mergeConvertToQuantize) {
+  // ConvertTo followed by Quantize can be replaced with Quantize.
+  // Check that we are combining ConvertTo-Quantize pairs.
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {4, 5}, "input", true);
+  auto *CT = F_->createConvertTo("convertto", input, ElemKind::FloatTy);
+  auto *Q = F_->createQuantize("quantize", CT, ElemKind::Int8QTy, 0.5, 10);
+  F_->createSave("out", Q);
+
+  // ConvertTo, Quantize and Save nodes
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Only Quantize and Save nodes should remain
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  // Check the graph structure
+  auto *SN = optimizedF_->getNodeByName("out_save");
+  EXPECT_NE(nullptr, SN);
+  auto *S = llvm::dyn_cast<SaveNode>(SN);
+  EXPECT_NE(nullptr, S);
+  auto *newN = S->getInput().getNode();
+  EXPECT_NE(nullptr, newN);
+  EXPECT_NE(nullptr, llvm::dyn_cast<QuantizeNode>(newN));
+
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1, 1,
+                                                              mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, mergeDequantizeConvertTo) {
+  // Dequantize followed by ConvertTo can be replaced with Dequantize.
+  // Check that we are combining Dequantize-ConvertTo pairs.
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                       "input", true);
+  auto *D = F_->createDequantize("dequantize", input, ElemKind::FloatTy);
+  auto *CT = F_->createConvertTo("convertto", D, ElemKind::Float16Ty);
+  F_->createSave("out", CT);
+
+  // Dequantize, ConvertTo and Save nodes
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Only Dequantize and Save nodes should remain
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  // Check the graph structure
+  auto *SN = optimizedF_->getNodeByName("out_save");
+  EXPECT_NE(nullptr, SN);
+  auto *S = llvm::dyn_cast<SaveNode>(SN);
+  EXPECT_NE(nullptr, S);
+  auto *newN = S->getInput().getNode();
+  EXPECT_NE(nullptr, newN);
+  EXPECT_NE(nullptr, llvm::dyn_cast<DequantizeNode>(newN));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle<int8_t>().randomize(-1.0, 1.0,
+                                                      mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, mergeQuantizeDequantizeToConvertTo) {
+  // Quantize followed by Dequantize can be replaced with ConvertTo
+  // if there is mismatch in element types of Quantize node input and
+  // Dequantize node output.
+  // Check that we are combining Quantize and Dequantize-pairs.
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {4, 5}, "input", true);
+  auto *Q =
+      F_->createQuantize("quantize", input, ElemKind::Int8QTy, 0.0070504, -14);
+  auto *D = F_->createDequantize("dequantize", Q, ElemKind::FloatTy);
+  F_->createSave("out", D);
+
+  // QUantize, Dequantize, and Save nodes
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+  // Only ConvertTo and Save nodes should remain
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+  // Check the graph structure
+  auto *SN = optimizedF_->getNodeByName("out_save");
+  EXPECT_NE(nullptr, SN);
+  auto *S = llvm::dyn_cast<SaveNode>(SN);
+  EXPECT_NE(nullptr, S);
+  auto *newN = S->getInput().getNode();
+  EXPECT_NE(nullptr, newN);
+  EXPECT_NE(nullptr, llvm::dyn_cast<ConvertToNode>(newN));
+
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1, 1,
+                                                              mod_.getPRNG());
+  checkNumericalEquivalence(0.0035);
+}
+
+TEST_F(GraphOptz, convertBatchNormPrecision) {
+  // Change BN precision to FP16 if preceding Conv is in Fp16 to allow
+  // Conv, BatchNorm fusion.
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+  Node *CTI = F_->createConvertTo("convertToFP16", A, ElemKind::Float16Ty);
+  Node *CV = F_->createConv(bindings_, "conv", CTI, 16, 5, 1, 2, 1);
+  Node *CTO = F_->createConvertTo("convertToFP32", CV, ElemKind::FloatTy);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", CTO, 3, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+  EXPECT_EQ(
+      countNodeKind(optimizedF_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+
+  bindings_.allocate(A)->getHandle().randomize(-128, 127, mod_.getPRNG());
+  checkNumericalEquivalence(0.0003);
+}

@@ -396,7 +396,10 @@ protected:
                       "Can't register more than outputs in the operation.");
     numOutputs = (numOutputs < 0) ? op.output_size() : numOutputs;
     for (int i = 0; i < numOutputs; i++) {
-      nodeValueByName_[op.output(i)] = NodeValue(node, i);
+      NodeValue output = node->getNthResult(i);
+      // Update operator output to NodeValue mapping if operator output name
+      // is specified to run in FP16 precision.
+      setNodeOutputMapping(op.output(i), output);
     }
     return Error::success();
   }
@@ -540,7 +543,7 @@ protected:
 
     // LRN in Caffe2 has a scale_ output, but I believe it's unused for
     // inference. So explicitly only set output 0.
-    nodeValueByName_[op.output(0)] = N->getResult();
+    setNodeOutputMapping(op.output(0), N->getResult());
     return Error::success();
   }
 
@@ -836,7 +839,7 @@ protected:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       // Each output from Split is a SliceNode which only has a single output,
       // so only use 0 here as the node value result.
-      nodeValueByName_[op.output(i)] = outputs[i]->getResult();
+      setNodeOutputMapping(op.output(i), outputs[i]->getResult());
     }
     return Error::success();
   }
@@ -916,7 +919,7 @@ protected:
 
     // Caffe2 sometimes outputs old_shape which goes unused. We do not currently
     // support it, so explicitly only set the first output.
-    nodeValueByName_[op.output(0)] = node->getResult();
+    setNodeOutputMapping(op.output(0), node->getResult());
     return Error::success();
   }
 
@@ -992,8 +995,7 @@ protected:
         in = PH->getOutput();
       }
     }
-
-    nodeValueByName_[op.output(0)] = in;
+    setNodeOutputMapping(op.output(0), in);
     return Error::success();
   }
 
