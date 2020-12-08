@@ -1217,12 +1217,14 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
   const auto &mapping = getSymbolsMapping();
   auto &nodelist = F_.getNodes();
   int nodeIdx = 0;
-  // Nodes are topologically sorted.
-  for (const auto *node : graph.nodes()) {
+
+  // Lambda for loading a single node, used so any Error can be captured and
+  // the string representation of the node appended to the Error stack.
+  auto loadNode = [&](const torch::jit::Node *node) -> Error {
     const auto kind = node->kind();
     // prim::GetAttr is loaded separately.
     if (kind == torch::jit::prim::GetAttr) {
-      continue;
+      return Error::success();
     }
 
     auto it = mapping.find(kind);
@@ -1235,9 +1237,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
     if (settings_.debugContinuouslyVerifyDuringModelLoading) {
       if (!F_.verify()) {
-        return MAKE_ERR(
-            strFormat("Failed Function verification while loading node %s",
-                      jitNodeToString(node).c_str()));
+        return MAKE_ERR("Failed Function verification after loading a node");
       }
     }
 
@@ -1260,10 +1260,21 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
     if (settings_.debugContinuouslyVerifyDuringModelLoading) {
       if (!F_.verify()) {
-        return MAKE_ERR(strFormat("Failed Function verification after constant "
-                                  "propagation while loading node %s",
-                                  jitNodeToString(node).c_str()));
+        return MAKE_ERR("Failed Function verification after constant "
+                        "propagation while loading a node");
       }
+    }
+
+    return Error::success();
+  };
+
+  // Nodes are topologically sorted.
+  for (const auto *node : graph.nodes()) {
+    if (auto err = loadNode(node)) {
+      ADD_MESSAGE_TO_ERR_STACK(
+          err, strFormat("Encountered Error while loading node %s",
+                         jitNodeToString(node).c_str()));
+      return err;
     }
   }
 
