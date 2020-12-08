@@ -156,9 +156,9 @@ void MemoryAllocator::deallocate(Handle handle) {
   auto ptr = getAddress(handle);
   for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
     if (it->begin_ == ptr) {
-      segments_.erase(it);
       liveSize_ -= it->size();
       maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
+      segments_.erase(it);
       addrToHandleMap_.erase(ptr);
       handleToSegmentMap_.erase(handle);
       return;
