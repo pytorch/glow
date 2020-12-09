@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
+#include "glow/Flags/Flags.h"
+
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <map>
 
 /* Flags should generally go in as specific of namespace as makes sense.
  *  That is, if a flag is specific to torch_glow, it should go in the
@@ -636,3 +642,23 @@ DEFINE_validator(glow_backend_specific_opts,
                    glow::flags::BackendSpecificOpts = val;
                    return true;
                  });
+
+bool glow::flags::processBackendSpecificOpts(
+    std::map<std::string, std::string> &optsMap, llvm::StringRef optsStr) {
+  if (optsStr.empty()) {
+    return true;
+  }
+  llvm::SmallVector<llvm::StringRef, 4> splitOpts;
+  optsStr.split(splitOpts, ',');
+
+  for (const llvm::StringRef &opt : splitOpts) {
+    LOG(INFO) << "Adding backend specific option: " << opt.str();
+    auto keyValPair = opt.split('=');
+    if (keyValPair.second.empty()) {
+      LOG(ERROR) << "No '=' found in backend-specific opt " << opt.str();
+      return false;
+    }
+    optsMap.emplace(keyValPair.first, keyValPair.second);
+  }
+  return true;
+}

@@ -16,7 +16,9 @@
 #ifndef GLOW_FLAGS_FLAGS_H
 #define GLOW_FLAGS_FLAGS_H
 
+#include "llvm/ADT/StringRef.h"
 #include <gflags/gflags.h>
+#include <map>
 
 namespace glow {
 namespace flags {
@@ -75,6 +77,10 @@ extern int32_t DAGOptimizerNumParallelChunks;
 extern std::string DAGOptimizerPlacementTaggingAlgorithm;
 extern std::string DAGOptimizerParallelizationTaggingAlgorithm;
 
+/// Helper for processing opts in \p optsStr into \p opts. \returns if there is
+/// any error encountered when processing \p optsStr.
+bool processBackendSpecificOpts(std::map<std::string, std::string> &optsMap,
+                                llvm::StringRef optsStr);
 } // namespace flags
 } // namespace glow
 
