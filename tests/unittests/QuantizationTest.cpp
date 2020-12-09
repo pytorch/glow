@@ -337,59 +337,107 @@ void quantizeTensorTest(
 
 TEST(Quantization, quantizeTensorAsymmetricInt8) {
   quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
+                             quantization::Schema::Asymmetric);
+}
+TEST(Quantization, quantizeTensorAsymmetricInt8KLMinimization) {
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
                              quantization::Schema::Asymmetric,
                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorAsymmetricInt16) {
+  quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
+                              quantization::Schema::Asymmetric);
+}
+TEST(Quantization, quantizeTensorAsymmetricInt16KLMinimization) {
   quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
                               quantization::Schema::Asymmetric,
                               quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorAsymmetricInt32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
+                              quantization::Schema::Asymmetric);
+}
+TEST(Quantization, quantizeTensorAsymmetricInt32KLMinimization) {
+  quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
                               quantization::Schema::Asymmetric,
                               quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricInt8) {
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
+                             quantization::Schema::Symmetric);
+}
+TEST(Quantization, quantizeTensorSymmetricInt8KLMinimization) {
   quantizeTensorTest<int8_t>(ElemKind::Int8QTy, quantization::Schema::Symmetric,
                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricInt16) {
+  quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
+                              quantization::Schema::Symmetric);
+}
+TEST(Quantization, quantizeTensorSymmetricInt16KLMinimization) {
   quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
                               quantization::Schema::Symmetric,
                               quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricInt32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
+                              quantization::Schema::Symmetric);
+}
+TEST(Quantization, quantizeTensorSymmetricInt32KLMinimization) {
+  quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
                               quantization::Schema::Symmetric,
                               quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricUInt8) {
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
+                             quantization::Schema::SymmetricWithUnsigned);
+}
+TEST(Quantization, quantizeTensorSymmetricUInt8KLMinimization) {
   quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
                              quantization::Schema::SymmetricWithUnsigned,
                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricUInt16) {
   quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
+                              quantization::Schema::SymmetricWithUnsigned);
+}
+TEST(Quantization, quantizeTensorSymmetricUInt16KLMinimization) {
+  quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
                               quantization::Schema::SymmetricWithUnsigned,
                               quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricUInt32) {
+  quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
+                              quantization::Schema::SymmetricWithUnsigned);
+}
+TEST(Quantization, quantizeTensorSymmetricUInt32KLMinimization) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
                               quantization::Schema::SymmetricWithUnsigned,
                               quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricPwr2Int8) {
   quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
+                             quantization::Schema::SymmetricWithPower2Scale);
+}
+TEST(Quantization, quantizeTensorSymmetricPwr2Int8KLMinimization) {
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
                              quantization::Schema::SymmetricWithPower2Scale,
                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricPwr2Int16) {
   quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
+                              quantization::Schema::SymmetricWithPower2Scale);
+}
+TEST(Quantization, quantizeTensorSymmetricPwr2Int16KLMinimization) {
+  quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
                               quantization::Schema::SymmetricWithPower2Scale,
                               quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricPwr2Int32) {
+  quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
+                              quantization::Schema::SymmetricWithPower2Scale);
+}
+TEST(Quantization, quantizeTensorSymmetricPwr2Int32KLMinimization) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
                               quantization::Schema::SymmetricWithPower2Scale,
                               quantization::Calibration::KLMinimization);
