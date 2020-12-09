@@ -911,7 +911,6 @@ TEST_P(HostManagerTest, testHostManagerRegistry) {
 TEST_P(HostManagerTest, testTimeout) {
   CHECK_IF_ENABLED();
 
-#ifdef GLOW_WITH_NNPI
   if (backendName_ == "NNPI") {
     // Skip this test if running on ICEREF, since we want to test the device
     // timeout.
@@ -922,7 +921,6 @@ TEST_P(HostManagerTest, testTimeout) {
     // Set the timeout to very short so we fail intentionally.
     glow::runtime::flags::NNPITimeoutMs = 1;
   }
-#endif
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   std::unique_ptr<ExecutionContext> context =
