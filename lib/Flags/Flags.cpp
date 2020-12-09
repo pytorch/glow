@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
+#include "glow/Flags/Flags.h"
+
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <map>
 
 /* Flags should generally go in as specific of namespace as makes sense.
  *  That is, if a flag is specific to torch_glow, it should go in the
@@ -41,17 +47,18 @@ bool EnablePartialTensors = true;
 bool UseCustomOpsForExport = true;
 std::string BackendSpecificOpts = "";
 bool EnableLoadBalancedPartitioning = true;
-bool ClipZeroScaleFP16 = false;
+bool SkipProvisioning = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
 bool ConvertPlaceholdersToFP16 = false;
-bool ConvertConstantsToFP16 = false;
+bool ConvertConstantsToFP16 = true;
 bool ConvertFusedScaleOffsetToFP16 = false;
 bool ClipToFP16 = false;
 bool SkipInputsOnClipToFP16 = true;
 bool ForceSLSToFP16Accum = true;
 bool ClipQuantRangeToFP16 = false;
+bool ClipZeroScaleFP16 = false;
 
 // Debug Constants
 int32_t NumDebugTracesPerDump = 100;
@@ -76,7 +83,6 @@ bool SparseNNPartitioningPairLNWithSLS = false;
 
 // Dag Optimizer Constants
 bool UseDAGOptimizer = false;
-bool UseDAGOptimizerAOT = false;
 int32_t DAGOptimizerNumParallelChunks = 1;
 std::string DAGOptimizerPlacementTaggingAlgorithm = "None";
 std::string DAGOptimizerParallelizationTaggingAlgorithm = "None";
@@ -395,6 +401,12 @@ DEFINE_validator(glow_partitioner_enable_load_balance,
                    glow::flags::EnableLoadBalancedPartitioning = val;
                    return true;
                  });
+DEFINE_bool(glow_skip_provisioning, glow::flags::SkipProvisioning,
+            "Skip provisioning. Used for AOT opts or debugging.");
+DEFINE_validator(glow_skip_provisioning, [](const char *, bool val) {
+  glow::flags::SkipProvisioning = val;
+  return true;
+});
 DEFINE_bool(glow_save_onnxifi_model, glow::onnxifi::flags::SaveModel,
             "Package the glow function and weights right before lowering");
 DEFINE_validator(glow_save_onnxifi_model, [](const char *, bool val) {
@@ -442,12 +454,6 @@ DEFINE_bool(glow_use_dag_optimizer, glow::flags::UseDAGOptimizer,
             "Whether to call the DAG optimizer");
 DEFINE_validator(glow_use_dag_optimizer, [](const char *, bool val) {
   glow::flags::UseDAGOptimizer = val;
-  return true;
-});
-DEFINE_bool(glow_use_dag_optimizer_aot, glow::flags::UseDAGOptimizerAOT,
-            "Whether to call the DAG optimizer AOT");
-DEFINE_validator(glow_use_dag_optimizer_aot, [](const char *, bool val) {
-  glow::flags::UseDAGOptimizerAOT = val;
   return true;
 });
 DEFINE_int32(glow_dag_optimizer_num_parallel_chunks,
@@ -636,3 +642,23 @@ DEFINE_validator(glow_backend_specific_opts,
                    glow::flags::BackendSpecificOpts = val;
                    return true;
                  });
+
+bool glow::flags::processBackendSpecificOpts(
+    std::map<std::string, std::string> &optsMap, llvm::StringRef optsStr) {
+  if (optsStr.empty()) {
+    return true;
+  }
+  llvm::SmallVector<llvm::StringRef, 4> splitOpts;
+  optsStr.split(splitOpts, ',');
+
+  for (const llvm::StringRef &opt : splitOpts) {
+    LOG(INFO) << "Adding backend specific option: " << opt.str();
+    auto keyValPair = opt.split('=');
+    if (keyValPair.second.empty()) {
+      LOG(ERROR) << "No '=' found in backend-specific opt " << opt.str();
+      return false;
+    }
+    optsMap.emplace(keyValPair.first, keyValPair.second);
+  }
+  return true;
+}

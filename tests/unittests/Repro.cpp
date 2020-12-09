@@ -523,6 +523,12 @@ int run() {
         glow::flags::SparseNNPartitioningSchemeNumCoresOther;
   }
 
+  if (!glow::flags::processBackendSpecificOpts(
+          cctx.backendOpts.backendSpecificOpts,
+          glow::flags::BackendSpecificOpts)) {
+    return -1;
+  }
+
 #ifdef GLOW_WITH_NNPI
   if (glow::nnpi::flags::NumParallelChunks > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =

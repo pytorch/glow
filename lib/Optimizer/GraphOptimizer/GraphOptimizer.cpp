@@ -553,10 +553,11 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           continue;
         }
 
+        auto bnOutTy = RS->getInput().getType();
         auto *newBN = F->createBatchNormalization(
-            BN->getName(), RS->getInput(), BN->getBias(), BN->getScale(),
-            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
-            BN->getMomentum());
+            BN->getName(), bnOutTy, RS->getInput(), BN->getBias(),
+            BN->getScale(), BN->getMean(), BN->getVar(), newChannelIdx,
+            BN->getEpsilon(), BN->getMomentum());
         RS->setNthInput(ReshapeNode::InputIdx, newBN);
         BN->getResult().replaceAllUsesOfWith(RS);
         changed = true;
@@ -572,9 +573,9 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         unsigned_t newChannelIdx = TR->getShuffle()[idx];
 
         auto *NewBN = F->createBatchNormalization(
-            BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
-            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
-            BN->getMomentum());
+            BN->getName(), TR->getInput().getType(), TR->getInput(),
+            BN->getBias(), BN->getScale(), BN->getMean(), BN->getVar(),
+            newChannelIdx, BN->getEpsilon(), BN->getMomentum());
         NewBN->setPredicate(node->getPredicate());
         auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle(),
                                          TR->getLayout());
@@ -1055,8 +1056,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       auto *newSN = F->createSlice(SN->getName(), BN->getInput(),
                                    SN->getStart(), newSNType);
       auto *newBN = F->createBatchNormalization(
-          BN->getName(), newSN, BN->getBias(), BN->getScale(), BN->getMean(),
-          BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
+          BN->getName(), newSNType, newSN, BN->getBias(), BN->getScale(),
+          BN->getMean(), BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
           BN->getMomentum());
       SN->getResult().replaceAllUsesOfWith(newBN);
       changed = true;
@@ -2166,8 +2167,9 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
     auto mean = F->getParent()->createConstant("BN.mean", meanT);
 
     // Create a BN with new parameters.
-    auto *nBN = F->createBatchNormalization("BatchNorm", &node, newBias,
-                                            newScale, mean, variance, 3, 0, 0);
+    auto *nBN =
+        F->createBatchNormalization("BatchNorm", chainEnd.getType(), &node,
+                                    newBias, newScale, mean, variance, 3, 0, 0);
     chainEnd.replaceAllUsesOfWith(nBN);
     changed = true;
   }
@@ -2230,8 +2232,9 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
 
     // Create a BN with new parameters.
     auto *newBN = F->createBatchNormalization(
-        BN->getName(), BN->getInput(), newBiasN, newScaleN, BN->getMean(),
-        BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
+        BN->getName(), chainEnd.getType(), BN->getInput(), newBiasN, newScaleN,
+        BN->getMean(), BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
+        BN->getMomentum());
 
     chainEnd.replaceAllUsesOfWith(newBN);
     changed = true;
@@ -3624,6 +3627,8 @@ static bool isValueChangingCast(TypeRef srcTy, TypeRef destTy) {
 /// Optimize away redundant ClipNodes.
 /// We basically turn "Clip(Clip(Clip(A)))" to "Clip(A)".
 bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
   bool changed = false;
   for (Node &node : F->getNodes()) {
     ClipNode *clip = dyn_cast<ClipNode>(&node);
@@ -6334,6 +6339,13 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
 }
 
 void glow::updateQuantReluTypes(Function *F) {
+  // A worklist that contains the nodes to process.
+  std::vector<Node *> worklist;
+  auto needsQuantTyUpdate = [](const Node *N) {
+    return isa<ConcatNode>(N) || isa<SliceNode>(N) || isa<ReshapeNode>(N) ||
+           isa<TileNode>(N) || isa<BroadcastNode>(N) || isa<TransposeNode>(N);
+  };
+
   for (Node &N : F->getNodes()) {
     // Look for quantized Relus that have negative min, and update their min to
     // be zero.
@@ -6353,5 +6365,59 @@ void glow::updateQuantReluTypes(Function *F) {
     const TypeRef qReluTy = F->getParent()->uniqueType(
         RNTy->getElementType(), RNTy->dims(), qParams.scale, qParams.offset);
     RN->setType(ReluNode::ResultIdx, qReluTy);
+
+    // Now look for any users of the Relu which set their type based directly on
+    // the type of the Relu, and update them as well. These tend to be shape
+    // changes such as Concat, Slice, Reshape, Tile, Broadcast, Transpose, etc.
+    for (auto &user : RN->getUsers()) {
+      auto *U = user.getUser();
+      if (needsQuantTyUpdate(U)) {
+        worklist.push_back(U);
+      }
+    }
+  }
+
+  // Now we need to update all nodes following the relus which directly took
+  // their output types from the relu.
+  while (!worklist.empty()) {
+    Node *N = worklist.back();
+    assert(needsQuantTyUpdate(N) && "Unsupported node for quant update.");
+    worklist.pop_back();
+
+    // Look for other users that also need updates and add to worklist.
+    for (auto &user : N->getUsers()) {
+      auto *U = user.getUser();
+      if (needsQuantTyUpdate(U)) {
+        worklist.push_back(U);
+      }
+    }
+
+    // Note: We can unconditionally get the 0th result because all nodes we
+    // currently support to update have a single output.
+    assert(N->getNumResults() == 1 && "Unsupported multi-output Node");
+    constexpr unsigned resultIdx = 0;
+    const TypeRef T = N->getNthResult(resultIdx).getType();
+
+    // We must still be in the quantized domain, because we are only following
+    // chains starting from quantized relus down through shape nodes.
+    assert(T->isQuantizedType());
+
+    // This likely represents an issue because it means e.g. a Reshape will
+    // change the scale/bias, but continue for now and assume a verifier will
+    // catch the issue if it is one.
+    if (isUsedByNodeWithSideEffects(N)) {
+      continue;
+    }
+
+    // Update the output type just like we did for the original relu.
+    const auto qRange = T->getQuantizedValueRange();
+    if (qRange.first >= 0) {
+      continue;
+    }
+    const auto qParams =
+        quantization::chooseQuantizationParams({0, qRange.second});
+    const TypeRef qReluTy = F->getParent()->uniqueType(
+        T->getElementType(), T->dims(), qParams.scale, qParams.offset);
+    N->setType(resultIdx, qReluTy);
   }
 }

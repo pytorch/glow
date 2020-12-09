@@ -169,6 +169,14 @@ struct BlacklistInitializer {
       {"ArithSub_int32_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ArithSub_int64_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BatchNorm_Float/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"FP16BatchNorm2D/0",
+       TestBlacklist::AnyDeviceAnyEngine}, // Broken in NNPI 1.0 backend
+      {"Int8BatchNorm2D/0",
+       TestBlacklist::AnyDeviceAnyEngine}, // Not supported in NNPI 1.0
+      {"FP16BatchNorm3D/0",
+       TestBlacklist::AnyDeviceAnyEngine}, // Not supported in NNPI 1.0
+      {"Int8BatchNorm3D/0",
+       TestBlacklist::AnyDeviceAnyEngine}, // Not supported in NNPI 1.0
       {"batchedReduceMin_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMin_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMax_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -269,6 +277,10 @@ struct BlacklistInitializer {
       {"ChannelwiseQuantizedConv2D_Int8_BiasInt8_FTT/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"ChannelwiseQuantizedConv2D_Int8_BiasInt32_FFT/0",
+       TestBlacklist::AnyDeviceAnyEngine},
+      {"ChannelwiseQuantizedConv2D_Int32Bias_SmallFilterData/0",
+       TestBlacklist::AnyDeviceAnyEngine},
+      {"ChannelwiseQuantizedConv2D_Int32Bias_ZeroBiasData/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"ChannelwiseQuantizedConv2D_Int8_BiasInt8/0",
        TestBlacklist::AnyDeviceAnyEngine},
@@ -466,6 +478,16 @@ struct BlacklistInitializer {
       {"Transpose6Dims/0", TestBlacklist::AnyDeviceHWEngine},
       {"NonSquareDilationConvTranspose/0", TestBlacklist::AnyDeviceAnyEngine},
       {"NonSquareDilationConv2D/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"AvgPool2DLargePads_FloatTy_CountIncludePads/0",
+       TestBlacklist::AnyDeviceAnyEngine},
+      {"AvgPool2DLargePads_FloatTy_CountExcludePads/0",
+       TestBlacklist::AnyDeviceAnyEngine},
+      {"AvgPool2DLargePads_Int8QTy_CountIncludePads/0",
+       TestBlacklist::AnyDeviceAnyEngine},
+      {"AvgPool2DLargePads_Int8QTy_CountExcludePads/0",
+       TestBlacklist::AnyDeviceAnyEngine},
+      {"MaxPool2DLargePads_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"MaxPool2DLargePads_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
       {"BBoxTransform_Rotated_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"IntLookupTable/0", TestBlacklist::AnyDeviceAnyEngine},

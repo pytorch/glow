@@ -531,13 +531,13 @@ protected:
                                  loadAxis<int>(dict["axis"], in.dims().size()));
     }
 
-    auto *FN = G_->createFlatten("reshapeInput", in, axis);
+    auto *FN = G_->createFlatten(opName + ".reshapeInput", in, axis);
 
     auto *SM = G_->createSoftMax(opName, FN, selected);
 
     // The output should have the same shape as the original input.
     auto origInDims = in.getType()->dims();
-    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    auto *RN = G_->createReshape(opName + ".reshapeOutput", SM, origInDims);
     RETURN_IF_ERR(addNodeAsOutput(op, RN));
     return Error::success();
   }

@@ -47,7 +47,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
       continue;
     }
     auto numBytes = w->getSizeInBytes();
-    size_t addr = constantWeightVarsAllocator.allocate(numBytes, v);
+    size_t addr = constantWeightVarsAllocator_.allocate(numBytes, v);
     allocatedAddress_[v] = addr;
     allocatedAddress_[w] = addr;
   }
@@ -68,13 +68,13 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
       continue;
     }
     auto numBytes = w->getSizeInBytes();
-    size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
+    size_t addr = mutableWeightVarsAllocator_.allocate(numBytes, w);
     allocatedAddress_[w] = addr;
   }
 
   // Remember that max required memory size for each kind of weights.
-  constantWeightVarsMemSize_ = constantWeightVarsAllocator.getMaxMemoryUsage();
-  mutableWeightVarsMemSize_ = mutableWeightVarsAllocator.getMaxMemoryUsage();
+  constantWeightVarsMemSize_ = constantWeightVarsAllocator_.getMaxMemoryUsage();
+  mutableWeightVarsMemSize_ = mutableWeightVarsAllocator_.getMaxMemoryUsage();
 
   DEBUG_GLOW(for (auto &A
                   : allocatedAddress_) {
@@ -116,12 +116,12 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   }
 
   // Allocate all segments at once for better allocation efficiency.
-  activationsAllocator.allocateAll(allocList);
+  activationsAllocator_.allocateAll(allocList);
 
   // Map addresses of allocated segments.
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
-      uint64_t addr = activationsAllocator.getAddress(A);
+      uint64_t addr = activationsAllocator_.getAddress(A);
       assert(!activationAddr.count(A) && "Allocation already made!");
       activationAddr[A] = addr;
       continue;
@@ -132,7 +132,7 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
     }
   }
 
-  activationsMemSize_ = activationsAllocator.getMaxMemoryUsage();
+  activationsMemSize_ = activationsAllocator_.getMaxMemoryUsage();
 
   // Register specific addresses within the heap to activations.
   for (auto &A : activationAddr) {

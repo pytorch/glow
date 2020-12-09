@@ -430,26 +430,32 @@ static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
                                      NodeValue mean, NodeValue var,
                                      unsigned_t channel) {
   const Node *parent = dest.getNode();
-  bool isValid = checkSameType(dest, src, parent);
 
-  isValid &= expectCompareTrue(
-      "Require at least two input dims i.e., batch and channel dimensions",
-      src.dims().size(), (size_t)1, parent,
-      CompareOperatorGreaterThan<size_t>());
+  // Source and Dest can have different quantization params
+  // but need to match in shape and element type.
+  bool isValid = checkSameShape(dest, src, parent);
+  isValid = isValid && checkType(dest, src.getElementType(), parent);
+
+  isValid =
+      isValid &&
+      expectCompareTrue(
+          "Require at least two input dims i.e., batch and channel dimensions",
+          src.dims().size(), (size_t)1, parent,
+          CompareOperatorGreaterThan<size_t>());
 
   // Figure out how many channels are in the tensor.
   dim_t channels = src.dims()[channel];
 
   const dim_t expArray[] = {channels};
   auto exp = llvm::makeArrayRef(expArray);
-  isValid &= expectCompareTrue("Invalid bias dimension", bias.getType()->dims(),
-                               exp, parent);
-  isValid &= expectCompareTrue("Invalid scale dimension",
-                               scale.getType()->dims(), exp, parent);
-  isValid &= expectCompareTrue("Invalid mean dimension", mean.getType()->dims(),
-                               exp, parent);
-  isValid &= expectCompareTrue("Invalid var dimension", var.getType()->dims(),
-                               exp, parent);
+  isValid = isValid && expectCompareTrue("Invalid bias dimension",
+                                         bias.getType()->dims(), exp, parent);
+  isValid = isValid && expectCompareTrue("Invalid scale dimension",
+                                         scale.getType()->dims(), exp, parent);
+  isValid = isValid && expectCompareTrue("Invalid mean dimension",
+                                         mean.getType()->dims(), exp, parent);
+  isValid = isValid && expectCompareTrue("Invalid var dimension",
+                                         var.getType()->dims(), exp, parent);
   return isValid;
 }
 
@@ -1236,6 +1242,7 @@ bool TileNode::verify() const {
     isValid &= expectCompareTrue(msg.c_str(), src.dims()[i] * mul,
                                  dest.dims()[i], this);
   }
+  isValid &= checkTypeIgnoreShape(src, dest, this);
   return isValid;
 }
 
@@ -2537,6 +2544,7 @@ bool BroadcastNode::verify() const {
           (inputDims[origIdx] == targetDims[i] || inputDims[origIdx] == 1);
     }
   }
+  isValid &= checkTypeIgnoreShape(getInput(), getResult(), this);
 
   return isValid;
 }

@@ -139,7 +139,8 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
     auto *node = *it;
     const auto kind = node->kind();
 
-    if (kind != at::aten::cat && kind != at::aten::stack) {
+    if (kind != at::aten::cat && kind != at::aten::stack &&
+        ::strcmp(kind.toQualString(), "fb::broadcast_cat") != 0) {
       continue;
     }
 
@@ -156,8 +157,14 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
       continue;
     }
 
-    auto symbolS = node->kind() == at::aten::cat ? "prim::FusedConcat"
-                                                 : "glow::fused_stack";
+    std::string symbolS;
+    if (kind == at::aten::cat) {
+      symbolS = "prim::FusedConcat";
+    } else if (kind == at::aten::stack) {
+      symbolS = "glow::fused_stack";
+    } else {
+      symbolS = "glow::fused_broadcast_cat";
+    }
 
     auto *fusedNode = graph->create(torch::jit::Symbol::fromQualString(symbolS),
                                     inputNode->inputs(), /*num_outputs*/ 1);
@@ -395,6 +402,7 @@ void fuseKnownPatterns(
     registerDummyOperator("glow::fused_stack");
     registerDummyOperator("glow::fused_linear");
     registerDummyOperator("glow::fused_split");
+    registerDummyOperator("glow::fused_broadcast_cat");
   });
 
   detail::removeExceptions(graph);

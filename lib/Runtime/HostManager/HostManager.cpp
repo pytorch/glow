@@ -23,6 +23,7 @@
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Runtime/DeviceHealthMonitor.h"
+#include "glow/Runtime/ErrorReporter.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RequestData.h"
@@ -107,7 +108,14 @@ HostManager::HostManager(
     : config_(hostConfig),
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
-  EXIT_ON_ERR(init(std::move(deviceConfigs)));
+  auto reporters = ErrorReporterRegistry::ErrorReporters();
+
+  auto err = init(std::move(deviceConfigs));
+  if (reporters && err) {
+    std::string msg = err.peekErrorValue()->logToString();
+    reporters->report(msg);
+  }
+  EXIT_ON_ERR(std::move(err));
   statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
 }
 
@@ -499,9 +507,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
 
     // If we're using AOT DAG optimizer then skip provisioning.
-    if (cctx.callDAGOptimizer && cctx.useDAGOptimizerAOTMode) {
-      LOG(INFO) << "Skipping provisioning because DAG optimizer and AOT mode "
-                   "were enabled.";
+    if (cctx.skipProvisioning ||
+        (cctx.callDAGOptimizer && cctx.useDAGOptimizerAOTMode)) {
+      LOG(INFO) << "Host manager skipping provisioning";
       {
         std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
         cleanupAddNetwork(names);
