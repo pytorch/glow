@@ -158,7 +158,12 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     break;
-#endif // NNPI >= 1.1
+  case Kinded::Kind::ResizeNearestNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32QTy,
+         ElemKind::Int8QTy, ElemKind::UInt8QTy});
+    break;
+#endif // NNPI > 1.1
   case Kinded::Kind::MulNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});

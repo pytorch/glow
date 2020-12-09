@@ -434,4 +434,14 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Atan_Int8QTy/0",
     "BBoxTransform/0",
     "NonSquareDilationConvTranspose/0",
-    "NonSquareDilationConv2D/0"};
+    "NonSquareDilationConv2D/0",
+    "Upsample_Nearest3D_Float/0",
+    "Upsample_Nearest3D_Float16/0",
+    "Upsample_Nearest3D_Int8/0",
+    "Upsample_Nearest2D_Float/0",
+    "Upsample_Nearest2D_Float16/0",
+    "Upsample_Nearest2D_Int8/0",
+    "Upsample_Nearest1D_Float/0",
+    "Upsample_Nearest1D_Float16/0",
+    "Upsample_Nearest1D_Int8/0",
+};

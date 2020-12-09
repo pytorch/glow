@@ -2636,18 +2636,37 @@ void BoundInterpreterFunction::fwdResizeNearestInstImpl(
   auto scale = I->getScale();
   auto outW = getWeightHandle<ElemTy>(I->getDest());
 
-  ShapeNHWC odim(outW.dims());
-  ShapeNHWC idim(inW.dims());
+  auto outputDims = outW.dims();
+  auto inputDims = inW.dims();
 
-  for (dim_t ob = 0; ob < odim.n; ++ob) {
-    auto ib = std::min(dim_t(ob / scale[0]), idim.n - 1);
-    for (dim_t oh = 0; oh < odim.h; ++oh) {
-      auto ih = std::min(dim_t(oh / scale[1]), idim.h - 1);
-      for (dim_t ow = 0; ow < odim.w; ++ow) {
-        auto iw = std::min(dim_t(ow / scale[2]), idim.w - 1);
-        for (dim_t oc = 0; oc < odim.c; ++oc) {
-          auto ic = std::min(dim_t(oc / scale[3]), idim.c - 1);
-          outW.at({ob, oh, ow, oc}) = inW.at({ib, ih, iw, ic});
+  for (dim_t oa = 0; oa < outputDims[0]; ++oa) {
+    auto ia = std::min(dim_t(oa / scale[0]), inputDims[0] - 1);
+    for (dim_t ob = 0; ob < outputDims[1]; ++ob) {
+      auto ib = std::min(dim_t(ob / scale[1]), inputDims[1] - 1);
+      for (dim_t oc = 0; oc < outputDims[2]; ++oc) {
+        auto ic = std::min(dim_t(oc / scale[2]), inputDims[2] - 1);
+        if (outputDims.size() > 3) {
+          for (dim_t od = 0; od < outputDims[3]; ++od) {
+            auto id = std::min(dim_t(od / scale[3]), inputDims[3] - 1);
+            if (outputDims.size() > 4) {
+              for (dim_t oe = 0; oe < outputDims[4]; ++oe) {
+                auto ie = std::min(dim_t(oe / scale[4]), inputDims[4] - 1);
+                if (outputDims.size() > 5) {
+                  for (dim_t of = 0; of < outputDims[4]; ++of) {
+                    auto f = std::min(dim_t(of / scale[5]), inputDims[5] - 1);
+                    outW.at({oa, ob, oc, od, oe, of}) =
+                        inW.at({ia, ib, ic, id, ie, f});
+                  }
+                } else {
+                  outW.at({oa, ob, oc, od, oe}) = inW.at({ia, ib, ic, id, ie});
+                }
+              }
+            } else {
+              outW.at({oa, ob, oc, od}) = inW.at({ia, ib, ic, id});
+            }
+          }
+        } else {
+          outW.at({oa, ob, oc}) = inW.at({ia, ib, ic});
         }
       }
     }

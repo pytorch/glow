@@ -3217,64 +3217,33 @@ Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
     outputSize = &outputSizeBuf;
   }
 
-  // Upsample 3D
+  TypeRef outTy = nullptr;
+  std::string name;
+
+  // Upsample 2D
   if (dimSize == 5) {
+    name = "upsample_nearest3d";
     dim_t ia = input.dims()[0];
     dim_t ib = input.dims()[1];
-    dim_t ix = input.dims()[2];
-    dim_t iy = input.dims()[3];
-    dim_t iz = input.dims()[4];
     dim_t ox = (dim_t)(*outputSize)[0];
     dim_t oy = (dim_t)(*outputSize)[1];
     dim_t oz = (dim_t)(*outputSize)[2];
-
-    // Special case when output size is 2x input in all 3 dims
-    bool isUpsample2x = (ox == 2 * ix) && (oy == 2 * iy) && (oz == 2 * iz);
-    if (isUpsample2x) {
-      c10::ScalarType dtype;
-      RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-      RETURN_ERR(addValueMapping(
-          outputs[0], F_.createUpsample("upsample_nearest3d", input, 3),
-          dtype));
-    } else {
-      // Otherwise revert to Glow ResizeNearest, which only can handle 4D
-      // tensors
-      std::vector<glow::SliceNode *> splitOutputs;
-      std::vector<glow::NodeValue> concatInputs;
-      F_.createSplit("upsample_nearest3d_split", input, ia, 0, {},
-                     splitOutputs);
-      for (auto &splitOutput : splitOutputs) {
-        auto *reshape1 = F_.createReshape("upsample_nearest3d_reshape1",
-                                          splitOutput, {ib, ix, iy, iz});
-        auto resizeTy = F_.getParent()->uniqueTypeWithNewShape(
-            input.getType(), {ib, ox, oy, oz});
-        auto *resize = F_.createResizeNearest("upsample_nearest3d_resize",
-                                              reshape1, resizeTy);
-        auto *reshape2 = F_.createReshape("upsample_nearest3d_reshape2", resize,
-                                          {1, ib, ox, oy, oz});
-        concatInputs.push_back(reshape2);
-      }
-      c10::ScalarType dtype;
-      RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-      RETURN_ERR(addValueMapping(
-          outputs[0],
-          F_.createConcat("upsample_nearest3d_concat", concatInputs, 0),
-          dtype));
-    }
+    outTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
+                                                   {ia, ib, ox, oy, oz});
   } else { // Upsample 2D
+    name = "upsample_nearest2d";
     dim_t iN = input.dims()[0];
     dim_t iC = input.dims()[1];
     dim_t oH = (dim_t)(*outputSize)[0];
     dim_t oW = (dim_t)(*outputSize)[1];
 
-    TypeRef outTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
-                                                           {iN, iC, oH, oW});
-    c10::ScalarType dtype;
-    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-    RETURN_ERR(addValueMapping(
-        outputs[0], F_.createResizeNearest("upsample_nearest2d", input, outTy),
-        dtype));
+    outTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
+                                                   {iN, iC, oH, oW});
   }
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  RETURN_ERR(addValueMapping(
+      outputs[0], F_.createResizeNearest(name, input, outTy), dtype));
 }
 
 Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {

@@ -386,4 +386,11 @@ std::set<std::string> glow::backendTestBlacklist = {
     "BBoxTransform_Float16/0",
     "BBoxTransform_Rotated_Float/0",
     "BBoxTransform_Rotated_Float16/0",
+    "Upsample_Nearest3D_Float/0",
+    "Upsample_Nearest3D_Float16/0",
+    "Upsample_Nearest3D_Int8/0",
+    "Upsample_Nearest2D_Float16/0",
+    "Upsample_Nearest1D_Float/0",
+    "Upsample_Nearest1D_Float16/0",
+    "Upsample_Nearest1D_Int8/0",
 };
