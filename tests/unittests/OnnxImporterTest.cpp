@@ -244,22 +244,7 @@ TEST_F(OnnxImporterTest, getInputNamesAndTypes) {
       GLOW_DATA_PATH
       "tests/models/onnxModels/getInputsOnnxDefineSample.onnxtxt");
 
-  class OnnxModelLoaderUtil : public ONNXModelLoader {
-  public:
-    static Error loadOnnxProto(ONNX_NAMESPACE::ModelProto &modelDef,
-                               const std::string &onnxFilePath) {
-      ASSIGN_VALUE_OR_RETURN_ERR(modelDef,
-                                 loadProto(onnxFilePath, false, nullptr));
-      return Error::success();
-    }
-  };
-
-  ONNX_NAMESPACE::ModelProto modelProto;
-
   bool isError = false;
-
-  isError =
-      ERR_TO_BOOL(OnnxModelLoaderUtil::loadOnnxProto(modelProto, netFilename));
 
   std::vector<std::string> names;
   std::vector<Type> types;
@@ -267,10 +252,8 @@ TEST_F(OnnxImporterTest, getInputNamesAndTypes) {
   std::vector<std::string> expectedNames = {"input"};
   std::vector<std::vector<dim_t>> expectedDims = {{5, 3, 224, 224}};
 
-  ONNX_NAMESPACE::GraphProto graphDef = modelProto.graph();
-
   isError = ERR_TO_BOOL(
-      ONNXModelLoader::getInputsNamesAndTypes(names, types, graphDef));
+      ONNXModelLoader::getInputsNamesAndTypes(names, types, netFilename));
 
   EXPECT_FALSE(isError);
 

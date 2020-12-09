@@ -779,11 +779,17 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
 
 Error ONNXModelLoader::getInputsNamesAndTypes(
     std::vector<std::string> &inTensorNames, std::vector<Type> &inTypes,
-    const ONNX_NAMESPACE::GraphProto &graphDef) {
+    const std::string &filename) {
+  // Creating GraphProto from modelfile
+  ONNX_NAMESPACE::ModelProto modelDef;
 
-  // Inputs can have both inputs and intermediate tensors whereas initilaizers
-  // have info about intermediate tensors thus the difference betweem two is
-  // taken
+  ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(filename, false, nullptr));
+
+  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+
+  // GraphDef.input can have both inputs and intermediate tensors whereas
+  // initializers have info about intermediate tensors thus the difference
+  // betweem two is taken
   std::vector<std::string> inputs;
   for (auto &in : graphDef.input()) {
     inputs.push_back(in.name());
