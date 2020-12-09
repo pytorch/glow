@@ -338,6 +338,9 @@ struct CompilationContext {
   /// Whether we're loading a model that has been AOT optimized.
   bool loadingAOTModel{false};
 
+  /// Whether to skip provisioning, e.g. if we're doing AOT optimization.
+  bool skipProvisioning{false};
+
   /// Static placeholder type info used for AOT optimization.
   std::map<std::string, Type> staticPlaceholderTypesForAOT;
 

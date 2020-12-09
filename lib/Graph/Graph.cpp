@@ -1586,11 +1586,12 @@ void Function::createSplit(llvm::StringRef name, NodeValue input,
 }
 
 BatchNormalizationNode *Function::createBatchNormalization(
-    llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue scale,
-    NodeValue mean, NodeValue var, unsigned_t channelIdx, float epsilon,
-    float momentum) {
-  return addNode(new BatchNormalizationNode(name, input, scale, beta, mean, var,
-                                            channelIdx, epsilon, momentum));
+    llvm::StringRef name, TypeRef resType, NodeValue input, NodeValue beta,
+    NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx,
+    float epsilon, float momentum) {
+  return addNode(new BatchNormalizationNode(name, resType, input, scale, beta,
+                                            mean, var, channelIdx, epsilon,
+                                            momentum));
 }
 
 LayerNormalizationNode *Function::createLayerNormalization(llvm::StringRef name,
@@ -2864,8 +2865,10 @@ BatchNormalizationNode *Function::createBatchNormalization(
   bindings.allocate(variance)->init(Tensor::InitKind::Broadcast, 1.0,
                                     getPRNG());
 
-  return createBatchNormalization(name, input, beta, scale, mean, variance,
-                                  channelIdx, epsilon, momentum);
+  auto resultType = getParent()->uniqueType(inputTy, input.dims());
+
+  return createBatchNormalization(name, resultType, input, beta, scale, mean,
+                                  variance, channelIdx, epsilon, momentum);
 }
 
 ConvolutionNode *Function::createConv(
@@ -3043,10 +3046,14 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   dim_t qDim = 0;
   dim_t qStep = 1;
 
+  // Whether filter/bias quantization parameters were explicitly provided.
+  bool filterQParamsGiven = filterScales.getNode() && filterOffsets.getNode();
+  bool biasQParamsGiven = biasScales.getNode() && biasOffsets.getNode();
+
   // If input filter is FLOAT and filterScales/filterOffsets are NOT provided
   // then compute them automatically for given schema and filterElemQTy.
   // If input filter is QUANTIZED then filterScales/filterOffsets are mandatory.
-  if (!filterScales.getNode() || !filterOffsets.getNode()) {
+  if (!filterQParamsGiven) {
     DCHECK(filterElemKind == ElemKind::FloatTy)
         << "ChannelwiseQuantizedConvolution: If the input filter is "
         << "quantized then the filter scales/offsets must be provided!";
@@ -3067,29 +3074,12 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     filterOffsets = NodeValue(filterOffsetsC);
   }
 
-  // If input filter is FLOAT then quantize channel wise to filterElemQTy.
-  if (quantizeFilter && filterElemKind == ElemKind::FloatTy) {
-    Constant *filterC = dyn_cast<Constant>(filter.getNode());
-    DCHECK(filterC)
-        << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
-           "Constant to quantize it";
-    Constant *filterCQ = getParent()->createConstant(
-        filterElemQTy, filterC->getType()->dims(), 1.0, 0, "filter");
-    Constant *filterScalesC = dyn_cast<Constant>(filterScales.getNode());
-    Constant *filterOffsetsC = dyn_cast<Constant>(filterOffsets.getNode());
-    // Quantize filter channelwise.
-    filterCQ->getPayloadMutable() = quantization::quantizeTensor(
-        filterC->getPayload(), filterScalesC->getPayload(),
-        filterOffsetsC->getPayload(), filterElemQTy, qDim, qStep);
-    filter = NodeValue(filterCQ);
-  }
-
   // If input bias is FLOAT and biasScales/biasOffsets are NOT provided
   // then compute them automatically for given schema and biasElemQTy.
   // If input bias is QUANTIZED and biasScales/biasOffsets are NOT provided
   // then assume the channel wise quantization parameters are implicitly:
   // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
-  if (!biasScales.getNode() || !biasOffsets.getNode()) {
+  if (!biasQParamsGiven) {
     Constant *biasC = dyn_cast<Constant>(bias.getNode());
     DCHECK(biasC)
         << "Bias input to ChannelwiseQuantizedConvolutionNode must be a "
@@ -3107,19 +3097,32 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     auto inputScale = input.getType()->getScale();
     auto inputOffset = input.getType()->getOffset();
     if (biasElemKind == ElemKind::FloatTy) {
+      auto biasH = biasC->getPayload().getHandle<float>();
       // Get bias channelwise TensorQuantizationParams.
       quantization::getTensorQuantizationParams(
           biasC->getPayload(), biasScalesC->getPayloadMutable(),
           biasOffsetsC->getPayloadMutable(), schema, biasElemQTy, qDim, qStep);
       // Specialize the bias channelwise TensorQuantizationParams.
       for (dim_t idx = 0; idx < numChannels; idx++) {
-        auto biasTQPNew = specializeBiasQuantizationParams(
-            {biasScalesH.raw(idx), biasOffsetsH.raw(idx)},
-            {inputScale, inputOffset},
-            {filterScalesH.raw(idx), filterOffsetsH.raw(idx)}, schema,
-            biasElemQTy);
-        biasScalesH.raw(idx) = biasTQPNew.scale;
-        biasOffsetsH.raw(idx) = biasTQPNew.offset;
+        bool biasZero = (biasH.raw(idx) == 0.f);
+        TensorQuantizationParams biasTQP = {biasScalesH.raw(idx),
+                                            biasOffsetsH.raw(idx)};
+        TensorQuantizationParams inputTQP = {inputScale, inputOffset};
+        TensorQuantizationParams filterTQP = {filterScalesH.raw(idx),
+                                              filterOffsetsH.raw(idx)};
+        if (filterQParamsGiven) {
+          // Specialize only bias quantization parameters.
+          biasTQP = specializeBiasQuantizationParams(
+              biasTQP, inputTQP, filterTQP, schema, biasElemQTy, biasZero);
+        } else {
+          // Specialize bias and weights quantization parameters.
+          specializeBiasWeightsQuantizationParams(
+              biasTQP, inputTQP, filterTQP, schema, biasElemQTy, biasZero);
+        }
+        biasScalesH.raw(idx) = biasTQP.scale;
+        biasOffsetsH.raw(idx) = biasTQP.offset;
+        filterScalesH.raw(idx) = filterTQP.scale;
+        filterOffsetsH.raw(idx) = filterTQP.offset;
       }
     } else {
       // Set implicit bias channelwise TensorQuantizationParams.
@@ -3131,6 +3134,23 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     }
     biasScales = NodeValue(biasScalesC);
     biasOffsets = NodeValue(biasOffsetsC);
+  }
+
+  // If input filter is FLOAT then quantize channel wise to filterElemQTy.
+  if (quantizeFilter && filterElemKind == ElemKind::FloatTy) {
+    Constant *filterC = dyn_cast<Constant>(filter.getNode());
+    DCHECK(filterC)
+        << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
+    Constant *filterCQ = getParent()->createConstant(
+        filterElemQTy, filterC->getType()->dims(), 1.0, 0, "filter");
+    Constant *filterScalesC = dyn_cast<Constant>(filterScales.getNode());
+    Constant *filterOffsetsC = dyn_cast<Constant>(filterOffsets.getNode());
+    // Quantize filter channelwise.
+    filterCQ->getPayloadMutable() = quantization::quantizeTensor(
+        filterC->getPayload(), filterScalesC->getPayload(),
+        filterOffsetsC->getPayload(), filterElemQTy, qDim, qStep);
+    filter = NodeValue(filterCQ);
   }
 
   // If input bias is FLOAT then quantize channel wise to biasElemQTy.

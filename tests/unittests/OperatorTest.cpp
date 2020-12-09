@@ -9710,7 +9710,7 @@ static void testChannelwiseQuantizedConv2D(
   auto refH = bindings.get(saveRef->getPlaceholder())->getHandle();
   for (dim_t idx = 0; idx < refH.size(); idx++) {
     float errVal = std::abs(refH.raw(idx) - outH.raw(idx));
-    EXPECT_TRUE(errVal < 0.05);
+    EXPECT_LT(errVal, 0.05f);
   }
 }
 
@@ -9761,6 +9761,201 @@ TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TTF, ElemKind::Int8QTy,
 TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TTT, ElemKind::Int8QTy,
              ElemKind::Int32QTy, true, true, true)
 #undef TEST_CWQCONV
+
+/// Test ChannelwiseQuantizedConv2D corner case with INT32 bias with
+/// very small filter data which would cause a bias up-shift and saturation
+/// if not properly handled. This kind of corner case is very commonly found
+/// in numerically ill-defined depthwise convolutions in MobileNet.
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D_Int32Bias_SmallFilterData) {
+  CHECK_IF_ENABLED();
+
+  std::vector<dim_t> inputDims = {1, 5, 5, 8};
+  std::vector<dim_t> filterDims = {8, 3, 3, 1};
+  std::vector<dim_t> biasDims = {8};
+  std::vector<dim_t> outputDims = {1, 5, 5, 8};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {1, 1, 1, 1};
+  dim_t group = 8;
+  std::vector<unsigned_t> dilation = {1, 1};
+  ElemKind elemQKind = ElemKind::Int8QTy;
+  ElemKind biasElemQKind = ElemKind::Int32QTy;
+  quantization::Schema schema = quantization::Schema::Asymmetric;
+
+  // Create input placeholder.
+  auto *inputF =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "inputF", false);
+  bindings_.allocate(inputF)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+
+  // Quantize input.
+  auto inputTQP =
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
+  auto *inputQTy =
+      mod_.uniqueType(elemQKind, inputDims, inputTQP.scale, inputTQP.offset);
+  auto *inputQ = F_->createQuantize("inputQ", inputF, inputQTy);
+
+  // Create float filter constant with small values.
+  auto *filterF = mod_.createConstant(ElemKind::FloatTy, filterDims, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1e-5, 1e-5,
+                                                            mod_.getPRNG());
+
+  // Create float bias constant.
+  auto *biasF = mod_.createConstant(ElemKind::FloatTy, biasDims, "biasF");
+  biasF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+
+  // Create ChannelwiseQuantizedConvolution and Dequantize.
+  auto outTQP =
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
+  auto *outQTy =
+      mod_.uniqueType(elemQKind, outputDims, outTQP.scale, outTQP.offset);
+  ChannelwiseQuantizedConvolutionNode *outQ =
+      F_->createChannelwiseQuantizedConv(
+          "CWQConv", inputQ, filterF, biasF, nullptr, nullptr, nullptr, nullptr,
+          outQTy, kernels, strides, pads, group, dilation,
+          /* quantizeFilter */ true,
+          /* quantizeBias */ true, schema, elemQKind, biasElemQKind);
+  DequantizeNode *out =
+      F_->createDequantize("dequantize", outQ, ElemKind::FloatTy);
+  SaveNode *saveOut = F_->createSave("saveOut", out);
+  bindings_.allocate(saveOut->getPlaceholder());
+
+  // Create reference floating-point Convolution.
+  auto *refTy = mod_.uniqueType(ElemKind::FloatTy, outputDims);
+  ConvolutionNode *refF =
+      F_->createConv("Conv", inputF, filterF, biasF, refTy, kernels, strides,
+                     pads, group, dilation);
+  SaveNode *saveRef = F_->createSave("saveRef", refF);
+  bindings_.allocate(saveRef->getPlaceholder());
+
+  // Check bias/filter quantization parameters.
+  float inputScale = inputTQP.scale;
+  auto *biasScalesC = llvm::dyn_cast<Constant>(outQ->getBiasScales().getNode());
+  EXPECT_TRUE(biasScalesC);
+  auto biasScalesH = biasScalesC->getPayload().getHandle<float>();
+  auto *filterScalesC =
+      llvm::dyn_cast<Constant>(outQ->getFilterScales().getNode());
+  EXPECT_TRUE(filterScalesC);
+  auto filterScalesH = filterScalesC->getPayload().getHandle<float>();
+  auto *biasOffsetsC =
+      llvm::dyn_cast<Constant>(outQ->getBiasOffsets().getNode());
+  EXPECT_TRUE(biasOffsetsC);
+  auto biasOffsetsH = biasOffsetsC->getPayload().getHandle<int32_t>();
+  for (dim_t idx = 0; idx < biasScalesH.size(); idx++) {
+    EXPECT_EQ(biasOffsetsH.raw(idx), 0);
+    EXPECT_EQ(biasScalesH.raw(idx), inputScale * filterScalesH.raw(idx));
+  }
+
+  // Compile and run.
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  // Check error.
+  auto outH = bindings_.get(saveOut->getPlaceholder())->getHandle();
+  auto refH = bindings_.get(saveRef->getPlaceholder())->getHandle();
+  for (dim_t idx = 0; idx < refH.size(); idx++) {
+    float errVal = std::abs(refH.raw(idx) - outH.raw(idx));
+    EXPECT_LT(errVal, 0.005f);
+  }
+}
+
+/// Test ChannelwiseQuantizedConv2D corner case with INT32 bias with
+/// zero bias data which would cause filter data underflow when quantized
+/// if not properly handled. This happens when we have a convolution
+/// where bias is not used.
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D_Int32Bias_ZeroBiasData) {
+  CHECK_IF_ENABLED();
+
+  std::vector<dim_t> inputDims = {1, 5, 5, 8};
+  std::vector<dim_t> filterDims = {8, 3, 3, 1};
+  std::vector<dim_t> biasDims = {8};
+  std::vector<dim_t> outputDims = {1, 5, 5, 8};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {1, 1, 1, 1};
+  dim_t group = 8;
+  std::vector<unsigned_t> dilation = {1, 1};
+  ElemKind elemQKind = ElemKind::Int8QTy;
+  ElemKind biasElemQKind = ElemKind::Int32QTy;
+  quantization::Schema schema = quantization::Schema::Asymmetric;
+
+  // Create input placeholder.
+  auto *inputF =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "inputF", false);
+  bindings_.allocate(inputF)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+
+  // Quantize input.
+  auto inputTQP =
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
+  auto *inputQTy =
+      mod_.uniqueType(elemQKind, inputDims, inputTQP.scale, inputTQP.offset);
+  auto *inputQ = F_->createQuantize("inputQ", inputF, inputQTy);
+
+  // Create float filter constant.
+  auto *filterF = mod_.createConstant(ElemKind::FloatTy, filterDims, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                            mod_.getPRNG());
+
+  // Create float bias constant with zero data.
+  auto *biasF = mod_.createConstant(ElemKind::FloatTy, biasDims, "biasF");
+  biasF->getPayloadMutable().zero();
+
+  // Create ChannelwiseQuantizedConvolution and Dequantize.
+  auto outTQP =
+      quantization::chooseQuantizationParams({-3.0, 3.0}, schema, elemQKind);
+  auto *outQTy =
+      mod_.uniqueType(elemQKind, outputDims, outTQP.scale, outTQP.offset);
+  ChannelwiseQuantizedConvolutionNode *outQ =
+      F_->createChannelwiseQuantizedConv(
+          "CWQConv", inputQ, filterF, biasF, nullptr, nullptr, nullptr, nullptr,
+          outQTy, kernels, strides, pads, group, dilation,
+          /* quantizeFilter */ true,
+          /* quantizeBias */ true, schema, elemQKind, biasElemQKind);
+  DequantizeNode *out =
+      F_->createDequantize("dequantize", outQ, ElemKind::FloatTy);
+  SaveNode *saveOut = F_->createSave("saveOut", out);
+  bindings_.allocate(saveOut->getPlaceholder());
+
+  // Create reference floating-point Convolution.
+  auto *refTy = mod_.uniqueType(ElemKind::FloatTy, outputDims);
+  ConvolutionNode *refF =
+      F_->createConv("Conv", inputF, filterF, biasF, refTy, kernels, strides,
+                     pads, group, dilation);
+  SaveNode *saveRef = F_->createSave("saveRef", refF);
+  bindings_.allocate(saveRef->getPlaceholder());
+
+  // Check bias/filter quantization parameters.
+  float inputScale = inputTQP.scale;
+  auto *biasScalesC = llvm::dyn_cast<Constant>(outQ->getBiasScales().getNode());
+  EXPECT_TRUE(biasScalesC);
+  auto biasScalesH = biasScalesC->getPayload().getHandle<float>();
+  auto *filterScalesC =
+      llvm::dyn_cast<Constant>(outQ->getFilterScales().getNode());
+  EXPECT_TRUE(filterScalesC);
+  auto filterScalesH = filterScalesC->getPayload().getHandle<float>();
+  auto *biasOffsetsC =
+      llvm::dyn_cast<Constant>(outQ->getBiasOffsets().getNode());
+  EXPECT_TRUE(biasOffsetsC);
+  auto biasOffsetsH = biasOffsetsC->getPayload().getHandle<int32_t>();
+  for (dim_t idx = 0; idx < biasScalesH.size(); idx++) {
+    EXPECT_EQ(biasOffsetsH.raw(idx), 0);
+    EXPECT_EQ(biasScalesH.raw(idx), inputScale * filterScalesH.raw(idx));
+  }
+
+  // Compile and run.
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  // Check error.
+  auto outH = bindings_.get(saveOut->getPlaceholder())->getHandle();
+  auto refH = bindings_.get(saveRef->getPlaceholder())->getHandle();
+  for (dim_t idx = 0; idx < refH.size(); idx++) {
+    float errVal = std::abs(refH.raw(idx) - outH.raw(idx));
+    EXPECT_LT(errVal, 0.05f);
+  }
+}
 
 /// Utility function to test numerically the ChannelwiseQuantizedConvolution2D
 /// against Interpreter implementation.
@@ -10436,8 +10631,8 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
 TEST_P(OperatorTest, FP16BatchNorm2D) {
   CHECK_IF_ENABLED();
 
-  auto constFunc = [=](unsigned_t sz, std::string name,
-                       std::vector<float> vals) {
+  auto constFunc = [=](std::string name, std::vector<float> vals) {
+    dim_t sz = vals.size();
     auto t = Tensor(ElemKind::Float16Ty, {sz});
     for (dim_t i = 0; i < sz; i++) {
       t.getHandle<float16_t>().raw(i) = vals[i];
@@ -10447,31 +10642,265 @@ TEST_P(OperatorTest, FP16BatchNorm2D) {
   };
 
   // input
+  dim_t N = 2, C = 2, H = 3, W = 3;
+  std::vector<dim_t> dims = {N, H, W, C};
   auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 1, 3, 3}, "input", false);
-  bindings_.allocate(input)->getHandle<float16_t>() = {1., 1., 1., 1., 1.,
-                                                       1., 1., 1., 1.};
-  auto *bias = constFunc(1, "batchnorm_bias", {0.0});
-  auto *scale = constFunc(1, "batchnorm_weights", {1.0});
-  auto *mean = constFunc(1, "running_mean", {0.0});
-  auto *variance = constFunc(1, "running_var", {1.0});
-  unsigned_t channelIdx = 1;
-  float epsilon = 0.0;
-  float momentum = 1.0;
+      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      -0.0892, 0.6268, 1.3740,  2.4480,  -1.4285, 0.0565,  -0.0266, 0.4494,
+      -0.3858, 1.0044, 0.8844,  0.5071,  -1.3639, -0.8796, -1.8868, 0.1380,
+      -1.3744, 1.9176, 1.4044,  -1.0725, 0.1614,  0.7809,  0.3824,  -0.3220,
+      0.5881,  0.4939, -0.5724, -0.3471, -2.1089, -0.2114, 0.5069,  -0.7874,
+      0.8189,  0.2189, -0.3894, 1.8009};
+  auto *bias = constFunc("batchnorm_bias", {0.7451, 0.7946});
+  auto *scale = constFunc("batchnorm_weights", {0.6815, 0.0039});
+  auto *mean = constFunc("running_mean", {1.0730, -7.3854});
+  auto *variance = constFunc("running_var", {1.8200, 4.6300});
+  unsigned_t channelIdx = 3;
+  float epsilon = 9.999999747378752e-06;
+  float momentum = 0.8999999761581421;
 
-  auto *op = F_->createBatchNormalization("fp16_batch_norm2d", input, bias,
-                                          scale, mean, variance, channelIdx,
-                                          epsilon, momentum);
+  auto *op = F_->createBatchNormalization("fp16_batch_norm2d", input->getType(),
+                                          input, bias, scale, mean, variance,
+                                          channelIdx, epsilon, momentum);
   auto *S = F_->createSave("save", op);
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
-  auto *result = bindings_.get(S->getPlaceholder());
-  Tensor out(ElemKind::Float16Ty, {1, 1, 3, 3});
-  out.getHandle<float16_t>() = {1., 1., 1., 1., 1., 1., 1., 1., 1.};
-  EXPECT_TRUE(out.isEqual(*result));
+  Tensor outTensor(ElemKind::Float16Ty, dims);
+  outTensor.getHandle<float16_t>() = {
+      0.1580,  0.8093, 0.8972,  0.8126, -0.5186, 0.8082, 0.1896,  0.8089,
+      0.0082,  0.8100, 0.6498,  0.8091, -0.4859, 0.8065, -0.7501, 0.8084,
+      -0.4913, 0.8116, 0.9125,  0.8062, 0.2846,  0.8096, 0.3962,  0.8075,
+      0.5001,  0.8090, -0.0861, 0.8075, -0.8623, 0.8077, 0.4591,  0.8067,
+      0.6167,  0.8085, 0.0064,  0.8114};
+
+  float errSum = 0;
+  int numElements = N * H * W * C;
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  for (size_t i = 0; i < numElements; i++) {
+    auto resVal = float(result.raw(i));
+    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
+    EXPECT_NEAR(resVal, expectedVal, 0.005);
+    float err = resVal - expectedVal;
+    errSum += err * err;
+  }
+  float rmse = std::sqrt(errSum) / numElements;
+  EXPECT_LE(rmse, 0.01);
+}
+
+/// 2D Batch Normalization in Int8
+TEST_P(OperatorTest, Int8BatchNorm2D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](std::string name, std::vector<float> vals) {
+    dim_t sz = vals.size();
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  dim_t N = 2, C = 2, H = 3, W = 3;
+  float inScale = 0.01;
+  int inBias = -5;
+  std::vector<dim_t> dims = {N, H, W, C};
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, dims, inScale, inBias,
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<int8_t>() = {
+      30,  127,  61,  45,   -27,  22,  -43, 38,   42,  -128, 70,   54,
+      -69, -128, -86, 127,  13,   125, 123, 123,  -25, -39,  91,   -73,
+      20,  -104, -53, -128, -128, -80, -87, -118, -47, 36,   -101, 24};
+  auto *bias = constFunc("batchnorm_bias", {2.5167e-05, 6.8856e-05});
+  auto *scale = constFunc("batchnorm_weights", {1.0003, 1.0005});
+  auto *mean = constFunc("running_mean", {0.073, 0.043});
+  auto *variance = constFunc("running_var", {2.5, 1.27});
+  unsigned_t channelIdx = 3;
+  float epsilon = 9.999999747378752e-06;
+  float momentum = 0.8999999761581421;
+  float outScale = 0.023;
+  int outBias = 15;
+
+  TypeRef outTy = mod_.uniqueType(ElemKind::Int8QTy, dims, outScale, outBias);
+  auto *op = F_->createBatchNormalization("int8_batch_norm2d", outTy, input,
+                                          bias, scale, mean, variance,
+                                          channelIdx, epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
+
+  Tensor outTensor(ElemKind::Int8QTy, dims, outScale, outBias);
+  outTensor.getHandle<int8_t>() = {23,  64,  31,  33,  7,   24,  3,  30,  26,
+                                   -34, 34,  36,  -5,  -34, -9,  64, 18,  64,
+                                   48,  63,  7,   0,   39,  -13, 20, -25, 0,
+                                   -34, -21, -16, -10, -30, 1,   29, -13, 25};
+
+  float errSum = 0;
+  int numElements = N * C * H * W;
+  for (size_t i = 0; i < numElements; i++) {
+    EXPECT_NEAR(int(result.raw(i)), int(outTensor.getHandle<int8_t>().raw(i)),
+                1);
+    float err = result.raw(i) - outTensor.getHandle<int8_t>().raw(i);
+    errSum += err * err;
+  }
+  float rmse = std::sqrt(errSum) / numElements;
+  EXPECT_LE(rmse, 0.01);
+}
+
+/// 3D Batch Normalization in Float16
+TEST_P(OperatorTest, FP16BatchNorm3D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](std::string name, std::vector<float> vals) {
+    dim_t sz = vals.size();
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  dim_t N = 2, C = 2, T = 2, H = 3, W = 3;
+  std::vector<dim_t> dims = {N, T, H, W, C};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      2.6644e-01,  7.5647e-01,  2.0084e+00,  7.1074e-01,  2.7844e-01,
+      -4.4109e-01, -5.0361e-01, -2.4615e-03, -5.3708e-01, 1.1399e+00,
+      -4.6145e-01, 2.0012e+00,  -8.4976e-01, -1.0712e+00, 1.2360e+00,
+      5.2344e-02,  3.2554e-01,  4.2554e-01,  -1.0869e+00, -7.2295e-01,
+      -3.8954e-01, 4.1311e-02,  -3.6682e-01, 3.5057e-01,  -7.2516e-01,
+      1.0337e+00,  2.3490e-01,  6.1786e-02,  -1.2862e+00, 1.2847e+00,
+      -4.6827e-01, -5.3149e-01, -1.7977e+00, -5.8155e-01, -2.3509e-01,
+      2.6274e-01,  1.0505e+00,  9.3994e-01,  2.0246e-03,  1.0960e-01,
+      -4.8851e-01, 1.0446e+00,  8.3674e-01,  1.1398e+00,  7.9635e-01,
+      4.2565e-01,  1.7938e+00,  2.8720e-01,  -2.7000e-02, 5.8977e-01,
+      2.9283e-01,  6.0023e-01,  -1.5297e+00, -1.3739e-01, 3.5704e-01,
+      8.6997e-01,  -4.5933e-01, 8.1092e-01,  9.1418e-01,  -2.0624e+00,
+      -2.2534e-01, -1.7819e-01, 4.8831e-01,  -4.8554e-01, 1.1836e+00,
+      2.1036e-01,  -5.6864e-01, -6.5900e-02, 1.3451e+00,  -8.4747e-01,
+      -8.7747e-01, -3.4126e-01};
+  auto *bias = constFunc("batchnorm_bias", {0.5705, 0.4574});
+  auto *scale = constFunc("batchnorm_weights", {0.4510, 0.7735});
+  auto *mean = constFunc("running_mean", {2.8673, -9.9860});
+  auto *variance = constFunc("running_var", {2.8200, 1.9340});
+  unsigned_t channelIdx = 4;
+  float epsilon = 9.999999747378752e-06;
+  float momentum = 0.8999999761581421;
+
+  auto *op = F_->createBatchNormalization("fp16_batch_norm2d", input->getType(),
+                                          input, bias, scale, mean, variance,
+                                          channelIdx, epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor outTensor(ElemKind::Float16Ty, dims);
+  outTensor.getHandle<float16_t>() = {
+      -0.1280, 6.4321, 0.3398,  6.4067, -0.1248, 5.7661, -0.3348, 6.0100,
+      -0.3438, 6.6454, -0.3235, 7.1244, -0.4278, 5.4156, 0.1324,  6.0405,
+      -0.1121, 6.2481, -0.4915, 5.6093, -0.3042, 6.0344, -0.2981, 6.2064,
+      -0.3943, 6.5863, -0.1365, 6.0458, -0.5450, 6.7259, -0.3253, 5.7158,
+      -0.6823, 5.6879, -0.2627, 6.1575, 0.0826,  6.5342, -0.1990, 6.0723,
+      -0.3308, 6.5924, 0.0252,  6.6453, 0.0143,  6.2481, 0.2822,  6.1711,
+      -0.2068, 6.3394, -0.1209, 6.3452, -0.6104, 5.9350, -0.1037, 6.4952,
+      -0.3229, 6.4624, 0.0459,  4.8643, -0.2601, 5.9123, -0.0684, 5.7413,
+      0.1183,  6.1284, -0.3523, 5.9747, 0.1617,  5.5401, -0.4352, 5.8216};
+
+  float errSum = 0;
+  int numElements = N * T * H * W * C;
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  for (size_t i = 0; i < numElements; i++) {
+    auto resVal = float(result.raw(i));
+    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
+    EXPECT_NEAR(resVal, expectedVal, 0.005);
+    float err = resVal - expectedVal;
+    errSum += err * err;
+  }
+  float rmse = std::sqrt(errSum) / numElements;
+  EXPECT_LE(rmse, 0.01);
+}
+
+/// 3D Batch Normalization in Int8
+TEST_P(OperatorTest, Int8BatchNorm3D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](std::string name, const std::vector<float> &vals) {
+    dim_t sz = vals.size();
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  dim_t N = 2, C = 2, T = 2, H = 3, W = 3;
+  float inScale = 0.01;
+  int inBias = -5;
+  std::vector<dim_t> dims = {N, T, H, W, C};
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, dims, inScale, inBias,
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<int8_t>() = {
+      -8,  36,   120,  40,  27,  -29,  -49,  102, -74,  -105, -84,  -35,
+      49,  18,   -122, 33,  16,  -128, -72,  83,  -128, 74,   58,   1,
+      15,  75,   127,  -26, 67,  -110, -128, 102, -128, 127,  -58,  127,
+      55,  127,  117,  84,  20,  -24,  -55,  45,  -64,  54,   -71,  10,
+      -14, -128, -74,  -61, 18,  -57,  -128, -64, -77,  -84,  -4,   -115,
+      -4,  24,   12,   -18, 127, -128, -1,   127, -128, -47,  -128, -56};
+
+  auto *bias = constFunc("batchnorm_bias", {2.5167e-05, 6.8856e-05});
+  auto *scale = constFunc("batchnorm_weights", {1.0003, 1.0005});
+  auto *mean = constFunc("running_mean", {0.073, 0.043});
+  auto *variance = constFunc("running_var", {2.5, 1.27});
+  unsigned_t channelIdx = 4;
+  float epsilon = 9.999999747378752e-06;
+  float momentum = 0.8999999761581421;
+  float outScale = 0.023;
+  int outBias = 15;
+
+  TypeRef outTy = mod_.uniqueType(ElemKind::Int8QTy, dims, outScale, outBias);
+  auto *op = F_->createBatchNormalization("int8_batch_norm2d", outTy, input,
+                                          bias, scale, mean, variance,
+                                          channelIdx, epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
+
+  Tensor outTensor(ElemKind::Int8QTy, dims, outScale, outBias);
+  outTensor.getHandle<int8_t>() = {
+      12,  29, 47,  31, 22,  4,   1,  55, -6,  -25, -9,  2,  28,  22, -19,
+      28,  19, -34, -5, 47,  -21, 44, 30, 16,  18,  44,  49, 5,   33, -27,
+      -21, 55, -21, 64, -2,  64,  29, 64, 47,  48,  20,  6,  -1,  33, -3,
+      36,  -5, 19,  11, -34, -6,  -8, 19, -7,  -21, -9,  -7, -17, 13, -29,
+      13,  25, 18,  8,  49,  -34, 14, 64, -21, -3,  -21, -6};
+
+  float errSum = 0;
+  int numElements = N * C * T * H * W;
+  for (size_t i = 0; i < numElements; i++) {
+    EXPECT_NEAR(int(result.raw(i)), int(outTensor.getHandle<int8_t>().raw(i)),
+                1);
+    float err = result.raw(i) - outTensor.getHandle<int8_t>().raw(i);
+    errSum += err * err;
+  }
+  float rmse = std::sqrt(errSum) / numElements;
+  EXPECT_LE(rmse, 0.02);
 }
 
 /// Check non-square padding for AveragePool. The first pool op has non-square
@@ -10768,6 +11197,77 @@ TEST_P(OperatorTest, AvgPoolCountExcludePads) {
   out.getHandle() = {2., 3., 5., 6.};
   EXPECT_TRUE(out.isEqual(*result));
 }
+
+/// Create a simple AvgPool network with large pads.
+template <bool countIncludePads>
+static FunctionTensorPair
+createAndInitAvgPool2DLargePads(glow::PlaceholderBindings &bindings,
+                                glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::vector<dim_t> inputDims = {3, 4, 5, 6};
+  std::vector<unsigned_t> kernels = {2, 3};
+  std::vector<unsigned_t> strides = {1, 2};
+  std::vector<unsigned_t> pads = {4, 5, 6, 7};
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  AvgPoolNode *pool =
+      F->createAvgPool("pool", input, kernels, strides, pads,
+                       ConvolutionLayout::NHWC, countIncludePads);
+  SaveNode *save = F->createSave("save", pool);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+/// AvgPool2D tests with large pads.
+/// Compare with the Interpreter float implementation.
+#define TEST_AVG_POOL2D_LARGE_PADS(NAME, TYPE, COUNT_INCLUDE_PADS, TOL)        \
+  TEST_P(OperatorStatelessTest, AvgPool2DLargePads_##NAME) {                   \
+    CHECK_IF_ENABLED();                                                        \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(), createAndInitAvgPool2DLargePads<COUNT_INCLUDE_PADS>, \
+        ElemKind::FloatTy, ElemKind::TYPE, TOL);                               \
+  }
+TEST_AVG_POOL2D_LARGE_PADS(FloatTy_CountIncludePads, FloatTy, true, 1e-5)
+TEST_AVG_POOL2D_LARGE_PADS(FloatTy_CountExcludePads, FloatTy, false, 1e-5)
+TEST_AVG_POOL2D_LARGE_PADS(Int8QTy_CountIncludePads, Int8QTy, true, 0.005)
+TEST_AVG_POOL2D_LARGE_PADS(Int8QTy_CountExcludePads, Int8QTy, false, 0.01)
+#undef TEST_AVG_POOL2D_LARGE_PADS
+
+/// Create a simple MaxPool network with large pads.
+static FunctionTensorPair
+createAndInitMaxPool2DLargePads(glow::PlaceholderBindings &bindings,
+                                glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::vector<dim_t> inputDims = {3, 4, 5, 6};
+  std::vector<unsigned_t> kernels = {2, 3};
+  std::vector<unsigned_t> strides = {1, 2};
+  std::vector<unsigned_t> pads = {4, 5, 6, 7};
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  MaxPoolNode *pool = F->createMaxPool("pool", input, kernels, strides, pads);
+  SaveNode *save = F->createSave("save", pool->getResult());
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+/// MaxPool2D tests with large pads.
+/// Compare with the Interpreter float implementation.
+#define TEST_MAX_POOL2D_LARGE_PADS(NAME, TYPE, TOL)                            \
+  TEST_P(OperatorStatelessTest, MaxPool2DLargePads_##NAME) {                   \
+    CHECK_IF_ENABLED();                                                        \
+    compareAgainstInterpreter(getBackendName(),                                \
+                              createAndInitMaxPool2DLargePads,                 \
+                              ElemKind::FloatTy, ElemKind::TYPE, TOL);         \
+  }
+TEST_MAX_POOL2D_LARGE_PADS(FloatTy, FloatTy, 1e-5)
+TEST_MAX_POOL2D_LARGE_PADS(Int8QTy, Int8QTy, 0.005)
+#undef TEST_MAX_POOL2D_LARGE_PADS
 
 /// Verify that the AdaptiveAvgPool operator works correctly.
 TEST_P(OperatorTest, AdaptiveAvgPool) {

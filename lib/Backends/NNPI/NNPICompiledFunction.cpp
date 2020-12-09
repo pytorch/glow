@@ -29,9 +29,8 @@
 
 using namespace glow;
 
-/// Update device network config from the compilation config
-static NNPIDeviceNetworkConfig parseDeviceNetworkConfig(
-    const glow::NNPICompilationOptions &compilationOptions) {
+NNPIDeviceNetworkConfig glow::parseDeviceNetworkConfig(
+    const NNPICompilationOptions &compilationOptions) {
   NNPIDeviceNetworkConfig cfg;
   std::memset(&cfg, 0, sizeof(cfg));
   cfg.pnpHints.ringFrequencyPrio = compilationOptions.ringPrio;

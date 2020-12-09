@@ -254,7 +254,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "ChannelIdx")
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs batch normalization on the Input tensor with the "
                     "provided Scale, Bias, Mean, Var, ChannelIdx, Epsilon, and "

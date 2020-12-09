@@ -23,11 +23,16 @@
 #include "glow/ExecutionContext/ExecutionContext.h"
 #include "nnpi_inference_types.h"
 #include "nnpi_transformer.h"
+#include <folly/dynamic.h>
 #include <map>
 #include <memory>
 #include <mutex>
 
 namespace glow {
+
+/// Update device network config from the compilation config
+NNPIDeviceNetworkConfig parseDeviceNetworkConfig(
+    const glow::NNPICompilationOptions &compilationOptions);
 
 /// Struct containing details exported for a compiled tensor.
 struct NNPICompiledTensor {
@@ -67,6 +72,12 @@ public:
   /// \name CompiledFunction interface.
   ///@{
   NNPICompiledFunction(Function *F);
+
+#if FACEBOOK_INTERNAL
+  NNPICompiledFunction(const folly::dynamic &FXIR, const std::string &submod,
+                       const llvm::StringMap<const void *> &constants,
+                       Module *glowModule);
+#endif
 
   ~NNPICompiledFunction() override;
 
@@ -111,6 +122,12 @@ public:
   virtual void freeCompilationResources() override;
 
   virtual Error compile(Function *F, const BackendOptions &opts);
+
+#if FACEBOOK_INTERNAL
+  Error compileFX(const folly::dynamic &FXIR, const std::string &submod,
+                  const llvm::StringMap<const void *> &constants,
+                  const BackendOptions &opts);
+#endif
 
   NNPICompilationOptions getCompilationOptions() const {
     return compilationOptions_;

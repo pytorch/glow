@@ -79,6 +79,22 @@ TEST_P(TensorLayoutTest, pad) {
   EXPECT_TRUE(verifyLayouts(*F_, CanonicalTensorLayout::getInstance()));
 }
 
+// Check that broadcast nodes accept any layout:
+TEST_P(TensorLayoutTest, broadcastNodeAcceptAnyLayout) {
+  CHECK_IF_ENABLED();
+
+  const std::array<dim_t, 4> inputDims{1, 10, 1, 1};
+  const std::array<dim_t, 4> outputDims{1, 10, 5, 5};
+
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false,
+                                   "NCHW");
+  auto BN = F_->createBroadcast("broadcast", A, outputDims, 2);
+  SaveNode *S = F_->createSave("save", BN);
+  bindings_.allocate(S->getPlaceholder());
+
+  EXPECT_TRUE(verifyLayouts(*F_, CanonicalTensorLayout::getInstance()));
+}
+
 static void buildBadConv(PlaceholderBindings &bindings, Module &mod,
                          Function *F) {
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input",

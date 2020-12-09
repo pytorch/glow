@@ -114,11 +114,11 @@ Error NNPIDeviceManager::init() {
 
   if (deviceOptions_->inferOnDevice) {
     // Create NNPI device.
-    LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
+    LOG_NNPI_INF_IF_ERROR_RETURN_FATAL_LLVMERROR(
         nnpiDeviceContextCreate(pAdapter_->getHandle(), deviceId_, &device_),
         "Failed to create NNPI Device");
     NNPIDeviceInfo deviceInfo;
-    LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
+    LOG_NNPI_INF_IF_ERROR_RETURN_FATAL_LLVMERROR(
         nnpiDeviceGetInfo(deviceId_, &deviceInfo),
         "Failed to get NNPI Device Info");
     maxMemoryBytes_ =

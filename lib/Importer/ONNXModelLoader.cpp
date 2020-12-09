@@ -2474,8 +2474,8 @@ Error ONNXModelLoader::loadBatchNormalization(
     ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(epsilonIt->second));
   }
 
-  auto *node = G_->createBatchNormalization(opName, in, bias, scale, mean, var,
-                                            1, epsilon);
+  auto *node = G_->createBatchNormalization(opName, in.getType(), in, bias,
+                                            scale, mean, var, 1, epsilon);
 
   // BatchNormalization has 4 optional outputs that are not supported by glow.
   // Then: 1/ In case the optional outputs are present and used by other
@@ -2523,7 +2523,7 @@ Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
       ASSIGN_VALUE_OR_RETURN_ERR(
           axis, loadAxis<size_t>(dict.at("axis"), in.dims().size()));
     }
-    in = G_->createFlatten("fc.in", in, axis);
+    in = G_->createFlatten(opName + ".fc.in", in, axis);
   }
 
   unsigned_t axis_w = 1;
@@ -4107,7 +4107,8 @@ Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
                       outScale, outOffset);
 
   Node *N = G_->createRowwiseQuantizedFullyConnected(
-      "rowwise_quantized_fc", input, weightsC, scalesC, offsetsC, biasC, outTy);
+      loadOperatorName(op) + ".rowwise_quantized_fc", input, weightsC, scalesC,
+      offsetsC, biasC, outTy);
 
   return addNodeAsOutput(op, N);
 }
@@ -4268,7 +4269,7 @@ Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
         axis, loadAxis<unsigned_t>(dict.at("axis"), input.dims().size()));
   }
 
-  Node *N = G_->createFlip("flip", input, axis);
+  Node *N = G_->createFlip(loadOperatorName(op) + ".flip", input, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -4362,9 +4363,9 @@ Error ONNXModelLoader::loadROIAlign(const ONNX_NAMESPACE::NodeProto &op,
 
   const std::string &opName = loadOperatorName(op);
   featureMap = G_->createTranspose(opName, featureMap, NCHW2NHWC);
-  Node *N = G_->createROIAlign(
-      loadOperatorName(op), featureMap, boxes, batchIndices, outputHeight,
-      outputWidth, samplingRatio, spatialScale, aligned, rotated, mode);
+  Node *N = G_->createROIAlign(opName, featureMap, boxes, batchIndices,
+                               outputHeight, outputWidth, samplingRatio,
+                               spatialScale, aligned, rotated, mode);
   N = G_->createTranspose(opName, N, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();

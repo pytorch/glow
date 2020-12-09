@@ -24,6 +24,7 @@
 #include "TorchGlowBackend.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <torch/csrc/jit/python/pybind_utils.h>
 
 #include "glow/Graph/Graph.h"
 
@@ -350,5 +351,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_debug_continuously_verify_during_model_loading", []() {
     getGlobalPyTorchLoaderSettingsMutable()
         .debugContinuouslyVerifyDuringModelLoading = false;
+  });
+
+  /// Calls TorchGlowBackend::preview to lowering info on a model before
+  /// compiling.
+  m.def("to_glow_preview", [](const torch::jit::Module &orig_module) {
+    TorchGlowBackend::preview(orig_module);
   });
 }
