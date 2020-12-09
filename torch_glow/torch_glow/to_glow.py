@@ -15,6 +15,7 @@ __all__ = [
     "FuserSettings",
     "input_spec_from_tensor",
     "input_specs_from_tensors",
+    "generate_glow_compilation_spec",
 ]
 
 CompilationSpec = torch.classes.glow.CompilationSpec
@@ -32,6 +33,15 @@ def input_spec_from_tensor(tensor: torch.Tensor) -> InputSpec:
 
 def input_specs_from_tensors(tensors: List[torch.Tensor]) -> List[InputSpec]:
     return [input_spec_from_tensor(tensor) for tensor in tensors]
+
+
+def generate_glow_compilation_spec(model, backend, *example_inputs):
+    spec = CompilationSpec()
+    spec.get_settings().set_glow_backend(backend)
+    compilation_group = CompilationGroup()
+    compilation_group.input_sets_append(input_specs_from_tensors(example_inputs))
+    spec.compilation_groups_append(compilation_group)
+    return spec
 
 
 def to_glow(model, method_compile_spec):
