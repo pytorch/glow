@@ -4396,12 +4396,10 @@ static void importResizeNearest(std::string filename) {
   auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
-  ASSERT_EQ(4, F->getNodes().size());
+  ASSERT_EQ(2, F->getNodes().size());
 
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *TR = llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(TR);
-  auto *RN = llvm::dyn_cast<ResizeNearestNode>(TR->getInput());
+  auto *RN = llvm::dyn_cast<ResizeNearestNode>(saveNode->getInput());
   ASSERT_TRUE(RN);
 
   auto result = res->getHandle();

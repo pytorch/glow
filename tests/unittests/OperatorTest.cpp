@@ -17728,13 +17728,13 @@ template <typename DataType>
 static void testUpsample3D(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
                            glow::ExecutionEngine &EE, ElemKind DTy) {
-  constexpr dim_t size[4] = {3, 2, 3, 4};
+  constexpr std::array<dim_t, 5> size{1, 3, 2, 3, 4};
   auto *input =
       createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
 
-  auto *output = F->createUpsample("Upsample", input, 3);
+  auto *output = F->createResizeNearest("Upsample", input, {1, 1, 4, 2, 3});
   auto *save = F->createSave("Save", output);
   bindings.allocate(save->getPlaceholder());
 
@@ -17745,29 +17745,25 @@ static void testUpsample3D(glow::PlaceholderBindings &bindings,
   auto inputH = bindings.get(input)->getHandle<DataType>();
 
   EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
-  EXPECT_EQ(resultH.dims()[1], 2 * inputH.dims()[1]);
-  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
+  EXPECT_EQ(resultH.dims()[1], inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], 4 * inputH.dims()[2]);
   EXPECT_EQ(resultH.dims()[3], 2 * inputH.dims()[3]);
+  EXPECT_EQ(resultH.dims()[4], 3 * inputH.dims()[4]);
   for (dim_t m = 0; m < size[0]; m++) {
-    for (dim_t i = 0; i < size[1]; i++) {
-      for (dim_t j = 0; j < size[2]; j++) {
-        for (dim_t k = 0; k < size[3]; k++) {
-          EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 0, 2 * k + 0}),
-                    static_cast<DataType>(inputH.at({m, i, j, k})));
-          EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 0, 2 * k + 1}),
-                    static_cast<DataType>(inputH.at({m, i, j, k})));
-          EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 1, 2 * k + 0}),
-                    static_cast<DataType>(inputH.at({m, i, j, k})));
-          EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 1, 2 * k + 1}),
-                    static_cast<DataType>(inputH.at({m, i, j, k})));
-          EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 0, 2 * k + 0}),
-                    static_cast<DataType>(inputH.at({m, i, j, k})));
-          EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 0, 2 * k + 1}),
-                    static_cast<DataType>(inputH.at({m, i, j, k})));
-          EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 1, 2 * k + 0}),
-                    static_cast<DataType>(inputH.at({m, i, j, k})));
-          EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 1, 2 * k + 1}),
-                    static_cast<DataType>(inputH.at({m, i, j, k})));
+    for (dim_t n = 0; n < size[1]; n++) {
+      for (dim_t i = 0; i < size[2]; i++) {
+        for (dim_t j = 0; j < size[3]; j++) {
+          for (dim_t k = 0; k < size[4]; k++) {
+            for (dim_t i_delta = 0; i_delta < 4; i_delta++) {
+              for (dim_t j_delta = 0; j_delta < 2; j_delta++) {
+                for (dim_t k_delta = 0; k_delta < 3; k_delta++) {
+                  EXPECT_EQ(resultH.at({m, n, 4 * i + i_delta, 2 * j + j_delta,
+                                        3 * k + k_delta}),
+                            static_cast<DataType>(inputH.at({m, n, i, j, k})));
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -17778,13 +17774,13 @@ template <typename DataType>
 static void testUpsample2D(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
                            glow::ExecutionEngine &EE, ElemKind DTy) {
-  constexpr dim_t size[3] = {2, 3, 4};
+  constexpr std::array<dim_t, 4> size{1, 2, 3, 4};
   auto *input =
       createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
 
-  auto *output = F->createUpsample("Upsample", input, 2);
+  auto *output = F->createResizeNearest("Upsample", input, {1, 1, 2, 3});
   auto *save = F->createSave("Save", output);
   bindings.allocate(save->getPlaceholder());
 
@@ -17795,42 +17791,103 @@ static void testUpsample2D(glow::PlaceholderBindings &bindings,
   auto inputH = bindings.get(input)->getHandle<DataType>();
 
   EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
-  EXPECT_EQ(resultH.dims()[1], 2 * inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[1], inputH.dims()[1]);
   EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
+  EXPECT_EQ(resultH.dims()[3], 3 * inputH.dims()[3]);
   for (dim_t m = 0; m < size[0]; m++) {
-    for (dim_t i = 0; i < size[1]; i++) {
-      for (dim_t j = 0; j < size[2]; j++) {
-        EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 0}),
-                  static_cast<DataType>(inputH.at({m, i, j})));
-        EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 1}),
-                  static_cast<DataType>(inputH.at({m, i, j})));
-        EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 0}),
-                  static_cast<DataType>(inputH.at({m, i, j})));
-        EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 1}),
-                  static_cast<DataType>(inputH.at({m, i, j})));
+    for (dim_t n = 0; n < size[1]; n++) {
+      for (dim_t i = 0; i < size[2]; i++) {
+        for (dim_t j = 0; j < size[3]; j++) {
+          for (dim_t i_delta = 0; i_delta < 2; i_delta++) {
+            for (dim_t j_delta = 0; j_delta < 3; j_delta++) {
+              EXPECT_EQ(resultH.at({m, n, 2 * i + i_delta, 3 * j + j_delta}),
+                        static_cast<DataType>(inputH.at({m, n, i, j})));
+            }
+          }
+        }
       }
     }
   }
 }
 
-TEST_P(OperatorTest, Upsample3D_Float) {
+template <typename DataType>
+static void testUpsample1D(glow::PlaceholderBindings &bindings,
+                           glow::Module &mod, glow::Function *F,
+                           glow::ExecutionEngine &EE, ElemKind DTy) {
+  constexpr std::array<dim_t, 3> size{2, 3, 4};
+  auto *input =
+      createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
+  bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
+                                                            mod.getPRNG());
+
+  auto *output = F->createResizeNearest("Upsample", input, {1, 1, 2});
+  auto *save = F->createSave("Save", output);
+  bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto resultH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
+  auto inputH = bindings.get(input)->getHandle<DataType>();
+
+  EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
+  EXPECT_EQ(resultH.dims()[1], inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
+  for (dim_t m = 0; m < size[0]; m++) {
+    for (dim_t n = 0; n < size[1]; n++) {
+      for (dim_t i = 0; i < size[2]; i++) {
+        EXPECT_EQ(resultH.at({m, n, 2 * i + 0}),
+                  static_cast<DataType>(inputH.at({m, n, i})));
+        EXPECT_EQ(resultH.at({m, n, 2 * i + 1}),
+                  static_cast<DataType>(inputH.at({m, n, i})));
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, Upsample_Nearest3D_Float) {
   CHECK_IF_ENABLED();
   testUpsample3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
-TEST_P(OperatorTest, Upsample3D_Int8) {
+TEST_P(OperatorTest, Upsample_Nearest3D_Float16) {
+  CHECK_IF_ENABLED();
+  testUpsample3D<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+TEST_P(OperatorTest, Upsample_Nearest3D_Int8) {
   CHECK_IF_ENABLED();
   testUpsample3D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
-TEST_P(OperatorTest, Upsample2D_Float) {
+TEST_P(OperatorTest, Upsample_Nearest2D_Float) {
   CHECK_IF_ENABLED();
   testUpsample2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
-TEST_P(OperatorTest, Upsample2D_Int8) {
+TEST_P(OperatorTest, Upsample_Nearest2D_Float16) {
+  CHECK_IF_ENABLED();
+  testUpsample2D<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+TEST_P(OperatorTest, Upsample_Nearest2D_Int8) {
   CHECK_IF_ENABLED();
   testUpsample2D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, Upsample_Nearest1D_Float) {
+  CHECK_IF_ENABLED();
+  testUpsample1D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, Upsample_Nearest1D_Float16) {
+  CHECK_IF_ENABLED();
+  testUpsample1D<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+TEST_P(OperatorTest, Upsample_Nearest1D_Int8) {
+  CHECK_IF_ENABLED();
+  testUpsample1D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
