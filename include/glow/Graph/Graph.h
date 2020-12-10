@@ -1212,6 +1212,11 @@ public:
       NodeValue indices, NodeValue lengths,
       LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
 
+  /// Create an Embedding node.
+  EmbeddingNode *createEmbedding(llvm::StringRef name, NodeValue weights,
+                                 NodeValue indices, int64_t padIdx, bool scale,
+                                 bool sparse);
+
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
   /// expects an extra offset to be appended to \p offsets which marks the end
   /// of the last range. \p lengthsMode and \p avgLength represent meta

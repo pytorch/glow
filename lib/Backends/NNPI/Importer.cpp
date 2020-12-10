@@ -1402,6 +1402,49 @@ public:
   }
 };
 
+class EmbeddingNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowEmbedding = llvm::dyn_cast<EmbeddingNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowEmbedding, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    auto wtDim = glowEmbedding->getWeights().getType()->dims().size();
+    LOG_AND_RETURN_IF_NOT(ERROR, wtDim == 2,
+                          "[Embedding] weight dimensions must be 2",
+                          NNPI_INVALID_PARAM);
+    dim_t num_embedding = glowEmbedding->getWeights().getType()->dims()[1];
+    int64_t padIdx = glowEmbedding->getPadIdx();
+
+    if (padIdx > -1) {
+      LOG_AND_RETURN_IF_NOT(ERROR, static_cast<dim_t>(padIdx) < num_embedding,
+                            "[Embedding] padIdx must be within num_embedding",
+                            NNPI_INVALID_PARAM);
+    }
+
+    bool scale = glowEmbedding->getScale();
+    LOG_AND_RETURN_IF_NOT(ERROR, !scale, "[Embedding] scale must be false",
+                          NNPI_INVALID_PARAM);
+
+    bool sparse = glowEmbedding->getSparse();
+    LOG_AND_RETURN_IF_NOT(ERROR, !sparse, "[Embedding] sparse must be false",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {
+            nodeValueName(glowEmbedding->getWeights()),
+            nodeValueName(glowEmbedding->getIndices()),
+        },
+        {nodeValueName(glowEmbedding->getResult())});
+
+    return nnpiNetworkAddGatherOp(
+        importer.getNetwork(), glowEmbedding->getName().begin(),
+        nodeValueName(glowEmbedding->getWeights()).c_str(),
+        nodeValueName(glowEmbedding->getIndices()).c_str(),
+        nodeValueName(glowEmbedding->getResult()).c_str(), 0);
+  }
+};
+
 class EmbeddingBagNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2468,6 +2511,7 @@ std::unordered_map<
     {"LayerNormalization", glow::make_unique<LayerNormalizationNodeImporter>()},
     {"ChannelwiseQuantizedConvolution",
      glow::make_unique<ChannelwiseQuantizedConvolutionNodeImporter>()},
+    {"Embedding", glow::make_unique<EmbeddingNodeImporter>()},
     {"EmbeddingBag", glow::make_unique<EmbeddingBagNodeImporter>()},
     {"EmbeddingBagByteRowwiseOffsets",
      glow::make_unique<EmbeddingBagByteRowwiseOffsetsNodeImporter>()},

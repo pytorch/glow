@@ -343,6 +343,10 @@ private:
   Expected<NodeValue> loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
                                                  int numDims);
 
+  // Load a PyTorch aten::embedding node.
+  // \returns error on failure.
+  Error loadEmbedding(const torch::jit::Node *ptNode);
+
   // Load a PyTorch aten::embedding_bag node.
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);

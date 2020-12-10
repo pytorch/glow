@@ -720,6 +720,16 @@ int main(int argc, char **argv) {
                     "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
                     "It implies that len(Weights) == len(Indices).");
 
+  BB.newNode("Embedding")
+      .addInput("Weights")
+      .addInput("Indices")
+      .addMember(MemberType::Int64, "PadIdx")
+      .addMember(MemberType::Boolean, "Scale")
+      .addMember(MemberType::Boolean, "Sparse")
+      .addResultFromCtorArg()
+      .setDocstring("Gathers slices of the outer-most dimension of Weights "
+                    "indexed by Indices tensor.");
+
   BB.newNode("EmbeddingBag")
       .addInput("Data")
       .addInput("Weights")

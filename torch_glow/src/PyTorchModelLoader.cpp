@@ -792,6 +792,17 @@ struct ToInputs {
   };
 };
 
+/// Indexes of aten::embedding inputs.
+struct EmbeddingInputs {
+  enum {
+    weights = 0,
+    indices,
+    padIdx,
+    scale,
+    sparse,
+  };
+};
+
 /// Indexes of aten::embedding_bag inputs.
 struct EmbeddingBagInputs {
   enum {
@@ -1034,6 +1045,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
       {{"aten::to"}, &PyTorchModelLoader::loadTo},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
+      {{"aten::embedding"}, &PyTorchModelLoader::loadEmbedding},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
       {{"fb::simple_embedding_bag_sum"}, &PyTorchModelLoader::loadEmbeddingBag},
       {{"fb::glow_embedding_bag"}, &PyTorchModelLoader::loadGlowEmbeddingBag},
@@ -5503,6 +5515,39 @@ Error PyTorchModelLoader::loadCustomOp(const torch::jit::Node *ptNode) {
                 ptNode->kind().toQualString()));
 
   return customLoader->loadNode(*this, ptNode);
+}
+
+Error PyTorchModelLoader::loadEmbedding(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weights, getGlowNodeValueForValue(inputs[EmbeddingInputs::weights]));
+
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(inputs[EmbeddingInputs::indices]));
+
+  int64_t padIdx;
+  ASSIGN_VALUE_OR_RETURN_ERR(padIdx, iValToInt(getGlowIValueForValue(
+                                         inputs[EmbeddingInputs::padIdx])));
+
+  bool scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      scale, iValToBool(getGlowIValueForValue(inputs[EmbeddingInputs::scale])));
+  RETURN_ERR_IF_NOT(scale == false,
+                    "Currently only support scale_grad_by_freq == 'false'");
+  bool sparse;
+  ASSIGN_VALUE_OR_RETURN_ERR(sparse, iValToBool(getGlowIValueForValue(
+                                         inputs[EmbeddingInputs::sparse])));
+  RETURN_ERR_IF_NOT(sparse == false,
+                    "Currently only support sparse == 'false'");
+
+  auto *resultNode =
+      F_.createEmbedding("Embedding", weights, indices, padIdx, scale, sparse);
+  return addValueMapping(outputs[0], resultNode);
 }
 
 Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
