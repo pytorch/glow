@@ -84,8 +84,6 @@ bool processBackendSpecificOpts(std::map<std::string, std::string> &optsMap,
 } // namespace flags
 } // namespace glow
 
-#ifdef GLOW_WITH_NNPI
-
 namespace glow {
 namespace nnpi {
 namespace flags {
@@ -101,8 +99,6 @@ extern bool UsePerPartitionIcetConfig;
 } // namespace flags
 } // namespace nnpi
 } // namespace glow
-
-#endif
 
 namespace glow {
 namespace torch_glow {
@@ -126,18 +122,12 @@ extern bool SaveDAG;
 namespace glow {
 namespace runtime {
 namespace flags {
-#ifdef GLOW_WITH_CPU
 extern unsigned CPUMemory;
-#endif
 
-#ifdef GLOW_WITH_HABANA
 extern unsigned HabanaMemory;
-#endif
 
-#ifdef GLOW_WITH_NNPI
 extern unsigned NNPIMemory;
 extern unsigned NNPITimeoutMs;
-#endif
 
 extern std::string AvailableDevices;
 extern unsigned InterpreterMemory;
