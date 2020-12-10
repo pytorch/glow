@@ -21,3 +21,13 @@ class TestMax(unittest.TestCase):
         utils.compare_tracing_methods(
             SimpleMaxModule(), torch.randn(4), torch.randn(4), fusible_ops={"aten::max"}
         )
+
+    def test_elementwise_max_broadcast(self):
+        """Test of the PyTorch max Node with broadcast on Glow."""
+
+        utils.compare_tracing_methods(
+            SimpleMaxModule(),
+            torch.randn(2, 4),
+            torch.randn(4),
+            fusible_ops={"aten::max"},
+        )

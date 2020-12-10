@@ -2540,7 +2540,8 @@ Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
 
-  glow::MaxNode *glowNode = F_.createMax("max", lhs, rhs);
+  glow::MaxNode *glowNode =
+      F_.createNodeWithBroadcast<MaxNode>("max", -1, lhs, rhs);
   RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
@@ -4685,7 +4686,7 @@ Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
 
-  auto output = F_.createMin("min", lhs, rhs);
+  auto output = F_.createNodeWithBroadcast<MinNode>("min", -1, lhs, rhs);
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
