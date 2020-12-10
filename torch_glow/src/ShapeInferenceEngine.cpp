@@ -115,6 +115,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsToOffsets(inputMetas));
   } else if (symbol == "fb::simple_embedding_bag_sum") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, embeddingBag(inputMetas));
+  } else if (symbol == "fb::glow_embedding_bag") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, glowEmbeddingBag(inputMetas));
   } else if (symbol == "fb::fast_gather") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fastGather(inputMetas));
   } else if (symbol == "fb::lengths_range") {
@@ -277,6 +279,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       shapeMap_[node->output()].intValue = std::move(tensorListOutput.shape[0]);
       shapeMap_[node->output()].dtype = tensorListOutput.dtype;
     }
+  } else if (symbol == "fb::glow_embedding_bag") {
+    shapeMap_[node->output()].listOfShape.emplace_back(
+        std::move(tensorOutput.shapeOrIntValues));
+    shapeMap_[node->output()].dtype = tensorOutput.dtype;
   } else if (kind == c10::aten::embedding_bag ||
              symbol == "fb::simple_embedding_bag_sum") {
     shapeMap_[node->output(0)].listOfShape.emplace_back(
@@ -479,6 +485,9 @@ ShapeInferenceEngine::primConstant(const torch::jit::Node *node) {
   } else if (type->isSubtypeOf(at::ListType::ofInts())) {
     dtype = c10::ScalarType::Int;
     shapeOrValue = node->ival(at::attr::value).toIntVector();
+  } else if (type->isSubtypeOf(at::StringType::get())) {
+    shapeOrValue = {1};
+    dtype = c10::ScalarType::Char;
   } else {
     LOG(ERROR) << "Got " << *type;
     return MAKE_ERR("Type not supported");
@@ -1200,6 +1209,49 @@ ShapeInferenceEngine::embeddingBag(const MetaStack &variableMetas) {
   } else {
     return MAKE_ERR("Only support 1D and 2D Input in Embedding bag.");
   }
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = c10::ScalarType::Float;
+  return output;
+}
+
+/**
+ * fb::glow_embedding_bag(Tensor indices,
+ *                        Tensor offsets,
+ *                        string? weight_qualname=None,
+ *                        int num_embeddings,
+ *                        int embedding_dim,
+ *                        Tensor? per_sample_weights=None,
+ *                        bool include_last_offset=True)
+ *                        -> Tensor
+ */
+/// In glow, the include_last_offset is always True.
+Expected<TensorOutput>
+ShapeInferenceEngine::glowEmbeddingBag(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 7,
+      strFormat("Expected 7 inputs, got %zu.", variableMetas.size()));
+
+  TensorShape shape;
+
+  const auto &indicesShape = variableMetas[0].shape<TensorShape>();
+
+  const auto &offsetSahpe = variableMetas[1].shape<TensorShape>();
+
+  int64_t embeddingDim = variableMetas[4].intValue[0];
+
+  RETURN_ERR_IF_NOT(
+      indicesShape.size() == 1,
+      strFormat("Expected 1D input, got %zu.", indicesShape.size()));
+
+  RETURN_ERR_IF_NOT(
+      offsetSahpe.size() == 1,
+      strFormat("Expected 1D offset, got %zu.", offsetSahpe.size()));
+
+  shape = {offsetSahpe[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+           embeddingDim};
 
   TensorOutput output;
   output.shapeOrIntValues = shape;
