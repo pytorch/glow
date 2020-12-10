@@ -2243,12 +2243,6 @@ Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
   glow::NodeValue dataValue;
   ASSIGN_VALUE_OR_RETURN_ERR(dataValue, getGlowNodeValueForValue(inputs[0]));
 
-  int64_t scalar;
-  ASSIGN_VALUE_OR_RETURN_ERR(scalar,
-                             iValToInt(getGlowIValueForValue(inputs[1])));
-  RETURN_ERR_IF_NOT(scalar == (int64_t)at::MemoryFormat::Contiguous,
-                    glow::strFormat("Scalar must have value equal 0."));
-
   RETURN_ERR(addValueMapping(outputs[0], dataValue));
 }
 
