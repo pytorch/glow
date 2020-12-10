@@ -23,6 +23,7 @@
 #include "glow/Partitioner/PartitionerValidation.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -1020,6 +1021,17 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
   }
 
   RETURN_IF_ERR(finalize(partitions, partitionMap));
+
+  if (cctx.saturateHost) {
+    // Use the config's logical IDs to determine how many cards it's using.
+    llvm::SmallSet<DeviceIDTy, 6> allLogicalIDs;
+    for (const auto IDs : config.logicalIDs) {
+      for (const auto &id : IDs) {
+        allLogicalIDs.insert(id);
+      }
+    }
+    saturateHost(allLogicalIDs.size(), partitions);
+  }
 
   return std::move(partitions);
 }
