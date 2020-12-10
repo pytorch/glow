@@ -10697,9 +10697,9 @@ TEST_P(OperatorTest, Int8BatchNorm2D) {
 
   auto constFunc = [=](std::string name, std::vector<float> vals) {
     dim_t sz = vals.size();
-    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    auto t = Tensor(ElemKind::FloatTy, {sz});
     for (dim_t i = 0; i < sz; i++) {
-      t.getHandle<float16_t>().raw(i) = vals[i];
+      t.getHandle().raw(i) = vals[i];
     }
     auto *c = mod_.createConstant(name, std::move(t));
     return c;
@@ -10752,7 +10752,7 @@ TEST_P(OperatorTest, Int8BatchNorm2D) {
     errSum += err * err;
   }
   float rmse = std::sqrt(errSum) / numElements;
-  EXPECT_LE(rmse, 0.01);
+  EXPECT_LE(rmse, 0.063);
 }
 
 /// 3D Batch Normalization in Float16
@@ -10839,9 +10839,9 @@ TEST_P(OperatorTest, Int8BatchNorm3D) {
 
   auto constFunc = [=](std::string name, const std::vector<float> &vals) {
     dim_t sz = vals.size();
-    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    auto t = Tensor(ElemKind::FloatTy, {sz});
     for (dim_t i = 0; i < sz; i++) {
-      t.getHandle<float16_t>().raw(i) = vals[i];
+      t.getHandle().raw(i) = vals[i];
     }
     auto *c = mod_.createConstant(name, std::move(t));
     return c;
@@ -10900,7 +10900,7 @@ TEST_P(OperatorTest, Int8BatchNorm3D) {
     errSum += err * err;
   }
   float rmse = std::sqrt(errSum) / numElements;
-  EXPECT_LE(rmse, 0.02);
+  EXPECT_LE(rmse, 0.025);
 }
 
 /// Check non-square padding for AveragePool. The first pool op has non-square
