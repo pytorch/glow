@@ -5,10 +5,10 @@
 set -ex
 
 # Add support for https apt sources.
-wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.32ubuntu0.1_amd64.deb
-echo "ad00ae237f42cc832db07139aad336d4fd0b9dafd66cf103190c951ddfce5913  apt-transport-https_1.2.32ubuntu0.1_amd64.deb" | sha256sum -c
-sudo dpkg -i apt-transport-https_1.2.32ubuntu0.1_amd64.deb
-rm apt-transport-https_1.2.32ubuntu0.1_amd64.deb
+wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+echo "93475e4cc5e7a86de63fea0316f3f2cd8b791cf4d6ea50a6d63f5bd8e1da5726  apt-transport-https_1.2.32ubuntu0.2_amd64.deb" | sha256sum -c
+sudo dpkg -i apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+rm apt-transport-https_1.2.32ubuntu0.2_amd64.deb
 
 export MAX_JOBS=8
 if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
