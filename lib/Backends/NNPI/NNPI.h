@@ -45,7 +45,7 @@ public:
   Expected<std::unique_ptr<CompiledFunction>>
   compileFX(const folly::dynamic &FXIR, const std::string &submod,
             const llvm::StringMap<const void *> &constants,
-            const BackendOptions &opts, Module *glowModule) const;
+            const BackendOptions &opts, Module *glowModule) const override;
 #endif
 
   bool acceptForExecution(const NodeInfo &NI) const override;
