@@ -914,6 +914,14 @@ struct BBoxTransformInputs {
   };
 };
 
+/// Indexes used for _caffe2::BBoxTransform inputs
+struct CompareInputs {
+  enum {
+    lhs = 0,
+    rhs,
+  };
+};
+
 } // namespace
 
 // static
@@ -963,6 +971,12 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::logical_not"}, &PyTorchModelLoader::loadLogicalNot},
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
+      {{"aten::le", "aten::le_"}, &PyTorchModelLoader::loadCmp<CmpLTENode>},
+      {{"aten::lt", "aten::lt_"}, &PyTorchModelLoader::loadCmp<CmpLTNode>},
+      {{"aten::ne", "aten::ne_"}, &PyTorchModelLoader::loadCmp<CmpNEQNode>},
+      {{"aten::eq", "aten::eq_"}, &PyTorchModelLoader::loadCmp<CmpEQNode>},
+      {{"aten::ge", "aten::ge_"}, &PyTorchModelLoader::loadCmpGt<CmpLTENode>},
+      {{"aten::gt", "aten::gt_"}, &PyTorchModelLoader::loadCmpGt<CmpLTNode>},
       {{"aten::clamp"}, &PyTorchModelLoader::loadClamp},
       {{"aten::cos"}, &PyTorchModelLoader::loadCos},
       {{"aten::sin"}, &PyTorchModelLoader::loadSin},
@@ -3398,6 +3412,56 @@ Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   glow::PowNode *glowNode = F_.createPow("sqrt", input, /*exp=*/0.5);
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+}
+
+template <typename CmpType>
+Error PyTorchModelLoader::loadCmpGt(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  auto kind = ptNode->kind();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+  glow::NodeValue lhs;
+  constexpr int axis = -1;
+
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      lhs, getGlowNodeValueForValue(inputs[CompareInputs::lhs]));
+
+  if (hasGlowIValueForValue(inputs[CompareInputs::rhs])) {
+    glow::NodeValue rhs;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        rhs, loadNodeValueOrBroadcastedIValue(inputs[CompareInputs::rhs],
+                                              lhs.dims()));
+    auto *glowNode = F_.createNodeWithBroadcast<CmpType>(kind.toUnqualString(),
+                                                         axis, rhs, lhs);
+    return addValueMapping(outputs[0], glowNode->getResult());
+  } else {
+    glow::NodeValue rhs;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        rhs, getGlowNodeValueForValue(inputs[CompareInputs::rhs]));
+    auto *glowNode = F_.createNodeWithBroadcast<CmpType>(kind.toUnqualString(),
+                                                         axis, rhs, lhs);
+    return addValueMapping(outputs[0], glowNode->getResult());
+  }
+}
+template <typename CmpType>
+Error PyTorchModelLoader::loadCmp(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  const auto kind = ptNode->kind();
+
+  glow::NodeValue lhs, rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      lhs, getGlowNodeValueForValue(inputs[CompareInputs::lhs]));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rhs, getGlowNodeValueForValue(inputs[CompareInputs::rhs]));
+
+  constexpr int axis = -1;
+  auto *glowNode = F_.createNodeWithBroadcast<CmpType>(kind.toUnqualString(),
+                                                       axis, lhs, rhs);
+
   RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
