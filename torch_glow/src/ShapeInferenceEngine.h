@@ -176,6 +176,9 @@ private:
   glowUnpackedQuantizedLinear(const MetaStack &variableMetas);
   // Shape inference for aten::embedding_bag
   static Expected<TensorOutput> embeddingBag(const MetaStack &variableMetas);
+  // Shape inference for fb::glowEmbedding_bag
+  static Expected<TensorOutput>
+  glowEmbeddingBag(const MetaStack &variableMetas);
   // Shape inference for aten::chuck
   static Expected<TensorListOutput> chunk(const MetaStack &variableMetas);
   // Shape inference for aten::stack
