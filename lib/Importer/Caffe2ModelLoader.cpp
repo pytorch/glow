@@ -1007,7 +1007,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     for (unsigned i = 0; i < numInputs; i++) {
       NodeValue in;
       ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
-      inputs.push_back(in);
+      inputs.push_back(std::move(in));
     }
 
     // If axis exists it takes priority over channel.
@@ -1018,32 +1018,64 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(channel, getChannel(dict));
     }
 
-    Node *node = G_->createConcat(opName, inputs, channel);
-
     unsigned_t addAxis = 0;
     if (dict.count("add_axis")) {
       ASSIGN_VALUE_OR_RETURN_ERR(addAxis, loadInt(dict["add_axis"]));
     }
 
+    Node *node{nullptr};
+
     if (addAxis) {
       // When add axis is used, this means we have to add a new dimension
       // before the axis, instead of merging on the axis.
       std::vector<dim_t> outputDims = inputs[0].dims();
-      unsigned i = 0;
-      for (const auto &input : inputs) {
-        RETURN_ERR_IF_NOT(
-            outputDims[channel] == input.dims()[channel],
-            opErrMsg(op, strFormat("inputs need all to have the same dims for "
-                                   "concat with add_axis: input 0 (%s) vs "
-                                   "input %u (%s), %u vs %u, channel = %u",
-                                   op.input(0).c_str(), i, op.input(i).c_str(),
-                                   static_cast<unsigned>(outputDims[channel]),
-                                   static_cast<unsigned>(input.dims()[channel]),
-                                   channel)));
-        ++i;
+
+      if (channel < outputDims.size()) {
+        unsigned i = 0;
+        for (const auto &input : inputs) {
+          RETURN_ERR_IF_NOT(
+              outputDims[channel] == input.dims()[channel],
+              opErrMsg(op,
+                       strFormat("inputs need all to have the same dims for "
+                                 "concat with add_axis: input 0 (%s) vs "
+                                 "input %u (%s), %u vs %u, channel = %u",
+                                 op.input(0).c_str(), i, op.input(i).c_str(),
+                                 static_cast<unsigned>(outputDims[channel]),
+                                 static_cast<unsigned>(input.dims()[channel]),
+                                 channel)));
+          ++i;
+        }
+        outputDims.insert(outputDims.begin() + channel, numInputs);
+        node = G_->createConcat(opName, inputs, channel);
+        node = G_->createReshape(opName, node, outputDims);
+      } else if (channel == outputDims.size()) {
+        // We convert inputs into 2D arrays with single columns, thus the
+        // number of rows will be equal to the product of all original dims.
+        // Every converted input will look like a vertical line of numbers.
+        const auto flatVerticalShape = flattenCdr(inputs[0].dims(), channel);
+        llvm::SmallVector<NodeValue, 4> verticalInputs;
+        for (auto &input : inputs) {
+          verticalInputs.push_back(G_->createReshape(
+              opName, input,
+              {flatVerticalShape.first, flatVerticalShape.second}));
+        }
+
+        // We glue together the vertical lines, so, the number of columns
+        // becomes equal to the number of original inputs.
+        node = G_->createConcat(opName, verticalInputs, 1);
+
+        // Reshape to convert to desired shape.
+        outputDims.push_back(numInputs);
+        node = G_->createReshape(opName, node, outputDims);
+      } else {
+        return MAKE_ERR(opErrMsg(
+            op, strFormat("Invalid input: channel (=%u) > number of dims (=%u)",
+                          channel, static_cast<unsigned>(outputDims.size()))));
       }
-      outputDims.insert(outputDims.begin() + channel, numInputs);
-      node = G_->createReshape(opName, node, outputDims);
+    } else {
+      // In normal case (i.e. when we are not adding a new dimension)
+      // plain createConcat() would suffice.
+      node = G_->createConcat(opName, inputs, channel);
     }
 
     // If we add the axis then node is a Reshape, otherwise it should be
