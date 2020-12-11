@@ -64,6 +64,11 @@ namespace detail {
 /// quantized::conv2d_prepack in glow. However regular packed conv's
 /// implementation in glow is still needed.
 void fuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
+  static std::once_flag onceFlag;
+  std::call_once(onceFlag, []() {
+    registerDummyOperator("glow::unpacked_quantized_conv2d");
+    registerDummyOperator("glow::unpacked_quantized_conv3d");
+  });
   std::string convPrepackPattern = R"IR(
 graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point):
   %prepacked_weight = quantized::conv2d_prepack(%w, %b, %stride, %padding, %dilation, %groups)
@@ -99,6 +104,10 @@ graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point
 }
 
 void fuseLinearPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
+  static std::once_flag onceFlag;
+  std::call_once(onceFlag, []() {
+    registerDummyOperator("glow::unpacked_quantized_linear");
+  });
   std::string beforePattern = R"IR(
 graph(%input, %weights, %bias, %scale, %zero_point):
   %packed_params = quantized::linear_prepack(%weights, %bias)
@@ -112,6 +121,27 @@ graph(%input, %weights, %bias, %scale, %zero_point):
 
   // Replace linear_prepack + quantized::linear to
   // glow::unpacked_quantized_linear
+  torch::jit::SubgraphRewriter rewriter;
+  rewriter.RegisterRewritePattern(beforePattern, afterPattern);
+  rewriter.runOnGraph(graph);
+}
+
+void rewriteQuantizedLinear(std::shared_ptr<torch::jit::Graph> &graph) {
+  static std::once_flag onceFlag;
+  std::call_once(onceFlag, []() {
+    registerDummyOperator("glow::unpacked_quantized_linear");
+  });
+  // Quantized Linear pattern
+  std::string beforePattern = R"IR(
+  graph(%a_quant, %packed_params, %r_scale, %r_zero_point) :
+        %res = quantized::linear(%a_quant, %packed_params, %r_scale, %r_zero_point)
+        return (%res))IR";
+  std::string afterPattern = R"IR(
+  graph(%a_quant, %packed_params, %r_scale, %r_zero_point):
+    %w_quant : Tensor, %b : Tensor? = quantized::linear_unpack(%packed_params)
+    %res = glow::unpacked_quantized_linear(%a_quant, %w_quant, %b, %r_scale, %r_zero_point)
+    return (%res))IR";
+
   torch::jit::SubgraphRewriter rewriter;
   rewriter.RegisterRewritePattern(beforePattern, afterPattern);
   rewriter.runOnGraph(graph);
@@ -134,6 +164,11 @@ graph(%input):
 }
 
 void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
+  static std::once_flag onceFlag;
+  std::call_once(onceFlag, []() {
+    registerDummyOperator("glow::fused_stack");
+    registerDummyOperator("glow::fused_broadcast_cat");
+  });
   auto block = graph->block();
   for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); it++) {
     auto *node = *it;
@@ -182,6 +217,9 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
 // Remove split and ListUnpack when there's only one split and
 // fuse when there are multiple splits.
 void fuseSplit(std::shared_ptr<torch::jit::Graph> &graph) {
+  static std::once_flag onceFlag;
+  std::call_once(onceFlag,
+                 []() { registerDummyOperator("glow::fused_split"); });
   auto block = graph->block();
   for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); ++it) {
     auto *node = *it;
@@ -216,6 +254,9 @@ void removeExceptions(std::shared_ptr<torch::jit::Graph> &graph) {
 }
 
 void fuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph) {
+  static std::once_flag onceFlag;
+  std::call_once(onceFlag,
+                 []() { registerDummyOperator("glow::fused_linear"); });
   // before:
   // graph(%input, %weight, %bias, %c %d):
   //   %1 = aten::dim(%input)
@@ -393,18 +434,6 @@ noneInBlacklist(const std::unordered_set<torch::jit::Symbol> &opBlacklist,
 void fuseKnownPatterns(
     std::shared_ptr<torch::jit::Graph> &graph,
     const std::unordered_set<torch::jit::Symbol> &opBlacklist) {
-  // Register dummy nodes used by custom fusers.
-  static std::once_flag onceFlag;
-  std::call_once(onceFlag, []() {
-    registerDummyOperator("glow::unpacked_quantized_linear");
-    registerDummyOperator("glow::unpacked_quantized_conv2d");
-    registerDummyOperator("glow::unpacked_quantized_conv3d");
-    registerDummyOperator("glow::fused_stack");
-    registerDummyOperator("glow::fused_linear");
-    registerDummyOperator("glow::fused_split");
-    registerDummyOperator("glow::fused_broadcast_cat");
-  });
-
   detail::removeExceptions(graph);
   EliminateDeadCode(graph);
 
