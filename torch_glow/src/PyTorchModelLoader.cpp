@@ -5654,10 +5654,12 @@ Error PyTorchModelLoader::loadGlowEmbeddingBag(const torch::jit::Node *ptNode) {
   std::vector<glow::dim_t> dims{numEmbedding, embeddingDim};
   glow::Type phType(ElemKind::FloatTy, dims);
   auto legalizedWeightQualName = glow::legalizeName(*weightQualName);
-  glow::Placeholder *ph =
-      F_.getParent()->createPlaceholder(&phType, legalizedWeightQualName,
-                                        /*isTrainable*/ false);
-  ph->setStatic(true);
+  auto ph = F_.getParent()->getPlaceholderByNameSlow(legalizedWeightQualName);
+  if (!ph) {
+    ph = F_.getParent()->createPlaceholder(&phType, legalizedWeightQualName,
+                                           /*isTrainable*/ false);
+    ph->setStatic(true);
+  }
   glow::NodeValue indices;
   ASSIGN_VALUE_OR_RETURN_ERR(
       indices,
