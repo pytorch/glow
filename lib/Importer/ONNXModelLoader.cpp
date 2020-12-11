@@ -788,7 +788,7 @@ Error ONNXModelLoader::getInputsNamesAndTypes(
   ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
 
   // GraphDef.input can have both inputs and intermediate tensors whereas
-  // initializers have info about intermediate tensors thus the difference
+  // initializers have info about intermediate tensors. Thus the difference
   // betweem two is taken
   std::vector<std::string> inputs;
   for (auto &in : graphDef.input()) {
