@@ -5325,7 +5325,10 @@ Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
     int64_t dim;
     ASSIGN_VALUE_OR_RETURN_ERR(
         dim, iValToInt(getGlowIValueForValue(inputs[TopKInputs::dim])));
-    RETURN_ERR_IF_NOT(dim != input.dims().size() - 1,
+    if (dim < 0) {
+      dim = input.dims().size() + dim;
+    }
+    RETURN_ERR_IF_NOT(dim == input.dims().size() - 1,
                       "topk is only supported along the last dimension");
   }
 
