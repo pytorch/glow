@@ -3776,6 +3776,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
           dstTy->getElementType());
       return constantToBeModified.getOutput();
     }
+    case ElemKind::Int64QTy:
     case ElemKind::Int32QTy:
     case ElemKind::Int16QTy:
     case ElemKind::Int8QTy: {
