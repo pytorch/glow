@@ -1109,6 +1109,9 @@ static Error appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables,
 
     // neighbors contains only successors; add all predecessors too.
     std::queue<Node *> preds;
+    for (auto *N : neighbors) {
+      preds.push(N);
+    }
     preds.push(SLS);
     while (!preds.empty()) {
       auto *cur = preds.front();
@@ -1127,18 +1130,20 @@ static Error appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables,
   return Error::success();
 }
 
-// Check if the weights input for \p SLWS is a SplatNode with more than one
+// Check if the input for \p targetNode is a SplatNode with more than one
 // user, and if so clone the splat node into \p F and set it to be the new
-// weights of \p SLWS.
-template <class T>
-static void cloneSplatWeightsIfNecessary(T *SLWS, Function *F) {
-  SplatNode *splatWeights = llvm::dyn_cast<SplatNode>(SLWS->getWeights());
-  if (!splatWeights || splatWeights->getNumUsers() <= 1) {
-    return;
+// input of \p targetNode.
+static void cloneSplatInputIfNecessary(Node *targetNode, Function *F) {
+  for (int inp = 0, e = targetNode->getNumInputs(); inp < e; inp++) {
+    auto input = targetNode->getNthInput(inp);
+    SplatNode *splatInput = llvm::dyn_cast<SplatNode>(input.getNode());
+    if (!splatInput || splatInput->getNumUsers() <= 1) {
+      continue;
+    }
+    SplatNode *splatInputClone =
+        F->addNode(llvm::cast<SplatNode>(splatInput->clone()));
+    targetNode->setNthInput(inp, splatInputClone->getResult());
   }
-  SplatNode *splatWeightsClone =
-      F->addNode(llvm::cast<SplatNode>(splatWeights->clone()));
-  SLWS->setNthInput(T::WeightsIdx, splatWeightsClone->getResult());
 }
 
 // Insert Split->Concat at barrier between SLS and Non-SLS partitions
@@ -1269,28 +1274,21 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     RETURN_IF_ERR(::glow::optimizeFunction(F, *(backends[0]), cctx));
   }
 
-  // Now we may want to duplicate Splat weights in case they have been CSE'd
-  // into a single SplatNode. This is because if two SLWS that share weights are
-  // separated to two partitions, then partitioning will force a dependence from
-  // whichever partition the weights are placed to the other partition. After
+  // Now we may want to duplicate Splat input nodes in case they have been CSE'd
+  // (CSE stands for common subexpression elimination) into a single SplatNode.
+  // This is because if two SLWS that share Splat input nodes are separated to
+  // two partitions, then partitioning will force a dependence from whichever
+  // partition the input node are placed to the other partition. After
   // partitioning when we optimize each partition individually, they may be
-  // merged again inside the partition.
+  // merged again inside the partition. Besides, the potential partition
+  // dependency introduced might lead to a circular dependency in the final
+  // graph.
+  //
+  // We fix this issue by iterating over the Function and finding Splat input
+  // nodes with multiple users and just creating new Splats (by cloning) for
+  // each user.
   for (auto &node : F->getNodes()) {
-    if (auto *SLWS = llvm::dyn_cast<SparseLengthsWeightedSumNode>(&node)) {
-      cloneSplatWeightsIfNecessary(SLWS, F);
-    } else if (auto *SLWS = llvm::dyn_cast<
-                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&node)) {
-      cloneSplatWeightsIfNecessary(SLWS, F);
-    } else if (auto *SLWS =
-                   llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(
-                       &node)) {
-      cloneSplatWeightsIfNecessary(SLWS, F);
-    } else if (auto *EBB = llvm::dyn_cast<EmbeddingBagNode>(&node)) {
-      cloneSplatWeightsIfNecessary(EBB, F);
-    } else if (auto *EBB =
-                   llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(&node)) {
-      cloneSplatWeightsIfNecessary(EBB, F);
-    }
+    cloneSplatInputIfNecessary(&node, F);
   }
 
   // Create list of SLS Tables
