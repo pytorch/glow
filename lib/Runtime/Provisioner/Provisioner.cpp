@@ -127,7 +127,7 @@ static std::vector<std::pair<DeviceIDTy, uint64_t>> calculateLogicalDeviceSize(
   std::vector<std::pair<DeviceIDTy, uint64_t>> logicalDeviceSize;
   for (auto &device : devices) {
     uint64_t sum{0};
-    for (auto &node : device.second) {
+    for (const auto *node : device.second) {
       sum += node->size;
     }
     logicalDeviceSize.push_back(std::make_pair(device.first, sum));
@@ -215,7 +215,10 @@ Provisioner::generateDeviceAssignments(
         // any available device.
         return MAKE_ERR(
             ErrorValue::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
-            "Logical Device is too large to fit in available device memory.");
+            strFormat(
+                "Logical Device is too large to fit in available device "
+                "memory. Largest device memory: %lu, logic device size:  %lu",
+                deviceMemoryMap[backendName][0].second, logicalDevice.second));
       }
     }
   }
