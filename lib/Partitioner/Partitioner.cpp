@@ -1373,6 +1373,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
   // Now assign SLS Nodes to devices
   std::vector<std::unordered_set<NodeValue>> frontierValues(slsDevices.size());
+  std::vector<NodesSet> nodesets(slsDevices.size());
   for (auto &table : slsTables) {
 
     // Sort by cost increasing
@@ -1388,31 +1389,24 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
               << device.currentCost << std::endl;
     }
 
-    // Calculate the size of the SLS and all neighbors, i.e. the total
-    // additional memory needed to add to the device.
-    GraphMemInfo graphMem;
-    NodesSet currentPartition;
-    graphMem.contextCount = contextCount_;
-    // Insert SLS node, and then insert all neighbors.
-    graphMem =
-        updateGraphMemInfoByAddingNode(currentPartition, graphMem, table.node);
-    currentPartition.insert(table.node);
-    for (Node *N : table.neighbors) {
-      graphMem = updateGraphMemInfoByAddingNode(currentPartition, graphMem, N);
-      currentPartition.insert(N);
-    }
-    const uint64_t totalSize = graphMem.getTotalMemSize();
-
     // Pick the first that fits
     bool deviceFound = false;
-    for (unsigned int d = 0; d < slsDevices.size(); d++) {
-      if (slsDevices[d].memAvailableInBytes >= totalSize) {
+    for (auto &d : slsDevices) {
+      const auto deviceId = d.deviceId;
+      // Calculate the memory needed if we merge SLS and its neighboring nodes
+      // into existing partition
+      auto nodesSetd = nodesets[deviceId];
+      nodesSetd.insert(table.node);
+      nodesSetd.insert(table.neighbors.begin(), table.neighbors.end());
+      auto meminfo = getGraphMemInfo(nodesSetd, contextCount_);
+      const auto totalSize = meminfo.getTotalMemSize();
+      if (d.memAvailableInBytes >= totalSize) {
         deviceFound = true;
-        slsDevices[d].memAvailableInBytes -= totalSize;
-        slsDevices[d].currentCost += (size_t)table.cost;
-        table.deviceId = slsDevices[d].deviceId;
+        d.currentCost += (size_t)table.cost;
+        table.deviceId = d.deviceId;
         frontierValues[table.deviceId].insert(table.frontier.begin(),
                                               table.frontier.end());
+        nodesets[deviceId].swap(nodesSetd);
         break;
       }
     }
@@ -1423,11 +1417,15 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   }
 
   // Print final device info
-  VLOG(1) << "Devices sorted by cost increasing" << std::endl;
-  for (auto &device : slsDevices) {
-    VLOG(1) << "(deviceId, memAvailableInBytes, currentCost): "
-            << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
-            << device.currentCost << std::endl;
+  VLOG(1) << "Devices sorted by cost increasing: ";
+  for (const auto &d : slsDevices) {
+    const auto deviceId = d.deviceId;
+    auto meminfo = getGraphMemInfo(nodesets[deviceId], contextCount_);
+    const auto totalSize = meminfo.getTotalMemSize();
+    VLOG(1) << "deviceId: " << deviceId << ", used memory: " << totalSize
+            << ", available memory: " << (d.memAvailableInBytes - totalSize)
+            << ", cost: " << d.currentCost
+            << ", node size: " << nodesets[deviceId].size();
   }
 
   // Print assignments
