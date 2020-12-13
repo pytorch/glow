@@ -13465,15 +13465,15 @@ static void addEmbeddingBagPartialInputs(
     bool hasEndOffset, bool partialInput = false) {
 
   if (hasEndOffset) {
-    Tensor weightsTensorReal(DTy, {10});
-    Tensor indicesTensorReal(ElemKind::Int64ITy, {10});
+    Tensor weightsTensorReal(DTy, {8});
+    Tensor indicesTensorReal(ElemKind::Int64ITy, {8});
     Tensor offsetsTensorReal(ElemKind::Int64ITy, {5});
 
     weightsTensorReal.getHandle<DataType>() = {
-        3, 1, 0, 0, 0, 0, 2, -0.5, 42.0, 42.0,
+        3, 1, 0, 0, 0, 0, 2, -0.5,
     };
     indicesTensorReal.getHandle<int64_t>() = {
-        1, 0, 2, 0, 1, 2, 2, 0, 13, 10,
+        1, 0, 2, 0, 1, 2, 2, 0,
     };
     offsetsTensorReal.getHandle<int64_t>() = {
         0, 3, 3, 6,
@@ -13509,9 +13509,9 @@ static void addEmbeddingBagPartialInputs(
       bindings.insert(indices, indicesTensorPartial.clone());
       bindings.insert(offsets, offsetsTensorPartial.clone());
     } else {
-      weights = mod.createPlaceholder(DTy, {10}, "weights", false);
+      weights = mod.createPlaceholder(DTy, {8}, "weights", false);
       indices =
-          mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indices", false);
+          mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
       offsets =
           mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets", false);
 
@@ -14338,6 +14338,88 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   // the data is still around.
   unownedTensors_.push_back(std::move(indicesReal));
   unownedTensors_.push_back(std::move(lengthsReal));
+}
+
+TEST_P(OperatorTest, RepeatedSLWSWithPartialTensors) {
+  CHECK_IF_ENABLED();
+
+  // This test is only meaningful if the backend supports partial tensors.
+  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+
+  constexpr dim_t embeddingRows = 1275;
+  constexpr dim_t numLengths = 20;
+  constexpr dim_t maxIndices = 20000;
+  constexpr dim_t numIndices = 20; // Must be less than sum(lengths).
+  constexpr dim_t iterations = 33;
+
+  auto *data =
+      mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
+  data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod_.getPRNG());
+  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {maxIndices},
+                                         "indices", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {maxIndices}, "weights", false);
+  auto *lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
+                                         "lengths", false);
+  auto *SLWS = F_->createSparseLengthsWeightedSum("SWLS", data, weights,
+                                                  indices, lengths);
+  auto *save = F_->createSave("save", SLWS);
+  auto *outPH = save->getPlaceholder();
+  EE_.compile(CompilationMode::Infer);
+
+  Tensor indicesReal(ElemKind::Int64ITy, {numIndices});
+  indicesReal.getHandle<int64_t>().randomize(0, embeddingRows - 1,
+                                             mod_.getPRNG());
+  Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
+                        indicesReal.getSizeInBytes());
+  Tensor indicesPadded(indices->getType());
+  indicesPadded.zero();
+  memcpy(indicesPadded.getUnsafePtr(), indicesReal.getUnsafePtr(),
+         numIndices * sizeof(int64_t));
+
+  Tensor weightsReal(ElemKind::FloatTy, {numIndices});
+  weightsReal.getHandle<float>().randomize(0, embeddingRows - 1,
+                                           mod_.getPRNG());
+  Tensor weightsPartial(weightsReal.getUnsafePtr(), weights->getType(),
+                        weightsReal.getSizeInBytes());
+  Tensor weightsPadded(weights->getType());
+  weightsPadded.zero();
+  memcpy(weightsPadded.getUnsafePtr(), weightsReal.getUnsafePtr(),
+         numIndices * sizeof(float));
+
+  Tensor lengthsReal(ElemKind::Int32ITy, {numLengths});
+  lengthsReal.getHandle<int32_t>().clear(1);
+  Tensor lengthsPartial(lengthsReal.getUnsafePtr(), lengths->getType(),
+                        lengthsReal.getSizeInBytes());
+  Tensor lengthsPadded(ElemKind::Int32ITy, {numLengths});
+  lengthsPadded.assign(&lengthsReal);
+
+  bindings_.insert(indices, std::move(indicesPartial));
+  bindings_.insert(weights, std::move(weightsPartial));
+  bindings_.insert(lengths, std::move(lengthsPartial));
+
+  bindings_.allocate(outPH);
+
+  PlaceholderBindings paddedBindings;
+  paddedBindings.insert(indices, std::move(indicesPadded));
+  paddedBindings.insert(weights, std::move(weightsPadded));
+  paddedBindings.insert(lengths, std::move(lengthsPadded));
+
+  paddedBindings.allocate(outPH);
+
+  for (dim_t i = 0; i < iterations; i++) {
+    EE_.run(bindings_);
+    EE_.run(paddedBindings);
+    ASSERT_TRUE(bindings_.get(outPH)->isEqual(*paddedBindings.get(outPH)));
+  }
+
+  // Keep these around so their memory is not freed at the end of the
+  // test/scope. This is so that inside TearDown during import/export testing
+  // the data is still around.
+  unownedTensors_.push_back(std::move(indicesReal));
+  unownedTensors_.push_back(std::move(lengthsReal));
+  unownedTensors_.push_back(std::move(weightsReal));
 }
 
 /// Helper to test gathers using partial inputs using \p ITy.

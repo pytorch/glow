@@ -52,6 +52,7 @@ bool InferenceContext::init(
     NNPIDeviceNetwork deviceNetwork, NNPIAdapterContainer *adapter,
     NNPIDeviceContext device,
     const std::unordered_set<const Placeholder *> &partialInputs,
+    const std::vector<ValidateSLSInfo> &validateSLSInputs,
     const std::unordered_set<const Placeholder *> &paddedInputs,
     const std::unordered_set<const Placeholder *> &staticInputs,
     StaticPlaceholderMap *staticPlaceholderMap,
@@ -64,6 +65,7 @@ bool InferenceContext::init(
   device_ = device;
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
+  validateSLSInputs_ = &validateSLSInputs;
   paddedInputs_ = &paddedInputs;
   functionName_ = functionName;
 
@@ -375,6 +377,10 @@ void InferenceContext::execute(RunIdentifierTy runId,
   TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::COPY,
                          tracePreProcessContextName_, attributes);
 
+  // Sanitize inputs before running inference
+  LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+      ERROR, sanitize(bindings), "Failed santization.", runId, ctx, resultCB);
+
   // Pre-inference
   std::vector<void *> rawInputs, rawOutputs;
   unsigned idx = 0;
@@ -625,6 +631,84 @@ void InferenceContext::dumpRuntime() const {
     DotWriter::addEdge(functionName_ + ":" + out->getName(),
                        std::to_string(out->getDeviceResource()));
   }
+}
+
+bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
+  VLOG(1) << "===== Sanitizing " << validateSLSInputs_->size()
+          << " set of inputs";
+  for (const auto &sls : *validateSLSInputs_) {
+    size_t indicesLen, weightsLen, totalLensSum = 0;
+    auto *indices = bindings.get(sls.indices);
+
+    // Either a constant or some node internal to the function, skip
+    if (indices == nullptr) {
+      continue;
+    }
+
+    // DCHECK(indices);
+    // The indices tensor is not partial
+    if (indices->getSizeInBytes() == indices->getUnpaddedSizeInBytes()) {
+      continue;
+    }
+    indicesLen = indices->getRealNumElements();
+    if (sls.weights) {
+      auto *weights = bindings.get(sls.weights);
+      // If this is a weigthed one and the placeholder is real (not a constant
+      // or internal to the function, then sanitize
+      if (weights != nullptr) {
+        weightsLen = weights->getRealNumElements();
+        LOG_AND_RETURN_IF(
+            ERROR, indicesLen != weightsLen,
+            "santize failed, indices length: " + std::to_string(indicesLen) +
+                " different from weights length: " + std::to_string(weightsLen),
+            false);
+      }
+    }
+
+    if (sls.isEmbeddingBag) {
+      // EmbeddingBag case
+      auto *offsets = bindings.get(sls.offsets);
+      // Either a constant or some node internal to the function, skip
+      if (offsets == nullptr) {
+        continue;
+      }
+
+      if (offsets->getElementType() == ElemKind::Int32ITy) {
+        auto H = offsets->getHandle<int32_t>();
+        totalLensSum = H.raw(offsets->getRealNumElements() - 1);
+      } else if (offsets->getElementType() == ElemKind::Int64ITy) {
+        auto H = offsets->getHandle<int64_t>();
+        totalLensSum = H.raw(offsets->getRealNumElements() - 1);
+      } else {
+        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type", false);
+      }
+    } else {
+      // SLS case
+      auto *lengths = bindings.get(const_cast<Placeholder *>(sls.lengths));
+      // Either a constant or some node internal to the function, skip
+      if (lengths == nullptr) {
+        continue;
+      }
+
+      if (lengths->getElementType() == ElemKind::Int32ITy) {
+        auto H = lengths->getHandle<int32_t>();
+        totalLensSum = std::accumulate(H.begin(), H.end(), 0U);
+      } else if (lengths->getElementType() == ElemKind::Int64ITy) {
+        auto H = lengths->getHandle<int64_t>();
+        totalLensSum = std::accumulate(H.begin(), H.end(), 0U);
+      } else {
+        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type", false);
+      }
+    }
+
+    VLOG(1) << "sum of lengths " << totalLensSum;
+    LOG_AND_RETURN_IF(
+        ERROR, indicesLen != totalLensSum,
+        "santize failed, indices length " + std::to_string(indicesLen) +
+            " different from sum of lengths " + std::to_string(totalLensSum),
+        false);
+  }
+  return true;
 }
 
 } // namespace runtime

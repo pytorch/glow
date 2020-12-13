@@ -322,6 +322,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "TanHSweep_BFloat16/0",
     "TanHSweep_Float16/0",
     "RepeatedSLSWithPartialTensors/0",
+    "RepeatedSLWSWithPartialTensors/0",
     "GatherWithInt32PartialTensors/0",
     "GatherWithInt64PartialTensors/0",
     "ParallelBatchMatMul_BFloat16/0",
