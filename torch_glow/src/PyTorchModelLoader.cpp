@@ -4833,16 +4833,22 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
     // With p in torch.norm(input, p,  dim), inputs[1] is the int representing p
     GlowIValue *pVal;
     ASSIGN_VALUE_OR_RETURN_ERR(pVal, getGlowIValueForValue(inputs[1]));
-    // check if p is int
+
+    // Check if p is int or is float without decimal digit.
     if (!pVal->isInt()) {
-      return MAKE_ERR("We only support p as an integer input");
+      double pDouble;
+      ASSIGN_VALUE_OR_RETURN_ERR(pDouble, iValToDouble(pVal));
+      p = static_cast<int64_t>(pDouble);
+      RETURN_ERR_IF_NOT(p == pDouble, "We only support p as an integer input");
     } else {
       ASSIGN_VALUE_OR_RETURN_ERR(p, iValToInt(pVal));
-      // check if p is set to 2s
-      RETURN_ERR_IF_NOT(
-          p == 2, glow::strFormat(
-                      "we currently only support p = 2, but got p = %lu", p));
     }
+
+    // check if p is set to 2s
+    RETURN_ERR_IF_NOT(
+        p == 2,
+        glow::strFormat("we currently only support p = 2, but got p = %lu", p));
+
     // With p in torch.norm(input, p,  dim), inputs[2] is the list of int
     // representing axis/dim
     std::vector<int64_t> *axisList;
