@@ -884,11 +884,6 @@ static bool isOverlappingWithAnyBundleBufferOperands(
       auto buf2 = bop.first;
       auto addr2 = allocationsInfo.allocatedAddress_[buf2];
       auto size2 = buf2->getSizeInBytes();
-      // It is fine, if buffers of different data-parallel instructions are
-      // allocated exactly the same memory region.
-      if (addr1 == addr2 && size1 == size2) {
-        continue;
-      }
       if ((addr1 >= addr2 && addr1 < addr2 + size2) ||
           (addr2 >= addr1 && addr2 < addr1 + size1)) {
         // Two intervals overlap, but are not the same.
@@ -910,9 +905,8 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
     if (!canBePartOfDataParallelKernel(&I)) {
       // Ignore memory management instructions as they are handled by the
       // MemoryManager and are NOPs for a JIT.
-      // DeallocActivationInst cannot be ignored because the memory may
-      // be reused after a deallocation.
-      if (isa<AllocActivationInst>(&I) || isa<TensorViewInst>(&I)) {
+      if (isa<AllocActivationInst>(&I) || isa<DeallocActivationInst>(&I) ||
+          isa<TensorViewInst>(&I)) {
         generateLLVMIRForInstr(builder, &I);
         continue;
       }
