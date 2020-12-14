@@ -1370,6 +1370,7 @@ VERIFY_UNARY_ARITHMETIC(Rsqrt);
 VERIFY_UNARY_ARITHMETIC(Reciprocal);
 VERIFY_UNARY_ARITHMETIC(Sin);
 VERIFY_UNARY_ARITHMETIC(Cos);
+VERIFY_UNARY_ARITHMETIC(Erf);
 #undef VERIFY_UNARY_ARITHMETIC
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
@@ -2036,10 +2037,14 @@ bool ResizeNearestNode::verify() const {
   auto outputDims = result.dims();
 
   bool isValid = checkTypeIgnoreShape(input, result, this);
-  isValid &= expectCompareTrue("Input must be a 4D tensor", inputDims.size(),
-                               size_t(4), this);
-  isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
-                               size_t(4), this);
+  isValid &=
+      expectCompareTrue("Input size must be greater than 2", inputDims.size(),
+                        size_t(2), this, CompareOperatorGreaterThan<size_t>());
+  isValid &=
+      expectCompareTrue("Output size must be greater than 2", outputDims.size(),
+                        size_t(2), this, CompareOperatorGreaterThan<size_t>());
+  isValid &= expectCompareTrue("Input size must be equal to the output size",
+                               inputDims.size(), outputDims.size(), this);
 
   for (size_t i = 0, e = scale.size(); i < e; i++) {
     isValid &= expectCompareTrue("Unexpected output",

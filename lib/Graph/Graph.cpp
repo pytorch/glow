@@ -1650,6 +1650,7 @@ UNARY_ARITHMETIC_FUN_DEF(Rsqrt)
 UNARY_ARITHMETIC_FUN_DEF(Reciprocal)
 UNARY_ARITHMETIC_FUN_DEF(Sin)
 UNARY_ARITHMETIC_FUN_DEF(Cos)
+UNARY_ARITHMETIC_FUN_DEF(Erf)
 #undef UNARY_ARITHMETIC_FUN_DEF
 
 #define ARITHMETIC_FUN_DEF(NODE_NAME_)                                         \
@@ -2592,35 +2593,6 @@ ReshapeNode *Function::createDepthToSpace(llvm::StringRef name, NodeValue input,
   auto *RN1 = createReshape(name.str() + "_reshape_in", input, tmpShape);
   auto *TN = createTranspose(name.str() + "_transpose", RN1, shuffle);
   return createReshape(name.str() + "_reshape_out", TN, outShape);
-}
-
-ReshapeNode *Function::createUpsample(llvm::StringRef name, NodeValue input,
-                                      dim_t numLeadingDims) {
-  auto dims = input.dims();
-  DCHECK_LE(numLeadingDims, dims.size())
-      << "numLeadingDims " << numLeadingDims
-      << " must be less than total num dims " << dims.size();
-  dim_t dim0Dims = 1;
-  dim_t dim1Dims = 1;
-  for (dim_t d = 0; d < dims.size(); d++) {
-    dim0Dims *= dims[d];
-  }
-
-  Node *cur = input;
-  for (dim_t d = 0; d < numLeadingDims; d++) {
-    auto *reshaped =
-        createReshape(name.str() + "_dim_reshape", cur, {dim0Dims, dim1Dims});
-    cur =
-        createTile(name.str() + "_tile", reshaped, /* tiles */ 2, /* axis */ 1);
-    dim_t sz = dims[dims.size() - d - 1];
-    dim0Dims /= sz;
-    dim1Dims *= 2 * sz;
-  }
-  std::vector<dim_t> outDims(dims.begin(), dims.end());
-  for (dim_t d = dims.size() - numLeadingDims; d < dims.size(); d++) {
-    outDims[d] *= 2;
-  }
-  return createReshape(name.str() + "_last_reshape", cur, outDims);
 }
 
 ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,

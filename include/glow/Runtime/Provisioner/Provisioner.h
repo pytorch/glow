@@ -23,6 +23,12 @@
 
 #include <map>
 
+#if FACEBOOK_INTERNAL
+namespace folly {
+struct dynamic;
+}
+#endif
+
 namespace glow {
 namespace runtime {
 
@@ -41,6 +47,17 @@ public:
   Error provision(DAGListTy &networks, Module &module,
                   CompilationContext &cctx);
 
+#if FACEBOOK_INTERNAL
+  /// Traverses the DAG \p networks and:
+  ///   1. Retrieves each node's Function from the provided \p FXIR.
+  ///   2. Compiles it using the provided CompilationContext \p cctx.
+  ///   3. Assigns a device and calls addNetwork on the chosen device(s).
+  /// \returns a Error indicating if the operation was a success.
+  Error provisionFX(DAGListTy &networks, Module &module,
+                    const folly::dynamic &FXIR,
+                    const llvm::StringMap<const void *> &constants,
+                    CompilationContext &cctx);
+#endif
   /// Remove stored compiledFunction.
   Error removeFunction(llvm::StringRef name);
 
