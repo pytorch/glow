@@ -815,6 +815,22 @@ struct IndexSelectInputs {
   };
 };
 
+/// Indexes of aten::clamp_min inputs.
+struct ClampMinInputs {
+  enum {
+    input = 0,
+    min,
+  };
+};
+
+/// Indexes of aten::expand_as inputs.
+struct ExpandAsInputs {
+  enum {
+    input = 0,
+    other,
+  };
+};
+
 /// Indexes of fb::glow_embedding_bag inputs.
 struct GlowEmbeddingBagInputs {
   enum {
@@ -1073,6 +1089,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"_caffe2::RoIAlignRotated"}, &PyTorchModelLoader::loadRoiAlignRotated},
       {{"_caffe2::BBoxTransform"}, &PyTorchModelLoader::loadBBoxTransform},
       {{"aten::index_select"}, &PyTorchModelLoader::loadIndexSelect},
+      {{"aten::clamp_min"}, &PyTorchModelLoader::loadClampMin},
+      {{"aten::expand_as"}, &PyTorchModelLoader::loadExpandAs},
   });
 
   // Add in custom operator loaders.
@@ -4542,6 +4560,44 @@ Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(max, to32Bit(maxDouble));
 
   auto output = F_.createClip("clip", input, min, max);
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadClampMin(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ClampMinInputs::input]));
+
+  double minDouble;
+  ASSIGN_VALUE_OR_RETURN_ERR(minDouble, iValToDouble(getGlowIValueForValue(
+                                            inputs[ClampMinInputs::min])));
+  float min;
+  ASSIGN_VALUE_OR_RETURN_ERR(min, to32Bit(minDouble));
+  auto SN = F_.createSplat("minValue", input.getType(), min);
+
+  auto output = F_.createMax("clamp_min", input, SN);
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadExpandAs(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ExpandAsInputs::input]));
+
+  glow::NodeValue other;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      other, getGlowNodeValueForValue(inputs[ExpandAsInputs::other]));
+
+  auto output = F_.createBroadcast("expand_as", input, other.dims(),
+                                   other.dims().size() - input.dims().size());
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
 

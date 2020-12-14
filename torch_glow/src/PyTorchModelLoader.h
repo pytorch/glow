@@ -833,6 +833,14 @@ private:
   /// Load a PyTorch aten::to node.
   /// \returns error on failure.
   Error loadTo(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::clamp_min node.
+  /// \returns error on failure.
+  Error loadClampMin(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::expand_as node.
+  /// \returns error on failure.
+  Error loadExpandAs(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
