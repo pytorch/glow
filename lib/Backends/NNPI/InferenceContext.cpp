@@ -19,6 +19,7 @@
 #include "NNPI.h"
 #include "NNPIAdapterContainer.h"
 #include "NNPIDeviceManager.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Runtime/RequestData.h"
 #include "llvm/Support/raw_ostream.h"
 #include <fstream>
@@ -634,8 +635,11 @@ void InferenceContext::dumpRuntime() const {
 }
 
 bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
-  VLOG(1) << "===== Sanitizing " << validateSLSInputs_->size()
-          << " set of inputs";
+  if (!flags::EnableSanitizeInputs) {
+    return true;
+  }
+  LOG_EVERY_N(INFO, 1000) << "===== Sanitizing " << validateSLSInputs_->size()
+                          << " set of inputs";
   for (const auto &sls : *validateSLSInputs_) {
     size_t indicesLen, weightsLen, totalLensSum = 0;
     auto *indices = bindings.get(sls.indices);
@@ -645,7 +649,6 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
       continue;
     }
 
-    // DCHECK(indices);
     // The indices tensor is not partial
     if (indices->getSizeInBytes() == indices->getUnpaddedSizeInBytes()) {
       continue;
