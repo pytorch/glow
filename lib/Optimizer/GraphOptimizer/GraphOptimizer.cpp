@@ -5018,22 +5018,27 @@ static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
     }
 
     return BN->getInput();
-  } else {
-    while (TileNode *TN = dyn_cast<TileNode>(N)) {
-      // Check that the axis of the current Tile is inside of the expected
-      // provided endDim.
-      if (TN->getAxis() >= endDim) {
-        return N;
-      }
-      // Applicable only if original dim is 1 in the Broadcast's Tile.
-      if (TN->getInput().dims()[TN->getAxis()] != 1) {
-        return N;
-      }
-      N = TN->getInput();
+  }
+
+  // All non-BroadcastNode broadcasts must Tile at least once.
+  if (!isa<TileNode>(N)) {
+    return N;
+  }
+
+  while (TileNode *TN = dyn_cast<TileNode>(N)) {
+    // Check that the axis of the current Tile is inside of the expected
+    // provided endDim.
+    if (TN->getAxis() >= endDim) {
+      return N;
     }
-    if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
-      return RN->getInput();
+    // Applicable only if original dim is 1 in the Broadcast's Tile.
+    if (TN->getInput().dims()[TN->getAxis()] != 1) {
+      return N;
     }
+    N = TN->getInput();
+  }
+  if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
+    return RN->getInput();
   }
 
   return N;

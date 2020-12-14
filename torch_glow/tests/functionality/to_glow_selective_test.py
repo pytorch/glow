@@ -96,3 +96,31 @@ class TestSelectiveToGlow(unittest.TestCase):
         glow_res = glow_mod(a, b)
 
         assert torch.allclose(torch_res, glow_res)
+
+    def test_to_glow_selective_already_scripted(self):
+        a = torch.zeros(4) + 8
+        b = torch.zeros(4) + 7
+        torch_res = model(a, b)
+
+        spec = torch_glow.CompilationSpec()
+        spec.get_settings().set_glow_backend("Interpreter")
+
+        compilation_group = torch_glow.CompilationGroup()
+        spec.compilation_groups_append(compilation_group)
+
+        a_spec = torch_glow.InputSpec()
+        a_spec.set_same_as(a)
+        b_spec = torch_glow.InputSpec()
+        b_spec.set_same_as(b)
+
+        compilation_group.input_sets_append([a_spec, b_spec])
+        with torch.no_grad():
+            traced_model = torch.jit.trace(model, (a, b))
+
+        glow_mod = torch_glow.to_glow_selective(
+            traced_model,
+            {"foo.bar": spec, "qux": spec},
+            inplace=False,
+        )
+        glow_res = glow_mod(a, b)
+        assert torch.allclose(torch_res, glow_res)
