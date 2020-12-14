@@ -323,6 +323,14 @@ struct BuffInfo {
   uint64_t timeStop;
 };
 
+/// Liveness information structure for a given point in time.
+struct LiveInfo {
+  // Total size for all the live buffers at this point in time.
+  uint64_t size;
+  // List of IDs of all the live buffers at this point in time.
+  std::list<uint64_t> idList;
+};
+
 /// Memory allocation strategy which defines the order used to allocate buffers.
 /// The strategies are listed in the decreasing order of the likelihood of
 /// getting the best allocation efficiency. These strategies are only used
@@ -342,22 +350,19 @@ enum class MemAllocStrategy : uint8_t {
 /// \p strategy. All the other parameters represent context information provided
 /// by the function \ref allocateAll about the buffer sizes and live intervals.
 static uint64_t allocateAllWithStrategy(
-    size_t buffNum, size_t allocNum, uint64_t memorySize,
-    const std::vector<BuffInfo> &buffInfoArray,
-    const std::vector<uint64_t> &liveBuffSizeArrayInit,
-    const std::vector<std::list<uint64_t>> &liveBuffIdListArrayInit,
+    uint64_t memorySize, const std::vector<BuffInfo> &buffInfoArray,
+    const std::vector<LiveInfo> &liveInfoArrayInit,
     std::unordered_map<size_t, Segment> &idSegMap, MemAllocStrategy strategy) {
 
   // Make local copy of the liveness information which is modified during
   // the allocation algorithm.
-  auto liveBuffSizeArray = liveBuffSizeArrayInit;
-  auto liveBuffIdListArray = liveBuffIdListArrayInit;
+  auto liveInfoArray = liveInfoArrayInit;
 
   // The maximum total memory used for segment allocation.
   uint64_t usedSizeMax = 0;
 
   // Allocate all buffers.
-  for (size_t buffIdx = 0; buffIdx < buffNum; buffIdx++) {
+  for (size_t buffIdx = 0; buffIdx < buffInfoArray.size(); buffIdx++) {
 
     uint64_t currSegId;
     if (strategy == MemAllocStrategy::MaxLiveSizeMaxBuffSize) {
@@ -368,11 +373,12 @@ static uint64_t allocateAllWithStrategy(
       // 3. If multiple buffers with same size, find maximum live interval.
       // -----------------------------------------------------------------------
       // Find maximum total live allocation.
-      auto liveBuffSizeMaxIt =
-          std::max_element(liveBuffSizeArray.begin(), liveBuffSizeArray.end());
+      auto liveBuffSizeMaxIt = std::max_element(
+          liveInfoArray.begin(), liveInfoArray.end(),
+          [](const LiveInfo &a, const LiveInfo &b) { return a.size < b.size; });
       auto liveBuffSizeMaxIdx =
-          std::distance(liveBuffSizeArray.begin(), liveBuffSizeMaxIt);
-      auto &liveBuffIdList = liveBuffIdListArray[liveBuffSizeMaxIdx];
+          std::distance(liveInfoArray.begin(), liveBuffSizeMaxIt);
+      const auto &liveBuffIdList = liveInfoArray[liveBuffSizeMaxIdx].idList;
 
       // Find buffer with maximum size within the maximum allocation.
       uint64_t buffIdMax = 0;
@@ -405,11 +411,12 @@ static uint64_t allocateAllWithStrategy(
       // 3. If multiple buffers with same live interval, find maximum size.
       // -----------------------------------------------------------------------
       // Find maximum total live allocation.
-      auto liveBuffSizeMaxIt =
-          std::max_element(liveBuffSizeArray.begin(), liveBuffSizeArray.end());
+      auto liveBuffSizeMaxIt = std::max_element(
+          liveInfoArray.begin(), liveInfoArray.end(),
+          [](const LiveInfo &a, const LiveInfo &b) { return a.size < b.size; });
       auto liveBuffSizeMaxIdx =
-          std::distance(liveBuffSizeArray.begin(), liveBuffSizeMaxIt);
-      auto &liveBuffIdList = liveBuffIdListArray[liveBuffSizeMaxIdx];
+          std::distance(liveInfoArray.begin(), liveBuffSizeMaxIt);
+      const auto &liveBuffIdList = liveInfoArray[liveBuffSizeMaxIdx].idList;
 
       // Find buffer with maximum live interval within the maximum allocation.
       uint64_t buffIdMax = 0;
@@ -489,10 +496,8 @@ static uint64_t allocateAllWithStrategy(
     // in ascending order this procedure is guaranteed to find a place at
     // least at the end of the last segment.
     // -------------------------------------------------------------------------
-
     uint64_t currSegAddrStart = 0;
     uint64_t currSegAddrStop = 0;
-
     for (size_t prevSegIdx = 0; prevSegIdx < prevSegAddr.size(); prevSegIdx++) {
 
       // Try to place current segment after this previously allocated segment.
@@ -536,10 +541,10 @@ static uint64_t allocateAllWithStrategy(
     // Update buffer liveness information.
     for (size_t allocIdx = buffInfoArray[currSegId].timeStart;
          allocIdx < buffInfoArray[currSegId].timeStop; allocIdx++) {
-      // Update total live sizes.
-      liveBuffSizeArray[allocIdx] -= buffInfoArray[currSegId].size;
+      // Update total live size.
+      liveInfoArray[allocIdx].size -= buffInfoArray[currSegId].size;
       // Update total live IDs.
-      auto &allocIds = liveBuffIdListArray[allocIdx];
+      auto &allocIds = liveInfoArray[allocIdx].idList;
       auto it = std::find(allocIds.begin(), allocIds.end(), currSegId);
       assert(it != allocIds.end() && "Buffer ID not found for removal!");
       allocIds.erase(it);
@@ -547,10 +552,10 @@ static uint64_t allocateAllWithStrategy(
   }
 
   // Verify again that all the buffers were allocated.
-  for (size_t allocIdx = 0; allocIdx < allocNum; allocIdx++) {
-    assert(liveBuffSizeArray[allocIdx] == 0 &&
+  for (size_t allocIdx = 0; allocIdx < liveInfoArray.size(); allocIdx++) {
+    assert(liveInfoArray[allocIdx].size == 0 &&
            "Not all buffers were allocated!");
-    assert(liveBuffIdListArray[allocIdx].empty() &&
+    assert(liveInfoArray[allocIdx].idList.empty() &&
            "Not all buffers were allocated!");
   }
 
@@ -597,7 +602,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   // -----------------------------------------------------------------------
   // Get overall information about all the buffers.
   // -----------------------------------------------------------------------
-  // Information for each buffer.
+  // Buffer information.
   std::vector<BuffInfo> buffInfoArray(buffNum);
 
   // The maximum total required memory of all the live buffers reached during
@@ -605,13 +610,8 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   // algorithm can hope for and is used to compute the allocation efficiency.
   uint64_t liveSizeMax = 0;
 
-  // Array with the total required memory of all the live buffers for each
-  // allocation time step.
-  std::vector<uint64_t> liveBuffSizeArray(allocNum);
-
-  // Array with lists of IDs of all the live buffers for each allocation time
-  // step.
-  std::vector<std::list<uint64_t>> liveBuffIdListArray(allocNum);
+  // Liveness information for each allocation time step.
+  std::vector<LiveInfo> liveInfoArray(allocNum);
 
   // Gather information.
   {
@@ -655,8 +655,8 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
         liveBuffIdList.erase(it);
       }
       liveSizeMax = std::max(liveSizeMax, liveBuffSize);
-      liveBuffSizeArray[allocIdx] = liveBuffSize;
-      liveBuffIdListArray[allocIdx] = liveBuffIdList;
+      liveInfoArray[allocIdx].size = liveBuffSize;
+      liveInfoArray[allocIdx].idList = liveBuffIdList;
       allocIdx++;
     }
     assert(liveBuffSize == 0 &&
@@ -688,8 +688,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
     std::unordered_map<size_t, Segment> idSegMapTemp;
     auto strategy = static_cast<MemAllocStrategy>(strategyIdx);
     uint64_t usedSize = allocateAllWithStrategy(
-        buffNum, allocNum, memorySize_, buffInfoArray, liveBuffSizeArray,
-        liveBuffIdListArray, idSegMapTemp, strategy);
+        memorySize_, buffInfoArray, liveInfoArray, idSegMapTemp, strategy);
 
     // If available memory is exceeded then we return early.
     if (usedSize == MemoryAllocator::npos) {
