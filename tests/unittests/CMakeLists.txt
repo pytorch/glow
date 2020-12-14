@@ -351,6 +351,11 @@ add_glow_test(MemoryAllocatorTest
               ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest
                   --gtest_output=xml:MemoryAllocatorTest.xml)
 
+file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} MemoryAllocatorTestModels/*)
+foreach(filename ${files})
+  configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)
+endforeach(filename)
+
 add_executable(NodeSplittingTest
                NodeSplittingTest.cpp)
 target_link_libraries(NodeSplittingTest
