@@ -4547,19 +4547,35 @@ Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[ClampInputs::input]));
 
-  double minDouble;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      minDouble, iValToDouble(getGlowIValueForValue(inputs[ClampInputs::min])));
-  float min;
-  ASSIGN_VALUE_OR_RETURN_ERR(min, to32Bit(minDouble));
+  double minDouble = 0;
+  float min = 0;
+  NodeValue minSN = nullptr;
 
-  double maxDouble;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      maxDouble, iValToDouble(getGlowIValueForValue(inputs[ClampInputs::max])));
-  float max;
-  ASSIGN_VALUE_OR_RETURN_ERR(max, to32Bit(maxDouble));
+  if (hasGlowIValueForValue(inputs[ClampInputs::min], true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(minDouble, iValToDouble(getGlowIValueForValue(
+                                              inputs[ClampInputs::min])));
+    ASSIGN_VALUE_OR_RETURN_ERR(min, to32Bit(minDouble));
+    minSN = F_.createSplat("minValue", input.getType(), min);
+  }
 
-  auto output = F_.createClip("clip", input, min, max);
+  double maxDouble = 0;
+  float max = 0;
+  NodeValue maxSN = nullptr;
+  if (hasGlowIValueForValue(inputs[ClampInputs::max], true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(maxDouble, iValToDouble(getGlowIValueForValue(
+                                              inputs[ClampInputs::max])));
+    ASSIGN_VALUE_OR_RETURN_ERR(max, to32Bit(maxDouble));
+    maxSN = F_.createSplat("maxValue", input.getType(), max);
+  }
+
+  NodeValue output = input;
+  if (minSN) {
+    output = F_.createMax("Clamp_min", output, minSN);
+  }
+  if (maxSN) {
+    output = F_.createMin("Clamp_max", output, maxSN);
+  }
+  RETURN_ERR_IF_NOT(output, "Failed to load aten::clamp");
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
