@@ -140,6 +140,8 @@ unsigned InterpreterMemory = 0;
 bool EnableP2P = false;
 bool EnableDRT = false;
 unsigned DeviceInitTimeoutMs = 5000;
+bool EnableSanitizeInputs = false;
+
 } // namespace flags
 } // namespace runtime
 } // namespace glow
@@ -596,6 +598,14 @@ DEFINE_validator(glow_device_init_timeout_ms, [](const char *, int32_t val) {
   glow::runtime::flags::DeviceInitTimeoutMs = val;
   return true;
 });
+DEFINE_bool(glow_enable_sanitize_inputs,
+            glow::runtime::flags::EnableSanitizeInputs,
+            "Enable sanitize inputs passed from the Host to the device");
+DEFINE_validator(glow_enable_sanitize_inputs, [](const char *, bool val) {
+  glow::runtime::flags::EnableSanitizeInputs = val;
+  return true;
+});
+
 DEFINE_bool(glow_dump_partition, glow::flags::DumpPartition,
             "Enable dumping the graph of each partition");
 DEFINE_validator(glow_dump_partition, [](const char *, bool val) {
