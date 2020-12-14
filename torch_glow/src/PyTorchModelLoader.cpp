@@ -5283,25 +5283,42 @@ Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       step, iValToInt(getGlowIValueForValue(inputs[SliceInputs::step])));
 
-  RETURN_ERR_IF_NOT(step == 1, "loadSlice only supports step == 1");
-  int dimsSize = input.dims().size();
-  std::vector<glow::dim_t> begins(dimsSize);
-  std::vector<glow::dim_t> ends(dimsSize);
+  glow::NodeValue output;
+  if (step == 1) {
+    int dimsSize = input.dims().size();
+    std::vector<glow::dim_t> begins(dimsSize);
+    std::vector<glow::dim_t> ends(dimsSize);
 
-  for (int i = 0; i < dimsSize; ++i) {
-    if (i == dim) {
-      begins[i] = start;
-      ends[i] = end > input.dims()[i] ? input.dims()[i] : end;
-    } else {
-      begins[i] = 0;
-      ends[i] = input.dims()[i];
+    for (int i = 0; i < dimsSize; ++i) {
+      if (i == dim) {
+        begins[i] = start;
+        ends[i] = end > input.dims()[i] ? input.dims()[i] : end;
+      } else {
+        begins[i] = 0;
+        ends[i] = input.dims()[i];
+      }
     }
+    output = F_.createSlice("sliceOutput", input, begins, ends)->getResult();
+  } else {
+    // If step != 1, use gather
+    std::vector<int64_t> gatherIndices;
+    for (dim_t i = start; i < input.dims()[dim]; i += step) {
+      gatherIndices.push_back(i);
+    }
+    auto indicesTensor =
+        glow::Tensor(glow::ElemKind::Int64ITy, {gatherIndices.size()});
+    indicesTensor.getHandle<int64_t>() = gatherIndices;
+    auto indicesConstant = F_.getParent()->createConstant(
+        "indices_constant", std::move(indicesTensor));
+
+    output =
+        F_.createGather("sliceGeneratedGather", input, indicesConstant, dim)
+            ->getResult();
   }
-  auto *glowNode = F_.createSlice("sliceOutput", input, begins, ends);
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[SliceInputs::input]));
-  RETURN_ERR(addValueMapping(outputs[0], glowNode, dtype));
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 /// TODO: check Dtype is float (optional value).
