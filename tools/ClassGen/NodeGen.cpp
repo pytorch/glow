@@ -574,6 +574,12 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Performs an element-wise Arctan(x) of the Input operand.");
 
+  BB.newNode("Erf")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Erf(x) of the Input operand.");
+
   BB.newNode("Exp")
       .addInput("Input")
       .addResultFromCtorArg()

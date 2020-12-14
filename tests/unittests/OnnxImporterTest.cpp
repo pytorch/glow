@@ -698,7 +698,12 @@ TEST_F(OnnxImporterTest, importCos) {
                           [](float a) { return std::cos(a); });
 }
 
-TEST_F(OnnxImporterTest, importAbs) {
+TEST_F(OnnxImporterTest, importErf) {
+  testEltwiseUnaryOpFloat("Erf.onnxtxt", {1, 3, 4, 5}, "input", 0.002,
+                          [](float a) { return std::erf(a); });
+}
+
+TEST(onnx, importAbs) {
   testEltwiseUnaryOpFloat("abs.onnxtxt", {1, 2, 3, 2}, "input", 0.002,
                           [](float a) { return std::abs(a); });
 }
