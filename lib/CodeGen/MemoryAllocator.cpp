@@ -313,6 +313,16 @@ bool MemoryAllocator::verifySegments(
   return true;
 }
 
+/// Buffer information structure.
+struct BuffInfo {
+  // Buffer size in bytes.
+  uint64_t size;
+  // Allocation start time (inclusive) for this buffer.
+  uint64_t timeStart;
+  // Allocation stop time (inclusive) for this buffer.
+  uint64_t timeStop;
+};
+
 /// Memory allocation strategy which defines the order used to allocate buffers.
 /// The strategies are listed in the decreasing order of the likelihood of
 /// getting the best allocation efficiency. These strategies are only used
@@ -333,9 +343,7 @@ enum class MemAllocStrategy : uint8_t {
 /// by the function \ref allocateAll about the buffer sizes and live intervals.
 static uint64_t allocateAllWithStrategy(
     size_t buffNum, size_t allocNum, uint64_t memorySize,
-    const std::vector<uint64_t> &buffSizeArray,
-    const std::vector<uint64_t> &buffTimeStartArray,
-    const std::vector<uint64_t> &buffTimeStopArray,
+    const std::vector<BuffInfo> &buffInfoArray,
     const std::vector<uint64_t> &liveBuffSizeArrayInit,
     const std::vector<std::list<uint64_t>> &liveBuffIdListArrayInit,
     std::unordered_map<size_t, Segment> &idSegMap, MemAllocStrategy strategy) {
@@ -370,7 +378,7 @@ static uint64_t allocateAllWithStrategy(
       uint64_t buffIdMax = 0;
       uint64_t buffSizeMax = 0;
       for (auto buffIdIter : liveBuffIdList) {
-        auto buffSizeIter = buffSizeArray[buffIdIter];
+        auto buffSizeIter = buffInfoArray[buffIdIter].size;
         // Choose buffer with maximum size.
         if (buffSizeIter > buffSizeMax) {
           buffSizeMax = buffSizeIter;
@@ -378,10 +386,10 @@ static uint64_t allocateAllWithStrategy(
         }
         // If size is the same choose buffer with maximum live interval.
         if (buffSizeIter == buffSizeMax) {
-          auto currTime =
-              buffTimeStopArray[buffIdMax] - buffTimeStartArray[buffIdMax];
-          auto iterTime =
-              buffTimeStopArray[buffIdIter] - buffTimeStartArray[buffIdIter];
+          auto currTime = buffInfoArray[buffIdMax].timeStop -
+                          buffInfoArray[buffIdMax].timeStart;
+          auto iterTime = buffInfoArray[buffIdIter].timeStop -
+                          buffInfoArray[buffIdIter].timeStart;
           if (iterTime > currTime) {
             buffIdMax = buffIdIter;
           }
@@ -407,8 +415,8 @@ static uint64_t allocateAllWithStrategy(
       uint64_t buffIdMax = 0;
       uint64_t buffTimeMax = 0;
       for (auto buffIdIter : liveBuffIdList) {
-        auto buffTimeIter =
-            buffTimeStopArray[buffIdIter] - buffTimeStartArray[buffIdIter];
+        auto buffTimeIter = buffInfoArray[buffIdIter].timeStop -
+                            buffInfoArray[buffIdIter].timeStart;
         // Choose buffer with maximum live interval.
         if (buffTimeIter > buffTimeMax) {
           buffTimeMax = buffTimeIter;
@@ -416,8 +424,8 @@ static uint64_t allocateAllWithStrategy(
         }
         // If live interval is the same choose buffer with maximum size.
         if (buffTimeIter == buffTimeMax) {
-          auto currSize = buffSizeArray[buffIdMax];
-          auto iterSize = buffSizeArray[buffIdIter];
+          auto currSize = buffInfoArray[buffIdMax].size;
+          auto iterSize = buffInfoArray[buffIdIter].size;
           if (iterSize > currSize) {
             buffIdMax = buffIdIter;
           }
@@ -457,9 +465,10 @@ static uint64_t allocateAllWithStrategy(
       auto prevSeg = idSeg.second;
 
       // Verify if the previous segment overlaps with current segment in time.
-      bool overlap = intervalsOverlap(
-          buffTimeStartArray[currSegId], buffTimeStopArray[currSegId],
-          buffTimeStartArray[prevSegId], buffTimeStopArray[prevSegId]);
+      bool overlap = intervalsOverlap(buffInfoArray[currSegId].timeStart,
+                                      buffInfoArray[currSegId].timeStop,
+                                      buffInfoArray[prevSegId].timeStart,
+                                      buffInfoArray[prevSegId].timeStop);
 
       // If segment overlaps with previous then store the previous segment.
       if (overlap) {
@@ -488,7 +497,7 @@ static uint64_t allocateAllWithStrategy(
 
       // Try to place current segment after this previously allocated segment.
       currSegAddrStart = prevSegAddr[prevSegIdx].second;
-      currSegAddrStop = currSegAddrStart + buffSizeArray[currSegId];
+      currSegAddrStop = currSegAddrStart + buffInfoArray[currSegId].size;
 
       // Verify if this placement overlaps with all the other segments.
       // Note that this verification with all the previous segments is required
@@ -525,10 +534,10 @@ static uint64_t allocateAllWithStrategy(
     idSegMap.insert(std::make_pair(currSegId, currSeg));
 
     // Update buffer liveness information.
-    for (size_t allocIdx = buffTimeStartArray[currSegId];
-         allocIdx < buffTimeStopArray[currSegId]; allocIdx++) {
+    for (size_t allocIdx = buffInfoArray[currSegId].timeStart;
+         allocIdx < buffInfoArray[currSegId].timeStop; allocIdx++) {
       // Update total live sizes.
-      liveBuffSizeArray[allocIdx] -= buffSizeArray[currSegId];
+      liveBuffSizeArray[allocIdx] -= buffInfoArray[currSegId].size;
       // Update total live IDs.
       auto &allocIds = liveBuffIdListArray[allocIdx];
       auto it = std::find(allocIds.begin(), allocIds.end(), currSegId);
@@ -588,12 +597,8 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   // -----------------------------------------------------------------------
   // Get overall information about all the buffers.
   // -----------------------------------------------------------------------
-  // Array with the size for each buffer.
-  std::vector<uint64_t> buffSizeArray(buffNum);
-
-  // Array with the start/stop time (both inclusive) for each buffer.
-  std::vector<uint64_t> buffTimeStartArray(buffNum);
-  std::vector<uint64_t> buffTimeStopArray(buffNum);
+  // Information for each buffer.
+  std::vector<BuffInfo> buffInfoArray(buffNum);
 
   // The maximum total required memory of all the live buffers reached during
   // all allocation time steps. Note that this is the best size any allocation
@@ -626,15 +631,15 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
       if (alloc.alloc_) {
         buffSize = getEffectiveSize(alloc.size_);
       } else {
-        buffSize = buffSizeArray[buffId];
+        buffSize = buffInfoArray[buffId].size;
       }
 
       // Update buffer information.
       if (alloc.alloc_) {
-        buffSizeArray[buffId] = buffSize;
-        buffTimeStartArray[buffId] = allocIdx;
+        buffInfoArray[buffId].size = buffSize;
+        buffInfoArray[buffId].timeStart = allocIdx;
       } else {
-        buffTimeStopArray[buffId] = allocIdx;
+        buffInfoArray[buffId].timeStop = allocIdx;
       }
 
       // Update liveness information.
@@ -683,9 +688,8 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
     std::unordered_map<size_t, Segment> idSegMapTemp;
     auto strategy = static_cast<MemAllocStrategy>(strategyIdx);
     uint64_t usedSize = allocateAllWithStrategy(
-        buffNum, allocNum, memorySize_, buffSizeArray, buffTimeStartArray,
-        buffTimeStopArray, liveBuffSizeArray, liveBuffIdListArray, idSegMapTemp,
-        strategy);
+        buffNum, allocNum, memorySize_, buffInfoArray, liveBuffSizeArray,
+        liveBuffIdListArray, idSegMapTemp, strategy);
 
     // If available memory is exceeded then we return early.
     if (usedSize == MemoryAllocator::npos) {

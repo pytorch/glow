@@ -349,7 +349,8 @@ target_link_libraries(MemoryAllocatorTest
                         TestMain)
 add_glow_test(MemoryAllocatorTest
               ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest
-                  --gtest_output=xml:MemoryAllocatorTest.xml)
+                  --gtest_output=xml:MemoryAllocatorTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} MemoryAllocatorTestModels/*)
 foreach(filename ${files})
