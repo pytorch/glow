@@ -583,8 +583,8 @@ TEST_F(GraphOptz, MergeBatchNormalizationWithArithmeticChainTest) {
   llvm::cast<Constant>(addC)->getHandle<float>().clear(addV);
   llvm::cast<Constant>(divC)->getHandle<float>().clear(divV);
 
-  BatchNormalizationNode *bn =
-      F_->createBatchNormalization("batch", input, beta, gamma, mean, var, 3);
+  BatchNormalizationNode *bn = F_->createBatchNormalization(
+      "batch", input->getType(), input, beta, gamma, mean, var, 3);
 
   auto *sub = F_->createSub("sub", bn, subC);
   auto *mul = F_->createMul("mul", sub, mulC);
@@ -975,7 +975,7 @@ public:
   NodeValue getNodeFromInput(TestSinkTransposeNodesKind testNode, Node *T) {
     switch (testNode) {
     case TestSinkTransposeNodesKind::BatchNormalization: {
-      return F_->createBatchNormalization(bindings_, "batch", T, 3, 0.0001, 0.9)
+      return F_->createBatchNormalization(bindings_, "batch", T, 1, 0.0001, 0.9)
           ->getResult();
     }
     case TestSinkTransposeNodesKind::Relu: {
@@ -6389,6 +6389,44 @@ TEST_F(GraphOptz, foldMinMaxToClipTest) {
   checkNumericalEquivalence();
 }
 
+/// Test that Min -> Max Fold pass does not break with a reshape LHS input.
+TEST_F(GraphOptz, foldMinMaxToClipReshapeNoBroadcastTest) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 100},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  auto *reshape = F_->createReshape("reshape", input, {100, 1});
+  const TypeRef T = reshape->getResult().getType();
+
+  auto *maxSplat = F_->createSplat("max_splat", T, -2);
+  auto *minSplat = F_->createSplat("min_splat", T, 5);
+  auto *max = F_->createMax("max", reshape, maxSplat);
+  auto *min = F_->createMin("min", max, minSplat);
+  SaveNode *save = F_->createSave("save", min);
+  bindings_.allocate(save->getPlaceholder());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::FoldMinMaxToClip, getDCEPassConfig()});
+
+  EXPECT_EQ(3, optimizedF_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MinNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MaxNodeKind));
+
+  save = llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName("save_save"));
+  ASSERT_TRUE(save);
+  auto *CN = llvm::dyn_cast<ClipNode>(save->getInput().getNode());
+  ASSERT_TRUE(CN);
+  EXPECT_EQ(-2, CN->getMin());
+  EXPECT_EQ(5, CN->getMax());
+  auto *RN = llvm::dyn_cast<ReshapeNode>(CN->getInput());
+  ASSERT_TRUE(RN);
+  EXPECT_TRUE(RN->getResult().getType()->isEqual(T));
+  EXPECT_EQ(RN->getInput(), input->getOutput());
+
+  checkNumericalEquivalence();
+}
+
 /// Check that we replace a Node with 0.f scale in fp16 with a splat correctly.
 TEST_F(GraphOptz, ReplaceZeroScaleFP16QuantOpt) {
   auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {20, 30}, "LHS", false);
@@ -6575,4 +6613,38 @@ TEST_F(GraphOptz, TestUpdateQuantReluTypes) {
   EXPECT_NE(reluRange.first, fcRange.first);
   EXPECT_EQ(reluRange.first, 0);
   EXPECT_EQ(reluRange.second, fcRange.second);
+}
+
+TEST_F(GraphOptz, TestUpdateQuantReluTypesChained) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 0.11, -1,
+                                       "input", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::Int8QTy, {32, 32}, 0.2, 3,
+                                         "weights", false);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::Int32QTy, {32}, 0.01, 2, "bias", false);
+  auto *addW =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {128}, 0.3, -4, "addw", false);
+
+  auto *fc = F_->createFullyConnected("fc", input, weights, bias);
+  auto *qRelu = F_->createRELU("relu", fc->getResult());
+  auto *qConcat = F_->createConcat("concat", {qRelu, qRelu}, 0);
+  auto *qReshape = F_->createReshape("reshape", qConcat, {128});
+  auto *qAdd = F_->createAdd("add", qReshape, addW);
+  F_->createSave("save", qAdd);
+
+  updateQuantReluTypes(F_);
+
+  const auto fcRange = fc->getResult().getType()->getQuantizedValueRange();
+  const auto reluRange = qRelu->getResult().getType()->getQuantizedValueRange();
+  EXPECT_NE(reluRange.first, fcRange.first);
+  EXPECT_EQ(reluRange.first, 0);
+  EXPECT_EQ(reluRange.second, fcRange.second);
+
+  // Check that the relu's type now also matches that of the chain of shape
+  // users after it.
+  const TypeRef qReluTy = qRelu->getResult().getType();
+  EXPECT_EQ(qReluTy->getScale(), qConcat->getResult().getType()->getScale());
+  EXPECT_EQ(qReluTy->getOffset(), qConcat->getResult().getType()->getOffset());
+  EXPECT_EQ(qReluTy->getScale(), qReshape->getResult().getType()->getScale());
+  EXPECT_EQ(qReluTy->getOffset(), qReshape->getResult().getType()->getOffset());
 }

@@ -143,6 +143,10 @@ class ONNXModelLoader
   Error loadAcos(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
 
+  /// Load Erf ONNX operator
+  Error loadErf(const ONNX_NAMESPACE::NodeProto &op,
+                const ArgumentDictionaryTy &dict);
+
   Error loadAtan(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
 

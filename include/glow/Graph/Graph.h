@@ -891,11 +891,10 @@ public:
                    unsigned_t axis, llvm::ArrayRef<dim_t> split,
                    std::vector<SliceNode *> &outputs);
 
-  BatchNormalizationNode *
-  createBatchNormalization(llvm::StringRef name, NodeValue input,
-                           NodeValue beta, NodeValue scale, NodeValue mean,
-                           NodeValue var, unsigned_t channelIdx = 0,
-                           float epsilon = 1e-5, float momentum = 0.9);
+  BatchNormalizationNode *createBatchNormalization(
+      llvm::StringRef name, TypeRef resType, NodeValue input, NodeValue beta,
+      NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx = 0,
+      float epsilon = 1e-5, float momentum = 0.9);
 
   /// Creates and \returns a LayerNormalizationNode that computes the layer
   /// normalization of the inner most layers of \p input based on the shape of
@@ -945,6 +944,7 @@ public:
   UNARY_ARITHMETIC_FUN_DECL(Reciprocal)
   UNARY_ARITHMETIC_FUN_DECL(Sin)
   UNARY_ARITHMETIC_FUN_DECL(Cos)
+  UNARY_ARITHMETIC_FUN_DECL(Erf)
 #undef UNARY_ARITHMETIC_FUN_DECL
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -1044,6 +1044,7 @@ public:
   /// automatically for multi directional broadcast.
   DECLARE_CMP_BROADCAST_NODE(CmpLT)
   DECLARE_CMP_BROADCAST_NODE(CmpEQ)
+  DECLARE_CMP_BROADCAST_NODE(CmpNEQ)
   DECLARE_CMP_BROADCAST_NODE(CmpLTE)
   DECLARE_CMP_BROADCAST_NODE(Min)
   DECLARE_CMP_BROADCAST_NODE(Max)
@@ -1483,12 +1484,6 @@ public:
   /// Assumes input layout to be NHWC. \returns the last node in the sequence.
   ReshapeNode *createDepthToSpace(llvm::StringRef name, NodeValue input,
                                   unsigned blockSize, bool isCRD = false);
-
-  /// Given \p input tensor, \returns an upsampled tensor which has
-  /// doubled the size of dimensions N, N-1, N-2...N-numLeadingDims,
-  /// copying the nearest pixel value to the new locations.
-  ReshapeNode *createUpsample(llvm::StringRef name, NodeValue input,
-                              dim_t numLeadingDims);
 
   /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
   /// or depth, H is the height and W is the width, and \p scale tensor with

@@ -997,6 +997,223 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
   }
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchNormalizationFloatImpl(
+    const BatchNormalizationInst *I, int numDims) {
+  staticAssertFloatingPointType(ElemTy);
+
+  // input
+  auto inH = getWeightHandle<ElemTy>(I->getSrc());
+  auto scaleH = getWeightHandle<ElemTy>(I->getScale());
+  auto biasH = getWeightHandle<ElemTy>(I->getBias());
+  auto meanH = getWeightHandle<ElemTy>(I->getMean());
+  auto varH = getWeightHandle<ElemTy>(I->getVar());
+  unsigned_t channelIdx =
+      I->getChannelIdx(); // NOTE: We only support NTHWC, NHWC and NHC
+  float epsilon = I->getEpsilon();
+
+  // output
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  dim_t N, C, sizeN, sizeImg;
+  bool isCMinor;
+  if (numDims == 3) {
+    if (channelIdx == 4) {
+      ShapeNTHWC idim(I->getSrc()->dims());
+      N = idim.n;
+      C = idim.c;
+      sizeImg = idim.t * idim.h * idim.w;
+      sizeN = idim.c * sizeImg;
+      isCMinor = true;
+    } else {
+      ShapeNCTHW idim(I->getSrc()->dims());
+      N = idim.n;
+      C = idim.c;
+      sizeImg = idim.t * idim.h * idim.w;
+      sizeN = idim.c * sizeImg;
+      isCMinor = false;
+    }
+  } else if (numDims == 2) {
+    if (channelIdx == 3) {
+      ShapeNHWC idim(I->getSrc()->dims());
+      N = idim.n;
+      C = idim.c;
+      sizeImg = idim.h * idim.w;
+      sizeN = idim.c * sizeImg;
+      isCMinor = true;
+    } else {
+      ShapeNCHW idim(I->getSrc()->dims());
+      N = idim.n;
+      C = idim.c;
+      sizeImg = idim.h * idim.w;
+      sizeN = idim.c * sizeImg;
+      isCMinor = false;
+    }
+  } else {
+    // numDims == 1. This can happen due to UnitTests that test BatchNorm after
+    // Reshape
+    N = I->getSrc()->dims()[0];
+    C = I->getSrc()->dims()[2];
+    sizeImg = I->getSrc()->dims()[1];
+    sizeN = C * sizeImg;
+    isCMinor = (channelIdx == 2);
+  }
+
+  std::vector<float> scale(C), mean(C), bias(C);
+  for (dim_t c = 0; c < C; c++) {
+    scale[c] = float(scaleH.at({c})) / std::sqrt(float(varH.at({c})) + epsilon);
+    bias[c] = biasH.at({c});
+    mean[c] = meanH.at({c});
+  }
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < N; n++) {
+    if (isCMinor) {
+      // For each H*W{*T} of the image
+      for (dim_t i = 0; i < sizeImg; i++) {
+        // For each channel
+        for (dim_t c = 0; c < C; c++) {
+          int index = n * sizeN + i * C + c;
+          outW.raw(index) =
+              ElemTy(scale[c] * (float(inH.raw(index)) - mean[c]) + bias[c]);
+        } // C
+      }   // image
+    } else {
+      // For each channel
+      for (dim_t c = 0; c < C; c++) {
+        // For each H*W{*T} of the image
+        for (dim_t i = 0; i < sizeImg; i++) {
+          int index = n * sizeN + c * sizeImg + i;
+          outW.raw(index) =
+              ElemTy(scale[c] * (float(inH.raw(index)) - mean[c]) + bias[c]);
+        } // image
+      }   // C
+    }
+  } // N
+}
+
+template <typename ParamTy>
+void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
+    const BatchNormalizationInst *I, int numDims) {
+
+  // input
+  auto inH = getWeightHandle<int8_t>(I->getSrc());
+  auto scaleH = getWeightHandle<ParamTy>(I->getScale());
+  auto biasH = getWeightHandle<ParamTy>(I->getBias());
+  auto meanH = getWeightHandle<ParamTy>(I->getMean());
+  auto varH = getWeightHandle<ParamTy>(I->getVar());
+  unsigned_t channelIdx =
+      I->getChannelIdx(); // NOTE: We only support NTHWC, NHWC and NHC
+  float epsilon = I->getEpsilon();
+  auto inScale = float(I->getSrc()->getType()->getScale());
+  auto inZero = int8_t(I->getSrc()->getType()->getOffset());
+
+  // output
+  auto outH = getWeightHandle<int8_t>(I->getDest());
+  auto outScale = float(I->getDest()->getType()->getScale());
+  auto outZero = int8_t(I->getDest()->getType()->getOffset());
+
+  dim_t N, C, sizeN, sizeImg;
+  bool isCMinor;
+  if (numDims == 3) {
+    if (channelIdx == 4) {
+      ShapeNTHWC idim(I->getSrc()->dims());
+      N = idim.n;
+      C = idim.c;
+      sizeImg = idim.t * idim.h * idim.w;
+      sizeN = idim.c * sizeImg;
+      isCMinor = true;
+
+    } else {
+      ShapeNCTHW idim(I->getSrc()->dims());
+      N = idim.n;
+      C = idim.c;
+      sizeImg = idim.t * idim.h * idim.w;
+      sizeN = idim.c * sizeImg;
+      isCMinor = false;
+    }
+  } else if (numDims == 2) {
+    if (channelIdx == 3) {
+      ShapeNHWC idim(I->getSrc()->dims());
+      N = idim.n;
+      C = idim.c;
+      sizeImg = idim.h * idim.w;
+      sizeN = idim.c * sizeImg;
+      isCMinor = true;
+
+    } else {
+      ShapeNCHW idim(I->getSrc()->dims());
+      N = idim.n;
+      C = idim.c;
+      sizeImg = idim.h * idim.w;
+      sizeN = idim.c * sizeImg;
+      isCMinor = false;
+    }
+
+  } else {
+    // numDims == 1. This can happen due to UnitTests that test BatchNorm after
+    // Reshape
+    N = I->getSrc()->dims()[0];
+    C = I->getSrc()->dims()[2];
+    sizeImg = I->getSrc()->dims()[1];
+    sizeN = C * sizeImg;
+    isCMinor = (channelIdx == 2);
+  }
+
+  std::vector<ParamTy> alpha(C), beta(C);
+  for (dim_t c = 0; c < C; c++) {
+    float invSigma = 1 / std::sqrt(float(varH.at({c})) + epsilon);
+    alpha[c] = ParamTy(invSigma * float(scaleH.at({c})) * (inScale / outScale));
+    beta[c] = ParamTy((float(biasH.at({c})) - float(meanH.at({c})) * invSigma *
+                                                  float(scaleH.at({c}))) /
+                      outScale);
+  }
+
+  auto round32 = [](ParamTy val) { return int32_t(std::round(float(val))); };
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < N; n++) {
+    if (isCMinor) {
+      // For each H*W{*T} of the image
+      for (dim_t i = 0; i < sizeImg; i++) {
+        // For each channel
+        for (dim_t c = 0; c < C; c++) {
+          int index = n * sizeN + i * C + c;
+          ParamTy x = inH.raw(index) - inZero;
+          ParamTy y = alpha[c] * x + beta[c];
+          outH.raw(index) = quantization::clip<int32_t, int8_t>(
+              round32(y + ParamTy(outZero)));
+        } // image
+      }   // C
+    } else {
+      // For each channel
+      for (dim_t c = 0; c < C; c++) {
+        // For each H*W{*T} of the image
+        for (dim_t i = 0; i < sizeImg; i++) {
+          int index = n * sizeN + c * sizeImg + i;
+          auto x = ParamTy(inH.raw(index) - inZero);
+          ParamTy y = alpha[c] * x + beta[c];
+          outH.raw(index) = quantization::clip<int32_t, int8_t>(
+              round32(y + ParamTy(outZero)));
+        } // image
+      }   // C
+    }
+  } // N
+}
+
+void BoundInterpreterFunction::fwdBatchNormalizationInst(
+    const BatchNormalizationInst *I) {
+  int numDims = I->getSrc()->dims().size() - 2;
+  bool isQuantized = I->getSrc()->getType()->isQuantizedType();
+
+  if (isQuantized) {
+    fwdBatchNormalizationI8Impl<float16_t>(I, numDims);
+  } else {
+    dispatchFloatingPointImpl(fwdBatchNormalizationFloatImpl,
+                              I->getSrc()->getElementType(), I, numDims);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//
@@ -1028,8 +1245,12 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
         sdim_t y = -sdim_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
+          // When the MaxPool window includes only padding pixels then for that
+          // window by convention we return 0.
           bool first = true;
-          T max_value = 0;
+          T max_value = outW->getType().isQuantizedType()
+                            ? static_cast<T>(outW->getType().getOffset())
+                            : static_cast<T>(0);
           dim_t argmaxNHWC = 0;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1146,8 +1367,11 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
               sum += float(inW.at({n, (dim_t)ox, (dim_t)oy, z}));
             }
           }
-          assert(filterArea != 0 && "filterArea can't be 0");
-          outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
+          if (filterArea == 0) {
+            outW.at({n, ax, ay, z}) = ElemTy(0);
+          } else {
+            outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
+          }
         } // W
       }   // H
     }     // C
@@ -1202,11 +1426,16 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
               sum += inW.at({n, (dim_t)ox, (dim_t)oy, z}) - inQP.offset;
             }
           }
-          assert(filterArea != 0 && "filterArea can't be 0");
-          // Instead of dividing by filterArea, just change scale.
-          outW.at({n, ax, ay, z}) = quantization::clip<int32_t, int8_t>(
-              std::round(float(sum) * (inQP.scale / outQP.scale / filterArea) +
-                         outQP.offset));
+          if (filterArea == 0) {
+            outW.at({n, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(outQP.offset);
+          } else {
+            // Instead of dividing by filterArea, just change scale.
+            outW.at({n, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(std::round(
+                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
+                    outQP.offset));
+          }
         } // W
       }   // H
     }     // C
@@ -2407,18 +2636,37 @@ void BoundInterpreterFunction::fwdResizeNearestInstImpl(
   auto scale = I->getScale();
   auto outW = getWeightHandle<ElemTy>(I->getDest());
 
-  ShapeNHWC odim(outW.dims());
-  ShapeNHWC idim(inW.dims());
+  auto outputDims = outW.dims();
+  auto inputDims = inW.dims();
 
-  for (dim_t ob = 0; ob < odim.n; ++ob) {
-    auto ib = std::min(dim_t(ob / scale[0]), idim.n - 1);
-    for (dim_t oh = 0; oh < odim.h; ++oh) {
-      auto ih = std::min(dim_t(oh / scale[1]), idim.h - 1);
-      for (dim_t ow = 0; ow < odim.w; ++ow) {
-        auto iw = std::min(dim_t(ow / scale[2]), idim.w - 1);
-        for (dim_t oc = 0; oc < odim.c; ++oc) {
-          auto ic = std::min(dim_t(oc / scale[3]), idim.c - 1);
-          outW.at({ob, oh, ow, oc}) = inW.at({ib, ih, iw, ic});
+  for (dim_t oa = 0; oa < outputDims[0]; ++oa) {
+    auto ia = std::min(dim_t(oa / scale[0]), inputDims[0] - 1);
+    for (dim_t ob = 0; ob < outputDims[1]; ++ob) {
+      auto ib = std::min(dim_t(ob / scale[1]), inputDims[1] - 1);
+      for (dim_t oc = 0; oc < outputDims[2]; ++oc) {
+        auto ic = std::min(dim_t(oc / scale[2]), inputDims[2] - 1);
+        if (outputDims.size() > 3) {
+          for (dim_t od = 0; od < outputDims[3]; ++od) {
+            auto id = std::min(dim_t(od / scale[3]), inputDims[3] - 1);
+            if (outputDims.size() > 4) {
+              for (dim_t oe = 0; oe < outputDims[4]; ++oe) {
+                auto ie = std::min(dim_t(oe / scale[4]), inputDims[4] - 1);
+                if (outputDims.size() > 5) {
+                  for (dim_t of = 0; of < outputDims[4]; ++of) {
+                    auto f = std::min(dim_t(of / scale[5]), inputDims[5] - 1);
+                    outW.at({oa, ob, oc, od, oe, of}) =
+                        inW.at({ia, ib, ic, id, ie, f});
+                  }
+                } else {
+                  outW.at({oa, ob, oc, od, oe}) = inW.at({ia, ib, ic, id, ie});
+                }
+              }
+            } else {
+              outW.at({oa, ob, oc, od}) = inW.at({ia, ib, ic, id});
+            }
+          }
+        } else {
+          outW.at({oa, ob, oc}) = inW.at({ia, ib, ic});
         }
       }
     }
@@ -3051,6 +3299,11 @@ void BoundInterpreterFunction::fwdElementSinInst(const ElementSinInst *I) {
 
 void BoundInterpreterFunction::fwdElementCosInst(const ElementCosInst *I) {
   auto func = [](float x) -> float { return std::cos(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementErfInst(const ElementErfInst *I) {
+  auto func = [](float x) -> float { return std::erf(x); };
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
 }
 

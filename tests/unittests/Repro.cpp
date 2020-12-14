@@ -523,7 +523,12 @@ int run() {
         glow::flags::SparseNNPartitioningSchemeNumCoresOther;
   }
 
-#ifdef GLOW_WITH_NNPI
+  if (!glow::flags::processBackendSpecificOpts(
+          cctx.backendOpts.backendSpecificOpts,
+          glow::flags::BackendSpecificOpts)) {
+    return -1;
+  }
+
   if (glow::nnpi::flags::NumParallelChunks > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
         std::to_string(glow::nnpi::flags::NumParallelChunks);
@@ -532,8 +537,6 @@ int run() {
     cctx.backendOpts.backendSpecificOpts["NNPIModelParallelSplitAlignment"] =
         std::to_string(glow::nnpi::flags::ModelParallelSplitAlignment);
   }
-#endif
-
   if (glow::flags::UseDAGOptimizer) {
     cctx.callDAGOptimizer = true;
     cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
@@ -543,7 +546,6 @@ int run() {
     cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
         glow::flags::DAGOptimizerPlacementTaggingAlgorithm;
   }
-
   if (glow::flags::DelayAndRecordConstantModification) {
     cctx.optimizationOpts.delayAndRecordConstantModification = true;
   }

@@ -13,6 +13,8 @@
 #include "glow/Support/Support.h"
 
 DEFINE_string(shapeInferenceOpBlocklist, "", "Ops to skip shape inference");
+DEFINE_int32(max_feature_length, -1, "max feature length");
+DEFINE_int32(max_batch_size, -1, "max batch size");
 
 namespace glow {
 
@@ -98,6 +100,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   if (symbol == "glow::fused_stack") {
     int64_t dim = node->i(at::attr::dim);
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fusedStack(inputMetas, dim));
+  } else if (symbol == "glow::fused_split") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorListOutput, fusedSplit(inputMetas));
   } else if (symbol == "quantized::embedding_bag_byte_rowwise_offsets") {
     ASSIGN_VALUE_OR_RETURN_ERR(
         tensorOutput, quantizedEmbeddingBagByteRowwiseOffsets(inputMetas));
@@ -109,6 +113,14 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
                                glowUnpackedQuantizedLinear(inputMetas));
   } else if (symbol == "fb::lengths_to_offsets") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsToOffsets(inputMetas));
+  } else if (symbol == "fb::simple_embedding_bag_sum") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, embeddingBag(inputMetas));
+  } else if (symbol == "fb::glow_embedding_bag") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, glowEmbeddingBag(inputMetas));
+  } else if (symbol == "fb::fast_gather") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fastGather(inputMetas));
+  } else if (symbol == "fb::lengths_range") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsRange(inputMetas));
   } else {
     switch (kind) {
     case c10::prim::Constant: {
@@ -127,7 +139,9 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     case c10::aten::sub:
     case c10::aten::pow:
     case c10::aten::mul:
-    case c10::aten::add: {
+    case c10::aten::add:
+    case c10::aten::div:
+    case c10::aten::rsub: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, binaryOp(inputMetas));
       break;
     }
@@ -203,6 +217,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, to(inputMetas));
       break;
     }
+    case c10::aten::sum: {
+      ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, sum(inputMetas));
+      break;
+    }
     case c10::prim::dtype: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, primDtype(inputMetas));
       break;
@@ -261,7 +279,12 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       shapeMap_[node->output()].intValue = std::move(tensorListOutput.shape[0]);
       shapeMap_[node->output()].dtype = tensorListOutput.dtype;
     }
-  } else if (kind == c10::aten::embedding_bag) {
+  } else if (symbol == "fb::glow_embedding_bag") {
+    shapeMap_[node->output()].listOfShape.emplace_back(
+        std::move(tensorOutput.shapeOrIntValues));
+    shapeMap_[node->output()].dtype = tensorOutput.dtype;
+  } else if (kind == c10::aten::embedding_bag ||
+             symbol == "fb::simple_embedding_bag_sum") {
     shapeMap_[node->output(0)].listOfShape.emplace_back(
         std::move(tensorOutput.shapeOrIntValues));
     shapeMap_[node->output(0)].dtype = tensorOutput.dtype;
@@ -428,6 +451,7 @@ Error ShapeInferenceEngine::generateGraphOutputShape() {
 /// Float(1:1) = prim::Constant[value={0}]()
 /// bool = prim::Constant[value=0]()
 /// None = prim::Constant()
+/// int[] = prim::Constant[value=[1,2,3]]()
 /// Tensor = prim::Constant[value= <Tensor>]()
 /// If the output is a tensor, return shape info and dtype;
 /// Else, return the value and dtype.
@@ -458,8 +482,15 @@ ShapeInferenceEngine::primConstant(const torch::jit::Node *node) {
       shapeOrValue.emplace_back(s);
     }
     dtype = t.scalar_type();
+  } else if (type->isSubtypeOf(at::ListType::ofInts())) {
+    dtype = c10::ScalarType::Int;
+    shapeOrValue = node->ival(at::attr::value).toIntVector();
+  } else if (type->isSubtypeOf(at::StringType::get())) {
+    shapeOrValue = {1};
+    dtype = c10::ScalarType::Char;
   } else {
-    return MAKE_ERR("Type not supported.");
+    LOG(ERROR) << "Got " << *type;
+    return MAKE_ERR("Type not supported");
   }
   TensorOutput output;
   output.shapeOrIntValues = shapeOrValue;
@@ -644,6 +675,37 @@ Expected<TensorOutput> ShapeInferenceEngine::t(const MetaStack &variableMetas) {
   } else {
     return MAKE_ERR(strFormat("Expected tensor <= 2-D, got %zu-D.", d0));
   }
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::sum(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 4,
+      strFormat("Expected Four input, got %zu.", variableMetas.size()));
+  // TODO: @hwwang T80910607 Only support None dtype (4th argument)
+  RETURN_ERR_IF_NOT(variableMetas[3].intValue.size() == 0 and
+                        variableMetas[3].dtype == c10::ScalarType::Undefined,
+                    "Only support 4th arugment of aten::sum operator is None");
+  const auto &t0 = variableMetas[0].shape<TensorShape>();
+  auto dims = variableMetas[1].intValue;
+  bool include_dim = variableMetas[2].intValue[0];
+
+  TensorShape shape;
+  for (int i = 0; i < t0.size(); i++) {
+    if (std::find(dims.begin(), dims.end(), i) != dims.end()) {
+      if (include_dim) {
+        shape.push_back(1);
+      } else {
+        continue;
+      }
+    } else {
+      shape.push_back(t0[i]);
+    }
+  }
+  TensorOutput output;
+  output.dtype = variableMetas[0].dtype;
+  output.shapeOrIntValues = shape;
+  return output;
 }
 
 /**
@@ -1074,6 +1136,42 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
 }
 
 /**
+ * glow::fused_split(Tensor input, int num_splits, int dim) -> Tensor[]
+ */
+Expected<TensorListOutput>
+ShapeInferenceEngine::fusedSplit(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected Three input, got %zu.", variableMetas.size()));
+  int64_t numSplit = variableMetas[1].intValue[0];
+  int64_t dim = variableMetas[2].intValue[0];
+
+  const auto &inputTensorShape = variableMetas[0].shape<TensorShape>();
+
+  /// Convert dim into positive
+  int64_t inDimSize = inputTensorShape.size();
+  dim = at::maybe_wrap_dim(dim, inDimSize);
+
+  RETURN_ERR_IF_NOT(
+      inputTensorShape[dim] % numSplit == 0,
+      strFormat("Expected dimension size could be evenly "
+                "divieded by numSplit, got dimSize %long and numSplit %long",
+                inputTensorShape[dim], numSplit));
+
+  RETURN_ERR_IF_NOT(numSplit > 0,
+                    strFormat("Expected numSplit is larger than 0"));
+
+  TensorShape elementShape = inputTensorShape;
+  elementShape[dim] = inputTensorShape[dim] / numSplit;
+  TensorListShape resShapes(numSplit, elementShape);
+
+  TensorListOutput output;
+  output.dtype = variableMetas[0].dtype;
+  output.shape = resShapes;
+  return output;
+}
+
+/**
  * aten::_embedding_bag(Tensor weight,
  *                      Tensor indices,
  *                      Tensor offsets,
@@ -1111,6 +1209,49 @@ ShapeInferenceEngine::embeddingBag(const MetaStack &variableMetas) {
   } else {
     return MAKE_ERR("Only support 1D and 2D Input in Embedding bag.");
   }
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = c10::ScalarType::Float;
+  return output;
+}
+
+/**
+ * fb::glow_embedding_bag(Tensor indices,
+ *                        Tensor offsets,
+ *                        string? weight_qualname=None,
+ *                        int num_embeddings,
+ *                        int embedding_dim,
+ *                        Tensor? per_sample_weights=None,
+ *                        bool include_last_offset=True)
+ *                        -> Tensor
+ */
+/// In glow, the include_last_offset is always True.
+Expected<TensorOutput>
+ShapeInferenceEngine::glowEmbeddingBag(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 7,
+      strFormat("Expected 7 inputs, got %zu.", variableMetas.size()));
+
+  TensorShape shape;
+
+  const auto &indicesShape = variableMetas[0].shape<TensorShape>();
+
+  const auto &offsetSahpe = variableMetas[1].shape<TensorShape>();
+
+  int64_t embeddingDim = variableMetas[4].intValue[0];
+
+  RETURN_ERR_IF_NOT(
+      indicesShape.size() == 1,
+      strFormat("Expected 1D input, got %zu.", indicesShape.size()));
+
+  RETURN_ERR_IF_NOT(
+      offsetSahpe.size() == 1,
+      strFormat("Expected 1D offset, got %zu.", offsetSahpe.size()));
+
+  shape = {offsetSahpe[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+           embeddingDim};
 
   TensorOutput output;
   output.shapeOrIntValues = shape;
@@ -1376,6 +1517,63 @@ ShapeInferenceEngine::primDtype(const MetaStack &variableMetas) {
   TensorOutput output;
   output.shapeOrIntValues = {dtype};
   output.dtype = c10::ScalarType::Int;
+  return output;
+}
+
+/*
+ * fb::fast_gather(Tensor input, Tensor indices) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 input, got %zu.", variableMetas.size()));
+
+  const auto &t0 = variableMetas[0].shape<TensorShape>();
+  const auto &t1 = variableMetas[1].shape<TensorShape>();
+
+  // suppose t0 = [d1, d2, ..., dm], t1 = [D1, D2, ..., Dn]
+  // the result shape will be [D1, D2, ..., Dn, d2, ..., dm]
+  TensorShape shape = t1;
+  for (int i = 1; i < t0.size(); i++) {
+    shape.emplace_back(t0[i]);
+  }
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * fb::lengths_range(Tensor input, int[]? shape) -> Int,
+ * e.g. max_feature_length = 200, max_batch_size = 32
+ * input: [2, 3]
+ * original output: [0, 1, 0, 1, 2]
+ * output after update: [0, 1, ..., 200, ] * 32
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 inputs, got %zu.", variableMetas.size()));
+  RETURN_ERR_IF_NOT(
+      FLAGS_max_batch_size > 0,
+      strFormat("Expected max_batch_size > 0, got %d.", FLAGS_max_batch_size));
+  RETURN_ERR_IF_NOT(FLAGS_max_batch_size >=
+                        variableMetas[0].shape<TensorShape>()[0],
+                    strFormat("Expected max_batch_size > input tensor length, "
+                              "got max_batch_size %d, input tensor length %zu.",
+                              FLAGS_max_batch_size,
+                              variableMetas[0].shape<TensorShape>()[0]));
+  RETURN_ERR_IF_NOT(FLAGS_max_feature_length > 0,
+                    strFormat("Expected max_feature_length > 0, got %d.",
+                              FLAGS_max_feature_length));
+
+  TensorOutput output;
+  output.shapeOrIntValues = {FLAGS_max_batch_size * FLAGS_max_feature_length};
+  output.dtype = variableMetas[0].dtype;
   return output;
 }
 } // namespace glow

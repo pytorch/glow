@@ -538,27 +538,16 @@ Error applyFuserSettingsToPyTorchLoaderSettings(
   return Error::success();
 }
 
-/// Implementation of to_backend compile method for Glow. \returns a map from
-/// function name in the preprocessed module to the CachingGraphRunner or
-/// JITGraphRunner depending on settings for each method or if an
-/// error occurs then returns and Error which is converted to an exception for
-/// handling within PyTorch.
-static Expected<std::unordered_map<
-    std::string, std::pair<std::unique_ptr<CachingGraphRunner>,
-                           std::unique_ptr<JITGraphRunner>>>>
-compileImpl(const torch::jit::Module &origModule,
-            const c10::impl::GenericDict &method_compile_spec) {
-
-  std::unordered_map<std::string, std::pair<std::unique_ptr<CachingGraphRunner>,
-                                            std::unique_ptr<JITGraphRunner>>>
-      methodToRunnerMap;
-  std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
-      nameToOrigGraph;
-
+// Runs preprocessing flow on the JIT graph.
+// Returns the processed and frozen module or Error.
+static Expected<torch::jit::Module> preprocessImpl(
+    const torch::jit::Module &origModule,
+    const std::vector<std::string> &methodNames,
+    std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
+        &nameToOrigGraph) {
   // Check input and outputs types of each method and inline and remove profiled
   // shapes (this must happen before other optimizations)
-  for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
+  for (const auto &methodName : methodNames) {
     auto method = origModule.get_method(methodName);
     auto graph = method.graph();
 
@@ -584,8 +573,7 @@ compileImpl(const torch::jit::Module &origModule,
   }
 
   // JIT graph optimizations before freezing
-  for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
+  for (const auto &methodName : methodNames) {
     auto method = origModule.get_method(methodName);
     auto graph = method.graph();
 
@@ -597,8 +585,7 @@ compileImpl(const torch::jit::Module &origModule,
   auto frozenModule = torch::jit::freeze_module(origModule);
 
   // Cleanup JIT graphs
-  for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
+  for (const auto &methodName : methodNames) {
     auto method = frozenModule.get_method(methodName);
     auto graph = method.graph();
 
@@ -612,8 +599,39 @@ compileImpl(const torch::jit::Module &origModule,
     // EliminateDeadCode should be last
     EliminateDeadCode(graph);
   }
+  return frozenModule;
+}
 
-  auto compileModule = frozenModule.clone();
+/// Implementation of to_backend compile method for Glow. \returns a map from
+/// function name in the preprocessed module to the CachingGraphRunner or
+/// JITGraphRunner depending on settings for each method or if an
+/// error occurs then returns and Error which is converted to an exception for
+/// handling within PyTorch.
+static Expected<std::unordered_map<
+    std::string, std::pair<std::unique_ptr<CachingGraphRunner>,
+                           std::unique_ptr<JITGraphRunner>>>>
+compileImpl(const torch::jit::Module &origModule,
+            const c10::impl::GenericDict &method_compile_spec) {
+
+  std::unordered_map<std::string, std::pair<std::unique_ptr<CachingGraphRunner>,
+                                            std::unique_ptr<JITGraphRunner>>>
+      methodToRunnerMap;
+  std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
+      nameToOrigGraph;
+
+  std::vector<std::string> methodNames;
+  for (const auto &kv : method_compile_spec) {
+    methodNames.push_back(kv.key().toStringRef());
+  }
+  auto frozenModuleOrErr =
+      preprocessImpl(origModule, methodNames, nameToOrigGraph);
+  if (!frozenModuleOrErr) {
+    auto err = frozenModuleOrErr.takeError();
+    err = checkForFatalError(std::move(err));
+    throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+  }
+
+  auto compileModule = frozenModuleOrErr.get().clone();
   // Compile each method
   for (const auto &kv : method_compile_spec) {
     const auto methodName = kv.key().toString()->string();
@@ -823,4 +841,52 @@ int JITGraphRunner::countFusionNodes() {
   }
   return count;
 }
+
+/*static*/
+void TorchGlowBackend::preview(torch::jit::Module mod) {
+  std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
+      nameToOrigGraph;
+
+  std::vector<std::string> methodNames;
+  for (const auto &method : mod.get_methods()) {
+    methodNames.push_back(method.name());
+  }
+  auto frozenModuleOrErr = preprocessImpl(mod, methodNames, nameToOrigGraph);
+  if (!frozenModuleOrErr) {
+    auto err = frozenModuleOrErr.takeError();
+    err = checkForFatalError(std::move(err));
+    throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+  }
+  for (const auto &method : mod.get_methods()) {
+    auto graph = method.graph();
+    std::unordered_set<torch::jit::NodeKind> supportedKinds;
+    std::unordered_set<torch::jit::NodeKind> unsupportedKinds;
+    for (auto node : graph->nodes()) {
+      auto nk = node->kind();
+      if (supportedKinds.count(nk) == 0) {
+        if (PyTorchModelLoader::isNodeSupported(node)) {
+          supportedKinds.emplace(nk);
+        } else if (unsupportedKinds.count(nk) == 0) {
+          unsupportedKinds.emplace(nk);
+        }
+      }
+    }
+    // Print findings
+    std::cout << "=== Glow lowering preview ===" << std::endl;
+
+    if (unsupportedKinds.size() == 0) {
+      std::cout << "No unsupported nodes detected." << std::endl;
+    } else {
+      std::cout << "Unsupported Nodes:" << std::endl;
+      for (auto nk : unsupportedKinds) {
+        std::cout << nk.toQualString() << std::endl;
+      }
+    }
+    std::cout << "Supported Nodes:" << std::endl;
+    for (auto nk : supportedKinds) {
+      std::cout << nk.toQualString() << std::endl;
+    }
+  }
+}
+
 } // namespace glow

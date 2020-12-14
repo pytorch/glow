@@ -137,6 +137,8 @@ private:
   static Expected<TensorOutput> addmm(const MetaStack &variableMetas);
   // Shape inference for aten::t
   static Expected<TensorOutput> t(const MetaStack &variableMetas);
+  // Shape inference for aten::sum
+  static Expected<TensorOutput> sum(const MetaStack &variableMetas);
   // Shape inference for prim::ConstantChunk
   static Expected<TensorListOutput>
   constantChunk(const MetaStack &variableMetas, int64_t chunks, int64_t dim);
@@ -161,6 +163,8 @@ private:
   // Shape inference for glow::fused_stack
   static Expected<TensorOutput> fusedStack(const MetaStack &variableMetas,
                                            int64_t dim);
+  // Shape inference for glow::fused_split
+  static Expected<TensorListOutput> fusedSplit(const MetaStack &variableMetas);
   // Shape inference for quantized::embedding_bag_byte_rowwise_offsets
   static Expected<TensorOutput>
   quantizedEmbeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
@@ -172,6 +176,9 @@ private:
   glowUnpackedQuantizedLinear(const MetaStack &variableMetas);
   // Shape inference for aten::embedding_bag
   static Expected<TensorOutput> embeddingBag(const MetaStack &variableMetas);
+  // Shape inference for fb::glowEmbedding_bag
+  static Expected<TensorOutput>
+  glowEmbeddingBag(const MetaStack &variableMetas);
   // Shape inference for aten::chuck
   static Expected<TensorListOutput> chunk(const MetaStack &variableMetas);
   // Shape inference for aten::stack
@@ -185,6 +192,10 @@ private:
   lengthsToOffsets(const MetaStack &variableMetas);
   // Shape inference for prim::dtype
   static Expected<TensorOutput> primDtype(const MetaStack &variableMetas);
+  // Shape inference for fb::fast_gather
+  static Expected<TensorOutput> fastGather(const MetaStack &variableMetas);
+  // Shape inference for fb::lengths_range
+  static Expected<TensorOutput> lengthsRange(const MetaStack &variableMetas);
 };
 
 } // namespace glow

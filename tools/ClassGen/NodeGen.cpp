@@ -254,7 +254,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "ChannelIdx")
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs batch normalization on the Input tensor with the "
                     "provided Scale, Bias, Mean, Var, ChannelIdx, Epsilon, and "
@@ -573,6 +573,12 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs an element-wise Arctan(x) of the Input operand.");
+
+  BB.newNode("Erf")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Erf(x) of the Input operand.");
 
   BB.newNode("Exp")
       .addInput("Input")
@@ -1102,8 +1108,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorFloat, "Scale")
       .addResultFromCtorArg()
       .setDocstring(
-          "Given Input tensor of [N,H,W,C], where N is the batch, C is the "
-          "channel or depth, H is the height and W is the width, Generates an "
+          "Given Input tensor of 3D, 4D, 5D or 6D, generates an "
           "Output tensor with resized spatial dimensions using nearest "
           "neighbor interpolation. The Output tensor is of shape "
           "floor(input_dimension * scale)");

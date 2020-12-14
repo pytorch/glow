@@ -19,12 +19,16 @@
 
 #include "PyTorchCommon.h"
 
+#include "FuseKnownPatterns.h"
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 #include "Registration.h"
 #include "ShapeInferenceEngine.h"
 
+#include "glow/Flags/Flags.h"
+
 #include "torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h"
+#include <torch/csrc/jit/passes/freeze_module.h>
 #include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/runtime/graph_executor.h>
@@ -279,20 +283,8 @@ void PyTorchLoaderSettings::initSettings() {
     }
   }
 
-  if (!FLAGS_backendSpecificOpts.empty()) {
-    llvm::StringRef opts(FLAGS_backendSpecificOpts);
-    llvm::SmallVector<llvm::StringRef, 4> splitOpts;
-    opts.split(splitOpts, ',');
-
-    for (const llvm::StringRef &opt : splitOpts) {
-      LOG(INFO) << "Adding backend specific option: " << opt.str();
-      auto keyValPair = opt.split('=');
-      if (keyValPair.second.empty()) {
-        LOG(ERROR) << "No '=' found in backend-specific opt " << opt.str();
-      }
-      backendSpecificOpts.emplace(keyValPair.first, keyValPair.second);
-    }
-  }
+  glow::flags::processBackendSpecificOpts(backendSpecificOpts,
+                                          FLAGS_backendSpecificOpts);
 }
 
 PyTorchLoaderSettings::PyTorchLoaderSettings() { initSettings(); }
@@ -500,6 +492,16 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   }
 }
 
+// Preprocess jit module to prepare for lowering. Here we leverage JIT freeze
+// API to cleanup the IR after IR rewrites.
+void modelPreprocessing(torch::jit::Module &model) {
+  auto graph = model.get_method("forward").function().graph();
+
+  torch::jit::CanonicalizeOps(graph);
+  detail::rewriteQuantizedLinear(graph);
+  model = torch::jit::freeze_module(model);
+}
+
 // Similar to glowAOTFusion() however supports multiple Glow subgraphs and
 // runners. We'd still need both since in some cases we may not be able to infer
 // the entire model and would leverage glowAOTFusion() to run the partially
@@ -508,12 +510,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
                                      const InputMetaStack &metaStack,
                                      runtime::DeferredWeightLoader *loader,
                                      const PyTorchLoaderSettings &settings) {
-
   auto graph = model.get_method("forward").function().graph();
-
-  // fuse ListUnpack and Chunk into ConstantChunk. Put it here to work around
-  // some JIT serialization/deserialization problem.
-  torch::jit::CanonicalizeOps(graph);
 
   // create some fake inputs to run shape inference.
   // Usually users provide one set of inputs for the entire
@@ -611,6 +608,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    const PyTorchLoaderSettings &settings) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
+  modelPreprocessing(model);
+
   if (FLAGS_inferShapeForCompilation) {
     return glowAOTFusionWithShapeInference(model, metaStack, loader, settings);
   }
@@ -618,10 +617,6 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
   // We assume the model is flattened and only one graph will be lowered. In the
   // future we may need to support multiple graphs.
   auto graph = model.get_method("forward").function().graph();
-
-  // fuse ListUnpack and Chunk into ConstantChunk. Put it here to work around
-  // some JIT serialization/deserialization problem.
-  torch::jit::CanonicalizeOps(graph);
 
   c10::Symbol symbol = glow::getGlowSymbol(graph);
   glow::registerGlowOp(symbol);

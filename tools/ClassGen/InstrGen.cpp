@@ -139,6 +139,21 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
+  BB.newInstr("BatchNormalization")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Scale", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addOperand("Mean", OperandKind::In)
+      .addOperand("Var", OperandKind::In)
+      .addMember(MemberType::Unsigned, "ChannelIdx")
+      .addMember(MemberType::Float, "Epsilon")
+      .addMember(MemberType::Float, "Momentum")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .setType("Dest->getType()");
+
   // MaxPool version caching Argmax flattened coordinates. It is both used by
   // itself, and also to restore XY coordinates to speedup gradient-based
   // computations.
@@ -784,6 +799,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen("Atan");
+
+  BB.newInstr("ElementErf")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Erf");
 
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)

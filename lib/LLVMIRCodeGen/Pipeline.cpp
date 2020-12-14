@@ -175,6 +175,18 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
   llvm::legacy::FunctionPassManager FPM(M);
   llvm::legacy::PassManager PM;
 
+  // Add an appropriate TargetLibraryInfo pass for the module's triple.
+  llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M->getTargetTriple()));
+  // Disable optimizations of some builtin functions. They cause issues on some
+  // targets.
+  llvm::LibFunc libFunc;
+  if (TLII.getLibFunc(llvm::StringRef("printf"), libFunc)) {
+    TLII.setUnavailable(libFunc);
+  }
+
+  auto *TLIWP = new llvm::TargetLibraryInfoWrapperPass(TLII);
+  PM.add(TLIWP);
+
   // Add internal analysis passes from the target machine.
   PM.add(createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
   FPM.add(createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));

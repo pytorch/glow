@@ -698,7 +698,12 @@ TEST_F(OnnxImporterTest, importCos) {
                           [](float a) { return std::cos(a); });
 }
 
-TEST_F(OnnxImporterTest, importAbs) {
+TEST_F(OnnxImporterTest, importErf) {
+  testEltwiseUnaryOpFloat("Erf.onnxtxt", {1, 3, 4, 5}, "input", 0.002,
+                          [](float a) { return std::erf(a); });
+}
+
+TEST(onnx, importAbs) {
   testEltwiseUnaryOpFloat("abs.onnxtxt", {1, 2, 3, 2}, "input", 0.002,
                           [](float a) { return std::abs(a); });
 }
@@ -4488,12 +4493,10 @@ static void importResizeNearest(std::string filename) {
   auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
-  ASSERT_EQ(4, F->getNodes().size());
+  ASSERT_EQ(2, F->getNodes().size());
 
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *TR = llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(TR);
-  auto *RN = llvm::dyn_cast<ResizeNearestNode>(TR->getInput());
+  auto *RN = llvm::dyn_cast<ResizeNearestNode>(saveNode->getInput());
   ASSERT_TRUE(RN);
 
   auto result = res->getHandle();
