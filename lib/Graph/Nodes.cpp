@@ -85,7 +85,7 @@ Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 
 std::string Constant::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
+  db.addParam("name", quote(getName().str()))
       .addParam("layout", getLayout())
       .addParam("output", *getType());
   if (!skipUsers) {
@@ -96,7 +96,7 @@ std::string Constant::getDebugDesc(bool skipUsers) const {
 
 std::string Placeholder::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
+  db.addParam("name", quote(getName().str()))
       .addParam("layout", getLayout())
       .addParam("output", *getType())
       .addParam("trainable", isTraining())

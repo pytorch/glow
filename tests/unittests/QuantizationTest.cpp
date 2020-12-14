@@ -709,7 +709,7 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
   quantization::QuantizationConfiguration quantConfig{{
       {input->getOutput().generateNodeOutputName(), {-1.0, 1.0}},
       {newReshape->getResult().generateNodeOutputName(), {-1.0, 1.0}},
-      {NodeValue::generateNodeOutputName(SN->getName()), {-1.0, 1.0}},
+      {NodeValue::generateNodeOutputName(SN->getName().str()), {-1.0, 1.0}},
   }};
 
   quantConfig.assertAllNodesQuantized = true;
@@ -1189,7 +1189,8 @@ TEST(Quantization, quantizeLookupTables) {
 
   quantization::QuantizationConfiguration quantConfig{
       {{input->getOutput().generateNodeOutputName(), {0.2f, 2.0f}},
-       {LN->getResult().generateNodeOutputName(LN->getName()), {0.3f, 3.0f}},
+       {LN->getResult().generateNodeOutputName(LN->getName().str()),
+        {0.3f, 3.0f}},
        {SN->getResult().generateNodeOutputName(), {0.4f, 4.0f}},
        {TN->getResult().generateNodeOutputName(), {0.5f, 5.0f}}}};
   quantConfig.assertAllNodesQuantized = true;
@@ -1928,9 +1929,11 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
 
   quantization::QuantizationConfiguration quantConfig{
       {{input->getOutput().generateNodeOutputName(), {0.2f, 2.0f}},
-       {LRN->getResult().generateNodeOutputName(LRN->getName()), {0.3f, 3.0f}},
-       {SM->getResult().generateNodeOutputName(SM->getName()), {0.4f, 4.0f}},
-       {NodeValue::generateNodeOutputName(SN->getName()), {0.4f, 4.0f}}}};
+       {LRN->getResult().generateNodeOutputName(LRN->getName().str()),
+        {0.3f, 3.0f}},
+       {SM->getResult().generateNodeOutputName(SM->getName().str()),
+        {0.4f, 4.0f}},
+       {NodeValue::generateNodeOutputName(SN->getName().str()), {0.4f, 4.0f}}}};
 
   quantConfig.assertAllNodesQuantized = true;
   quantization::quantizeFunction(F, quantConfig, *backend);
@@ -2034,7 +2037,7 @@ TEST(Quantization, quantizeAvgPool) {
   quantization::QuantizationConfiguration quantConfig{{
       {input->getOutput().generateNodeOutputName(), {-2.0f, 2.0f}},
       {pool->getResult().generateNodeOutputName(), {0.3f, 3.0f}},
-      {NodeValue::generateNodeOutputName(s->getName()), {0.4f, 4.0f}},
+      {NodeValue::generateNodeOutputName(s->getName().str()), {0.4f, 4.0f}},
   }};
 
   quantConfig.assertAllNodesQuantized = true;
