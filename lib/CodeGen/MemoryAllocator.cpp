@@ -558,6 +558,25 @@ static uint64_t allocateAllWithStrategy(
   return usedSizeMax;
 }
 
+void MemoryAllocator::mapHandlesToIds(
+    const std::list<Allocation> &allocList,
+    std::unordered_map<Handle, size_t> &handleToIdMap,
+    std::vector<Handle> &idToHandleMap) {
+  size_t buffNum = allocList.size() / 2;
+  handleToIdMap.clear();
+  idToHandleMap = std::vector<Handle>(buffNum);
+  size_t id = 0;
+  for (const auto &alloc : allocList) {
+    // We only map the Handles of ALLOCs.
+    if (alloc.alloc_) {
+      handleToIdMap[alloc.handle_] = id;
+      idToHandleMap[id] = alloc.handle_;
+      id++;
+    }
+  }
+  assert(id == buffNum && "Inconsistent Handle to ID mapping!");
+}
+
 uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
 
   // Reset memory allocator object.
@@ -581,19 +600,8 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   // makes the algorithm implementation easier/faster by using IDs as vector
   // indices.
   std::unordered_map<Handle, size_t> handleToIdMap;
-  std::vector<Handle> idToHandleMap(buffNum);
-  {
-    size_t id = 0;
-    for (const auto &alloc : allocList) {
-      // We only map the Handles of ALLOCs.
-      if (alloc.alloc_) {
-        idToHandleMap[id] = alloc.handle_;
-        handleToIdMap[alloc.handle_] = id;
-        id++;
-      }
-    }
-    assert(id == buffNum && "Inconsistent Handle to ID mapping!");
-  }
+  std::vector<Handle> idToHandleMap;
+  mapHandlesToIds(allocList, handleToIdMap, idToHandleMap);
 
   // -----------------------------------------------------------------------
   // Get overall information about all the buffers.

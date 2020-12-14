@@ -248,6 +248,15 @@ private:
   /// Function to verify the segments allocated with \ref allocateAll.
   /// \returns true if segments are valid and false otherwise.
   bool verifySegments(const std::list<Allocation> &allocList) const;
+
+  /// Utility function to map the handles used in the allocations \p allocList
+  /// to consecutive unique IDs between 0 and numSegments - 1. The function
+  /// returns the handle to ID map \p handleToIdMap and the ID to handle
+  /// map as a vector \p idToHandleMap. This mapping makes the algorithm used
+  /// in \ref allocateAll easier/faster.
+  void mapHandlesToIds(const std::list<Allocation> &allocList,
+                       std::unordered_map<Handle, size_t> &handleToIdMap,
+                       std::vector<Handle> &idToHandleMap);
 };
 
 } // namespace glow
