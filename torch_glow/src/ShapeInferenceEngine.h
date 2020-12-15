@@ -200,6 +200,13 @@ private:
   static Expected<TensorOutput> fastGather(const MetaStack &variableMetas);
   // Shape inference for fb::lengths_range
   static Expected<TensorOutput> lengthsRange(const MetaStack &variableMetas);
+  // Shape inference for aten::quantize_per_tensor
+  static Expected<TensorOutput>
+  quantizePerTensor(const MetaStack &variableMetas);
+  // Shape inference for aten::dequantize
+  static Expected<TensorOutput> dequantize(const MetaStack &variableMetas);
+  // Shape inference for quantized::mul
+  static Expected<TensorOutput> quantizedMul(const MetaStack &variableMetas);
 };
 
 } // namespace glow

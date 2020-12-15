@@ -129,6 +129,12 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fastGather(inputMetas));
   } else if (symbol == "fb::lengths_range") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsRange(inputMetas));
+  } else if (symbol == "aten::quantize_per_tensor") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, quantizePerTensor(inputMetas));
+  } else if (symbol == "aten::dequantize") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, dequantize(inputMetas));
+  } else if (symbol == "quantized::mul") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, quantizedMul(inputMetas));
   } else {
     switch (kind) {
     case c10::prim::Constant: {
@@ -1667,4 +1673,60 @@ ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
   output.dtype = variableMetas[0].dtype;
   return output;
 }
+/*
+ * quantize_per_tensor(Tensor self, float scale, int zero_point, ScalarType
+ * dtype) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::quantizePerTensor(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 4,
+      strFormat("Expected 4 inputs, got %zu.", variableMetas.size()));
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  const int convertedTypeValue = variableMetas[3].intValue[0];
+  TensorOutput output;
+  output.shapeOrIntValues = inputShape;
+  output.dtype = static_cast<c10::ScalarType>(convertedTypeValue);
+  return output;
+}
+
+/*
+ * aten::dequantize(Tensor qtensor) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::dequantize(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 1,
+      strFormat("Expected 1 inputs, got %zu.", variableMetas.size()));
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  TensorOutput output;
+  output.shapeOrIntValues = inputShape;
+  output.dtype = c10::ScalarType::Float;
+  return output;
+}
+
+/*
+ * quantized::mul(%a_quant, %b_quant, %scale, %zero_point) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::quantizedMul(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 4,
+      strFormat("Expected 4 inputs, got %zu.", variableMetas.size()));
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  const auto &weightShape = variableMetas[1].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(inputShape.size() > 0,
+                    "Expected input shape size is larger than 0");
+  RETURN_ERR_IF_NOT(weightShape.size() == 2,
+                    "Expected weight is two dimensional tension");
+  RETURN_ERR_IF_NOT(
+      inputShape.back() == weightShape[1],
+      "Expected the last dimension matches between input and weight");
+  TensorOutput output;
+  output.shapeOrIntValues = inputShape;
+  output.shapeOrIntValues.back() = weightShape[0];
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
 } // namespace glow
