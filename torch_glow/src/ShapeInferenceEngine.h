@@ -145,6 +145,8 @@ private:
   // Shape inference for prim::FusedConcat
   static Expected<TensorOutput> fusedConcat(const MetaStack &variableMetas,
                                             int64_t dim);
+  static Expected<TensorOutput>
+  fusedBroadcastConcat(const MetaStack &variableMetas, int64_t dim);
   // Shape inference for prim::ListConstruct
   static Expected<TensorListOutput>
   listConstruct(const MetaStack &variableMetas);
@@ -163,6 +165,8 @@ private:
   // Shape inference for glow::fused_stack
   static Expected<TensorOutput> fusedStack(const MetaStack &variableMetas,
                                            int64_t dim);
+  static Expected<TensorOutput>
+  fusedBroadcastStack(const MetaStack &variableMetas, int64_t dim);
   // Shape inference for glow::fused_split
   static Expected<TensorListOutput> fusedSplit(const MetaStack &variableMetas);
   // Shape inference for quantized::embedding_bag_byte_rowwise_offsets

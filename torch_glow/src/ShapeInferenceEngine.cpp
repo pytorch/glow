@@ -100,6 +100,14 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   if (symbol == "glow::fused_stack") {
     int64_t dim = node->i(at::attr::dim);
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fusedStack(inputMetas, dim));
+  } else if (symbol == "glow::fused_broadcast_stack") {
+    int64_t dim = node->i(at::attr::dim);
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput,
+                               fusedBroadcastStack(inputMetas, dim));
+  } else if (symbol == "glow::fused_broadcast_cat") {
+    int64_t dim = node->i(at::attr::dim);
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput,
+                               fusedBroadcastConcat(inputMetas, dim));
   } else if (symbol == "glow::fused_split") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorListOutput, fusedSplit(inputMetas));
   } else if (symbol == "quantized::embedding_bag_byte_rowwise_offsets") {
@@ -878,6 +886,17 @@ ShapeInferenceEngine::constantChunk(const MetaStack &variableMetas,
   return output;
 }
 
+static inline c10::ScalarType promote_skip_undefined(c10::ScalarType a,
+                                                     c10::ScalarType b) {
+  if (a == c10::ScalarType::Undefined) {
+    return b;
+  }
+  if (b == c10::ScalarType::Undefined) {
+    return a;
+  }
+  return c10::promoteTypes(a, b);
+}
+
 /**
  * prim::FusedConcat[int dim](Tensor self, Tensor mat1, Tensor mat2, ...) ->
  * Tensor variableMetas: 0: self, 1: mat1, 2: mat2, ...
@@ -919,6 +938,43 @@ ShapeInferenceEngine::fusedConcat(const MetaStack &variableMetas, int64_t dim) {
     }
   }
   output.shapeOrIntValues = shape;
+  return output;
+}
+
+/**
+ * prim::FusedBroadcastConcat[int dim](Tensor self, Tensor mat1, Tensor mat2,
+ * ...) -> Tensor variableMetas: 0: self, 1: mat1, 2: mat2, ...
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::fusedBroadcastConcat(const MetaStack &variableMetas,
+                                           int64_t dim) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() >= 1,
+      strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
+
+  TensorOutput output;
+  output.shapeOrIntValues = variableMetas[0].shape<TensorShape>();
+  output.dtype = variableMetas[0].dtype;
+  if (variableMetas.size() == 1) {
+    return output;
+  }
+
+  /// Convert negtive dimension to positive, then check the dim range.
+  int64_t inDims = output.shapeOrIntValues.size();
+  dim = at::maybe_wrap_dim(dim, inDims);
+
+  /// Handle multiple inputs cases
+  for (int i = 1; i < variableMetas.size(); ++i) {
+    const TensorShape &s = variableMetas[i].shape<TensorShape>();
+    output.dtype = promote_skip_undefined(output.dtype, variableMetas[i].dtype);
+    for (int j = 0; j < inDims; j++) {
+      if (j == dim) {
+        output.shapeOrIntValues[j] += s[j];
+      } else if (s[j] != 1) {
+        output.shapeOrIntValues[j] = s[j];
+      }
+    }
+  }
   return output;
 }
 
@@ -1132,6 +1188,41 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
   shape.insert(shape.begin() + dim, variableMetas.size());
 
   output.shapeOrIntValues = shape;
+  return output;
+}
+
+/**
+ * glow::fused_stack[dim=1](Tensor self, Tensor mat1, Tensor mat2, ...)
+ * variableMetas: 0: self, 1: mat1, 2: mat2, ...
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::fusedBroadcastStack(const MetaStack &variableMetas,
+                                          int64_t dim) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() >= 1,
+      strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
+
+  TensorOutput output;
+  output.shapeOrIntValues = variableMetas[0].shape<TensorShape>();
+  output.dtype = variableMetas[0].dtype;
+  if (variableMetas.size() == 1) {
+    return output;
+  }
+
+  int64_t inDims = output.shapeOrIntValues.size();
+
+  /// Handle multiple inputs cases
+  for (int i = 1; i < variableMetas.size(); ++i) {
+    const TensorShape &s = variableMetas[i].shape<TensorShape>();
+    output.dtype = promote_skip_undefined(output.dtype, variableMetas[i].dtype);
+    for (int j = 0; j < inDims; j++) {
+      if (s[j] != 1) {
+        output.shapeOrIntValues[j] = s[j];
+      }
+    }
+  }
+  output.shapeOrIntValues.insert(output.shapeOrIntValues.begin() + dim,
+                                 variableMetas.size());
   return output;
 }
 
