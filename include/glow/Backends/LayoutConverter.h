@@ -37,7 +37,7 @@ convertConvGradToNCHWConvGrad(ConvolutionGradNode *CGN, Function *F) {
   auto *NCGN = F->addNode(new ConvolutionGradNode(
       CGN->getName(), NI, NF, CGN->getBias(), NR, NGR, CGN->getKernels(),
       CGN->getStrides(), CGN->getPads(), CGN->getGroup(), CGN->getDilation(),
-      NCHW, glow::FusedActivation::NONE));
+      NCHW, glow::FusedActivation::NONE, {}));
   auto *NGI = F->createTranspose("convgrad.inputgrad",
                                  NCGN->getGradOfInputNamedInput(), NCHW2NHWC);
   auto *NGF = F->createTranspose("convgrad.inputgrad",
@@ -62,7 +62,7 @@ inline Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
   auto *NC = F->addNode(new ConvolutionNode(
       CN->getName(), outTy, NI, NF, CN->getBias(), CN->getKernels(),
       CN->getStrides(), CN->getPads(), CN->getGroup(), CN->getDilation(), NCHW,
-      CN->getFusedActivation()));
+      CN->getFusedActivation(), CN->getFusedActivationArgs()));
   auto *NR = F->createTranspose("conv.result", NC, NCHW2NHWC);
 
   return NR;

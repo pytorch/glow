@@ -134,6 +134,7 @@ extern unsigned InterpreterMemory;
 extern bool EnableP2P;
 extern bool EnableDRT;
 extern unsigned DeviceInitTimeoutMs;
+extern bool EnableSanitizeInputs;
 } // namespace flags
 } // namespace runtime
 } // namespace glow

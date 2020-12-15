@@ -196,7 +196,7 @@ static void loadInputData(const std::string &file, std::vector<char> &inputData,
   std::ifstream inputFile(file.c_str(), std::ios::binary);
   inputFile.seekg(0, std::ios::end);
 
-  if (inputFile.tellg() != size) {
+  if (inputFile.tellg() != long(size)) {
     llvm::errs() << "Size of " << file << " does not match expected size "
                  << size << "\n";
     exit(1);

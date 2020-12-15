@@ -406,6 +406,12 @@ TEST(exporter, onnxModels) {
         name.find("RangeFloat.onnxtxt") != std::string::npos ||
         name.find("scatterND.onnxtxt") != std::string::npos ||
         name.find("mscatterND.onnxtxt") != std::string::npos ||
+        name.find("loop_cond.onnxtxt") != std::string::npos ||
+        name.find("loop_empty_tripcount.onnxtxt") != std::string::npos ||
+        name.find("loop_emptycond.onnxtxt") != std::string::npos ||
+        name.find("loop_no_iteration.onnxtxt") != std::string::npos ||
+        name.find("loop_tripcount.onnxtxt") != std::string::npos ||
+        name.find("loop_withoutN.onnxtxt") != std::string::npos ||
         name.find("sign.onnxtxt") != std::string::npos ||
         name.find("gatherND.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
@@ -440,6 +446,9 @@ TEST(exporter, onnxModels) {
         name.find("simpleConvTransposeAutoPadSameLower.onnxtxt") !=
             std::string::npos ||
         name.find("convTransposeGroup.onnxtxt") != std::string::npos ||
+        name.find("pow_element_wise.onnxtxt") != std::string::npos ||
+        name.find("pow_array_broadcast.onnxtxt") != std::string::npos ||
+        name.find("pow_scalar_broadcast.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
             std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.
@@ -1047,12 +1056,11 @@ TEST(exporter, VeryLongChain) {
       mod.createPlaceholder(ElemKind::Float16Ty, {1, 6}, "input", false);
 
   Node *cur = input;
-  SaveNode *save0;
   for (dim_t iter = 0; iter < 3000; iter++) {
     auto *mul = F->createMul("mul", cur, cur);
     auto *clip = F->createClip("clip", mul, 0.0, 128.0);
     if (iter == 0) {
-      save0 = F->createSave("save_out0", clip);
+      F->createSave("save_out0", clip);
     }
     cur = (Node *)clip;
   }
@@ -1070,6 +1078,7 @@ TEST(exporter, VeryLongChain) {
   Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
       R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
+  (void)R;
 }
 
 /// Tests that we can serialize and then reload a model with OriginNameToTQPMap
@@ -1114,4 +1123,5 @@ TEST(exporter, TestUniqueOffsetMapSerialization) {
                                /* record */ nullptr, /* reloadCctx */ nullptr,
                                /* backendSpecificNodeInfo */ {},
                                originNameToTQPMap));
+  (void)R;
 }

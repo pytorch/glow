@@ -458,10 +458,73 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     }
   }
 
+  findSLSInputs(F);
+
   // Update device network config.
   devNetConfig_ = parseDeviceNetworkConfig(compilationOptions_);
 
   return Error::success();
+}
+
+void NNPICompiledFunction::findSLSInputs(Function *F) {
+  // Gather all the placeholders of an SLS or EmbeddingBag
+  for (auto const &node : F->getNodes()) {
+    if (auto *SLS =
+            llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+                &node)) {
+      VLOG(1) << SLS->getIndices() << " " << SLS->getWeights() << " "
+              << SLS->getLengths();
+      validateSLSInputs_.emplace_back(
+          /* isEmeddingBag */ false,
+          llvm::dyn_cast<Placeholder>(SLS->getIndices()),
+          llvm::dyn_cast<Placeholder>(SLS->getWeights()),
+          llvm::dyn_cast<Placeholder>(SLS->getLengths()),
+          /* offsets */ nullptr);
+    } else if (auto *SLS =
+                   llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
+                       &node)) {
+      VLOG(1) << SLS->getIndices() << " " << SLS->getLengths();
+      validateSLSInputs_.emplace_back(
+          /* isEmeddingBag */ false,
+          llvm::dyn_cast<Placeholder>(SLS->getIndices()), /* weights */ nullptr,
+          llvm::dyn_cast<Placeholder>(SLS->getLengths()),
+          /* offsets */ nullptr);
+    } else if (auto *SLS = llvm::dyn_cast<SparseLengthsSumNode>(&node)) {
+      VLOG(1) << SLS->getIndices() << " " << SLS->getLengths();
+      validateSLSInputs_.emplace_back(
+          /* isEmeddingBag */ false,
+          llvm::dyn_cast<Placeholder>(SLS->getIndices()),
+          /* weights */ nullptr, llvm::dyn_cast<Placeholder>(SLS->getLengths()),
+          /* offsets */ nullptr);
+    } else if (auto *SLS =
+                   llvm::dyn_cast<SparseLengthsWeightedSumNode>(&node)) {
+      VLOG(1) << SLS->getIndices() << " " << SLS->getWeights() << " "
+              << SLS->getLengths();
+      validateSLSInputs_.emplace_back(
+          /* isEmeddingBag */ false,
+          llvm::dyn_cast<Placeholder>(SLS->getIndices()),
+          llvm::dyn_cast<Placeholder>(SLS->getWeights()),
+          llvm::dyn_cast<Placeholder>(SLS->getLengths()),
+          /* offsets */ nullptr);
+    } else if (auto *EBB = llvm::dyn_cast<EmbeddingBagNode>(&node)) {
+      VLOG(1) << EBB->getIndices() << " " << EBB->getOffsets();
+      validateSLSInputs_.emplace_back(
+          /* isEmeddingBag */ true,
+          llvm::dyn_cast<Placeholder>(EBB->getIndices()),
+          /* weights */ nullptr,
+          /* lengths */ nullptr,
+          llvm::dyn_cast<Placeholder>(EBB->getOffsets()));
+    } else if (auto *EBB =
+                   llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(&node)) {
+      VLOG(1) << EBB->getIndices() << " " << EBB->getWeights() << " "
+              << EBB->getOffsets();
+      validateSLSInputs_.emplace_back(
+          /* isEmeddingBag */ true,
+          llvm::dyn_cast<Placeholder>(EBB->getIndices()),
+          llvm::dyn_cast<Placeholder>(EBB->getWeights()), /* lengths */ nullptr,
+          llvm::dyn_cast<Placeholder>(EBB->getOffsets()));
+    }
+  }
 }
 
 NNPICompiledFunction::NNPICompiledFunction(Function *F)

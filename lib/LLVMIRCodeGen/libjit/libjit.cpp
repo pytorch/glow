@@ -359,7 +359,7 @@ static void libjit_topk(T *values, TI *indices, const T *input, void *scratch,
       // Find the largest value by iterating over the array instead of calling
       // 'sort'.
       value_index<T, TI> mx = {0, input[in]};
-      for (TI i = 1; i < n; i++) {
+      for (TI i = 1; i < TI(n); i++) {
         if (input[i + in] > mx.value) {
           mx = {i, input[i + in]};
         }
@@ -1441,7 +1441,7 @@ void libjit_softmax_grad_generic(T *inG, T *outW, const T2 *selectedW,
                                  const dim_t *idim, const dim_t *selectdim) {
   for (dim_t n = 0; n < idim[0]; n++) {
     for (dim_t i = 0; i < idim[1]; i++) {
-      float delta = (selectedW[libjit_getXY(selectdim, n, 0)] == i);
+      float delta = (selectedW[libjit_getXY(selectdim, n, 0)] == T2(i));
       inG[libjit_getXY(idim, n, i)] = outW[libjit_getXY(idim, n, i)] - delta;
     }
   }
@@ -3294,7 +3294,7 @@ void libjit_fft_complex_f(float *output, float *input,
   if (inPlace) {
     for (dim_t idx = 0; idx < fftLength; idx++) {
       int32_t bitRevIdx = bitReverseIndices[idx];
-      if (idx < bitRevIdx) {
+      if (int32_t(idx) < bitRevIdx) {
         // Swap complex pair.
         float real = input[2 * idx + 0];
         float imag = input[2 * idx + 1];

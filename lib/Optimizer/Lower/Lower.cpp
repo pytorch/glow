@@ -1044,9 +1044,13 @@ static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
         {(groupId + 1) * outCperG, kdim.height, kdim.width, inCperG});
     auto *bias_slice = F->createSlice(BNG.getName(), bias, {groupId * outCperG},
                                       {(groupId + 1) * outCperG});
-    convs.push_back(F->createConv(BNG.getName(), in_slice, filter_slice,
-                                  bias_slice, outTy, kernels, strides, pads, 1,
-                                  BNG.getDilation()));
+
+    auto *conv =
+        F->createConv(BNG.getName(), in_slice, filter_slice, bias_slice, outTy,
+                      kernels, strides, pads, 1, BNG.getDilation());
+    conv->setFusedActivation(BNG.getFusedActivation());
+    conv->setFusedActivationArgs(BNG.getFusedActivationArgs());
+    convs.push_back(conv);
   }
   auto *result = F->createConcat(BNG.getName(), convs, 3);
   replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getResult(), result);
@@ -1483,7 +1487,7 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
       sdim_t ot = t + ft;
       VLOG(5) << "t: " << t << "\tat: " << at << "\tft: " << ft
               << "\tot: " << ot << std::endl;
-      if ((ot < 0) || (ot >= is.t)) {
+      if ((ot < 0) || (ot >= sdim_t(is.t))) {
         continue;
       }
       auto *slicedInput = F->createSlice(
@@ -1781,7 +1785,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(Broadcast);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
-    if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
+    if (CN->getGroup() > 1) {
       lowerGroupConvolutionNode(F, cctx, *CN);
       return true;
     }

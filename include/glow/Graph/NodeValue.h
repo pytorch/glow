@@ -139,7 +139,8 @@ public:
 struct NodeNameAndKind : public Named, public Kinded {
 public:
   NodeNameAndKind(llvm::StringRef name, size_t resNo, Kinded::Kind k)
-      : Named(NodeValue::generateNodeOutputName(name, resNo)), Kinded(k) {}
+      : Named(NodeValue::generateNodeOutputName(name.str(), resNo)), Kinded(k) {
+  }
 };
 
 /// Overload < operator for NodeNameAndKind to allow for usage with std::set.

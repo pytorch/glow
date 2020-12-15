@@ -601,7 +601,7 @@ int run() {
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedOutputs;
   size_t inputGroupSize = inputsOpt.size();
   if (inputGroupSize) {
-    for (int i = 0; i < inputGroupSize; ++i) {
+    for (size_t i = 0; i < inputGroupSize; ++i) {
       llvm::outs() << "Loading input file: " << inputsOpt[i] << "\n";
       auto inputGroup = parseOnnxFile(inputsOpt[i]);
       parsedInputs.push_back(std::move(inputGroup));
@@ -812,8 +812,8 @@ int run() {
               assert(tensor->size() == tensorRef.size());
               auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
               auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
-              assert(sortedResults.size() == topKCompare &&
-                     sortedResults.size() == topKCompare);
+              assert(sortedResults.size() == size_t(topKCompare) &&
+                     sortedResults.size() == size_t(topKCompare));
 
               bool allKMatch = true;
               std::stringstream ss;

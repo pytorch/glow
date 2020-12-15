@@ -2483,7 +2483,7 @@ TEST_P(OperatorTest, PyTorchLSTMFP16) {
                           0.9704, 0.9758, 0.9866, 0.9890, 0.9910, 0.9926,
                           0.9940, 0.9951, 0.9959, 0.9967, 0.9982, 0.9985,
                           0.9988, 0.9990, 0.9992, 0.9993, 0.9995, 0.9996};
-  for (int i = 0; i < numSteps * minibatchSize * hiddenSize; i++) {
+  for (unsigned_t i = 0; i < numSteps * minibatchSize * hiddenSize; i++) {
     EXPECT_NEAR(saveH.raw(i), expectOutput[i], 2E-3);
   }
 }
@@ -12332,6 +12332,111 @@ TEST_P(OperatorTest, NonSquareStrideConvolution) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
 }
 
+/// Create a Conv2D network with an activation.
+template <FusedActivation ActType>
+static FunctionTensorPair
+createAndInitConv2DWithActivation(glow::PlaceholderBindings &bindings,
+                                  glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Conv2D parameters.
+  std::vector<dim_t> inputDims = {1, 8, 9, 1};
+  std::vector<dim_t> filterDims = {1, 2, 3, 1};
+  std::vector<dim_t> biasDims = {1};
+  std::vector<dim_t> outputDims = {1, 11, 10, 1};
+  std::vector<unsigned_t> kernels = {2, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {2, 1, 3, 4};
+  unsigned_t group = 1;
+  std::vector<unsigned_t> dilation = {2, 2};
+
+  // Create input placeholder.
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  // Create filter constant.
+  auto *filter = mod.createConstant(ElemKind::FloatTy, filterDims, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod.getPRNG());
+  // Create bias constant.
+  auto *bias = mod.createConstant(ElemKind::FloatTy, biasDims, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  // Create Conv2D.
+  auto *outTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
+  ConvolutionNode *conv =
+      F->createConv("conv", input, filter, bias, outTy, kernels, strides, pads,
+                    group, dilation);
+  // Create activation.
+  NodeValue act;
+  if (ActType == FusedActivation::RELU) {
+    act = F->createRELU("relu", conv);
+  } else if (ActType == FusedActivation::CLIP) {
+    act = F->createClip("clip", conv, 0.0, 1.0);
+  } else if (ActType == FusedActivation::TANH) {
+    act = F->createTanh("tanh", conv);
+  } else if (ActType == FusedActivation::SIGMOID) {
+    act = F->createSigmoid("sigmoid", conv);
+  } else if (ActType == FusedActivation::LEAKY_RELU) {
+    act = F->createLeakyRELU("leakyrelu", conv, 0.1);
+  }
+
+  SaveNode *save = F->createSave("save", act);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+/// Check that Conv2D followed by activation works (whether fused or not).
+/// For this we compare with the Interpreter reference float implementation.
+#define TEST_CONV2D_ACTIVATION(ACTIVATION, TYPE, TOL)                          \
+  TEST_P(OperatorStatelessTest, Conv2D_##ACTIVATION##_##TYPE) {                \
+    ENABLED_BACKENDS("CPU");                                                   \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(),                                                      \
+        createAndInitConv2DWithActivation<FusedActivation::ACTIVATION>,        \
+        ElemKind::FloatTy, ElemKind::TYPE, TOL);                               \
+  }
+
+TEST_CONV2D_ACTIVATION(RELU, FloatTy, 1e-5)
+TEST_CONV2D_ACTIVATION(CLIP, FloatTy, 1e-5)
+TEST_CONV2D_ACTIVATION(TANH, FloatTy, 1e-5)
+TEST_CONV2D_ACTIVATION(SIGMOID, FloatTy, 1e-5)
+TEST_CONV2D_ACTIVATION(LEAKY_RELU, FloatTy, 1e-5)
+
+TEST_CONV2D_ACTIVATION(RELU, Int8QTy, 0.01)
+TEST_CONV2D_ACTIVATION(CLIP, Int8QTy, 0.01)
+TEST_CONV2D_ACTIVATION(TANH, Int8QTy, 0.02)
+TEST_CONV2D_ACTIVATION(SIGMOID, Int8QTy, 0.01)
+TEST_CONV2D_ACTIVATION(LEAKY_RELU, Int8QTy, 0.01)
+
+#undef TEST_CONV2D_ACTIVATION
+
+/// Check that CWQ Conv2D followed by activation works (whether fused or not).
+/// For this we compare with the Interpreter reference float implementation.
+#define TEST_CWQ_CONV2D_ACTIVATION(ACTIVATION, TYPE, TOL)                      \
+  TEST_P(OperatorStatelessTest, CWQConv2D_##ACTIVATION##_##TYPE) {             \
+    ENABLED_BACKENDS("CPU");                                                   \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(),                                                      \
+        createAndInitConv2DWithActivation<FusedActivation::ACTIVATION>,        \
+        ElemKind::FloatTy, ElemKind::TYPE, TOL, parCloneCountOpt,              \
+        /* convertToRowwiseQuantization */ false,                              \
+        quantization::Schema::Asymmetric, /*biasElemKind*/ ElemKind::Int32QTy, \
+        /*forceFP16AccumSLS*/ false,                                           \
+        PrecisionConfiguration::Float16Format::None,                           \
+        /*convertToChannelwiseQuantization*/ true);                            \
+  }
+
+TEST_CWQ_CONV2D_ACTIVATION(RELU, Int8QTy, 0.01)
+TEST_CWQ_CONV2D_ACTIVATION(CLIP, Int8QTy, 0.01)
+TEST_CWQ_CONV2D_ACTIVATION(TANH, Int8QTy, 0.02)
+TEST_CWQ_CONV2D_ACTIVATION(SIGMOID, Int8QTy, 0.015)
+TEST_CWQ_CONV2D_ACTIVATION(LEAKY_RELU, Int8QTy, 0.01)
+
+#undef TEST_CWQ_CONV2D_ACTIVATION
+
 /// Check Non-cubic stride for conv3D.
 TEST_P(OperatorTest, NonCubicStrideConv3D) {
   CHECK_IF_ENABLED();
@@ -13501,15 +13606,15 @@ static void addEmbeddingBagPartialInputs(
     bool hasEndOffset, bool partialInput = false) {
 
   if (hasEndOffset) {
-    Tensor weightsTensorReal(DTy, {10});
-    Tensor indicesTensorReal(ElemKind::Int64ITy, {10});
+    Tensor weightsTensorReal(DTy, {8});
+    Tensor indicesTensorReal(ElemKind::Int64ITy, {8});
     Tensor offsetsTensorReal(ElemKind::Int64ITy, {5});
 
     weightsTensorReal.getHandle<DataType>() = {
-        3, 1, 0, 0, 0, 0, 2, -0.5, 42.0, 42.0,
+        3, 1, 0, 0, 0, 0, 2, -0.5,
     };
     indicesTensorReal.getHandle<int64_t>() = {
-        1, 0, 2, 0, 1, 2, 2, 0, 13, 10,
+        1, 0, 2, 0, 1, 2, 2, 0,
     };
     offsetsTensorReal.getHandle<int64_t>() = {
         0, 3, 3, 6,
@@ -13545,9 +13650,9 @@ static void addEmbeddingBagPartialInputs(
       bindings.insert(indices, indicesTensorPartial.clone());
       bindings.insert(offsets, offsetsTensorPartial.clone());
     } else {
-      weights = mod.createPlaceholder(DTy, {10}, "weights", false);
+      weights = mod.createPlaceholder(DTy, {8}, "weights", false);
       indices =
-          mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indices", false);
+          mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
       offsets =
           mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets", false);
 
@@ -14374,6 +14479,88 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   // the data is still around.
   unownedTensors_.push_back(std::move(indicesReal));
   unownedTensors_.push_back(std::move(lengthsReal));
+}
+
+TEST_P(OperatorTest, RepeatedSLWSWithPartialTensors) {
+  CHECK_IF_ENABLED();
+
+  // This test is only meaningful if the backend supports partial tensors.
+  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+
+  constexpr dim_t embeddingRows = 1275;
+  constexpr dim_t numLengths = 20;
+  constexpr dim_t maxIndices = 20000;
+  constexpr dim_t numIndices = 20; // Must be less than sum(lengths).
+  constexpr dim_t iterations = 33;
+
+  auto *data =
+      mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
+  data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod_.getPRNG());
+  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {maxIndices},
+                                         "indices", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {maxIndices}, "weights", false);
+  auto *lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
+                                         "lengths", false);
+  auto *SLWS = F_->createSparseLengthsWeightedSum("SWLS", data, weights,
+                                                  indices, lengths);
+  auto *save = F_->createSave("save", SLWS);
+  auto *outPH = save->getPlaceholder();
+  EE_.compile(CompilationMode::Infer);
+
+  Tensor indicesReal(ElemKind::Int64ITy, {numIndices});
+  indicesReal.getHandle<int64_t>().randomize(0, embeddingRows - 1,
+                                             mod_.getPRNG());
+  Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
+                        indicesReal.getSizeInBytes());
+  Tensor indicesPadded(indices->getType());
+  indicesPadded.zero();
+  memcpy(indicesPadded.getUnsafePtr(), indicesReal.getUnsafePtr(),
+         numIndices * sizeof(int64_t));
+
+  Tensor weightsReal(ElemKind::FloatTy, {numIndices});
+  weightsReal.getHandle<float>().randomize(0, embeddingRows - 1,
+                                           mod_.getPRNG());
+  Tensor weightsPartial(weightsReal.getUnsafePtr(), weights->getType(),
+                        weightsReal.getSizeInBytes());
+  Tensor weightsPadded(weights->getType());
+  weightsPadded.zero();
+  memcpy(weightsPadded.getUnsafePtr(), weightsReal.getUnsafePtr(),
+         numIndices * sizeof(float));
+
+  Tensor lengthsReal(ElemKind::Int32ITy, {numLengths});
+  lengthsReal.getHandle<int32_t>().clear(1);
+  Tensor lengthsPartial(lengthsReal.getUnsafePtr(), lengths->getType(),
+                        lengthsReal.getSizeInBytes());
+  Tensor lengthsPadded(ElemKind::Int32ITy, {numLengths});
+  lengthsPadded.assign(&lengthsReal);
+
+  bindings_.insert(indices, std::move(indicesPartial));
+  bindings_.insert(weights, std::move(weightsPartial));
+  bindings_.insert(lengths, std::move(lengthsPartial));
+
+  bindings_.allocate(outPH);
+
+  PlaceholderBindings paddedBindings;
+  paddedBindings.insert(indices, std::move(indicesPadded));
+  paddedBindings.insert(weights, std::move(weightsPadded));
+  paddedBindings.insert(lengths, std::move(lengthsPadded));
+
+  paddedBindings.allocate(outPH);
+
+  for (dim_t i = 0; i < iterations; i++) {
+    EE_.run(bindings_);
+    EE_.run(paddedBindings);
+    ASSERT_TRUE(bindings_.get(outPH)->isEqual(*paddedBindings.get(outPH)));
+  }
+
+  // Keep these around so their memory is not freed at the end of the
+  // test/scope. This is so that inside TearDown during import/export testing
+  // the data is still around.
+  unownedTensors_.push_back(std::move(indicesReal));
+  unownedTensors_.push_back(std::move(lengthsReal));
+  unownedTensors_.push_back(std::move(weightsReal));
 }
 
 /// Helper to test gathers using partial inputs using \p ITy.

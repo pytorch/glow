@@ -110,10 +110,8 @@ void ConstantModificationPreventer::activate() {
   cctx_.optimizationOpts.enableConstantFolding = false;
 }
 
-/// Helper that \returns whether all sibling Functions of \p F (other Functions
-/// inside its Module) are Loaded.
-static bool shouldDeleteConstants(Function *F) {
-  Module *mod = F->getParent();
+/// Helper that \returns true if all functions in \p mod are loaded.
+static bool areAllFunctionsLoaded(Module *mod) {
   for (auto *MF : mod->getFunctions()) {
     if (MF->getState() < FunctionState::FuncLoaded) {
       return false;
@@ -222,7 +220,7 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
     return changed;
   }
 
-  if (!shouldDeleteConstants(F)) {
+  if (!areAllFunctionsLoaded(F->getParent())) {
     return changed;
   }
 
@@ -1325,6 +1323,9 @@ bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
                                 CN->getBias(), CN->getResult().getType(),
                                 CN->getKernels(), CN->getStrides(), newConvPads,
                                 CN->getGroup(), CN->getDilation());
+    newCN->setFusedActivation(CN->getFusedActivation());
+    newCN->setFusedActivationArgs(CN->getFusedActivationArgs());
+
     CN->getResult().replaceAllUsesOfWith(newCN);
     changed = true;
   }
@@ -1810,7 +1811,7 @@ static Constant *getUniquelyUsedConstant(Module *M, Node &node) {
     return nullptr;
   }
 
-  if (constant->hasOneUse()) {
+  if (constant->hasOneUse() && areAllFunctionsLoaded(M)) {
     return constant;
   }
 
@@ -2742,7 +2743,7 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
     std::unordered_map<SliceNode *, Node *> oldSlicesToNewNodes;
 
     for (const auto &slicePairs : consecutiveSlices) {
-      auto slicesDim = slicePairs.first;
+      unsigned_t slicesDim = slicePairs.first;
       auto &slices = slicePairs.second;
 
       if (slices.size() <= 1) {
@@ -4321,6 +4322,9 @@ static bool sinkRescaleQuantizedNode(Function *F,
                                     CN->getResult().getType(), CN->getKernels(),
                                     CN->getStrides(), CN->getPads(),
                                     CN->getGroup(), CN->getDilation());
+        newCN->setFusedActivation(CN->getFusedActivation());
+        newCN->setFusedActivationArgs(CN->getFusedActivationArgs());
+
         CN->getResult().replaceAllUsesOfWith(newCN);
         changed = true;
       }
@@ -5137,36 +5141,36 @@ template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
     return false;
   }
 
-  FusedActivation activationType;
   NodeValue activationNV;
   switch (activation->getKind()) {
   case Kinded::Kind::ReluNodeKind:
-    activationType = FusedActivation::RELU;
     activationNV = cast<ReluNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::RELU);
+    break;
+  case Kinded::Kind::ClipNodeKind:
+    activationNV = cast<ClipNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::CLIP);
+    N->setFusedActivationArgs({cast<ClipNode>(activation)->getMin(),
+                               cast<ClipNode>(activation)->getMax()});
     break;
   case Kinded::Kind::SigmoidNodeKind:
-    activationType = FusedActivation::SIGMOID;
     activationNV = cast<SigmoidNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::SIGMOID);
     break;
   case Kinded::Kind::TanhNodeKind:
-    activationType = FusedActivation::TANH;
     activationNV = cast<TanhNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::TANH);
+    break;
+  case Kinded::Kind::LeakyReluNodeKind:
+    activationNV = cast<LeakyReluNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::LEAKY_RELU);
+    N->setFusedActivationArgs({cast<LeakyReluNode>(activation)->getAlpha()});
     break;
   default:
     return false;
   }
 
-  // currently not to support asymmetric quantization fusion.
-  if (N->getResult().getType()->isQuantizedType() &&
-      ((N->getResult().getType()->getOffset() != 0) ||
-       (activationNV.getType()->getOffset() != 0))) {
-    return false;
-  }
-
-  N->setFusedActivation(activationType);
-
-  // In only symmetric case, If Relu outScale is not equal to Conv outScale,
-  // Conv outScale is replaced by Relu outScale.
+  // Modify the node output type to that of the activation.
   if (!(activationNV.getType()->isEqual(N->getResult().getType()))) {
     N->getResult().setType(activationNV.getType());
   }
@@ -5180,6 +5184,11 @@ static bool foldActivations(Function *F, const CompilationContext &cctx,
   bool changed = false;
   for (auto &node : F->getNodes()) {
     if (fuseActivation(dyn_cast<ConvolutionNode>(&node), F, B)) {
+      changed = true;
+      continue;
+    }
+    if (fuseActivation(dyn_cast<ChannelwiseQuantizedConvolutionNode>(&node), F,
+                       B)) {
       changed = true;
       continue;
     }
@@ -5520,7 +5529,7 @@ static void transformIndexTypeDemotion(const Backend &B, Function *F,
   for (auto &n : F->getNodes()) {
     for (int i = 0, nOutputs = n.getNumResults(); i < nOutputs; ++i) {
       if (n.getNthResult(i).getType()->actualSize() >=
-          std::numeric_limits<int32_t>::max()) {
+          size_t(std::numeric_limits<int32_t>::max())) {
         return;
       }
     }

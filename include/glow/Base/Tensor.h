@@ -470,10 +470,12 @@ public:
 
     // If the new size is identical to the allocated size then there is no need
     // to re-allocate the buffer.
-    const bool isOrigPadded = getSizeInBytes() != getUnpaddedSizeInBytes();
-    const bool isNewPadded = T.getSizeInBytes() != unpaddedSize;
-    const bool isBufReuseAllowed = (isOrigPadded == isNewPadded) &&
-                                   (getUnpaddedSizeInBytes() == unpaddedSize);
+    const bool isOrigPadded =
+        getSizeInBytes() != uint64_t(getUnpaddedSizeInBytes());
+    const bool isNewPadded = T.getSizeInBytes() != size_t(unpaddedSize);
+    const bool isBufReuseAllowed =
+        (isOrigPadded == isNewPadded) &&
+        (getUnpaddedSizeInBytes() == size_t(unpaddedSize));
     if (type_ == T && getData() && isBufReuseAllowed) {
 #ifdef GLOW_DEBUG_TENSOR_INIT
       PseudoRNG rng;
