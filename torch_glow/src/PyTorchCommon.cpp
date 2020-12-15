@@ -83,6 +83,7 @@ DEFINE_string(backendSpecificOpts, "",
               "CompilationContext.");
 DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
             "See PyTorchLoaderSettings");
+DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -275,6 +276,7 @@ void PyTorchLoaderSettings::initSettings() {
   enableRemoveMutation = FLAGS_enableRemoveMutation;
   debugContinuouslyVerifyDuringModelLoading =
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
+  nominalBatchIdx = FLAGS_nominalBatchIdx;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);

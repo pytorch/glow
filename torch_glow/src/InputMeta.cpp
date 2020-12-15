@@ -64,6 +64,26 @@ size_t InputMetaStack::hash() const {
   return h;
 }
 
+size_t InputMetaStack::optimizedHash(int32_t nominalBatchIdx) const {
+  size_t batchSize = 0;
+  bool validInput = true;
+  if (nominalBatchIdx < 0 || nominalBatchIdx >= inputMetas.size()) {
+    validInput = false;
+  } else {
+    const auto &inputMeta = inputMetas[nominalBatchIdx];
+    if (inputMeta.dims.size() == 0) {
+      validInput = false;
+    } else {
+      batchSize = inputMeta.dims[0];
+    }
+  }
+  if (validInput && batchSize != 0) {
+    return batchSize;
+  } else { // If input is not valid, fallback to default hash function.
+    return hash();
+  }
+}
+
 Expected<InputMetaStack>
 inputMetaStackFromStack(const c10::ArrayRef<c10::IValue> &inputs,
                         bool ignoreObjects) {
