@@ -439,6 +439,9 @@ TEST(exporter, onnxModels) {
         name.find("simpleConvTransposeAutoPadSameLower.onnxtxt") !=
             std::string::npos ||
         name.find("convTransposeGroup.onnxtxt") != std::string::npos ||
+        name.find("pow_element_wise.onnxtxt") != std::string::npos ||
+        name.find("pow_array_broadcast.onnxtxt") != std::string::npos ||
+        name.find("pow_scalar_broadcast.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
             std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.
