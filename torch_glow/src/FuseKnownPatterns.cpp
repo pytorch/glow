@@ -168,6 +168,7 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
   std::call_once(onceFlag, []() {
     registerDummyOperator("glow::fused_stack");
     registerDummyOperator("glow::fused_broadcast_cat");
+    registerDummyOperator("glow::fused_broadcast_stack");
   });
   auto block = graph->block();
   for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); it++) {
@@ -175,7 +176,8 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
     const auto kind = node->kind();
 
     if (kind != at::aten::cat && kind != at::aten::stack &&
-        ::strcmp(kind.toQualString(), "fb::broadcast_cat") != 0) {
+        ::strcmp(kind.toQualString(), "fb::broadcast_cat") != 0 &&
+        ::strcmp(kind.toQualString(), "fb::broadcast_stack") != 0) {
       continue;
     }
 
@@ -197,8 +199,11 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
       symbolS = "prim::FusedConcat";
     } else if (kind == at::aten::stack) {
       symbolS = "glow::fused_stack";
-    } else {
+    } else if (::strcmp(kind.toQualString(), "fb::broadcast_cat") == 0) {
       symbolS = "glow::fused_broadcast_cat";
+    } else {
+      // kind.toQualString() == "fb::broadcast_stack"
+      symbolS = "glow::fused_broadcast_stack";
     }
 
     auto *fusedNode = graph->create(torch::jit::Symbol::fromQualString(symbolS),

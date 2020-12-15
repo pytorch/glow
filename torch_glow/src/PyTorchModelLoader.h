@@ -93,12 +93,6 @@ public:
   const PyTorchLoaderSettings &settings_;
 
 private:
-  /// Helper function to support upcasting in concat, we calculate the higher
-  /// type among a list of types. For example, the higher type of [half, float,
-  /// half, double] will be double. Similar to at::result_type().
-  Expected<c10::ScalarType> getHigherType(
-      const c10::ArrayRef<const torch::jit::Value *> &values) noexcept;
-
   /// Map from input placeholders to their location on the input stack.
   std::unordered_map<glow::Placeholder *, size_t>
       inputPlaceholdersReverseIndex_;
@@ -569,17 +563,15 @@ private:
   /// \returns error on failure.
   Error loadFusedBroadcastConcat(const torch::jit::Node *ptNode);
 
-  /// Helper function for both \p loadFusedConcat and \p
-  /// loadFusedBroadcastConcat with a flag \p doBroadcast to select whether
-  /// broadcast is enabled for concat.
-  /// \returns error on failure.
-  Error loadFusedConcatHelper(const torch::jit::Node *ptNode,
-                              bool doBroadcast = false);
-
   /// Load a PyTorch prim::stack node fused with a prim::ListConstruct into a
   /// glow:FusedStack node.
   /// \returns error on failure.
   Error loadFusedStack(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch fb::broadcast_stack node fused with a prim::ListConstruct
+  /// into a glow:FusedBroadcastStack node.
+  /// \returns error on failure.
+  Error loadFusedBroadcastStack(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch LSTM node.
   /// \returns error on failure.
