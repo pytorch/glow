@@ -4678,6 +4678,45 @@ TEST_F(OnnxImporterTest, importUpsampleOpset9) {
   importUpsampleTest(netFilename);
 }
 
+static void testIf(std::string filename, float inputVal, float outputVal) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename = std::string(GLOW_DATA_PATH) + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {1});
+    x.getHandle() = {inputVal};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+
+  std::vector<float> expectedValues = {outputVal};
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+TEST(onnx, testIfConstantTrue) {
+  testIf("tests/models/onnxModels/if_true.onnxtxt", 3.0f, 6.0f);
+}
+
+TEST(onnx, testIfConstantFalse) {
+  testIf("tests/models/onnxModels/if_false.onnxtxt", 3.0f, 9.0f);
+}
+
 /// ResizeNearest Test Helper
 static void importResizeNearest(std::string filename) {
   ExecutionEngine EE;

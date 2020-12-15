@@ -4806,6 +4806,50 @@ static Error loadPerNodeOptions(const Node *loadedNode,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadIf(const ONNX_NAMESPACE::NodeProto &op,
+                              const ArgumentDictionaryTy &dict) {
+  Constant *condition = getConstantByNameOrNull(op.input(0));
+  RETURN_ERR_IF_NOT(condition, "Only constant condition is supported!");
+  RETURN_ERR_IF_NOT(condition->getElementType() == ElemKind::BoolTy,
+                    "Condition must be boolean!");
+
+  RETURN_ERR_IF_NOT(dict.count("then_branch"), "Then branch not found!");
+  RETURN_ERR_IF_NOT(dict.count("else_branch"), "Else branch not found!");
+  RETURN_ERR_IF_NOT(dict.at("then_branch")->type() ==
+                        ONNX_NAMESPACE::AttributeProto::GRAPH,
+                    "Only Subgraph branches are supported.");
+  RETURN_ERR_IF_NOT(dict.at("else_branch")->type() ==
+                        ONNX_NAMESPACE::AttributeProto::GRAPH,
+                    "Only Subgraph branches are supported.");
+
+  auto loadSubgraph = [&](ONNX_NAMESPACE::GraphProto &graphDef) -> Error {
+    RETURN_IF_ERR(loadInitializers(graphDef));
+    RETURN_IF_ERR(loadNetwork(graphDef, false));
+    return Error::success();
+  };
+
+  if (condition->getPayload().getHandle<bool>().isZero()) {
+    auto ifFalse = dict.at("else_branch")->g();
+    RETURN_ERR_IF_NOT(ifFalse.output_size() == 1,
+                      "Only single output 'else' subgraph is supported.");
+    RETURN_IF_ERR(loadSubgraph(ifFalse));
+    NodeValue ifFalseVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(ifFalseVal,
+                               getNodeValueByName(ifFalse.output(0).name()));
+    RETURN_IF_ERR(addNodeAsOutput(op, ifFalseVal));
+  } else {
+    auto ifTrue = dict.at("then_branch")->g();
+    RETURN_ERR_IF_NOT(ifTrue.output_size() == 1,
+                      "Only single output 'then' subgraph is supported.");
+    RETURN_IF_ERR(loadSubgraph(ifTrue));
+    NodeValue ifTrueVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(ifTrueVal,
+                               getNodeValueByName(ifTrue.output(0).name()));
+    RETURN_IF_ERR(addNodeAsOutput(op, ifTrueVal));
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -5033,6 +5077,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "ConvTranspose") {
     return loadConvTranspose(op, dict);
+  }
+  if (typeName == "If") {
+    return loadIf(op, dict);
   }
   if (typeName == "AdaptiveAvgPool") {
     return loadAdaptiveAvgPool(op, dict);
