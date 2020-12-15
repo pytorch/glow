@@ -105,6 +105,9 @@ public:
   /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
   bool enableRemoveMutation = true;
 
+  /// Dump statistics about the operators and fusion support in the graph.
+  bool dumpOperatorInventory = false;
+
   /// Number of traces per json trace file dump.
   size_t numTracesPerDump = 1;
 

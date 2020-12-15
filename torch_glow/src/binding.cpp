@@ -269,6 +269,18 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().fusionEndIndex = -1;
   });
 
+  /// Disable dumping statistics about the operators and fusion support in the
+  /// graph.
+  m.def("disable_dump_operator_inventory", []() {
+    getGlobalPyTorchLoaderSettingsMutable().dumpOperatorInventory = false;
+  });
+
+  /// Enable dumping statistics about the operators and fusion support in the
+  /// graph.
+  m.def("enable_dump_operator_inventory", []() {
+    getGlobalPyTorchLoaderSettingsMutable().dumpOperatorInventory = true;
+  });
+
   /// Set the active HostManager to one that owns 1 of type \p backendName.
   m.def("setGlowBackend", [](const std::string &backendName) {
     getGlobalPyTorchLoaderSettingsMutable().backendName = backendName;
