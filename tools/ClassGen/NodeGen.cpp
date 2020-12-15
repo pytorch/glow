@@ -114,6 +114,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::VectorUnsigned, "Dilation")
+      .addFusedActivation()
       .addResultFromCtorArg()
       .setDocstring(
           "Performs 2D Convolution using a given Input, Filter, and "

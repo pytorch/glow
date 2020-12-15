@@ -2926,8 +2926,10 @@ class MockBackendWithFusion : public MockBackend {
     case Kinded::Kind::ConvolutionNodeKind:
       switch (activation->getKind()) {
       case Kinded::Kind::ReluNodeKind:
+      case Kinded::Kind::ClipNodeKind:
       case Kinded::Kind::SigmoidNodeKind:
       case Kinded::Kind::TanhNodeKind:
+      case Kinded::Kind::LeakyReluNodeKind:
         return true;
       default:
         return false;
@@ -2938,13 +2940,13 @@ class MockBackendWithFusion : public MockBackend {
   }
 };
 
-#define CONV_ACTIVATION_TEST(ACTIVATION_, CREATOR_)                            \
+#define CONV_ACTIVATION_TEST(ACTIVATION_, CREATOR_, ...)                       \
   TEST_F(GraphFold, FoldConv##ACTIVATION_##Activation) {                       \
     auto *A =                                                                  \
         mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false); \
     ConvolutionNode *CV =                                                      \
         F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);                  \
-    auto *AN = F_->CREATOR_(#ACTIVATION_, CV);                                 \
+    auto *AN = F_->CREATOR_(__VA_ARGS__);                                      \
     SaveNode *SN = F_->createSave("ret", AN);                                  \
                                                                                \
     EXPECT_EQ(F_->getNodes().size(), 3);                                       \
@@ -2959,9 +2961,11 @@ class MockBackendWithFusion : public MockBackend {
     EXPECT_EQ(fusedCV->getFusedActivation(), FusedActivation::ACTIVATION_);    \
   }
 
-CONV_ACTIVATION_TEST(RELU, createRELU);
-CONV_ACTIVATION_TEST(SIGMOID, createSigmoid);
-CONV_ACTIVATION_TEST(TANH, createTanh);
+CONV_ACTIVATION_TEST(RELU, createRELU, "Relu", CV);
+CONV_ACTIVATION_TEST(CLIP, createClip, "Clip", CV, 0.0, 1.0);
+CONV_ACTIVATION_TEST(SIGMOID, createSigmoid, "Sigmoid", CV);
+CONV_ACTIVATION_TEST(TANH, createTanh, "Tanh", CV);
+CONV_ACTIVATION_TEST(LEAKY_RELU, createLeakyRELU, "LeakyRelu", CV, 1.0);
 
 #undef CONV_ACTIVATION_TEST
 

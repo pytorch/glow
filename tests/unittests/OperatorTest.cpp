@@ -12332,6 +12332,111 @@ TEST_P(OperatorTest, NonSquareStrideConvolution) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
 }
 
+/// Create a Conv2D network with an activation.
+template <FusedActivation ActType>
+static FunctionTensorPair
+createAndInitConv2DWithActivation(glow::PlaceholderBindings &bindings,
+                                  glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Conv2D parameters.
+  std::vector<dim_t> inputDims = {1, 8, 9, 1};
+  std::vector<dim_t> filterDims = {1, 2, 3, 1};
+  std::vector<dim_t> biasDims = {1};
+  std::vector<dim_t> outputDims = {1, 11, 10, 1};
+  std::vector<unsigned_t> kernels = {2, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {2, 1, 3, 4};
+  unsigned_t group = 1;
+  std::vector<unsigned_t> dilation = {2, 2};
+
+  // Create input placeholder.
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  // Create filter constant.
+  auto *filter = mod.createConstant(ElemKind::FloatTy, filterDims, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod.getPRNG());
+  // Create bias constant.
+  auto *bias = mod.createConstant(ElemKind::FloatTy, biasDims, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  // Create Conv2D.
+  auto *outTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
+  ConvolutionNode *conv =
+      F->createConv("conv", input, filter, bias, outTy, kernels, strides, pads,
+                    group, dilation);
+  // Create activation.
+  NodeValue act;
+  if (ActType == FusedActivation::RELU) {
+    act = F->createRELU("relu", conv);
+  } else if (ActType == FusedActivation::CLIP) {
+    act = F->createClip("clip", conv, 0.0, 1.0);
+  } else if (ActType == FusedActivation::TANH) {
+    act = F->createTanh("tanh", conv);
+  } else if (ActType == FusedActivation::SIGMOID) {
+    act = F->createSigmoid("sigmoid", conv);
+  } else if (ActType == FusedActivation::LEAKY_RELU) {
+    act = F->createLeakyRELU("leakyrelu", conv, 0.1);
+  }
+
+  SaveNode *save = F->createSave("save", act);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+/// Check that Conv2D followed by activation works (whether fused or not).
+/// For this we compare with the Interpreter reference float implementation.
+#define TEST_CONV2D_ACTIVATION(ACTIVATION, TYPE, TOL)                          \
+  TEST_P(OperatorStatelessTest, Conv2D_##ACTIVATION##_##TYPE) {                \
+    ENABLED_BACKENDS("CPU");                                                   \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(),                                                      \
+        createAndInitConv2DWithActivation<FusedActivation::ACTIVATION>,        \
+        ElemKind::FloatTy, ElemKind::TYPE, TOL);                               \
+  }
+
+TEST_CONV2D_ACTIVATION(RELU, FloatTy, 1e-5)
+TEST_CONV2D_ACTIVATION(CLIP, FloatTy, 1e-5)
+TEST_CONV2D_ACTIVATION(TANH, FloatTy, 1e-5)
+TEST_CONV2D_ACTIVATION(SIGMOID, FloatTy, 1e-5)
+TEST_CONV2D_ACTIVATION(LEAKY_RELU, FloatTy, 1e-5)
+
+TEST_CONV2D_ACTIVATION(RELU, Int8QTy, 0.01)
+TEST_CONV2D_ACTIVATION(CLIP, Int8QTy, 0.01)
+TEST_CONV2D_ACTIVATION(TANH, Int8QTy, 0.02)
+TEST_CONV2D_ACTIVATION(SIGMOID, Int8QTy, 0.01)
+TEST_CONV2D_ACTIVATION(LEAKY_RELU, Int8QTy, 0.01)
+
+#undef TEST_CONV2D_ACTIVATION
+
+/// Check that CWQ Conv2D followed by activation works (whether fused or not).
+/// For this we compare with the Interpreter reference float implementation.
+#define TEST_CWQ_CONV2D_ACTIVATION(ACTIVATION, TYPE, TOL)                      \
+  TEST_P(OperatorStatelessTest, CWQConv2D_##ACTIVATION##_##TYPE) {             \
+    ENABLED_BACKENDS("CPU");                                                   \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(),                                                      \
+        createAndInitConv2DWithActivation<FusedActivation::ACTIVATION>,        \
+        ElemKind::FloatTy, ElemKind::TYPE, TOL, parCloneCountOpt,              \
+        /* convertToRowwiseQuantization */ false,                              \
+        quantization::Schema::Asymmetric, /*biasElemKind*/ ElemKind::Int32QTy, \
+        /*forceFP16AccumSLS*/ false,                                           \
+        PrecisionConfiguration::Float16Format::None,                           \
+        /*convertToChannelwiseQuantization*/ true);                            \
+  }
+
+TEST_CWQ_CONV2D_ACTIVATION(RELU, Int8QTy, 0.01)
+TEST_CWQ_CONV2D_ACTIVATION(CLIP, Int8QTy, 0.01)
+TEST_CWQ_CONV2D_ACTIVATION(TANH, Int8QTy, 0.02)
+TEST_CWQ_CONV2D_ACTIVATION(SIGMOID, Int8QTy, 0.015)
+TEST_CWQ_CONV2D_ACTIVATION(LEAKY_RELU, Int8QTy, 0.01)
+
+#undef TEST_CWQ_CONV2D_ACTIVATION
+
 /// Check Non-cubic stride for conv3D.
 TEST_P(OperatorTest, NonCubicStrideConv3D) {
   CHECK_IF_ENABLED();

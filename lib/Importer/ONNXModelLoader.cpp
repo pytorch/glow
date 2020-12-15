@@ -312,10 +312,14 @@ template <> struct AttributeRetriever<false, FusedActivation> {
       return FusedActivation::NONE;
     } else if (str == "RELU") {
       return FusedActivation::RELU;
+    } else if (str == "CLIP") {
+      return FusedActivation::CLIP;
     } else if (str == "TANH") {
       return FusedActivation::TANH;
     } else if (str == "SIGMOID") {
       return FusedActivation::SIGMOID;
+    } else if (str == "LEAKY_RELU") {
+      return FusedActivation::LEAKY_RELU;
     } else {
       return MAKE_ERR("Invalid FusedActivation");
     }
