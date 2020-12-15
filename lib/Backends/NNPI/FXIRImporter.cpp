@@ -299,6 +299,12 @@ void FXNNPIImporter::updateDescQuantFromFX(const DTYPE &dtype,
     desc.quantParams.precision = NNPI_PRECISION_FLOAT32;
     desc.quantParams.type = NNPI_QUANTIZATION_NONE;
     break;
+  case DTYPE::FLOAT16:
+    LOG_ERROR_IF_NOT((scaleTensor.empty() && offsetTensor.empty()))
+        << "Scales and offsets provided for Float16";
+    desc.quantParams.precision = NNPI_PRECISION_FLOAT16;
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
   case DTYPE::INT64:
     LOG_ERROR_IF_NOT((scaleTensor.empty() && offsetTensor.empty()))
         << "Scales and offsets provided for Int64";
