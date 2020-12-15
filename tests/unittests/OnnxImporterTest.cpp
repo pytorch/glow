@@ -3977,6 +3977,214 @@ TEST(onnx, importSign) {
   importUnary(netFilename, input, inputShape, outputShape, expectedValues);
 }
 
+static void
+testLoop(std::string &filename, const std::vector<dim_t> &expected_v_finalDims,
+         const std::vector<dim_t> &expected_scan_output_finalDims,
+         const std::vector<float> &expected_v_finalValues,
+         const std::vector<float> &expectedscan_output_finalValues) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *v_final;
+  Placeholder *scan_output_final;
+
+  Tensor init_i(ElemKind::FloatTy, {1});
+  init_i.getHandle() = {0};
+  Tensor inc(ElemKind::FloatTy, {1});
+  inc.getHandle() = {1};
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"init_i", "inc"},
+                           {&init_i.getType(), &inc.getType()}, *F);
+
+    v_final = EXIT_ON_ERR(onnxLD.getOutputByName("v_final"));
+    scan_output_final =
+        EXIT_ON_ERR(onnxLD.getOutputByName("scan_output_final"));
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"init_i", "inc"},
+                                  {&init_i, &inc});
+  }
+
+  auto *v_finalT = bindings.get(v_final);
+  auto *scan_output_finalT = bindings.get(scan_output_final);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto v_finalH = v_finalT->getHandle();
+  auto scan_output_finalH = scan_output_finalT->getHandle();
+
+  EXPECT_EQ(v_finalH.dims().vec(), expected_v_finalDims);
+  EXPECT_EQ(scan_output_finalH.dims().vec(), expected_scan_output_finalDims);
+  for (size_t i = 0; i < expected_v_finalValues.size(); i++) {
+    EXPECT_FLOAT_EQ(v_finalH.raw(i), expected_v_finalValues[i]);
+  }
+  for (size_t i = 0; i < expectedscan_output_finalValues.size(); i++) {
+    EXPECT_FLOAT_EQ(scan_output_finalH.raw(i),
+                    expectedscan_output_finalValues[i]);
+  }
+}
+
+TEST_F(OnnxImporterTest, importLoopStatic) {
+  // In this loop, cond is not changed in the loop body.
+  //
+  // input (trip_count, cond)
+  //
+  // int max_trip_count = 10;
+  // cond = true;
+  // init_i = 0;
+  // for (i=0; i< max_trip_count && cond; ++i){
+  //   scan_output[i] = init_i;
+  //   inti_i = init_i + inc;
+  // }
+  std::string filename("loop_static.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {10, 1};
+  std::vector<float> expected_v_finalValues = {10.};
+  std::vector<float> expectedscan_output_finalValues = {0., 1., 2., 3., 4.,
+                                                        5., 6., 7., 8., 9.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST_F(OnnxImporterTest, importLoopNoIteration) {
+  // The loop should be zero iteration.
+  //
+  // input (trip_count, 0)
+  //
+  // int max_trip_count = 10;
+  // cond = false;
+  // init_i = 0;
+  // for (i=0; i < max_trip_count && cond; ++i) {
+  //   scan_output[i] = init_i;
+  //   inti_i = init_i + inc;
+  // }
+  std::string filename("loop_no_iteration.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {1, 1};
+  std::vector<float> expected_v_finalValues = {0.};
+  std::vector<float> expectedscan_output_finalValues = {0.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopCond) {
+  // In this loop, cond is updated in the loop body, but it should be folded
+  // into a Constant during loading time.
+  // The loop should exit by cond.
+  //
+  // input(trip_count, cond) :
+  //
+  // int max_trip_count = 9223372036854775807;
+  // int reduce_i = 20;
+  // for (i=0; i < max_trip_count && cond; ++i) {
+  //   scan_output[i] = reduce_i;
+  //   reduce_i = reduce_i - 1;
+  //   cond = (bool)(reduce_i - 1);
+  // }
+  std::string filename("loop_cond.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {20, 1};
+  std::vector<float> expected_v_finalValues = {0.};
+  std::vector<float> expectedscan_output_finalValues = {
+      20., 19., 18., 17., 16., 15., 14., 13., 12., 11.,
+      10., 9.,  8.,  7.,  6.,  5.,  4.,  3.,  2.,  1.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopTripCount) {
+  // The loop should exit by trip_count.
+  //
+  // input(trip_count, cond) :
+  //
+  // int max_trip_count = 20;
+  // int reduce_i = 20;
+  // for (i=0; i < max_trip_count && cond; ++i) {
+  //   scan_output[i] = reduce_i;
+  //   reduce_i = reduce_i - 1;
+  //   cond = (bool)(reduce_i - 1);
+  //  }
+  std::string filename("loop_tripcount.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {20, 1};
+  std::vector<float> expected_v_finalValues = {0.0};
+  std::vector<float> expectedscan_output_finalValues = {
+      20., 19., 18., 17., 16., 15., 14., 13., 12., 11.,
+      10., 9.,  8.,  7.,  6.,  5.,  4.,  3.,  2.,  1.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopEmptyTripCount) {
+  // The loop should ignore trip-count, so exit by cond.
+  //
+  // input ("", 1)
+  //
+  // int reduce_i = 10;
+  // bool cond = true;
+  // for (int i = 0; cond; ++i) {
+  //   scan_output[i] = reduce_i;
+  //   reduce_i = reduce_i - 1;
+  //   cond = (bool)reduce_i;
+  // }
+  std::string filename("loop_empty_tripcount.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {10, 1};
+  std::vector<float> expected_v_finalValues = {0.};
+  std::vector<float> expectedscan_output_finalValues = {10., 9., 8., 7., 6.,
+                                                        5.,  4., 3., 2., 1.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopEmptyCond) {
+  // The loop should ignore cond, so exit by trip_count.
+  //
+  // input(trip_count, "") :
+  //
+  // int max_trip_count = 7;
+  // int reduce_i = 5;
+  // for (i=0; i < max_trip_count; ++i) {
+  //   scan_output[i] = reduce_i;
+  //   reduce_i = reduce_i - 1;
+  //   cond = (bool)(reduce_i - 1); // ignored
+  // }
+  std::string filename("loop_emptycond.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {7, 1};
+  std::vector<float> expected_v_finalValues = {-2.0};
+  std::vector<float> expectedscan_output_finalValues = {5., 4., 3., 2.,
+                                                        1., 0., -1.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopWithoutN) {
+  // The loop should exit by trip_count.
+  //
+  // input(trip_count, cond) :
+  // bool cond = true;
+  // int max_trip_count = 10;
+  // for (i=0; i < max_trip_count && cond; ++i) {
+  //   scan_output[i] = i;
+  //  }
+  std::string filename("loop_withoutN.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {10, 1};
+  std::vector<float> expected_v_finalValues = {0.0};
+  std::vector<float> expectedscan_output_finalValues = {0., 1., 2., 3., 4.,
+                                                        5., 6., 7., 8., 9.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
 /// Test loading RNN from a ONNX model. The ONNX model already computes
 /// the error compared to a PyTorch reference implementation.
 static void importRNN(std::string fileName) {

@@ -46,7 +46,7 @@ bool ProtobufLoader::isConstantFoldable(llvm::ArrayRef<NodeValue> inputs,
     return false;
   }
   // foldUnsupportedTypes: List of typenames unsupported for folding.
-  std::string foldUnsupportedTypes[] = {"Constant"};
+  std::string foldUnsupportedTypes[] = {"Constant", "Loop"};
   std::string *findType = std::find(std::begin(foldUnsupportedTypes),
                                     std::end(foldUnsupportedTypes), typeName);
   // Early exit if folding is not supported for current operator.
@@ -197,22 +197,31 @@ Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
 
 void ProtobufLoader::deleteUnusedConstants() {
   std::vector<std::string> nodeValuesToRemove;
+  // Note that it's possible a constant is referred by more than one names
+  // (e.g., via Identity operator). Therefore, we maintain a set of constants to
+  // erase separately from the list for names.
+  std::unordered_set<Constant *> constantToRemove;
+
   for (auto &kv : nodeValueByName_) {
     auto *node = kv.second.getNode();
     if (auto *c = llvm::dyn_cast<Constant>(node)) {
       if (!c->hasUsers()) {
         nodeValuesToRemove.push_back(kv.getKey());
+        constantToRemove.insert(c);
       }
     }
   }
 
   for (auto &name : nodeValuesToRemove) {
     auto it = nodeValueByName_.find(name);
-    auto *c = llvm::dyn_cast<Constant>(it->second.getNode());
-    DCHECK(c) << "NodeValue with name " << name
-              << " was expected to have been a Constant";
-    mod_.eraseConstant(c);
+    DCHECK(llvm::isa<Constant>(it->second.getNode()))
+        << "NodeValue with name " << name
+        << " was expected to have been a Constant";
     nodeValueByName_.erase(it);
+  }
+
+  for (auto *c : constantToRemove) {
+    G_->getParent()->eraseConstant(c);
   }
 }
 

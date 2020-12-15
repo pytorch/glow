@@ -405,6 +405,12 @@ TEST(exporter, onnxModels) {
         name.find("RangeFloat.onnxtxt") != std::string::npos ||
         name.find("scatterND.onnxtxt") != std::string::npos ||
         name.find("mscatterND.onnxtxt") != std::string::npos ||
+        name.find("loop_cond.onnxtxt") != std::string::npos ||
+        name.find("loop_empty_tripcount.onnxtxt") != std::string::npos ||
+        name.find("loop_emptycond.onnxtxt") != std::string::npos ||
+        name.find("loop_no_iteration.onnxtxt") != std::string::npos ||
+        name.find("loop_tripcount.onnxtxt") != std::string::npos ||
+        name.find("loop_withoutN.onnxtxt") != std::string::npos ||
         name.find("sign.onnxtxt") != std::string::npos ||
         name.find("gatherND.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
