@@ -421,7 +421,7 @@ static uint64_t SameOrder(size_t buffIdx,
 /// strategies are used one after the other in the exact order as listed here.
 /// In case one such strategy provides the maximum efficiency (best theoretical
 /// result) then the following ones (if any) are not used anymore.
-static std::vector<MemAllocStrategy> MemAllocStrategyArray = {
+static std::vector<MemAllocStrategy> memAllocStrategies = {
     MaxLiveSizeMaxBuffSize, MaxLiveSizeMaxBuffTime, SameOrder};
 
 /// Utility function to allocate all the segments at once using the given
@@ -685,12 +685,12 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   uint64_t usedSizeMax = std::numeric_limits<uint64_t>::max();
 
   // Iterate all the available strategies and pick the optimal one.
-  size_t strategyNum = MemAllocStrategyArray.size();
+  size_t strategyNum = memAllocStrategies.size();
   for (size_t strategyIdx = 0; strategyIdx < strategyNum; strategyIdx++) {
 
     // Allocate segments using current strategy.
     std::unordered_map<size_t, Segment> idSegMapTemp;
-    auto strategy = MemAllocStrategyArray[strategyIdx];
+    auto strategy = memAllocStrategies[strategyIdx];
     uint64_t usedSize = allocateAllWithStrategy(
         memorySize_, buffInfoArray, liveInfoArray, idSegMapTemp, strategy);
 

@@ -352,10 +352,9 @@ add_glow_test(MemoryAllocatorTest
                   --gtest_output=xml:MemoryAllocatorTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} MemoryAllocatorTestModels/*)
-foreach(filename ${files})
-  configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)
-endforeach(filename)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/MemoryAllocatorTestModels.txt
+               ${CMAKE_CURRENT_BINARY_DIR}/MemoryAllocatorTestModels.txt
+               COPYONLY)
 
 add_executable(NodeSplittingTest
                NodeSplittingTest.cpp)

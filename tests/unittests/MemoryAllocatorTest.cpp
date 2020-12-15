@@ -497,31 +497,50 @@ TEST(MemAlloc, testAllocateAllMemOverflow) {
 #endif
 }
 
-/// Utility function to test an allocation/deallocation sequence for a model
-/// based on a text file \p filename with the following format:
+/// Utility function to test allocation for a given model using \p alignment
+/// and the allocations \p allocs. The expected memory usage and efficiency
+/// are \p expectedUsedSize and \p expectedEfficiency.
+static void testAllocateAllForModel(size_t alignment,
+                                    const std::list<Allocation> &allocs,
+                                    uint64_t expectedUsedSize,
+                                    float expectedEfficiency) {
+  MemoryAllocator MA("mem", 0, alignment);
+  uint64_t usedSize = MA.allocateAll(allocs);
+  EXPECT_EQ(usedSize, expectedUsedSize);
+  for (const auto &alloc : allocs) {
+    if (alloc.alloc_) {
+      EXPECT_EQ(MA.getSize(alloc.handle_), alignedSize(alloc.size_, alignment));
+    }
+  };
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), expectedEfficiency);
+}
+
+/// Test memory allocation for multiple models using a text file with the
+/// following format:
 /// MODEL <model_name>
 /// ALIGN <alignment>
 /// ALLOC <id> <size>
 /// FREE <id>
 /// MEM <expected_memory_usage>
 /// EFF <expected_efficiency>
-static void testAllocateAll(const char *filename) {
-  std::string model;
+TEST(MemAlloc, testAllocateAllForModels) {
+  std::string modelName;
+  unsigned modelIdx = 1;
   size_t alignment;
   uint64_t expectedUsedSize;
   float expectedEfficiency;
   std::list<Allocation> allocs;
-  // Read allocation sequence and other meta information.
   std::ifstream fs;
-  fs.open(filename);
+  fs.open("tests/unittests/MemoryAllocatorTestModels.txt");
   assert(fs.is_open() && "Error opening file!");
   std::string line;
   while (std::getline(fs, line)) {
+    // Read model parameters.
     std::stringstream ss(line);
     std::string key;
     ss >> key;
     if (key == "MODEL") {
-      ss >> model;
+      ss >> modelName;
     } else if (key == "ALIGN") {
       ss >> alignment;
     } else if (key == "ALLOC") {
@@ -538,27 +557,15 @@ static void testAllocateAll(const char *filename) {
     } else if (key == "EFF") {
       ss >> expectedEfficiency;
     }
+    // Test allocation for model.
+    if (key == "EFF") {
+      std::cout << "[" << modelIdx++
+                << "] Testing memory allocation for model: " << modelName
+                << "\n";
+      testAllocateAllForModel(alignment, allocs, expectedUsedSize,
+                              expectedEfficiency);
+      allocs.clear();
+    }
   }
   fs.close();
-  // Test memory allocation.
-  MemoryAllocator MA("mem", 0, alignment);
-  uint64_t usedSize = MA.allocateAll(allocs);
-  EXPECT_EQ(usedSize, expectedUsedSize);
-  for (const auto &alloc : allocs) {
-    if (alloc.alloc_) {
-      EXPECT_EQ(MA.getSize(alloc.handle_), alignedSize(alloc.size_, alignment));
-    }
-  };
-  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), expectedEfficiency);
-}
-
-/// Test memory allocation for all models.
-TEST(MemAlloc, testAllocateAllForModels) {
-  for (int modelIdx = 1; modelIdx <= 79; ++modelIdx) {
-    char filename[100];
-    snprintf(filename, 100,
-             "tests/unittests/MemoryAllocatorTestModels/Model%03d.txt",
-             modelIdx);
-    testAllocateAll(filename);
-  }
 }
