@@ -410,8 +410,11 @@ static Error processLinearPackedQParams(torch::jit::Graph &graph,
       overrideTensorGradient(t);
       paramConst = torch::jit::insertConstant(graph, t);
       node->outputs().at(1)->replaceAllUsesWith(paramConst);
-    } else { // TODO Handle bias-not-exists case
-      return MAKE_ERR("Preprocess for empty bias is not yet supported.");
+    } else {
+      at::Tensor t = at::zeros(ptWeightTensor.size(0));
+      overrideTensorGradient(t);
+      paramConst = torch::jit::insertConstant(graph, t);
+      node->outputs().at(1)->replaceAllUsesWith(paramConst);
     }
   }
   return Error::success();
