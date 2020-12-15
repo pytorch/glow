@@ -593,12 +593,12 @@ protected:
   static Expected<NodeValue>
   handleBatchMatMulTranspose(Function *F, ArgumentDictionaryTy &dict,
                              llvm::StringRef key, NodeValue input) {
-    if (!dict.count(key)) {
+    if (!dict.count(key.str())) {
       return input;
     }
 
     int isTransposed;
-    ASSIGN_VALUE_OR_RETURN_ERR(isTransposed, loadInt(dict[key]));
+    ASSIGN_VALUE_OR_RETURN_ERR(isTransposed, loadInt(dict[key.str()]));
     if (isTransposed == 1) {
       auto dimsSize = input.dims().size();
       RETURN_ERR_IF_NOT(dimsSize >= 2,
@@ -849,7 +849,7 @@ protected:
     // one contains permutation under name "perm", the other contains it under
     // argument name "axes". That's why the name is passed as a parameter.
     std::vector<unsigned_t> perm;
-    if (dict.count(permArgName))
+    if (dict.count(permArgName.str()))
       ASSIGN_VALUE_OR_RETURN_ERR(perm, getShape<unsigned_t>(dict[permArgName]));
 
     if (perm.empty()) {
@@ -1560,7 +1560,7 @@ protected:
       return true;
     }
     if (typeName == "GatherRanges") {
-      RETURN_IF_ERR(loadGatherRanges(typeName, op, dict));
+      RETURN_IF_ERR(loadGatherRanges(typeName.str(), op, dict));
       return true;
     }
     if (typeName == "Less") {

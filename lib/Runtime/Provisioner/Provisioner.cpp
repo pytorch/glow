@@ -62,7 +62,7 @@ Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   for (auto &device : devices) {
     devices_.push_back(device.second.get());
     deviceMappings_.push_back(deviceMapping++);
-    auto backendName = device.second->getBackendName();
+    auto backendName = device.second->getBackendName().str();
     if (backends_.find(backendName) == backends_.end()) {
       std::unique_ptr<Backend> newBackend(createBackend(backendName));
       backends_.emplace(std::string(backendName), std::move(newBackend));
@@ -307,7 +307,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   for (unsigned i = 0; i < devices_.size(); i++) {
     uint64_t availableMemory = devices_[i]->getAvailableMemory();
 
-    deviceMemoryMap[devices_[i]->getBackendName()].push_back(
+    deviceMemoryMap[devices_[i]->getBackendName().str()].push_back(
         std::make_pair(i, availableMemory));
   }
 
@@ -417,7 +417,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         // device.
         for (unsigned i = 1; i < node->replicationCount; i++) {
           std::string replicatedName =
-              getReplicatedName(function->getName(), i);
+              getReplicatedName(function->getName().str(), i);
           llvm::DenseMap<const Node *, Node *> oldToNewMap;
           auto *clonedFunction = function->clone(replicatedName, &oldToNewMap);
           RETURN_IF_ERR(propagateBackendSpecificNodeInfo(
@@ -491,7 +491,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           duplicatedFunctions.emplace(node->name, std::move(compiled));
           for (unsigned i = 1; i < node->replicationCount; i++) {
             std::string replicatedName =
-                getReplicatedName(function->getName(), i);
+                getReplicatedName(function->getName().str(), i);
             auto compiled2 = std::move(compiledReplications[replicatedName]);
             duplicatedFunctions.emplace(replicatedName, std::move(compiled2));
           }
@@ -501,7 +501,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           compiledFunctions.emplace(node->name, std::move(compiled));
           for (unsigned i = 1; i < node->replicationCount; i++) {
             std::string replicatedName =
-                getReplicatedName(function->getName(), i);
+                getReplicatedName(function->getName().str(), i);
             auto compiled2 = std::move(compiledReplications[replicatedName]);
             compiledFunctions.emplace(replicatedName, std::move(compiled2));
           }
@@ -700,7 +700,7 @@ Error Provisioner::provisionFX(DAGListTy &networks, Module &module,
   for (unsigned i = 0; i < devices_.size(); i++) {
     uint64_t availableMemory = devices_[i]->getAvailableMemory();
 
-    deviceMemoryMap[devices_[i]->getBackendName()].push_back(
+    deviceMemoryMap[devices_[i]->getBackendName().str()].push_back(
         std::make_pair(i, availableMemory));
   }
 
@@ -851,9 +851,9 @@ Error Provisioner::provisionFX(DAGListTy &networks, Module &module,
 #endif
 
 Backend &Provisioner::getBackend(llvm::StringRef backendName) const {
-  assert(backends_.count(backendName) &&
+  assert(backends_.count(backendName.str()) &&
          "No backend created by specified name.");
-  return *backends_.at(backendName);
+  return *backends_.at(backendName.str());
 }
 
 Expected<Backend *> Provisioner::getBackend() const {
@@ -866,7 +866,7 @@ Expected<Backend *> Provisioner::getBackend() const {
 
 Error Provisioner::removeFunction(llvm::StringRef name) {
   std::lock_guard<std::mutex> functionsLock(functionsLock_);
-  auto it = activeFunctions_.find(name);
+  auto it = activeFunctions_.find(name.str());
   if (it != activeFunctions_.end()) {
     return MAKE_ERR(
         ErrorValue::ErrorCode::RUNTIME_NET_BUSY,
@@ -875,7 +875,7 @@ Error Provisioner::removeFunction(llvm::StringRef name) {
                       name)
             .str());
   }
-  functions_.erase(name);
+  functions_.erase(name.str());
   return Error::success();
 }
 
@@ -883,7 +883,7 @@ Error Provisioner::evictFunction(llvm::StringRef name, DeviceManager *device) {
   std::promise<void> evictPromise;
   Error evictErr = Error::empty();
   auto done = evictPromise.get_future();
-  device->evictNetwork(name,
+  device->evictNetwork(name.str(),
                        [&evictPromise, &evictErr](std::string, Error err) {
                          evictErr = std::move(err);
                          evictPromise.set_value();

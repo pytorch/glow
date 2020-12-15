@@ -120,7 +120,7 @@ HostManager::HostManager(
 }
 
 Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
-  auto it = networks_.find(network);
+  auto it = networks_.find(network.str());
   if (it == networks_.end()) {
     return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR, "Network not found.");
   }
@@ -276,7 +276,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     auto functions = module->getFunctions();
     for (auto &F : functions) {
-      std::string name = F->getName();
+      std::string name = F->getName().str();
       auto it = networks_.find(name);
       if (it != networks_.end() ||
           processingNetworks_.find(name) != processingNetworks_.end()) {
@@ -744,7 +744,7 @@ Error HostManager::addNetworkFX(
 std::unordered_map<std::string, std::vector<DeviceIDTy>>
 HostManager::getDevicePartitionMapping(llvm::StringRef network) {
   std::unordered_map<std::string, std::vector<DeviceIDTy>> mapping;
-  auto it = networks_.find(network);
+  auto it = networks_.find(network.str());
   if (it != networks_.end()) {
     auto &nodeList = it->second.dag.nodes;
     for (auto &node : nodeList) {
@@ -760,12 +760,13 @@ HostManager::getDevicePartitionMapping(llvm::StringRef network) {
 
 Error HostManager::removeNetwork(llvm::StringRef networkName) {
   std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
-  auto networkIterator = networks_.find(networkName);
+  auto networkIterator = networks_.find(networkName.str());
   if (networkIterator == networks_.end()) {
     return Error::success();
   }
 
-  if (processingNetworks_.find(networkName) != processingNetworks_.end()) {
+  if (processingNetworks_.find(networkName.str()) !=
+      processingNetworks_.end()) {
     // Return an error, the network is in an incomplete state likely because
     // it is still being added by a different call.
     return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_BUSY,
@@ -804,7 +805,7 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
 
 bool HostManager::networkAdded(llvm::StringRef networkName) {
   std::shared_lock<std::shared_timed_mutex> networkLock(networkLock_);
-  return networks_.find(networkName) != networks_.end();
+  return networks_.find(networkName.str()) != networks_.end();
 }
 
 Error HostManager::clearHost() {
@@ -951,7 +952,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
   NetworkData *network = nullptr;
   {
     std::shared_lock<std::shared_timed_mutex> networkLock(networkLock_);
-    auto it = networks_.find(networkName);
+    auto it = networks_.find(networkName.str());
     if (it != networks_.end()) {
       network = &it->second;
       network->refcount++;
