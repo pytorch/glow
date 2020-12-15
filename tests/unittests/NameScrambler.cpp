@@ -339,7 +339,7 @@ void scramble() {
   size_t output_iter = outputPatternOpt.find("{}");
   CHECK_NE(output_iter, std::string::npos)
       << "Output pattern " << outputPatternOpt << " has to contain {}";
-  for (int i = seqStartOpt; i < seqLenOpt; ++i) {
+  for (unsigned i = seqStartOpt; i < seqLenOpt; ++i) {
     std::string input = inputPatternOpt;
     input.replace(input_iter, 2, std::to_string(seqStartOpt + i));
     rewriteIO(input, name_map);

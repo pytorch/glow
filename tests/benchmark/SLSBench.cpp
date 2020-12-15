@@ -297,7 +297,7 @@ public:
 
     // Add SLS nodes
     for (auto &param : params_) {
-      for (int i = 0; i < param.numSLSNodes; i++) {
+      for (dim_t i = 0; i < param.numSLSNodes; i++) {
         addSLSNode(mod, fn, param);
       }
     }

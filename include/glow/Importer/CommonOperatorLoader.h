@@ -1653,6 +1653,7 @@ protected:
         ASSIGN_VALUE_OR_RETURN_ERR(
             pl, createAndRegisterPlaceholder(name, &loadResult.type,
                                              /*isStatic*/ true));
+        (void)pl;
       } else {
         RETURN_IF_ERR(
             createAndRegisterConstant(name, std::move(*loadResult.t)));

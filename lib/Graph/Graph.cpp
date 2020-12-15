@@ -3535,7 +3535,7 @@ std::vector<NodeValue> Function::createSingleDirectionLSTM(
   auto name = [&nameBase](const char *s, int t) {
     return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
   };
-  for (unsigned t = 0; t < timeSteps; t++, inputItr++) {
+  for (int t = 0; t < timeSteps; t++, inputItr++) {
 
     auto *result = createAdd(
         name("add", t), createFullyConnected(name("fc_1", t), H, Wh, Bh),

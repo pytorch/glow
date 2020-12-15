@@ -2483,7 +2483,7 @@ TEST_P(OperatorTest, PyTorchLSTMFP16) {
                           0.9704, 0.9758, 0.9866, 0.9890, 0.9910, 0.9926,
                           0.9940, 0.9951, 0.9959, 0.9967, 0.9982, 0.9985,
                           0.9988, 0.9990, 0.9992, 0.9993, 0.9995, 0.9996};
-  for (int i = 0; i < numSteps * minibatchSize * hiddenSize; i++) {
+  for (unsigned_t i = 0; i < numSteps * minibatchSize * hiddenSize; i++) {
     EXPECT_NEAR(saveH.raw(i), expectOutput[i], 2E-3);
   }
 }

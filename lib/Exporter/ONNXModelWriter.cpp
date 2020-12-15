@@ -1135,6 +1135,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::BOOL;
   }
   LOG(DFATAL) << "Cannot reach here.";
+  return TensorType::UNDEFINED; // Avoids a compilation warning.
 }
 
 /// Add quantization parameters to the doc_string in \p out based on \p type.

@@ -1487,7 +1487,7 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
       sdim_t ot = t + ft;
       VLOG(5) << "t: " << t << "\tat: " << at << "\tft: " << ft
               << "\tot: " << ot << std::endl;
-      if ((ot < 0) || (ot >= is.t)) {
+      if ((ot < 0) || (ot >= sdim_t(is.t))) {
         continue;
       }
       auto *slicedInput = F->createSlice(

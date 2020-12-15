@@ -569,8 +569,8 @@ void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
   // sure we always subtract the smaller from the larger value to avoid
   // underflowing the uint64_t. Then if the timestamp should be moved backwards
   // negate the result.
-  int64_t offset =
-      steadyTS > systemTS ? -(steadyTS - systemTS) : (systemTS - steadyTS);
+  int64_t offset = long(steadyTS) > systemTS ? -(steadyTS - systemTS)
+                                             : (systemTS - steadyTS);
   TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
                     "Onnxifi::setTraceEvents");
 

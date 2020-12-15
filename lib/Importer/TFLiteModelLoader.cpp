@@ -549,7 +549,7 @@ TFLiteModelLoader::getOperatorName(const tflite::Operator *op) {
   size_t opOutIdx = static_cast<size_t>((*opOutputs)[0]);
   const auto *graphOutputs = graph_->outputs();
   for (auto graphOutIdx : (*graphOutputs)) {
-    if (opOutIdx == graphOutIdx) {
+    if (int(opOutIdx) == graphOutIdx) {
       return opType;
     }
   }
@@ -599,7 +599,7 @@ TFLiteModelLoader::isOperatorOutputFinalTensor(const tflite::Operator *op,
                              getOperatorOutputTensorIdx(op, outputIdx));
   const auto *graphOutputs = graph_->outputs();
   for (auto graphOutIdx : (*graphOutputs)) {
-    if (tensorIdx == graphOutIdx) {
+    if (int(tensorIdx) == graphOutIdx) {
       return true;
     }
   }
@@ -2001,7 +2001,7 @@ Error TFLiteModelLoader::loadPack(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
   const size_t numInputs = op->inputs()->size();
-  RETURN_ERR_IF_NOT(numInputs == opts->values_count(),
+  RETURN_ERR_IF_NOT(int(numInputs) == opts->values_count(),
                     opErrMsg(opInfo, "Attribute 'values_count' does not match "
                                      "the number of operator inputs!"));
   llvm::SmallVector<NodeValue, 4> inputs;
