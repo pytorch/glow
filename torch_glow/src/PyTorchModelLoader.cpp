@@ -3395,13 +3395,19 @@ Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
-  // NB: exponent may also be a Tensor. Will support if needed.
-  float exponent;
-  ASSIGN_VALUE_OR_RETURN_ERR(exponent,
-                             iValToDouble(getGlowIValueForValue(inputs[1])));
+  glow::PowNode *PN = nullptr;
+  if (hasGlowIValueForValue(inputs[1])) {
+    float exponent;
+    ASSIGN_VALUE_OR_RETURN_ERR(exponent,
+                               iValToDouble(getGlowIValueForValue(inputs[1])));
+    PN = F_.createPow("pow", input, exponent);
+  } else {
+    NodeValue expNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(expNV, getGlowNodeValueForValue(inputs[1]));
+    PN = F_.createNodeWithBroadcast<PowNode>("pow", -1, input, expNV);
+  }
 
-  glow::PowNode *glowNode = F_.createPow("pow", input, exponent);
-  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+  RETURN_ERR(addValueMapping(outputs[0], PN->getResult()));
 }
 
 Error PyTorchModelLoader::loadLogicalXor(const torch::jit::Node *ptNode) {
