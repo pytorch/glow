@@ -961,6 +961,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"glow::fused_stack"}, &PyTorchModelLoader::loadFusedStack},
       {{"glow::fused_broadcast_cat"},
        &PyTorchModelLoader::loadFusedBroadcastConcat},
+      {{"glow::fused_broadcast_stack"},
+       &PyTorchModelLoader::loadFusedBroadcastStack},
       {{"aten::floor"}, &PyTorchModelLoader::loadFloor},
       {{"aten::ceil"}, &PyTorchModelLoader::loadCeil},
       {{"aten::mean"}, &PyTorchModelLoader::loadMean},
@@ -2649,14 +2651,17 @@ static inline c10::ScalarType promote_skip_undefined(c10::ScalarType a,
   return c10::promoteTypes(a, b);
 }
 
-Expected<c10::ScalarType> PyTorchModelLoader::getHigherType(
-
-    const c10::ArrayRef<const torch::jit::Value *> &values) noexcept {
+/// Helper function to support upcasting in concat, we calculate the higher
+/// type among a list of types. For example, the higher type of [half, float,
+/// half, double] will be double. Similar to at::result_type().
+static Expected<c10::ScalarType>
+getHigherType(PyTorchModelLoader *loader,
+              const c10::ArrayRef<const torch::jit::Value *> &values) {
 
   c10::ScalarType higherType = c10::ScalarType::Undefined;
   for (auto v : values) {
     c10::ScalarType dtype;
-    RETURN_IF_ERR(getCorrectTypeMapping(dtype, v));
+    RETURN_IF_ERR(loader->getCorrectTypeMapping(dtype, v));
     if (dtype != c10::ScalarType::QInt8 && dtype != c10::ScalarType::QUInt8) {
       higherType = promote_skip_undefined(higherType, dtype);
     }
@@ -2664,43 +2669,45 @@ Expected<c10::ScalarType> PyTorchModelLoader::getHigherType(
   return higherType;
 }
 
-Error PyTorchModelLoader::loadFusedConcatHelper(const torch::jit::Node *ptNode,
-                                                bool doBroadcast) {
+/// Helper function for \p loadFusedConcat, \p
+/// loadFusedBroadcastConcat, \p loadFusedStack and \p loadFusedBroadcastCat
+/// with \p isStack to select whether to load stack or concat, and \p
+/// doBroadcast to select whether broadcast is enabled for concat. \returns
+/// error on failures, otherwise the created concat node reference.
+static Expected<glow::ConcatNode *>
+createConcatNode(PyTorchModelLoader *loader, Function &F,
+                 const torch::jit::Node *ptNode, bool isStack,
+                 bool doBroadcast) noexcept {
+
   auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
-
-  // In the case of a single input, just return it.
-  if (inputs.size() == 1) {
-    glow::NodeValue input;
-    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-    RETURN_ERR(addValueMapping(outputs[0], input));
-  }
-
-  int64_t dim = ptNode->i(at::attr::dim);
-
-  c10::ScalarType higherType;
-  glow::ElemKind higherKind;
-  ASSIGN_VALUE_OR_RETURN_ERR(higherType, getHigherType(inputs));
-  if (higherType != c10::ScalarType::Undefined) {
-    higherKind = scalarTypeToElemKind(higherType);
-  }
 
   // Get number of input dimensions
   glow::NodeValue glowInput0;
-  ASSIGN_VALUE_OR_RETURN_ERR(glowInput0, getGlowNodeValueForValue(inputs[0]));
+  ASSIGN_VALUE_OR_RETURN_ERR(glowInput0,
+                             loader->getGlowNodeValueForValue(inputs[0]));
   size_t numInputDims = glowInput0.dims().size();
 
-  // Convert negative dimension index into corresponding positive index
+  int64_t dim = ptNode->i(at::attr::dim);
+
+  // Convert negative dimension index into corresponding positive index if the
+  // node is concat
   auto origDim = dim;
-  if (dim < 0) {
+  if (!isStack && dim < 0) {
     dim += numInputDims;
   }
 
-  RETURN_ERR_IF_NOT(dim < numInputDims && dim >= 0,
+  RETURN_ERR_IF_NOT(dim < numInputDims + isStack && dim >= 0,
                     strFormat("Dim value of %ld is out of range. Valid "
                               "values are in the range [-%ld, %ld]",
-                              origDim, numInputDims, numInputDims - 1));
+                              origDim, numInputDims,
+                              numInputDims - 1 + isStack));
+
+  c10::ScalarType higherType;
+  glow::ElemKind higherKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(higherType, getHigherType(loader, inputs));
+  if (higherType != c10::ScalarType::Undefined) {
+    higherKind = scalarTypeToElemKind(higherType);
+  }
 
   // Final shape for all tensors after broadcast
   std::vector<int64_t> bcastShape(numInputDims, -1);
@@ -2712,14 +2719,16 @@ Error PyTorchModelLoader::loadFusedConcatHelper(const torch::jit::Node *ptNode,
   std::vector<glow::NodeValue> glowInputs;
   for (size_t i = 0; i < inputs.size(); ++i) {
     glow::NodeValue glowInput;
-    ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[i]));
+    ASSIGN_VALUE_OR_RETURN_ERR(glowInput,
+                               loader->getGlowNodeValueForValue(inputs[i]));
 
     RETURN_ERR_IF_NOT(numInputDims == glowInput.dims().size(),
                       "All inputs must have the same number of dimensions.");
 
     // Record broadcast shapes to perform broadcasting
     for (int d = 0; d < glowInput.dims().size(); ++d) {
-      if (d != dim) {
+      // For stack we can broadcast every dim
+      if (d != dim || isStack) {
         if (bcastShape[d] < 0 && glowInput.dims()[d] != 1) {
           // record first non-singleton size for dim_i as broadcast shape
           bcastShape[d] = glowInput.dims()[d];
@@ -2734,95 +2743,89 @@ Error PyTorchModelLoader::loadFusedConcatHelper(const torch::jit::Node *ptNode,
         !isQuantizedElemKind(higherKind) &&
         glowInput.getElementType() != higherKind) {
       glow::ConvertToNode *toNode =
-          F_.createConvertTo("upcastForConcat", glowInput, higherKind);
+          F.createConvertTo("upcastForConcat", glowInput, higherKind);
       glowInputs.emplace_back(toNode->getResult());
     } else {
       glowInputs.emplace_back(std::move(glowInput));
     }
   }
 
-  if (doBroadcast && !noBroadcastNeeded) {
-    // For all nodes that require broadcast, we perform opportunistic concat if
-    // the adjacent nodes can be broadcast the same way
-    std::vector<glow::NodeValue> finalConcatInputs;
-    std::vector<glow::NodeValue> partialConcatInputs;
-    std::string prevConcatKey = "";
-
-    // Helper function for concat and using Tile ops to expand.
-    auto addConcatAndBroadcastNode =
-        [&](const std::vector<glow::NodeValue> &nodes, const std::string &key) {
-          glow::NodeValue output;
-          if (nodes.size() > 1) {
-            auto *concatNode = F_.createConcat("cat_" + key, nodes, dim);
-            output = concatNode->getResult();
-          } else if (nodes.size() == 1) {
-            output = nodes[0];
-          } else {
-            // Should not come to this branch, trust downstream to handle errors
-            return output;
-          }
-
-          for (int d = 0; d < numInputDims; ++d) {
-            if (d != dim && output.dims()[d] == 1 && bcastShape[d] > 1) {
-              output = F_.createTile("tile_" + key + "_" + std::to_string(d),
-                                     output, bcastShape[d], /* tile */
-                                     d /* axis */)
-                           ->getResult();
-            }
-          }
-          return output;
-        };
-
-    for (size_t i = 0; i < glowInputs.size(); ++i) {
-      // Use dimensions as key so we can concat those of the same dimensions
-      // For example, for [1, 32, 1] when we concat dim=1, the key is '1_1',
-      // and for [1, 32, 4] the key is '1_4'.
-      // We use '_' as delimiter to conveniently reuse the key for node name.
-      std::stringstream ss;
-      for (int d = 0; d < glowInputs[i].dims().size(); ++d) {
-        if (d != dim) {
-          ss << glowInputs[i].dims()[d] << "_";
-        }
-      }
-      auto key = ss.str();
-      if (!partialConcatInputs.empty() &&
-          (!needBroadcast[i] || key != prevConcatKey)) {
-        finalConcatInputs.emplace_back(
-            addConcatAndBroadcastNode(partialConcatInputs, key));
-        partialConcatInputs.clear();
-      }
-      if (needBroadcast[i]) {
-        prevConcatKey = key;
-        partialConcatInputs.emplace_back(glowInputs[i]);
-      } else {
-        prevConcatKey = "";
-        finalConcatInputs.emplace_back(glowInputs[i]);
-      }
-    }
-    // In cast the last nodes (1 or more) need concat and broadcast
-    if (!partialConcatInputs.empty()) {
-      finalConcatInputs.emplace_back(
-          addConcatAndBroadcastNode(partialConcatInputs, prevConcatKey));
-    }
-
-    RETURN_ERR(addValueMapping(outputs[0],
-                               F_.createConcat("cat", finalConcatInputs, dim)));
-  } else {
-    RETURN_ERR(
-        addValueMapping(outputs[0], F_.createConcat("cat", glowInputs, dim)));
+  if (!doBroadcast || noBroadcastNeeded) {
+    return F.createConcat(isStack ? "stack_concat" : "cat", glowInputs, dim);
   }
+  // For concat, we perform opportunistic concat before broadcast if
+  // the adjacent nodes can be broadcast the same way. Doing this saves the
+  // number total OPs. For stack, we cannot perform this optimization.
+  std::vector<glow::NodeValue> finalConcatInputs;
+  std::vector<glow::NodeValue> partialConcatInputs;
+  std::string prevConcatKey = "";
+
+  // Helper function for concat and using Tile ops to expand.
+  auto addConcatAndBroadcastNode =
+      [&](const std::vector<glow::NodeValue> &nodes, const std::string &key) {
+        glow::NodeValue output;
+        if (nodes.size() > 1) {
+          auto *concatNode = F.createConcat("cat_" + key, nodes, dim);
+          output = concatNode->getResult();
+        } else if (nodes.size() == 1) {
+          output = nodes[0];
+        } else {
+          // Should not come to this branch, trust downstream to handle errors
+          return output;
+        }
+
+        for (int d = 0; d < numInputDims; ++d) {
+          if ((d != dim || isStack) && output.dims()[d] == 1 &&
+              bcastShape[d] > 1) {
+            output = F.createTile("tile_" + key + "_" + std::to_string(d),
+                                  output, bcastShape[d], /* tile */
+                                  d /* axis */)
+                         ->getResult();
+          }
+        }
+        return output;
+      };
+
+  for (size_t i = 0; i < glowInputs.size(); ++i) {
+    // Use dimensions as key so we can concat those of the same dimensions
+    // For example, for [1, 32, 1] when we concat dim=1, the key is '1_1',
+    // and for [1, 32, 4] the key is '1_4'.
+    // We use '_' as delimiter to conveniently reuse the key for node name.
+    std::stringstream ss;
+    for (int d = 0; d < glowInputs[i].dims().size(); ++d) {
+      if (d != dim || isStack) {
+        ss << glowInputs[i].dims()[d] << "_";
+      }
+    }
+    auto key = ss.str();
+    if (!partialConcatInputs.empty() &&
+        (!needBroadcast[i] || key != prevConcatKey)) {
+      finalConcatInputs.emplace_back(
+          addConcatAndBroadcastNode(partialConcatInputs, key));
+      partialConcatInputs.clear();
+    }
+    if (needBroadcast[i]) {
+      // Doing this guarantees we don't merge before Tile for stack
+      if (!isStack) {
+        prevConcatKey = key;
+      }
+      partialConcatInputs.emplace_back(glowInputs[i]);
+    } else {
+      prevConcatKey = "";
+      finalConcatInputs.emplace_back(glowInputs[i]);
+    }
+  }
+  // In cast the last nodes (1 or more) need concat and broadcast
+  if (!partialConcatInputs.empty()) {
+    finalConcatInputs.emplace_back(
+        addConcatAndBroadcastNode(partialConcatInputs, prevConcatKey));
+  }
+
+  return F.createConcat(isStack ? "stack_concat" : "cat", finalConcatInputs,
+                        dim);
 }
 
 Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
-  RETURN_ERR(loadFusedConcatHelper(ptNode, false /* doBroadcast */));
-}
-
-Error PyTorchModelLoader::loadFusedBroadcastConcat(
-    const torch::jit::Node *ptNode) {
-  RETURN_ERR(loadFusedConcatHelper(ptNode, true /* doBroadcast */));
-}
-
-Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
@@ -2833,37 +2836,39 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
     ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
     RETURN_ERR(addValueMapping(outputs[0], input));
   }
+  glow::Node *node;
+  ASSIGN_VALUE_OR_RETURN_ERR(node, createConcatNode(this, F_, ptNode,
+                                                    false /* isStack */,
+                                                    false /* doBroadcast */));
+  RETURN_ERR(addValueMapping(outputs[0], node));
+}
 
+Error PyTorchModelLoader::loadFusedBroadcastConcat(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  // In the case of a single input, just return it.
+  if (inputs.size() == 1) {
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+    RETURN_ERR(addValueMapping(outputs[0], input));
+  }
+  glow::Node *node;
+  ASSIGN_VALUE_OR_RETURN_ERR(node, createConcatNode(this, F_, ptNode,
+                                                    false /* isStack */,
+                                                    true /* doBroadcast */));
+  RETURN_ERR(addValueMapping(outputs[0], node));
+}
+
+static glow::Node *
+createReshapeNodeForStack(glow::Function &F, const torch::jit::Node *ptNode,
+                          const glow::ConcatNode *concatNode) {
+  auto inputs = ptNode->inputs();
   int64_t dim = ptNode->i(at::attr::dim);
 
-  RETURN_ERR_IF_NOT(dim >= 0, "Negative stack dims not supported yet.");
-
-  std::vector<glow::NodeValue> glowInputs;
-  c10::ScalarType higherType;
-  glow::ElemKind higherKind;
-  ASSIGN_VALUE_OR_RETURN_ERR(higherType, getHigherType(inputs));
-  higherKind = scalarTypeToElemKind(higherType);
-
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    glow::NodeValue glowInput;
-    ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[i]));
-
-    // +1 because stack adds an extra dimension
-    RETURN_ERR_IF_NOT(
-        dim < glowInput.dims().size() + 1,
-        "Dim must be less than the rank of inputs plus the added dimension");
-
-    if (!isQuantizedElemKind(higherKind) &&
-        glowInput.getElementType() != higherKind) {
-      glow::ConvertToNode *toNode =
-          F_.createConvertTo("upcastForConcat", glowInput, higherKind);
-      glowInputs.push_back(toNode->getResult());
-    } else {
-      glowInputs.push_back(std::move(glowInput));
-    }
-  }
-
-  auto concat = F_.createConcat("stack_concat", glowInputs, dim)->getResult();
+  auto concat = concatNode->getResult();
   auto concatDims = concat.dims();
 
   size_t numInputs = inputs.size();
@@ -2884,10 +2889,52 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
     reshapeDims.push_back(numInputs);
   }
 
-  auto reshape =
-      F_.createReshape("stack_reshape", concat, reshapeDims)->getResult();
+  return F.createReshape("stack_reshape", concat, reshapeDims)->getResult();
+}
 
-  RETURN_ERR(addValueMapping(outputs[0], reshape));
+Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
+
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  // In the case of a single input, just return it.
+  if (inputs.size() == 1) {
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+    RETURN_ERR(addValueMapping(outputs[0], input));
+  }
+
+  glow::ConcatNode *node;
+  ASSIGN_VALUE_OR_RETURN_ERR(node, createConcatNode(this, F_, ptNode,
+                                                    true /* isStack */,
+                                                    false /* doBroadcast */));
+
+  RETURN_ERR(
+      addValueMapping(outputs[0], createReshapeNodeForStack(F_, ptNode, node)));
+}
+
+Error PyTorchModelLoader::loadFusedBroadcastStack(
+    const torch::jit::Node *ptNode) {
+
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  // In the case of a single input, just return it.
+  if (inputs.size() == 1) {
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+    RETURN_ERR(addValueMapping(outputs[0], input));
+  }
+
+  glow::ConcatNode *node;
+  ASSIGN_VALUE_OR_RETURN_ERR(node, createConcatNode(this, F_, ptNode,
+                                                    true /* isStack */,
+                                                    true /* doBroadcast */));
+
+  RETURN_ERR(
+      addValueMapping(outputs[0], createReshapeNodeForStack(F_, ptNode, node)));
 }
 
 Error PyTorchModelLoader::loadCos(const torch::jit::Node *ptNode) {
