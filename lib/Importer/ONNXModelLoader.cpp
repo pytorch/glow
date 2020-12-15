@@ -814,21 +814,22 @@ Error ONNXModelLoader::getInputsNamesAndTypes(
 
   for (const auto &finalIn : inputs) {
     for (const auto &in : graphDef.input()) {
-      if (finalIn.compare(in.name()) == 0) {
-        inTensorNames.push_back(in.name());
-        const ONNX_NAMESPACE::ValueInfoProto &valueInfo = in;
-        auto type = valueInfo.type();
-
-        std::vector<dim_t> dim;
-        ASSIGN_VALUE_OR_RETURN_ERR(dim,
-                                   getProtoShape(type.tensor_type().shape()));
-
-        ElemKind kind = ElemKind::FloatTy;
-        RETURN_IF_ERR(onnxTensorDataTypeToElemKind(
-            type.tensor_type().elem_type(), &kind));
-
-        inTypes.push_back(Type(kind, dim));
+      if (finalIn.compare(in.name()) != 0) {
+        continue;
       }
+      inTensorNames.push_back(in.name());
+      const ONNX_NAMESPACE::ValueInfoProto &valueInfo = in;
+      auto type = valueInfo.type();
+
+      std::vector<dim_t> dim;
+      ASSIGN_VALUE_OR_RETURN_ERR(dim,
+                                 getProtoShape(type.tensor_type().shape()));
+
+      ElemKind kind = ElemKind::FloatTy;
+      RETURN_IF_ERR(
+          onnxTensorDataTypeToElemKind(type.tensor_type().elem_type(), &kind));
+
+      inTypes.push_back(Type(kind, dim));
     }
   }
 
