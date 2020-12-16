@@ -128,7 +128,16 @@ struct BlacklistInitializer {
       {"Upsample_Nearest1D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Upsample_Nearest1D_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Upsample_Nearest1D_Int8/0", TestBlacklist::AnyDeviceAnyEngine},
-#endif // NNPI == 1.0
+#else
+      {"Upsample_Nearest3D_Float/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest3D_Float16/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest2D_Float/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest2D_Float16/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest2D_Int8/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest1D_Float/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest1D_Float16/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest1D_Int8/0", TestBlacklist::AnyDeviceHWEngine},
+#endif
       {"Upsample_Nearest3D_Int8/0", TestBlacklist::AnyDeviceAnyEngine},
       {"rowwiseQuantizedFCTest_Int8_BiasInt32/0",
        TestBlacklist::AnyDeviceAnyEngine},
