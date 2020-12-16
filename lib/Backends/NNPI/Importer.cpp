@@ -408,6 +408,7 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::Convolution3DNodeKind:
     case Kinded::Kind::AvgPoolNodeKind:
     case Kinded::Kind::MaxPoolNodeKind:
+    case Kinded::Kind::BatchNormalizationNodeKind:
       return true;
     case Kinded::Kind::FullyConnectedNodeKind:
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
