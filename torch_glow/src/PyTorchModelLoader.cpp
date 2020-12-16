@@ -2014,7 +2014,7 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     auto ptBiasTensor = ptBiasTensorTmp.value().contiguous();
     biasTensor = ptTensorToGlowTensor(ptBiasTensor);
   } else {
-    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weight.dims()[1]});
+    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weight.dims()[0]});
     biasTensor.zero();
   }
 
@@ -2022,7 +2022,6 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
       "quantized_linear_bias", std::move(biasTensor));
   biasConstant->ensureIsOwned();
   RETURN_ERR_IF_NOT(biasConstant, "quantized::linear bias must be constant");
-
   auto bias = biasConstant->getOutput();
 
   float outScale;
