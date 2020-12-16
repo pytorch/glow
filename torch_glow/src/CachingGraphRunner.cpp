@@ -154,7 +154,8 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME,
                     "perGlowGraphInfoMap__lookup");
   std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
-  auto it = perGlowGraphInfoMap_.find(metaStack);
+  size_t hash = getGraphMapKeyFromInputStack(metaStack);
+  auto it = perGlowGraphInfoMap_.find(hash);
   if (it != perGlowGraphInfoMap_.end()) {
     return it->second;
   }
@@ -208,7 +209,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
 
-  auto ret = perGlowGraphInfoMap_.emplace(metaStack, info);
+  auto ret = perGlowGraphInfoMap_.emplace(hash, info);
   RETURN_ERR_IF_NOT(ret.second,
                     strFormat("Tried to store duplicate Glow graph for %s",
                               metaStack.print().c_str()));
@@ -234,7 +235,8 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
 
   // If we already have a shape info for this graph output with and the
   // given inputs then use that.
-  auto it = perGlowGraphShapeMap_.find(metaStack);
+  size_t hash = getGraphMapKeyFromInputStack(metaStack);
+  auto it = perGlowGraphShapeMap_.find(hash);
   if (it != perGlowGraphShapeMap_.end()) {
     return &(it->second);
   }
@@ -254,7 +256,7 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runShapeInference");
 
-  auto ret = perGlowGraphShapeMap_.emplace(metaStack, outputShape);
+  auto ret = perGlowGraphShapeMap_.emplace(hash, outputShape);
   RETURN_ERR_IF_NOT(ret.second,
                     strFormat("Duplcate value in perGlowGraphShapeMap_ for %s",
                               metaStack.print().c_str()));
@@ -722,7 +724,8 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
     ASSIGN_VALUE_OR_RETURN_ERR(metaStack,
                                inputMetaStackFromStack(relevantInputs));
     std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
-    auto it = perGlowGraphInfoMap_.find(metaStack);
+    size_t hash = getGraphMapKeyFromInputStack(metaStack);
+    auto it = perGlowGraphInfoMap_.find(hash);
     if (it == perGlowGraphInfoMap_.end()) {
       std::ostringstream ss;
       ss << "No compiled graph found for input stack:" << std::endl
@@ -730,7 +733,7 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
       ss << "There are " << perGlowGraphInfoMap_.size()
          << "input sets with compiled graphs, they are:" << std::endl;
       for (const auto &kv : perGlowGraphInfoMap_) {
-        ss << kv.first.print() << std::endl;
+        ss << hash << std::endl;
       }
       return MAKE_ERR(ss.str());
     }
@@ -780,6 +783,7 @@ Error CachingGraphRunner::warmCache(const InputMetaStack &metaStack,
     traceContext = std::make_unique<TraceContext>(TraceLevel::STANDARD);
     traceContext->setThreadName("torch_glow");
   }
+  size_t hash = getGraphMapKeyFromInputStack(metaStack);
   {
     TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
                       "torch_glow::warmCache");
@@ -789,7 +793,7 @@ Error CachingGraphRunner::warmCache(const InputMetaStack &metaStack,
 
     {
       std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
-      if (perGlowGraphInfoMap_.find(metaStack) != perGlowGraphInfoMap_.end()) {
+      if (perGlowGraphInfoMap_.find(hash) != perGlowGraphInfoMap_.end()) {
         return MAKE_ERR(strFormat("There is already a compiled graph for %s",
                                   metaStack.print().c_str()));
       }
@@ -798,8 +802,7 @@ Error CachingGraphRunner::warmCache(const InputMetaStack &metaStack,
     // HostManager is shared across CachingGraphRunner instances so Function
     // names should be unique so this is included in the name.
     auto info = std::make_shared<PerGlowGraphInfo>(
-        strFormat("pt_function_%lu_%lu", size_t(this), metaStack.hash()),
-        settings);
+        strFormat("pt_function_%lu_%lu", size_t(this), hash), settings);
 
     std::unique_ptr<Module> glowModule = std::make_unique<Module>();
     Function *f = glowModule->createFunction(info->functionName);
@@ -856,7 +859,7 @@ Error CachingGraphRunner::warmCache(const InputMetaStack &metaStack,
       TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
     }
     // There should be only one element in the map when model is precompiled.
-    perGlowGraphInfoMap_.emplace(metaStack, info);
+    perGlowGraphInfoMap_.emplace(hash, info);
 
     TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
                     "torch_glow::warmCache");
@@ -892,6 +895,17 @@ CachingGraphRunner::~CachingGraphRunner() {
   for (auto &kv : perGlowGraphInfoMap_) {
     ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));
   }
+}
+
+size_t CachingGraphRunner::getGraphMapKeyFromInputStack(
+    const InputMetaStack &metaStack) {
+  size_t hash;
+  if (defaultSettings_.nominalBatchIdx >= 0) {
+    hash = metaStack.optimizedHash(defaultSettings_.nominalBatchIdx);
+  } else {
+    hash = metaStack.hash();
+  }
+  return hash;
 }
 
 } // namespace glow

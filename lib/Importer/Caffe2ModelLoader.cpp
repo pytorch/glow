@@ -503,7 +503,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   // Construct the bias constant if one wasn't found.
   if (!bias.getNode()) {
     TypeRef bTy = mod_.uniqueType(ElemKind::Int32QTy, {depth}, 1.0, 0);
-    bias = G_->createSplat("conv.bias", bTy, 0.f);
+    bias = G_->createSplat(opName + "_conv.bias", bTy, 0.f);
   }
 
   RETURN_ERR_IF_NOT(
@@ -540,7 +540,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
 
       auto biasTy = mod_.uniqueType(ElemKind::Int32QTy, bias.dims(), biasScale,
                                     biasOffset);
-      bias = G_->createQuantize("conv.bias", bias, biasTy);
+      bias = G_->createQuantize(opName + "_conv.bias", bias, biasTy);
     }
 
     node = G_->createConv(opName, finalIn, w, bias, outTy, kernels, strides,
@@ -707,7 +707,7 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
   // Construct the bias constant if one wasn't found.
   if (!bias.getNode()) {
     TypeRef bTy = mod_.uniqueType(ElemKind::FloatTy, {depth});
-    bias = G_->createSplat("conv.bias", bTy, 0.f);
+    bias = G_->createSplat(opName + "_conv.bias", bTy, 0.f);
   }
 
   TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
@@ -948,8 +948,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     unsigned_t channel;
     ASSIGN_VALUE_OR_RETURN_ERR(channel, getChannel(dict));
-    auto *node = G_->createBatchNormalization(opName, in, bias, scale, mean,
-                                              var, channel, epsilon);
+    auto *node = G_->createBatchNormalization(
+        opName, in.getType(), in, bias, scale, mean, var, channel, epsilon);
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
@@ -1007,7 +1007,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     for (unsigned i = 0; i < numInputs; i++) {
       NodeValue in;
       ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
-      inputs.push_back(in);
+      inputs.push_back(std::move(in));
     }
 
     // If axis exists it takes priority over channel.
@@ -1018,32 +1018,64 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(channel, getChannel(dict));
     }
 
-    Node *node = G_->createConcat(opName, inputs, channel);
-
     unsigned_t addAxis = 0;
     if (dict.count("add_axis")) {
       ASSIGN_VALUE_OR_RETURN_ERR(addAxis, loadInt(dict["add_axis"]));
     }
 
+    Node *node{nullptr};
+
     if (addAxis) {
       // When add axis is used, this means we have to add a new dimension
       // before the axis, instead of merging on the axis.
       std::vector<dim_t> outputDims = inputs[0].dims();
-      unsigned i = 0;
-      for (const auto &input : inputs) {
-        RETURN_ERR_IF_NOT(
-            outputDims[channel] == input.dims()[channel],
-            opErrMsg(op, strFormat("inputs need all to have the same dims for "
-                                   "concat with add_axis: input 0 (%s) vs "
-                                   "input %u (%s), %u vs %u, channel = %u",
-                                   op.input(0).c_str(), i, op.input(i).c_str(),
-                                   static_cast<unsigned>(outputDims[channel]),
-                                   static_cast<unsigned>(input.dims()[channel]),
-                                   channel)));
-        ++i;
+
+      if (channel < outputDims.size()) {
+        unsigned i = 0;
+        for (const auto &input : inputs) {
+          RETURN_ERR_IF_NOT(
+              outputDims[channel] == input.dims()[channel],
+              opErrMsg(op,
+                       strFormat("inputs need all to have the same dims for "
+                                 "concat with add_axis: input 0 (%s) vs "
+                                 "input %u (%s), %u vs %u, channel = %u",
+                                 op.input(0).c_str(), i, op.input(i).c_str(),
+                                 static_cast<unsigned>(outputDims[channel]),
+                                 static_cast<unsigned>(input.dims()[channel]),
+                                 channel)));
+          ++i;
+        }
+        outputDims.insert(outputDims.begin() + channel, numInputs);
+        node = G_->createConcat(opName, inputs, channel);
+        node = G_->createReshape(opName, node, outputDims);
+      } else if (channel == outputDims.size()) {
+        // We convert inputs into 2D arrays with single columns, thus the
+        // number of rows will be equal to the product of all original dims.
+        // Every converted input will look like a vertical line of numbers.
+        const auto flatVerticalShape = flattenCdr(inputs[0].dims(), channel);
+        llvm::SmallVector<NodeValue, 4> verticalInputs;
+        for (auto &input : inputs) {
+          verticalInputs.push_back(G_->createReshape(
+              opName, input,
+              {flatVerticalShape.first, flatVerticalShape.second}));
+        }
+
+        // We glue together the vertical lines, so, the number of columns
+        // becomes equal to the number of original inputs.
+        node = G_->createConcat(opName, verticalInputs, 1);
+
+        // Reshape to convert to desired shape.
+        outputDims.push_back(numInputs);
+        node = G_->createReshape(opName, node, outputDims);
+      } else {
+        return MAKE_ERR(opErrMsg(
+            op, strFormat("Invalid input: channel (=%u) > number of dims (=%u)",
+                          channel, static_cast<unsigned>(outputDims.size()))));
       }
-      outputDims.insert(outputDims.begin() + channel, numInputs);
-      node = G_->createReshape(opName, node, outputDims);
+    } else {
+      // In normal case (i.e. when we are not adding a new dimension)
+      // plain createConcat() would suffice.
+      node = G_->createConcat(opName, inputs, channel);
     }
 
     // If we add the axis then node is a Reshape, otherwise it should be
@@ -1113,18 +1145,19 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     } else if (typeName == "FbFCPacked") {
       auto fp16InputType =
           mod_.uniqueType(ElemKind::Float16Ty, in.getType()->dims());
-      in = G_->createConvertTo("ConvertInput", in, fp16InputType);
+      in = G_->createConvertTo(opName + ".ConvertInput", in, fp16InputType);
 
       auto fp16BiasType =
           mod_.uniqueType(ElemKind::Float16Ty, B->getType()->dims());
-      auto *fp16Bias = G_->createConvertTo("ConvertBias", B, fp16BiasType);
+      auto *fp16Bias =
+          G_->createConvertTo(opName + ".ConvertBias", B, fp16BiasType);
       TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
                                    {in.dims()[0], B->getType()->dims()[0]});
 
       auto fc = G_->createFullyConnected(opName, in, W, fp16Bias, OT, axis);
       auto outputType =
           mod_.uniqueType(ElemKind::FloatTy, fc->getResult().dims());
-      node = G_->createConvertTo("ConvertOutput", fc, outputType);
+      node = G_->createConvertTo(opName + ".ConvertOutput", fc, outputType);
     } else {
       node = G_->createFullyConnected(opName, in, W, B, axis);
     }
@@ -1151,7 +1184,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           opErrMsg(op, strFormat("Cannot reshape from size %lu to size %lu",
                                  totalOriginalOutputSize, totalReshapeSize)));
 
-      node = G_->createReshape("fc.out", node, reshapeDims);
+      node = G_->createReshape(opName + ".fc.out", node, reshapeDims);
     }
 
     // Save the outputs:
@@ -1379,7 +1412,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto convertedType =
         mod_.uniqueType(ElemKind::FloatTy, in.getType()->dims());
-    auto *R = G_->createConvertTo("ConvertInput", in, convertedType);
+    auto *R = G_->createConvertTo(opName + ".ConvertInput", in, convertedType);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -1393,8 +1426,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(slices, getNodeValueByName(op.input(2)));
 
     assert(indices.dims().size() == 1 && "Indices should be 1-dimensional!");
-    NodeValue indices2D =
-        G_->createReshape("indices.2d", indices, {indices.dims()[0], 1});
+    NodeValue indices2D = G_->createReshape(opName + ".indices.2d", indices,
+                                            {indices.dims()[0], 1});
     Node *SAN = G_->createScatterData(opName, data, indices2D, slices);
     RETURN_IF_ERR(addNodeAsOutput(op, SAN));
     return Error::success();
@@ -1957,8 +1990,10 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
 
       float scale;
       ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
+      (void)scale;
       int32_t offset;
       ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
+      (void)offset;
       size_t i = 0;
       if (typeName == "Int8GivenTensorFill") {
         // Although in Caffe2 quantized model, the weights is int8 quantized,

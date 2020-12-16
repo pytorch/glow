@@ -443,6 +443,18 @@ protected:
     return Error::success();
   }
 
+  /// Loads Pow operator, given its protobuf representation and parsed args.
+  Error loadPow(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    NodeValue base;
+    ASSIGN_VALUE_OR_RETURN_ERR(base, getNodeValueByName(op.input(0)));
+    NodeValue exp;
+    ASSIGN_VALUE_OR_RETURN_ERR(exp, getNodeValueByName(op.input(1)));
+    auto R = G_->createNodeWithBroadcast<PowNode>(opName, -1, base, exp);
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
+    return Error::success();
+  }
+
   /// Loads Sqrt operator, given its protobuf representation and parsed args.
   Error loadSqrt(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
@@ -531,13 +543,13 @@ protected:
                                  loadAxis<int>(dict["axis"], in.dims().size()));
     }
 
-    auto *FN = G_->createFlatten("reshapeInput", in, axis);
+    auto *FN = G_->createFlatten(opName + ".reshapeInput", in, axis);
 
     auto *SM = G_->createSoftMax(opName, FN, selected);
 
     // The output should have the same shape as the original input.
     auto origInDims = in.getType()->dims();
-    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    auto *RN = G_->createReshape(opName + ".reshapeOutput", SM, origInDims);
     RETURN_IF_ERR(addNodeAsOutput(op, RN));
     return Error::success();
   }
@@ -593,12 +605,12 @@ protected:
   static Expected<NodeValue>
   handleBatchMatMulTranspose(Function *F, ArgumentDictionaryTy &dict,
                              llvm::StringRef key, NodeValue input) {
-    if (!dict.count(key)) {
+    if (!dict.count(key.str())) {
       return input;
     }
 
     int isTransposed;
-    ASSIGN_VALUE_OR_RETURN_ERR(isTransposed, loadInt(dict[key]));
+    ASSIGN_VALUE_OR_RETURN_ERR(isTransposed, loadInt(dict[key.str()]));
     if (isTransposed == 1) {
       auto dimsSize = input.dims().size();
       RETURN_ERR_IF_NOT(dimsSize >= 2,
@@ -849,7 +861,7 @@ protected:
     // one contains permutation under name "perm", the other contains it under
     // argument name "axes". That's why the name is passed as a parameter.
     std::vector<unsigned_t> perm;
-    if (dict.count(permArgName))
+    if (dict.count(permArgName.str()))
       ASSIGN_VALUE_OR_RETURN_ERR(perm, getShape<unsigned_t>(dict[permArgName]));
 
     if (perm.empty()) {
@@ -1560,7 +1572,7 @@ protected:
       return true;
     }
     if (typeName == "GatherRanges") {
-      RETURN_IF_ERR(loadGatherRanges(typeName, op, dict));
+      RETURN_IF_ERR(loadGatherRanges(typeName.str(), op, dict));
       return true;
     }
     if (typeName == "Less") {
@@ -1573,6 +1585,10 @@ protected:
     }
     if (typeName == "Not") {
       RETURN_IF_ERR(loadNotOp(typeName, op));
+      return true;
+    }
+    if (typeName == "Pow") {
+      RETURN_IF_ERR(loadPow(op, dict));
       return true;
     }
 
@@ -1637,6 +1653,7 @@ protected:
         ASSIGN_VALUE_OR_RETURN_ERR(
             pl, createAndRegisterPlaceholder(name, &loadResult.type,
                                              /*isStatic*/ true));
+        (void)pl;
       } else {
         RETURN_IF_ERR(
             createAndRegisterConstant(name, std::move(*loadResult.t)));

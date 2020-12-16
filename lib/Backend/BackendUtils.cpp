@@ -81,7 +81,7 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
       symbol.input = false;
       symbol.output = false;
       auto parentCategory =
-          symbolTable.find(tvSource->getName())->second.symbolCategory;
+          symbolTable.find(tvSource->getName().str())->second.symbolCategory;
       if (parentCategory == glow::runtime::SymbolCategory::Placeholder) {
         symbol.symbolCategory =
             glow::runtime::SymbolCategory::PlaceholderTensorView;

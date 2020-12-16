@@ -82,13 +82,13 @@ class CachingGraphRunner {
 
   /// Mapping from hash of PyTorch inputs to PerGlowGraphInfo for the Glow
   /// function that will run inputs matching that hash.
-  std::unordered_map<InputMetaStack, std::shared_ptr<PerGlowGraphInfo>>
+  std::unordered_map<size_t, std::shared_ptr<PerGlowGraphInfo>>
       perGlowGraphInfoMap_;
 
   /// Here we assume this is only one corresponding Glow function.
   /// Mapping from hash of PyTorch inputs to PerGlowGraphShape for the Glow
   /// function that will run inputs matching that hash.
-  std::unordered_map<InputMetaStack, MetaStack> perGlowGraphShapeMap_;
+  std::unordered_map<size_t, MetaStack> perGlowGraphShapeMap_;
 
   /// In AOT flow, compile a single Glow function and use it for all input
   /// sizes. The PyTorch tensor inputs in this case should be smaller that the
@@ -175,6 +175,9 @@ class CachingGraphRunner {
 
   /// The Glow Function should've already been created. Returns an error if not.
   Error runOnly(torch::jit::Stack &stack);
+
+  /// Get key of caching graph map from inputMetaStack.
+  size_t getGraphMapKeyFromInputStack(const InputMetaStack &metaStack);
 
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,

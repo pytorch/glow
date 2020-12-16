@@ -32,8 +32,8 @@ bool glow::checkSameLayout(llvm::StringRef srcLayoutStr,
                            llvm::StringRef destLayoutStr, TypeRef ty,
                            const Node *parent, const std::string &prefix,
                            const TensorLayoutCommon &TLC, bool verbose) {
-  auto srcLayout = TensorLayoutDescription(srcLayoutStr);
-  auto destLayout = TensorLayoutDescription(destLayoutStr);
+  auto srcLayout = TensorLayoutDescription(srcLayoutStr.str());
+  auto destLayout = TensorLayoutDescription(destLayoutStr.str());
   // Are layouts literally the same?
   if (srcLayout.isSameLayout(destLayout)) {
     return true;
@@ -258,7 +258,7 @@ llvm::StringRef TensorLayoutDescription::setAttribute(size_t n,
   assert(n < numDims_ && "Wrong dimension number");
   auto &dimStr = dims_[n];
   // If we have a current name - remove it.
-  removeAttribute(name, dimStr);
+  removeAttribute(name.str(), dimStr);
   // Add new name information to dim:
   dimStr.append("[");
   dimStr.append(name);
@@ -285,7 +285,7 @@ llvm::ArrayRef<std::string> TensorLayoutDescription::getDims() const {
 }
 
 std::string TensorLayoutDescription::getDebugDesc() const {
-  std::string desc = "Layout: " + getSerializedLayout().str() + " [";
+  std::string desc = "Layout: " + getSerializedLayout() + " [";
   for (unsigned idx = 0; idx < numDims_; idx++) {
     if (idx > 0) {
       desc += ", ";
@@ -707,6 +707,7 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::InsertTensorNodeKind:
   case Kinded::Kind::SGDNodeKind:
+  case Kinded::Kind::BroadcastNodeKind:
     return true;
   default:
     return false;

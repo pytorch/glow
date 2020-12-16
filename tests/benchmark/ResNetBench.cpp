@@ -297,7 +297,7 @@ private:
     next = makeBlock(next, residual, planes, stride, groups_, widthPerGroup_,
                      dilation_);
 
-    for (auto i = 1; i < blocks; ++i) {
+    for (unsigned_t i = 1; i < blocks; ++i) {
       residual = next;
       next = makeBlock(next, residual, planes, /*stride*/ 1, groups_,
                        widthPerGroup_, dilation_);
@@ -414,7 +414,7 @@ public:
 
   void setup() override {
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    for (auto i = 0; i < numDevices; ++i) {
+    for (unsigned_t i = 0; i < numDevices; ++i) {
       auto config = std::make_unique<runtime::DeviceConfig>(backendName_);
       config->deviceID = i;
       configs.push_back(std::move(config));
@@ -452,7 +452,7 @@ public:
 
     auto *bindings = ctx->getPlaceholderBindings();
 
-    for (auto i = 0; i < numRuns; i++) {
+    for (unsigned_t i = 0; i < numRuns; i++) {
       if (logEvery > 0 && i > 0 && threadNum == 0 && i % logEvery == 0) {
         LOG(INFO) << "Thread 0 reached request " << i;
       }
@@ -472,7 +472,7 @@ public:
 
     LOG(INFO) << "Running";
     int64_t startTime = TraceEvent::now();
-    for (auto i = 0; i < numRequesters; ++i) {
+    for (unsigned_t i = 0; i < numRequesters; ++i) {
       threads.push_back(std::thread(
           [this, reqsPerThread, i]() { runImpl(reqsPerThread, i); }));
     }
@@ -512,7 +512,7 @@ std::vector<ShapeNCHW> generateShapes(dim_t batchSize, dim_t baseSize,
 
   ShapeNCHW hStepped(batchSize, 3, baseSize, baseSize);
   ShapeNCHW wStepped(batchSize, 3, baseSize, baseSize);
-  for (auto i = 1; i < numBins; ++i) {
+  for (dim_t i = 1; i < numBins; ++i) {
     if (i % 2 == 0) {
       hStepped.h += stepSize;
       shapes.push_back(hStepped);

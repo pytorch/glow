@@ -112,8 +112,7 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
 
 TFLITE_UNIT_TEST(Add, "add.tflite")
 
-// TODO: This unit test should be enabled once #4565 is fixed.
-// TFLITE_UNIT_TEST(AvgPool2D_PaddingSame, "avgpool2d_same.tflite")
+TFLITE_UNIT_TEST(AvgPool2D_PaddingSame, "avgpool2d_same.tflite")
 TFLITE_UNIT_TEST(AvgPool2D_PaddingValid, "avgpool2d_valid.tflite")
 
 TFLITE_UNIT_TEST(Concat, "concat.tflite")

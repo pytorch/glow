@@ -1135,6 +1135,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::BOOL;
   }
   LOG(DFATAL) << "Cannot reach here.";
+  return TensorType::UNDEFINED; // Avoids a compilation warning.
 }
 
 /// Add quantization parameters to the doc_string in \p out based on \p type.
@@ -2237,6 +2238,7 @@ DEF_ALL_WRITER_NODE(Reciprocal)
 DEF_ALL_WRITER_NODE(Sin)
 DEF_ALL_WRITER_NODE(Cos)
 DEF_ALL_WRITER_NODE(LSTMUnit)
+DEF_ALL_WRITER_NODE(Erf)
 DEF_ALL_WRITER_NODE(Min)
 DEF_ALL_WRITER_NODE(Max)
 DEF_ALL_WRITER_NODE(Log)

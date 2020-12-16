@@ -58,7 +58,7 @@ DeviceManager *DeviceManager::createDeviceManager(const DeviceConfig &config) {
 
 unsigned DeviceManager::numDevices(llvm::StringRef backendName) {
   const auto &factories = FactoryRegistry<std::string, Backend>::factories();
-  auto it = factories.find(backendName);
+  auto it = factories.find(backendName.str());
   if (it == factories.end()) {
     return 0;
   } else {

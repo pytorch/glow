@@ -911,7 +911,6 @@ TEST_P(HostManagerTest, testHostManagerRegistry) {
 TEST_P(HostManagerTest, testTimeout) {
   CHECK_IF_ENABLED();
 
-#ifdef GLOW_WITH_NNPI
   if (backendName_ == "NNPI") {
     // Skip this test if running on ICEREF, since we want to test the device
     // timeout.
@@ -922,7 +921,6 @@ TEST_P(HostManagerTest, testTimeout) {
     // Set the timeout to very short so we fail intentionally.
     glow::runtime::flags::NNPITimeoutMs = 1;
   }
-#endif
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   std::unique_ptr<ExecutionContext> context =
@@ -933,6 +931,9 @@ TEST_P(HostManagerTest, testTimeout) {
   auto *XTensor = context->getPlaceholderBindings()->allocate(X);
   XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Poww", X, 2.0);
+  for (unsigned i = 0; i < 1000; i++) {
+    pow = F->createPow("pow" + std::to_string(i), pow, 1.0);
+  }
   auto *save = F->createSave("save", pow);
   context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 

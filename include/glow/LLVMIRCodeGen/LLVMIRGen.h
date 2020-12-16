@@ -210,6 +210,11 @@ protected:
                                   llvm::ArrayRef<T> vals);
 
   /// Generates LLVM IR that materializes the constant array \p vals. Note that
+  /// int32 data type is accepted.
+  llvm::Value *emitConstI32Array(llvm::IRBuilder<> &builder,
+                                 llvm::ArrayRef<int32_t> vals);
+
+  /// Generates LLVM IR that materializes the constant array \p vals. Note that
   /// float data type is accepted.
   llvm::Value *emitConstFloatArray(llvm::IRBuilder<> &builder,
                                    llvm::ArrayRef<float> vals);
@@ -232,6 +237,19 @@ protected:
   /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder,
                              const glow::Value *val);
+
+  /// Generates LLVM IR that materializes the float activation parameters for
+  /// the instruction \p I.
+  template <class InstructionTy>
+  llvm::Value *emitConstFloatActivationArgs(llvm::IRBuilder<> &builder,
+                                            const InstructionTy *I);
+
+  /// Generates LLVM IR that materializes the quantized activation parameters
+  /// for the instruction \p I.
+  template <class InstructionTy>
+  llvm::Value *emitConstQuantActivationArgs(llvm::IRBuilder<> &builder,
+                                            const InstructionTy *I);
+
   /// Load base addresses of different memory areas (activations, const
   /// weightvars, mutable weight vars) so that they can be reused inside the
   /// body of the function.

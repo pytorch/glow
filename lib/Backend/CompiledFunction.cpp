@@ -29,7 +29,7 @@ CompiledFunction::CompiledFunction(runtime::RuntimeBundle &&bundle)
 void CompiledFunction::dumpJSON(llvm::StringRef fname) const {
   LOG(INFO) << "Dumping CompiledFunction JSON to " << fname.str() << std::endl;
   std::ofstream myfile;
-  myfile.open(fname);
+  myfile.open(fname.str());
   myfile << toJSON();
   myfile.close();
 }

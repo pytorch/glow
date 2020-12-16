@@ -105,6 +105,9 @@ public:
   /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
   bool enableRemoveMutation = true;
 
+  /// Dump statistics about the operators and fusion support in the graph.
+  bool dumpOperatorInventory = false;
+
   /// Number of traces per json trace file dump.
   size_t numTracesPerDump = 1;
 
@@ -162,6 +165,10 @@ public:
   /// Glow graph errors as soon as possible during loading. This is disabled by
   /// default because it can slow down model loading.
   bool debugContinuouslyVerifyDuringModelLoading = false;
+
+  /// Index of input to extract batch size
+  /// NOTE: this should only be used for development testing.
+  int32_t nominalBatchIdx = -1;
 };
 
 /// Represents different possible output types from to_glow modules.

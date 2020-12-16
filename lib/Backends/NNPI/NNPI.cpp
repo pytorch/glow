@@ -154,6 +154,15 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {ElemKind::Float16Ty}, {ROIAlignNode::BatchIndicesIdx}) &&
         (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int64ITy);
     break;
+  case Kinded::Kind::LSTMUnitNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+    break;
+  case Kinded::Kind::ResizeNearestNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32QTy,
+         ElemKind::Int8QTy, ElemKind::UInt8QTy});
+    break;
 #endif // NNPI > 1.1
   case Kinded::Kind::MulNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
@@ -177,9 +186,18 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         (elemType == ElemKind::Int8QTy || elemType == ElemKind::FloatTy ||
          elemType == ElemKind::Float16Ty);
 
-    isNodePrecisionSupported &= NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty},
-        {BatchNormalizationNode::InputIdx});
+    isNodePrecisionSupported = isNodePrecisionSupported &&
+                               NI.allInputsAndOutputsHaveSameElemKind(
+                                   {ElemKind::FloatTy, ElemKind::Float16Ty},
+                                   {BatchNormalizationNode::InputIdx},
+                                   {BatchNormalizationNode::ResultIdx});
+
+    isNodePrecisionSupported =
+        isNodePrecisionSupported &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {elemType},
+            {BatchNormalizationNode::ScaleIdx, BatchNormalizationNode::BiasIdx,
+             BatchNormalizationNode::MeanIdx, BatchNormalizationNode::VarIdx});
     break;
   }
   case Kinded::Kind::AvgPoolNodeKind:
@@ -602,10 +620,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::LogitNodeKind:
-    isNodePrecisionSupported =
-        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
-    break;
-  case Kinded::Kind::LSTMUnitNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     break;

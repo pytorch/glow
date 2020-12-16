@@ -93,12 +93,6 @@ public:
   const PyTorchLoaderSettings &settings_;
 
 private:
-  /// Helper function to support upcasting in concat, we calculate the higher
-  /// type among a list of types. For example, the higher type of [half, float,
-  /// half, double] will be double. Similar to at::result_type().
-  Expected<c10::ScalarType> getHigherType(
-      const c10::ArrayRef<const torch::jit::Value *> &values) noexcept;
-
   /// Map from input placeholders to their location on the input stack.
   std::unordered_map<glow::Placeholder *, size_t>
       inputPlaceholdersReverseIndex_;
@@ -495,6 +489,10 @@ private:
   /// \returns error on failure.
   Error loadLog(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch sum node.
+  /// \returns error on failure.
+  Error loadSum(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch max node.
   /// \returns error on failure.
   Error loadMax(const torch::jit::Node *ptNode);
@@ -543,6 +541,14 @@ private:
   /// \returns error on failure.
   Error loadSqrt(const torch::jit::Node *ptNode);
 
+  /// Load PyTorch eq, ne, lt, lte nodes.
+  /// \returns error on failure.
+  template <typename CmpType> Error loadCmp(const torch::jit::Node *ptNode);
+
+  /// Load PyTorch ge, gte nodes.
+  /// \returns error on failure.
+  template <typename CmpType> Error loadCmpGt(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch reciprocal node.
   /// \returns error on failure.
   Error loadReciprocal(const torch::jit::Node *ptNode);
@@ -552,10 +558,20 @@ private:
   /// \returns error on failure.
   Error loadFusedConcat(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch fb::broadcast_cat node fused with a prim::ListConstruct
+  /// into a glow::fused_broadcast_cat node.
+  /// \returns error on failure.
+  Error loadFusedBroadcastConcat(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch prim::stack node fused with a prim::ListConstruct into a
   /// glow:FusedStack node.
   /// \returns error on failure.
   Error loadFusedStack(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch fb::broadcast_stack node fused with a prim::ListConstruct
+  /// into a glow:FusedBroadcastStack node.
+  /// \returns error on failure.
+  Error loadFusedBroadcastStack(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch LSTM node.
   /// \returns error on failure.
@@ -809,6 +825,14 @@ private:
   /// Load a PyTorch aten::to node.
   /// \returns error on failure.
   Error loadTo(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::clamp_min node.
+  /// \returns error on failure.
+  Error loadClampMin(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::expand_as node.
+  /// \returns error on failure.
+  Error loadExpandAs(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

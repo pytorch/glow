@@ -711,7 +711,7 @@ static void createSimpleModule(Module &mod) {
   (void)save;
 }
 
-static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights,
+static void createSimpleSparseNNModule(Module &mod, bool shareSplatInputs,
                                        bool addClipAndLayerNorm,
                                        dim_t numFCLayers) {
   mod.clear();
@@ -719,34 +719,62 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights,
 
   // Create SLS inputs
   std::vector<NodeValue> slsOutputs;
-  dim_t tableWidth = 16;
-  dim_t numIndices = 80;
-  dim_t batchSize = 32;
-  dim_t tableEntries = 10;
+  const dim_t tableWidth = 16;
+  const dim_t numIndices = 80;
+  const dim_t batchSize = 32;
+  const dim_t tableEntries = 10;
+  const size_t tableNum = 5;
+  // Based on how SLS table width is calculated below, the fcWidth
+  // is the sum of all the SLS tables' width.
+  const dim_t fcWidth = tableNum * (tableNum + 1) / 2 * tableWidth;
 
   NodeValue weights;
-  if (shareSplatWeights) {
+  NodeValue lengths;
+  NodeValue scale;
+  NodeValue bias;
+  if (shareSplatInputs) {
+    // Shared by FusedRowwiseQuantizedSparseLengthsWeightedSumNode
     auto ty =
         F->getParent()->uniqueType(ElemKind::FloatTy, {numIndices * batchSize});
     weights = F->createSplat("ones", ty, 1.0)->getResult();
+    lengths =
+        F->createSplat(
+             "lengths",
+             F->getParent()->uniqueType(ElemKind::Int32ITy, {batchSize}), 1)
+            ->getResult();
+    // Shared by LayerNormalizationNode
+    scale = F->createSplat("LN_scale",
+                           F->getParent()->uniqueType(ElemKind::FloatTy,
+                                                      {fcWidth / tableNum}),
+                           1.0)
+                ->getResult();
+    bias = F->createSplat("LN_bias",
+                          F->getParent()->uniqueType(ElemKind::FloatTy,
+                                                     {fcWidth / tableNum}),
+                          1.0)
+               ->getResult();
   }
 
   // Create SLS portion
-  for (int table = 0; table < 5; table++) {
-    dim_t thisTableWidth = (table + 1) * tableWidth;
+  for (int table = 0; table < tableNum; table++) {
+    dim_t thisTableWidth =
+        shareSplatInputs ? fcWidth / tableNum : (table + 1) * tableWidth;
     Tensor data(ElemKind::FloatTy, {tableEntries, thisTableWidth});
     auto *indices = mod.createPlaceholder(
         ElemKind::Int64ITy, {numIndices * batchSize}, "indices", false);
-    if (!shareSplatWeights) {
+    if (!shareSplatInputs) {
       weights = mod.createPlaceholder(ElemKind::FloatTy,
                                       {numIndices * batchSize}, "w", false)
                     ->getOutput();
+
+      lengths = mod.createPlaceholder(ElemKind::Int32ITy, {batchSize},
+                                      "lengths", false)
+                    ->getOutput();
     }
-    auto *lengths = mod.createPlaceholder(ElemKind::Int32ITy, {batchSize},
-                                          "lengths", false);
     float avgLength = (table % 2) ? 12.0f : 10.0f;
     auto *slsOutput = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-        "SLS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy, false,
+        "SLS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy,
+        /*useFP16Accumulation*/ false,
         /* lengthsMode */ LengthsMode::Variable, /* avgLength */ avgLength);
 
     if (addClipAndLayerNorm) {
@@ -754,14 +782,17 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights,
       auto *clipped = F->createClip("SLS_clipped", slsOutput, 0.0f, 70.0f);
 
       /* Layer Norm*/
-      Tensor scaleT(ElemKind::FloatTy, {thisTableWidth});
-      scaleT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
-      Constant *scaleC = mod.createConstant("LN_scale", std::move(scaleT));
-      Tensor biasT(ElemKind::FloatTy, {thisTableWidth});
-      biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
-      Constant *biasC = mod.createConstant("LN_bias", std::move(biasT));
+      if (!shareSplatInputs) {
+        Tensor scaleT(ElemKind::FloatTy, {thisTableWidth});
+        scaleT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+        scale = mod.createConstant("LN_scale", std::move(scaleT));
+
+        Tensor biasT(ElemKind::FloatTy, {thisTableWidth});
+        biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+        bias = mod.createConstant("LN_bias", std::move(biasT));
+      }
       auto *layerNormed =
-          F->createLayerNormalization("LN", clipped, scaleC, biasC, 1e-5);
+          F->createLayerNormalization("LN", clipped, scale, bias, 1e-5);
 
       /* Clip */
       auto *layerNormedClipped =
@@ -778,10 +809,10 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights,
 
   // Create FC portion
   for (dim_t layer = 0; layer < numFCLayers; layer++) {
-    Tensor FCWeights(ElemKind::FloatTy, {15 * tableWidth, 15 * tableWidth});
+    Tensor FCWeights(ElemKind::FloatTy, {fcWidth, fcWidth});
     FCWeights.getHandle().randomize(-0.5, 0.5, mod.getPRNG());
     Constant *weights = mod.createConstant("FCWeights", FCWeights);
-    Tensor FCBias(ElemKind::FloatTy, {15 * tableWidth});
+    Tensor FCBias(ElemKind::FloatTy, {fcWidth});
     FCBias.getHandle().randomize(-0.5, 0.5, mod.getPRNG());
     Constant *bias = mod.createConstant("FCBias", FCBias);
 
@@ -809,7 +840,7 @@ static bool findNodeInFunction(const Function *func,
 /// void createSimpleSparseNNModule(Module &mod).
 static void sparseNNPartitionValidation(const DAGListTy &dagList,
                                         uint64_t deviceMemory, Module &mod,
-                                        bool shareSplatWeights,
+                                        bool shareSplatInputs,
                                         bool addClipAndLayerNorm,
                                         bool pairLNWithSLS) {
   int numOfCPUBackends = 0;
@@ -823,6 +854,29 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList,
       numOfCPUBackends++;
       auto *func = mod.getFunction(node->name);
       GraphMemInfo memInfo = getFunctionMemory(func);
+
+      if (shareSplatInputs) {
+        for (const Node &N : func->getNodes()) {
+          if (const auto *SLWS = llvm::dyn_cast<
+                  FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&N)) {
+            EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getWeights()));
+            EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getLengths()));
+            // weight/length node is splat node, partitioner will clone it,
+            // thus each user has its own copy.
+            EXPECT_EQ(SLWS->getWeights().getNumUsers(), 1);
+            EXPECT_EQ(SLWS->getLengths().getNumUsers(), 1);
+          } else if (const auto *SLWS =
+                         llvm::dyn_cast<LayerNormalizationNode>(&N)) {
+            EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getScale()));
+            EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getBias()));
+            // scale/bias node is splat node, partitioner will clone it, thus
+            // each user has its own copy.
+            EXPECT_EQ(SLWS->getScale().getNumUsers(), 1);
+            EXPECT_EQ(SLWS->getBias().getNumUsers(), 1);
+          }
+        }
+      }
+
       if (findNodeInFunction(
               func,
               Kinded::Kind::
@@ -830,14 +884,6 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList,
         numOfSLSNodes++;
         slsPartitionSizes.insert(memInfo.getTotalMemSize());
         EXPECT_EQ(node->logicalDevices.size(), 1);
-        if (shareSplatWeights) {
-          for (const Node &N : func->getNodes()) {
-            if (const auto *SLWS = llvm::dyn_cast<
-                    FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&N)) {
-              EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getWeights()));
-            }
-          }
-        }
         if (addClipAndLayerNorm && pairLNWithSLS) {
           EXPECT_TRUE(findNodeInFunction(
               func, Kinded::Kind::LayerNormalizationNodeKind));
@@ -868,13 +914,13 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList,
   }
 }
 
-static void testSimpleSparseNNPartitioning(Module &mod, bool shareSplatWeights,
+static void testSimpleSparseNNPartitioning(Module &mod, bool shareSplatInputs,
                                            bool concatSLSOutputs,
                                            bool balancePerfModel,
                                            bool addClipAndLayerNorm,
                                            bool pairLNWithSLS,
                                            bool forceFailure = false) {
-  createSimpleSparseNNModule(mod, shareSplatWeights, addClipAndLayerNorm,
+  createSimpleSparseNNModule(mod, shareSplatInputs, addClipAndLayerNorm,
                              forceFailure ? 5 : 4);
   BackendWithoutSub backend1, backend2, backend3;
   std::vector<Backend *> backends;
@@ -900,14 +946,14 @@ static void testSimpleSparseNNPartitioning(Module &mod, bool shareSplatWeights,
   EXPECT_EQ(mod.getFunctions().size(), 4);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod));
-  sparseNNPartitionValidation(*dagList, deviceMemory, mod, shareSplatWeights,
+  sparseNNPartitionValidation(*dagList, deviceMemory, mod, shareSplatInputs,
                               addClipAndLayerNorm, pairLNWithSLS);
   mod.clear();
 }
 
 /// Test using user-defined backends for SparseNN partition.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ false,
                                  /*concatSLSOutputs*/ false,
                                  /*balancePerfModel*/ false,
                                  /*addClipAndLayerNorm*/ false,
@@ -916,7 +962,7 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
 
 /// Test that this flag is a NOP when LN doesn't exist
 TEST_F(PartitionerTest, SimpleSparseNNPartitioningPairLNNOP) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ false,
                                  /*concatSLSOutputs*/ false,
                                  /*balancePerfModel*/ false,
                                  /*addClipAndLayerNorm*/ false,
@@ -925,7 +971,7 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningPairLNNOP) {
 
 /// Test using user-defined backends for SparseNN partition.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioningClipAndLayerNormInNonSLS) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ false,
                                  /*concatSLSOutputs*/ false,
                                  /*balancePerfModel*/ false,
                                  /*addClipAndLayerNorm*/ true,
@@ -934,7 +980,7 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningClipAndLayerNormInNonSLS) {
 
 /// Test using user-defined backends for SparseNN partition.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioningClipAndLayerNormInSLS) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ false,
                                  /*concatSLSOutputs*/ false,
                                  /*balancePerfModel*/ false,
                                  /*addClipAndLayerNorm*/ true,
@@ -942,26 +988,37 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningClipAndLayerNormInSLS) {
 }
 
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning_ConcatSLSOutputs) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ false,
                                  /*concatSLSOutputs*/ true,
                                  /*balancePerfModel*/ false,
                                  /*addClipAndLayerNorm*/ true,
                                  /*pairLNWithSLS*/ false);
 }
 
-/// Test using user-defined backends for SparseNN partition when weights are
+/// Test using user-defined backends for SparseNN partition when inputs are
 /// shared Splats by all SLSs.
-TEST_F(PartitionerTest, SimpleSparseNNPartitioning_SharedWeights) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ true,
+TEST_F(PartitionerTest, SimpleSparseNNPartitioning_SharedSplatInputs) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ true,
                                  /*concatSLSOutputs*/ false,
                                  /*balancePerfModel*/ false,
                                  /*addClipAndLayerNorm*/ true,
                                  /*pairLNWithSLS*/ false);
 }
 
+/// Test using user-defined backends for SparseNN partition when inputs are
+/// shared Splats by all SLSs, and LN is included in frontier.
+TEST_F(PartitionerTest,
+       SimpleSparseNNPartitioning_SharedSplatInputsAndLayerNormInSLS) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ true,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ true,
+                                 /*pairLNWithSLS*/ true);
+}
+
 /// Test using user-defined backends for SparseNN partition.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioningBalancePerfModel) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ false,
                                  /*concatSLSOutputs*/ false,
                                  /*balancePerfModel*/ true,
                                  /*addClipAndLayerNorm*/ true,
@@ -971,7 +1028,7 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningBalancePerfModel) {
 /// This test checks that we fail partitioning when we have a SLSPartition and
 /// NonSLSPartition that, when summed together, cannot fit inside a device.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioningExpectFailure) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ false,
                                  /*concatSLSOutputs*/ false,
                                  /*balancePerfModel*/ false,
                                  /*addClipAndLayerNorm*/ true,

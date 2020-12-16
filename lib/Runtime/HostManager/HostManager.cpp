@@ -23,6 +23,7 @@
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Runtime/DeviceHealthMonitor.h"
+#include "glow/Runtime/ErrorReporter.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RequestData.h"
@@ -107,12 +108,19 @@ HostManager::HostManager(
     : config_(hostConfig),
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
-  EXIT_ON_ERR(init(std::move(deviceConfigs)));
+  auto reporters = ErrorReporterRegistry::ErrorReporters();
+
+  auto err = init(std::move(deviceConfigs));
+  if (reporters && err) {
+    std::string msg = err.peekErrorValue()->logToString();
+    reporters->report(msg);
+  }
+  EXIT_ON_ERR(std::move(err));
   statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
 }
 
 Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
-  auto it = networks_.find(network);
+  auto it = networks_.find(network.str());
   if (it == networks_.end()) {
     return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR, "Network not found.");
   }
@@ -268,7 +276,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     auto functions = module->getFunctions();
     for (auto &F : functions) {
-      std::string name = F->getName();
+      std::string name = F->getName().str();
       auto it = networks_.find(name);
       if (it != networks_.end() ||
           processingNetworks_.find(name) != processingNetworks_.end()) {
@@ -499,9 +507,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
 
     // If we're using AOT DAG optimizer then skip provisioning.
-    if (cctx.callDAGOptimizer && cctx.useDAGOptimizerAOTMode) {
-      LOG(INFO) << "Skipping provisioning because DAG optimizer and AOT mode "
-                   "were enabled.";
+    if (cctx.skipProvisioning ||
+        (cctx.callDAGOptimizer && cctx.useDAGOptimizerAOTMode)) {
+      LOG(INFO) << "Host manager skipping provisioning";
       {
         std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
         cleanupAddNetwork(names);
@@ -594,10 +602,149 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   return Error::success();
 }
 
+#if FACEBOOK_INTERNAL
+Error HostManager::addNetworkFX(
+    std::unique_ptr<Module> module, CompilationContext &cctx,
+    DAGListTy &networks, const folly::dynamic &FXIR,
+    const llvm::StringMap<const void *> &constants) {
+
+  LOG(INFO) << "Adding Glow network built with revision hash: " << revisionHash;
+  VLOG(1) << "addNetwork";
+
+  std::vector<std::string> names;
+  {
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+    auto functions = module->getFunctions();
+    for (auto &F : functions) {
+      std::string name = F->getName();
+      auto it = networks_.find(name);
+      if (it != networks_.end() ||
+          processingNetworks_.find(name) != processingNetworks_.end()) {
+        cleanupAddNetwork(names);
+        return MAKE_ERR(
+            ErrorValue::ErrorCode::RUNTIME_ERROR,
+            "Failed to add network: already have a function called " + name);
+      }
+      // Add the network to processingNetworks_ so we know it's being worked on.
+      processingNetworks_.insert(name);
+      names.push_back(name);
+    }
+  }
+
+  // Issue a warning when loading backend specific options from the command line
+  // and the compile context also contains backend specific options.
+  if (!loadBackendSpecificOptionsOpt.empty()) {
+    if (cctx.backendOpts.backendSpecificOpts.size() != 0) {
+      VLOG_EVERY_N(1, 1000) << "Warning: backendSpecificOpts is set via the "
+                               "HostManager, ignoring previously set options.";
+    }
+    cctx.backendOpts.backendSpecificOpts =
+        deserializeStrStrMapFromYaml(loadBackendSpecificOptionsOpt);
+  } else {
+    auto ctxLoadBackendSpecificOpt =
+        cctx.backendOpts.backendSpecificOpts.find("loadBackendSpecificOptions");
+
+    if (ctxLoadBackendSpecificOpt !=
+        cctx.backendOpts.backendSpecificOpts.end()) {
+      cctx.backendOpts.backendSpecificOpts =
+          deserializeStrStrMapFromYaml(ctxLoadBackendSpecificOpt->second);
+    }
+  }
+
+  std::vector<DeviceInfo> deviceInfo;
+  {
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+    for (auto &device : availableDevices_) {
+      DeviceInfo info = devices_[device]->getDeviceInfo();
+      info.availableMemory = devices_[device]->getAvailableMemory();
+      info.backendName = devices_[device]->getBackendName();
+      info.nonSupportedNodes =
+          devices_[device]->getParamByName("nonSupportedNodes");
+      info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
+      // If p2p is enabled update the inputCount limit.
+      if (cctx.enableP2P) {
+        info.inputCountMax = P2PInputLimit;
+      }
+      deviceInfo.push_back(info);
+    }
+  }
+
+  VLOG(1) << "Before provisioning";
+  auto err =
+      provisioner_->provisionFX(networks, *module, FXIR, constants, cctx);
+  if (err) {
+    if (err.peekErrorValue()->isFatalError()) {
+      statsExporterRegistry_->setCounter(kDeviceFatalError, 1);
+    }
+    {
+      std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+      cleanupAddNetwork(names);
+    }
+    RETURN_ERR(err);
+  }
+
+  VLOG(1) << "Calculation of maxActiveRequests";
+  {
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+    /// Calculate networkMaxActive requests. Then update
+    /// config_.maxActiveRequests This will be maxActiveRequestsPerInstance *
+    /// instanceCount * minReplications or config_.maxActiveRequests whichever
+    /// is smaller.
+
+    // Find the minimum on device replication.
+    unsigned minReplications{1};
+    for (auto &node : networks) {
+      for (auto &dag : node.nodes) {
+        minReplications = std::min(dag->replicationCount, minReplications);
+      }
+    }
+    unsigned product{0};
+    if (networks.size() && networks[0].nodes.size()) {
+      product = networks[0].nodes[0]->instanceCount *
+                cctx.maxActiveRequestsPerInstance * minReplications;
+    } else {
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                      "NodeList is empty.");
+    }
+    unsigned maxActiveRequests = config_.maxActiveRequests;
+    config_.maxActiveRequests = std::min(product, maxActiveRequests);
+
+    // Create pool of cachedExecutionStates.
+    for (auto &node : networks) {
+      // Note: currently getNextNetworkExecutionState assumes that pool size is
+      // >= currentInFlight requests, so we set pool size to maxActiveRequests.
+      executor_->createPool(node.root.get(), config_.maxActiveRequests,
+                            cctx.enableP2P || flags::EnableP2P,
+                            cctx.enableDRT || flags::EnableDRT);
+    }
+  }
+  // Clear constants contents from the module then put it in a
+  // shared_ptr to be shared between all of the networks created from each
+  // function in the module.
+  if (!cctx.skipModuleStrip) {
+    module->strip();
+  }
+  VLOG(1) << "Cleanup";
+  auto sharedModule = std::shared_ptr<Module>(std::move(module));
+  {
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+    for (auto &node : networks) {
+      LOG(INFO) << "Successfully compiled and provisioned " << node.root->name;
+      auto &networkData = networks_[(node.root)->name];
+      networkData.dag = std::move(node);
+      networkData.module = sharedModule;
+    }
+    cleanupAddNetwork(names);
+  }
+  VLOG(1) << "After cleanup";
+  return Error::success();
+}
+#endif
+
 std::unordered_map<std::string, std::vector<DeviceIDTy>>
 HostManager::getDevicePartitionMapping(llvm::StringRef network) {
   std::unordered_map<std::string, std::vector<DeviceIDTy>> mapping;
-  auto it = networks_.find(network);
+  auto it = networks_.find(network.str());
   if (it != networks_.end()) {
     auto &nodeList = it->second.dag.nodes;
     for (auto &node : nodeList) {
@@ -613,12 +760,13 @@ HostManager::getDevicePartitionMapping(llvm::StringRef network) {
 
 Error HostManager::removeNetwork(llvm::StringRef networkName) {
   std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
-  auto networkIterator = networks_.find(networkName);
+  auto networkIterator = networks_.find(networkName.str());
   if (networkIterator == networks_.end()) {
     return Error::success();
   }
 
-  if (processingNetworks_.find(networkName) != processingNetworks_.end()) {
+  if (processingNetworks_.find(networkName.str()) !=
+      processingNetworks_.end()) {
     // Return an error, the network is in an incomplete state likely because
     // it is still being added by a different call.
     return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_BUSY,
@@ -657,7 +805,7 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
 
 bool HostManager::networkAdded(llvm::StringRef networkName) {
   std::shared_lock<std::shared_timed_mutex> networkLock(networkLock_);
-  return networks_.find(networkName) != networks_.end();
+  return networks_.find(networkName.str()) != networks_.end();
 }
 
 Error HostManager::clearHost() {
@@ -804,7 +952,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
   NetworkData *network = nullptr;
   {
     std::shared_lock<std::shared_timed_mutex> networkLock(networkLock_);
-    auto it = networks_.find(networkName);
+    auto it = networks_.find(networkName.str());
     if (it != networks_.end()) {
       network = &it->second;
       network->refcount++;

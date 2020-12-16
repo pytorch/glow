@@ -233,7 +233,7 @@ public:
                     inputs);
 
     // For each core (sub-batch), create a network which does one layer
-    for (int core = 0; core < numNonzeroCores; core++) {
+    for (int core = 0; core < int(numNonzeroCores); core++) {
 
       // Layer Norm 1 bias and scale
       Tensor LN1_scale_Tensor(dtype_, {hiddenSize_});
@@ -274,7 +274,7 @@ public:
       fn->createSplit(strFormat("splitV_core%d", core), V, numHeads_, 1, {},
                       Vsplits);
 
-      for (int i = 0; i < numHeads_; i++) {
+      for (int i = 0; i < int(numHeads_); i++) {
         // Split the subbatch into individual sentences for the
         // batch matmul
         std::vector<SliceNode *> QBatchSplits(batchSizePerCore[core]);
@@ -290,7 +290,7 @@ public:
                         batchSizePerCore[core], 0, {}, VBatchSplits);
 
         // BatchMatMul
-        for (int b = 0; b < batchSizePerCore[core]; b++) {
+        for (int b = 0; b < int(batchSizePerCore[core]); b++) {
 
           auto *Kt =
               fn->createTranspose(strFormat("transpose_core%d_%d", core, i),
@@ -348,7 +348,7 @@ public:
 
       // Save result
       S[core] = fn->createSave(strFormat("save_core%d", core), FC2_norm);
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (int i = 0; i < int(asyncLaunchSize_); i++) {
         contexts_[i]->getPlaceholderBindings()->allocate(
             S[core]->getPlaceholder());
       }

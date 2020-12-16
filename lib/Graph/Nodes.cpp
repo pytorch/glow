@@ -85,7 +85,7 @@ Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 
 std::string Constant::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
+  db.addParam("name", quote(getName().str()))
       .addParam("layout", getLayout())
       .addParam("output", *getType());
   if (!skipUsers) {
@@ -96,7 +96,7 @@ std::string Constant::getDebugDesc(bool skipUsers) const {
 
 std::string Placeholder::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
+  db.addParam("name", quote(getName().str()))
       .addParam("layout", getLayout())
       .addParam("output", *getType())
       .addParam("trainable", isTraining())
@@ -430,26 +430,32 @@ static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
                                      NodeValue mean, NodeValue var,
                                      unsigned_t channel) {
   const Node *parent = dest.getNode();
-  bool isValid = checkSameType(dest, src, parent);
 
-  isValid &= expectCompareTrue(
-      "Require at least two input dims i.e., batch and channel dimensions",
-      src.dims().size(), (size_t)1, parent,
-      CompareOperatorGreaterThan<size_t>());
+  // Source and Dest can have different quantization params
+  // but need to match in shape and element type.
+  bool isValid = checkSameShape(dest, src, parent);
+  isValid = isValid && checkType(dest, src.getElementType(), parent);
+
+  isValid =
+      isValid &&
+      expectCompareTrue(
+          "Require at least two input dims i.e., batch and channel dimensions",
+          src.dims().size(), (size_t)1, parent,
+          CompareOperatorGreaterThan<size_t>());
 
   // Figure out how many channels are in the tensor.
   dim_t channels = src.dims()[channel];
 
   const dim_t expArray[] = {channels};
   auto exp = llvm::makeArrayRef(expArray);
-  isValid &= expectCompareTrue("Invalid bias dimension", bias.getType()->dims(),
-                               exp, parent);
-  isValid &= expectCompareTrue("Invalid scale dimension",
-                               scale.getType()->dims(), exp, parent);
-  isValid &= expectCompareTrue("Invalid mean dimension", mean.getType()->dims(),
-                               exp, parent);
-  isValid &= expectCompareTrue("Invalid var dimension", var.getType()->dims(),
-                               exp, parent);
+  isValid = isValid && expectCompareTrue("Invalid bias dimension",
+                                         bias.getType()->dims(), exp, parent);
+  isValid = isValid && expectCompareTrue("Invalid scale dimension",
+                                         scale.getType()->dims(), exp, parent);
+  isValid = isValid && expectCompareTrue("Invalid mean dimension",
+                                         mean.getType()->dims(), exp, parent);
+  isValid = isValid && expectCompareTrue("Invalid var dimension",
+                                         var.getType()->dims(), exp, parent);
   return isValid;
 }
 
@@ -1236,6 +1242,7 @@ bool TileNode::verify() const {
     isValid &= expectCompareTrue(msg.c_str(), src.dims()[i] * mul,
                                  dest.dims()[i], this);
   }
+  isValid &= checkTypeIgnoreShape(src, dest, this);
   return isValid;
 }
 
@@ -1363,6 +1370,7 @@ VERIFY_UNARY_ARITHMETIC(Rsqrt);
 VERIFY_UNARY_ARITHMETIC(Reciprocal);
 VERIFY_UNARY_ARITHMETIC(Sin);
 VERIFY_UNARY_ARITHMETIC(Cos);
+VERIFY_UNARY_ARITHMETIC(Erf);
 #undef VERIFY_UNARY_ARITHMETIC
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
@@ -2029,10 +2037,14 @@ bool ResizeNearestNode::verify() const {
   auto outputDims = result.dims();
 
   bool isValid = checkTypeIgnoreShape(input, result, this);
-  isValid &= expectCompareTrue("Input must be a 4D tensor", inputDims.size(),
-                               size_t(4), this);
-  isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
-                               size_t(4), this);
+  isValid &=
+      expectCompareTrue("Input size must be greater than 2", inputDims.size(),
+                        size_t(2), this, CompareOperatorGreaterThan<size_t>());
+  isValid &=
+      expectCompareTrue("Output size must be greater than 2", outputDims.size(),
+                        size_t(2), this, CompareOperatorGreaterThan<size_t>());
+  isValid &= expectCompareTrue("Input size must be equal to the output size",
+                               inputDims.size(), outputDims.size(), this);
 
   for (size_t i = 0, e = scale.size(); i < e; i++) {
     isValid &= expectCompareTrue("Unexpected output",
@@ -2537,6 +2549,7 @@ bool BroadcastNode::verify() const {
           (inputDims[origIdx] == targetDims[i] || inputDims[origIdx] == 1);
     }
   }
+  isValid &= checkTypeIgnoreShape(getInput(), getResult(), this);
 
   return isValid;
 }
@@ -2597,11 +2610,17 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   case FusedActivation::RELU:
     os << "RELU";
     break;
+  case FusedActivation::CLIP:
+    os << "CLIP";
+    break;
   case FusedActivation::SIGMOID:
     os << "SIGMOID";
     break;
   case FusedActivation::TANH:
     os << "TANH";
+    break;
+  case FusedActivation::LEAKY_RELU:
+    os << "LEAKY_RELU";
     break;
   }
   return os;

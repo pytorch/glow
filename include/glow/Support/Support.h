@@ -236,7 +236,7 @@ template <char... letters> struct string_t {
 /// at index idx.
 template <class T>
 void vectorReorder(std::vector<T> &v, std::vector<size_t> const &order) {
-  for (int s = 1, d; s < order.size(); ++s) {
+  for (size_t s = 1, d; s < order.size(); ++s) {
     for (d = order[s]; d < s; d = order[d])
       ;
     if (d == s)

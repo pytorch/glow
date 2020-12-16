@@ -689,6 +689,7 @@ struct Type final {
       return std::is_same<ElemTy, bool>::value;
     }
     LOG(FATAL) << "Invalid type: " << getElementName(Ty).str();
+    return false; // Get rid of compilation warnings.
   }
 
   /// \returns true if the type of this Tensor is one of the quantized types.
