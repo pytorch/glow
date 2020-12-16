@@ -105,12 +105,12 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      allocList.push_back(Allocation(A, /* alloc */ true, numBytes));
+      allocList.emplace_back(A, /* alloc */ true, numBytes);
       continue;
     }
     if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
       auto *A = D->getAlloc();
-      allocList.push_back(Allocation(A, /* alloc */ false, 0));
+      allocList.emplace_back(A, /* alloc */ false, 0);
       continue;
     }
   }

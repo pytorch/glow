@@ -247,7 +247,7 @@ bool MemoryAllocator::verifyAllocations(
     if (handleIt != allocHandleList.end()) {
       return false;
     }
-    allocHandleList.push_back(allocHandle);
+    allocHandleList.emplace_back(allocHandle);
   }
   return true;
 }
@@ -292,7 +292,7 @@ bool MemoryAllocator::verifySegments(
         }
       }
       // Add handle to live handles.
-      liveHandleList.push_back(allocHandle);
+      liveHandleList.emplace_back(allocHandle);
     } else {
       // Remove handle from live handles.
       auto it =
@@ -475,7 +475,7 @@ static uint64_t allocateAllWithStrategy(
 
       // If segment overlaps with previous then store the previous segment.
       if (overlap) {
-        prevSegAddr.push_back(AddressPair(prevSeg.begin_, prevSeg.end_));
+        prevSegAddr.emplace_back(prevSeg.begin_, prevSeg.end_);
       }
     }
 
@@ -649,7 +649,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
       // Update liveness information.
       if (alloc.alloc_) {
         liveBuffSize = liveBuffSize + buffSize;
-        liveBuffIdList.push_back(buffId);
+        liveBuffIdList.emplace_back(buffId);
       } else {
         liveBuffSize = liveBuffSize - buffSize;
         auto it =
@@ -718,7 +718,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
     size_t id = idSeg.first;
     Segment segment = idSeg.second;
     Handle handle = idToHandleMap[id];
-    segments_.push_back(segment);
+    segments_.emplace_back(segment);
     handleToSegmentMap_.insert(std::make_pair(handle, segment));
     addrToHandleMap_[segment.begin_] = handle;
   }

@@ -156,7 +156,7 @@ TEST(MemAlloc, dealloc2) {
     EXPECT_TRUE(MA.hasHandle(p0));
 
     EXPECT_NE(p0, MemoryAllocator::npos);
-    allocations.push_back(p0);
+    allocations.emplace_back(p0);
 
     if (allocations.size() > 20) {
       MA.deallocate(MA.getHandle(allocations[0]));
@@ -369,12 +369,12 @@ TEST(MemAlloc, testAllocateAllEfficiency) {
   // Allocate all.
   MemoryAllocator MA2("test", 0, 10);
   std::list<Allocation> allocList;
-  allocList.push_back(Allocation(handle0, true, 10));
-  allocList.push_back(Allocation(handle1, true, 10));
-  allocList.push_back(Allocation(handle0, false, 0));
-  allocList.push_back(Allocation(handle2, true, 20));
-  allocList.push_back(Allocation(handle1, false, 0));
-  allocList.push_back(Allocation(handle2, false, 0));
+  allocList.emplace_back(handle0, true, 10);
+  allocList.emplace_back(handle1, true, 10);
+  allocList.emplace_back(handle0, false, 0);
+  allocList.emplace_back(handle2, true, 20);
+  allocList.emplace_back(handle1, false, 0);
+  allocList.emplace_back(handle2, false, 0);
   MA2.allocateAll(allocList);
   EXPECT_EQ(MA2.getMaxMemoryUsage(), 30);
   EXPECT_FLOAT_EQ(MA2.getAllocationEfficiency(), 1.00);
@@ -388,10 +388,10 @@ TEST(MemAlloc, testAllocateAllAlignment) {
   void *handle1 = reinterpret_cast<void *>(1);
 
   std::list<Allocation> allocList;
-  allocList.push_back(Allocation(handle0, true, 65));
-  allocList.push_back(Allocation(handle1, true, 64));
-  allocList.push_back(Allocation(handle0, false, 0));
-  allocList.push_back(Allocation(handle1, false, 0));
+  allocList.emplace_back(handle0, true, 65);
+  allocList.emplace_back(handle1, true, 64);
+  allocList.emplace_back(handle0, false, 0);
+  allocList.emplace_back(handle1, false, 0);
   uint64_t usedSize = MA.allocateAll(allocList);
 
   EXPECT_EQ(usedSize, 192);
@@ -412,7 +412,7 @@ TEST(MemAlloc, testAllocateAllInvalidNumAllocs) {
   MemoryAllocator MA("test", 0, 64);
   void *handle = reinterpret_cast<void *>(0);
   std::list<Allocation> allocList;
-  allocList.push_back(Allocation(handle, true, 10));
+  allocList.emplace_back(handle, true, 10);
 #ifndef NDEBUG
   ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
                             "Allocations are invalid!");
@@ -424,8 +424,8 @@ TEST(MemAlloc, testAllocateAllInvalidFreeBeforeAlloc) {
   MemoryAllocator MA("test", 0, 64);
   void *handle = reinterpret_cast<void *>(0);
   std::list<Allocation> allocList;
-  allocList.push_back(Allocation(handle, false, 0));
-  allocList.push_back(Allocation(handle, true, 10));
+  allocList.emplace_back(handle, false, 0);
+  allocList.emplace_back(handle, true, 10);
 #ifndef NDEBUG
   ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
                             "Allocations are invalid!");
@@ -437,10 +437,10 @@ TEST(MemAlloc, testAllocateAllInvalidHandles1) {
   MemoryAllocator MA("test", 0, 64);
   void *handle = reinterpret_cast<void *>(0);
   std::list<Allocation> allocList;
-  allocList.push_back(Allocation(handle, true, 10));
-  allocList.push_back(Allocation(handle, true, 10));
-  allocList.push_back(Allocation(handle, false, 0));
-  allocList.push_back(Allocation(handle, false, 0));
+  allocList.emplace_back(handle, true, 10);
+  allocList.emplace_back(handle, true, 10);
+  allocList.emplace_back(handle, false, 0);
+  allocList.emplace_back(handle, false, 0);
 #ifndef NDEBUG
   ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
                             "Allocations are invalid!");
@@ -453,10 +453,10 @@ TEST(MemAlloc, testAllocateAllInvalidHandles2) {
   void *handle0 = reinterpret_cast<void *>(0);
   void *handle1 = reinterpret_cast<void *>(0);
   std::list<Allocation> allocList;
-  allocList.push_back(Allocation(handle0, true, 10));
-  allocList.push_back(Allocation(handle0, true, 10));
-  allocList.push_back(Allocation(handle1, false, 0));
-  allocList.push_back(Allocation(handle1, false, 0));
+  allocList.emplace_back(handle0, true, 10);
+  allocList.emplace_back(handle0, true, 10);
+  allocList.emplace_back(handle1, false, 0);
+  allocList.emplace_back(handle1, false, 0);
 #ifndef NDEBUG
   ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
                             "Allocations are invalid!");
@@ -468,8 +468,8 @@ TEST(MemAlloc, testAllocateAllSize0) {
   MemoryAllocator MA("test", 0, 64);
   void *handle = reinterpret_cast<void *>(0);
   std::list<Allocation> allocList;
-  allocList.push_back(Allocation(handle, true, 0));
-  allocList.push_back(Allocation(handle, false, 0));
+  allocList.emplace_back(handle, true, 0);
+  allocList.emplace_back(handle, false, 0);
   uint64_t usedSize = MA.allocateAll(allocList);
   EXPECT_EQ(usedSize, 0);
   EXPECT_EQ(MA.getSize(handle), 0);
@@ -488,8 +488,8 @@ TEST(MemAlloc, testAllocateAllMemOverflow) {
   MemoryAllocator MA("test", 10, 64);
   void *handle = reinterpret_cast<void *>(0);
   std::list<Allocation> allocList;
-  allocList.push_back(Allocation(handle, true, 100));
-  allocList.push_back(Allocation(handle, false, 0));
+  allocList.emplace_back(handle, true, 100);
+  allocList.emplace_back(handle, false, 0);
   uint64_t usedSize = MA.allocateAll(allocList);
   EXPECT_EQ(usedSize, MemoryAllocator::npos);
 #ifndef NDEBUG
@@ -547,11 +547,11 @@ TEST(MemAlloc, testAllocateAllForModels) {
       size_t id;
       uint64_t size;
       ss >> id >> size;
-      allocs.push_back(Allocation(id, /* alloc */ true, size));
+      allocs.emplace_back(id, /* alloc */ true, size);
     } else if (key == "FREE") {
       size_t id;
       ss >> id;
-      allocs.push_back(Allocation(id, /* alloc */ false, 0));
+      allocs.emplace_back(id, /* alloc */ false, 0);
     } else if (key == "MEM") {
       ss >> expectedUsedSize;
     } else if (key == "EFF") {
