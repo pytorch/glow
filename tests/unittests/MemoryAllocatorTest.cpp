@@ -20,6 +20,10 @@
 
 #include <fstream>
 
+#ifndef GLOW_DATA_PATH
+#define GLOW_DATA_PATH
+#endif
+
 using namespace glow;
 
 TEST(MemAlloc, simple) {
@@ -531,7 +535,9 @@ TEST(MemAlloc, testAllocateAllForModels) {
   float expectedEfficiency;
   std::list<Allocation> allocs;
   std::ifstream fs;
-  fs.open("tests/unittests/MemoryAllocatorTestModels.txt");
+  std::string filename(GLOW_DATA_PATH
+                       "tests/unittests/MemoryAllocatorTestModels.txt");
+  fs.open(filename);
   assert(fs.is_open() && "Error opening file!");
   std::string line;
   while (std::getline(fs, line)) {
