@@ -1420,6 +1420,116 @@ static_assert(ActivationIOIdx == SigmoidNode::ResultIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::InputIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::ResultIdx, "Format incorrect");
 
+/// Helper which looks for Quantized Conv whose kernel is smaller than stride in
+/// one or more dimension. These kernels will be padded to at least stride size.
+static bool padKernelToStride(Function *F) {
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    if (N.getKind() == Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind) {
+      auto *glowChannelwiseQuantizedConv =
+          llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(&N);
+      auto filterNodeValue = glowChannelwiseQuantizedConv->getFilter();
+      auto filterOffsetNodeValue =
+          glowChannelwiseQuantizedConv->getFilterOffsets();
+
+      glow::Constant *filterConstant =
+          llvm::dyn_cast<glow::Constant>(filterNodeValue.getNode());
+
+      // Show whether there is kernel < stride in any dimension of N.
+      bool isKernelPadded = false;
+
+      // Quantized Conv's attributes.
+      const uint32_t SPATIAL_DIMS2 = 2;
+      uint32_t kernel[SPATIAL_DIMS2] = {
+          glowChannelwiseQuantizedConv->getKernels()[0],
+          glowChannelwiseQuantizedConv->getKernels()[1]};
+      // Kernel size before padding.
+      uint32_t kernelOrig[SPATIAL_DIMS2] = {kernel[0], kernel[1]};
+      uint32_t paddingStart[SPATIAL_DIMS2] = {
+          glowChannelwiseQuantizedConv->getPads()[0],
+          glowChannelwiseQuantizedConv->getPads()[1]};
+      uint32_t paddingEnd[SPATIAL_DIMS2] = {
+          glowChannelwiseQuantizedConv->getPads()[2],
+          glowChannelwiseQuantizedConv->getPads()[3]};
+      uint32_t stride[SPATIAL_DIMS2] = {
+          glowChannelwiseQuantizedConv->getStrides()[0],
+          glowChannelwiseQuantizedConv->getStrides()[1]};
+
+      for (int i = 0; i < SPATIAL_DIMS2; i++) {
+        if (kernel[i] < stride[i]) {
+          isKernelPadded = true;
+          // Pad the kernel to make it not smaller than stride.
+
+          // First we need to make sure inputSize[i + 1] % stride[i] == 0
+          // inputSize[i + 1] is for NHWC layout.
+          // If it is not, we maybe need to pad the input.
+          uint32_t inputSize =
+              glowChannelwiseQuantizedConv->getInput().getType()->dims()[i + 1];
+          uint32_t paddedInputSize =
+              inputSize + paddingStart[i] + paddingEnd[i];
+          // inputSize[i + 1] % stride[i] need to be greater than original
+          // kernel size to generate one more output pixel. In this case, we pad
+          // to make sure output size is still correct.
+          if (paddedInputSize % stride[i] >= kernel[i]) {
+            // We pad at the end.
+            paddingEnd[i] += stride[i] - (paddedInputSize % stride[i]);
+          }
+
+          // Then we expand the kernel to at least stride size.
+          kernel[i] = stride[i];
+        }
+      }
+
+      // Create a new filter tensor that overwrites the old one in
+      // filterConstant.
+      if (isKernelPadded) {
+        changed = true;
+        // Set new pad size and kernel size.
+        glowChannelwiseQuantizedConv->setPads(
+            {paddingStart[0], paddingStart[1], paddingEnd[0], paddingEnd[1]});
+        glowChannelwiseQuantizedConv->setKernels({kernel[0], kernel[1]});
+
+        glow::Tensor filterTensorOrig = filterConstant->getPayload().clone();
+        glow::Tensor filterOffsetTensor =
+            llvm::dyn_cast<glow::Constant>(filterOffsetNodeValue.getNode())
+                ->getPayload()
+                .clone();
+        glow::Tensor filterTensorNew(glow::ElemKind::Int8QTy,
+                                     {filterTensorOrig.dims()[0], kernel[0],
+                                      kernel[1], filterTensorOrig.dims()[3]},
+                                     1.0, 0);
+        filterTensorNew.zero();
+
+        for (unsigned nn = 0; nn < filterTensorNew.dims()[0]; nn++) {
+          for (unsigned hh = 0; hh < filterTensorNew.dims()[1]; hh++) {
+            for (unsigned ww = 0; ww < filterTensorNew.dims()[2]; ww++) {
+              for (unsigned cc = 0; cc < filterTensorNew.dims()[3]; cc++) {
+                // If the content is in original area, we just simply copy it.
+                // Or else we pad it with the value of offset.
+                if (hh < kernelOrig[0] && ww < kernelOrig[1]) {
+                  filterTensorNew.getHandle<int8_t>().at({nn, hh, ww, cc}) =
+                      filterTensorOrig.getHandle<int8_t>().at({nn, hh, ww, cc});
+                } else {
+                  filterTensorNew.getHandle<int8_t>().at({nn, hh, ww, cc}) =
+                      // We know the offset will not exceed int8_t's limit.
+                      static_cast<int8_t>(
+                          filterOffsetTensor.getHandle<int32_t>().at({nn}));
+                }
+              }
+            }
+          }
+        }
+        auto filterConstantNew = F->getParent()->createConstant(
+            "StridePaddedFilter", std::move(filterTensorNew));
+        // Set filter.
+        N.setNthInput(ChannelwiseQuantizedConvolutionNode::FilterIdx,
+                      filterConstantNew->getOutput());
+      }
+    }
+  }
+  return changed;
+}
+
 /// Helper which looks for FC -> Clip -> Activation -> Clip, and removes the
 /// Clip between the FC and Activation. These activations block FC-Activation
 /// fusion from occurring.
@@ -1505,6 +1615,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
   }
 
   bool changed = removeClipsBlockingFusion(F);
+  changed |= padKernelToStride(F);
   auto it =
       cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
   if (it != cctx.backendOpts.backendSpecificOpts.end() && it->second == "1") {
