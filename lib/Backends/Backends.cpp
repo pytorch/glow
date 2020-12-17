@@ -19,7 +19,7 @@
 namespace glow {
 
 Backend *createBackend(llvm::StringRef backendName) {
-  auto *backend = FactoryRegistry<std::string, Backend>::get(backendName);
+  auto *backend = FactoryRegistry<std::string, Backend>::get(backendName.str());
 
   if (backend == nullptr) {
     LOG(INFO) << "List of all registered backends:";

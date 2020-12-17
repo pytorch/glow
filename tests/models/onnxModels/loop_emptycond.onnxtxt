@@ -1,0 +1,239 @@
+ir_version: 6
+producer_name: "jun-onnx-loop-ex"
+graph {
+  node {
+    output: "cond_orig"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 9
+        raw_data: "\000"
+        name: "cond_tensor"
+      }
+      type: TENSOR
+    }
+  }
+  node {
+    output: "max_trip_count"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 7
+        int64_data: 7
+        name: "count_tensor"
+      }
+      type: TENSOR
+    }
+  }
+
+  node {
+    output: "dec"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 1
+        float_data: 1
+        name: "count_tensor"
+      }
+      type: TENSOR
+    }
+  }
+
+  node {
+    output: "reduce_i"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 1
+        float_data: 5
+        name: "count_tensor"
+      }
+      type: TENSOR
+    }
+  }
+
+  node {
+    input: "max_trip_count"
+    # Ignore condition
+    input: ""
+    input: "reduce_i"
+    output: "v_final"
+    output: "scan_output_final"
+    op_type: "Loop"
+    attribute {
+      name: "body"
+      g {
+        node {
+          input: "pre_i"
+          input: "dec"
+          output: "cur_i"
+          op_type: "Sub"
+        }
+        node {
+          input: "cur_i"
+          output: "cur_cond"
+          op_type: "Cast"
+          attribute {
+            name: "to"
+            i: 9
+            type: INT
+          }
+        }
+        node {
+          input: "pre_i"
+          output: "scan_output"
+          op_type: "Identity"
+        }
+        name: "subgraph"
+        input {
+          name: "iter_num_in"
+          type {
+            tensor_type {
+              elem_type: 7
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        input {
+          name: "pre_cond"
+          type {
+            tensor_type {
+              elem_type: 9
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        input {
+          name: "pre_i"
+          type {
+            tensor_type {
+              elem_type: 1
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        output {
+          name: "cur_cond"
+          type {
+            tensor_type {
+              elem_type: 9
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        output {
+          name: "cur_i"
+          type {
+            tensor_type {
+              elem_type: 1
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        output {
+          name: "scan_output"
+          type {
+            tensor_type {
+              elem_type: 1
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+      }
+      type: GRAPH
+    }
+  }
+  name: "loop_graph"
+  input {
+    name: "init_i"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+
+  input {
+    name: "inc"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim{
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "v_final"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "scan_output_final"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 11
+}
+

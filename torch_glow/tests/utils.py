@@ -70,21 +70,6 @@ def check_skip(case):
         case.skipTest("Skipping tests for backend: " + backend)
 
 
-def generate_glow_spec(module, backend, *inputs):
-    spec = torch_glow.CompilationSpec()
-    spec.get_settings().set_glow_backend(backend)
-    compilation_group = torch_glow.CompilationGroup()
-    spec.compilation_groups_append(compilation_group)
-
-    input_specs = []
-    for input in inputs:
-        input_spec = torch_glow.InputSpec()
-        input_spec.set_same_as(input)
-        input_specs.append(input_spec)
-    compilation_group.input_sets_append(input_specs)
-    return spec
-
-
 def assert_equivalent(result, other_result, atol=5e-4, rtol=1e-3):
     if isinstance(result, tuple) or isinstance(other_result, tuple):
         assert isinstance(result, tuple) and isinstance(other_result, tuple)
@@ -156,7 +141,9 @@ def compare_tracing_methods(
         with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
             if not skip_to_glow:
                 glow_inputs = deepcopy(inputs)
-                glow_spec = generate_glow_spec(module, DEFAULT_BACKEND, *glow_inputs)
+                glow_spec = torch_glow.generate_glow_compilation_spec(
+                    module, DEFAULT_BACKEND, *glow_inputs
+                )
                 glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
                 glow_result = glow_trace(*glow_inputs)
         if reference:

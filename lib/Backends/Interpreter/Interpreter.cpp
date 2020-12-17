@@ -105,6 +105,31 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
 
+  case Kinded::Kind::BatchNormalizationNodeKind: {
+    auto elemType = NI.getInElemTy(BatchNormalizationNode::InputIdx);
+
+    // input can be int8, float16 or float32
+    bool isNodePrecisionSupported =
+        (elemType == ElemKind::Int8QTy || elemType == ElemKind::FloatTy ||
+         elemType == ElemKind::Float16Ty);
+
+    // parameters have to be float16 or float
+    isNodePrecisionSupported = isNodePrecisionSupported &&
+                               NI.allInputsAndOutputsHaveSameElemKind(
+                                   {ElemKind::FloatTy, ElemKind::Float16Ty},
+                                   {BatchNormalizationNode::InputIdx},
+                                   {BatchNormalizationNode::ResultIdx});
+
+    // input and output element types have to match
+    isNodePrecisionSupported =
+        isNodePrecisionSupported &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {elemType},
+            {BatchNormalizationNode::ScaleIdx, BatchNormalizationNode::BiasIdx,
+             BatchNormalizationNode::MeanIdx, BatchNormalizationNode::VarIdx});
+    return isNodePrecisionSupported;
+  }
+
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
@@ -208,6 +233,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ReciprocalNodeKind:
   case Kinded::Kind::SinNodeKind:
   case Kinded::Kind::CosNodeKind:
+  case Kinded::Kind::ErfNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
@@ -470,6 +496,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             NI.getOutElemTy(GatherNode::ResultIdx)) &&
            ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
             (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
+
+  case Kinded::Kind::GatherNDNodeKind:
+    // Note: Data and Result can be any data type, but must match.
+    return ((NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int32ITy) ||
+            (NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int64ITy));
 
   case Kinded::Kind::BatchOneHotNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -789,6 +820,7 @@ bool Interpreter::shouldLower(const Node *N) const {
   case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
+  case Kinded::Kind::BatchNormalizationNodeKind:
     return false;
   default:
     return true;

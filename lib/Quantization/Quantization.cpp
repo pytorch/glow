@@ -370,7 +370,7 @@ protected:
     assert((&function == &function_) &&
            "Trying to add quantize/dequantize conversion to a function other "
            "than the function being quantized.");
-    std::string nodeName = node.getName();
+    std::string nodeName = node.getName().str();
     if (destTy->isQuantizedType()) {
       return function.createQuantize(nodeName + "_quantize", val, destTy);
     }
@@ -886,6 +886,9 @@ public:
                 convNode->getGroup(), convNode->getDilation(),
                 /* quantizeFilter */ true, /* quantizeBias */ true, schema_,
                 quantizationPrecision_, quantizationPrecisionBias_);
+            convNodeCWQ->setFusedActivation(convNode->getFusedActivation());
+            convNodeCWQ->setFusedActivationArgs(
+                convNode->getFusedActivationArgs());
             result.replaceAllUsesOfWith(convNodeCWQ->getResult());
           }
         }

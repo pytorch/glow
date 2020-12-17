@@ -1,0 +1,63 @@
+ir_version: 6
+producer_name: "glow-test"
+graph {
+  node {
+    input: "x"
+    output: "y"
+    name: "DepthToSpace"
+    op_type: "DepthToSpace"
+        attribute {
+        name: "blocksize"
+        i: 2
+        type: INT
+    }
+  }
+  name: "test_depth_to_space"
+  input {
+    name: "x"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 8
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 6
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}

@@ -71,6 +71,52 @@ TEST_F(Caffe2ImporterTest, importExp) {
                           [](float a) { return std::exp(a); });
 }
 
+/// Test loading PReLU op from a Caffe2 model.
+/// The input is N*C*H*W (1*2*3*3), the slope is 2.
+TEST_F(Caffe2ImporterTest, importPReLU) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/prelu.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, {1, 2, 3, 3});
+    data.getHandle() = {-2.0, -0.5, 0, 1, 2, 3,  4,  5,  6,
+                        -1.5, -2.5, 7, 8, 9, 10, 11, 12, 13};
+    Tensor slope(ElemKind::FloatTy, {2});
+    slope.getHandle() = {0.1, 0.2};
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"prelu_test_input", "slope"},
+                               {&data.getType(), &slope.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"prelu_test_input", "slope"},
+                                  {&data, &slope});
+  }
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+
+  EE.run(bindings);
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {1, 2, 3, 3};
+  std::vector<float> expectedValues = {-0.2, -0.05, 0, 1, 2, 3,  4,  5,  6,
+                                       -0.3, -0.5,  7, 8, 9, 10, 11, 12, 13};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
 /// Test loading conv op from a Caffe2 model.
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
 /// stride is 1, pad is 1, group is 1, dilation is 2.
@@ -716,6 +762,76 @@ TEST_F(Caffe2ImporterTest, concatAddAxis) {
       for (dim_t column = 0; column < 7; ++column) {
         EXPECT_FLOAT_EQ(result.at({row, i, column}),
                         inputsHandle.at({row, column}));
+      }
+    }
+  }
+}
+
+TEST_F(Caffe2ImporterTest, concatAddAxisAtEdge) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/concat_add_axis_at_edge.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  PlaceholderBindings bindings;
+
+  Placeholder *output;
+  const std::array<dim_t, 4> inputShape{7, 11, 13, 5};
+  Tensor inputs_0(ElemKind::FloatTy, inputShape);
+  Tensor inputs_1(ElemKind::FloatTy, inputShape);
+  Tensor inputs_2(ElemKind::FloatTy, inputShape);
+  inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  inputs_1.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  inputs_2.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename,
+        {"inputs_0", "inputs_1", "inputs_2"},
+        {&inputs_0.getType(), &inputs_1.getType(), &inputs_2.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod,
+                                  {"inputs_0", "inputs_1", "inputs_2"},
+                                  {&inputs_0, &inputs_1, &inputs_2});
+  }
+
+  const std::vector<Tensor *> inputs{&inputs_0, &inputs_1, &inputs_2};
+
+  // Check that the shape of the output matches what Caffe2 expects.
+  std::vector<dim_t> expectedDims{inputShape.begin(), inputShape.end()};
+  expectedDims.push_back(inputs.size());
+  EXPECT_EQ(expectedDims, output->dims().vec());
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+
+  // Check that the output matches the concatenation of all inputs.
+  LOG(INFO) << "inputs_0=" << inputs_0.toString();
+  LOG(INFO) << "inputs_1=" << inputs_1.toString();
+  LOG(INFO) << "inputs_2=" << inputs_2.toString();
+  LOG(INFO) << "result=" << result.clone().toString();
+
+  for (dim_t i = 0; i < inputs.size(); ++i) {
+    const auto inputsHandle = inputs[i]->getHandle();
+
+    for (dim_t dim1 = 0; dim1 < inputShape[0]; ++dim1) {
+      for (dim_t dim2 = 0; dim2 < inputShape[1]; ++dim2) {
+        for (dim_t dim3 = 0; dim3 < inputShape[2]; ++dim3) {
+          for (dim_t dim4 = 0; dim4 < inputShape[3]; ++dim4) {
+            EXPECT_FLOAT_EQ(result.at({dim1, dim2, dim3, dim4, i}),
+                            inputsHandle.at({dim1, dim2, dim3, dim4}));
+          }
+        }
       }
     }
   }

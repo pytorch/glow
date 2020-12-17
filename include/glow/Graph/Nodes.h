@@ -268,7 +268,14 @@ inline bool is3DData(ConvolutionLayout layout) {
 enum PoolingMode { AVG = 0, MAX };
 
 /// Activations fused into ConvolutionNode (not supported on all backends).
-enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
+enum FusedActivation {
+  NONE = 0,
+  RELU,
+  CLIP,
+  TANH,
+  SIGMOID,
+  LEAKY_RELU,
+};
 
 /// Define output operators.
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout);

@@ -143,7 +143,7 @@ void InterpreterDeviceManager::transferStaticPlaceholderToDevice(
   for (auto functionName : it->second) {
     InterpreterFunction *func =
         static_cast<InterpreterFunction *>(functions_[functionName]);
-    func->addConstant(PH->getName(), T);
+    func->addConstant(PH->getName().str(), T);
   }
   resultCB(Error::success());
 }

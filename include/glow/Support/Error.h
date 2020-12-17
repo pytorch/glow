@@ -342,7 +342,7 @@ public:
       os << "\n" << p.fileName.c_str() << ":" << p.lineNumber;
       if (!p.message.empty()) {
         os << " with message:\n";
-        os << p.message;
+        os << p.message.c_str();
       }
     }
     os << "\n----------------------------------------------------------------"

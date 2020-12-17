@@ -46,6 +46,20 @@ run_and_check_resnet50_bundle() {
     done
 }
 
+run_and_check_bundle_instrument() {
+    cd "${GLOW_BUILD_DIR}/bundles/bundle_instrument/"
+    # Compare console output.
+    ./BundleInstrument ${IMAGES_DIR}/mnist/0_1009.png >> raw_results.txt
+    diff raw_results.txt "${GLOW_SRC}/.ci/bundle_instrument_expected_output.txt"
+    # Compare binary dumps between instrument-debug and instrument-ir.
+    for file in ./instrument-debug-data/*.bin
+    do
+      file_name=$(basename $file)
+      diff ./instrument-debug-data/${file_name} ./instrument-ir-data/${file_name}
+    done
+    cd -
+}
+
 run_pytorch_tests() {
     cd "${GLOW_SRC}/torch_glow"
     if hash sccache 2>/dev/null; then
@@ -89,6 +103,7 @@ case ${CIRCLE_JOB} in
         run_unit_tests check_expensive
         run_and_check_lenet_mnist_bundle
         run_and_check_resnet50_bundle
+        run_and_check_bundle_instrument
         ;;
     COVERAGE)
         cd "${GLOW_SRC}"

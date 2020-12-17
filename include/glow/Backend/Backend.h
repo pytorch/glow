@@ -26,6 +26,12 @@
 
 #include "llvm/ADT/StringRef.h"
 
+#if FACEBOOK_INTERNAL
+namespace folly {
+struct dynamic;
+}
+#endif
+
 namespace glow {
 
 class IRFunction;
@@ -86,6 +92,17 @@ public:
     BackendOptions opts;
     return compile(F, opts);
   }
+
+  /// Generate compiled function from FXIR
+
+#if FACEBOOK_INTERNAL
+  virtual Expected<std::unique_ptr<CompiledFunction>>
+  compileFX(const folly::dynamic &FXIR, const std::string &submod,
+            const llvm::StringMap<const void *> &constants,
+            const BackendOptions &opts, Module *glowModule) const {
+    LOG(FATAL) << "Compiling FXIR is not supported by the backend";
+  }
+#endif
 
   /// Generate code for input function \param F given settings in \p opts.
   virtual Expected<std::unique_ptr<CompiledFunction>>

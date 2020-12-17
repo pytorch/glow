@@ -129,6 +129,7 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
       FF.setDLLStorageClass(llvm::GlobalValue::DefaultStorageClass);
     }
 
+    // Remove NoInline attribute.
     FF.removeFnAttr(llvm::Attribute::AttrKind::NoInline);
 
     // LinkOnce linkage seems to cause problems to OrcJIT on some OS platforms.
@@ -173,6 +174,18 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
 
   llvm::legacy::FunctionPassManager FPM(M);
   llvm::legacy::PassManager PM;
+
+  // Add an appropriate TargetLibraryInfo pass for the module's triple.
+  llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M->getTargetTriple()));
+  // Disable optimizations of some builtin functions. They cause issues on some
+  // targets.
+  llvm::LibFunc libFunc;
+  if (TLII.getLibFunc(llvm::StringRef("printf"), libFunc)) {
+    TLII.setUnavailable(libFunc);
+  }
+
+  auto *TLIWP = new llvm::TargetLibraryInfoWrapperPass(TLII);
+  PM.add(TLIWP);
 
   // Add internal analysis passes from the target machine.
   PM.add(createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));

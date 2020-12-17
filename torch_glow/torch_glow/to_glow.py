@@ -15,6 +15,7 @@ __all__ = [
     "FuserSettings",
     "input_spec_from_tensor",
     "input_specs_from_tensors",
+    "generate_glow_compilation_spec",
 ]
 
 CompilationSpec = torch.classes.glow.CompilationSpec
@@ -32,6 +33,15 @@ def input_spec_from_tensor(tensor: torch.Tensor) -> InputSpec:
 
 def input_specs_from_tensors(tensors: List[torch.Tensor]) -> List[InputSpec]:
     return [input_spec_from_tensor(tensor) for tensor in tensors]
+
+
+def generate_glow_compilation_spec(model, backend, *example_inputs):
+    spec = CompilationSpec()
+    spec.get_settings().set_glow_backend(backend)
+    compilation_group = CompilationGroup()
+    compilation_group.input_sets_append(input_specs_from_tensors(example_inputs))
+    spec.compilation_groups_append(compilation_group)
+    return spec
 
 
 def to_glow(model, method_compile_spec):
@@ -116,12 +126,19 @@ def to_glow_selective(model, specs_and_examples, inplace=False):
     if not inplace:
         model = copy.deepcopy(model)
     if isinstance(model, torch.jit._script.RecursiveScriptModule):
+        spec_list, path_list = [], []
+        submod_idx = 0
         for path, spec in specs_and_examples.items():
+            spec_list.append(spec)
+            path_list.append(path)
 
-            def _to_glow(submod):
-                return to_glow(submod, {"forward": spec})
+        def to_glow_helper(submod):
+            nonlocal submod_idx
+            res_model = to_glow(submod, {"forward": spec_list[submod_idx]})
+            submod_idx += 1
+            return res_model
 
-            model = torch._C._jit_to_backend_selective(model, _to_glow, [path])
+        model = torch._C._jit_to_backend_selective(model, to_glow_helper, path_list)
     else:
         for path, (spec, example_inputs) in specs_and_examples.items():
             submod = get_submodule(model, path)

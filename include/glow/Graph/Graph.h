@@ -891,11 +891,10 @@ public:
                    unsigned_t axis, llvm::ArrayRef<dim_t> split,
                    std::vector<SliceNode *> &outputs);
 
-  BatchNormalizationNode *
-  createBatchNormalization(llvm::StringRef name, NodeValue input,
-                           NodeValue beta, NodeValue scale, NodeValue mean,
-                           NodeValue var, unsigned_t channelIdx = 0,
-                           float epsilon = 1e-5, float momentum = 0.9);
+  BatchNormalizationNode *createBatchNormalization(
+      llvm::StringRef name, TypeRef resType, NodeValue input, NodeValue beta,
+      NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx = 0,
+      float epsilon = 1e-5, float momentum = 0.9);
 
   /// Creates and \returns a LayerNormalizationNode that computes the layer
   /// normalization of the inner most layers of \p input based on the shape of
@@ -945,6 +944,7 @@ public:
   UNARY_ARITHMETIC_FUN_DECL(Reciprocal)
   UNARY_ARITHMETIC_FUN_DECL(Sin)
   UNARY_ARITHMETIC_FUN_DECL(Cos)
+  UNARY_ARITHMETIC_FUN_DECL(Erf)
 #undef UNARY_ARITHMETIC_FUN_DECL
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -1010,6 +1010,7 @@ public:
   DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Xor, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Or, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Pow, /* NUM_INPUTS */ 2)
 
 #define DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(NODE_NAME, NUM_INPUTS,            \
                                              OUTTYPEREF)                       \
@@ -1043,6 +1044,7 @@ public:
   /// automatically for multi directional broadcast.
   DECLARE_CMP_BROADCAST_NODE(CmpLT)
   DECLARE_CMP_BROADCAST_NODE(CmpEQ)
+  DECLARE_CMP_BROADCAST_NODE(CmpNEQ)
   DECLARE_CMP_BROADCAST_NODE(CmpLTE)
   DECLARE_CMP_BROADCAST_NODE(Min)
   DECLARE_CMP_BROADCAST_NODE(Max)
@@ -1432,6 +1434,12 @@ public:
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
                            NodeValue indices, unsigned_t batchDims = 0);
 
+  /// Given \p data tensor of rank r >= 1, \p indices tensor of rank q >= 1,
+  /// and batch_dims integer b, this operator gathers slices of data
+  /// into an output tensor of rank q + r - indices_shape[-1] - 1 - b.
+  GatherNDNode *createGatherND(llvm::StringRef name, NodeValue data,
+                               NodeValue indices);
+
   /// Create a node, performing GatherRanges operation:
   /// Gathers entries of \p data in groups specified by the "examples" in
   /// \p ranges. Each example in \p ranges contains a list of pairs of
@@ -1471,11 +1479,11 @@ public:
   SpaceToDepthNode *createSpaceToDepth(llvm::StringRef name, NodeValue input,
                                        unsigned blockSize);
 
-  /// Given \p input tensor, \returns an upsampled tensor which has
-  /// doubled the size of dimensions N, N-1, N-2...N-numLeadingDims,
-  /// copying the nearest pixel value to the new locations.
-  ReshapeNode *createUpsample(llvm::StringRef name, NodeValue input,
-                              dim_t numLeadingDims);
+  /// Create a sequence of Reshape and Transpose nodes representing DepthToSpace
+  /// operator with \p blockSize in DCR or CRD mode based on \p isCRD flag.
+  /// Assumes input layout to be NHWC. \returns the last node in the sequence.
+  ReshapeNode *createDepthToSpace(llvm::StringRef name, NodeValue input,
+                                  unsigned blockSize, bool isCRD = false);
 
   /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
   /// or depth, H is the height and W is the width, and \p scale tensor with
@@ -2278,6 +2286,10 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 1u, 2u, 0u, 3u }
 #define CNHW2NHWC                                                              \
   { 1u, 2u, 3u, 0u }
+#define D2S_DCR                                                                \
+  { 0u, 1u, 3u, 2u, 4u, 5u }
+#define D2S_CRD                                                                \
+  { 0u, 1u, 4u, 2u, 5u, 3u }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
 

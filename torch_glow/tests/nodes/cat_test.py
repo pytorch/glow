@@ -58,3 +58,20 @@ class TestCat(unittest.TestCase):
                 y,
                 fusible_ops={"prim::FusedConcat"},
             )
+
+    def test_cat_with_different_types(self):
+        """Test cat between different types that can be cast, which is supported in pytorch."""
+
+        utils.compare_tracing_methods(
+            SimpleCatModule(0, 1, 2),
+            torch.randn(2, 3, 4),
+            torch.randn(2, 3, 4, dtype=torch.half),
+            fusible_ops={"prim::FusedConcat"},
+        )
+
+        utils.compare_tracing_methods(
+            SimpleCatModule(0, 1, 2),
+            torch.randn(2, 3, 4).to(torch.int),
+            torch.randn(2, 3, 4).to(torch.long),
+            fusible_ops={"prim::FusedConcat"},
+        )

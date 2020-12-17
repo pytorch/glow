@@ -25,6 +25,166 @@
 
 using namespace glow;
 
+static void numpyTestHelper(llvm::ArrayRef<std::string> filenames,
+                            llvm::ArrayRef<dim_t> expDims,
+                            std::vector<float> &vals, ImageLayout inLayout,
+                            ImageLayout imgLayout,
+                            llvm::ArrayRef<float> mean = {},
+                            llvm::ArrayRef<float> stddev = {}) {
+  Tensor image;
+  loadNumpyImagesAndPreprocess(filenames, image,
+                               ImageNormalizationMode::k0to255, inLayout,
+                               imgLayout, mean, stddev);
+
+  ASSERT_EQ(ElemKind::FloatTy, image.getType().getElementType());
+  ASSERT_EQ(expDims.size(), image.dims().size());
+  EXPECT_EQ(image.dims(), expDims);
+  auto H = image.getHandle();
+  for (dim_t i = 0; i < H.size(); i++) {
+    EXPECT_FLOAT_EQ(H.raw(i), vals[i]) << "at index: " << i;
+  }
+}
+
+// Test loading numpy 1D U8 tensors.
+TEST(Image, readNpyTensor1D_U8) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    vals.push_back((i - 5) / 2.);
+  }
+  numpyTestHelper({"tests/images/npy/tensor48_u8.npy"}, {48}, vals,
+                  ImageLayout::Unspecified, ImageLayout::Unspecified, {5.},
+                  {2.});
+}
+
+// Test loading numpy 1D I8 tensors.
+TEST(Image, readNpyTensor1D_I8) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    // mean adjusted as loader converts S8 as U8.
+    vals.push_back((i - 5 + 128) / 2.);
+  }
+  numpyTestHelper({"tests/images/npy/tensor48_i8.npy"}, {48}, vals,
+                  ImageLayout::Unspecified, ImageLayout::Unspecified, {5.},
+                  {2.});
+}
+
+// Test loading numpy 2D U8 tensors.
+TEST(Image, readNpyTensor2D_U8) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    vals.push_back((i - 2) / 3.);
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x16_u8.npy"}, {3, 16}, vals,
+                  ImageLayout::Unspecified, ImageLayout::Unspecified, {2.},
+                  {3.});
+}
+
+// Test loading numpy 3D U8 tensors.
+TEST(Image, readNpyTensor3D_U8) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    vals.push_back((i - 2) / 3.);
+  }
+  numpyTestHelper({"tests/images/npy/tensor2x3x8_u8.npy"}, {2, 3, 8}, vals,
+                  ImageLayout::Unspecified, ImageLayout::Unspecified, {2.},
+                  {3.});
+}
+
+// Test loading numpy 4D U8 tensors.
+TEST(Image, readNpyTensor4D_U8) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    vals.push_back((i - 2) / 3.);
+  }
+  numpyTestHelper({"tests/images/npy/tensor1x2x3x8_u8.npy"}, {1, 2, 3, 8}, vals,
+                  ImageLayout::Unspecified, ImageLayout::Unspecified, {2.},
+                  {3.});
+}
+
+// Test loading from numpy file w/o changing layout.
+TEST(Image, readNpyNCHWtoNCHW_4D_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(i);
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2x2_u8.npy"}, {3, 4, 2, 2}, vals,
+                  ImageLayout::NCHW, ImageLayout::NCHW);
+}
+
+// Test loading from numpy file with mean/stddev.
+TEST(Image, readNpy_stddev_mean) {
+  std::vector<float> vals;
+  std::vector<float> mean = {1.1, 1.2, 1.3, 1.4};
+  std::vector<float> stddev = {2.1, 2.2, 2.3, 2.4};
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(((float)i - mean[(i / 4) % 4]) / stddev[(i / 4) % 4]);
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2x2_u8.npy"}, {3, 4, 2, 2}, vals,
+                  ImageLayout::NCHW, ImageLayout::NCHW, {1.1, 1.2, 1.3, 1.4},
+                  {2.1, 2.2, 2.3, 2.4});
+}
+
+// Test loading 3D image from numpy file.
+TEST(Image, readNpyNHWCtoNHWC_3D_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 24; i++) {
+    vals.push_back(i);
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2_u8.npy"}, {1, 3, 4, 2}, vals,
+                  ImageLayout::NHWC, ImageLayout::NHWC);
+}
+
+// Test loading from numpy file with change of layout.
+TEST(Image, readNpyNCHWtoNHWC_4D_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(i);
+  }
+  Tensor tensor(ElemKind::FloatTy, {3, 4, 2, 2});
+  tensor.getHandle() = vals;
+  Tensor transposed;
+  tensor.transpose(&transposed, {0u, 2u, 3u, 1u});
+  vals.clear();
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(transposed.getHandle().raw(i));
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2x2_u8.npy"}, transposed.dims(),
+                  vals, ImageLayout::NHWC, ImageLayout::NCHW);
+}
+
+// Test loading 3D image from numpy file with change of layout.
+TEST(Image, readNpyNHWCtoNCHW_3D_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 24; i++) {
+    vals.push_back(i);
+  }
+  Tensor tensor(ElemKind::FloatTy, {1, 3, 4, 2});
+  tensor.getHandle() = vals;
+  Tensor transposed;
+  tensor.transpose(&transposed, {0u, 3u, 1u, 2u});
+  vals.clear();
+  for (int i = 0; i < 24; i++) {
+    vals.push_back(transposed.getHandle().raw(i) + 128);
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2_i8.npy"}, transposed.dims(),
+                  vals, ImageLayout::NCHW, ImageLayout::NHWC);
+}
+
+// Test loading multiple images from numpy files.
+TEST(Image, readNpyNHWCtoNHWC_multi_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(i);
+  }
+  for (int i = 0; i < 48; i++) {
+    // S8 tensor - adjust mean.
+    vals.push_back(i + 128);
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2x2_u8.npy",
+                   "tests/images/npy/tensor3x4x2x2_i8.npy"},
+                  {6, 4, 2, 2}, vals, ImageLayout::NHWC, ImageLayout::NHWC);
+}
+
 TEST(Image, readNonSquarePngImage) {
   auto range = std::make_pair(0.f, 1.f);
   Tensor vgaTensor;

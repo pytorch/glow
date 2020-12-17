@@ -408,6 +408,7 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::Convolution3DNodeKind:
     case Kinded::Kind::AvgPoolNodeKind:
     case Kinded::Kind::MaxPoolNodeKind:
+    case Kinded::Kind::BatchNormalizationNodeKind:
       return true;
     case Kinded::Kind::FullyConnectedNodeKind:
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
@@ -2334,6 +2335,39 @@ public:
         nodeValueName(glowLSTMUnitNode->getnewC()).c_str());
   }
 };
+
+template <class ResizeNodeKind, NNPI_RESIZE_MODE resizeMode>
+class ResizeNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowResizeNode = llvm::dyn_cast<ResizeNodeKind>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowResizeNode, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    const auto &inputDims = glowResizeNode->getInput().dims();
+    const auto &outputDims = glowResizeNode->getResult().dims();
+
+    LOG_AND_RETURN_IF(
+        ERROR, inputDims.size() == 5 && resizeMode != NNPI_RESIZE_NEAREST,
+        "NNPI only supports nearest mode for 3D Tensor.", NNPI_INVALID_PARAM);
+
+    for (size_t i = 0; i < 2; i++) {
+      LOG_AND_RETURN_IF_NOT(
+          ERROR, inputDims[i] == outputDims[i],
+          "NNPI doesn't support resize Batch or Channel dimension",
+          NNPI_INVALID_PARAM);
+    }
+
+    importer.setUsedTensors({nodeValueName(glowResizeNode->getInput())},
+                            {nodeValueName(glowResizeNode->getResult())});
+
+    return nnpiNetworkAddResizeOp(
+        importer.getNetwork(), glowResizeNode->getName().begin(),
+        nodeValueName(glowResizeNode->getInput()).c_str(),
+        nodeValueName(glowResizeNode->getResult()).c_str(), resizeMode,
+        /* alignCorners */ false, /* halfPixelCenters */ false);
+  }
+};
 #endif // NNPI >= 1.1
 
 //////////////////////////////////////////////////////////////////////////
@@ -2447,6 +2481,9 @@ std::unordered_map<
     {"NNPILookupTable", glow::make_unique<NNPILookupTableNodeImporter>()},
     {"IntLookupTable", glow::make_unique<IntLookupTableNodeImporter>()},
     {"LSTMUnit", glow::make_unique<LSTMUnitNodeImporter>()},
+    {"ResizeNearest",
+     glow::make_unique<
+         ResizeNodeImporter<ResizeNearestNode, NNPI_RESIZE_NEAREST>>()},
 #endif // NNPI >= 1.1
 };
 } // namespace

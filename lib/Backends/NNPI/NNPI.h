@@ -19,6 +19,7 @@
 #include "NNPIAdapterContainer.h"
 #include "NNPIOptions.h"
 #include "glow/Backend/Backend.h"
+#include <folly/dynamic.h>
 
 namespace glow {
 
@@ -39,6 +40,13 @@ public:
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
+
+#if FACEBOOK_INTERNAL
+  Expected<std::unique_ptr<CompiledFunction>>
+  compileFX(const folly::dynamic &FXIR, const std::string &submod,
+            const llvm::StringMap<const void *> &constants,
+            const BackendOptions &opts, Module *glowModule) const override;
+#endif
 
   bool acceptForExecution(const NodeInfo &NI) const override;
   bool isOpSupported(const NodeInfo &NI) const override;

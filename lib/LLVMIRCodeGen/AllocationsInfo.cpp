@@ -47,7 +47,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
       continue;
     }
     auto numBytes = w->getSizeInBytes();
-    size_t addr = constantWeightVarsAllocator.allocate(numBytes, v);
+    size_t addr = constantWeightVarsAllocator_.allocate(numBytes, v);
     allocatedAddress_[v] = addr;
     allocatedAddress_[w] = addr;
   }
@@ -68,13 +68,13 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
       continue;
     }
     auto numBytes = w->getSizeInBytes();
-    size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
+    size_t addr = mutableWeightVarsAllocator_.allocate(numBytes, w);
     allocatedAddress_[w] = addr;
   }
 
   // Remember that max required memory size for each kind of weights.
-  constantWeightVarsMemSize_ = constantWeightVarsAllocator.getMaxMemoryUsage();
-  mutableWeightVarsMemSize_ = mutableWeightVarsAllocator.getMaxMemoryUsage();
+  constantWeightVarsMemSize_ = constantWeightVarsAllocator_.getMaxMemoryUsage();
+  mutableWeightVarsMemSize_ = mutableWeightVarsAllocator_.getMaxMemoryUsage();
 
   DEBUG_GLOW(for (auto &A
                   : allocatedAddress_) {
@@ -104,7 +104,7 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      size_t addr = activationsAllocator.allocate(numBytes, A);
+      size_t addr = activationsAllocator_.allocate(numBytes, A);
       assert(!activationAddr.count(A) && "Allocation already made!");
       activationAddr[A] = addr;
       continue;
@@ -113,12 +113,12 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
     if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
       auto *A = D->getAlloc();
       assert(activationAddr.count(A) && "Invalid deallocation!");
-      activationsAllocator.deallocate(A);
+      activationsAllocator_.deallocate(A);
       continue;
     }
   }
 
-  activationsMemSize_ = activationsAllocator.getMaxMemoryUsage();
+  activationsMemSize_ = activationsAllocator_.getMaxMemoryUsage();
 
   // Register specific addresses within the heap to activations.
   for (auto &A : activationAddr) {

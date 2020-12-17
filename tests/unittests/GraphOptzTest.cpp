@@ -583,8 +583,8 @@ TEST_F(GraphOptz, MergeBatchNormalizationWithArithmeticChainTest) {
   llvm::cast<Constant>(addC)->getHandle<float>().clear(addV);
   llvm::cast<Constant>(divC)->getHandle<float>().clear(divV);
 
-  BatchNormalizationNode *bn =
-      F_->createBatchNormalization("batch", input, beta, gamma, mean, var, 3);
+  BatchNormalizationNode *bn = F_->createBatchNormalization(
+      "batch", input->getType(), input, beta, gamma, mean, var, 3);
 
   auto *sub = F_->createSub("sub", bn, subC);
   auto *mul = F_->createMul("mul", sub, mulC);
@@ -975,7 +975,7 @@ public:
   NodeValue getNodeFromInput(TestSinkTransposeNodesKind testNode, Node *T) {
     switch (testNode) {
     case TestSinkTransposeNodesKind::BatchNormalization: {
-      return F_->createBatchNormalization(bindings_, "batch", T, 3, 0.0001, 0.9)
+      return F_->createBatchNormalization(bindings_, "batch", T, 1, 0.0001, 0.9)
           ->getResult();
     }
     case TestSinkTransposeNodesKind::Relu: {
@@ -1002,6 +1002,7 @@ public:
     }
     }
     LOG(DFATAL) << "Cannot reach here.";
+    return NodeValue(); // Prevents a compilation warning.
   }
 };
 
@@ -1458,6 +1459,55 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithConstantOperand) {
   bindings_.allocate(mod_.getPlaceholders());
   bindings_.get(P1)->getHandle().randomize(-1, 1, mod_.getPRNG());
   bindings_.get(P2)->getHandle().randomize(-1, 1, mod_.getPRNG());
+
+  checkNumericalEquivalence();
+}
+
+/// Test sink Transpose below Add of which operands has the same element type
+/// and shape, but different scale and offset.
+TEST_F(GraphOptz, sinkQuantTransposeBelowArithmeticNodesWithConstantOperand) {
+  const dim_t origDims[] = {1, 5, 10, 15};
+  const dim_t transposedDims[] = {1, 15, 5, 10};
+
+  // Create graph where a Add take a Constant in LHS and Transpose in RHS.
+  // LHS and RHS has different scale and offset.
+  Constant *lhsC =
+      mod_.createConstant(ElemKind::Int8QTy, transposedDims, 0.2, 0, "C1");
+  lhsC->getHandle<int8_t>().randomize(-128, 127, mod_.getPRNG());
+
+  auto *inputP =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "Input", false);
+  auto *qTy = mod_.uniqueType(ElemKind::Int8QTy, origDims, 0.3, 2);
+  auto *quant = F_->createQuantize("Quant", inputP, qTy);
+  auto *rhsT = F_->createTranspose("RHS", quant, NHWC2NCHW);
+  auto *addQ = F_->createAdd("Add", lhsC, rhsT);
+  SaveNode *save = F_->createSave("Save", addQ);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Expecting Transpose->Output rather than Add->Output.
+  const auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *transpose = llvm::dyn_cast<TransposeNode>(saveOpt->getInput());
+  ASSERT_NE(transpose, nullptr);
+  auto *add = llvm::dyn_cast<AddNode>(transpose->getInput());
+  ASSERT_TRUE(add);
+  // Check that the dimensions of the input and output of the add have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(add->getResult().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getRHS().dims(), llvm::makeArrayRef(origDims));
+  quant = llvm::dyn_cast<QuantizeNode>(add->getRHS().getNode());
+  ASSERT_TRUE(quant);
+  EXPECT_EQ(quant->getInput().getNode(), inputP);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+
+  // Check that the original and optimized functions are numerically equivalent.
+  // This indirectly checks that the Constant has been transposed properly.
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(inputP)->getHandle().randomize(-128, 127, mod_.getPRNG());
 
   checkNumericalEquivalence();
 }
@@ -2785,6 +2835,44 @@ TEST_F(GraphFold, foldLeakyReluFromConst) {
   EXPECT_EQ(input, newPReluNode->getInput());
 }
 
+/// Test optimization of  Convolution nodes with small input tensors by reducing
+/// filters and removing redundant padding.
+TEST_F(GraphFold, optimizeSmallConv) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 16}, "input", true);
+  auto filter =
+      mod_.createConstant(ElemKind::FloatTy, {16, 5, 5, 16}, "filter");
+  auto bias = mod_.createConstant(ElemKind::FloatTy, {16}, "bias");
+
+  filter->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bias->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  auto *outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 1, 1, 16});
+  auto *CN = F_->createConv("conv", input, filter, bias, outTy, {5, 5}, {2, 2},
+                            {2, 1, 1, 2}, 1);
+  auto *save = F_->createSave("save", CN);
+
+  EXPECT_EQ(2, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+
+  const auto *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+
+  auto *newCN = llvm::dyn_cast<ConvolutionNode>(optSave->getInput());
+  ASSERT_TRUE(newCN);
+  // Kernel should be reduced.
+  EXPECT_TRUE(isUniformArray(newCN->getKernels(), 2u));
+  // Padding should be removed.
+  EXPECT_TRUE(isUniformArray(newCN->getPads(), 0u));
+  // Stride should be canonicalized to 1.
+  EXPECT_TRUE(isUniformArray(newCN->getStrides(), 1u));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
   const dim_t inputDims[] = {3, 136, 28, 28};
@@ -2839,8 +2927,10 @@ class MockBackendWithFusion : public MockBackend {
     case Kinded::Kind::ConvolutionNodeKind:
       switch (activation->getKind()) {
       case Kinded::Kind::ReluNodeKind:
+      case Kinded::Kind::ClipNodeKind:
       case Kinded::Kind::SigmoidNodeKind:
       case Kinded::Kind::TanhNodeKind:
+      case Kinded::Kind::LeakyReluNodeKind:
         return true;
       default:
         return false;
@@ -2851,13 +2941,13 @@ class MockBackendWithFusion : public MockBackend {
   }
 };
 
-#define CONV_ACTIVATION_TEST(ACTIVATION_, CREATOR_)                            \
+#define CONV_ACTIVATION_TEST(ACTIVATION_, CREATOR_, ...)                       \
   TEST_F(GraphFold, FoldConv##ACTIVATION_##Activation) {                       \
     auto *A =                                                                  \
         mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false); \
     ConvolutionNode *CV =                                                      \
         F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);                  \
-    auto *AN = F_->CREATOR_(#ACTIVATION_, CV);                                 \
+    auto *AN = F_->CREATOR_(__VA_ARGS__);                                      \
     SaveNode *SN = F_->createSave("ret", AN);                                  \
                                                                                \
     EXPECT_EQ(F_->getNodes().size(), 3);                                       \
@@ -2872,9 +2962,11 @@ class MockBackendWithFusion : public MockBackend {
     EXPECT_EQ(fusedCV->getFusedActivation(), FusedActivation::ACTIVATION_);    \
   }
 
-CONV_ACTIVATION_TEST(RELU, createRELU);
-CONV_ACTIVATION_TEST(SIGMOID, createSigmoid);
-CONV_ACTIVATION_TEST(TANH, createTanh);
+CONV_ACTIVATION_TEST(RELU, createRELU, "Relu", CV);
+CONV_ACTIVATION_TEST(CLIP, createClip, "Clip", CV, 0.0, 1.0);
+CONV_ACTIVATION_TEST(SIGMOID, createSigmoid, "Sigmoid", CV);
+CONV_ACTIVATION_TEST(TANH, createTanh, "Tanh", CV);
+CONV_ACTIVATION_TEST(LEAKY_RELU, createLeakyRELU, "LeakyRelu", CV, 1.0);
 
 #undef CONV_ACTIVATION_TEST
 
@@ -6121,6 +6213,60 @@ TEST_F(GraphOptz, DequantSwishQuantOpt) {
   checkNumericalEquivalence(0.025f);
 }
 
+/// Test the conversion of FullyConnected to 1x1 Convolution.
+TEST_F(GraphOptz, ConvertFullyConnectedToConvolutionOpt) {
+
+  const std::vector<dim_t> inpDims = {3, 5};
+  const std::vector<dim_t> weightsDims = {5, 7};
+  const std::vector<dim_t> biasDims = {7};
+
+  // Create graph.
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, inpDims, "input", false);
+  Placeholder *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, weightsDims, "weights", false);
+  Placeholder *bias =
+      mod_.createPlaceholder(ElemKind::FloatTy, biasDims, "bias", false);
+  FullyConnectedNode *FCN =
+      F_->createFullyConnected("fc", input, weights, bias);
+  F_->createSave("save", FCN);
+
+  // Optimize graph.
+  optimizedF_ = optimizeFunctionForTest(
+      F_,
+      {FunctionPassID::ConvertFullyConnectedToConvolution, getDCEPassConfig()});
+
+  // Check optimized graph.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 6);
+  SaveNode *save = nullptr;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+      break;
+    }
+  }
+  ASSERT_TRUE(save);
+  ReshapeNode *reshapeOut = llvm::dyn_cast<ReshapeNode>(save->getInput());
+  ASSERT_TRUE(reshapeOut);
+  ConvolutionNode *conv =
+      llvm::dyn_cast<ConvolutionNode>(reshapeOut->getInput());
+  ASSERT_TRUE(conv);
+  ReshapeNode *reshapeFilter = llvm::dyn_cast<ReshapeNode>(conv->getFilter());
+  ASSERT_TRUE(reshapeFilter);
+  TransposeNode *transpFilter =
+      llvm::dyn_cast<TransposeNode>(reshapeFilter->getInput());
+  ASSERT_TRUE(transpFilter);
+  ReshapeNode *reshapeInput = llvm::dyn_cast<ReshapeNode>(conv->getInput());
+  ASSERT_TRUE(reshapeInput);
+
+  // Check numerical equivalence.
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle<float>().randomize(-1, 1, mod_.getPRNG());
+  bindings_.get(weights)->getHandle<float>().randomize(-1, 1, mod_.getPRNG());
+  bindings_.get(bias)->getHandle<float>().randomize(-1, 1, mod_.getPRNG());
+  checkNumericalEquivalence(1e-8);
+}
+
 /// Test that when we have Concat({X, Quantize(Clip)}), that we don't optimize
 /// to Concat({X, Quantize'}), since Quantize' will have different quantization
 /// parameters and therefore won't have the same quantization parameters as X.
@@ -6244,6 +6390,44 @@ TEST_F(GraphOptz, foldMinMaxToClipTest) {
   CN = llvm::dyn_cast<ClipNode>(BN->getInput().getNode());
   EXPECT_EQ(-2, CN->getMin());
   EXPECT_EQ(5, CN->getMax());
+
+  checkNumericalEquivalence();
+}
+
+/// Test that Min -> Max Fold pass does not break with a reshape LHS input.
+TEST_F(GraphOptz, foldMinMaxToClipReshapeNoBroadcastTest) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 100},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  auto *reshape = F_->createReshape("reshape", input, {100, 1});
+  const TypeRef T = reshape->getResult().getType();
+
+  auto *maxSplat = F_->createSplat("max_splat", T, -2);
+  auto *minSplat = F_->createSplat("min_splat", T, 5);
+  auto *max = F_->createMax("max", reshape, maxSplat);
+  auto *min = F_->createMin("min", max, minSplat);
+  SaveNode *save = F_->createSave("save", min);
+  bindings_.allocate(save->getPlaceholder());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::FoldMinMaxToClip, getDCEPassConfig()});
+
+  EXPECT_EQ(3, optimizedF_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MinNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MaxNodeKind));
+
+  save = llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName("save_save"));
+  ASSERT_TRUE(save);
+  auto *CN = llvm::dyn_cast<ClipNode>(save->getInput().getNode());
+  ASSERT_TRUE(CN);
+  EXPECT_EQ(-2, CN->getMin());
+  EXPECT_EQ(5, CN->getMax());
+  auto *RN = llvm::dyn_cast<ReshapeNode>(CN->getInput());
+  ASSERT_TRUE(RN);
+  EXPECT_TRUE(RN->getResult().getType()->isEqual(T));
+  EXPECT_EQ(RN->getInput(), input->getOutput());
 
   checkNumericalEquivalence();
 }
@@ -6434,4 +6618,38 @@ TEST_F(GraphOptz, TestUpdateQuantReluTypes) {
   EXPECT_NE(reluRange.first, fcRange.first);
   EXPECT_EQ(reluRange.first, 0);
   EXPECT_EQ(reluRange.second, fcRange.second);
+}
+
+TEST_F(GraphOptz, TestUpdateQuantReluTypesChained) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 0.11, -1,
+                                       "input", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::Int8QTy, {32, 32}, 0.2, 3,
+                                         "weights", false);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::Int32QTy, {32}, 0.01, 2, "bias", false);
+  auto *addW =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {128}, 0.3, -4, "addw", false);
+
+  auto *fc = F_->createFullyConnected("fc", input, weights, bias);
+  auto *qRelu = F_->createRELU("relu", fc->getResult());
+  auto *qConcat = F_->createConcat("concat", {qRelu, qRelu}, 0);
+  auto *qReshape = F_->createReshape("reshape", qConcat, {128});
+  auto *qAdd = F_->createAdd("add", qReshape, addW);
+  F_->createSave("save", qAdd);
+
+  updateQuantReluTypes(F_);
+
+  const auto fcRange = fc->getResult().getType()->getQuantizedValueRange();
+  const auto reluRange = qRelu->getResult().getType()->getQuantizedValueRange();
+  EXPECT_NE(reluRange.first, fcRange.first);
+  EXPECT_EQ(reluRange.first, 0);
+  EXPECT_EQ(reluRange.second, fcRange.second);
+
+  // Check that the relu's type now also matches that of the chain of shape
+  // users after it.
+  const TypeRef qReluTy = qRelu->getResult().getType();
+  EXPECT_EQ(qReluTy->getScale(), qConcat->getResult().getType()->getScale());
+  EXPECT_EQ(qReluTy->getOffset(), qConcat->getResult().getType()->getOffset());
+  EXPECT_EQ(qReluTy->getScale(), qReshape->getResult().getType()->getScale());
+  EXPECT_EQ(qReluTy->getOffset(), qReshape->getResult().getType()->getOffset());
 }

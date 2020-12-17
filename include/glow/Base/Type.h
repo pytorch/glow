@@ -567,9 +567,12 @@ struct Type final {
   }
 
   /// \returns true if \p other is the same type. If \p allowDifferentShape then
-  /// shapes will not be considered as part of the equal comparison.
+  /// shapes will not be considered as part of the equal comparison. If \p
+  /// allowDifferentScaleOffset is true, scale and offset will not be considered
+  /// as part of the equal comparison.
   bool isEqual(const Type &other, bool allowDifferentShape = false,
-               bool allowDifferentStrides = false) const {
+               bool allowDifferentStrides = false,
+               bool allowDifferentScaleOffset = false) const {
     // Element type must be the same.
     if (elementType_ != other.elementType_) {
       return false;
@@ -597,7 +600,8 @@ struct Type final {
 
     // Compare the scale and offset of integers. Fused types use dummy
     // scale/offset, so can ignore them.
-    if (isQuantizedType() && !isFusedQuantizedType()) {
+    if (isQuantizedType() && !isFusedQuantizedType() &&
+        !allowDifferentScaleOffset) {
       if (scale_ != other.scale_ || offset_ != other.offset_) {
         return false;
       }
@@ -685,6 +689,7 @@ struct Type final {
       return std::is_same<ElemTy, bool>::value;
     }
     LOG(FATAL) << "Invalid type: " << getElementName(Ty).str();
+    return false; // Get rid of compilation warnings.
   }
 
   /// \returns true if the type of this Tensor is one of the quantized types.

@@ -115,7 +115,7 @@ llvm::ArrayRef<dim_t> NodeValue::dims() const { return getType()->dims(); }
 
 std::string
 NodeValue::generateNodeOutputName(bool stripResNoFor0thInput) const {
-  return generateNodeOutputName(node_->getName(), resNo_,
+  return generateNodeOutputName(node_->getName().str(), resNo_,
                                 stripResNoFor0thInput);
 }
 

@@ -233,6 +233,9 @@ public:
     return *this;
   }
 
+  /// Helper to add a FusedActivation Member to this instruction.
+  InstrBuilder &addFusedActivation();
+
   ~InstrBuilder();
 
 private:
