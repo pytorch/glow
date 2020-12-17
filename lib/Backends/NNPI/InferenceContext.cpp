@@ -440,7 +440,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
       uint32_t numErrors(0);
       // First wait for the command list to complete.
       NNPIInferenceErrorCode res = nnpiCommandListWait(
-          commandList_, deviceOptions_->inferTimeout, NULL, 0, &numErrors);
+          commandList_, deviceOptions_->inferTimeoutUs, NULL, 0, &numErrors);
       uint64_t completeTime = TraceEvent::now();
       // Set batchDeviceTimestamps.
       auto *requestDataRun = ::glow::runtime::RequestData::get();
@@ -469,7 +469,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
         // Then query all errors using another wait call (should return
         // immediately).
         NNPIInferenceErrorCode tmpRes =
-            nnpiCommandListWait(commandList_, deviceOptions_->inferTimeout,
+            nnpiCommandListWait(commandList_, deviceOptions_->inferTimeoutUs,
                                 commandErrors, numErrors, &numErrors);
         if (tmpRes != NNPI_INF_NO_ERROR) {
           FATAL_CALLBACK_IF_NOT(false /* fatal */,
