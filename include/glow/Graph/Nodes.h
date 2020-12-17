@@ -128,7 +128,12 @@ public:
     return getPayload().getHandle<ElemTy>();
   }
 
-  void assign(const Tensor *t) { payload_.assign(t); }
+  void assign(const Tensor *t) {
+    // Make sure when we assign the output type of constant is matching its
+    // payload.
+    assert(t->getType().isEqual(payload_.getType()));
+    payload_.assign(t);
+  }
 
   void setPayloadType(TypeRef ty) { payload_.setType(ty); }
 
