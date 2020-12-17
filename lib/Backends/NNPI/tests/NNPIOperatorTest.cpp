@@ -128,7 +128,16 @@ struct BlacklistInitializer {
       {"Upsample_Nearest1D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Upsample_Nearest1D_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Upsample_Nearest1D_Int8/0", TestBlacklist::AnyDeviceAnyEngine},
-#endif // NNPI == 1.0
+#else
+      {"Upsample_Nearest3D_Float/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest3D_Float16/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest2D_Float/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest2D_Float16/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest2D_Int8/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest1D_Float/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest1D_Float16/0", TestBlacklist::AnyDeviceHWEngine},
+      {"Upsample_Nearest1D_Int8/0", TestBlacklist::AnyDeviceHWEngine},
+#endif
       {"Upsample_Nearest3D_Int8/0", TestBlacklist::AnyDeviceAnyEngine},
       {"rowwiseQuantizedFCTest_Int8_BiasInt32/0",
        TestBlacklist::AnyDeviceAnyEngine},
@@ -184,14 +193,6 @@ struct BlacklistInitializer {
       {"ArithSub_int32_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ArithSub_int64_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BatchNorm_Float/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"FP16BatchNorm2D/0",
-       TestBlacklist::AnyDeviceAnyEngine}, // Broken in NNPI 1.0 backend
-      {"Int8BatchNorm2D/0",
-       TestBlacklist::AnyDeviceAnyEngine}, // Not supported in NNPI 1.0
-      {"FP16BatchNorm3D/0",
-       TestBlacklist::AnyDeviceAnyEngine}, // Not supported in NNPI 1.0
-      {"Int8BatchNorm3D/0",
-       TestBlacklist::AnyDeviceAnyEngine}, // Not supported in NNPI 1.0
       {"batchedReduceMin_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMin_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMax_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -520,6 +521,9 @@ struct BlacklistInitializer {
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ConvertFrom_FloatTy_To_BoolTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Int8BatchNorm2D/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"FP16BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Int8BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
 #endif
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 1
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},

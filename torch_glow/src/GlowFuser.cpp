@@ -52,6 +52,11 @@ sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
   return result;
 }
 
+bool isMergeSupported(const torch::jit::Node *node, IsSupportFunc fn) {
+  return fn(node) || node->kind() == torch::jit::prim::Constant ||
+         node->kind() == torch::jit::prim::GetAttr;
+}
+
 bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
               torch::jit::Node *consumer) {
   if (node->kind() == torch::jit::prim::Param) {
@@ -59,8 +64,7 @@ bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
   }
 
   // Check that the node is supported
-  if (!(fn(node) || node->kind() == torch::jit::prim::Constant ||
-        node->kind() == torch::jit::prim::GetAttr)) {
+  if (!isMergeSupported(node, fn)) {
     return false;
   }
 
@@ -270,6 +274,49 @@ void verifyFusions(const std::shared_ptr<torch::jit::Graph> graph,
   }
 }
 
+struct GlowFuserStats {
+  int64_t totalCount = 0;
+  int64_t supportedCount = 0;
+  int64_t fusedCount = 0;
+};
+
+// Dumps per-kind counts of operators in the graph and whether they were
+// fused into a subgraph.
+static void dumpOperatorStats(const std::shared_ptr<torch::jit::Graph> graph,
+                              IsSupportFunc fn, at::Symbol kind) {
+  std::map<torch::jit::NodeKind, GlowFuserStats> fuserStats;
+  for (const auto *node : graph->nodes()) {
+    if (node->kind() == kind) {
+      auto subgraph = getSubgraph(node);
+      for (const auto *subNode : subgraph->nodes()) {
+        GlowFuserStats &stats = fuserStats[subNode->kind()];
+        stats.totalCount += 1;
+        stats.supportedCount += (isMergeSupported(subNode, fn) ? 1 : 0);
+        stats.fusedCount += 1;
+      }
+    } else {
+      GlowFuserStats &stats = fuserStats[node->kind()];
+      stats.totalCount += 1;
+      stats.supportedCount += (isMergeSupported(node, fn) ? 1 : 0);
+    }
+  }
+
+  std::ostringstream out;
+  out << "Dump of operator stats for graph:\n";
+  out << "InstanceCount: count of operator in graph\n";
+  out << "FuseSupported: instances with IsSupportFunc returning true\n";
+  out << "Fused: instances of operator that were merged into a subgraph\n";
+  out << folly::stringPrintf("%30s %13s %13s %13s\n", "Operator",
+                             "InstanceCount", "FuseSupported", "Fused");
+  for (auto &kindAndStat : fuserStats) {
+    out << folly::stringPrintf(
+        "%30s %13ld %13ld %13ld\n", kindAndStat.first.toQualString(),
+        kindAndStat.second.totalCount, kindAndStat.second.supportedCount,
+        kindAndStat.second.fusedCount);
+  }
+  LOG(INFO) << out.str();
+}
+
 void setIncludeLastOffsets(std::shared_ptr<torch::jit::Graph> graph) {
   c10::IValue ivalTrue(true);
   torch::jit::Value *constantTrue = graph->insertConstant(ivalTrue);
@@ -372,6 +419,10 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   EliminateDeadCode(graph);
 
   verifyFusions(graph, kind);
+
+  if (settings.dumpOperatorInventory) {
+    dumpOperatorStats(graph, fn, kind);
+  }
 }
 
 } // namespace

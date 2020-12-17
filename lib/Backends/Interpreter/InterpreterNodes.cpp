@@ -1207,7 +1207,11 @@ void BoundInterpreterFunction::fwdBatchNormalizationInst(
   bool isQuantized = I->getSrc()->getType()->isQuantizedType();
 
   if (isQuantized) {
-    fwdBatchNormalizationI8Impl<float16_t>(I, numDims);
+    if (I->getScale()->getType()->getElementType() == ElemKind::FloatTy) {
+      fwdBatchNormalizationI8Impl<float>(I, numDims);
+    } else {
+      fwdBatchNormalizationI8Impl<float16_t>(I, numDims);
+    }
   } else {
     dispatchFloatingPointImpl(fwdBatchNormalizationFloatImpl,
                               I->getSrc()->getElementType(), I, numDims);

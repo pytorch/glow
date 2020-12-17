@@ -65,6 +65,12 @@ struct InputMetaStack {
 
   /// Hash the InputMetaStack
   size_t hash() const;
+
+  /// This function is to optimize caching map performance.
+  /// nominalBatchIdx is index of input to get batchSize.
+  /// The return value (batchSize if inputs are valid) will be used as key of
+  /// caching graph map
+  size_t optimizedHash(int32_t nominalBatchIdx) const;
 };
 
 /// \returns a InputMetaStack representing the stack \p inputs or an Error if
