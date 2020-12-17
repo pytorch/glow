@@ -980,6 +980,7 @@ getConv2DInputIdxAndMaps(const ConvNodeTy *node) {
         {ChannelwiseQuantizedConvolutionNode::BiasOffsetsIdx,
          biasSliceRangeMap}};
   }
+  llvm_unreachable("Invalid Convolution node type!");
 }
 
 template <typename ConvNodeTy, typename Shape>
