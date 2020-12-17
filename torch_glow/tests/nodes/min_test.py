@@ -21,3 +21,13 @@ class TestMin(unittest.TestCase):
         utils.compare_tracing_methods(
             SimpleMinModule(), torch.randn(7), torch.randn(7), fusible_ops={"aten::min"}
         )
+
+    def test_elementwise_min_broadcast(self):
+        """Test of the PyTorch min Node with broadcast on Glow."""
+
+        utils.compare_tracing_methods(
+            SimpleMinModule(),
+            torch.randn(2, 7),
+            torch.randn(7),
+            fusible_ops={"aten::min"},
+        )
