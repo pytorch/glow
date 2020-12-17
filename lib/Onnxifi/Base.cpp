@@ -507,7 +507,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   TRACE_EVENT_SCOPE_END_NAMED(soEvent);
 
   if (ctx->getTraceContext()) {
-    ctx->getTraceContext()->setThreadName("Caller");
+    ctx->getTraceContext()->setThreadName("Request Thread");
   }
 
   // End trace scope before calling into run. run() can trigger the completion
