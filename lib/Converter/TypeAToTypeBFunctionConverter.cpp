@@ -42,6 +42,17 @@ bool TypeAToTypeBFunctionConverter::canConvert(const Node &node) const {
     break;                                                                     \
   }
 
+#define QUANT_OR_FP16_INPUT_FLOAT_BIAS_CASE(NODE_NAME_)                        \
+  case glow::Kinded::Kind::NODE_NAME_##NodeKind: {                             \
+    auto *N = llvm::cast<NODE_NAME_##Node>(&node);                             \
+    if (N->getBias().getType()->getElementType() == ElemKind::FloatTy &&       \
+        (N->getInput().getType()->isQuantizedType() ||                         \
+         N->getInput().getType()->getElementType() == ElemKind::Float16Ty)) {  \
+      return false;                                                            \
+    }                                                                          \
+    break;                                                                     \
+  }
+
     switch (node.getKind()) {
       QUANT_INPUT_FLOAT_BIAS_CASE(FullyConnected);
       QUANT_INPUT_FLOAT_BIAS_CASE(RowwiseQuantizedFullyConnected);
@@ -49,6 +60,7 @@ bool TypeAToTypeBFunctionConverter::canConvert(const Node &node) const {
       QUANT_INPUT_FLOAT_BIAS_CASE(ConvTranspose);
       QUANT_INPUT_FLOAT_BIAS_CASE(Convolution3D);
       QUANT_INPUT_FLOAT_BIAS_CASE(ChannelwiseQuantizedConvolution);
+      QUANT_OR_FP16_INPUT_FLOAT_BIAS_CASE(BatchNormalization);
     default:
       break;
     }
