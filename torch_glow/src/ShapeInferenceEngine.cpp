@@ -223,6 +223,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, embeddingBag(inputMetas));
       break;
     }
+    case c10::aten::matmul: {
+      ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, matmul(inputMetas));
+      break;
+    }
     case c10::aten::stack: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, stack(inputMetas));
       break;
@@ -1673,6 +1677,7 @@ ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
   output.dtype = variableMetas[0].dtype;
   return output;
 }
+
 /*
  * quantize_per_tensor(Tensor self, float scale, int zero_point, ScalarType
  * dtype) -> Tensor
@@ -1725,6 +1730,36 @@ ShapeInferenceEngine::quantizedMul(const MetaStack &variableMetas) {
   TensorOutput output;
   output.shapeOrIntValues = inputShape;
   output.shapeOrIntValues.back() = weightShape[0];
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * aten::matmul(Tensor input, Tensor other) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::matmul(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 inputs, got %zu.", variableMetas.size()));
+  const auto &inputOneShape = variableMetas[0].shape<TensorShape>();
+  const auto &inputTwoShape = variableMetas[1].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(inputOneShape.size() == 3,
+                    strFormat("Only support input as 3-d tensor, got %zu.",
+                              inputOneShape.size()));
+  RETURN_ERR_IF_NOT(inputTwoShape.size() == 3,
+                    strFormat("Only support input as 3-d tensor, got %zu.",
+                              inputTwoShape.size()));
+  RETURN_ERR_IF_NOT(inputOneShape[2] == inputTwoShape[1],
+                    "The 3rd dim of first input should be the same as 2nd dim "
+                    "of second input.");
+  TensorShape shapes;
+  // TODO hwwang T81654300, add support for inputs with differnt dimensions.
+  shapes.emplace_back(std::max(inputOneShape[0], inputTwoShape[0]));
+  shapes.emplace_back(inputOneShape[1]);
+  shapes.emplace_back(inputTwoShape[2]);
+  TensorOutput output;
+  output.shapeOrIntValues = shapes;
   output.dtype = variableMetas[0].dtype;
   return output;
 }
