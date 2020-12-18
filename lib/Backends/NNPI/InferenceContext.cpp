@@ -634,6 +634,45 @@ void InferenceContext::dumpRuntime() const {
   }
 }
 
+template <class T>
+static bool sanitizeSLS(Handle<int64_t> &Indices, Handle<T> &lenOrOffset,
+                        size_t tableHeight, bool isOffset) {
+  size_t totalLensSum;
+  size_t indicesLen = Indices.getRealNumElements();
+  size_t lenOrOffsetLen = lenOrOffset.getRealNumElements();
+  // indices in [0, n)
+  for (auto i = 0; i < indicesLen; i++) {
+    LOG_AND_RETURN_IF(ERROR,
+                      Indices.raw(i) < 0 || Indices.raw(i) >= tableHeight,
+                      "index out of range " + to_string(Indices.raw(i)) +
+                              " at idx " + to_string(i) + " tableHeight "
+                          << to_string(tableHeight),
+                      false);
+  }
+  // last offset = len(indices)
+  if (isOffset) {
+    for (auto i = 0; i < lenOrOffsetLen - 1; i++) {
+      LOG_AND_RETURN_IF(ERROR, lenOrOffset.raw(i) >= lenOrOffset.raw(i + 1),
+                        "offset should be monotonically increasing " +
+                            to_string(lenOrOffset.raw(i)) + " " +
+                            to_string(lenOrOffset.raw(i + 1)),
+                        false);
+    }
+    totalLensSum = lenOrOffset.raw(lenOrOffsetLen - 1);
+  } else {
+    // sum(lens) = len(indices)
+    totalLensSum = std::accumulate(lenOrOffset.begin(), lenOrOffset.end(), 0U);
+  }
+
+  LOG_AND_RETURN_IF(
+      ERROR, indicesLen != totalLensSum,
+      "santize failed, indices length " + std::to_string(indicesLen) +
+          " different from sum of lengths " + std::to_string(totalLensSum),
+      false);
+
+  return true;
+}
+
 bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
   if (!flags::EnableSanitizeInputs) {
     return true;
@@ -667,7 +706,7 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
             false);
       }
     }
-
+    auto I = indices->getHandle<int64_t>();
     if (sls.isEmbeddingBag) {
       // EmbeddingBag case
       auto *offsets = bindings.get(sls.offsets);
@@ -677,11 +716,15 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
       }
 
       if (offsets->getElementType() == ElemKind::Int32ITy) {
-        auto H = offsets->getHandle<int32_t>();
-        totalLensSum = H.raw(offsets->getRealNumElements() - 1);
+        auto O = offsets->getHandle<int32_t>();
+        sanitizeSLS<int32_t>(I, O, sls.tableHeight,
+
+                             sls.isEmbeddingBag);
       } else if (offsets->getElementType() == ElemKind::Int64ITy) {
-        auto H = offsets->getHandle<int64_t>();
-        totalLensSum = H.raw(offsets->getRealNumElements() - 1);
+        auto O = offsets->getHandle<int64_t>();
+        sanitizeSLS<int64_t>(I, O, sls.tableHeight,
+
+                             sls.isEmbeddingBag);
       } else {
         LOG_AND_RETURN_IF(ERROR, true, "unsupported element type", false);
       }
@@ -694,22 +737,19 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
       }
 
       if (lengths->getElementType() == ElemKind::Int32ITy) {
-        auto H = lengths->getHandle<int32_t>();
-        totalLensSum = std::accumulate(H.begin(), H.end(), 0U);
+        auto L = lengths->getHandle<int32_t>();
+        sanitizeSLS<int32_t>(I, L, sls.tableHeight,
+
+                             sls.isEmbeddingBag);
       } else if (lengths->getElementType() == ElemKind::Int64ITy) {
-        auto H = lengths->getHandle<int64_t>();
-        totalLensSum = std::accumulate(H.begin(), H.end(), 0U);
+        auto L = lengths->getHandle<int64_t>();
+        sanitizeSLS<int64_t>(I, L, sls.tableHeight,
+
+                             sls.isEmbeddingBag);
       } else {
         LOG_AND_RETURN_IF(ERROR, true, "unsupported element type", false);
       }
     }
-
-    VLOG(1) << "sum of lengths " << totalLensSum;
-    LOG_AND_RETURN_IF(
-        ERROR, indicesLen != totalLensSum,
-        "santize failed, indices length " + std::to_string(indicesLen) +
-            " different from sum of lengths " + std::to_string(totalLensSum),
-        false);
   }
   return true;
 }
