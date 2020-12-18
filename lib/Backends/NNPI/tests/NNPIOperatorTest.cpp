@@ -308,8 +308,6 @@ struct BlacklistInitializer {
       {"RoiAlignRotatedBatchIndexInBoxesTensor/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"FP16RoiAlign/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
-       TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Rotated_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Abs_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -524,8 +522,9 @@ struct BlacklistInitializer {
       {"Int8BatchNorm2D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"FP16BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Int8BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
-#endif
-#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 1
+      {"FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
+       TestBlacklist::AnyDeviceAnyEngine},
+#else
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
 #endif

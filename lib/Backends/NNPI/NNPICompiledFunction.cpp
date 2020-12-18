@@ -96,7 +96,10 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.forceWeightsOutOfLLC = compilationOptions.forceWeightsOutOfLLC;
   config_.disableSlsAllLenOneCalcAtRunTime =
       compilationOptions.disableSlsAllLenOneCalcAtRunTime;
-
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+  config_.enableESUnifyAdditionalPass =
+      compilationOptions.enableESUnifyAdditionalPass;
+#endif
   return Error::success();
 }
 
