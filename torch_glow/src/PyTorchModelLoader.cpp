@@ -3945,12 +3945,12 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   size_t numChannels = input.dims()[1];
   glow::NodeValue weights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[BatchNormInputs::weights], "weight",
-      glow::Type(ElemKind::Float16Ty, {numChannels}), 1.0);
+      glow::Type(ElemKind::FloatTy, {numChannels}), 1.0);
   glow::Constant *weightsC = llvm::dyn_cast<glow::Constant>(weights.getNode());
 
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
       inputs[BatchNormInputs::bias], "bias",
-      glow::Type(ElemKind::Float16Ty, {numChannels}), 0.0);
+      glow::Type(ElemKind::FloatTy, {numChannels}), 0.0);
   glow::Constant *biasC = llvm::dyn_cast<glow::Constant>(bias.getNode());
 
   glow::NodeValue mean;
@@ -3975,28 +3975,11 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
 
   // Input is in NCHW.
   glow::unsigned_t channelIdx = 1;
-
   glow::NodeValue output;
-  if (is3D) {
-    glow::ReshapeNode *twoD =
-        F_.createReshape("bn_NCTHW2NCHW", input,
-                         {input.dims()[0], input.dims()[1],
-                          input.dims()[2] * input.dims()[3], input.dims()[4]});
-
-    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
-        "bn", twoD->getType(0), twoD, biasC, weightsC, meanC, varC, channelIdx,
-        epsilon, momentum);
-
-    glow::ReshapeNode *threeD =
-        F_.createReshape("bn_NCHW2NCTHW", bn, input.dims());
-
-    output = threeD->getResult();
-  } else {
-    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
-        "batchnorm", input.getType(), input, biasC, weightsC, meanC, varC,
-        channelIdx, epsilon, momentum);
-    output = bn->getResult();
-  }
+  glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
+      "batchnorm", input.getType(), input, biasC, weightsC, meanC, varC,
+      channelIdx, epsilon, momentum);
+  output = bn->getResult();
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
@@ -4013,7 +3996,6 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[QuantizedBatchNormInputs::input]));
 
-  bool is3D = (numDims == 3);
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 8, outputs, 1));
 
   RETURN_ERR_IF_NOT(
@@ -4025,12 +4007,12 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
 
   glow::NodeValue weights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[QuantizedBatchNormInputs::weights], "weight",
-      glow::Type(ElemKind::Float16Ty, {numChannels}), 1.0);
+      glow::Type(ElemKind::FloatTy, {numChannels}), 1.0);
   glow::Constant *weightsC = llvm::dyn_cast<glow::Constant>(weights.getNode());
 
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
       inputs[QuantizedBatchNormInputs::bias], "bias",
-      glow::Type(ElemKind::Float16Ty, {numChannels}), 0.0);
+      glow::Type(ElemKind::FloatTy, {numChannels}), 0.0);
   glow::Constant *biasC = llvm::dyn_cast<glow::Constant>(bias.getNode());
 
   glow::NodeValue mean;
@@ -4064,48 +4046,17 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
 
   // Input is in NCHW.
   glow::unsigned_t channelIdx = 1;
-
-  if (is3D) {
-    std::array<dim_t, 4> twoDDims = {input.dims()[0], input.dims()[1],
-                                     input.dims()[2] * input.dims()[3],
-                                     input.dims()[4]};
-
-    glow::ReshapeNode *input_reshape =
-        F_.createReshape("bn3d_quant_NCTHW2NCHW", input, twoDDims);
-
-    glow::DequantizeNode *dq = F_.createDequantize(
-        "bn3d_quant_dequantize", input_reshape, ElemKind::FloatTy);
-
-    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
-        "bn3d_quant", dq->getType(0), dq, biasC, weightsC, meanC, varC,
-        channelIdx, epsilon, momentum);
-
-    glow::ReshapeNode *output_reshape =
-        F_.createReshape("bn3d_quant_NCHW2NCTHW", bn, input.dims());
-
-    const auto outType = F_.getParent()->uniqueType(
-        glow::ElemKind::Int8QTy, input.dims(), output_scale, output_zero_point);
-    glow::QuantizeNode *q =
-        F_.createQuantize("bn3d_quant_quantize", output_reshape, outType);
-
-    return Expected<NodeValue>(q->getResult());
-
+  std::string opName;
+  if (numDims == 3) {
+    opName = "bn3d_quant";
   } else {
-
-    glow::DequantizeNode *dq = F_.createDequantize("bn3d_quant_dequantize",
-                                                   input, ElemKind::Float16Ty);
-
-    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
-        "bn2d_quant", dq->getType(0), dq, biasC, weightsC, meanC, varC,
-        channelIdx, epsilon, momentum);
-
-    const auto outType = F_.getParent()->uniqueType(
-        glow::ElemKind::Int8QTy, input.dims(), output_scale, output_zero_point);
-    glow::QuantizeNode *q =
-        F_.createQuantize("bn2d_quant_quantize", bn, outType);
-
-    return Expected<NodeValue>(q->getResult());
+    opName = "bn2d_quant";
   }
+
+  glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
+      opName, input.getType(), input, biasC, weightsC, meanC, varC, channelIdx,
+      epsilon, momentum);
+  return Expected<NodeValue>(bn->getResult());
 }
 
 Error PyTorchModelLoader::loadQuantizedBatchNorm2d(

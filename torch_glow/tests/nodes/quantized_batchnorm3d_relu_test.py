@@ -74,6 +74,5 @@ class TestQuantizedBatchNorm3DRelu(unittest.TestCase):
             fusible_ops={"quantized::batch_norm3d_relu"},
             atol=1e-1,
             rtol=1e-5,
-            fp16=True,
             skip_to_glow=True,
         )
