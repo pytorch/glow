@@ -75,9 +75,10 @@ Error Provisioner::checkActiveNetworks(
 
   std::lock_guard<std::mutex> networkLock(functionsLock_);
   for (auto &network : networks) {
+#ifndef NDEBUG
     LOG(INFO) << "Checking for active networks when adding: "
               << network.root->name;
-
+#endif
     for (auto &node : network.nodes) {
       //  Check to see if another thread is actively working on the same
       //  networks.
@@ -91,8 +92,10 @@ Error Provisioner::checkActiveNetworks(
                                       node->name)
                             .str());
       }
+#ifndef NDEBUG
       LOG(INFO) << "Adding partition name: " << node->name
                 << " to activeFunctions_";
+#endif
       localActiveNames.push_back(node->name);
       activeFunctions_.insert(node->name);
     }
@@ -899,8 +902,10 @@ void Provisioner::cleanupProvision(
     bool failure) {
   std::lock_guard<std::mutex> functionLock(functionsLock_);
   for (auto &name : names) {
+#ifndef NDEBUG
     LOG(INFO) << "Removing partition name: " << name
               << " from activeFunctions_\n";
+#endif
     activeFunctions_.erase(name);
     if (failure) {
       // Remove any functions added before the failure.
