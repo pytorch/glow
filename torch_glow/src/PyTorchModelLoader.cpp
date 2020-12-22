@@ -3928,8 +3928,7 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[BatchNormInputs::input]));
 
-  bool is3D = (input.dims().size() == 5);
-  int numDims = is3D ? 3 : 2;
+  int numDims = input.dims().size() - 2;
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
 
   bool training;
@@ -3938,9 +3937,8 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(training == false, "Don't support BatchNorm training yet.");
 
   RETURN_ERR_IF_NOT(
-      input.dims().size() == numDims + 2,
-      glow::strFormat("Number input dimensions must be equal to %d, got %lu",
-                      numDims + 2, input.dims().size()));
+      numDims >= 0 && numDims <= 3,
+      glow::strFormat("Only support 0D, 1D, 2D or 3D got %dD", numDims + 2));
 
   size_t numChannels = input.dims()[1];
   glow::NodeValue weights = loadNodeValueOrCreateBroadcastedConstant(
@@ -3976,10 +3974,21 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   // Input is in NCHW.
   glow::unsigned_t channelIdx = 1;
   glow::NodeValue output;
-  glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
-      "batchnorm", input.getType(), input, biasC, weightsC, meanC, varC,
-      channelIdx, epsilon, momentum);
-  output = bn->getResult();
+  // 0D. Currently NNPI only supports 2D, will remove this after it supports 0D.
+  if (numDims == 0) {
+    glow::ReshapeNode *twoD = F_.createReshape(
+        "bn_NC2NCHW", input, {input.dims()[0], input.dims()[1], 1, 1});
+    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
+        "bn", twoD->getType(0), twoD, biasC, weightsC, meanC, varC, channelIdx,
+        epsilon, momentum);
+    glow::ReshapeNode *zeroD = F_.createReshape("bn_NCHW2NC", bn, input.dims());
+    output = zeroD->getResult();
+  } else { // 1D, 2D or 3D
+    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
+        "batchnorm", input.getType(), input, biasC, weightsC, meanC, varC,
+        channelIdx, epsilon, momentum);
+    output = bn->getResult();
+  }
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
