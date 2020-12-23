@@ -220,11 +220,16 @@ TEST(Image, readPngImageAndPreprocessWithAndWithoutInputTensor) {
       "tests/images/imagenet/cat_285.png", ImageNormalizationMode::k0to1,
       ImageChannelOrder::RGB, ImageLayout::NHWC, imagenetNormMean,
       imagenetNormStd);
+
   Tensor image2;
+  std::vector<float> meanBGR(llvm::makeArrayRef(imagenetNormMean));
+  std::vector<float> stddevBGR(llvm::makeArrayRef(imagenetNormStd));
+  std::reverse(meanBGR.begin(), meanBGR.end());
+  std::reverse(stddevBGR.begin(), stddevBGR.end());
   readPngImageAndPreprocess(image2, "tests/images/imagenet/cat_285.png",
                             ImageNormalizationMode::k0to1,
-                            ImageChannelOrder::BGR, ImageLayout::NCHW,
-                            imagenetNormMean, imagenetNormStd);
+                            ImageChannelOrder::BGR, ImageLayout::NCHW, meanBGR,
+                            stddevBGR);
 
   // Test if the preprocess actually happened.
   dim_t imgHeight = image1.dims()[0];
@@ -298,4 +303,21 @@ TEST(Image, writePngImageWithImagenetNormalization) {
 
   // Delete the temporary file.
   std::remove(outfilename.c_str());
+}
+
+/// Test PNG w/ order and layout transposes, and different mean/stddev per
+/// channel.
+TEST(ImageTest, readNonSquarePngBGRNCHWTest) {
+  auto image = readPngImageAndPreprocess(
+      "tests/images/other/tensor_2x4x3.png", ImageNormalizationMode::k0to255,
+      ImageChannelOrder::BGR, ImageLayout::NCHW, {0, 1, 2}, {3, 4, 5});
+
+  std::vector<float> expected = {1.,   2.0, 3.,   4.,  5.,   6.0, 7.,   8.,
+                                 0.25, 1.,  1.75, 2.5, 3.25, 4.,  4.75, 5.5,
+                                 -0.2, 0.4, 1.,   1.6, 2.2,  2.8, 3.4,  4.};
+
+  auto H = image.getHandle();
+  for (dim_t i = 0; i < H.size(); i++) {
+    EXPECT_FLOAT_EQ(expected[i], H.raw(i));
+  }
 }
