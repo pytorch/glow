@@ -6073,23 +6073,29 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
       F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
 
   // This MulNode has a Placeholder as RHS and shouldn't be fused into LayerNorm
-  auto *mulIn =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 10, 20}, "in", false);
+  Tensor mulT(ElemKind::FloatTy, {1, 1, 10, 20});
+  mulT.getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  Constant *mulC = mod_.createConstant("mulC", std::move(mulT));
   MN = F_->createNodeWithBroadcast<MulNode>("mul_not_fuse", /* axis */ -1, AN,
-                                            mulIn);
+                                            mulC);
   F_->createSave("save", MN);
 
-  optimizedF_ = optimizeFunctionForTest(F_);
+  ConstantModificationPreventer constModPreventer(mod_, cctx_);
+  constModPreventer.activate();
+  optimizedF_ = optimizeFunctionForTest(F_, {}, cctx_);
+  // Now do const folding with constants swapped back in.
+  constModPreventer.deactivateAndCleanup();
+  constantFoldAndRecord(optimizedF_, cctx_);
+  runDCEPass(optimizedF_, cctx_);
 
-  // Because Mul and Add are folded in, they should not exist anymore, nor
-  // should tiles that expand them to match the output of LN.
-  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
+  // Because Muls and Add are folded in, they should not exist anymore, nor
+  // should Broadcasts that expand them to match the output of LN.
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
-  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind));
 
   // Now compile/run/compare F_ and optimizedF_.
   bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
-  bindings_.allocate(mulIn)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
   checkNumericalEquivalence(1e-6);
 }
 
