@@ -423,6 +423,8 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   if (settings.dumpOperatorInventory) {
     dumpOperatorStats(graph, fn, kind);
   }
+
+  std::cout << "final graph\n" << *graph << std::endl;
 }
 
 } // namespace
