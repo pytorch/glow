@@ -967,8 +967,8 @@ bool ONNXModelLoader::hasMultidirectionalBroadcast(
         (typeName == "Div") || (typeName == "Equal") ||
         (typeName == "Greater") || (typeName == "Less") ||
         (typeName == "Max") || (typeName == "Mean") || (typeName == "Min") ||
-        (typeName == "Mul") || (typeName == "Or") || (typeName == "Pow") ||
-        (typeName == "Sum") || (typeName == "Xor")) {
+        (typeName == "Or") || (typeName == "Pow") || (typeName == "Sum") ||
+        (typeName == "Xor")) {
       return true;
     }
   }
