@@ -54,7 +54,8 @@ sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
 
 bool isMergeSupported(const torch::jit::Node *node, IsSupportFunc fn) {
   return fn(node) || node->kind() == torch::jit::prim::Constant ||
-         node->kind() == torch::jit::prim::GetAttr;
+         node->kind() == torch::jit::prim::GetAttr ||
+         node->kind() == getGlowSymbol();
 }
 
 bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
@@ -112,13 +113,15 @@ bool aliasChecks(torch::jit::Node *consumer, torch::jit::Node *producer,
 
   // TODO: delete this once this is fixed by
   // https://github.com/pytorch/pytorch/issues/43409
-  bool isC2Op = consumer->kind().is_caffe2();
+  bool isConsumerC2Op = consumer->kind().is_caffe2();
+  bool isProducerC2Op = producer->kind().is_caffe2();
 
-  if (!isC2Op &&
+  if (!isConsumerC2Op &&
       (aliasDb.isMutable(consumer) && aliasDb.hasInputWriters(producer))) {
     return false;
   }
-  if (aliasDb.isMutable(producer) && aliasDb.hasOutputWriters(consumer)) {
+  if (!isProducerC2Op && aliasDb.isMutable(producer) &&
+      aliasDb.hasOutputWriters(consumer)) {
     return false;
   }
 
