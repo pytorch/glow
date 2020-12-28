@@ -6717,3 +6717,8 @@ void BoundInterpreterFunction::fwdBBoxTransformInst(
   dispatchFloatingPointImpl(fwdBBoxTransformInstFloatImpl,
                             I->getRois()->getElementType(), I);
 }
+
+void BoundInterpreterFunction::fwdExternalFunctionCallInst(
+    glow::ExternalFunctionCallInst const *) {
+  LOG(FATAL) << "ExternalFunctionCallInst is not supported yet";
+}

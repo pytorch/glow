@@ -5078,6 +5078,14 @@ BBoxTransformNode *Function::createBBoxTransform(
       clipAngleThresh, legacyPlusOne));
 }
 
+ExternalFunctionCallNode *Function::createExternalFunctionCall(
+    llvm::StringRef name, TypeRef outTy, llvm::ArrayRef<glow::NodeValue> inputs,
+    llvm::StringRef funcName, llvm::StringRef funcImpl,
+    llvm::StringRef funcKind) {
+  return addNode(new ExternalFunctionCallNode(name, outTy, inputs, funcName,
+                                              funcImpl, funcKind));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
