@@ -30,6 +30,7 @@
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
+#include <torch/csrc/jit/tensorexpr/kernel.h>
 
 namespace glow {
 namespace {
@@ -348,6 +349,39 @@ void setIncludeLastOffsets(std::shared_ptr<torch::jit::Graph> graph) {
   }
 }
 
+void processTensorExprGroups(std::shared_ptr<torch::jit::Graph> &graph) {
+  for (auto it = graph->nodes().begin(); it != graph->nodes().end(); it++) {
+    if (it->kind().toQualString() != "tensorexpr::Group") {
+      continue;
+    }
+
+    // Create a kernel from the fusion group.
+    // Replace the fusion group with a new node representing the kernel and how
+    // to invoke it.
+    auto nncFusedGraph = it->g(at::Symbol::fromQualString("attr::Subgraph"));
+
+    // Create TensorExprKernel, which will compile the graph.
+    auto kernel = std::make_shared<torch::jit::tensorexpr::TensorExprKernel>(
+        nncFusedGraph);
+    auto kernelSrc = kernel->getCodeText();
+
+    // Create a custom replacement node.
+    torch::jit::Node *nncKernelNode =
+        graph->create(at::Symbol::fromQualString("glow::nnckernel"),
+                      it->inputs(), it->outputs().size());
+    // Set correct types for outputs.
+    for (unsigned idx = 0, e = it->outputs().size(); idx < e; ++idx) {
+      nncKernelNode->outputs()[idx]->setType(it->outputs()[idx]->type());
+    }
+    nncKernelNode->s_(at::Symbol::attr("nnc::kernel"), kernelSrc);
+    // Add new node to the graph right after the current node.
+    nncKernelNode->insertAfter(*it);
+    // Perform the replacement.
+    it->replaceAllUsesWith(nncKernelNode);
+  }
+  EliminateDeadCode(graph);
+}
+
 void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
                         at::Symbol kind, const PyTorchLoaderSettings &settings,
                         IsSupportFunc fn) {
@@ -402,6 +436,13 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
       };
 
   Inline(*graph);
+
+  // Register Glow specific nodes.
+  torch::jit::RegisterOperators reg({torch::jit::Operator(
+      "glow::nnckernel(...) -> ...", [](torch::jit::Stack &) { return 0; },
+      c10::AliasAnalysisKind::PURE_FUNCTION)});
+
+  processTensorExprGroups(graph);
 
   // Prepare the graph by fusing known patterns for the model loader.
   // TODO: this should be done only on Glow subgraphs to avoid modifying parts
