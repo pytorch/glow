@@ -1093,6 +1093,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::index_select"}, &PyTorchModelLoader::loadIndexSelect},
       {{"aten::clamp_min"}, &PyTorchModelLoader::loadClampMin},
       {{"aten::expand_as"}, &PyTorchModelLoader::loadExpandAs},
+      {{"glow::nnckernel"}, &PyTorchModelLoader::loadNNCKernel},
   });
 
   // Add in custom operator loaders.
@@ -5916,6 +5917,37 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
   } else {
     RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
   }
+}
+
+Error PyTorchModelLoader::loadNNCKernel(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  std::string kernelName = "kernel_name";
+  std::string kernelSrc = "kernel_source";
+  RETURN_ERR_IF_NOT(ptNode->hasAttribute(at::Symbol::attr("nnc::kernel")),
+                    "Doesn't have BLOCK kernel");
+  kernelSrc = ptNode->s(at::Symbol::attr("nnc::kernel"));
+  // Extract the name of the kernel without its signature.
+  std::size_t pos0 = kernelSrc.find(" ");
+  std::size_t pos1 = kernelSrc.find("(");
+  kernelName = kernelSrc.substr(pos0 + 1, pos1 - pos0 - 1);
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+  std::vector<glow::NodeValue> glowInputs(inputs.size());
+  for (unsigned idx = 0, e = inputs.size(); idx < e; ++idx) {
+    ASSIGN_VALUE_OR_RETURN_ERR(glowInputs[idx],
+                               getGlowNodeValueForValue(inputs[idx]));
+  }
+
+  // TODO: Use a proper type based on the JIT's output type.
+  TypeRef outTy = nullptr;
+  // Assume for now that the type of output is the same as type of inputs for
+  // elementwise operations.
+  outTy = glowInputs[0].getType();
+  auto glowNode =
+      F_.createExternalFunctionCall("external_function_call", outTy, glowInputs,
+                                    kernelName, kernelSrc, "BLOCK");
+  return addValueMapping(outputs[0], glowNode);
 }
 
 Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
