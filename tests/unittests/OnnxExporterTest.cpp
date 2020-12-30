@@ -483,6 +483,12 @@ TEST(exporter, onnxModels) {
       llvm::outs() << "Ignore LSTM model file: " << name << "\n";
       continue;
     }
+    if (name.find("mlpCustomOp.onnxtxt") != std::string::npos) {
+      // Ignore graphs with custom op nodes.
+      llvm::outs() << "Ignore custom op graph file: " << name
+                   << " . Exporter is not supported for custom ops. \n";
+      continue;
+    }
     const bool customOnnxDefineSymbol =
         name.find("dimParam.onnxtxt") != std::string::npos;
     if (customOnnxDefineSymbol) {

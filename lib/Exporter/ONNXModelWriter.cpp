@@ -132,6 +132,21 @@ template <typename T> struct AttributeAssigner<false, true, T> {
   }
 };
 
+// Specialization for CustomOpData.
+// TODO: this is dummy and needs to be replaced with appropriate code.
+template <> struct AttributeAssigner<false, false, CustomOpData> {
+  static void assign(ONNX_NAMESPACE::AttributeProto *attr,
+                     const CustomOpData &container) {
+    attr->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+    std::string storage;
+    llvm::raw_string_ostream stream(storage);
+    stream << container;
+    attr->set_s(stream.str());
+    assert(false && "AttributeAssigner for CustomOpData is dummy, needs "
+                    "implementation.");
+  }
+};
+
 template <typename T>
 void addValueAttribute(ONNX_NAMESPACE::NodeProto *proto,
                        const std::string &name, const T &container) {
@@ -2539,6 +2554,7 @@ DEF_UNSUPPORTED_NODE(SigmoidCrossEntropyWithLogits)
 DEF_UNSUPPORTED_NODE(LocalResponseNormalizationGrad)
 DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
 DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProductGrad)
+DEF_UNSUPPORTED_NODE(CustomOp)
 
 // Include backend-specific ONNX model writers.
 #include "glow/ONNXModelWriterIncludes.h"

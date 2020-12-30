@@ -17,6 +17,7 @@
 #ifndef GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 #define GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 
+#include "CustomPyTorchOpLoader.h"
 #include "InputMeta.h"
 #include "PyTorchCommon.h"
 
@@ -837,6 +838,27 @@ private:
   /// Load an NNCKernel node.
   /// \returns error on failure.
   Error loadNNCKernel(const torch::jit::Node *ptNode);
+};
+
+/// External custom ops loader
+class ExternalCustomOpPyTorchLoader : public CustomPyTorchOpLoader {
+public:
+  ExternalCustomOpPyTorchLoader();
+
+  const std::vector<std::string> &getSymbolStrings() { return symbolStrings_; }
+
+  std::vector<const char *> getSymbols() {
+    std::vector<const char *> symbols;
+    for (const auto &sym : symbolStrings_)
+      symbols.push_back(sym.c_str());
+    return symbols;
+  }
+
+  glow::Error loadNode(PyTorchModelLoader &loader,
+                       const torch::jit::Node *ptNode);
+
+private:
+  std::vector<std::string> symbolStrings_;
 };
 
 } // namespace glow

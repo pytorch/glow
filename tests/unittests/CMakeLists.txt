@@ -678,3 +678,82 @@ target_link_libraries(CPUJITTest
     TestMain)
 add_custom_target(CPUJITTest_libjit SOURCES ${TEST_LIBJIT}.cpp)
 add_glow_test(CPUJITTest ${GLOW_BINARY_DIR}/tests/CPUJITTest --gtest_output=xml:CPUJITTest.xml)
+
+# Custom op external shared object compilation
+set(CUSTOMOP_LIB_FLAGS -fvisibility=default -fPIC)
+add_library(CustomRelu SHARED CustomReluImpl.cpp)
+# Includes should work with header filename only
+# and not require glow directory structure
+target_include_directories(CustomRelu
+                             PRIVATE
+                               ${CMAKE_SOURCE_DIR}/include/glow/CustomOp)
+target_compile_options(CustomRelu PRIVATE ${CUSTOMOP_LIB_FLAGS})
+
+add_library(CustomScale SHARED CustomScaleImpl.cpp)
+target_include_directories(CustomScale
+                             PRIVATE
+                               ${CMAKE_SOURCE_DIR}/include/glow/CustomOp)
+target_compile_options(CustomScale PRIVATE ${CUSTOMOP_LIB_FLAGS})
+
+add_library(CustomOpCopy SHARED CustomCopyImpl.cpp)
+target_include_directories(CustomOpCopy
+                             PRIVATE
+                               ${CMAKE_SOURCE_DIR}/include/glow/CustomOp)
+target_compile_options(CustomOpCopy PRIVATE ${CUSTOMOP_LIB_FLAGS})
+
+# Custom Op Convert Layout.
+add_library(CustomConvertLayout SHARED CustomConvertLayoutImpl.cpp)
+target_include_directories(CustomConvertLayout
+                             PRIVATE
+                               ${CMAKE_SOURCE_DIR}/include/glow/CustomOp)
+target_compile_options(CustomConvertLayout PRIVATE ${CUSTOMOP_LIB_FLAGS})
+
+# TODO: Create a folder customop_tests and move config files
+# and implementation files there.
+configure_file(CustomOpRelu.yaml
+               ${GLOW_BINARY_DIR}/tests/CustomOpRelu.yaml
+               COPYONLY)
+# OpRepositoryTest Requirements.
+# Copy the configuration files.
+configure_file(CustomOpConfig.yaml
+               ${GLOW_BINARY_DIR}/tests/CustomOpConfig.yaml
+               COPYONLY)
+configure_file(CustomOpReluMock.yaml
+               ${GLOW_BINARY_DIR}/tests/CustomOpReluMock.yaml
+               COPYONLY)
+add_library(CustomOpFunctions SHARED CustomOpFunctionImpls.cpp)
+target_include_directories(CustomOpFunctions
+                             PRIVATE
+                               ${CMAKE_SOURCE_DIR}/include/glow/CustomOp)
+target_compile_options(CustomOpFunctions PRIVATE ${CUSTOMOP_LIB_FLAGS})
+
+add_executable(OpRepositoryTest
+                 OpRepositoryTest.cpp)
+target_link_libraries(OpRepositoryTest
+                      PRIVATE
+                        Backend
+                        Backends
+                        Graph
+                        gtest
+                        TestMain)
+add_glow_test(OpRepositoryTest
+              ${GLOW_BINARY_DIR}/tests/OpRepositoryTest
+                  --gtest_output=xml:OpRepositoryTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/OpRepositoryTest -optimize-ir=false &&)
+
+add_executable(CustomOpTest
+               CustomOpTest.cpp)
+target_link_libraries(CustomOpTest
+                      PRIVATE
+                        BackendTestUtils
+                        Backend
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        Importer
+                        gtest
+                        TestMain)
+add_glow_test(NAME CustomOpTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/CustomOpTest
+                  --gtest_output=xml:CustomOpTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

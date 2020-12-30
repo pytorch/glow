@@ -33,6 +33,12 @@
 #include <functional>
 #include <numeric>
 
+// GLOW_DATA_PATH is used to find the custom op implementations.
+// Define as empty if undefined.
+#ifndef GLOW_DATA_PATH
+#define GLOW_DATA_PATH
+#endif
+
 using namespace glow;
 
 class OperatorStatelessTest : public BackendStatelessTest {};

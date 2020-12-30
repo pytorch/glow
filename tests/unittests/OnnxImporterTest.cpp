@@ -5279,6 +5279,53 @@ TEST(onnx, importNames) {
   }
 }
 
+/// Test loading CustomRelu op from an ONNX model.
+TEST_F(OnnxImporterTest, CustomRelu) {
+  // Register CustomRelu Op.
+  std::string configFile{GLOW_DATA_PATH "tests/CustomOpRelu.yaml"};
+  OpRepository *opRepo = OpRepository::get();
+  ASSERT_FALSE(ERR_TO_BOOL(opRepo->registerOperation(configFile)));
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/mlpCustomOp.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Type inputType(ElemKind::FloatTy, {3, 3});
+  {
+    Tensor x(inputType);
+    x.getHandle() = {0, -1, -2, -3, 4, 5, 6, 7, 8};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  CustomOpNode *node = llvm::dyn_cast<CustomOpNode>(save->getInput().getNode());
+  ASSERT_TRUE(node);
+
+  // Check Inputs.
+  ASSERT_EQ(node->getNumInputs(), 1);
+  EXPECT_EQ(*(node->getNthInput(0).getType()), inputType);
+
+  // Check Outputs.
+  ASSERT_EQ(node->getNumResults(), 1);
+  EXPECT_EQ(*(node->getType(0)), inputType);
+
+  // Check Params.
+  auto opMetaData = node->getMetaData();
+  ASSERT_TRUE(opMetaData.hasParam("alpha"));
+  ASSERT_TRUE(opMetaData.hasParam("beta"));
+  float alpha = opMetaData.getFloatParam("alpha");
+  float beta = opMetaData.getFloatParam("beta");
+  EXPECT_EQ(alpha, 0.5f);
+  EXPECT_EQ(beta, 0.2f);
+}
+
 TEST(onnx, importClipV11) {
   // Test loading Clip in opset v11 format where min(-2) and max(2) are passed
   // as inputs.

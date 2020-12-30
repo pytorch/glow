@@ -17,6 +17,7 @@
 #define GLOW_GRAPH_GRAPH_H
 
 #include "glow/Base/Type.h"
+#include "glow/Graph/CustomOpData.h"
 #include "glow/Graph/Log.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Quantization/Base/Base.h"
@@ -805,6 +806,18 @@ public:
   ///      For input: [3] and newShape: [2, 2, 3], the axis will be 2.
   BroadcastNode *createBroadcast(llvm::StringRef name, NodeValue input,
                                  UnsignedArrayRef newShape, unsigned_t axis);
+
+  /// CustomOp creation.
+  /// \p name: name of the node.
+  /// \p opTypeName: type of the node.
+  /// \p opDomainName: domain name of the node.
+  /// \p inputs: vector of inpus to Node.
+  /// \p OperationData: Holds data about the Custom Operation.
+  CustomOpNode *createCustomOp(llvm::StringRef name, llvm::StringRef opTypeName,
+                               llvm::StringRef opDomainName,
+                               llvm::ArrayRef<NodeValue> inputs,
+                               llvm::ArrayRef<TypeRef> types,
+                               CustomOpData &opData);
 
   /// Create concat node which concatenates input tensors along \p dimension.
   ConcatNode *createConcat(llvm::StringRef name,

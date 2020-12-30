@@ -16,6 +16,7 @@
 
 #include "glow/Graph/Nodes.h"
 #include "glow/Base/Type.h"
+#include "glow/Graph/CustomOpUtils.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/VerifierHelper.h"
 #include "glow/Support/Support.h"
@@ -2558,6 +2559,42 @@ bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
 bool ExternalFunctionCallNode::verify() const { return true; }
 
+bool CustomOpNode::verify() const {
+  // Get Node inputs.
+  auto inputs = getInputs();
+
+  // Get CustomOpData and verification function.
+  auto opMetaData = getMetaData();
+  customOpVerify_t verifyFunction = opMetaData.getVerificationFunction();
+
+  std::vector<CustomOpIOTensor> inT, outT;
+
+  for (auto input : inputs) {
+    inT.push_back(glowTypeToCustomOpIOTensor(input.getType()));
+  }
+  for (int i = 0; i < getNumResults(); i++) {
+    outT.push_back(glowTypeToCustomOpIOTensor(getType(i)));
+  }
+
+  std::vector<CustomOpParam> params = getCustomOpParams(opMetaData);
+
+  // Call VerifyFunction.
+  bool isValid = verifyFunction(inT.data(), inT.size(), outT.data(),
+                                outT.size(), params.data(), params.size());
+  if (!isValid)
+    LOG(ERROR) << "CustomOp verification failed for node " << getName().str();
+
+  for (auto &iot : inT) {
+    freeCustomOpIOTensor(iot);
+  }
+  for (auto &iot : outT) {
+    freeCustomOpIOTensor(iot);
+  }
+  freeCustomOpParams(params);
+
+  return isValid;
+}
+
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//
@@ -2587,6 +2624,8 @@ std::vector<size_t> toBinary(llvm::ArrayRef<float> vec) {
 }
 
 llvm::hash_code hash_value(const glow::Tensor &T) { return T.size(); }
+
+llvm::hash_code hash_value(const glow::CustomOpData &C) { return C.getHash(); }
 
 // Types are uniqued, so just a pointer can be used.
 llvm::hash_code hash_value(const glow::Type *T) {
@@ -2659,4 +2698,24 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode) {
   }
   return os;
 }
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, CustomOpData metaData) {
+  os << "Parameter names: ";
+  for (auto name : metaData.getParamNames()) {
+    os << name << " ";
+  }
+  return os;
+}
+
+bool operator==(const CustomOpData LHS, const CustomOpData RHS) {
+  bool equal = true;
+
+  equal &= LHS.getTypeName() == RHS.getTypeName();
+  equal &= LHS.getPackageName() == RHS.getPackageName();
+  equal &= LHS.getNumParameters() == RHS.getNumParameters();
+  equal &= LHS.getParamNames() == RHS.getParamNames();
+
+  return equal;
+}
+
 } // namespace glow

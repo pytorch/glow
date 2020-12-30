@@ -130,6 +130,10 @@ class ONNXModelLoader
   /// A set of Functions used for ConstantFolding to be deleted after loading.
   std::unordered_set<Function *> constFoldFuns_;
 
+  /// Load External Custom Operator
+  Error loadExternalCustomOp(const ONNX_NAMESPACE::NodeProto &op,
+                             const ArgumentDictionaryTy &dict);
+
   /// Load ONNX NonZero Operator.
   /// Glow's requirement for static shapes results in required Constant
   /// input. Thus, the operator will be folded in the Importer.

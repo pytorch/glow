@@ -109,3 +109,15 @@ if(GLOW_WITH_BUNDLES)
 endif()
 
 add_subdirectory(training)
+
+add_executable(custom-op-loader
+                custom-op-loader.cpp)
+set_property(TARGET custom-op-loader
+             PROPERTY LINK_FLAGS "-Wl,--export-dynamic")
+target_link_libraries(custom-op-loader
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        Importer
+                        Support)

@@ -263,6 +263,35 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(CELossG->getGradOfInputNamedLabels(), CELossGI->getLabelsgrad());
     break;
   }
+  case glow::Kinded::Kind::CustomOpNodeKind: {
+    auto *customNode = cast<CustomOpNode>(N);
+
+    std::vector<Value *> inputValues;
+    std::vector<AllocActivationInst *> outputValues;
+
+    // Get IR Value for Node.
+    for (int i = 0; i < customNode->getNumInputs(); i++) {
+      inputValues.push_back(valueForNode(customNode->getNthInput(i)));
+    }
+
+    // Allocate outputs for Node
+    for (int i = 0; i < customNode->getNumResults(); i++) {
+      AllocActivationInst *dest = builder_.createAllocActivationInst(
+          customNode->getName(), customNode->getNthResult(i).getType());
+
+      registerIR(customNode->getNthResult(i), dest);
+      outputValues.push_back(dest);
+    }
+
+    CustomOpData metaData = customNode->getMetaData();
+
+    auto *V = builder_.createCustomOpInst(customNode->getName(), outputValues,
+                                          inputValues, metaData);
+
+    // Registration.
+    nodeToInstr_[N] = V;
+    break;
+  }
   case glow::Kinded::Kind::ConcatNodeKind: {
     auto *CC = cast<ConcatNode>(N);
 

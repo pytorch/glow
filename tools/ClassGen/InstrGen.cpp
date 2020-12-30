@@ -76,6 +76,16 @@ int main(int argc, char **argv) {
       .dataParallel();
 
   //===--------------------------------------------------------------------===//
+  //                     Custom Operation
+  //===--------------------------------------------------------------------===//
+  BB.includeHeader("glow/Graph/CustomOpData.h");
+  BB.newInstr("CustomOp")
+      .addOperand("Dest", OperandKind::Out)
+      .addMember(MemberType::Unsigned, "NumInputs")
+      .addMember(MemberType::Unsigned, "NumOutputs")
+      .addMember(MEMBER_TYPE_INFO(CustomOpData), "MetaData");
+
+  //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
   //===--------------------------------------------------------------------===//
 

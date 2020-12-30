@@ -1,0 +1,56 @@
+# Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Lenet MNIST custom
+---
+type: ScaledTanh
+package: LenetOps
+inputs:
+  - name: input
+    maxDims: 5
+parameters:
+  - name: amplitude
+    dataType: float
+    scalar: true
+  - name: scale
+    dataType: float
+    scalar: true
+outputs:
+  - name: output
+    maxDims: 5
+functionsLibrary: ./libScaledTanh.so
+implementations:
+  - backend: Interpreter
+    type: scaledTanhExecute
+    impl: ./libScaledTanh.so
+...
+---
+type: L2Pool
+package: LenetOps
+inputs:
+  - name: input
+    maxDims: 4
+parameters:
+  - name: kernel_size
+    dataType: int
+    scalar: false
+outputs:
+  - name: poolOut
+    maxDims: 4
+functionsLibrary: ./libL2Pool.so
+implementations:
+  - backend: Interpreter
+    type: l2poolExecute
+    impl: ./libL2Pool.so
+...

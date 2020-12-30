@@ -1390,6 +1390,21 @@ int main(int argc, char **argv) {
                     "valid indices. It pads the rest with global MIN box.");
 
   //===--------------------------------------------------------------------===//
+  //                     Custom Operation
+  //===--------------------------------------------------------------------===//
+  BB.includeHeader("glow/Graph/CustomOpData.h");
+  BB.newNode("CustomOp")
+      .addMember(MemberType::VectorNodeValue, "Inputs")
+      // FIXME: This method fails to write in ONNX model, ONNX Loader
+      // fails.
+      .addMember(MEMBER_TYPE_INFO(CustomOpData), "MetaData")
+      .hasExtraResults()
+      .setDocstring(
+          "This a custom operator. Can have any number of inputs and outputs."
+          "Takes CustomOpData class as input which carries Parameters that are"
+          " parsed/used by the backend.");
+
+  //===--------------------------------------------------------------------===//
   //                Region of Interest nodes
   //===--------------------------------------------------------------------===//
 

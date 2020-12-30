@@ -18,6 +18,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
+#include "glow/Graph/CustomOpData.h"
 #include "glow/Graph/Grad.h"
 #include "glow/Graph/Node.h"
 
@@ -288,10 +289,16 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                               FusedActivation fusedActivation);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode);
 
+// Definitions for user defined member type needed for NodeBuilder
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                              CustomOpData customOpParam);
+bool operator==(const CustomOpData LHS, const CustomOpData RHS);
+
 /// Support for hashing the Nodes. This is required for using
 /// llvm::hash_combine.
 class Node;
 class Tensor;
+class CustomOpData;
 struct Type;
 struct NodeValue;
 
@@ -312,6 +319,8 @@ llvm::hash_code hash_value(glow::Node *T);
 
 llvm::hash_code hash_value(const glow::NodeValue &T);
 llvm::hash_code hash_value(const glow::NodeHandle &T);
+
+llvm::hash_code hash_value(const glow::CustomOpData &T);
 
 } // namespace glow
 

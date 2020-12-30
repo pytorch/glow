@@ -1,0 +1,23 @@
+---
+# Custom Relu
+type: CustomRelu
+package: ONNXImporterTest
+inputs:
+  - name: input
+    maxDims: 5
+parameters:
+  - name: alpha
+    dataType: float
+    scalar: true
+  - name: beta
+    dataType: float
+    scalar: true
+outputs:
+  - name: reluOut
+    maxDims: 5
+functionsLibrary: tests/unittests/libCustomRelu.so
+implementations:
+  - backend: Interpreter
+    type: customReluExecute
+    impl: tests/unittests/libCustomRelu.so
+...

@@ -36,7 +36,11 @@ add_library(Graph
             TensorLayout.cpp
             Graph.cpp
             Grad.cpp
-            VerifierHelper.cpp)
+            VerifierHelper.cpp
+            OpRepository.cpp
+            OperationInfo.cpp
+            CustomOpData.cpp
+            CustomOpUtils.cpp)
 
 target_link_libraries(Graph
                       PUBLIC

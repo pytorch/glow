@@ -1,0 +1,27 @@
+---
+# Custom Relu
+type: CustomReluOp
+package: Example
+inputs:
+  - name: input
+    maxDims: 1
+parameters:
+  - name: alpha
+    dataType: float
+    scalar: true
+  - name: beta
+    dataType: int
+    scalar: false
+    size: 3
+outputs:
+  - name: reluOut
+    maxDims: 1
+functionsLibrary: tests/unittests/libCustomOpFunctions.so
+implementations:
+  - backend: MockBackend
+    type: float
+    impl: mock/custom_relu.so
+  - backend: MockBackend
+    type: i32
+    impl: mock/libjit_custom.cpp
+...

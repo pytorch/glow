@@ -1,0 +1,73 @@
+# ---------------------------------------------------------
+# Each op type must be a separate YAML document
+# ---------------------------------------------------------
+# CustomOp #1
+# Example Specification for an Op of type "X".
+#
+# - Supproted dataType for params: "float", "int", "bool", "string".
+# - [TODO] Decide whether paths should be absolute
+#   or relative to config file. Paths in the file are for
+#   illustration purposes only.
+---
+type: X
+package: Example
+inputs:
+  - name: inputX1
+    maxDims: 1 # max rank
+    # constant: false, specify if true
+  - name: inputX2
+    maxDims: 5
+    constant: true
+parameters:
+  - name: paramX1
+    dataType: bool
+    scalar: true
+    # size: 0 , specify size if vector
+  - name: paramX2
+    dataType: int
+    scalar: false
+    size: 5
+outputs:
+  - name: outputX1
+    maxDims: 1
+# path to library with verify, implementation selection and
+# shape inference function defn.
+functionsLibrary: /tmp/customop_functions.so
+implementations:
+  - backend: Interpreter
+    type: float
+    impl: X_I1.so
+  - backend: AIC
+    type: i32
+    impl: X_AIC1.cpp
+    config: ConfigAIC
+  - backend: Interpreter
+    type: bool
+    impl: X_I2.so
+...
+---
+# CustomOp #2
+type: Y
+package: Example
+inputs:
+  - name: inputY
+    maxDims: 1
+parameters:
+  - name: alphaY
+    dataType: float
+    scalar: true
+outputs:
+  - name: outputY1
+    maxDims: 1
+  - name: outputY2
+    maxDims: 5
+functionsLibrary: /tmp/customop_functions.so
+implementations:
+  - backend: Interpreter
+    type: float
+    impl: Y_I1.so
+    config: ConfigINTP
+  - backend: AIC
+    type: i32
+    impl: Y_AIC1.cpp
+...

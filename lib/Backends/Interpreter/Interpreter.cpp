@@ -725,6 +725,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedPairwiseDotProductGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 
+  // TODO add check if op has registered an Interpreter implementation.
+  // Verification will take care of datatype checks.
+  case Kinded::Kind::CustomOpNodeKind:
+    return true;
+
   default:
     return false;
   }

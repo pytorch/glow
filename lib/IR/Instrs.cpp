@@ -56,6 +56,15 @@ void CopyInst::verify() const {
   assert(dest->getType() == src->getType() && "Invalid type.");
 }
 
+void CustomOpInst::verify() const {
+  // Dummy.
+  // TODO: Implement verification mechanism.
+  auto *dest = getDest();
+  // auto *src = getSrc1();
+  (void)dest;
+  //(void)src;
+}
+
 void TensorViewInst::verify() const {
   assert(getSrc()->getType()->size() >= getType()->size() &&
          "TensorView view size should be no larger than Src size");

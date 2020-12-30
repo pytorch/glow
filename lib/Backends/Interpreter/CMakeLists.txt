@@ -2,6 +2,7 @@ add_library(Interpreter
               Interpreter.cpp
               InterpreterFunction.cpp
               InterpreterNodes.cpp
+              InterpreterOpRepository.cpp
               InterpreterDeviceManager.cpp
               InterpreterFactory.cpp)
 target_link_libraries(Interpreter

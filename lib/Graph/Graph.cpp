@@ -1367,6 +1367,76 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
   return true;
 }
 
+/// CustomOp creation.
+/// \p name: name of the node.
+/// \p opTypeName: type of the node.
+/// \p opDomainName: domain name of the node.
+/// \p inputs: vector of inpus to Node.
+/// \p OperationData: Holds data about the Custom Operation.
+CustomOpNode *Function::createCustomOp(llvm::StringRef name,
+                                       llvm::StringRef opTypeName,
+                                       llvm::StringRef opDomainName,
+                                       llvm::ArrayRef<NodeValue> inputs,
+                                       llvm::ArrayRef<TypeRef> types,
+                                       CustomOpData &opData) {
+
+  // Query OpRepository to get info about node using TypeName and DomainName.
+  auto opRepo = OpRepository::get();
+  auto opInfo = opRepo->getOperationInfo(opTypeName, opDomainName);
+  if (!opInfo) {
+    LOG(FATAL) << "Could not retrieve OperationInfo.";
+  }
+
+  // Verify paramter info.
+  auto paramInfos = opInfo->getParamInfo();
+  if (opData.getNumParameters() != paramInfos.size()) {
+    LOG(FATAL) << "Mismatch in number of paramters provided vs registered.";
+  }
+  for (auto pInfo : paramInfos) {
+    assert(opData.hasParam(pInfo.getName()) &&
+           "Parameter names do not match with registered names.");
+  }
+
+  // Verify nodeIO info.
+  std::vector<NodeIOInfo> outputIO = opInfo->getOutputInfo();
+  std::vector<NodeIOInfo> inputIO = opInfo->getInputInfo();
+  assert(outputIO.size() == types.size());
+  assert(inputIO.size() == inputs.size());
+
+  // Assign inputs.
+  std::vector<NodeValue> inOps;
+  inOps.reserve(inputs.size());
+  for (auto I : inputs) {
+    inOps.emplace_back(I);
+  }
+
+  // Set Verify Function in CustomOpData.
+  customOpVerify_t verifyFunction = opInfo->getVerificationFunction();
+  if (!verifyFunction) {
+    LOG(FATAL) << "Could not find VerificationFunction.";
+  }
+
+  opData.setVerificationFunction(verifyFunction);
+
+  // Create output types.
+  std::vector<TypeRef> outTypes;
+  size_t numResults = types.size();
+  outTypes.reserve(numResults);
+  for (auto T : types) {
+    outTypes.push_back(T);
+  }
+
+  CustomOpNode *node = addNode(new CustomOpNode(name, inOps, opData));
+
+  // Outputs are attached to the node depending on the information present in
+  // \p types.
+  for (auto ty : outTypes) {
+    node->addExtraResult(ty);
+  }
+
+  return node;
+}
+
 ConcatNode *Function::createConcat(llvm::StringRef name,
                                    llvm::ArrayRef<NodeValue> inputs,
                                    unsigned_t dimension) {

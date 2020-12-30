@@ -15,8 +15,11 @@
  */
 
 #include "glow/Backends/Interpreter/Interpreter.h"
+#include "glow/Backends/Interpreter/InterpreterOpRepository.h"
 
 #include "glow/Base/TensorSerialization.h"
+#include "glow/Graph/CustomOpData.h"
+#include "glow/Graph/CustomOpUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Base/Profile.h"
@@ -6722,3 +6725,66 @@ void BoundInterpreterFunction::fwdExternalFunctionCallInst(
     glow::ExternalFunctionCallInst const *) {
   LOG(FATAL) << "ExternalFunctionCallInst is not supported yet";
 }
+
+#define ASSIGN_VALUE_OR_ASSERT(VAR, EXP_VAR, MSG)                              \
+  do {                                                                         \
+    auto expV = EXP_VAR;                                                       \
+    assert((bool)(expV) && MSG);                                               \
+    VAR = expV.get();                                                          \
+  } while (0)
+void BoundInterpreterFunction::fwdCustomOpInst(glow::CustomOpInst const *I) {
+  std::vector<CustomOpIOTensor> inT, outT;
+
+  for (int i = 0; i < I->getNumOutputs(); i++) {
+    auto *tensor = getTensor(I->getOperand(i).first);
+    outT.push_back(glowTensorToCustomOpIOTensor(tensor));
+  }
+
+  // Index offset where input operands start.
+  unsigned inOffset = I->getNumOutputs();
+  for (int i = 0; i < I->getNumInputs(); i++) {
+    auto *tensor = getTensor(I->getOperand(inOffset + i).first);
+    inT.push_back(glowTensorToCustomOpIOTensor(tensor));
+  }
+  auto metaData = I->getMetaData();
+  std::vector<CustomOpParam> params = getCustomOpParams(metaData);
+
+  auto *repo = static_cast<InterpreterOpRepository *>(
+      getBackendOpRepository("Interpreter"));
+  assert(repo != nullptr && "Could not find BackendOpRepository");
+
+  // TODO selection function should not be called repeatedly for every
+  // execution. Figure out a way to call and store the flavour after function is
+  // compiled.
+  customOpSelectImpl_t selectFunc;
+  ASSIGN_VALUE_OR_ASSERT(selectFunc,
+                         repo->getSelectionFunction(metaData.getTypeName(),
+                                                    metaData.getPackageName()),
+                         "Selection function not found");
+  const char *flavour =
+      selectFunc(inT.data(), inT.size(), outT.data(), outT.size(),
+                 params.data(), params.size(), "Interpreter");
+  customOpInterpreterKernel_t customOpKernel;
+  ASSIGN_VALUE_OR_ASSERT(customOpKernel,
+                         repo->getImplementation(metaData.getTypeName(),
+                                                 metaData.getPackageName(),
+                                                 flavour),
+                         "Implementation not found");
+
+  assert(customOpKernel != nullptr && "Custom Op Kernel not loaded");
+
+  // call execute.
+  customOpKernel(inT.data(), inT.size(), outT.data(), outT.size(),
+                 params.data(), params.size());
+
+  for (auto &iot : inT) {
+    freeCustomOpIOTensor(iot);
+  }
+  for (auto &iot : outT) {
+    freeCustomOpIOTensor(iot);
+  }
+
+  freeCustomOpParams(params);
+}
+#undef ASSIGN_VALUE_OR_ASSERT
+

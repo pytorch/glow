@@ -19,6 +19,9 @@
 #include "PyTorchCommon.h"
 
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Graph/CustomOpData.h"
+#include "glow/Graph/CustomOpUtils.h"
+#include "glow/Graph/OpRepository.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
@@ -28,7 +31,13 @@
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
 #include <torch/csrc/jit/ir/ir.h>
-#include <unordered_map>
+#include <torch/csrc/jit/runtime/custom_operator.h>
+
+llvm::cl::opt<bool> RedefineROIAlignToImplicitPyTorch(
+    "aic-pytorch-roialignImplicit",
+    llvm::cl::desc(
+        "Redefine PyTorch ROIAlign operator to use implicit version"),
+    llvm::cl::init(false), llvm::cl::ReallyHidden);
 
 namespace glow {
 
@@ -939,6 +948,136 @@ struct CompareInputs {
 };
 
 } // namespace
+
+ExternalCustomOpPyTorchLoader::ExternalCustomOpPyTorchLoader() {
+  auto *opRepo = glow::OpRepository::get();
+  auto operationsMap = opRepo->getOperationsMap();
+
+  for (auto it = operationsMap.begin(); it != operationsMap.end(); it++) {
+    symbolStrings_.push_back(it->first.second + "::" + it->first.first);
+  }
+}
+
+glow::Error
+ExternalCustomOpPyTorchLoader::loadNode(PyTorchModelLoader &loader,
+                                        const torch::jit::Node *ptNode) {
+  auto *opRepo = glow::OpRepository::get();
+
+  // Get package and op_type of ptNode
+  const auto kind = ptNode->kind();
+  llvm::StringRef package = kind.ns().toUnqualString();
+  llvm::StringRef opType = kind.toUnqualString();
+
+  auto opInfo = opRepo->getOperationInfo(opType, package);
+  RETURN_ERR_IF_NOT(opInfo != nullptr, "Could not retrieve operation info");
+
+  // The ptNode->inputs() should contain operation inputs followed by operation
+  // params in the same order as registered in OperationInfo.
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  auto inputInfo = opInfo->getInputInfo();
+  auto outputInfo = opInfo->getOutputInfo();
+  auto paramInfo = opInfo->getParamInfo();
+
+  RETURN_IF_ERR(loader.checkInputAndOutputSizes(
+      inputs, inputInfo.size() + paramInfo.size(), outputs, outputInfo.size()));
+
+  llvm::SmallVector<glow::NodeValue, 4> glowInputs;
+  for (size_t i = 0; i < inputInfo.size(); i++) {
+    glow::NodeValue inNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(inNV,
+                               loader.getGlowNodeValueForValue(inputs[i]));
+    glowInputs.push_back(inNV);
+  }
+
+  CustomOpData metadata("customOp", opType, package, opInfo->getParamInfo());
+
+  for (size_t i = inputInfo.size(), j = 0; i < inputs.size(); i++, j++) {
+    GlowIValue *pIVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(pIVal, loader.getGlowIValueForValue(inputs[i]));
+    glow::ParamInfo pInfo = paramInfo[j];
+
+    if (pInfo.getDataType() == CustomOpDataType::DTFloat32 &&
+        pInfo.isScalar()) {
+      float val;
+      ASSIGN_VALUE_OR_RETURN_ERR(val, iValToDouble(pIVal));
+      metadata.addParam(pInfo.getName(), val);
+    } else if (pInfo.getDataType() == CustomOpDataType::DTFloat32 &&
+               pInfo.isArray()) {
+      std::vector<double> *val;
+      ASSIGN_VALUE_OR_RETURN_ERR(val, iValToDoubleList(pIVal));
+
+      std::vector<float> copyVal;
+      for (double v : *val) {
+        copyVal.push_back((float)v);
+      }
+      metadata.addParam(pInfo.getName(), std::move(copyVal));
+    } else if (pInfo.getDataType() == CustomOpDataType::DTIInt32 &&
+               pInfo.isScalar()) {
+      int32_t val;
+      ASSIGN_VALUE_OR_RETURN_ERR(val, iValToInt(pIVal));
+      metadata.addParam(pInfo.getName(), val);
+    } else if (pInfo.getDataType() == CustomOpDataType::DTIInt32 &&
+               pInfo.isArray()) {
+      std::vector<int64_t> *val;
+      ASSIGN_VALUE_OR_RETURN_ERR(val, iValToIntList(pIVal));
+
+      std::vector<int32_t> copyVal;
+      for (int64_t v : *val) {
+        copyVal.push_back((int32_t)v);
+      }
+      metadata.addParam(pInfo.getName(), std::move(copyVal));
+    } else {
+      RETURN_ERR(MAKE_ERR("Param datatype is not supported"));
+    }
+  }
+
+  auto inferShape = opInfo->getShapeInferenceFunction();
+  RETURN_ERR_IF_NOT(inferShape, "Could not find type inference function");
+
+  // Get custom op input types.
+  std::vector<CustomOpIOTensor> inT, outT;
+  for (auto &input : glowInputs) {
+    inT.push_back(glowTypeToCustomOpIOTensor(input.getType()));
+  }
+  // Get custom op parameters.
+  std::vector<CustomOpParam> params = getCustomOpParams(metadata);
+  // Initialize custom op output types based on registered outputInfo.
+  const auto &outputsInfo = opInfo->getOutputInfo();
+  for (auto &out : outputsInfo) {
+    outT.push_back(initializeCustomOpIOTensor(out.getMaxDims()));
+  }
+  bool inferSuccess = inferShape(outT.data(), outT.size(), inT.data(),
+                                 inT.size(), params.data(), params.size());
+  RETURN_ERR_IF_NOT(inferSuccess, "Error in type inference function");
+
+  std::vector<TypeRef> types;
+  for (int i = 0; i < outT.size(); i++) {
+    types.push_back(
+        loader.F_.getParent()->uniqueType(customOpIOTensorToglowType(outT[i])));
+  }
+
+  // Free Inputs, Params and Outputs.
+  for (auto &iot : inT) {
+    freeCustomOpIOTensor(iot);
+  }
+  freeCustomOpParams(params);
+  for (auto &iot : outT) {
+    freeCustomOpIOTensor(iot);
+  }
+
+  // Create CustomOpNode.
+  CustomOpNode *customOp = loader.F_.createCustomOp(
+      metadata.getName(), metadata.getTypeName(), metadata.getPackageName(),
+      glowInputs, types, metadata);
+
+  for (size_t i = 0; i < outputs.size(); i++) {
+    RETURN_IF_ERR(
+        loader.addValueMapping(outputs[i], customOp->getNthResult(i)));
+  }
+  return glow::Error::success();
+}
 
 // static
 const PyTorchModelLoader::MappingOfMemberFunctions

@@ -17,9 +17,13 @@
 #include "glow/Importer/ONNXModelLoader.h"
 
 #include "glow/Base/Tensor.h"
+#include "glow/CustomOp/CustomOpFunctions.h"
 #include "glow/Flags/Flags.h"
+#include "glow/Graph/CustomOpData.h"
+#include "glow/Graph/CustomOpUtils.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/OpRepository.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
@@ -349,6 +353,15 @@ template <> struct AttributeRetriever<false, ConvolutionLayout> {
     } else {
       return MAKE_ERR("Invalid ConvolutionLayout");
     }
+  }
+};
+
+/// Specialization for CustomOpData.
+template <> struct AttributeRetriever<false, CustomOpData> {
+  static Expected<CustomOpData> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                                    const ProtobufLoader & /* unused */) {
+    CustomOpData op;
+    return MAKE_ERR("Attribute CustomOpData is not supported");
   }
 };
 
@@ -4715,6 +4728,134 @@ Error ONNXModelLoader::loadLoop(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadExternalCustomOp(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  auto *oprepo = OpRepository::get();
+
+  // TODO access shape inference function here
+  auto opinfo = oprepo->getOperationInfo(op.op_type(), op.domain());
+  RETURN_ERR_IF_NOT(opinfo != nullptr, "Could not retrieve operation info");
+
+  std::vector<NodeValue> inputs;
+  for (size_t i = 0; i < op.input_size(); i++) {
+    NodeValue inNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(inNV, getNodeValueByName(op.input(i)));
+    inputs.push_back(inNV);
+  }
+
+  CustomOpData metadata(opName, op.op_type(), op.domain(),
+                        opinfo->getParamInfo());
+  for (auto namedattr : dict) {
+    auto attr = namedattr.second;
+    auto name = namedattr.first;
+    switch (attr->type()) {
+    case ONNX_NAMESPACE::AttributeProto::FLOAT: {
+      float val;
+      ASSIGN_VALUE_OR_RETURN_ERR(val, loadFloat(dict.at(name)));
+      metadata.addParam(name, val);
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto::INT: {
+      int32_t val;
+      ASSIGN_VALUE_OR_RETURN_ERR(val, loadInt(dict.at(name)));
+      metadata.addParam(name, val);
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto::INTS: {
+      std::vector<int32_t> val;
+      ASSIGN_VALUE_OR_RETURN_ERR(val, getShape<int32_t>(dict.at(name)));
+      metadata.addParam(name, val);
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto::STRING: {
+      std::string val;
+      ASSIGN_VALUE_OR_RETURN_ERR(val, loadStr(dict.at(name)));
+      metadata.addParam(name, val);
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto::TENSOR: {
+      Tensor T;
+      Type ty;
+      const ONNX_NAMESPACE::TensorProto in = dict.at(name)->t();
+      ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
+      auto dims = ty.dims();
+
+      if (dims.size() != 1) {
+        return MAKE_ERR("Mutlti-dimensional tensors are not supported",
+                        ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+      }
+
+      RETURN_IF_ERR(loadTensor(in, &T, false /*useGlowCustomOps_*/));
+      if (ty.getElementType() == ElemKind::FloatTy) {
+        std::vector<float> val;
+        auto H = T.getHandle<float>();
+        for (int i = 0; i < dims[0]; i++) {
+          val.push_back(H.at(i));
+        }
+        metadata.addParam(name, val);
+      } else if (ty.getElementType() == ElemKind::Int32ITy) {
+        std::vector<int32_t> val;
+        auto H = T.getHandle<int32_t>();
+        for (int i = 0; i < dims[0]; i++) {
+          val.push_back(H.at(i));
+        }
+        metadata.addParam(name, val);
+      } else {
+        return MAKE_ERR(
+            "Unnsupported data type",
+            ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+      }
+      break;
+    }
+    default:
+      return MAKE_ERR("AttributeType not supported",
+                      ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+      break;
+    }
+  }
+
+  auto inferShape = opinfo->getShapeInferenceFunction();
+  RETURN_ERR_IF_NOT(inferShape, "Could not find type inference function");
+
+  // Get custom op input types.
+  std::vector<CustomOpIOTensor> inT, outT;
+  for (auto &input : inputs) {
+    inT.push_back(glowTypeToCustomOpIOTensor(input.getType()));
+  }
+  // Get custom op parameters.
+  std::vector<CustomOpParam> params = getCustomOpParams(metadata);
+  // Initialize custom op output types based on registered outputInfo.
+  const auto &outputsInfo = opinfo->getOutputInfo();
+  for (auto &out : outputsInfo) {
+    outT.push_back(initializeCustomOpIOTensor(out.getMaxDims()));
+  }
+  bool inferSuccess = inferShape(outT.data(), outT.size(), inT.data(),
+                                 inT.size(), params.data(), params.size());
+  RETURN_ERR_IF_NOT(inferSuccess, "Error in type inference function");
+
+  std::vector<TypeRef> types;
+  for (int i = 0; i < outT.size(); i++) {
+    types.push_back(mod_.uniqueType(customOpIOTensorToglowType(outT[i])));
+  }
+
+  // Free Inputs, Params and Outputs.
+  for (auto &iot : inT) {
+    freeCustomOpIOTensor(iot);
+  }
+  freeCustomOpParams(params);
+  for (auto &iot : outT) {
+    freeCustomOpIOTensor(iot);
+  }
+
+  // Create CustomOpNode.
+  CustomOpNode *customOp =
+      G_->createCustomOp(metadata.getName(), metadata.getTypeName(),
+                         metadata.getPackageName(), inputs, types, metadata);
+  RETURN_IF_ERR(addNodeAsOutput(op, customOp));
+  return Error::success();
+}
+
 Expected<TypeRef>
 ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
                                         ArgumentDictionaryTy &dict) {
@@ -5072,6 +5213,11 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Sign") {
     return loadSign(op, dict);
+  }
+
+  // Try loading (non-glow) external custom op
+  if (OpRepository::get()->isOpRegistered(typeName, op.domain())) {
+    return loadExternalCustomOp(op, dict);
   }
 
   return MAKE_ERR("Failed to load operator " + typeName + " .",

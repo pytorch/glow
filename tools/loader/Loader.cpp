@@ -18,6 +18,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
+#include "glow/Graph/OpRepository.h"
 #include "glow/IR/IR.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
@@ -307,6 +308,12 @@ llvm::cl::opt<unsigned> iterationsOpt(
     "iterations", llvm::cl::desc("Number of iterations to perform"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<std::string>
+    customOpConfigOpt("register-custom-op",
+                      llvm::cl::desc("Register custom op using config file."),
+                      llvm::cl::value_desc("config.yaml"), llvm::cl::Optional,
+                      llvm::cl::cat(loaderCat));
+
 std::string Loader::getModelOptPath() {
   // If given a single path, return it.
   if (modelPathOpt.size() == 1 &&
@@ -441,6 +448,12 @@ void Loader::loadModel(TypeRef inputType) {
   for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
     inputNameRefs.push_back(inputNames[idx].c_str());
     inputTypeRefs.push_back(&inputTypes[idx]);
+  }
+
+  // Register custom op configs
+  if (!customOpConfigOpt.empty()) {
+    auto *opRepo = OpRepository::get();
+    EXIT_ON_ERR(opRepo->registerOperation(customOpConfigOpt));
   }
 
   // Use explicit input type if given.

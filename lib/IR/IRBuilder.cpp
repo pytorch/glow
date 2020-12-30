@@ -231,3 +231,22 @@ IRBuilder::createAllocActivationInst(llvm::StringRef name, ElemKind elemTy,
   auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims);
   return createAllocActivationInst(name, T);
 }
+
+CustomOpInst *IRBuilder::createCustomOpInst(
+    llvm::StringRef name, llvm::ArrayRef<AllocActivationInst *> outputs,
+    llvm::ArrayRef<Value *> inputs, CustomOpData metaData) {
+
+  assert(outputs.size() > 0 && "CustomOp should have atleast 1 output");
+  auto *inst = createCustomOpInst(name, outputs[0], inputs.size(),
+                                  outputs.size(), metaData);
+
+  // Add remaining outputs as Operand
+  for (int i = 1; i < outputs.size(); i++) {
+    inst->pushOperand({outputs[i], OperandKind::Out});
+  }
+  // Add inputs as Operand
+  for (int i = 0; i < inputs.size(); i++) {
+    inst->pushOperand({inputs[i], OperandKind::In});
+  }
+  return inst;
+}

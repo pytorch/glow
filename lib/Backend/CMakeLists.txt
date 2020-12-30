@@ -1,5 +1,6 @@
 add_library(Backend
               Backend.cpp
+              BackendOpRepository.cpp
               BackendUtils.cpp
               CompiledFunction.cpp)
 target_link_libraries(Backend

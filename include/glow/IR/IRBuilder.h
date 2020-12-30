@@ -104,6 +104,11 @@ public:
                                                  ElemKind elemTy,
                                                  llvm::ArrayRef<dim_t> dims);
 
+  CustomOpInst *
+  createCustomOpInst(llvm::StringRef name,
+                     llvm::ArrayRef<AllocActivationInst *> outputs,
+                     llvm::ArrayRef<Value *> inputs, CustomOpData metaData);
+
 // Import the auto-generated instruction creation methods:
 #include "glow/AutoGenIRBuilder.h"
 

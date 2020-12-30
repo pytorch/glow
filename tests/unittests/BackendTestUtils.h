@@ -236,6 +236,10 @@ public:
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
     return nullptr;
   }
+
+  // Required to register the Backend Factory.
+  static unsigned numDevices() { return 1; }
+  static std::string getName() { return "MockBackend"; }
 };
 
 /// MockBackendCustomIRGen used only for unit testing to test custom lowering
