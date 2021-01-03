@@ -833,6 +833,10 @@ private:
   /// Load a PyTorch aten::expand_as node.
   /// \returns error on failure.
   Error loadExpandAs(const torch::jit::Node *ptNode);
+
+  /// Load an NNCKernel node.
+  /// \returns error on failure.
+  Error loadNNCKernel(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
