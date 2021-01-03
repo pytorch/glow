@@ -2146,6 +2146,17 @@ public:
                       int64_t angleBoundLo, int64_t angleBoundHi,
                       float clipAngleThresh, bool legacyPlusOne);
 
+  /// Create an ExternFunctionCall node. \p funcImpl will contain body
+  /// of or reference to the function which can be invoked.
+  /// \p funcKind contains the type of function. The type of function  could be
+  /// source code, like OpenCL, CUDA, or could be a binary or
+  /// a handle to an external function.
+  ExternalFunctionCallNode *
+  createExternalFunctionCall(llvm::StringRef name, TypeRef outTy,
+                             llvm::ArrayRef<glow::NodeValue> inputs,
+                             llvm::StringRef funcName, llvm::StringRef funcImpl,
+                             llvm::StringRef funcKind);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 

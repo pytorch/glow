@@ -2556,6 +2556,8 @@ bool BroadcastNode::verify() const {
 
 bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
+bool ExternalFunctionCallNode::verify() const { return true; }
+
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//

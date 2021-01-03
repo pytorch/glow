@@ -276,6 +276,21 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   std::vector<std::string> localActiveNames;
   RETURN_IF_ERR(checkActiveNetworks(networks, localActiveNames));
 
+  // Container for duplicated functions and map tracking remaining installs for
+  // a duplicated function. NB: duplicatedFunctions will hold compiled function
+  // which might be used in clean up process by cleanupGuard, hence this needs
+  // to be declared before cleanupGuard. We probably should clean up the
+  // duplicatedFunctions logic to make this more intuitive.
+  std::map<std::string, std::unique_ptr<CompiledFunction>> duplicatedFunctions;
+  std::map<DAGNode *, unsigned> remainingDuplications;
+
+  // If any error happens during the provison process, we will clean up the
+  // compiled networks.
+  std::map<DeviceIDTy, std::vector<std::string>> addedNetworks;
+  ScopeGuard cleanupGuard([&localActiveNames, &addedNetworks, this]() {
+    cleanupProvision(localActiveNames, addedNetworks);
+  });
+
   // Walk the networks and group by logicalDeviceId.
   auto logicalDevices = generateLogicalDevices(networks);
 
@@ -326,17 +341,9 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   VLOG(1) << "Before device assignment";
   // Check for errors.
   if (!deviceAssignments) {
-    // If and error occured, clean up provisioning state and return
-    // the error.
-    cleanupProvision(localActiveNames, {});
     RETURN_ERR(deviceAssignments.takeError());
   }
   auto assignments = std::move(*deviceAssignments);
-
-  // Container for duplicated functions and map tracking remaining installs for
-  // a duplicated function.
-  std::map<std::string, std::unique_ptr<CompiledFunction>> duplicatedFunctions;
-  std::map<DAGNode *, unsigned> remainingDuplications;
 
   // Map from Placeholder* to DeviceManager, this is used for deferred weight
   // loading.
@@ -375,7 +382,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   // device are compiled and then added to their assigned device. If a function
   // is in multiple logical devices it is stored so that it only needs to be
   // compiled once.
-  std::map<DeviceIDTy, std::vector<std::string>> addedNetworks;
   for (auto &assignment : assignments) {
     auto logicalDevice = assignment.first;
     auto physicalDevice = assignment.second;
@@ -430,7 +436,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           auto compiledOrErr2 =
               backends_[deviceBackendName]->compile(clonedFunction, options);
           if (!compiledOrErr2) {
-            cleanupProvision(localActiveNames, {});
             RETURN_ERR(compiledOrErr2.takeError());
           }
           auto compiled2 = std::move(*compiledOrErr2);
@@ -470,9 +475,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
 
         // Check to see if an error was encountered while compiling.
         if (!compiledOrErr) {
-          // If and error occured, clean up provisioning state and return
-          // the error.
-          cleanupProvision(localActiveNames, {});
           RETURN_ERR(compiledOrErr.takeError());
         }
         auto compiled = std::move(*compiledOrErr);
@@ -527,7 +529,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     ready.wait();
     DCHECK_NOTNULL(addErr.get());
     if (*addErr.get()) {
-      cleanupProvision(localActiveNames, addedNetworks);
       return std::move(*addErr.get());
     }
     // Add networks successfully loaded on device to addedNetworks, this way if
@@ -584,7 +585,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     // Load the first weight.
     auto err = loader->loadNextWeight();
     if (err) {
-      cleanupProvision(localActiveNames, addedNetworks);
       RETURN_ERR(err);
     }
     std::string weightName = loader->getName();
@@ -595,7 +595,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                 << totalNumDeferredWeights << "): " << weightName;
       const auto PH = module.getPlaceholderByNameSlow(weightName);
       if (!PH) {
-        cleanupProvision(localActiveNames, addedNetworks);
         return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                         llvm::formatv("Error loading deferred weight. Name: "
                                       "{0} not found in module.",
@@ -644,7 +643,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
 
       err = loader->loadNextWeight();
       if (err) {
-        cleanupProvision(localActiveNames, addedNetworks);
         RETURN_ERR(err);
       }
       weightName = loader->getName();
@@ -668,6 +666,8 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       node->initAlternateState();
     }
   }
+
+  cleanupGuard.dismiss();
   cleanupProvision(localActiveNames, {}, false);
   return Error::success();
 };
@@ -916,6 +916,8 @@ void Provisioner::cleanupProvision(
     // Remove any partitions added to devices.
     for (auto &device : currentNetworkResidency) {
       for (auto &network : device.second) {
+        LOG(INFO) << "Removing network " << network << " from device "
+                  << device.first;
         Error evictErr = evictFunction(network, devices_[device.first]);
         if (evictErr) {
           LOG(ERROR) << "Unable to evict network: " << network << "\n";
