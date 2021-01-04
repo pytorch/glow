@@ -792,6 +792,18 @@ struct ToInputs {
   };
 };
 
+/// Indexes of aten::to inputs.
+struct ToWithDeviceInputs {
+  enum {
+    input = 0,
+    device, // Not used
+    dtype,
+    non_block,     // Not used
+    copy,          // Not used
+    memory_format, // Not used
+  };
+};
+
 /// Indexes of aten::embedding_bag inputs.
 struct EmbeddingBagInputs {
   enum {
@@ -5260,7 +5272,14 @@ Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  // aten::to could take either 4 or 5 arguments
+
+  // Currently we only support the following two kinds of aten::to
+  //
+  // 1. aten::to(Tensor input, Device device, ScalarType dtype, bool
+  // non_blocking, bool copy, c10::optional<MemoryFormat> memory_format)
+  //
+  // 2. aten::to(Tensor input, ScalarType dtype, bool non_blocking, bool copy,
+  // c10::optional<MemoryFormat> memory_format)
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
 
   glow::NodeValue input;
@@ -5268,8 +5287,14 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
                              getGlowNodeValueForValue(inputs[ToInputs::input]));
 
   int32_t dtype;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dtype, iValToInt(getGlowIValueForValue(inputs[ToInputs::dtype])));
+  // case 1
+  if (inputs.size() == 6) {
+    ASSIGN_VALUE_OR_RETURN_ERR(dtype, iValToInt(getGlowIValueForValue(
+                                          inputs[ToWithDeviceInputs::dtype])));
+  } else { // case 2
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dtype, iValToInt(getGlowIValueForValue(inputs[ToInputs::dtype])));
+  }
 
   auto inputType = input.getType();
   auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
