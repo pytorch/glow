@@ -69,15 +69,17 @@ struct NNPICompilationInfo {
 /// SLS validation information
 struct ValidateSLSInfo {
   bool isEmbeddingBag;
+  size_t tableHeight;
   Placeholder *indices;
   Placeholder *weights;
   Placeholder *lengths;
   Placeholder *offsets;
-  ValidateSLSInfo(bool isEmbeddingBag_, Placeholder *indices_,
-                  Placeholder *weights_, Placeholder *lengths_,
-                  Placeholder *offsets_)
-      : isEmbeddingBag(isEmbeddingBag_), indices(indices_), weights(weights_),
-        lengths(lengths_), offsets(offsets_) {}
+  ValidateSLSInfo(bool isEmbeddingBag_, size_t tableHeight_,
+                  Placeholder *indices_, Placeholder *weights_,
+                  Placeholder *lengths_, Placeholder *offsets_)
+      : isEmbeddingBag(isEmbeddingBag_), tableHeight(tableHeight_),
+        indices(indices_), weights(weights_), lengths(lengths_),
+        offsets(offsets_) {}
 };
 
 /// Function "compiled" for execution by the NNPI backend.
