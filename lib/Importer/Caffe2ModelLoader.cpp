@@ -1654,6 +1654,16 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "ReduceBackSum") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    RETURN_ERR_IF_NOT(in.dims().size() >= 2,
+                      opErrMsg(op, "Input should be at least 2D."));
+    Node *node = G_->createBatchedReduceAdd(opName, in, in.dims().size() - 1);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
