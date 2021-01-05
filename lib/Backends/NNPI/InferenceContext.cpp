@@ -22,6 +22,7 @@
 #include "glow/Flags/Flags.h"
 #include "glow/Runtime/RequestData.h"
 #include "llvm/Support/raw_ostream.h"
+#include <folly/Random.h>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -674,11 +675,14 @@ static bool sanitizeSLS(Handle<int64_t> &indices, Handle<T> &lenOrOffset,
 }
 
 bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
-  if (!flags::EnableSanitizeInputs) {
+  if (flags::SanitizeInputsPercent == 0 ||
+      folly::Random::rand32() % 100 > flags::SanitizeInputsPercent) {
     return true;
   }
+
   LOG_EVERY_N(INFO, 1000) << "===== Sanitizing " << validateSLSInputs_->size()
-                          << " set of inputs";
+                          << " set of inputs at "
+                          << flags::SanitizeInputsPercent << " probability";
   for (const auto &sls : *validateSLSInputs_) {
     size_t indicesLen, weightsLen, totalLensSum = 0;
     auto *indices = bindings.get(sls.indices);
