@@ -4470,10 +4470,10 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AvgPoolInputs::input]));
-  bool isConv3d = (numDims == 3);
-  std::string opName = isConv3d ? "avgpool3d" : "avgpool2d";
+  bool is3d = (numDims == 3);
+  std::string opName = is3d ? "avgpool3d" : "avgpool2d";
 
-  if (isConv3d) {
+  if (is3d) {
     input =
         F_.createTranspose(opName + "_input_transposed", input, NCTHW2NTHWC);
   } else {
@@ -4494,7 +4494,7 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
   RETURN_ERR_IF_NOT(padsPair.size() == numDims,
                     "Number of pad values is incorrect");
   std::vector<glow::unsigned_t> pads;
-  if (isConv3d) {
+  if (is3d) {
     pads = {padsPair[0], padsPair[1], padsPair[2],
             padsPair[0], padsPair[1], padsPair[2]};
   } else {
@@ -4529,11 +4529,11 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
 
   glow::AvgPoolNode *ap =
       F_.createAvgPool(opName, input, kernels, strides, pads,
-                       (isConv3d ? NTHWC : NHWC), countIncludePads);
+                       (is3d ? NTHWC : NHWC), countIncludePads);
   glow::NodeValue ap_output = ap->getResult();
   const glow::TransposeNode *output;
 
-  if (isConv3d) {
+  if (is3d) {
     output = F_.createTranspose(opName + "_output_transposed", ap_output,
                                 NTHWC2NCTHW);
   } else {
