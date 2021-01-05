@@ -666,6 +666,21 @@ ShapeVector glow::reduceDims(llvm::ArrayRef<dim_t> dims,
   return newDims;
 }
 
+std::vector<unsigned_t>
+glow::getInverseTranspose(llvm::ArrayRef<unsigned_t> shuffle) {
+  std::vector<unsigned_t> unshuffle;
+  // For each index, go find where it ended up in the shuffle
+  for (auto i = 0; i < shuffle.size(); ++i) {
+    for (auto j = 0; j < shuffle.size(); ++j) {
+      if (shuffle[j] == i) {
+        unshuffle.push_back(j);
+        break;
+      }
+    }
+  }
+  return unshuffle;
+}
+
 void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
   assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   switch (init) {

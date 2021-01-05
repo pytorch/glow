@@ -1288,6 +1288,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
     if (settings_.debugContinuouslyVerifyDuringModelLoading) {
       if (!F_.verify()) {
+        F_.dumpDAG("failed.dot");
         return MAKE_ERR("Failed Function verification after loading a node");
       }
     }
@@ -1311,6 +1312,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
     if (settings_.debugContinuouslyVerifyDuringModelLoading) {
       if (!F_.verify()) {
+        F_.dumpDAG("failed.dot");
         return MAKE_ERR("Failed Function verification after constant "
                         "propagation while loading a node");
       }
@@ -5210,29 +5212,41 @@ Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       in, getGlowNodeValueForValue(inputs[SoftMaxInputs::input]));
 
+  const auto inDims = in.dims();
+
   int64_t dim;
   ASSIGN_VALUE_OR_RETURN_ERR(
       dim, iValToInt(getGlowIValueForValue(inputs[SoftMaxInputs::dim])));
 
-  // Convert negative dimension index into corresponding positive index
-  auto origDim = dim;
-  if (dim < 0) {
-    dim += in.dims().size();
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getPositiveIndex(dim, inDims.size()));
+
+  // transpose dim to inner dimension
+  std::vector<unsigned_t> inTransposeShuffle;
+  for (auto i = 0; i < inDims.size(); ++i) {
+    inTransposeShuffle.push_back(i);
   }
+  inTransposeShuffle.erase(inTransposeShuffle.begin() + dim);
+  inTransposeShuffle.push_back(dim);
+  in = F_.createTranspose("transpose_before_softmax", in, inTransposeShuffle)
+           ->getResult();
 
-  RETURN_ERR_IF_NOT(dim < in.dims().size() && dim >= 0,
-                    strFormat("Dim value of %ld is out of range. Valid values "
-                              "are in the range [-%ld, %ld]",
-                              origDim, in.dims().size(), in.dims().size() - 1));
+  // flatten outer dims
+  auto dimsBeforeFlatten = in.dims();
+  in = F_.createFlatten("flatten_before_softmax", in, inDims.size() - 1);
 
-  auto selected = F_.getParent()->createConstant(glow::ElemKind::Int64ITy,
-                                                 {in.dims()[0], 1}, "selected");
+  // Softmax
+  auto selected = F_.getParent()->createConstant(
+      glow::ElemKind::Int64ITy, {in.dims()[0], 1}, "softmax_selected");
+  auto out = F_.createSoftMax("softmax", in, selected)->getResult();
 
-  auto *FN = F_.createFlatten("reshapeInput", in, dim);
-  auto *SM = F_.createSoftMax("SoftMax", FN, selected);
-  auto origInDims = in.getType()->dims();
-  auto *glowNode = F_.createReshape("reshapeOutput", SM, origInDims);
-  RETURN_ERR(addValueMapping(outputs[0], glowNode));
+  // unflatten
+  out = F_.createReshape("reshape_after_softmax", out, dimsBeforeFlatten);
+
+  // transpose dim back to where it started
+  auto outTransposeShufle = getInverseTranspose(inTransposeShuffle);
+  out = F_.createTranspose("transpose_after_softmax", out, outTransposeShufle)
+            ->getResult();
+  RETURN_ERR(addValueMapping(outputs[0], out));
 }
 
 Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
@@ -6548,6 +6562,7 @@ PyTorchModelLoader::PyTorchModelLoader(
 
       if (settings_.debugContinuouslyVerifyDuringModelLoading) {
         if (!F_.verify()) {
+          F_.dumpDAG("failed.dot");
           return MAKE_ERR(
               "Failed Function verification while loading graph outputs.");
         }
@@ -6573,6 +6588,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     }
 
     if (!F_.verify()) {
+      F_.dumpDAG("failed.dot");
       return MAKE_ERR(
           "Failed Function verification after loading JIT graph. Enable the "
           "debugContinuouslyVerifyDuringModelLoading setting and run again to "
