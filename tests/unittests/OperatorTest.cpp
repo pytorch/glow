@@ -18113,5 +18113,48 @@ TEST_P(OperatorTest, Upsample_Nearest1D_Int8) {
   testUpsample1D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
+TEST_P(OperatorTest, RMSNorm) {
+  CHECK_IF_ENABLED();
+  const std::vector<dim_t> XShape{3, 4};
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, XShape, "X", false);
+  auto *gamma = mod_.createPlaceholder(ElemKind::FloatTy, 4, "gamma", false);
+  auto *beta = mod_.createPlaceholder(ElemKind::FloatTy, 4, "beta", false);
+  float epsilon = 1.0f;
+  bindings_.allocate(X)->getHandle<float>() = {1, 2, 3, 4,  5,  6,
+                                               7, 8, 9, 10, 11, 12};
+  bindings_.allocate(gamma)->getHandle<float>() = {1, 2, 3, 4};
+  bindings_.allocate(beta)->getHandle<float>() = {1, 2, 3, 4};
+  auto rmsNorm = F_->createRMSNorm("rmsnorm", X, gamma, beta, epsilon);
+  auto *save0 = F_->createSave("save", rmsNorm[0]);
+  auto *save1 = F_->createSave("save", rmsNorm[1]);
+  auto *resultY = bindings_.allocate(save0->getPlaceholder());
+  auto *resultRrms = bindings_.allocate(save1->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  const std::vector<dim_t> expectedYShape{XShape};
+  const std::vector<std::vector<float>> expectedY{
+      {1.3429972, 3.3719888, 6.0869746, 9.487955},
+      {1.7495317, 3.798876, 6.148033, 8.797003},
+      {1.8485281, 3.8856182, 6.11127, 8.525484},
+  };
+  EXPECT_EQ(expectedYShape, resultY->dims().vec());
+  auto hY = resultY->getHandle<float>();
+  for (dim_t i = 0; i < expectedYShape[0]; ++i) {
+    for (dim_t j = 0; j < expectedYShape[1]; ++j) {
+      EXPECT_NEAR(expectedY[i][j], hY.at({i, j}), 1e-5)
+          << "at pos (" << i << "," << j << ")";
+    }
+  }
+
+  const std::vector<dim_t> expectedRrmsShape{XShape[0]};
+  const std::vector<float> expectedRrms{0.3429972, 0.14990634, 0.09428091};
+  EXPECT_EQ(expectedRrmsShape, resultRrms->dims().vec());
+  auto hRrms = resultRrms->getHandle<float>();
+  for (dim_t i = 0; i < expectedRrmsShape[0]; ++i) {
+    EXPECT_NEAR(expectedRrms[i], hRrms.at({i}), 1e-5) << "at pos " << i;
+  }
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);
