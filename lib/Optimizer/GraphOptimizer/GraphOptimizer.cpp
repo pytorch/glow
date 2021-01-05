@@ -104,6 +104,7 @@ void ConstantModificationPreventer::activate() {
         C->getType(), C->getName().str() + "_SWAP_CONST_FOLD",
         /* isTrainable */ false, C->getLayout());
     tmpPHToConstMap_[tmpPH] = C;
+    cctx_.optimizationOpts.tempPHsForConstants.insert(tmpPH);
     C->getOutput().replaceAllUsesOfWith(tmpPH->getOutput());
   }
   // Disable constant folding temporarily; restored later by the scope guard.
@@ -5072,13 +5073,15 @@ bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // Check if the RHS is a Splat or Constant. It may have been broadcasted to
-    // the correct shape.
+    // Check if the RHS is a Splat, or Constant, or temp PH (to be Constant
+    // later). It may have been broadcasted to the correct shape.
     NodeValue RHS = unwindBroadcast(N.getNthInput(ArithmeticNode::RHSIdx),
                                     LN->getResult().dims().size() -
                                         LN->getScale().dims().size());
 
-    if (!isa<SplatNode>(RHS) && !isa<Constant>(RHS)) {
+    auto *P = dyn_cast<Placeholder>(RHS);
+    if (!isa<SplatNode>(RHS) && !isa<Constant>(RHS) &&
+        !(P && cctx.optimizationOpts.tempPHsForConstants.count(P))) {
       continue;
     }
 
