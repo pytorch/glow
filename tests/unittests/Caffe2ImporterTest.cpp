@@ -4079,3 +4079,86 @@ TEST_F(Caffe2ImporterTest, constantFillUseInputShape) {
     }
   }
 }
+
+TEST_F(Caffe2ImporterTest, reduceBackSum) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/reduce_back_sum.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  // Shape validations
+  {
+    const std::vector<std::vector<dim_t>> inputShapes{
+        {3, 2},
+        {64, 64, 11},
+        {2, 3, 4, 5},
+    };
+    for (const auto inputShape : inputShapes) {
+      ExecutionEngine EE{};
+      auto &mod = EE.getModule();
+      Function *F = mod.createFunction("main");
+
+      PlaceholderBindings bindings;
+      Placeholder *output;
+
+      Tensor inputs_0{ElemKind::FloatTy, inputShape};
+      inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+      // Destroy the loader after the graph is loaded since the following
+      // execution will not depend on anything from the loader.
+      {
+        Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                                   {"inputs_0"}, {&inputs_0.getType()}, *F);
+        output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+        bindings.allocate(mod.getPlaceholders());
+        updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"},
+                                      {&inputs_0});
+      }
+
+      // Check that the shape of the output matches what Caffe2 expects.
+      const std::vector<dim_t> expectedOutputShape{inputShape.begin(),
+                                                   inputShape.end() - 1};
+      EXPECT_EQ(expectedOutputShape, output->dims().vec());
+    }
+  }
+
+  // Numeric validations
+  {
+    ExecutionEngine EE{};
+    auto &mod = EE.getModule();
+    Function *F = mod.createFunction("main");
+
+    PlaceholderBindings bindings;
+    Placeholder *output;
+
+    std::vector<dim_t> inputShape{11, 13, 17};
+
+    Tensor inputs_0{ElemKind::FloatTy, inputShape};
+    inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+    // Destroy the loader after the graph is loaded since the following
+    // execution will not depend on anything from the loader.
+    {
+      Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                                 {"inputs_0"}, {&inputs_0.getType()}, *F);
+      output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+      bindings.allocate(mod.getPlaceholders());
+      updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
+    }
+
+    auto res = bindings.get(output);
+    EE.compile(CompilationMode::Infer);
+    EE.run(bindings);
+
+    auto result = res->getHandle();
+    for (dim_t dim1 = 0; dim1 < inputShape[0]; ++dim1) {
+      for (dim_t dim2 = 0; dim2 < inputShape[1]; ++dim2) {
+        float sum = 0;
+        for (dim_t dim3 = 0; dim3 < inputShape[2]; ++dim3) {
+          sum += inputs_0.getHandle().at({dim1, dim2, dim3});
+        }
+        EXPECT_FLOAT_EQ(sum, result.at({dim1, dim2}));
+      }
+    }
+  }
+}

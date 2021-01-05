@@ -1,0 +1,9 @@
+name: "reduce_back_sum"
+op {
+  input: "inputs_0"
+  output: "result"
+  name: ""
+  type: "ReduceBackSum"
+}
+external_input: "inputs_0"
+external_output: "result"
