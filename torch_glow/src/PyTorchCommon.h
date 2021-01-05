@@ -28,7 +28,7 @@ DECLARE_bool(dumpFinalGlowGraph);
 
 namespace glow {
 
-struct InputMeta;
+struct InputMetaStack;
 
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
@@ -234,7 +234,7 @@ void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
 void glowAOTFusionWithShapeInference(torch::jit::Module &module,
-                                     const std::vector<glow::InputMeta> &meta,
+                                     const glow::InputMetaStack &metaStack,
                                      runtime::DeferredWeightLoader *loader,
                                      const PyTorchLoaderSettings &settings);
 
