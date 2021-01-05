@@ -57,6 +57,12 @@ ShapeVector expandDimsToMax(llvm::ArrayRef<dim_t> currDims);
 ShapeVector reduceDims(llvm::ArrayRef<dim_t> dims,
                        llvm::ArrayRef<unsigned_t> axes, bool keepDims);
 
+/// Helper function that \returns the transpose shuffle that would undo the
+/// given \p shuffle so that if two transposes were composed with the given
+/// shuffle and the result of this function, it would result in the identity
+/// shuffle.
+std::vector<unsigned_t> getInverseTranspose(llvm::ArrayRef<unsigned_t> shuffle);
+
 namespace runtime {
 class DeviceManager;
 }
