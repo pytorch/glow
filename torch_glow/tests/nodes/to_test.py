@@ -44,6 +44,12 @@ class TestTo(unittest.TestCase):
                 ToWithDeviceModel(torch.int),
                 torch.randn(1, 2, 3, 4),
             ),
+            ("to_cpu", SimpleToModel("cpu"), torch.randn(1, 2, 3, 4)),
+            (
+                "to_tensor",
+                SimpleToModel(torch.randn(3, 4).type(torch.int32)),
+                torch.randn(1, 2, 3, 4),
+            ),
         ]
     )
     def test_to(self, _, module, tensor):

@@ -447,7 +447,14 @@ Error GlowIValue::fromIValue(const at::IValue &ival) {
     std::string str = ival.toStringRef();
     fromString(std::move(str));
   } else if (ival.isDevice()) {
-    fromInt(0); // TODO: Properly handle device iVal
+    auto device = ival.toDevice();
+    auto device_name = DeviceTypeName(device.type());
+    if (device.type() != at::DeviceType::CPU) {
+      return MAKE_ERR(strFormat("Encountered unhandled device type: %s",
+                                device_name.c_str()));
+    }
+    // represent a CPU device as its string name
+    fromString("cpu");
   } else if (ival.isGenericDict()) {
     const auto &genericDict = ival.toGenericDict();
     GlowIValueMap ivalMap;

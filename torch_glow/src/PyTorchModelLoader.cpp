@@ -781,14 +781,51 @@ struct GlowFusedLinearInputs {
   };
 };
 
-/// Indexes of aten::to inputs.
-struct ToInputs {
+/// Indexes of aten::to.dtype_layout inputs.
+struct ToDtypeLayoutInputs {
   enum {
     input = 0,
-    dtype = 1,
-    non_block = 2,     // Not used
-    copy = 3,          // Not used
-    memory_format = 4, // Not used
+    dtype,
+    layout,
+    device,
+    pin_memory,
+    non_blocking,
+    copy,
+    memory_format,
+  };
+};
+
+/// Indexes of aten::to.device inputs.
+struct ToDeviceInputs {
+  enum {
+    input = 0,
+    device,
+    dtype,
+    non_blocking,
+    copy,
+    memory_format,
+  };
+};
+
+/// Indexes of aten::to.other inputs.
+struct ToOtherInputs {
+  enum {
+    input = 0,
+    other,
+    non_blocking,
+    copy,
+    memory_format,
+  };
+};
+
+/// Indexes of aten::to.dtype inputs.
+struct ToDtypeInputs {
+  enum {
+    input = 0,
+    dtype,
+    non_blocking,
+    copy,
+    memory_format,
   };
 };
 
@@ -1456,7 +1493,7 @@ Expected<glow::NodeValue>
 PyTorchModelLoader::getGlowNodeValueForValue(const torch::jit::Value *value) {
   auto it = valueMap_.find(value);
   if (it == valueMap_.end()) {
-    return MAKE_ERR(glow::strFormat("No mapping found fo Value %s",
+    return MAKE_ERR(glow::strFormat("No mapping found for Value %s",
                                     value->debugNameBase().c_str()));
   }
   auto &mappingValue = it->second;
@@ -5287,43 +5324,77 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
 
-  // Currently we only support the following two kinds of aten::to
-  //
-  // 1. aten::to(Tensor input, Device device, ScalarType dtype, bool
-  // non_blocking, bool copy, c10::optional<MemoryFormat> memory_format)
-  //
-  // 2. aten::to(Tensor input, ScalarType dtype, bool non_blocking, bool copy,
-  // c10::optional<MemoryFormat> memory_format)
+  // aten::to() takes at least 4 input arguments, and a single output
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
 
   glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input,
-                             getGlowNodeValueForValue(inputs[ToInputs::input]));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ToDtypeLayoutInputs::input]));
+  auto inputType = input.getType();
 
-  int32_t dtype;
-  // case 1
-  if (inputs.size() == 6) {
-    ASSIGN_VALUE_OR_RETURN_ERR(dtype, iValToInt(getGlowIValueForValue(
-                                          inputs[ToWithDeviceInputs::dtype])));
-  } else { // case 2
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        dtype, iValToInt(getGlowIValueForValue(inputs[ToInputs::dtype])));
+  // Argument index of the dtype
+  int dtype_arg = -1;
+
+  // - to.dtype_layout(Tensor self, ScalarType? dtype=None,
+  //                   Layout? layout=None, Device? device=None,
+  //                   bool? pin_memory=None, bool non_blocking=False,
+  //                   bool copy=False, MemoryFormat? memory_format=None)
+  if (inputs.size() == 8 && outputs.size() == 1) {
+    dtype_arg = ToDtypeLayoutInputs::dtype;
+  }
+  // - to.device(Tensor self, Device device, ScalarType dtype,
+  //             bool non_blocking=False, bool copy=False,
+  //             MemoryFormat? memory_format=None)
+  else if (inputs.size() == 6 && outputs.size() == 1) {
+    dtype_arg = ToDeviceInputs::dtype;
+  }
+  // There are two alternatives with 5 inputs:
+  else if (inputs.size() == 5 && outputs.size() == 1) {
+    auto glowVal = getGlowIValueForValue(inputs[ToOtherInputs::other]);
+    if (glowVal) {
+      // - to.other(Tensor self, Tensor other, bool non_blocking=False,
+      //            bool copy=False, MemoryFormat? memory_format=None)
+      if ((*glowVal)->isTensor()) {
+        return MAKE_ERR("aten::to.other is not supported.");
+      }
+      // - to.dtype(Tensor self, ScalarType dtype, bool non_blocking=False,
+      //            bool copy=False, MemoryFormat? memory_format=None)
+      else {
+        dtype_arg = ToDtypeInputs::dtype;
+      }
+    } else {
+      RETURN_ERR(glowVal.takeError());
+    }
+  }
+  // Unsupported number of input/output arguments
+  else {
+    return MAKE_ERR("unsupported number of arguments in aten::to node.");
   }
 
-  auto inputType = input.getType();
+  if (dtype_arg < 0) {
+    return MAKE_ERR("unsupported aten::to form.");
+  }
+
+  int32_t dtype;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dtype, iValToInt(getGlowIValueForValue(inputs[dtype_arg])));
   auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+
+  // No type conversion necessary
   if (glowElemKind == inputType->getElementType()) {
     RETURN_ERR(addValueMapping(outputs[0], input));
   }
+
   if (isQuantizedElemKind(glowElemKind) ||
       isQuantizedElemKind(inputType->getElementType())) {
     // We currently dont support aten::to to quantized tensors
     // Unless input dtype == output dtype
     return MAKE_ERR("Detected quantized type for aten::to node.");
   }
+
+  // Create a convertTo node
   auto outType = F_.getParent()->uniqueType(glowElemKind, inputType->dims());
   glow::ConvertToNode *toNode = F_.createConvertTo("to", input, outType);
-
   RETURN_ERR(addValueMapping(outputs[0], toNode->getResult()));
 }
 
