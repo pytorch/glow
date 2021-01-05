@@ -31,13 +31,7 @@
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
 #include <torch/csrc/jit/ir/ir.h>
-#include <torch/csrc/jit/runtime/custom_operator.h>
-
-llvm::cl::opt<bool> RedefineROIAlignToImplicitPyTorch(
-    "aic-pytorch-roialignImplicit",
-    llvm::cl::desc(
-        "Redefine PyTorch ROIAlign operator to use implicit version"),
-    llvm::cl::init(false), llvm::cl::ReallyHidden);
+#include <unordered_map>
 
 namespace glow {
 
