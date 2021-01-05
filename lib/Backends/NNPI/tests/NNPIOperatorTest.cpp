@@ -193,14 +193,6 @@ struct BlacklistInitializer {
       {"ArithSub_int32_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ArithSub_int64_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BatchNorm_Float/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"FP16BatchNorm2D/0",
-       TestBlacklist::AnyDeviceAnyEngine}, // Broken in NNPI 1.0 backend
-      {"Int8BatchNorm2D/0",
-       TestBlacklist::AnyDeviceAnyEngine}, // Not supported in NNPI 1.0
-      {"FP16BatchNorm3D/0",
-       TestBlacklist::AnyDeviceAnyEngine}, // Not supported in NNPI 1.0
-      {"Int8BatchNorm3D/0",
-       TestBlacklist::AnyDeviceAnyEngine}, // Not supported in NNPI 1.0
       {"batchedReduceMin_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMin_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMax_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -316,8 +308,6 @@ struct BlacklistInitializer {
       {"RoiAlignRotatedBatchIndexInBoxesTensor/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"FP16RoiAlign/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
-       TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Rotated_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Abs_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -529,8 +519,12 @@ struct BlacklistInitializer {
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ConvertFrom_FloatTy_To_BoolTy/0", TestBlacklist::AnyDeviceAnyEngine},
-#endif
-#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 1
+      {"Int8BatchNorm2D/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"FP16BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Int8BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
+       TestBlacklist::AnyDeviceAnyEngine},
+#else
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
 #endif

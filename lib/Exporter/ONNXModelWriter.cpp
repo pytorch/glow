@@ -2512,6 +2512,7 @@ DEF_UNSUPPORTED_NODE(Broadcast)
 DEF_UNSUPPORTED_NODE(SGD)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
+DEF_UNSUPPORTED_NODE(ExternalFunctionCall)
 // TODO: Turn to ScatterNd when it is supported in ONNX.
 DEF_UNSUPPORTED_NODE(ScatterData)
 // Gradient nodes.
@@ -2587,8 +2588,8 @@ bool ONNXModelWriter::hasMultidirectionalBroadcast(
         (typeName == "Div") || (typeName == "Equal") ||
         (typeName == "Greater") || (typeName == "Less") ||
         (typeName == "Max") || (typeName == "Mean") || (typeName == "Min") ||
-        (typeName == "Mul") || (typeName == "Or") || (typeName == "Pow") ||
-        (typeName == "Sum") || (typeName == "Xor")) {
+        (typeName == "Or") || (typeName == "Pow") || (typeName == "Sum") ||
+        (typeName == "Xor")) {
       return true;
     }
   }

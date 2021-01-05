@@ -1117,6 +1117,16 @@ int main(int argc, char **argv) {
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
+  //                Custom kernels invocations
+  //===--------------------------------------------------------------------===//
+  BB.newInstr("ExternalFunctionCall")
+      .addOperand("Dest", OperandKind::Out)
+      .addMember(MemberType::String, "FunctionName")
+      .addMember(MemberType::String, "FunctionImpl")
+      .addMember(MemberType::String, "FunctionKind")
+      .autoVerify(VerifyKind::NoVerify);
+
+  //===--------------------------------------------------------------------===//
   //                Pre Processing
   //===--------------------------------------------------------------------===//
 

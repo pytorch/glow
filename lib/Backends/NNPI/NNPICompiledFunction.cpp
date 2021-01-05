@@ -96,7 +96,10 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.forceWeightsOutOfLLC = compilationOptions.forceWeightsOutOfLLC;
   config_.disableSlsAllLenOneCalcAtRunTime =
       compilationOptions.disableSlsAllLenOneCalcAtRunTime;
-
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+  config_.enableESUnifyAdditionalPass =
+      compilationOptions.enableESUnifyAdditionalPass;
+#endif
   return Error::success();
 }
 
@@ -473,9 +476,9 @@ void NNPICompiledFunction::findSLSInputs(Function *F) {
             llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
                 &node)) {
       VLOG(1) << SLS->getIndices() << " " << SLS->getWeights() << " "
-              << SLS->getLengths();
+              << SLS->getLengths() << " " << SLS->getData().dims()[0];
       validateSLSInputs_.emplace_back(
-          /* isEmeddingBag */ false,
+          /* isEmeddingBag */ false, SLS->getData().dims()[0],
           llvm::dyn_cast<Placeholder>(SLS->getIndices()),
           llvm::dyn_cast<Placeholder>(SLS->getWeights()),
           llvm::dyn_cast<Placeholder>(SLS->getLengths()),
@@ -483,33 +486,36 @@ void NNPICompiledFunction::findSLSInputs(Function *F) {
     } else if (auto *SLS =
                    llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
                        &node)) {
-      VLOG(1) << SLS->getIndices() << " " << SLS->getLengths();
+      VLOG(1) << SLS->getIndices() << " " << SLS->getLengths() << " "
+              << SLS->getData().dims()[0];
       validateSLSInputs_.emplace_back(
-          /* isEmeddingBag */ false,
+          /* isEmeddingBag */ false, SLS->getData().dims()[0],
           llvm::dyn_cast<Placeholder>(SLS->getIndices()), /* weights */ nullptr,
           llvm::dyn_cast<Placeholder>(SLS->getLengths()),
           /* offsets */ nullptr);
     } else if (auto *SLS = llvm::dyn_cast<SparseLengthsSumNode>(&node)) {
-      VLOG(1) << SLS->getIndices() << " " << SLS->getLengths();
+      VLOG(1) << SLS->getIndices() << " " << SLS->getLengths() << " "
+              << SLS->getData().dims()[0];
       validateSLSInputs_.emplace_back(
-          /* isEmeddingBag */ false,
+          /* isEmeddingBag */ false, SLS->getData().dims()[0],
           llvm::dyn_cast<Placeholder>(SLS->getIndices()),
           /* weights */ nullptr, llvm::dyn_cast<Placeholder>(SLS->getLengths()),
           /* offsets */ nullptr);
     } else if (auto *SLS =
                    llvm::dyn_cast<SparseLengthsWeightedSumNode>(&node)) {
       VLOG(1) << SLS->getIndices() << " " << SLS->getWeights() << " "
-              << SLS->getLengths();
+              << SLS->getLengths() << " " << SLS->getData().dims()[0];
       validateSLSInputs_.emplace_back(
-          /* isEmeddingBag */ false,
+          /* isEmeddingBag */ false, SLS->getData().dims()[0],
           llvm::dyn_cast<Placeholder>(SLS->getIndices()),
           llvm::dyn_cast<Placeholder>(SLS->getWeights()),
           llvm::dyn_cast<Placeholder>(SLS->getLengths()),
           /* offsets */ nullptr);
     } else if (auto *EBB = llvm::dyn_cast<EmbeddingBagNode>(&node)) {
-      VLOG(1) << EBB->getIndices() << " " << EBB->getOffsets();
+      VLOG(1) << EBB->getIndices() << " " << EBB->getOffsets() << " "
+              << EBB->getData().dims()[0];
       validateSLSInputs_.emplace_back(
-          /* isEmeddingBag */ true,
+          /* isEmeddingBag */ true, EBB->getData().dims()[0],
           llvm::dyn_cast<Placeholder>(EBB->getIndices()),
           /* weights */ nullptr,
           /* lengths */ nullptr,
@@ -517,9 +523,9 @@ void NNPICompiledFunction::findSLSInputs(Function *F) {
     } else if (auto *EBB =
                    llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(&node)) {
       VLOG(1) << EBB->getIndices() << " " << EBB->getWeights() << " "
-              << EBB->getOffsets();
+              << EBB->getOffsets() << " " << EBB->getData().dims()[0];
       validateSLSInputs_.emplace_back(
-          /* isEmeddingBag */ true,
+          /* isEmeddingBag */ true, EBB->getData().dims()[0],
           llvm::dyn_cast<Placeholder>(EBB->getIndices()),
           llvm::dyn_cast<Placeholder>(EBB->getWeights()), /* lengths */ nullptr,
           llvm::dyn_cast<Placeholder>(EBB->getOffsets()));

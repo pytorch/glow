@@ -1009,7 +1009,7 @@ void BoundInterpreterFunction::fwdBatchNormalizationFloatImpl(
   auto meanH = getWeightHandle<ElemTy>(I->getMean());
   auto varH = getWeightHandle<ElemTy>(I->getVar());
   unsigned_t channelIdx =
-      I->getChannelIdx(); // NOTE: We only support NTHWC, NHWC and NHC
+      I->getChannelIdx(); // NOTE: We only support NTHWC, NHWC, NWC and NCW
   float epsilon = I->getEpsilon();
 
   // output
@@ -1050,11 +1050,11 @@ void BoundInterpreterFunction::fwdBatchNormalizationFloatImpl(
       isCMinor = false;
     }
   } else {
-    // numDims == 1. This can happen due to UnitTests that test BatchNorm after
-    // Reshape
+    // numDims == 1. This can happen due to optimization pass that sinks reshape
+    // below batchnorm.
     N = I->getSrc()->dims()[0];
-    C = I->getSrc()->dims()[2];
-    sizeImg = I->getSrc()->dims()[1];
+    C = I->getSrc()->dims()[channelIdx];
+    sizeImg = I->getSrc()->dims()[channelIdx == 2 ? 1 : 2];
     sizeN = C * sizeImg;
     isCMinor = (channelIdx == 2);
   }
@@ -1103,7 +1103,7 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
   auto meanH = getWeightHandle<ParamTy>(I->getMean());
   auto varH = getWeightHandle<ParamTy>(I->getVar());
   unsigned_t channelIdx =
-      I->getChannelIdx(); // NOTE: We only support NTHWC, NHWC and NHC
+      I->getChannelIdx(); // NOTE: We only support NTHWC, NHWC, NWC and NCW
   float epsilon = I->getEpsilon();
   auto inScale = float(I->getSrc()->getType()->getScale());
   auto inZero = int8_t(I->getSrc()->getType()->getOffset());
@@ -1151,11 +1151,11 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
     }
 
   } else {
-    // numDims == 1. This can happen due to UnitTests that test BatchNorm after
-    // Reshape
+    // numDims == 1. This can happen due to optimization pass that sinks reshape
+    // below batchnorm.
     N = I->getSrc()->dims()[0];
-    C = I->getSrc()->dims()[2];
-    sizeImg = I->getSrc()->dims()[1];
+    C = I->getSrc()->dims()[channelIdx];
+    sizeImg = I->getSrc()->dims()[channelIdx == 2 ? 1 : 2];
     sizeN = C * sizeImg;
     isCMinor = (channelIdx == 2);
   }
@@ -1207,7 +1207,11 @@ void BoundInterpreterFunction::fwdBatchNormalizationInst(
   bool isQuantized = I->getSrc()->getType()->isQuantizedType();
 
   if (isQuantized) {
-    fwdBatchNormalizationI8Impl<float16_t>(I, numDims);
+    if (I->getScale()->getType()->getElementType() == ElemKind::FloatTy) {
+      fwdBatchNormalizationI8Impl<float>(I, numDims);
+    } else {
+      fwdBatchNormalizationI8Impl<float16_t>(I, numDims);
+    }
   } else {
     dispatchFloatingPointImpl(fwdBatchNormalizationFloatImpl,
                               I->getSrc()->getElementType(), I, numDims);
@@ -6712,4 +6716,9 @@ void BoundInterpreterFunction::fwdBBoxTransformInst(
     glow::BBoxTransformInst const *I) {
   dispatchFloatingPointImpl(fwdBBoxTransformInstFloatImpl,
                             I->getRois()->getElementType(), I);
+}
+
+void BoundInterpreterFunction::fwdExternalFunctionCallInst(
+    glow::ExternalFunctionCallInst const *) {
+  LOG(FATAL) << "ExternalFunctionCallInst is not supported yet";
 }

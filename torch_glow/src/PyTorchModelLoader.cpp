@@ -792,6 +792,18 @@ struct ToInputs {
   };
 };
 
+/// Indexes of aten::to inputs.
+struct ToWithDeviceInputs {
+  enum {
+    input = 0,
+    device, // Not used
+    dtype,
+    non_block,     // Not used
+    copy,          // Not used
+    memory_format, // Not used
+  };
+};
+
 /// Indexes of aten::embedding_bag inputs.
 struct EmbeddingBagInputs {
   enum {
@@ -1093,6 +1105,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::index_select"}, &PyTorchModelLoader::loadIndexSelect},
       {{"aten::clamp_min"}, &PyTorchModelLoader::loadClampMin},
       {{"aten::expand_as"}, &PyTorchModelLoader::loadExpandAs},
+      {{"glow::nnckernel"}, &PyTorchModelLoader::loadNNCKernel},
   });
 
   // Add in custom operator loaders.
@@ -1275,6 +1288,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
     if (settings_.debugContinuouslyVerifyDuringModelLoading) {
       if (!F_.verify()) {
+        F_.dumpDAG("failed.dot");
         return MAKE_ERR("Failed Function verification after loading a node");
       }
     }
@@ -1298,6 +1312,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
     if (settings_.debugContinuouslyVerifyDuringModelLoading) {
       if (!F_.verify()) {
+        F_.dumpDAG("failed.dot");
         return MAKE_ERR("Failed Function verification after constant "
                         "propagation while loading a node");
       }
@@ -2014,7 +2029,7 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     auto ptBiasTensor = ptBiasTensorTmp.value().contiguous();
     biasTensor = ptTensorToGlowTensor(ptBiasTensor);
   } else {
-    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weight.dims()[1]});
+    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weight.dims()[0]});
     biasTensor.zero();
   }
 
@@ -2022,7 +2037,6 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
       "quantized_linear_bias", std::move(biasTensor));
   biasConstant->ensureIsOwned();
   RETURN_ERR_IF_NOT(biasConstant, "quantized::linear bias must be constant");
-
   auto bias = biasConstant->getOutput();
 
   float outScale;
@@ -2560,7 +2574,8 @@ Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
 
-  glow::MaxNode *glowNode = F_.createMax("max", lhs, rhs);
+  glow::MaxNode *glowNode =
+      F_.createNodeWithBroadcast<MaxNode>("max", -1, lhs, rhs);
   RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
@@ -3928,8 +3943,7 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[BatchNormInputs::input]));
 
-  bool is3D = (input.dims().size() == 5);
-  int numDims = is3D ? 3 : 2;
+  int numDims = input.dims().size() - 2;
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
 
   bool training;
@@ -3938,19 +3952,18 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(training == false, "Don't support BatchNorm training yet.");
 
   RETURN_ERR_IF_NOT(
-      input.dims().size() == numDims + 2,
-      glow::strFormat("Number input dimensions must be equal to %d, got %lu",
-                      numDims + 2, input.dims().size()));
+      numDims >= 0 && numDims <= 3,
+      glow::strFormat("Only support 0D, 1D, 2D or 3D got %dD", numDims + 2));
 
   size_t numChannels = input.dims()[1];
   glow::NodeValue weights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[BatchNormInputs::weights], "weight",
-      glow::Type(ElemKind::Float16Ty, {numChannels}), 1.0);
+      glow::Type(ElemKind::FloatTy, {numChannels}), 1.0);
   glow::Constant *weightsC = llvm::dyn_cast<glow::Constant>(weights.getNode());
 
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
       inputs[BatchNormInputs::bias], "bias",
-      glow::Type(ElemKind::Float16Ty, {numChannels}), 0.0);
+      glow::Type(ElemKind::FloatTy, {numChannels}), 0.0);
   glow::Constant *biasC = llvm::dyn_cast<glow::Constant>(bias.getNode());
 
   glow::NodeValue mean;
@@ -3975,23 +3988,17 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
 
   // Input is in NCHW.
   glow::unsigned_t channelIdx = 1;
-
   glow::NodeValue output;
-  if (is3D) {
-    glow::ReshapeNode *twoD =
-        F_.createReshape("bn_NCTHW2NCHW", input,
-                         {input.dims()[0], input.dims()[1],
-                          input.dims()[2] * input.dims()[3], input.dims()[4]});
-
+  // 0D. Currently NNPI only supports 2D, will remove this after it supports 0D.
+  if (numDims == 0) {
+    glow::ReshapeNode *twoD = F_.createReshape(
+        "bn_NC2NCHW", input, {input.dims()[0], input.dims()[1], 1, 1});
     glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
         "bn", twoD->getType(0), twoD, biasC, weightsC, meanC, varC, channelIdx,
         epsilon, momentum);
-
-    glow::ReshapeNode *threeD =
-        F_.createReshape("bn_NCHW2NCTHW", bn, input.dims());
-
-    output = threeD->getResult();
-  } else {
+    glow::ReshapeNode *zeroD = F_.createReshape("bn_NCHW2NC", bn, input.dims());
+    output = zeroD->getResult();
+  } else { // 1D, 2D or 3D
     glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
         "batchnorm", input.getType(), input, biasC, weightsC, meanC, varC,
         channelIdx, epsilon, momentum);
@@ -4013,7 +4020,6 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[QuantizedBatchNormInputs::input]));
 
-  bool is3D = (numDims == 3);
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 8, outputs, 1));
 
   RETURN_ERR_IF_NOT(
@@ -4025,12 +4031,12 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
 
   glow::NodeValue weights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[QuantizedBatchNormInputs::weights], "weight",
-      glow::Type(ElemKind::Float16Ty, {numChannels}), 1.0);
+      glow::Type(ElemKind::FloatTy, {numChannels}), 1.0);
   glow::Constant *weightsC = llvm::dyn_cast<glow::Constant>(weights.getNode());
 
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
       inputs[QuantizedBatchNormInputs::bias], "bias",
-      glow::Type(ElemKind::Float16Ty, {numChannels}), 0.0);
+      glow::Type(ElemKind::FloatTy, {numChannels}), 0.0);
   glow::Constant *biasC = llvm::dyn_cast<glow::Constant>(bias.getNode());
 
   glow::NodeValue mean;
@@ -4064,48 +4070,17 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
 
   // Input is in NCHW.
   glow::unsigned_t channelIdx = 1;
-
-  if (is3D) {
-    std::array<dim_t, 4> twoDDims = {input.dims()[0], input.dims()[1],
-                                     input.dims()[2] * input.dims()[3],
-                                     input.dims()[4]};
-
-    glow::ReshapeNode *input_reshape =
-        F_.createReshape("bn3d_quant_NCTHW2NCHW", input, twoDDims);
-
-    glow::DequantizeNode *dq = F_.createDequantize(
-        "bn3d_quant_dequantize", input_reshape, ElemKind::FloatTy);
-
-    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
-        "bn3d_quant", dq->getType(0), dq, biasC, weightsC, meanC, varC,
-        channelIdx, epsilon, momentum);
-
-    glow::ReshapeNode *output_reshape =
-        F_.createReshape("bn3d_quant_NCHW2NCTHW", bn, input.dims());
-
-    const auto outType = F_.getParent()->uniqueType(
-        glow::ElemKind::Int8QTy, input.dims(), output_scale, output_zero_point);
-    glow::QuantizeNode *q =
-        F_.createQuantize("bn3d_quant_quantize", output_reshape, outType);
-
-    return Expected<NodeValue>(q->getResult());
-
+  std::string opName;
+  if (numDims == 3) {
+    opName = "bn3d_quant";
   } else {
-
-    glow::DequantizeNode *dq = F_.createDequantize("bn3d_quant_dequantize",
-                                                   input, ElemKind::Float16Ty);
-
-    glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
-        "bn2d_quant", dq->getType(0), dq, biasC, weightsC, meanC, varC,
-        channelIdx, epsilon, momentum);
-
-    const auto outType = F_.getParent()->uniqueType(
-        glow::ElemKind::Int8QTy, input.dims(), output_scale, output_zero_point);
-    glow::QuantizeNode *q =
-        F_.createQuantize("bn2d_quant_quantize", bn, outType);
-
-    return Expected<NodeValue>(q->getResult());
+    opName = "bn2d_quant";
   }
+
+  glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
+      opName, input.getType(), input, biasC, weightsC, meanC, varC, channelIdx,
+      epsilon, momentum);
+  return Expected<NodeValue>(bn->getResult());
 }
 
 Error PyTorchModelLoader::loadQuantizedBatchNorm2d(
@@ -4495,10 +4470,10 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AvgPoolInputs::input]));
-  bool isConv3d = (numDims == 3);
-  std::string opName = isConv3d ? "avgpool3d" : "avgpool2d";
+  bool is3d = (numDims == 3);
+  std::string opName = is3d ? "avgpool3d" : "avgpool2d";
 
-  if (isConv3d) {
+  if (is3d) {
     input =
         F_.createTranspose(opName + "_input_transposed", input, NCTHW2NTHWC);
   } else {
@@ -4519,7 +4494,7 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
   RETURN_ERR_IF_NOT(padsPair.size() == numDims,
                     "Number of pad values is incorrect");
   std::vector<glow::unsigned_t> pads;
-  if (isConv3d) {
+  if (is3d) {
     pads = {padsPair[0], padsPair[1], padsPair[2],
             padsPair[0], padsPair[1], padsPair[2]};
   } else {
@@ -4554,11 +4529,11 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
 
   glow::AvgPoolNode *ap =
       F_.createAvgPool(opName, input, kernels, strides, pads,
-                       (isConv3d ? NTHWC : NHWC), countIncludePads);
+                       (is3d ? NTHWC : NHWC), countIncludePads);
   glow::NodeValue ap_output = ap->getResult();
   const glow::TransposeNode *output;
 
-  if (isConv3d) {
+  if (is3d) {
     output = F_.createTranspose(opName + "_output_transposed", ap_output,
                                 NTHWC2NCTHW);
   } else {
@@ -4810,7 +4785,7 @@ Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
 
-  auto output = F_.createMin("min", lhs, rhs);
+  auto output = F_.createNodeWithBroadcast<MinNode>("min", -1, lhs, rhs);
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
@@ -5237,29 +5212,41 @@ Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       in, getGlowNodeValueForValue(inputs[SoftMaxInputs::input]));
 
+  const auto inDims = in.dims();
+
   int64_t dim;
   ASSIGN_VALUE_OR_RETURN_ERR(
       dim, iValToInt(getGlowIValueForValue(inputs[SoftMaxInputs::dim])));
 
-  // Convert negative dimension index into corresponding positive index
-  auto origDim = dim;
-  if (dim < 0) {
-    dim += in.dims().size();
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getPositiveIndex(dim, inDims.size()));
+
+  // transpose dim to inner dimension
+  std::vector<unsigned_t> inTransposeShuffle;
+  for (auto i = 0; i < inDims.size(); ++i) {
+    inTransposeShuffle.push_back(i);
   }
+  inTransposeShuffle.erase(inTransposeShuffle.begin() + dim);
+  inTransposeShuffle.push_back(dim);
+  in = F_.createTranspose("transpose_before_softmax", in, inTransposeShuffle)
+           ->getResult();
 
-  RETURN_ERR_IF_NOT(dim < in.dims().size() && dim >= 0,
-                    strFormat("Dim value of %ld is out of range. Valid values "
-                              "are in the range [-%ld, %ld]",
-                              origDim, in.dims().size(), in.dims().size() - 1));
+  // flatten outer dims
+  auto dimsBeforeFlatten = in.dims();
+  in = F_.createFlatten("flatten_before_softmax", in, inDims.size() - 1);
 
-  auto selected = F_.getParent()->createConstant(glow::ElemKind::Int64ITy,
-                                                 {in.dims()[0], 1}, "selected");
+  // Softmax
+  auto selected = F_.getParent()->createConstant(
+      glow::ElemKind::Int64ITy, {in.dims()[0], 1}, "softmax_selected");
+  auto out = F_.createSoftMax("softmax", in, selected)->getResult();
 
-  auto *FN = F_.createFlatten("reshapeInput", in, dim);
-  auto *SM = F_.createSoftMax("SoftMax", FN, selected);
-  auto origInDims = in.getType()->dims();
-  auto *glowNode = F_.createReshape("reshapeOutput", SM, origInDims);
-  RETURN_ERR(addValueMapping(outputs[0], glowNode));
+  // unflatten
+  out = F_.createReshape("reshape_after_softmax", out, dimsBeforeFlatten);
+
+  // transpose dim back to where it started
+  auto outTransposeShufle = getInverseTranspose(inTransposeShuffle);
+  out = F_.createTranspose("transpose_after_softmax", out, outTransposeShufle)
+            ->getResult();
+  RETURN_ERR(addValueMapping(outputs[0], out));
 }
 
 Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
@@ -5299,7 +5286,14 @@ Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  // aten::to could take either 4 or 5 arguments
+
+  // Currently we only support the following two kinds of aten::to
+  //
+  // 1. aten::to(Tensor input, Device device, ScalarType dtype, bool
+  // non_blocking, bool copy, c10::optional<MemoryFormat> memory_format)
+  //
+  // 2. aten::to(Tensor input, ScalarType dtype, bool non_blocking, bool copy,
+  // c10::optional<MemoryFormat> memory_format)
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
 
   glow::NodeValue input;
@@ -5307,8 +5301,14 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
                              getGlowNodeValueForValue(inputs[ToInputs::input]));
 
   int32_t dtype;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dtype, iValToInt(getGlowIValueForValue(inputs[ToInputs::dtype])));
+  // case 1
+  if (inputs.size() == 6) {
+    ASSIGN_VALUE_OR_RETURN_ERR(dtype, iValToInt(getGlowIValueForValue(
+                                          inputs[ToWithDeviceInputs::dtype])));
+  } else { // case 2
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dtype, iValToInt(getGlowIValueForValue(inputs[ToInputs::dtype])));
+  }
 
   auto inputType = input.getType();
   auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
@@ -5958,6 +5958,37 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
   }
 }
 
+Error PyTorchModelLoader::loadNNCKernel(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  std::string kernelName = "kernel_name";
+  std::string kernelSrc = "kernel_source";
+  RETURN_ERR_IF_NOT(ptNode->hasAttribute(at::Symbol::attr("nnc::kernel")),
+                    "Doesn't have BLOCK kernel");
+  kernelSrc = ptNode->s(at::Symbol::attr("nnc::kernel"));
+  // Extract the name of the kernel without its signature.
+  std::size_t pos0 = kernelSrc.find(" ");
+  std::size_t pos1 = kernelSrc.find("(");
+  kernelName = kernelSrc.substr(pos0 + 1, pos1 - pos0 - 1);
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+  std::vector<glow::NodeValue> glowInputs(inputs.size());
+  for (unsigned idx = 0, e = inputs.size(); idx < e; ++idx) {
+    ASSIGN_VALUE_OR_RETURN_ERR(glowInputs[idx],
+                               getGlowNodeValueForValue(inputs[idx]));
+  }
+
+  // TODO: Use a proper type based on the JIT's output type.
+  TypeRef outTy = nullptr;
+  // Assume for now that the type of output is the same as type of inputs for
+  // elementwise operations.
+  outTy = glowInputs[0].getType();
+  auto glowNode =
+      F_.createExternalFunctionCall("external_function_call", outTy, glowInputs,
+                                    kernelName, kernelSrc, "BLOCK");
+  return addValueMapping(outputs[0], glowNode);
+}
+
 Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
     const torch::jit::Node *ptNode) {
   return loadEmbeddingBagByteRowwiseOffsetsHelper(ptNode);
@@ -6531,6 +6562,7 @@ PyTorchModelLoader::PyTorchModelLoader(
 
       if (settings_.debugContinuouslyVerifyDuringModelLoading) {
         if (!F_.verify()) {
+          F_.dumpDAG("failed.dot");
           return MAKE_ERR(
               "Failed Function verification while loading graph outputs.");
         }
@@ -6556,6 +6588,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     }
 
     if (!F_.verify()) {
+      F_.dumpDAG("failed.dot");
       return MAKE_ERR(
           "Failed Function verification after loading JIT graph. Enable the "
           "debugContinuouslyVerifyDuringModelLoading setting and run again to "

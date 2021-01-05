@@ -728,12 +728,12 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
     auto it = perGlowGraphInfoMap_.find(hash);
     if (it == perGlowGraphInfoMap_.end()) {
       std::ostringstream ss;
-      ss << "No compiled graph found for input stack:" << std::endl
-         << metaStack.print() << std::endl;
+      ss << "No compiled graph found for input stack:\n"
+         << metaStack.print() << "\n";
       ss << "There are " << perGlowGraphInfoMap_.size()
-         << "input sets with compiled graphs, they are:" << std::endl;
+         << " input sets with compiled graphs, they are:\n";
       for (const auto &kv : perGlowGraphInfoMap_) {
-        ss << hash << std::endl;
+        ss << hash << "\n";
       }
       return MAKE_ERR(ss.str());
     }

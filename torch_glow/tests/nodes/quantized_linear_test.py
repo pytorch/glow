@@ -7,15 +7,14 @@ from tests import utils
 
 class SimpleQuantizedLinearModel(torch.nn.Sequential):
     def __init__(self, in_features, out_features, quantization, weight=None, bias=None):
-        linear = torch.nn.Linear(in_features, out_features)
+        linear = torch.nn.Linear(in_features, out_features, bias=(bias is not None))
         if weight:
             linear.weight.data.fill_(weight)
         else:
             linear.weight.data.random_(0, 100)
         if bias:
             linear.bias.data.fill_(bias)
-        else:
-            linear.bias.data.random_(0, 10)
+
         super(SimpleQuantizedLinearModel, self).__init__(
             quantization, linear, torch.nn.quantized.DeQuantize()
         )
@@ -44,6 +43,18 @@ class TestQuantizedLinear(unittest.TestCase):
                     ),
                     1.2,
                     3.0,
+                ),
+                _make_input(5, 6, [3, 2, 5]),
+            ),
+            (
+                "no_bias",
+                SimpleQuantizedLinearModel(
+                    5,
+                    3,
+                    torch.nn.quantized.Quantize(
+                        scale=1 / 15, zero_point=17, dtype=torch.quint8
+                    ),
+                    1.2,
                 ),
                 _make_input(5, 6, [3, 2, 5]),
             ),

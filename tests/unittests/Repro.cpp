@@ -709,7 +709,7 @@ int run() {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
-          traceContext->setThreadName("Caller");
+          traceContext->setThreadName("Request Thread");
         }
         TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
                           "Dispatch to prep input and dispatch");
