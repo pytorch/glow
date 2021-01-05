@@ -1128,7 +1128,7 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
-                                               NodeValue input, Constant *W,
+                                               NodeValue input, NodeValue W,
                                                Constant *scales,
                                                Constant *offsets, NodeValue B,
                                                TypeRef outTy) {
@@ -1138,7 +1138,7 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
 
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
-                                               NodeValue input, Constant *W,
+                                               NodeValue input, NodeValue W,
                                                NodeValue B, TypeRef outTy,
                                                quantization::Schema schema,
                                                bool transposeWeight) {
@@ -1146,10 +1146,13 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   // The quantized data is in qWeights, the scale of each row is in scales,
   // and the offset of each row is in offsets.
   Constant *weights = llvm::cast<Constant>(W);
-  dim_t numRows =
-      transposeWeight ? W->getType()->dims()[1] : W->getType()->dims()[0];
-  dim_t numCols =
-      transposeWeight ? W->getType()->dims()[0] : W->getType()->dims()[1];
+  CHECK(weights)
+      << "Expected RowwiseQuantizedFullyConnected weights to be a Constant";
+
+  dim_t numRows = transposeWeight ? weights->getType()->dims()[1]
+                                  : weights->getType()->dims()[0];
+  dim_t numCols = transposeWeight ? weights->getType()->dims()[0]
+                                  : weights->getType()->dims()[1];
 
   // So far, if we want to create a storage with Int8QTy/Int16QTy,
   // it is assumed to be quantized data and the scale and offset should be
