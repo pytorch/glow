@@ -358,6 +358,28 @@ TEST_P(OperatorTest, less_int64Cases) {
   }
 }
 
+TEST_P(OperatorTest, less_int16Cases) {
+  CHECK_IF_ENABLED();
+
+  int16_t xValues[] = {1, 2, 3, 4, 5};
+
+  int16_t yValues[] = {5, 4, 3, 2, 1};
+
+  dim_t xDims[] = {5};
+  dim_t yDims[] = {5};
+
+  Handle<bool> saveH =
+      lessHelper<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy, xValues,
+                          yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (dim_t i = 0; i < saveH.dims()[0]; ++i) {
+    EXPECT_TRUE(refResults[counter++] == saveH.at({i}));
+  }
+}
+
 TEST_P(OperatorTest, less_float) {
   CHECK_IF_ENABLED();
 
@@ -9521,6 +9543,11 @@ TEST_P(OperatorTest, CmpNEQ_FloatTy) {
 TEST_P(OperatorTest, CmpNEQ_Int8QTy) {
   CHECK_IF_ENABLED();
   testCmpNEQ<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, CmpNEQ_Int16QTy) {
+  CHECK_IF_ENABLED();
+  testCmpNEQ<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy);
 }
 
 TEST_P(OperatorTest, CmpNEQ_Int32ITy) {
