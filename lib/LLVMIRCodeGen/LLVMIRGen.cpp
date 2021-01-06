@@ -946,10 +946,14 @@ static bool isOverlappingWithAnyBundleBufferOperands(
       auto buf2 = bop.first;
       auto addr2 = allocationsInfo.allocatedAddress_[buf2];
       auto size2 = buf2->getSizeInBytes();
-      // It is fine, if buffers of different data-parallel instructions are
-      // allocated exactly the same memory region.
       if (addr1 == addr2 && size1 == size2) {
-        continue;
+        // The two buffers are the exact same memory region. The operations
+        // cannot be within the same bundle because the buffer pointers are
+        // "noalias" qualified, so the kernel operations can be reordered by
+        // LLVM's optimizations.
+        // TODO investigate if removing "noalias" can be used to create bigger
+        // and faster bundles.
+        return true;
       }
       if ((addr1 >= addr2 && addr1 < addr2 + size2) ||
           (addr2 >= addr1 && addr2 < addr1 + size1)) {
