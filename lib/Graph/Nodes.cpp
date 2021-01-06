@@ -937,8 +937,12 @@ bool MatMulNode::verify() const {
   auto LDims = lhs.dims();
   auto RDims = rhs.dims();
   auto DDims = dest.dims();
-  bool isValid = expectCompareTrue("Invalid MatMul dimensions", size_t(2),
-                                   DDims.size(), this);
+  bool isValid = expectCompareTrue("LHS input must be 2 dimensional.",
+                                   LDims.size(), size_t(2), this);
+  isValid &= expectCompareTrue("RHS input must be 2 dimensional.", RDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Invalid MatMul dimensions", DDims.size(),
+                               size_t(2), this);
 
   auto elem = dest.getType()->getElementType();
   isValid &= checkType(lhs, elem, this);
