@@ -423,7 +423,7 @@ Error ShapeInferenceEngine::getGraphInputShapeType(
     c10::ScalarType dtype;
 
     if (input.isTensor()) {
-      auto ptTensor = input.toTensor();
+      auto &ptTensor = input.toTensor();
       for (auto s : ptTensor.sizes()) {
         shape.emplace_back(s);
       }
