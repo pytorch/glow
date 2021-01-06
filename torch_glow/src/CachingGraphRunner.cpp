@@ -97,6 +97,17 @@ void initializeCompiliationContextFromSettings(
 
 } // namespace
 
+static glow::Expected<std::string> getOnnxFilePath(const std::string &filename,
+                                                   bool writeOnnxToTmp) {
+  if (writeOnnxToTmp) {
+    std::string filepath;
+    ASSIGN_VALUE_OR_RETURN_ERR(filepath, getTempFileLoc(filename, ".onnx"));
+    return filepath;
+  } else {
+    return filename + ".onnx";
+  }
+}
+
 void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
                                                 bool flush) {
   size_t numTracesPerDump = defaultSettings_.numTracesPerDump;
@@ -468,8 +479,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
 
       if (settings.writeToOnnx) {
-        std::string filename =
-            strFormat("%s_input_%zu.onnx", info.functionName.c_str(), runId);
+        std::string filename;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            filename,
+            getOnnxFilePath(
+                strFormat("%s_input_%zu", info.functionName.c_str(), runId),
+                settings.writeOnnxToTmp));
         std::ofstream of(filename, std::ios::binary);
         if (!of) {
           LOG(ERROR) << "Cannot create input file " << filename;
@@ -642,8 +657,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
 
       if (settings.writeToOnnx) {
-        std::string filename = strFormat("%s_glow_output_%zu.onnx",
-                                         info.functionName.c_str(), runId);
+        std::string filename;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            filename,
+            getOnnxFilePath(strFormat("%s_glow_output_%zu",
+                                      info.functionName.c_str(), runId),
+                            settings.writeOnnxToTmp));
         std::ofstream of(filename, std::ios::binary);
         if (!of) {
           LOG(ERROR) << "Cannot create output file " << filename;
@@ -655,8 +674,13 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
 
       if (settings.writeToOnnx) {
-        std::string filename = strFormat("%s_pytorch_output_%zu.onnx",
-                                         info.functionName.c_str(), runId);
+
+        std::string filename;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            filename,
+            getOnnxFilePath(strFormat("%s_pytorch_output_%zu",
+                                      info.functionName.c_str(), runId),
+                            settings.writeOnnxToTmp));
         std::ofstream of(filename, std::ios::binary);
         if (!of) {
           LOG(ERROR) << "Cannot create output file " << filename;
