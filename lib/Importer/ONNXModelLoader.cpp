@@ -114,12 +114,13 @@ getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
       auto symbolName = d.dim_param();
       std::unordered_map<std::string, dim_t> symbolMap;
       ASSIGN_VALUE_OR_RETURN_ERR(symbolMap, getSymbolMap());
-      if (symbolMap.count(symbolName)) {
+      if (symbolMap.count(symbolName) && symbolMap[symbolName] > 0) {
         dim.push_back(symbolMap[symbolName]);
       } else {
         return MAKE_ERR(strFormat(
             "ONNX model symbol '%s' is undefined. Define the symbol with the "
-            "following command line option: -onnx-define-symbol=%s,<value>.",
+            "following command line option: -onnx-define-symbol=%s,<value> and "
+            "each 'dim_value' of tensor shape proto must be greater than 0.",
             symbolName.c_str(), symbolName.c_str()));
       }
     } else {
