@@ -883,13 +883,13 @@ static bool quantizeRQFCFloatBias(Function *F,
                   "Constant in order to quantize the bias");
 
   auto TQPs = getTensorQuantizationParams(
-      biasC->getPayload(), quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+      biasC->getPayload(), quantization::Schema::Asymmetric, ElemKind::Int32QTy,
       0, biasC->dims()[0]);
 
   DCHECK_EQ(TQPs.size(), 1) << "Should only be one dimension to quantize on";
 
-  auto biasQuantizedT =
-      quantization::quantizeTensor(biasC->getPayload(), TQPs[0]);
+  auto biasQuantizedT = quantization::quantizeTensor(
+      biasC->getPayload(), TQPs[0], ElemKind::Int32QTy);
 
   auto biasQuantizedC = F->getParent()->createConstant(
       biasC->getName(), std::move(biasQuantizedT));

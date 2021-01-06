@@ -674,7 +674,7 @@ public:
   /// scales and \p offsets. The output is quantized in the regular way, and its
   /// type \p outTy is a quantized type.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, Constant *scales,
+      llvm::StringRef name, NodeValue input, NodeValue W, Constant *scales,
       Constant *offsets, NodeValue B, TypeRef outTy);
 
   /// Create a row-wise quantized fully connected node. This node is only used
@@ -684,7 +684,7 @@ public:
   /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
   /// be transposed first.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, NodeValue B,
+      llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
       TypeRef outTy, quantization::Schema schema, bool transposeWeight = false);
 
   /// Implement an operation that computes the row-wise dot product of its

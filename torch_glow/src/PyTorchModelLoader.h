@@ -646,6 +646,21 @@ private:
   // \return error on failure.
   Error loadQuantizedConvRelu(const torch::jit::Node *ptNode);
 
+  /// Implementation for loading a linear operator, either packed or unpacked.
+  /// \p input is the node's input, \p weights and \p bias are the linear
+  /// weights and bias. \p wScales and \p wOffsets are the weight tensor's
+  /// qparam tensors in the case of a per_channel quantized linear otherwise
+  /// these are empty. \p outScale and \p outZeroPoint are the node's output
+  /// qparams. \p outputValue is Value to map the output to. \p outputDtype is
+  /// the correct dtype of the output Value.
+  // \return error on failure.
+  Error loadQuantizedLinearImpl(NodeValue input, NodeValue weights,
+                                NodeValue bias, NodeValue wScales,
+                                NodeValue wOffsets, float outScale,
+                                int64_t outZeroPoint,
+                                const torch::jit::Value *outputValue,
+                                c10::ScalarType outputDtype);
+
   /// Load a glow::unpacked_quantized_linear node.
   /// \return error on failure.
   Error loadQuantizedLinearUnpacked(const torch::jit::Node *ptNode);

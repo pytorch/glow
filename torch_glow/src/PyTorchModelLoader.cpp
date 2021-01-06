@@ -2027,6 +2027,56 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
   }
 }
 
+// implementation for per_tensor and per_channel quantized linear from either
+// packed or unpacked linear
+Error PyTorchModelLoader::loadQuantizedLinearImpl(
+    NodeValue input, NodeValue weights, NodeValue bias, NodeValue wScales,
+    NodeValue wOffsets, float outScale, int64_t outZeroPoint,
+    const torch::jit::Value *outputValue, c10::ScalarType outputDtype) {
+  bool isRowwiseQuantized = false;
+  if (wScales) {
+    RETURN_ERR_IF_NOT(wOffsets, "Expected both weight scales and offsets for "
+                                "per_channel quantized linear");
+    isRowwiseQuantized = true;
+  } else {
+    RETURN_ERR_IF_NOT(!wOffsets, "Expected neight weight scales nor offsets "
+                                 "for per_tensor quantized linear");
+  }
+
+  // Flatten outer dims if necessary
+  auto inputDims = input.dims();
+  if (inputDims.size() > 2) {
+    input = F_.createFlatten("flatten", input, inputDims.size() - 1);
+  }
+
+  auto outTy = F_.getParent()->uniqueType(
+      ElemKind::Int8QTy, {input.dims()[0], weights.dims()[0]}, outScale,
+      outZeroPoint - UINT8_TO_INT8_SHIFT);
+
+  NodeValue output;
+  if (isRowwiseQuantized) {
+    auto rowwiseFC = F_.createRowwiseQuantizedFullyConnected(
+        "rowwise_quantized_fc", input, weights,
+        llvm::dyn_cast<glow::Constant>(wScales),
+        llvm::dyn_cast<glow::Constant>(wOffsets), bias, outTy);
+    output = rowwiseFC->getResult();
+  } else {
+    weights = F_.createTranspose("weight_transpose", weights, {1, 0});
+    auto fc =
+        F_.createFullyConnected("quantized_fc", input, weights, bias, outTy);
+    output = fc->getResult();
+  }
+
+  // Restore original outer dims
+  if (inputDims.size() > 2) {
+    std::vector<dim_t> finalDims = inputDims.vec();
+    finalDims.back() = output.dims().back();
+    output = F_.createReshape("expand", output, finalDims);
+  }
+
+  RETURN_ERR(addValueMapping(outputValue, output, outputDtype));
+}
+
 Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -2036,20 +2086,13 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::input]));
 
-  // Flatten outer dims if necessary
-  auto inputDims = input.dims();
-  if (inputDims.size() > 2) {
-    input = F_.createFlatten("flatten", input, inputDims.size() - 1);
-  }
-
   CHECK(qparamsMap_.count(inputs[QuantizedLinearInputs::packed_weights]));
-  auto packed_params =
-      qparamsMap_[inputs[QuantizedLinearInputs::packed_weights]]
-          .toCustomClass<LinearPackedParamsBase>();
+  auto packedParams = qparamsMap_[inputs[QuantizedLinearInputs::packed_weights]]
+                          .toCustomClass<LinearPackedParamsBase>();
 
   at::Tensor ptWeightTensor;
   c10::optional<at::Tensor> ptBiasTensorTmp;
-  std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
+  std::tie(ptWeightTensor, ptBiasTensorTmp) = packedParams->unpack();
 
   // unpacked weights
   auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
@@ -2058,7 +2101,7 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   weightConstant->ensureIsOwned();
   RETURN_ERR_IF_NOT(weightConstant->dims().size() == 2,
                     "Expected 2d Linear weights");
-  auto weight = weightConstant->getOutput();
+  auto weights = weightConstant->getOutput();
 
   // unpacked bias
   glow::Tensor biasTensor;
@@ -2066,14 +2109,13 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     auto ptBiasTensor = ptBiasTensorTmp.value().contiguous();
     biasTensor = ptTensorToGlowTensor(ptBiasTensor);
   } else {
-    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weight.dims()[0]});
+    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weights.dims()[0]});
     biasTensor.zero();
   }
 
   glow::Constant *biasConstant = F_.getParent()->createConstant(
       "quantized_linear_bias", std::move(biasTensor));
   biasConstant->ensureIsOwned();
-  RETURN_ERR_IF_NOT(biasConstant, "quantized::linear bias must be constant");
   auto bias = biasConstant->getOutput();
 
   float outScale;
@@ -2086,43 +2128,20 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
                              iValToInt(getGlowIValueForValue(
                                  inputs[QuantizedLinearInputs::zero_point])));
 
-  auto outTy = F_.getParent()->uniqueType(
-      ElemKind::Int8QTy, {input.dims()[0], weight.dims()[0]}, outScale,
-      outZeroPoint - UINT8_TO_INT8_SHIFT);
-
   bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
                             ptWeightTensor.qscheme() == at::kPerChannelAffine;
 
-  NodeValue output;
+  NodeValue wScales, wOffsets;
+  if (isRowwiseQuantized) {
+    std::tie(wScales, wOffsets) = extractChannelwiseQParams(F_, ptWeightTensor);
+  }
+
   c10::ScalarType dtype;
   RETURN_IF_ERR(
       getCorrectTypeMapping(dtype, inputs[QuantizedLinearInputs::input]));
 
-  if (isRowwiseQuantized) {
-    NodeValue wScales, wOffsets;
-    std::tie(wScales, wOffsets) = extractChannelwiseQParams(F_, ptWeightTensor);
-    auto rowwiseFC = F_.createRowwiseQuantizedFullyConnected(
-        "rowwise_quantized_fc", input, weightConstant,
-        llvm::dyn_cast<glow::Constant>(wScales),
-        llvm::dyn_cast<glow::Constant>(wOffsets), bias, outTy);
-    output = rowwiseFC->getResult();
-  } else {
-    weight = rescaleUIntToInt(weight);
-
-    weight = F_.createTranspose("weight_transpose", weight, {1, 0});
-    auto fc =
-        F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
-    output = fc->getResult();
-  }
-
-  // Restore original outer dims
-  if (inputDims.size() > 2) {
-    std::vector<dim_t> finalDims = inputDims.vec();
-    finalDims.back() = output.dims().back();
-    output = F_.createReshape("expand", output, finalDims);
-  }
-
-  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
+  return loadQuantizedLinearImpl(input, weights, bias, wScales, wOffsets,
+                                 outScale, outZeroPoint, outputs[0], dtype);
 }
 
 Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
@@ -2136,21 +2155,11 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
       input,
       getGlowNodeValueForValue(inputs[QuantizedUnpackedLinearInputs::input]));
 
-  // Flatten outer dims if necessary
-  auto inputDims = input.dims();
-  if (inputDims.size() > 2) {
-    input = F_.createFlatten("flatten", input, inputDims.size() - 1);
-  }
-
-  glow::NodeValue weight;
+  glow::NodeValue weights;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      weight,
+      weights,
       getGlowNodeValueForValue(inputs[QuantizedUnpackedLinearInputs::weight]));
-  weight = rescaleUIntToInt(weight);
-
-  RETURN_ERR_IF_NOT(weight.dims().size() == 2, "Expected 2d Linear weights");
-
-  weight = F_.createTranspose("weight_transpose", weight, {1, 0});
+  RETURN_ERR_IF_NOT(weights.dims().size() == 2, "Expected 2d Linear weights");
 
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -2162,47 +2171,31 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
       outZeroPoint, iValToInt(getGlowIValueForValue(
                         inputs[QuantizedUnpackedLinearInputs::zero_point])));
 
-  auto outTy = F_.getParent()->uniqueType(
-      ElemKind::Int8QTy, {input.dims()[0], weight.dims()[1]}, outScale,
-      outZeroPoint - UINT8_TO_INT8_SHIFT);
-
   // Get bias or create a zero bias if no bias is found.
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
       inputs[QuantizedUnpackedLinearInputs::bias], "quantized_linear_bias",
-      glow::Type(ElemKind::FloatTy, {weight.dims()[1]}), 0.0);
+      glow::Type(ElemKind::FloatTy, {weights.dims()[0]}), 0.0);
 
   // Choose bias quantization params and quantize it.
   glow::Constant *biasConstant = llvm::dyn_cast<glow::Constant>(bias.getNode());
 
-  const auto biasHandle = biasConstant->getPayload().getHandle<float>();
-  const auto biasMinMaxIdx = biasHandle.minMaxArg();
-
-  const auto biasQParams = chooseQuantizationParams(
-      {biasHandle.raw(biasMinMaxIdx.first),
-       biasHandle.raw(biasMinMaxIdx.second)},
-      glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
-
-  const auto biasType =
-      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(),
-                                 biasQParams.scale, biasQParams.offset);
-
-  bias = F_.createQuantize("quantize_bias", bias, biasType);
-
-  auto output =
-      F_.createFullyConnected("quantized_fc", input, weight, bias, outTy)
-          ->getResult();
-
-  // Restore original outer dims
-  if (inputDims.size() > 2) {
-    std::vector<dim_t> finalDims = inputDims.vec();
-    finalDims.back() = output.dims().back();
-    output = F_.createReshape("expand", output, finalDims);
-  }
-
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(
       dtype, inputs[QuantizedUnpackedLinearInputs::input]));
-  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
+
+  auto ptWeightTensor =
+      qparamsMap_.at(inputs[QuantizedUnpackedLinearInputs::weight]).toTensor();
+
+  bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
+                            ptWeightTensor.qscheme() == at::kPerChannelAffine;
+
+  NodeValue wScales, wOffsets;
+  if (isRowwiseQuantized) {
+    std::tie(wScales, wOffsets) = extractChannelwiseQParams(F_, ptWeightTensor);
+  }
+
+  return loadQuantizedLinearImpl(input, weights, bias, wScales, wOffsets,
+                                 outScale, outZeroPoint, outputs[0], dtype);
 }
 
 Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
@@ -6525,6 +6518,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     const at::ArrayRef<torch::jit::IValue> inputs,
     const InputMetaStack &metaStack)
     : F_(F), settings_(settings), inputs_(inputs) {
+  std::cerr << "loading PyTorch graph\n" << graph << std::endl;
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 
