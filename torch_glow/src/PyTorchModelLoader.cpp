@@ -2746,8 +2746,8 @@ getHigherType(PyTorchModelLoader *loader,
 /// error on failures, otherwise the created concat node reference.
 static Expected<glow::ConcatNode *>
 createConcatNode(PyTorchModelLoader *loader, Function &F,
-                 const torch::jit::Node *ptNode, bool isStack,
-                 bool doBroadcast) noexcept {
+                 const torch::jit::Node *ptNode, bool isStack, bool doBroadcast,
+                 bool needsUnsqueeze = false) noexcept {
 
   auto inputs = ptNode->inputs();
 
@@ -2795,16 +2795,24 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
     RETURN_ERR_IF_NOT(numInputDims == glowInput.dims().size(),
                       "All inputs must have the same number of dimensions.");
 
-    // Record broadcast shapes to perform broadcasting
-    for (int d = 0; d < glowInput.dims().size(); ++d) {
-      // For stack we can broadcast every dim
-      if (d != dim || isStack) {
-        if (bcastShape[d] < 0 && glowInput.dims()[d] != 1) {
-          // record first non-singleton size for dim_i as broadcast shape
-          bcastShape[d] = glowInput.dims()[d];
-        } else if (glowInput.dims()[d] == 1) {
-          needBroadcast[i] = true;
-          noBroadcastNeeded = false;
+    // If stacking on the new dimension, unsqueeze each input
+    if (needsUnsqueeze) {
+      glowInput = F.createExpandDims("unsqueeze_input_" + std::to_string(i),
+                                     glowInput, {glowInput.dims().size()});
+      needBroadcast[i] = false;
+      noBroadcastNeeded = true;
+    } else {
+      // Record broadcast shapes to perform broadcasting
+      for (int d = 0; d < glowInput.dims().size(); ++d) {
+        // For stack we can broadcast every dim
+        if (d != dim || isStack) {
+          if (bcastShape[d] < 0 && glowInput.dims()[d] != 1) {
+            // record first non-singleton size for dim_i as broadcast shape
+            bcastShape[d] = glowInput.dims()[d];
+          } else if (glowInput.dims()[d] == 1) {
+            needBroadcast[i] = true;
+            noBroadcastNeeded = false;
+          }
         }
       }
     }
@@ -2932,9 +2940,10 @@ Error PyTorchModelLoader::loadFusedBroadcastConcat(
   RETURN_ERR(addValueMapping(outputs[0], node));
 }
 
-static glow::Node *
-createReshapeNodeForStack(glow::Function &F, const torch::jit::Node *ptNode,
-                          const glow::ConcatNode *concatNode) {
+static glow::Node *createReshapeNodeForStack(glow::Function &F,
+                                             const torch::jit::Node *ptNode,
+                                             const glow::ConcatNode *concatNode,
+                                             bool needsUnsqueeze = false) {
   auto inputs = ptNode->inputs();
   int64_t dim = ptNode->i(at::attr::dim);
 
@@ -2944,22 +2953,28 @@ createReshapeNodeForStack(glow::Function &F, const torch::jit::Node *ptNode,
   size_t numInputs = inputs.size();
   std::vector<glow::dim_t> reshapeDims;
 
-  for (size_t i = 0; i < concatDims.size(); ++i) {
-    if (i == dim) {
-      reshapeDims.push_back(numInputs);
-      reshapeDims.push_back(concatDims[i] / numInputs);
-    } else {
-      reshapeDims.push_back(concatDims[i]);
+  glow::NodeValue output = concat;
+
+  if (!needsUnsqueeze) {
+    for (size_t i = 0; i < concatDims.size(); ++i) {
+      if (i == dim) {
+        reshapeDims.push_back(numInputs);
+        reshapeDims.push_back(concatDims[i] / numInputs);
+      } else {
+        reshapeDims.push_back(concatDims[i]);
+      }
     }
+
+    // Handle the case when dim is the innermost dimension.
+    if (reshapeDims.size() == concatDims.size()) {
+      reshapeDims.back() /= numInputs;
+      reshapeDims.push_back(numInputs);
+    }
+
+    output = F.createReshape("stack_reshape", concat, reshapeDims)->getResult();
   }
 
-  // Handle the case when dim is the innermost dimension.
-  if (reshapeDims.size() == concatDims.size()) {
-    reshapeDims.back() /= numInputs;
-    reshapeDims.push_back(numInputs);
-  }
-
-  return F.createReshape("stack_reshape", concat, reshapeDims)->getResult();
+  return output;
 }
 
 Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
@@ -2968,20 +2983,24 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
 
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
   // In the case of a single input, just return it.
   if (inputs.size() == 1) {
-    glow::NodeValue input;
-    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
     RETURN_ERR(addValueMapping(outputs[0], input));
   }
 
-  glow::ConcatNode *node;
-  ASSIGN_VALUE_OR_RETURN_ERR(node, createConcatNode(this, F_, ptNode,
-                                                    true /* isStack */,
-                                                    false /* doBroadcast */));
+  const int64_t dim = ptNode->i(at::attr::dim);
+  const bool needsUnsqueeze = (dim == input.dims().size());
 
-  RETURN_ERR(
-      addValueMapping(outputs[0], createReshapeNodeForStack(F_, ptNode, node)));
+  glow::ConcatNode *node;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      node, createConcatNode(this, F_, ptNode, true /* isStack */,
+                             false /* doBroadcast */, needsUnsqueeze));
+
+  RETURN_ERR(addValueMapping(
+      outputs[0], createReshapeNodeForStack(F_, ptNode, node, needsUnsqueeze)));
 }
 
 Error PyTorchModelLoader::loadFusedBroadcastStack(

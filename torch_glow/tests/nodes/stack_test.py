@@ -7,13 +7,18 @@ from tests import utils
 
 
 class SimpleStackModel(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, *args):
         super(SimpleStackModel, self).__init__()
+        self.axis = args[0] if args else None
 
     def forward(self, a, b):
-        c = torch.stack((a, b), 0)
-        d = torch.stack((c, c), 1)
-        return torch.stack((d, d), 2)
+        if not self.axis:
+            c = torch.stack((a, b), 0)
+            d = torch.stack((c, c), 1)
+            return torch.stack((d, d), 2)
+        else:
+            a = a + a
+            return torch.stack((a, b), dim=self.axis)
 
 
 class TestStack(unittest.TestCase):
@@ -35,6 +40,17 @@ class TestStack(unittest.TestCase):
 
         utils.compare_tracing_methods(
             SimpleStackModel(),
+            x,
+            y,
+            skip_to_glow=True,
+        )
+
+    def test_stack_on_new_dim(self):
+        x = torch.randn(4)
+        y = torch.randn(4)
+
+        utils.compare_tracing_methods(
+            SimpleStackModel(1),
             x,
             y,
             skip_to_glow=True,
