@@ -781,14 +781,63 @@ struct GlowFusedLinearInputs {
   };
 };
 
-/// Indexes of aten::to inputs.
-struct ToInputs {
+/// Indexes of aten::to.dtype_layout inputs.
+struct ToDtypeLayoutInputs {
   enum {
     input = 0,
-    dtype = 1,
-    non_block = 2,     // Not used
-    copy = 3,          // Not used
-    memory_format = 4, // Not used
+    dtype,
+    layout,
+    device,
+    pin_memory,
+    non_blocking,
+    copy,
+    memory_format,
+  };
+};
+
+/// Indexes of aten::to.device inputs.
+struct ToDeviceInputs {
+  enum {
+    input = 0,
+    device,
+    dtype,
+    non_blocking,
+    copy,
+    memory_format,
+  };
+};
+
+/// Indexes of aten::to.other inputs.
+struct ToOtherInputs {
+  enum {
+    input = 0,
+    other,
+    non_blocking,
+    copy,
+    memory_format,
+  };
+};
+
+/// Indexes of aten::to.dtype inputs.
+struct ToDtypeInputs {
+  enum {
+    input = 0,
+    dtype,
+    non_blocking,
+    copy,
+    memory_format,
+  };
+};
+
+/// Indexes of aten::to inputs.
+struct ToWithDeviceInputs {
+  enum {
+    input = 0,
+    device, // Not used
+    dtype,
+    non_block,     // Not used
+    copy,          // Not used
+    memory_format, // Not used
   };
 };
 
@@ -1276,6 +1325,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
     if (settings_.debugContinuouslyVerifyDuringModelLoading) {
       if (!F_.verify()) {
+        F_.dumpDAG("failed.dot");
         return MAKE_ERR("Failed Function verification after loading a node");
       }
     }
@@ -1299,6 +1349,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
     if (settings_.debugContinuouslyVerifyDuringModelLoading) {
       if (!F_.verify()) {
+        F_.dumpDAG("failed.dot");
         return MAKE_ERR("Failed Function verification after constant "
                         "propagation while loading a node");
       }
@@ -1442,7 +1493,7 @@ Expected<glow::NodeValue>
 PyTorchModelLoader::getGlowNodeValueForValue(const torch::jit::Value *value) {
   auto it = valueMap_.find(value);
   if (it == valueMap_.end()) {
-    return MAKE_ERR(glow::strFormat("No mapping found fo Value %s",
+    return MAKE_ERR(glow::strFormat("No mapping found for Value %s",
                                     value->debugNameBase().c_str()));
   }
   auto &mappingValue = it->second;
@@ -4456,10 +4507,10 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AvgPoolInputs::input]));
-  bool isConv3d = (numDims == 3);
-  std::string opName = isConv3d ? "avgpool3d" : "avgpool2d";
+  bool is3d = (numDims == 3);
+  std::string opName = is3d ? "avgpool3d" : "avgpool2d";
 
-  if (isConv3d) {
+  if (is3d) {
     input =
         F_.createTranspose(opName + "_input_transposed", input, NCTHW2NTHWC);
   } else {
@@ -4480,7 +4531,7 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
   RETURN_ERR_IF_NOT(padsPair.size() == numDims,
                     "Number of pad values is incorrect");
   std::vector<glow::unsigned_t> pads;
-  if (isConv3d) {
+  if (is3d) {
     pads = {padsPair[0], padsPair[1], padsPair[2],
             padsPair[0], padsPair[1], padsPair[2]};
   } else {
@@ -4515,11 +4566,11 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
 
   glow::AvgPoolNode *ap =
       F_.createAvgPool(opName, input, kernels, strides, pads,
-                       (isConv3d ? NTHWC : NHWC), countIncludePads);
+                       (is3d ? NTHWC : NHWC), countIncludePads);
   glow::NodeValue ap_output = ap->getResult();
   const glow::TransposeNode *output;
 
-  if (isConv3d) {
+  if (is3d) {
     output = F_.createTranspose(opName + "_output_transposed", ap_output,
                                 NTHWC2NCTHW);
   } else {
@@ -5198,29 +5249,41 @@ Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       in, getGlowNodeValueForValue(inputs[SoftMaxInputs::input]));
 
+  const auto inDims = in.dims();
+
   int64_t dim;
   ASSIGN_VALUE_OR_RETURN_ERR(
       dim, iValToInt(getGlowIValueForValue(inputs[SoftMaxInputs::dim])));
 
-  // Convert negative dimension index into corresponding positive index
-  auto origDim = dim;
-  if (dim < 0) {
-    dim += in.dims().size();
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getPositiveIndex(dim, inDims.size()));
+
+  // transpose dim to inner dimension
+  std::vector<unsigned_t> inTransposeShuffle;
+  for (auto i = 0; i < inDims.size(); ++i) {
+    inTransposeShuffle.push_back(i);
   }
+  inTransposeShuffle.erase(inTransposeShuffle.begin() + dim);
+  inTransposeShuffle.push_back(dim);
+  in = F_.createTranspose("transpose_before_softmax", in, inTransposeShuffle)
+           ->getResult();
 
-  RETURN_ERR_IF_NOT(dim < in.dims().size() && dim >= 0,
-                    strFormat("Dim value of %ld is out of range. Valid values "
-                              "are in the range [-%ld, %ld]",
-                              origDim, in.dims().size(), in.dims().size() - 1));
+  // flatten outer dims
+  auto dimsBeforeFlatten = in.dims();
+  in = F_.createFlatten("flatten_before_softmax", in, inDims.size() - 1);
 
-  auto selected = F_.getParent()->createConstant(glow::ElemKind::Int64ITy,
-                                                 {in.dims()[0], 1}, "selected");
+  // Softmax
+  auto selected = F_.getParent()->createConstant(
+      glow::ElemKind::Int64ITy, {in.dims()[0], 1}, "softmax_selected");
+  auto out = F_.createSoftMax("softmax", in, selected)->getResult();
 
-  auto *FN = F_.createFlatten("reshapeInput", in, dim);
-  auto *SM = F_.createSoftMax("SoftMax", FN, selected);
-  auto origInDims = in.getType()->dims();
-  auto *glowNode = F_.createReshape("reshapeOutput", SM, origInDims);
-  RETURN_ERR(addValueMapping(outputs[0], glowNode));
+  // unflatten
+  out = F_.createReshape("reshape_after_softmax", out, dimsBeforeFlatten);
+
+  // transpose dim back to where it started
+  auto outTransposeShufle = getInverseTranspose(inTransposeShuffle);
+  out = F_.createTranspose("transpose_after_softmax", out, outTransposeShufle)
+            ->getResult();
+  RETURN_ERR(addValueMapping(outputs[0], out));
 }
 
 Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
@@ -5260,31 +5323,78 @@ Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  // aten::to could take either 4 or 5 arguments
+
+  // aten::to() takes at least 4 input arguments, and a single output
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
 
   glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input,
-                             getGlowNodeValueForValue(inputs[ToInputs::input]));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ToDtypeLayoutInputs::input]));
+  auto inputType = input.getType();
+
+  // Argument index of the dtype
+  int dtype_arg = -1;
+
+  // - to.dtype_layout(Tensor self, ScalarType? dtype=None,
+  //                   Layout? layout=None, Device? device=None,
+  //                   bool? pin_memory=None, bool non_blocking=False,
+  //                   bool copy=False, MemoryFormat? memory_format=None)
+  if (inputs.size() == 8 && outputs.size() == 1) {
+    dtype_arg = ToDtypeLayoutInputs::dtype;
+  }
+  // - to.device(Tensor self, Device device, ScalarType dtype,
+  //             bool non_blocking=False, bool copy=False,
+  //             MemoryFormat? memory_format=None)
+  else if (inputs.size() == 6 && outputs.size() == 1) {
+    dtype_arg = ToDeviceInputs::dtype;
+  }
+  // There are two alternatives with 5 inputs:
+  else if (inputs.size() == 5 && outputs.size() == 1) {
+    auto glowVal = getGlowIValueForValue(inputs[ToOtherInputs::other]);
+    if (glowVal) {
+      // - to.other(Tensor self, Tensor other, bool non_blocking=False,
+      //            bool copy=False, MemoryFormat? memory_format=None)
+      if ((*glowVal)->isTensor()) {
+        return MAKE_ERR("aten::to.other is not supported.");
+      }
+      // - to.dtype(Tensor self, ScalarType dtype, bool non_blocking=False,
+      //            bool copy=False, MemoryFormat? memory_format=None)
+      else {
+        dtype_arg = ToDtypeInputs::dtype;
+      }
+    } else {
+      RETURN_ERR(glowVal.takeError());
+    }
+  }
+  // Unsupported number of input/output arguments
+  else {
+    return MAKE_ERR("unsupported number of arguments in aten::to node.");
+  }
+
+  if (dtype_arg < 0) {
+    return MAKE_ERR("unsupported aten::to form.");
+  }
 
   int32_t dtype;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      dtype, iValToInt(getGlowIValueForValue(inputs[ToInputs::dtype])));
-
-  auto inputType = input.getType();
+      dtype, iValToInt(getGlowIValueForValue(inputs[dtype_arg])));
   auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+
+  // No type conversion necessary
   if (glowElemKind == inputType->getElementType()) {
     RETURN_ERR(addValueMapping(outputs[0], input));
   }
+
   if (isQuantizedElemKind(glowElemKind) ||
       isQuantizedElemKind(inputType->getElementType())) {
     // We currently dont support aten::to to quantized tensors
     // Unless input dtype == output dtype
     return MAKE_ERR("Detected quantized type for aten::to node.");
   }
+
+  // Create a convertTo node
   auto outType = F_.getParent()->uniqueType(glowElemKind, inputType->dims());
   glow::ConvertToNode *toNode = F_.createConvertTo("to", input, outType);
-
   RETURN_ERR(addValueMapping(outputs[0], toNode->getResult()));
 }
 
@@ -6523,6 +6633,7 @@ PyTorchModelLoader::PyTorchModelLoader(
 
       if (settings_.debugContinuouslyVerifyDuringModelLoading) {
         if (!F_.verify()) {
+          F_.dumpDAG("failed.dot");
           return MAKE_ERR(
               "Failed Function verification while loading graph outputs.");
         }
@@ -6548,6 +6659,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     }
 
     if (!F_.verify()) {
+      F_.dumpDAG("failed.dot");
       return MAKE_ERR(
           "Failed Function verification after loading JIT graph. Enable the "
           "debugContinuouslyVerifyDuringModelLoading setting and run again to "

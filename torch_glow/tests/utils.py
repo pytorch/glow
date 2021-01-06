@@ -70,28 +70,30 @@ def check_skip(case):
         case.skipTest("Skipping tests for backend: " + backend)
 
 
-def assert_equivalent(result, other_result, atol=5e-4, rtol=1e-3):
-    if isinstance(result, tuple) or isinstance(other_result, tuple):
-        assert isinstance(result, tuple) and isinstance(other_result, tuple)
-        assert len(result) == len(other_result)
+def assert_equivalent(
+    result1_name, result1, result2_name, result2, atol=5e-4, rtol=1e-3
+):
+    if isinstance(result1, tuple) or isinstance(result2, tuple):
+        assert isinstance(result1, tuple) and isinstance(result2, tuple)
+        assert len(result1) == len(result2)
         return all(
-            assert_equivalent(a, b, atol=atol, rtol=rtol)
-            for a, b in zip(result, other_result)
+            assert_equivalent(result1_name, a, result2_name, b, atol=atol, rtol=rtol)
+            for a, b in zip(result1, result2)
         )
-    elif other_result.dtype == torch.bool:
-        diff = torch.eq(result, other_result)
+    elif result2.dtype == torch.bool:
+        diff = torch.eq(result1, result2)
         if torch.all(diff):
             return True
         else:
             error = f"Diff:{diff}\n"
             raise AssertionError(error)
     else:
-        if torch.allclose(result, other_result, atol, rtol):
+        if torch.allclose(result1, result2, atol, rtol):
             return True
         else:
-            diff = torch.abs(result - other_result)
-            error = f"First result:\n{result}\n"
-            error += f"Second result:\n{other_result}\n"
+            diff = torch.abs(result1 - result2)
+            error = f"{result1_name} result:\n{result1}\n"
+            error += f"{result2_name} result:\n{result2}\n"
             error += f"Diff:\n{diff}\n"
             error += f"Max diff:\n{torch.max(diff)}"
             raise AssertionError(error)
@@ -147,16 +149,48 @@ def compare_tracing_methods(
                 glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
                 glow_result = glow_trace(*glow_inputs)
         if reference:
-            assert_equivalent(reference, fusion_trace, atol=atol, rtol=rtol)
-            assert_equivalent(reference, torchscript_result, atol=atol, rtol=rtol)
+            assert_equivalent(
+                "Reference",
+                reference,
+                "Glow fusion",
+                fusion_trace,
+                atol=atol,
+                rtol=rtol,
+            )
+            assert_equivalent(
+                "Reference",
+                reference,
+                "TorchScript",
+                torchscript_result,
+                atol=atol,
+                rtol=rtol,
+            )
             if not skip_to_glow:
-                assert_equivalent(reference, glow_result, atol=atol, rtol=rtol)
+                assert_equivalent(
+                    "Reference", reference, "Glow", glow_result, atol=atol, rtol=rtol
+                )
         # This is written out manually instead of using combinations in order to aid
         # debugging. TODO: Clean up.
-        assert_equivalent(fusion_result, torchscript_result, atol=atol, rtol=rtol)
+        assert_equivalent(
+            "Glow fusion",
+            fusion_result,
+            "TorchScript",
+            torchscript_result,
+            atol=atol,
+            rtol=rtol,
+        )
         if not skip_to_glow:
-            assert_equivalent(fusion_result, glow_result, atol=atol, rtol=rtol)
-            assert_equivalent(torchscript_result, glow_result, atol=atol, rtol=rtol)
+            assert_equivalent(
+                "Glow fusion", fusion_result, "Glow", glow_result, atol=atol, rtol=rtol
+            )
+            assert_equivalent(
+                "TorchScript",
+                torchscript_result,
+                "Glow",
+                glow_result,
+                atol=atol,
+                rtol=rtol,
+            )
 
 
 def assert_fused(fused_graph, *ops, accept_any=False, strict=False):

@@ -18,6 +18,17 @@ class SimpleToModel(torch.nn.Module):
         return tensor
 
 
+class ToWithDeviceModel(torch.nn.Module):
+    def __init__(self, *conversions):
+        super(ToWithDeviceModel, self).__init__()
+        self.conversions = conversions
+
+    def forward(self, tensor):
+        for conversion_type in self.conversions:
+            tensor = tensor.to(device="cpu", dtype=conversion_type)
+        return tensor
+
+
 class TestTo(unittest.TestCase):
     @parameterized.expand(
         [
@@ -26,6 +37,17 @@ class TestTo(unittest.TestCase):
             (
                 "to_int_to_float",
                 SimpleToModel(torch.int, torch.float),
+                torch.randn(1, 2, 3, 4),
+            ),
+            (
+                "to_int_with_device",
+                ToWithDeviceModel(torch.int),
+                torch.randn(1, 2, 3, 4),
+            ),
+            ("to_cpu", SimpleToModel("cpu"), torch.randn(1, 2, 3, 4)),
+            (
+                "to_tensor",
+                SimpleToModel(torch.randn(3, 4).type(torch.int32)),
                 torch.randn(1, 2, 3, 4),
             ),
         ]

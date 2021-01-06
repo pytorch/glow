@@ -1593,6 +1593,7 @@ NNPIBackend::transformPostOptPipeline(Function *F,
     // parallelization we performed on quantizes/dequantizes.
     auto P = getOptimizationPipeline();
     P->removeAllInstancesOfPass(FunctionPassID::SinkConversions);
+    P->removeAllInstancesOfPass(FunctionPassID::SinkConcatBelowQuantize);
 
     // Do not re-merge ConcatNodes, as we may be parallelizing them.
     const bool restoreMerge = cctx.optimizationOpts.skipConcatMerging;
