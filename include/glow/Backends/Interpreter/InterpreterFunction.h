@@ -363,6 +363,11 @@ private:
       const SparseLengthsWeightedSumInst *I);
 
   template <typename ElemTy>
+  void fwdEmbeddingInstImpl(Tensor *wtT, Tensor *indT, Tensor *outT,
+                            int64_t padIdx, bool sparse, bool scale,
+                            dim_t embedding_dim);
+
+  template <typename ElemTy>
   void fwdEmbeddingBagInstFloatImpl(const EmbeddingBagInst *I);
 
   template <typename ElemTy>

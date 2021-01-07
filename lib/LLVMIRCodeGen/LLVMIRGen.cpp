@@ -3056,6 +3056,29 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::EmbeddingInstKind: {
+    auto *SI = cast<EmbeddingInst>(I);
+    auto *dest = SI->getDest();
+    auto *weights = SI->getWeights();
+    auto *indices = SI->getIndices();
+    auto *padIdx = emitConstSizeT(builder, SI->getPadIdx());
+    auto *scale = emitConstI1(builder, SI->getScale());
+    auto *sparse = emitConstI1(builder, SI->getSparse());
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *indDims = emitValueDims(builder, indices);
+    auto *indSize = emitConstDimT(builder, indices->dims().size());
+    assert(weights->dims().size() == 2 && "weights must be 2-D");
+    auto *numEmbedding = emitConstDimT(builder, weights->dims()[0]);
+    auto *embeddingDim = emitConstDimT(builder, weights->dims()[1]);
+    auto *F = getFunction("embedding", dest->getElementType());
+    createCall(builder, F,
+               {destPtr, weightsPtr, indicesPtr, indDims, indSize, numEmbedding,
+                embeddingDim, padIdx, scale, sparse});
+    break;
+  }
+
   case Kinded::Kind::EmbeddingBagInstKind: {
     auto *SI = cast<EmbeddingBagInst>(I);
     auto *dest = SI->getDest();

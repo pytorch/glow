@@ -13684,6 +13684,76 @@ static void addEmbeddingBagPartialInputs(
   }
 }
 
+/// Test Embedding.
+template <typename DataType>
+static void testEmbedding(glow::PlaceholderBindings &bindings,
+                          glow::Module &mod, glow::Function *F,
+                          glow::ExecutionEngine &EE, ElemKind DTy,
+                          float allowedError, int64_t padIdx = -1) {
+  /*
+    WEIGHTS  = [[2.0, -0.5], [4, 5.1], [1, 2.3]]
+    INDICES = [1, 0, 2]
+    OUTPUT =  [[4, 5.1], [2.0, -0.5], [1, 2.3]]
+  */
+
+  // If hasEndOffset then add some additional junk to the end of indices and
+  // weights and an extra offset to offsets.
+
+  auto *weights = mod.createPlaceholder(DTy, {3, 2}, "weights", false);
+  auto *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {3}, "indices", false);
+  bool scale = false;
+  bool sparse = false;
+
+  int64_t indexValues[] = {1, 0, 2};
+
+  bindings.allocate(weights)->getHandle<DataType>() = {2.0, -0.5, 4,
+                                                       5.1, 1,    2.3};
+
+  bindings.allocate(indices)->getHandle<int64_t>() = indexValues;
+
+  auto *R =
+      F->createEmbedding("Embedding", weights, indices, padIdx, scale, sparse);
+  auto *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, {3, 2});
+
+  if (padIdx == -1) {
+    expected.getHandle<DataType>() = {4, 5.1, 2.0, -0.5, 1, 2.3};
+  } else if (padIdx == 0) {
+    expected.getHandle<DataType>() = {4, 5.1, 0, 0, 1, 2.3};
+  } else if (padIdx == 1) {
+    expected.getHandle<DataType>() = {0, 0, 2.0, -0.5, 1, 2.3};
+  } else if (padIdx == 2) {
+    expected.getHandle<DataType>() = {4, 5.1, 2.0, -0.5, 0, 0};
+  }
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test that Embedding is correctly supported in FloatTy
+TEST_P(OperatorTest, Embedding_Float) {
+  CHECK_IF_ENABLED();
+  testEmbedding<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001, -1);
+}
+
+/// Test that Embedding is correctly supported in Float16Ty
+TEST_P(OperatorTest, Embedding_Float16) {
+  CHECK_IF_ENABLED();
+  testEmbedding<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                           0.0001, -1);
+}
+
+/// Test that Embedding is correctly supported when PadIdx is specified.
+TEST_P(OperatorTest, Embedding_with_PadIdx) {
+  CHECK_IF_ENABLED();
+  testEmbedding<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001, 2);
+}
+
 /// Test EmbeddingBag with an N-dimension embedding table.
 template <typename DataType>
 static void testEmbeddingBag(glow::PlaceholderBindings &bindings,

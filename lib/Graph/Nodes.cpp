@@ -565,6 +565,19 @@ static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
   return isValid;
 }
 
+static bool verifyEmbedding(NodeValue dest, NodeValue weights,
+                            NodeValue indices) {
+  bool isValid = checkType(dest, weights.getElementType(), dest.getNode());
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &=
+      expectCompareTrue("Weights must be a 2D tensor", weights.dims().size(),
+                        size_t(2), weights.getNode());
+  return isValid;
+}
+
 static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
                                NodeValue weights, NodeValue indices,
                                NodeValue offsets) {
@@ -1566,6 +1579,10 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
 bool EmbeddingBagNode::verify() const {
   return verifyEmbeddingBag(getResult(), getData(), getWeights(), getIndices(),
                             getOffsets());
+}
+
+bool EmbeddingNode::verify() const {
+  return verifyEmbedding(getResult(), getWeights(), getIndices());
 }
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {

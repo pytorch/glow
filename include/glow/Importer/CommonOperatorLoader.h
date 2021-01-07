@@ -1194,6 +1194,37 @@ protected:
     return Error::success();
   }
 
+  Error loadEmbedding(const OpType &op, ArgumentDictionaryTy &dict) {
+    NodeValue weights;
+    ASSIGN_VALUE_OR_RETURN_ERR(weights, getNodeValueByName(op.input(0)));
+
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+
+    int64_t padIdx = -1;
+    if (dict.count("padIdx")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(padIdx, loadInt(dict["padIdx"]));
+    }
+    bool scale = false;
+    if (dict.count("scale")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(scale, loadInt(dict["scale"]));
+      scale = (bool)scale;
+      RETURN_ERR_IF_NOT(scale == false,
+                        "Currently only support scale_grad_by_freq == 'false'");
+    }
+    bool sparse = false;
+    if (dict.count("sparse")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(sparse, loadInt(dict["sparse"]));
+      sparse = (bool)sparse;
+      RETURN_ERR_IF_NOT(sparse == false,
+                        "Currently only support sparse == 'false'");
+    }
+    auto *node = G_->createEmbedding(loadOperatorName(op), weights, indices,
+                                     padIdx, scale, sparse);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   Error loadEmbeddingBag(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in0;
     ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
@@ -1631,6 +1662,10 @@ protected:
     }
     if (typeName == "EmbeddingBag") {
       RETURN_IF_ERR(loadEmbeddingBag(op, dict));
+      return true;
+    }
+    if (typeName == "Embedding") {
+      RETURN_IF_ERR(loadEmbedding(op, dict));
       return true;
     }
     if (typeName == "LengthsToRanges") {
