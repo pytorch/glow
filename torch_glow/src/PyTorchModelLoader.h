@@ -406,6 +406,10 @@ private:
   // \returns error on failure.
   Error loadBBoxTransform(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch torchvision::nms node.
+  /// \returns error on failure.
+  Error loadNms(const torch::jit::Node *ptNode);
+
   /// Load all PyTorch prim::GetAttr nodes in \p graph. This method uses the
   /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr
   /// nodes. If the output type of a prim::GetAttr is a tensor, this will load

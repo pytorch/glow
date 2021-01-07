@@ -1024,6 +1024,15 @@ struct CompareInputs {
   };
 };
 
+/// Indexes used for _caffe2::BBoxTransform inputs
+struct NmsInputs {
+  enum {
+    boxes = 0,
+    scores,
+    threshold,
+  };
+};
+
 } // namespace
 
 // static
@@ -1177,6 +1186,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"_caffe2::RoIAlign"}, &PyTorchModelLoader::loadRoiAlign},
       {{"_caffe2::RoIAlignRotated"}, &PyTorchModelLoader::loadRoiAlignRotated},
       {{"_caffe2::BBoxTransform"}, &PyTorchModelLoader::loadBBoxTransform},
+      {{"torchvision::nms"}, &PyTorchModelLoader::loadNms},
       {{"aten::index_select"}, &PyTorchModelLoader::loadIndexSelect},
       {{"aten::clamp_min"}, &PyTorchModelLoader::loadClampMin},
       {{"aten::expand_as"}, &PyTorchModelLoader::loadExpandAs},
@@ -6502,6 +6512,31 @@ Error PyTorchModelLoader::loadBBoxTransform(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(addValueMapping(outputs[0], BBTN->getBoxOut()));
   RETURN_IF_ERR(addValueMapping(outputs[1], BBTN->getRoiBatchSplits()));
   return Error::success();
+}
+
+Error PyTorchModelLoader::loadNms(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue boxes, scores;
+  float threshold;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      boxes, getGlowNodeValueForValue(inputs[NmsInputs::boxes]));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      scores, getGlowNodeValueForValue(inputs[NmsInputs::scores]));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      threshold, to32Bit(iValToDouble(
+                     getGlowIValueForValue(inputs[NmsInputs::threshold]))));
+
+  RETURN_ERR_IF_NOT(boxes.dims()[0] == scores.dims()[0],
+                    "Boxes and scores must have the same number of elements in "
+                    "dimension 0 for torchvision::nms.");
+
+  auto *nmsNode =
+      F_.createNonMaxSuppressionV4("nms", boxes, scores, 0, 0, threshold, 0);
+
+  RETURN_ERR(addValueMapping(outputs[0], nmsNode->getIndices()));
 }
 
 Error PyTorchModelLoader::loadAttributes(
