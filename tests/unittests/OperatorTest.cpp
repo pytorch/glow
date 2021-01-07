@@ -17687,6 +17687,93 @@ TEST_P(OperatorTest, elementwiseLinear) {
   }
 }
 
+/// Implementation of ReduceAdd operation, in the order done on the ivp.
+template <class T>
+static T ReducedAdd(const std::vector<T> v, int ivp_vec_size) {
+  T result = (T)0;
+  std::vector<T> tmp10(ivp_vec_size);
+  std::vector<T> tmp9(ivp_vec_size);
+  std::vector<T> tmp8(ivp_vec_size);
+  std::vector<T> tmp7(ivp_vec_size);
+  std::vector<T> tmp6(ivp_vec_size);
+  std::vector<T> tmp5(ivp_vec_size);
+  std::vector<T> tmp4(ivp_vec_size);
+  std::vector<T> tmp3(ivp_vec_size);
+  std::vector<T> tmp2(ivp_vec_size);
+  std::vector<T> tmp1(ivp_vec_size);
+
+  // Step 1: Copy input vector into tmp10.
+  for (int i = 0; i < ivp_vec_size; i++) {
+    tmp10[i] = v[i];
+  }
+
+  // Step 2: Swap every pair: 0 with 1, 2 with 3, ....
+  for (int i = 0; i < ivp_vec_size / 2; i++) {
+    tmp9[2 * i] = tmp10[2 * i + 1];
+    tmp9[2 * i + 1] = tmp10[2 * i];
+  }
+  // Step 3: Sum the result vector.
+  for (int i = 0; i < ivp_vec_size; i++) {
+    tmp8[i] = tmp10[i] + tmp9[i];
+  }
+  // Step 4: Swap pairs of elements: 0 & 1 with 2 & 3.
+  for (int i = 0; i < ivp_vec_size / 4; i++) {
+    tmp7[4 * i] = tmp8[4 * i + 2];
+    tmp7[4 * i + 1] = tmp8[4 * i + 3];
+    tmp7[4 * i + 2] = tmp8[4 * i];
+    tmp7[4 * i + 3] = tmp8[4 * i + 1];
+  }
+  // Step 5: Sum.
+  for (int i = 0; i < ivp_vec_size; i++) {
+    tmp6[i] = tmp7[i] + tmp8[i];
+  }
+  // Step 6: Swap 4-tupple blocks.
+  for (int i = 0; i < ivp_vec_size / 8; i++) {
+    tmp5[8 * i] = tmp6[8 * i + 4];
+    tmp5[8 * i + 1] = tmp6[8 * i + 5];
+    tmp5[8 * i + 2] = tmp6[8 * i + 6];
+    tmp5[8 * i + 3] = tmp6[8 * i + 7];
+    tmp5[8 * i + 4] = tmp6[8 * i];
+    tmp5[8 * i + 5] = tmp6[8 * i + 1];
+    tmp5[8 * i + 6] = tmp6[8 * i + 2];
+    tmp5[8 * i + 7] = tmp6[8 * i + 3];
+  }
+  // Step 6: Sum.
+  for (int i = 0; i < ivp_vec_size; i++) {
+    tmp4[i] = tmp5[i] + tmp6[i];
+  }
+  // Step 7: Swap 8-tupple blocks.
+  for (int i = 0; i < ivp_vec_size / 16; i++) {
+    tmp3[16 * i] = tmp4[16 * i + 8];
+    tmp3[16 * i + 1] = tmp4[16 * i + 9];
+    tmp3[16 * i + 2] = tmp4[16 * i + 10];
+    tmp3[16 * i + 3] = tmp4[16 * i + 11];
+    tmp3[16 * i + 4] = tmp4[16 * i + 12];
+    tmp3[16 * i + 5] = tmp4[16 * i + 13];
+    tmp3[16 * i + 6] = tmp4[16 * i + 14];
+    tmp3[16 * i + 7] = tmp4[16 * i + 15];
+    tmp3[16 * i + 8] = tmp4[16 * i + 0];
+    tmp3[16 * i + 9] = tmp4[16 * i + 1];
+    tmp3[16 * i + 10] = tmp4[16 * i + 2];
+    tmp3[16 * i + 11] = tmp4[16 * i + 3];
+    tmp3[16 * i + 12] = tmp4[16 * i + 4];
+    tmp3[16 * i + 13] = tmp4[16 * i + 5];
+    tmp3[16 * i + 14] = tmp4[16 * i + 6];
+    tmp3[16 * i + 15] = tmp4[16 * i + 7];
+  }
+  // Step 6: Sum.
+  for (int i = 0; i < ivp_vec_size; i++) {
+    tmp2[i] = tmp3[i] + tmp4[i];
+  }
+  // Step 7.
+  tmp1[0] = tmp2[16];
+
+  // Step 8.
+  result = tmp1[0] + tmp2[0];
+
+  return result;
+}
+
 /// Helper to test DotProduct2D using \p DTy.
 template <typename DataType>
 static void testDotProduct2D(glow::PlaceholderBindings &bindings,
@@ -17699,8 +17786,12 @@ static void testDotProduct2D(glow::PlaceholderBindings &bindings,
                                                     "X", false);
   auto *Y = createPlaceholderConditionallyQuantized(mod, DTy, {kRows, kCols},
                                                     "Y", false);
+  auto *P =
+      createPlaceholderConditionallyQuantized(mod, DTy, {1, kCols}, "P", false);
+
   auto XH = bindings.allocate(X)->getHandle<DataType>();
   auto YH = bindings.allocate(Y)->getHandle<DataType>();
+  auto PH = bindings.allocate(P)->getHandle<DataType>();
 
   // Fill inputs with random values.
   XH.randomize(-3.0, 3.0, mod.getPRNG());
@@ -17710,15 +17801,51 @@ static void testDotProduct2D(glow::PlaceholderBindings &bindings,
   auto expected = createTensorConditionallyQuantized(DTy, {kRows});
   auto expectedH = expected.getHandle<DataType>();
 
-  for (dim_t i = 0; i < kRows; ++i) {
-    DataType dotProduct = 0.0f;
+  if (DTy == ElemKind::Float16Ty) {
+#define IVP_HALF_VEC_SIZE 32
+    for (dim_t i = 0; i < kRows; ++i) {
+      DataType dotProduct = 0.0f;
 
-    // Compute dot product of the i-th row of X and Y.
-    for (dim_t j = 0; j < kCols; ++j) {
-      dotProduct += (XH.at({i, j}) * YH.at({i, j}));
+      // Compute product of the i-th row of X and Y.
+      for (dim_t j = 0; j < kCols; ++j) {
+        PH.at({1, j}) = (XH.at({i, j}) * YH.at({i, j}));
+      }
+
+      dim_t numVecs = kCols / IVP_HALF_VEC_SIZE;
+      dim_t tailSize = kCols - (numVecs * IVP_HALF_VEC_SIZE);
+      std::vector<DataType> sumVec(IVP_HALF_VEC_SIZE, (DataType)0);
+      DataType inpVal;
+
+      // Calculate the sum of the full vectors (numVecs * IVP_HALF_VEC_SIZE
+      // elements).
+      for (dim_t i = 0; i < numVecs; ++i) {
+        for (dim_t k = 0; k < IVP_HALF_VEC_SIZE; ++k) {
+          inpVal = (DataType)PH.at({1, (IVP_HALF_VEC_SIZE * i + k)});
+          sumVec[k] += inpVal;
+        }
+      }
+
+      // Calculate the sum of the tail.
+      for (dim_t k = 0; k < tailSize; ++k) {
+        inpVal = (DataType)PH.at({1, (IVP_HALF_VEC_SIZE * numVecs + k)});
+        sumVec[k] += inpVal;
+      }
+
+      dotProduct = ReducedAdd(sumVec, IVP_HALF_VEC_SIZE);
+      expectedH.at({i}) = dotProduct;
     }
+#undef IVP_HALF_VEC_SIZE
+  } else {
+    for (dim_t i = 0; i < kRows; ++i) {
+      DataType dotProduct = 0.0f;
 
-    expectedH.at({i}) = dotProduct;
+      // Compute dot product of the i-th row of X and Y.
+      for (dim_t j = 0; j < kCols; ++j) {
+        dotProduct += (XH.at({i, j}) * YH.at({i, j}));
+      }
+
+      expectedH.at({i}) = dotProduct;
+    }
   }
 
   // Compile and run the model.
