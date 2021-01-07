@@ -826,6 +826,36 @@ struct ToOtherInputs {
   };
 };
 
+/// Indexes of aten::to.prim_other inputs.
+struct ToPrimOtherInputs {
+  enum {
+    input = 0,
+    non_blocking,
+    copy,
+  };
+};
+
+/// Indexes of aten::to.prim_other inputs.
+struct ToPrimDtypeInputs {
+  enum {
+    input = 0,
+    dtype,
+    non_blocking,
+    copy,
+  };
+};
+
+/// Indexes of aten::to.prim_other inputs.
+struct ToPrimDeviceInputs {
+  enum {
+    input = 0,
+    device,
+    dtype,
+    non_blocking,
+    copy,
+  };
+};
+
 /// Indexes of aten::to.dtype inputs.
 struct ToDtypeInputs {
   enum {
@@ -834,18 +864,6 @@ struct ToDtypeInputs {
     non_blocking,
     copy,
     memory_format,
-  };
-};
-
-/// Indexes of aten::to inputs.
-struct ToWithDeviceInputs {
-  enum {
-    input = 0,
-    device, // Not used
-    dtype,
-    non_block,     // Not used
-    copy,          // Not used
-    memory_format, // Not used
   };
 };
 
@@ -5349,7 +5367,7 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   else if (inputs.size() == 6 && outputs.size() == 1) {
     dtype_arg = ToDeviceInputs::dtype;
   }
-  // There are two alternatives with 5 inputs:
+  // There are three alternatives with 5 inputs:
   else if (inputs.size() == 5 && outputs.size() == 1) {
     auto glowVal = getGlowIValueForValue(inputs[ToOtherInputs::other]);
     if (glowVal) {
@@ -5357,6 +5375,22 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
       //            bool copy=False, MemoryFormat? memory_format=None)
       if ((*glowVal)->isTensor()) {
         return MAKE_ERR("aten::to.other is not supported.");
+      }
+      // - to.prim_device(Tensor self, Device device, ScalarType? dtype=None,
+      //                  bool non_blocking=False, bool copy=False)
+      else if ((*glowVal)->isString()) {
+        auto glowDtypeVal =
+            getGlowIValueForValue(inputs[ToPrimDeviceInputs::dtype]);
+        // Check if the dtype is set, otherwise nop (device is "cpu")
+        if (glowDtypeVal) {
+          if ((*glowDtypeVal)->isNone()) {
+            RETURN_ERR(addValueMapping(outputs[0], input));
+          }
+        } else {
+          RETURN_ERR(glowVal.takeError());
+        }
+        dtype_arg = ToPrimDeviceInputs::dtype;
+        return MAKE_ERR("aten::to.prim_device is not supported.");
       }
       // - to.dtype(Tensor self, ScalarType dtype, bool non_blocking=False,
       //            bool copy=False, MemoryFormat? memory_format=None)
@@ -5366,6 +5400,17 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
     } else {
       RETURN_ERR(glowVal.takeError());
     }
+  }
+  // The 4 arguments version is similar to to.dtype, without a memory format
+  // - to.prim_dtype(Tensor self, ScalarType dtype,
+  //                 bool non_blocking=False, bool copy=False)
+  else if (inputs.size() == 4 && outputs.size() == 1) {
+    dtype_arg = ToPrimDtypeInputs::dtype;
+  }
+  // The 3 arguments version only uses unsupported non_blocking/copy flags
+  // - to.prim_other(Tensor self, bool non_blocking=False, bool copy=False)
+  else if (inputs.size() == 3 && outputs.size() == 1) {
+    return MAKE_ERR("aten::to.prim_other is not supported.");
   }
   // Unsupported number of input/output arguments
   else {
