@@ -439,7 +439,16 @@ struct ConvInputs {
     groups = 8,
     benchmark = 9,
     deterministic = 10,
-    cudnn_enabled = 11
+    cudnn_enabled = 11,
+  };
+};
+
+/// Indexes of aten::select inputs.
+struct SelectInputs {
+  enum {
+    input = 0,
+    dim = 1,
+    index = 2,
   };
 };
 
@@ -1142,6 +1151,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::mm"}, &PyTorchModelLoader::loadMM},
       {{"aten::bmm"}, &PyTorchModelLoader::loadBmm},
       {{"aten::addmm"}, &PyTorchModelLoader::loadAddMM},
+      {{"aten::select"}, &PyTorchModelLoader::loadSelect},
       {{"aten::flatten"}, &PyTorchModelLoader::loadFlatten},
       {{"aten::squeeze", "aten::squeeze_"}, &PyTorchModelLoader::loadSqueeze},
       {{"aten::unsqueeze", "aten::unsqueeze_"},
@@ -5496,6 +5506,68 @@ Error PyTorchModelLoader::loadMaskedFill(const torch::jit::Node *ptNode) {
 
   auto out = F_.createSelect("masked_fill", mask, valueSplat, in);
   RETURN_ERR(addValueMapping(outputs[0], out));
+}
+
+Error PyTorchModelLoader::loadSelect(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[SelectInputs::input]));
+
+  int64_t axis;
+  GlowIValue *axisVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(axisVal,
+                             getGlowIValueForValue(inputs[SelectInputs::dim]));
+  ASSIGN_VALUE_OR_RETURN_ERR(axis, iValToInt(axisVal));
+
+  NodeValue index;
+  std::vector<dim_t> indexDims = {1};
+  // Gather expects NodeValue
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      index, loadNodeValueOrBroadcastedIValue(inputs[SelectInputs::index],
+                                              indexDims, false));
+  GatherNode *gatherOutput;
+
+  /* If axis!=0 then reshape tensor and put the axis dimension as the
+     outermost dimension. Do this because gather can only gather elements
+     from the outermost dimension.
+  */
+  if (axis != 0) {
+    dim_t axisDim;
+    auto inputDims = input.dims();
+    std::vector<dim_t> transDims;
+    //
+    for (auto it = inputDims.begin(); it != inputDims.end(); ++it) {
+      if (std::distance(inputDims.begin(), it) == axis) {
+        axisDim = *it;
+      } else {
+        transDims.push_back(*it);
+      }
+    }
+    transDims.insert(transDims.begin(), axisDim);
+    auto reshapeOutput = F_.createReshape("shape", input, transDims);
+    gatherOutput = F_.createGather("select", reshapeOutput, index, axis);
+  }
+
+  // Perform gather to do the selection
+  gatherOutput = F_.createGather("select", input, index, axis);
+
+  // Remove the unary dimension that's added by Gather.
+  auto gatherRes = gatherOutput->getResult();
+  std::vector<dim_t> outDims = gatherRes.dims();
+  for (auto it = outDims.begin(); it != outDims.end(); ++it) {
+    if (std::distance(outDims.begin(), it) == axis) {
+      outDims.erase(it);
+      break;
+    }
+  }
+
+  // Reshape to flatten unary dimension
+  auto reshapeOutput = F_.createReshape("reshape", gatherRes, outDims);
+  return addValueMapping(outputs[0], reshapeOutput);
 }
 
 Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {

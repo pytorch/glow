@@ -741,6 +741,10 @@ private:
   /// \returns error on failure.
   Error loadFlatten(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::select node.
+  /// \returns error on failure.
+  Error loadSelect(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::squeeze node.
   /// \returns error on failure.
   Error loadSqueeze(const torch::jit::Node *ptNode);
