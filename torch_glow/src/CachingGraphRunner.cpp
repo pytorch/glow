@@ -342,6 +342,13 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
+  std::string onnxFileNamePrefix;
+  if (settings.writeToOnnx && settings.onnxFileNamePrefix.empty()) {
+    onnxFileNamePrefix = info.functionName;
+  } else if (settings.writeToOnnx) {
+    onnxFileNamePrefix = settings.onnxFileNamePrefix;
+  }
+
   if (settings.writeToOnnx || settings.jitVsGlowCompare) {
 
     // We will use original graph for runOnJit, which means the first input
@@ -480,10 +487,11 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
       if (settings.writeToOnnx) {
         std::string filename;
+        LOG(ERROR) << onnxFileNamePrefix.c_str();
         ASSIGN_VALUE_OR_RETURN_ERR(
             filename,
             getOnnxFilePath(
-                strFormat("%s_input_%zu", info.functionName.c_str(), runId),
+                strFormat("%s_input_%zu", onnxFileNamePrefix.c_str(), runId),
                 settings.writeOnnxToTmp));
         std::ofstream of(filename, std::ios::binary);
         if (!of) {
@@ -661,7 +669,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
         ASSIGN_VALUE_OR_RETURN_ERR(
             filename,
             getOnnxFilePath(strFormat("%s_glow_output_%zu",
-                                      info.functionName.c_str(), runId),
+                                      onnxFileNamePrefix.c_str(), runId),
                             settings.writeOnnxToTmp));
         std::ofstream of(filename, std::ios::binary);
         if (!of) {
@@ -674,12 +682,11 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
 
       if (settings.writeToOnnx) {
-
         std::string filename;
         ASSIGN_VALUE_OR_RETURN_ERR(
             filename,
             getOnnxFilePath(strFormat("%s_pytorch_output_%zu",
-                                      info.functionName.c_str(), runId),
+                                      onnxFileNamePrefix.c_str(), runId),
                             settings.writeOnnxToTmp));
         std::ofstream of(filename, std::ios::binary);
         if (!of) {

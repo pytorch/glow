@@ -379,15 +379,16 @@ std::string jitNodeToString(const torch::jit::Node *node) {
 /// Writes the given Function \p F to file using ONNXModelWriter. If \p zipMode
 /// is set then zipMode will be used for the writer. \returns an Error if one
 /// occurred.
-Error dumpOnnxModel(glow::Function &F, bool zipMode, bool writeOnnxToTmp) {
+Error dumpOnnxModel(glow::Function &F, bool zipMode,
+                    const std::string &fileName, bool writeOnnxToTmp) {
   constexpr size_t kIrVer = 7, kOpsetVer = 9;
   std::string filepath;
   if (writeOnnxToTmp) {
     ASSIGN_VALUE_OR_RETURN_ERR(
         filepath,
-        getTempFileLoc(F.getName().str(), (zipMode ? ".zip" : ".onnxtxt")));
+        getTempFileLoc(fileName, (zipMode ? ".onnx.zip" : ".onnx.txt")));
   } else {
-    filepath = F.getName().str() + (zipMode ? ".zip" : ".onnxtxt");
+    filepath = fileName + (zipMode ? ".onnx.zip" : ".onnx.txt");
   }
 
   LOG(INFO) << "Writing ONNX model to " << filepath;
@@ -6769,8 +6770,12 @@ PyTorchModelLoader::PyTorchModelLoader(
           "allow this set flag `writeWithoutRandomize`.");
       LOG_IF(WARNING, !settings_.randomizeConstants)
           << "Write to Onnx without randomize constants!!!";
-      RETURN_IF_ERR(
-          dumpOnnxModel(F, settings_.onnxZipMode, settings_.writeOnnxToTmp));
+      std::string filename = settings_.onnxFileNamePrefix;
+      if (filename.empty()) {
+        filename = F.getName().str();
+      }
+      RETURN_IF_ERR(dumpOnnxModel(F, settings_.onnxZipMode, filename,
+                                  settings_.writeOnnxToTmp));
     }
 
     return Error::success();

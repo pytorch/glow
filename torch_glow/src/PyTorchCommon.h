@@ -129,6 +129,9 @@ public:
   /// Must be true in twshared hosts.
   bool writeOnnxToTmp = false;
 
+  /// Optional prefix for naming of onnx files (otherwise an internal id)
+  std::string onnxFileNamePrefix = "";
+
   /// Whether or not to do a numerical comparions of Glow and jit outputs
   bool jitVsGlowCompare = false;
 
