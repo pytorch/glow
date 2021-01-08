@@ -317,10 +317,9 @@ private:
   void fwdUnaryTrigonometricImpl(const InstKind *I,
                                  std::function<float(float)> func);
   template <typename ElemTy>
-  void fwdBatchedReduceAddInstFloatImpl(Value *batch, Value *dest,
-                                        unsigned_t axis,
-                                        const ShapeVector &eBatchDims,
-                                        const ShapeVector &eDestDims);
+  void fwdBatchedReduceAddInstImpl(Value *batch, Value *dest, unsigned_t axis,
+                                   const ShapeVector &eBatchDims,
+                                   const ShapeVector &eDestDims);
 
   template <typename ElemTy>
   void fwdBatchedReduceMinInstImpl(Value *batch, Value *dest,

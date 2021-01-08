@@ -84,6 +84,24 @@ using namespace glow;
     llvm_unreachable("Type is not supported");                                 \
   }
 
+#define dispatchFloatingPointAndInt32Impl(functionName, elemTy, ...)           \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    functionName<float>(__VA_ARGS__);                                          \
+    break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    functionName<float16_t>(__VA_ARGS__);                                      \
+    break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    functionName<bfloat16_t>(__VA_ARGS__);                                     \
+    break;                                                                     \
+  case ElemKind::Int32ITy:                                                     \
+    functionName<int>(__VA_ARGS__);                                            \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define dispatchFloatingPointAndIndexImpl(functionName, elemTy, elemTyIndex,   \
                                           ...)                                 \
   switch (elemTy) {                                                            \
@@ -4032,10 +4050,17 @@ void BoundInterpreterFunction::fwdBatchedAddInst(
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdBatchedReduceAddInstFloatImpl(
+void BoundInterpreterFunction::fwdBatchedReduceAddInstImpl(
     Value *batch, Value *dest, unsigned_t axis, const ShapeVector &eBatchDims,
     const ShapeVector &eDestDims) {
-  staticAssertFloatingPointType(ElemTy);
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t,
+                       typename std::remove_cv<ElemTy>::type>::value ||
+          std::is_same<bfloat16_t,
+                       typename std::remove_cv<ElemTy>::type>::value ||
+          std::is_same<int, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point and int32 values only");
 
   // Get unowned handles of the batch and dest with these new expanded dims.
   auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
@@ -4136,9 +4161,9 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
       llvm_unreachable("Axis should be less than max_tensor_dimensions.");
     }
   }
-  dispatchFloatingPointImpl(fwdBatchedReduceAddInstFloatImpl,
-                            batch->getElementType(), batch, dest, axis,
-                            eBatchDims, eDestDims);
+  dispatchFloatingPointAndInt32Impl(fwdBatchedReduceAddInstImpl,
+                                    batch->getElementType(), batch, dest, axis,
+                                    eBatchDims, eDestDims);
 }
 
 /// Macro to define ReduceMin/Max kernel implementation.
