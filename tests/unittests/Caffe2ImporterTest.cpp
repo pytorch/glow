@@ -1019,6 +1019,70 @@ TEST_F(Caffe2ImporterTest, parallelBatchedMatmulRHS) {
   // should be covered in the OperatorTest for MatMul already.
 }
 
+TEST_F(Caffe2ImporterTest, batchMatMulManyDims) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/batched_matmul.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  // Set of test cases: (lhs shape, rhs shape, expected result shape)
+  const std::vector<std::vector<std::vector<dim_t>>> shape_cases{
+      {{2, 2, 3, 4}, {2, 2, 4, 5}, {2, 2, 3, 5}},
+      {{2, 2, 3, 4}, {2, 1, 4, 5}, {2, 2, 3, 5}},
+      {{2, 2, 3, 4}, {2, 2, 2, 4, 5}, {2, 2, 2, 3, 5}},
+      {{2, 2, 2, 3, 4}, {3, 1, 2, 2, 4, 5}, {3, 2, 2, 2, 3, 5}},
+      {{2, 4, 5}, {3, 2, 5, 6}, {3, 2, 4, 6}},
+  };
+
+  for (const auto shapes : shape_cases) {
+    ExecutionEngine EE{};
+    auto &mod = EE.getModule();
+    Function *F = mod.createFunction("main");
+
+    PlaceholderBindings bindings;
+    Placeholder *output;
+
+    Tensor lhs{ElemKind::FloatTy, shapes[0]};
+    const auto lhsSize = std::accumulate(lhs.dims().begin(), lhs.dims().end(),
+                                         1, std::multiplies<>());
+    std::vector<float> lhsData(lhsSize);
+    std::iota(lhsData.begin(), lhsData.end(), 0);
+    lhs.getHandle() = lhsData;
+
+    Tensor rhs{ElemKind::FloatTy, shapes[1]};
+    const auto rhsSize = std::accumulate(rhs.dims().begin(), rhs.dims().end(),
+                                         1, std::multiplies<>());
+    std::vector<float> rhsData(rhsSize);
+    std::iota(rhsData.begin(), rhsData.end(), 10);
+    rhs.getHandle() = rhsData;
+
+    // Destroy the loader after the graph is loaded since the following
+    // execution will not depend on anything from the loader.
+    {
+      Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                                 {"lhs", "rhs"},
+                                 {&lhs.getType(), &rhs.getType()}, *F);
+      output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+      bindings.allocate(mod.getPlaceholders());
+      updateInputPlaceholdersByName(bindings, &mod, {"lhs", "rhs"},
+                                    {&lhs, &rhs});
+    }
+
+    EXPECT_EQ(shapes[2], output->dims().vec());
+
+    auto res = bindings.get(output);
+    EE.compile(CompilationMode::Infer);
+    EE.run(bindings);
+
+    auto result = res->getHandle();
+
+    const auto resultSize = std::accumulate(
+        output->dims().begin(), output->dims().end(), 1, std::multiplies<>());
+    result.dump(llvm::errs(), resultSize);
+  }
+}
+
 /// Test loading a FC node : I * transpose(W) + B.
 TEST_F(Caffe2ImporterTest, FC) {
   ExecutionEngine EE{};

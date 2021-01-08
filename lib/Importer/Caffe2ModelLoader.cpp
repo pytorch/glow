@@ -1377,7 +1377,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "MatMul") {
-    RETURN_IF_ERR(loadBatchMatMul(op, dict, false));
+    RETURN_IF_ERR(loadMatMul(op, dict));
     return Error::success();
   }
 

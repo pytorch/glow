@@ -125,6 +125,13 @@ public:
   /// Whether or not to use zip mode when writing graphs to ONNX files
   bool onnxZipMode = false;
 
+  /// Whether or not to write onnx files to /tmp/ directory.
+  /// Must be true in twshared hosts.
+  bool writeOnnxToTmp = false;
+
+  /// Optional prefix for naming of onnx files (otherwise an internal id)
+  std::string onnxFileNamePrefix = "";
+
   /// Whether or not to do a numerical comparions of Glow and jit outputs
   bool jitVsGlowCompare = false;
 
@@ -246,6 +253,9 @@ void enableSignalHandlerOverrides(bool enable = true);
 
 /// \returns whether or not signal handler overriding is enabled.
 bool signalHandlerOverridesEnabled();
+
+Expected<std::string> getTempFileLoc(const std::string &name,
+                                     const std::string &suffix);
 
 } // namespace glow
 

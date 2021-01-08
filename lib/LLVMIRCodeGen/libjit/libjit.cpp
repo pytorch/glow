@@ -641,6 +641,34 @@ static void libjit_flip_generic(const T *inW, T *outW, const dim_t *dims,
   }
 }
 
+template <typename ty>
+static void libjit_embedding_generic(ty *dest, ty *weights, int64_t *indices,
+                                     const dim_t *indDims, dim_t indSize,
+                                     dim_t num_embedding, dim_t embedding_dim,
+                                     int64_t padIdx, bool scale, bool sparse) {
+  dim_t indLen = 1;
+  for (dim_t idx = 0; idx < indSize; ++idx) {
+    indLen *= indDims[idx];
+  }
+
+  assert(!scale && "Currently only support scale_grad_by_freq == 'false'");
+  assert(!sparse && "Currently only support sparse == 'false'");
+  if (padIdx > -1) {
+    assert(static_cast<dim_t>(padIdx) <= num_embedding &&
+           "padIdx must be within num_embedding");
+  }
+  memset(dest, 0, indLen * embedding_dim * sizeof(ty));
+
+  for (int64_t i = 0; i < indLen; i++) {
+    int64_t index = indices[i];
+    if (index != padIdx) {
+      for (dim_t j = 0; j < embedding_dim; j++) {
+        dest[i * embedding_dim + j] = weights[index * embedding_dim + j];
+      }
+    }
+  }
+}
+
 template <typename inpT, typename outT>
 static void libjit_arg_max_generic(const inpT *inpW, outT *outW,
                                    const dim_t *dims, size_t numDims,
@@ -2151,6 +2179,14 @@ void libjit_sparse_lengths_weighted_sum_f_i32(float *dest, float *data,
                                               dim_t lineSize) {
   libjit_sparse_lengths_weighted_sum_generic(dest, data, weights, indices,
                                              lengths, segments, lineSize);
+}
+
+void libjit_embedding_f(float *dest, float *weights, int64_t *indices,
+                        const dim_t *indDims, dim_t indSize, dim_t numEmbedding,
+                        dim_t embeddingDim, int64_t padIdx, bool scale,
+                        bool sparse) {
+  libjit_embedding_generic(dest, weights, indices, indDims, indSize,
+                           numEmbedding, embeddingDim, padIdx, scale, sparse);
 }
 
 void libjit_embedding_bag_f(float *dest, float *data, float *weights,

@@ -4638,6 +4638,64 @@ void BoundInterpreterFunction::fwdEmbeddingBagInst(const EmbeddingBagInst *I) {
                             I->getData()->getElementType(), I);
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdEmbeddingInstImpl(Tensor *wtT, Tensor *indT,
+                                                    Tensor *outT,
+                                                    int64_t padIdx, bool sparse,
+                                                    bool scale,
+                                                    dim_t embedding_dim) {
+
+  staticAssertFloatingPointType(ElemTy);
+
+  assert(!scale && "Currently only support scale_grad_by_freq == 'false'");
+  assert(!sparse && "Currently only support sparse == 'false'");
+
+  // Indices Tensor can be an arbitrary shape.
+  // Get it flattened to 1D vector of size indLen
+  // Output Tensor can be an arbitray shape.
+  // Get it reshaped to a 2D tensor of size (indLen, embedding_dim)
+  dim_t indLen = 1;
+  for (dim_t idx = 0; idx < indT->dims().size(); ++idx) {
+    indLen *= indT->dims()[idx];
+  }
+  auto fIndT = indT->getUnowned({indLen});
+  auto fOutT = outT->getUnowned({indLen, embedding_dim});
+
+  fOutT.zero();
+
+  auto WH = wtT->getHandle<ElemTy>();
+  auto OH = fOutT.getHandle<ElemTy>();
+  auto IH = fIndT.getHandle<int64_t>();
+
+  for (dim_t i = 0; i < indLen; i++) {
+    dim_t index = IH.at(i);
+    if (index != padIdx) {
+      for (dim_t j = 0; j < embedding_dim; j++) {
+        OH.at({i, j}) = WH.at({index, j});
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdEmbeddingInst(const EmbeddingInst *I) {
+  auto wtT = getTensor(I->getWeights());
+  auto indT = getTensor(I->getIndices());
+  auto outT = getTensor(I->getDest());
+  auto padIdx = I->getPadIdx();
+  bool sparse = I->getSparse();
+  bool scale = I->getScale();
+  dim_t embedding_dim = wtT->dims()[1];
+  auto elemTy = wtT->getElementType();
+
+  if (padIdx > -1) {
+    assert(static_cast<dim_t>(padIdx) < wtT->dims()[0] &&
+           "padIdx should be within num_embeddings");
+  }
+
+  dispatchFloatingPointImpl(fwdEmbeddingInstImpl, elemTy, wtT, indT, outT,
+                            padIdx, sparse, scale, embedding_dim);
+}
+
 template <typename T, typename AccumT, typename TI>
 void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {

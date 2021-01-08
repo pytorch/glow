@@ -379,12 +379,21 @@ std::string jitNodeToString(const torch::jit::Node *node) {
 /// Writes the given Function \p F to file using ONNXModelWriter. If \p zipMode
 /// is set then zipMode will be used for the writer. \returns an Error if one
 /// occurred.
-Error dumpOnnxModel(glow::Function &F, bool zipMode) {
+Error dumpOnnxModel(glow::Function &F, bool zipMode,
+                    const std::string &fileName, bool writeOnnxToTmp) {
   constexpr size_t kIrVer = 7, kOpsetVer = 9;
-  std::string fileName = F.getName().str() + (zipMode ? ".zip" : ".onnxtxt");
-  LOG(INFO) << "Writing ONNX model to " << fileName;
+  std::string filepath;
+  if (writeOnnxToTmp) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        filepath,
+        getTempFileLoc(fileName, (zipMode ? ".onnx.zip" : ".onnx.txt")));
+  } else {
+    filepath = fileName + (zipMode ? ".onnx.zip" : ".onnx.txt");
+  }
+
+  LOG(INFO) << "Writing ONNX model to " << filepath;
   Error err = Error::empty();
-  ONNXModelWriter onnxWriter(fileName, F, kIrVer, kOpsetVer, &err,
+  ONNXModelWriter onnxWriter(filepath, F, kIrVer, kOpsetVer, &err,
                              /* textMode */ !zipMode, /* zipMode */ zipMode,
                              /* useGlowCustomOps */ true);
   return err;
@@ -818,6 +827,36 @@ struct ToOtherInputs {
   };
 };
 
+/// Indexes of aten::to.prim_other inputs.
+struct ToPrimOtherInputs {
+  enum {
+    input = 0,
+    non_blocking,
+    copy,
+  };
+};
+
+/// Indexes of aten::to.prim_other inputs.
+struct ToPrimDtypeInputs {
+  enum {
+    input = 0,
+    dtype,
+    non_blocking,
+    copy,
+  };
+};
+
+/// Indexes of aten::to.prim_other inputs.
+struct ToPrimDeviceInputs {
+  enum {
+    input = 0,
+    device,
+    dtype,
+    non_blocking,
+    copy,
+  };
+};
+
 /// Indexes of aten::to.dtype inputs.
 struct ToDtypeInputs {
   enum {
@@ -829,15 +868,14 @@ struct ToDtypeInputs {
   };
 };
 
-/// Indexes of aten::to inputs.
-struct ToWithDeviceInputs {
+/// Indexes of aten::embedding inputs.
+struct EmbeddingInputs {
   enum {
-    input = 0,
-    device, // Not used
-    dtype,
-    non_block,     // Not used
-    copy,          // Not used
-    memory_format, // Not used
+    weights = 0,
+    indices,
+    padIdx,
+    scale,
+    sparse,
   };
 };
 
@@ -1116,6 +1154,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
       {{"aten::to"}, &PyTorchModelLoader::loadTo},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
+      {{"aten::embedding"}, &PyTorchModelLoader::loadEmbedding},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
       {{"fb::simple_embedding_bag_sum"}, &PyTorchModelLoader::loadEmbeddingBag},
       {{"fb::glow_embedding_bag"}, &PyTorchModelLoader::loadGlowEmbeddingBag},
@@ -5341,7 +5380,7 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   else if (inputs.size() == 6 && outputs.size() == 1) {
     dtype_arg = ToDeviceInputs::dtype;
   }
-  // There are two alternatives with 5 inputs:
+  // There are three alternatives with 5 inputs:
   else if (inputs.size() == 5 && outputs.size() == 1) {
     auto glowVal = getGlowIValueForValue(inputs[ToOtherInputs::other]);
     if (glowVal) {
@@ -5349,6 +5388,22 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
       //            bool copy=False, MemoryFormat? memory_format=None)
       if ((*glowVal)->isTensor()) {
         return MAKE_ERR("aten::to.other is not supported.");
+      }
+      // - to.prim_device(Tensor self, Device device, ScalarType? dtype=None,
+      //                  bool non_blocking=False, bool copy=False)
+      else if ((*glowVal)->isString()) {
+        auto glowDtypeVal =
+            getGlowIValueForValue(inputs[ToPrimDeviceInputs::dtype]);
+        // Check if the dtype is set, otherwise nop (device is "cpu")
+        if (glowDtypeVal) {
+          if ((*glowDtypeVal)->isNone()) {
+            RETURN_ERR(addValueMapping(outputs[0], input));
+          }
+        } else {
+          RETURN_ERR(glowVal.takeError());
+        }
+        dtype_arg = ToPrimDeviceInputs::dtype;
+        return MAKE_ERR("aten::to.prim_device is not supported.");
       }
       // - to.dtype(Tensor self, ScalarType dtype, bool non_blocking=False,
       //            bool copy=False, MemoryFormat? memory_format=None)
@@ -5358,6 +5413,17 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
     } else {
       RETURN_ERR(glowVal.takeError());
     }
+  }
+  // The 4 arguments version is similar to to.dtype, without a memory format
+  // - to.prim_dtype(Tensor self, ScalarType dtype,
+  //                 bool non_blocking=False, bool copy=False)
+  else if (inputs.size() == 4 && outputs.size() == 1) {
+    dtype_arg = ToPrimDtypeInputs::dtype;
+  }
+  // The 3 arguments version only uses unsupported non_blocking/copy flags
+  // - to.prim_other(Tensor self, bool non_blocking=False, bool copy=False)
+  else if (inputs.size() == 3 && outputs.size() == 1) {
+    return MAKE_ERR("aten::to.prim_other is not supported.");
   }
   // Unsupported number of input/output arguments
   else {
@@ -5766,6 +5832,39 @@ Error PyTorchModelLoader::loadCustomOp(const torch::jit::Node *ptNode) {
                 ptNode->kind().toQualString()));
 
   return customLoader->loadNode(*this, ptNode);
+}
+
+Error PyTorchModelLoader::loadEmbedding(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weights, getGlowNodeValueForValue(inputs[EmbeddingInputs::weights]));
+
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(inputs[EmbeddingInputs::indices]));
+
+  int64_t padIdx;
+  ASSIGN_VALUE_OR_RETURN_ERR(padIdx, iValToInt(getGlowIValueForValue(
+                                         inputs[EmbeddingInputs::padIdx])));
+
+  bool scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      scale, iValToBool(getGlowIValueForValue(inputs[EmbeddingInputs::scale])));
+  RETURN_ERR_IF_NOT(scale == false,
+                    "Currently only support scale_grad_by_freq == 'false'");
+  bool sparse;
+  ASSIGN_VALUE_OR_RETURN_ERR(sparse, iValToBool(getGlowIValueForValue(
+                                         inputs[EmbeddingInputs::sparse])));
+  RETURN_ERR_IF_NOT(sparse == false,
+                    "Currently only support sparse == 'false'");
+
+  auto *resultNode =
+      F_.createEmbedding("Embedding", weights, indices, padIdx, scale, sparse);
+  return addValueMapping(outputs[0], resultNode);
 }
 
 Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
@@ -6671,7 +6770,12 @@ PyTorchModelLoader::PyTorchModelLoader(
           "allow this set flag `writeWithoutRandomize`.");
       LOG_IF(WARNING, !settings_.randomizeConstants)
           << "Write to Onnx without randomize constants!!!";
-      RETURN_IF_ERR(dumpOnnxModel(F, settings_.onnxZipMode));
+      std::string filename = settings_.onnxFileNamePrefix;
+      if (filename.empty()) {
+        filename = F.getName().str();
+      }
+      RETURN_IF_ERR(dumpOnnxModel(F, settings_.onnxZipMode, filename,
+                                  settings_.writeOnnxToTmp));
     }
 
     return Error::success();

@@ -2297,6 +2297,24 @@ Function::createFusedRowwiseQuantizedSparseLengthsSum(
       avgLength);
 }
 
+EmbeddingNode *Function::createEmbedding(llvm::StringRef name,
+                                         NodeValue weights, NodeValue indices,
+                                         int64_t padIdx, bool scale,
+                                         bool sparse) {
+  auto indDims = indices.dims();
+  auto wtDims = weights.dims();
+
+  assert(wtDims.size() == 2 && "weights must be a 2D tensor");
+
+  ShapeVector outDims(indDims.begin(), indDims.end());
+  dim_t embedding_dim = wtDims[1];
+  outDims.push_back(embedding_dim);
+
+  auto outTy = getParent()->uniqueTypeWithNewShape(weights.getType(), outDims);
+  return addNode(
+      new EmbeddingNode(name, outTy, weights, indices, padIdx, scale, sparse));
+}
+
 EmbeddingBagNode *
 Function::createEmbeddingBag(llvm::StringRef name, NodeValue data,
                              NodeValue weights, NodeValue indices,

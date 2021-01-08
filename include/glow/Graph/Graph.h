@@ -1215,6 +1215,18 @@ public:
       NodeValue indices, NodeValue lengths,
       LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
 
+  /// Create an Embedding node
+  /// weights is a 2D tensor capturing the embedding table
+  /// indices is a tesnor of arbitrary shape containing the indices to extract
+  /// padIdx, if given, zeros the output vector when encounters padIdx
+  /// scale, if true, will scale gradients by the inverse of the frequency of
+  /// words in mini-batch (currently not supported, default=false)
+  /// sparse, if true, gradinet w.r.t. weight matrix will be a sparse tensor
+  /// (currently not supported, default=false)
+  EmbeddingNode *createEmbedding(llvm::StringRef name, NodeValue weights,
+                                 NodeValue indices, int64_t padIdx, bool scale,
+                                 bool sparse);
+
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
   /// expects an extra offset to be appended to \p offsets which marks the end
   /// of the last range. \p lengthsMode and \p avgLength represent meta
