@@ -418,6 +418,10 @@ class ONNXModelLoader
   Error loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
                          ArgumentDictionaryTy &dict);
 
+  /// Load If ONNX operator.
+  Error loadIf(const ONNX_NAMESPACE::NodeProto &op,
+               const ArgumentDictionaryTy &dict);
+
   /// Load AdaptiveAvgPool Glow operator.
   /// NOTE: since this operator is not a standard onnx op, assume this is from
   /// OnnxModelWriter and is therefore in NHWC format.
