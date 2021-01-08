@@ -529,9 +529,18 @@ void glow::readPngImageAndPreprocess(Tensor &imageData,
                                      llvm::ArrayRef<float> mean,
                                      llvm::ArrayRef<float> stddev) {
 
+  // PNG images are RGB, so shuffle mean and stddev values to be in RGB order
+  // as well, prior applying them to input image.
+  std::vector<float> meanRGB(mean);
+  std::vector<float> stddevRGB(stddev);
+  if (imageChannelOrder == ImageChannelOrder::BGR) {
+    std::reverse(meanRGB.begin(), meanRGB.end());
+    std::reverse(stddevRGB.begin(), stddevRGB.end());
+  }
+
   auto range = normModeToRange(imageNormMode);
   bool loadSuccess =
-      !readPngImage(&imageData, filename.data(), range, mean, stddev);
+      !readPngImage(&imageData, filename.data(), range, meanRGB, stddevRGB);
   CHECK(loadSuccess) "Error reading input image from file: " << filename.str();
   dim_t imgHeight = imageData.dims()[0];
   dim_t imgWidth = imageData.dims()[1];
@@ -546,7 +555,7 @@ void glow::readPngImageAndPreprocess(Tensor &imageData,
     for (unsigned z = 0; z < numChannels; z++) {
       for (unsigned y = 0; y < imgHeight; y++) {
         for (unsigned x = 0; x < imgWidth; x++) {
-          SH.at({x, y, numChannels - 1 - z}) = IH.at({x, y, z});
+          SH.at({y, x, numChannels - 1 - z}) = IH.at({y, x, z});
         }
       }
     }
