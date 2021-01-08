@@ -781,6 +781,10 @@ int run() {
 
       if (result.error) {
         llvm::outs() << "Inference failed!\n";
+        if (result.error.peekErrorValue()->isFatalError()) {
+          std::string msg = result.error.peekErrorValue()->logToString();
+          llvm::outs() << "Non-recoverable device error: " << msg << "\n";
+        }
         ++numFailed;
       } else {
         const auto &outputGroup = parsedOutputs[result.index];
