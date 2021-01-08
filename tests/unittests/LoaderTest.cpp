@@ -63,9 +63,9 @@ public:
 
   /// Called once after ONNX or Caffe2 model loading.
   virtual void postModelLoad(Loader &loader, PlaceholderBindings &bindings,
-                             TypeRef inputImageType) {
+                             llvm::ArrayRef<TypeRef> inputImageType) {
 
-    size_t compilationBatchSize = inputImageType->dims()[0];
+    size_t compilationBatchSize = inputImageType[0]->dims()[0];
     // To check the method was executed.
     stage_ = 1;
 
@@ -113,7 +113,8 @@ public:
   }
 
   /// Called once after ONNX or Caffe2 model loading.
-  virtual void postModelLoad(Loader &, PlaceholderBindings &, TypeRef) {
+  virtual void postModelLoad(Loader &, PlaceholderBindings &,
+                             llvm::ArrayRef<TypeRef> inputImageType) {
     stage_ = 1;
   }
   /// Called once at the beginning of the mini-batch inference.
