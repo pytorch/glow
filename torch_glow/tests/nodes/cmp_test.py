@@ -7,131 +7,174 @@ from parameterized import parameterized
 from tests import utils
 
 
+def forward_func(a, b, opType):
+    b = b + b
+    if opType == "equal":
+        return a == b
+    elif opType == "notEqual":
+        return a != b
+    elif opType == "lessThan":
+        return a < b
+    elif opType == "lessEqual":
+        return a <= b
+    elif opType == "greaterThan":
+        return a > b
+    elif opType == "greaterEqual":
+        return a >= b
+
+
 class SimpleCompareOpsModule(torch.nn.Module):
     def __init__(self, opType):
         super(SimpleCompareOpsModule, self).__init__()
         self.opType = opType
 
-    def forward(self, a, b):
-        if self.opType == "equal":
-            return torch.eq(a, b + 0.1)
-        elif self.opType == "notEqual":
-            return torch.ne(a, b + 0.1)
-        elif self.opType == "lessThan":
-            return torch.lt(a, b + 0.1)
-        elif self.opType == "lessEqual":
-            return torch.le(a, b + 0.1)
-        elif self.opType == "greaterThan":
-            return torch.gt(a, b + 0.1)
-        elif self.opType == "greaterEqual":
-            return torch.ge(a, b + 0.1)
+    def forward(self, lhs, rhs):
+        return forward_func(lhs, rhs, self.opType)
+
+
+class SimpleCompareOpsScalarModule(torch.nn.Module):
+    def __init__(self, opType, rhs):
+        super(SimpleCompareOpsScalarModule, self).__init__()
+        self.opType = opType
+        self.rhs = rhs
+
+    def forward(self, lhs):
+        return forward_func(lhs, self.rhs, self.opType)
 
 
 class TestCmp(unittest.TestCase):
-    def test_equal_basic(self):
-        """Basic test of the PyTorch Equal Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("equal"),
-            torch.randn(3, 4, 5),
-            torch.randn(3, 4, 5),
-            fusible_ops={"aten::eq"},
-        )
+    @parameterized.expand(
+        [
+            (
+                "equal_basic",
+                SimpleCompareOpsModule("equal"),
+                torch.randn(3, 4, 5),
+                torch.randn(3, 4, 5),
+                "aten::eq",
+            ),
+            (
+                "equal_broadcast",
+                SimpleCompareOpsModule("equal"),
+                torch.randn(3, 4, 5),
+                torch.randn(4, 5),
+                "aten::eq",
+            ),
+            (
+                "not_equal_basic",
+                SimpleCompareOpsModule("notEqual"),
+                torch.randn(3, 4, 5),
+                torch.randn(3, 4, 5),
+                "aten::ne",
+            ),
+            (
+                "not_equal_broadcast",
+                SimpleCompareOpsModule("notEqual"),
+                torch.randn(3, 4, 5),
+                torch.randn(4, 5),
+                "aten::ne",
+            ),
+            (
+                "less_than_basic",
+                SimpleCompareOpsModule("lessThan"),
+                torch.randn(3, 4, 5),
+                torch.randn(3, 4, 5),
+                "aten::lt",
+            ),
+            (
+                "less_than_broadcast",
+                SimpleCompareOpsModule("lessThan"),
+                torch.randn(3, 4, 5),
+                torch.randn(4, 5),
+                "aten::lt",
+            ),
+            (
+                "less_equal_basic",
+                SimpleCompareOpsModule("lessEqual"),
+                torch.randn(3, 4, 5),
+                torch.randn(3, 4, 5),
+                "aten::le",
+            ),
+            (
+                "less_equal_broadcast",
+                SimpleCompareOpsModule("lessEqual"),
+                torch.randn(3, 4, 5),
+                torch.randn(4, 5),
+                "aten::le",
+            ),
+            (
+                "greater_than_basic",
+                SimpleCompareOpsModule("greaterThan"),
+                torch.randn(3, 4, 5),
+                torch.randn(3, 4, 5),
+                "aten::gt",
+            ),
+            (
+                "greater_than_broadcast",
+                SimpleCompareOpsModule("greaterThan"),
+                torch.randn(3, 4, 5),
+                torch.randn(4, 5),
+                "aten::gt",
+            ),
+            (
+                "greater_equal_basic",
+                SimpleCompareOpsModule("greaterEqual"),
+                torch.randn(3, 4, 5),
+                torch.randn(3, 4, 5),
+                "aten::ge",
+            ),
+            (
+                "greater_equal_broadcast",
+                SimpleCompareOpsModule("greaterEqual"),
+                torch.randn(3, 4, 5),
+                torch.randn(4, 5),
+                "aten::ge",
+            ),
+        ]
+    )
+    def test_compare_ops(self, _, module, lhs, rhs, fusible_ops):
+        utils.compare_tracing_methods(module, lhs, rhs, fusible_ops={fusible_ops})
 
-    def test_equal_bcast(self):
-        """Basic test of the PyTorch Equal Node (broadcast) on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("equal"),
-            torch.randn(3, 4, 5),
-            torch.randn(4, 5),
-            fusible_ops={"aten::eq"},
-        )
 
-    def test_not_equal(self):
-        """Basic test of the PyTorch Not equal Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("notEqual"),
-            torch.randn(3, 4, 5),
-            torch.randn(3, 4, 5),
-            fusible_ops={"aten::ne"},
-        )
-
-    def test_not_equal_bcast(self):
-        """Basic test of the PyTorch Not equal (broadcast) Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("notEqual"),
-            torch.randn(3, 4, 5),
-            torch.randn(4, 5),
-            fusible_ops={"aten::ne"},
-        )
-
-    def test_less_than(self):
-        """Basic test of the PyTorch Less than Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("lessThan"),
-            torch.randn(3, 4, 5),
-            torch.randn(3, 4, 5),
-            fusible_ops={"aten::lt"},
-        )
-
-    def test_less_than_bcast(self):
-        """Basic test of the PyTorch Less than (broadcast) Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("lessThan"),
-            torch.randn(3, 4, 5),
-            torch.randn(4, 5),
-            fusible_ops={"aten::lt"},
-        )
-
-    def test_less_equal(self):
-        """Basic test of the PyTorch less equal Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("lessEqual"),
-            torch.randn(3, 4, 5),
-            torch.randn(3, 4, 5),
-            fusible_ops={"aten::le"},
-        )
-
-    def test_less_equal_bcast(self):
-        """Basic test of the PyTorch less equal (Broadcast) Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("lessEqual"),
-            torch.randn(3, 4, 5),
-            torch.randn(4, 5),
-            fusible_ops={"aten::le"},
-        )
-
-    def test_greater_than(self):
-        """Basic test of the PyTorch Greater than Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("greaterThan"),
-            torch.randn(3, 4, 5),
-            torch.randn(3, 4, 5),
-            fusible_ops={"aten::gt"},
-        )
-
-    def test_greater_than_bcast(self):
-        """Basic test of the PyTorch Greater than (Broadcast) Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("greaterThan"),
-            torch.randn(3, 4, 5),
-            torch.randn(4, 5),
-            fusible_ops={"aten::gt"},
-        )
-
-    def test_greater_equal(self):
-        """Basic test of the PyTorch Greater Equal Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("greaterEqual"),
-            torch.randn(3, 4, 5),
-            torch.randn(3, 4, 5),
-            fusible_ops={"aten::ge"},
-        )
-
-    def test_greater_equal_bcast(self):
-        """Basic test of the PyTorch Greater Equal (broadcast) Node on Glow."""
-        utils.compare_tracing_methods(
-            SimpleCompareOpsModule("greaterEqual"),
-            torch.randn(3, 4, 5),
-            torch.randn(4, 5),
-            fusible_ops={"aten::ge"},
-        )
+class TestCmpScalar(unittest.TestCase):
+    @parameterized.expand(
+        [
+            (
+                "equal_scalar",
+                SimpleCompareOpsScalarModule(opType="equal", rhs=0.5),
+                torch.ones(3, 4, 5),
+                "aten::eq",
+            ),
+            (
+                "not_equal_scalar",
+                SimpleCompareOpsScalarModule(opType="notEqual", rhs=0.5),
+                torch.ones(3, 4, 5),
+                "aten::ne",
+            ),
+            (
+                "less_than_scalar",
+                SimpleCompareOpsScalarModule(opType="lessThan", rhs=0.5),
+                torch.ones(3, 4, 5),
+                "aten::lt",
+            ),
+            (
+                "less_equal_scalar",
+                SimpleCompareOpsScalarModule(opType="lessEqual", rhs=0.5),
+                torch.ones(3, 4, 5),
+                "aten::le",
+            ),
+            (
+                "greater_than_scalar",
+                SimpleCompareOpsScalarModule(opType="greaterThan", rhs=0.5),
+                torch.ones(3, 4, 5),
+                "aten::gt",
+            ),
+            (
+                "greater_equal_scalar",
+                SimpleCompareOpsScalarModule(opType="greaterEqual", rhs=0.5),
+                torch.ones(3, 4, 5),
+                "aten::ge",
+            ),
+        ]
+    )
+    def test_compare_ops_scalar(self, _, module, lhs, fusible_ops):
+        utils.compare_tracing_methods(module, lhs, fusible_ops={fusible_ops})

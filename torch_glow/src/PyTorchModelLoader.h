@@ -547,11 +547,8 @@ private:
 
   /// Load PyTorch eq, ne, lt, lte nodes.
   /// \returns error on failure.
-  template <typename CmpType> Error loadCmp(const torch::jit::Node *ptNode);
-
-  /// Load PyTorch ge, gte nodes.
-  /// \returns error on failure.
-  template <typename CmpType> Error loadCmpGt(const torch::jit::Node *ptNode);
+  template <typename CmpType, int LhsIndex = 0, int RhsIndex = 1>
+  Error loadCmp(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch reciprocal node.
   /// \returns error on failure.
