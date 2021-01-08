@@ -2873,6 +2873,44 @@ TEST_F(GraphFold, optimizeSmallConv) {
   checkNumericalEquivalence();
 }
 
+/// Fold a Convolution dilated manually using Transpose, SpaceToDepth and
+/// DepthToSpace nodes into a single Convolution node. Pattern:
+/// NHWC2CHWN -> S2D -> CHWN2NHWC -> Conv -> NHWC2CHWN -> D2S -> CHWN2NHWC
+TEST_F(GraphFold, foldDilatedConv) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 16}, "input", true);
+
+  auto *T1 = F_->createTranspose("t1", input, NHWC2CHWN, "NHWC");
+  auto *S2D = F_->createSpaceToDepth("s2d", T1, 2);
+  auto *T2 = F_->createTranspose("t2", S2D, CHWN2NHWC, "NHWC");
+  auto *CN = F_->createConv(bindings_, "conv", T2, 16, 3, 1, 0, 16, {1, 1});
+  auto *T3 = F_->createTranspose("t3", CN, NHWC2CHWN, "NHWC");
+  auto *D2S = F_->createDepthToSpace("d2s", T3, 2);
+  auto *T4 = F_->createTranspose("t4", D2S, CHWN2NHWC, "NHWC");
+  auto *save = F_->createSave("save", T4);
+
+  // To spice things up, add additional users for some nodes. The pattern should
+  // still be recognized.
+  F_->createSave("save_t1", T1);
+  F_->createSave("save_s2d", S2D);
+  F_->createSave("save_t2", T2);
+
+  EXPECT_EQ(13, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(8, optimizedF_->getNodes().size());
+
+  const auto *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+
+  auto *newCN = llvm::dyn_cast<ConvolutionNode>(optSave->getInput());
+  ASSERT_TRUE(newCN);
+  EXPECT_TRUE(isUniformArray(newCN->getDilation(), 2u));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
   const dim_t inputDims[] = {3, 136, 28, 28};

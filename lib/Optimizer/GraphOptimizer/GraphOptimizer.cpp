@@ -1130,6 +1130,110 @@ bool OptimizeSmallConv::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Fold a Convolution dilated manually using Transpose, SpaceToDepth and
+/// DepthToSpace nodes into a single Convolution node. Pattern:
+/// NHWC2CHWN -> S2D -> CHWN2NHWC -> Conv -> NHWC2CHWN -> D2S -> CHWN2NHWC
+bool FoldDilatedConv::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    // Do matching starting from the last node of the pattern and go backwards.
+
+    // 1. Transpose CHWN2NHWC.
+    // Do not match this Transpose, since it has likely sank and got separated
+    // from the rest of the nodes in the pattern. Instead, we'll generate a
+    // reverse Transpose after new Convolution for them to be optimized out.
+
+    // 2. DepthToSpace (represented as Reshape + Transpose[6 dims] + Reshape).
+    // Ignore the last Reshape for the same reasons as Transpose above and start
+    // matching from 6 dim Transpose.
+    auto *D2S = dyn_cast<TransposeNode>(&N);
+    if (!D2S || !D2S->hasOneUse() ||
+        D2S->getShuffle() != llvm::makeArrayRef(D2S_DCR)) {
+      continue;
+    }
+    unsigned_t block = D2S->getInput().dims()[3];
+    NodeValue output = D2S->getResult();
+
+    auto *RN = dyn_cast<ReshapeNode>(D2S->getInput());
+    if (!RN || !RN->hasOneUse()) {
+      continue;
+    }
+    llvm::ArrayRef<dim_t> idim = RN->getInput().dims();
+    llvm::SmallVector<dim_t, 6> odim = {
+        idim[0], idim[1], idim[2], block, block, idim[3] / (block * block)};
+    if (RN->getResult().dims() != llvm::makeArrayRef(odim)) {
+      continue;
+    }
+
+    // 3. Transpose NHWC2CHWN.
+    auto *T1 = dyn_cast<TransposeNode>(RN->getInput());
+    if (!T1 || !T1->hasOneUse() ||
+        T1->getShuffle() != llvm::makeArrayRef(NHWC2CHWN)) {
+      continue;
+    }
+
+    // 4. Convolution.
+    auto *CN = dyn_cast<ConvolutionNode>(T1->getInput());
+    if (!CN || !CN->hasOneUse()) {
+      continue;
+    }
+    llvm::StringRef name = CN->getName();
+    auto kernels = CN->getKernels();
+    auto strides = CN->getStrides();
+    auto pads = CN->getPads();
+    if (!isUniformArray(strides, 1u) || !isUniformArray(pads, 0u) ||
+        !isUniformArray(CN->getDilation(), 1u)) {
+      continue;
+    }
+
+    // 5. Transpose CHWN2NHWC.
+    auto *T2 = dyn_cast<TransposeNode>(CN->getInput());
+    if (!T2 || T2->getShuffle() != llvm::makeArrayRef(CHWN2NHWC)) {
+      continue;
+    }
+
+    // 6. SpaceToDepth.
+    auto *S2D = dyn_cast<SpaceToDepthNode>(T2->getInput());
+    if (!S2D || S2D->getBlockSize() != block) {
+      continue;
+    }
+    NodeValue input = S2D->getInput();
+
+    // 7. Transpose NHWC2CHWN.
+    // Can potentially be changed/removed by merging with other Transpose nodes,
+    // so don't match it. Instead, will generate a reverse Transpose later.
+
+    // Create CHWN2NHWC -> Conv -> NHWC2CHWN -> Reshape.
+    // Reshape and Transposes are created to cancel the ones we did not match.
+    auto *newT1 =
+        F->createTranspose(name.str() + "_chwn2nhwc", input, CHWN2NHWC);
+
+    auto trOutDims = newT1->getResult().dims();
+    auto outHW = calculateConvPoolOutputDims(
+        trOutDims[1], trOutDims[2], kernels, strides, pads, {block, block});
+    auto convOutTy = F->getParent()->uniqueTypeWithNewShape(
+        CN->getResult().getType(),
+        {trOutDims[0], outHW.first, outHW.second, CN->getResult().dims()[3]});
+    auto *newCN = F->createConv(name, newT1->getResult(), CN->getFilter(),
+                                CN->getBias(), convOutTy, kernels, strides,
+                                pads, CN->getGroup(), {block, block});
+
+    auto *newT2 = F->createTranspose(name.str() + "_nhwc2chwn",
+                                     newCN->getResult(), NHWC2CHWN);
+
+    idim = newT2->getResult().dims();
+    odim = {idim[0], idim[1] / block, block, idim[2] / block, block, idim[3]};
+    auto *newRN =
+        F->createReshape(name.str() + "_reshape", newT2->getResult(), odim);
+
+    output.replaceAllUsesOfWith(newRN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// \returns True if node A may depend on the result of B. The relationship
 /// between the nodes does not have to be direct. For example, A can depend on
 /// X which depends on B. In that case the method needs to return True.
