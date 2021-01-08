@@ -391,7 +391,7 @@ TEST_F(ImageTest, writePngImageWithImagenetNormalization) {
 
 /// Test PNG w/ order and layout transposes, and different mean/stddev per
 /// channel.
-TEST(ImageTest, readNonSquarePngBGRNCHWTest) {
+TEST_F(ImageTest, readNonSquarePngBGRNCHWTest) {
   auto image = readPngImageAndPreprocess(
       "tests/images/other/tensor_2x4x3.png", ImageNormalizationMode::k0to255,
       ImageChannelOrder::BGR, ImageLayout::NCHW, {0, 1, 2}, {3, 4, 5});
