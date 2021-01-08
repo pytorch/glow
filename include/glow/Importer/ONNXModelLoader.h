@@ -627,6 +627,12 @@ public:
   /// there otherwise if an error occurs it will abort.
   ONNXModelLoader(Function &F, Error *errPtr = nullptr);
 
+  /// Update \p inTensorNames and \p inTypes from inputs of onnx model from
+  /// filename
+  static Error getInputsNamesAndTypes(std::vector<std::string> &inTensorNames,
+                                      std::vector<Type> &inTypes,
+                                      const std::string &filename);
+
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p F.
   /// The types in \p types match the list of names \p tensorNames and used as

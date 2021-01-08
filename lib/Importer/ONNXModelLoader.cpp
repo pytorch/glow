@@ -787,6 +787,55 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
   return Type(kind, dim);
 }
 
+Error ONNXModelLoader::getInputsNamesAndTypes(
+    std::vector<std::string> &inTensorNames, std::vector<Type> &inTypes,
+    const std::string &filename) {
+  // Creating GraphProto from modelfile
+  ONNX_NAMESPACE::ModelProto modelDef;
+
+  ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(filename, false, nullptr));
+
+  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+
+  // GraphDef.input can have both inputs and intermediate tensors whereas
+  // initializers have info about intermediate tensors. Thus the difference
+  // betweem two is taken
+  std::vector<std::string> inputs;
+  for (auto &in : graphDef.input()) {
+    inputs.push_back(in.name());
+  }
+
+  for (const auto &in : graphDef.initializer()) {
+    auto position = std::find(inputs.begin(), inputs.end(), in.name());
+    if (position != inputs.end()) {
+      inputs.erase(position);
+    }
+  }
+
+  for (const auto &finalIn : inputs) {
+    for (const auto &in : graphDef.input()) {
+      if (finalIn.compare(in.name()) != 0) {
+        continue;
+      }
+      inTensorNames.push_back(in.name());
+      const ONNX_NAMESPACE::ValueInfoProto &valueInfo = in;
+      auto type = valueInfo.type();
+
+      std::vector<dim_t> dim;
+      ASSIGN_VALUE_OR_RETURN_ERR(dim,
+                                 getProtoShape(type.tensor_type().shape()));
+
+      ElemKind kind = ElemKind::FloatTy;
+      RETURN_IF_ERR(
+          onnxTensorDataTypeToElemKind(type.tensor_type().elem_type(), &kind));
+
+      inTypes.emplace_back(kind, dim);
+    }
+  }
+
+  return Error::success();
+}
+
 Error ONNXModelLoader::verifyPreexistingStorage(const Storage *S,
                                                 const std::string &name,
                                                 const Type &ty,

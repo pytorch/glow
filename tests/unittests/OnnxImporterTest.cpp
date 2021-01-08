@@ -232,6 +232,40 @@ static void importReduceL2Test(const std::string &netFilename,
   }
 }
 
+/// Test the utility function that gets the inputs name and glow types
+/// from updated graph proto
+
+TEST_F(OnnxImporterTest, getInputNamesAndTypes) {
+  // Set onnx-define-symbol if present in model
+  std::string inputSymbol = "batch_size,5";
+  setOnnxDefineSymbol({inputSymbol});
+
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/getInputsOnnxDefineSample.onnxtxt");
+
+  bool isError = false;
+
+  std::vector<std::string> names;
+  std::vector<Type> types;
+
+  std::vector<std::string> expectedNames = {"input"};
+  std::vector<std::vector<dim_t>> expectedDims = {{5, 3, 224, 224}};
+
+  isError = ERR_TO_BOOL(
+      ONNXModelLoader::getInputsNamesAndTypes(names, types, netFilename));
+
+  EXPECT_FALSE(isError);
+
+  for (size_t i = 0; i < expectedNames.size(); i++) {
+    EXPECT_TRUE(expectedNames[i] == names[i]);
+    std::vector<dim_t> dims = types[i].dims();
+    for (size_t j = 0; j < expectedDims[i].size(); j++) {
+      EXPECT_EQ(expectedDims[i][j], dims[j]);
+    }
+  }
+}
+
 /// Test the utility function which wraps a negative axis.
 TEST_F(OnnxImporterTest, getPositiveAxis) {
   int axisPos;
