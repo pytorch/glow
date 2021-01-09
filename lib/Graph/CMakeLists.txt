@@ -48,6 +48,8 @@ target_link_libraries(Graph
                         Flags
                         Support
                         QuantizationBase
-                        TensorPool)
+                        TensorPool
+						PRIVATE
+						Backend)
 
 add_dependencies(Graph AutoGen)
