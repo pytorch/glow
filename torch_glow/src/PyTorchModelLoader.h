@@ -545,13 +545,10 @@ private:
   /// \returns error on failure.
   Error loadSqrt(const torch::jit::Node *ptNode);
 
-  /// Load PyTorch eq, ne, lt, lte nodes.
+  /// Load PyTorch eq, ne, lt, lte, gt, gte nodes.
   /// \returns error on failure.
-  template <typename CmpType> Error loadCmp(const torch::jit::Node *ptNode);
-
-  /// Load PyTorch ge, gte nodes.
-  /// \returns error on failure.
-  template <typename CmpType> Error loadCmpGt(const torch::jit::Node *ptNode);
+  template <typename CmpType, bool invert = false>
+  Error loadCmp(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch reciprocal node.
   /// \returns error on failure.
