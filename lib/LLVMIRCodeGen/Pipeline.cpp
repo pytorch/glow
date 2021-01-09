@@ -69,9 +69,6 @@ LLVMIRGen::getInlinineAttr(const llvm::Function *F) const {
 }
 
 void LLVMIRGen::updateInlineAttributes(llvm::Module *M) {
-  // An empty attribute set to replace the target-specific machine code
-  // attributes that were attached by the frontend.
-  llvm::AttributeList AL;
   for (auto &FF : *M) {
     if (FF.isDeclaration()) {
       continue;
@@ -87,8 +84,11 @@ void LLVMIRGen::updateInlineAttributes(llvm::Module *M) {
           << "Unknown inlining attribute returned by getInlinineAttr";
       dontInline = (inlineAttr == llvm::Attribute::AttrKind::NoInline);
     }
-    // Clear all attributes.
-    FF.setAttributes(AL);
+    // Replace the target-specific machine code function attributes that were
+    // attached by the frontend. Keep return and parameter attributes, e.g.,
+    // noalias.
+    FF.setAttributes(FF.getAttributes().removeAttributes(
+        M->getContext(), llvm::AttributeList::FunctionIndex));
     // Force inline all non-no-inline functions.
     if (!dontInline || alwaysInline) {
       FF.addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);

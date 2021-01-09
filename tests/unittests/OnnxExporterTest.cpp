@@ -358,7 +358,8 @@ TEST(exporter, onnxModels) {
       llvm::outs() << "Ignore non-onnxtxt input: " << name << "\n";
       continue;
     }
-    if (name.find("preluInvalidBroadcastSlope.onnxtxt") != std::string::npos ||
+    if (name.find("getInputsOnnxDefineSample.onnxtxt") != std::string::npos ||
+        name.find("preluInvalidBroadcastSlope.onnxtxt") != std::string::npos ||
         name.find("padReflect.onnxtxt") != std::string::npos ||
         name.find("gatherConstantFolding.onnxtxt") != std::string::npos ||
         name.find("averagePool3D.onnxtxt") != std::string::npos ||

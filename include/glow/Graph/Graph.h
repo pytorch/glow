@@ -675,7 +675,7 @@ public:
   /// scales and \p offsets. The output is quantized in the regular way, and its
   /// type \p outTy is a quantized type.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, Constant *scales,
+      llvm::StringRef name, NodeValue input, NodeValue W, Constant *scales,
       Constant *offsets, NodeValue B, TypeRef outTy);
 
   /// Create a row-wise quantized fully connected node. This node is only used
@@ -685,7 +685,7 @@ public:
   /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
   /// be transposed first.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, NodeValue B,
+      llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
       TypeRef outTy, quantization::Schema schema, bool transposeWeight = false);
 
   /// Implement an operation that computes the row-wise dot product of its
@@ -1228,6 +1228,18 @@ public:
       NodeValue indices, NodeValue lengths,
       LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
 
+  /// Create an Embedding node
+  /// weights is a 2D tensor capturing the embedding table
+  /// indices is a tesnor of arbitrary shape containing the indices to extract
+  /// padIdx, if given, zeros the output vector when encounters padIdx
+  /// scale, if true, will scale gradients by the inverse of the frequency of
+  /// words in mini-batch (currently not supported, default=false)
+  /// sparse, if true, gradinet w.r.t. weight matrix will be a sparse tensor
+  /// (currently not supported, default=false)
+  EmbeddingNode *createEmbedding(llvm::StringRef name, NodeValue weights,
+                                 NodeValue indices, int64_t padIdx, bool scale,
+                                 bool sparse);
+
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
   /// expects an extra offset to be appended to \p offsets which marks the end
   /// of the last range. \p lengthsMode and \p avgLength represent meta
@@ -1722,6 +1734,12 @@ public:
                                            llvm::StringRef name,
                                            NodeValue input, dim_t outDepth,
                                            unsigned_t axis = 1);
+
+  /// Creates an RMSNorm pair. \p X should be a 2D tensor, \p gamma and \p beta
+  /// should be 1D tensors.
+  std::array<Node *, 2> createRMSNorm(llvm::StringRef name, NodeValue X,
+                                      NodeValue gamma, NodeValue beta,
+                                      float epsilon = .0f);
 
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
@@ -2310,6 +2328,10 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 1u, 2u, 0u, 3u }
 #define CNHW2NHWC                                                              \
   { 1u, 2u, 3u, 0u }
+#define NHWC2CHWN                                                              \
+  { 3u, 1u, 2u, 0u }
+#define CHWN2NHWC                                                              \
+  { 3u, 1u, 2u, 0u }
 #define D2S_DCR                                                                \
   { 0u, 1u, 3u, 2u, 4u, 5u }
 #define D2S_CRD                                                                \

@@ -481,6 +481,14 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
          ElemKind::Int32ITy);
     break;
+  case Kinded::Kind::EmbeddingNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {EmbeddingNode::IndicesIdx}) &&
+        (NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int64ITy ||
+         NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int32ITy);
+    break;
   case Kinded::Kind::EmbeddingBagNodeKind:
     isNodePrecisionSupported =
         isSLSIndicesValid(NI.getInTy(EmbeddingBagNode::IndicesIdx)) &&
@@ -1593,6 +1601,7 @@ NNPIBackend::transformPostOptPipeline(Function *F,
     // parallelization we performed on quantizes/dequantizes.
     auto P = getOptimizationPipeline();
     P->removeAllInstancesOfPass(FunctionPassID::SinkConversions);
+    P->removeAllInstancesOfPass(FunctionPassID::SinkConcatBelowQuantize);
 
     // Do not re-merge ConcatNodes, as we may be parallelizing them.
     const bool restoreMerge = cctx.optimizationOpts.skipConcatMerging;

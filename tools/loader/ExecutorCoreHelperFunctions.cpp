@@ -19,6 +19,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
+#include "glow/Support/Support.h"
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
@@ -44,7 +45,12 @@ using namespace glow;
 
 /// Image loader options.
 llvm::cl::OptionCategory executorCat("Executor Options");
-llvm::cl::list<std::string> inputImageFilenames(
+
+// Either positional or list file or input-image-list-file will ultimately
+// create a double vector containing an image list per input, stored here.
+VecVec<std::string> inputImageFilenames_;
+
+llvm::cl::list<std::string> inputImageFilenamesOpt(
     llvm::cl::Positional,
     llvm::cl::desc("<input files> (note: specifying '-' enables streaming "
                    "mode, where the model is compiled once and then can be run "
@@ -58,12 +64,15 @@ llvm::cl::list<std::string> inputImageDirs(
     llvm::cl::value_desc("dir_name"), llvm::cl::Optional, llvm::cl::ZeroOrMore,
     llvm::cl::cat(executorCat));
 
-llvm::cl::opt<std::string> inputImageListFile(
-    "input-image-list-file",
-    llvm::cl::desc(
-        "Name of the file containing list of images (one image per line)"),
-    llvm::cl::value_desc("string_name"), llvm::cl::Optional,
-    llvm::cl::cat(executorCat));
+std::vector<std::string> inputImageListFileOpt;
+static llvm::cl::list<std::string, std::vector<std::string>>
+    inputImageListFileF(
+        "input-image-list-file",
+        llvm::cl::desc(
+            "List of files containing list of images (one image per line)"),
+        llvm::cl::value_desc("string_name"), llvm::cl::ZeroOrMore,
+        llvm::cl::CommaSeparated, llvm::cl::cat(executorCat),
+        llvm::cl::location(inputImageListFileOpt));
 
 llvm::cl::opt<std::string> inputTensorListFile(
     "input-tensor-list-file",
@@ -149,6 +158,12 @@ llvm::cl::opt<bool>
                      llvm::cl::desc("Pre-load all images before inference"),
                      llvm::cl::init(false), llvm::cl::cat(executorCat));
 
+llvm::cl::opt<std::string> modelOutputName(
+    "output-name",
+    llvm::cl::desc("The name of the variable for the model's output."),
+    llvm::cl::value_desc("string_name"), llvm::cl::Optional,
+    llvm::cl::cat(executorCat));
+
 llvm::cl::opt<unsigned> repeatSingleBatchCount(
     "repeat-single-batch-count",
     llvm::cl::desc(
@@ -158,8 +173,9 @@ llvm::cl::opt<unsigned> repeatSingleBatchCount(
         "and all other inputs are ignored."),
     llvm::cl::init(0), llvm::cl::cat(executorCat));
 
-/// Read all images from \p inputImageDir into \p inputImageFilenames.
-void parseInputDir(const std::string &inputImageDir) {
+/// Read all images from \p inputImageDir into \p imageFilenames.
+void parseInputDir(const std::string &inputImageDir,
+                   std::vector<std::string> &imageFilenames) {
   CHECK(llvm::sys::fs::is_directory(inputImageDir))
       << strFormat("Path '%s' is not a directory!", inputImageDir.data());
   std::error_code code;
@@ -177,12 +193,24 @@ void parseInputDir(const std::string &inputImageDir) {
   // to the overall list of image filenames.
   std::sort(imageFiles.begin(), imageFiles.end());
   for (auto &imageFile : imageFiles) {
-    inputImageFilenames.push_back(imageFile);
+    imageFilenames.push_back(imageFile);
   }
 }
 
-/// Read all images from \p inputImageListFile in to \p inputImageFilenames.
-void parseInputList(const std::string &inputListFile) {
+/// Clear external storage for cmd args defined in Loader.
+void initExecutorCoreCmdArgVars() {
+  inputImageFilenames_.clear();
+  inputImageListFileOpt.clear();
+  modelInputsOpt.clear();
+}
+
+/// Do any special processing for cmd args defined in ExecutorCore.
+void processExecutorCoreCmdArgVars() {}
+
+/// Read all images from \p inputListFile in to \p imageFilenames.
+void parseInputList(const std::string &inputListFile,
+                    std::vector<std::string> &imageFilenames) {
+
   std::ifstream inFile;
   inFile.open(inputListFile);
   if (!inFile.good()) {
@@ -195,7 +223,7 @@ void parseInputList(const std::string &inputListFile) {
     std::string img;
     getline(inFile, img);
     if (!img.empty()) {
-      inputImageFilenames.push_back(img);
+      imageFilenames.push_back(img);
     }
   }
   inFile.close();
@@ -205,9 +233,10 @@ void parseInputList(const std::string &inputListFile) {
 /// those filenames and add them to \p filenames. \p filenames is cleared before
 /// adding the new set of filenames from stdin. \returns false if the passed in
 /// line was empty.
-bool getNextImageFilenames(std::vector<std::string> *filenames) {
+bool getNextStdinImageFilenames(VecVec<std::string> &filenamesVec) {
+  std::vector<std::string> filenames;
   // Clear out old filenames before adding new ones.
-  filenames->clear();
+  filenamesVec.clear();
 
   llvm::outs() << "Enter image filenames to classify: ";
 
@@ -217,44 +246,83 @@ bool getNextImageFilenames(std::vector<std::string> *filenames) {
   std::istringstream iss(filenamesRaw);
   std::string filename;
   while (iss >> filename) {
-    filenames->push_back(filename);
+    filenames.push_back(filename);
   }
-
-  return !filenames->empty();
+  if (!filenames.empty()) {
+    filenamesVec.push_back(filenames);
+  }
+  return !filenames.empty();
 }
 
-/// Generate in \p imageList the list of filenames corresponding to the next
-/// mini-batch of size \p miniBatchSize extracted from \p totalImageList at
-/// index \p minibatchIndex. /returns true if the index is valid, false
-/// otherwise. In case the function returns true, \p minibatchIndex is
-/// incremented by \p miniBatchSize. Stop upon reaching \p miniBatchLimit.
-bool getNextMiniBatch(std::vector<std::string> &imageList,
-                      std::vector<std::string> &totalImageList,
+/// Generate in \p imageLists the list of lists (for each input) of filenames
+/// corresponding to the next mini-batch of size \p miniBatchSize extracted from
+/// \p totalImageLists at index \p minibatchIndex. /returns true if the index is
+/// valid, false otherwise. In case the function returns true, \p minibatchIndex
+/// is incremented by \p miniBatchSize. Stop upon reaching \p miniBatchLimit.
+bool getNextMiniBatch(VecVec<std::string> &imageLists,
+                      VecVecRef<std::string> totalImageLists,
                       size_t &miniBatchIndex, size_t miniBatchSize,
                       size_t miniBatchLimit) {
   if (miniBatchIndex >= miniBatchLimit) {
     return false;
   }
-  imageList.clear();
-  size_t endIndex = miniBatchIndex + miniBatchSize;
-  for (size_t index = miniBatchIndex; index < endIndex; index++) {
-    imageList.push_back(totalImageList[index]);
+
+  imageLists.clear();
+  for (const auto &totalImageList : totalImageLists) {
+    size_t batchIdx = miniBatchIndex;
+    size_t batchSize = miniBatchSize;
+    size_t endIndex = batchIdx + batchSize;
+    std::vector<std::string> imageList;
+    for (size_t index = batchIdx; index < endIndex; index++) {
+      imageList.push_back(totalImageList[index]);
+    }
+    imageLists.push_back(imageList);
   }
   miniBatchIndex += miniBatchSize;
   return true;
 }
 
+Placeholder *
+getOutputForPostProcessing(const llvm::StringMap<Placeholder *> &PHM) {
+  if (PHM.size() == 1) {
+    return PHM.begin()->second;
+  }
+  if (modelOutputName.empty()) {
+    static bool warningPrinted = false;
+    if (!warningPrinted) {
+      warningPrinted = true;
+      llvm::outs()
+          << "WARNING: Multiple outputs found and none is selected. "
+             "Any postprocessing will be DISABLED!\n"
+             "Use '-output-name' to select output for postprocessing\n";
+    }
+    return nullptr;
+  }
+  auto ph = PHM.find(modelOutputName);
+  if (ph == PHM.end()) {
+    static bool warning_printed = false;
+    if (!warning_printed) {
+      warning_printed = true;
+      llvm::outs() << "WARNING: Name specified not found in outputs. "
+                      "Any postprocessing will be DISABLED: "
+                   << modelOutputName << "\n";
+    }
+    return nullptr;
+  }
+  return ph->second;
+}
+
 /// Given \p loader, the \p bindings, and \p inputImageType, build the graph
 /// from the provided protobuf file found via \p loader. Then compiles and
 /// \returns a pair of pointers to the input Placeholder and output Nodes Map.
-std::pair<Placeholder *, llvm::StringMap<Placeholder *>>
+std::pair<llvm::StringMap<Placeholder *>, llvm::StringMap<Placeholder *>>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
-                                  const glow::Type &inputImageType) {
+                                  llvm::ArrayRef<TypeRef> inputImageType) {
   // Load model.
-  loader.loadModel(&inputImageType);
+  loader.loadModel(inputImageType);
 
   // Post model loader transformation.
-  loader.postModelLoad(bindings, &inputImageType);
+  loader.postModelLoad(bindings, inputImageType);
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());
@@ -281,18 +349,14 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
   // Get input/output placeholder maps.
   llvm::StringMap<Placeholder *> inpMap = loader.getInputPlaceholderMap();
   llvm::StringMap<Placeholder *> outMap = loader.getOutputPlaceholderMap();
-
-  // Get input placeholder (assumed unique).
-  CHECK(inpMap.size() == 1) << "Model is expected to have only 1 input!";
-  Placeholder *inputImagePH = inpMap.begin()->second;
-  return std::make_pair(inputImagePH, outMap);
+  return std::make_pair(inpMap, outMap);
 }
 
 /// Setup the pool of contexts needed for a benchmark run.
-std::vector<std::unique_ptr<ExecutionContext>>
+UniquePtrVec<ExecutionContext>
 setupContextPool(const std::vector<Placeholder *> outputPHV,
-                 Placeholder *inputImagePH, glow::Tensor &inputImageData) {
-  std::vector<std::unique_ptr<ExecutionContext>> contexts;
+                 Placeholder *inputImagePH, Tensor &inputImageData) {
+  UniquePtrVec<ExecutionContext> contexts;
   // Size of the pool, the smaller of poolSize or the actual number of
   // requests.
   unsigned iterations =

@@ -6,7 +6,15 @@ from tests import utils
 
 
 class SimpleQuantizedLinearModel(torch.nn.Sequential):
-    def __init__(self, in_features, out_features, quantization, weight=None, bias=None):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        quantization,
+        per_tensor,
+        weight=None,
+        bias=None,
+    ):
         linear = torch.nn.Linear(in_features, out_features, bias=(bias is not None))
         if weight:
             linear.weight.data.fill_(weight)
@@ -18,7 +26,17 @@ class SimpleQuantizedLinearModel(torch.nn.Sequential):
         super(SimpleQuantizedLinearModel, self).__init__(
             quantization, linear, torch.nn.quantized.DeQuantize()
         )
-        self.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+
+        weight_observer = (
+            torch.quantization.default_weight_observer
+            if per_tensor
+            else torch.quantization.default_per_channel_weight_observer
+        )
+        self.qconfig = torch.quantization.QConfig(
+            activation=torch.quantization.default_observer,
+            weight=weight_observer,
+        )
+
         torch.quantization.prepare(self, inplace=True)
         torch.quantization.convert(self, inplace=True)
 
@@ -41,6 +59,7 @@ class TestQuantizedLinear(unittest.TestCase):
                     torch.nn.quantized.Quantize(
                         scale=1 / 25, zero_point=17, dtype=torch.quint8
                     ),
+                    False,  # per_tensor
                     1.2,
                     3.0,
                 ),
@@ -54,6 +73,7 @@ class TestQuantizedLinear(unittest.TestCase):
                     torch.nn.quantized.Quantize(
                         scale=1 / 15, zero_point=17, dtype=torch.quint8
                     ),
+                    False,  # per_tensor
                     1.2,
                 ),
                 _make_input(5, 6, [3, 2, 5]),
@@ -66,6 +86,7 @@ class TestQuantizedLinear(unittest.TestCase):
                     torch.nn.quantized.Quantize(
                         scale=1 / 25, zero_point=17, dtype=torch.quint8
                     ),
+                    False,  # per_tensor
                     1.2,
                     3.0,
                 ),
@@ -80,9 +101,21 @@ class TestQuantizedLinear(unittest.TestCase):
                     torch.nn.quantized.Quantize(
                         scale=1 / 25, zero_point=17, dtype=torch.quint8
                     ),
+                    False,  # per_tensor
                 ),
                 _make_input(36, 1, [3, 2, 6]),
-                {"aten::dequantize"},
+            ),
+            (
+                "tensorwise",
+                SimpleQuantizedLinearModel(
+                    6,
+                    5,
+                    torch.nn.quantized.Quantize(
+                        scale=1 / 25, zero_point=17, dtype=torch.quint8
+                    ),
+                    True,  # per_tensor
+                ),
+                _make_input(36, 1, [3, 2, 6]),
             ),
         ]
     )

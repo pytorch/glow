@@ -631,6 +631,9 @@ int run() {
       parsedOutputs.push_back(std::move(outputGroup));
     }
   }
+  llvm::outs() << "\ninput pattern: " + inputPatternOpt + "\n";
+  llvm::outs() << "\nseqlen: " + std::to_string(seqLenOpt) + "\n";
+  llvm::outs() << "\ninputgroupsize: " + std::to_string(inputGroupSize) + "\n";
 
   if (parsedInputs.empty()) {
     llvm::outs() << "No inputs are provided. Exiting...\n";
@@ -778,6 +781,10 @@ int run() {
 
       if (result.error) {
         llvm::outs() << "Inference failed!\n";
+        if (result.error.peekErrorValue()->isFatalError()) {
+          std::string msg = result.error.peekErrorValue()->logToString();
+          llvm::outs() << "Non-recoverable device error: " << msg << "\n";
+        }
         ++numFailed;
       } else {
         const auto &outputGroup = parsedOutputs[result.index];

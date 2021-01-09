@@ -317,10 +317,9 @@ private:
   void fwdUnaryTrigonometricImpl(const InstKind *I,
                                  std::function<float(float)> func);
   template <typename ElemTy>
-  void fwdBatchedReduceAddInstFloatImpl(Value *batch, Value *dest,
-                                        unsigned_t axis,
-                                        const ShapeVector &eBatchDims,
-                                        const ShapeVector &eDestDims);
+  void fwdBatchedReduceAddInstImpl(Value *batch, Value *dest, unsigned_t axis,
+                                   const ShapeVector &eBatchDims,
+                                   const ShapeVector &eDestDims);
 
   template <typename ElemTy>
   void fwdBatchedReduceMinInstImpl(Value *batch, Value *dest,
@@ -361,6 +360,11 @@ private:
   template <typename ElemTy, typename TI>
   void fwdSparseLengthsWeightedSumInstFloatImpl(
       const SparseLengthsWeightedSumInst *I);
+
+  template <typename ElemTy>
+  void fwdEmbeddingInstImpl(Tensor *wtT, Tensor *indT, Tensor *outT,
+                            int64_t padIdx, bool sparse, bool scale,
+                            dim_t embedding_dim);
 
   template <typename ElemTy>
   void fwdEmbeddingBagInstFloatImpl(const EmbeddingBagInst *I);

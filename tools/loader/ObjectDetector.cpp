@@ -87,10 +87,10 @@ processAndPrintResults(const llvm::StringMap<Placeholder *> &PHM,
 /// files for each output.
 class ObjectDetectionProcessResult : public PostProcessOutputDataExtension {
 public:
-  int processOutputs(
-      const llvm::StringMap<Placeholder *> &PHM, PlaceholderBindings &bindings,
-      llvm::ArrayRef<std::string> inputImageBatchFilenames) override {
-    processAndPrintResults(PHM, bindings, inputImageBatchFilenames);
+  int processOutputs(const llvm::StringMap<Placeholder *> &PHM,
+                     PlaceholderBindings &bindings,
+                     VecVecRef<std::string> imageList) override {
+    processAndPrintResults(PHM, bindings, imageList[0]);
     return 0;
   }
 };
