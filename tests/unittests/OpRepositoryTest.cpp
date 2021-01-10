@@ -311,7 +311,7 @@ static std::string castVoidPtrToString(void *ptr) {
 }
 
 TEST(OpInfoParserTest, ParseOpInfo) {
-  std::string configFile{GLOW_DATA_PATH "tests/CustomOpConfig.yaml"};
+  std::string configFile(GLOW_DATA_PATH "tests/CustomOpConfig.yaml");
 
   std::vector<OperationInfo> opinfos;
   ASSERT_FALSE(ERR_TO_BOOL(deserializeOpInfoFromYaml(configFile, opinfos)));

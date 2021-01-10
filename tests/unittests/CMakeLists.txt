@@ -764,9 +764,10 @@ target_link_libraries(OpRepositoryTest
                         Graph
                         gtest
                         TestMain)
-add_glow_test(OpRepositoryTest
-              ${GLOW_BINARY_DIR}/tests/OpRepositoryTest
-                  --gtest_output=xml:OpRepositoryTest.xml)
+add_glow_test(NAME OpRepositoryTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/OpRepositoryTest
+                  --gtest_output=xml:OpRepositoryTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 LIST(APPEND UNOPT_TESTS ./tests/OpRepositoryTest -optimize-ir=false &&)
 
 add_executable(CustomOpTest
