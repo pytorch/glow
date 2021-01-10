@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import unittest
+from typing import Union
 
 import torch
 from parameterized import parameterized
@@ -25,6 +26,27 @@ class SimpleCompareOpsModule(torch.nn.Module):
             return torch.gt(a, b + 0.1)
         elif self.opType == "greaterEqual":
             return torch.ge(a, b + 0.1)
+
+
+class SimpleScalarVectorCmpModule(torch.nn.Module):
+    def __init__(self, opType: str, scalar: Union[float, int]):
+        super().__init__()
+        self.opType = opType
+        self.scalar = scalar
+
+    def forward(self, a: torch.Tensor) -> torch.Tensor:
+        if self.opType == "equal":
+            return a == self.scalar
+        if self.opType == "greaterEqual":
+            return a >= self.scalar
+        if self.opType == "greaterThan":
+            return a > self.scalar
+        if self.opType == "lessEqual":
+            return a <= self.scalar
+        if self.opType == "lessThan":
+            return a < self.scalar
+        if self.opType == "notEqual":
+            return a != self.scalar
 
 
 class TestCmp(unittest.TestCase):
@@ -134,4 +156,22 @@ class TestCmp(unittest.TestCase):
             torch.randn(3, 4, 5),
             torch.randn(4, 5),
             fusible_ops={"aten::ge"},
+        )
+
+    @parameterized.expand(
+        [
+            ("eq_tensor_scalar", "equal", "aten::eq"),
+            ("gt_tensor_scalar", "greaterThan", "aten::gt"),
+            ("ge_tensor_scalar", "greaterEqual", "aten::ge"),
+            ("le_tensor_scalar", "lessEqual", "aten::le"),
+            ("lt_tensor_scalar", "lessThan", "aten::lt"),
+            ("ne_tensor_scalar", "notEqual", "aten::ne"),
+        ]
+    )
+    def test_scalar_vector_cmp(self, _, opType, op):
+        """Testing comparisons between tensors and scalars."""
+        utils.compare_tracing_methods(
+            SimpleScalarVectorCmpModule(opType, 0.5),
+            torch.randn(3, 4, 5),
+            fusible_ops={op},
         )
