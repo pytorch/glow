@@ -1332,6 +1332,68 @@ TEST_F(Caffe2ImporterTest, FCTransposedWithFlatten) {
   // already covered in the Operator.FCWithFlatten/* tests.
 }
 
+TEST_F(Caffe2ImporterTest, FbFCPacked3D) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/fb_fc_packed_3d.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/fb_fc_packed_3d_init.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+
+  const std::vector<dim_t> inputShape{2, 3, 4};
+
+  // Create and populate input tensor
+  Tensor input{ElemKind::FloatTy, inputShape};
+  std::vector<float> inputData;
+  inputData.resize(input.size());
+  std::iota(inputData.begin(), inputData.end(), 0);
+  input.getHandle() = inputData;
+
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  std::vector<dim_t> expectedShape{inputShape.begin(), inputShape.end() - 1};
+  expectedShape.push_back(5); // bias size as defined in .pbtxt file
+  EXPECT_EQ(expectedShape, res->dims().vec());
+
+  auto result = res->getHandle();
+
+  // Data is based on Caffe2 results
+  std::vector<std::vector<std::vector<float>>> expectedData{
+      {{14, 39, 64, 89, 114},
+       {38, 127, 216, 305, 394},
+       {62, 215, 368, 521, 674}},
+      {{86, 303, 520, 737, 954},
+       {110, 391, 672, 953, 1234},
+       {134, 479, 824, 1169, 1514}}};
+
+  for (dim_t dim1 = 0; dim1 < expectedShape[0]; ++dim1) {
+    for (dim_t dim2 = 0; dim2 < expectedShape[0]; ++dim2) {
+      for (dim_t dim3 = 0; dim3 < expectedShape[0]; ++dim3) {
+        EXPECT_FLOAT_EQ(expectedData[dim1][dim2][dim3],
+                        result.at({dim1, dim2, dim3}));
+      }
+    }
+  }
+}
+
 /// Test loading bucketize op from a Caffe2 model.
 /// Test with arg boundaries = [0.1, 2.5]
 TEST_F(Caffe2ImporterTest, importBucketize) {

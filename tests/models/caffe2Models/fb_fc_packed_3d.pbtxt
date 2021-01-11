@@ -1,0 +1,17 @@
+name: "fb_fc_packed_3d"
+op {
+  input: "input"
+  input: "weights"
+  input: "bias"
+  output: "output"
+  name: ""
+  type: "FbFCPacked"
+  arg {
+    name: "axis"
+    i: 2
+  }
+}
+external_input: "input"
+external_input: "weights"
+external_input: "bias"
+external_output: "output"

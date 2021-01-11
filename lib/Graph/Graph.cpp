@@ -1115,7 +1115,6 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue B, TypeRef outTy,
                                                    unsigned_t axis) {
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
-  assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
 
   // FC always uses 2D input; flatten if necessary.
   if (input.dims().size() != 2) {
