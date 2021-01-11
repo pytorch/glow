@@ -1143,6 +1143,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                              dict));
       node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
     } else if (typeName == "FbFCPacked") {
+      RETURN_ERR_IF_NOT(W.getElementType() == ElemKind::Float16Ty,
+                        opErrMsg(op, "Expected float16 weights."));
       auto fp16InputType =
           mod_.uniqueType(ElemKind::Float16Ty, in.getType()->dims());
       in = G_->createConvertTo(opName + ".ConvertInput", in, fp16InputType);
@@ -1151,9 +1153,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           mod_.uniqueType(ElemKind::Float16Ty, B->getType()->dims());
       auto *fp16Bias =
           G_->createConvertTo(opName + ".ConvertBias", B, fp16BiasType);
-      TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
-                                   {in.dims()[0], B->getType()->dims()[0]});
 
+      auto outputDims = flattenCdr(in.dims(), in.dims().size() - 1);
+      TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
+                                   {outputDims.first, B->getType()->dims()[0]});
       auto fc = G_->createFullyConnected(opName, in, W, fp16Bias, OT, axis);
       auto outputType =
           mod_.uniqueType(ElemKind::FloatTy, fc->getResult().dims());
@@ -1883,8 +1886,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   const std::string &typeName = op.type();
 
   // Load tensors with values:
-  if (typeName == "GivenTensorFill" || typeName == "GivenTensorIntFill" ||
-      typeName == "GivenTensorInt64Fill") {
+  if (typeName == "GivenTensorFill" || typeName == "GivenTensorFp16Fill" ||
+      typeName == "GivenTensorIntFill" || typeName == "GivenTensorInt64Fill") {
     /*
      * op {
      *   output: "conv1_w"
@@ -1921,6 +1924,9 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     if (typeName == "GivenTensorFill") {
       RETURN_IF_ERR(
           fillTensor<float>(T, ElemKind::FloatTy, dim, values->floats()));
+    } else if (typeName == "GivenTensorFp16Fill") {
+      RETURN_IF_ERR(
+          fillTensor<float16_t>(T, ElemKind::Float16Ty, dim, values->floats()));
     } else if (typeName == "GivenTensorIntFill") {
       RETURN_IF_ERR(
           fillTensor<int32_t>(T, ElemKind::Int32ITy, dim, values->ints()));
