@@ -51,8 +51,9 @@ processAndPrintResults(const llvm::StringMap<Placeholder *> &PHM,
       // Dump all the output tensors of input file with name <inimage> to
       // files with name <inimage>_<tensorname>.txt in the working
       // directory.
-      std::replace_if(VecOutNames[k].begin(), VecOutNames[k].end(),
-                      [](char c) { return !isalnum(c); }, '_');
+      std::replace_if(
+          VecOutNames[k].begin(), VecOutNames[k].end(),
+          [](char c) { return !isalnum(c); }, '_');
       std::string filename = basename + "_" + VecOutNames[k] + ".txt";
       llvm::raw_fd_ostream fd(filename, EC);
       if (EC) {
@@ -87,10 +88,10 @@ processAndPrintResults(const llvm::StringMap<Placeholder *> &PHM,
 /// files for each output.
 class ObjectDetectionProcessResult : public PostProcessOutputDataExtension {
 public:
-  int processOutputs(
-      const llvm::StringMap<Placeholder *> &PHM, PlaceholderBindings &bindings,
-      llvm::ArrayRef<std::string> inputImageBatchFilenames) override {
-    processAndPrintResults(PHM, bindings, inputImageBatchFilenames);
+  int processOutputs(const llvm::StringMap<Placeholder *> &PHM,
+                     PlaceholderBindings &bindings,
+                     VecVecRef<std::string> imageList) override {
+    processAndPrintResults(PHM, bindings, imageList[0]);
     return 0;
   }
 };

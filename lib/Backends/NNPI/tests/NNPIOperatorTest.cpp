@@ -160,6 +160,7 @@ struct BlacklistInitializer {
       {"spaceToDepth_block2_int8/0", TestBlacklist::AnyDeviceAnyEngine},
       {"spaceToDepth_block3_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"spaceToDepth_block3_int8/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Embedding_with_PadIdx/0", TestBlacklist::AnyDeviceAnyEngine},
       {"EmbeddingBag_1D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"EmbeddingBag_1D_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"EmbeddingBag_2D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -308,8 +309,6 @@ struct BlacklistInitializer {
       {"RoiAlignRotatedBatchIndexInBoxesTensor/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"FP16RoiAlign/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
-       TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Rotated_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Abs_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -524,13 +523,15 @@ struct BlacklistInitializer {
       {"Int8BatchNorm2D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"FP16BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Int8BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
-#endif
-#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 1
+      {"FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
+       TestBlacklist::AnyDeviceAnyEngine},
+#else
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
 #endif
       {"Erf_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Erf_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"batchedReduceAdd_Int32ITy/0", TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

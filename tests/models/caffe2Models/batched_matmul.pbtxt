@@ -1,0 +1,11 @@
+name: "batched_matmul"
+op {
+  input: "lhs"
+  input: "rhs"
+  output: "result"
+  name: ""
+  type: "BatchMatMul"
+}
+external_input: "lhs"
+external_input: "rhs"
+external_output: "result"

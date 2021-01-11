@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
       .addInput("FilterOffsets")
       .addInput("BiasScales")
       .addInput("BiasOffsets")
-      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Kernels", /* addSetter */ true)
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Unsigned, "Group", /* addSetter */ true)
@@ -727,6 +727,16 @@ int main(int argc, char **argv) {
                     "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
                     "It implies that len(Weights) == len(Indices).");
 
+  BB.newNode("Embedding")
+      .addInput("Weights")
+      .addInput("Indices")
+      .addMember(MemberType::Int64, "PadIdx")
+      .addMember(MemberType::Boolean, "Scale")
+      .addMember(MemberType::Boolean, "Sparse")
+      .addResultFromCtorArg()
+      .setDocstring("Gathers slices of the outer-most dimension of Weights "
+                    "indexed by Indices tensor.");
+
   BB.newNode("EmbeddingBag")
       .addInput("Data")
       .addInput("Weights")
@@ -1305,6 +1315,31 @@ int main(int argc, char **argv) {
           "Moreover the input and output types must not be quantized types. "
           "Quantized types should use the appropriate Quantize, Dequantize, "
           "and Rescale nodes.");
+
+  //===--------------------------------------------------------------------===//
+  //                Custom kernels invocations
+  //===--------------------------------------------------------------------===//
+  BB.newNode("ExternalFunctionCall")
+      .addMember(MemberType::VectorNodeValue, "Inputs")
+      // For now use single output.
+      .addResultFromCtorArg()
+      .addMember(MemberType::String, "FunctionName")
+      // Examples are function source code, binary, or as needed.
+      // The use of the following two fields will vary depending
+      // on which kind of external function is used.
+      .addMember(MemberType::String, "FunctionImpl")
+      // Function kind, e.g. CUDA, function pointer, binary, backend-specific
+      // source code.
+      .addMember(MemberType::String, "FunctionKind")
+      .skipAutogenSerialization()
+      .setHasSideEffects(true)
+      .setDocstring("This is a node representing an external function call. "
+                    "One possible use of this capability is to pass a source "
+                    "code for a function/kernel. When processing this node, a "
+                    "backend can compile and execute the source code. This "
+                    "node can also be used to pass binary or pointers to "
+                    "executable code. The semantics and implementation of this "
+                    "node not standardized and is very backend-specific.");
 
   //===--------------------------------------------------------------------===//
   //                Pre Processing

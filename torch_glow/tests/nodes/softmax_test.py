@@ -20,12 +20,22 @@ class SimpleSoftmaxModel(torch.nn.Module):
 class TestSoftmax(unittest.TestCase):
     @parameterized.expand(
         [
-            ("basic", SimpleSoftmaxModel(1), torch.randn(2, 3)),
-            ("neg_dim", SimpleSoftmaxModel(-1), torch.randn(2, 3)),
+            (-2, [2, 3]),
+            (-1, [2, 3]),
+            (0, [2, 3]),
+            (1, [2, 3]),
+            (-3, [2, 3, 4]),
+            (-2, [2, 3, 4]),
+            (-1, [2, 3, 4]),
+            (0, [2, 3, 4]),
+            (1, [2, 3, 4]),
+            (2, [2, 3, 4]),
         ]
     )
-    def test_softmax(self, _, module, tensor):
-        utils.compare_tracing_methods(module, tensor)
+    def test_softmax(self, dim, input_dims):
+        module = SimpleSoftmaxModel(dim)
+        input = torch.randn(input_dims)
+        utils.compare_tracing_methods(module, input)
 
     def test_softmax_oob_neg_dim(self):
         """Test out of bounds negative dimension index for the PyTorch SoftMax Node on Glow."""

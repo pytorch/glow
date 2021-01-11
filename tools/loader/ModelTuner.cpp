@@ -151,8 +151,9 @@ float runModelAndGetAccuracy(LabeledDataSet &dataset, bool quantize,
   size_t correct = 0;
   for (const auto &data : dataset) {
     // Read the image and preprocess.
-    Tensor inputImg = readPngImageAndPreprocess(data.first, imageNormMode,
-                                                imageChannelOrder, imageLayout);
+    Tensor inputImg =
+        readPngImageAndPreprocess(data.first, imageNormMode[0],
+                                  imageChannelOrderOpt[0], imageLayoutOpt[0]);
     auto imgShape = inputImg.getType().dims();
     Tensor inputTensor =
         inputImg.getUnowned({1, imgShape[0], imgShape[1], imgShape[2]});

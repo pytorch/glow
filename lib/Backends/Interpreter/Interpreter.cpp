@@ -134,8 +134,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
-         ElemKind::Int8QTy});
+        {ElemKind::Int32ITy, ElemKind::FloatTy, ElemKind::Float16Ty,
+         ElemKind::BFloat16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::MatMulNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -373,6 +373,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
+
+  case Kinded::Kind::EmbeddingNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+               {EmbeddingNode::IndicesIdx}) &&
+           (NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int64ITy ||
+            NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::EmbeddingBagNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -883,13 +890,13 @@ static bool quantizeRQFCFloatBias(Function *F,
                   "Constant in order to quantize the bias");
 
   auto TQPs = getTensorQuantizationParams(
-      biasC->getPayload(), quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+      biasC->getPayload(), quantization::Schema::Asymmetric, ElemKind::Int32QTy,
       0, biasC->dims()[0]);
 
   DCHECK_EQ(TQPs.size(), 1) << "Should only be one dimension to quantize on";
 
-  auto biasQuantizedT =
-      quantization::quantizeTensor(biasC->getPayload(), TQPs[0]);
+  auto biasQuantizedT = quantization::quantizeTensor(
+      biasC->getPayload(), TQPs[0], ElemKind::Int32QTy);
 
   auto biasQuantizedC = F->getParent()->createConstant(
       biasC->getName(), std::move(biasQuantizedT));

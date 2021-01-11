@@ -97,6 +97,17 @@ void initializeCompiliationContextFromSettings(
 
 } // namespace
 
+static glow::Expected<std::string> getOnnxFilePath(const std::string &filename,
+                                                   bool writeOnnxToTmp) {
+  if (writeOnnxToTmp) {
+    std::string filepath;
+    ASSIGN_VALUE_OR_RETURN_ERR(filepath, getTempFileLoc(filename, ".onnx"));
+    return filepath;
+  } else {
+    return filename + ".onnx";
+  }
+}
+
 void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
                                                 bool flush) {
   size_t numTracesPerDump = defaultSettings_.numTracesPerDump;
@@ -331,6 +342,13 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
+  std::string onnxFileNamePrefix;
+  if (settings.writeToOnnx && settings.onnxFileNamePrefix.empty()) {
+    onnxFileNamePrefix = info.functionName;
+  } else if (settings.writeToOnnx) {
+    onnxFileNamePrefix = settings.onnxFileNamePrefix;
+  }
+
   if (settings.writeToOnnx || settings.jitVsGlowCompare) {
 
     // We will use original graph for runOnJit, which means the first input
@@ -468,8 +486,13 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
 
       if (settings.writeToOnnx) {
-        std::string filename =
-            strFormat("%s_input_%zu.onnx", info.functionName.c_str(), runId);
+        std::string filename;
+        LOG(ERROR) << onnxFileNamePrefix.c_str();
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            filename,
+            getOnnxFilePath(
+                strFormat("%s_input_%zu", onnxFileNamePrefix.c_str(), runId),
+                settings.writeOnnxToTmp));
         std::ofstream of(filename, std::ios::binary);
         if (!of) {
           LOG(ERROR) << "Cannot create input file " << filename;
@@ -642,8 +665,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
 
       if (settings.writeToOnnx) {
-        std::string filename = strFormat("%s_glow_output_%zu.onnx",
-                                         info.functionName.c_str(), runId);
+        std::string filename;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            filename,
+            getOnnxFilePath(strFormat("%s_glow_output_%zu",
+                                      onnxFileNamePrefix.c_str(), runId),
+                            settings.writeOnnxToTmp));
         std::ofstream of(filename, std::ios::binary);
         if (!of) {
           LOG(ERROR) << "Cannot create output file " << filename;
@@ -655,8 +682,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
 
       if (settings.writeToOnnx) {
-        std::string filename = strFormat("%s_pytorch_output_%zu.onnx",
-                                         info.functionName.c_str(), runId);
+        std::string filename;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            filename,
+            getOnnxFilePath(strFormat("%s_pytorch_output_%zu",
+                                      onnxFileNamePrefix.c_str(), runId),
+                            settings.writeOnnxToTmp));
         std::ofstream of(filename, std::ios::binary);
         if (!of) {
           LOG(ERROR) << "Cannot create output file " << filename;
@@ -728,12 +759,12 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
     auto it = perGlowGraphInfoMap_.find(hash);
     if (it == perGlowGraphInfoMap_.end()) {
       std::ostringstream ss;
-      ss << "No compiled graph found for input stack:" << std::endl
-         << metaStack.print() << std::endl;
+      ss << "No compiled graph found for input stack:\n"
+         << metaStack.print() << "\n";
       ss << "There are " << perGlowGraphInfoMap_.size()
-         << "input sets with compiled graphs, they are:" << std::endl;
+         << " input sets with compiled graphs, they are:\n";
       for (const auto &kv : perGlowGraphInfoMap_) {
-        ss << hash << std::endl;
+        ss << kv << "\n";
       }
       return MAKE_ERR(ss.str());
     }

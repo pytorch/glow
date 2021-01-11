@@ -565,6 +565,19 @@ static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
   return isValid;
 }
 
+static bool verifyEmbedding(NodeValue dest, NodeValue weights,
+                            NodeValue indices) {
+  bool isValid = checkType(dest, weights.getElementType(), dest.getNode());
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &=
+      expectCompareTrue("Weights must be a 2D tensor", weights.dims().size(),
+                        size_t(2), weights.getNode());
+  return isValid;
+}
+
 static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
                                NodeValue weights, NodeValue indices,
                                NodeValue offsets) {
@@ -937,8 +950,12 @@ bool MatMulNode::verify() const {
   auto LDims = lhs.dims();
   auto RDims = rhs.dims();
   auto DDims = dest.dims();
-  bool isValid = expectCompareTrue("Invalid MatMul dimensions", size_t(2),
-                                   DDims.size(), this);
+  bool isValid = expectCompareTrue("LHS input must be 2 dimensional.",
+                                   LDims.size(), size_t(2), this);
+  isValid &= expectCompareTrue("RHS input must be 2 dimensional.", RDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Invalid MatMul dimensions", DDims.size(),
+                               size_t(2), this);
 
   auto elem = dest.getType()->getElementType();
   isValid &= checkType(lhs, elem, this);
@@ -1562,6 +1579,10 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
 bool EmbeddingBagNode::verify() const {
   return verifyEmbeddingBag(getResult(), getData(), getWeights(), getIndices(),
                             getOffsets());
+}
+
+bool EmbeddingNode::verify() const {
+  return verifyEmbedding(getResult(), getWeights(), getIndices());
 }
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
@@ -2555,6 +2576,8 @@ bool BroadcastNode::verify() const {
 }
 
 bool ModuloNode::verify() const { return getDivisor() >= 1; }
+
+bool ExternalFunctionCallNode::verify() const { return true; }
 
 //===----------------------------------------------------------------------===//
 //                     Node hashing support

@@ -100,10 +100,16 @@ public:
 
   Error execute(IRFunction *F, ExecutionContext *context);
 
-private:
   /// \returns a pointer to the tensor that is saved under \p v.
   Tensor *getTensor(const Value *v) const;
 
+  /// \returns a typed handle to the tensor that is stored at \p v.
+  template <class ElemTy = float>
+  Handle<ElemTy> getWeightHandle(Value *v) const {
+    return getTensor(v)->getHandle<ElemTy>();
+  }
+
+private:
   /// Allocate a tensor to back the value \p v. Do not allocate anything if a
   /// tensor is already allocated for \p v.
   /// \returns a tensor for \p v.
@@ -117,12 +123,6 @@ private:
 
   /// If a tensor is allocated for \p v then delete it.
   void deleteTensor(const Value *v);
-
-  /// \returns a typed handle to the tensor that is stored at \p v.
-  template <class ElemTy = float>
-  Handle<ElemTy> getWeightHandle(Value *v) const {
-    return getTensor(v)->getHandle<ElemTy>();
-  }
 
   /// @name BoundInterpreterFunction methods. This is a list of method
   /// declerations that are used by the interpreter to dispatch different
@@ -317,10 +317,9 @@ private:
   void fwdUnaryTrigonometricImpl(const InstKind *I,
                                  std::function<float(float)> func);
   template <typename ElemTy>
-  void fwdBatchedReduceAddInstFloatImpl(Value *batch, Value *dest,
-                                        unsigned_t axis,
-                                        const ShapeVector &eBatchDims,
-                                        const ShapeVector &eDestDims);
+  void fwdBatchedReduceAddInstImpl(Value *batch, Value *dest, unsigned_t axis,
+                                   const ShapeVector &eBatchDims,
+                                   const ShapeVector &eDestDims);
 
   template <typename ElemTy>
   void fwdBatchedReduceMinInstImpl(Value *batch, Value *dest,
@@ -361,6 +360,11 @@ private:
   template <typename ElemTy, typename TI>
   void fwdSparseLengthsWeightedSumInstFloatImpl(
       const SparseLengthsWeightedSumInst *I);
+
+  template <typename ElemTy>
+  void fwdEmbeddingInstImpl(Tensor *wtT, Tensor *indT, Tensor *outT,
+                            int64_t padIdx, bool sparse, bool scale,
+                            dim_t embedding_dim);
 
   template <typename ElemTy>
   void fwdEmbeddingBagInstFloatImpl(const EmbeddingBagInst *I);

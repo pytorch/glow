@@ -232,6 +232,40 @@ static void importReduceL2Test(const std::string &netFilename,
   }
 }
 
+/// Test the utility function that gets the inputs name and glow types
+/// from updated graph proto
+
+TEST_F(OnnxImporterTest, getInputNamesAndTypes) {
+  // Set onnx-define-symbol if present in model
+  std::string inputSymbol = "batch_size,5";
+  setOnnxDefineSymbol({inputSymbol});
+
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/getInputsOnnxDefineSample.onnxtxt");
+
+  bool isError = false;
+
+  std::vector<std::string> names;
+  std::vector<Type> types;
+
+  std::vector<std::string> expectedNames = {"input"};
+  std::vector<std::vector<dim_t>> expectedDims = {{5, 3, 224, 224}};
+
+  isError = ERR_TO_BOOL(
+      ONNXModelLoader::getInputsNamesAndTypes(names, types, netFilename));
+
+  EXPECT_FALSE(isError);
+
+  for (size_t i = 0; i < expectedNames.size(); i++) {
+    EXPECT_TRUE(expectedNames[i] == names[i]);
+    std::vector<dim_t> dims = types[i].dims();
+    for (size_t j = 0; j < expectedDims[i].size(); j++) {
+      EXPECT_EQ(expectedDims[i][j], dims[j]);
+    }
+  }
+}
+
 /// Test the utility function which wraps a negative axis.
 TEST_F(OnnxImporterTest, getPositiveAxis) {
   int axisPos;
@@ -4676,6 +4710,45 @@ TEST_F(OnnxImporterTest, importUpsampleOpset9) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/upsampleOpset9.onnxtxt");
   importUpsampleTest(netFilename);
+}
+
+static void testIf(std::string filename, float inputVal, float outputVal) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename = std::string(GLOW_DATA_PATH) + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {1});
+    x.getHandle() = {inputVal};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+
+  std::vector<float> expectedValues = {outputVal};
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+TEST(onnx, testIfConstantTrue) {
+  testIf("tests/models/onnxModels/if_true.onnxtxt", 3.0f, 6.0f);
+}
+
+TEST(onnx, testIfConstantFalse) {
+  testIf("tests/models/onnxModels/if_false.onnxtxt", 3.0f, 9.0f);
 }
 
 /// ResizeNearest Test Helper

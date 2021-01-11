@@ -26,6 +26,7 @@
 #include "ShapeInferenceEngine.h"
 
 #include "glow/Flags/Flags.h"
+#include "llvm/Support/FileSystem.h"
 
 #include "torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h"
 #include <torch/csrc/jit/passes/freeze_module.h>
@@ -66,6 +67,7 @@ DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
 DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
+DEFINE_bool(writeOnnxToTmp, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
@@ -265,6 +267,7 @@ void PyTorchLoaderSettings::initSettings() {
   replicationCount = FLAGS_replicationCount;
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
+  writeOnnxToTmp = FLAGS_writeOnnxToTmp;
   randomizeConstants = FLAGS_randomizeConstants;
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
@@ -329,6 +332,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(numTracesPerDump, s);
   INSERT_BOOL_TO_STREAM(writeToOnnx, s);
   INSERT_BOOL_TO_STREAM(onnxZipMode, s);
+  INSERT_BOOL_TO_STREAM(writeOnnxToTmp, s);
   INSERT_BOOL_TO_STREAM(jitVsGlowCompare, s);
   INSERT_BOOL_TO_STREAM(randomizeConstants, s);
   INSERT_BOOL_TO_STREAM(writeWithoutRandomize, s);
@@ -667,6 +671,17 @@ void enableSignalHandlerOverrides(bool enable) {
 
 bool signalHandlerOverridesEnabled() {
   return _signalHandlerOverridesEnabled();
+}
+
+/// Get a temporary file location given \p name and \p suffix.
+Expected<std::string> getTempFileLoc(const std::string &name,
+                                     const std::string &suffix) {
+  llvm::SmallString<64> path;
+  auto tempFileRes =
+      llvm::sys::fs::createTemporaryFile("export", name + suffix, path);
+  RETURN_ERR_IF_NOT(tempFileRes.value() == 0,
+                    "Failed to create temp file to write into.");
+  return std::string(path.c_str());
 }
 
 } // namespace glow

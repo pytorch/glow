@@ -182,6 +182,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_onnx_zip_mode",
         []() { getGlobalPyTorchLoaderSettingsMutable().onnxZipMode = false; });
 
+  /// Set a specific filename for writing ONNX to
+  m.def("set_onnx_file_name_prefix", [](const std::string &prefix) {
+    getGlobalPyTorchLoaderSettingsMutable().onnxFileNamePrefix = prefix;
+  });
+
   /// Enable randomizing Constants in loaded Functions.
   m.def("enable_randomize_constants", []() {
     getGlobalPyTorchLoaderSettingsMutable().randomizeConstants = true;

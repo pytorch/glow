@@ -383,6 +383,18 @@ int main(int argc, char **argv) {
       .addGradientInstr({"Data", "Weights", "Indices", "Lengths"},
                         {"Dest", "Data", "Weights"});
 
+  BB.newInstr("Embedding")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addMember(MemberType::Int64, "PadIdx")
+      .addMember(MemberType::Boolean, "Scale")
+      .addMember(MemberType::Boolean, "Sparse")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Weights"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"});
+
   BB.newInstr("EmbeddingBag")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
@@ -1115,6 +1127,16 @@ int main(int argc, char **argv) {
       .addOperand("Input", OperandKind::In)
       .autoVerify(VerifyKind::NoVerify)
       .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
+  //                Custom kernels invocations
+  //===--------------------------------------------------------------------===//
+  BB.newInstr("ExternalFunctionCall")
+      .addOperand("Dest", OperandKind::Out)
+      .addMember(MemberType::String, "FunctionName")
+      .addMember(MemberType::String, "FunctionImpl")
+      .addMember(MemberType::String, "FunctionKind")
+      .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//
   //                Pre Processing
