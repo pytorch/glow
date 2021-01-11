@@ -41,8 +41,23 @@ constexpr dim_t SplitNodeOutputIdx = 0;
 /// option commonly refers to the first output operand.
 class SplitNodeOption {
 public:
+  /// Discriminator for LLVM-style RTTI (for using dyn_cast<> et al).
+  enum SplitNodeKind {
+    SplitNodeBySliceRanges,
+    SplitNodeByNumChunks,
+    SplitNodeByChunkSize,
+    SplitNodeByChunkSizes,
+    SplitNodeByChunkWeights,
+  };
+
+private:
+  const SplitNodeKind kind_;
+
+public:
   /// Dtor.
   virtual ~SplitNodeOption() = default;
+  SplitNodeKind getKind() const { return kind_; }
+  SplitNodeOption(SplitNodeKind K) : kind_(K) {}
 };
 
 /// Orthogonal generic split node option.
@@ -53,8 +68,9 @@ class SplitNodeOptionOrthogonal : public SplitNodeOption {
 
 public:
   /// Ctor.
-  SplitNodeOptionOrthogonal(llvm::ArrayRef<size_t> splitDims)
-      : splitDims_(splitDims.begin(), splitDims.end()) {}
+  SplitNodeOptionOrthogonal(SplitNodeOption::SplitNodeKind k,
+                            llvm::ArrayRef<size_t> splitDims)
+      : SplitNodeOption(k), splitDims_(splitDims.begin(), splitDims.end()) {}
 
   /// \returns the split dims.
   llvm::ArrayRef<size_t> getSplitDims() const { return splitDims_; }
@@ -68,6 +84,13 @@ public:
 
   /// Dtor.
   virtual ~SplitNodeOptionOrthogonal() = default;
+
+  static bool classof(const SplitNodeOption *S) {
+    return S->getKind() == SplitNodeKind::SplitNodeByNumChunks ||
+           S->getKind() == SplitNodeKind::SplitNodeByChunkSize ||
+           S->getKind() == SplitNodeKind::SplitNodeByChunkSizes ||
+           S->getKind() == SplitNodeKind::SplitNodeByChunkWeights;
+  }
 };
 
 /// Orthogonal split option for splitting a node along dimensions \ref splitDims
@@ -89,7 +112,8 @@ public:
   SplitNodeByNumChunks(llvm::ArrayRef<size_t> splitDims,
                        llvm::ArrayRef<dim_t> numChunks,
                        bool bigChunksFirst = true)
-      : SplitNodeOptionOrthogonal(splitDims),
+      : SplitNodeOptionOrthogonal(SplitNodeKind::SplitNodeByNumChunks,
+                                  splitDims),
         numChunks_(numChunks.begin(), numChunks.end()),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), numChunks.size())
@@ -122,7 +146,8 @@ public:
   SplitNodeByChunkSize(llvm::ArrayRef<size_t> splitDims,
                        llvm::ArrayRef<dim_t> chunkSizes,
                        bool bigChunksFirst = true)
-      : SplitNodeOptionOrthogonal(splitDims),
+      : SplitNodeOptionOrthogonal(SplitNodeKind::SplitNodeByChunkSize,
+                                  splitDims),
         chunkSizes_(chunkSizes.begin(), chunkSizes.end()),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
@@ -148,7 +173,8 @@ public:
   /// Ctor.
   SplitNodeByChunkSizes(llvm::ArrayRef<size_t> splitDims,
                         llvm::ArrayRef<std::vector<dim_t>> chunkSizes)
-      : SplitNodeOptionOrthogonal(splitDims),
+      : SplitNodeOptionOrthogonal(SplitNodeKind::SplitNodeByChunkSizes,
+                                  splitDims),
         chunkSizes_(chunkSizes.begin(), chunkSizes.end()) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
         << "Mismatch between 'splitDims' and 'chunkSizes' array sizes!";
@@ -177,7 +203,8 @@ public:
   /// Ctor.
   SplitNodeByChunkWeights(llvm::ArrayRef<size_t> splitDims,
                           llvm::ArrayRef<std::vector<float>> chunkWeights)
-      : SplitNodeOptionOrthogonal(splitDims),
+      : SplitNodeOptionOrthogonal(SplitNodeKind::SplitNodeByChunkWeights,
+                                  splitDims),
         chunkWeights_(chunkWeights.begin(), chunkWeights.end()) {
     CHECK_EQ(splitDims.size(), chunkWeights.size())
         << "Mismatch between 'splitDims' and 'chunkWeights' array sizes!";
@@ -200,10 +227,15 @@ class SplitNodeBySliceRanges : public SplitNodeOption {
 public:
   /// Ctor.
   SplitNodeBySliceRanges(llvm::ArrayRef<SliceRange> sliceRanges)
-      : sliceRanges_(sliceRanges) {}
+      : SplitNodeOption(SplitNodeKind::SplitNodeBySliceRanges),
+        sliceRanges_(sliceRanges) {}
 
   /// \returns the raw slice ranges.
   llvm::ArrayRef<SliceRange> getSliceRanges() const { return sliceRanges_; }
+
+  static bool classof(const SplitNodeOption *S) {
+    return S->getKind() == SplitNodeKind::SplitNodeBySliceRanges;
+  }
 };
 
 ///===---------------------------------------------------------------------===//

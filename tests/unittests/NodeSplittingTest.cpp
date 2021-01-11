@@ -32,6 +32,36 @@ bool operator==(const std::vector<dim_t> &lhs, const std::vector<dim_t> &rhs) {
   return std::equal(lhs.begin(), lhs.end(), rhs.begin());
 }
 
+/// Test for checking the LLVM style RTTI used for split options.
+TEST(TestSplitNodeOption, CheckLLVMStyleRTTI) {
+  // Check orthogonal options.
+  auto opt1 = SplitNodeByNumChunks({0}, {1});
+  auto opt2 = SplitNodeByChunkSize({0}, {1});
+  auto opt3 = SplitNodeByChunkSizes({0}, {{1}});
+  auto opt4 = SplitNodeByChunkWeights({0}, {{1}});
+  EXPECT_EQ(opt1.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeByNumChunks);
+  EXPECT_EQ(opt2.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeByChunkSize);
+  EXPECT_EQ(opt3.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeByChunkSizes);
+  EXPECT_EQ(opt4.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeByChunkWeights);
+  std::vector<SplitNodeOption *> orthogonalOpts = {&opt1, &opt2, &opt3, &opt4};
+  for (auto opt : orthogonalOpts) {
+    EXPECT_NE(nullptr, dyn_cast<SplitNodeOptionOrthogonal>(opt));
+    EXPECT_EQ(nullptr, dyn_cast<SplitNodeBySliceRanges>(opt));
+  }
+  // Check non-orthogonal options.
+  std::vector<SliceRange> sliceRanges = {SliceRange({{0, 1}})};
+  auto opt5 = SplitNodeBySliceRanges(sliceRanges);
+  EXPECT_EQ(opt5.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeBySliceRanges);
+  SplitNodeOption *nonOrthogonalOpt = &opt5;
+  EXPECT_EQ(nullptr, dyn_cast<SplitNodeOptionOrthogonal>(nonOrthogonalOpt));
+  EXPECT_NE(nullptr, dyn_cast<SplitNodeBySliceRanges>(nonOrthogonalOpt));
+}
+
 /// Test for SplitNodeByNumChunks option.
 TEST(TestSplitNodeOption, SplitNodeByNumChunksOptionTest) {
   auto opt1 = SplitNodeByNumChunks({0, 1, 2, 3}, {1, 2, 3, 4},

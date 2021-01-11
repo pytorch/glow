@@ -545,7 +545,7 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
   if (splitOption) {
     // We use explicit split dims only for orthogonal option.
     auto *splitOptionOrthogonal =
-        dynamic_cast<const SplitNodeOptionOrthogonal *>(splitOption);
+        dyn_cast<SplitNodeOptionOrthogonal>(splitOption);
     if (splitOptionOrthogonal) {
       splitDims = splitOptionOrthogonal->getSplitDims();
     }
@@ -568,7 +568,7 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     // Orthogonal: Split along all the given dimensions using the given option.
     // Non-orthogonal: Use the raw slice ranges explicitly provided.
     auto *splitOptionOrthogonal =
-        dynamic_cast<const SplitNodeOptionOrthogonal *>(splitOption);
+        dyn_cast<SplitNodeOptionOrthogonal>(splitOption);
     if (splitOptionOrthogonal) {
       for (size_t splitDim : splitDims) {
         splitOutputSlices = splitSliceRanges(splitOutputSlices, splitDim,
@@ -576,8 +576,7 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
       }
     } else {
       // Set raw slice ranges.
-      auto *splitOptionRaw =
-          dynamic_cast<const SplitNodeBySliceRanges *>(splitOption);
+      auto *splitOptionRaw = dyn_cast<SplitNodeBySliceRanges>(splitOption);
       RETURN_ERR_IF_NOT(splitOptionRaw,
                         "Non orthogonal split option not supported!");
       splitOutputSlices = splitOptionRaw->getSliceRanges();
