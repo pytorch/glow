@@ -1383,10 +1383,13 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
               });
 
     VLOG(1) << "Devices sorted by cost increasing" << std::endl;
-    for (auto &device : slsDevices) {
-      VLOG(1) << "(deviceId, memAvailableInBytes, currentCost): "
+    for (const auto &device : slsDevices) {
+      const auto deviceId = device.deviceId;
+      auto meminfo = getGraphMemInfo(nodesets[deviceId], contextCount_);
+      const auto totalSize = meminfo.getTotalMemSize();
+      VLOG(1) << "(deviceId, memAvailableInBytes, totalSize, currentCost): "
               << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
-              << device.currentCost << std::endl;
+              << totalSize << "\t" << device.currentCost << std::endl;
     }
 
     // Pick the first that fits
