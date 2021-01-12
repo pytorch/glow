@@ -3291,7 +3291,8 @@ TEST_P(OperatorTest, batchedReduceAdd_5Dinput) {
 template <typename DataType>
 static void testVectorNorm(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
-                           glow::ExecutionEngine &EE, ElemKind elemKind) {
+                           glow::ExecutionEngine &EE, ElemKind elemKind,
+                           float maxRefDiff = 0.0000f) {
   auto *input = mod.createPlaceholder(elemKind, {2, 3}, "norm", false);
   bindings.allocate(input)->getHandle<DataType>() = {1, 2, 3, -1, 1, 4};
 
@@ -3303,30 +3304,34 @@ static void testVectorNorm(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(elemKind, {3});
-  expected.getHandle<DataType>() = {1.4142, 2.2361, 5.0000};
-  EXPECT_TRUE(result->isEqual(expected));
+  auto resData = result->getHandle<DataType>();
+
+  EXPECT_NEAR(resData.at({0}), 1.4142, maxRefDiff);
+  EXPECT_NEAR(resData.at({1}), 2.2361, maxRefDiff);
+  EXPECT_NEAR(resData.at({2}), 5.0000, maxRefDiff);
 }
 
 /// Test that VectorNorm is correctly supported in FloatTy.
 TEST_P(OperatorTest, VectorNorm_Float) {
   CHECK_IF_ENABLED();
 
-  testVectorNorm<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+  testVectorNorm<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 4E-5);
 }
 
 /// Test that VectorNorm is correctly supported in Float16Ty.
 TEST_P(OperatorTest, VectorNorm_Float16Ty) {
   CHECK_IF_ENABLED();
 
-  testVectorNorm<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testVectorNorm<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                            5E-3);
 }
 
 /// Test that VectorNorm is correctly supported in BFloat16Ty.
 TEST_P(OperatorTest, VectorNorm_BFloat16) {
   CHECK_IF_ENABLED();
 
-  testVectorNorm<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+  testVectorNorm<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                             2E-3);
 }
 
 /// Test that BatchedReduceAdd works correctly reducing an internal axis.
