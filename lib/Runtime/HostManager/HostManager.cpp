@@ -1097,6 +1097,7 @@ bool runtime::loadDeviceConfigsFromFile(
     auto parameters = getBackendParams(lists[i].parameters_.str);
     auto config = glow::make_unique<runtime::DeviceConfig>(configBackendName,
                                                            name, parameters);
+    config->deviceID = i;
     config->setDeviceMemory(memSize);
     configs.push_back(std::move(config));
   }
