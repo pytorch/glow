@@ -386,9 +386,9 @@ Error dumpOnnxModel(glow::Function &F, bool zipMode,
   if (writeOnnxToTmp) {
     ASSIGN_VALUE_OR_RETURN_ERR(
         filepath,
-        getTempFileLoc(fileName, (zipMode ? ".onnx.zip" : ".onnx.txt")));
+        getTempFileLoc(fileName, (zipMode ? ".onnx.zip" : ".onnxtxt")));
   } else {
-    filepath = fileName + (zipMode ? ".onnx.zip" : ".onnx.txt");
+    filepath = fileName + (zipMode ? ".onnx.zip" : ".onnxtxt");
   }
 
   LOG(INFO) << "Writing ONNX model to " << filepath;
