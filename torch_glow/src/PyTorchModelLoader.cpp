@@ -2388,10 +2388,9 @@ Error PyTorchModelLoader::loadDetach(const torch::jit::Node *ptNode) {
 }
 
 template <typename GlowNode>
-Expected<NodeValue>
-PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
-                                       const torch::jit::Value *lhs,
-                                       const torch::jit::Value *rhs) {
+Expected<NodeValue> PyTorchModelLoader::loadArithmeticNode(
+    llvm::StringRef name, const torch::jit::Value *lhs,
+    const torch::jit::Value *rhs, bool convertToDefaultType) {
   glow::NodeValue lhsInput;
   glow::NodeValue rhsInput;
 
@@ -2409,6 +2408,25 @@ PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
             lhs, rhsInput.dims(), isFloatElemKind(rhsInput.getElementType())));
   } else {
     return MAKE_ERR("Either lhs or rhs of arithmetic node must be a tensor");
+  }
+
+  // For aten::div, it will promote the output to default scalar type if both
+  // inputs are of integer type. However, Glow requires inputs and output have
+  // the same type. In order to achieve same behavior as Pytorch div, we convert
+  // the inputs to default scalar type if they are both integer.
+  if (convertToDefaultType) {
+    if (isNonQuantizedIntElemKind(rhsInput.getElementType()) &&
+        isNonQuantizedIntElemKind(lhsInput.getElementType())) {
+      auto glowElemKind = scalarTypeToElemKind(
+          at::typeMetaToScalarType(at::get_default_dtype()));
+
+      lhsInput = F_.createConvertTo(
+          "lhs_to", lhsInput,
+          F_.getParent()->uniqueType(glowElemKind, lhsInput.getType()->dims()));
+      rhsInput = F_.createConvertTo(
+          "rhs_to", rhsInput,
+          F_.getParent()->uniqueType(glowElemKind, rhsInput.getType()->dims()));
+    }
   }
 
   return F_
@@ -2435,7 +2453,8 @@ Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
 
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      res, loadArithmeticNode<glow::DivNode>("div", inputs[0], inputs[1]));
+      res, loadArithmeticNode<glow::DivNode>("div", inputs[0], inputs[1],
+                                             /* convertToDefaultType */ true));
 
   RETURN_ERR(addValueMapping(outputs[0], res));
 }
