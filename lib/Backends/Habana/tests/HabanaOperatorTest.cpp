@@ -165,6 +165,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Flatten_Float16Ty/0",
     "FloatArgMaxKeepDim/0",
     "FloatArgMaxNoKeepDim/0",
+    "Float16ArgMaxKeepDim/0",
+    "Float16ArgMaxNoKeepDim/0",
     "FloatMaxPoolWithArgmax/0",
     "FloatMaxPoolWithArgmaxTransposed/0",
     "FP16AdaptiveAvgPool/0",

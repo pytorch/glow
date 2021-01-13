@@ -225,6 +225,8 @@ struct BlacklistInitializer {
       {"FloatArgMaxNoKeepDim/0", TestBlacklist::AnyDeviceAnyEngine},
       {"FloatArgMaxNoKeepDimWithAxis1/0", TestBlacklist::AnyDeviceAnyEngine},
       {"FloatArgMaxNoKeepDimWithAxis2/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Float16ArgMaxKeepDim/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Float16ArgMaxNoKeepDim/0", TestBlacklist::AnyDeviceAnyEngine},
       {"GroupDilatedConvolution/0", TestBlacklist::AnyDeviceAnyEngine},
       {"less_int32Cases/0", TestBlacklist::AnyDeviceAnyEngine},
       {"less_int64Cases/0", TestBlacklist::AnyDeviceAnyEngine},
