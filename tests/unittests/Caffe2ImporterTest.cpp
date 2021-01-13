@@ -1394,6 +1394,64 @@ TEST_F(Caffe2ImporterTest, FbFCPacked3D) {
   }
 }
 
+TEST_F(Caffe2ImporterTest, Int8FC3D) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/int8_fc_3d.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/int8_fc_3d_init.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+
+  const std::vector<dim_t> inputShape{2, 2, 3};
+
+  // Create and populate input tensor
+  Tensor input{ElemKind::Int8QTy, inputShape, 1, 0};
+  std::vector<int8_t> inputData;
+  inputData.resize(input.size());
+  std::iota(inputData.begin(), inputData.end(), 0);
+  input.getHandle<int8_t>() = inputData;
+
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  std::vector<dim_t> expectedShape{inputShape.begin(), inputShape.end() - 1};
+  expectedShape.push_back(2); // bias size as defined in .pbtxt file
+  EXPECT_EQ(expectedShape, res->dims().vec());
+
+  auto result = res->getHandle<float>();
+
+  // Data is based on Caffe2 results
+  std::vector<std::vector<std::vector<float>>> expectedData{
+      {{4.956894, 14.890197}, {14.003877, 51.125492}},
+      {{22.921618, 86.84314}, {31.9686, 123.07844}}};
+
+  for (dim_t dim1 = 0; dim1 < expectedShape[0]; ++dim1) {
+    for (dim_t dim2 = 0; dim2 < expectedShape[0]; ++dim2) {
+      for (dim_t dim3 = 0; dim3 < expectedShape[0]; ++dim3) {
+        EXPECT_NEAR(expectedData[dim1][dim2][dim3],
+                    result.at({dim1, dim2, dim3}), 0.2);
+      }
+    }
+  }
+}
+
 /// Test loading bucketize op from a Caffe2 model.
 /// Test with arg boundaries = [0.1, 2.5]
 TEST_F(Caffe2ImporterTest, importBucketize) {
