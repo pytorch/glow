@@ -65,6 +65,26 @@ llvm::cl::opt<unsigned> denseDimOpt("dense-dim", llvm::cl::desc("Dense dim."),
                                     llvm::cl::Optional, llvm::cl::init(800),
                                     llvm::cl::cat(recSysTestCat));
 
+llvm::cl::opt<float> biasFactorOpt("bias-factor",
+                                   llvm::cl::desc("Bias factor."),
+                                   llvm::cl::Optional, llvm::cl::init(1.0),
+                                   llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<float> weightOffsetOpt("weight-offset",
+                                     llvm::cl::desc("Weight offset."),
+                                     llvm::cl::Optional, llvm::cl::init(0.000),
+                                     llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<float> actFactorOpt("act-factor",
+                                  llvm::cl::desc("Activation scale factor."),
+                                  llvm::cl::Optional, llvm::cl::init(0.001),
+                                  llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> actPosOpt("act-pos",
+                              llvm::cl::desc("Activation positive only."),
+                              llvm::cl::Optional, llvm::cl::init(false),
+                              llvm::cl::cat(recSysTestCat));
+
 llvm::cl::opt<unsigned> numHiddenBottomMLPLayersOpt(
     "num-hidden-bottom-mlp-layers",
     llvm::cl::desc("Number of hidden bottom MLP layers."), llvm::cl::Optional,
@@ -185,10 +205,13 @@ private:
 
 /// Fills the tensor \p H with some stable random data with the seed \p seed
 /// and the range [-scale .. scale].
-static void fillStableRandomData(Handle<float> H, size_t seed,
-                                 float scale = 1) {
+static void fillStableRandomData(Handle<float> H, size_t seed, float scale = 1,
+                                 bool allPos = false) {
   for (size_t i = 0, e = H.size(); i < e; i++) {
     H.raw(i) = scale * (float((int(i * 1921 + seed) % 100) - 50) / 50);
+    if (allPos && (H.raw(i) < 0)) {
+      H.raw(i) = -H.raw(i);
+    }
   }
 }
 
@@ -435,6 +458,41 @@ protected:
     }
   }
 
+  /// Transforms the content of a tensor based on the inputs
+  ///   If \p div set to true, divides the content of the tensor by
+  ///   a scale factor, while set to false it increments it.
+  ///   \p value is the factor which we want to divide or shift
+  ///   \p size is the size of the tensor
+  ///   \p internalType determines the precision of the tensor
+  static void patchTensor(Constant *tensor, bool div, float value, size_t size,
+                          TypeRef internalType) {
+    switch (internalType->getElementType()) {
+    case ElemKind::FloatTy: {
+      auto data = tensor->getHandle<float>();
+      for (size_t i = 0; i < size; i++) {
+        if (div) {
+          data.raw(i) = data.raw(i) / value;
+        } else {
+          data.raw(i) = data.raw(i) + value;
+        }
+      }
+      break;
+    }
+    case ElemKind::Float16Ty: {
+      auto data = tensor->getHandle<float16_t>();
+      for (size_t i = 0; i < size; i++) {
+        if (div) {
+          data.raw(i) = (float16_t)((float)data.raw(i) / value);
+        } else {
+          data.raw(i) = (float16_t)((float)data.raw(i) + value);
+        }
+      }
+      break;
+    }
+    default:
+      llvm_unreachable("Can only patch floating-point tensors");
+    }
+  }
   /// Creates a Multi-layer perceptron network consisting of start & end FCs
   /// with \p intermediateLayers hidden layers.
   ///   * All weights and biases are random.
@@ -444,7 +502,8 @@ protected:
   ///   * Output layer has output dimension \p outputDim.
   static NodeValue createMLP(Module &mod, Function *F_, Node *N_,
                              dim_t inputDim, llvm::ArrayRef<dim_t> intDims,
-                             dim_t outputDim, dim_t intermediateLayers) {
+                             dim_t outputDim, dim_t intermediateLayers,
+                             bool fixBias, bool fixWeight) {
     assert(intermediateLayers > 0);
 
     const dim_t firstIntDim = intDims[0];
@@ -457,8 +516,17 @@ protected:
     /// Initial
     auto *initial_bias = createRandomizedConstant(
         mod, internalType, {firstIntDim}, "initial_bias");
+
     auto *initial_weight = createRandomizedConstant(
         mod, internalType, {inputDim, firstIntDim}, "initial_weight");
+
+    if (fixBias) {
+      patchTensor(initial_bias, true, biasFactorOpt, firstIntDim, internalType);
+    }
+    if (fixWeight) {
+      patchTensor(initial_weight, false, weightOffsetOpt,
+                  inputDim * firstIntDim, internalType);
+    }
 
     FullyConnectedNode *initial_layer = F_->createFullyConnected(
         "dense", N_, initial_weight,
@@ -476,6 +544,15 @@ protected:
       auto *intermediate_weight = createRandomizedConstant(
           mod, internalType, {last.dims()[1], intDim}, "intermediate_weight");
 
+      if (fixBias) {
+        patchTensor(intermediate_bias, true, biasFactorOpt, intDim,
+                    internalType);
+      }
+      if (fixWeight) {
+        patchTensor(intermediate_weight, false, weightOffsetOpt,
+                    last.dims()[1] * intDim, internalType);
+      }
+
       FullyConnectedNode *intermediate_layer = F_->createFullyConnected(
           "dense", last, intermediate_weight,
           intermediate_bias); // Output is size {MB, intDims[i]}
@@ -487,6 +564,14 @@ protected:
         createRandomizedConstant(mod, internalType, {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
         mod, internalType, {last.dims()[1], outputDim}, "end_weight");
+
+    if (fixBias) {
+      patchTensor(end_bias, true, biasFactorOpt, outputDim, internalType);
+    }
+    if (fixWeight) {
+      patchTensor(end_weight, false, weightOffsetOpt,
+                  last.dims()[1] * outputDim, internalType);
+    }
 
     FullyConnectedNode *end_layer = F_->createFullyConnected(
         "dense", last, end_weight, end_bias); // Output is size {MB, embDim}
@@ -787,16 +872,20 @@ protected:
 
     // First Dense embedding
     fillStableRandomData(bindings.allocate(denseData)->getHandle(), 2001,
-                         0.001);
+                         actFactorOpt, actPosOpt);
     NodeValue bottomMLP;
     if (quantizeFC) {
       bottomMLP = createQuantizedMLP(mod, F, denseData, denseData->dims()[1],
                                      bottomMLPIntermediateDims, embDim,
                                      numHiddenBottomMLPLayersOpt);
     } else {
+
+      bool fixBias = biasFactorOpt != 1.0;
+      bool fixWeight = weightOffsetOpt != 0.0;
+
       bottomMLP = createMLP(mod, F, denseData, denseData->dims()[1],
                             bottomMLPIntermediateDims, embDim,
-                            numHiddenBottomMLPLayersOpt);
+                            numHiddenBottomMLPLayersOpt, fixBias, fixWeight);
     }
 
     // Sparse Embeddings
@@ -837,9 +926,13 @@ protected:
                                   topMLPIntermediateDims,
                                   /* outputDim */ 1, numHiddenTopMLPLayersOpt);
     } else {
-      topMLP = createMLP(mod, F, interact, interact.dims()[1],
-                         topMLPIntermediateDims,
-                         /* outputDim */ 1, numHiddenTopMLPLayersOpt);
+
+      bool fixBias = biasFactorOpt != 1.0;
+      bool fixWeight = weightOffsetOpt != 0.0;
+
+      topMLP = createMLP(
+          mod, F, interact, interact.dims()[1], topMLPIntermediateDims,
+          /* outputDim */ 1, numHiddenTopMLPLayersOpt, fixBias, fixWeight);
     }
 
     // Output
