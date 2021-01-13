@@ -1,0 +1,42 @@
+name: "init"
+op {
+  output: "weights"
+  type: "Int8GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 2
+    ints: 3
+  }
+  arg {
+    name: "values"
+    s: "\x0\x1\x2\x3\x4\x5"
+  }
+  arg {
+    name: "Y_scale"
+    f: 1
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 0
+  }
+}
+op {
+  output: "bias"
+  type: "Int8GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 2
+  }
+  arg {
+    name: "values"
+    s: "\x0\x1"
+  }
+  arg {
+    name: "Y_scale"
+    f: 1
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 0
+  }
+}

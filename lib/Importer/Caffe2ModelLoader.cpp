@@ -1136,11 +1136,12 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Node *node = nullptr;
     if (typeName == "Int8FC") {
       // Create the node with quantized type.
+      auto outputDims = flattenCdr(in.dims(), in.dims().size() - 1);
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy, loadQuantTy(opName, ElemKind::Int8QTy,
-                             {in.getType()->dims()[0], B->getType()->dims()[0]},
-                             dict));
+          outTy,
+          loadQuantTy(opName, ElemKind::Int8QTy,
+                      {outputDims.first, B->getType()->dims()[0]}, dict));
       node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
     } else if (typeName == "FbFCPacked") {
       RETURN_ERR_IF_NOT(W.getElementType() == ElemKind::Float16Ty,
