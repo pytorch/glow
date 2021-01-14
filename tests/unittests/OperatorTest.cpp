@@ -1552,18 +1552,18 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
       -0.22815527, -2.4161322,  -1.8008438,  -0.92949533, 0.19269551};
 
   llvm::SmallVector<dim_t, 2> imInfoDims = {4, 3};
-  llvm::SmallVector<DataType, 12> imInfo = {159., 159., 1., 328., 328., 1.,
-                                            466., 466., 1., 414., 414., 1.};
+  llvm::SmallVector<DataType, 12> imInfo = {159., 159., 1.,  328., 328., 1.,
+                                            466., 466., 0.8, 414., 414., 0.625};
 
-  std::vector<float> weights = {1.0, 1.0, 1.0, 1.0};
+  std::vector<float> weights = {10.0, 10.0, 5.0, 5.0};
 
   std::vector<DataType> expectedValues = {
-      0.0000,   0.0000,   158.0000, 44.4404,  92.0877,  0.0000,   140.0215,
-      93.9451,  51.3913,  0.0000,   66.7658,  158.0000, 0.0000,   66.0093,
-      158.0000, 75.5617,  0.0000,   327.0000, 71.3890,  327.0000, 0.7150,
-      0.0000,   31.3340,  70.6096,  219.7409, 369.7931, 322.4225, 373.4951,
-      0.0000,   344.4728, 413.0000, 347.5388, 337.9926, 114.3067, 413.0000,
-      173.1735, 0.0000,   0.0000,   0.0000,   83.6907};
+      9.1345,   11.8575,  87.1274,  106.2058, 29.3998,  0.0000,   83.2963,
+      117.0268, 87.7207,  24.0571,  118.3636, 102.2456, 76.1143,  52.8231,
+      134.1416, 89.4287,  3.7658,   122.3617, 76.7646,  273.6816, 12.8093,
+      67.3427,  68.6289,  233.5658, 35.4638,  355.5252, 243.5137, 367.1413,
+      0.0000,   353.2900, 275.5705, 364.5733, 231.3346, 135.5961, 413.7500,
+      206.4955, 190.8902, 122.1084, 350.9171, 199.2337};
 
   auto *ROIS = mod.createPlaceholder(ElemTy, roisDims, "rois", false);
   bindings.allocate(ROIS)->getHandle<DataType>() = rois;
@@ -1600,15 +1600,15 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
 TEST_P(OperatorTest, BBoxTransform_Float) {
   CHECK_IF_ENABLED();
   testBBoxTransform<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy,
-                           /* applyScale */ false,
-                           /* legacyPlusOne */ true, /* absError */ 0.1);
+                           /* applyScale */ true,
+                           /* legacyPlusOne */ false, /* absError */ 0.1);
 }
 
 TEST_P(OperatorTest, BBoxTransform_Float16) {
   CHECK_IF_ENABLED();
   testBBoxTransform<float16_t>(bindings_, mod_, *F_, EE_, ElemKind::Float16Ty,
-                               /* applyScale */ false,
-                               /* legacyPlusOne */ true, /* absError */ 1.0);
+                               /* applyScale */ true,
+                               /* legacyPlusOne */ false, /* absError */ 1.0);
 }
 
 template <typename DataType>
