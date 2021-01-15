@@ -75,7 +75,7 @@ Error Provisioner::checkActiveNetworks(
 
   std::lock_guard<std::mutex> networkLock(functionsLock_);
   for (auto &network : networks) {
-#ifndef NDEBUG
+#if FACEBOOK_INTERNAL
     LOG(INFO) << "Checking for active networks when adding: "
               << network.root->name;
 #endif
@@ -92,7 +92,7 @@ Error Provisioner::checkActiveNetworks(
                                       node->name)
                             .str());
       }
-#ifndef NDEBUG
+#if FACEBOOK_INTERNAL
       LOG(INFO) << "Adding partition name: " << node->name
                 << " to activeFunctions_";
 #endif
@@ -902,7 +902,7 @@ void Provisioner::cleanupProvision(
     bool failure) {
   std::lock_guard<std::mutex> functionLock(functionsLock_);
   for (auto &name : names) {
-#ifndef NDEBUG
+#if FACEBOOK_INTERNAL
     LOG(INFO) << "Removing partition name: " << name
               << " from activeFunctions_\n";
 #endif

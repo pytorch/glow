@@ -600,7 +600,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     for (auto &node : nodeList) {
-#ifndef NDEBUG
+#if FACEBOOK_INTERNAL
       LOG(INFO) << "Successfully compiled and provisioned " << node.root->name;
 #endif
       auto &networkData = networks_[(node.root)->name];
