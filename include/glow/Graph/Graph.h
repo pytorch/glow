@@ -884,6 +884,12 @@ public:
   ReshapeNode *createFlatten(llvm::StringRef name, NodeValue input,
                              unsigned_t axis);
 
+  /// Flattens the input tensor into a 2D matrix. If input tensor has shape
+  /// (d_0, d_1, ... d_n) then the output will have shape:
+  /// ((d_0 X d_1 ... d_(axis-1) X d_(axis+1) ... X d_n), d_axis).
+  ReshapeNode *createFlattenV1(llvm::StringRef name, NodeValue input,
+                               unsigned_t axis);
+
   /// Create \p outputNum slice nodes of \p input. Slices happen along dimension
   /// number \p axis. Array \p split defines lengths of slices. If \p split is
   /// empty, \p input is split to equal sized parts.

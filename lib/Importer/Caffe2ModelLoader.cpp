@@ -332,6 +332,41 @@ Error Caffe2ModelLoader::loadPRelu(const caffe2::OperatorDef &op,
   return Error::success();
 }
 
+Error Caffe2ModelLoader::loadSoftmax(const caffe2::OperatorDef &op,
+                                     ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  RETURN_ERR_IF_NOT(
+      in.dims().size() >= 2,
+      opErrMsg(op,
+               strFormat(
+                   "SoftMax input dims must be >= 2, but found input dims %zu ",
+                   in.dims().size())));
+
+  // Create a constant to store labels to be used in SoftMaxGradNode.
+  auto *selected = G_->createSplat(
+      opName + ".selected",
+      mod_.uniqueType(ElemKind::Int64ITy, {in.dims()[0], 1}), 0.f);
+
+  int axis = 1;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                               loadAxis<int>(dict["axis"], in.dims().size()));
+  }
+
+  auto *FN = G_->createFlatten(opName + ".reshapeInput", in, axis);
+  auto *SM = G_->createSoftMax(opName, FN, selected);
+
+  // The output should have the same shape as the original input.
+  auto origInDims = in.getType()->dims();
+  auto *RN = G_->createReshape(opName + ".reshapeOutput", SM, origInDims);
+  RETURN_IF_ERR(addNodeAsOutput(op, RN));
+  return Error::success();
+}
+
 Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -740,6 +775,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv" || typeName == "ConvRelu") {
     return loadConv(op, dict);
+  }
+
+  if (typeName == "Softmax") {
+    return loadSoftmax(op, dict);
   }
 
   if (typeName == "PRelu") {

@@ -356,6 +356,24 @@ inline std::pair<dim_t, dim_t> flattenCdr(llvm::ArrayRef<dim_t> dims,
   return {first, rest};
 }
 
+/// Collapse a tensor shape into two sizes: the first will be
+/// size of n without the axis dimension, and second will be
+/// size of the axis dimension. For example, ([7, 3, 4, 2], 1) -> [56, 3]
+inline std::pair<dim_t, dim_t> collapseShape(llvm::ArrayRef<dim_t> dims,
+                                             unsigned_t n = 1) {
+  assert(1 <= n && n <= dims.size());
+  size_t first = 1;
+  size_t second = 1;
+  for (unsigned_t i = 0; i < dims.size(); i++) {
+    if (i == n) {
+      second = dims[i];
+    } else {
+      first *= dims[i];
+    }
+  }
+  return {first, second};
+}
+
 inline bool operator==(const ShapeNHWC &LHS, const ShapeNHWC &RHS) {
   return LHS.equals(RHS);
 }
