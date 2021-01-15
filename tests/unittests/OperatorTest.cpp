@@ -4520,6 +4520,11 @@ TEST_P(OperatorTest, FloatArgMaxKeepDim) {
   testArgMaxKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
+TEST_P(OperatorTest, Float16ArgMaxKeepDim) {
+  CHECK_IF_ENABLED();
+  testArgMaxKeepDim<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
 TEST_P(OperatorTest, QuantizedArgMaxKeepDim) {
   CHECK_IF_ENABLED();
   testArgMaxKeepDim<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
@@ -4559,6 +4564,11 @@ static void testArgMaxNoKeepDim(glow::PlaceholderBindings &bindings,
 TEST_P(OperatorTest, FloatArgMaxNoKeepDim) {
   CHECK_IF_ENABLED();
   testArgMaxNoKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, Float16ArgMaxNoKeepDim) {
+  CHECK_IF_ENABLED();
+  testArgMaxNoKeepDim<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, QuantizedArgMaxNoKeepDim) {
