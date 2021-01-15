@@ -15,6 +15,7 @@
  */
 
 #include "glow/Optimizer/GraphOptimizer/NodeSplitting.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include <algorithm>
 #include <numeric>
@@ -23,181 +24,12 @@
 #include <vector>
 
 using namespace glow;
-using llvm::cast;
 using llvm::dyn_cast;
-using llvm::isa;
-
-namespace {
-///===---------------------------------------------------------------------===//
-///                                SliceRange
-///===---------------------------------------------------------------------===//
-/// Dimension range representing a contiguous [start, stop) index interval with
-/// start index included and stop index excluded, along some tensor dimension.
-/// The indices are assumed to be 0 based (C indexing).
-using DimRange = std::pair<dim_t, dim_t>;
-
-/// Dimension paddings representing a virtual padding before/after a given
-/// dimension range.
-using DimPads = std::pair<dim_t, dim_t>;
-
-/// Slice range utility class representing the ranges for all the dimensions
-/// of a slice obtained by extraction from a larger tensor.
-class SliceRange {
-
-  /// Vector of ranges for all the dimensions of a slice.
-  std::vector<DimRange> ranges_;
-
-public:
-  SliceRange() = default;
-
-  /// Ctor.
-  explicit SliceRange(std::vector<DimRange> ranges) { ranges_ = ranges; }
-
-  /// Ctor.
-  explicit SliceRange(TypeRef type) {
-    for (auto size : type->dims()) {
-      ranges_.emplace_back(0, size);
-    }
-  }
-
-  /// \returns the dimension ranges.
-  llvm::ArrayRef<DimRange> getRanges() const { return ranges_; }
-
-  /// \returns the start values of the dimension ranges.
-  std::vector<dim_t> getStarts() const {
-    std::vector<dim_t> starts(ranges_.size());
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      starts[dim] = ranges_[dim].first;
-    }
-    return starts;
-  }
-
-  /// \returns the sizes of the dimension ranges.
-  std::vector<dim_t> getSizes() const {
-    std::vector<dim_t> sizes(ranges_.size());
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      sizes[dim] = ranges_[dim].second - ranges_[dim].first;
-    }
-    return sizes;
-  }
-
-  /// \returns the number of dimensions.
-  size_t getNumDims() const { return ranges_.size(); }
-
-  /// \returns a mutable range for the given dimension \p dim.
-  DimRange &operator[](size_t dim) {
-    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
-    return ranges_[dim];
-  }
-
-  /// \returns an immutable range for the given dimension \p dim.
-  const DimRange &operator[](size_t dim) const {
-    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
-    return ranges_[dim];
-  }
-
-  /// \returns whether this slice range is equal to \p other.
-  bool operator==(const SliceRange &other) const {
-    auto rangesOther = other.getRanges();
-    if (ranges_.size() != rangesOther.size()) {
-      return false;
-    }
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      if (ranges_[dim] != rangesOther[dim]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// \returns the range size along dimension \p dim.
-  dim_t getDimSize(size_t dim) const {
-    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
-    return ranges_[dim].second - ranges_[dim].first;
-  }
-
-  /// \returns a slice range by extracting the dimension ranges between
-  /// \p dimStart and \p dimStop (both included).
-  SliceRange extractRanges(size_t dimStart, size_t dimStop) const {
-    DCHECK_LT(dimStart, ranges_.size()) << "Invalid start dimension!";
-    DCHECK_LT(dimStop, ranges_.size()) << "Invalid stop dimension!";
-    DCHECK_LE(dimStart, dimStop) << "Invalid start/stop dimension!";
-    std::vector<DimRange> dimRanges(ranges_.cbegin() + dimStart,
-                                    ranges_.cbegin() + dimStop + 1);
-    return SliceRange(dimRanges);
-  }
-
-  /// \returns a slice range by shuffling the dimension ranges using the
-  /// indices \p shuffle. The flag \p invert allows optionally to invert
-  /// the shuffle permutation before using it.
-  SliceRange shuffleRanges(llvm::ArrayRef<size_t> shuffle,
-                           bool invert = false) const {
-    DCHECK_EQ(ranges_.size(), shuffle.size())
-        << "Mismatch between ranges and shuffle sizes!";
-    std::vector<DimRange> dimRanges(ranges_.size());
-    for (size_t idx = 0, e = ranges_.size(); idx < e; ++idx) {
-      size_t dimInp = invert ? idx : shuffle[idx];
-      size_t dimOut = invert ? shuffle[idx] : idx;
-      DCHECK_LT(dimInp, ranges_.size()) << "Invalid input shuffle index!";
-      DCHECK_LT(dimOut, ranges_.size()) << "Invalid output shuffle index!";
-      dimRanges[dimOut] = ranges_[dimInp];
-    }
-    return SliceRange(dimRanges);
-  }
-
-  /// \returns whether this slice range is empty.
-  bool isEmpty() const {
-    if (!ranges_.size()) {
-      return true;
-    }
-    for (const auto &range : ranges_) {
-      if (!(range.first < range.second)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// \returns whether both ends of the range for a given dimension \p dim are
-  /// aligned to \p align. For example the range [4, 8) is aligned to 4.
-  bool isDimRangeAligned(size_t dim, dim_t align) const {
-    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
-    return (ranges_[dim].first % align == 0) &&
-           (ranges_[dim].second % align == 0);
-  }
-
-  /// \returns whether this slice range is included by \p other.
-  bool isIncludedBy(const SliceRange &other) const {
-    auto rangesOther = other.getRanges();
-    if (ranges_.size() != rangesOther.size()) {
-      return false;
-    }
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      if (!((rangesOther[dim].first <= ranges_[dim].first) &&
-            (ranges_[dim].second <= rangesOther[dim].second))) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// \returns a textual representation of this slice range.
-  std::string toString() const {
-    std::string storage;
-    llvm::raw_string_ostream os(storage);
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      os << getDimSize(dim) << "[" << ranges_[dim].first << ":"
-         << ranges_[dim].second << ") ";
-    }
-    return os.str();
-  }
-};
-} // namespace
 
 ///===---------------------------------------------------------------------===//
 ///                              SplitNodeOption
 ///===---------------------------------------------------------------------===//
-size_t SplitNodeOption::getSplitDimIdx(dim_t splitDim) const {
+size_t SplitNodeOptionOrthogonal::getSplitDimIdx(dim_t splitDim) const {
   auto splitDimsIt = std::find(splitDims_.begin(), splitDims_.end(), splitDim);
   CHECK(splitDimsIt != splitDims_.end())
       << "Split dimension '" << splitDim
@@ -331,7 +163,7 @@ std::vector<dim_t> SplitNodeByChunkWeights::splitAlongDim(size_t dim,
 /// dimension \p dim using the split option \p splitOption.
 static std::vector<SliceRange>
 splitSliceRanges(const std::vector<SliceRange> &ranges, size_t dim,
-                 const SplitNodeOption *splitOption) {
+                 const SplitNodeOptionOrthogonal *splitOption) {
   std::vector<SliceRange> outRanges;
   for (const auto &range : ranges) {
 
@@ -711,7 +543,12 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
 
   // Explicit split dims for this node.
   if (splitOption) {
-    splitDims = splitOption->getSplitDims();
+    // We use explicit split dims only for orthogonal option.
+    auto *splitOptionOrthogonal =
+        dyn_cast<SplitNodeOptionOrthogonal>(splitOption);
+    if (splitOptionOrthogonal) {
+      splitDims = splitOptionOrthogonal->getSplitDims();
+    }
   }
 
   // Verify split parameters.
@@ -728,10 +565,30 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
   // which meets the constraint.
   if (splitOption) {
 
-    // Split along all the given dimensions using the given option.
-    for (size_t splitDim : splitDims) {
-      splitOutputSlices =
-          splitSliceRanges(splitOutputSlices, splitDim, splitOption);
+    // Orthogonal: Split along all the given dimensions using the given option.
+    // Non-orthogonal: Use the raw slice ranges explicitly provided.
+    auto *splitOptionOrthogonal =
+        dyn_cast<SplitNodeOptionOrthogonal>(splitOption);
+    if (splitOptionOrthogonal) {
+      for (size_t splitDim : splitDims) {
+        splitOutputSlices = splitSliceRanges(splitOutputSlices, splitDim,
+                                             splitOptionOrthogonal);
+      }
+    } else {
+      // Set raw slice ranges.
+      auto *splitOptionRaw = dyn_cast<SplitNodeBySliceRanges>(splitOption);
+      RETURN_ERR_IF_NOT(splitOptionRaw,
+                        "Non orthogonal split option not supported!");
+      splitOutputSlices = splitOptionRaw->getSliceRanges();
+      // We verify that the explicitly provided slice ranges are valid.
+      for (const auto &sliceRange : splitOutputSlices) {
+        RETURN_ERR_IF_NOT(
+            sliceRange.getNumDims() == splitOutputRange.getNumDims(),
+            "Non orthogonal slice range rank not equal to output rank!");
+        RETURN_ERR_IF_NOT(
+            sliceRange.isIncludedBy(splitOutputRange),
+            "Non orthogonal slice range exceed the output operand range!");
+      }
     }
 
     // Verify split nodes.
@@ -810,13 +667,18 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
   Function *F = node->getParent();
   RETURN_ERR_IF_NOT(F, "Cannot split a node without a parent Function!");
 
-  // Allocate output tensors used for merging the partial output slices.
+  // Allocate output tensors used for merging the partial outputs. We only merge
+  // the partial outputs for the output operands which are effectively used.
   std::vector<NodeValue> mergedOutputs(node->getNumResults());
   for (size_t outIdx = 0, outIdxEnd = node->getNumResults(); outIdx < outIdxEnd;
        outIdx++) {
-    auto nodeName =
-        node->getName().str() + ".TouchOutput" + std::to_string(outIdx);
-    mergedOutputs[outIdx] = F->createTouch(nodeName, node->getType(outIdx));
+    if (node->getNthResult(outIdx).getNumUsers()) {
+      auto nodeName =
+          node->getName().str() + ".TouchOutput" + std::to_string(outIdx);
+      mergedOutputs[outIdx] = F->createTouch(nodeName, node->getType(outIdx));
+    } else {
+      mergedOutputs[outIdx] = nullptr;
+    }
   }
 
   // Create split nodes.
@@ -846,17 +708,22 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
       outputRanges[outputIdxMap.first] = outputCheckedRange.second;
     }
 
-    // Create input Slice nodes.
+    // Create input Slice nodes (only if necessary).
     for (const auto &inputIdxMap : inputIdxAndMaps) {
       auto inputIdx = inputIdxMap.first;
-      auto &inputRange = inputRanges[inputIdxMap.first];
-      Type outTy = Type::newShape(*(node->getNthInput(inputIdx).getType()),
-                                  inputRange.getSizes());
-      auto nodeName =
-          clone->getName().str() + ".SliceInput" + std::to_string(inputIdx);
-      auto *inputSlice = F->createSlice(nodeName, node->getNthInput(inputIdx),
-                                        inputRange.getStarts(), &outTy);
-      clone->setNthInput(inputIdx, inputSlice);
+      auto inputNodeValue = node->getNthInput(inputIdx);
+      auto &inputSliceRange = inputRanges[inputIdxMap.first];
+      TypeRef inpTy = inputNodeValue.getType();
+      Type outTy = Type::newShape(*(inpTy), inputSliceRange.getSizes());
+      if (outTy.isEqual(inpTy)) {
+        clone->setNthInput(inputIdx, inputNodeValue);
+      } else {
+        auto nodeName =
+            clone->getName().str() + ".SliceInput" + std::to_string(inputIdx);
+        auto *inputSlice = F->createSlice(nodeName, inputNodeValue,
+                                          inputSliceRange.getStarts(), &outTy);
+        clone->setNthInput(inputIdx, inputSlice);
+      }
     }
 
     // Set clone split output type. The original node output type is not
@@ -887,22 +754,29 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     // Add clone to vector.
     splitNodes[sliceIdx] = clone;
 
-    // Merge the partial outputs of this clone.
+    // Merge the partial outputs of this clone (only if used).
     for (size_t outIdx = 0, outIdxEnd = node->getNumResults();
          outIdx < outIdxEnd; outIdx++) {
-      auto nodeName =
-          clone->getName().str() + ".MergeOutput" + std::to_string(outIdx);
-      mergedOutputs[outIdx] = F->createInsertTensor(
-          nodeName, mergedOutputs[outIdx], clone->getNthResult(outIdx),
-          outputRanges[outIdx].getStarts());
+      if (mergedOutputs[outIdx]) {
+        auto nodeName =
+            clone->getName().str() + ".MergeOutput" + std::to_string(outIdx);
+        mergedOutputs[outIdx] = F->createInsertTensor(
+            nodeName, mergedOutputs[outIdx], clone->getNthResult(outIdx),
+            outputRanges[outIdx].getStarts());
+      }
     }
   }
 
-  // Replace all the node outputs with the merged outputs.
+  // Replace all the node outputs with the merged outputs (only if used).
   for (size_t outIdx = 0, outIdxEnd = node->getNumResults(); outIdx < outIdxEnd;
        outIdx++) {
-    node->getNthResult(outIdx).replaceAllUsesOfWith(mergedOutputs[outIdx]);
+    if (mergedOutputs[outIdx]) {
+      node->getNthResult(outIdx).replaceAllUsesOfWith(mergedOutputs[outIdx]);
+    }
   }
+
+  // Erase original node.
+  F->eraseNode(node);
 
   return splitNodes;
 }
@@ -1024,9 +898,9 @@ getConvInputChannelCheckedRange(const DimRange &outputSliceRange,
 ///===---------------------------------------------------------------------===//
 ///                                   Conv2D
 ///===---------------------------------------------------------------------===//
-template <typename Shape>
+template <typename ConvNodeTy, typename Shape>
 static std::vector<OpIdxAndMap>
-getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
+getConv2DInputIdxAndMaps(const ConvNodeTy *node) {
 
   ShapeHW kernels = ShapeHW(node->getKernels());
   ShapeHW strides = ShapeHW(node->getStrides());
@@ -1087,17 +961,33 @@ getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
   };
 
   // Return input indices and maps.
-  return {{ConvolutionNode::InputIdx, inputSliceRangeMap},
-          {ConvolutionNode::FilterIdx, filterSliceRangeMap},
-          {ConvolutionNode::BiasIdx, biasSliceRangeMap}};
+  if (std::is_same<ConvNodeTy, ConvolutionNode>::value) {
+    return {{ConvolutionNode::InputIdx, inputSliceRangeMap},
+            {ConvolutionNode::FilterIdx, filterSliceRangeMap},
+            {ConvolutionNode::BiasIdx, biasSliceRangeMap}};
+  } else if (std::is_same<ConvNodeTy,
+                          ChannelwiseQuantizedConvolutionNode>::value) {
+    return {
+        {ChannelwiseQuantizedConvolutionNode::InputIdx, inputSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::FilterIdx, filterSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::BiasIdx, biasSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::FilterScalesIdx,
+         biasSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::FilterOffsetsIdx,
+         biasSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::BiasScalesIdx, biasSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::BiasOffsetsIdx,
+         biasSliceRangeMap}};
+  }
+  llvm_unreachable("Invalid Convolution node type!");
 }
 
-template <typename Shape>
+template <typename ConvNodeTy, typename Shape>
 void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
                              const std::vector<SliceRange> &inputSliceRanges,
                              const std::vector<SliceRange> &outputSliceRanges) {
-  auto *convOrigNode = dyn_cast<ConvolutionNode>(origNode);
-  auto *convSplitNode = dyn_cast<ConvolutionNode>(splitNode);
+  auto *convOrigNode = dyn_cast<ConvNodeTy>(origNode);
+  auto *convSplitNode = dyn_cast<ConvNodeTy>(splitNode);
   if (!(convOrigNode && convSplitNode)) {
     return;
   }
@@ -1110,7 +1000,7 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
   DimPads padsLR = {pads.left, pads.right};
 
   // Get paddings for split node.
-  auto outputSliceRange = outputSliceRanges[ConvolutionNode::ResultIdx];
+  auto outputSliceRange = outputSliceRanges[ConvNodeTy::ResultIdx];
   auto inputRange = SliceRange(convOrigNode->getInput().getType());
   auto checkedRangeAndPadsH = getConvInputCheckedRangeAndPads(
       outputSliceRange[Shape::DimH], inputRange[Shape::DimH], kernels.height,
@@ -1131,10 +1021,10 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
 
   // Modify group for split node.
   dim_t outputChannels =
-      SliceRange(convOrigNode->getType(ConvolutionNode::ResultIdx))
+      SliceRange(convOrigNode->getType(ConvNodeTy::ResultIdx))
           .getDimSize(Shape::DimC);
   dim_t outputSliceChannels =
-      SliceRange(convSplitNode->getType(ConvolutionNode::ResultIdx))
+      SliceRange(convSplitNode->getType(ConvNodeTy::ResultIdx))
           .getDimSize(Shape::DimC);
   auto group = convOrigNode->getGroup();
 
@@ -1392,8 +1282,21 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
   case Kinded::Kind::ConvolutionNodeKind: {
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, ConvolutionNode::ResultIdx,
-        getConv2DInputIdxAndMaps<ShapeNHWC>(dyn_cast<ConvolutionNode>(node)),
-        {}, Conv2DSplitNodeModifier<ShapeNHWC>);
+        getConv2DInputIdxAndMaps<ConvolutionNode, ShapeNHWC>(
+            dyn_cast<ConvolutionNode>(node)),
+        {}, Conv2DSplitNodeModifier<ConvolutionNode, ShapeNHWC>);
+  }
+
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind: {
+    return splitAndReplaceNode(
+        node, splitOption, splitConstraint,
+        ChannelwiseQuantizedConvolutionNode::ResultIdx,
+        getConv2DInputIdxAndMaps<ChannelwiseQuantizedConvolutionNode,
+                                 ShapeNHWC>(
+            dyn_cast<ChannelwiseQuantizedConvolutionNode>(node)),
+        {},
+        Conv2DSplitNodeModifier<ChannelwiseQuantizedConvolutionNode,
+                                ShapeNHWC>);
   }
 
   case Kinded::Kind::MaxPoolNodeKind: {
@@ -1469,6 +1372,7 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
   }
 
   case Kinded::Kind::ReluNodeKind:
+  case Kinded::Kind::LeakyReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
@@ -1515,8 +1419,8 @@ glow::splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
 
   // Since we will be transforming the original list of nodes, reverse iterate.
   auto &nodes = F->getNodes();
-  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
-    Node *node = &*it;
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
+    Node *node = &*(it++);
 
     // Find explicit split option for current node (if any).
     const SplitNodeOption *splitOption = nullptr;
@@ -1549,8 +1453,8 @@ Expected<SplitNodeMap> glow::splitNodes(Function *F,
   // Since we will be transforming the original list of nodes, reverse iterate.
   SplitNodeMap splitMap;
   auto &nodes = F->getNodes();
-  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
-    Node *node = &*it;
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
+    Node *node = &*(it++);
     const SplitNodeConstraint *splitConstraint = nullptr;
     ASSIGN_VALUE_OR_RETURN_ERR(splitMap[node],
                                splitNode(node, &splitOption, splitConstraint));
@@ -1565,8 +1469,8 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
   // Since we will be transforming the original list of nodes, reverse iterate.
   SplitNodeMap splitMap;
   auto &nodes = F->getNodes();
-  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
-    Node *node = &*it;
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
+    Node *node = &*(it++);
     const SplitNodeOption *splitOption = nullptr;
     ASSIGN_VALUE_OR_RETURN_ERR(splitMap[node],
                                splitNode(node, splitOption, &splitConstraint));
@@ -1574,4 +1478,157 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
   // Verify function after splitting nodes.
   RETURN_ERR_IF_NOT(F->verify(), "Function is not valid after node splitting!");
   return splitMap;
+}
+
+///===---------------------------------------------------------------------===//
+///                            splitNodeRecursively
+///===---------------------------------------------------------------------===//
+static Error
+splitNodeRecursivelyMain(SplitNodeMap &splitMap, Node *node,
+                         const SplitNodeOption *splitOption,
+                         const SplitNodeConstraint *splitConstraint,
+                         unsigned maxDepth, bool singleUseOnly) {
+
+  // Early return if depth is 0.
+  if (maxDepth == 0) {
+    return Error::success();
+  }
+
+  // We can do the splitting if at least the option or the constraint is given.
+  RETURN_ERR_IF_NOT(
+      splitOption || splitConstraint,
+      "At least the split option or the split constraint must be given!");
+
+  // Split starting node.
+  std::vector<Node *> splitNodesCurr;
+  ASSIGN_VALUE_OR_RETURN_ERR(splitNodesCurr,
+                             splitNode(node, splitOption, splitConstraint));
+
+  // If starting node was NOT split then return, otherwise add nodes to map.
+  if (!splitNodesCurr.size()) {
+    return Error::success();
+  } else {
+    splitMap[node] = splitNodesCurr;
+  }
+
+  // Early return if depth is 1.
+  if (maxDepth == 1) {
+    return Error::success();
+  }
+
+  // Iterate through all of the input operands and split them.
+  unsigned inpNum = splitNodesCurr.front()->getNumInputs();
+  for (unsigned inpIdx = 0; inpIdx < inpNum; ++inpIdx) {
+
+    // Find parent node value and ranges for the current input.
+    std::vector<SliceRange> inputRanges;
+    inputRanges.reserve(splitNodesCurr.size());
+    NodeValue sliceInputNodeValue = nullptr;
+    for (const Node *splitNode : splitNodesCurr) {
+      // Get parent node value and range.
+      NodeValue inputNV = splitNode->getNthInput(inpIdx);
+      if (auto *sliceNode = dyn_cast<SliceNode>(inputNV)) {
+        inputNV = sliceNode->getInput();
+        inputRanges.push_back(SliceRange(sliceNode));
+      } else {
+        inputRanges.push_back(SliceRange(inputNV.getType()));
+      }
+      // Verify that parent node value is common.
+      if (!sliceInputNodeValue) {
+        sliceInputNodeValue = inputNV;
+      } else {
+        RETURN_ERR_IF_NOT(
+            sliceInputNodeValue == inputNV,
+            "Input slices do not have a common parent node value!");
+      }
+    }
+
+    // If the node value which is sliced has other consumers than the SliceNodes
+    // inserted during splitting then we do not split the node which produces
+    // that node value.
+    if (singleUseOnly &&
+        sliceInputNodeValue.getNumUsers() > splitNodesCurr.size()) {
+      continue;
+    }
+
+    // Check that we split the 1st output operand of the parent node.
+    if (sliceInputNodeValue.getResNo() != SplitNodeOutputIdx) {
+      continue;
+    }
+
+    // Split the input node of the SliceNodes using same slice ranges.
+    auto splitInputOption = SplitNodeBySliceRanges(inputRanges);
+    Node *splitInputNode = sliceInputNodeValue.getNode();
+    RETURN_IF_ERR(splitNodeRecursivelyMain(splitMap, splitInputNode,
+                                           &splitInputOption, splitConstraint,
+                                           maxDepth - 1, singleUseOnly));
+
+    // Remove Slice and Insert nodes between adjacent split nodes.
+    if (splitMap.count(splitInputNode)) {
+      auto &splitNodesNext = splitMap[splitInputNode];
+      assert(splitNodesCurr.size() == splitNodesNext.size() &&
+             "Mismatch for number of split Nodes!");
+      // Create short circuit between inputs and outputs of adjacent nodes.
+      for (size_t idx = 0, len = splitNodesCurr.size(); idx < len; ++idx) {
+        NodeValue splitNodeNextOut =
+            splitNodesNext[idx]->getNthResult(SplitNodeOutputIdx);
+        NodeValue splitNodeCurrInp = splitNodesCurr[idx]->getNthInput(inpIdx);
+        assert(
+            splitNodeNextOut.getType()->isEqual(splitNodeCurrInp.getType()) &&
+            "Mismatch between input/output type when doing short-circuit!");
+        assert(splitNodeNextOut.getNumUsers() == 1 &&
+               "Split node output value has more than one use!");
+        assert(splitNodeCurrInp.getNumUsers() == 1 &&
+               "Split node input value has more than one use!");
+        splitNodeCurrInp.replaceAllUsesOfWith(splitNodeNextOut);
+      }
+    }
+  }
+
+  return Error::success();
+}
+
+Expected<SplitNodeMap>
+glow::splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
+                           const SplitNodeConstraint *splitConstraint,
+                           unsigned maxDepth, bool singleUseOnly) {
+  Function *F = node->getParent();
+  RETURN_ERR_IF_NOT(F, "Cannot split a node without a parent Function!");
+
+  // Create split map.
+  SplitNodeMap splitMap;
+
+  // Check if this node has single use only before splitting it.
+  if (singleUseOnly &&
+      node->getNthResult(SplitNodeOutputIdx).getNumUsers() > 1) {
+    return splitMap;
+  }
+
+  // Split node recursively.
+  RETURN_IF_ERR(splitNodeRecursivelyMain(
+      splitMap, node, splitOption, splitConstraint, maxDepth, singleUseOnly));
+
+  // Perform DCE to cleanup.
+  auto cctx = glow::CompilationContext();
+  glow::runDCEPass(F, cctx);
+
+  // Verify function after splitting nodes.
+  RETURN_ERR_IF_NOT(F->verify(),
+                    "Function is not valid after recursive node splitting!");
+  return splitMap;
+}
+
+Expected<SplitNodeMap>
+glow::splitNodeRecursively(Node *node, const SplitNodeOption &splitOption,
+                           unsigned maxDepth, bool singleUseOnly) {
+  return splitNodeRecursively(node, &splitOption, nullptr, maxDepth,
+                              singleUseOnly);
+}
+
+Expected<SplitNodeMap>
+glow::splitNodeRecursively(Node *node,
+                           const SplitNodeConstraint &splitConstraint,
+                           unsigned maxDepth, bool singleUseOnly) {
+  return splitNodeRecursively(node, nullptr, &splitConstraint, maxDepth,
+                              singleUseOnly);
 }
