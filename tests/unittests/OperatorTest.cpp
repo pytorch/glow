@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+#if defined(_MSC_VER)
+// Enable non-standard math constants (e.g. M_2_SQRTPI, M_SQRT1_2)
+#define _USE_MATH_DEFINES
+#endif
+
 #include "BackendTestUtils.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
