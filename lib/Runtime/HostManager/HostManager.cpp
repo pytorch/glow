@@ -90,6 +90,15 @@ llvm::cl::opt<bool, /* ExternalStorage */ true>
               llvm::cl::location(glow::runtime::flags::EnableP2P),
               llvm::cl::cat(hostManagerCat));
 
+/// The value that should be used for device initialization timeout, default:
+/// 5000 milliseconds.
+llvm::cl::opt<unsigned, /* ExternalStorage */ true> deviceInitTimeout(
+    "device_init_timeout_ms",
+    llvm::cl::desc("Set device init timout in milliseconds"),
+    llvm::cl::Optional,
+    llvm::cl::location(glow::runtime::flags::DeviceInitTimeoutMs),
+    llvm::cl::cat(hostManagerCat));
+
 HostManager::HostManager() : HostManager(HostConfig{}) {}
 
 HostManager::HostManager(const HostConfig &hostConfig)
@@ -1099,6 +1108,7 @@ bool runtime::loadDeviceConfigsFromFile(
     auto parameters = getBackendParams(lists[i].parameters_.str);
     auto config = glow::make_unique<runtime::DeviceConfig>(configBackendName,
                                                            name, parameters);
+    config->deviceID = i;
     config->setDeviceMemory(memSize);
     configs.push_back(std::move(config));
   }

@@ -86,11 +86,11 @@ size_t InputMetaStack::optimizedHash(int32_t nominalBatchIdx) const {
 
 Expected<InputMetaStack>
 inputMetaStackFromStack(const c10::ArrayRef<c10::IValue> &inputs,
-                        bool ignoreObjects) {
+                        bool ignoreNonTensors) {
   InputMetaStack metaStack;
   metaStack.inputMetas.reserve(inputs.size());
   for (const auto &input : inputs) {
-    if (ignoreObjects && input.isObject()) {
+    if (ignoreNonTensors && !input.isTensor()) {
       continue;
     }
 

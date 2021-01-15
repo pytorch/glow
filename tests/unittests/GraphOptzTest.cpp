@@ -2873,6 +2873,44 @@ TEST_F(GraphFold, optimizeSmallConv) {
   checkNumericalEquivalence();
 }
 
+/// Fold a Convolution dilated manually using Transpose, SpaceToDepth and
+/// DepthToSpace nodes into a single Convolution node. Pattern:
+/// NHWC2CHWN -> S2D -> CHWN2NHWC -> Conv -> NHWC2CHWN -> D2S -> CHWN2NHWC
+TEST_F(GraphFold, foldDilatedConv) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 16}, "input", true);
+
+  auto *T1 = F_->createTranspose("t1", input, NHWC2CHWN, "NHWC");
+  auto *S2D = F_->createSpaceToDepth("s2d", T1, 2);
+  auto *T2 = F_->createTranspose("t2", S2D, CHWN2NHWC, "NHWC");
+  auto *CN = F_->createConv(bindings_, "conv", T2, 16, 3, 1, 0, 16, {1, 1});
+  auto *T3 = F_->createTranspose("t3", CN, NHWC2CHWN, "NHWC");
+  auto *D2S = F_->createDepthToSpace("d2s", T3, 2);
+  auto *T4 = F_->createTranspose("t4", D2S, CHWN2NHWC, "NHWC");
+  auto *save = F_->createSave("save", T4);
+
+  // To spice things up, add additional users for some nodes. The pattern should
+  // still be recognized.
+  F_->createSave("save_t1", T1);
+  F_->createSave("save_s2d", S2D);
+  F_->createSave("save_t2", T2);
+
+  EXPECT_EQ(13, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(8, optimizedF_->getNodes().size());
+
+  const auto *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+
+  auto *newCN = llvm::dyn_cast<ConvolutionNode>(optSave->getInput());
+  ASSERT_TRUE(newCN);
+  EXPECT_TRUE(isUniformArray(newCN->getDilation(), 2u));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
   const dim_t inputDims[] = {3, 136, 28, 28};
@@ -6073,24 +6111,30 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
       F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
 
   // This MulNode has a Placeholder as RHS and shouldn't be fused into LayerNorm
-  auto *mulIn =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 10, 20}, "in", false);
+  Tensor mulT(ElemKind::FloatTy, {1, 1, 10, 20});
+  mulT.getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  Constant *mulC = mod_.createConstant("mulC", std::move(mulT));
   MN = F_->createNodeWithBroadcast<MulNode>("mul_not_fuse", /* axis */ -1, AN,
-                                            mulIn);
+                                            mulC);
   F_->createSave("save", MN);
 
-  optimizedF_ = optimizeFunctionForTest(F_);
+  ConstantModificationPreventer constModPreventer(mod_, cctx_);
+  constModPreventer.activate();
+  optimizedF_ = optimizeFunctionForTest(F_, {}, cctx_);
+  // Now do const folding with constants swapped back in.
+  constModPreventer.deactivateAndCleanup();
+  constantFoldAndRecord(optimizedF_, cctx_);
+  runDCEPass(optimizedF_, cctx_);
 
-  // Because Mul and Add are folded in, they should not exist anymore, nor
-  // should tiles that expand them to match the output of LN.
-  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
+  // Because Muls and Add are folded in, they should not exist anymore, nor
+  // should Broadcasts that expand them to match the output of LN.
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
-  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind));
 
   // Now compile/run/compare F_ and optimizedF_.
   bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
-  bindings_.allocate(mulIn)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
-  checkNumericalEquivalence(1e-6);
+  checkNumericalEquivalence(1.2e-7);
 }
 
 /// Test that Mul and Add can be folded into LayerNorm when the leading dims are

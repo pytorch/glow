@@ -427,6 +427,11 @@ inline bool isFloatElemKind(ElemKind e) {
          e == ElemKind::BFloat16Ty;
 }
 
+/// \returns whether \p e is a non-quantized integer ElemKind.
+inline bool isNonQuantizedIntElemKind(ElemKind e) {
+  return e == ElemKind::Int32ITy || e == ElemKind::Int64ITy;
+}
+
 /// \returns whether \p e is a fused quantized ElemKind.
 inline bool isFusedQuantizedElemKind(ElemKind e) {
   return e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||

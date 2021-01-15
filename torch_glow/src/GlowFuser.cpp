@@ -53,9 +53,10 @@ sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
   return result;
 }
 
-bool isMergeSupported(const torch::jit::Node *node, IsSupportFunc fn) {
+bool isNodeSupportedForMerge(const torch::jit::Node *node, IsSupportFunc fn) {
   return fn(node) || node->kind() == torch::jit::prim::Constant ||
-         node->kind() == torch::jit::prim::GetAttr;
+         node->kind() == torch::jit::prim::GetAttr ||
+         node->kind() == getGlowSymbol();
 }
 
 bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
@@ -65,7 +66,7 @@ bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
   }
 
   // Check that the node is supported
-  if (!isMergeSupported(node, fn)) {
+  if (!isNodeSupportedForMerge(node, fn)) {
     return false;
   }
 
@@ -292,13 +293,13 @@ static void dumpOperatorStats(const std::shared_ptr<torch::jit::Graph> graph,
       for (const auto *subNode : subgraph->nodes()) {
         GlowFuserStats &stats = fuserStats[subNode->kind()];
         stats.totalCount += 1;
-        stats.supportedCount += (isMergeSupported(subNode, fn) ? 1 : 0);
+        stats.supportedCount += (isNodeSupportedForMerge(subNode, fn) ? 1 : 0);
         stats.fusedCount += 1;
       }
     } else {
       GlowFuserStats &stats = fuserStats[node->kind()];
       stats.totalCount += 1;
-      stats.supportedCount += (isMergeSupported(node, fn) ? 1 : 0);
+      stats.supportedCount += (isNodeSupportedForMerge(node, fn) ? 1 : 0);
     }
   }
 

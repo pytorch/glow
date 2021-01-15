@@ -66,13 +66,11 @@ struct SLSParam {
 };
 
 std::string getSLSDescription(SLSParam param) {
-  std::string SLSStr = (param.slsKind == NONQUANTIZED_UNWEIGHTED)
-                           ? std::string("SLS")
-                           : (param.slsKind == NONQUANTIZED_WEIGHTED)
-                                 ? std::string("SLWS")
-                                 : (param.slsKind == QUANTIZED_UNWEIGHTED)
-                                       ? std::string("RWQLSS")
-                                       : std::string("RWQLSWS");
+  std::string SLSStr =
+      (param.slsKind == NONQUANTIZED_UNWEIGHTED) ? std::string("SLS")
+      : (param.slsKind == NONQUANTIZED_WEIGHTED) ? std::string("SLWS")
+      : (param.slsKind == QUANTIZED_UNWEIGHTED)  ? std::string("RWQLSS")
+                                                 : std::string("RWQLSWS");
 
   return strFormat(
       "%s_%zu_%zu_%zu_%zu", SLSStr.c_str(), (size_t)param.numIndicesPerBatch,

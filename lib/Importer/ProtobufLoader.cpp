@@ -46,7 +46,7 @@ bool ProtobufLoader::isConstantFoldable(llvm::ArrayRef<NodeValue> inputs,
     return false;
   }
   // foldUnsupportedTypes: List of typenames unsupported for folding.
-  std::string foldUnsupportedTypes[] = {"Constant", "Loop"};
+  std::string foldUnsupportedTypes[] = {"Constant", "Loop", "If"};
   std::string *findType = std::find(std::begin(foldUnsupportedTypes),
                                     std::end(foldUnsupportedTypes), typeName);
   // Early exit if folding is not supported for current operator.

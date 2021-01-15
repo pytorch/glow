@@ -1,0 +1,1 @@
+tests/images/npy/tensor_1x2x4x4_u8.npy

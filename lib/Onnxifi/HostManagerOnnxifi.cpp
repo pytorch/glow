@@ -261,23 +261,17 @@ onnxStatus HostManagerBackend::addNetwork(
   }
 
   auto err = hostManager_->addNetwork(std::move(module), cctx);
-  auto errorCode = ONNXIFI_STATUS_SUCCESS;
 
   if (err) {
-    if (err.peekErrorValue() && err.peekErrorValue()->isFatalError()) {
-      errorCode = ONNXIFI_STATUS_FATAL_ERROR;
-      std::string msg = err.peekErrorValue()->logToString();
-      auto reporters = ErrorReporterRegistry::ErrorReporters();
-      if (reporters) {
-        reporters->report(msg);
-      }
-      LOG(FATAL) << "Non-recoverable device error when adding network: " << msg;
-    } else {
-      errorCode = ONNXIFI_STATUS_INTERNAL_ERROR;
-      LOG(ERROR) << ERR_TO_STRING(std::move(err));
+    std::string msg = err.peekErrorValue()->logToString();
+    auto reporters = ErrorReporterRegistry::ErrorReporters();
+    if (reporters) {
+      reporters->report(msg);
     }
+    LOG(FATAL) << "Non-recoverable device error when adding network: " << msg;
   }
-  return errorCode;
+
+  return ONNXIFI_STATUS_SUCCESS;
 }
 
 onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {

@@ -167,6 +167,10 @@ struct OptimizationOptions {
   /// Folding will be run.
   bool delayAndRecordConstantModification{false};
 
+  /// A set used to hold all temporary PHs that were swapped in for real PHs
+  /// when delayAndRecordConstantModification is set.
+  std::unordered_set<Placeholder *> tempPHsForConstants;
+
   /// If true, then there will be no error checking for backend support during
   /// the optimization pipeline. Expected that the caller will check if desired
   /// later on.

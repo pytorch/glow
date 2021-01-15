@@ -16,6 +16,7 @@
 
 #include "Loader.h"
 
+#include "glow/Base/Image.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/IR/IR.h"
@@ -43,8 +44,8 @@ using namespace glow;
 
 llvm::cl::OptionCategory loaderCat("Loader Options");
 
-namespace {
-llvm::cl::list<std::string> modelPathOpt(
+std::vector<std::string> modelPathOpt;
+static llvm::cl::list<std::string, std::vector<std::string>> modelPathOptF(
     "model",
     llvm::cl::desc(
         "Specify one of three:\n"
@@ -53,45 +54,12 @@ llvm::cl::list<std::string> modelPathOpt(
         "3. Path to directory with the Caffe2 network structure "
         "<predict_net.pb> and weight <init_net.pb> files."),
     llvm::cl::value_desc("modelPath"), llvm::cl::Required, llvm::cl::OneOrMore,
-    llvm::cl::cat(loaderCat));
-llvm::cl::alias modelPathAOpt("m", llvm::cl::desc("Alias for -model"),
-                              llvm::cl::aliasopt(modelPathOpt),
-                              llvm::cl::cat(loaderCat));
+    llvm::cl::cat(loaderCat), llvm::cl::location(modelPathOpt));
+static llvm::cl::alias modelPathAOpt("m", llvm::cl::desc("Alias for -model"),
+                                     llvm::cl::aliasopt(modelPathOptF),
+                                     llvm::cl::cat(loaderCat));
 
-llvm::cl::list<std::string> modelInputsOpt(
-    "model-input", llvm::cl::ZeroOrMore,
-    llvm::cl::desc(
-        " For ONNX models the inputs of the graph can be inferred   \n"
-        " automatically and hence this option is not mandatory.     \n"
-        " For Caffe2 models the graph definition does not contain   \n"
-        " the description of the inputs and hence must be provided  \n"
-        " explicitly using this option. One or more model inputs    \n"
-        " are provided using the following format:                  \n"
-        "    -model-input=<inputName1>,<inputType1>,<inputShape1>   \n"
-        "    -model-input=<inputName2>,<inputType2>,<inputShape2>   \n"
-        "    ....................................................   \n"
-        " For quantized types the format is slightly different since\n"
-        " the scale and offset parameters should also be provided:  \n"
-        "    -model-input=<name>,<type>,<scale>,<offset>,<shape>    \n"
-        " For example we can can provide one or more inputs:        \n"
-        "    -model-input=input_03_data,float,[1]                   \n"
-        "    -model-input=data_bias,int32,[1,32,32]                 \n"
-        "    -model-input=data,int8q,0.123,-13,[1,10]               \n"
-        " If only the name is provided, the default type is 'float' \n"
-        " and the default shape is '[1]':                           \n"
-        "    -model-input=<inputName1>                              \n"
-        " The supported types are:                                  \n"
-        "    - float, float16 (floating point types)                \n"
-        "    - int32, int64 (integer types)                         \n"
-        "    - int8q, int16q, int32q (integer quantized types)      \n"
-        "    - bool (logic type)\n"),
-    llvm::cl::value_desc("name,[type,[scale,offset],shape]"),
-    llvm::cl::cat(loaderCat));
-
-llvm::cl::alias modelInputName("model-input-name",
-                               llvm::cl::desc("Alias for -model-input"),
-                               llvm::cl::aliasopt(modelInputsOpt),
-                               llvm::cl::cat(loaderCat));
+namespace {
 
 llvm::cl::opt<bool>
     verbose("verbose",
@@ -287,6 +255,42 @@ llvm::cl::opt<std::string>
 } // namespace
 
 // These are outside the namespace so they can be used by the image-classifier.
+std::vector<std::string> modelInputsOpt;
+static llvm::cl::list<std::string, std::vector<std::string>> modelInputsOptF(
+    "model-input", llvm::cl::ZeroOrMore, llvm::cl::location(modelInputsOpt),
+    llvm::cl::desc(
+        " For ONNX models the inputs of the graph can be inferred   \n"
+        " automatically and hence this option is not mandatory.     \n"
+        " For Caffe2 models the graph definition does not contain   \n"
+        " the description of the inputs and hence must be provided  \n"
+        " explicitly using this option. One or more model inputs    \n"
+        " are provided using the following format:                  \n"
+        "    -model-input=<inputName1>,<inputType1>,<inputShape1>   \n"
+        "    -model-input=<inputName2>,<inputType2>,<inputShape2>   \n"
+        "    ....................................................   \n"
+        " For quantized types the format is slightly different since\n"
+        " the scale and offset parameters should also be provided:  \n"
+        "    -model-input=<name>,<type>,<scale>,<offset>,<shape>    \n"
+        " For example we can can provide one or more inputs:        \n"
+        "    -model-input=input_03_data,float,[1]                   \n"
+        "    -model-input=data_bias,int32,[1,32,32]                 \n"
+        "    -model-input=data,int8q,0.123,-13,[1,10]               \n"
+        " If only the name is provided, the default type is 'float' \n"
+        " and the default shape is '[1]':                           \n"
+        "    -model-input=<inputName1>                              \n"
+        " The supported types are:                                  \n"
+        "    - float, float16 (floating point types)                \n"
+        "    - int32, int64 (integer types)                         \n"
+        "    - int8q, int16q, int32q (integer quantized types)      \n"
+        "    - bool (logic type)\n"),
+    llvm::cl::value_desc("name,[type,[scale,offset],shape]"),
+    llvm::cl::cat(loaderCat));
+
+llvm::cl::alias modelInputName("model-input-name",
+                               llvm::cl::desc("Alias for -model-input"),
+                               llvm::cl::aliasopt(modelInputsOptF),
+                               llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<unsigned> numDevices("num-devices",
                                    llvm::cl::desc("Number of Devices to use"),
                                    llvm::cl::init(1), llvm::cl::value_desc("N"),
@@ -336,7 +340,7 @@ bool glow::profilingGraph() { return !dumpProfileFileOpt.empty(); }
 /// - <name>,<type>,<shape> for non-quantized types.
 /// - <name>,<type>,<scale>,<offset>,<shape> for quantized types.
 static void getModelInputs(std::vector<std::string> &inputNames,
-                           std::vector<Type> &inputTypes) {
+                           std::vector<Type> *inputTypes) {
   for (const auto &str : modelInputsOpt) {
     // Parse name.
     auto strPair = llvm::StringRef(str).split(',');
@@ -353,9 +357,13 @@ static void getModelInputs(std::vector<std::string> &inputNames,
     }
     inputNames.push_back(name);
 
+    if (!inputTypes) {
+      continue;
+    }
+
     // If only the name is provided, use the default type and shape.
     if (strPair.second.size() == 0) {
-      inputTypes.push_back(Type(ElemKind::FloatTy, {1}));
+      inputTypes->push_back(Type(ElemKind::FloatTy, {1}));
       continue;
     }
 
@@ -423,19 +431,19 @@ static void getModelInputs(std::vector<std::string> &inputNames,
 
     // Build type and add to vector.
     if (isQuantizedElemKind(kind)) {
-      inputTypes.push_back(Type(kind, dims, (float)scale, offset));
+      inputTypes->push_back(Type(kind, dims, (float)scale, offset));
     } else {
-      inputTypes.push_back(Type(kind, dims));
+      inputTypes->push_back(Type(kind, dims));
     }
   }
 }
 
-void Loader::loadModel(TypeRef inputType) {
+void Loader::loadModel(llvm::ArrayRef<TypeRef> inputType) {
 
   // Get model input names and types.
   std::vector<std::string> inputNames;
   std::vector<Type> inputTypes;
-  getModelInputs(inputNames, inputTypes);
+  getModelInputs(inputNames, &inputTypes);
   std::vector<const char *> inputNameRefs;
   std::vector<TypeRef> inputTypeRefs;
   for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
@@ -444,10 +452,8 @@ void Loader::loadModel(TypeRef inputType) {
   }
 
   // Use explicit input type if given.
-  if (inputType != nullptr) {
-    CHECK(inputNameRefs.size() == 1)
-        << "Model is expected to have only 1 input!";
-    inputTypeRefs = {inputType};
+  if (inputType.size()) {
+    inputTypeRefs = inputType;
   }
 
   // Load the model based on the model format.
@@ -472,12 +478,12 @@ void Loader::loadModel(TypeRef inputType) {
     // Since TensorFlowLite loader currently does not have the capability to
     // enforce the input type (for batching) we must validate that when the
     // input type is explicitly given it actually matches the model input type.
-    if (inputType != nullptr) {
+    if (inputType.size()) {
       CHECK(inputPlaceholderByName_.size() == 1)
           << "Model is expected to have only 1 input!";
       Placeholder *inpPH = inputPlaceholderByName_.begin()->second;
       auto modelBatchSize = inpPH->getType()->dims()[0];
-      auto inputBatchSize = inputType->dims()[0];
+      auto inputBatchSize = inputType[0]->dims()[0];
       CHECK(inputBatchSize == modelBatchSize)
           << "Mismatch between the model batch size (" << modelBatchSize
           << ") and the dataset batch size (" << inputBatchSize << ")! "
@@ -553,7 +559,17 @@ static bool commandLineIsInvalid() {
   return false;
 }
 
+/// Clear external storage for cmd args defined in Loader.
+static void initCmdArgVars() {
+  llvm::cl::ResetAllOptionOccurrences();
+  modelInputsOpt.clear();
+  modelPathOpt.clear();
+}
+
 void glow::parseCommandLine(int argc, char **argv) {
+
+  initCmdArgVars();
+
   llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
 #ifdef GLOW_BUILD_DATE
     os << "Glow Tools version: " << GLOW_BUILD_DATE << "\n";
@@ -804,7 +820,7 @@ Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
 }
 
 void Loader::postModelLoad(PlaceholderBindings &bindings,
-                           TypeRef inputImageType) {
+                           llvm::ArrayRef<TypeRef> inputImageType) {
   for (auto &&ext : loaderExtensionList_) {
     ext->postModelLoad(*this, bindings, inputImageType);
   }

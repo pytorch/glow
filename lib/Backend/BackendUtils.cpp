@@ -153,8 +153,8 @@ glow::runtime::RuntimeBundle::RuntimeBundle(
   *this = std::move(rhs);
 }
 
-glow::runtime::RuntimeBundle &glow::runtime::RuntimeBundle::
-operator=(glow::runtime::RuntimeBundle &&rhs) {
+glow::runtime::RuntimeBundle &
+glow::runtime::RuntimeBundle::operator=(glow::runtime::RuntimeBundle &&rhs) {
   if (this == &rhs) {
     // Do nothing if rhs is the same object as this.
     return *this;

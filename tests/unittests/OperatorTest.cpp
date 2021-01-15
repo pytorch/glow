@@ -1552,18 +1552,18 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
       -0.22815527, -2.4161322,  -1.8008438,  -0.92949533, 0.19269551};
 
   llvm::SmallVector<dim_t, 2> imInfoDims = {4, 3};
-  llvm::SmallVector<DataType, 12> imInfo = {159., 159., 1., 328., 328., 1.,
-                                            466., 466., 1., 414., 414., 1.};
+  llvm::SmallVector<DataType, 12> imInfo = {159., 159., 1.,  328., 328., 1.,
+                                            466., 466., 0.8, 414., 414., 0.625};
 
-  std::vector<float> weights = {1.0, 1.0, 1.0, 1.0};
+  std::vector<float> weights = {10.0, 10.0, 5.0, 5.0};
 
   std::vector<DataType> expectedValues = {
-      0.0000,   0.0000,   158.0000, 44.4404,  92.0877,  0.0000,   140.0215,
-      93.9451,  51.3913,  0.0000,   66.7658,  158.0000, 0.0000,   66.0093,
-      158.0000, 75.5617,  0.0000,   327.0000, 71.3890,  327.0000, 0.7150,
-      0.0000,   31.3340,  70.6096,  219.7409, 369.7931, 322.4225, 373.4951,
-      0.0000,   344.4728, 413.0000, 347.5388, 337.9926, 114.3067, 413.0000,
-      173.1735, 0.0000,   0.0000,   0.0000,   83.6907};
+      9.1345,   11.8575,  87.1274,  106.2058, 29.3998,  0.0000,   83.2963,
+      117.0268, 87.7207,  24.0571,  118.3636, 102.2456, 76.1143,  52.8231,
+      134.1416, 89.4287,  3.7658,   122.3617, 76.7646,  273.6816, 12.8093,
+      67.3427,  68.6289,  233.5658, 35.4638,  355.5252, 243.5137, 367.1413,
+      0.0000,   353.2900, 275.5705, 364.5733, 231.3346, 135.5961, 413.7500,
+      206.4955, 190.8902, 122.1084, 350.9171, 199.2337};
 
   auto *ROIS = mod.createPlaceholder(ElemTy, roisDims, "rois", false);
   bindings.allocate(ROIS)->getHandle<DataType>() = rois;
@@ -1600,15 +1600,15 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
 TEST_P(OperatorTest, BBoxTransform_Float) {
   CHECK_IF_ENABLED();
   testBBoxTransform<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy,
-                           /* applyScale */ false,
-                           /* legacyPlusOne */ true, /* absError */ 0.1);
+                           /* applyScale */ true,
+                           /* legacyPlusOne */ false, /* absError */ 0.1);
 }
 
 TEST_P(OperatorTest, BBoxTransform_Float16) {
   CHECK_IF_ENABLED();
   testBBoxTransform<float16_t>(bindings_, mod_, *F_, EE_, ElemKind::Float16Ty,
-                               /* applyScale */ false,
-                               /* legacyPlusOne */ true, /* absError */ 1.0);
+                               /* applyScale */ true,
+                               /* legacyPlusOne */ false, /* absError */ 1.0);
 }
 
 template <typename DataType>
@@ -3159,6 +3159,12 @@ TEST_P(OperatorTest, batchedReduceAdd_BFloat16) {
   CHECK_IF_ENABLED();
   testBatchedReduceAdd<bfloat16_t>(bindings_, mod_, F_, EE_,
                                    ElemKind::BFloat16Ty);
+}
+
+/// Test that BatchedReduceAdd is correctly supported in Int32ITy.
+TEST_P(OperatorTest, batchedReduceAdd_Int32ITy) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceAdd<int>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Test that BatchedReduceAdd works correctly reducing the outermost axis.
@@ -13684,6 +13690,76 @@ static void addEmbeddingBagPartialInputs(
   }
 }
 
+/// Test Embedding.
+template <typename DataType>
+static void testEmbedding(glow::PlaceholderBindings &bindings,
+                          glow::Module &mod, glow::Function *F,
+                          glow::ExecutionEngine &EE, ElemKind DTy,
+                          float allowedError, int64_t padIdx = -1) {
+  /*
+    WEIGHTS  = [[2.0, -0.5], [4, 5.1], [1, 2.3]]
+    INDICES = [1, 0, 2]
+    OUTPUT =  [[4, 5.1], [2.0, -0.5], [1, 2.3]]
+  */
+
+  // If hasEndOffset then add some additional junk to the end of indices and
+  // weights and an extra offset to offsets.
+
+  auto *weights = mod.createPlaceholder(DTy, {3, 2}, "weights", false);
+  auto *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {3}, "indices", false);
+  bool scale = false;
+  bool sparse = false;
+
+  int64_t indexValues[] = {1, 0, 2};
+
+  bindings.allocate(weights)->getHandle<DataType>() = {2.0, -0.5, 4,
+                                                       5.1, 1,    2.3};
+
+  bindings.allocate(indices)->getHandle<int64_t>() = indexValues;
+
+  auto *R =
+      F->createEmbedding("Embedding", weights, indices, padIdx, scale, sparse);
+  auto *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, {3, 2});
+
+  if (padIdx == -1) {
+    expected.getHandle<DataType>() = {4, 5.1, 2.0, -0.5, 1, 2.3};
+  } else if (padIdx == 0) {
+    expected.getHandle<DataType>() = {4, 5.1, 0, 0, 1, 2.3};
+  } else if (padIdx == 1) {
+    expected.getHandle<DataType>() = {0, 0, 2.0, -0.5, 1, 2.3};
+  } else if (padIdx == 2) {
+    expected.getHandle<DataType>() = {4, 5.1, 2.0, -0.5, 0, 0};
+  }
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test that Embedding is correctly supported in FloatTy
+TEST_P(OperatorTest, Embedding_Float) {
+  CHECK_IF_ENABLED();
+  testEmbedding<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001, -1);
+}
+
+/// Test that Embedding is correctly supported in Float16Ty
+TEST_P(OperatorTest, Embedding_Float16) {
+  CHECK_IF_ENABLED();
+  testEmbedding<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                           0.0001, -1);
+}
+
+/// Test that Embedding is correctly supported when PadIdx is specified.
+TEST_P(OperatorTest, Embedding_with_PadIdx) {
+  CHECK_IF_ENABLED();
+  testEmbedding<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001, 2);
+}
+
 /// Test EmbeddingBag with an N-dimension embedding table.
 template <typename DataType>
 static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
@@ -18111,6 +18187,49 @@ TEST_P(OperatorTest, Upsample_Nearest1D_Float16) {
 TEST_P(OperatorTest, Upsample_Nearest1D_Int8) {
   CHECK_IF_ENABLED();
   testUpsample1D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, RMSNorm) {
+  CHECK_IF_ENABLED();
+  const std::vector<dim_t> XShape{3, 4};
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, XShape, "X", false);
+  auto *gamma = mod_.createPlaceholder(ElemKind::FloatTy, 4, "gamma", false);
+  auto *beta = mod_.createPlaceholder(ElemKind::FloatTy, 4, "beta", false);
+  float epsilon = 1.0f;
+  bindings_.allocate(X)->getHandle<float>() = {1, 2, 3, 4,  5,  6,
+                                               7, 8, 9, 10, 11, 12};
+  bindings_.allocate(gamma)->getHandle<float>() = {1, 2, 3, 4};
+  bindings_.allocate(beta)->getHandle<float>() = {1, 2, 3, 4};
+  auto rmsNorm = F_->createRMSNorm("rmsnorm", X, gamma, beta, epsilon);
+  auto *save0 = F_->createSave("save", rmsNorm[0]);
+  auto *save1 = F_->createSave("save", rmsNorm[1]);
+  auto *resultY = bindings_.allocate(save0->getPlaceholder());
+  auto *resultRrms = bindings_.allocate(save1->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  const std::vector<dim_t> expectedYShape{XShape};
+  const std::vector<std::vector<float>> expectedY{
+      {1.3429972, 3.3719888, 6.0869746, 9.487955},
+      {1.7495317, 3.798876, 6.148033, 8.797003},
+      {1.8485281, 3.8856182, 6.11127, 8.525484},
+  };
+  EXPECT_EQ(expectedYShape, resultY->dims().vec());
+  auto hY = resultY->getHandle<float>();
+  for (dim_t i = 0; i < expectedYShape[0]; ++i) {
+    for (dim_t j = 0; j < expectedYShape[1]; ++j) {
+      EXPECT_NEAR(expectedY[i][j], hY.at({i, j}), 1e-5)
+          << "at pos (" << i << "," << j << ")";
+    }
+  }
+
+  const std::vector<dim_t> expectedRrmsShape{XShape[0]};
+  const std::vector<float> expectedRrms{0.3429972, 0.14990634, 0.09428091};
+  EXPECT_EQ(expectedRrmsShape, resultRrms->dims().vec());
+  auto hRrms = resultRrms->getHandle<float>();
+  for (dim_t i = 0; i < expectedRrmsShape[0]; ++i) {
+    EXPECT_NEAR(expectedRrms[i], hRrms.at({i}), 1e-5) << "at pos " << i;
+  }
 }
 
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);

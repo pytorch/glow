@@ -161,6 +161,9 @@ std::set<std::string> glow::backendTestBlacklist = {
     "SparseLengthsWeightedSum_1D_Float16/0",
     "SparseLengthsWeightedSum_2D_BFloat16/0",
     "SparseLengthsWeightedSum_2D_Float16/0",
+    "Embedding_Float/0",
+    "Embedding_Float16/0",
+    "Embedding_with_PadIdx/0",
     "EmbeddingBag_1D_BFloat16/0",
     "EmbeddingBag_1D_Float16/0",
     "EmbeddingBag_1D_BFloat16_End_Offset/0",
@@ -396,4 +399,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Upsample_Nearest1D_Float/0",
     "Upsample_Nearest1D_Float16/0",
     "Upsample_Nearest1D_Int8/0",
+    "batchedReduceAdd_Int32ITy/0",
 };

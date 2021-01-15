@@ -439,12 +439,13 @@ FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
         // Import node.
         LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
             FXNodeImporters.at(functionName)
-                ->importNode(node,
-                             [&prefix, &targetName](const std::string &name) {
-                               return folly::to<std::string>(prefix, targetName,
-                                                             ".", name);
-                             },
-                             *this),
+                ->importNode(
+                    node,
+                    [&prefix, &targetName](const std::string &name) {
+                      return folly::to<std::string>(prefix, targetName, ".",
+                                                    name);
+                    },
+                    *this),
             "Failed to import node");
       }
     }

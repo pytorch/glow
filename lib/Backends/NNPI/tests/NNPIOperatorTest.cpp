@@ -160,6 +160,7 @@ struct BlacklistInitializer {
       {"spaceToDepth_block2_int8/0", TestBlacklist::AnyDeviceAnyEngine},
       {"spaceToDepth_block3_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"spaceToDepth_block3_int8/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Embedding_with_PadIdx/0", TestBlacklist::AnyDeviceAnyEngine},
       {"EmbeddingBag_1D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"EmbeddingBag_1D_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"EmbeddingBag_2D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -530,6 +531,7 @@ struct BlacklistInitializer {
 #endif
       {"Erf_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Erf_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"batchedReduceAdd_Int32ITy/0", TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

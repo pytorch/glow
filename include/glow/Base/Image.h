@@ -18,6 +18,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Type.h"
+#include "glow/Support/Support.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -48,14 +49,29 @@ enum class ImageChannelOrder {
   RGB,
 };
 
+/// All the image options are given as vectors, containing one element per model
+/// input. An element at position i refers to input i, and input i refers to the
+/// model input name given at the ith postion of the -model-input-name list.
+
+/// NOTE: LLVM cmd parser made subclasses final in 3.7 yet the only cmd line
+/// manual still refers to the old data and the change was not clear why it's
+/// made. Assigning callbacks is not possible, and subclassing basic_parser is
+/// open to future errors. Thus, relying in LLVM parser is minimized - we will
+/// just obtain strings and process options. With the lack of Image class/struct
+/// in Glow, we will have most of APIs to continue working with different APIs
+/// directly affecting global cmd line arguments.
+
 /// -image-mode flag.
-extern ImageNormalizationMode imageNormMode;
+extern std::vector<ImageNormalizationMode> imageNormMode;
 
 /// -image-channel-order flag.
-extern ImageChannelOrder imageChannelOrder;
+extern std::vector<ImageChannelOrder> imageChannelOrderOpt;
 
 /// -image-layout flag.
-extern ImageLayout imageLayout;
+extern std::vector<ImageLayout> imageLayoutOpt;
+
+/// -input-layout flag
+extern ImageLayout inputLayout;
 
 /// -input-layout flag
 extern ImageLayout inputLayout;
@@ -63,12 +79,21 @@ extern ImageLayout inputLayout;
 /// -use-imagenet-normalization flag.
 extern bool useImagenetNormalization;
 
+/// -preprocessing parameters
+extern VecVec<float> meanValuesOpt;
+extern VecVec<float> stddevValuesOpt;
+
 /// These are standard normalization factors for imagenet, adjusted for
 /// normalizing values in the 0to255 range instead of 0to1, as seen at:
 /// https://github.com/pytorch/examples/blob/master/imagenet/main.py
 static const float imagenetNormMean[] = {0.485 * 255.0, 0.456 * 255.0,
                                          0.406 * 255.0};
 static const float imagenetNormStd[] = {0.229, 0.224, 0.225};
+
+/// Processes special command line args for Image module.
+void processImageCmdArgVars(size_t numInputs);
+/// Clear external storage for cmd args defined in Image.
+void initImageCmdArgVars();
 
 /// Default values for mean and stddev.
 static const std::vector<float> zeroMean(max_tensor_dimensions, 0.f);
@@ -131,34 +156,15 @@ void readPngImageAndPreprocess(Tensor &imageData, llvm::StringRef filename,
                                llvm::ArrayRef<float> mean = zeroMean,
                                llvm::ArrayRef<float> stddev = oneStd);
 
-/// Loads and normalizes all PNGs into a tensor in the NHWC format with the
-/// requested channel ordering.
-/// \param imageData the tensor into which the preprocessed image data
-///  will be stored.
-/// \param filename the png file to read.
-/// \param imageNormMode normalize values to this range.
-/// \param imageChannelOrder the order of color channels.
-/// \param imageLayout the order of dimensions (channel, height, and width).
-void readPngImagesAndPreprocess(Tensor &imageData,
+/// \param mean use special mean to normalize.
+/// \param stdev use special stddev to normalize.
+void readPngImagesAndPreprocess(Tensor &inputImageData,
                                 const llvm::ArrayRef<std::string> &filenames,
                                 ImageNormalizationMode imageNormMode,
                                 ImageChannelOrder imageChannelOrder,
-                                ImageLayout imageLayout);
-
-/// Loads either PNGs or NUMPY dumps into a tensor.
-/// \param filenames list of filenames to read.
-/// \param inputImageData Tensor to save the resulting output.
-/// \param imageNormMode normalize values to this range (not applicable to
-/// NUMPY).
-/// \param imageChannelOrder the order of color channels (not applicable
-/// to NUMPY).
-/// \param imageLayout the order of dimensions (channel, height, and
-/// width).
-void loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
-                             Tensor *inputImageData,
-                             ImageNormalizationMode imageNormMode,
-                             ImageChannelOrder imageChannelOrder,
-                             ImageLayout imageLayout);
+                                ImageLayout imageLayout,
+                                llvm::ArrayRef<float> mean,
+                                llvm::ArrayRef<float> stddev);
 
 /// Returns whether file \p filename is in Numpy .npy format.
 bool isNumpyNpyFormat(const std::string &filename);
@@ -181,6 +187,48 @@ void loadNumpyImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
                                   llvm::ArrayRef<float> mean = {},
                                   llvm::ArrayRef<float> stddev = {});
 
+/// Loads either PNGs or NUMPY images/tensors into the model input tensors.
+/// \param filenamesList list of lists (for each input) of filenames to read.
+/// \param inputImageDataList list of Tensors (for each input) that will
+/// contain loaded and preprocessed images.
+/// \param normMode normalize values to this range (not applicable to
+/// NUMPY).
+/// \param channelOrder the order of color channels (not applicable
+/// to NUMPY).
+/// \param imageLayout the order of dimensions (channel, height, and
+/// width).
+/// \param inputLayout the order of dimensions (channel, height, and
+/// width) in the image file. Will be used only if the image format
+/// doesn't provide the layout (e.g. PNG uses RGB thus the option is ignored).
+/// \param mean use
+/// special mean to normalize.
+/// \param stdev use special stddev to normalize.
+/// NOTE: Last 6 arguments are setting the global options - same ones the
+/// command line arguments set. Thus, the function call alters the global state.
+void loadImagesAndPreprocess(
+    VecVecRef<std::string> filenamesList,
+    llvm::ArrayRef<Tensor *> inputImageDataList,
+    llvm::ArrayRef<ImageNormalizationMode> normMode = {},
+    llvm::ArrayRef<ImageChannelOrder> channelOrder = {},
+    llvm::ArrayRef<ImageLayout> imageLayout = {},
+    llvm::ArrayRef<ImageLayout> inputLayout = {}, VecVecRef<float> mean = {},
+    VecVecRef<float> stddev = {});
+
+/// Load & normalize tensors from multiple npy files given by \p filenames into
+/// \p inputData tensor. Npy tensors must be 4D or 3D (in this case they are
+/// expanded with the batch dimension) and are concatanted along the batch.
+/// Also, tensors are transposed from \p inputLayout to \p imageLayout.
+/// Tensor values are expected to be in 0-255 range. \param filenames list of
+/// filenames to read. \param inputData Tensor to save the resulting output.
+/// \param imageNormMode normalize values to this range. \param imageLayout
+/// the order of dimensions (channel, height, and width). \param inputLayout the
+/// order of dimensions (channel, height, and width) in the dumps. \param mean
+/// use special mean to normalize. \param stdev use special stddev to normalize.
+void loadNumpyImagesAndPreprocess(
+    const llvm::ArrayRef<std::string> &filenames, Tensor &inputData,
+    ImageNormalizationMode imageNormMode, ImageChannelOrder imageChannelOrder,
+    ImageLayout imageLayout, ImageLayout inputLayout,
+    llvm::ArrayRef<float> mean, llvm::ArrayRef<float> stddev);
 } // namespace glow
 
 #endif // GLOW_BASE_IMAGE_H
