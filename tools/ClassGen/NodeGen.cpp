@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels", /* addSetter */ true)
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
-      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Group", /* addSetter */ true)
       .addMember(MemberType::VectorUnsigned, "Dilation")
       .addFusedActivation()
       .addResultFromCtorArg()

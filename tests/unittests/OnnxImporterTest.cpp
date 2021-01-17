@@ -5432,3 +5432,55 @@ TEST(onnx, importClipV11) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
 }
+
+// Utility function to test ONNX Softmax
+static void testSoftmax(const std::string &modelName,
+                        const std::vector<dim_t> &expectedDims,
+                        const std::vector<float> &expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Input.
+  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+  x.getHandle() = {0.0, 1.0, 2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
+                   8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0};
+
+  // Load model.
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + modelName;
+  ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+  Placeholder *output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  // Allocate placeholders.
+  PlaceholderBindings bindings;
+  bindings.allocate(mod.getPlaceholders());
+  updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Compare results.
+  auto result = res->getHandle();
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (dim_t i = 0; i < result.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading Softmax from a ONNX model.
+TEST_F(OnnxImporterTest, softmax) {
+  testSoftmax("softmax11.onnxtxt", {2, 2, 2, 2},
+              {5.7661277e-04, 1.5673960e-03, 4.2606238e-03, 1.1581578e-02,
+               3.1481992e-02, 8.5576929e-02, 2.3262219e-01, 6.3233274e-01,
+               5.7661277e-04, 1.5673960e-03, 4.2606238e-03, 1.1581578e-02,
+               3.1481992e-02, 8.5576929e-02, 2.3262219e-01, 6.3233274e-01});
+}
+/// Test loading Softmax opset13 from a ONNX model.
+TEST_F(OnnxImporterTest, softmax13) {
+  testSoftmax("softmax13.onnxtxt", {2, 2, 2, 2},
+              {0.11920292, 0.11920292, 0.880797, 0.880797, 0.11920292,
+               0.11920292, 0.880797, 0.880797, 0.11920292, 0.11920292, 0.880797,
+               0.880797, 0.11920292, 0.11920292, 0.880797, 0.880797});
+}

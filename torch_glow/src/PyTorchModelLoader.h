@@ -447,12 +447,15 @@ private:
   /// Helper function for loading arithmetic nodes. \p name is of the name of
   /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the
   /// arithetic node and template parameter \p GlowNode is the type of the node
-  /// that should be created in the Glow graph. \returns the output of the
-  /// loaded arithmetic node or an Error if any occurred.
+  /// that should be created in the Glow graph. \p convertToDefaultType
+  /// indicates if we want to convert the input types to default pytorch dtypes
+  /// if both inputs are of integer types. \returns the output of the loaded
+  /// arithmetic node or an Error if any occurred.
   template <typename GlowNode>
   Expected<NodeValue> loadArithmeticNode(llvm::StringRef name,
                                          const torch::jit::Value *lhs,
-                                         const torch::jit::Value *rhs);
+                                         const torch::jit::Value *rhs,
+                                         bool convertToDefaultType = false);
 
   /// Load a PyTorch mul node.
   /// \returns error on failure.

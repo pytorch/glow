@@ -371,8 +371,10 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RoiAlign/0",
     "RoiAlignWithAlignedCoordinates/0",
     "RoiAlignBatchIndexInBoxesTensor/0",
+    "RoiAlignC2Batched/0",
     "RoiAlignRotatedBatchIndexInBoxesTensor/0",
     "FP16RoiAlignBatchIndexInBoxesTensor/0",
+    "FP16RoiAlignC2Batched/0",
     "FP16RoiAlign/0",
     "FP16RoiAlignWithAlignedCoordinates/0",
     "FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
@@ -400,4 +402,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Upsample_Nearest1D_Float16/0",
     "Upsample_Nearest1D_Int8/0",
     "batchedReduceAdd_Int32ITy/0",
+    "Float16ArgMaxKeepDim/0",
+    "Float16ArgMaxNoKeepDim/0",
 };

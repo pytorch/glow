@@ -5335,6 +5335,13 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
       functionName<float, int32_t>(__VA_ARGS__);                               \
     }                                                                          \
     break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<float16_t, int64_t>(__VA_ARGS__);                           \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<float16_t, int32_t>(__VA_ARGS__);                           \
+    }                                                                          \
+    break;                                                                     \
   case ElemKind::Int8QTy:                                                      \
     if (elemTyIndex == ElemKind::Int64ITy) {                                   \
       functionName<int8_t, int64_t>(__VA_ARGS__);                              \

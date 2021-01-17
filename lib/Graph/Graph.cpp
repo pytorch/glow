@@ -1115,7 +1115,6 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue B, TypeRef outTy,
                                                    unsigned_t axis) {
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
-  assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
 
   // FC always uses 2D input; flatten if necessary.
   if (input.dims().size() != 2) {
@@ -1673,6 +1672,12 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
 ReshapeNode *Function::createFlatten(llvm::StringRef name, NodeValue input,
                                      unsigned_t axis) {
   auto xDim = flattenCdr(input.getType()->dims(), axis);
+  return createReshape(name, input, {xDim.first, xDim.second});
+}
+
+ReshapeNode *Function::createFlattenV1(llvm::StringRef name, NodeValue input,
+                                       unsigned_t axis) {
+  auto xDim = collapseShape(input.getType()->dims(), axis);
   return createReshape(name, input, {xDim.first, xDim.second});
 }
 

@@ -897,6 +897,12 @@ public:
   ReshapeNode *createFlatten(llvm::StringRef name, NodeValue input,
                              unsigned_t axis);
 
+  /// Flattens the input tensor into a 2D matrix. If input tensor has shape
+  /// (d_0, d_1, ... d_n) then the output will have shape:
+  /// ((d_0 X d_1 ... d_(axis-1) X d_(axis+1) ... X d_n), d_axis).
+  ReshapeNode *createFlattenV1(llvm::StringRef name, NodeValue input,
+                               unsigned_t axis);
+
   /// Create \p outputNum slice nodes of \p input. Slices happen along dimension
   /// number \p axis. Array \p split defines lengths of slices. If \p split is
   /// empty, \p input is split to equal sized parts.
@@ -1007,7 +1013,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
-                          Args &&... inputArgs) {                              \
+                          Args &&...inputArgs) {                               \
     BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, inputs[0].getType(), inputs[0], inputs[1]); \
   }
@@ -1030,7 +1036,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcastOutTy(const std::string &name, int axis,              \
-                               TypeRef OUTTYPEREF, Args &&... inputArgs) {     \
+                               TypeRef OUTTYPEREF, Args &&...inputArgs) {      \
     BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, OUTTYPEREF, inputs[0], inputs[1]);          \
   }
@@ -1047,7 +1053,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
-                          Args &&... inputArgs) {                              \
+                          Args &&...inputArgs) {                               \
     BROADCAST_FUNC_COMMON_CODE(2)                                              \
     return create##NODE_NAME(name, inputs[0], inputs[1]);                      \
   }
@@ -1068,7 +1074,7 @@ public:
   template <class T, class... Args>
   typename enable_if_same_t<T, SelectNode>::type *
   createNodeWithBroadcast(const std::string &name, int axis,
-                          Args &&... inputArgs) {
+                          Args &&...inputArgs) {
     BROADCAST_FUNC_COMMON_CODE(3)
     return createSelect(name, inputs[1].getType(), inputs[0], inputs[1],
                         inputs[2]);

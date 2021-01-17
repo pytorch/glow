@@ -41,11 +41,11 @@ class TestDiv(unittest.TestCase):
                 torch.randn(4, 2),
                 torch.randn(8, 3, 4, 2),
             ),
-            ("float", SimpleDivModule(), torch.randn(4), torch.tensor(3.9)),
-            ("int", SimpleDivModule(), torch.randn(4), torch.tensor(20), True),
+            ("float_tensor", SimpleDivModule(), torch.randn(4), torch.tensor(3.9)),
+            ("int_tensor", SimpleDivModule(), torch.tensor([4]), torch.tensor([10])),
+            # This one will go through (a * a) / b.item() and b.item() is an integer.
+            ("int_number", SimpleDivModule(), torch.tensor([4]), torch.tensor(10)),
         ]
     )
-    def test_div_basic(self, _, module, a, b, skip_to_glow=False):
-        utils.compare_tracing_methods(
-            module, a, b, fusible_ops={"aten::div"}, skip_to_glow=skip_to_glow
-        )
+    def test_div(self, _, module, a, b):
+        utils.compare_tracing_methods(module, a, b, fusible_ops={"aten::div"})
