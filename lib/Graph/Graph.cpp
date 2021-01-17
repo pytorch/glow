@@ -1115,7 +1115,6 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue B, TypeRef outTy,
                                                    unsigned_t axis) {
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
-  assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
 
   // FC always uses 2D input; flatten if necessary.
   if (input.dims().size() != 2) {
@@ -1128,7 +1127,7 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
-                                               NodeValue input, Constant *W,
+                                               NodeValue input, NodeValue W,
                                                Constant *scales,
                                                Constant *offsets, NodeValue B,
                                                TypeRef outTy) {
@@ -1138,7 +1137,7 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
 
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
-                                               NodeValue input, Constant *W,
+                                               NodeValue input, NodeValue W,
                                                NodeValue B, TypeRef outTy,
                                                quantization::Schema schema,
                                                bool transposeWeight) {
@@ -1146,10 +1145,13 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   // The quantized data is in qWeights, the scale of each row is in scales,
   // and the offset of each row is in offsets.
   Constant *weights = llvm::cast<Constant>(W);
-  dim_t numRows =
-      transposeWeight ? W->getType()->dims()[1] : W->getType()->dims()[0];
-  dim_t numCols =
-      transposeWeight ? W->getType()->dims()[0] : W->getType()->dims()[1];
+  CHECK(weights)
+      << "Expected RowwiseQuantizedFullyConnected weights to be a Constant";
+
+  dim_t numRows = transposeWeight ? weights->getType()->dims()[1]
+                                  : weights->getType()->dims()[0];
+  dim_t numCols = transposeWeight ? weights->getType()->dims()[0]
+                                  : weights->getType()->dims()[1];
 
   // So far, if we want to create a storage with Int8QTy/Int16QTy,
   // it is assumed to be quantized data and the scale and offset should be
@@ -1332,6 +1334,53 @@ BroadcastNode *Function::createBroadcast(llvm::StringRef name, NodeValue input,
                                          unsigned_t axis) {
   auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), newShape);
   return addNode(new BroadcastNode(name, OT, input, axis, newShape.vec()));
+}
+
+std::array<Node *, 2> Function::createRMSNorm(llvm::StringRef name, NodeValue X,
+                                              NodeValue gamma, NodeValue beta,
+                                              float epsilon) {
+  // np.square(X)
+  auto square = createSquare(name.str() + ".square", X);
+
+  // np.mean(np.square(X), axis=1)
+  auto mean = createBatchedReduceMean(name.str() + ".mean", square, {1});
+
+  // np.mean(np.square(X), axis=1) + eps
+  auto eps = getParent()->createConstant(ElemKind::FloatTy, 1, "eps");
+  eps->getPayloadMutable() = {epsilon};
+  auto bcastEps =
+      createBroadcast(name.str() + ".bcastEps", eps, {X.dims()[0]}, 0);
+  auto addEps = createAdd(name.str() + ".addEps", mean, bcastEps);
+
+  // np.sqrt(np.mean(np.square(X), axis=1) + eps)
+  auto sqrt = createPow(name.str() + ".sqrt", addEps, 0.5f);
+
+  // rrms = 1.0 / np.sqrt(np.mean(np.square(X), axis=1) + eps)
+  auto one = getParent()->createConstant(ElemKind::FloatTy, 1, "one");
+  one->getPayloadMutable() = {1};
+  auto bcastOne =
+      createBroadcast(name.str() + ".bcastOne", one, {X.dims()[0]}, 0);
+  auto rrms = createDiv(name.str() + ".rrms", bcastOne, sqrt);
+
+  // np.expand_dims(rrms, axis=1)
+  auto reshape = createReshape(name.str() + ".expandD", rrms, {X.dims()[0], 1});
+  auto bcastReshape =
+      createBroadcast(name.str() + ".bcastReshape", reshape, X.dims(), 0);
+
+  // X * np.expand_dims(rrms, axis=1)
+  auto mul = createMul(name.str() + "mul", X, bcastReshape);
+
+  // X * np.expand_dims(rrms, axis=1) * gamma
+  auto bcastGamma =
+      createBroadcast(name.str() + ".bcastGamma", gamma, X.dims(), 1);
+  auto mulGamma = createMul(name.str() + ".mulGamma", mul, bcastGamma);
+
+  // Y = X * np.expand_dims(rrms, axis=1) * gamma + beta
+  auto bcastBeta =
+      createBroadcast(name.str() + ".bcastBeta", beta, X.dims(), 1);
+  auto Y = createAdd(name.str() + ".Y", mulGamma, bcastBeta);
+
+  return {Y, rrms};
 }
 
 /// \returns true if \p T1 and T2 has the exact same type except for dimension
@@ -1553,6 +1602,12 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
 ReshapeNode *Function::createFlatten(llvm::StringRef name, NodeValue input,
                                      unsigned_t axis) {
   auto xDim = flattenCdr(input.getType()->dims(), axis);
+  return createReshape(name, input, {xDim.first, xDim.second});
+}
+
+ReshapeNode *Function::createFlattenV1(llvm::StringRef name, NodeValue input,
+                                       unsigned_t axis) {
+  auto xDim = collapseShape(input.getType()->dims(), axis);
   return createReshape(name, input, {xDim.first, xDim.second});
 }
 
@@ -2245,6 +2300,24 @@ Function::createFusedRowwiseQuantizedSparseLengthsSum(
   return this->createFusedRowwiseQuantizedSparseLengthsSum(
       name, rwqData, indices, lengths, useFP16Accumulation, lengthsMode,
       avgLength);
+}
+
+EmbeddingNode *Function::createEmbedding(llvm::StringRef name,
+                                         NodeValue weights, NodeValue indices,
+                                         int64_t padIdx, bool scale,
+                                         bool sparse) {
+  auto indDims = indices.dims();
+  auto wtDims = weights.dims();
+
+  assert(wtDims.size() == 2 && "weights must be a 2D tensor");
+
+  ShapeVector outDims(indDims.begin(), indDims.end());
+  dim_t embedding_dim = wtDims[1];
+  outDims.push_back(embedding_dim);
+
+  auto outTy = getParent()->uniqueTypeWithNewShape(weights.getType(), outDims);
+  return addNode(
+      new EmbeddingNode(name, outTy, weights, indices, padIdx, scale, sparse));
 }
 
 EmbeddingBagNode *

@@ -172,12 +172,13 @@ static void normalizeData(ImageLayout imageLayout, llvm::ArrayRef<float> mean,
                           llvm::ArrayRef<float> stddev,
                           ImageNormalizationMode imageNormMode,
                           std::vector<float> &data, std::vector<dim_t> &shape) {
+
   auto range = normModeToRange(imageNormMode);
   float scale = ((range.second - range.first) / 255.f);
   float bias = range.first;
-  dim_t numCh = (imageLayout == ImageLayout::Unspecified)
-                    ? 1
-                    : (imageLayout == ImageLayout::NHWC) ? shape[3] : shape[1];
+  dim_t numCh = (imageLayout == ImageLayout::Unspecified) ? 1
+                : (imageLayout == ImageLayout::NHWC)      ? shape[3]
+                                                          : shape[1];
   std::vector<float> zeroMean(numCh, 0.f);
   std::vector<float> oneStd(numCh, 1.f);
   std::vector<float> meanVal(mean.size() ? mean : llvm::makeArrayRef(zeroMean));

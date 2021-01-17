@@ -74,11 +74,12 @@ struct InputMetaStack {
 };
 
 /// \returns a InputMetaStack representing the stack \p inputs or an Error if
-/// one occurs. If \p ignoreObjects is true then any Object IValues will be
-/// ignored, otherwise all IValues on the inputs stack must be PyTorch tensors.
+/// one occurs. If \p ignoreNonTensors is true then any non-tensor IValues will
+/// be ignored, otherwise all IValues on the inputs stack must be PyTorch
+/// tensors.
 Expected<InputMetaStack>
 inputMetaStackFromStack(const c10::ArrayRef<c10::IValue> &inputs,
-                        bool ignoreObjects = false);
+                        bool ignoreNonTensors = false);
 
 /// Deserialize an InputMeta from string \p raw_data.
 InputMetaStack loadInputMeta(const std::string &raw_data);

@@ -232,6 +232,40 @@ static void importReduceL2Test(const std::string &netFilename,
   }
 }
 
+/// Test the utility function that gets the inputs name and glow types
+/// from updated graph proto
+
+TEST_F(OnnxImporterTest, getInputNamesAndTypes) {
+  // Set onnx-define-symbol if present in model
+  std::string inputSymbol = "batch_size,5";
+  setOnnxDefineSymbol({inputSymbol});
+
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/getInputsOnnxDefineSample.onnxtxt");
+
+  bool isError = false;
+
+  std::vector<std::string> names;
+  std::vector<Type> types;
+
+  std::vector<std::string> expectedNames = {"input"};
+  std::vector<std::vector<dim_t>> expectedDims = {{5, 3, 224, 224}};
+
+  isError = ERR_TO_BOOL(
+      ONNXModelLoader::getInputsNamesAndTypes(names, types, netFilename));
+
+  EXPECT_FALSE(isError);
+
+  for (size_t i = 0; i < expectedNames.size(); i++) {
+    EXPECT_TRUE(expectedNames[i] == names[i]);
+    std::vector<dim_t> dims = types[i].dims();
+    for (size_t j = 0; j < expectedDims[i].size(); j++) {
+      EXPECT_EQ(expectedDims[i][j], dims[j]);
+    }
+  }
+}
+
 /// Test the utility function which wraps a negative axis.
 TEST_F(OnnxImporterTest, getPositiveAxis) {
   int axisPos;
@@ -4678,6 +4712,45 @@ TEST_F(OnnxImporterTest, importUpsampleOpset9) {
   importUpsampleTest(netFilename);
 }
 
+static void testIf(std::string filename, float inputVal, float outputVal) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename = std::string(GLOW_DATA_PATH) + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {1});
+    x.getHandle() = {inputVal};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+
+  std::vector<float> expectedValues = {outputVal};
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+TEST(onnx, testIfConstantTrue) {
+  testIf("tests/models/onnxModels/if_true.onnxtxt", 3.0f, 6.0f);
+}
+
+TEST(onnx, testIfConstantFalse) {
+  testIf("tests/models/onnxModels/if_false.onnxtxt", 3.0f, 9.0f);
+}
+
 /// ResizeNearest Test Helper
 static void importResizeNearest(std::string filename) {
   ExecutionEngine EE;
@@ -5311,4 +5384,56 @@ TEST(onnx, importClipV11) {
   for (size_t i = 0; i < 8; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
+}
+
+// Utility function to test ONNX Softmax
+static void testSoftmax(const std::string &modelName,
+                        const std::vector<dim_t> &expectedDims,
+                        const std::vector<float> &expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Input.
+  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+  x.getHandle() = {0.0, 1.0, 2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
+                   8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0};
+
+  // Load model.
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + modelName;
+  ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+  Placeholder *output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  // Allocate placeholders.
+  PlaceholderBindings bindings;
+  bindings.allocate(mod.getPlaceholders());
+  updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Compare results.
+  auto result = res->getHandle();
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (dim_t i = 0; i < result.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading Softmax from a ONNX model.
+TEST_F(OnnxImporterTest, softmax) {
+  testSoftmax("softmax11.onnxtxt", {2, 2, 2, 2},
+              {5.7661277e-04, 1.5673960e-03, 4.2606238e-03, 1.1581578e-02,
+               3.1481992e-02, 8.5576929e-02, 2.3262219e-01, 6.3233274e-01,
+               5.7661277e-04, 1.5673960e-03, 4.2606238e-03, 1.1581578e-02,
+               3.1481992e-02, 8.5576929e-02, 2.3262219e-01, 6.3233274e-01});
+}
+/// Test loading Softmax opset13 from a ONNX model.
+TEST_F(OnnxImporterTest, softmax13) {
+  testSoftmax("softmax13.onnxtxt", {2, 2, 2, 2},
+              {0.11920292, 0.11920292, 0.880797, 0.880797, 0.11920292,
+               0.11920292, 0.880797, 0.880797, 0.11920292, 0.11920292, 0.880797,
+               0.880797, 0.11920292, 0.11920292, 0.880797, 0.880797});
 }

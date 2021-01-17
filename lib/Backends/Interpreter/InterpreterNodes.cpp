@@ -84,6 +84,24 @@ using namespace glow;
     llvm_unreachable("Type is not supported");                                 \
   }
 
+#define dispatchFloatingPointAndInt32Impl(functionName, elemTy, ...)           \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    functionName<float>(__VA_ARGS__);                                          \
+    break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    functionName<float16_t>(__VA_ARGS__);                                      \
+    break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    functionName<bfloat16_t>(__VA_ARGS__);                                     \
+    break;                                                                     \
+  case ElemKind::Int32ITy:                                                     \
+    functionName<int>(__VA_ARGS__);                                            \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define dispatchFloatingPointAndIndexImpl(functionName, elemTy, elemTyIndex,   \
                                           ...)                                 \
   switch (elemTy) {                                                            \
@@ -4032,10 +4050,17 @@ void BoundInterpreterFunction::fwdBatchedAddInst(
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdBatchedReduceAddInstFloatImpl(
+void BoundInterpreterFunction::fwdBatchedReduceAddInstImpl(
     Value *batch, Value *dest, unsigned_t axis, const ShapeVector &eBatchDims,
     const ShapeVector &eDestDims) {
-  staticAssertFloatingPointType(ElemTy);
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t,
+                       typename std::remove_cv<ElemTy>::type>::value ||
+          std::is_same<bfloat16_t,
+                       typename std::remove_cv<ElemTy>::type>::value ||
+          std::is_same<int, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point and int32 values only");
 
   // Get unowned handles of the batch and dest with these new expanded dims.
   auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
@@ -4136,9 +4161,9 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
       llvm_unreachable("Axis should be less than max_tensor_dimensions.");
     }
   }
-  dispatchFloatingPointImpl(fwdBatchedReduceAddInstFloatImpl,
-                            batch->getElementType(), batch, dest, axis,
-                            eBatchDims, eDestDims);
+  dispatchFloatingPointAndInt32Impl(fwdBatchedReduceAddInstImpl,
+                                    batch->getElementType(), batch, dest, axis,
+                                    eBatchDims, eDestDims);
 }
 
 /// Macro to define ReduceMin/Max kernel implementation.
@@ -4636,6 +4661,64 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
 void BoundInterpreterFunction::fwdEmbeddingBagInst(const EmbeddingBagInst *I) {
   dispatchFloatingPointImpl(fwdEmbeddingBagInstFloatImpl,
                             I->getData()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdEmbeddingInstImpl(Tensor *wtT, Tensor *indT,
+                                                    Tensor *outT,
+                                                    int64_t padIdx, bool sparse,
+                                                    bool scale,
+                                                    dim_t embedding_dim) {
+
+  staticAssertFloatingPointType(ElemTy);
+
+  assert(!scale && "Currently only support scale_grad_by_freq == 'false'");
+  assert(!sparse && "Currently only support sparse == 'false'");
+
+  // Indices Tensor can be an arbitrary shape.
+  // Get it flattened to 1D vector of size indLen
+  // Output Tensor can be an arbitray shape.
+  // Get it reshaped to a 2D tensor of size (indLen, embedding_dim)
+  dim_t indLen = 1;
+  for (dim_t idx = 0; idx < indT->dims().size(); ++idx) {
+    indLen *= indT->dims()[idx];
+  }
+  auto fIndT = indT->getUnowned({indLen});
+  auto fOutT = outT->getUnowned({indLen, embedding_dim});
+
+  fOutT.zero();
+
+  auto WH = wtT->getHandle<ElemTy>();
+  auto OH = fOutT.getHandle<ElemTy>();
+  auto IH = fIndT.getHandle<int64_t>();
+
+  for (dim_t i = 0; i < indLen; i++) {
+    dim_t index = IH.at(i);
+    if (index != padIdx) {
+      for (dim_t j = 0; j < embedding_dim; j++) {
+        OH.at({i, j}) = WH.at({index, j});
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdEmbeddingInst(const EmbeddingInst *I) {
+  auto wtT = getTensor(I->getWeights());
+  auto indT = getTensor(I->getIndices());
+  auto outT = getTensor(I->getDest());
+  auto padIdx = I->getPadIdx();
+  bool sparse = I->getSparse();
+  bool scale = I->getScale();
+  dim_t embedding_dim = wtT->dims()[1];
+  auto elemTy = wtT->getElementType();
+
+  if (padIdx > -1) {
+    assert(static_cast<dim_t>(padIdx) < wtT->dims()[0] &&
+           "padIdx should be within num_embeddings");
+  }
+
+  dispatchFloatingPointImpl(fwdEmbeddingInstImpl, elemTy, wtT, indT, outT,
+                            padIdx, sparse, scale, embedding_dim);
 }
 
 template <typename T, typename AccumT, typename TI>
@@ -5247,6 +5330,13 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
       functionName<float, int64_t>(__VA_ARGS__);                               \
     } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
       functionName<float, int32_t>(__VA_ARGS__);                               \
+    }                                                                          \
+    break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<float16_t, int64_t>(__VA_ARGS__);                           \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<float16_t, int32_t>(__VA_ARGS__);                           \
     }                                                                          \
     break;                                                                     \
   case ElemKind::Int8QTy:                                                      \

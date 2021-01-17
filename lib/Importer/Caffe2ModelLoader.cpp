@@ -332,6 +332,41 @@ Error Caffe2ModelLoader::loadPRelu(const caffe2::OperatorDef &op,
   return Error::success();
 }
 
+Error Caffe2ModelLoader::loadSoftmax(const caffe2::OperatorDef &op,
+                                     ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  RETURN_ERR_IF_NOT(
+      in.dims().size() >= 2,
+      opErrMsg(op,
+               strFormat(
+                   "SoftMax input dims must be >= 2, but found input dims %zu ",
+                   in.dims().size())));
+
+  // Create a constant to store labels to be used in SoftMaxGradNode.
+  auto *selected = G_->createSplat(
+      opName + ".selected",
+      mod_.uniqueType(ElemKind::Int64ITy, {in.dims()[0], 1}), 0.f);
+
+  int axis = 1;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                               loadAxis<int>(dict["axis"], in.dims().size()));
+  }
+
+  auto *FN = G_->createFlatten(opName + ".reshapeInput", in, axis);
+  auto *SM = G_->createSoftMax(opName, FN, selected);
+
+  // The output should have the same shape as the original input.
+  auto origInDims = in.getType()->dims();
+  auto *RN = G_->createReshape(opName + ".reshapeOutput", SM, origInDims);
+  RETURN_IF_ERR(addNodeAsOutput(op, RN));
+  return Error::success();
+}
+
 Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -742,6 +777,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return loadConv(op, dict);
   }
 
+  if (typeName == "Softmax") {
+    return loadSoftmax(op, dict);
+  }
+
   if (typeName == "PRelu") {
     return loadPRelu(op, dict);
   }
@@ -1136,13 +1175,16 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Node *node = nullptr;
     if (typeName == "Int8FC") {
       // Create the node with quantized type.
+      auto outputDims = flattenCdr(in.dims(), in.dims().size() - 1);
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy, loadQuantTy(opName, ElemKind::Int8QTy,
-                             {in.getType()->dims()[0], B->getType()->dims()[0]},
-                             dict));
+          outTy,
+          loadQuantTy(opName, ElemKind::Int8QTy,
+                      {outputDims.first, B->getType()->dims()[0]}, dict));
       node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
     } else if (typeName == "FbFCPacked") {
+      RETURN_ERR_IF_NOT(W.getElementType() == ElemKind::Float16Ty,
+                        opErrMsg(op, "Expected float16 weights."));
       auto fp16InputType =
           mod_.uniqueType(ElemKind::Float16Ty, in.getType()->dims());
       in = G_->createConvertTo(opName + ".ConvertInput", in, fp16InputType);
@@ -1151,9 +1193,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           mod_.uniqueType(ElemKind::Float16Ty, B->getType()->dims());
       auto *fp16Bias =
           G_->createConvertTo(opName + ".ConvertBias", B, fp16BiasType);
-      TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
-                                   {in.dims()[0], B->getType()->dims()[0]});
 
+      auto outputDims = flattenCdr(in.dims(), in.dims().size() - 1);
+      TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
+                                   {outputDims.first, B->getType()->dims()[0]});
       auto fc = G_->createFullyConnected(opName, in, W, fp16Bias, OT, axis);
       auto outputType =
           mod_.uniqueType(ElemKind::FloatTy, fc->getResult().dims());
@@ -1377,7 +1420,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "MatMul") {
-    RETURN_IF_ERR(loadBatchMatMul(op, dict, false));
+    RETURN_IF_ERR(loadMatMul(op, dict));
     return Error::success();
   }
 
@@ -1654,6 +1697,39 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "ReduceBackSum") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    RETURN_ERR_IF_NOT(in.dims().size() >= 2,
+                      opErrMsg(op, "Input should be at least 2D."));
+    Node *node = G_->createBatchedReduceAdd(opName, in, in.dims().size() - 1);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "RMSNorm") {
+    NodeValue X, gamma, beta;
+    ASSIGN_VALUE_OR_RETURN_ERR(X, getNodeValueByName(op.input(0)));
+    RETURN_ERR_IF_NOT(X.dims().size() == 2,
+                      opErrMsg(op, "X should be a 2D tensor."));
+    ASSIGN_VALUE_OR_RETURN_ERR(gamma, getNodeValueByName(op.input(1)));
+    RETURN_ERR_IF_NOT(gamma.dims().size() == 1,
+                      opErrMsg(op, "gamma should be a 1D tensor."));
+    ASSIGN_VALUE_OR_RETURN_ERR(beta, getNodeValueByName(op.input(2)));
+    RETURN_ERR_IF_NOT(beta.dims().size() == 1,
+                      opErrMsg(op, "beta should be a 1D tensor."));
+
+    float epsilon = .0f;
+    if (dict.count("eps")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(dict["eps"]));
+    }
+
+    auto nodes = G_->createRMSNorm(opName, X, gamma, beta, epsilon);
+    nodeValueByName_[op.output(0)] = nodes[0];
+    nodeValueByName_[op.output(1)] = nodes[1];
+    return Error::success();
+  }
+
   return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
@@ -1850,8 +1926,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   const std::string &typeName = op.type();
 
   // Load tensors with values:
-  if (typeName == "GivenTensorFill" || typeName == "GivenTensorIntFill" ||
-      typeName == "GivenTensorInt64Fill") {
+  if (typeName == "GivenTensorFill" || typeName == "GivenTensorFp16Fill" ||
+      typeName == "GivenTensorIntFill" || typeName == "GivenTensorInt64Fill") {
     /*
      * op {
      *   output: "conv1_w"
@@ -1888,6 +1964,9 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     if (typeName == "GivenTensorFill") {
       RETURN_IF_ERR(
           fillTensor<float>(T, ElemKind::FloatTy, dim, values->floats()));
+    } else if (typeName == "GivenTensorFp16Fill") {
+      RETURN_IF_ERR(
+          fillTensor<float16_t>(T, ElemKind::Float16Ty, dim, values->floats()));
     } else if (typeName == "GivenTensorIntFill") {
       RETURN_IF_ERR(
           fillTensor<int32_t>(T, ElemKind::Int32ITy, dim, values->ints()));
@@ -2079,11 +2158,32 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     } else {
       RETURN_ERR_IF_NOT(op.input_size() > 0,
                         "If no shape provided, must have input shape.");
-      // It must be registered as a Constant because it must be statically set
-      // already, as shapes must be statically known.
-      Constant *in;
-      ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
-      dims = in->dims();
+
+      bool inputAsShape = false;
+      if (dict.count("input_as_shape")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(inputAsShape,
+                                   loadInt(dict["input_as_shape"]));
+      }
+
+      if (inputAsShape) {
+        // It must be registered as a Constant because it must be statically set
+        // already, as shapes must be statically known.
+        Constant *in;
+        ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
+        RETURN_ERR_IF_NOT(in->dims().size() == 1,
+                          opErrMsg(op, "Input must be 1D tensor."));
+        RETURN_ERR_IF_NOT(in->getElementType() == ElemKind::Int64ITy,
+                          opErrMsg(op, "Input must be of int64 type."));
+        const auto handle = in->getHandle<int64_t>();
+        dims.reserve(in->dims().size());
+        for (auto dim : handle) {
+          dims.push_back(dim);
+        }
+      } else {
+        NodeValue in;
+        ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+        dims = in.dims();
+      }
     }
 
     int to = caffe2::TensorProto_DataType_FLOAT;

@@ -21,6 +21,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
+#include "glow/Support/Support.h"
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
@@ -221,9 +222,9 @@ static int processAndPrintResultsImpl(Tensor *SMT,
 
 class ImageClassifierProcessResult : public PostProcessOutputDataExtension {
 public:
-  int processOutputs(
-      const llvm::StringMap<Placeholder *> &PHM, PlaceholderBindings &bindings,
-      llvm::ArrayRef<std::string> inputImageBatchFilenames) override;
+  int processOutputs(const llvm::StringMap<Placeholder *> &PHM,
+                     PlaceholderBindings &bindings,
+                     VecVecRef<std::string> imageList) override;
 };
 
 /// Given the output PlaceHolder StringMap \p PHM, of size 1, from SoftMax and
@@ -232,26 +233,26 @@ public:
 /// mismatches.
 int ImageClassifierProcessResult::processOutputs(
     const llvm::StringMap<Placeholder *> &PHM, PlaceholderBindings &bindings,
-    llvm::ArrayRef<std::string> imageList) {
+    VecVecRef<std::string> imageList) {
 
   if (profilingGraph()) {
     LOG(INFO) << "Graph profiling is ON. Processing of output is disabled.";
     return 0;
   }
 
-  if (PHM.size() > 1) {
-    LOG(FATAL) << "Network has more then one output. Process results not "
-                  "run for ImageClassifier.";
+  Placeholder *phOut = getOutputForPostProcessing(PHM);
+  if (!phOut) {
+    return 0;
   }
 
   auto *SMT = bindings.get(PHM.begin()->second);
   switch (SMT->getElementType()) {
   case ElemKind::FloatTy:
-    return processAndPrintResultsImpl<float>(SMT, imageList);
+    return processAndPrintResultsImpl<float>(SMT, imageList[0]);
   case ElemKind::Float16Ty:
-    return processAndPrintResultsImpl<float16_t>(SMT, imageList);
+    return processAndPrintResultsImpl<float16_t>(SMT, imageList[0]);
   case ElemKind::BFloat16Ty:
-    return processAndPrintResultsImpl<bfloat16_t>(SMT, imageList);
+    return processAndPrintResultsImpl<bfloat16_t>(SMT, imageList[0]);
   default:
     llvm_unreachable("Type not supported");
   }
@@ -262,11 +263,11 @@ int main(int argc, char **argv) {
 
   if (!expectedMatchingLabels.empty()) {
     // The number of category indices must match the number of files.
-    if (expectedMatchingLabels.size() != inputImageFilenames.size()) {
+    if (expectedMatchingLabels.size() != inputImageFilenamesOpt[0].size()) {
       llvm::errs() << "Number of matching indices: "
                    << expectedMatchingLabels.size()
                    << " doesn't match the number of files: "
-                   << inputImageFilenames.size() << "\n";
+                   << inputImageFilenamesOpt[0].size() << "\n";
       return 1;
     }
   }
@@ -277,6 +278,7 @@ int main(int argc, char **argv) {
     return std::make_unique<ImageClassifierProcessResult>();
   };
   core.registerPostProcessOutputExtension(printResultCreator);
+
   int numErrors = core.executeNetwork();
   return numErrors;
 }

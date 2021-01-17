@@ -61,7 +61,7 @@ inline size_t alignedSize(size_t size, size_t alignment) {
 ///     auto p = make_unique<std::tuple<int, int>>(0, 1);
 template <class T, class... Args>
 typename std::enable_if<!std::is_array<T>::value, std::unique_ptr<T>>::type
-make_unique(Args &&... args) {
+make_unique(Args &&...args) {
   return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 

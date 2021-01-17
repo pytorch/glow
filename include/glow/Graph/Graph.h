@@ -674,7 +674,7 @@ public:
   /// scales and \p offsets. The output is quantized in the regular way, and its
   /// type \p outTy is a quantized type.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, Constant *scales,
+      llvm::StringRef name, NodeValue input, NodeValue W, Constant *scales,
       Constant *offsets, NodeValue B, TypeRef outTy);
 
   /// Create a row-wise quantized fully connected node. This node is only used
@@ -684,7 +684,7 @@ public:
   /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
   /// be transposed first.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, NodeValue B,
+      llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
       TypeRef outTy, quantization::Schema schema, bool transposeWeight = false);
 
   /// Implement an operation that computes the row-wise dot product of its
@@ -884,6 +884,12 @@ public:
   ReshapeNode *createFlatten(llvm::StringRef name, NodeValue input,
                              unsigned_t axis);
 
+  /// Flattens the input tensor into a 2D matrix. If input tensor has shape
+  /// (d_0, d_1, ... d_n) then the output will have shape:
+  /// ((d_0 X d_1 ... d_(axis-1) X d_(axis+1) ... X d_n), d_axis).
+  ReshapeNode *createFlattenV1(llvm::StringRef name, NodeValue input,
+                               unsigned_t axis);
+
   /// Create \p outputNum slice nodes of \p input. Slices happen along dimension
   /// number \p axis. Array \p split defines lengths of slices. If \p split is
   /// empty, \p input is split to equal sized parts.
@@ -994,7 +1000,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
-                          Args &&... inputArgs) {                              \
+                          Args &&...inputArgs) {                               \
     BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, inputs[0].getType(), inputs[0], inputs[1]); \
   }
@@ -1017,7 +1023,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcastOutTy(const std::string &name, int axis,              \
-                               TypeRef OUTTYPEREF, Args &&... inputArgs) {     \
+                               TypeRef OUTTYPEREF, Args &&...inputArgs) {      \
     BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, OUTTYPEREF, inputs[0], inputs[1]);          \
   }
@@ -1034,7 +1040,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
-                          Args &&... inputArgs) {                              \
+                          Args &&...inputArgs) {                               \
     BROADCAST_FUNC_COMMON_CODE(2)                                              \
     return create##NODE_NAME(name, inputs[0], inputs[1]);                      \
   }
@@ -1055,7 +1061,7 @@ public:
   template <class T, class... Args>
   typename enable_if_same_t<T, SelectNode>::type *
   createNodeWithBroadcast(const std::string &name, int axis,
-                          Args &&... inputArgs) {
+                          Args &&...inputArgs) {
     BROADCAST_FUNC_COMMON_CODE(3)
     return createSelect(name, inputs[1].getType(), inputs[0], inputs[1],
                         inputs[2]);
@@ -1214,6 +1220,18 @@ public:
       llvm::StringRef name, NodeValue data, NodeValue weights,
       NodeValue indices, NodeValue lengths,
       LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
+
+  /// Create an Embedding node
+  /// weights is a 2D tensor capturing the embedding table
+  /// indices is a tesnor of arbitrary shape containing the indices to extract
+  /// padIdx, if given, zeros the output vector when encounters padIdx
+  /// scale, if true, will scale gradients by the inverse of the frequency of
+  /// words in mini-batch (currently not supported, default=false)
+  /// sparse, if true, gradinet w.r.t. weight matrix will be a sparse tensor
+  /// (currently not supported, default=false)
+  EmbeddingNode *createEmbedding(llvm::StringRef name, NodeValue weights,
+                                 NodeValue indices, int64_t padIdx, bool scale,
+                                 bool sparse);
 
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
   /// expects an extra offset to be appended to \p offsets which marks the end
@@ -1709,6 +1727,12 @@ public:
                                            llvm::StringRef name,
                                            NodeValue input, dim_t outDepth,
                                            unsigned_t axis = 1);
+
+  /// Creates an RMSNorm pair. \p X should be a 2D tensor, \p gamma and \p beta
+  /// should be 1D tensors.
+  std::array<Node *, 2> createRMSNorm(llvm::StringRef name, NodeValue X,
+                                      NodeValue gamma, NodeValue beta,
+                                      float epsilon = .0f);
 
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
@@ -2297,6 +2321,10 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 1u, 2u, 0u, 3u }
 #define CNHW2NHWC                                                              \
   { 1u, 2u, 3u, 0u }
+#define NHWC2CHWN                                                              \
+  { 3u, 1u, 2u, 0u }
+#define CHWN2NHWC                                                              \
+  { 3u, 1u, 2u, 0u }
 #define D2S_DCR                                                                \
   { 0u, 1u, 3u, 2u, 4u, 5u }
 #define D2S_CRD                                                                \

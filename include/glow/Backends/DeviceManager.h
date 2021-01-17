@@ -146,9 +146,9 @@ public:
   /// Remove (and delete) the provided function, freeing
   /// up space on the device. \p evictCB will be called when the operation
   /// is completed or attempted and failed.
-  virtual void evictNetwork(std::string functionName,
-                            EvictFunctionCBTy evictCB = [](std::string, Error) {
-                            }) = 0;
+  virtual void evictNetwork(
+      std::string functionName,
+      EvictFunctionCBTy evictCB = [](std::string, Error) {}) = 0;
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.

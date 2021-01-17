@@ -28,15 +28,19 @@ public:
   virtual int
   processOutputs(const llvm::StringMap<Placeholder *> &PHM,
                  PlaceholderBindings &bindings,
-                 llvm::ArrayRef<std::string> inputImageBatchFilenames) = 0;
+                 VecVecRef<std::string> inputImageBatchFilenames) = 0;
   virtual ~PostProcessOutputDataExtension(){};
 };
+
+using PostProcessExtFuncPtr =
+    std::function<std::unique_ptr<PostProcessOutputDataExtension>()>;
 
 class PreProcessInputDataExtension {
 public:
   /// Called once per batch after images are loaded in to Tensor.
-  virtual void processInputTensor(Tensor &inputImageData, size_t startId,
-                                  size_t endId, size_t batchSz) = 0;
+  virtual void processInputTensor(llvm::ArrayRef<Tensor *> inputImageData,
+                                  size_t startId, size_t endId,
+                                  size_t batchSz) = 0;
   virtual ~PreProcessInputDataExtension(){};
 };
 
@@ -62,8 +66,7 @@ public:
   /// network. If multiple extensions are registered they will be executed in
   /// order they were registered.
   /// A new instance of the extension will be created for each thread.
-  void registerPostProcessOutputExtension(
-      std::function<std::unique_ptr<PostProcessOutputDataExtension>()> func);
+  void registerPostProcessOutputExtension(PostProcessExtFuncPtr func);
   /// This will parse command line, load, build and execute a network.
   /// Returns /p 0 if no errors occured, others none zero value.
   int executeNetwork();
@@ -76,8 +79,7 @@ private:
 private:
   std::vector<std::function<std::unique_ptr<PreProcessInputDataExtension>()>>
       ppInputDataExtensions_;
-  std::vector<std::function<std::unique_ptr<PostProcessOutputDataExtension>()>>
-      ppOutputDataExtensions_;
+  std::vector<PostProcessExtFuncPtr> ppOutputDataExtensions_;
   std::vector<std::function<std::unique_ptr<LoaderExtension>()>>
       loaderextensions_;
   std::string appName_;

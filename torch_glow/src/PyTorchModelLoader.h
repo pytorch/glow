@@ -337,6 +337,10 @@ private:
   Expected<NodeValue> loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
                                                  int numDims);
 
+  // Load a PyTorch aten::embedding node.
+  // \returns error on failure.
+  Error loadEmbedding(const torch::jit::Node *ptNode);
+
   // Load a PyTorch aten::embedding_bag node.
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);
@@ -442,12 +446,15 @@ private:
   /// Helper function for loading arithmetic nodes. \p name is of the name of
   /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the
   /// arithetic node and template parameter \p GlowNode is the type of the node
-  /// that should be created in the Glow graph. \returns the output of the
-  /// loaded arithmetic node or an Error if any occurred.
+  /// that should be created in the Glow graph. \p convertToDefaultType
+  /// indicates if we want to convert the input types to default pytorch dtypes
+  /// if both inputs are of integer types. \returns the output of the loaded
+  /// arithmetic node or an Error if any occurred.
   template <typename GlowNode>
   Expected<NodeValue> loadArithmeticNode(llvm::StringRef name,
                                          const torch::jit::Value *lhs,
-                                         const torch::jit::Value *rhs);
+                                         const torch::jit::Value *rhs,
+                                         bool convertToDefaultType = false);
 
   /// Load a PyTorch mul node.
   /// \returns error on failure.
@@ -541,13 +548,12 @@ private:
   /// \returns error on failure.
   Error loadSqrt(const torch::jit::Node *ptNode);
 
-  /// Load PyTorch eq, ne, lt, lte nodes.
+  /// Load PyTorch eq, ne, lt, lte, gt, gte nodes.
+  /// \tparam invert indicates whether to switch the LHS and the RHS of the
+  /// created comparison node.
   /// \returns error on failure.
-  template <typename CmpType> Error loadCmp(const torch::jit::Node *ptNode);
-
-  /// Load PyTorch ge, gte nodes.
-  /// \returns error on failure.
-  template <typename CmpType> Error loadCmpGt(const torch::jit::Node *ptNode);
+  template <typename CmpType, bool invert = false>
+  Error loadCmp(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch reciprocal node.
   /// \returns error on failure.
@@ -646,6 +652,21 @@ private:
   // \return error on failure.
   Error loadQuantizedConvRelu(const torch::jit::Node *ptNode);
 
+  /// Implementation for loading a linear operator, either packed or unpacked.
+  /// \p input is the node's input, \p weights and \p bias are the linear
+  /// weights and bias. \p wScales and \p wOffsets are the weight tensor's
+  /// qparam tensors in the case of a per_channel quantized linear otherwise
+  /// these are empty. \p outScale and \p outZeroPoint are the node's output
+  /// qparams. \p outputValue is Value to map the output to. \p outputDtype is
+  /// the correct dtype of the output Value.
+  // \return error on failure.
+  Error loadQuantizedLinearImpl(NodeValue input, NodeValue weights,
+                                NodeValue bias, NodeValue wScales,
+                                NodeValue wOffsets, float outScale,
+                                int64_t outZeroPoint,
+                                const torch::jit::Value *outputValue,
+                                c10::ScalarType outputDtype);
+
   /// Load a glow::unpacked_quantized_linear node.
   /// \return error on failure.
   Error loadQuantizedLinearUnpacked(const torch::jit::Node *ptNode);
@@ -721,6 +742,10 @@ private:
   /// Load a PyTorch flatten node.
   /// \returns error on failure.
   Error loadFlatten(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::select node.
+  /// \returns error on failure.
+  Error loadSelect(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::squeeze node.
   /// \returns error on failure.

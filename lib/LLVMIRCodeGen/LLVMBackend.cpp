@@ -161,6 +161,11 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
+  case Kinded::Kind::EmbeddingNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy}, {EmbeddingNode::IndicesIdx}) &&
+           (NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int64ITy);
+
   case Kinded::Kind::EmbeddingBagNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy},

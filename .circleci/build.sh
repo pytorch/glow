@@ -87,9 +87,9 @@ fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
 if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
-	sudo pip install cmake==3.17.3
+    sudo pip install cmake==3.17.3
 else
-	sudo apt-get install cmake
+    sudo apt-get install cmake
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
@@ -142,7 +142,10 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           -DGLOW_USE_COVERAGE=ON \
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
-    sudo apt-get install -y clang-format-7
+    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+    sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-11 main"
+    sudo apt-get update
+    sudo apt-get install -y clang-format-11
     cd /tmp
     python3.6 -m virtualenv venv
     source venv/bin/activate

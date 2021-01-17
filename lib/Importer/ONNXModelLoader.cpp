@@ -114,12 +114,13 @@ getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
       auto symbolName = d.dim_param();
       std::unordered_map<std::string, dim_t> symbolMap;
       ASSIGN_VALUE_OR_RETURN_ERR(symbolMap, getSymbolMap());
-      if (symbolMap.count(symbolName)) {
+      if (symbolMap.count(symbolName) && symbolMap[symbolName] > 0) {
         dim.push_back(symbolMap[symbolName]);
       } else {
         return MAKE_ERR(strFormat(
             "ONNX model symbol '%s' is undefined. Define the symbol with the "
-            "following command line option: -onnx-define-symbol=%s,<value>.",
+            "following command line option: -onnx-define-symbol=%s,<value> and "
+            "each 'dim_value' of tensor shape proto must be greater than 0.",
             symbolName.c_str(), symbolName.c_str()));
       }
     } else {
@@ -784,6 +785,55 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
     return Type(kind, dim, scale, offset);
   }
   return Type(kind, dim);
+}
+
+Error ONNXModelLoader::getInputsNamesAndTypes(
+    std::vector<std::string> &inTensorNames, std::vector<Type> &inTypes,
+    const std::string &filename) {
+  // Creating GraphProto from modelfile
+  ONNX_NAMESPACE::ModelProto modelDef;
+
+  ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(filename, false, nullptr));
+
+  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+
+  // GraphDef.input can have both inputs and intermediate tensors whereas
+  // initializers have info about intermediate tensors. Thus the difference
+  // betweem two is taken
+  std::vector<std::string> inputs;
+  for (auto &in : graphDef.input()) {
+    inputs.push_back(in.name());
+  }
+
+  for (const auto &in : graphDef.initializer()) {
+    auto position = std::find(inputs.begin(), inputs.end(), in.name());
+    if (position != inputs.end()) {
+      inputs.erase(position);
+    }
+  }
+
+  for (const auto &finalIn : inputs) {
+    for (const auto &in : graphDef.input()) {
+      if (finalIn.compare(in.name()) != 0) {
+        continue;
+      }
+      inTensorNames.push_back(in.name());
+      const ONNX_NAMESPACE::ValueInfoProto &valueInfo = in;
+      auto type = valueInfo.type();
+
+      std::vector<dim_t> dim;
+      ASSIGN_VALUE_OR_RETURN_ERR(dim,
+                                 getProtoShape(type.tensor_type().shape()));
+
+      ElemKind kind = ElemKind::FloatTy;
+      RETURN_IF_ERR(
+          onnxTensorDataTypeToElemKind(type.tensor_type().elem_type(), &kind));
+
+      inTypes.emplace_back(kind, dim);
+    }
+  }
+
+  return Error::success();
 }
 
 Error ONNXModelLoader::verifyPreexistingStorage(const Storage *S,
@@ -4484,6 +4534,80 @@ Error ONNXModelLoader::loadSign(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
+                                   const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  RETURN_ERR_IF_NOT(in.dims().size() >= 2, "SoftMax input dims must be >= 2");
+
+  // Create a constant to store labels to be used in SoftMaxGradNode.
+  auto selected =
+      mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
+
+  if (opsetVersion_ == 13) {
+    int axis = -1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    }
+    RETURN_ERR_IF_NOT(in.dims().size() == 4, "SoftMax 13 input dims must be 4");
+    // Compute the shuffle layout  based on axis input.
+    std::vector<unsigned_t> shuffle;
+    std::vector<unsigned_t> shuffleBack;
+    switch (axis) {
+    case 0:
+      shuffle = {1u, 2u, 3u, 0u};
+      shuffleBack = {3u, 0u, 1u, 2u};
+      break;
+
+    case 1:
+      shuffle = {0u, 2u, 3u, 1u};
+      shuffleBack = {0u, 3u, 1u, 2u};
+      break;
+
+    case 2:
+      shuffle = {0u, 1u, 3u, 2u};
+      shuffleBack = {0u, 1u, 3u, 2u};
+      break;
+
+    case 3:
+      shuffle = {0u, 1u, 2u, 3u};
+      shuffleBack = {0u, 1u, 2u, 3u};
+      break;
+
+    default:
+      return MAKE_ERR("SoftMax Axis must be <=3");
+      break;
+    }
+    auto *NH = G_->createTranspose(opName, in, shuffle);
+    auto *FN = G_->createFlattenV1("reshapeInput", NH, axis);
+    auto *SM = G_->createSoftMax(opName, FN, selected);
+
+    // The output should have the same shape as the original input.
+    auto origInDims = NH->getResult().dims();
+    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    auto *NC = G_->createTranspose(opName, RN, shuffleBack);
+    RETURN_IF_ERR(addNodeAsOutput(op, NC));
+  } else {
+    // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
+    // softmax function. This is basimilar to a bitcast operation.
+    int axis = 1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    }
+    auto *FN = G_->createFlatten("reshapeInput", in, axis);
+    auto *SM = G_->createSoftMax(opName, FN, selected);
+
+    // The output should have the same shape as the original input.
+    auto origInDims = in.getType()->dims();
+    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    RETURN_IF_ERR(addNodeAsOutput(op, RN));
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadLoop(const ONNX_NAMESPACE::NodeProto &op,
                                 const ArgumentDictionaryTy &dict) {
   int64_t maxTripCount;
@@ -4806,6 +4930,50 @@ static Error loadPerNodeOptions(const Node *loadedNode,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadIf(const ONNX_NAMESPACE::NodeProto &op,
+                              const ArgumentDictionaryTy &dict) {
+  Constant *condition = getConstantByNameOrNull(op.input(0));
+  RETURN_ERR_IF_NOT(condition, "Only constant condition is supported!");
+  RETURN_ERR_IF_NOT(condition->getElementType() == ElemKind::BoolTy,
+                    "Condition must be boolean!");
+
+  RETURN_ERR_IF_NOT(dict.count("then_branch"), "Then branch not found!");
+  RETURN_ERR_IF_NOT(dict.count("else_branch"), "Else branch not found!");
+  RETURN_ERR_IF_NOT(dict.at("then_branch")->type() ==
+                        ONNX_NAMESPACE::AttributeProto::GRAPH,
+                    "Only Subgraph branches are supported.");
+  RETURN_ERR_IF_NOT(dict.at("else_branch")->type() ==
+                        ONNX_NAMESPACE::AttributeProto::GRAPH,
+                    "Only Subgraph branches are supported.");
+
+  auto loadSubgraph = [&](ONNX_NAMESPACE::GraphProto &graphDef) -> Error {
+    RETURN_IF_ERR(loadInitializers(graphDef));
+    RETURN_IF_ERR(loadNetwork(graphDef, false));
+    return Error::success();
+  };
+
+  if (condition->getPayload().getHandle<bool>().isZero()) {
+    auto ifFalse = dict.at("else_branch")->g();
+    RETURN_ERR_IF_NOT(ifFalse.output_size() == 1,
+                      "Only single output 'else' subgraph is supported.");
+    RETURN_IF_ERR(loadSubgraph(ifFalse));
+    NodeValue ifFalseVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(ifFalseVal,
+                               getNodeValueByName(ifFalse.output(0).name()));
+    RETURN_IF_ERR(addNodeAsOutput(op, ifFalseVal));
+  } else {
+    auto ifTrue = dict.at("then_branch")->g();
+    RETURN_ERR_IF_NOT(ifTrue.output_size() == 1,
+                      "Only single output 'then' subgraph is supported.");
+    RETURN_IF_ERR(loadSubgraph(ifTrue));
+    NodeValue ifTrueVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(ifTrueVal,
+                               getNodeValueByName(ifTrue.output(0).name()));
+    RETURN_IF_ERR(addNodeAsOutput(op, ifTrueVal));
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -5034,6 +5202,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "ConvTranspose") {
     return loadConvTranspose(op, dict);
   }
+  if (typeName == "If") {
+    return loadIf(op, dict);
+  }
   if (typeName == "AdaptiveAvgPool") {
     return loadAdaptiveAvgPool(op, dict);
   }
@@ -5072,6 +5243,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Sign") {
     return loadSign(op, dict);
+  }
+  if (typeName == "Softmax") {
+    return loadSoftmax(op, dict);
   }
 
   return MAKE_ERR("Failed to load operator " + typeName + " .",

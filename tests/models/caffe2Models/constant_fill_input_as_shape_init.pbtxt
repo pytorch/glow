@@ -1,0 +1,16 @@
+name: "init"
+op {
+  output: "inputs_0"
+  type: "GivenTensorInt64Fill"
+  arg {
+    name: "shape"
+    ints: 4
+  }
+  arg {
+    name: "values"
+    ints: 17
+    ints: 23
+    ints: 29
+    ints: 31
+  }
+}

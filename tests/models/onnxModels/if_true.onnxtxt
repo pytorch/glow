@@ -1,0 +1,132 @@
+ir_version: 5
+producer_name: "onnx-example"
+graph {
+  node {
+    output: "cond"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 9
+        raw_data: "\001"
+        name: "cond_tensor"
+      }
+      type: TENSOR
+    }
+  }
+  node {
+    input: "cond"
+    output: "output"
+    op_type: "If"
+    attribute {
+      name: "else_branch"
+      g {
+        node {
+          input: "input"
+          input: "input"
+          output: "square"
+          op_type: "Mul"
+        }
+        name: "if_false"
+        input {
+          name: "input"
+          type {
+            tensor_type {
+              elem_type: 1
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        output {
+          name: "square"
+          type {
+            tensor_type {
+              elem_type: 1
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+      }
+      type: GRAPH
+    }
+    attribute {
+      name: "then_branch"
+      g {
+        node {
+          input: "input"
+          input: "input"
+          output: "sum"
+          op_type: "Add"
+        }
+        name: "if_true"
+        input {
+          name: "input"
+          type {
+            tensor_type {
+              elem_type: 1
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        output {
+          name: "sum"
+          type {
+            tensor_type {
+              elem_type: 1
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+      }
+      type: GRAPH
+    }
+  }
+  name: "test-model"
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "output"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}
+

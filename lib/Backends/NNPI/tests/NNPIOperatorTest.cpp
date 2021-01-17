@@ -160,6 +160,7 @@ struct BlacklistInitializer {
       {"spaceToDepth_block2_int8/0", TestBlacklist::AnyDeviceAnyEngine},
       {"spaceToDepth_block3_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"spaceToDepth_block3_int8/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Embedding_with_PadIdx/0", TestBlacklist::AnyDeviceAnyEngine},
       {"EmbeddingBag_1D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"EmbeddingBag_1D_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"EmbeddingBag_2D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -224,6 +225,8 @@ struct BlacklistInitializer {
       {"FloatArgMaxNoKeepDim/0", TestBlacklist::AnyDeviceAnyEngine},
       {"FloatArgMaxNoKeepDimWithAxis1/0", TestBlacklist::AnyDeviceAnyEngine},
       {"FloatArgMaxNoKeepDimWithAxis2/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Float16ArgMaxKeepDim/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Float16ArgMaxNoKeepDim/0", TestBlacklist::AnyDeviceAnyEngine},
       {"GroupDilatedConvolution/0", TestBlacklist::AnyDeviceAnyEngine},
       {"less_int32Cases/0", TestBlacklist::AnyDeviceAnyEngine},
       {"less_int64Cases/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -305,9 +308,11 @@ struct BlacklistInitializer {
       {"RoiAlign/0", TestBlacklist::AnyDeviceAnyEngine},
       {"RoiAlignWithAlignedCoordinates/0", TestBlacklist::AnyDeviceAnyEngine},
       {"RoiAlignBatchIndexInBoxesTensor/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"RoiAlignC2Batched/0", TestBlacklist::AnyDeviceAnyEngine},
       {"RoiAlignRotatedBatchIndexInBoxesTensor/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"FP16RoiAlign/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"FP16RoiAlignC2Batched/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Rotated_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Abs_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -530,6 +535,7 @@ struct BlacklistInitializer {
 #endif
       {"Erf_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Erf_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"batchedReduceAdd_Int32ITy/0", TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

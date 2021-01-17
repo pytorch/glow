@@ -516,44 +516,6 @@ protected:
     return Error::success();
   }
 
-  Error loadSoftmax(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
-
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-
-    RETURN_ERR_IF_NOT(
-        in.dims().size() >= 2,
-        opErrMsg(
-            op,
-            strFormat(
-                "SoftMax input dims must be >= 2, but found input dims %zu ",
-                in.dims().size())));
-
-    // Create a constant to store labels to be used in SoftMaxGradNode.
-    auto *selected = G_->createSplat(
-        opName + ".selected",
-        mod_.uniqueType(ElemKind::Int64ITy, {in.dims()[0], 1}), 0.f);
-
-    // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
-    // softmax function. This is similar to a bitcast operation.
-    int axis = 1;
-    if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis,
-                                 loadAxis<int>(dict["axis"], in.dims().size()));
-    }
-
-    auto *FN = G_->createFlatten(opName + ".reshapeInput", in, axis);
-
-    auto *SM = G_->createSoftMax(opName, FN, selected);
-
-    // The output should have the same shape as the original input.
-    auto origInDims = in.getType()->dims();
-    auto *RN = G_->createReshape(opName + ".reshapeOutput", SM, origInDims);
-    RETURN_IF_ERR(addNodeAsOutput(op, RN));
-    return Error::success();
-  }
-
   Error loadLRN(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
@@ -602,9 +564,10 @@ protected:
     return Error::success();
   }
 
-  static Expected<NodeValue>
-  handleBatchMatMulTranspose(Function *F, ArgumentDictionaryTy &dict,
-                             llvm::StringRef key, NodeValue input) {
+  static Expected<NodeValue> handleMatMulTranspose(Function *F,
+                                                   ArgumentDictionaryTy &dict,
+                                                   llvm::StringRef key,
+                                                   NodeValue input) {
     if (!dict.count(key.str())) {
       return input;
     }
@@ -631,27 +594,128 @@ protected:
     return input;
   }
 
-  Error loadBatchMatMul(const OpType &op, ArgumentDictionaryTy &dict,
-                        bool isBatched) {
+  Error loadMatMul(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     NodeValue LHS;
     ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(0)));
     NodeValue RHS;
     ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        LHS, handleBatchMatMulTranspose(G_, dict, "trans_a", LHS));
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        RHS, handleBatchMatMulTranspose(G_, dict, "trans_b", RHS));
+    ASSIGN_VALUE_OR_RETURN_ERR(LHS,
+                               handleMatMulTranspose(G_, dict, "trans_a", LHS));
+    ASSIGN_VALUE_OR_RETURN_ERR(RHS,
+                               handleMatMulTranspose(G_, dict, "trans_b", RHS));
 
-    Node *node = nullptr;
+    Node *node = G_->createMatMul(opName, LHS, RHS);
 
-    // BatchMatMul sometimes is actually just a matmul, depending on dimensions
-    // of inputs. Thus, only do batch matmul if LHS is 3-dimensional.
-    if (isBatched && LHS.dims().size() == 3) {
-      node = G_->createBatchMatMul(opName, LHS, RHS);
-    } else {
-      node = G_->createMatMul(opName, LHS, RHS);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  Error loadBatchMatMul(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    NodeValue LHS;
+    ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(0)));
+    NodeValue RHS;
+    ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
+
+    ASSIGN_VALUE_OR_RETURN_ERR(LHS,
+                               handleMatMulTranspose(G_, dict, "trans_a", LHS));
+    ASSIGN_VALUE_OR_RETURN_ERR(RHS,
+                               handleMatMulTranspose(G_, dict, "trans_b", RHS));
+
+    const size_t numDimsLHS = LHS.dims().size();
+    const size_t numDimsRHS = RHS.dims().size();
+    RETURN_ERR_IF_NOT(
+        numDimsLHS >= 2,
+        opErrMsg(op, "BatchMatMul 1D operands are not yet supported."));
+    RETURN_ERR_IF_NOT(
+        numDimsRHS >= 2,
+        opErrMsg(op, "BatchMatMul 1D operands are not yet supported."));
+
+    // This is a very simple case when we don't need any broadcasting
+    if (numDimsLHS == 2 && numDimsRHS == 2) {
+      Node *node = G_->createMatMul(opName, LHS, RHS);
+      RETURN_IF_ERR(addNodeAsOutput(op, node));
+      return Error::success();
+    }
+
+    // In the rest of the function body we:
+    // 1. normalize operands using broadcasting rules,
+    // 2. convert normalized operands to 3D matrices, so they look like these:
+    //    LHS = {numBatches, N, M}
+    //    RHS = {numBatches, M, P}
+    //    Result = {numBatches, N, P},
+    // 3. multiply 3D matrices using createBatchMatMul(), result will be 3D,
+    // 4. convert the result to the normalized broadcast shape.
+
+    const dim_t N = LHS.dims()[numDimsLHS - 2];
+    const dim_t M = LHS.dims()[numDimsLHS - 1];
+    const dim_t P = RHS.dims()[numDimsRHS - 1];
+
+    RETURN_ERR_IF_NOT(
+        RHS.dims()[numDimsRHS - 2] == M,
+        opErrMsg(op, "BatchMatMul operands dimensions are invalid."));
+
+    // Calculate broadcast shape and convert both operands to that shape
+    const std::vector<dim_t> originalDimsLHS{LHS.dims().begin(),
+                                             LHS.dims().end()};
+    const std::vector<dim_t> originalDimsRHS{RHS.dims().begin(),
+                                             RHS.dims().end()};
+    std::vector<dim_t> resultShape{P, N};
+    resultShape.reserve(std::max(numDimsLHS, numDimsRHS));
+    dim_t numBatches = 1;
+    int indLHS = numDimsLHS - 3; // skip last two dims
+    int indRHS = numDimsRHS - 3; // skip last two dims
+    for (; indLHS >= 0 && indRHS >= 0; --indLHS, --indRHS) {
+      const dim_t dimLHS = originalDimsLHS[indLHS];
+      const dim_t dimRHS = originalDimsRHS[indRHS];
+
+      RETURN_ERR_IF_NOT(
+          (dimLHS == dimRHS || (dimLHS == 1) || dimRHS == 1),
+          opErrMsg(op, "BatchMatMul dimensions cannot be broadcast."));
+      dim_t dim = 1;
+      if (dimLHS == dimRHS) {
+        dim = dimLHS;
+      } else if (dimLHS == 1) {
+        dim = dimRHS;
+        LHS = G_->createTile(opName + ".tileDim", LHS, dim, indLHS);
+      } else {
+        dim = dimLHS;
+        RHS = G_->createTile(opName + ".tileDim", RHS, dim, indRHS);
+      }
+      resultShape.push_back(dim);
+      numBatches *= dim;
+    }
+    for (; indLHS >= 0; --indLHS) {
+      const dim_t dim = originalDimsLHS[indLHS];
+      resultShape.push_back(dim);
+      numBatches *= dim;
+      RHS = G_->createExpandDims(opName + ".addDim", RHS, {0});
+      RHS = G_->createTile(opName + ".tileDim", RHS, dim, 0);
+    }
+    for (; indRHS >= 0; --indRHS) {
+      const dim_t dim = originalDimsRHS[indRHS];
+      resultShape.push_back(dim);
+      numBatches *= dim;
+      LHS = G_->createExpandDims(opName + ".addDim", LHS, {0});
+      LHS = G_->createTile(opName + ".tileDim", LHS, dim, 0);
+    }
+    std::reverse(resultShape.begin(), resultShape.end());
+
+    // Broadcast shape might have more than 3 dims,
+    // therefore, optionally, reshape the operands
+    if (resultShape.size() > 3) {
+      LHS =
+          G_->createReshape(opName + ".reshapeLHS3D", LHS, {numBatches, N, M});
+      RHS =
+          G_->createReshape(opName + ".reshapeRHS3D", RHS, {numBatches, M, P});
+    }
+    Node *node = G_->createBatchMatMul(opName, LHS, RHS);
+
+    // Optionally, reshape result to broadcast shape
+    if (resultShape.size() != 3) {
+      node = G_->createReshape(opName + ".reshapeResult", node, resultShape);
     }
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -1092,6 +1156,37 @@ protected:
     return Error::success();
   }
 
+  Error loadEmbedding(const OpType &op, ArgumentDictionaryTy &dict) {
+    NodeValue weights;
+    ASSIGN_VALUE_OR_RETURN_ERR(weights, getNodeValueByName(op.input(0)));
+
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+
+    int64_t padIdx = -1;
+    if (dict.count("padIdx")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(padIdx, loadInt(dict["padIdx"]));
+    }
+    bool scale = false;
+    if (dict.count("scale")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(scale, loadInt(dict["scale"]));
+      scale = (bool)scale;
+      RETURN_ERR_IF_NOT(scale == false,
+                        "Currently only support scale_grad_by_freq == 'false'");
+    }
+    bool sparse = false;
+    if (dict.count("sparse")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(sparse, loadInt(dict["sparse"]));
+      sparse = (bool)sparse;
+      RETURN_ERR_IF_NOT(sparse == false,
+                        "Currently only support sparse == 'false'");
+    }
+    auto *node = G_->createEmbedding(loadOperatorName(op), weights, indices,
+                                     padIdx, scale, sparse);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   Error loadEmbeddingBag(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in0;
     ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
@@ -1462,10 +1557,6 @@ protected:
       RETURN_IF_ERR(loadSum(op, dict));
       return true;
     }
-    if (typeName == "Softmax") {
-      RETURN_IF_ERR(loadSoftmax(op, dict));
-      return true;
-    }
     if (typeName == "LRN") {
       RETURN_IF_ERR(loadLRN(op, dict));
       return true;
@@ -1512,7 +1603,7 @@ protected:
       return true;
     }
     if (typeName == "BatchMatMul") {
-      RETURN_IF_ERR(loadBatchMatMul(op, dict, true));
+      RETURN_IF_ERR(loadBatchMatMul(op, dict));
       return true;
     }
     if (typeName == "BatchOneHot") {
@@ -1529,6 +1620,10 @@ protected:
     }
     if (typeName == "EmbeddingBag") {
       RETURN_IF_ERR(loadEmbeddingBag(op, dict));
+      return true;
+    }
+    if (typeName == "Embedding") {
+      RETURN_IF_ERR(loadEmbedding(op, dict));
       return true;
     }
     if (typeName == "LengthsToRanges") {
