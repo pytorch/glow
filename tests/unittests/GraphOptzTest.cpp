@@ -6697,3 +6697,82 @@ TEST_F(GraphOptz, TestUpdateQuantReluTypesChained) {
   EXPECT_EQ(qReluTy->getScale(), qReshape->getResult().getType()->getScale());
   EXPECT_EQ(qReluTy->getOffset(), qReshape->getResult().getType()->getOffset());
 }
+
+TEST_F(GraphOptz, SinkReshapeBelowQuantize) {
+  auto *I = mod_.createPlaceholder(ElemKind::FloatTy, {32, 64}, "A", false);
+  auto *RN = F_->createReshape("reshape", I, {32, 64, 1});
+  auto *QN = F_->createQuantize("quantize", RN, ElemKind::Int8QTy, 0.2f, 1);
+  auto *SN = F_->createSave("ret", QN);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::SinkCode, getDCEPassConfig()});
+
+  auto *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  auto *optRN = llvm::dyn_cast<ReshapeNode>(optSN->getInput());
+  ASSERT_TRUE(optRN);
+  EXPECT_EQ(optRN->getResult().getElementType(), ElemKind::Int8QTy);
+  EXPECT_EQ(optRN->getResult().getScale(), 0.2f);
+  EXPECT_EQ(optRN->getResult().getOffset(), 1);
+  EXPECT_EQ(optRN->getResult().dims(), RN->getResult().dims());
+  auto *optQN = llvm::dyn_cast<QuantizeNode>(optRN->getInput());
+  ASSERT_TRUE(optQN);
+  EXPECT_EQ(optQN->getResult().getElementType(), ElemKind::Int8QTy);
+  EXPECT_EQ(optQN->getResult().getScale(), 0.2f);
+  EXPECT_EQ(optQN->getResult().getOffset(), 1);
+  EXPECT_EQ(optQN->getInput().getNode(), I);
+
+  bindings_.allocate(I)->getHandle<float>().randomize(-30, 30, mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, SinkReshapeBelowConvertTo) {
+  auto *I = mod_.createPlaceholder(ElemKind::FloatTy, {32, 64}, "A", false);
+  auto *RN = F_->createReshape("reshape", I, {32, 64, 1});
+  auto *CN = F_->createConvertTo("convert", RN, ElemKind::Float16Ty);
+  auto *SN = F_->createSave("ret", CN);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::SinkCode, getDCEPassConfig()});
+
+  auto *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  auto *optRN = llvm::dyn_cast<ReshapeNode>(optSN->getInput());
+  ASSERT_TRUE(optRN);
+  EXPECT_EQ(optRN->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(optRN->getResult().dims(), RN->getResult().dims());
+  auto *optCN = llvm::dyn_cast<ConvertToNode>(optRN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(optCN->getInput().getNode(), I);
+
+  bindings_.allocate(I)->getHandle<float>().randomize(-30, 30, mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, OptConvertToDequantize) {
+  auto *I =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {32, 64}, 0.2f, 1, "A", false);
+  auto *DN = F_->createDequantize("deq", I, ElemKind::Float16Ty);
+  auto *CN = F_->createConvertTo("convert", DN, ElemKind::FloatTy);
+  auto *SN = F_->createSave("ret", CN);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_,
+      {FunctionPassID::OptimizeOutIntermediateConversions, getDCEPassConfig()});
+
+  auto *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  auto *optDN = llvm::dyn_cast<DequantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optDN);
+  EXPECT_EQ(optDN->getResult().getElementType(), ElemKind::FloatTy);
+  EXPECT_EQ(optDN->getResult().dims(), DN->getResult().dims());
+  EXPECT_EQ(optDN->getInput().getNode(), I);
+
+  bindings_.allocate(I)->getHandle<int8_t>().randomize(-128, 127,
+                                                       mod_.getPRNG());
+  checkNumericalEquivalence(0.007f);
+}

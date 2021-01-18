@@ -753,9 +753,6 @@ TEST_F(NNPIOptPipelineTest, QuantizeFCDequantize) {
       std::to_string(8);
   cloneAndCompile();
 
-  F_->dumpDAG("tmp0.dot");
-  optimizedF_->dumpDAG("tmp1.dot");
-
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::QuantizeNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 8);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::DequantizeNodeKind), 1);
@@ -763,6 +760,48 @@ TEST_F(NNPIOptPipelineTest, QuantizeFCDequantize) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind),
             8);
+}
+
+TEST_F(NNPIOptPipelineTest, ParQuantizeFCReluRescaleSigmoidDequantize) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {32, 1024}, "input", false);
+  auto *weights = F_->getParent()->createConstant(
+      ElemKind::Int8QTy, {1024, 1024}, 0.2, 0, "weights");
+  auto *bias = F_->getParent()->createConstant(ElemKind::Int32QTy, {1024}, 0.2,
+                                               0, "bias");
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-127, 127,
+                                                             mod_.getPRNG());
+  bias->getPayloadMutable().getHandle<int32_t>().randomize(-127, 127,
+                                                           mod_.getPRNG());
+
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {32, 1024}, 0.2, 0);
+  auto *quantized = F_->createQuantize("quantize", input, outTy);
+  auto *FC = F_->createFullyConnected("fc", quantized, weights, bias);
+  auto *relu = F_->createRELU("relu", FC);
+  auto rescaleTy =
+      mod_.uniqueType(ElemKind::Int8QTy, FC->getResult().dims(), 0.15, -1);
+  auto *rescale = F_->createRescaleQuantized("rescale", relu, rescaleTy);
+  auto *sigmoid = F_->createSigmoid("sig", rescale);
+  auto *dequantized =
+      F_->createDequantize("dequantize", sigmoid, ElemKind::Float16Ty);
+  F_->createSave("ret", dequantized);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(2);
+  cloneAndCompile();
+  optimizedF_->dumpDAG("tmp1.dot");
+
+#define CHECK_PAR(NAME_, PRE_, POST_)                                          \
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::NAME_##NodeKind), PRE_);           \
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::NAME_##NodeKind), POST_);
+
+  CHECK_PAR(Quantize, 1, 2);
+  CHECK_PAR(FullyConnected, 1, 2);
+  CHECK_PAR(Dequantize, 1, 2);
+  CHECK_PAR(RescaleQuantized, 1, 2);
+  CHECK_PAR(Relu, 1, 2);
+  CHECK_PAR(Sigmoid, 1, 2);
+#undef CHECK_PAR
 }
 
 // BMM->clip
