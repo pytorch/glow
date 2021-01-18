@@ -146,9 +146,9 @@ public:
   /// PyTorchModelLoader.
   bool randomizeConstants = false;
 
-  // If true then writing to Onnx without randomizing the constants is allowed.
-  // Otherwise, program will be abort if trying to write to Onnx without
-  // randomizing the constants.
+  /// If true then writing to Onnx without randomizing the constants is allowed.
+  /// Otherwise, program will be abort if trying to write to Onnx without
+  /// randomizing the constants.
   bool writeWithoutRandomize = false;
 
   /// Name of the Glow backend to use.
@@ -176,6 +176,9 @@ public:
   /// Index of input to extract batch size
   /// NOTE: this should only be used for development testing.
   int32_t nominalBatchIdx = -1;
+
+  /// Indices of available backend devices on the machine.
+  std::vector<int32_t> availableDevices;
 };
 
 /// Represents different possible output types from to_glow modules.
@@ -209,7 +212,7 @@ PyTorchLoaderSettings &getGlobalPyTorchLoaderSettingsMutable();
 /// returned, if no active HostManager is found then a HostManager with 1 device
 /// will be returned.
 std::shared_ptr<runtime::HostManager>
-getHostManager(const std::string &backendName, int32_t numDevices = -1);
+getHostManager(const PyTorchLoaderSettings &settings);
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run. \p g is the PyTorch graph to

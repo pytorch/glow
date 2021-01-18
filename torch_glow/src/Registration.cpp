@@ -143,9 +143,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
         if (!graphRunner) {
           auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
           graphRunner = std::make_unique<CachingGraphRunner>(
-              node->g(at::attr::Subgraph),
-              getHostManager(settings.backendName, settings.numDevices),
-              settings);
+              node->g(at::attr::Subgraph), getHostManager(settings), settings);
         }
 
         return [graphRunner =

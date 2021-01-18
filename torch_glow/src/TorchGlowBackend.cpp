@@ -689,11 +689,8 @@ compileImpl(const torch::jit::Module &origModule,
       // Create a corresponding runner and store {handle, runner} pair.
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
-              graph,
-              glow::getHostManager(baseSettings.backendName,
-                                   baseSettings.numDevices),
-              baseSettings, /*useRunOnly*/ true, origGraph,
-              origModule._ivalue());
+              graph, glow::getHostManager(baseSettings), baseSettings,
+              /*useRunOnly*/ true, origGraph, origModule._ivalue());
 
       // Compile each compilation group
       for (const auto &compilationGroup : spec.compilation_groups) {
