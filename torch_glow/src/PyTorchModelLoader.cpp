@@ -1166,6 +1166,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::slice"}, &PyTorchModelLoader::loadSlice},
       {{"aten::softmax"}, &PyTorchModelLoader::loadSoftMax},
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
+      {{"aten::argsort"}, &PyTorchModelLoader::loadArgSort},
       {{"aten::to"}, &PyTorchModelLoader::loadTo},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
       {{"aten::embedding"}, &PyTorchModelLoader::loadEmbedding},
@@ -5810,6 +5811,38 @@ Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(addValueMapping(outputs[0], glowNode->getValues()));
   RETURN_IF_ERR(addValueMapping(outputs[1], glowNode->getIndices()));
   return Error::success();
+}
+
+Error PyTorchModelLoader::loadArgSort(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(ptNode->namedInput("dim"))));
+  if (dim < 0)
+    dim += input.dims().size();
+
+  RETURN_ERR_IF_NOT(dim == input.dims().size() - 1,
+                    "aten::argsort is only supported along the last dimension");
+
+  bool descending = true;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      descending,
+      iValToBool(getGlowIValueForValue(ptNode->namedInput("descending"))));
+
+  auto output = F_.createTopK("argsort", input, /* k = */ input.dims().back())
+                    ->getIndices();
+
+  if (!descending) {
+    output = F_.createFlip("flip_output", output, dim)->getResult();
+  }
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadConstantChunk(const torch::jit::Node *ptNode) {
