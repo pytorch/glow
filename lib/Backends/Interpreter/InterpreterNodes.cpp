@@ -6877,4 +6877,3 @@ void BoundInterpreterFunction::fwdCustomOpInst(glow::CustomOpInst const *I) {
   freeCustomOpParams(params);
 }
 #undef ASSIGN_VALUE_OR_ASSERT
-
