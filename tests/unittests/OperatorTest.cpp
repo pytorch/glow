@@ -13964,6 +13964,12 @@ TEST_P(OperatorTest, Embedding_with_PadIdx) {
   testEmbedding<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001, 2);
 }
 
+TEST_P(OperatorTest, Embedding_with_PadIdx_Float16) {
+  CHECK_IF_ENABLED();
+  testEmbedding<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                           0.0001, 2);
+}
+
 /// Test EmbeddingBag with an N-dimension embedding table.
 template <typename DataType>
 static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
