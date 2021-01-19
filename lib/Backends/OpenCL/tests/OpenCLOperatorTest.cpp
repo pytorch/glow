@@ -434,6 +434,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "mul_int64/0",
     "add_int32/0",
     "add_int64/0",
+    "FP16BatchNorm0D/0",
+    "FP16BatchNorm1D/0",
     "FP16BatchNorm2D/0",
     "Int8BatchNorm2D/0",
     "FP16BatchNorm3D/0",
