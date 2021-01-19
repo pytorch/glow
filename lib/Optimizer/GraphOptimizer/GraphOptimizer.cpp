@@ -2243,8 +2243,10 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
     // Provide collectArithmeticChain w/ bias/scale that have identity values
     // as we are creating new BN consisted of the arithmetic nodes that the
     // function will find.
-    auto *newScale = F->getParent()->createConstant(bias.getType(), "BN.scale");
-    auto *newBias = F->getParent()->createConstant(bias.getType(), "BN.bias");
+    auto *newScale = F->getParent()->createConstant(
+        bias.getType(), CN->getName().str() + "_BN.scale");
+    auto *newBias = F->getParent()->createConstant(
+        bias.getType(), CN->getName().str() + "_BN.bias");
 
     newScale->getPayloadMutable().getHandle<float>().clear(1.f);
     newBias->getPayloadMutable().getHandle<float>().clear(0.f);
@@ -2266,11 +2268,13 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
 
     Tensor varianceT(depthTy);
     varianceT.init(glow::Tensor::InitKind::Broadcast, 1.0f, F->getPRNG());
-    auto variance = F->getParent()->createConstant("BN.var", varianceT);
+    auto variance = F->getParent()->createConstant(
+        CN->getName().str() + "_BN.var", varianceT);
 
     Tensor meanT(depthTy);
     meanT.zero();
-    auto mean = F->getParent()->createConstant("BN.mean", meanT);
+    auto mean =
+        F->getParent()->createConstant(CN->getName().str() + "_BN.mean", meanT);
 
     // Create a BN with new parameters.
     auto *nBN =
