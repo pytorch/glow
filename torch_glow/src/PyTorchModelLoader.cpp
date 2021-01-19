@@ -2339,6 +2339,52 @@ Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedIValue(
   }
 }
 
+template <typename T, typename U>
+Expected<NodeValue> iValueBroadcastingHelper(glow::Function &F_, U &&val,
+                                             llvm::ArrayRef<glow::dim_t> dims,
+                                             glow::ElemKind elemKind) {
+  T constVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(constVal,
+                             static_cast_expected<T>(std::forward<U>(val)));
+
+  glow::Tensor t(elemKind, dims);
+  t.init(glow::Tensor::InitKind::Broadcast, constVal,
+         F_.getParent()->getPRNG());
+  return F_.getParent()->createConstant("constant", std::move(t))->getOutput();
+}
+
+Expected<NodeValue>
+PyTorchModelLoader::loadBroadcastedIValue(const torch::jit::Value *value,
+                                          llvm::ArrayRef<glow::dim_t> dims,
+                                          ElemKind elemKind) {
+
+  GlowIValue *ival;
+  ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(value));
+
+  if (ival->isInt()) {
+    if (elemKind == ElemKind::Int64ITy) {
+      return iValueBroadcastingHelper<int64_t>(F_, ival->toInt(), dims,
+                                               elemKind);
+    } else if (elemKind == ElemKind::Int32ITy) {
+      return iValueBroadcastingHelper<int32_t>(F_, ival->toInt(), dims,
+                                               elemKind);
+    } else if (elemKind == ElemKind::FloatTy) {
+      return iValueBroadcastingHelper<float>(F_, ival->toInt(), dims, elemKind);
+    } else {
+      return MAKE_ERR("unsupported IValue typecasting.");
+    }
+  } else if (ival->isDouble()) {
+    if (elemKind == ElemKind::FloatTy) {
+      return iValueBroadcastingHelper<float>(F_, ival->toDouble(), dims,
+                                             elemKind);
+    } else {
+      return MAKE_ERR("unsupported IValue typecasting.");
+    }
+  } else {
+    return MAKE_ERR("unsupported IValue type for broadcasting.");
+  }
+}
+
 Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -3618,8 +3664,8 @@ Error PyTorchModelLoader::loadCmp(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   if (hasGlowIValueForValue(inputs[CompareInputs::rhs])) {
     ASSIGN_VALUE_OR_RETURN_ERR(
-        rhs, loadNodeValueOrBroadcastedIValue(inputs[CompareInputs::rhs],
-                                              lhs.dims()));
+        rhs, loadBroadcastedIValue(inputs[CompareInputs::rhs], lhs.dims(),
+                                   lhs.getElementType()));
   } else {
     ASSIGN_VALUE_OR_RETURN_ERR(
         rhs, getGlowNodeValueForValue(inputs[CompareInputs::rhs]));

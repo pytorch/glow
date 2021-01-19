@@ -264,6 +264,13 @@ public:
                                    llvm::ArrayRef<glow::dim_t> dims,
                                    bool makeFloat = true);
 
+  /// Create a NodeValue by broacasting a constant IValue into a tensor of size
+  /// \p dims and element kind \p elemKind. The constant IValue must be either
+  /// an int or a double. Type casting from doubles to integers is not allowed.
+  Expected<glow::NodeValue>
+  loadBroadcastedIValue(const torch::jit::Value *value,
+                        llvm::ArrayRef<glow::dim_t> dims, ElemKind elemKind);
+
   /// If there is a NodeValue mapped to \p value then return it, otherwise
   /// create a Constant with type \p ty, name \p name, and value \p val
   /// broadcasted.

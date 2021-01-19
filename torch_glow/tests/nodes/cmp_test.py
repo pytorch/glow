@@ -160,18 +160,102 @@ class TestCmp(unittest.TestCase):
 
     @parameterized.expand(
         [
-            ("eq_tensor_scalar", "equal", "aten::eq"),
-            ("gt_tensor_scalar", "greaterThan", "aten::gt"),
-            ("ge_tensor_scalar", "greaterEqual", "aten::ge"),
-            ("le_tensor_scalar", "lessEqual", "aten::le"),
-            ("lt_tensor_scalar", "lessThan", "aten::lt"),
-            ("ne_tensor_scalar", "notEqual", "aten::ne"),
+            ("eq_tensor_scalar", "equal", "aten::eq", 0.5, torch.randn(3, 4, 5)),
+            ("gt_tensor_scalar", "greaterThan", "aten::gt", 0.5, torch.randn(3, 4, 5)),
+            ("ge_tensor_scalar", "greaterEqual", "aten::ge", 0.5, torch.randn(3, 4, 5)),
+            ("le_tensor_scalar", "lessEqual", "aten::le", 0.5, torch.randn(3, 4, 5)),
+            ("lt_tensor_scalar", "lessThan", "aten::lt", 0.5, torch.randn(3, 4, 5)),
+            ("ne_tensor_scalar", "notEqual", "aten::ne", 0.5, torch.randn(3, 4, 5)),
+            (
+                "eq_tensor_scalar_int64",
+                "equal",
+                "aten::eq",
+                5,
+                torch.randn(3, 4, 5).to(torch.int64),
+            ),
+            (
+                "gt_tensor_scalar_int64",
+                "greaterThan",
+                "aten::gt",
+                5,
+                torch.randn(3, 4, 5).to(torch.int64),
+            ),
+            (
+                "ge_tensor_scalar_int64",
+                "greaterEqual",
+                "aten::ge",
+                5,
+                torch.randn(3, 4, 5).to(torch.int64),
+            ),
+            (
+                "le_tensor_scalar_int64",
+                "lessEqual",
+                "aten::le",
+                5,
+                torch.randn(3, 4, 5).to(torch.int64),
+            ),
+            (
+                "lt_tensor_scalar_int64",
+                "lessThan",
+                "aten::lt",
+                5,
+                torch.randn(3, 4, 5).to(torch.int64),
+            ),
+            (
+                "ne_tensor_scalar_int64",
+                "notEqual",
+                "aten::ne",
+                5,
+                torch.randn(3, 4, 5).to(torch.int64),
+            ),
+            (
+                "eq_tensor_scalar_int32",
+                "equal",
+                "aten::eq",
+                5,
+                torch.randn(3, 4, 5).to(torch.int32),
+            ),
+            (
+                "gt_tensor_scalar_int32",
+                "greaterThan",
+                "aten::gt",
+                5,
+                torch.randn(3, 4, 5).to(torch.int32),
+            ),
+            (
+                "lt_tensor_scalar_int32",
+                "lessThan",
+                "aten::lt",
+                5,
+                torch.randn(3, 4, 5).to(torch.int32),
+            ),
+            (
+                "eq_tensor_scalar_float_int",
+                "equal",
+                "aten::eq",
+                5,
+                torch.randn(3, 4, 5),
+            ),
+            (
+                "gt_tensor_scalar_float_int",
+                "greaterThan",
+                "aten::gt",
+                5,
+                torch.randn(3, 4, 5),
+            ),
+            (
+                "lt_tensor_scalar_float_int",
+                "lessThan",
+                "aten::lt",
+                5,
+                torch.randn(3, 4, 5),
+            ),
         ]
     )
-    def test_scalar_vector_cmp(self, _, opType, op):
+    def test_scalar_vector_cmp(self, _, opType, op, scalar, tensor):
         """Testing comparisons between tensors and scalars."""
         utils.compare_tracing_methods(
-            SimpleScalarVectorCmpModule(opType, 0.5),
-            torch.randn(3, 4, 5),
+            SimpleScalarVectorCmpModule(opType, scalar),
+            tensor,
             fusible_ops={op},
         )
