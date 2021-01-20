@@ -5011,6 +5011,74 @@ TEST_F(GraphOptz, ParallelizeGraph_Transpose) {
   checkNumericalEquivalence();
 }
 
+/// Test Splitting Transpose into multiple Transposes.
+TEST_F(GraphOptz, ParallelizeGraph_Transpose3D_210) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 15, 23}, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {23, 15, 4}, "output", false);
+  bindings_.allocate(output);
+
+  auto *trans1 = F_->createTranspose("trans1", input, {2, 1, 0});
+  F_->createSave("save", trans1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, size_t> numChunks;
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  numChunks[trans1] = 8;
+  parOpts[trans1] = ParallelTransformKind::Data;
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+
+  runDCEPass(F_, cctx_);
+
+  EXPECT_EQ(8, countNodeKind(F_, Kinded::Kind::TransposeNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Transpose into multiple Transposes.
+TEST_F(GraphOptz, ParallelizeGraph_Transpose3D_120) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {15, 8, 23}, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {8, 23, 15}, "output", false);
+  bindings_.allocate(output);
+
+  auto *trans1 = F_->createTranspose("trans1", input, {1, 2, 0});
+  F_->createSave("save", trans1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, size_t> numChunks;
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  numChunks[trans1] = 8;
+  parOpts[trans1] = ParallelTransformKind::Data;
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+
+  runDCEPass(F_, cctx_);
+
+  EXPECT_EQ(8, countNodeKind(F_, Kinded::Kind::TransposeNodeKind));
+
+  checkNumericalEquivalence();
+}
+
 TEST_F(GraphOptz, SinkClipBelowReshape) {
   Placeholder *in =
       mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
