@@ -1777,6 +1777,10 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
   auto *savePlaceholder = save->getPlaceholder();
   bindings.allocate(savePlaceholder);
 
+  auto *saveSplits = F.createSave("save_splits", BBTN->getRoiBatchSplits());
+  auto *saveSplitsPlaceholder = saveSplits->getPlaceholder();
+  bindings.allocate(saveSplitsPlaceholder);
+
   EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
@@ -1789,6 +1793,13 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
         std::max(maxDiff, std::abs((float)(saveH.raw(i) - expectedValues[i])));
   }
   VLOG(2) << "Max diff: " << maxDiff;
+
+  std::vector<DataType> expectedSplitsValues = {2, 1, 0, 2};
+  auto saveSplitsH = bindings.get(saveSplitsPlaceholder)->getHandle<DataType>();
+  EXPECT_EQ(saveSplitsH.size(), expectedSplitsValues.size());
+  for (dim_t i = 0; i < expectedSplitsValues.size(); i++) {
+    EXPECT_EQ(saveSplitsH.raw(i), expectedSplitsValues[i]);
+  }
 }
 
 TEST_P(OperatorTest, BBoxTransform_Float) {
