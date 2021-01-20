@@ -22,6 +22,7 @@
 #include "PyTorchCommon.h"
 #include "Registration.h"
 #include "TorchGlowBackend.h"
+#include "glow/Flags/Flags.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <torch/csrc/jit/python/pybind_utils.h>
@@ -233,6 +234,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable shape inference engine.
   m.def("disable_shape_inference_engine", []() {
     getGlobalPyTorchLoaderSettingsMutable().runShapeInference = false;
+  });
+
+  /// Set interpreter device memory (in KiB).
+  m.def("set_interpreter_memory", [](const unsigned &memorySize) {
+    glow::runtime::flags::InterpreterMemory = memorySize;
   });
 
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
