@@ -1059,6 +1059,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::log"}, &PyTorchModelLoader::loadLog},
       {{"aten::sum"}, &PyTorchModelLoader::loadSum},
       {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
+      {{"aten::silu"}, &PyTorchModelLoader::loadSilu},
       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
       {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh},
@@ -3640,6 +3641,20 @@ Error PyTorchModelLoader::loadSigmoid(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   glow::SigmoidNode *glowNode = F_.createSigmoid("sigmoid", input);
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
+}
+
+Error PyTorchModelLoader::loadSilu(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  glow::SwishNode *glowNode = F_.createSwish("swish", input);
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
   RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
