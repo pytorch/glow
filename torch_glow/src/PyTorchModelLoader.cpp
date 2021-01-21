@@ -3796,11 +3796,19 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
                         input.dims().size() == weights.dims().size(),
                     "Expect 4 dims in input and weights for conv2d and 5 dims "
                     "in input and weights for conv3d");
+
+  bool transposed;
+  ASSIGN_VALUE_OR_RETURN_ERR(transposed, iValToBool(getGlowIValueForValue(
+                                             inputs[ConvInputs::transposed])));
+
   bool isConv3d = input.dims().size() == 5;
   if (isConv3d) {
     input = F_.createTranspose("conv_input_transposed", input, NCTHW2NTHWC);
     weights =
         F_.createTranspose("conv_weights_transposed", weights, NCTHW2NTHWC);
+  } else if (transposed) {
+    input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
+    weights = F_.createTranspose("conv_weights_transposed", weights, CNHW2NHWC);
   } else {
     input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
     weights = F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
@@ -3852,12 +3860,6 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
             getGlowIValueForValue(inputs[ConvInputs::dilation]), 2)));
   }
 
-  // Don't support transposed convolutions yet.
-  bool transposed;
-  ASSIGN_VALUE_OR_RETURN_ERR(transposed, iValToBool(getGlowIValueForValue(
-                                             inputs[ConvInputs::transposed])));
-  RETURN_ERR_IF_NOT(!transposed, "Transposed convolutions not supported.");
-
   glow::unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(
       groups, static_cast_expected<glow::unsigned_t>(iValToInt(
@@ -3898,6 +3900,12 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
         "conv3d", input, weights, bias, outTy, kernels, strides, pads, groups);
     output = F_.createTranspose("conv_output_transposed", conv->getResult(),
                                 NTHWC2NCTHW);
+  } else if (transposed) {
+    glow::ConvTransposeNode *convTranspose =
+        F_.createConvTranspose("convTranspose", input, weights, bias, outTy,
+                               kernels, strides, pads, groups);
+    output = F_.createTranspose("convTranpose_output_transposed",
+                                convTranspose->getResult(), NHWC2NCHW);
   } else {
     glow::ConvolutionNode *conv =
         F_.createConv("conv", input, weights, bias, outTy, kernels, strides,
