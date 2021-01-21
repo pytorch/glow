@@ -2463,10 +2463,27 @@ Error PyTorchModelLoader::loadFloorDiv(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
 
-  glow::NodeValue res;
-  ASSIGN_VALUE_OR_RETURN_ERR(res, loadArithmeticNode<glow::FloorDivNode>(
-                                      "floor_divide", inputs[0], inputs[1]));
+  auto lhs = inputs[0];
+  auto rhs = inputs[1];
+  glow::NodeValue lhsInput;
+  glow::NodeValue rhsInput;
 
+  if (hasGlowNodeValueForValue(lhs)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(lhs));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        rhsInput, loadNodeValueOrBroadcastedIValue(rhs, lhsInput.getType()));
+  } else if (hasGlowNodeValueForValue(rhs)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(rhs));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        lhsInput, loadNodeValueOrBroadcastedIValue(lhs, rhsInput.getType()));
+  } else {
+    return MAKE_ERR("Either lhs or rhs of floorDiv node must be a tensor");
+  }
+
+  // Current Pytorch FloorDiv is actually TruncDiv
+  // github.com/pytorch/pytorch/issues/43874
+  auto res = F_.createFloorDivWithBroadcast(
+      "floor_divide", /* axis */ -1, lhsInput, rhsInput, /* truncate */ true);
   RETURN_ERR(addValueMapping(outputs[0], res));
 }
 

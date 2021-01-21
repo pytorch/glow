@@ -390,6 +390,7 @@ void writeTransposeInput(const Node *node, const Node *input,
   transformProto->add_output(newName);
   proto->add_input(newName);
 }
+
 /// Writes Arithmetic operators with name \p opName from Node \p node into
 /// provided graph protobuf \p graph. Arithmetic node may have been broadcasted,
 /// \p hasMultidirectionalBroadcast indicates the node can be multidirectional

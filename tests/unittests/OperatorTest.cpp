@@ -6516,8 +6516,8 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
   static void testArithmetic##_OP_NAME_##Impl(                                 \
       glow::PlaceholderBindings &bindings, glow::Module &mod,                  \
       glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy) {            \
-    std::vector<DataType> data1 = {3, 17, 7, 23};                              \
-    std::vector<DataType> data2 = {13, 5, 19, 11};                             \
+    std::vector<DataType> data1 = {3, 17, -7, 23};                             \
+    std::vector<DataType> data2 = {13, -5, 19, 11};                            \
     auto *A = mod.createPlaceholder(DTy, {1, 4}, "A", false);                  \
     auto *B = mod.createPlaceholder(DTy, {1, 4}, "B", false);                  \
     bindings.allocate(A)->getHandle<DataType>() = data1;                       \
@@ -6557,28 +6557,144 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)             \
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, bfloat16_t, ElemKind::BFloat16Ty)
 
-template <typename DataType>
-static DataType floorDivide(DataType a, DataType b) {
-  return std::floor(static_cast<float>(a / b));
-}
-
 ARITH_FUNC_TEST(Add, std::plus, ())
 ARITH_FUNC_TEST(Sub, std::minus, ())
 ARITH_FUNC_TEST(Mul, std::multiplies, ())
+ARITH_FUNC_TEST(Div, std::divides, ())
 ARITH_FUNC_TEST(Max, std::max, )
 ARITH_FUNC_TEST(Min, std::min, )
-
-#define ARITH_FUNC_TEST_FLOAT(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)  \
-  ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)               \
-  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float, ElemKind::FloatTy)                   \
-  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)
-
-ARITH_FUNC_TEST_FLOAT(FloorDiv, floorDivide, )
 
 #undef ARITH_FUN_IMPL
 #undef ARITH_FUNC_TEST_TYPED
 #undef ARITH_FUNC_TEST
 #undef ARITH_FUNC_TEST_FLOAT
+
+/// Reference function for FloorDivide
+template <typename DataType>
+static DataType floorDivide(DataType a, DataType b) {
+  return std::floor(static_cast<float>(a) / static_cast<float>(b));
+}
+
+/// Reference function for TruncDivide
+template <typename DataType>
+static DataType truncDivide(DataType a, DataType b) {
+  return std::trunc(static_cast<float>(a) / static_cast<float>(b));
+}
+
+/// Helper to test FloorDiv using \p DataType.
+template <typename DataType>
+static void testFloorDiv(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                         glow::Function *F, glow::ExecutionEngine &EE,
+                         ElemKind DTy, bool truncate) {
+  std::vector<DataType> data1 = {3, 15, 7, 22};
+  std::vector<DataType> data2 = {-6, -5, 14, 11};
+  float scale = 0.5;
+  int offset = 0;
+  Placeholder *A = nullptr;
+  Placeholder *B = nullptr;
+  if (isQuantizedElemKind(DTy)) {
+    A = mod.createPlaceholder(DTy, {1, 4}, scale, offset, "A", false);
+    B = mod.createPlaceholder(DTy, {1, 4}, scale, offset, "B", false);
+  } else {
+    A = mod.createPlaceholder(DTy, {1, 4}, "A", false);
+    B = mod.createPlaceholder(DTy, {1, 4}, "B", false);
+  }
+  bindings.allocate(A)->getHandle<DataType>() = data1;
+  bindings.allocate(B)->getHandle<DataType>() = data2;
+
+  auto *floorDiv = F->createFloorDiv("floorDiv", A, B, truncate);
+  auto *result = F->createSave("save", floorDiv);
+  auto *resultTensor = bindings.allocate(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  std::vector<DataType> reference;
+  assert(data1.size() == data2.size() && "Size mismatch!");
+  for (size_t i = 0; i < data1.size(); i++) {
+    reference.push_back(truncate ? truncDivide<DataType>(data1[i], data2[i])
+                                 : floorDivide<DataType>(data1[i], data2[i]));
+  }
+  auto RH = resultTensor->getHandle<DataType>();
+  EXPECT_EQ(reference.size(), RH.size());
+  for (size_t i = 0; i < reference.size(); i++) {
+    if (isQuantizedElemKind(DTy)) {
+      EXPECT_EQ(reference[i], static_cast<DataType>(quantization::dequantize(
+                                  RH.raw(i), {scale, offset})));
+    } else {
+      EXPECT_EQ(reference[i], RH.raw(i));
+    }
+  }
+}
+
+TEST_P(OperatorTest, FloorDiv_FloatTy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                      /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Float16Ty) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                          /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Int64ITy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy,
+                        /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Int32ITy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                        /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Int8QTy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                       /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_FloatTy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                      /* truncate */ true);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_Float16Ty) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                          /* truncate */ true);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_Int64ITy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy,
+                        /* truncate */ true);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_Int32ITy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                        /* truncate */ true);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_Int8QTy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                       /* truncate */ true);
+}
 
 TEST_P(OperatorTest, IntMatMul) {
   CHECK_IF_ENABLED();
@@ -9228,7 +9344,7 @@ TEST_P(OperatorTest, IntFloorDivBroadcast) {
   bindings_.allocate(in2)->getHandle<int8_t>().randomize(-10, 10,
                                                          mod_.getPRNG());
   constexpr int axis = -1;
-  auto *floorDivBroadcast = F_->createNodeWithBroadcastOutTy<FloorDivNode>(
+  auto *floorDivBroadcast = F_->createFloorDivWithBroadcast(
       "floorDivBroadcast", axis, outTy, in1, in2);
 
   auto *saveFloorDiv = F_->createSave("saveFloorDiv", floorDivBroadcast);
