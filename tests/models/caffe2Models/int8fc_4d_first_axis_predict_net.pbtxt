@@ -1,0 +1,31 @@
+name: "int8_fc_4d"
+op {
+  input: "input"
+  input: "weights"
+  input: "bias"
+  output: "output_q"
+  name: ""
+  type: "Int8FC"
+  arg {
+    name: "axis"
+    i: 1
+  }
+  arg {
+    name: "Y_scale"
+    f: 1
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 0
+  }
+}
+op {
+  input: "output_q"
+  output: "output"
+  name: ""
+  type: "Int8Dequantize"
+}
+external_input: "input"
+external_input: "weights"
+external_input: "bias"
+external_output: "output"
