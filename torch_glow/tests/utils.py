@@ -5,6 +5,7 @@ import itertools
 import os
 from contextlib import contextmanager
 from copy import deepcopy
+from io import BytesIO
 
 import torch
 import torch_glow
@@ -217,3 +218,17 @@ def graph_contains_str(graph, substr):
 def assertModulesEqual(case, mod1, mod2, message=None):
     for p1, p2 in itertools.zip_longest(mod1.parameters(), mod2.parameters()):
         case.assertTrue(p1.equal(p2), message)
+
+
+def save_and_reload_model(model):
+    buf = BytesIO()
+
+    print("saving ...")
+    torch.jit.save(model, buf)
+    print("done")
+
+    print("reloading....")
+    buf.seek(0)
+    reloaded_model = torch.jit.load(buf)
+    print("done")
+    return reloaded_model

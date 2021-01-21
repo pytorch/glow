@@ -567,25 +567,28 @@ static Expected<torch::jit::Module> preprocessImpl(
     torch::jit::ClearProfilingInformation(graph);
     torch::jit::EraseShapeInformation(graph);
     nameToOrigGraph[methodName] = graph->copy();
+  }
+
+  auto processedModule = origModule.clone();
+
+  // JIT graph optimizations before freezing
+  for (const auto &methodName : methodNames) {
+    auto method = processedModule.get_method(methodName);
+    auto graph = method.graph();
+
     /* Note: The following LowerAllTuples call is a bit of a hack. The
      * GraphExecutor that takes this copy of the graph would otherwise not have
      * the tuples lowered, which would cause an issue, given that the two
      * versions would have different output types.
      */
-    LowerAllTuples(nameToOrigGraph[methodName]);
-  }
-
-  // JIT graph optimizations before freezing
-  for (const auto &methodName : methodNames) {
-    auto method = origModule.get_method(methodName);
-    auto graph = method.graph();
+    LowerAllTuples(graph);
 
     RewriteQuantPackedParamOps(graph);
-    RETURN_IF_ERR(ProcessPackedParams(*graph, origModule._ivalue()));
+    RETURN_IF_ERR(ProcessPackedParams(*graph, processedModule._ivalue()));
   }
 
   // Freeze
-  auto frozenModule = torch::jit::freeze_module(origModule);
+  auto frozenModule = torch::jit::freeze_module(processedModule);
 
   // Cleanup JIT graphs
   for (const auto &methodName : methodNames) {
