@@ -688,6 +688,10 @@ private:
   /// \returns error on failure.
   Error loadSigmoid(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch silu node.
+  /// \returns error on failure.
+  Error loadSilu(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch avg_pool2d node.
   /// \returns error on failure.
   Error loadAvgPool2d(const torch::jit::Node *ptNode);
