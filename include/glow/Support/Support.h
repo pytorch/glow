@@ -128,7 +128,10 @@ inline void report(llvm::StringRef str) { report(str.data()); }
 /// Legalize \p name used in Module. In Glow module, the name of placeholders
 /// and constants should look like valid C identifiers. Therefore, those symbols
 /// can be inspected under debugger.
-std::string legalizeName(llvm::StringRef name);
+/// \p maxLength argument is used as the upper limit on name length. If it is
+/// zero, then there is no limit. The default value is chosen to allow some
+/// extra room for string concatenations for NNPI.
+std::string legalizeName(llvm::StringRef name, size_t maxLength = 500);
 
 /// Data structure for multi string format used in yaml file.
 struct MultiLineStr {
