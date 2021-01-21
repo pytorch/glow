@@ -2296,45 +2296,47 @@ Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
+template <typename T, typename U>
+Expected<NodeValue> iValueBroadcastingHelper(glow::Function &F_, U &&val,
+                                             TypeRef type) {
+  T constVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(constVal,
+                             static_cast_expected<T>(std::forward<U>(val)));
+
+  if (type->getElementType() == ElemKind::FloatTy) {
+    return F_.createSplat("ivalConstSplat", type, constVal);
+  } else {
+    glow::Tensor t(type);
+    t.init(glow::Tensor::InitKind::Broadcast, constVal,
+           F_.getParent()->getPRNG());
+    return F_.getParent()
+        ->createConstant("ivalConstBcast", std::move(t))
+        ->getOutput();
+  }
+}
+
 Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedIValue(
-    const torch::jit::Value *value, llvm::ArrayRef<glow::dim_t> dims,
-    bool makeFloat) {
+    const torch::jit::Value *value, TypeRef type) {
   if (hasGlowNodeValueForValue(value)) {
     return getGlowNodeValueForValue(value);
   } else {
     GlowIValue *ival;
     ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(value));
 
-    if (makeFloat) {
-      float constVal;
-      if (ival->isInt()) {
-        ASSIGN_VALUE_OR_RETURN_ERR(constVal,
-                                   static_cast_expected<float>(ival->toInt()));
-      } else {
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            constVal, static_cast_expected<float>(ival->toDouble()));
-      }
-      glow::Tensor t(glow::ElemKind::FloatTy, dims);
-      t.init(glow::Tensor::InitKind::Broadcast, constVal,
-             F_.getParent()->getPRNG());
-      return F_.getParent()
-          ->createConstant("constant", std::move(t))
-          ->getOutput();
-    } else /* makeInt */ {
-      int64_t constVal;
-      if (ival->isInt()) {
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            constVal, static_cast_expected<int64_t>(ival->toInt()));
-      } else {
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            constVal, static_cast_expected<int64_t>(ival->toDouble()));
-      }
-      glow::Tensor t(glow::ElemKind::Int64ITy, dims);
-      t.init(glow::Tensor::InitKind::Broadcast, constVal,
-             F_.getParent()->getPRNG());
-      return F_.getParent()
-          ->createConstant("constant", std::move(t))
-          ->getOutput();
+    auto elemKind = type->getElementType();
+
+    if (ival->isInt() && elemKind == ElemKind::Int64ITy) {
+      return iValueBroadcastingHelper<int64_t>(F_, ival->toInt(), type);
+    } else if (ival->isInt() && elemKind == ElemKind::Int32ITy) {
+      return iValueBroadcastingHelper<int32_t>(F_, ival->toInt(), type);
+    } else if (ival->isInt() && elemKind == ElemKind::FloatTy) {
+      return iValueBroadcastingHelper<float>(F_, ival->toInt(), type);
+    } else if (ival->isDouble() && elemKind == ElemKind::FloatTy) {
+      return iValueBroadcastingHelper<float>(F_, ival->toDouble(), type);
+    } else {
+      return MAKE_ERR(strFormat(
+          "unsupported IValue broadcasting from `%s` to a tensor of `%s`.",
+          ival->getTagString(), type->getElementName().str().c_str()));
     }
   }
 }
@@ -2397,15 +2399,11 @@ Expected<NodeValue> PyTorchModelLoader::loadArithmeticNode(
   if (hasGlowNodeValueForValue(lhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(lhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        rhsInput,
-        loadNodeValueOrBroadcastedIValue(
-            rhs, lhsInput.dims(), isFloatElemKind(lhsInput.getElementType())));
+        rhsInput, loadNodeValueOrBroadcastedIValue(rhs, lhsInput.getType()));
   } else if (hasGlowNodeValueForValue(rhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(rhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        lhsInput,
-        loadNodeValueOrBroadcastedIValue(
-            lhs, rhsInput.dims(), isFloatElemKind(rhsInput.getElementType())));
+        lhsInput, loadNodeValueOrBroadcastedIValue(lhs, rhsInput.getType()));
   } else {
     return MAKE_ERR("Either lhs or rhs of arithmetic node must be a tensor");
   }
@@ -3609,22 +3607,17 @@ Error PyTorchModelLoader::loadCmp(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   auto kind = ptNode->kind();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
-  glow::NodeValue lhs;
-  constexpr int axis = -1;
 
+  glow::NodeValue lhs;
   ASSIGN_VALUE_OR_RETURN_ERR(
       lhs, getGlowNodeValueForValue(inputs[CompareInputs::lhs]));
 
   glow::NodeValue rhs;
-  if (hasGlowIValueForValue(inputs[CompareInputs::rhs])) {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        rhs, loadNodeValueOrBroadcastedIValue(inputs[CompareInputs::rhs],
-                                              lhs.dims()));
-  } else {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        rhs, getGlowNodeValueForValue(inputs[CompareInputs::rhs]));
-  }
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rhs, loadNodeValueOrBroadcastedIValue(inputs[CompareInputs::rhs],
+                                            lhs.getType()));
 
+  constexpr int axis = -1;
   // Greater than and Greater or equal are mapped to inverted
   // (swap between LHS and RHS) Less or equal and Less than
   if constexpr (invert) {
@@ -5541,9 +5534,9 @@ Error PyTorchModelLoader::loadSelect(const torch::jit::Node *ptNode) {
   NodeValue index;
   std::vector<dim_t> indexDims = {1};
   // Gather expects NodeValue
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      index, loadNodeValueOrBroadcastedIValue(inputs[SelectInputs::index],
-                                              indexDims, false));
+  glow::Type type(ElemKind::Int64ITy, indexDims);
+  ASSIGN_VALUE_OR_RETURN_ERR(index, loadNodeValueOrBroadcastedIValue(
+                                        inputs[SelectInputs::index], &type));
   GatherNode *gatherOutput;
 
   /* If axis!=0 then reshape tensor and put the axis dimension as the
