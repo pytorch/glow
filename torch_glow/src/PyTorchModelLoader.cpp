@@ -2388,10 +2388,9 @@ Error PyTorchModelLoader::loadDetach(const torch::jit::Node *ptNode) {
 }
 
 template <typename GlowNode>
-Expected<NodeValue>
-PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
-                                       const torch::jit::Value *lhs,
-                                       const torch::jit::Value *rhs) {
+Expected<NodeValue> PyTorchModelLoader::loadArithmeticNode(
+    llvm::StringRef name, const torch::jit::Value *lhs,
+    const torch::jit::Value *rhs, bool convertToDefaultType) {
   glow::NodeValue lhsInput;
   glow::NodeValue rhsInput;
 
@@ -2409,6 +2408,25 @@ PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
             lhs, rhsInput.dims(), isFloatElemKind(rhsInput.getElementType())));
   } else {
     return MAKE_ERR("Either lhs or rhs of arithmetic node must be a tensor");
+  }
+
+  // For aten::div, it will promote the output to default scalar type if both
+  // inputs are of integer type. However, Glow requires inputs and output have
+  // the same type. In order to achieve same behavior as Pytorch div, we convert
+  // the inputs to default scalar type if they are both integer.
+  if (convertToDefaultType) {
+    if (isNonQuantizedIntElemKind(rhsInput.getElementType()) &&
+        isNonQuantizedIntElemKind(lhsInput.getElementType())) {
+      auto glowElemKind = scalarTypeToElemKind(
+          at::typeMetaToScalarType(at::get_default_dtype()));
+
+      lhsInput = F_.createConvertTo(
+          "lhs_to", lhsInput,
+          F_.getParent()->uniqueType(glowElemKind, lhsInput.getType()->dims()));
+      rhsInput = F_.createConvertTo(
+          "rhs_to", rhsInput,
+          F_.getParent()->uniqueType(glowElemKind, rhsInput.getType()->dims()));
+    }
   }
 
   return F_
@@ -2435,7 +2453,8 @@ Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
 
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      res, loadArithmeticNode<glow::DivNode>("div", inputs[0], inputs[1]));
+      res, loadArithmeticNode<glow::DivNode>("div", inputs[0], inputs[1],
+                                             /* convertToDefaultType */ true));
 
   RETURN_ERR(addValueMapping(outputs[0], res));
 }
@@ -3777,11 +3796,19 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
                         input.dims().size() == weights.dims().size(),
                     "Expect 4 dims in input and weights for conv2d and 5 dims "
                     "in input and weights for conv3d");
+
+  bool transposed;
+  ASSIGN_VALUE_OR_RETURN_ERR(transposed, iValToBool(getGlowIValueForValue(
+                                             inputs[ConvInputs::transposed])));
+
   bool isConv3d = input.dims().size() == 5;
   if (isConv3d) {
     input = F_.createTranspose("conv_input_transposed", input, NCTHW2NTHWC);
     weights =
         F_.createTranspose("conv_weights_transposed", weights, NCTHW2NTHWC);
+  } else if (transposed) {
+    input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
+    weights = F_.createTranspose("conv_weights_transposed", weights, CNHW2NHWC);
   } else {
     input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
     weights = F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
@@ -3833,12 +3860,6 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
             getGlowIValueForValue(inputs[ConvInputs::dilation]), 2)));
   }
 
-  // Don't support transposed convolutions yet.
-  bool transposed;
-  ASSIGN_VALUE_OR_RETURN_ERR(transposed, iValToBool(getGlowIValueForValue(
-                                             inputs[ConvInputs::transposed])));
-  RETURN_ERR_IF_NOT(!transposed, "Transposed convolutions not supported.");
-
   glow::unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(
       groups, static_cast_expected<glow::unsigned_t>(iValToInt(
@@ -3879,6 +3900,12 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
         "conv3d", input, weights, bias, outTy, kernels, strides, pads, groups);
     output = F_.createTranspose("conv_output_transposed", conv->getResult(),
                                 NTHWC2NCTHW);
+  } else if (transposed) {
+    glow::ConvTransposeNode *convTranspose =
+        F_.createConvTranspose("convTranspose", input, weights, bias, outTy,
+                               kernels, strides, pads, groups);
+    output = F_.createTranspose("convTranpose_output_transposed",
+                                convTranspose->getResult(), NHWC2NCHW);
   } else {
     glow::ConvolutionNode *conv =
         F_.createConv("conv", input, weights, bias, outTy, kernels, strides,

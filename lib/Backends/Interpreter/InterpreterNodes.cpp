@@ -1026,8 +1026,7 @@ void BoundInterpreterFunction::fwdBatchNormalizationFloatImpl(
   auto biasH = getWeightHandle<ElemTy>(I->getBias());
   auto meanH = getWeightHandle<ElemTy>(I->getMean());
   auto varH = getWeightHandle<ElemTy>(I->getVar());
-  unsigned_t channelIdx =
-      I->getChannelIdx(); // NOTE: We only support NTHWC, NHWC, NWC and NCW
+  unsigned_t channelIdx = I->getChannelIdx();
   float epsilon = I->getEpsilon();
 
   // output
@@ -1067,14 +1066,18 @@ void BoundInterpreterFunction::fwdBatchNormalizationFloatImpl(
       sizeN = idim.c * sizeImg;
       isCMinor = false;
     }
-  } else {
-    // numDims == 1. This can happen due to optimization pass that sinks reshape
-    // below batchnorm.
+  } else if (numDims == 1) {
     N = I->getSrc()->dims()[0];
     C = I->getSrc()->dims()[channelIdx];
     sizeImg = I->getSrc()->dims()[channelIdx == 2 ? 1 : 2];
     sizeN = C * sizeImg;
     isCMinor = (channelIdx == 2);
+  } else {
+    N = I->getSrc()->dims()[0];
+    C = I->getSrc()->dims()[channelIdx];
+    sizeImg = 1;
+    sizeN = C;
+    isCMinor = false;
   }
 
   std::vector<float> scale(C), mean(C), bias(C);
@@ -1169,8 +1172,8 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
     }
 
   } else {
-    // numDims == 1. This can happen due to optimization pass that sinks reshape
-    // below batchnorm.
+    // numDims == 1. This can happen due to optimization pass that sinks
+    // reshape below batchnorm.
     N = I->getSrc()->dims()[0];
     C = I->getSrc()->dims()[channelIdx];
     sizeImg = I->getSrc()->dims()[channelIdx == 2 ? 1 : 2];
@@ -1267,8 +1270,8 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
         sdim_t y = -sdim_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
-          // When the MaxPool window includes only padding pixels then for that
-          // window by convention we return 0.
+          // When the MaxPool window includes only padding pixels then for
+          // that window by convention we return 0.
           bool first = true;
           T max_value = outW->getType().isQuantizedType()
                             ? static_cast<T>(outW->getType().getOffset())
@@ -2444,8 +2447,8 @@ void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
                               slicesT->getType().getElementSize();
 
   auto IH = indicesT->getHandle<int64_t>();
-  // For each index, copy from the slice at that index into the location in data
-  // given the offset from the indices tensor.
+  // For each index, copy from the slice at that index into the location in
+  // data given the offset from the indices tensor.
   for (dim_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
     dim_t destDataIdx = 0;
     for (dim_t j = 0, e = indicesT->dims()[1]; j < e; j++) {
@@ -2471,8 +2474,8 @@ void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
   const size_t numSlices = slicesT->size() / slicesT->dims()[0];
 
   auto IH = indicesT->getHandle<int64_t>();
-  // For each index, copy from the slice at that index into the location in data
-  // given the offset from the indices tensor.
+  // For each index, copy from the slice at that index into the location in
+  // data given the offset from the indices tensor.
   assert(indicesT->dims().size() == 2 &&
          "Multi-dimensional index should be stored in 2D tensor!");
   auto D = dataT->getHandle<ElemTy>(), S = slicesT->getHandle<ElemTy>();
@@ -2506,8 +2509,8 @@ void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
                                   slicesT->getType().getOffset()};
 
   auto IH = indicesT->getHandle<int64_t>();
-  // For each index, copy from the slice at that index into the location in data
-  // given the offset from the indices tensor.
+  // For each index, copy from the slice at that index into the location in
+  // data given the offset from the indices tensor.
   assert(indicesT->dims().size() == 2 &&
          "Multi-dimensional index should be stored in 2D tensor!");
   auto D = dataT->getHandle<ElemTy>(), S = slicesT->getHandle<ElemTy>();
@@ -4124,10 +4127,10 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
     auto eDestH = eDest.getHandle<int8_t>();
     eDestH.clear();
 
-    // For quantization, we must accumulate in the inner-most loop into a local
-    // float and then clip the result back into the dest tensor. Here are the
-    // max_tensor_dimensions cases for this, to ensure the axis is used as the
-    // inner-most loop.
+    // For quantization, we must accumulate in the inner-most loop into a
+    // local float and then clip the result back into the dest tensor. Here
+    // are the max_tensor_dimensions cases for this, to ensure the axis is
+    // used as the inner-most loop.
     switch (axis) {
 #define LOOP_AXIS_CASE(_D0, _D1, _D2, _D3, _D4, _D5_AXIS)                      \
   case _D5_AXIS:                                                               \
@@ -4149,7 +4152,8 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
             }                                                                  \
     return;
 
-      // Each loop order, with the inner-most dimension/index equal to the axis.
+      // Each loop order, with the inner-most dimension/index equal to the
+      // axis.
       LOOP_AXIS_CASE(1, 2, 3, 4, 5, 0);
       LOOP_AXIS_CASE(0, 2, 3, 4, 5, 1);
       LOOP_AXIS_CASE(0, 1, 3, 4, 5, 2);
@@ -4634,10 +4638,10 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
     dim_t end;
     if (!hasEndOffset) {
       // Note that in this case we have to use numIndices to find the end of
-      // the last segment. This is an issue though because it relies on knowing
-      // the total length of the indices tensor which may not be possible.
-      // Future implementations of this operator should always give an end
-      // offset so eventually this case should be removed.
+      // the last segment. This is an issue though because it relies on
+      // knowing the total length of the indices tensor which may not be
+      // possible. Future implementations of this operator should always give
+      // an end offset so eventually this case should be removed.
       end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
     } else {
       end = OFFH.raw(i + 1);
@@ -4974,10 +4978,10 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
     dim_t end;
     if (!hasEndOffset) {
       // Note that in this case we have to use numIndices to find the end of
-      // the last segment. This is an issue though because it relies on knowing
-      // the total length of the indices tensor which may not be possible.
-      // Future implementations of this operator should always give an end
-      // offset so eventually this case should be removed.
+      // the last segment. This is an issue though because it relies on
+      // knowing the total length of the indices tensor which may not be
+      // possible. Future implementations of this operator should always give
+      // an end offset so eventually this case should be removed.
       end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
     } else {
       end = OFFH.raw(i + 1);
@@ -5332,6 +5336,13 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
       functionName<float, int32_t>(__VA_ARGS__);                               \
     }                                                                          \
     break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<float16_t, int64_t>(__VA_ARGS__);                           \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<float16_t, int32_t>(__VA_ARGS__);                           \
+    }                                                                          \
+    break;                                                                     \
   case ElemKind::Int8QTy:                                                      \
     if (elemTyIndex == ElemKind::Int64ITy) {                                   \
       functionName<int8_t, int64_t>(__VA_ARGS__);                              \
@@ -5603,8 +5614,8 @@ void BoundInterpreterFunction::fwdBatchedPairwiseDotProductInstImpl(
     auto vAH = getTensor(srcs[i])->getHandle<ElemTy>();
     dim_t vectorSize = getTensor(srcs[i])->getType().dims()[1];
 
-    // Compute the dot product of src[i] with every other vector with a smaller
-    // index.
+    // Compute the dot product of src[i] with every other vector with a
+    // smaller index.
     for (unsigned j = 0; j < i; ++j) {
       auto vBH = getTensor(srcs[j])->getHandle<ElemTy>();
 
@@ -5818,7 +5829,8 @@ static bool doIOU(Handle<ElemTy> &boxes, dim_t batchIndex,
     yCMax = cx[1] + halfHeightC;
   }
 
-  // finding upper left and lower right corner of a box formed by intersection.
+  // finding upper left and lower right corner of a box formed by
+  // intersection.
   float xMin = std::max(xSMin, xCMin);
   float yMin = std::max(ySMin, yCMin);
   float xMax = std::min(xSMax, xCMax);
@@ -6134,8 +6146,8 @@ void BoundInterpreterFunction::fwdMFCCInst(glow::MFCCInst const *I) {
 }
 
 namespace {
-/// Positions of the input values to be used for bilinear interpolation for each
-/// sample point and the weights to use for each.
+/// Positions of the input values to be used for bilinear interpolation for
+/// each sample point and the weights to use for each.
 template <typename T> struct BinGrid {
   dim_t left;
   dim_t top;
@@ -6158,13 +6170,13 @@ template <typename T> struct BinGrid {
 /// samplingRatioH * samplingRatioW), \p boxHeight and \p boxWidth are the
 /// height and width of the RoI box, \p yRef and \p xRef are the adjustment to
 /// be made for each sampling point, this is either the top left corer of the
-/// box for RoiAlign or a vector to be added to center point after rotation for
-/// RoiAlignRotated, \p rotated is true if the op is RoiAlignRotated, \p theta
-/// is the rotation angle in the case of RoiAlignRotated and is unused in
-/// RoiAlign, \p boxCenterH and \p boxCenterW are the center of the box used for
-/// rotation in the case of RoiAlignRotated and unused in the case of RoiAlign.
-/// \returns a vector of BinGrids, each one to be used to compute a single
-/// sample point value.
+/// box for RoiAlign or a vector to be added to center point after rotation
+/// for RoiAlignRotated, \p rotated is true if the op is RoiAlignRotated, \p
+/// theta is the rotation angle in the case of RoiAlignRotated and is unused
+/// in RoiAlign, \p boxCenterH and \p boxCenterW are the center of the box
+/// used for rotation in the case of RoiAlignRotated and unused in the case of
+/// RoiAlign. \returns a vector of BinGrids, each one to be used to compute a
+/// single sample point value.
 template <typename T>
 static std::vector<BinGrid<T>> getROIAlignInterpolationCoordinates(
     dim_t featureMapHeight, dim_t featureMapWidth, dim_t outputHeight,
@@ -6246,8 +6258,8 @@ static std::vector<BinGrid<T>> getROIAlignInterpolationCoordinates(
 }
 
 // Implementation of ROIAlign as described in
-// https://arxiv.org/pdf/1703.06870.pdf ROIAlign is similar to crop_and_resize +
-// pooling with minor modifications in the crop_and_resize.
+// https://arxiv.org/pdf/1703.06870.pdf ROIAlign is similar to crop_and_resize
+// + pooling with minor modifications in the crop_and_resize.
 template <typename T>
 void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
     glow::ROIAlignInst const *I) {
@@ -6641,18 +6653,20 @@ void clip_boxes_upright(Handle<T> &boxes, dim_t startRowBoxes,
 }
 
 // Similar to clip_boxes_upright but handles rotated boxes with angle info.
-// boxes: size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+// boxes: size (M, 5), format [ctr_x; ctr_y; width; height; angle (in
+// degrees)]
 //
 // Clipping is only performed for boxes that are almost upright
-// (within a given `angle_thresh` tolerance) to maintain backward compatibility
-// for non-rotated boxes.
+// (within a given `angle_thresh` tolerance) to maintain backward
+// compatibility for non-rotated boxes.
 //
 // We don't clip rotated boxes due to a couple of reasons:
 // (1) There are potentially multiple ways to clip a rotated box to make it
 //     fit within the image.
 // (2) It's tricky to make the entire rectangular box fit within the image and
 //     still be able to not leave out pixels of interest.
-// Therefore, we rely on upstream ops like RoIAlignRotated safely handling this.
+// Therefore, we rely on upstream ops like RoIAlignRotated safely handling
+// this.
 template <typename T>
 void clip_boxes_rotated(Handle<T> &boxes, dim_t startRowBoxes,
                         dim_t startColBoxes, dim_t rows, int imH, int imW,

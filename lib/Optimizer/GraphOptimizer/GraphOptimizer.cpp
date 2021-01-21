@@ -2243,8 +2243,10 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
     // Provide collectArithmeticChain w/ bias/scale that have identity values
     // as we are creating new BN consisted of the arithmetic nodes that the
     // function will find.
-    auto *newScale = F->getParent()->createConstant(bias.getType(), "BN.scale");
-    auto *newBias = F->getParent()->createConstant(bias.getType(), "BN.bias");
+    auto *newScale = F->getParent()->createConstant(
+        bias.getType(), CN->getName().str() + "_BN.scale");
+    auto *newBias = F->getParent()->createConstant(
+        bias.getType(), CN->getName().str() + "_BN.bias");
 
     newScale->getPayloadMutable().getHandle<float>().clear(1.f);
     newBias->getPayloadMutable().getHandle<float>().clear(0.f);
@@ -2266,11 +2268,13 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
 
     Tensor varianceT(depthTy);
     varianceT.init(glow::Tensor::InitKind::Broadcast, 1.0f, F->getPRNG());
-    auto variance = F->getParent()->createConstant("BN.var", varianceT);
+    auto variance = F->getParent()->createConstant(
+        CN->getName().str() + "_BN.var", varianceT);
 
     Tensor meanT(depthTy);
     meanT.zero();
-    auto mean = F->getParent()->createConstant("BN.mean", meanT);
+    auto mean =
+        F->getParent()->createConstant(CN->getName().str() + "_BN.mean", meanT);
 
     // Create a BN with new parameters.
     auto *nBN =
@@ -6230,15 +6234,13 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         break;
       }
       case Kinded::Kind::TransposeNodeKind: {
-        splitDims[TransposeNode::InputIdx] = 0;
         auto shuffleVec = cast<TransposeNode>(curNode)->getShuffle();
-        unsigned_t resultDim =
-            std::find(shuffleVec.begin(), shuffleVec.end(), 0) -
-            shuffleVec.begin();
+        unsigned_t inputDim = shuffleVec[0];
+        splitDims[TransposeNode::InputIdx] = inputDim;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, TransposeNode::InputIdx,
-                    TransposeNode::ResultIdx, splitDims, resultDim));
+                    TransposeNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ReluNodeKind: {

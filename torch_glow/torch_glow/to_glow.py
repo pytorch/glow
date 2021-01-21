@@ -1,6 +1,6 @@
 import collections
 import copy
-from typing import List, Any
+from typing import List, Tuple, Any
 
 import torch
 
@@ -8,7 +8,7 @@ import torch
 __all__ = [
     "to_glow",
     "to_glow_selective",
-    "get_submod_input_shapes",
+    "get_submod_inputs",
     "CompilationSpec",
     "CompilationGroup",
     "InputSpec",
@@ -101,13 +101,13 @@ def set_submodule(mod, path, submod):
     pass
 
 
-def get_submod_input_shapes(
+def get_submod_inputs(
     mod: torch.nn.Module, path: str, example_inputs: Any
-) -> List[torch.Size]:
-    r"""Get the input shapes of a submodule given the top-level model
+) -> Tuple[torch.Tensor]:
+    r"""Get the inputs of a submodule given the top-level model
     and its input.
 
-    Register a forward hook that record the input shapes of the submodule
+    Register a forward hook that record the inputs of the submodule
     and then run the model to triger the hook.
 
     Args:
@@ -116,22 +116,19 @@ def get_submod_input_shapes(
         example_inputs: inputs to the top-level model
 
     Return:
-        input shapes: List[torch.Size]
+        inputs: Tuple[torch.Tensor]
     """
     submod = get_submodule(mod, path)
-    input_shapes = []
+    sub_inputs = None
 
-    def get_shape(self: torch.nn.Module, inputs: Any):
-        nonlocal input_shapes
+    def get_inputs(self: torch.nn.Module, inputs: Any):
+        nonlocal sub_inputs
+        sub_inputs = inputs
 
-        for i in inputs:
-            assert isinstance(i, torch.Tensor), "We only support tensor inputs."
-            input_shapes.append(i.size())
-
-    handle = submod.register_forward_pre_hook(get_shape)
+    handle = submod.register_forward_pre_hook(get_inputs)
     mod(*example_inputs)
     handle.remove()
-    return input_shapes
+    return sub_inputs
 
 
 def to_glow_selective(model, specs_and_examples, inplace=False):

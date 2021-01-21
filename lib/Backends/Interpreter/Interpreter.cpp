@@ -143,7 +143,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int8QTy, ElemKind::Int16QTy});
 
   case Kinded::Kind::FullyConnectedNodeKind:
-    if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
+    if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
     }
@@ -171,7 +171,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ArgMaxNodeKind:
   case Kinded::Kind::ArgMinNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
                {ArgMaxNode::ResultIdx}) &&
            (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy ||
             NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int32ITy);
@@ -1004,13 +1004,4 @@ Expected<bool> Interpreter::transformPostLowering(
 }
 
 void Interpreter::parseBackendSpecificOptions(
-    const BackendOptions &opts) const {
-  auto interpreterMaxMemOpt =
-      opts.backendSpecificOpts.find("interpreter-memory");
-  if (interpreterMaxMemOpt != opts.backendSpecificOpts.end()) {
-    glow::runtime::flags::InterpreterMemory =
-        std::stoi(interpreterMaxMemOpt->second);
-    llvm::outs() << "Interpreter memory set to "
-                 << glow::runtime::flags::InterpreterMemory << "\n";
-  }
-}
+    const BackendOptions &opts) const {}

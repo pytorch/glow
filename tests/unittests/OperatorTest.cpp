@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+#if defined(_MSC_VER)
+// Enable non-standard math constants (e.g. M_2_SQRTPI, M_SQRT1_2)
+#define _USE_MATH_DEFINES
+#endif
+
 #include "BackendTestUtils.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -1373,6 +1378,7 @@ TEST_P(OperatorTest, FP16RoiAlignWithAlignedCoordinates) {
                                                 ElemKind::Float16Ty, 1E-3);
 }
 
+/// RoiAlign test, for batch_index given in caffe2 format, with batch_size==1
 template <typename DataType>
 static void roiAlignBatchIndexInBoxesTensorTest(PlaceholderBindings &bindings,
                                                 Module &mod, Function &F,
@@ -1421,6 +1427,194 @@ TEST_P(OperatorTest, FP16RoiAlignBatchIndexInBoxesTensor) {
   // difference from reference.
   roiAlignBatchIndexInBoxesTensorTest<float16_t>(bindings_, mod_, *F_, EE_,
                                                  ElemKind::Float16Ty, 1E-2);
+}
+
+/// RoiAlign test, for batch_index given in caffe2 format, with batch_size==4
+template <typename DataType>
+static void roiAlignC2BatchedTest(PlaceholderBindings &bindings, Module &mod,
+                                  Function &F, ExecutionEngine &EE,
+                                  ElemKind ElemTy, float comparisonThreshold) {
+  llvm::SmallVector<dim_t, 4> featureMapDims = {4, 5, 5, 3};
+  llvm::SmallVector<DataType, 300> featureMap = {
+      -1.4997481e-01, -9.8885156e-02, 1.2952483e+00,  -4.4686830e-01,
+      -1.9194591e+00, -1.0772421e+00, -1.1467551e-01, 8.9944112e-01,
+      6.4507586e-01,  -9.8680484e-01, -2.4539863e-01, -1.3373662e+00,
+      6.3659292e-01,  -3.1682998e-01, -8.7653893e-01,
+
+      4.5280015e-01,  2.7663174e-01,  -1.0524951e+00, 1.1813318e+00,
+      -1.2291962e+00, 1.2122868e+00,  -7.5726169e-01, 1.7416600e+00,
+      -1.4438627e+00, 2.2553526e-01,  1.4496186e+00,  -9.8364061e-01,
+      -1.7099962e+00, 1.7165806e+00,  -4.2644852e-01,
+
+      -2.2035122e+00, 1.2187438e+00,  4.5501122e-01,  1.1717483e+00,
+      9.8809980e-02,  -6.9401674e-02, -4.0079719e-01, -5.2090770e-01,
+      9.7559446e-01,  -1.5667720e+00, 5.5907667e-01,  -4.5638707e-01,
+      -2.3643453e-01, -2.2533321e+00, -5.2161014e-01,
+
+      -1.9849734e-01, -1.5915425e+00, -1.2717092e-01, -1.1243403e+00,
+      -2.0563929e+00, -1.5039265e-01, -4.4963720e-01, 4.2345795e-01,
+      -1.8417383e-02, 1.3405696e+00,  1.9051230e-01,  1.0407910e+00,
+      -9.9479568e-01, 6.3413751e-01,  -1.4580569e+00,
+
+      7.1679175e-01,  1.4471674e-01,  -1.3997192e+00, 7.0409644e-01,
+      -1.6881183e+00, -6.0072118e-01, -7.1876746e-01, 4.7649837e-01,
+      -1.1106577e+00, 1.3523364e+00,  -6.4029312e-01, 1.4514278e+00,
+      -1.0234021e+00, -1.7788823e+00, 7.7104000e-03,
+
+      4.2131311e-01,  -1.1457406e+00, -5.8293420e-01, -3.2084238e-02,
+      4.8537293e-01,  3.2275200e-01,  1.2700356e+00,  1.2349664e+00,
+      5.8654165e-01,  -1.2600404e+00, -1.3615701e+00, 2.0268664e-01,
+      4.8697135e-01,  -9.3002540e-01, 1.3607346e+00,
+
+      -1.8294290e-01, -1.5636250e-01, 2.7806088e-01,  -5.8244568e-01,
+      -5.2727741e-01, -7.8948897e-01, 1.4770951e+00,  -5.6237417e-01,
+      9.7146934e-01,  -8.4972686e-01, -3.5488096e-01, -7.3511235e-02,
+      1.6265751e+00,  4.1761816e-01,  -8.4130716e-01,
+
+      2.1895346e-01,  3.3017102e-01,  1.0423416e-01,  2.3304439e-01,
+      -5.4485726e-01, 4.6967003e-01,  2.2024193e+00,  -1.0180294e-02,
+      5.8995700e-01,  3.0450410e-01,  -1.3114309e+00, -8.7699980e-01,
+      1.5916479e-01,  -6.3107949e-01, 3.6086974e-01,
+
+      5.7962316e-01,  -2.0860515e+00, -1.7852426e+00, -9.4240969e-01,
+      -2.5013718e-01, -9.6015137e-01, 1.5564002e-01,  8.7524027e-01,
+      -1.7288256e+00, 8.9928240e-01,  -5.8292085e-01, -2.0578516e+00,
+      9.3291610e-01,  -3.1894284e-01, 1.4940295e-01,
+
+      4.7993332e-01,  8.8685113e-01,  1.5998088e-02,  -3.0376071e-03,
+      -9.1030812e-01, 2.5395685e-01,  -7.3639840e-02, 1.5035777e+00,
+      -1.3367783e+00, 4.4903034e-01,  -1.9161012e-02, 4.5010322e-01,
+      6.9552845e-01,  -2.0336145e-01, -1.4398783e-02,
+
+      -1.1160702e+00, 1.0709391e+00,  8.5241461e-01,  -1.6760592e+00,
+      1.8895254e-01,  7.5980502e-01,  -2.2822763e-01, 2.5674531e-01,
+      8.5795867e-01,  -4.2376343e-02, 3.5849747e-01,  -7.0041668e-01,
+      -1.1749506e+00, -7.6209731e-02, 9.3490142e-01,
+
+      8.4322268e-01,  6.0089475e-01,  1.2778026e+00,  -5.2632529e-01,
+      -7.7977139e-01, 1.3875870e+00,  7.0041299e-01,  1.3700093e+00,
+      -1.3874733e+00, -5.7349408e-01, 6.6391379e-01,  -1.5689260e+00,
+      -1.6703378e-01, 1.0597401e-01,  5.8617592e-01,
+
+      -2.6551807e-01, -1.6452628e+00, 3.4110144e-01,  3.6732164e-01,
+      -7.0698965e-01, 4.8472685e-01,  5.7356831e-02,  -1.3607574e+00,
+      -1.5073760e-01, -7.4872303e-01, -9.2906094e-01, 9.0447372e-01,
+      -4.5557413e-01, 2.2286782e-01,  1.0092977e+00,
+
+      2.8225061e-01,  -1.3488407e+00, 1.5358961e+00,  -9.0286934e-01,
+      8.1959856e-01,  -5.3633952e-01, 8.8325459e-01,  4.3913189e-01,
+      1.8962466e+00,  1.0499959e-01,  -1.7051783e+00, 1.1462390e+00,
+      -1.9076254e+00, 7.9921043e-01,  1.8769097e-01,
+
+      8.6285615e-01,  -7.5376606e-01, -2.7797452e-01, 8.2129729e-01,
+      -1.1357613e+00, -1.0534587e+00, -1.6342834e+00, 1.5571175e+00,
+      -2.9357672e-02, 5.0357723e-01,  1.7594602e+00,  -4.1023266e-01,
+      -3.8507235e-01, -1.4152279e+00, 1.3019496e+00,
+
+      5.5732393e-01,  1.6657623e+00,  -6.0697760e-02, 1.1874427e+00,
+      1.5112163e+00,  4.2789158e-01,  -4.8342901e-01, 1.0879853e+00,
+      2.5128168e-01,  -7.4815375e-01, -7.0994526e-01, -8.1975794e-01,
+      2.4763657e-01,  5.3745079e-01,  -7.0532227e-01,
+
+      1.9053514e-01,  -3.1138790e-01, -1.8849430e+00, -7.2135782e-01,
+      -2.2610760e-01, 1.1200874e+00,  5.8765519e-01,  1.7486675e-02,
+      -1.8689735e+00, 1.0521593e+00,  1.0392075e+00,  2.2325387e+00,
+      7.4370694e-01,  -4.3933296e-01, -1.8680326e+00,
+
+      7.8669429e-01,  -1.7130607e+00, -1.8260387e+00, -1.6219904e+00,
+      2.6793033e-01,  5.6496286e-01,  5.2848613e-01,  1.0625128e-01,
+      3.5053259e-01,  1.9303731e+00,  -1.1183808e+00, -1.9174458e+00,
+      2.2270663e-01,  -1.0492816e+00, -2.3991664e-01,
+
+      5.4555202e-01,  -1.1328123e+00, -4.7008261e-01, 8.3088994e-02,
+      8.6603612e-01,  5.3655165e-01,  5.4011714e-01,  2.0690429e+00,
+      -1.6191018e-01, 9.0212280e-01,  -9.0078294e-01, -5.3107500e-01,
+      -5.6809604e-02, 1.3337183e+00,  6.3540235e-02,
+
+      5.9740990e-01,  3.1837901e-01,  -8.6937255e-01, -1.4723153e-01,
+      8.5274154e-01,  4.3450969e-01,  -6.7253810e-01, 3.8070625e-01,
+      -1.4946671e+00, -4.9999154e-01, 2.2797520e+00,  3.7723225e-01,
+      5.4892421e-01,  5.7596415e-01,  1.2112036e+00};
+
+  llvm::SmallVector<dim_t, 2> boxesDims = {4, 5};
+  llvm::SmallVector<DataType, 20> boxes = {
+      2.0000000e+00, 2.3108411e+00, 3.2493637e+00, 3.3715181e+00,
+      4.5002527e+00, 1.0000000e+00, 3.2116971e+00, 9.6868110e-01,
+      4.9558969e+00, 3.4516301e+00, 0.0000000e+00, 2.7448869e-01,
+      3.3287115e+00, 3.6297052e+00, 4.4592605e+00, 1.0000000e+00,
+      1.2294500e+00, 1.8630254e+00, 2.9256778e+00, 3.1924551e+00};
+
+  llvm::SmallVector<dim_t, 1> batchIndicesDims = {4};
+  llvm::SmallVector<int64_t, 4> batchIndices = {2, 1, 0, 1};
+
+  llvm::SmallVector<DataType, 12> expectedValues = {
+      -6.5894896e-01, 5.6539643e-01,  1.0041733e+00,
+      -9.4539058e-01, 2.0993830e-01,  9.9824858e-01,
+      -1.1638527e+00, -8.7358490e-02, 9.6341258e-01,
+
+      -8.9801103e-02, 3.5700285e-01,  1.1669571e+00,
+      -4.6619377e-01, -5.3864054e-02, 1.1835206e+00,
+      -7.6861465e-01, -3.8029239e-01, 1.1398559e+00,
+
+      3.4802374e-01,  9.4746768e-02,  1.2450449e+00,
+      -6.2197246e-02, -3.1529313e-01, 1.2807325e+00,
+      -4.0000397e-01, -6.2870646e-01, 1.2343520e+00,
+
+      1.2194232e-01,  -4.8879901e-01, -2.1927929e-01,
+      -2.5108352e-02, -9.6720949e-02, -6.6829696e-02,
+      -5.9729241e-02, 2.5984848e-01,  9.4225824e-02,
+
+      -7.2876096e-02, -4.0418655e-01, -1.7393507e-01,
+      -2.1393849e-01, -2.3455608e-01, -2.4073394e-01,
+      -2.2880568e-01, -7.6615483e-02, -2.3102391e-01,
+
+      -2.6769453e-01, -3.1957406e-01, -1.2859085e-01,
+      -4.0276864e-01, -3.7239122e-01, -4.1463819e-01,
+      -3.9788216e-01, -4.1307950e-01, -5.5627370e-01,
+
+      9.1947585e-02,  -2.7115697e-01, 2.9882264e-01,
+      1.2106247e-01,  -8.3870202e-01, 8.7205000e-02,
+      1.5017739e-01,  -1.4062470e+00, -1.2441259e-01,
+
+      3.5570449e-01,  -1.2669888e-01, -1.9961390e-01,
+      4.9875557e-01,  -6.5927219e-01, 1.0402098e-01,
+      6.4180654e-01,  -1.1918454e+00, 4.0765578e-01,
+
+      4.3482316e-01,  5.3905103e-02,  -5.4277897e-01,
+      7.2550941e-01,  -4.4221759e-01, 1.2174799e-01,
+      1.0161958e+00,  -9.3834019e-01, 7.8627473e-01,
+
+      1.4355460e-01,  -6.0647041e-01, -2.5467190e-01,
+      -2.4918951e-03, -2.5169450e-01, -1.3898802e-01,
+      -1.4853841e-01, 1.0308146e-01,  -2.3304094e-02,
+
+      -5.3489491e-02, -4.3918055e-01, -1.2783936e-01,
+      -1.9354768e-01, -3.0685222e-01, -2.3140387e-01,
+      -3.3360592e-01, -1.7452389e-01, -3.3496842e-01,
+
+      -2.3242901e-01, -2.7417648e-01, -4.4064280e-03,
+      -3.6451423e-01, -3.5603085e-01, -3.0842513e-01,
+      -4.9659950e-01, -4.3788522e-01, -6.1244386e-01};
+
+  testRoiAlign<DataType>(
+      bindings, mod, F, EE, ElemTy, featureMapDims, featureMap, boxesDims,
+      boxes, batchIndicesDims, batchIndices, PoolingMode::AVG, 3, 3, 2, 0.0625,
+      false, expectedValues, comparisonThreshold, /*rotated*/ false);
+}
+
+TEST_P(OperatorTest, RoiAlignC2Batched) {
+  CHECK_IF_ENABLED();
+  roiAlignC2BatchedTest<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy,
+                               1E-4);
+}
+
+TEST_P(OperatorTest, FP16RoiAlignC2Batched) {
+  CHECK_IF_ENABLED();
+  // 1E-2 threshold is required because fp16 occasionally causes sampling
+  // points to be shifted due to rounding which results in large maximum
+  // difference from reference.
+  roiAlignC2BatchedTest<float16_t>(bindings_, mod_, *F_, EE_,
+                                   ElemKind::Float16Ty, 1E-2);
 }
 
 template <typename DataType>
@@ -1552,18 +1746,18 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
       -0.22815527, -2.4161322,  -1.8008438,  -0.92949533, 0.19269551};
 
   llvm::SmallVector<dim_t, 2> imInfoDims = {4, 3};
-  llvm::SmallVector<DataType, 12> imInfo = {159., 159., 1., 328., 328., 1.,
-                                            466., 466., 1., 414., 414., 1.};
+  llvm::SmallVector<DataType, 12> imInfo = {159., 159., 1.,  328., 328., 1.,
+                                            466., 466., 0.8, 414., 414., 0.625};
 
-  std::vector<float> weights = {1.0, 1.0, 1.0, 1.0};
+  std::vector<float> weights = {10.0, 10.0, 5.0, 5.0};
 
   std::vector<DataType> expectedValues = {
-      0.0000,   0.0000,   158.0000, 44.4404,  92.0877,  0.0000,   140.0215,
-      93.9451,  51.3913,  0.0000,   66.7658,  158.0000, 0.0000,   66.0093,
-      158.0000, 75.5617,  0.0000,   327.0000, 71.3890,  327.0000, 0.7150,
-      0.0000,   31.3340,  70.6096,  219.7409, 369.7931, 322.4225, 373.4951,
-      0.0000,   344.4728, 413.0000, 347.5388, 337.9926, 114.3067, 413.0000,
-      173.1735, 0.0000,   0.0000,   0.0000,   83.6907};
+      9.1345,   11.8575,  87.1274,  106.2058, 29.3998,  0.0000,   83.2963,
+      117.0268, 87.7207,  24.0571,  118.3636, 102.2456, 76.1143,  52.8231,
+      134.1416, 89.4287,  3.7658,   122.3617, 76.7646,  273.6816, 12.8093,
+      67.3427,  68.6289,  233.5658, 35.4638,  355.5252, 243.5137, 367.1413,
+      0.0000,   353.2900, 275.5705, 364.5733, 231.3346, 135.5961, 413.7500,
+      206.4955, 190.8902, 122.1084, 350.9171, 199.2337};
 
   auto *ROIS = mod.createPlaceholder(ElemTy, roisDims, "rois", false);
   bindings.allocate(ROIS)->getHandle<DataType>() = rois;
@@ -1583,6 +1777,10 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
   auto *savePlaceholder = save->getPlaceholder();
   bindings.allocate(savePlaceholder);
 
+  auto *saveSplits = F.createSave("save_splits", BBTN->getRoiBatchSplits());
+  auto *saveSplitsPlaceholder = saveSplits->getPlaceholder();
+  bindings.allocate(saveSplitsPlaceholder);
+
   EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
@@ -1595,20 +1793,27 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
         std::max(maxDiff, std::abs((float)(saveH.raw(i) - expectedValues[i])));
   }
   VLOG(2) << "Max diff: " << maxDiff;
+
+  std::vector<DataType> expectedSplitsValues = {2, 1, 0, 2};
+  auto saveSplitsH = bindings.get(saveSplitsPlaceholder)->getHandle<DataType>();
+  EXPECT_EQ(saveSplitsH.size(), expectedSplitsValues.size());
+  for (dim_t i = 0; i < expectedSplitsValues.size(); i++) {
+    EXPECT_EQ(saveSplitsH.raw(i), expectedSplitsValues[i]);
+  }
 }
 
 TEST_P(OperatorTest, BBoxTransform_Float) {
   CHECK_IF_ENABLED();
   testBBoxTransform<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy,
-                           /* applyScale */ false,
-                           /* legacyPlusOne */ true, /* absError */ 0.1);
+                           /* applyScale */ true,
+                           /* legacyPlusOne */ false, /* absError */ 0.1);
 }
 
 TEST_P(OperatorTest, BBoxTransform_Float16) {
   CHECK_IF_ENABLED();
   testBBoxTransform<float16_t>(bindings_, mod_, *F_, EE_, ElemKind::Float16Ty,
-                               /* applyScale */ false,
-                               /* legacyPlusOne */ true, /* absError */ 1.0);
+                               /* applyScale */ true,
+                               /* legacyPlusOne */ false, /* absError */ 1.0);
 }
 
 template <typename DataType>
@@ -4336,6 +4541,11 @@ TEST_P(OperatorTest, FloatArgMaxKeepDim) {
   testArgMaxKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
+TEST_P(OperatorTest, Float16ArgMaxKeepDim) {
+  CHECK_IF_ENABLED();
+  testArgMaxKeepDim<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
 TEST_P(OperatorTest, QuantizedArgMaxKeepDim) {
   CHECK_IF_ENABLED();
   testArgMaxKeepDim<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
@@ -4375,6 +4585,11 @@ static void testArgMaxNoKeepDim(glow::PlaceholderBindings &bindings,
 TEST_P(OperatorTest, FloatArgMaxNoKeepDim) {
   CHECK_IF_ENABLED();
   testArgMaxNoKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, Float16ArgMaxNoKeepDim) {
+  CHECK_IF_ENABLED();
+  testArgMaxNoKeepDim<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, QuantizedArgMaxNoKeepDim) {
@@ -10674,6 +10889,107 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
   EXPECT_TRUE(result.isEqual(result1));
 }
 
+TEST_P(OperatorTest, FP16BatchNorm0D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](std::string name, std::vector<float> vals) {
+    dim_t sz = vals.size();
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  dim_t N = 2, C = 2;
+  std::vector<dim_t> dims = {N, C};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {-0.0892, 0.6268, 1.3740,
+                                                       2.4480};
+  auto *bias = constFunc("batchnorm_bias", {0.7451, 0.7946});
+  auto *scale = constFunc("batchnorm_weights", {0.6815, 0.0039});
+  auto *mean = constFunc("running_mean", {1.0730, -7.3854});
+  auto *variance = constFunc("running_var", {1.8200, 4.6300});
+  unsigned_t channelIdx = 1;
+  float epsilon = 1e-5;
+  float momentum = 0.1;
+
+  auto *op = F_->createBatchNormalization("fp16_batch_norm1d", input->getType(),
+                                          input, bias, scale, mean, variance,
+                                          channelIdx, epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor outTensor(ElemKind::Float16Ty, dims);
+  outTensor.getHandle<float16_t>() = {0.1580, 0.8091, 0.8972, 0.8124};
+
+  int numElements = N * C;
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  for (size_t i = 0; i < numElements; i++) {
+    auto resVal = float(result.raw(i));
+    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
+    EXPECT_NEAR(resVal, expectedVal, 0.005);
+  }
+}
+
+TEST_P(OperatorTest, FP16BatchNorm1D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](std::string name, std::vector<float> vals) {
+    dim_t sz = vals.size();
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  dim_t N = 2, C = 2, W = 3;
+  std::vector<dim_t> dims = {N, C, W};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      -0.0892, 0.6268, 1.3740,  2.4480, -1.4285, 0.0565,
+      -0.0266, 0.4494, -0.3858, 1.0044, 0.8844,  0.5071};
+  auto *bias = constFunc("batchnorm_bias", {0.7451, 0.7946});
+  auto *scale = constFunc("batchnorm_weights", {0.6815, 0.0039});
+  auto *mean = constFunc("running_mean", {1.0730, -7.3854});
+  auto *variance = constFunc("running_var", {1.8200, 4.6300});
+  unsigned_t channelIdx = 1;
+  float epsilon = 1e-5;
+  float momentum = 0.1;
+
+  auto *op = F_->createBatchNormalization("fp16_batch_norm1d", input->getType(),
+                                          input, bias, scale, mean, variance,
+                                          channelIdx, epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor outTensor(ElemKind::Float16Ty, dims);
+  outTensor.getHandle<float16_t>() = {0.1580, 0.5197, 0.8972, 0.8124,
+                                      0.8054, 0.8081, 0.1896, 0.4301,
+                                      0.0082, 0.8098, 0.8096, 0.8089};
+
+  int numElements = N * C * W;
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  for (size_t i = 0; i < numElements; i++) {
+    auto resVal = float(result.raw(i));
+    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
+    EXPECT_NEAR(resVal, expectedVal, 0.005);
+  }
+}
+
 /// 2D Batch Normalization in Float16
 TEST_P(OperatorTest, FP16BatchNorm2D) {
   CHECK_IF_ENABLED();
@@ -13763,6 +14079,12 @@ TEST_P(OperatorTest, Embedding_Float16) {
 TEST_P(OperatorTest, Embedding_with_PadIdx) {
   CHECK_IF_ENABLED();
   testEmbedding<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001, 2);
+}
+
+TEST_P(OperatorTest, Embedding_with_PadIdx_Float16) {
+  CHECK_IF_ENABLED();
+  testEmbedding<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                           0.0001, 2);
 }
 
 /// Test EmbeddingBag with an N-dimension embedding table.
