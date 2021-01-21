@@ -427,6 +427,7 @@ protected:
   LOAD_UNARY_OP(Neg)
   LOAD_UNARY_OP(Floor)
   LOAD_UNARY_OP(Ceil)
+  LOAD_UNARY_OP(Truncate)
   LOAD_UNARY_OP(Log)
 
   Error loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
