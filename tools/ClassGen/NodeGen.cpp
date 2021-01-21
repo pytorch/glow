@@ -518,6 +518,13 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Performs an element-wise ROUND(x) of the Input operand.");
 
+  BB.newNode("Truncate")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring(
+          "Performs an element-wise TRUNCATE(x) of the Input operand.");
+
   BB.newNode("Sqrt")
       .addInput("Input")
       .addResultFromCtorArg()

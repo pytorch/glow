@@ -8442,6 +8442,54 @@ TEST_P(OperatorTest, Round_Int8QTy) {
   EXPECT_EQ(outH.raw(4), 10);
 }
 
+/// Helper to test Truncate using floating point \p elemKind.
+template <typename ElemType>
+static void testTruncateFloat(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE, ElemKind elemKind) {
+  auto *inp = mod.createPlaceholder(elemKind, {3}, "inp", false);
+  bindings.allocate(inp)->getHandle<ElemType>() = {-0.2, 1.0, 1.99};
+  auto *node = F->createTruncate("truncate", inp);
+  auto *save = F->createSave("save", node);
+  auto *outT = bindings.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto outH = outT->getHandle<ElemType>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_FLOAT_EQ(outH.raw(0), 0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 1.0);
+}
+
+TEST_P(OperatorTest, Truncate_FloatTy) {
+  CHECK_IF_ENABLED();
+  testTruncateFloat<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, Truncate_Float16Ty) {
+  CHECK_IF_ENABLED();
+  testTruncateFloat<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+TEST_P(OperatorTest, Truncate_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {5}, 0.5, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-3, -2, 0, 1, 2};
+  auto *node = F_->createTruncate("truncate", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 5);
+  EXPECT_EQ(outH.raw(0), -2);
+  EXPECT_EQ(outH.raw(1), -2);
+  EXPECT_EQ(outH.raw(2), 0);
+  EXPECT_EQ(outH.raw(3), 0);
+  EXPECT_EQ(outH.raw(4), 2);
+}
+
 TEST_P(OperatorTest, Sqrt_FloatTy) {
   CHECK_IF_ENABLED();
   auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);

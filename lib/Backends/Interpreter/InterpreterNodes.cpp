@@ -3294,6 +3294,12 @@ void BoundInterpreterFunction::fwdElementCeilInst(const ElementCeilInst *I) {
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
 }
 
+void BoundInterpreterFunction::fwdElementTruncateInst(
+    const ElementTruncateInst *I) {
+  auto func = [](float x) -> float { return std::trunc(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
 void BoundInterpreterFunction::fwdElementRoundInst(const ElementRoundInst *I) {
   // Rounding mode required by ONNX, Numpy, TensorFlow is round to even which
   // rounds to nearest even integer those values with fractional part 0.5.
