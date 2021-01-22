@@ -110,6 +110,25 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
 
 llvm::StringRef LLVMIRGen::getBundleName() const { return bundleName_; }
 
+std::vector<std::string> LLVMIRGen::getBundleObjects() const {
+  // Default list of object names.
+  auto bundleObjects = bundleObjects_;
+  // Add object names enforced from command line interface.
+  for (auto bundleObject : bundleObjectsOpt) {
+    bundleObjects.push_back(bundleObject);
+  }
+  return bundleObjects;
+}
+
+void LLVMIRGen::addBundleObject(llvm::StringRef objectName) {
+  // Add bundle object if not already added.
+  auto it =
+      std::find(bundleObjects_.begin(), bundleObjects_.end(), objectName.str());
+  if (it == bundleObjects_.end()) {
+    bundleObjects_.push_back(objectName.str());
+  }
+}
+
 void LLVMIRGen::setBundleName(const std::string &name) {
   bundleName_ = name.empty() ? "bundle" : legalizeName(name);
 }

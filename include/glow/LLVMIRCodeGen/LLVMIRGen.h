@@ -132,6 +132,9 @@ protected:
   AllocationsInfo &allocationsInfo_;
   /// Name of the bundle.
   std::string bundleName_;
+  /// Vector with names of the additional external objects which will be added
+  /// to the bundle. The objects are assumed registered in BundleSaver.
+  std::vector<std::string> bundleObjects_;
   /// Name of the main entry.
   std::string mainEntryName_;
   /// Instruction number for the module.
@@ -374,6 +377,11 @@ public:
   virtual AllocationsInfo &getAllocationsInfo() { return allocationsInfo_; }
   /// \returns the name of the bundle, to be used for filename when saving.
   llvm::StringRef getBundleName() const;
+  /// \returns the names of external objects which will be added to the bundle.
+  std::vector<std::string> getBundleObjects() const;
+  /// Add a bundle object \p objectName to the list of external objects which
+  /// will be added to the bundle.
+  void addBundleObject(llvm::StringRef objectName);
   /// Set the name of the bundle (name is automatically legalized).
   void setBundleName(const std::string &name);
   /// \returns the name of the main entry point.

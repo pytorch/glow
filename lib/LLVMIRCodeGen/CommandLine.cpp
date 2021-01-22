@@ -108,3 +108,8 @@ llvm::cl::opt<bool> bundleAPIVerbose(
     "bundle-api-verbose",
     llvm::cl::desc("Print more details in the bundle API header file"),
     llvm::cl::init(false), llvm::cl::cat(bundleSaverCat));
+
+llvm::cl::list<std::string> bundleObjectsOpt(
+    "bundle-objects",
+    llvm::cl::desc("Option to add other external object files to the bundle"),
+    llvm::cl::CommaSeparated, llvm::cl::ZeroOrMore);
