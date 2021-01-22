@@ -3089,6 +3089,10 @@ void BoundInterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
     DIV_LOOP(int64_t);
     return;
   }
+  case ElemKind::Int32ITy: {
+    DIV_LOOP(int32_t);
+    return;
+  }
   case ElemKind::FloatTy: {
     DIV_LOOP(float);
     return;

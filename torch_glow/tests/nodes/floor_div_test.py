@@ -22,19 +22,6 @@ class SimpleFloorDivideModule(torch.nn.Module):
 
 
 class TestFloorDiv(unittest.TestCase):
-    @unittest.skip(
-        reason="Disabled while PyTorch floor_divide is fixed: github.com/pytorch/pytorch/issues/43874"
-    )
-    def test_floor_div_basic(self):
-        """Basic test of the PyTorch div Node on Glow."""
-
-        def test_f(a, b):
-            return (a + a).floor_divide(1.9)
-
-        x = torch.randn(4)
-        y = torch.randn(4)
-        utils.compare_tracing_methods(test_f, x, y, fusible_ops={"aten::floor_divide"})
-
     @parameterized.expand(
         [
             (
@@ -56,6 +43,12 @@ class TestFloorDiv(unittest.TestCase):
                 torch.tensor(3.9),
             ),
             (
+                "negative_float",
+                SimpleFloorDivideModule(),
+                torch.tensor([-4.0]),
+                torch.tensor([3.0]),
+            ),
+            (
                 "positive_broadcast",
                 SimpleFloorDivideModule(),
                 torch.Tensor(8, 3, 4, 2).random_(0, 5),
@@ -72,6 +65,18 @@ class TestFloorDiv(unittest.TestCase):
                 SimpleFloorDivideModule(),
                 torch.Tensor(4, 2).random_(0, 5),
                 torch.Tensor(8, 3, 4, 2).random_(1, 5),
+            ),
+            (
+                "positive_int",
+                SimpleFloorDivideModule(),
+                torch.tensor([5]),
+                torch.tensor([4]),
+            ),
+            (
+                "negative_int",
+                SimpleFloorDivideModule(),
+                torch.tensor([-5]),
+                torch.tensor([4]),
             ),
         ]
     )
