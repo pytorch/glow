@@ -17,9 +17,3 @@ user can choose to archive them with the bundle object with the following comman
 
 The names of the object files stored in this directory must have the *.o* extension
 and their names (without extension) must qualify to valid C identifiers.
-
-The file *test.o* was obtained by compiling the following source code on x86_64 and
-is used for testing:
-```
-const char *testMsg = "This is extra bundle object file for testing!";
-```
