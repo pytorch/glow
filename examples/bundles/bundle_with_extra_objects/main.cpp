@@ -26,6 +26,4 @@ extern const char *testMsg;
 }
 #endif
 
-int main() {
-  printf("%s", testMsg);
-}
+int main() { printf("%s", testMsg); }
