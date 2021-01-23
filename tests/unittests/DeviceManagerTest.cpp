@@ -907,6 +907,8 @@ public:
 };
 
 TEST_P(DeviceManagerTest, CanHandleDeviceResidentTensors) {
+  CHECK_IF_ENABLED();
+
   MockDM mockDM;
 
   auto module = makeBasicModule();
