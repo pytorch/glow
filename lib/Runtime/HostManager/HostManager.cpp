@@ -117,13 +117,6 @@ HostManager::HostManager(
     : config_(hostConfig),
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
-#ifdef FACEBOOK_INTERNAL
-  LOG(INFO) << "Starting host manager with deviceConfigs: "
-            << deviceConfigs.size();
-  for (auto &config : deviceConfigs) {
-    LOG(INFO) << "Backend " << config->deviceID << ": " << config->backendName;
-  }
-#endif
   auto reporters = ErrorReporterRegistry::ErrorReporters();
 
   auto err = init(std::move(deviceConfigs));
