@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "glow/Flags/Flags.h"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -236,6 +237,9 @@ public:
     const LengthsMode LM = param.numIndicesPerBatch == 1
                                ? LengthsMode::AllOne
                                : LengthsMode::Variable;
+    if (LM == LengthsMode::AllOne) {
+      glow::nnpi::flags::SpecializeAllOneSLS = true;
+    }
     Node *R = nullptr;
     if (param.slsKind == QUANTIZED_UNWEIGHTED) {
       R = fn->createFusedRowwiseQuantizedSparseLengthsSum(
