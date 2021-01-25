@@ -38,9 +38,8 @@ function(glow_serialize)
   set(multiValueArgs INP_FILES)
   cmake_parse_arguments("ARG" "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
-  if (NOT ARG_INP_FILES)
-    message(FATAL_ERROR "INP_FILES argument is mandatory!")
-  endif()
+  # Check function parameters.
+  # We do not check "ARG_INP_FILES" since it is allowed to be empty.
 
   if (NOT ARG_OUT_DIR)
     message(FATAL_ERROR "OUT_DIR argument is mandatory!")
