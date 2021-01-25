@@ -457,11 +457,11 @@ void BundleSaver::emitSymbolTable() {
                            irgen_->getBundleName() + "SymbolTable");
 }
 
-void BundleSaver::addBundleObjects(
+void BundleSaver::createBundleArchive(
     llvm::StringRef bundlePath, const std::vector<std::string> &bundleObjects) {
 
   // If we do not have extra object files then return early.
-  if (!bundleObjects.size()) {
+  if (bundleObjects.empty()) {
     return;
   }
 
@@ -590,8 +590,8 @@ void BundleSaver::produceBundle() {
     PM.run(M);
   }
   outputFile.close();
-  // Add other objects to bundle.
-  addBundleObjects(fileName, irgen_->getBundleObjects());
+  // Create bundle archive with additional object files.
+  createBundleArchive(fileName, irgen_->getBundleObjects());
   // Output weights.
   saveWeights(bundleWeightsBinOut);
   // Header file.

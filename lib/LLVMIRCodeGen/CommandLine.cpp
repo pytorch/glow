@@ -111,5 +111,7 @@ llvm::cl::opt<bool> bundleAPIVerbose(
 
 llvm::cl::list<std::string> bundleObjectsOpt(
     "bundle-objects",
-    llvm::cl::desc("Option to add other external object files to the bundle"),
+    llvm::cl::desc("Comma separated list of names of other object files which "
+                   "should be archived into the bundle. The object files are "
+                   "pre registered during Glow build. "),
     llvm::cl::CommaSeparated, llvm::cl::ZeroOrMore);
