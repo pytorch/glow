@@ -194,8 +194,8 @@ void registerGlowOp(const c10::Symbol &symbol) {
 }
 
 void registerGlowFusionPass(std::function<bool()> enablePassFn) {
-  torch::jit::RegisterPass pass([enablePassFn = std::move(enablePassFn)](
-                                    std::shared_ptr<torch::jit::Graph> &g) {
+  torch::jit::registerPostPass([enablePassFn = std::move(enablePassFn)](
+                                   std::shared_ptr<torch::jit::Graph> &g) {
     if (enablePassFn()) {
       auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
       glow::glowCustomFuse(g, settings, getGlowSymbol());
