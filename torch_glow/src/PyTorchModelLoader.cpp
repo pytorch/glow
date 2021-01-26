@@ -4562,12 +4562,15 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(dilation == 1, "Dilation value must be equal to 1, "
                                    "maxpool dilation not yet supported.");
 
-  // Glow doesn't support maxpool ceil mode.
   bool ceilMode;
   ASSIGN_VALUE_OR_RETURN_ERR(ceilMode, iValToBool(getGlowIValueForValue(
                                            inputs[MaxPoolInputs::ceil_mode])));
-  RETURN_ERR_IF_NOT(ceilMode == false,
-                    "ceilMode must be scalar with false value.");
+  // For ceil mode, we add pads at the end of H and W,
+  // to make the output size is effectively rounded up.
+  if (ceilMode) {
+    pads[2] += strides[0] - 1;
+    pads[3] += strides[1] - 1;
+  }
 
   glow::MaxPoolNode *mp =
       F_.createMaxPool("maxpool2d", input, kernels, strides, pads);
