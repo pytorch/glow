@@ -110,8 +110,7 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
     }
 
     if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
-      auto *A = D->getAlloc();
-      assert(symbolTable.count(std::string(A->getName())) &&
+      assert(symbolTable.count(std::string(D->getAlloc()->getName())) &&
              "Invalid deallocation!");
       continue;
     }
