@@ -30,23 +30,36 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-static llvm::cl::OptionCategory BackendUtilsCat("Glow Backend Utils Options");
-
-static llvm::cl::opt<bool> reuseActivationsMemory(
-    "reuse-activation-memory-allocations",
-    llvm::cl::desc("Should activation memory allocations be reused"),
-    llvm::cl::init(true), llvm::cl::cat(BackendUtilsCat));
-
 namespace {
 /// Allocate space for the activations of \p instrs using \p allocator and store
 /// the resultant symbols in \p symbolTable.
 void allocateActivations(const glow::IRFunction::InstListTy &instrs,
                          MemoryAllocator &allocator,
                          glow::runtime::SymbolTableTy &symbolTable) {
+
+  // Get allocation/deallocation sequence.
+  std::list<Allocation> allocList;
   for (const auto &I : instrs) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      size_t addr = allocator.allocate(numBytes, A);
+      allocList.emplace_back(A, /* alloc */ true, numBytes);
+      continue;
+    }
+    if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
+      auto *A = D->getAlloc();
+      allocList.emplace_back(A, /* alloc */ false, 0);
+      continue;
+    }
+  }
+
+  // Allocate all segments at once for better allocation efficiency.
+  allocator.allocateAll(allocList);
+
+  // Map addresses of allocated segments.
+  for (const auto &I : instrs) {
+    if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
+      auto numBytes = I.getSizeInBytes();
+      size_t addr = allocator.getAddress(A);
       assert(!symbolTable.count(std::string(A->getName())) &&
              "Allocation already made!");
       runtime::RuntimeSymbolInfo symbol;
@@ -100,9 +113,6 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
       auto *A = D->getAlloc();
       assert(symbolTable.count(std::string(A->getName())) &&
              "Invalid deallocation!");
-      if (reuseActivationsMemory) {
-        allocator.deallocate(A);
-      }
       continue;
     }
   }
