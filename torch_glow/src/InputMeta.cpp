@@ -32,6 +32,9 @@ std::string InputMeta::print() const {
     oss << dims[i];
   }
   oss << "]";
+  if (c10::isQIntType(type)) {
+    oss << " scale: " << scale << " offset: " << offset;
+  }
   return oss.str();
 }
 
@@ -39,6 +42,10 @@ size_t InputMeta::hash() const {
   size_t h = static_cast<size_t>(type);
   for (const auto &d : dims) {
     h = folly::hash::hash_combine(h, d);
+  }
+  if (c10::isQIntType(type)) {
+    h = folly::hash::hash_combine(h, scale);
+    h = folly::hash::hash_combine(h, offset);
   }
   return h;
 }
@@ -99,8 +106,17 @@ inputMetaStackFromStack(const c10::ArrayRef<c10::IValue> &inputs,
         strFormat("Cannot create InputMeta from IValue of type %s",
                   input.tagKind().c_str()));
     const auto tensorInput = input.toTensor();
-    InputMeta meta(tensorInput.scalar_type(), tensorInput.sizes());
-    metaStack.inputMetas.push_back(std::move(meta));
+    if (tensorInput.is_quantized()) {
+      RETURN_ERR_IF_NOT(tensorInput.qscheme() == at::kPerTensorAffine ||
+                            tensorInput.qscheme() == at::kPerTensorSymmetric,
+                        "Expect per_tensor quantization scheme");
+      metaStack.inputMetas.emplace_back(
+          tensorInput.scalar_type(), tensorInput.sizes(), tensorInput.q_scale(),
+          tensorInput.q_zero_point());
+    } else {
+      metaStack.inputMetas.emplace_back(tensorInput.scalar_type(),
+                                        tensorInput.sizes());
+    }
   }
   return metaStack;
 }
@@ -138,7 +154,9 @@ getInputMetas(const std::vector<c10::intrusive_ptr<InputSpec>> &inputSet) {
     for (auto d : inputSpec->dims) {
       dims.emplace_back(static_cast<glow::sdim_t>(d));
     }
-    metaStack.inputMetas.emplace_back(inputSpec->elem_type, std::move(dims));
+
+    metaStack.inputMetas.emplace_back(inputSpec->elem_type, std::move(dims),
+                                      inputSpec->scale, inputSpec->offset);
   }
   return metaStack;
 }
