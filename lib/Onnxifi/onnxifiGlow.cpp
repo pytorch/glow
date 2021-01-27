@@ -75,6 +75,15 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   const bool withCPU = DeviceManager::numDevices("CPU") > 0;
   const bool withHabana = DeviceManager::numDevices("Habana") > 0;
   const bool withNNPI = DeviceManager::numDevices("NNPI") > 0;
+#ifdef GLOW_EXTRABACKEND
+#define V(name) with##name
+#define makeVar(name) V(name)
+
+#define Q(name) #name
+#define makeQuote(name) Q(name)
+  const bool makeVar(GLOW_EXTRABACKEND) =
+      DeviceManager::numDevices(makeQuote(GLOW_EXTRABACKEND)) > 0;
+#endif
 
   // Only return quantization backend if GLOW_DUMP_PROFILE.
   if (getenv("GLOW_DUMP_PROFILE")) {
@@ -104,6 +113,14 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
         backendName = "NNPI";
       } else if (withHabana) {
         backendName = "Habana";
+#ifdef GLOW_EXTRABACKEND
+      } else if (makeVar(GLOW_EXTRABACKEND)) {
+        backendName = makeQuote(GLOW_EXTRABACKEND);
+#undef V
+#undef makeVar
+#undef Q
+#undef makeQuote
+#endif
       } else if (withCPU) {
         backendName = "CPU";
       } else {

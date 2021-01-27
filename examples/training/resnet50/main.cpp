@@ -255,8 +255,9 @@ int main(int argc, char **argv) {
     idx++;
   }
 
-  loadImagesAndPreprocess(filenames, &imagesT, ImageNormalizationMode::k0to1,
-                          ImageChannelOrder::BGR, ImageLayout::NCHW);
+  loadImagesAndPreprocess({filenames}, {&imagesT},
+                          {ImageNormalizationMode::k0to1},
+                          {ImageChannelOrder::BGR}, {ImageLayout::NCHW});
 
   auto LH = labelsT.getHandle<int64_t>();
   for (idx = 0; idx < miniBatchSize; ++idx) {

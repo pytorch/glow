@@ -356,6 +356,24 @@ inline std::pair<dim_t, dim_t> flattenCdr(llvm::ArrayRef<dim_t> dims,
   return {first, rest};
 }
 
+/// Collapse a tensor shape into two sizes: the first will be
+/// size of n without the axis dimension, and second will be
+/// size of the axis dimension. For example, ([7, 3, 4, 2], 1) -> [56, 3]
+inline std::pair<dim_t, dim_t> collapseShape(llvm::ArrayRef<dim_t> dims,
+                                             unsigned_t n = 1) {
+  assert(1 <= n && n <= dims.size());
+  size_t first = 1;
+  size_t second = 1;
+  for (unsigned_t i = 0; i < dims.size(); i++) {
+    if (i == n) {
+      second = dims[i];
+    } else {
+      first *= dims[i];
+    }
+  }
+  return {first, second};
+}
+
 inline bool operator==(const ShapeNHWC &LHS, const ShapeNHWC &RHS) {
   return LHS.equals(RHS);
 }
@@ -425,6 +443,11 @@ inline bool isQuantizedElemKind(ElemKind e) {
 inline bool isFloatElemKind(ElemKind e) {
   return e == ElemKind::FloatTy || e == ElemKind::Float16Ty ||
          e == ElemKind::BFloat16Ty;
+}
+
+/// \returns whether \p e is a non-quantized integer ElemKind.
+inline bool isNonQuantizedIntElemKind(ElemKind e) {
+  return e == ElemKind::Int32ITy || e == ElemKind::Int64ITy;
 }
 
 /// \returns whether \p e is a fused quantized ElemKind.
@@ -689,6 +712,7 @@ struct Type final {
       return std::is_same<ElemTy, bool>::value;
     }
     LOG(FATAL) << "Invalid type: " << getElementName(Ty).str();
+    return false; // Get rid of compilation warnings.
   }
 
   /// \returns true if the type of this Tensor is one of the quantized types.

@@ -19,14 +19,17 @@
 
 #include "PyTorchCommon.h"
 
+#include "FuseKnownPatterns.h"
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 #include "Registration.h"
 #include "ShapeInferenceEngine.h"
 
 #include "glow/Flags/Flags.h"
+#include "llvm/Support/FileSystem.h"
 
 #include "torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h"
+#include <torch/csrc/jit/passes/freeze_module.h>
 #include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/runtime/graph_executor.h>
@@ -64,6 +67,7 @@ DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
 DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
+DEFINE_bool(writeOnnxToTmp, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
@@ -81,6 +85,7 @@ DEFINE_string(backendSpecificOpts, "",
               "CompilationContext.");
 DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
             "See PyTorchLoaderSettings");
+DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -262,6 +267,7 @@ void PyTorchLoaderSettings::initSettings() {
   replicationCount = FLAGS_replicationCount;
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
+  writeOnnxToTmp = FLAGS_writeOnnxToTmp;
   randomizeConstants = FLAGS_randomizeConstants;
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
@@ -273,6 +279,7 @@ void PyTorchLoaderSettings::initSettings() {
   enableRemoveMutation = FLAGS_enableRemoveMutation;
   debugContinuouslyVerifyDuringModelLoading =
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
+  nominalBatchIdx = FLAGS_nominalBatchIdx;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -325,6 +332,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(numTracesPerDump, s);
   INSERT_BOOL_TO_STREAM(writeToOnnx, s);
   INSERT_BOOL_TO_STREAM(onnxZipMode, s);
+  INSERT_BOOL_TO_STREAM(writeOnnxToTmp, s);
   INSERT_BOOL_TO_STREAM(jitVsGlowCompare, s);
   INSERT_BOOL_TO_STREAM(randomizeConstants, s);
   INSERT_BOOL_TO_STREAM(writeWithoutRandomize, s);
@@ -490,6 +498,16 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   }
 }
 
+// Preprocess jit module to prepare for lowering. Here we leverage JIT freeze
+// API to cleanup the IR after IR rewrites.
+void modelPreprocessing(torch::jit::Module &model) {
+  auto graph = model.get_method("forward").function().graph();
+
+  torch::jit::CanonicalizeOps(graph);
+  detail::rewriteQuantizedLinear(graph);
+  model = torch::jit::freeze_module(model);
+}
+
 // Similar to glowAOTFusion() however supports multiple Glow subgraphs and
 // runners. We'd still need both since in some cases we may not be able to infer
 // the entire model and would leverage glowAOTFusion() to run the partially
@@ -498,12 +516,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
                                      const InputMetaStack &metaStack,
                                      runtime::DeferredWeightLoader *loader,
                                      const PyTorchLoaderSettings &settings) {
-
   auto graph = model.get_method("forward").function().graph();
-
-  // fuse ListUnpack and Chunk into ConstantChunk. Put it here to work around
-  // some JIT serialization/deserialization problem.
-  torch::jit::CanonicalizeOps(graph);
 
   // create some fake inputs to run shape inference.
   // Usually users provide one set of inputs for the entire
@@ -601,6 +614,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    const PyTorchLoaderSettings &settings) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
+  modelPreprocessing(model);
+
   if (FLAGS_inferShapeForCompilation) {
     return glowAOTFusionWithShapeInference(model, metaStack, loader, settings);
   }
@@ -608,10 +623,6 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
   // We assume the model is flattened and only one graph will be lowered. In the
   // future we may need to support multiple graphs.
   auto graph = model.get_method("forward").function().graph();
-
-  // fuse ListUnpack and Chunk into ConstantChunk. Put it here to work around
-  // some JIT serialization/deserialization problem.
-  torch::jit::CanonicalizeOps(graph);
 
   c10::Symbol symbol = glow::getGlowSymbol(graph);
   glow::registerGlowOp(symbol);
@@ -660,6 +671,17 @@ void enableSignalHandlerOverrides(bool enable) {
 
 bool signalHandlerOverridesEnabled() {
   return _signalHandlerOverridesEnabled();
+}
+
+/// Get a temporary file location given \p name and \p suffix.
+Expected<std::string> getTempFileLoc(const std::string &name,
+                                     const std::string &suffix) {
+  llvm::SmallString<64> path;
+  auto tempFileRes =
+      llvm::sys::fs::createTemporaryFile("export", name + suffix, path);
+  RETURN_ERR_IF_NOT(tempFileRes.value() == 0,
+                    "Failed to create temp file to write into.");
+  return std::string(path.c_str());
 }
 
 } // namespace glow

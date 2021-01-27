@@ -21,6 +21,15 @@
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
-  llvm::cl::ParseCommandLineOptions(argc, argv);
+  bool doArgsInit = true;
+  for (size_t i = 0; i < argc; i++) {
+    if (std::string(argv[i]) == "--test_skip_cmd_args") {
+      doArgsInit = false;
+      break;
+    }
+  }
+  if (doArgsInit) {
+    llvm::cl::ParseCommandLineOptions(argc, argv);
+  }
   return RUN_ALL_TESTS();
 }

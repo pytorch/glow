@@ -65,14 +65,21 @@ struct InputMetaStack {
 
   /// Hash the InputMetaStack
   size_t hash() const;
+
+  /// This function is to optimize caching map performance.
+  /// nominalBatchIdx is index of input to get batchSize.
+  /// The return value (batchSize if inputs are valid) will be used as key of
+  /// caching graph map
+  size_t optimizedHash(int32_t nominalBatchIdx) const;
 };
 
 /// \returns a InputMetaStack representing the stack \p inputs or an Error if
-/// one occurs. If \p ignoreObjects is true then any Object IValues will be
-/// ignored, otherwise all IValues on the inputs stack must be PyTorch tensors.
+/// one occurs. If \p ignoreNonTensors is true then any non-tensor IValues will
+/// be ignored, otherwise all IValues on the inputs stack must be PyTorch
+/// tensors.
 Expected<InputMetaStack>
 inputMetaStackFromStack(const c10::ArrayRef<c10::IValue> &inputs,
-                        bool ignoreObjects = false);
+                        bool ignoreNonTensors = false);
 
 /// Deserialize an InputMeta from string \p raw_data.
 InputMetaStack loadInputMeta(const std::string &raw_data);

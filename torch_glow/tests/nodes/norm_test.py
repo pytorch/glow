@@ -26,6 +26,15 @@ class TestNorm(unittest.TestCase):
             fusible_ops={"aten::norm"},
         )
 
+    def test_norm_float_p(self):
+        """Test of the PyTorch norm Node that has p=2.0 on Glow."""
+
+        utils.compare_tracing_methods(
+            SimpleNormModule(dim=0, p=2.0),
+            torch.arange(8, dtype=torch.float).reshape(2, 4),
+            fusible_ops={"aten::norm"},
+        )
+
     def test_norm_3d_inner_axis(self):
         """Basic test of the PyTorch norm Node on Glow."""
 

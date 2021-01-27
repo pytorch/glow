@@ -90,8 +90,6 @@ std::string DAGOptimizerParallelizationTaggingAlgorithm = "None";
 } // namespace flags
 } // namespace glow
 
-#ifdef GLOW_WITH_NNPI
-
 namespace glow {
 namespace nnpi {
 namespace flags {
@@ -108,8 +106,6 @@ bool UsePerPartitionIcetConfig = false;
 } // namespace flags
 } // namespace nnpi
 } // namespace glow
-
-#endif /* GLOW_WITH_NNPI */
 
 namespace glow {
 namespace torch_glow {
@@ -134,24 +130,18 @@ namespace glow {
 namespace runtime {
 namespace flags {
 
-#ifdef GLOW_WITH_CPU
 unsigned CPUMemory = 0;
-#endif
-
-#ifdef GLOW_WITH_HABANA
 unsigned HabanaMemory = 7 << 20;
-#endif
-
-#ifdef GLOW_WITH_NNPI
 unsigned NNPIMemory = 16 << 20;
 unsigned NNPITimeoutMs = 0;
-#endif
 
 std::string AvailableDevices = "";
 unsigned InterpreterMemory = 0;
 bool EnableP2P = false;
 bool EnableDRT = false;
 unsigned DeviceInitTimeoutMs = 5000;
+unsigned SanitizeInputsPercent = 0;
+
 } // namespace flags
 } // namespace runtime
 } // namespace glow
@@ -483,7 +473,6 @@ DEFINE_validator(glow_dag_optimizer_parallelization_tagging_algorithm,
                        val;
                    return true;
                  });
-#ifdef GLOW_WITH_NNPI
 // Defined in glow/lib/Backends/NNPI/NNPI.cpp
 DEFINE_bool(glow_use_per_partition_icet_config,
             glow::nnpi::flags::UsePerPartitionIcetConfig,
@@ -562,7 +551,6 @@ DEFINE_validator(glow_nnpi_timeout_ms, [](const char *, int32_t val) {
   glow::runtime::flags::NNPITimeoutMs = val;
   return true;
 });
-#endif /* GLOW_WITH_NNPI */
 
 DEFINE_int32(glow_interpreter_memory, glow::runtime::flags::InterpreterMemory,
              "Amount of DRAM to allocate per Interpreter in KiB");
@@ -570,23 +558,19 @@ DEFINE_validator(glow_interpreter_memory, [](const char *, int32_t val) {
   glow::runtime::flags::InterpreterMemory = val;
   return true;
 });
-#ifdef GLOW_WITH_CPU
 DEFINE_int32(glow_cpu_memory, glow::runtime::flags::CPUMemory,
              "Amount of DRAM to allocate per CPU in KiB");
 DEFINE_validator(glow_cpu_memory, [](const char *, int32_t val) {
   glow::runtime::flags::CPUMemory = val;
   return true;
 });
-#endif
 
-#ifdef GLOW_WITH_HABANA
 DEFINE_int32(glow_habana_memory, glow::runtime::flags::HabanaMemory,
              "Amount of DRAM to allocate per Habana device in KiB");
 DEFINE_validator(glow_habana_memory, [](const char *, int32_t val) {
   glow::runtime::flags::HabanaMemory = val;
   return true;
 });
-#endif
 
 DEFINE_bool(glow_log_partition, glow::flags::LogPartition,
             "Enable logging partition info");
@@ -614,6 +598,18 @@ DEFINE_validator(glow_device_init_timeout_ms, [](const char *, int32_t val) {
   glow::runtime::flags::DeviceInitTimeoutMs = val;
   return true;
 });
+DEFINE_int32(glow_enable_sanitize_inputs,
+             glow::runtime::flags::SanitizeInputsPercent,
+             "Sanitize a percentage of inferences");
+DEFINE_validator(glow_enable_sanitize_inputs, [](const char *, int32_t val) {
+  if (val < 0 || val > 100) {
+    return false;
+  }
+
+  glow::runtime::flags::SanitizeInputsPercent = val;
+  return true;
+});
+
 DEFINE_bool(glow_dump_partition, glow::flags::DumpPartition,
             "Enable dumping the graph of each partition");
 DEFINE_validator(glow_dump_partition, [](const char *, bool val) {

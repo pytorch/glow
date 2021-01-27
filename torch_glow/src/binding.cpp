@@ -22,6 +22,7 @@
 #include "PyTorchCommon.h"
 #include "Registration.h"
 #include "TorchGlowBackend.h"
+#include "glow/Flags/Flags.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <torch/csrc/jit/python/pybind_utils.h>
@@ -182,6 +183,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_onnx_zip_mode",
         []() { getGlobalPyTorchLoaderSettingsMutable().onnxZipMode = false; });
 
+  /// Set a specific filename for writing ONNX to
+  m.def("set_onnx_file_name_prefix", [](const std::string &prefix) {
+    getGlobalPyTorchLoaderSettingsMutable().onnxFileNamePrefix = prefix;
+  });
+
   /// Enable randomizing Constants in loaded Functions.
   m.def("enable_randomize_constants", []() {
     getGlobalPyTorchLoaderSettingsMutable().randomizeConstants = true;
@@ -230,6 +236,11 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().runShapeInference = false;
   });
 
+  /// Set interpreter device memory (in KiB).
+  m.def("set_interpreter_memory", [](const unsigned &memorySize) {
+    glow::runtime::flags::InterpreterMemory = memorySize;
+  });
+
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
   m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {
@@ -267,6 +278,18 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("clearFusionIndices", []() {
     getGlobalPyTorchLoaderSettingsMutable().fusionStartIndex = -1;
     getGlobalPyTorchLoaderSettingsMutable().fusionEndIndex = -1;
+  });
+
+  /// Disable dumping statistics about the operators and fusion support in the
+  /// graph.
+  m.def("disable_dump_operator_inventory", []() {
+    getGlobalPyTorchLoaderSettingsMutable().dumpOperatorInventory = false;
+  });
+
+  /// Enable dumping statistics about the operators and fusion support in the
+  /// graph.
+  m.def("enable_dump_operator_inventory", []() {
+    getGlobalPyTorchLoaderSettingsMutable().dumpOperatorInventory = true;
   });
 
   /// Set the active HostManager to one that owns 1 of type \p backendName.

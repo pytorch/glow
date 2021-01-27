@@ -76,6 +76,11 @@ llvm::cl::opt<bool> onnxExportRnnStatesOpt(
         "each inference. Default is false."),
     llvm::cl::cat(onnxModelLoaderCat));
 
+llvm::cl::opt<unsigned> loopUnrollLimit(
+    "loop-unroll-limit",
+    llvm::cl::desc("Maximum unrollable iterations for the Loop operator"),
+    llvm::cl::Optional, llvm::cl::init(20), llvm::cl::cat(onnxModelLoaderCat));
+
 /// Parse the command line option and get the user defined map of symbols.
 /// The command line option has the format <symbol_name>,<symbol_value>.
 Expected<std::unordered_map<std::string, dim_t>> getSymbolMap() {
@@ -109,12 +114,13 @@ getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
       auto symbolName = d.dim_param();
       std::unordered_map<std::string, dim_t> symbolMap;
       ASSIGN_VALUE_OR_RETURN_ERR(symbolMap, getSymbolMap());
-      if (symbolMap.count(symbolName)) {
+      if (symbolMap.count(symbolName) && symbolMap[symbolName] > 0) {
         dim.push_back(symbolMap[symbolName]);
       } else {
         return MAKE_ERR(strFormat(
             "ONNX model symbol '%s' is undefined. Define the symbol with the "
-            "following command line option: -onnx-define-symbol=%s,<value>.",
+            "following command line option: -onnx-define-symbol=%s,<value> and "
+            "each 'dim_value' of tensor shape proto must be greater than 0.",
             symbolName.c_str(), symbolName.c_str()));
       }
     } else {
@@ -312,10 +318,14 @@ template <> struct AttributeRetriever<false, FusedActivation> {
       return FusedActivation::NONE;
     } else if (str == "RELU") {
       return FusedActivation::RELU;
+    } else if (str == "CLIP") {
+      return FusedActivation::CLIP;
     } else if (str == "TANH") {
       return FusedActivation::TANH;
     } else if (str == "SIGMOID") {
       return FusedActivation::SIGMOID;
+    } else if (str == "LEAKY_RELU") {
+      return FusedActivation::LEAKY_RELU;
     } else {
       return MAKE_ERR("Invalid FusedActivation");
     }
@@ -777,6 +787,55 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
   return Type(kind, dim);
 }
 
+Error ONNXModelLoader::getInputsNamesAndTypes(
+    std::vector<std::string> &inTensorNames, std::vector<Type> &inTypes,
+    const std::string &filename) {
+  // Creating GraphProto from modelfile
+  ONNX_NAMESPACE::ModelProto modelDef;
+
+  ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(filename, false, nullptr));
+
+  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+
+  // GraphDef.input can have both inputs and intermediate tensors whereas
+  // initializers have info about intermediate tensors. Thus the difference
+  // betweem two is taken
+  std::vector<std::string> inputs;
+  for (auto &in : graphDef.input()) {
+    inputs.push_back(in.name());
+  }
+
+  for (const auto &in : graphDef.initializer()) {
+    auto position = std::find(inputs.begin(), inputs.end(), in.name());
+    if (position != inputs.end()) {
+      inputs.erase(position);
+    }
+  }
+
+  for (const auto &finalIn : inputs) {
+    for (const auto &in : graphDef.input()) {
+      if (finalIn.compare(in.name()) != 0) {
+        continue;
+      }
+      inTensorNames.push_back(in.name());
+      const ONNX_NAMESPACE::ValueInfoProto &valueInfo = in;
+      auto type = valueInfo.type();
+
+      std::vector<dim_t> dim;
+      ASSIGN_VALUE_OR_RETURN_ERR(dim,
+                                 getProtoShape(type.tensor_type().shape()));
+
+      ElemKind kind = ElemKind::FloatTy;
+      RETURN_IF_ERR(
+          onnxTensorDataTypeToElemKind(type.tensor_type().elem_type(), &kind));
+
+      inTypes.emplace_back(kind, dim);
+    }
+  }
+
+  return Error::success();
+}
+
 Error ONNXModelLoader::verifyPreexistingStorage(const Storage *S,
                                                 const std::string &name,
                                                 const Type &ty,
@@ -908,8 +967,8 @@ bool ONNXModelLoader::hasMultidirectionalBroadcast(
         (typeName == "Div") || (typeName == "Equal") ||
         (typeName == "Greater") || (typeName == "Less") ||
         (typeName == "Max") || (typeName == "Mean") || (typeName == "Min") ||
-        (typeName == "Mul") || (typeName == "Or") || (typeName == "Pow") ||
-        (typeName == "Sum") || (typeName == "Xor")) {
+        (typeName == "Or") || (typeName == "Pow") || (typeName == "Sum") ||
+        (typeName == "Xor")) {
       return true;
     }
   }
@@ -1480,6 +1539,16 @@ Error ONNXModelLoader::loadTrigonometricOps(const std::string &typeName,
   } else {
     N = G_->createCos(opName, in);
   }
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadErf(const ONNX_NAMESPACE::NodeProto &op,
+                               const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  Node *N = G_->createErf(opName, in);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }
@@ -2143,7 +2212,6 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
                     opErrMsg(op, strFormat("UpSample Operator has nearest mode "
                                            "support only, found mode '%s' ",
                                            mode.c_str())));
-  ;
 
   /// Scale is always float as per onnx documentation
   std::vector<float> scales;
@@ -2174,12 +2242,15 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
     }
   }
 
-  /// NCHW2NHWC. scales tensor format is NHWC.
+  /// Scales tensor format is NHWC for supported modes other than nearest.
+  /// For nearest mode scale can be 3D, 4D, 5D, or 6D.
   RETURN_ERR_IF_NOT(
-      scales.size() == 4,
-      opErrMsg(op,
-               strFormat("UpSample Scales dimension should be 4, but found %zu",
-                         scales.size())));
+      (scales.size() >= 3 && scales.size() <= 6 && mode == "nearest") ||
+          scales.size() == 4,
+      opErrMsg(
+          op, strFormat(
+                  "UpSample Scales dimension invalid. Mode: %s Scale Size: %zu",
+                  mode.c_str(), scales.size())));
 
   for (auto &val : scales) {
     RETURN_ERR_IF_NOT(
@@ -2189,12 +2260,8 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
                                int(val))));
   }
 
-  vectorReorder(scales, {NHWC2NCHW});
-
-  auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
-  auto *node = G_->createResizeNearest(opName, intr, scales);
-  auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
-  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  auto *node = G_->createResizeNearest(opName, in, scales);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }
 
@@ -2312,7 +2379,6 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
       for (dim_t i = 0; i < sizesH.size(); ++i) {
         outDims.push_back(sizesH.at({i}));
       }
-      vectorReorder(outDims, {NHWC2NCHW});
     } else {
       RETURN_ERR_IF_NOT(
           op.input_size() == 3,
@@ -2320,9 +2386,7 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
     }
   } // v11 processing.
 
-  auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
-
-  Node *RN = nullptr;
+  NodeValue outtr = nullptr;
   auto scalesH = scalesC->getPayload().getHandle();
 
   // Check is scales is not empty - if yes, use it.
@@ -2331,12 +2395,16 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
       scales.push_back(scalesH.at({i}));
     }
 
-    /// NCHW2NHWC. scales tensor format is NHWC.
+    // Scales tensor format is NHWC for supported modes other than nearest.
+    // For nearest mode scale can be 3D, 4D, 5D, or 6D.
     RETURN_ERR_IF_NOT(
-        scales.size() == 4,
-        opErrMsg(op,
-                 strFormat("Resize Scales dimension should be 4, but found %zu",
-                           scales.size())));
+        (scales.size() >= 3 && scales.size() <= 6 && modeStr == "nearest") ||
+            scales.size() == 4,
+        opErrMsg(
+            op,
+            strFormat(
+                "UpSample Scales dimension invalid. Mode: %s Scale Size: %zu",
+                modeStr.c_str(), scales.size())));
 
     for (auto &val : scales) {
       RETURN_ERR_IF_NOT(
@@ -2348,12 +2416,13 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
                   int(val))));
     }
 
-    vectorReorder(scales, {NHWC2NCHW});
-
     if (modeStr == "nearest") {
-      RN = G_->createResizeNearest(opName, intr, scales);
+      outtr = G_->createResizeNearest(opName, in, scales);
     } else if (modeStr == "bilinear" || modeStr == "linear") {
-      RN = G_->createResizeBilinear(opName, intr, scales);
+      vectorReorder(scales, {NHWC2NCHW});
+      auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
+      auto RN = G_->createResizeBilinear(opName, intr, scales);
+      outtr = G_->createTranspose(opName, RN, NHWC2NCHW);
     } else {
       return MAKE_ERR(
           opErrMsg(op, strFormat("Resize Supports nearest or bilinear "
@@ -2362,12 +2431,17 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
           ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   } else if (outDims.size()) {
-    auto outTy = G_->getParent()->uniqueTypeWithNewShape(
-        intr->getResult().getType(), llvm::ArrayRef<dim_t>(outDims));
     if (modeStr == "nearest") {
-      RN = G_->createResizeNearest(opName, intr, outTy);
+      auto outTy = G_->getParent()->uniqueTypeWithNewShape(
+          in.getType(), llvm::ArrayRef<dim_t>(outDims));
+      outtr = G_->createResizeNearest(opName, in, outTy);
     } else if (modeStr == "bilinear" || modeStr == "linear") {
-      RN = G_->createResizeBilinear(opName, intr, outTy);
+      vectorReorder(outDims, {NHWC2NCHW});
+      auto outTy = G_->getParent()->uniqueTypeWithNewShape(
+          in.getType(), llvm::ArrayRef<dim_t>(outDims));
+      auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
+      auto RN = G_->createResizeBilinear(opName, intr, outTy);
+      outtr = G_->createTranspose(opName, RN, NHWC2NCHW);
     } else {
       return MAKE_ERR(
           opErrMsg(op, strFormat(
@@ -2380,8 +2454,6 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
     return MAKE_ERR(opErrMsg(op, "Resize Neither scales or sizes are set."),
                     ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
   }
-
-  auto *outtr = G_->createTranspose(opName, RN, NHWC2NCHW);
 
   RETURN_IF_ERR(addNodeAsOutput(op, outtr));
   return Error::success();
@@ -2988,8 +3060,8 @@ Error ONNXModelLoader::loadExpand(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   ASSIGN_VALUE_OR_RETURN_ERR(repeats, getConstantByName(op.input(1)));
 
-  std::vector<int64_t> tiles;
-  helperSetter<int64_t, int64_t>(repeats, tiles);
+  std::vector<dim_t> tiles;
+  helperSetter<int64_t, dim_t>(repeats, tiles);
   auto inputDimSize = (size_t)in.dims().size();
   auto repeatSize = (size_t)tiles.size();
   if (repeatSize > inputDimSize) {
@@ -4462,6 +4534,311 @@ Error ONNXModelLoader::loadSign(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
+                                   const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  RETURN_ERR_IF_NOT(in.dims().size() >= 2, "SoftMax input dims must be >= 2");
+
+  // Create a constant to store labels to be used in SoftMaxGradNode.
+  auto selected =
+      mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
+
+  if (opsetVersion_ == 13) {
+    int axis = -1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    }
+    RETURN_ERR_IF_NOT(in.dims().size() == 4, "SoftMax 13 input dims must be 4");
+    // Compute the shuffle layout  based on axis input.
+    std::vector<unsigned_t> shuffle;
+    std::vector<unsigned_t> shuffleBack;
+    switch (axis) {
+    case 0:
+      shuffle = {1u, 2u, 3u, 0u};
+      shuffleBack = {3u, 0u, 1u, 2u};
+      break;
+
+    case 1:
+      shuffle = {0u, 2u, 3u, 1u};
+      shuffleBack = {0u, 3u, 1u, 2u};
+      break;
+
+    case 2:
+      shuffle = {0u, 1u, 3u, 2u};
+      shuffleBack = {0u, 1u, 3u, 2u};
+      break;
+
+    case 3:
+      shuffle = {0u, 1u, 2u, 3u};
+      shuffleBack = {0u, 1u, 2u, 3u};
+      break;
+
+    default:
+      return MAKE_ERR("SoftMax Axis must be <=3");
+      break;
+    }
+    auto *NH = G_->createTranspose(opName, in, shuffle);
+    auto *FN = G_->createFlattenV1("reshapeInput", NH, axis);
+    auto *SM = G_->createSoftMax(opName, FN, selected);
+
+    // The output should have the same shape as the original input.
+    auto origInDims = NH->getResult().dims();
+    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    auto *NC = G_->createTranspose(opName, RN, shuffleBack);
+    RETURN_IF_ERR(addNodeAsOutput(op, NC));
+  } else {
+    // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
+    // softmax function. This is basimilar to a bitcast operation.
+    int axis = 1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    }
+    auto *FN = G_->createFlatten("reshapeInput", in, axis);
+    auto *SM = G_->createSoftMax(opName, FN, selected);
+
+    // The output should have the same shape as the original input.
+    auto origInDims = in.getType()->dims();
+    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    RETURN_IF_ERR(addNodeAsOutput(op, RN));
+  }
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadLoop(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
+  int64_t maxTripCount;
+  bool ignoreMaxTripCount = op.input(0).empty();
+  if (!ignoreMaxTripCount) {
+    Constant *M = getConstantByNameOrNull(op.input(0));
+    RETURN_ERR_IF_NOT(M, "Loop operator M input must be a constant.");
+    RETURN_ERR_IF_NOT(M->getElementType() == ElemKind::Int64ITy,
+                      "Loop operator M input must be int64.");
+    maxTripCount = (M->getPayload().getHandle<int64_t>()).raw(0);
+
+    RETURN_ERR_IF_NOT(
+        maxTripCount >= 0,
+        strFormat("Loop operator trip count (%ld) must be positive",
+                  maxTripCount));
+  }
+
+  bool condOrig = false;
+  bool ignoreCond = op.input(1).empty();
+  if (!ignoreCond) {
+    Constant *cond = getConstantByNameOrNull(op.input(1));
+    RETURN_ERR_IF_NOT(cond, "Loop operator cond input must be a constant.");
+    RETURN_ERR_IF_NOT(cond->getElementType() == ElemKind::BoolTy,
+                      "Loop operator cond input must be bool.");
+    condOrig = (cond->getPayload().getHandle<bool>()).raw(0);
+  }
+
+  RETURN_ERR_IF_NOT(dict.count("body"), "Loop body not found.");
+  auto body = dict.at("body")->g();
+
+  // 2 + N (i.e., maximum trip-count, cond, and N)
+  const int numLoopInputs = op.input_size();
+  // N + K (final N loop carried dependency values then K scan_outputs)
+  const int numLoopOutputs = op.output_size();
+  // 2 + N (i.e., iteration_num, condition, and N loop carried dependencies)
+  const int numBodyInputs = body.input_size();
+  // 1 + N + K (i.e., condition, N loop carried dependencies, and K
+  // scan_outputs)
+  const int numBodyOutputs = body.output_size();
+
+  RETURN_ERR_IF_NOT(numLoopInputs >= 2 && numLoopInputs == numBodyInputs &&
+                        numLoopOutputs == numBodyOutputs - 1 &&
+                        numLoopOutputs >= 1,
+                    "Mismatched inputs/outputs of Loop and subgraph.");
+
+  const int numK = numBodyOutputs - numBodyInputs + 1;
+  const int numN = numLoopInputs - 2;
+
+  CHECK_GE(numN, 0) << "Invalid number of v_initial in Loop operator : "
+                    << numN;
+  CHECK_GE(numK, 0) << "Invalid number of scan_outputs in Loop operator : "
+                    << numK;
+
+  // Handle a loop with no iterations.
+  if ((!ignoreMaxTripCount && maxTripCount == 0) ||
+      (!ignoreCond && !condOrig)) {
+    // No need to load the subgraph, just connect loop's N v_initial to
+    // N v_final and empty Tensor for K scan_outputs.
+    llvm::SmallVector<NodeValue, 4> outputs;
+    outputs.reserve(numLoopOutputs);
+    // Connect N v_initial to N v_final.
+    for (int i = 0; i < numN; ++i) {
+      NodeValue in;
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i + 2)));
+      outputs.push_back(in);
+    }
+    // Connect empty Tensors for K scan_outputs.
+    for (int k = 0; k < numK; ++k) {
+      int ki = (body.input_size() - 1) + k;
+      auto scan_output = body.output(ki);
+      Type ty;
+      ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(scan_output));
+      Tensor T(ty);
+      T.zero();
+      Constant *c = G_->getParent()->createConstant("empty", std::move(T));
+      outputs.push_back(G_->createExpandDims("unsqueeze_K", c, {0}));
+    }
+    RETURN_IF_ERR(assignNodeOutputs(op, outputs));
+    return Error::success();
+  }
+
+  // Now, there is at least one iteration.
+  llvm::SmallVector<NodeValue, 4> inputs;
+  inputs.reserve(numBodyInputs);
+
+  // Collect names of N loop carried dependencies from Loop op. It will be used
+  // to connect Loop's inputs with subgraph's inputs for the first iteration.
+  llvm::SmallVector<llvm::StringRef, 4> namesOfLoopNs;
+  namesOfLoopNs.reserve(numN);
+  for (int i = 0; i < numN; ++i) {
+    namesOfLoopNs.push_back(op.input(i + 2));
+  }
+
+  // Collect output node names for the next iteration. It will be used when
+  // connecting subgraph's outputs with subgraph's input between iteration. Add
+  // names just for N loop carried dependencies. No need to add names for K
+  // scan_outputs because they are not input of subgraph.
+  llvm::SmallVector<llvm::StringRef, 4> namesOfBodyOutputNs;
+  namesOfBodyOutputNs.reserve(numN);
+  for (int i = 0; i < numN; ++i) {
+    namesOfBodyOutputNs.push_back(body.output(i + 1).name());
+  }
+
+  // Collect names of K scan_outputs.
+  llvm::SmallVector<llvm::SmallVector<NodeValue, 2>, 2> scanOutputKs;
+  scanOutputKs.reserve(numK);
+  for (int k = 0; k < numK; ++k) {
+    llvm::SmallVector<NodeValue, 2> scanOutputIter;
+    scanOutputIter.reserve(loopUnrollLimit);
+    scanOutputKs.push_back(scanOutputIter);
+  }
+
+  auto getDummyCond = [&]() -> Expected<NodeValue> {
+    RETURN_ERR_IF_NOT(ignoreCond, "Unexpected empty name in cond in Loop");
+    Tensor dummyCondT(ElemKind::BoolTy, {1});
+    dummyCondT.zero();
+    Constant *dummyCondNode =
+        G_->getParent()->createConstant("dumpCond", std::move(dummyCondT));
+    return dummyCondNode->getOutput();
+  };
+
+  auto getIterationNumConst = [&](int64_t val) -> Constant * {
+    Tensor T(ElemKind::Int64ITy, {1});
+    T.getHandle<int64_t>() = {val};
+    Constant *C = G_->getParent()->createConstant("const", std::move(T));
+    return C;
+  };
+
+  auto prepareNextIteration =
+      [&](int64_t iterationNum, NodeValue condNode,
+          llvm::ArrayRef<llvm::StringRef> outputNames) -> Error {
+    inputs.clear();
+    // Set iteration_num.
+    inputs.push_back(getIterationNumConst(iterationNum));
+    // Set condition.
+    inputs.push_back(condNode);
+    // Set N loop carried dependencies.
+    for (auto oName : outputNames) {
+      NodeValue in;
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(oName));
+      inputs.push_back(in);
+    }
+    RETURN_IF_ERR(assignGraphInputs(body, inputs));
+    return Error::success();
+  };
+
+  auto accumulateScanOutputs = [&]() -> Error {
+    // Accumulate scan-outputs values.
+    for (int k = 0; k < numK; ++k) {
+      int ki = (body.input_size() - 1) + k;
+      auto scan_output = body.output(ki);
+      NodeValue outK;
+      ASSIGN_VALUE_OR_RETURN_ERR(outK, getNodeValueByName(scan_output.name()));
+      Node *unsqueezedOutK = G_->createExpandDims("unsqueezed_K", outK, {0});
+      scanOutputKs[k].push_back(unsqueezedOutK);
+    }
+    return Error::success();
+  };
+
+  auto loadSubgraph = [&](ONNX_NAMESPACE::GraphProto &graphDef) -> Error {
+    RETURN_IF_ERR(loadInitializers(graphDef));
+    RETURN_IF_ERR(loadNetwork(graphDef, false));
+    return Error::success();
+  };
+
+  auto canUnrollNextIter = [&](int64_t iterNum) -> Expected<bool> {
+    if (!ignoreMaxTripCount && iterNum >= maxTripCount) {
+      return false;
+    }
+    Constant *condOut = getConstantByNameOrNull(body.output(0).name());
+    RETURN_ERR_IF_NOT(condOut,
+                      "Loop exit condition is unpredictable to be unrolled.");
+    bool cond = (condOut->getPayload().getHandle<bool>()).raw(0) || ignoreCond;
+    if (!cond) {
+      return false;
+    }
+    RETURN_ERR_IF_NOT(
+        iterNum < loopUnrollLimit,
+        strFormat("Exceed the unroll limit (%u) while unrolling Loop operator.",
+                  loopUnrollLimit.getValue()));
+    return cond;
+  };
+
+  // Unroll the first iteration by connecting Loop's inputs to subgraph's
+  // inputs.
+  int64_t iterNum = 0;
+  NodeValue condNode;
+  ASSIGN_VALUE_OR_RETURN_ERR(condNode, op.input(1).empty()
+                                           ? getDummyCond()
+                                           : getNodeValueByName(op.input(1)));
+  RETURN_IF_ERR(prepareNextIteration(iterNum, condNode, namesOfLoopNs));
+  RETURN_IF_ERR(loadSubgraph(body));
+  RETURN_IF_ERR(accumulateScanOutputs());
+  ++iterNum;
+  auto condCheck = canUnrollNextIter(iterNum);
+
+  RETURN_ERR_IF_NOT(condCheck, ERR_TO_STRING(condCheck.takeError()));
+
+  // Unroll remaining iterations by connecting outputs of previous iteration
+  // with inputs of current iteration.
+  while (condCheck && condCheck.get()) {
+    NodeValue condOutNode;
+    ASSIGN_VALUE_OR_RETURN_ERR(condOutNode,
+                               getNodeValueByName(body.output(0).name()));
+    RETURN_IF_ERR(
+        prepareNextIteration(iterNum, condOutNode, namesOfBodyOutputNs));
+    RETURN_IF_ERR(loadSubgraph(body));
+    RETURN_IF_ERR(accumulateScanOutputs());
+    ++iterNum;
+    condCheck = canUnrollNextIter(iterNum);
+    RETURN_ERR_IF_NOT(condCheck, ERR_TO_STRING(condCheck.takeError()));
+  }
+
+  // Hook final subgraph outputs to loop outputs.
+  llvm::SmallVector<NodeValue, 4> outputs;
+  outputs.reserve(numLoopOutputs);
+  // Set outputs for N loop carried dependency values.
+  for (int i = 0; i < numN; ++i) {
+    NodeValue bodyout;
+    ASSIGN_VALUE_OR_RETURN_ERR(bodyout,
+                               getNodeValueByName(body.output(i + 1).name()));
+    outputs.push_back(bodyout);
+  }
+  // Set outputs for K scan_outputs.
+  for (int k = 0; k < numK; ++k) {
+    outputs.push_back(G_->createConcat("concat", scanOutputKs[k], 0));
+  }
+  RETURN_IF_ERR(assignNodeOutputs(op, outputs));
+  return Error::success();
+}
+
 Expected<TypeRef>
 ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
                                         ArgumentDictionaryTy &dict) {
@@ -4553,6 +4930,50 @@ static Error loadPerNodeOptions(const Node *loadedNode,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadIf(const ONNX_NAMESPACE::NodeProto &op,
+                              const ArgumentDictionaryTy &dict) {
+  Constant *condition = getConstantByNameOrNull(op.input(0));
+  RETURN_ERR_IF_NOT(condition, "Only constant condition is supported!");
+  RETURN_ERR_IF_NOT(condition->getElementType() == ElemKind::BoolTy,
+                    "Condition must be boolean!");
+
+  RETURN_ERR_IF_NOT(dict.count("then_branch"), "Then branch not found!");
+  RETURN_ERR_IF_NOT(dict.count("else_branch"), "Else branch not found!");
+  RETURN_ERR_IF_NOT(dict.at("then_branch")->type() ==
+                        ONNX_NAMESPACE::AttributeProto::GRAPH,
+                    "Only Subgraph branches are supported.");
+  RETURN_ERR_IF_NOT(dict.at("else_branch")->type() ==
+                        ONNX_NAMESPACE::AttributeProto::GRAPH,
+                    "Only Subgraph branches are supported.");
+
+  auto loadSubgraph = [&](ONNX_NAMESPACE::GraphProto &graphDef) -> Error {
+    RETURN_IF_ERR(loadInitializers(graphDef));
+    RETURN_IF_ERR(loadNetwork(graphDef, false));
+    return Error::success();
+  };
+
+  if (condition->getPayload().getHandle<bool>().isZero()) {
+    auto ifFalse = dict.at("else_branch")->g();
+    RETURN_ERR_IF_NOT(ifFalse.output_size() == 1,
+                      "Only single output 'else' subgraph is supported.");
+    RETURN_IF_ERR(loadSubgraph(ifFalse));
+    NodeValue ifFalseVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(ifFalseVal,
+                               getNodeValueByName(ifFalse.output(0).name()));
+    RETURN_IF_ERR(addNodeAsOutput(op, ifFalseVal));
+  } else {
+    auto ifTrue = dict.at("then_branch")->g();
+    RETURN_ERR_IF_NOT(ifTrue.output_size() == 1,
+                      "Only single output 'then' subgraph is supported.");
+    RETURN_IF_ERR(loadSubgraph(ifTrue));
+    NodeValue ifTrueVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(ifTrueVal,
+                               getNodeValueByName(ifTrue.output(0).name()));
+    RETURN_IF_ERR(addNodeAsOutput(op, ifTrueVal));
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -4591,6 +5012,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (tryLoadCommonOperatorResult) {
     return Error::success();
   }
+  if (typeName == "Loop") {
+    return loadLoop(op, dict);
+  }
 
   if (typeName == "Constant") {
     return loadConstant(op, dict);
@@ -4606,6 +5030,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Sin" || typeName == "Cos") {
     return loadTrigonometricOps(typeName, op, dict);
+  }
+  if (typeName == "Erf") {
+    return loadErf(op, dict);
   }
   if (typeName == "Conv") {
     // If the Conv operator has quantized inputs, use
@@ -4775,6 +5202,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "ConvTranspose") {
     return loadConvTranspose(op, dict);
   }
+  if (typeName == "If") {
+    return loadIf(op, dict);
+  }
   if (typeName == "AdaptiveAvgPool") {
     return loadAdaptiveAvgPool(op, dict);
   }
@@ -4813,6 +5243,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Sign") {
     return loadSign(op, dict);
+  }
+  if (typeName == "Softmax") {
+    return loadSoftmax(op, dict);
   }
 
   return MAKE_ERR("Failed to load operator " + typeName + " .",
@@ -5188,6 +5621,16 @@ Error ONNXModelLoader::setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net) {
   return Error::success();
 }
 
+Error ONNXModelLoader::assignGraphInputs(const ONNX_NAMESPACE::GraphProto &net,
+                                         llvm::ArrayRef<NodeValue> NVs) {
+  RETURN_ERR_IF_NOT((dim_t)NVs.size() == (dim_t)net.input_size(),
+                    "Input size mismatch.");
+  for (size_t i = 0; i < NVs.size(); i++) {
+    nodeValueByName_[net.input(i).name()] = NVs[i];
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types,
@@ -5437,7 +5880,7 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
     auto nameOffsetPair = nameOffsetSplit.split(offsetSepSig);
     int32_t idx;
     ASSIGN_VALUE_OR_RETURN_ERR(idx, getIntFromStr(nameOffsetPair.second));
-    RETURN_ERR_IF_NOT(idx < updatedTQPs_.size(),
+    RETURN_ERR_IF_NOT(idx < int32_t(updatedTQPs_.size()),
                       strFormat("Provided offset index %d not inside size "
                                 "of updatedTQPs_ %lu",
                                 idx, updatedTQPs_.size()));

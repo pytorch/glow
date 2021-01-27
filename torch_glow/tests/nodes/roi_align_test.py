@@ -16,10 +16,14 @@ def rand_rois(N, H, W, count):
         rois[i][1] *= W - 1  # x1
         rois[i][2] *= H - 1  # y1
 
-        rois[i][3] *= W - rois[i][1]  # x2
-        rois[i][3] += rois[i][1]
-        rois[i][4] *= H - rois[i][2]  # y2
-        rois[i][4] += rois[i][2]
+        f = rois[i][3]
+        if f == 0:  # enforce 0 < f < 1
+            f = 1e-3
+        rois[i][3] = rois[i][1] + f * (W - rois[i][1])  # x2
+        f = rois[i][4]
+        if f == 0:  # enforce 0 < f < 1
+            f = 1e-3
+        rois[i][4] = rois[i][2] + f * (H - rois[i][2])  # y2
 
         assert rois[i][1] > 0 and rois[i][1] < W - 1
         assert rois[i][2] > 0 and rois[i][2] < H - 1

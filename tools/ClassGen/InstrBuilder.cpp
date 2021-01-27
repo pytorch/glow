@@ -558,3 +558,11 @@ InstrBuilder &InstrBuilder::addMember(MemberType type,
 
   return addMember(*typeInfo, name);
 }
+
+InstrBuilder &InstrBuilder::addFusedActivation() {
+  // When adding a fused activation we add the activation type and a vector of
+  // floating point parameters for parameterized activations (e.g. min and max
+  // for Clip or alpha factor for LeakyRelu).
+  return addMember(MEMBER_TYPE_INFO(glow::FusedActivation), "FusedActivation")
+      .addMember(MemberType::VectorFloat, "FusedActivationArgs");
+}

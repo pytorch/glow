@@ -32,6 +32,12 @@
 #include <unordered_map>
 #include <vector>
 
+#if FACEBOOK_INTERNAL
+namespace folly {
+struct dynamic;
+}
+#endif
+
 namespace glow {
 namespace runtime {
 /// The HostManager serves as an entry point into the Runtime environment. It
@@ -201,6 +207,19 @@ public:
   /// contained within the module should be considered invalid. The function is
   /// optimized based on \p cctx.
   Error addNetwork(std::unique_ptr<Module> module, CompilationContext &cctx);
+
+/// Adds the already partitioned FX \p FXIR network to the host and does the
+/// necessary setup work. This includes provisioning, compiling and
+/// initializing backends. Requires a  DAG \p networks to be provided.
+/// \returns an Error containing the results of the operation. This function
+/// consumes the \p module so any pointers to data contained within the module
+/// should be considered invalid. The function is optimized based on \p cctx.
+/// Constants are provided with a stringmap \p constants.
+#if FACEBOOK_INTERNAL
+  Error addNetworkFX(std::unique_ptr<Module> module, CompilationContext &cctx,
+                     DAGListTy &networks, const folly::dynamic &FXIR,
+                     const llvm::StringMap<const void *> &constants);
+#endif
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.

@@ -85,7 +85,7 @@ Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 
 std::string Constant::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
+  db.addParam("name", quote(getName().str()))
       .addParam("layout", getLayout())
       .addParam("output", *getType());
   if (!skipUsers) {
@@ -96,7 +96,7 @@ std::string Constant::getDebugDesc(bool skipUsers) const {
 
 std::string Placeholder::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName()))
+  db.addParam("name", quote(getName().str()))
       .addParam("layout", getLayout())
       .addParam("output", *getType())
       .addParam("trainable", isTraining())
@@ -565,6 +565,19 @@ static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
   return isValid;
 }
 
+static bool verifyEmbedding(NodeValue dest, NodeValue weights,
+                            NodeValue indices) {
+  bool isValid = checkType(dest, weights.getElementType(), dest.getNode());
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &=
+      expectCompareTrue("Weights must be a 2D tensor", weights.dims().size(),
+                        size_t(2), weights.getNode());
+  return isValid;
+}
+
 static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
                                NodeValue weights, NodeValue indices,
                                NodeValue offsets) {
@@ -937,8 +950,12 @@ bool MatMulNode::verify() const {
   auto LDims = lhs.dims();
   auto RDims = rhs.dims();
   auto DDims = dest.dims();
-  bool isValid = expectCompareTrue("Invalid MatMul dimensions", size_t(2),
-                                   DDims.size(), this);
+  bool isValid = expectCompareTrue("LHS input must be 2 dimensional.",
+                                   LDims.size(), size_t(2), this);
+  isValid &= expectCompareTrue("RHS input must be 2 dimensional.", RDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Invalid MatMul dimensions", DDims.size(),
+                               size_t(2), this);
 
   auto elem = dest.getType()->getElementType();
   isValid &= checkType(lhs, elem, this);
@@ -1370,6 +1387,8 @@ VERIFY_UNARY_ARITHMETIC(Rsqrt);
 VERIFY_UNARY_ARITHMETIC(Reciprocal);
 VERIFY_UNARY_ARITHMETIC(Sin);
 VERIFY_UNARY_ARITHMETIC(Cos);
+VERIFY_UNARY_ARITHMETIC(Erf);
+VERIFY_UNARY_ARITHMETIC(Truncate);
 #undef VERIFY_UNARY_ARITHMETIC
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
@@ -1561,6 +1580,10 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
 bool EmbeddingBagNode::verify() const {
   return verifyEmbeddingBag(getResult(), getData(), getWeights(), getIndices(),
                             getOffsets());
+}
+
+bool EmbeddingNode::verify() const {
+  return verifyEmbedding(getResult(), getWeights(), getIndices());
 }
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
@@ -2036,10 +2059,14 @@ bool ResizeNearestNode::verify() const {
   auto outputDims = result.dims();
 
   bool isValid = checkTypeIgnoreShape(input, result, this);
-  isValid &= expectCompareTrue("Input must be a 4D tensor", inputDims.size(),
-                               size_t(4), this);
-  isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
-                               size_t(4), this);
+  isValid &=
+      expectCompareTrue("Input size must be greater than 2", inputDims.size(),
+                        size_t(2), this, CompareOperatorGreaterThan<size_t>());
+  isValid &=
+      expectCompareTrue("Output size must be greater than 2", outputDims.size(),
+                        size_t(2), this, CompareOperatorGreaterThan<size_t>());
+  isValid &= expectCompareTrue("Input size must be equal to the output size",
+                               inputDims.size(), outputDims.size(), this);
 
   for (size_t i = 0, e = scale.size(); i < e; i++) {
     isValid &= expectCompareTrue("Unexpected output",
@@ -2551,6 +2578,8 @@ bool BroadcastNode::verify() const {
 
 bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
+bool ExternalFunctionCallNode::verify() const { return true; }
+
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//
@@ -2605,11 +2634,17 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   case FusedActivation::RELU:
     os << "RELU";
     break;
+  case FusedActivation::CLIP:
+    os << "CLIP";
+    break;
   case FusedActivation::SIGMOID:
     os << "SIGMOID";
     break;
   case FusedActivation::TANH:
     os << "TANH";
+    break;
+  case FusedActivation::LEAKY_RELU:
+    os << "LEAKY_RELU";
     break;
   }
   return os;

@@ -5,10 +5,10 @@
 set -ex
 
 # Add support for https apt sources.
-wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.32ubuntu0.1_amd64.deb
-echo "ad00ae237f42cc832db07139aad336d4fd0b9dafd66cf103190c951ddfce5913  apt-transport-https_1.2.32ubuntu0.1_amd64.deb" | sha256sum -c
-sudo dpkg -i apt-transport-https_1.2.32ubuntu0.1_amd64.deb
-rm apt-transport-https_1.2.32ubuntu0.1_amd64.deb
+wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+echo "93475e4cc5e7a86de63fea0316f3f2cd8b791cf4d6ea50a6d63f5bd8e1da5726  apt-transport-https_1.2.32ubuntu0.2_amd64.deb" | sha256sum -c
+sudo dpkg -i apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+rm apt-transport-https_1.2.32ubuntu0.2_amd64.deb
 
 export MAX_JOBS=8
 if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
@@ -87,9 +87,9 @@ fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
 if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
-	sudo pip install cmake==3.17.3
+    sudo pip install cmake==3.17.3
 else
-	sudo apt-get install cmake
+    sudo apt-get install cmake
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
@@ -142,7 +142,10 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           -DGLOW_USE_COVERAGE=ON \
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
-    sudo apt-get install -y clang-format-7
+    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+    sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-11 main"
+    sudo apt-get update
+    sudo apt-get install -y clang-format-11
     cd /tmp
     python3.6 -m virtualenv venv
     source venv/bin/activate

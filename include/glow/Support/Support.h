@@ -28,6 +28,10 @@
 
 namespace glow {
 
+template <class T> using VecVec = std::vector<std::vector<T>>;
+template <class T> using VecVecRef = llvm::ArrayRef<std::vector<T>>;
+template <class T> using UniquePtrVec = std::vector<std::unique_ptr<T>>;
+
 /// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, void *ptr);
 
@@ -124,7 +128,10 @@ inline void report(llvm::StringRef str) { report(str.data()); }
 /// Legalize \p name used in Module. In Glow module, the name of placeholders
 /// and constants should look like valid C identifiers. Therefore, those symbols
 /// can be inspected under debugger.
-std::string legalizeName(llvm::StringRef name);
+/// \p maxLength argument is used as the upper limit on name length. If it is
+/// zero, then there is no limit. The default value is chosen to allow some
+/// extra room for string concatenations for NNPI.
+std::string legalizeName(llvm::StringRef name, size_t maxLength = 500);
 
 /// Data structure for multi string format used in yaml file.
 struct MultiLineStr {
@@ -236,7 +243,7 @@ template <char... letters> struct string_t {
 /// at index idx.
 template <class T>
 void vectorReorder(std::vector<T> &v, std::vector<size_t> const &order) {
-  for (int s = 1, d; s < order.size(); ++s) {
+  for (size_t s = 1, d; s < order.size(); ++s) {
     for (d = order[s]; d < s; d = order[d])
       ;
     if (d == s)

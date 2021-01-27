@@ -190,8 +190,8 @@ void BundleSaver::setIRFunction(llvm::StringRef mainEntryName,
   }
 }
 
-bool BundleSaver::WeightAddrComparator::
-operator()(const WeightInfo &LHS, const WeightInfo &RHS) const {
+bool BundleSaver::WeightAddrComparator::operator()(
+    const WeightInfo &LHS, const WeightInfo &RHS) const {
   auto lhsAddr =
       bundleSaver_->allocationsInfo_.allocatedAddress_.lookup(LHS.first);
   auto rhsAddr =

@@ -143,7 +143,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     builder_.createConvolutionGradInst(
         N->getName(), input, filter, outGrad, inG, filterG, biasG,
         CG->getKernels(), CG->getStrides(), CG->getPads(), CG->getGroup(),
-        CG->getDilation(), CG->getLayout(), CG->getFusedActivation());
+        CG->getDilation(), CG->getLayout(), CG->getFusedActivation(),
+        CG->getFusedActivationArgs());
 
     registerIR(CG->getGradOfInputNamedInput(), inG);
     registerIR(CG->getGradOfInputNamedFilter(), filterG);
@@ -517,6 +518,25 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     for (auto &in : BPDPGN->getOriginalInputs()) {
       inst->pushOperand({valueForNode(in), OperandKind::In});
     }
+    break;
+  }
+  case glow::Kinded::Kind::ExternalFunctionCallNodeKind: {
+    auto *EFCN = llvm::cast<ExternalFunctionCallNode>(N);
+    std::string externalCallType = std::string(EFCN->getName());
+    std::string allocName = std::string(EFCN->getName()) + ".res";
+    auto *dest = builder_.createAllocActivationInst(
+        allocName, EFCN->getResult().getType());
+
+    auto *inst = builder_.createExternalFunctionCallInst(
+        EFCN->getName(), dest, EFCN->getFunctionName(), EFCN->getFunctionImpl(),
+        EFCN->getFunctionKind());
+
+    // First instruction operand is the buffer for the result, the
+    // rest are all inputs.
+    for (auto &in : EFCN->getInputs()) {
+      inst->pushOperand({valueForNode(in), OperandKind::In});
+    }
+    registerIR(EFCN->getResult(), dest);
     break;
   }
   }

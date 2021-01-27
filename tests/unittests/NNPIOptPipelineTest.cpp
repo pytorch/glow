@@ -753,9 +753,6 @@ TEST_F(NNPIOptPipelineTest, QuantizeFCDequantize) {
       std::to_string(8);
   cloneAndCompile();
 
-  F_->dumpDAG("tmp0.dot");
-  optimizedF_->dumpDAG("tmp1.dot");
-
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::QuantizeNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 8);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::DequantizeNodeKind), 1);
@@ -763,6 +760,48 @@ TEST_F(NNPIOptPipelineTest, QuantizeFCDequantize) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind),
             8);
+}
+
+TEST_F(NNPIOptPipelineTest, ParQuantizeFCReluRescaleSigmoidDequantize) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {32, 1024}, "input", false);
+  auto *weights = F_->getParent()->createConstant(
+      ElemKind::Int8QTy, {1024, 1024}, 0.2, 0, "weights");
+  auto *bias = F_->getParent()->createConstant(ElemKind::Int32QTy, {1024}, 0.2,
+                                               0, "bias");
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-127, 127,
+                                                             mod_.getPRNG());
+  bias->getPayloadMutable().getHandle<int32_t>().randomize(-127, 127,
+                                                           mod_.getPRNG());
+
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {32, 1024}, 0.2, 0);
+  auto *quantized = F_->createQuantize("quantize", input, outTy);
+  auto *FC = F_->createFullyConnected("fc", quantized, weights, bias);
+  auto *relu = F_->createRELU("relu", FC);
+  auto rescaleTy =
+      mod_.uniqueType(ElemKind::Int8QTy, FC->getResult().dims(), 0.15, -1);
+  auto *rescale = F_->createRescaleQuantized("rescale", relu, rescaleTy);
+  auto *sigmoid = F_->createSigmoid("sig", rescale);
+  auto *dequantized =
+      F_->createDequantize("dequantize", sigmoid, ElemKind::Float16Ty);
+  F_->createSave("ret", dequantized);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(2);
+  cloneAndCompile();
+  optimizedF_->dumpDAG("tmp1.dot");
+
+#define CHECK_PAR(NAME_, PRE_, POST_)                                          \
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::NAME_##NodeKind), PRE_);           \
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::NAME_##NodeKind), POST_);
+
+  CHECK_PAR(Quantize, 1, 2);
+  CHECK_PAR(FullyConnected, 1, 2);
+  CHECK_PAR(Dequantize, 1, 2);
+  CHECK_PAR(RescaleQuantized, 1, 2);
+  CHECK_PAR(Relu, 1, 2);
+  CHECK_PAR(Sigmoid, 1, 2);
+#undef CHECK_PAR
 }
 
 // BMM->clip
@@ -839,3 +878,231 @@ TEST_F(NNPIOptPipelineTest, SoftMax) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SoftMaxNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SoftMaxNodeKind), 8);
 }
+
+///
+/// Initialize Sigmoid LUT
+///
+/// @param lut pre allocated LUT table (empty)
+/// @param rows number of raw in the LUT table
+/// @param minInputValue minimum value in range
+/// @param maxInputValue maximum value in range
+///
+/// @returns tuple<scale, offset>
+///
+static std::tuple<float, float> initializeSigmoidLUT(float *lut, size_t rows,
+                                                     float minInputValue,
+                                                     float maxInputValue) {
+  float lookupTableStep = (maxInputValue - minInputValue) / (float)rows;
+  for (size_t i = 0; i < rows; i++) {
+    float val = minInputValue + lookupTableStep * i;
+    float exp_minus_val = expf(-val);
+    lut[i] = 1 / (exp_minus_val + 1);
+  }
+
+  return std::make_tuple(((1.f - 0.f) / rows), -128);
+}
+
+static Node *createConvertlNode(Function *F, ElemKind backendElemKind,
+                                bool quantize, NodeValue from, TypeRef to,
+                                std::string name) {
+  if (backendElemKind == ElemKind::Float16Ty) {
+    return F->createConvertTo(name, from, to);
+  } else {
+    if (quantize) {
+      return F->createQuantize(name, from, to);
+    } else {
+      return F->createDequantize(name, from, to);
+    }
+  }
+  return nullptr;
+}
+
+template <size_t inputSize>
+static void inferAndCompare(size_t lutSize, ElemKind backendElemKind,
+                            size_t lookupType, float minLookupTableValue,
+                            float maxLookupTableValue, float minInputValue,
+                            float maxInputValue, float allowedThreshold) {
+  std::vector<size_t> inputTensorDims = {inputSize};
+  std::vector<size_t> lookupTableTensorDims = {lutSize};
+  if (backendElemKind != ElemKind::Int8QTy) {
+    lookupTableTensorDims[0] += 0;
+  }
+
+  PlaceholderBindings bindings_;
+  ExecutionEngine EE_("NNPI");
+  auto &mod_ = EE_.getModule();
+  Function *F = mod_.createFunction("main");
+  F->setName("Sigmoid_Compare");
+
+  // Create input tensor.
+  float inputBuf[inputSize];
+  const float inputStep = (maxInputValue - minInputValue) / inputSize;
+  for (size_t i = 0; i < inputSize; i++) {
+    // Fill input values.
+    inputBuf[i] = minInputValue + inputStep * i;
+  }
+
+  const float inputScale = ((maxInputValue - minInputValue) / 255);
+  const float inputOffset = -minInputValue / inputScale - 128;
+
+  Placeholder *in = mod_.createPlaceholder(ElemKind::FloatTy, inputTensorDims,
+                                           "input", false);
+  bindings_.allocate(in)->getHandle<float>() = inputBuf;
+
+  TypeRef inqTy = (backendElemKind == ElemKind::Int8QTy)
+                      ? mod_.uniqueType(backendElemKind, inputTensorDims,
+                                        inputScale, round(inputOffset))
+                      : mod_.uniqueType(backendElemKind, inputTensorDims);
+
+  // Create LUT.
+  float lookupTableBuf[lutSize];
+  float lookupTableScale = 0.f;
+  float lookupTableOffset = 0.f;
+
+  std::tie(lookupTableScale, lookupTableOffset) = initializeSigmoidLUT(
+      lookupTableBuf, lutSize, minLookupTableValue, maxLookupTableValue);
+
+  // Add quntizaion node if needed.
+  Node *inq = createConvertlNode(F, backendElemKind, true, in, inqTy, "in.q");
+
+  // Create lut tensor for the network.
+  auto lutT = (backendElemKind == ElemKind::Int8QTy)
+                  ? Tensor(backendElemKind, lookupTableTensorDims,
+                           lookupTableScale, round(lookupTableOffset))
+                  : Tensor(backendElemKind, lookupTableTensorDims);
+
+  // Fill LUT tensor.
+  if (backendElemKind == ElemKind::Int8QTy) {
+    for (size_t i = 0; i < lutT.size(); i++) {
+      auto value = lookupTableBuf[i] / lookupTableScale + lookupTableOffset;
+      lutT.getHandle<int8_t>().raw(i) = value;
+    }
+  } else {
+    for (size_t i = 0; i < lutT.size(); i++) {
+      auto value = lookupTableBuf[i];
+      lutT.getHandle<float16_t>().raw(i) = value;
+    }
+  }
+
+  auto *lutValues = mod_.createConstant("lut", std::move(lutT));
+
+  TypeRef sigmoidOutputType =
+      (backendElemKind == ElemKind::Int8QTy)
+          ? mod_.uniqueType(backendElemKind, inputTensorDims, lookupTableScale,
+                            round(lookupTableOffset))
+          : mod_.uniqueType(backendElemKind, inputTensorDims);
+
+  // Using smaller LUT size because check in DL is strict.
+  auto lutSizeForDeltaCalc = lutSize * 0.99;
+  auto delta =
+      (maxLookupTableValue - minLookupTableValue) / (lutSizeForDeltaCalc);
+
+  // Create the LUT node and add to the network.
+  auto *lutNode = new NNPILookupTableNode("sigmoid_lut",       // name
+                                          sigmoidOutputType,   // Result
+                                          inq,                 // Input
+                                          lutValues,           // LookupTable
+                                          lookupType,          // LookupType
+                                          minLookupTableValue, // LowerRange
+                                          maxLookupTableValue, // UpperRange
+                                          0.f,                 // UpperMulFactor
+                                          1,                   // UpperOffset
+                                          0.f,                 // LowerMulFactor
+                                          0,                   // LowerOffset
+                                          delta,               // Delta
+                                          0                    // Bias
+  );
+
+  TypeRef outputType = mod_.uniqueType(ElemKind::FloatTy, inputTensorDims);
+
+  SigmoidNode *sigmoid = F->createSigmoid("sigmoid.q", inq);
+  // Create convert node to output precision.
+  Node *res = createConvertlNode(F, backendElemKind, false, sigmoid, outputType,
+                                 "ConvertToFloat");
+  auto *out_lut = F->addNode(lutNode);
+
+  // Create convert node to output precision.
+  Node *resLUT = createConvertlNode(F, backendElemKind, false, out_lut,
+                                    outputType, "ConvertToFloatLUT");
+
+  // Output of sigmoid node.
+  auto *result = F->createSave("save", res);
+  bindings_.allocate(result->getPlaceholder());
+
+  // Output of LUT node.
+  auto *resultLUT = F->createSave("saveLUT", resLUT);
+  bindings_.allocate(resultLUT->getPlaceholder());
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  EE_.compile(cctx);
+  EE_.run(bindings_);
+
+  auto inH = bindings_.get(in)->getHandle();
+  auto resH = bindings_.get(result->getPlaceholder())->getHandle();
+  auto resLUTH = bindings_.get(resultLUT->getPlaceholder())->getHandle();
+
+  int numErrors = 0;
+  int idx = 0;
+  float maxDiff = -1.f;
+
+  // Compare 2 outputs (sigmoid and LUT).
+  for (unsigned i = 0; i < inputSize; i++) {
+    float input = inH.at({i});
+    float expectedResult = resH.at({i});
+    float lutResult = resLUTH.at({i});
+
+    auto absDiff = std::fabs(lutResult - expectedResult);
+    maxDiff = std::fmax(absDiff, maxDiff);
+    if (absDiff > allowedThreshold) {
+      numErrors++;
+      if (numErrors < 10) {
+        std::cout << "Error in " << idx << ": Input=" << input
+                  << " Expected=" << expectedResult << " , LUT=" << lutResult
+                  << ", diff=" << absDiff << std::endl;
+      }
+    }
+    idx++;
+  }
+  if (maxDiff > allowedThreshold) {
+    std::cout << "max diff is " << maxDiff << std::endl;
+  }
+  EXPECT_EQ(numErrors, 0);
+}
+
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+TEST(NNPIOptPipelineLUTTest, LUTSigmoid_Int8) {
+  inferAndCompare<1000>(256, ElemKind::Int8QTy,
+                        NNPILookupType::LOOKUP_DIRECT_LUT, -6, 6, -6, 6, 4e-2);
+}
+
+TEST(NNPIOptPipelineLUTTest, LUTSigmoid_FP16) {
+  inferAndCompare<1000>(10000, ElemKind::Float16Ty,
+                        NNPILookupType::LOOKUP_LINEAR_INTERPOLATION, -6, 6, -10,
+                        10, 5e-2);
+}
+
+TEST(NNPIOptPipelineLUTTest, LUTSigmoid_FP16_tiny_lut) {
+  inferAndCompare<1000>(10, ElemKind::Float16Ty,
+                        NNPILookupType::LOOKUP_LINEAR_INTERPOLATION, -6, 6, -10,
+                        10, 0.2);
+}
+
+TEST(NNPIOptPipelineLUTTest, LUTSigmoid_FP16_narrow_input) {
+  inferAndCompare<10>(10000, ElemKind::Float16Ty,
+                      NNPILookupType::LOOKUP_LINEAR_INTERPOLATION, -6, 6, 2, 3,
+                      1e-2);
+}
+
+TEST(NNPIOptPipelineLUTTest, LUTSigmoid_FP16_wide_input) {
+  inferAndCompare<1000>(10000, ElemKind::Float16Ty,
+                        NNPILookupType::LOOKUP_LINEAR_INTERPOLATION, -6, 6, -20,
+                        20, 2e-2);
+}
+
+TEST(NNPIOptPipelineLUTTest, LUTSigmoid_FP16_wide_lut) {
+  inferAndCompare<1000>(30000, ElemKind::Float16Ty,
+                        NNPILookupType::LOOKUP_LINEAR_INTERPOLATION, -10, 10,
+                        -5, 5, 5e-2);
+}
+#endif

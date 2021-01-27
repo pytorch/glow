@@ -104,16 +104,15 @@ void ConstantModificationPreventer::activate() {
         C->getType(), C->getName().str() + "_SWAP_CONST_FOLD",
         /* isTrainable */ false, C->getLayout());
     tmpPHToConstMap_[tmpPH] = C;
+    cctx_.optimizationOpts.tempPHsForConstants.insert(tmpPH);
     C->getOutput().replaceAllUsesOfWith(tmpPH->getOutput());
   }
   // Disable constant folding temporarily; restored later by the scope guard.
   cctx_.optimizationOpts.enableConstantFolding = false;
 }
 
-/// Helper that \returns whether all sibling Functions of \p F (other Functions
-/// inside its Module) are Loaded.
-static bool shouldDeleteConstants(Function *F) {
-  Module *mod = F->getParent();
+/// Helper that \returns true if all functions in \p mod are loaded.
+static bool areAllFunctionsLoaded(Module *mod) {
   for (auto *MF : mod->getFunctions()) {
     if (MF->getState() < FunctionState::FuncLoaded) {
       return false;
@@ -222,7 +221,7 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
     return changed;
   }
 
-  if (!shouldDeleteConstants(F)) {
+  if (!areAllFunctionsLoaded(F->getParent())) {
     return changed;
   }
 
@@ -896,20 +895,45 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       node->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(newTR);
     }
 
-    // Sink TransposeNode below QuantizedNode.
-    // If it doesn't work out it will be re-sinked later.
     if (auto *Q = dyn_cast<QuantizeNode>(node)) {
-      auto *TR = dyn_cast<TransposeNode>(Q->getInput());
-      if (!TR) {
+      // Sink TransposeNode below QuantizedNode.
+      // If it doesn't work out it will be re-sinked later.
+      if (auto *TR = dyn_cast<TransposeNode>(Q->getInput())) {
+        auto newQType = F->getParent()->uniqueTypeWithNewShape(
+            Q->getResult().getType(), TR->getInput().dims());
+        auto *newQ = F->createQuantize(Q->getName(), TR->getInput(), newQType);
+        auto *newTR = F->createTranspose(TR->getName(), newQ, TR->getShuffle());
+        Q->getResult().replaceAllUsesOfWith(newTR);
+        changed = true;
         continue;
       }
 
-      auto newQType = F->getParent()->uniqueTypeWithNewShape(
-          Q->getResult().getType(), TR->getInput().dims());
-      auto *newQ = F->createQuantize(Q->getName(), TR->getInput(), newQType);
-      auto *newTR = F->createTranspose(TR->getName(), newQ, TR->getShuffle());
-      Q->getResult().replaceAllUsesOfWith(newTR);
+      // Sink Reshape below Quantize.
+      if (auto *RN = dyn_cast<ReshapeNode>(Q->getInput())) {
+        auto newQType = F->getParent()->uniqueTypeWithNewShape(
+            Q->getResult().getType(), RN->getInput().dims());
+        auto *newQ = F->createQuantize(Q->getName(), RN->getInput(), newQType);
+        auto *newRN = F->createReshape(RN->getName(), newQ,
+                                       RN->getResult().dims(), RN->getLayout());
+        Q->getResult().replaceAllUsesOfWith(newRN->getResult());
+        changed = true;
+        continue;
+      }
+    }
+
+    // Sink Reshape below ConvertTo.
+    if (auto *CN = dyn_cast<ConvertToNode>(node)) {
+      auto *RN = dyn_cast<ReshapeNode>(CN->getInput());
+      if (!RN) {
+        continue;
+      }
+      auto *newCN = F->createConvertTo(CN->getName(), RN->getInput(),
+                                       CN->getResult().getElementType());
+      auto *newRN = F->createReshape(RN->getName(), newCN,
+                                     RN->getResult().dims(), RN->getLayout());
+      CN->getResult().replaceAllUsesOfWith(newRN->getResult());
       changed = true;
+      continue;
     }
 
     // Sink TransposeNode below DequantizedNode.
@@ -1131,6 +1155,110 @@ bool OptimizeSmallConv::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Fold a Convolution dilated manually using Transpose, SpaceToDepth and
+/// DepthToSpace nodes into a single Convolution node. Pattern:
+/// NHWC2CHWN -> S2D -> CHWN2NHWC -> Conv -> NHWC2CHWN -> D2S -> CHWN2NHWC
+bool FoldDilatedConv::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    // Do matching starting from the last node of the pattern and go backwards.
+
+    // 1. Transpose CHWN2NHWC.
+    // Do not match this Transpose, since it has likely sank and got separated
+    // from the rest of the nodes in the pattern. Instead, we'll generate a
+    // reverse Transpose after new Convolution for them to be optimized out.
+
+    // 2. DepthToSpace (represented as Reshape + Transpose[6 dims] + Reshape).
+    // Ignore the last Reshape for the same reasons as Transpose above and start
+    // matching from 6 dim Transpose.
+    auto *D2S = dyn_cast<TransposeNode>(&N);
+    if (!D2S || !D2S->hasOneUse() ||
+        D2S->getShuffle() != llvm::makeArrayRef(D2S_DCR)) {
+      continue;
+    }
+    unsigned_t block = D2S->getInput().dims()[3];
+    NodeValue output = D2S->getResult();
+
+    auto *RN = dyn_cast<ReshapeNode>(D2S->getInput());
+    if (!RN || !RN->hasOneUse()) {
+      continue;
+    }
+    llvm::ArrayRef<dim_t> idim = RN->getInput().dims();
+    llvm::SmallVector<dim_t, 6> odim = {
+        idim[0], idim[1], idim[2], block, block, idim[3] / (block * block)};
+    if (RN->getResult().dims() != llvm::makeArrayRef(odim)) {
+      continue;
+    }
+
+    // 3. Transpose NHWC2CHWN.
+    auto *T1 = dyn_cast<TransposeNode>(RN->getInput());
+    if (!T1 || !T1->hasOneUse() ||
+        T1->getShuffle() != llvm::makeArrayRef(NHWC2CHWN)) {
+      continue;
+    }
+
+    // 4. Convolution.
+    auto *CN = dyn_cast<ConvolutionNode>(T1->getInput());
+    if (!CN || !CN->hasOneUse()) {
+      continue;
+    }
+    llvm::StringRef name = CN->getName();
+    auto kernels = CN->getKernels();
+    auto strides = CN->getStrides();
+    auto pads = CN->getPads();
+    if (!isUniformArray(strides, 1u) || !isUniformArray(pads, 0u) ||
+        !isUniformArray(CN->getDilation(), 1u)) {
+      continue;
+    }
+
+    // 5. Transpose CHWN2NHWC.
+    auto *T2 = dyn_cast<TransposeNode>(CN->getInput());
+    if (!T2 || T2->getShuffle() != llvm::makeArrayRef(CHWN2NHWC)) {
+      continue;
+    }
+
+    // 6. SpaceToDepth.
+    auto *S2D = dyn_cast<SpaceToDepthNode>(T2->getInput());
+    if (!S2D || S2D->getBlockSize() != block) {
+      continue;
+    }
+    NodeValue input = S2D->getInput();
+
+    // 7. Transpose NHWC2CHWN.
+    // Can potentially be changed/removed by merging with other Transpose nodes,
+    // so don't match it. Instead, will generate a reverse Transpose later.
+
+    // Create CHWN2NHWC -> Conv -> NHWC2CHWN -> Reshape.
+    // Reshape and Transposes are created to cancel the ones we did not match.
+    auto *newT1 =
+        F->createTranspose(name.str() + "_chwn2nhwc", input, CHWN2NHWC);
+
+    auto trOutDims = newT1->getResult().dims();
+    auto outHW = calculateConvPoolOutputDims(
+        trOutDims[1], trOutDims[2], kernels, strides, pads, {block, block});
+    auto convOutTy = F->getParent()->uniqueTypeWithNewShape(
+        CN->getResult().getType(),
+        {trOutDims[0], outHW.first, outHW.second, CN->getResult().dims()[3]});
+    auto *newCN = F->createConv(name, newT1->getResult(), CN->getFilter(),
+                                CN->getBias(), convOutTy, kernels, strides,
+                                pads, CN->getGroup(), {block, block});
+
+    auto *newT2 = F->createTranspose(name.str() + "_nhwc2chwn",
+                                     newCN->getResult(), NHWC2CHWN);
+
+    idim = newT2->getResult().dims();
+    odim = {idim[0], idim[1] / block, block, idim[2] / block, block, idim[3]};
+    auto *newRN =
+        F->createReshape(name.str() + "_reshape", newT2->getResult(), odim);
+
+    output.replaceAllUsesOfWith(newRN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// \returns True if node A may depend on the result of B. The relationship
 /// between the nodes does not have to be direct. For example, A can depend on
 /// X which depends on B. In that case the method needs to return True.
@@ -1325,6 +1453,9 @@ bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
                                 CN->getBias(), CN->getResult().getType(),
                                 CN->getKernels(), CN->getStrides(), newConvPads,
                                 CN->getGroup(), CN->getDilation());
+    newCN->setFusedActivation(CN->getFusedActivation());
+    newCN->setFusedActivationArgs(CN->getFusedActivationArgs());
+
     CN->getResult().replaceAllUsesOfWith(newCN);
     changed = true;
   }
@@ -1810,7 +1941,7 @@ static Constant *getUniquelyUsedConstant(Module *M, Node &node) {
     return nullptr;
   }
 
-  if (constant->hasOneUse()) {
+  if (constant->hasOneUse() && areAllFunctionsLoaded(M)) {
     return constant;
   }
 
@@ -2137,8 +2268,10 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
     // Provide collectArithmeticChain w/ bias/scale that have identity values
     // as we are creating new BN consisted of the arithmetic nodes that the
     // function will find.
-    auto *newScale = F->getParent()->createConstant(bias.getType(), "BN.scale");
-    auto *newBias = F->getParent()->createConstant(bias.getType(), "BN.bias");
+    auto *newScale = F->getParent()->createConstant(
+        bias.getType(), CN->getName().str() + "_BN.scale");
+    auto *newBias = F->getParent()->createConstant(
+        bias.getType(), CN->getName().str() + "_BN.bias");
 
     newScale->getPayloadMutable().getHandle<float>().clear(1.f);
     newBias->getPayloadMutable().getHandle<float>().clear(0.f);
@@ -2160,11 +2293,13 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
 
     Tensor varianceT(depthTy);
     varianceT.init(glow::Tensor::InitKind::Broadcast, 1.0f, F->getPRNG());
-    auto variance = F->getParent()->createConstant("BN.var", varianceT);
+    auto variance = F->getParent()->createConstant(
+        CN->getName().str() + "_BN.var", varianceT);
 
     Tensor meanT(depthTy);
     meanT.zero();
-    auto mean = F->getParent()->createConstant("BN.mean", meanT);
+    auto mean =
+        F->getParent()->createConstant(CN->getName().str() + "_BN.mean", meanT);
 
     // Create a BN with new parameters.
     auto *nBN =
@@ -2742,7 +2877,7 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
     std::unordered_map<SliceNode *, Node *> oldSlicesToNewNodes;
 
     for (const auto &slicePairs : consecutiveSlices) {
-      auto slicesDim = slicePairs.first;
+      unsigned_t slicesDim = slicePairs.first;
       auto &slices = slicePairs.second;
 
       if (slices.size() <= 1) {
@@ -3894,28 +4029,47 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
-/// Optimize Quantize(ConvertTo(Node)) -> Quantize(Node), where Quantize is
-/// int8. This may have numerical differences but since Int8 has a small range
-/// it's likely fine. This is opt in by a backend.
+/// Optimize patterns of Int8 quantization/dequantization with ConvertTo. This
+/// may have numerical differences but since Int8 has a small range it's likely
+/// fine. This is opt in by a backend.
 bool OptimizeOutIntermediateConversions::run(Function *F,
                                              const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
   bool changed = false;
   for (auto &node : F->getNodes()) {
-    QuantizeNode *QN = llvm::dyn_cast<QuantizeNode>(&node);
-    if (!QN ||
-        QN->getResult().getType()->getElementType() != ElemKind::Int8QTy) {
+    // Quantize(ConvertTo(Node)) -> Quantize(Node), where Quantize is int8
+    if (QuantizeNode *QN = llvm::dyn_cast<QuantizeNode>(&node)) {
+      if (QN->getResult().getType()->getElementType() != ElemKind::Int8QTy) {
+        continue;
+      }
+
+      ConvertToNode *CN = llvm::dyn_cast<ConvertToNode>(QN->getInput());
+      if (!CN) {
+        continue;
+      }
+
+      QN->setNthInput(QuantizeNode::InputIdx, CN->getInput());
+      changed = true;
       continue;
     }
 
-    ConvertToNode *CN = llvm::dyn_cast<ConvertToNode>(QN->getInput());
-    if (!CN) {
+    // ConvertTo(Dequantize(Node)) -> Dequantize(Node), where Dequantize is int8
+    if (ConvertToNode *CN = llvm::dyn_cast<ConvertToNode>(&node)) {
+      DequantizeNode *DN = llvm::dyn_cast<DequantizeNode>(CN->getInput());
+      if (!DN ||
+          DN->getInput().getType()->getElementType() != ElemKind::Int8QTy) {
+        continue;
+      }
+
+      // Create new Dequantize node, dequantizing directly to the kind of the
+      // ConverTo that originally consumed it.
+      DequantizeNode *newDN = F->createDequantize(
+          DN->getName(), DN->getInput(), CN->getResult().getElementType());
+      CN->getResult().replaceAllUsesOfWith(newDN->getResult());
+      changed = true;
       continue;
     }
-
-    QN->setNthInput(QuantizeNode::InputIdx, CN->getInput());
-    changed = true;
   }
 
   return changed;
@@ -4321,6 +4475,9 @@ static bool sinkRescaleQuantizedNode(Function *F,
                                     CN->getResult().getType(), CN->getKernels(),
                                     CN->getStrides(), CN->getPads(),
                                     CN->getGroup(), CN->getDilation());
+        newCN->setFusedActivation(CN->getFusedActivation());
+        newCN->setFusedActivationArgs(CN->getFusedActivationArgs());
+
         CN->getResult().replaceAllUsesOfWith(newCN);
         changed = true;
       }
@@ -5018,22 +5175,27 @@ static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
     }
 
     return BN->getInput();
-  } else {
-    while (TileNode *TN = dyn_cast<TileNode>(N)) {
-      // Check that the axis of the current Tile is inside of the expected
-      // provided endDim.
-      if (TN->getAxis() >= endDim) {
-        return N;
-      }
-      // Applicable only if original dim is 1 in the Broadcast's Tile.
-      if (TN->getInput().dims()[TN->getAxis()] != 1) {
-        return N;
-      }
-      N = TN->getInput();
+  }
+
+  // All non-BroadcastNode broadcasts must Tile at least once.
+  if (!isa<TileNode>(N)) {
+    return N;
+  }
+
+  while (TileNode *TN = dyn_cast<TileNode>(N)) {
+    // Check that the axis of the current Tile is inside of the expected
+    // provided endDim.
+    if (TN->getAxis() >= endDim) {
+      return N;
     }
-    if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
-      return RN->getInput();
+    // Applicable only if original dim is 1 in the Broadcast's Tile.
+    if (TN->getInput().dims()[TN->getAxis()] != 1) {
+      return N;
     }
+    N = TN->getInput();
+  }
+  if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
+    return RN->getInput();
   }
 
   return N;
@@ -5063,13 +5225,15 @@ bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // Check if the RHS is a Splat or Constant. It may have been broadcasted to
-    // the correct shape.
+    // Check if the RHS is a Splat, or Constant, or temp PH (to be Constant
+    // later). It may have been broadcasted to the correct shape.
     NodeValue RHS = unwindBroadcast(N.getNthInput(ArithmeticNode::RHSIdx),
                                     LN->getResult().dims().size() -
                                         LN->getScale().dims().size());
 
-    if (!isa<SplatNode>(RHS) && !isa<Constant>(RHS)) {
+    auto *P = dyn_cast<Placeholder>(RHS);
+    if (!isa<SplatNode>(RHS) && !isa<Constant>(RHS) &&
+        !(P && cctx.optimizationOpts.tempPHsForConstants.count(P))) {
       continue;
     }
 
@@ -5132,36 +5296,36 @@ template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
     return false;
   }
 
-  FusedActivation activationType;
   NodeValue activationNV;
   switch (activation->getKind()) {
   case Kinded::Kind::ReluNodeKind:
-    activationType = FusedActivation::RELU;
     activationNV = cast<ReluNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::RELU);
+    break;
+  case Kinded::Kind::ClipNodeKind:
+    activationNV = cast<ClipNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::CLIP);
+    N->setFusedActivationArgs({cast<ClipNode>(activation)->getMin(),
+                               cast<ClipNode>(activation)->getMax()});
     break;
   case Kinded::Kind::SigmoidNodeKind:
-    activationType = FusedActivation::SIGMOID;
     activationNV = cast<SigmoidNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::SIGMOID);
     break;
   case Kinded::Kind::TanhNodeKind:
-    activationType = FusedActivation::TANH;
     activationNV = cast<TanhNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::TANH);
+    break;
+  case Kinded::Kind::LeakyReluNodeKind:
+    activationNV = cast<LeakyReluNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::LEAKY_RELU);
+    N->setFusedActivationArgs({cast<LeakyReluNode>(activation)->getAlpha()});
     break;
   default:
     return false;
   }
 
-  // currently not to support asymmetric quantization fusion.
-  if (N->getResult().getType()->isQuantizedType() &&
-      ((N->getResult().getType()->getOffset() != 0) ||
-       (activationNV.getType()->getOffset() != 0))) {
-    return false;
-  }
-
-  N->setFusedActivation(activationType);
-
-  // In only symmetric case, If Relu outScale is not equal to Conv outScale,
-  // Conv outScale is replaced by Relu outScale.
+  // Modify the node output type to that of the activation.
   if (!(activationNV.getType()->isEqual(N->getResult().getType()))) {
     N->getResult().setType(activationNV.getType());
   }
@@ -5175,6 +5339,11 @@ static bool foldActivations(Function *F, const CompilationContext &cctx,
   bool changed = false;
   for (auto &node : F->getNodes()) {
     if (fuseActivation(dyn_cast<ConvolutionNode>(&node), F, B)) {
+      changed = true;
+      continue;
+    }
+    if (fuseActivation(dyn_cast<ChannelwiseQuantizedConvolutionNode>(&node), F,
+                       B)) {
       changed = true;
       continue;
     }
@@ -5515,7 +5684,7 @@ static void transformIndexTypeDemotion(const Backend &B, Function *F,
   for (auto &n : F->getNodes()) {
     for (int i = 0, nOutputs = n.getNumResults(); i < nOutputs; ++i) {
       if (n.getNthResult(i).getType()->actualSize() >=
-          std::numeric_limits<int32_t>::max()) {
+          size_t(std::numeric_limits<int32_t>::max())) {
         return;
       }
     }
@@ -6109,15 +6278,13 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         break;
       }
       case Kinded::Kind::TransposeNodeKind: {
-        splitDims[TransposeNode::InputIdx] = 0;
         auto shuffleVec = cast<TransposeNode>(curNode)->getShuffle();
-        unsigned_t resultDim =
-            std::find(shuffleVec.begin(), shuffleVec.end(), 0) -
-            shuffleVec.begin();
+        unsigned_t inputDim = shuffleVec[0];
+        splitDims[TransposeNode::InputIdx] = inputDim;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, TransposeNode::InputIdx,
-                    TransposeNode::ResultIdx, splitDims, resultDim));
+                    TransposeNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
@@ -6197,6 +6364,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, DequantizeNode::InputIdx,
                     DequantizeNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::RescaleQuantizedNodeKind: {
+        splitDims[RescaleQuantizedNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, RescaleQuantizedNode::InputIdx,
+                    RescaleQuantizedNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ConvertToNodeKind: {
@@ -6307,6 +6482,19 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, DequantizeNode::InputIdx,
                     DequantizeNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::RescaleQuantizedNodeKind: {
+        if (curNode->getNthInput(RescaleQuantizedNode::InputIdx).dims().size() <
+            2) {
+          break;
+        }
+        splitDims[RescaleQuantizedNode::InputIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, RescaleQuantizedNode::InputIdx,
+                    RescaleQuantizedNode::ResultIdx, splitDims,
                     /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }

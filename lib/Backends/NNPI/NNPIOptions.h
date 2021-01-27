@@ -319,6 +319,14 @@ public:
                       "Dump the compilation info in text form.",
                       "NNPI_DUMP_COMP_INFO", "0");
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+  /// Enable Execution Section fusion pass.
+  DECLARE_NNPI_OPTION(enableESUnifyAdditionalPass, bool,
+                      "enableESUnifyAdditionalPass",
+                      "Enable Execution Section fusion pass.",
+                      "NNPI_ENABLE_ES_FUSION", "0");
+#endif
+
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
@@ -350,6 +358,9 @@ public:
     INIT_NNPI_OPTIONS(disableSlsAllLenOneCalcAtRunTime, parameters);
     INIT_NNPI_OPTIONS(dumpDotFiles, parameters);
     INIT_NNPI_OPTIONS(dumpCompilationInfo, parameters);
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+    INIT_NNPI_OPTIONS(enableESUnifyAdditionalPass, parameters);
+#endif
   }
 
   virtual llvm::StringRef getOptionsName() const override {
@@ -458,7 +469,7 @@ public:
       "NNPI_DISABLE_COMMANDS", "0");
 
   /// Inference timeout threshold in us. Default UINT32_MAX means infinity.
-  unsigned inferTimeout{UINT32_MAX};
+  unsigned inferTimeoutUs{UINT32_MAX};
 
   NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);

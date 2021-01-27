@@ -23,6 +23,7 @@
 #include "glow/Partitioner/PartitionerValidation.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -1021,6 +1022,17 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
 
   RETURN_IF_ERR(finalize(partitions, partitionMap));
 
+  if (cctx.saturateHost) {
+    // Use the config's logical IDs to determine how many cards it's using.
+    llvm::SmallSet<DeviceIDTy, 6> allLogicalIDs;
+    for (const auto IDs : config.logicalIDs) {
+      for (const auto &id : IDs) {
+        allLogicalIDs.insert(id);
+      }
+    }
+    saturateHost(allLogicalIDs.size(), partitions);
+  }
+
   return std::move(partitions);
 }
 
@@ -1097,6 +1109,9 @@ static Error appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables,
 
     // neighbors contains only successors; add all predecessors too.
     std::queue<Node *> preds;
+    for (auto *N : neighbors) {
+      preds.push(N);
+    }
     preds.push(SLS);
     while (!preds.empty()) {
       auto *cur = preds.front();
@@ -1115,18 +1130,20 @@ static Error appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables,
   return Error::success();
 }
 
-// Check if the weights input for \p SLWS is a SplatNode with more than one
+// Check if the input for \p targetNode is a SplatNode with more than one
 // user, and if so clone the splat node into \p F and set it to be the new
-// weights of \p SLWS.
-template <class T>
-static void cloneSplatWeightsIfNecessary(T *SLWS, Function *F) {
-  SplatNode *splatWeights = llvm::dyn_cast<SplatNode>(SLWS->getWeights());
-  if (!splatWeights || splatWeights->getNumUsers() <= 1) {
-    return;
+// input of \p targetNode.
+static void cloneSplatInputIfNecessary(Node *targetNode, Function *F) {
+  for (int inp = 0, e = targetNode->getNumInputs(); inp < e; inp++) {
+    auto input = targetNode->getNthInput(inp);
+    SplatNode *splatInput = llvm::dyn_cast<SplatNode>(input.getNode());
+    if (!splatInput || splatInput->getNumUsers() <= 1) {
+      continue;
+    }
+    SplatNode *splatInputClone =
+        F->addNode(llvm::cast<SplatNode>(splatInput->clone()));
+    targetNode->setNthInput(inp, splatInputClone->getResult());
   }
-  SplatNode *splatWeightsClone =
-      F->addNode(llvm::cast<SplatNode>(splatWeights->clone()));
-  SLWS->setNthInput(T::WeightsIdx, splatWeightsClone->getResult());
 }
 
 // Insert Split->Concat at barrier between SLS and Non-SLS partitions
@@ -1257,28 +1274,21 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     RETURN_IF_ERR(::glow::optimizeFunction(F, *(backends[0]), cctx));
   }
 
-  // Now we may want to duplicate Splat weights in case they have been CSE'd
-  // into a single SplatNode. This is because if two SLWS that share weights are
-  // separated to two partitions, then partitioning will force a dependence from
-  // whichever partition the weights are placed to the other partition. After
+  // Now we may want to duplicate Splat input nodes in case they have been CSE'd
+  // (CSE stands for common subexpression elimination) into a single SplatNode.
+  // This is because if two SLWS that share Splat input nodes are separated to
+  // two partitions, then partitioning will force a dependence from whichever
+  // partition the input node are placed to the other partition. After
   // partitioning when we optimize each partition individually, they may be
-  // merged again inside the partition.
+  // merged again inside the partition. Besides, the potential partition
+  // dependency introduced might lead to a circular dependency in the final
+  // graph.
+  //
+  // We fix this issue by iterating over the Function and finding Splat input
+  // nodes with multiple users and just creating new Splats (by cloning) for
+  // each user.
   for (auto &node : F->getNodes()) {
-    if (auto *SLWS = llvm::dyn_cast<SparseLengthsWeightedSumNode>(&node)) {
-      cloneSplatWeightsIfNecessary(SLWS, F);
-    } else if (auto *SLWS = llvm::dyn_cast<
-                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&node)) {
-      cloneSplatWeightsIfNecessary(SLWS, F);
-    } else if (auto *SLWS =
-                   llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(
-                       &node)) {
-      cloneSplatWeightsIfNecessary(SLWS, F);
-    } else if (auto *EBB = llvm::dyn_cast<EmbeddingBagNode>(&node)) {
-      cloneSplatWeightsIfNecessary(EBB, F);
-    } else if (auto *EBB =
-                   llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(&node)) {
-      cloneSplatWeightsIfNecessary(EBB, F);
-    }
+    cloneSplatInputIfNecessary(&node, F);
   }
 
   // Create list of SLS Tables
@@ -1363,6 +1373,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
   // Now assign SLS Nodes to devices
   std::vector<std::unordered_set<NodeValue>> frontierValues(slsDevices.size());
+  std::vector<NodesSet> nodesets(slsDevices.size());
   for (auto &table : slsTables) {
 
     // Sort by cost increasing
@@ -1372,37 +1383,33 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
               });
 
     VLOG(1) << "Devices sorted by cost increasing" << std::endl;
-    for (auto &device : slsDevices) {
-      VLOG(1) << "(deviceId, memAvailableInBytes, currentCost): "
+    for (const auto &device : slsDevices) {
+      const auto deviceId = device.deviceId;
+      auto meminfo = getGraphMemInfo(nodesets[deviceId], contextCount_);
+      const auto totalSize = meminfo.getTotalMemSize();
+      VLOG(1) << "(deviceId, memAvailableInBytes, totalSize, currentCost): "
               << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
-              << device.currentCost << std::endl;
+              << totalSize << "\t" << device.currentCost << std::endl;
     }
-
-    // Calculate the size of the SLS and all neighbors, i.e. the total
-    // additional memory needed to add to the device.
-    GraphMemInfo graphMem;
-    NodesSet currentPartition;
-    graphMem.contextCount = contextCount_;
-    // Insert SLS node, and then insert all neighbors.
-    graphMem =
-        updateGraphMemInfoByAddingNode(currentPartition, graphMem, table.node);
-    currentPartition.insert(table.node);
-    for (Node *N : table.neighbors) {
-      graphMem = updateGraphMemInfoByAddingNode(currentPartition, graphMem, N);
-      currentPartition.insert(N);
-    }
-    const uint64_t totalSize = graphMem.getTotalMemSize();
 
     // Pick the first that fits
     bool deviceFound = false;
-    for (unsigned int d = 0; d < slsDevices.size(); d++) {
-      if (slsDevices[d].memAvailableInBytes >= totalSize) {
+    for (auto &d : slsDevices) {
+      const auto deviceId = d.deviceId;
+      // Calculate the memory needed if we merge SLS and its neighboring nodes
+      // into existing partition
+      auto nodesSetd = nodesets[deviceId];
+      nodesSetd.insert(table.node);
+      nodesSetd.insert(table.neighbors.begin(), table.neighbors.end());
+      auto meminfo = getGraphMemInfo(nodesSetd, contextCount_);
+      const auto totalSize = meminfo.getTotalMemSize();
+      if (d.memAvailableInBytes >= totalSize) {
         deviceFound = true;
-        slsDevices[d].memAvailableInBytes -= totalSize;
-        slsDevices[d].currentCost += (size_t)table.cost;
-        table.deviceId = slsDevices[d].deviceId;
+        d.currentCost += (size_t)table.cost;
+        table.deviceId = d.deviceId;
         frontierValues[table.deviceId].insert(table.frontier.begin(),
                                               table.frontier.end());
+        nodesets[deviceId].swap(nodesSetd);
         break;
       }
     }
@@ -1413,11 +1420,15 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   }
 
   // Print final device info
-  VLOG(1) << "Devices sorted by cost increasing" << std::endl;
-  for (auto &device : slsDevices) {
-    VLOG(1) << "(deviceId, memAvailableInBytes, currentCost): "
-            << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
-            << device.currentCost << std::endl;
+  VLOG(1) << "Devices sorted by cost increasing: ";
+  for (const auto &d : slsDevices) {
+    const auto deviceId = d.deviceId;
+    auto meminfo = getGraphMemInfo(nodesets[deviceId], contextCount_);
+    const auto totalSize = meminfo.getTotalMemSize();
+    VLOG(1) << "deviceId: " << deviceId << ", used memory: " << totalSize
+            << ", available memory: " << (d.memAvailableInBytes - totalSize)
+            << ", cost: " << d.currentCost
+            << ", node size: " << nodesets[deviceId].size();
   }
 
   // Print assignments

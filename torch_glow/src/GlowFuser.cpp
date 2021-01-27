@@ -30,6 +30,7 @@
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
+#include <torch/csrc/jit/tensorexpr/kernel.h>
 
 namespace glow {
 namespace {
@@ -52,6 +53,12 @@ sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
   return result;
 }
 
+bool isNodeSupportedForMerge(const torch::jit::Node *node, IsSupportFunc fn) {
+  return fn(node) || node->kind() == torch::jit::prim::Constant ||
+         node->kind() == torch::jit::prim::GetAttr ||
+         node->kind() == getGlowSymbol();
+}
+
 bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
               torch::jit::Node *consumer) {
   if (node->kind() == torch::jit::prim::Param) {
@@ -59,8 +66,7 @@ bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
   }
 
   // Check that the node is supported
-  if (!(fn(node) || node->kind() == torch::jit::prim::Constant ||
-        node->kind() == torch::jit::prim::GetAttr)) {
+  if (!isNodeSupportedForMerge(node, fn)) {
     return false;
   }
 
@@ -270,6 +276,49 @@ void verifyFusions(const std::shared_ptr<torch::jit::Graph> graph,
   }
 }
 
+struct GlowFuserStats {
+  int64_t totalCount = 0;
+  int64_t supportedCount = 0;
+  int64_t fusedCount = 0;
+};
+
+// Dumps per-kind counts of operators in the graph and whether they were
+// fused into a subgraph.
+static void dumpOperatorStats(const std::shared_ptr<torch::jit::Graph> graph,
+                              IsSupportFunc fn, at::Symbol kind) {
+  std::map<torch::jit::NodeKind, GlowFuserStats> fuserStats;
+  for (const auto *node : graph->nodes()) {
+    if (node->kind() == kind) {
+      auto subgraph = getSubgraph(node);
+      for (const auto *subNode : subgraph->nodes()) {
+        GlowFuserStats &stats = fuserStats[subNode->kind()];
+        stats.totalCount += 1;
+        stats.supportedCount += (isNodeSupportedForMerge(subNode, fn) ? 1 : 0);
+        stats.fusedCount += 1;
+      }
+    } else {
+      GlowFuserStats &stats = fuserStats[node->kind()];
+      stats.totalCount += 1;
+      stats.supportedCount += (isNodeSupportedForMerge(node, fn) ? 1 : 0);
+    }
+  }
+
+  std::ostringstream out;
+  out << "Dump of operator stats for graph:\n";
+  out << "InstanceCount: count of operator in graph\n";
+  out << "FuseSupported: instances with IsSupportFunc returning true\n";
+  out << "Fused: instances of operator that were merged into a subgraph\n";
+  out << folly::stringPrintf("%30s %13s %13s %13s\n", "Operator",
+                             "InstanceCount", "FuseSupported", "Fused");
+  for (auto &kindAndStat : fuserStats) {
+    out << folly::stringPrintf(
+        "%30s %13ld %13ld %13ld\n", kindAndStat.first.toQualString(),
+        kindAndStat.second.totalCount, kindAndStat.second.supportedCount,
+        kindAndStat.second.fusedCount);
+  }
+  LOG(INFO) << out.str();
+}
+
 void setIncludeLastOffsets(std::shared_ptr<torch::jit::Graph> graph) {
   c10::IValue ivalTrue(true);
   torch::jit::Value *constantTrue = graph->insertConstant(ivalTrue);
@@ -299,6 +348,39 @@ void setIncludeLastOffsets(std::shared_ptr<torch::jit::Graph> graph) {
       }
     }
   }
+}
+
+void processTensorExprGroups(std::shared_ptr<torch::jit::Graph> &graph) {
+  for (auto it = graph->nodes().begin(); it != graph->nodes().end(); it++) {
+    if (it->kind().toQualString() != "tensorexpr::Group") {
+      continue;
+    }
+
+    // Create a kernel from the fusion group.
+    // Replace the fusion group with a new node representing the kernel and how
+    // to invoke it.
+    auto nncFusedGraph = it->g(at::Symbol::fromQualString("attr::Subgraph"));
+
+    // Create TensorExprKernel, which will compile the graph.
+    auto kernel = std::make_shared<torch::jit::tensorexpr::TensorExprKernel>(
+        nncFusedGraph);
+    auto kernelSrc = kernel->getCodeText();
+
+    // Create a custom replacement node.
+    torch::jit::Node *nncKernelNode =
+        graph->create(at::Symbol::fromQualString("glow::nnckernel"),
+                      it->inputs(), it->outputs().size());
+    // Set correct types for outputs.
+    for (unsigned idx = 0, e = it->outputs().size(); idx < e; ++idx) {
+      nncKernelNode->outputs()[idx]->setType(it->outputs()[idx]->type());
+    }
+    nncKernelNode->s_(at::Symbol::attr("nnc::kernel"), kernelSrc);
+    // Add new node to the graph right after the current node.
+    nncKernelNode->insertAfter(*it);
+    // Perform the replacement.
+    it->replaceAllUsesWith(nncKernelNode);
+  }
+  EliminateDeadCode(graph);
 }
 
 void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
@@ -356,6 +438,13 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
 
   Inline(*graph);
 
+  // Register Glow specific nodes.
+  torch::jit::RegisterOperators reg({torch::jit::Operator(
+      "glow::nnckernel(...) -> ...", [](torch::jit::Stack &) { return 0; },
+      c10::AliasAnalysisKind::PURE_FUNCTION)});
+
+  processTensorExprGroups(graph);
+
   // Prepare the graph by fusing known patterns for the model loader.
   // TODO: this should be done only on Glow subgraphs to avoid modifying parts
   // of the graph that Glow will not be running.
@@ -372,6 +461,10 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   EliminateDeadCode(graph);
 
   verifyFusions(graph, kind);
+
+  if (settings.dumpOperatorInventory) {
+    dumpOperatorStats(graph, fn, kind);
+  }
 }
 
 } // namespace

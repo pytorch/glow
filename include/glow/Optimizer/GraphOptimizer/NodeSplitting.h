@@ -16,6 +16,7 @@
 #ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_NODESPLITTING_H
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_NODESPLITTING_H
 
+#include "glow/Base/SliceRange.h"
 #include "glow/Base/Type.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
@@ -27,6 +28,10 @@
 
 namespace glow {
 
+/// Node output operand used for splitting. Currently we only support splitting
+/// the 1st output operand of a node.
+constexpr dim_t SplitNodeOutputIdx = 0;
+
 ///===---------------------------------------------------------------------===//
 ///                               SplitNodeOption
 ///===---------------------------------------------------------------------===//
@@ -35,14 +40,37 @@ namespace glow {
 /// output operand of a node. If a node has multiple output operands then the
 /// option commonly refers to the first output operand.
 class SplitNodeOption {
+public:
+  /// Discriminator for LLVM-style RTTI (for using dyn_cast<> et al).
+  enum SplitNodeKind {
+    SplitNodeBySliceRanges,
+    SplitNodeByNumChunks,
+    SplitNodeByChunkSize,
+    SplitNodeByChunkSizes,
+    SplitNodeByChunkWeights,
+  };
+
+private:
+  const SplitNodeKind kind_;
+
+public:
+  /// Dtor.
+  virtual ~SplitNodeOption() = default;
+  SplitNodeKind getKind() const { return kind_; }
+  SplitNodeOption(SplitNodeKind K) : kind_(K) {}
+};
+
+/// Orthogonal generic split node option.
+class SplitNodeOptionOrthogonal : public SplitNodeOption {
 
   /// All the dimensions of a tensor used for splitting in increasing order.
   llvm::SmallVector<size_t, max_tensor_dimensions> splitDims_;
 
 public:
   /// Ctor.
-  SplitNodeOption(llvm::ArrayRef<size_t> splitDims)
-      : splitDims_(splitDims.begin(), splitDims.end()) {}
+  SplitNodeOptionOrthogonal(SplitNodeOption::SplitNodeKind k,
+                            llvm::ArrayRef<size_t> splitDims)
+      : SplitNodeOption(k), splitDims_(splitDims.begin(), splitDims.end()) {}
 
   /// \returns the split dims.
   llvm::ArrayRef<size_t> getSplitDims() const { return splitDims_; }
@@ -55,16 +83,23 @@ public:
   virtual std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const = 0;
 
   /// Dtor.
-  virtual ~SplitNodeOption() = default;
+  virtual ~SplitNodeOptionOrthogonal() = default;
+
+  static bool classof(const SplitNodeOption *S) {
+    return S->getKind() == SplitNodeKind::SplitNodeByNumChunks ||
+           S->getKind() == SplitNodeKind::SplitNodeByChunkSize ||
+           S->getKind() == SplitNodeKind::SplitNodeByChunkSizes ||
+           S->getKind() == SplitNodeKind::SplitNodeByChunkWeights;
+  }
 };
 
-/// Split option used for splitting a node along the dimensions \ref splitDims
+/// Orthogonal split option for splitting a node along dimensions \ref splitDims
 /// with the given number of chunks \ref numChunks for each dimension. Since the
 /// split does not always result in equal chunks, you can choose to start the
 /// splitting with the bigger chunks first (one unit bigger than the others) by
 /// using the flag \ref bigChunksFirst. The number of chunks for each dimension
 /// must be lower than the respective dimension size, otherwise error is thrown.
-class SplitNodeByNumChunks : public SplitNodeOption {
+class SplitNodeByNumChunks : public SplitNodeOptionOrthogonal {
 
   /// Number of chunks for each split dimension.
   llvm::SmallVector<dim_t, max_tensor_dimensions> numChunks_;
@@ -77,7 +112,8 @@ public:
   SplitNodeByNumChunks(llvm::ArrayRef<size_t> splitDims,
                        llvm::ArrayRef<dim_t> numChunks,
                        bool bigChunksFirst = true)
-      : SplitNodeOption(splitDims),
+      : SplitNodeOptionOrthogonal(SplitNodeKind::SplitNodeByNumChunks,
+                                  splitDims),
         numChunks_(numChunks.begin(), numChunks.end()),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), numChunks.size())
@@ -89,7 +125,7 @@ public:
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
-/// Split option used for splitting a node along the dimensions \ref splitDims
+/// Orthogonal split option for splitting a node along dimensions \ref splitDims
 /// with the given chunk sizes \ref chunkSizes for each dimension such that each
 /// chunk obtained during splitting has a size along a given split dimension
 /// at most equal to the given chunk size along that respective dimension.
@@ -97,7 +133,7 @@ public:
 /// start the splitting with the bigger chunks first by using the flag
 /// \p bigChunksFirst. The chunk size for each dimension must be lower than the
 /// respective dimension size, otherwise error is thrown.
-class SplitNodeByChunkSize : public SplitNodeOption {
+class SplitNodeByChunkSize : public SplitNodeOptionOrthogonal {
 
   /// Chunk size for each split dimension.
   llvm::SmallVector<dim_t, max_tensor_dimensions> chunkSizes_;
@@ -110,7 +146,8 @@ public:
   SplitNodeByChunkSize(llvm::ArrayRef<size_t> splitDims,
                        llvm::ArrayRef<dim_t> chunkSizes,
                        bool bigChunksFirst = true)
-      : SplitNodeOption(splitDims),
+      : SplitNodeOptionOrthogonal(SplitNodeKind::SplitNodeByChunkSize,
+                                  splitDims),
         chunkSizes_(chunkSizes.begin(), chunkSizes.end()),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
@@ -122,12 +159,12 @@ public:
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
-/// Split option used for splitting a node along the dimensions \ref splitDims
+/// Orthogonal split option for splitting a node along dimensions \ref splitDims
 /// with the exact array of chunk sizes \ref chunkSizes for each dimension.
 /// The chunk sizes must be strictly positive and the sum of the chunk sizes
 /// for each dimension must be equal to the respective dimension size, otherwise
 /// error is thrown.
-class SplitNodeByChunkSizes : public SplitNodeOption {
+class SplitNodeByChunkSizes : public SplitNodeOptionOrthogonal {
 
   /// Array of chunk sizes for each split dimension.
   llvm::SmallVector<std::vector<dim_t>, max_tensor_dimensions> chunkSizes_;
@@ -136,7 +173,8 @@ public:
   /// Ctor.
   SplitNodeByChunkSizes(llvm::ArrayRef<size_t> splitDims,
                         llvm::ArrayRef<std::vector<dim_t>> chunkSizes)
-      : SplitNodeOption(splitDims),
+      : SplitNodeOptionOrthogonal(SplitNodeKind::SplitNodeByChunkSizes,
+                                  splitDims),
         chunkSizes_(chunkSizes.begin(), chunkSizes.end()) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
         << "Mismatch between 'splitDims' and 'chunkSizes' array sizes!";
@@ -147,7 +185,7 @@ public:
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
-/// Split option used for splitting a node along the dimensions \ref splitDims
+/// Orthogonal split option for splitting a node along dimensions \ref splitDims
 /// with the given chunk weights \ref chunkWeights for each dimension such that
 /// the resulting chunk sizes after splitting will be proportional to the
 /// chunk weights. The chunk weights must be strictly positive and are NOT
@@ -156,7 +194,7 @@ public:
 /// error is thrown. For example when splitting a 1D tensor with size 10 along
 /// the dimension 0 using the weights {1, 4} we obtain two slices with sizes
 /// {2, 8}.
-class SplitNodeByChunkWeights : public SplitNodeOption {
+class SplitNodeByChunkWeights : public SplitNodeOptionOrthogonal {
 
   /// Array of chunk weights for each split dimension.
   llvm::SmallVector<std::vector<float>, max_tensor_dimensions> chunkWeights_;
@@ -165,7 +203,8 @@ public:
   /// Ctor.
   SplitNodeByChunkWeights(llvm::ArrayRef<size_t> splitDims,
                           llvm::ArrayRef<std::vector<float>> chunkWeights)
-      : SplitNodeOption(splitDims),
+      : SplitNodeOptionOrthogonal(SplitNodeKind::SplitNodeByChunkWeights,
+                                  splitDims),
         chunkWeights_(chunkWeights.begin(), chunkWeights.end()) {
     CHECK_EQ(splitDims.size(), chunkWeights.size())
         << "Mismatch between 'splitDims' and 'chunkWeights' array sizes!";
@@ -174,6 +213,29 @@ public:
   /// Split a given dimension size \p dimSize along the dimension \p dim.
   /// \returns the chunks sizes after splitting.
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
+};
+
+/// Non-orthogonal split option based on raw slice ranges defined for the output
+/// operand of a node. The slice ranges are allowed to overlap but must cover
+/// the entire output operand of the node being split. This is the most flexible
+/// and generic split option.
+class SplitNodeBySliceRanges : public SplitNodeOption {
+
+  /// Array of raw slice ranges.
+  std::vector<SliceRange> sliceRanges_;
+
+public:
+  /// Ctor.
+  SplitNodeBySliceRanges(llvm::ArrayRef<SliceRange> sliceRanges)
+      : SplitNodeOption(SplitNodeKind::SplitNodeBySliceRanges),
+        sliceRanges_(sliceRanges) {}
+
+  /// \returns the raw slice ranges.
+  llvm::ArrayRef<SliceRange> getSliceRanges() const { return sliceRanges_; }
+
+  static bool classof(const SplitNodeOption *S) {
+    return S->getKind() == SplitNodeKind::SplitNodeBySliceRanges;
+  }
 };
 
 ///===---------------------------------------------------------------------===//
@@ -223,6 +285,7 @@ inline SplitNodeConstraint SplitNodeMaxMemConstraint(unsigned maxMem) {
 /// then an error is thrown. \returns a vector with the nodes obtained after
 /// splitting \p node. The node is split only if there is a splitting logic
 /// implemented for the node type, otherwise an empty vector is returned.
+/// NOTE: The original node is deleted from the graph after being split.
 Expected<std::vector<Node *>>
 splitNode(Node *node, const SplitNodeOption *splitOption,
           const SplitNodeConstraint *splitConstraint);
@@ -231,6 +294,7 @@ splitNode(Node *node, const SplitNodeOption *splitOption,
 /// \returns a vector with the nodes obtained after splitting \p node. The node
 /// is split only if there is a splitting logic implemented for the node type,
 /// otherwise an empty vector is returned.
+/// NOTE: The original node is deleted from the graph after being split.
 Expected<std::vector<Node *>> splitNode(Node *node,
                                         const SplitNodeOption &splitOption);
 
@@ -238,6 +302,7 @@ Expected<std::vector<Node *>> splitNode(Node *node,
 /// \returns a vector with the nodes obtained after splitting \p node. The node
 /// is split only if there is a splitting logic implemented for the node type,
 /// otherwise an empty vector is returned.
+/// NOTE: The original node is deleted from the graph after being split.
 Expected<std::vector<Node *>>
 splitNode(Node *node, const SplitNodeConstraint &splitConstraint);
 
@@ -265,6 +330,7 @@ using SplitNodeMap = std::unordered_map<Node *, std::vector<Node *>>;
 /// and the given split constraint map \p splitConstraintMap. \returns a split
 /// node map for those nodes which were actually split. This function does not
 /// split those nodes for which no option or constraint was found in the maps.
+/// NOTE: The original nodes are deleted from the graph after being split.
 Expected<SplitNodeMap>
 splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
            const SplitNodeConstraintMap &splitConstraintMap);
@@ -273,6 +339,7 @@ splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
 /// a split logic implemented using a common split option \p splitOption which
 /// will be used for all the nodes. \returns a split node map for those nodes
 /// which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
 Expected<SplitNodeMap> splitNodes(Function *F,
                                   const SplitNodeOption &splitOption);
 
@@ -280,8 +347,59 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 /// a split logic implemented using a common split constraint \p splitConstraint
 /// which will be used for all the nodes. \returns a split node map for those
 /// nodes which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
 Expected<SplitNodeMap> splitNodes(Function *F,
                                   const SplitNodeConstraint &splitConstraint);
+
+///===---------------------------------------------------------------------===//
+///                            splitNodeRecursively
+///===---------------------------------------------------------------------===//
+/// Function to perform a recursive node splitting starting with \p node and
+/// traversing the graph along the depth in order to split the parent nodes of
+/// \p node up to a maximum depth of \p maxDepth. The splitting of the starting
+/// node is based on the option \p splitOption. The splitting of the parent
+/// nodes is based on a custom option which inherits the slicing boundaries from
+/// the child node in order to create subgraphs which are completely parallel.
+/// The constraint \p splitConstraint applies to all the nodes being split.
+/// If \p singleUseOnly is given then the recursive split procedure stops when
+/// encountering a node which has multiple uses.
+/// The recursive split procedure stops either:
+/// - when the maximum depth has been reached.
+/// - when a node is encountered for which there is no split support.
+/// - when a node is encountered for which the split constraint is not met.
+/// \returns a split node map for those nodes which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
+Expected<SplitNodeMap>
+splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
+                     const SplitNodeConstraint *splitConstraint,
+                     unsigned maxDepth, bool singleUseOnly = false);
+
+/// Function to perform a recursive node splitting starting with \p node and
+/// traversing the graph along the depth in order to split the parent nodes of
+/// \p node up to a maximum depth of \p maxDepth. The splitting of the starting
+/// node is based on the option \p splitOption. The splitting of the parent
+/// nodes is based on a custom option which inherits the slicing boundaries from
+/// the child node in order to create subgraphs which are completely parallel.
+/// If \p singleUseOnly is given then the recursive split procedure stops when
+/// encountering a node which has multiple uses.
+/// \returns a split node map for those nodes which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
+Expected<SplitNodeMap> splitNodeRecursively(Node *node,
+                                            const SplitNodeOption &splitOption,
+                                            unsigned maxDepth,
+                                            bool singleUseOnly = false);
+
+/// Function to perform a recursive node splitting starting with \p node and
+/// traversing the graph along the depth in order to split the parent nodes of
+/// \p node up to a maximum depth of \p maxDepth.
+/// The constraint \p splitConstraint applies to all the nodes being split.
+/// If \p singleUseOnly is given then the recursive split procedure stops when
+/// encountering a node which has multiple uses.
+/// \returns a split node map for those nodes which were actually split.
+/// NOTE: The original nodes are deleted from the graph after being split.
+Expected<SplitNodeMap>
+splitNodeRecursively(Node *node, const SplitNodeConstraint &splitConstraint,
+                     unsigned maxDepth, bool singleUseOnly = false);
 
 } // namespace glow
 

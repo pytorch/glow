@@ -1,0 +1,17 @@
+name: "fc_3d"
+op {
+  input: "input"
+  input: "weights"
+  input: "bias"
+  output: "output"
+  name: ""
+  type: "FC"
+  arg {
+    name: "axis"
+    i: 2
+  }
+}
+external_input: "input"
+external_input: "weights"
+external_input: "bias"
+external_output: "output"

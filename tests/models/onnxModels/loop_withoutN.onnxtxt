@@ -1,0 +1,187 @@
+ir_version: 6
+producer_name: "jun-onnx-loop-ex"
+graph {
+  node {
+    output: "cond_orig"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 9
+        raw_data: "\001"
+        name: "cond_tensor"
+      }
+      type: TENSOR
+    }
+  }
+  node {
+    output: "max_trip_count"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 7
+        int64_data: 10
+        name: "count_tensor"
+      }
+      type: TENSOR
+    }
+  }
+
+  node {
+    input: "init_i"
+    output: "v_final"
+    op_type: "Identity"
+  }
+
+  node {
+    input: "max_trip_count"
+    input: "cond_orig"
+    output: "scan_output_final"
+    op_type: "Loop"
+    attribute {
+      name: "body"
+      g {
+
+        node {
+          input: "iter_num_in"
+          output: "toFloat"
+          name: "toFloat"
+          op_type: "Cast"
+          attribute {
+            name: "to"
+            i: 1
+            type: INT
+          }
+        }
+        node {
+          input: "pre_cond"
+          output: "cur_cond"
+          op_type: "Identity"
+        }
+        node {
+          input: "toFloat"
+          output: "scan_output"
+          op_type: "Identity"
+        }
+        name: "subgraph"
+        input {
+          name: "iter_num_in"
+          type {
+            tensor_type {
+              elem_type: 7
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        input {
+          name: "pre_cond"
+          type {
+            tensor_type {
+              elem_type: 9
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        output {
+          name: "cur_cond"
+          type {
+            tensor_type {
+              elem_type: 9
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+        output {
+          name: "scan_output"
+          type {
+            tensor_type {
+              elem_type: 1
+              shape {
+                dim {
+                  dim_value: 1
+                }
+              }
+            }
+          }
+        }
+      }
+      type: GRAPH
+    }
+  }
+  name: "loop_graph"
+  input {
+    name: "init_i"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+
+  input {
+    name: "inc"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim{
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "v_final"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "scan_output_final"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 11
+}
+

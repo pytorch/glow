@@ -390,6 +390,7 @@ void writeTransposeInput(const Node *node, const Node *input,
   transformProto->add_output(newName);
   proto->add_input(newName);
 }
+
 /// Writes Arithmetic operators with name \p opName from Node \p node into
 /// provided graph protobuf \p graph. Arithmetic node may have been broadcasted,
 /// \p hasMultidirectionalBroadcast indicates the node can be multidirectional
@@ -1135,6 +1136,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::BOOL;
   }
   LOG(DFATAL) << "Cannot reach here.";
+  return TensorType::UNDEFINED; // Avoids a compilation warning.
 }
 
 /// Add quantization parameters to the doc_string in \p out based on \p type.
@@ -2237,6 +2239,7 @@ DEF_ALL_WRITER_NODE(Reciprocal)
 DEF_ALL_WRITER_NODE(Sin)
 DEF_ALL_WRITER_NODE(Cos)
 DEF_ALL_WRITER_NODE(LSTMUnit)
+DEF_ALL_WRITER_NODE(Erf)
 DEF_ALL_WRITER_NODE(Min)
 DEF_ALL_WRITER_NODE(Max)
 DEF_ALL_WRITER_NODE(Log)
@@ -2257,6 +2260,7 @@ DEF_ALL_WRITER_NODE(LengthsToRanges)
 DEF_ALL_WRITER_NODE(SparseLengthsSum)
 DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(EmbeddingBag)
+DEF_ALL_WRITER_NODE(Embedding)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpNEQ)
@@ -2271,6 +2275,7 @@ DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(NonMaxSuppression)
 DEF_ALL_WRITER_NODE(ConvTranspose)
 DEF_ALL_WRITER_NODE(Logit)
+DEF_ALL_WRITER_NODE(Truncate)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
@@ -2510,6 +2515,7 @@ DEF_UNSUPPORTED_NODE(Broadcast)
 DEF_UNSUPPORTED_NODE(SGD)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
+DEF_UNSUPPORTED_NODE(ExternalFunctionCall)
 // TODO: Turn to ScatterNd when it is supported in ONNX.
 DEF_UNSUPPORTED_NODE(ScatterData)
 // Gradient nodes.
@@ -2585,8 +2591,8 @@ bool ONNXModelWriter::hasMultidirectionalBroadcast(
         (typeName == "Div") || (typeName == "Equal") ||
         (typeName == "Greater") || (typeName == "Less") ||
         (typeName == "Max") || (typeName == "Mean") || (typeName == "Min") ||
-        (typeName == "Mul") || (typeName == "Or") || (typeName == "Pow") ||
-        (typeName == "Sum") || (typeName == "Xor")) {
+        (typeName == "Or") || (typeName == "Pow") || (typeName == "Sum") ||
+        (typeName == "Xor")) {
       return true;
     }
   }

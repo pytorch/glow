@@ -87,6 +87,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MulNodeKind:
+  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::ClipNodeKind:
@@ -134,8 +135,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
-         ElemKind::Int8QTy});
+        {ElemKind::Int32ITy, ElemKind::FloatTy, ElemKind::Float16Ty,
+         ElemKind::BFloat16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::MatMulNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -143,7 +144,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int8QTy, ElemKind::Int16QTy});
 
   case Kinded::Kind::FullyConnectedNodeKind:
-    if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
+    if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
     }
@@ -171,7 +172,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ArgMaxNodeKind:
   case Kinded::Kind::ArgMinNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
                {ArgMaxNode::ResultIdx}) &&
            (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy ||
             NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int32ITy);
@@ -195,7 +196,6 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int32QTy, ElemKind::Int64ITy,
          ElemKind::Int32ITy});
-  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -233,10 +233,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ReciprocalNodeKind:
   case Kinded::Kind::SinNodeKind:
   case Kinded::Kind::CosNodeKind:
+  case Kinded::Kind::ErfNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
   case Kinded::Kind::FloorNodeKind:
+  case Kinded::Kind::TruncateNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
@@ -372,6 +374,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
+
+  case Kinded::Kind::EmbeddingNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+               {EmbeddingNode::IndicesIdx}) &&
+           (NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int64ITy ||
+            NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::EmbeddingBagNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -882,13 +891,13 @@ static bool quantizeRQFCFloatBias(Function *F,
                   "Constant in order to quantize the bias");
 
   auto TQPs = getTensorQuantizationParams(
-      biasC->getPayload(), quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+      biasC->getPayload(), quantization::Schema::Asymmetric, ElemKind::Int32QTy,
       0, biasC->dims()[0]);
 
   DCHECK_EQ(TQPs.size(), 1) << "Should only be one dimension to quantize on";
 
-  auto biasQuantizedT =
-      quantization::quantizeTensor(biasC->getPayload(), TQPs[0]);
+  auto biasQuantizedT = quantization::quantizeTensor(
+      biasC->getPayload(), TQPs[0], ElemKind::Int32QTy);
 
   auto biasQuantizedC = F->getParent()->createConstant(
       biasC->getName(), std::move(biasQuantizedT));
@@ -996,13 +1005,4 @@ Expected<bool> Interpreter::transformPostLowering(
 }
 
 void Interpreter::parseBackendSpecificOptions(
-    const BackendOptions &opts) const {
-  auto interpreterMaxMemOpt =
-      opts.backendSpecificOpts.find("interpreter-memory");
-  if (interpreterMaxMemOpt != opts.backendSpecificOpts.end()) {
-    glow::runtime::flags::InterpreterMemory =
-        std::stoi(interpreterMaxMemOpt->second);
-    llvm::outs() << "Interpreter memory set to "
-                 << glow::runtime::flags::InterpreterMemory << "\n";
-  }
-}
+    const BackendOptions &opts) const {}

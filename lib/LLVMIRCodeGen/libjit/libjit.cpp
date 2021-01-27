@@ -359,7 +359,7 @@ static void libjit_topk(T *values, TI *indices, const T *input, void *scratch,
       // Find the largest value by iterating over the array instead of calling
       // 'sort'.
       value_index<T, TI> mx = {0, input[in]};
-      for (TI i = 1; i < n; i++) {
+      for (TI i = 1; i < TI(n); i++) {
         if (input[i + in] > mx.value) {
           mx = {i, input[i + in]};
         }
@@ -638,6 +638,34 @@ static void libjit_flip_generic(const T *inW, T *outW, const dim_t *dims,
       outPtr -= 2 * innerLen;
     }
     outPtr += 2 * len * innerLen;
+  }
+}
+
+template <typename ty>
+static void libjit_embedding_generic(ty *dest, ty *weights, int64_t *indices,
+                                     const dim_t *indDims, dim_t indSize,
+                                     dim_t num_embedding, dim_t embedding_dim,
+                                     int64_t padIdx, bool scale, bool sparse) {
+  dim_t indLen = 1;
+  for (dim_t idx = 0; idx < indSize; ++idx) {
+    indLen *= indDims[idx];
+  }
+
+  assert(!scale && "Currently only support scale_grad_by_freq == 'false'");
+  assert(!sparse && "Currently only support sparse == 'false'");
+  if (padIdx > -1) {
+    assert(static_cast<dim_t>(padIdx) <= num_embedding &&
+           "padIdx must be within num_embedding");
+  }
+  memset(dest, 0, indLen * embedding_dim * sizeof(ty));
+
+  for (int64_t i = 0; i < indLen; i++) {
+    int64_t index = indices[i];
+    if (index != padIdx) {
+      for (dim_t j = 0; j < embedding_dim; j++) {
+        dest[i * embedding_dim + j] = weights[index * embedding_dim + j];
+      }
+    }
   }
 }
 
@@ -1441,7 +1469,7 @@ void libjit_softmax_grad_generic(T *inG, T *outW, const T2 *selectedW,
                                  const dim_t *idim, const dim_t *selectdim) {
   for (dim_t n = 0; n < idim[0]; n++) {
     for (dim_t i = 0; i < idim[1]; i++) {
-      float delta = (selectedW[libjit_getXY(selectdim, n, 0)] == i);
+      float delta = (selectedW[libjit_getXY(selectdim, n, 0)] == T2(i));
       inG[libjit_getXY(idim, n, i)] = outW[libjit_getXY(idim, n, i)] - delta;
     }
   }
@@ -2151,6 +2179,14 @@ void libjit_sparse_lengths_weighted_sum_f_i32(float *dest, float *data,
                                               dim_t lineSize) {
   libjit_sparse_lengths_weighted_sum_generic(dest, data, weights, indices,
                                              lengths, segments, lineSize);
+}
+
+void libjit_embedding_f(float *dest, float *weights, int64_t *indices,
+                        const dim_t *indDims, dim_t indSize, dim_t numEmbedding,
+                        dim_t embeddingDim, int64_t padIdx, bool scale,
+                        bool sparse) {
+  libjit_embedding_generic(dest, weights, indices, indDims, indSize,
+                           numEmbedding, embeddingDim, padIdx, scale, sparse);
 }
 
 void libjit_embedding_bag_f(float *dest, float *data, float *weights,
@@ -3294,7 +3330,7 @@ void libjit_fft_complex_f(float *output, float *input,
   if (inPlace) {
     for (dim_t idx = 0; idx < fftLength; idx++) {
       int32_t bitRevIdx = bitReverseIndices[idx];
-      if (idx < bitRevIdx) {
+      if (int32_t(idx) < bitRevIdx) {
         // Swap complex pair.
         float real = input[2 * idx + 0];
         float imag = input[2 * idx + 1];

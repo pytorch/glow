@@ -46,7 +46,7 @@ bool ProtobufLoader::isConstantFoldable(llvm::ArrayRef<NodeValue> inputs,
     return false;
   }
   // foldUnsupportedTypes: List of typenames unsupported for folding.
-  std::string foldUnsupportedTypes[] = {"Constant"};
+  std::string foldUnsupportedTypes[] = {"Constant", "Loop", "If"};
   std::string *findType = std::find(std::begin(foldUnsupportedTypes),
                                     std::end(foldUnsupportedTypes), typeName);
   // Early exit if folding is not supported for current operator.
@@ -197,22 +197,31 @@ Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
 
 void ProtobufLoader::deleteUnusedConstants() {
   std::vector<std::string> nodeValuesToRemove;
+  // Note that it's possible a constant is referred by more than one names
+  // (e.g., via Identity operator). Therefore, we maintain a set of constants to
+  // erase separately from the list for names.
+  std::unordered_set<Constant *> constantToRemove;
+
   for (auto &kv : nodeValueByName_) {
     auto *node = kv.second.getNode();
     if (auto *c = llvm::dyn_cast<Constant>(node)) {
       if (!c->hasUsers()) {
         nodeValuesToRemove.push_back(kv.getKey());
+        constantToRemove.insert(c);
       }
     }
   }
 
   for (auto &name : nodeValuesToRemove) {
     auto it = nodeValueByName_.find(name);
-    auto *c = llvm::dyn_cast<Constant>(it->second.getNode());
-    DCHECK(c) << "NodeValue with name " << name
-              << " was expected to have been a Constant";
-    mod_.eraseConstant(c);
+    DCHECK(llvm::isa<Constant>(it->second.getNode()))
+        << "NodeValue with name " << name
+        << " was expected to have been a Constant";
     nodeValueByName_.erase(it);
+  }
+
+  for (auto *c : constantToRemove) {
+    G_->getParent()->eraseConstant(c);
   }
 }
 
@@ -325,7 +334,7 @@ Expected<TensorQuantizationParams>
 ProtobufLoader::getUpdatedTQP(int32_t uniqueOffsetIdx) {
   RETURN_ERR_IF_NOT(replaceDummyTQPs_, "replaceDummyTQPs_ was not enabled");
   RETURN_ERR_IF_NOT(
-      uniqueOffsetIdx < updatedTQPs_.size(),
+      uniqueOffsetIdx < int32_t(updatedTQPs_.size()),
       strFormat("Unexpected size of updated TQPs %lu vs. dummy offset %d",
                 updatedTQPs_.size(), uniqueOffsetIdx));
   return updatedTQPs_[uniqueOffsetIdx];
@@ -387,7 +396,7 @@ Expected<TypeRef> ProtobufLoader::loadQuantTy(const std::string &name,
   // of the C2 edge that we loaded to use these quant params in the cctx so we
   // can ue it in the future. The index the name is at represents which unique
   // index it is mapped to.
-  RETURN_ERR_IF_NOT(originNameToTQPMap_->size() == currUniqueOffset_,
+  RETURN_ERR_IF_NOT(int32_t(originNameToTQPMap_->size()) == currUniqueOffset_,
                     "Unexpected size encountered for qparam origin tracking");
   const int32_t thisUniqueOffset = currUniqueOffset_++;
   bool inserted =

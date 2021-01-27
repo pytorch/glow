@@ -22,10 +22,14 @@
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <atomic>
 #include <cctype>
 #include <cstdarg>
+#include <mutex>
 #include <sstream>
 #include <string>
+
+#include <unordered_map>
 
 namespace llvm {
 namespace yaml {
@@ -160,7 +164,7 @@ const std::string &staticStrFormat(const char *format, ...) {
   return staticStrings.back();
 }
 
-std::string legalizeName(llvm::StringRef name) {
+std::string legalizeName(llvm::StringRef name, size_t maxLength) {
   std::string legalName;
 
   // Legalize the name.
@@ -174,7 +178,35 @@ std::string legalizeName(llvm::StringRef name) {
   if (legalName.empty() || isdigit(legalName[0])) {
     legalName = "A" + legalName;
   }
-  return legalName;
+
+  if (maxLength == 0 || legalName.size() <= maxLength) {
+    return legalName;
+  }
+
+  // Now we have to deal with long names.
+  // If current name was already processed, then we shoud have its trunctated
+  // version.
+  static std::mutex truncatedNamesMutex;
+  static std::unordered_map<std::string, std::string> truncatedNames;
+  static size_t truncatedCounter = 0;
+  {
+    std::lock_guard<std::mutex> lock{truncatedNamesMutex};
+
+    auto it = truncatedNames.find(legalName);
+    if (it != truncatedNames.end()) {
+      return it->second;
+    }
+
+    std::string truncatedSuffix{"_trunc_"};
+    truncatedSuffix += std::to_string(++truncatedCounter);
+
+    std::string truncatedName{legalName.data(),
+                              maxLength - truncatedSuffix.size()};
+    truncatedName += truncatedSuffix;
+
+    truncatedNames.emplace(legalName, truncatedName);
+    return truncatedName;
+  }
 }
 
 /// \returns the color based on \p index which is used in dot file.

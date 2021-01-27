@@ -1,0 +1,54 @@
+ir_version: 7
+producer_name: "onnx-example"
+graph {
+  node {
+    input: "base"
+    input: "exp"
+    output: "z"
+    op_type: "Pow"
+  }
+  name: "pow-node"
+  input {
+    name: "base"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "exp"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "z"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  domain: ""
+  version: 13
+}

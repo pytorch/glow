@@ -51,6 +51,10 @@ void fuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph);
 /// \p graph into glow::unpacked_quantized_linear.
 void fuseLinearPrepack(std::shared_ptr<torch::jit::Graph> &graph);
 
+/// Pass that replaces quantized::linear with quantized::linear_unpack +
+/// glow::unpacked_quantized_linear in \p graph.
+void rewriteQuantizedLinear(std::shared_ptr<torch::jit::Graph> &graph);
+
 /// Pass that eliminates prim::NumToTensor -> aten::Int patterns in
 /// \p graph.
 void fuseNumToTensorToNum(std::shared_ptr<torch::jit::Graph> &graph);

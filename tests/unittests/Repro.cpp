@@ -529,7 +529,6 @@ int run() {
     return -1;
   }
 
-#ifdef GLOW_WITH_NNPI
   if (glow::nnpi::flags::NumParallelChunks > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
         std::to_string(glow::nnpi::flags::NumParallelChunks);
@@ -538,8 +537,6 @@ int run() {
     cctx.backendOpts.backendSpecificOpts["NNPIModelParallelSplitAlignment"] =
         std::to_string(glow::nnpi::flags::ModelParallelSplitAlignment);
   }
-#endif
-
   if (glow::flags::UseDAGOptimizer) {
     cctx.callDAGOptimizer = true;
     cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
@@ -549,7 +546,6 @@ int run() {
     cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
         glow::flags::DAGOptimizerPlacementTaggingAlgorithm;
   }
-
   if (glow::flags::DelayAndRecordConstantModification) {
     cctx.optimizationOpts.delayAndRecordConstantModification = true;
   }
@@ -605,7 +601,7 @@ int run() {
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedOutputs;
   size_t inputGroupSize = inputsOpt.size();
   if (inputGroupSize) {
-    for (int i = 0; i < inputGroupSize; ++i) {
+    for (size_t i = 0; i < inputGroupSize; ++i) {
       llvm::outs() << "Loading input file: " << inputsOpt[i] << "\n";
       auto inputGroup = parseOnnxFile(inputsOpt[i]);
       parsedInputs.push_back(std::move(inputGroup));
@@ -635,6 +631,9 @@ int run() {
       parsedOutputs.push_back(std::move(outputGroup));
     }
   }
+  llvm::outs() << "\ninput pattern: " + inputPatternOpt + "\n";
+  llvm::outs() << "\nseqlen: " + std::to_string(seqLenOpt) + "\n";
+  llvm::outs() << "\ninputgroupsize: " + std::to_string(inputGroupSize) + "\n";
 
   if (parsedInputs.empty()) {
     llvm::outs() << "No inputs are provided. Exiting...\n";
@@ -713,7 +712,7 @@ int run() {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
-          traceContext->setThreadName("Caller");
+          traceContext->setThreadName("Request Thread");
         }
         TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
                           "Dispatch to prep input and dispatch");
@@ -782,6 +781,10 @@ int run() {
 
       if (result.error) {
         llvm::outs() << "Inference failed!\n";
+        if (result.error.peekErrorValue()->isFatalError()) {
+          std::string msg = result.error.peekErrorValue()->logToString();
+          llvm::outs() << "Non-recoverable device error: " << msg << "\n";
+        }
         ++numFailed;
       } else {
         const auto &outputGroup = parsedOutputs[result.index];
@@ -816,8 +819,8 @@ int run() {
               assert(tensor->size() == tensorRef.size());
               auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
               auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
-              assert(sortedResults.size() == topKCompare &&
-                     sortedResults.size() == topKCompare);
+              assert(sortedResults.size() == size_t(topKCompare) &&
+                     sortedResults.size() == size_t(topKCompare));
 
               bool allKMatch = true;
               std::stringstream ss;

@@ -128,7 +128,12 @@ public:
     return getPayload().getHandle<ElemTy>();
   }
 
-  void assign(const Tensor *t) { payload_.assign(t); }
+  void assign(const Tensor *t) {
+    // Make sure when we assign the output type of constant is matching its
+    // payload.
+    assert(t->getType().isEqual(payload_.getType()));
+    payload_.assign(t);
+  }
 
   void setPayloadType(TypeRef ty) { payload_.setType(ty); }
 
@@ -268,7 +273,14 @@ inline bool is3DData(ConvolutionLayout layout) {
 enum PoolingMode { AVG = 0, MAX };
 
 /// Activations fused into ConvolutionNode (not supported on all backends).
-enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
+enum FusedActivation {
+  NONE = 0,
+  RELU,
+  CLIP,
+  TANH,
+  SIGMOID,
+  LEAKY_RELU,
+};
 
 /// Define output operators.
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout);

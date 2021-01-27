@@ -867,9 +867,9 @@ public:
   void addNetwork(const Module *module, FunctionMapTy functions,
                   ReadyCBTy readyCB) override {}
 
-  void evictNetwork(std::string functionName,
-                    EvictFunctionCBTy evictCB = [](std::string, Error) {
-                    }) override {}
+  void evictNetwork(
+      std::string functionName,
+      EvictFunctionCBTy evictCB = [](std::string, Error) {}) override {}
 
   runtime::RunIdentifierTy
   runFunction(std::string functionName,
@@ -884,9 +884,9 @@ public:
 
   bool isMemoryAvailable(uint64_t estimate) const override { return 0; }
 
-  void transferToDevice(Tensor &tensor, void *locationContext = nullptr,
-                        std::function<void(Error)> resultCB = [](Error) {
-                        }) override {
+  void transferToDevice(
+      Tensor &tensor, void *locationContext = nullptr,
+      std::function<void(Error)> resultCB = [](Error) {}) override {
     if (locationContext == nullptr) {
       locationContext = malloc(tensor.getSizeInBytes());
     }
@@ -894,9 +894,9 @@ public:
     tensor.moveToDevice(this, locationContext);
   }
 
-  void transferFromDevice(Tensor &tensor, bool release = true,
-                          std::function<void(Error)> resultCB = [](Error) {
-                          }) override {
+  void transferFromDevice(
+      Tensor &tensor, bool release = true,
+      std::function<void(Error)> resultCB = [](Error) {}) override {
     memcpy(tensor.getUnsafePtr(), tensor.getLocationContext(),
            tensor.getSizeInBytes());
     free(tensor.getLocationContext());
@@ -907,6 +907,8 @@ public:
 };
 
 TEST_P(DeviceManagerTest, CanHandleDeviceResidentTensors) {
+  CHECK_IF_ENABLED();
+
   MockDM mockDM;
 
   auto module = makeBasicModule();
