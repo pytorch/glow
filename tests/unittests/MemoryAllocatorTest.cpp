@@ -575,3 +575,140 @@ TEST(MemAlloc, testAllocateAllForModels) {
   }
   fs.close();
 }
+
+/// Test allocating multiple functions with memory reusage for allocateAll.
+TEST(MemAlloc, testAllocateAllMultipleFunctionsWithReuse) {
+
+  // Allocation sequence for 1st function.
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  std::list<Allocation> allocList1;
+  allocList1.emplace_back(handle0, true, 9);
+  allocList1.emplace_back(handle1, true, 9);
+  allocList1.emplace_back(handle0, false, 0);
+  allocList1.emplace_back(handle1, false, 0);
+
+  // Allocation sequence for 2nd function.
+  void *handle2 = reinterpret_cast<void *>(2);
+  void *handle3 = reinterpret_cast<void *>(3);
+  std::list<Allocation> allocList2;
+  allocList2.emplace_back(handle2, true, 19);
+  allocList2.emplace_back(handle3, true, 19);
+  allocList2.emplace_back(handle2, false, 0);
+  allocList2.emplace_back(handle3, false, 0);
+
+  // Allocate all for both functions.
+  MemoryAllocator MA("test", 0, 10);
+  uint64_t usedSize1 = MA.allocateAll(allocList1);
+  uint64_t usedSize2 = MA.allocateAll(allocList2, /* reuseMemory */ true);
+
+  EXPECT_EQ(usedSize1, 20);
+  EXPECT_EQ(usedSize2, 40);
+  EXPECT_EQ(MA.getSize(handle0), 10);
+  EXPECT_EQ(MA.getSize(handle1), 10);
+  EXPECT_EQ(MA.getSize(handle2), 20);
+  EXPECT_EQ(MA.getSize(handle3), 20);
+  EXPECT_EQ(MA.getSegment(handle0).size(), 10);
+  EXPECT_EQ(MA.getSegment(handle1).size(), 10);
+  EXPECT_EQ(MA.getSegment(handle2).size(), 20);
+  EXPECT_EQ(MA.getSegment(handle3).size(), 20);
+  EXPECT_EQ(MA.getAddress(handle0), 0);
+  EXPECT_EQ(MA.getAddress(handle1), 10);
+  EXPECT_EQ(MA.getAddress(handle2), 0);
+  EXPECT_EQ(MA.getAddress(handle3), 20);
+  EXPECT_EQ(MA.getSegment(handle0).begin_, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin_, 10);
+  EXPECT_EQ(MA.getSegment(handle2).begin_, 0);
+  EXPECT_EQ(MA.getSegment(handle3).begin_, 20);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 40);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
+}
+
+/// Test allocating multiple functions without memory reusage for allocateAll.
+TEST(MemAlloc, testAllocateAllMultipleFunctionsWithoutReuse) {
+
+  // Allocation sequence for 1st function.
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  std::list<Allocation> allocList1;
+  allocList1.emplace_back(handle0, true, 9);
+  allocList1.emplace_back(handle1, true, 9);
+  allocList1.emplace_back(handle0, false, 0);
+  allocList1.emplace_back(handle1, false, 0);
+
+  // Allocation sequence for 2nd function.
+  void *handle2 = reinterpret_cast<void *>(2);
+  void *handle3 = reinterpret_cast<void *>(3);
+  std::list<Allocation> allocList2;
+  allocList2.emplace_back(handle2, true, 19);
+  allocList2.emplace_back(handle3, true, 19);
+  allocList2.emplace_back(handle2, false, 0);
+  allocList2.emplace_back(handle3, false, 0);
+
+  // Allocate all for both functions.
+  MemoryAllocator MA("test", 0, 10);
+  uint64_t usedSize1 = MA.allocateAll(allocList1);
+  uint64_t usedSize2 = MA.allocateAll(allocList2, /* reuseMemory */ false);
+
+  EXPECT_EQ(usedSize1, 20);
+  EXPECT_EQ(usedSize2, 60);
+  EXPECT_EQ(MA.getSize(handle0), 10);
+  EXPECT_EQ(MA.getSize(handle1), 10);
+  EXPECT_EQ(MA.getSize(handle2), 20);
+  EXPECT_EQ(MA.getSize(handle3), 20);
+  EXPECT_EQ(MA.getSegment(handle0).size(), 10);
+  EXPECT_EQ(MA.getSegment(handle1).size(), 10);
+  EXPECT_EQ(MA.getSegment(handle2).size(), 20);
+  EXPECT_EQ(MA.getSegment(handle3).size(), 20);
+  EXPECT_EQ(MA.getAddress(handle0), 0);
+  EXPECT_EQ(MA.getAddress(handle1), 10);
+  EXPECT_EQ(MA.getAddress(handle2), 20);
+  EXPECT_EQ(MA.getAddress(handle3), 40);
+  EXPECT_EQ(MA.getSegment(handle0).begin_, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin_, 10);
+  EXPECT_EQ(MA.getSegment(handle2).begin_, 20);
+  EXPECT_EQ(MA.getSegment(handle3).begin_, 40);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 60);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
+}
+
+/// Test allocating multiple functions without memory reusage and in which the
+/// allocation for 2nd function fails due to unsufficient memory.
+TEST(MemAlloc, testAllocateAllMultipleFunctionsWithoutReuseFail) {
+
+  // Allocation sequence for 1st function.
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  std::list<Allocation> allocList1;
+  allocList1.emplace_back(handle0, true, 9);
+  allocList1.emplace_back(handle1, true, 9);
+  allocList1.emplace_back(handle0, false, 0);
+  allocList1.emplace_back(handle1, false, 0);
+
+  // Allocation sequence for 2nd function.
+  void *handle2 = reinterpret_cast<void *>(2);
+  void *handle3 = reinterpret_cast<void *>(3);
+  std::list<Allocation> allocList2;
+  allocList2.emplace_back(handle2, true, 19);
+  allocList2.emplace_back(handle3, true, 19);
+  allocList2.emplace_back(handle2, false, 0);
+  allocList2.emplace_back(handle3, false, 0);
+
+  // Allocate all for both functions.
+  MemoryAllocator MA("test", 20, 10);
+  uint64_t usedSize1 = MA.allocateAll(allocList1);
+  uint64_t usedSize2 = MA.allocateAll(allocList2, /* reuseMemory */ false);
+
+  EXPECT_EQ(usedSize1, 20);
+  EXPECT_EQ(usedSize2, MemoryAllocator::npos);
+  EXPECT_EQ(MA.getSize(handle0), 10);
+  EXPECT_EQ(MA.getSize(handle1), 10);
+  EXPECT_EQ(MA.getSegment(handle0).size(), 10);
+  EXPECT_EQ(MA.getSegment(handle1).size(), 10);
+  EXPECT_EQ(MA.getAddress(handle0), 0);
+  EXPECT_EQ(MA.getAddress(handle1), 10);
+  EXPECT_EQ(MA.getSegment(handle0).begin_, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin_, 10);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 20);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
+}

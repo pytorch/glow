@@ -254,12 +254,9 @@ bool MemoryAllocator::verifyAllocations(
 
 bool MemoryAllocator::verifySegments(
     const std::list<Allocation> &allocList) const {
-  // Verify number of segments.
-  if (handleToSegmentMap_.size() != (allocList.size() / 2)) {
-    return false;
-  }
   // Segments handles should match allocation handles.
   // Segments sizes should match allocation sizes (with alignment).
+  // Segments end addresses must not surpass the memory size.
   for (const auto &alloc : allocList) {
     if (!alloc.alloc_) {
       continue;
@@ -270,6 +267,9 @@ bool MemoryAllocator::verifySegments(
     }
     Segment seg = it->second;
     if (seg.size() != getEffectiveSize(alloc.size_)) {
+      return false;
+    }
+    if (memorySize_ && seg.end_ > memorySize_) {
       return false;
     }
   }
@@ -526,7 +526,7 @@ static uint64_t allocateAllWithStrategy(
 
     // If max available memory is surpassed with the new segment then we stop
     // the allocation and return early.
-    if (memorySize && (usedSizeMax > memorySize)) {
+    if (usedSizeMax > memorySize) {
       return MemoryAllocator::npos;
     }
 
@@ -577,10 +577,8 @@ void MemoryAllocator::mapHandlesToIds(
   assert(id == buffNum && "Inconsistent Handle to ID mapping!");
 }
 
-uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
-
-  // Reset memory allocator object.
-  reset();
+uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList,
+                                      bool reuseMemory) {
 
   // Verify allocations.
   assert(verifyAllocations(allocList) && "Allocations are invalid!");
@@ -595,6 +593,16 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   assert((allocNum % 2 == 0) &&
          "The allocation list must have an even number of entries!");
   size_t buffNum = allocNum / 2;
+
+  // Effective memory size remaining for allocation taking into account the
+  // previously allocated segments. For this parameter a value of 0 means no
+  // remaining space while an infinite value is encoded as max(uint64).
+  uint64_t effectiveMemorySize =
+      memorySize_ ? memorySize_ : std::numeric_limits<uint64_t>::max();
+  if (!reuseMemory) {
+    assert(effectiveMemorySize >= maxUsedSize_ && "Memory size invalid!");
+    effectiveMemorySize -= maxUsedSize_;
+  }
 
   // Map Handles to consecutive unique IDs between 0 and numBuff - 1 since this
   // makes the algorithm implementation easier/faster by using IDs as vector
@@ -671,7 +679,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
 
   // If the theoretical required memory is larger than the available memory size
   // then we return early.
-  if (memorySize_ && (liveSizeMax > memorySize_)) {
+  if (liveSizeMax > effectiveMemorySize) {
     return MemoryAllocator::npos;
   }
 
@@ -691,8 +699,9 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
     // Allocate segments using current strategy.
     std::unordered_map<size_t, Segment> idSegMapTemp;
     auto strategy = memAllocStrategies[strategyIdx];
-    uint64_t usedSize = allocateAllWithStrategy(
-        memorySize_, buffInfoArray, liveInfoArray, idSegMapTemp, strategy);
+    uint64_t usedSize =
+        allocateAllWithStrategy(effectiveMemorySize, buffInfoArray,
+                                liveInfoArray, idSegMapTemp, strategy);
 
     // If available memory is exceeded then we return early.
     if (usedSize == MemoryAllocator::npos) {
@@ -714,20 +723,30 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList) {
   }
 
   // Update the segments, handles and the max used/live memory.
+  assert(idSegMap.size() == (allocList.size() / 2) && "Segments are invalid!");
   for (const auto &idSeg : idSegMap) {
     size_t id = idSeg.first;
     Segment segment = idSeg.second;
+    if (!reuseMemory) {
+      segment.begin_ += maxUsedSize_;
+      segment.end_ += maxUsedSize_;
+    }
     Handle handle = idToHandleMap[id];
     segments_.emplace_back(segment);
     handleToSegmentMap_.insert(std::make_pair(handle, segment));
     addrToHandleMap_[segment.begin_] = handle;
   }
-  maxUsedSize_ = usedSizeMax;
-  maxLiveSize_ = liveSizeMax;
+  if (reuseMemory) {
+    maxUsedSize_ = std::max(maxUsedSize_, usedSizeMax);
+    maxLiveSize_ = std::max(maxLiveSize_, liveSizeMax);
+  } else {
+    maxUsedSize_ = maxUsedSize_ + usedSizeMax;
+    maxLiveSize_ = maxLiveSize_ + liveSizeMax;
+  }
   liveSize_ = 0;
 
   // Verify segments.
   assert(verifySegments(allocList) && "Segments are invalid!");
 
-  return usedSizeMax;
+  return maxUsedSize_;
 }

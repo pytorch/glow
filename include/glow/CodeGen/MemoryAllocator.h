@@ -138,12 +138,15 @@ public:
   /// avoiding early fragmentation. The given allocations must be consistent,
   /// each ALLOC request must be associated with a FREE request following it
   /// with the same handle and all the handles must be unique for each
-  /// ALLOC/FREE pair. This function is intended to be used only once for a
-  /// a given MemoryAllocator instance. Upon function return information about
-  /// the allocated segments can be retrieved with \ref getSegment().
-  /// \returns the total memory usage or MemoryAllocator::npos if the
-  /// allocation failed.
-  uint64_t allocateAll(const std::list<Allocation> &allocList);
+  /// ALLOC/FREE pair. This function can be used multiple times for multiple IR
+  /// functions and is intended to be called once for each IR function. The
+  /// parameter \p reuseMemory specifies whether the allocation for the current
+  /// function can reuse or not the memory allocated for the previous functions.
+  /// Upon function return information about the allocated segments can be
+  /// retrieved with \ref getSegment(). \returns the total memory usage or
+  /// MemoryAllocator::npos if the allocation failed.
+  uint64_t allocateAll(const std::list<Allocation> &allocList,
+                       bool reuseMemory = true);
 
   /// \returns the handle currently associated with the allocation at \p
   /// address.
