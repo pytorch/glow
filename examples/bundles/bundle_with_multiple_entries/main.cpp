@@ -95,8 +95,8 @@ static uint8_t *initConstantWeights(const char *weightsFileName,
            weightsFileName);
   }
   fclose(weightsFile);
-  float *dataPtr = (float *)baseConstantWeightVarsAddr;
 #if PRINT_CONSTANTS
+  float *dataPtr = (float *)baseConstantWeightVarsAddr;
   printf("Constants:");
   for (size_t idx = 0, e = fileSize / sizeof(float); idx < e; ++idx) {
     if (idx % 8 == 0) {
