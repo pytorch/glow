@@ -951,6 +951,7 @@ public:
   UNARY_ARITHMETIC_FUN_DECL(Sin)
   UNARY_ARITHMETIC_FUN_DECL(Cos)
   UNARY_ARITHMETIC_FUN_DECL(Erf)
+  UNARY_ARITHMETIC_FUN_DECL(Truncate)
 #undef UNARY_ARITHMETIC_FUN_DECL
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -962,7 +963,6 @@ public:
   ARITHMETIC_FUN_DECL(Mul);
   ARITHMETIC_FUN_DECL(Sub);
   ARITHMETIC_FUN_DECL(Div);
-  ARITHMETIC_FUN_DECL(FloorDiv);
   ARITHMETIC_FUN_DECL(Max);
   ARITHMETIC_FUN_DECL(Min);
   ARITHMETIC_FUN_DECL(CmpEQ);
@@ -1010,7 +1010,6 @@ public:
   /// automatically for multi directional broadcast.
   DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
-  DECLARE_BROADCAST_NODE(FloorDiv, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
@@ -1032,7 +1031,6 @@ public:
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Sub, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Mul, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Div, /* NUM_INPUTS */ 2, outTy)
-  DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(FloorDiv, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Min, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Max, /* NUM_INPUTS */ 2, outTy)
 
@@ -1072,6 +1070,36 @@ public:
 #undef DECLARE_BROADCAST_NODE_WITH_OUT_TYPE
 #undef DECLARE_CMP_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
+
+  /// Create a FloorDivNode with given \p name which divides \p LHS with \p RHS
+  /// and floors the quotient. If \p truncate is true then truncates the
+  /// quotient instead of flooring.
+  FloorDivNode *createFloorDiv(llvm::StringRef name, NodeValue LHS,
+                               NodeValue RHS, bool truncate = false);
+
+  /// Create a FloorDivNode with given \p name and output type \p outTy which
+  /// divides \p LHS with \p RHS and floors the quotient. If \p truncate is true
+  /// then truncates the quotient to zero instead of flooring.
+  FloorDivNode *createFloorDiv(llvm::StringRef name, TypeRef outTy,
+                               NodeValue LHS, NodeValue RHS,
+                               bool truncate = false);
+
+  /// Create a FloorDivNode with given \p name which divides \p LHS with \p RHS
+  /// and floors the quotient. If \p truncate is true then truncates the
+  /// quotient to zero instead of flooring. The inputs are broadcasted based on
+  /// \p axis.
+  FloorDivNode *createFloorDivWithBroadcast(llvm::StringRef name, int axis,
+                                            NodeValue LHS, NodeValue RHS,
+                                            bool truncate = false);
+
+  /// Create a FloorDivNode with given \p name and output type \p outTy which
+  /// divides \p LHS with \p RHS and floors the quotient. If \p truncate is true
+  /// then truncates the quotient to zero instead of flooring. The inputs are
+  /// broadcasted based on \p axis.
+  FloorDivNode *createFloorDivWithBroadcast(llvm::StringRef name, int axis,
+                                            TypeRef outTy, NodeValue LHS,
+                                            NodeValue RHS,
+                                            bool truncate = false);
 
   /// Create an element-wise GREATER THAN comparison between \p LHS and \p RHS
   /// by creating a CmpLTNode with given \p name and swapped inputs.

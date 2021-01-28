@@ -172,12 +172,36 @@ static void lowerFloorDivNode(Function *F, CompilationContext &cctx,
 
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
+  bool truncate = node.getTruncate();
+  NodeValue result = nullptr;
 
-  auto *div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"),
-                           node.getResult().getType(), LHS, RHS);
+  if (isNonQuantizedIntElemKind(node.getResult().getElementType())) {
+    LHS = F->createConvertTo(
+        "floordiv_lhs_convert", LHS,
+        F->getParent()->uniqueType(ElemKind::FloatTy, LHS.getType()->dims()));
+    RHS = F->createConvertTo(
+        "floordiv_rhs_convert", RHS,
+        F->getParent()->uniqueType(ElemKind::FloatTy, RHS.getType()->dims()));
 
-  auto *result = F->createFloor(DECORATE_NODE_NAME(node, "floor"),
-                                node.getResult().getType(), div);
+    auto div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"), LHS, RHS);
+
+    if (truncate) {
+      result = F->createTruncate(DECORATE_NODE_NAME(node, "truncate"), div);
+    } else {
+      result = F->createFloor(DECORATE_NODE_NAME(node, "floor"), div);
+    }
+
+    result = F->createConvertTo("floordiv_result_convert", result,
+                                node.getResult().getElementType());
+  } else {
+    auto div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"),
+                            node.getResult().getType(), LHS, RHS);
+    if (truncate) {
+      result = F->createTruncate(DECORATE_NODE_NAME(node, "truncate"), div);
+    } else {
+      result = F->createFloor(DECORATE_NODE_NAME(node, "floor"), div);
+    }
+  }
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), result);
 }

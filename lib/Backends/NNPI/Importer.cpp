@@ -539,7 +539,9 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
   NNPINetwork net;
   NNPIErrorCode res = nnpiNetworkBuild(network_);
   if (res != NNPI_NO_ERROR) {
-    LOG(INFO) << "Failed to build network";
+    LOG(INFO) << "Failed to build network: " << GetNNPIErrorDesc(res)
+              << ". You may need to re-run with NNPI_LOG_LEVEL=0 to get more "
+                 "logging from NNPI.";
     LOG_NNPI_IF_ERROR(nnpiNetworkDestroy(network_),
                       "Failed to destroy NNPI network");
     net = NNPI_INVALID_NNPIHANDLE;

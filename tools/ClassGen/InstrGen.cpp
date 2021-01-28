@@ -710,6 +710,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen("Ceil");
 
+  BB.newInstr("ElementTruncate")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Truncate");
+
   BB.newInstr("ElementRound")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

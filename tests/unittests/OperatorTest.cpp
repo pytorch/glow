@@ -1777,6 +1777,10 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
   auto *savePlaceholder = save->getPlaceholder();
   bindings.allocate(savePlaceholder);
 
+  auto *saveSplits = F.createSave("save_splits", BBTN->getRoiBatchSplits());
+  auto *saveSplitsPlaceholder = saveSplits->getPlaceholder();
+  bindings.allocate(saveSplitsPlaceholder);
+
   EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
@@ -1789,6 +1793,13 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
         std::max(maxDiff, std::abs((float)(saveH.raw(i) - expectedValues[i])));
   }
   VLOG(2) << "Max diff: " << maxDiff;
+
+  std::vector<DataType> expectedSplitsValues = {2, 1, 0, 2};
+  auto saveSplitsH = bindings.get(saveSplitsPlaceholder)->getHandle<DataType>();
+  EXPECT_EQ(saveSplitsH.size(), expectedSplitsValues.size());
+  for (dim_t i = 0; i < expectedSplitsValues.size(); i++) {
+    EXPECT_EQ(saveSplitsH.raw(i), expectedSplitsValues[i]);
+  }
 }
 
 TEST_P(OperatorTest, BBoxTransform_Float) {
@@ -3485,7 +3496,8 @@ TEST_P(OperatorTest, batchedReduceAdd_5Dinput) {
 template <typename DataType>
 static void testVectorNorm(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
-                           glow::ExecutionEngine &EE, ElemKind elemKind) {
+                           glow::ExecutionEngine &EE, ElemKind elemKind,
+                           float maxRefDiff = 0.0000f) {
   auto *input = mod.createPlaceholder(elemKind, {2, 3}, "norm", false);
   bindings.allocate(input)->getHandle<DataType>() = {1, 2, 3, -1, 1, 4};
 
@@ -3497,30 +3509,34 @@ static void testVectorNorm(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(elemKind, {3});
-  expected.getHandle<DataType>() = {1.4142, 2.2361, 5.0000};
-  EXPECT_TRUE(result->isEqual(expected));
+  auto resData = result->getHandle<DataType>();
+
+  EXPECT_NEAR(resData.at({0}), 1.4142, maxRefDiff);
+  EXPECT_NEAR(resData.at({1}), 2.2361, maxRefDiff);
+  EXPECT_NEAR(resData.at({2}), 5.0000, maxRefDiff);
 }
 
 /// Test that VectorNorm is correctly supported in FloatTy.
 TEST_P(OperatorTest, VectorNorm_Float) {
   CHECK_IF_ENABLED();
 
-  testVectorNorm<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+  testVectorNorm<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 4E-5);
 }
 
 /// Test that VectorNorm is correctly supported in Float16Ty.
 TEST_P(OperatorTest, VectorNorm_Float16Ty) {
   CHECK_IF_ENABLED();
 
-  testVectorNorm<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testVectorNorm<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                            5E-3);
 }
 
 /// Test that VectorNorm is correctly supported in BFloat16Ty.
 TEST_P(OperatorTest, VectorNorm_BFloat16) {
   CHECK_IF_ENABLED();
 
-  testVectorNorm<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+  testVectorNorm<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                             2E-3);
 }
 
 /// Test that BatchedReduceAdd works correctly reducing an internal axis.
@@ -6505,8 +6521,8 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
   static void testArithmetic##_OP_NAME_##Impl(                                 \
       glow::PlaceholderBindings &bindings, glow::Module &mod,                  \
       glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy) {            \
-    std::vector<DataType> data1 = {3, 17, 7, 23};                              \
-    std::vector<DataType> data2 = {13, 5, 19, 11};                             \
+    std::vector<DataType> data1 = {3, 17, -7, 23};                             \
+    std::vector<DataType> data2 = {13, -5, 19, 11};                            \
     auto *A = mod.createPlaceholder(DTy, {1, 4}, "A", false);                  \
     auto *B = mod.createPlaceholder(DTy, {1, 4}, "B", false);                  \
     bindings.allocate(A)->getHandle<DataType>() = data1;                       \
@@ -6546,28 +6562,144 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)             \
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, bfloat16_t, ElemKind::BFloat16Ty)
 
-template <typename DataType>
-static DataType floorDivide(DataType a, DataType b) {
-  return std::floor(static_cast<float>(a / b));
-}
-
 ARITH_FUNC_TEST(Add, std::plus, ())
 ARITH_FUNC_TEST(Sub, std::minus, ())
 ARITH_FUNC_TEST(Mul, std::multiplies, ())
+ARITH_FUNC_TEST(Div, std::divides, ())
 ARITH_FUNC_TEST(Max, std::max, )
 ARITH_FUNC_TEST(Min, std::min, )
-
-#define ARITH_FUNC_TEST_FLOAT(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)  \
-  ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)               \
-  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float, ElemKind::FloatTy)                   \
-  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)
-
-ARITH_FUNC_TEST_FLOAT(FloorDiv, floorDivide, )
 
 #undef ARITH_FUN_IMPL
 #undef ARITH_FUNC_TEST_TYPED
 #undef ARITH_FUNC_TEST
 #undef ARITH_FUNC_TEST_FLOAT
+
+/// Reference function for FloorDivide
+template <typename DataType>
+static DataType floorDivide(DataType a, DataType b) {
+  return std::floor(static_cast<float>(a) / static_cast<float>(b));
+}
+
+/// Reference function for TruncDivide
+template <typename DataType>
+static DataType truncDivide(DataType a, DataType b) {
+  return std::trunc(static_cast<float>(a) / static_cast<float>(b));
+}
+
+/// Helper to test FloorDiv using \p DataType.
+template <typename DataType>
+static void testFloorDiv(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                         glow::Function *F, glow::ExecutionEngine &EE,
+                         ElemKind DTy, bool truncate) {
+  std::vector<DataType> data1 = {3, 15, 7, 22};
+  std::vector<DataType> data2 = {-6, -5, 14, 11};
+  float scale = 0.5;
+  int offset = 0;
+  Placeholder *A = nullptr;
+  Placeholder *B = nullptr;
+  if (isQuantizedElemKind(DTy)) {
+    A = mod.createPlaceholder(DTy, {1, 4}, scale, offset, "A", false);
+    B = mod.createPlaceholder(DTy, {1, 4}, scale, offset, "B", false);
+  } else {
+    A = mod.createPlaceholder(DTy, {1, 4}, "A", false);
+    B = mod.createPlaceholder(DTy, {1, 4}, "B", false);
+  }
+  bindings.allocate(A)->getHandle<DataType>() = data1;
+  bindings.allocate(B)->getHandle<DataType>() = data2;
+
+  auto *floorDiv = F->createFloorDiv("floorDiv", A, B, truncate);
+  auto *result = F->createSave("save", floorDiv);
+  auto *resultTensor = bindings.allocate(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  std::vector<DataType> reference;
+  assert(data1.size() == data2.size() && "Size mismatch!");
+  for (size_t i = 0; i < data1.size(); i++) {
+    reference.push_back(truncate ? truncDivide<DataType>(data1[i], data2[i])
+                                 : floorDivide<DataType>(data1[i], data2[i]));
+  }
+  auto RH = resultTensor->getHandle<DataType>();
+  EXPECT_EQ(reference.size(), RH.size());
+  for (size_t i = 0; i < reference.size(); i++) {
+    if (isQuantizedElemKind(DTy)) {
+      EXPECT_EQ(reference[i], static_cast<DataType>(quantization::dequantize(
+                                  RH.raw(i), {scale, offset})));
+    } else {
+      EXPECT_EQ(reference[i], RH.raw(i));
+    }
+  }
+}
+
+TEST_P(OperatorTest, FloorDiv_FloatTy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                      /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Float16Ty) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                          /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Int64ITy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy,
+                        /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Int32ITy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                        /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Int8QTy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                       /* truncate */ false);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_FloatTy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                      /* truncate */ true);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_Float16Ty) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                          /* truncate */ true);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_Int64ITy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy,
+                        /* truncate */ true);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_Int32ITy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                        /* truncate */ true);
+}
+
+TEST_P(OperatorTest, FloorDiv_Trunc_Int8QTy) {
+  CHECK_IF_ENABLED();
+
+  testFloorDiv<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                       /* truncate */ true);
+}
 
 TEST_P(OperatorTest, IntMatMul) {
   CHECK_IF_ENABLED();
@@ -8442,6 +8574,54 @@ TEST_P(OperatorTest, Round_Int8QTy) {
   EXPECT_EQ(outH.raw(4), 10);
 }
 
+/// Helper to test Truncate using floating point \p elemKind.
+template <typename ElemType>
+static void testTruncateFloat(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE, ElemKind elemKind) {
+  auto *inp = mod.createPlaceholder(elemKind, {3}, "inp", false);
+  bindings.allocate(inp)->getHandle<ElemType>() = {-0.2, 1.0, 1.99};
+  auto *node = F->createTruncate("truncate", inp);
+  auto *save = F->createSave("save", node);
+  auto *outT = bindings.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto outH = outT->getHandle<ElemType>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_FLOAT_EQ(outH.raw(0), 0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 1.0);
+}
+
+TEST_P(OperatorTest, Truncate_FloatTy) {
+  CHECK_IF_ENABLED();
+  testTruncateFloat<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, Truncate_Float16Ty) {
+  CHECK_IF_ENABLED();
+  testTruncateFloat<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+TEST_P(OperatorTest, Truncate_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {5}, 0.5, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-3, -2, 0, 1, 2};
+  auto *node = F_->createTruncate("truncate", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 5);
+  EXPECT_EQ(outH.raw(0), -2);
+  EXPECT_EQ(outH.raw(1), -2);
+  EXPECT_EQ(outH.raw(2), 0);
+  EXPECT_EQ(outH.raw(3), 0);
+  EXPECT_EQ(outH.raw(4), 2);
+}
+
 TEST_P(OperatorTest, Sqrt_FloatTy) {
   CHECK_IF_ENABLED();
   auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);
@@ -9169,7 +9349,7 @@ TEST_P(OperatorTest, IntFloorDivBroadcast) {
   bindings_.allocate(in2)->getHandle<int8_t>().randomize(-10, 10,
                                                          mod_.getPRNG());
   constexpr int axis = -1;
-  auto *floorDivBroadcast = F_->createNodeWithBroadcastOutTy<FloorDivNode>(
+  auto *floorDivBroadcast = F_->createFloorDivWithBroadcast(
       "floorDivBroadcast", axis, outTy, in1, in2);
 
   auto *saveFloorDiv = F_->createSave("saveFloorDiv", floorDivBroadcast);
@@ -10871,6 +11051,107 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
   Tensor &result1 = *bindings_.get(S->getPlaceholder());
 
   EXPECT_TRUE(result.isEqual(result1));
+}
+
+TEST_P(OperatorTest, FP16BatchNorm0D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](std::string name, std::vector<float> vals) {
+    dim_t sz = vals.size();
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  dim_t N = 2, C = 2;
+  std::vector<dim_t> dims = {N, C};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {-0.0892, 0.6268, 1.3740,
+                                                       2.4480};
+  auto *bias = constFunc("batchnorm_bias", {0.7451, 0.7946});
+  auto *scale = constFunc("batchnorm_weights", {0.6815, 0.0039});
+  auto *mean = constFunc("running_mean", {1.0730, -7.3854});
+  auto *variance = constFunc("running_var", {1.8200, 4.6300});
+  unsigned_t channelIdx = 1;
+  float epsilon = 1e-5;
+  float momentum = 0.1;
+
+  auto *op = F_->createBatchNormalization("fp16_batch_norm1d", input->getType(),
+                                          input, bias, scale, mean, variance,
+                                          channelIdx, epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor outTensor(ElemKind::Float16Ty, dims);
+  outTensor.getHandle<float16_t>() = {0.1580, 0.8091, 0.8972, 0.8124};
+
+  int numElements = N * C;
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  for (size_t i = 0; i < numElements; i++) {
+    auto resVal = float(result.raw(i));
+    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
+    EXPECT_NEAR(resVal, expectedVal, 0.005);
+  }
+}
+
+TEST_P(OperatorTest, FP16BatchNorm1D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](std::string name, std::vector<float> vals) {
+    dim_t sz = vals.size();
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  dim_t N = 2, C = 2, W = 3;
+  std::vector<dim_t> dims = {N, C, W};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      -0.0892, 0.6268, 1.3740,  2.4480, -1.4285, 0.0565,
+      -0.0266, 0.4494, -0.3858, 1.0044, 0.8844,  0.5071};
+  auto *bias = constFunc("batchnorm_bias", {0.7451, 0.7946});
+  auto *scale = constFunc("batchnorm_weights", {0.6815, 0.0039});
+  auto *mean = constFunc("running_mean", {1.0730, -7.3854});
+  auto *variance = constFunc("running_var", {1.8200, 4.6300});
+  unsigned_t channelIdx = 1;
+  float epsilon = 1e-5;
+  float momentum = 0.1;
+
+  auto *op = F_->createBatchNormalization("fp16_batch_norm1d", input->getType(),
+                                          input, bias, scale, mean, variance,
+                                          channelIdx, epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor outTensor(ElemKind::Float16Ty, dims);
+  outTensor.getHandle<float16_t>() = {0.1580, 0.5197, 0.8972, 0.8124,
+                                      0.8054, 0.8081, 0.1896, 0.4301,
+                                      0.0082, 0.8098, 0.8096, 0.8089};
+
+  int numElements = N * C * W;
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  for (size_t i = 0; i < numElements; i++) {
+    auto resVal = float(result.raw(i));
+    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
+    EXPECT_NEAR(resVal, expectedVal, 0.005);
+  }
 }
 
 /// 2D Batch Normalization in Float16
@@ -13962,6 +14243,12 @@ TEST_P(OperatorTest, Embedding_Float16) {
 TEST_P(OperatorTest, Embedding_with_PadIdx) {
   CHECK_IF_ENABLED();
   testEmbedding<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001, 2);
+}
+
+TEST_P(OperatorTest, Embedding_with_PadIdx_Float16) {
+  CHECK_IF_ENABLED();
+  testEmbedding<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                           0.0001, 2);
 }
 
 /// Test EmbeddingBag with an N-dimension embedding table.

@@ -1174,8 +1174,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Node *node = nullptr;
     if (typeName == "Int8FC") {
-      // Create the node with quantized type.
-      auto outputDims = flattenCdr(in.dims(), in.dims().size() - 1);
+      // Create a node with quantized type.
+      auto outputDims = flattenCdr(in.dims(), axis);
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
           outTy,
@@ -1194,7 +1194,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       auto *fp16Bias =
           G_->createConvertTo(opName + ".ConvertBias", B, fp16BiasType);
 
-      auto outputDims = flattenCdr(in.dims(), in.dims().size() - 1);
+      auto outputDims = flattenCdr(in.dims(), axis);
       TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
                                    {outputDims.first, B->getType()->dims()[0]});
       auto fc = G_->createFullyConnected(opName, in, W, fp16Bias, OT, axis);
@@ -1202,7 +1202,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           mod_.uniqueType(ElemKind::FloatTy, fc->getResult().dims());
       node = G_->createConvertTo(opName + ".ConvertOutput", fc, outputType);
     } else {
-      node = G_->createFullyConnected(opName, in, W, B, axis);
+      auto outputDims = flattenCdr(in.dims(), axis);
+      TypeRef outputType = mod_.uniqueType(
+          ElemKind::FloatTy, {outputDims.first, B->getType()->dims()[0]});
+      node = G_->createFullyConnected(opName, in, W, B, outputType, axis);
     }
 
     // If number of original input dims is greater than 2, expand the output

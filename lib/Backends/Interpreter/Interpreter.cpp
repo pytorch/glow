@@ -87,6 +87,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MulNodeKind:
+  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::ClipNodeKind:
@@ -195,7 +196,6 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int32QTy, ElemKind::Int64ITy,
          ElemKind::Int32ITy});
-  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -238,6 +238,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
   case Kinded::Kind::FloorNodeKind:
+  case Kinded::Kind::TruncateNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
@@ -1004,13 +1005,4 @@ Expected<bool> Interpreter::transformPostLowering(
 }
 
 void Interpreter::parseBackendSpecificOptions(
-    const BackendOptions &opts) const {
-  auto interpreterMaxMemOpt =
-      opts.backendSpecificOpts.find("interpreter-memory");
-  if (interpreterMaxMemOpt != opts.backendSpecificOpts.end()) {
-    glow::runtime::flags::InterpreterMemory =
-        std::stoi(interpreterMaxMemOpt->second);
-    llvm::outs() << "Interpreter memory set to "
-                 << glow::runtime::flags::InterpreterMemory << "\n";
-  }
-}
+    const BackendOptions &opts) const {}

@@ -393,9 +393,12 @@ int main(int argc, char **argv) {
   BB.newNode("FloorDiv")
       .addInput("LHS")
       .addInput("RHS")
+      .addMember(MemberType::Boolean, "Truncate")
       .addResultFromCtorArg()
       .dataParallel()
-      .setDocstring("Performs Div on the LHS and RHS operands, then Floor.");
+      .setDocstring(
+          "Performs Div on the LHS and RHS operands, then Floor. If Truncate "
+          "is set to true then truncate the quotient to zero instead.");
 
   BB.newNode("Max")
       .addInput("LHS")
@@ -517,6 +520,13 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs an element-wise ROUND(x) of the Input operand.");
+
+  BB.newNode("Truncate")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring(
+          "Performs an element-wise TRUNCATE(x) of the Input operand.");
 
   BB.newNode("Sqrt")
       .addInput("Input")
