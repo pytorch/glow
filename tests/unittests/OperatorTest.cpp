@@ -14190,18 +14190,15 @@ static void testEmbedding(glow::PlaceholderBindings &bindings,
   // If hasEndOffset then add some additional junk to the end of indices and
   // weights and an extra offset to offsets.
 
-  auto *weights = mod.createPlaceholder(DTy, {3, 2}, "weights", false);
-  auto *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {3}, "indices", false);
+  auto *weights = mod.createConstant(DTy, {3, 2}, "weights");
+  auto *indices = mod.createConstant(ElemKind::Int64ITy, {3}, "indices");
   bool scale = false;
   bool sparse = false;
-
   int64_t indexValues[] = {1, 0, 2};
 
-  bindings.allocate(weights)->getHandle<DataType>() = {2.0, -0.5, 4,
-                                                       5.1, 1,    2.3};
-
-  bindings.allocate(indices)->getHandle<int64_t>() = indexValues;
+  weights->getPayloadMutable().getHandle<DataType>() = {2.0, -0.5, 4,
+                                                        5.1, 1,    2.3};
+  indices->getPayloadMutable().getHandle<int64_t>() = indexValues;
 
   auto *R =
       F->createEmbedding("Embedding", weights, indices, padIdx, scale, sparse);
