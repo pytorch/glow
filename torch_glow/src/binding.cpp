@@ -381,4 +381,19 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("to_glow_preview", [](const torch::jit::Module &orig_module) {
     TorchGlowBackend::preview(orig_module);
   });
+
+  /// Set avaialable devices to those listed in \p availableDevices.
+  m.def("set_available_devices", [](std::vector<int32_t> availableDevices) {
+    getGlobalPyTorchLoaderSettingsMutable().availableDevices = availableDevices;
+  });
+
+  /// Set avaialable devices to all devices on the host
+  m.def("clear_available_devices", []() {
+    getGlobalPyTorchLoaderSettingsMutable().availableDevices = {};
+  });
+
+  /// \returns the list of avaialble devices
+  m.def("get_available_devices", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().availableDevices;
+  });
 }
