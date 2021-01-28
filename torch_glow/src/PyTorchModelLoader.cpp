@@ -6761,24 +6761,30 @@ PyTorchModelLoader::PyTorchModelLoader(
       if (!metaStack.inputMetas.empty()) {
         if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
           inputScalarType = metaStack.inputMetas[i].type;
-          glow::ElemKind elemKind;
-          if (metaStack.inputMetas[i].type != at::kQUInt8) {
-            elemKind = scalarTypeToElemKind(metaStack.inputMetas[i].type);
-          } else {
-            elemKind = ElemKind::Int8QTy;
-          }
-
           // TODO: Change Glow Type to use sdim_t to be consistent
           // with other places.
           std::vector<glow::dim_t> dims;
           for (auto d : metaStack.inputMetas[i].dims) {
             dims.push_back(static_cast<glow::dim_t>(d));
           }
-          glow::Type t(elemKind, dims);
 
-          ph = F_.getParent()->createPlaceholder(&t, "input",
-                                                 /*isTrainable*/ false);
-
+          if (!c10::isQIntType(metaStack.inputMetas[i].type)) {
+            glow::Type t(scalarTypeToElemKind(metaStack.inputMetas[i].type),
+                         dims);
+            ph = F_.getParent()->createPlaceholder(&t, "input",
+                                                   /*isTrainable*/ false);
+          } else if (metaStack.inputMetas[i].type == at::kQUInt8) {
+            glow::Type t(ElemKind::Int8QTy, dims, metaStack.inputMetas[i].scale,
+                         metaStack.inputMetas[i].offset - UINT8_TO_INT8_SHIFT);
+            ph = F_.getParent()->createPlaceholder(&t, "input",
+                                                   /*isTrainable*/ false);
+          } else {
+            glow::Type t(scalarTypeToElemKind(metaStack.inputMetas[i].type),
+                         dims, metaStack.inputMetas[i].scale,
+                         metaStack.inputMetas[i].offset);
+            ph = F_.getParent()->createPlaceholder(&t, "input",
+                                                   /*isTrainable*/ false);
+          }
         } else {
           // Here we assume it's scalar type
           glow::Type t(typeKindToElemKind(inputValue->type()->kind()), {});
