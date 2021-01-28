@@ -1054,6 +1054,21 @@ int main(int argc, char **argv) {
           "This operator gathers slices of Data into "
           "an output tensor of rank q + r - Indices_shape[-1] - 1 .");
 
+  BB.newNode("GatherElements")
+      .addInput("Data")
+      .addInput("Indices")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "GatherElements takes inputs data and indices of the same rank r "
+          ">= 1 and an optional attribute axis that identifies an axis of data "
+          "(by default, the outer-most axis, that is axis 0). It is an "
+          "indexing operation that produces its output by indexing into the "
+          "input data tensor at index positions determined by elements of the "
+          "indices tensor. Its output shape is the same as the shape of "
+          "indices and consists of one value (gathered from the data) for each "
+          "element in indices.");
+
   BB.newNode("GatherRanges")
       .addInput("Data")
       .addInput("Ranges")
