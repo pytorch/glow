@@ -724,6 +724,10 @@ private:
   /// \returns error on failure.
   Error loadClamp(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::expand node.
+  /// \returns error on failure.
+  Error loadExpand(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch prelu node.
   /// \returns error on failure.
   Error loadPRelu(const torch::jit::Node *ptNode);

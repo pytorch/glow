@@ -927,6 +927,14 @@ struct ExpandAsInputs {
   };
 };
 
+/// Indexes of aten::expand inputs.
+struct ExpandInputs {
+  enum {
+    input = 0,
+    tiles,
+  };
+};
+
 /// Indexes of fb::glow_embedding_bag inputs.
 struct GlowEmbeddingBagInputs {
   enum {
@@ -1096,6 +1104,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::gt", "aten::gt_"},
        &PyTorchModelLoader::loadCmp<CmpLTNode, true>},
       {{"aten::clamp"}, &PyTorchModelLoader::loadClamp},
+      {{"aten::expand"}, &PyTorchModelLoader::loadExpand},
       {{"aten::cos"}, &PyTorchModelLoader::loadCos},
       {{"aten::sin"}, &PyTorchModelLoader::loadSin},
       {{"aten::acos"}, &PyTorchModelLoader::loadAcos},
@@ -4765,6 +4774,40 @@ Error PyTorchModelLoader::loadExpandAs(const torch::jit::Node *ptNode) {
   auto output = F_.createBroadcast("expand_as", input, other.dims(),
                                    other.dims().size() - input.dims().size());
   RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadExpand(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue data;
+  std::vector<int64_t> *tiles;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      data, getGlowNodeValueForValue(inputs[ExpandInputs::input]));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      tiles, iValToIntList(getGlowIValueForValue(inputs[ExpandInputs::tiles])));
+
+  Node *output = data;
+  size_t axis;
+  for (auto i = tiles->begin(); i != tiles->end(); i++) {
+    axis = i - tiles->begin();
+    // -1 means not changing the size of that dimension
+    if (*i == -1) {
+      *i = data.dims()[axis];
+    }
+    // Two corresponding dimension must have the same value,
+    // if input dimension is not equal to 1.
+    if (data.dims()[axis] != 1 && *i != data.dims()[axis]) {
+      MAKE_ERR("Expand: Invalid repeat value");
+    }
+
+    if (*i != size_t(data.dims()[axis]) && *i != 1) {
+      std::string opName = "expand_" + std::to_string(axis);
+      output = F_.createTile(opName, output, *i, axis);
+    }
+  }
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
