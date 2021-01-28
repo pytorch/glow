@@ -596,7 +596,6 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                 strFormat("Fail to propagate quantized dtype to output"));
           }
         }
-
         // Write the output from Glow to ONNX if necessary.
         if (settings.writeToOnnx) {
           glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
