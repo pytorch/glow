@@ -1192,6 +1192,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::log"}, &PyTorchModelLoader::loadLog},
       {{"aten::sum"}, &PyTorchModelLoader::loadSum},
       {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
+      {{"aten::silu"}, &PyTorchModelLoader::loadSilu},
       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
       {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh},
@@ -2429,45 +2430,47 @@ Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
+template <typename T, typename U>
+Expected<NodeValue> iValueBroadcastingHelper(glow::Function &F_, U &&val,
+                                             TypeRef type) {
+  T constVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(constVal,
+                             static_cast_expected<T>(std::forward<U>(val)));
+
+  if (type->getElementType() == ElemKind::FloatTy) {
+    return F_.createSplat("ivalConstSplat", type, constVal);
+  } else {
+    glow::Tensor t(type);
+    t.init(glow::Tensor::InitKind::Broadcast, constVal,
+           F_.getParent()->getPRNG());
+    return F_.getParent()
+        ->createConstant("ivalConstBcast", std::move(t))
+        ->getOutput();
+  }
+}
+
 Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedIValue(
-    const torch::jit::Value *value, llvm::ArrayRef<glow::dim_t> dims,
-    bool makeFloat) {
+    const torch::jit::Value *value, TypeRef type) {
   if (hasGlowNodeValueForValue(value)) {
     return getGlowNodeValueForValue(value);
   } else {
     GlowIValue *ival;
     ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(value));
 
-    if (makeFloat) {
-      float constVal;
-      if (ival->isInt()) {
-        ASSIGN_VALUE_OR_RETURN_ERR(constVal,
-                                   static_cast_expected<float>(ival->toInt()));
-      } else {
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            constVal, static_cast_expected<float>(ival->toDouble()));
-      }
-      glow::Tensor t(glow::ElemKind::FloatTy, dims);
-      t.init(glow::Tensor::InitKind::Broadcast, constVal,
-             F_.getParent()->getPRNG());
-      return F_.getParent()
-          ->createConstant("constant", std::move(t))
-          ->getOutput();
-    } else /* makeInt */ {
-      int64_t constVal;
-      if (ival->isInt()) {
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            constVal, static_cast_expected<int64_t>(ival->toInt()));
-      } else {
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            constVal, static_cast_expected<int64_t>(ival->toDouble()));
-      }
-      glow::Tensor t(glow::ElemKind::Int64ITy, dims);
-      t.init(glow::Tensor::InitKind::Broadcast, constVal,
-             F_.getParent()->getPRNG());
-      return F_.getParent()
-          ->createConstant("constant", std::move(t))
-          ->getOutput();
+    auto elemKind = type->getElementType();
+
+    if (ival->isInt() && elemKind == ElemKind::Int64ITy) {
+      return iValueBroadcastingHelper<int64_t>(F_, ival->toInt(), type);
+    } else if (ival->isInt() && elemKind == ElemKind::Int32ITy) {
+      return iValueBroadcastingHelper<int32_t>(F_, ival->toInt(), type);
+    } else if (ival->isInt() && elemKind == ElemKind::FloatTy) {
+      return iValueBroadcastingHelper<float>(F_, ival->toInt(), type);
+    } else if (ival->isDouble() && elemKind == ElemKind::FloatTy) {
+      return iValueBroadcastingHelper<float>(F_, ival->toDouble(), type);
+    } else {
+      return MAKE_ERR(strFormat(
+          "unsupported IValue broadcasting from `%s` to a tensor of `%s`.",
+          ival->getTagString(), type->getElementName().str().c_str()));
     }
   }
 }
@@ -2530,15 +2533,11 @@ Expected<NodeValue> PyTorchModelLoader::loadArithmeticNode(
   if (hasGlowNodeValueForValue(lhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(lhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        rhsInput,
-        loadNodeValueOrBroadcastedIValue(
-            rhs, lhsInput.dims(), isFloatElemKind(lhsInput.getElementType())));
+        rhsInput, loadNodeValueOrBroadcastedIValue(rhs, lhsInput.getType()));
   } else if (hasGlowNodeValueForValue(rhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(rhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        lhsInput,
-        loadNodeValueOrBroadcastedIValue(
-            lhs, rhsInput.dims(), isFloatElemKind(rhsInput.getElementType())));
+        lhsInput, loadNodeValueOrBroadcastedIValue(lhs, rhsInput.getType()));
   } else {
     return MAKE_ERR("Either lhs or rhs of arithmetic node must be a tensor");
   }
@@ -2597,10 +2596,27 @@ Error PyTorchModelLoader::loadFloorDiv(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
 
-  glow::NodeValue res;
-  ASSIGN_VALUE_OR_RETURN_ERR(res, loadArithmeticNode<glow::FloorDivNode>(
-                                      "floor_divide", inputs[0], inputs[1]));
+  auto lhs = inputs[0];
+  auto rhs = inputs[1];
+  glow::NodeValue lhsInput;
+  glow::NodeValue rhsInput;
 
+  if (hasGlowNodeValueForValue(lhs)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(lhs));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        rhsInput, loadNodeValueOrBroadcastedIValue(rhs, lhsInput.getType()));
+  } else if (hasGlowNodeValueForValue(rhs)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(rhs));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        lhsInput, loadNodeValueOrBroadcastedIValue(lhs, rhsInput.getType()));
+  } else {
+    return MAKE_ERR("Either lhs or rhs of floorDiv node must be a tensor");
+  }
+
+  // Current Pytorch FloorDiv is actually TruncDiv
+  // github.com/pytorch/pytorch/issues/43874
+  auto res = F_.createFloorDivWithBroadcast(
+      "floor_divide", /* axis */ -1, lhsInput, rhsInput, /* truncate */ true);
   RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
@@ -3742,22 +3758,17 @@ Error PyTorchModelLoader::loadCmp(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   auto kind = ptNode->kind();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
-  glow::NodeValue lhs;
-  constexpr int axis = -1;
 
+  glow::NodeValue lhs;
   ASSIGN_VALUE_OR_RETURN_ERR(
       lhs, getGlowNodeValueForValue(inputs[CompareInputs::lhs]));
 
   glow::NodeValue rhs;
-  if (hasGlowIValueForValue(inputs[CompareInputs::rhs])) {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        rhs, loadNodeValueOrBroadcastedIValue(inputs[CompareInputs::rhs],
-                                              lhs.dims()));
-  } else {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        rhs, getGlowNodeValueForValue(inputs[CompareInputs::rhs]));
-  }
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rhs, loadNodeValueOrBroadcastedIValue(inputs[CompareInputs::rhs],
+                                            lhs.getType()));
 
+  constexpr int axis = -1;
   // Greater than and Greater or equal are mapped to inverted
   // (swap between LHS and RHS) Less or equal and Less than
   if constexpr (invert) {
@@ -3780,6 +3791,20 @@ Error PyTorchModelLoader::loadSigmoid(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   glow::SigmoidNode *glowNode = F_.createSigmoid("sigmoid", input);
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
+}
+
+Error PyTorchModelLoader::loadSilu(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  glow::SwishNode *glowNode = F_.createSwish("swish", input);
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
   RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
@@ -3929,11 +3954,19 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
                         input.dims().size() == weights.dims().size(),
                     "Expect 4 dims in input and weights for conv2d and 5 dims "
                     "in input and weights for conv3d");
+
+  bool transposed;
+  ASSIGN_VALUE_OR_RETURN_ERR(transposed, iValToBool(getGlowIValueForValue(
+                                             inputs[ConvInputs::transposed])));
+
   bool isConv3d = input.dims().size() == 5;
   if (isConv3d) {
     input = F_.createTranspose("conv_input_transposed", input, NCTHW2NTHWC);
     weights =
         F_.createTranspose("conv_weights_transposed", weights, NCTHW2NTHWC);
+  } else if (transposed) {
+    input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
+    weights = F_.createTranspose("conv_weights_transposed", weights, CNHW2NHWC);
   } else {
     input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
     weights = F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
@@ -3985,12 +4018,6 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
             getGlowIValueForValue(inputs[ConvInputs::dilation]), 2)));
   }
 
-  // Don't support transposed convolutions yet.
-  bool transposed;
-  ASSIGN_VALUE_OR_RETURN_ERR(transposed, iValToBool(getGlowIValueForValue(
-                                             inputs[ConvInputs::transposed])));
-  RETURN_ERR_IF_NOT(!transposed, "Transposed convolutions not supported.");
-
   glow::unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(
       groups, static_cast_expected<glow::unsigned_t>(iValToInt(
@@ -4031,6 +4058,12 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
         "conv3d", input, weights, bias, outTy, kernels, strides, pads, groups);
     output = F_.createTranspose("conv_output_transposed", conv->getResult(),
                                 NTHWC2NCTHW);
+  } else if (transposed) {
+    glow::ConvTransposeNode *convTranspose =
+        F_.createConvTranspose("convTranspose", input, weights, bias, outTy,
+                               kernels, strides, pads, groups);
+    output = F_.createTranspose("convTranpose_output_transposed",
+                                convTranspose->getResult(), NHWC2NCHW);
   } else {
     glow::ConvolutionNode *conv =
         F_.createConv("conv", input, weights, bias, outTy, kernels, strides,
@@ -4662,12 +4695,15 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(dilation == 1, "Dilation value must be equal to 1, "
                                    "maxpool dilation not yet supported.");
 
-  // Glow doesn't support maxpool ceil mode.
   bool ceilMode;
   ASSIGN_VALUE_OR_RETURN_ERR(ceilMode, iValToBool(getGlowIValueForValue(
                                            inputs[MaxPoolInputs::ceil_mode])));
-  RETURN_ERR_IF_NOT(ceilMode == false,
-                    "ceilMode must be scalar with false value.");
+  // For ceil mode, we add pads at the end of H and W,
+  // to make the output size is effectively rounded up.
+  if (ceilMode) {
+    pads[2] += strides[0] - 1;
+    pads[3] += strides[1] - 1;
+  }
 
   glow::MaxPoolNode *mp =
       F_.createMaxPool("maxpool2d", input, kernels, strides, pads);
@@ -5666,9 +5702,9 @@ Error PyTorchModelLoader::loadSelect(const torch::jit::Node *ptNode) {
   NodeValue index;
   std::vector<dim_t> indexDims = {1};
   // Gather expects NodeValue
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      index, loadNodeValueOrBroadcastedIValue(inputs[SelectInputs::index],
-                                              indexDims, false));
+  glow::Type type(ElemKind::Int64ITy, indexDims);
+  ASSIGN_VALUE_OR_RETURN_ERR(index, loadNodeValueOrBroadcastedIValue(
+                                        inputs[SelectInputs::index], &type));
   GatherNode *gatherOutput;
 
   /* If axis!=0 then reshape tensor and put the axis dimension as the

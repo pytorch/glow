@@ -147,6 +147,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Embedding_Float/0",
     "Embedding_Float16/0",
     "Embedding_with_PadIdx/0",
+    "Embedding_with_PadIdx_Float16/0",
     "EmbeddingBag_1D_Float/0",
     "EmbeddingBag_1D_Float16/0",
     "EmbeddingBag_2D_Float/0",

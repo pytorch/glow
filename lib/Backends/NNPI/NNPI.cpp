@@ -748,6 +748,24 @@ static void setupBasicParallelizationConfigs(
       }
     }
 
+    if (auto *R = llvm::dyn_cast<RescaleQuantizedNode>(node)) {
+      // For Rescales that are preceded by FC or Relu, mirror their
+      // parallelization.
+      Node *inputNode = R->getInput().getNode();
+      if (!llvm::isa<FullyConnectedNode>(inputNode) &&
+          !llvm::isa<ReluNode>(inputNode)) {
+        continue;
+      }
+      auto numChunksIt = numChunks.find(inputNode);
+      auto parOptsIt = parOpts.find(inputNode);
+      if (numChunksIt == numChunks.end() || parOptsIt == parOpts.end()) {
+        continue;
+      }
+      parOpts[R] = parOptsIt->second;
+      numChunks[R] = numChunksIt->second;
+      continue;
+    }
+
     // Split Gelu layers in data parallel fashion
     if (auto *GL = llvm::dyn_cast<GeluNode>(node)) {
       size_t M = GL->getInput().dims()[0];

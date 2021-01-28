@@ -405,6 +405,7 @@ void writeTransposeInput(const Node *node, const Node *input,
   transformProto->add_output(newName);
   proto->add_input(newName);
 }
+
 /// Writes Arithmetic operators with name \p opName from Node \p node into
 /// provided graph protobuf \p graph. Arithmetic node may have been broadcasted,
 /// \p hasMultidirectionalBroadcast indicates the node can be multidirectional
@@ -2289,6 +2290,7 @@ DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(NonMaxSuppression)
 DEF_ALL_WRITER_NODE(ConvTranspose)
 DEF_ALL_WRITER_NODE(Logit)
+DEF_ALL_WRITER_NODE(Truncate)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();

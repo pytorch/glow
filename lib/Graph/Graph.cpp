@@ -1777,6 +1777,7 @@ UNARY_ARITHMETIC_FUN_DEF(Reciprocal)
 UNARY_ARITHMETIC_FUN_DEF(Sin)
 UNARY_ARITHMETIC_FUN_DEF(Cos)
 UNARY_ARITHMETIC_FUN_DEF(Erf)
+UNARY_ARITHMETIC_FUN_DEF(Truncate)
 #undef UNARY_ARITHMETIC_FUN_DEF
 
 #define ARITHMETIC_FUN_DEF(NODE_NAME_)                                         \
@@ -1797,7 +1798,6 @@ ARITHMETIC_FUN_DEF(Add);
 ARITHMETIC_FUN_DEF(Mul);
 ARITHMETIC_FUN_DEF(Sub);
 ARITHMETIC_FUN_DEF(Div);
-ARITHMETIC_FUN_DEF(FloorDiv);
 ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
 ARITHMETIC_FUN_DEF(Pow);
@@ -1821,6 +1821,40 @@ TRIGONOMETRIC_FUN_DEF(Acos)
 TRIGONOMETRIC_FUN_DEF(Asin)
 TRIGONOMETRIC_FUN_DEF(Atan)
 #undef TRIGONOMETRIC_FUN_DEF
+
+FloorDivNode *Function::createFloorDiv(llvm::StringRef name, NodeValue LHS,
+                                       NodeValue RHS, bool truncate) {
+  return createFloorDiv(name, LHS.getType(), LHS, RHS, truncate);
+}
+
+FloorDivNode *Function::createFloorDiv(llvm::StringRef name, TypeRef outTy,
+                                       NodeValue LHS, NodeValue RHS,
+                                       bool truncate) {
+  DCHECK(LHS.dims() == RHS.dims())
+      << "Invalid operand shapes LHS:" << LHS.getNode()->getName().str()
+      << " RHS: " << RHS.getNode()->getName().str() << " " << LHS.dims()
+      << " vs " << RHS.dims();
+  TypeRef OT = getParent()->uniqueType(*outTy);
+  return addNode(new FloorDivNode(name, OT, LHS, RHS, truncate));
+}
+
+FloorDivNode *Function::createFloorDivWithBroadcast(llvm::StringRef name,
+                                                    int axis, NodeValue LHS,
+                                                    NodeValue RHS,
+                                                    bool truncate) {
+  std::vector<NodeValue> inputs = broadcastInputs(axis, {LHS, RHS});
+  return createFloorDiv(name, inputs[0].getType(), inputs[0], inputs[1],
+                        truncate);
+}
+
+FloorDivNode *Function::createFloorDivWithBroadcast(llvm::StringRef name,
+                                                    int axis, TypeRef outTy,
+                                                    NodeValue LHS,
+                                                    NodeValue RHS,
+                                                    bool truncate) {
+  std::vector<NodeValue> inputs = broadcastInputs(axis, {LHS, RHS});
+  return createFloorDiv(name, outTy, inputs[0], inputs[1], truncate);
+}
 
 CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS) {

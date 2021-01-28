@@ -86,14 +86,8 @@ class TestSelectiveToGlow(unittest.TestCase):
         inputs = (torch.zeros(4) + 8, torch.zeros(4) + 7)
         torch_res = model(*inputs)
 
-        bar_inputs = [
-            torch.randn(shape)
-            for shape in torch_glow.get_submod_input_shapes(model, "foo.bar", inputs)
-        ]
-        qux_inputs = [
-            torch.randn(shape)
-            for shape in torch_glow.get_submod_input_shapes(model, "qux", inputs)
-        ]
+        bar_inputs = torch_glow.get_submod_inputs(model, "foo.bar", inputs)
+        qux_inputs = torch_glow.get_submod_inputs(model, "qux", inputs)
 
         glow_mod = torch_glow.to_glow_selective(
             model,
@@ -113,14 +107,8 @@ class TestSelectiveToGlow(unittest.TestCase):
         inputs = (torch.zeros(4) + 8, torch.zeros(4) + 7)
         torch_res = model(*inputs)
 
-        bar_inputs = [
-            torch.randn(shape)
-            for shape in torch_glow.get_submod_input_shapes(model, "foo.bar", inputs)
-        ]
-        qux_inputs = [
-            torch.randn(shape)
-            for shape in torch_glow.get_submod_input_shapes(model, "qux", inputs)
-        ]
+        bar_inputs = torch_glow.get_submod_inputs(model, "foo.bar", inputs)
+        qux_inputs = torch_glow.get_submod_inputs(model, "qux", inputs)
 
         with torch.no_grad():
             traced_model = torch.jit.trace(model, inputs)

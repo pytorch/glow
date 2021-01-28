@@ -22,6 +22,7 @@
 #include "PyTorchCommon.h"
 #include "Registration.h"
 #include "TorchGlowBackend.h"
+#include "glow/Flags/Flags.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <torch/csrc/jit/python/pybind_utils.h>
@@ -235,6 +236,11 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().runShapeInference = false;
   });
 
+  /// Set interpreter device memory (in KiB).
+  m.def("set_interpreter_memory", [](const unsigned &memorySize) {
+    glow::runtime::flags::InterpreterMemory = memorySize;
+  });
+
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
   m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {
@@ -374,5 +380,20 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// compiling.
   m.def("to_glow_preview", [](const torch::jit::Module &orig_module) {
     TorchGlowBackend::preview(orig_module);
+  });
+
+  /// Set avaialable devices to those listed in \p availableDevices.
+  m.def("set_available_devices", [](std::vector<int32_t> availableDevices) {
+    getGlobalPyTorchLoaderSettingsMutable().availableDevices = availableDevices;
+  });
+
+  /// Set avaialable devices to all devices on the host
+  m.def("clear_available_devices", []() {
+    getGlobalPyTorchLoaderSettingsMutable().availableDevices = {};
+  });
+
+  /// \returns the list of avaialble devices
+  m.def("get_available_devices", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().availableDevices;
   });
 }

@@ -183,12 +183,16 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
     } else {
       // Device initialization is taking longer than expected, return an error.
       return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
-                      "Timout encountered when initializing device: " +
+                      "Timeout encountered when initializing device: " +
                           std::string(config->name));
     }
     availableDevices_.push_back(deviceCount);
     deviceCount++;
   }
+#ifdef FACEBOOK_INTERNAL
+  LOG(INFO) << "Initialized " << deviceCount << " device(s)";
+#endif
+
   provisioner_.reset(new Provisioner(devices_));
   executor_.reset(
       new ThreadPoolExecutor(devices_, config_.executorThreads, "HostManager"));
@@ -260,7 +264,6 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   LOG(INFO) << "Adding Glow network built with revision hash: " << revisionHash;
 #endif /* FACEBOOK_INTERNAL */
   VLOG(1) << "addNetwork";
-
   ScopeGuard debugDumpDAGGuard([&]() {
     if (cctx.dumpFinalGraph) {
       for (Function *F : module->getFunctions()) {
