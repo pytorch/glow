@@ -1486,6 +1486,17 @@ public:
   GatherNDNode *createGatherND(llvm::StringRef name, NodeValue data,
                                NodeValue indices);
 
+  /// Create a node, performing GatherElements operation:
+  /// GatherElements takes inputs \p data and indices of the same rank r >=
+  /// 1 and an optional attribute \p axis that identifies an axis of data (by
+  /// default, the outer-most axis, that is axis 0). It is an indexing operation
+  /// that produces its output by indexing into the input data tensor at index
+  /// positions determined by elements of the indices tensor. Its output shape
+  /// is the same as the shape of indices and consists of one value (gathered
+  /// from the data) for each element in indices.
+  GatherElementsNode *createGatherElements(llvm::StringRef name, NodeValue data,
+                                           NodeValue indices, unsigned_t axis);
+
   /// Create a node, performing GatherRanges operation:
   /// Gathers entries of \p data in groups specified by the "examples" in
   /// \p ranges. Each example in \p ranges contains a list of pairs of
