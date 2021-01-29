@@ -683,6 +683,23 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
             NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
 
+  case Kinded::Kind::BoxWithNMSLimitNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty},
+               /*ignoreIn*/ {BoxWithNMSLimitNode::BatchSplitIdx},
+               /*ignoreOut*/
+               {BoxWithNMSLimitNode::FilteredBoxClassIDsIdx,
+                BoxWithNMSLimitNode::FilteredBatchSplitIdx,
+                BoxWithNMSLimitNode::KeepIndicesIdx,
+                BoxWithNMSLimitNode::KeepIndicesSizeIdx}) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::Int64ITy, ElemKind::Int32ITy},
+               /*ignoreIn*/
+               {BoxWithNMSLimitNode::ScoresIdx, BoxWithNMSLimitNode::BoxesIdx},
+               /*ignoreOut*/
+               {BoxWithNMSLimitNode::FilteredScoresIdx,
+                BoxWithNMSLimitNode::FilteredBoxesIdx});
+
   case Kinded::Kind::AudioSpectrogramNodeKind:
     return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==
                ElemKind::FloatTy &&

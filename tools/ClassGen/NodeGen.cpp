@@ -1409,6 +1409,33 @@ int main(int argc, char **argv) {
                     "V4 by outputting indices and scalar tensor with number of "
                     "valid indices. It pads the rest with global MIN box.");
 
+  BB.newNode("BoxWithNMSLimit")
+      .addInput("Scores")
+      .addInput("Boxes")
+      .addInput("BatchSplit")
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Float, "NMSThreshold")
+      .addMember(MemberType::Unsigned, "DetectionsPerImage")
+      .addMember(MemberType::Boolean, "SoftNMSEnabled")
+      .addMember(MemberType::String, "SoftNMSMethod")
+      .addMember(MemberType::Float, "SoftNMSSigma")
+      .addMember(MemberType::Float, "SoftNMSMinScoreThreshold")
+      .addMember(MemberType::Boolean, "Rotated")
+      .addMember(MemberType::Boolean, "LegacyPlusOne")
+      .addMember(MemberType::Boolean, "ClsAgnosticBBoxReg")
+      .addMember(MemberType::Boolean, "InputBoxIncludeBgClass")
+      .addMember(MemberType::Boolean, "OutputClassIncludeBgClass")
+      .addResultFromCtorArg("FilteredScores")
+      .addResultFromCtorArg("FilteredBoxes")
+      .addResultFromCtorArg("FilteredBoxClassIDs")
+      .addResultFromCtorArg("FilteredBatchSplit")
+      .addResultFromCtorArg("KeepIndices")
+      .addResultFromCtorArg("KeepIndicesSize")
+      .setDocstring("Apply NMS(Greedy or soft) to each class "
+                    "(except background) and limits the number "
+                    "of returned boxes over all ther classes. "
+                    "It pads the rest with global Min box");
+
   //===--------------------------------------------------------------------===//
   //                Region of Interest nodes
   //===--------------------------------------------------------------------===//

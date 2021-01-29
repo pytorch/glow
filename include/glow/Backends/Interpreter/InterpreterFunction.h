@@ -390,6 +390,9 @@ private:
   template <typename T>
   void fwdNonMaxSuppressionInstImpl(glow::NonMaxSuppressionInst const *I);
 
+  template <typename T, typename InTy>
+  void fwdBoxWithNMSLimitInstImpl(glow::BoxWithNMSLimitInst const *I);
+
   void fwdAudioSpectrogramInstFloatImpl(glow::AudioSpectrogramInst const *I);
 
   void fwdMFCCInstFloatImpl(glow::MFCCInst const *I);

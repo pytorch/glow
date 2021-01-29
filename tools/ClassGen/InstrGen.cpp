@@ -1208,6 +1208,35 @@ int main(int argc, char **argv) {
                   {"Indices", "NumberOfSelectedIndices"})
       .autoIRGen();
 
+  BB.newInstr("BoxWithNMSLimit")
+      .addOperand("FilteredScores", OperandKind::Out)
+      .addOperand("FilteredBoxes", OperandKind::Out)
+      .addOperand("FilteredBoxClassIDs", OperandKind::Out)
+      .addOperand("FilteredBatchSplit", OperandKind::Out)
+      .addOperand("KeepIndices", OperandKind::Out)
+      .addOperand("KeepIndicesSize", OperandKind::Out)
+      .addOperand("Scores", OperandKind::In)
+      .addOperand("Boxes", OperandKind::In)
+      .addOperand("BatchSplit", OperandKind::In)
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Float, "NMSThreshold")
+      .addMember(MemberType::Unsigned, "DetectionsPerImage")
+      .addMember(MemberType::Boolean, "SoftNMSEnabled")
+      .addMember(MemberType::String, "SoftNMSMethod")
+      .addMember(MemberType::Float, "SoftNMSSigma")
+      .addMember(MemberType::Float, "SoftNMSMinScoreThreshold")
+      .addMember(MemberType::Boolean, "Rotated")
+      .addMember(MemberType::Boolean, "LegacyPlusOne")
+      .addMember(MemberType::Boolean, "ClsAgnosticBBoxReg")
+      .addMember(MemberType::Boolean, "InputBoxIncludeBgClass")
+      .addMember(MemberType::Boolean, "OutputClassIncludeBgClass")
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Boxes", "Scores", "FilteredBoxes", "FilteredScores"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"BatchSplit", "FilteredBatchSplit", "FilteredBoxClassIDs",
+                   "KeepIndices", "KeepIndicesSize"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //                Region of Interest (ROI)
   //===--------------------------------------------------------------------===//

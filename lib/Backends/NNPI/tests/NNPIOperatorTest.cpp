@@ -119,6 +119,13 @@ struct BlacklistInitializer {
       {"ResizeNearest_BFloat16_outTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ResizeNearest_Int16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ResizeNearest_Int16_outTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BoxWithNMS_greedy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BoxWithNMS_soft/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BoxWithNMS_limit_per_image/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BoxWithNMS_invalid_scores/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BoxWithNMS_boxes_no_bg_class/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BoxWithNMS_boxes_no_bg_cls_limit_overall/0",
+       TestBlacklist::AnyDeviceAnyEngine},
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
       {"Upsample_Nearest3D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Upsample_Nearest3D_Float16/0", TestBlacklist::AnyDeviceAnyEngine},

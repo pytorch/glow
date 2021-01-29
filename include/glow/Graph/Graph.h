@@ -2031,6 +2031,56 @@ public:
       int64_t centerPointBox, int64_t maxOutputBoxesPerClass,
       float iouThreshold, float scoreThreshold, TypeRef indicesTy);
 
+  /// Performs NMS(Greedy or SoftNMS) to each class (except background)
+  /// and limits the number of returned boxes over all ther classes.
+  /// Inputs:
+  /// - \p scores box score tensor, size (num_boxes, num_classes)
+  /// - \p boxes Bounding box for each class,
+  ///      size (num_boxes, num_classes * box_dim)
+  /// - \p batchSplit Tensor of shape (batch_size) with each element
+  ///      denoting the number of boxes belonging to the corresponding image
+  ///      in batch. sum of batch split is equal to total num_boxes
+  /// Attributes:
+  /// - \p scoreThreshold float (default 0.05)
+  /// - \p nmsThreshold float (default 0.5)
+  /// - \p detectionsPerImage int (default 100)
+  ///      Max limit of detections per image.
+  /// - \p softNMSEnabled bool (default false)
+  ///      If set apply Soft NMS to discard boxes
+  /// - \p softNMSMethod string (default linear)
+  ///      Method used for updating the score(Linear, Gaussian)
+  /// - \p softNMSSigma float (default 0.5)
+  ///      Used to update the score using Gaussian method
+  /// - \p softNMSMinScoreThreshold float (default 0.001)
+  ///      Lower bound on updated scores to discard boxes
+  /// - \p rotated bool (default false)
+  ///      If true, then boxes (rois and deltas) include angle info to
+  ///      handle rotation.
+  /// - \p legacyPlusOne bool (default true)
+  ///      "+ 1" adjustment for box width and height.
+  /// Outputs:
+  /// - \p scores Filtered scores, size (batch_size * detection_per_image)
+  /// - \p boxes Filtered boxes, size (batch_size * detection_per_image,
+  /// box_dim)
+  /// - \p classIds Class id for each filtered score/box,
+  ///      size (batch_size * detection_per_image)
+  /// - \p batchSplit Output batch splits for scores/boxes after applying NMS,
+  ///         size (batch_size)
+  /// - \p keepIndices filtered indices, size (batch_size * detection_per_image)
+  /// - \p keepIndicesSize number of filtered indices per class,
+  ///      size (batch_size, num_classes)
+  /// See definition:
+  /// https://github.com/pytorch/pytorch/blob/master/caffe2/operators/box_with_nms_limit_op.cc#L8
+  BoxWithNMSLimitNode *createBoxWithNMSLimit(
+      llvm::StringRef name, NodeValue scores, NodeValue boxes,
+      NodeValue batchSplit, float scoreThreshold = 0.05,
+      float nmsThreshold = 0.5, int64_t detectionsPerImage = 100,
+      bool softNMSEnabled = false, std::string softNMSMethod = "linear",
+      float softNMSSigma = 0.5, float softNMSMinScoreThreshold = 0.001,
+      bool rotated = false, bool legacyPlusOne = true,
+      bool clsAgnosticBBoxReg = false, bool inputBoxIncludeBgClass = false,
+      bool outputClassIncludeBgClass = false);
+
   /// Create a constant node with a 1D cosine windowing function defined as:
   /// w[n] = 0.5 - 0.5 * cos(2 * pi * n / N) for n = 0 .. N - 1 where N
   /// is the window \p length. The node name will be \p name.

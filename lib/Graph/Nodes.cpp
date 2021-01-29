@@ -2141,6 +2141,100 @@ bool NonMaxSuppressionNode::verify() const {
   return isValid;
 }
 
+bool BoxWithNMSLimitNode::verify() const {
+  auto scores = getScores();
+  auto boxes = getBoxes();
+  auto batchSplit = getBatchSplit();
+
+  auto filteredScores = getFilteredScores();
+  auto filteredBoxes = getFilteredBoxes();
+  auto filteredBatchSplit = getFilteredBatchSplit();
+  auto filteredClassIds = getFilteredBoxClassIDs();
+  auto keepIndices = getKeepIndices();
+  auto keepIndicesSize = getKeepIndicesSize();
+
+  auto scoresDims = scores.dims();
+  auto boxesDims = boxes.dims();
+  auto batchSplitDims = batchSplit.dims();
+
+  auto filteredScoresDims = filteredScores.dims();
+  auto filteredBoxesDims = filteredBoxes.dims();
+  auto filteredBatchSplitDims = filteredBatchSplit.dims();
+  auto filteredClassIdsDims = filteredClassIds.dims();
+  auto keepIndicesDims = keepIndices.dims();
+  auto keepIndicesSizeDims = keepIndicesSize.dims();
+
+  dim_t boxDim = getRotated() ? 5 : 4;
+  dim_t numClasses = scores.dims()[1];
+  dim_t batchSize = batchSplit.dims()[0];
+  bool rotated = getRotated();
+  dim_t detectionsPerImage = getDetectionsPerImage();
+  bool inputBoxIncludeBgClass = getInputBoxIncludeBgClass();
+  dim_t numBoxes = numClasses * boxDim;
+  if (!inputBoxIncludeBgClass) {
+    numBoxes = (numClasses - 1) * boxDim;
+  }
+
+  bool isValid = checkTypeIgnoreShape(scores, boxes, this);
+  isValid &= checkTypeIgnoreShape(scores, filteredScores, this);
+  isValid &= checkTypeIgnoreShape(scores, filteredBoxes, this);
+  isValid &= checkTypeIgnoreShape(batchSplit, filteredBatchSplit, this);
+  isValid &= checkTypeIgnoreShape(batchSplit, filteredClassIds, this);
+  isValid &= checkTypeIgnoreShape(batchSplit, keepIndices, this);
+  isValid &= checkTypeIgnoreShape(batchSplit, keepIndicesSize, this);
+  isValid &= expectCompareTrue("Scores tensor must be a 2D tensor",
+                               boxesDims.size(), size_t(2), this);
+  isValid &= expectCompareTrue("boxes tensor must be a 2D tensor",
+                               scoresDims.size(), size_t(2), this);
+  isValid &= expectCompareTrue("Number of boxes doesn't match number of scores",
+                               boxesDims[0], scoresDims[0], this);
+  isValid &= expectCompareTrue("Scores tensor has invalid value in 1 dimension",
+                               scoresDims[1], numClasses, this);
+  isValid &= expectCompareTrue("Boxes tensor has invalid value in 1 dimension",
+                               boxesDims[1], numBoxes, this);
+  isValid &= expectCompareTrue("BatchSplit must be a 1D tensor",
+                               batchSplitDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("Filtered Scores must be a 1D tensor",
+                               filteredScoresDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("Filtered Boxes be a 2D tensor",
+                               filteredBoxesDims.size(), size_t(2), this);
+  isValid &= expectCompareTrue("Filtered BatchSplit must be a 1D tensor",
+                               filteredBatchSplitDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("Filtered ClassIDs must be a 1D tensor",
+                               filteredClassIdsDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("KeepIndices must be a 1D tensor",
+                               keepIndicesDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("KeepIndicesSize must be a 2D tensor",
+                               keepIndicesSizeDims.size(), size_t(2), this);
+  isValid &=
+      expectCompareTrue("Rotated bbox is not supported.", rotated, false, this);
+  isValid &= expectCompareTrue("Filtered Scores dimension must be equal to "
+                               "batchSize * detectionsPerImage",
+                               filteredScoresDims[0],
+                               batchSize * detectionsPerImage, this);
+  isValid &= expectCompareTrue("Filtered Boxes dimension must be equal to "
+                               "batchSize * detectionsPerImage",
+                               filteredBoxesDims[0],
+                               batchSize * detectionsPerImage, this);
+  isValid &= expectCompareTrue("Filtered ClassIds dimension must be equal to "
+                               "batchSize * detectionsPerImage",
+                               filteredClassIdsDims[0],
+                               batchSize * detectionsPerImage, this);
+  isValid &=
+      expectCompareTrue("Number of input batches doesn't match output batches",
+                        batchSplitDims[0], filteredBatchSplitDims[0], this);
+  isValid &= expectCompareTrue(
+      "KeepIndices dimension must be equal to batchSize * detectionsPerImage",
+      keepIndicesDims[0], batchSize * detectionsPerImage, this);
+  isValid &= expectCompareTrue(
+      "KeepIndicesSize tensor has invalid value in 0 dimension",
+      keepIndicesSizeDims[0], batchSize, this);
+  isValid &= expectCompareTrue(
+      "KeepIndicesSize tensor has invalid value in 1 dimension",
+      keepIndicesSizeDims[1], numClasses, this);
+  return isValid;
+}
+
 bool AudioSpectrogramNode::verify() const {
   NodeValue input = getInput();
   NodeValue spectrogram = getSpectrogram();

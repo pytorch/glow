@@ -4918,6 +4918,40 @@ NonMaxSuppressionNode *Function::createNonMaxSuppressionONNX(
       maxOutputBoxesPerClass, iouThreshold, scoreThreshold, false));
 }
 
+BoxWithNMSLimitNode *Function::createBoxWithNMSLimit(
+    llvm::StringRef name, NodeValue scores, NodeValue boxes,
+    NodeValue batchSplit, float scoreThreshold, float nmsThreshold,
+    int64_t detectionsPerImage, bool softNMSEnabled, std::string softNMSMethod,
+    float softNMSSigma, float softNMSMinScoreThreshold, bool rotated,
+    bool legacyPlusOne, bool clsAgnosticBBoxReg, bool inputBoxIncludeBgClass,
+    bool outputClassIncludeBgClass) {
+  auto batchSize = batchSplit.dims()[0];
+  dim_t numClasses = scores.dims()[1];
+  dim_t boxDim = rotated ? 5 : 4;
+  auto oFty = scores.getType();
+  auto oITy = batchSplit.getType();
+  // allocating maximum value, i.e., batchSize * detectionsPerImage
+  auto filteredScoresTy = getParent()->uniqueTypeWithNewShape(
+      oFty, {batchSize * detectionsPerImage});
+  auto filteredBoxesTy = getParent()->uniqueTypeWithNewShape(
+      oFty, {batchSize * detectionsPerImage, boxDim});
+  auto filteredBoxClassIDsTy = getParent()->uniqueTypeWithNewShape(
+      oITy, {batchSize * detectionsPerImage});
+  auto filteredBatchSplitTy =
+      getParent()->uniqueTypeWithNewShape(oITy, batchSplit.dims());
+  auto keepsTy = getParent()->uniqueTypeWithNewShape(
+      oITy, {batchSize * detectionsPerImage});
+  auto keepsSizeTy =
+      getParent()->uniqueTypeWithNewShape(oITy, {batchSize, numClasses});
+  return addNode(new BoxWithNMSLimitNode(
+      name, filteredScoresTy, filteredBoxesTy, filteredBoxClassIDsTy,
+      filteredBatchSplitTy, keepsTy, keepsSizeTy, scores, boxes, batchSplit,
+      scoreThreshold, nmsThreshold, detectionsPerImage, softNMSEnabled,
+      softNMSMethod, softNMSSigma, softNMSMinScoreThreshold, rotated,
+      legacyPlusOne, clsAgnosticBBoxReg, inputBoxIncludeBgClass,
+      outputClassIncludeBgClass));
+}
+
 Constant *Function::createCosineWindow(llvm::StringRef name, dim_t length) {
   auto window = getParent()->createConstant(ElemKind::FloatTy, {length}, name);
   auto windowH = window->getHandle<float>();

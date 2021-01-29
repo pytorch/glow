@@ -6016,6 +6016,429 @@ void BoundInterpreterFunction::fwdNonMaxSuppressionInst(
   }
 }
 
+std::vector<dim_t> getArrayIndices(std::vector<float> &scores,
+                                   float threshHold) {
+  std::vector<dim_t> selectedIndices;
+  for (dim_t i = 0; i < scores.size(); ++i) {
+    if (scores[i] > threshHold) {
+      selectedIndices.push_back(i);
+    }
+  }
+  return selectedIndices;
+}
+
+template <typename T>
+void filterDetectionsToMaxLimit(std::vector<T> &scores,
+                                std::vector<std::vector<dim_t>> &keeps,
+                                dim_t numClasses, dim_t detectionsPerImage,
+                                dim_t totalKeepCount,
+                                dim_t scoresFgClassStartIndex) {
+  // Map score index to it's matching value in socres
+  auto getScoreClsIndex = [&](dim_t bgFgClassId) {
+    return bgFgClassId - 1 + scoresFgClassStartIndex;
+  };
+  // merge all scores (represented by indices) together and sort
+  auto getAllScoresSorted = [&]() {
+    // flatten keeps[i][j] to [pair(i, keeps[i][j]), ...]
+    // first: class index (1 ~ keeps.size() - 1),
+    // second: values in keeps[first]
+    using KeepIndex = std::pair<dim_t, dim_t>;
+    std::vector<KeepIndex> ret(totalKeepCount);
+
+    dim_t ret_idx = 0;
+    for (dim_t j = 1; j < numClasses; ++j) {
+      auto &cur_keep = keeps[j];
+      for (auto &ckv : cur_keep) {
+        ret[ret_idx++] = {j, ckv};
+      }
+    }
+
+    std::stable_sort(
+        ret.data(), ret.data() + ret.size(),
+        [&](const KeepIndex &lhs, const KeepIndex &rhs) {
+          return scores[lhs.second * numClasses + getScoreClsIndex(lhs.first)] >
+                 scores[rhs.second * numClasses + getScoreClsIndex(rhs.first)];
+        });
+
+    return ret;
+  };
+  // Pick the first `detectionsPerImage` boxes with highest scores
+  auto allScoresSorted = getAllScoresSorted();
+  // Reconstruct keeps from `allScoresSorted`
+  for (auto &cur_keep : keeps) {
+    cur_keep.clear();
+  }
+  for (int i = 0; i < detectionsPerImage; i++) {
+    auto &cur = allScoresSorted[i];
+    keeps[cur.first].push_back(cur.second);
+  }
+}
+
+template <typename T>
+std::vector<dim_t>
+nmsUpright(std::vector<T> &scores, std::vector<std::vector<T>> &boxes,
+           std::vector<dim_t> &sortedIndices, float nmsThreshold, dim_t keepMax,
+           bool legacyPlusOne) {
+  std::vector<T> boxAreas;
+  for (auto b : boxes) {
+    boxAreas.push_back((b[2] - b[0] + T(legacyPlusOne)) *
+                       (b[3] - b[1] + T(legacyPlusOne)));
+  }
+
+  std::vector<dim_t> keep;
+  while (sortedIndices.size() > 0) {
+    // Exit if already proposals
+    if ((keepMax >= 0) && (keep.size() >= keepMax)) {
+      break;
+    }
+
+    dim_t keepBoxIdx = sortedIndices[0];
+    keep.push_back(keepBoxIdx);
+
+    std::vector<dim_t> restIndices(sortedIndices.begin() + 1,
+                                   sortedIndices.end());
+
+    std::vector<dim_t> restIndicesKeep;
+    restIndicesKeep.clear();
+    for (auto it = restIndices.begin(); it != restIndices.end(); ++it) {
+      dim_t candidateBoxIdx = *it;
+      // Determine the (x, y)-coordinates of the intersection rectangle
+      auto xMin = std::max(boxes[keepBoxIdx][0], boxes[candidateBoxIdx][0]);
+      auto yMin = std::max(boxes[keepBoxIdx][1], boxes[candidateBoxIdx][1]);
+      auto xMax = std::min(boxes[keepBoxIdx][2], boxes[candidateBoxIdx][2]);
+      auto yMax = std::min(boxes[keepBoxIdx][3], boxes[candidateBoxIdx][3]);
+      // compute the area of intersection rectangle
+      auto intersectionArea = std::max(T(0), xMax - xMin + T(legacyPlusOne)) *
+                              std::max(T(0), yMax - yMin + T(legacyPlusOne));
+      auto unionArea =
+          (boxAreas[keepBoxIdx] + boxAreas[candidateBoxIdx]) - intersectionArea;
+
+      auto iou = intersectionArea / unionArea;
+      if (iou <= T(nmsThreshold)) {
+        restIndicesKeep.push_back(candidateBoxIdx);
+      }
+    }
+    sortedIndices.assign(restIndicesKeep.begin(), restIndicesKeep.end());
+  }
+  return keep;
+}
+
+std::vector<dim_t> softNMSUpright(std::vector<float> &scores,
+                                  std::vector<std::vector<float>> &boxes,
+                                  std::vector<dim_t> &selectedIndices,
+                                  float nmsThreshold, std::string softNMSMethod,
+                                  float softNMSSigma,
+                                  float softNMSMinScoreThreshold,
+                                  bool legacyPlusOne) {
+  dim_t nmsMethod = (softNMSMethod == "linear") ? 0 : 1;
+  std::vector<float> boxAreas;
+  for (auto b : boxes) {
+    boxAreas.push_back((b[2] - b[0] + float(legacyPlusOne)) *
+                       (b[3] - b[1] + float(legacyPlusOne)));
+  }
+
+  std::vector<dim_t> keep;
+  while (selectedIndices.size() > 0) {
+    // Find proposal with max score among remaining proposals
+    auto getMaxPosition = [&]() {
+      std::vector<float> subScores;
+      for (auto i : selectedIndices) {
+        subScores.push_back(scores[i]);
+      }
+      return std::max_element(subScores.begin(), subScores.end()) -
+             subScores.begin();
+    };
+    dim_t maxPosition = getMaxPosition();
+    dim_t maxBoxIdx = selectedIndices[maxPosition];
+    keep.push_back(maxBoxIdx);
+
+    // calculate IOU for remaining proposals and update score
+    std::swap(selectedIndices[0], selectedIndices[maxPosition]);
+    std::vector<dim_t> restIndices(selectedIndices.begin() + 1,
+                                   selectedIndices.end());
+    std::vector<dim_t> restIndicesKeep;
+    restIndicesKeep.clear();
+    for (auto it = restIndices.begin(); it != restIndices.end(); ++it) {
+      dim_t candidateBoxIdx = *it;
+      // Determine the (x, y)-coordinates of the intersection rectangle
+      auto xMin = std::max(boxes[maxBoxIdx][0], boxes[candidateBoxIdx][0]);
+      auto yMin = std::max(boxes[maxBoxIdx][1], boxes[candidateBoxIdx][1]);
+      auto xMax = std::min(boxes[maxBoxIdx][2], boxes[candidateBoxIdx][2]);
+      auto yMax = std::min(boxes[maxBoxIdx][3], boxes[candidateBoxIdx][3]);
+      // compute the area of intersection rectangle
+      auto intersectionArea =
+          std::max(0.f, xMax - xMin + float(legacyPlusOne)) *
+          std::max(0.f, yMax - yMin + float(legacyPlusOne));
+      auto unionArea =
+          (boxAreas[maxBoxIdx] + boxAreas[candidateBoxIdx]) - intersectionArea;
+
+      auto iou = intersectionArea / unionArea;
+      float weight;
+      switch (nmsMethod) {
+      case 0: // Linear
+        weight = (iou > nmsThreshold) ? (1.f - iou) : 1.f;
+        break;
+      case 1: // Gaussian
+        weight = -1.0f * iou * iou / softNMSSigma;
+        weight = std::exp(float(weight));
+        break;
+      default: // Original NMS
+        weight = (iou > nmsThreshold) ? 0.f : 1.f;
+      }
+      // update the score and check whether to keep the proposal
+      scores[candidateBoxIdx] = scores[candidateBoxIdx] * weight;
+      if (scores[candidateBoxIdx] > softNMSMinScoreThreshold) {
+        restIndicesKeep.push_back(candidateBoxIdx);
+      }
+    }
+    // reasign proposals
+    selectedIndices.assign(restIndicesKeep.begin(), restIndicesKeep.end());
+  }
+
+  return keep;
+}
+
+struct MinClassBox {
+  float scoreValue{0};
+  dim_t classIdx{0};
+  dim_t index{0};
+  dim_t boxIdx{0};
+};
+
+template <typename InTy, typename T>
+void BoundInterpreterFunction::fwdBoxWithNMSLimitInstImpl(
+    glow::BoxWithNMSLimitInst const *I) {
+  auto scores = I->getScores();
+  auto boxes = I->getBoxes();
+  auto batchSplit = I->getBatchSplit();
+  float scoreThreshold = I->getScoreThreshold();
+  float nmsThreshold = I->getNMSThreshold();
+  dim_t detectionsPerImage = I->getDetectionsPerImage();
+  bool softNMSEnabled = I->getSoftNMSEnabled();
+  std::string softNMSMethod = I->getSoftNMSMethod();
+  float softNMSSigma = I->getSoftNMSSigma();
+  float softNMSMinScoreThreshold = I->getSoftNMSMinScoreThreshold();
+  bool rotated = I->getRotated();
+  bool legacyPlusOne = I->getLegacyPlusOne();
+  bool clsAgnosticBBoxReg = I->getClsAgnosticBBoxReg();
+  bool inputBoxIncludeBgClass = I->getInputBoxIncludeBgClass();
+  bool outputClassIncludeBgClass = I->getOutputClassIncludeBgClass();
+
+  auto filteredScoresH = getTensor(I->getFilteredScores())->getHandle<T>();
+  auto filteredBoxesH = getTensor(I->getFilteredBoxes())->getHandle<T>();
+  auto filteredBatchSplitH =
+      getTensor(I->getFilteredBatchSplit())->getHandle<InTy>();
+  auto filteredBoxClassIDH =
+      getTensor(I->getFilteredBoxClassIDs())->getHandle<InTy>();
+  auto KeepIndicesH = getTensor(I->getKeepIndices())->getHandle<InTy>();
+  auto keepIndicesSizeH = getTensor(I->getKeepIndicesSize())->getHandle<InTy>();
+
+  auto boxesH = getTensor(boxes)->getHandle<T>();
+  auto scoresH = getTensor(scores)->getHandle<T>();
+  auto batchSplitH = getTensor(batchSplit)->getHandle<InTy>();
+
+  dim_t numClasses = scores->dims()[1];
+  dim_t batchSize = batchSplit->dims()[0];
+  dim_t boxDims = rotated ? 5 : 4;
+  dim_t outIdx = 0;
+
+  dim_t totalNumBoxes = 0;
+  for (dim_t b = 0; b < batchSplitH.size(); ++b) {
+    totalNumBoxes += batchSplitH.at({b});
+  }
+  assert(scores->dims()[0] == totalNumBoxes &&
+         "Batch split sum and total number of boxes/scores should be same");
+
+  // The index where foreground starts in scoures. Eg. if 0 represents
+  // background class then foreground class starts with 1.
+  // When Boxes tensor doesn't have background class scores will start
+  // with foreground class followed by background class
+  // (i.e,[:,0:numClasses-1] is foreground class, [:,numClasses] is background)
+  // When Boxes tenosr includes background class background class starts
+  // first followd by foreground class scores(i.e, [:,0] is background class
+  // [:,1:numClasses] is forground classes)
+  dim_t scoresFgClassStartIndex = dim_t(inputBoxIncludeBgClass);
+
+  // Map score index to it's matching value in socres
+  auto getScoreClsIndex = [&](dim_t bgFgClassId) {
+    return bgFgClassId - 1 + scoresFgClassStartIndex;
+  };
+
+  // Map box index to it's matching value in boxes
+  auto getBoxesClsindex = [&](dim_t bgFgClassId) {
+    if (clsAgnosticBBoxReg) {
+      return dim_t(0);
+    } else if (!inputBoxIncludeBgClass) {
+      return bgFgClassId - 1;
+    } else {
+      return bgFgClassId;
+    }
+  };
+
+  // When input boxes tensor does not include bg class number of
+  // classes in box tensor will be 1 lesser than number of classes
+  // in scores tensor.
+  dim_t numBoxClasses = getBoxesClsindex(numClasses - 1) + 1;
+
+  std::vector<dim_t> totalKeepPerBatch(batchSize);
+  dim_t offset = 0;
+  for (dim_t bSplit = 0; bSplit < batchSplitH.size(); ++bSplit) {
+    dim_t numBoxes = batchSplitH.at({bSplit});
+    std::vector<float> scores;
+    for (dim_t boxIdx = 0; boxIdx < numBoxes; ++boxIdx) {
+      for (dim_t classIdx = 0; classIdx < numClasses; ++classIdx) {
+        scores.push_back(scoresH.at({boxIdx + offset, classIdx}));
+      }
+    }
+
+    std::vector<float> boxes;
+    for (dim_t boxIdx = 0; boxIdx < numBoxes; ++boxIdx) {
+      for (dim_t classIdx = 0; classIdx < numBoxClasses; ++classIdx) {
+        for (dim_t bDim = 0; bDim < boxDims; ++bDim) {
+          boxes.push_back(
+              boxesH.at({boxIdx + offset, classIdx * boxDims + bDim}));
+        }
+      }
+    }
+    // Assign first class box score in the input as min score value
+    const dim_t fgClassIdx = getBoxesClsindex(1);
+    MinClassBox minBox{scoresH.at({offset, fgClassIdx}), fgClassIdx, 0,
+                       fgClassIdx * boxDims};
+
+    std::vector<std::vector<dim_t>> keeps(numClasses);
+    // Perform nms to each class
+    // skip classIdx = 0, because it's the background class
+    dim_t totalKeepCount = 0;
+    for (dim_t classIdx = 1; classIdx < numClasses; ++classIdx) {
+      std::vector<float> curScores;
+      for (dim_t boxIdx = 0; boxIdx < numBoxes; ++boxIdx) {
+        curScores.push_back(
+            scores[boxIdx * numClasses + getScoreClsIndex(classIdx)]);
+      }
+
+      dim_t curBoxOffset = 0;
+      std::vector<std::vector<float>> curBoxes;
+      for (dim_t boxIdx = 0; boxIdx < numBoxes; ++boxIdx) {
+        std::vector<float> boxCord;
+        curBoxOffset = (boxIdx * (numBoxClasses * boxDims)) +
+                       getBoxesClsindex(classIdx) * boxDims;
+        for (dim_t bDim = 0; bDim < boxDims; ++bDim) {
+          boxCord.push_back(boxes[curBoxOffset + bDim]);
+        }
+        curBoxes.push_back(boxCord);
+      }
+
+      auto selectedIndices = getArrayIndices(curScores, scoreThreshold);
+      if (boxDims == 4) {
+        if (softNMSEnabled) {
+          keeps[classIdx] = softNMSUpright(
+              curScores, curBoxes, selectedIndices, nmsThreshold, softNMSMethod,
+              softNMSSigma, softNMSMinScoreThreshold, legacyPlusOne);
+          // Re-map scores to the updated SoftNMS scores
+          for (auto idx : keeps[classIdx]) {
+            scores[idx * numClasses + getScoreClsIndex(classIdx)] =
+                  curScores[idx];
+          }
+        } else {
+          std::stable_sort(selectedIndices.data(),
+                           selectedIndices.data() + selectedIndices.size(),
+                           [&curScores](int lhs, int rhs) {
+                             return curScores[lhs] > curScores[rhs];
+                           });
+          dim_t keepMax = detectionsPerImage > 0 ? detectionsPerImage : -1;
+          keeps[classIdx] =
+              nmsUpright<float>(curScores, curBoxes, selectedIndices,
+                                nmsThreshold, keepMax, legacyPlusOne);
+        }
+        // update MinBox Value
+        for (auto idx : keeps[classIdx]) {
+          auto curScore = scores[idx * numClasses + getScoreClsIndex(classIdx)];
+          if (minBox.scoreValue < float(scoreThreshold) ||
+              curScore < minBox.scoreValue) {
+            minBox.scoreValue = curScore;
+            minBox.classIdx = getScoreClsIndex(classIdx);
+            minBox.index = idx;
+            minBox.boxIdx = (idx * (numBoxClasses * boxDims)) +
+                            getBoxesClsindex(classIdx) * boxDims;
+          }
+        }
+      } else if (boxDims == 5) {
+        // TODO Implement softNMS rotated and NMS roated
+      }
+      totalKeepCount += keeps[classIdx].size();
+    }
+
+    // Limit detections to detectionsPerImage *over all classes*
+    if (detectionsPerImage > 0 && totalKeepCount > detectionsPerImage) {
+      filterDetectionsToMaxLimit(scores, keeps, numClasses, detectionsPerImage,
+                                 totalKeepCount, scoresFgClassStartIndex);
+      totalKeepCount = detectionsPerImage;
+    }
+    totalKeepPerBatch[bSplit] = totalKeepCount;
+
+    // write results
+    dim_t filterBoxOffSet = 0;
+    for (dim_t classIdx = 1; classIdx < numClasses; ++classIdx) {
+      auto keep = keeps[classIdx];
+      for (auto idx : keep) {
+        filteredScoresH.at({outIdx}) =
+            scores[idx * numClasses + getScoreClsIndex(classIdx)];
+        filterBoxOffSet = (idx * (numBoxClasses * boxDims)) +
+                          getBoxesClsindex(classIdx) * boxDims;
+        for (dim_t i = 0; i < boxDims; i++) {
+          filteredBoxesH.at({outIdx, i}) = boxes[filterBoxOffSet + i];
+        }
+        filteredBoxClassIDH.at({outIdx}) =
+            classIdx - InTy(!outputClassIncludeBgClass);
+        KeepIndicesH.at({outIdx}) = idx;
+        outIdx++;
+      }
+    }
+    filteredBatchSplitH.at({bSplit}) = totalKeepPerBatch[bSplit];
+    for (dim_t classIdx = 0; classIdx < numClasses; ++classIdx) {
+      keepIndicesSizeH.at({bSplit, classIdx}) = keeps[classIdx].size();
+    }
+    // Pad remaining output with Global min box value
+    for (dim_t i = totalKeepPerBatch[bSplit]; i < detectionsPerImage; ++i) {
+      filteredScoresH.at({outIdx}) = minBox.scoreValue;
+      for (dim_t j = 0; j < boxDims; ++j) {
+        filteredBoxesH.at({outIdx, j}) = boxes[minBox.boxIdx + j];
+      }
+      filteredBoxClassIDH.at({outIdx}) = minBox.classIdx;
+      KeepIndicesH.at({outIdx}) = minBox.index;
+      outIdx++;
+    }
+    offset += numBoxes;
+  }
+}
+
+void BoundInterpreterFunction::fwdBoxWithNMSLimitInst(
+    glow::BoxWithNMSLimitInst const *I) {
+  switch (I->getScores()->getElementType()) {
+  case ElemKind::FloatTy:
+    if (I->getBatchSplit()->getElementType() == ElemKind::Int32ITy) {
+      fwdBoxWithNMSLimitInstImpl<int32_t, float>(I);
+    } else if (I->getBatchSplit()->getElementType() == ElemKind::Int64ITy) {
+      fwdBoxWithNMSLimitInstImpl<int64_t, float>(I);
+    } else {
+      llvm_unreachable("Input Type is not supported.");
+    }
+    break;
+  case ElemKind::Float16Ty:
+    if (I->getBatchSplit()->getElementType() == ElemKind::Int32ITy) {
+      fwdBoxWithNMSLimitInstImpl<int32_t, float16_t>(I);
+    } else if (I->getBatchSplit()->getElementType() == ElemKind::Int64ITy) {
+      fwdBoxWithNMSLimitInstImpl<int64_t, float16_t>(I);
+    } else {
+      llvm_unreachable("Input Type is not supported.");
+    }
+    break;
+  default:
+    llvm_unreachable("Input Type is not supported.");
+    break;
+  }
+}
+
 void BoundInterpreterFunction::fwdAudioSpectrogramInstFloatImpl(
     glow::AudioSpectrogramInst const *I) {
 

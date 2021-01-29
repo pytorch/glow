@@ -459,4 +459,10 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Upsample_Nearest1D_Float16/0",
     "Upsample_Nearest1D_Int8/0",
     "batchedReduceAdd_Int32ITy/0",
+    "BoxWithNMS_greedy/0",
+    "BoxWithNMS_soft/0",
+    "BoxWithNMS_limit_per_image/0",
+    "BoxWithNMS_invalid_scores/0",
+    "BoxWithNMS_boxes_no_bg_class/0",
+    "BoxWithNMS_boxes_no_bg_cls_limit_overall/0",
 };

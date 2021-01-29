@@ -1162,6 +1162,340 @@ TEST_P(OperatorTest, nms_two_boxes_float) {
                                refResults, refNumSelected, metaData, false);
 }
 
+struct BoxWithNMSAttributes {
+  float scoreThreshold{0.0};
+  float nmsThreshold{0.0};
+  int64_t detectionsPerImage{-1};
+  bool softNMSEnabled{false};
+  std::string softNMSMethod;
+  float softNMSSigma{0.0};
+  float softNMSMinScoreThreshold{0.0};
+  bool rotated{false};
+  bool legacyPlusOne{true};
+  bool clsAgnosticBBoxReg{false};
+  bool inputBoxIncludeBgClass{false};
+  bool outputClassIncludeBgClass{false};
+};
+
+template <typename T, typename iDTy>
+static void testBoxWithNMSLimit(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind bSplitDTy,
+    llvm::ArrayRef<dim_t> scoresDims, llvm::ArrayRef<dim_t> boxesDims,
+    llvm::ArrayRef<dim_t> batchSplitDims, llvm::ArrayRef<T> scoresData,
+    llvm::ArrayRef<T> boxesData, llvm::ArrayRef<iDTy> batchSplitData,
+    const BoxWithNMSAttributes &attributes, llvm::ArrayRef<T> expectedScores,
+    llvm::ArrayRef<T> expectedBoxes, llvm::ArrayRef<iDTy> expectedClassId,
+    llvm::ArrayRef<iDTy> expectedBatchSplit,
+    llvm::ArrayRef<iDTy> expectedKeepIndices,
+    llvm::ArrayRef<iDTy> expectedKeepIndicesSize) {
+
+  auto *classProb = mod.createPlaceholder(DTy, scoresDims, "scores", false);
+  auto *boxPred = mod.createPlaceholder(DTy, boxesDims, "boxes", false);
+  auto *batchSplit =
+      mod.createPlaceholder(bSplitDTy, batchSplitDims, "batch_split", false);
+
+  auto *NMS = F->createBoxWithNMSLimit(
+      "BoxWithNMSLimit", classProb, boxPred, batchSplit,
+      attributes.scoreThreshold, attributes.nmsThreshold,
+      attributes.detectionsPerImage, attributes.softNMSEnabled,
+      attributes.softNMSMethod, attributes.softNMSSigma,
+      attributes.softNMSMinScoreThreshold, attributes.rotated,
+      attributes.legacyPlusOne, attributes.clsAgnosticBBoxReg,
+      attributes.inputBoxIncludeBgClass, attributes.outputClassIncludeBgClass);
+
+  auto *filteredScores =
+      F->createSave("filtered_scores", NMS->getFilteredScores());
+  auto *filteredBoxes =
+      F->createSave("filtered_boxes", NMS->getFilteredBoxes());
+  auto *filteredClassId =
+      F->createSave("filtered_class_id", NMS->getFilteredBoxClassIDs());
+  auto *filteredBatchSplit =
+      F->createSave("filtered_batch_split", NMS->getFilteredBatchSplit());
+  auto *keepIndices = F->createSave("keep_indices", NMS->getKeepIndices());
+  auto *keepIndicesSize =
+      F->createSave("keep_indices_size", NMS->getKeepIndicesSize());
+  auto filteredScoresH =
+      bindings.allocate(filteredScores->getPlaceholder())->getHandle<T>();
+  auto filteredBoxesH =
+      bindings.allocate(filteredBoxes->getPlaceholder())->getHandle<T>();
+  auto filteredClassIdH =
+      bindings.allocate(filteredClassId->getPlaceholder())->getHandle<iDTy>();
+  auto filteredBatchSplitH =
+      bindings.allocate(filteredBatchSplit->getPlaceholder())
+          ->getHandle<iDTy>();
+  auto keepIndicesH =
+      bindings.allocate(keepIndices->getPlaceholder())->getHandle<iDTy>();
+  auto keepIndicesSizeH =
+      bindings.allocate(keepIndicesSize->getPlaceholder())->getHandle<iDTy>();
+
+  bindings.allocate(classProb)->getHandle<T>() = scoresData;
+  bindings.allocate(boxPred)->getHandle<T>() = boxesData;
+  bindings.allocate(batchSplit)->getHandle<iDTy>() = batchSplitData;
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  for (dim_t i = 0; i < expectedScores.size(); i++) {
+    EXPECT_NEAR(filteredScoresH.raw(i), expectedScores[i], 1E-4);
+  }
+  for (dim_t i = 0; i < expectedBoxes.size(); i++) {
+    EXPECT_NEAR(filteredBoxesH.raw(i), expectedBoxes[i], 1E-4);
+  }
+  for (dim_t i = 0; i < expectedClassId.size(); i++) {
+    EXPECT_NEAR(filteredClassIdH.raw(i), expectedClassId[i], 1E-4);
+  }
+  for (dim_t i = 0; i < expectedBatchSplit.size(); i++) {
+    EXPECT_NEAR(filteredBatchSplitH.raw(i), expectedBatchSplit[i], 1E-4);
+  }
+  for (dim_t i = 0; i < expectedKeepIndices.size(); i++) {
+    EXPECT_NEAR(keepIndicesH.raw(i), expectedKeepIndices[i], 1E-4);
+  }
+  for (dim_t i = 0; i < expectedKeepIndicesSize.size(); i++) {
+    EXPECT_NEAR(keepIndicesSizeH.raw(i), expectedKeepIndicesSize[i], 1E-4);
+  }
+}
+
+TEST_P(OperatorTest, BoxWithNMS_greedy) {
+  CHECK_IF_ENABLED();
+
+  llvm::SmallVector<dim_t, 2> scoresDims = {5, 2};
+  llvm::SmallVector<dim_t, 2> boxesDims = {5, 8};
+  llvm::SmallVector<dim_t, 2> batchSplitDims = {2};
+  llvm::SmallVector<float, 10> scores = {
+      -1.202809,  0.54599744, 0.5563068,  0.8697699,   1.0174147,
+      0.27818915, -0.9963328, 0.64317167, -0.64354974, 2.8209767};
+  llvm::SmallVector<float, 40> boxes = {
+      0.0,       337.33688,  191.816,   400.27182, 0.0,       81.82623,
+      311.0683,  137.09317,  384.4477,  128.86923, 494.0,     223.25464,
+      384.92313, 0.0,        494.0,     239.26285, 39.12062,  169.21245,
+      45.421204, 431.90588,  43.874744, 0.0,       67.905975, 56.122406,
+      221.93738, 143.93669,  415.24963, 398.59662, 308.4386,  2.7352219,
+      421.79883, 239.88293,  211.88321, 0.0,       365.7939,  80.2572,
+      0.0,       117.498375, 0.0,       258.9625};
+  llvm::SmallVector<int64_t, 2> batchSplit = {2, 3};
+
+  BoxWithNMSAttributes nmsAttributes = {0.5, 0.5,   2,     false, "linear",
+                                        0.5, 0.001, false, true, false, true,
+                                        true};
+  llvm::SmallVector<float, 4> expectedScores = {0.8698, 0.5460, 2.8210, 0.6432};
+  llvm::SmallVector<float, 16> expectedBoxes = {
+      384.9231, 0.0000,   494.0000, 239.2628, 0.0000, 81.8262,
+      311.0683, 137.0932, 0.0000,   117.4984, 0.0000, 258.9625,
+      308.4386, 2.7352,   421.7988, 239.8829};
+  llvm::SmallVector<int64_t, 4> expectedClassId = {1, 1, 1, 1};
+  llvm::SmallVector<int64_t, 2> expectedBatchSplit = {2, 2};
+  llvm::SmallVector<int64_t, 4> expectedKeepIndices = {1, 0, 2, 1};
+  llvm::SmallVector<int64_t, 4> expectedKeepIndicesSize = {0, 2, 0, 2};
+
+  testBoxWithNMSLimit<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      scoresDims, boxesDims, batchSplitDims, scores, boxes, batchSplit,
+      nmsAttributes, expectedScores, expectedBoxes, expectedClassId,
+      expectedBatchSplit, expectedKeepIndices, expectedKeepIndicesSize);
+}
+
+TEST_P(OperatorTest, BoxWithNMS_soft) {
+  CHECK_IF_ENABLED();
+
+  llvm::SmallVector<dim_t, 2> scoresDims = {5, 2};
+  llvm::SmallVector<dim_t, 2> boxesDims = {5, 8};
+  llvm::SmallVector<dim_t, 2> batchSplitDims = {2};
+  llvm::SmallVector<float, 10> scores = {
+      -1.202809,  0.54599744, 0.5563068,  0.8697699,   1.0174147,
+      0.27818915, -0.9963328, 0.64317167, -0.64354974, 2.8209767};
+  llvm::SmallVector<float, 40> boxes = {
+      0.0,       337.33688,  191.816,   400.27182, 0.0,       81.82623,
+      311.0683,  137.09317,  384.4477,  128.86923, 494.0,     223.25464,
+      384.92313, 0.0,        494.0,     239.26285, 39.12062,  169.21245,
+      45.421204, 431.90588,  43.874744, 0.0,       67.905975, 56.122406,
+      221.93738, 143.93669,  415.24963, 398.59662, 308.4386,  2.7352219,
+      421.79883, 239.88293,  211.88321, 0.0,       365.7939,  80.2572,
+      0.0,       117.498375, 0.0,       258.9625};
+  llvm::SmallVector<int64_t, 2> batchSplit = {2, 3};
+
+  BoxWithNMSAttributes nmsAttributes = {0.5, 0.5,   1,     true, "linear",
+                                        0.5, 0.001, false, true, false, true,
+                                        true};
+  llvm::SmallVector<float, 2> expectedScores = {0.8698, 2.8210};
+  llvm::SmallVector<float, 8> expectedBoxes = {
+      384.9231, 0.0000, 494.0000, 239.2628, 0.0000, 117.4984, 0.0000, 258.9625};
+  llvm::SmallVector<int64_t, 2> expectedClassId = {1, 1};
+  llvm::SmallVector<int64_t, 2> expectedBatchSplit = {1, 1};
+  llvm::SmallVector<int64_t, 2> expectedKeepIndices = {1, 2};
+  llvm::SmallVector<int64_t, 4> expectedKeepIndicesSize = {0, 1, 0, 1};
+
+  testBoxWithNMSLimit<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      scoresDims, boxesDims, batchSplitDims, scores, boxes, batchSplit,
+      nmsAttributes, expectedScores, expectedBoxes, expectedClassId,
+      expectedBatchSplit, expectedKeepIndices, expectedKeepIndicesSize);
+}
+
+TEST_P(OperatorTest, BoxWithNMS_limit_per_image) {
+  CHECK_IF_ENABLED();
+
+  llvm::SmallVector<dim_t, 2> scoresDims = {5, 2};
+  llvm::SmallVector<dim_t, 2> boxesDims = {5, 8};
+  llvm::SmallVector<dim_t, 2> batchSplitDims = {2};
+  llvm::SmallVector<float, 10> scores = {
+      -1.202809,  0.54599744, 0.5563068,  0.8697699,   1.0174147,
+      0.27818915, -0.9963328, 0.64317167, -0.64354974, 2.8209767};
+  llvm::SmallVector<float, 40> boxes = {
+      0.0,       337.33688,  191.816,   400.27182, 0.0,       81.82623,
+      311.0683,  137.09317,  384.4477,  128.86923, 494.0,     223.25464,
+      384.92313, 0.0,        494.0,     239.26285, 39.12062,  169.21245,
+      45.421204, 431.90588,  43.874744, 0.0,       67.905975, 56.122406,
+      221.93738, 143.93669,  415.24963, 398.59662, 308.4386,  2.7352219,
+      421.79883, 239.88293,  211.88321, 0.0,       365.7939,  80.2572,
+      0.0,       117.498375, 0.0,       258.9625};
+  llvm::SmallVector<int64_t, 2> batchSplit = {2, 3};
+
+  BoxWithNMSAttributes nmsAttributes = {0.5, 0.5,   3,     false, "linear",
+                                        0.5, 0.001, false, true, false, true,
+                                        true};
+  llvm::SmallVector<float, 6> expectedScores = {0.8698, 0.5460, 0.5460,
+                                                2.8210, 0.6432, 0.6432};
+  llvm::SmallVector<float, 24> expectedBoxes = {
+      384.9231, 0.0000,   494.0000, 239.2628, 0.0000,   81.8262,
+      311.0683, 137.0932, 0.0000,   81.8262,  311.0683, 137.0932,
+      0.0000,   117.4984, 0.0000,   258.9625, 308.4386, 2.7352,
+      421.7988, 239.8829, 308.4386, 2.7352,   421.7988, 239.8829};
+  llvm::SmallVector<int64_t, 4> expectedClassId = {1, 1, 1, 1, 1, 1};
+  llvm::SmallVector<int64_t, 2> expectedBatchSplit = {2, 2};
+  llvm::SmallVector<int64_t, 2> expectedKeepIndices = {1, 0, 0, 2, 1, 1};
+  llvm::SmallVector<int64_t, 4> expectedKeepIndicesSize = {0, 2, 0, 2};
+
+  testBoxWithNMSLimit<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      scoresDims, boxesDims, batchSplitDims, scores, boxes, batchSplit,
+      nmsAttributes, expectedScores, expectedBoxes, expectedClassId,
+      expectedBatchSplit, expectedKeepIndices, expectedKeepIndicesSize);
+}
+
+TEST_P(OperatorTest, BoxWithNMS_invalid_scores) {
+  CHECK_IF_ENABLED();
+  // Detections with score value 0 indicates and  an invalid ROI
+  // added to fix the output shape of glow node and it will not be
+  // used in calculation
+  llvm::SmallVector<dim_t, 2> scoresDims = {4, 2};
+  llvm::SmallVector<dim_t, 2> boxesDims = {4, 8};
+  llvm::SmallVector<dim_t, 2> batchSplitDims = {1};
+  llvm::SmallVector<float, 8> scores = {
+      0.92690164, 0.9710963, -0.20217709, 0.32876357, 0., 0., 0., 0.};
+  llvm::SmallVector<float, 32> boxes = {
+      7.036247,  78.19232,  291.11404, 161.0517,  115.816025, 128.83423,
+      199.09602, 514.0,     212.1424,  0.0,       514.0,      514.0,
+      137.95662, 0.0,       156.71092, 0.0,       45.421204,  431.90588,
+      43.874744, 0.0,       67.905975, 56.122406, 221.93738,  143.93669,
+      0.0,       337.33688, 191.816,   400.27182, 384.4477,   128.86923,
+      494.0,     223.25464};
+  llvm::SmallVector<int64_t, 2> batchSplit = {4};
+
+  BoxWithNMSAttributes nmsAttributes = {0.5, 0.5,   1,     false, "linear",
+                                        0.5, 0.001, false, true, false, true,
+                                        true};
+  llvm::SmallVector<float, 1> expectedScores = {0.9711};
+  llvm::SmallVector<float, 4> expectedBoxes = {115.8160, 128.8342, 199.0960,
+                                               514.0000};
+  llvm::SmallVector<int64_t, 1> expectedClassId = {1};
+  llvm::SmallVector<int64_t, 1> expectedBatchSplit = {1};
+  llvm::SmallVector<int64_t, 1> expectedKeepIndices = {0};
+  llvm::SmallVector<int64_t, 2> expectedKeepIndicesSize = {0, 1};
+
+  testBoxWithNMSLimit<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      scoresDims, boxesDims, batchSplitDims, scores, boxes, batchSplit,
+      nmsAttributes, expectedScores, expectedBoxes, expectedClassId,
+      expectedBatchSplit, expectedKeepIndices, expectedKeepIndicesSize);
+}
+
+TEST_P(OperatorTest, BoxWithNMS_boxes_no_bg_class) {
+  CHECK_IF_ENABLED();
+  // Test where scores tensor has background and no background
+  // class in boxes tensor
+  llvm::SmallVector<dim_t, 2> scoresDims = {1, 3};
+  llvm::SmallVector<dim_t, 2> boxesDims = {1, 8};
+  llvm::SmallVector<dim_t, 2> batchSplitDims = {1};
+  llvm::SmallVector<float, 3> scores = {
+      1.3990688, 1.4470431, -0.19859229};
+  llvm::SmallVector<float, 8> boxes = {
+      0.0, 0.0, 418.0, 0.0,
+      135.66426, 0.0, 408.90454, 205.19247
+  };
+  llvm::SmallVector<int64_t, 2> batchSplit = {1};
+
+  BoxWithNMSAttributes nmsAttributes = {0.5, 0.5,   3,     false, "linear",
+                                        0.5, 0.001, false, true, false, false,
+                                        false};
+  llvm::SmallVector<float, 3> expectedScores = {
+                                        1.3990688, 1.4470431, 1.3990688};
+  llvm::SmallVector<float, 12> expectedBoxes = {
+    0.0000,   0.0000, 418.0000,   0.0000,
+    135.6643, 0.0000, 408.9045, 205.1925,
+    0.0000,   0.0000, 418.0000,   0.0000,
+  };
+  llvm::SmallVector<int64_t, 3> expectedClassId = {0, 1, 0};
+  llvm::SmallVector<int64_t, 1> expectedBatchSplit = {2};
+  llvm::SmallVector<int64_t, 3> expectedKeepIndices = {0, 0, 0};
+  llvm::SmallVector<int64_t, 3> expectedKeepIndicesSize = {0, 1, 1};
+
+  testBoxWithNMSLimit<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      scoresDims, boxesDims, batchSplitDims, scores, boxes, batchSplit,
+      nmsAttributes, expectedScores, expectedBoxes, expectedClassId,
+      expectedBatchSplit, expectedKeepIndices, expectedKeepIndicesSize);
+}
+
+TEST_P(OperatorTest, BoxWithNMS_boxes_no_bg_cls_limit_overall) {
+  CHECK_IF_ENABLED();
+  // Test where scores tensor has background and no background
+  // class in boxes tensor and limit to detection per image over
+  // all classes
+  llvm::SmallVector<dim_t, 2> scoresDims = {5, 3};
+  llvm::SmallVector<dim_t, 2> boxesDims = {5, 8};
+  llvm::SmallVector<dim_t, 1> batchSplitDims = {2};
+  llvm::SmallVector<float, 15> scores = {
+    1.2247782, -1.3193663, 1.4102522,
+    -0.49768525, 2.1954474, -0.97693425,
+    0.97743607, 1.4600353, -0.06856488,
+    -1.8365128, 0.8605938, 0.19175632,
+    1.7206706, 2.3006055, -0.1553281,
+  };
+  llvm::SmallVector<float, 40> boxes = {
+    146.53285, 301.22986, 184.78209, 301.52283, 179.76425, 297.84695,
+    211.94229, 299.50876, 0.0, 141.34566, 0.0, 200.25859, 0.0, 127.62433,
+    190.82823, 151.12122, 0.0, 0.0, 402.0, 226.35928, 57.18591, 202.80884,
+    162.57245, 402.0, 158.58542, 25.218643, 402.0, 158.19832, 6.146332,
+    73.610756, 402.0, 100.793785, 236.36108, 89.140625, 247.7012, 247.79016,
+    220.10812, 2.1272888, 308.98972, 122.262985,
+  };
+  llvm::SmallVector<int64_t, 2> batchSplit = {2, 3};
+
+  BoxWithNMSAttributes nmsAttributes = {0.5, 0.5,   2,     false, "linear",
+                                        0.5, 0.001, false, true, false, false,
+                                        false};
+  llvm::SmallVector<float, 4> expectedScores = {
+                                      1.2248, 2.1954,1.7207, 2.3006};
+  llvm::SmallVector<float, 16> expectedBoxes = {
+        146.5329, 301.2299, 184.7821, 301.5228,
+        0.0000, 127.6243, 190.8282, 151.1212,
+        236.3611,  89.1406, 247.7012, 247.7902,
+        220.1081,   2.1273, 308.9897, 122.2630
+  };
+  llvm::SmallVector<int64_t, 4> expectedClassId = {0, 1, 0, 1};
+  llvm::SmallVector<int64_t, 2> expectedBatchSplit = {2, 2};
+  llvm::SmallVector<int64_t, 4> expectedKeepIndices = {0, 1, 2, 2};
+  llvm::SmallVector<int64_t, 6> expectedKeepIndicesSize = {0, 1, 1,
+                                                           0, 1, 1};
+
+  testBoxWithNMSLimit<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      scoresDims, boxesDims, batchSplitDims, scores, boxes, batchSplit,
+      nmsAttributes, expectedScores, expectedBoxes, expectedClassId,
+      expectedBatchSplit, expectedKeepIndices, expectedKeepIndicesSize);
+}
+
 /// Helper function to test AudioSpectrogram node.
 template <size_t windowCount, size_t windowSize, bool magnitudeSquared>
 static FunctionTensorPair
