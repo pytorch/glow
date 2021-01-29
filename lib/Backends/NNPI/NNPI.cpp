@@ -1067,16 +1067,12 @@ static Error validateBackendSpecificNodeInfo(
     }
     auto &nodeInfo = curNodeInfoIt->second;
 
-    RETURN_ERR_IF_NOT(!nodeInfo.count(parallelTransformKindKey),
-                      strFormat("Node %s should not have a "
-                                "parallelTransformKind after parallelization",
-                                node.getName().str().c_str()));
-
-    RETURN_ERR_IF_NOT(
-        !nodeInfo.count(numParallelChunksKey),
-        strFormat(
-            "Node %s should not have a numParallelChunks after parallelization",
-            node.getName().str().c_str()));
+    // If we find parallelization info here then it means the node was not
+    // parallelized; log and continue.
+    bool skippedPar = nodeInfo.erase(parallelTransformKindKey);
+    skippedPar |= nodeInfo.erase(numParallelChunksKey);
+    LOG_IF(WARNING, skippedPar)
+        << "Parallelization was skipped for Node: " << node.getDebugDesc();
 
     RETURN_ERR_IF_NOT(
         !nodeInfo.count(coreAssignmentsKey),
@@ -1246,14 +1242,17 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
       parallelizeOps(F, numChunks, parOpts, defaultNumParallelChunks,
                      defaultModelParallelSplitAlignment));
 
-  RETURN_ERR_IF_NOT(numChunks.size() == replacedMap.size(),
-                    "Expected that numChunks and replacedMap have same size.");
-
   if (usePerNodeParallelizationSpec) {
     // If parallelization was based on backend-specific node info then
     // validate the new nodes that were added.
     RETURN_IF_ERR(validateBackendSpecificNodeInfo(
         F, replacedMap, opts.backendSpecificNodeInfo));
+  } else if (numChunks.size() != replacedMap.size()) {
+    for (const auto &pair : numChunks) {
+      Node *N = pair.first;
+      LOG_IF(WARNING, !replacedMap.count(N))
+          << "Parallelization was skipped for Node: " << N->getDebugDesc();
+    }
   }
 
   return true;
