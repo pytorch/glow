@@ -138,6 +138,15 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::Int32ITy, ElemKind::FloatTy, ElemKind::Float16Ty,
          ElemKind::BFloat16Ty, ElemKind::Int8QTy});
 
+  case Kinded::Kind::BatchPermutationNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+               /*ignoreIn*/ {BatchPermutationNode::IndicesIdx}) &&
+           ((NI.getInElemTy(BatchPermutationNode::IndicesIdx) ==
+             ElemKind::Int64ITy) ||
+            (NI.getInElemTy(BatchPermutationNode::IndicesIdx) ==
+             ElemKind::Int32ITy));
+
   case Kinded::Kind::MatMulNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,

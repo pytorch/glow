@@ -1029,6 +1029,13 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("BatchPermutation")
+      .addOperand("Output", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Input", "Output"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//

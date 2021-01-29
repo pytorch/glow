@@ -2580,6 +2580,32 @@ bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
 bool ExternalFunctionCallNode::verify() const { return true; }
 
+bool BatchPermutationNode::verify() const {
+  auto input = getInput();
+  auto indices = getIndices();
+  auto output = getOutput();
+
+  auto inputDims = input.dims();
+  auto outputDims = output.dims();
+  auto indicesDims = indices.dims();
+  bool isValid = checkTypeIgnoreShape(input, output, this);
+  isValid &= expectCompareTrue("Output and Indices must have same 0 dimension",
+                               outputDims[0], indicesDims[0], this);
+  isValid &= expectCompareTrue("Indices must be a 1D tensor",
+                               indicesDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("Input and Ouput must have same dimension size",
+                               inputDims.size(), outputDims.size(), this);
+  isValid &= expectCompareTrue(
+      "Input should be greater than or equal to output at 0 dimension",
+      inputDims[0] >= outputDims[0], true, this);
+  for (auto i = 1; i < inputDims.size(); ++i) {
+    isValid &=
+        expectCompareTrue("Dimension value mismatch between input and output",
+                          inputDims[i], outputDims[i], this);
+  }
+  return isValid;
+}
+
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//

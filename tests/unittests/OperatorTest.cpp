@@ -1894,6 +1894,104 @@ TEST_P(OperatorTest, BBoxTransform_Rotated_Float16) {
       /* legacyPlusOne */ true, /* absError */ 1.0);
 }
 
+template <typename DataType, typename IndexDataType>
+static void
+testBatchPermutation(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                     glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+                     ElemKind IndTy, llvm::ArrayRef<dim_t> inputDims,
+                     llvm::ArrayRef<dim_t> indicesDims,
+                     llvm::ArrayRef<DataType> inputData,
+                     llvm::ArrayRef<IndexDataType> indicesData,
+                     llvm::ArrayRef<DataType> expectedOutput) {
+  auto *input = mod.createPlaceholder(DTy, inputDims, "input", false);
+  auto *indices = createPlaceholderConditionallyQuantized(
+      mod, IndTy, indicesDims, "indices", false);
+
+  auto *BPN = F->createBatchPermutation("BatchPermutation", input, indices);
+
+  auto *output = F->createSave("output", BPN->getOutput());
+  auto outputH =
+      bindings.allocate(output->getPlaceholder())->getHandle<DataType>();
+  bindings.allocate(input)->getHandle<DataType>() = inputData;
+  bindings.allocate(indices)->getHandle<IndexDataType>() = indicesData;
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  for (dim_t i = 0; i < expectedOutput.size(); i++) {
+    EXPECT_NEAR(outputH.raw(i), expectedOutput[i], 1E-4);
+  }
+}
+
+TEST_P(OperatorTest, BatchPermutation) {
+  CHECK_IF_ENABLED();
+  // Batch permutation on a 2-D tensor with batch size 4
+  llvm::SmallVector<dim_t, 2> inputDims = {4, 7};
+  llvm::SmallVector<dim_t, 1> indicesDims = {4};
+  llvm::SmallVector<float, 28> input = {1., 5., 2., 3., 4., 6., 0.,
+                                        4., 3., 3., 5., 2., 3., 1.,
+                                        2., 2., 3., 6., 0., 0., 1.,
+                                        0., 0., 1., 1., 2., 2., 3.};
+
+  llvm::SmallVector<int64_t, 4> indices = {2, 0, 1, 3};
+
+  llvm::SmallVector<float, 28> output = {2., 2., 3., 6., 0., 0., 1.,
+                                         1., 5., 2., 3., 4., 6., 0.,
+                                         4., 3., 3., 5., 2., 3., 1.,
+                                         0., 0., 1., 1., 2., 2., 3.};
+
+  testBatchPermutation<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      inputDims, indicesDims, input, indices, output);
+}
+
+TEST_P(OperatorTest, BatchPermutation_negative_index) {
+  CHECK_IF_ENABLED();
+  // Batch permutation on a 2-D tensor with batch size 4 with negative
+  // index value
+  llvm::SmallVector<dim_t, 2> inputDims = {6, 7};
+  llvm::SmallVector<dim_t, 1> indicesDims = {4};
+  llvm::SmallVector<float, 42> input = {1., 5., 2., 3., 4., 6., 0.,
+                                        4., 3., 3., 5., 2., 3., 1.,
+                                        2., 2., 3., 6., 0., 0., 1.,
+                                        0., 0., 0., 0., 0., 0., 0.,
+                                        0., 0., 1., 1., 2., 2., 3.,
+                                        0., 0., 0., 0., 0., 0., 0.};
+
+  llvm::SmallVector<int64_t, 4> indices = {2, 0, -1, -1};
+
+  llvm::SmallVector<float, 28> output = {2., 2., 3., 6., 0., 0., 1.,
+                                         1., 5., 2., 3., 4., 6., 0.,
+                                         0., 0., 0., 0., 0., 0., 0.,
+                                         0., 0., 0., 0., 0., 0., 0.};
+
+  testBatchPermutation<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      inputDims, indicesDims, input, indices, output);
+}
+
+TEST_P(OperatorTest, BatchPermutation_Int32_indices) {
+  CHECK_IF_ENABLED();
+  // Batch permutation on a 3-D tensor with int32 data type indices
+  llvm::SmallVector<dim_t, 2> inputDims = {4, 1, 7};
+  llvm::SmallVector<dim_t, 1> indicesDims = {4};
+  llvm::SmallVector<float, 28> input = {1., 5., 2., 3., 4., 6., 0.,
+                                        4., 3., 3., 5., 2., 3., 1.,
+                                        2., 2., 3., 6., 0., 0., 1.,
+                                        0., 0., 1., 1., 2., 2., 3.};
+
+  llvm::SmallVector<int32_t, 4> indices = {1, 3, 0, 2};
+
+  llvm::SmallVector<float, 28> output = {4., 3., 3., 5., 2., 3., 1.,
+                                         0., 0., 1., 1., 2., 2., 3.,
+                                         1., 5., 2., 3., 4., 6., 0.,
+                                         2., 2., 3., 6., 0., 0., 1.,};
+
+  testBatchPermutation<float, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy,
+      inputDims, indicesDims, input, indices, output);
+}
+
 // Helper to test SpaceToDepth using \p DTy.
 template <typename DataType>
 static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,

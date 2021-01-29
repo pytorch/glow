@@ -708,6 +708,7 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::InsertTensorNodeKind:
   case Kinded::Kind::SGDNodeKind:
   case Kinded::Kind::BroadcastNodeKind:
+  case Kinded::Kind::BatchPermutationNodeKind:
     return true;
   default:
     return false;

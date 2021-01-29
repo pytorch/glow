@@ -6829,3 +6829,74 @@ void BoundInterpreterFunction::fwdExternalFunctionCallInst(
     glow::ExternalFunctionCallInst const *) {
   LOG(FATAL) << "ExternalFunctionCallInst is not supported yet";
 }
+
+template <typename T, typename InTy>
+void BoundInterpreterFunction::fwdBatchPermutationInstImpl(
+    glow::BatchPermutationInst const *I) {
+  Tensor *inputT = getTensor(I->getInput());
+  Tensor *indicesT = getTensor(I->getIndices());
+  Tensor *outputT = getTensor(I->getOutput());
+
+  auto inputH = inputT->getHandle<InTy>();
+  auto indicesH = indicesT->getHandle<T>();
+  outputT->zero(); // Set elements to zero
+
+  // Calculate number of batch elements, i.e., K need to re-ordered and
+  // corrensponding data slice size.
+  const dim_t batchSize = indicesH.dims()[0];
+  const dim_t K = inputH.size() / inputH.dims()[0];
+  const dim_t elementSize = inputT->getType().getElementSize();
+  const dim_t dataSliceBytes = K * elementSize;
+
+  // For each batch input, calculate the corresponding index in the output
+  // based on indices and copy the data to output tensor.
+  // DistributeFPNPropasals op currently assigns index value as -1 for invalid
+  // ROIs and index value -1 is skipped, since the corresponding index in the
+  // output is filled with zeroes.
+  for (dim_t n = 0; n < batchSize; n++) {
+    if (indicesH.at({n}) != -1) {
+      dim_t origIdx = n * K;
+      dim_t permuteIdx = indicesH.at({n}) * K;
+      std::copy(
+          &inputT->getUnsafePtr()[permuteIdx * elementSize],
+          &inputT->getUnsafePtr()[permuteIdx * elementSize + dataSliceBytes],
+          &outputT->getUnsafePtr()[origIdx * elementSize]);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchPermutationInst(
+    glow::BatchPermutationInst const *I) {
+  switch (I->getInput()->getElementType()) {
+  case ElemKind::FloatTy:
+    if (I->getIndices()->getElementType() == ElemKind::Int32ITy) {
+      fwdBatchPermutationInstImpl<int32_t, float>(I);
+    } else if (I->getIndices()->getElementType() == ElemKind::Int64ITy) {
+      fwdBatchPermutationInstImpl<int64_t, float>(I);
+    } else {
+      llvm_unreachable("Indices type is not supported.");
+    }
+    break;
+  case ElemKind::Float16Ty:
+    if (I->getIndices()->getElementType() == ElemKind::Int32ITy) {
+      fwdBatchPermutationInstImpl<int32_t, float16_t>(I);
+    } else if (I->getIndices()->getElementType() == ElemKind::Int64ITy) {
+      fwdBatchPermutationInstImpl<int64_t, float16_t>(I);
+    } else {
+      llvm_unreachable("Indices type is not supported.");
+    }
+    break;
+  case ElemKind::Int8QTy:
+    if (I->getIndices()->getElementType() == ElemKind::Int32ITy) {
+      fwdBatchPermutationInstImpl<int32_t, int8_t>(I);
+    } else if (I->getIndices()->getElementType() == ElemKind::Int64ITy) {
+      fwdBatchPermutationInstImpl<int64_t, int8_t>(I);
+    } else {
+      llvm_unreachable("Indices type is not supported.");
+    }
+    break;
+  default:
+    llvm_unreachable("Input Type is not supported.");
+    break;
+  }
+}

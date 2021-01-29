@@ -1154,6 +1154,20 @@ int main(int argc, char **argv) {
           "Broadcast the Input tensor to TargetDim using Axis to indicate the "
           "offset between Input dimension and TargetDim");
 
+  BB.newNode("BatchPermutation")
+      .addInput("Input")
+      .addInput("Indices")
+      .addResultFromCtorArg("Output")
+      .setDocstring(
+          "Given Input tensor of [N, D0, D1, ..], 1D Indices tensor of [M,], "
+          "where M <= N performs permutation along the batch elements of "
+          "Input and generates an Output tensor with shape [M, D0, D1, ..] "
+          "where (D0, D1, ..) dimensional batch elements are re-ordered "
+          "according to Indices. Caffe2 definition requires input and indices "
+          "should have same value at 0 dimension(i.e M == N). To fix the "
+          "shape while using FasterRCNN/MaskRCNN network, mentioned changes "
+          "have been made.");
+
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//

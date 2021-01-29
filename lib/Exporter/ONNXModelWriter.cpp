@@ -1808,6 +1808,13 @@ Error ONNXModelWriter::writeGatherND(const GatherNDNode *node,
   return writeAllWithNode("GatherND", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeBatchPermutation(const BatchPermutationNode *node,
+                                             GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  return writeAllWithNode("BatchPermutation", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeMatMul(const MatMulNode *node, GraphType &graph) {
   return writeMatMulKind(node, graph, "MatMul");
 }

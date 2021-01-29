@@ -5185,6 +5185,22 @@ BBoxTransformNode *Function::createBBoxTransform(
       clipAngleThresh, legacyPlusOne));
 }
 
+BatchPermutationNode *Function::createBatchPermutation(llvm::StringRef name,
+                                                       NodeValue input,
+                                                       NodeValue indices) {
+  auto inputDims = input.dims();
+  auto indicesDims = indices.dims();
+  std::vector<dim_t> outDims;
+  // Calculate output tensor shape from input and indices dimensions
+  for (auto dim : inputDims) {
+    outDims.push_back(dim);
+  }
+  outDims[0] = indicesDims[0];
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), outDims);
+
+  return addNode(new BatchPermutationNode(name, outTy, input, indices));
+}
+
 ExternalFunctionCallNode *Function::createExternalFunctionCall(
     llvm::StringRef name, TypeRef outTy, llvm::ArrayRef<glow::NodeValue> inputs,
     llvm::StringRef funcName, llvm::StringRef funcImpl,

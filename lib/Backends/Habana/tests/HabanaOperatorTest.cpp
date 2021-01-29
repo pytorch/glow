@@ -459,4 +459,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Upsample_Nearest1D_Float16/0",
     "Upsample_Nearest1D_Int8/0",
     "batchedReduceAdd_Int32ITy/0",
+    "BatchPermutation/0",
+    "BatchPermutation_negative_index/0",
+    "BatchPermutation_Int32_indices/0",
 };

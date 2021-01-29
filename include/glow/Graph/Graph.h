@@ -2198,6 +2198,26 @@ public:
                       int64_t angleBoundLo, int64_t angleBoundHi,
                       float clipAngleThresh, bool legacyPlusOne);
 
+  /// Permute the batch elements of the input tensor X according to the
+  /// permutation specified in the input indices
+  /// Inputs:
+  /// - \p input - Tensor of at least 1D shape (N, D0, D1, ...)
+  /// - \p indices - 1D tensor with shape (M, ) where M <= N specifying a
+  ///    valid permutation of the indices.
+  /// Outputs:
+  /// - \p output - Tensor with the shape (M, D0, D1, ...) where the
+  ///    (D0, D1, ...) dimensional batch elements of input are permuted
+  ///    along the batch dimension according to input indices.
+  /// Note:
+  /// Caffe2 definition requires input and indices should have same value
+  /// at 0 dimension(i.e M == N). To fix the output shape while using
+  /// FasterRCNN network, mentioned changes have been made.
+  /// see definition:
+  /// https://github.com/pytorch/pytorch/blob/master/caffe2/operators/batch_permutation_op.cc#L48
+  BatchPermutationNode *createBatchPermutation(llvm::StringRef name,
+                                               NodeValue input,
+                                               NodeValue indices);
+
   /// Create an ExternFunctionCall node. \p funcImpl will contain body
   /// of or reference to the function which can be invoked.
   /// \p funcKind contains the type of function. The type of function  could be

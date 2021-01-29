@@ -420,4 +420,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "batchedReduceAdd_Int32ITy/0",
     "Float16ArgMaxKeepDim/0",
     "Float16ArgMaxNoKeepDim/0",
+    "BatchPermutation/0",
+    "BatchPermutation_negative_index/0",
+    "BatchPermutation_Int32_indices/0",
 };

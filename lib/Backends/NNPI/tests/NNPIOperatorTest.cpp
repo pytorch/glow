@@ -119,6 +119,9 @@ struct BlacklistInitializer {
       {"ResizeNearest_BFloat16_outTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ResizeNearest_Int16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ResizeNearest_Int16_outTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BatchPermutation/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BatchPermutation_negative_index/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BatchPermutation_Int32_indices/0", TestBlacklist::AnyDeviceAnyEngine},
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
       {"Upsample_Nearest3D_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Upsample_Nearest3D_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
