@@ -1429,6 +1429,76 @@ TEST_P(OperatorTest, FP16RoiAlignBatchIndexInBoxesTensor) {
                                                  ElemKind::Float16Ty, 1E-2);
 }
 
+template <typename DataType>
+static void randRois(dim_t N, dim_t H, dim_t W, dim_t count,
+                     Handle<DataType> &boxes, Module &mod) {
+  boxes.randomize(static_cast<DataType>(0),
+                  static_cast<DataType>(std::min(H, W)), mod.getPRNG());
+
+  // enforce format [batch_idx, x1, y1, x2, y2] where x2 >= x1 and y2 >= y1
+  for (dim_t n = 0; n < count; ++n) {
+    boxes.at({n, 0}) = 0;
+    if (boxes.at({n, 1}) > boxes.at({n, 3})) {
+      std::swap(boxes.at({n, 1}), boxes.at({n, 3}));
+    }
+    if (boxes.at({n, 2}) > boxes.at({n, 4})) {
+      std::swap(boxes.at({n, 2}), boxes.at({n, 4}));
+    }
+  }
+}
+
+TEST_P(OperatorStatelessTest,
+       FP16RoiAlignBatchIndexInBoxesTensorCompareToInterpreter) {
+  CHECK_IF_ENABLED();
+
+  compareAgainstInterpreter(
+      getBackendName(),
+      [](PlaceholderBindings &bindings, ExecutionEngine &EE) {
+        Module &mod = EE.getModule();
+        Function *F = mod.createFunction("main");
+        dim_t H = 50;
+        dim_t W = 50;
+        dim_t N = 1;
+        dim_t C = 2;
+        dim_t pooled_H = 6;
+        dim_t pooled_W = 6;
+        float samplingRatio = 2;
+        float spatialScale = 0.0625;
+
+        llvm::SmallVector<dim_t, 4> featureMapDims = {N, H, W, C};
+        auto *featureMapT = mod.createPlaceholder(
+            ElemKind::FloatTy, featureMapDims, "featureMap", false);
+        bindings.allocate(featureMapT)
+            ->getHandle()
+            .randomize(0.0f, 1.0f, mod.getPRNG());
+
+        dim_t count = 4;
+        llvm::SmallVector<dim_t, 2> boxesDims = {count, 5};
+        auto *boxesT =
+            mod.createPlaceholder(ElemKind::FloatTy, boxesDims, "boxes",
+                                  /*trainable*/ false);
+        Handle<float> boxesH = bindings.allocate(boxesT)->getHandle<float>();
+        randRois<float>(N, H / spatialScale, W / spatialScale, count, boxesH,
+                        mod);
+
+        llvm::SmallVector<dim_t, 1> batchIndicesDims = {1};
+        llvm::SmallVector<int64_t, 1> batchIndices = {1};
+        auto *batchIndicesT = mod.createPlaceholder(
+            ElemKind::Int64ITy, batchIndicesDims, "batch_indices", false);
+        bindings.allocate(batchIndicesT)->getHandle<int64_t>() = batchIndices;
+
+        auto *R = F->createROIAlign(
+            "roi_align", featureMapT, boxesT, batchIndicesT, pooled_H, pooled_W,
+            samplingRatio, spatialScale, /*aligned*/ true, /*rotated*/ false,
+            PoolingMode::AVG);
+
+        SaveNode *save = F->createSave("save", R);
+        Tensor *saveTensor = bindings.allocate(save->getPlaceholder());
+        return std::make_pair(F, saveTensor);
+      },
+      ElemKind::FloatTy, ElemKind::Float16Ty, 5E-2);
+}
+
 /// RoiAlign test, for batch_index given in caffe2 format, with batch_size==4
 template <typename DataType>
 static void roiAlignC2BatchedTest(PlaceholderBindings &bindings, Module &mod,
