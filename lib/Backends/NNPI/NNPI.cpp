@@ -1558,6 +1558,16 @@ static bool padKernelToStride(Function *F) {
           glowChannelwiseQuantizedConv->getStrides()[0],
           glowChannelwiseQuantizedConv->getStrides()[1]};
 
+      bool is1x1s2Case = true;
+      // This is for special case of 1x1 stride 2.
+      for (int i = 0; i < SPATIAL_DIMS2; i++) {
+        is1x1s2Case &= (kernel[i] == 1 && stride[i] == 2);
+      }
+
+      if (is1x1s2Case) {
+        continue;
+      }
+
       for (int i = 0; i < SPATIAL_DIMS2; i++) {
         if (kernel[i] < stride[i]) {
           isKernelPadded = true;

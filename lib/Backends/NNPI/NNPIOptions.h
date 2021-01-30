@@ -325,6 +325,18 @@ public:
                       "enableESUnifyAdditionalPass",
                       "Enable Execution Section fusion pass.",
                       "NNPI_ENABLE_ES_FUSION", "0");
+
+  /// Enable Node Splitter at ICE-T level for all Nodes.
+  DECLARE_NNPI_OPTION(enableLayerSplitter, bool, "enableLayerSplitter",
+                      "Enable Generic Layer Splitter for all Nodes.",
+                      "NNPI_ENABLE_LAYER_SPLITTER", "0");
+
+  /// Enable Spatial splitter for Convolution Nodes
+  /// This needs the 'Generic Node splitter' to be enabled.
+  DECLARE_NNPI_OPTION(enableConvSpatialSplitter, bool,
+                      "enableConvSpatialSplitter",
+                      "Enable splits along X-Y Dims of Convolution Nodes.",
+                      "NNPI_ENABLE_CONV_SPATIAL_SPLITTER", "0");
 #endif
 
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
@@ -360,6 +372,8 @@ public:
     INIT_NNPI_OPTIONS(dumpCompilationInfo, parameters);
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
     INIT_NNPI_OPTIONS(enableESUnifyAdditionalPass, parameters);
+    INIT_NNPI_OPTIONS(enableLayerSplitter, parameters);
+    INIT_NNPI_OPTIONS(enableConvSpatialSplitter, parameters);
 #endif
   }
 

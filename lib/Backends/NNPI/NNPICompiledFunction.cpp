@@ -99,7 +99,12 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
   config_.enableESUnifyAdditionalPass =
       compilationOptions.enableESUnifyAdditionalPass;
+
+  config_.enableLayerSplitter = compilationOptions.enableLayerSplitter;
+  config_.enableConvSpatialSplitter =
+      compilationOptions.enableConvSpatialSplitter;
 #endif
+
   return Error::success();
 }
 

@@ -1630,33 +1630,43 @@ public:
                     .c_str()),
         "Bad offset value", NNPI_INVALID_PARAM);
 
-    const uint32_t SPATIAL_DIMS2 = 2;
+    const uint32_t spatialDims =
+        glowChannelwiseQuantizedConv->getKernels().size();
     LOG_AND_RETURN_IF_NOT(
         ERROR,
-        glowChannelwiseQuantizedConv->getKernels().size() == SPATIAL_DIMS2,
+        glowChannelwiseQuantizedConv->getKernels().size() == 2 ||
+            glowChannelwiseQuantizedConv->getKernels().size() == 3,
         "[Conv] Invalid number of kernel sizes", NNPI_INVALID_PARAM);
     LOG_AND_RETURN_IF_NOT(ERROR,
                           glowChannelwiseQuantizedConv->getPads().size() ==
-                              2 * SPATIAL_DIMS2,
+                              2 * spatialDims,
                           "[Conv] Invalid number of pads", NNPI_INVALID_PARAM);
     LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        glowChannelwiseQuantizedConv->getStrides().size() == SPATIAL_DIMS2,
+        ERROR, glowChannelwiseQuantizedConv->getStrides().size() == spatialDims,
         "[Conv] Invalid number of strides", NNPI_INVALID_PARAM);
 
-    uint32_t kernel[SPATIAL_DIMS2] = {
-        glowChannelwiseQuantizedConv->getKernels()[0],
-        glowChannelwiseQuantizedConv->getKernels()[1]};
-    uint32_t paddingStart[SPATIAL_DIMS2] = {
-        glowChannelwiseQuantizedConv->getPads()[0],
-        glowChannelwiseQuantizedConv->getPads()[1]};
-    uint32_t paddingEnd[SPATIAL_DIMS2] = {
-        glowChannelwiseQuantizedConv->getPads()[2],
-        glowChannelwiseQuantizedConv->getPads()[3]};
-    uint32_t stride[SPATIAL_DIMS2] = {
-        glowChannelwiseQuantizedConv->getStrides()[0],
-        glowChannelwiseQuantizedConv->getStrides()[1]};
-    uint32_t dilation[SPATIAL_DIMS2] = {1, 1}; // No dilation, default values
+    uint32_t kernel[spatialDims];
+    uint32_t paddingStart[spatialDims];
+    uint32_t paddingEnd[spatialDims];
+    uint32_t stride[spatialDims];
+    uint32_t dilation[spatialDims];
+
+    for (size_t i = 0; i < spatialDims; i++) {
+      kernel[i] = glowChannelwiseQuantizedConv->getKernels()[i];
+      stride[i] = glowChannelwiseQuantizedConv->getStrides()[i];
+      if (spatialDims == 2) {
+        paddingStart[i] = glowChannelwiseQuantizedConv->getPads()[i];
+        paddingEnd[i] =
+            glowChannelwiseQuantizedConv->getPads()[spatialDims + i];
+        //  Since no dilation, set default values.
+        dilation[i] = 1;
+      } else {
+        paddingStart[i] = glowChannelwiseQuantizedConv->getPads()[i * 2];
+        paddingEnd[i] = glowChannelwiseQuantizedConv->getPads()[i * 2 + 1];
+        //  Since no dilation, set default values.
+        dilation[i] = 1;
+      }
+    }
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -1714,7 +1724,7 @@ public:
         glowChannelwiseQuantizedConv->getBias()
             ? nodeValueName(glowChannelwiseQuantizedConv->getBias()).c_str()
             : nullptr,
-        kernel, paddingStart, paddingEnd, stride, dilation, SPATIAL_DIMS2,
+        kernel, paddingStart, paddingEnd, stride, dilation, spatialDims,
         glowChannelwiseQuantizedConv->getGroup());
   }
 };
