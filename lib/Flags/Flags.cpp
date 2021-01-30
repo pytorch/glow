@@ -141,7 +141,7 @@ bool EnableP2P = false;
 bool EnableDRT = false;
 unsigned DeviceInitTimeoutMs = 5000;
 unsigned SanitizeInputsPercent = 0;
-
+uint64_t BigTableThresholdBytes = 104857600; // 100MB
 } // namespace flags
 } // namespace runtime
 } // namespace glow
@@ -598,6 +598,16 @@ DEFINE_validator(glow_device_init_timeout_ms, [](const char *, int32_t val) {
   glow::runtime::flags::DeviceInitTimeoutMs = val;
   return true;
 });
+DEFINE_uint64(
+    glow_partition_big_table_threshold_bytes,
+    glow::runtime::flags::BigTableThresholdBytes,
+    "Threshold to determin big tables, and used in partitioning algorithm. "
+    "Default 104857600(100MB)");
+DEFINE_validator(glow_partition_big_table_threshold_bytes,
+                 [](const char *, uint64_t val) {
+                   glow::runtime::flags::BigTableThresholdBytes = val;
+                   return true;
+                 });
 DEFINE_int32(glow_enable_sanitize_inputs,
              glow::runtime::flags::SanitizeInputsPercent,
              "Sanitize a percentage of inferences");

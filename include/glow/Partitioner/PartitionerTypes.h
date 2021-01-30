@@ -95,6 +95,22 @@ struct BackendInfo {
   std::set<Kinded::Kind> supportedNodesKinds;
 };
 
+struct SLSTableInfo {
+  Node *node;
+  std::unordered_set<Node *> neighbors;
+  std::unordered_set<NodeValue> frontier;
+  uint64_t numBytesInTable;
+  unsigned int deviceId;
+  NodeValue slsResult;
+  uint64_t cost;
+};
+
+struct SLSDeviceInfo {
+  unsigned int deviceId;
+  uint64_t memAvailableInBytes;
+  size_t currentCost;
+};
+
 /// A mapping of newly-created functions along with a set of nodes sets. The
 /// overloaded compare function to make sure the map is sorted by the key's
 /// name(i.e. the function's name) which makes the optimization sequence is
