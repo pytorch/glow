@@ -1058,6 +1058,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
       {{"aten::log"}, &PyTorchModelLoader::loadLog},
       {{"aten::sum"}, &PyTorchModelLoader::loadSum},
+      {{"aten::cumsum"}, &PyTorchModelLoader::loadCumSum},
       {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
       {{"aten::silu"}, &PyTorchModelLoader::loadSilu},
       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
@@ -2679,6 +2680,40 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
     auto reshapeNode = F_.createReshape("reshape", batchedReduceAddNode, shape);
     return addValueMapping(outputs[0], reshapeNode);
   }
+}
+
+Error PyTorchModelLoader::loadCumSum(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(ptNode->namedInput("dim"))));
+  RETURN_ERR_IF_NOT(
+      dim == 0,
+      glow::strFormat(
+          "aten::cumsum is only supported along axis 0, got %ld instead.",
+          dim));
+
+  GlowIValue *dtypeIVal = nullptr;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dtypeIVal, getGlowIValueForValue(ptNode->namedInput("dtype")));
+  // Default value for dtype is None
+  if (dtypeIVal->getTag() != GlowIValue::Tag::None) {
+    int32_t dtype;
+    ASSIGN_VALUE_OR_RETURN_ERR(dtype, iValToInt(dtypeIVal));
+    const auto glowElemKind =
+        scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+    input = F_.createConvertTo("cast_input", input, glowElemKind)->getResult();
+  }
+
+  auto *output = F_.createCumSum("cumsum", input);
+  RETURN_ERR(addValueMapping(outputs[0], output->getResult()));
 }
 
 Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
