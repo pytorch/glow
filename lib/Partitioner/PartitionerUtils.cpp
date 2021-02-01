@@ -560,34 +560,42 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
 }
 
 void printSlsTableInfo(std::vector<SLSTableInfo>::iterator start,
-                       std::vector<SLSTableInfo>::iterator end) {
+                       std::vector<SLSTableInfo>::iterator end,
+                       bool verbose_only) {
   if (start >= end) {
     return;
   }
-  LOG(INFO) << "(numBytesInTable(MB), deviceID, cost, cost/numBytesInTable) "
-            << strFormat(" - %zu tables -", end - start);
+  std::stringstream ss;
+  ss << "(numBytesInTable(MB), deviceID, cost, cost/numBytesInTable) "
+     << strFormat(" - %zu tables -", end - start) << "\n";
   while (start < end) {
     const auto tableSizeInMB = (float)start->numBytesInTable / MB;
     const auto costPerByte = tableSizeInMB == 0
                                  ? "nan"
                                  : std::to_string(start->cost / tableSizeInMB);
-    LOG(INFO) << "        " << tableSizeInMB << "        " << start->deviceId
-              << "      " << start->cost << "      " << costPerByte
-              << std::endl;
+    ss << "        " << tableSizeInMB << "        " << start->deviceId
+       << "      " << start->cost << "      " << costPerByte << std::endl;
     start++;
+  }
+  if (verbose_only) {
+    VLOG(1) << ss.str();
+  } else {
+    LOG(INFO) << ss.str();
   }
 }
 
-void printSlsTableInfo(std::vector<SLSTableInfo> &slsTables) {
-  printSlsTableInfo(slsTables.begin(), slsTables.end());
+void printSlsTableInfo(std::vector<SLSTableInfo> &slsTables,
+                       bool verbose_only) {
+  printSlsTableInfo(slsTables.begin(), slsTables.end(), verbose_only);
 }
 
 void printSlsDeviceInfo(const std::vector<SLSDeviceInfo> &slsDevices,
                         const std::vector<NodesSet> &nodesets,
-                        const unsigned contextCount) {
-  LOG(INFO) << "(deviceId, used_memory(MB), free_memory(MB), cost, "
-               "node_size, cost/used_memory)"
-            << strFormat(" - %zu devices -", slsDevices.size());
+                        const unsigned contextCount, bool verbose_only) {
+  std::stringstream ss;
+  ss << "(deviceId, used_memory(MB), free_memory(MB), cost, "
+        "node_size, cost/used_memory)"
+     << strFormat(" - %zu devices -", slsDevices.size()) << "\n";
   for (const auto &d : slsDevices) {
     const auto deviceId = d.deviceId;
     const auto meminfo = getGraphMemInfo(nodesets[deviceId], contextCount);
@@ -596,9 +604,14 @@ void printSlsDeviceInfo(const std::vector<SLSDeviceInfo> &slsDevices,
     const auto freeMem = availMem - usedMem;
     const auto costPerUsedMemory =
         usedMem == 0 ? "nan" : std::to_string(d.currentCost / usedMem);
-    LOG(INFO) << "    " << deviceId << "         " << usedMem << "         "
-              << freeMem << "      " << d.currentCost << "      "
-              << nodesets[deviceId].size() << "      " << costPerUsedMemory;
+    ss << "    " << deviceId << "         " << usedMem << "         " << freeMem
+       << "      " << d.currentCost << "      " << nodesets[deviceId].size()
+       << "      " << costPerUsedMemory << "\n";
+  }
+  if (verbose_only) {
+    VLOG(1) << ss.str();
+  } else {
+    LOG(INFO) << ss.str();
   }
 }
 
@@ -690,7 +703,7 @@ Error assignSlsTablesToDevices(
   LOG(INFO) << strFormat("Now assign %zu large tables to %zu devices.",
                          (slsTableRight - slsTablesLeft), slsDevices.size());
   // Print Large SLS tables
-  LOG(INFO) << "Large tables by size decreasing: ";
+  VLOG(1) << "Large tables by size decreasing: ";
   printSlsTableInfo(slsTablesLeft, slsTableRight);
   std::vector<NodesSet> nodesets(slsDevices.size());
   while (slsTablesLeft < slsTableRight) {
@@ -706,8 +719,9 @@ Error assignSlsTablesToDevices(
                         .getTotalMemSize();
                 return lTotalSize < rTotalSize;
               });
-    LOG(INFO) << "Devices sorted by used memory increasing: ";
-    printSlsDeviceInfo(slsDevices, nodesets, contextCount);
+    VLOG(1) << "Devices sorted by used memory increasing: ";
+    printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                       true /* verbose_only */);
 
     // Pick the first that fits
     auto &table = *slsTablesLeft;
@@ -715,8 +729,9 @@ Error assignSlsTablesToDevices(
         table, slsDevices, nodesets, frontierValues, contextCount));
     slsTablesLeft++;
   }
-  LOG(INFO) << "Done assigning large tables, devices info: ";
-  printSlsDeviceInfo(slsDevices, nodesets, contextCount);
+  VLOG(1) << "Done assigning large tables, devices info: ";
+  printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                     true /* verbose_only */);
 
   // Now let us assign small size tables.
   // First sort tables by cost decreasingly. For each table, we would like to
@@ -729,7 +744,7 @@ Error assignSlsTablesToDevices(
                 return l.cost > r.cost;
               });
   }
-  LOG(INFO) << "Small tables by cost decreasingly: ";
+  VLOG(1) << "Small tables by cost decreasingly: ";
   printSlsTableInfo(slsTablesLeft, slsTables.end());
 
   while (slsTablesLeft < slsTables.end()) {
@@ -739,8 +754,9 @@ Error assignSlsTablesToDevices(
                 return l.currentCost < r.currentCost;
               });
 
-    LOG(INFO) << "Devices sorted by cost increasing: ";
-    printSlsDeviceInfo(slsDevices, nodesets, contextCount);
+    VLOG(1) << "Devices sorted by cost increasing: ";
+    printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                       true /* verbose_only */);
 
     // Pick the first that fits
     auto &table = *slsTablesLeft;
@@ -750,7 +766,8 @@ Error assignSlsTablesToDevices(
   }
   // Print final device info
   LOG(INFO) << "Done assigning small tables, final devices info: ";
-  printSlsDeviceInfo(slsDevices, nodesets, contextCount);
+  printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                     false /* verbose_only */);
   restoreInputsOnError.dismiss();
   return Error::success();
 }
@@ -777,7 +794,7 @@ Error assignSlsTablesToDevicesGreedy(
   });
 
   // Now sort SLS tables by size decreasing
-  LOG(INFO) << "SLS tables sorted by size decreasing" << std::endl;
+  VLOG(1) << "SLS tables sorted by size decreasing" << std::endl;
   std::sort(slsTables.begin(), slsTables.end(),
             [](const SLSTableInfo &l, const SLSTableInfo &r) {
               return l.numBytesInTable > r.numBytesInTable;
@@ -796,8 +813,9 @@ Error assignSlsTablesToDevicesGreedy(
                 return l.currentCost < r.currentCost;
               });
 
-    LOG(INFO) << "Devices sorted by cost increasing" << std::endl;
-    printSlsDeviceInfo(slsDevices, nodesets, contextCount);
+    VLOG(1) << "Devices sorted by cost increasing" << std::endl;
+    printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                       true /* verbose_only */);
 
     // Pick the first that fits
     RETURN_IF_ERR(assignSlsTableToFirstAvailableDevice(
@@ -805,7 +823,8 @@ Error assignSlsTablesToDevicesGreedy(
   }
   // Print final device info
   LOG(INFO) << "Devices sorted by cost increasing: ";
-  printSlsDeviceInfo(slsDevices, nodesets, contextCount);
+  printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                     false /* verbose_only */);
   restoreInputsOnError.dismiss();
   return Error::success();
 }

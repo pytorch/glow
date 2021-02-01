@@ -1349,7 +1349,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
         slsTables, slsDevices, frontierValues, contextCount_));
   }
   // Print final table assignments
-  LOG(INFO) << "Final table assignments: ";
+  VLOG(1) << "Final table assignments: ";
   printSlsTableInfo(slsTables);
 
   // Create manual partition
