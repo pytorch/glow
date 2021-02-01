@@ -13739,6 +13739,123 @@ TEST_P(OperatorTest, CumSum_WithZeroes) {
   EXPECT_TRUE(expected.isEqual(*result));
 }
 
+static Tensor *testCumSumNd(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, glow::Placeholder *data,
+                            bool exclusive, bool reverse) {
+  auto *CS = F->createCumSum("CumSum", data, exclusive, reverse);
+  auto *S = F->createSave("save", CS);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  return bindings.get(S->getPlaceholder());
+}
+
+TEST_P(OperatorTest, CumSum_2D_Int32) {
+  CHECK_IF_ENABLED();
+
+  auto *data =
+      mod_.createPlaceholder(glow::ElemKind::Int32ITy, {2, 4}, "data", false);
+  bindings_.allocate(data)->getHandle<int32_t>() = {2, 0, -10, 4, 0, -2, 8, 0};
+
+  Tensor *result = testCumSumNd(bindings_, mod_, F_, EE_, data,
+                                /*exclusive*/ false, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<int32_t>() = {2, 0, -10, 4, 2, -2, -2, 4};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_3D_Int64) {
+  CHECK_IF_ENABLED();
+
+  auto *data = mod_.createPlaceholder(glow::ElemKind::Int64ITy, {2, 3, 4},
+                                      "data", false);
+  bindings_.allocate(data)->getHandle<int64_t>() = {
+      2, 3, 3, 9, 5, 8, 2, 9, 7, 1, 8, 5, 3, 9, 4, 0, 2, 1, 8, 8, 2, 5, 7, 2};
+
+  Tensor *result = testCumSumNd(bindings_, mod_, F_, EE_, data,
+                                /*exclusive*/ false, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<int64_t>() = {2, 3,  3, 9, 5, 8, 2,  9,  7, 1, 8,  5,
+                                   5, 12, 7, 9, 7, 9, 10, 17, 9, 6, 15, 7};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_4D_Float) {
+  CHECK_IF_ENABLED();
+
+  auto *data = mod_.createPlaceholder(glow::ElemKind::FloatTy, {2, 2, 2, 3},
+                                      "data", false);
+  bindings_.allocate(data)->getHandle<float>() = {
+      2, 7, 7, 4, 5, 6, 9, 2, 9, 5, 1, 3, 0, 1, 2, 6, 1, 8, 4, 7, 5, 3, 0, 3};
+
+  Tensor *result = testCumSumNd(bindings_, mod_, F_, EE_, data,
+                                /*exclusive*/ false, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<float>() = {2, 7, 7, 4,  5, 6,  9,  2, 9,  5, 1, 3,
+                                 2, 8, 9, 10, 6, 14, 13, 9, 14, 8, 1, 6};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_4D_Reverse) {
+  CHECK_IF_ENABLED();
+
+  auto *data = mod_.createPlaceholder(glow::ElemKind::FloatTy, {2, 2, 2, 3},
+                                      "data", false);
+  bindings_.allocate(data)->getHandle<float>() = {
+      4,  -1, 0,  -7, -6, -10, 1,  -1,  2,  9, -5, 0,
+      -8, 3,  -8, 0,  9,  -1,  -9, -10, -6, 8, -8, 0};
+
+  Tensor *result = testCumSumNd(bindings_, mod_, F_, EE_, data,
+                                /*exclusive*/ false, /*reverse*/ true);
+  Tensor expected(result->getType());
+  expected.getHandle<float>() = {-4, 2,  -8,  -7,  3,  -11, -8, -11,
+                                 -4, 17, -13, 0,   -8, 3,   -8, 0,
+                                 9,  -1, -9,  -10, -6, 8,   -8, 0};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_4D_Exclusive) {
+  CHECK_IF_ENABLED();
+
+  auto *data = mod_.createPlaceholder(glow::ElemKind::FloatTy, {2, 2, 2, 3},
+                                      "data", false);
+  bindings_.allocate(data)->getHandle<float>() = {
+      1,  2,  -4, 7, 7,   0, 1, 9, 3, 6,  -4, -6,
+      -5, -4, 5,  4, -10, 6, 1, 1, 1, -5, -2, 2};
+
+  Tensor *result = testCumSumNd(bindings_, mod_, F_, EE_, data,
+                                /*exclusive*/ true, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<float>() = {0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 0,  0,
+                                 1, 2, -4, 7, 7, 0, 1, 9, 3, 6, -4, -6};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_4D_ReverseExclusive) {
+  CHECK_IF_ENABLED();
+
+  auto *data = mod_.createPlaceholder(glow::ElemKind::FloatTy, {2, 2, 2, 3},
+                                      "data", false);
+  bindings_.allocate(data)->getHandle<float>() = {
+      -10, -10, -2, -9, 7, 8, -10, -6, 2,  2,  8,   -4,
+      9,   0,   -4, -6, 6, 6, 8,   -9, -1, -3, -10, 9};
+
+  Tensor *result = testCumSumNd(bindings_, mod_, F_, EE_, data,
+                                /*exclusive*/ true, /*reverse*/ true);
+  Tensor expected(result->getType());
+  expected.getHandle<float>() = {9, 0, -4, -6, 6, 6, 8, -9, -1, -3, -10, 9,
+                                 0, 0, 0,  0,  0, 0, 0, 0,  0,  0,  0,   0};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
 TEST_P(OperatorTest, LengthsSum) {
   CHECK_IF_ENABLED();
 

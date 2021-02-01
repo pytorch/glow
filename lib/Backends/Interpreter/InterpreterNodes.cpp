@@ -4265,31 +4265,73 @@ DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
                                                  bool exclusive, bool reverse) {
-  auto *eInput = getTensor(input);
-  auto *eDest = getTensor(dest);
-  auto eInputH = eInput->getHandle<ElemTy>();
-  auto eDestH = eDest->getHandle<ElemTy>();
-  eDestH.clear();
+  const ShapeVector eDims = expandDimsToMax(getTensor(input)->dims());
+  auto inputT = getTensor(input);
+  auto destT = getTensor(dest);
 
-  ElemTy accum = 0;
-
-  sdim_t s = 0;
-  sdim_t n = eDestH.size();
-  sdim_t dir = 1;
-
-  if (reverse) {
-    s = n - 1;
-    n = -1;
-    dir = -1;
+  const bool isInPlace = inputT->getUnsafePtr() == destT->getUnsafePtr();
+  if (!isInPlace) {
+    destT->assign(inputT);
   }
 
-  for (sdim_t i = s; i != n; i += dir) {
-    if (!exclusive) {
-      accum += eInputH.at(i);
+  auto eInput = inputT->getUnowned(eDims);
+  auto eDest = destT->getUnowned(eDims);
+  auto eInputH = eInput.getHandle<ElemTy>();
+  auto eDestH = eDest.getHandle<ElemTy>();
+
+  std::vector<dim_t> sliceDims(eDims.begin(), eDims.end());
+  sliceDims[0] = 1;
+  Tensor storeT(eInput.getElementType(), sliceDims);
+  storeT.zero();
+  auto storeH = storeT.getHandle<ElemTy>();
+
+  sdim_t dir;
+  std::array<sdim_t, 6> starts, ends;
+  if (reverse) {
+    dir = -1;
+    std::copy(eDims.begin(), eDims.end(), starts.begin());
+    starts[0] -= 2;
+    std::for_each(starts.begin() + 1, starts.end(),
+                  [](auto &element) -> void { element -= 1; });
+    std::fill(ends.begin(), ends.end(), -1);
+    eInputH.extractTensors(storeH, {eDims.front() - 1, 0, 0, 0, 0, 0});
+    if (exclusive) { // reverse && exclusive
+      std::fill(&eDestH.at({eDims.front() - 1}), &eDestH.at(eDims.front()), 0);
     }
-    eDestH.at(i) = accum;
-    if (exclusive) {
-      accum += eInputH.at(i);
+  } else {
+    dir = 1;
+    std::fill(starts.begin() + 1, starts.end(), 0);
+    starts[0] = 1;
+    std::copy(eDims.begin(), eDims.end(), ends.begin());
+    eInputH.extractTensors(storeH, {0, 0, 0, 0, 0, 0});
+    if (exclusive) { // !reverse && exclusive
+      std::fill(&eDestH.at({0, 0}), &eDestH.at({1, 1}), 0);
+    }
+  }
+
+  for (sdim_t x = starts[0]; x != ends[0]; x += dir) {
+    for (sdim_t y = starts[1]; y != ends[1]; y += dir) {
+      for (sdim_t z = starts[2]; z != ends[2]; z += dir) {
+        for (sdim_t w = starts[3]; w != ends[3]; w += dir) {
+          for (sdim_t q = starts[4]; q != ends[4]; q += dir) {
+            for (sdim_t r = starts[5]; r != ends[5]; r += dir) {
+              const dim_t xx = x, yy = y, zz = z, ww = w, qq = q, rr = r;
+              const dim_t destIndices[] = {xx, yy, zz, ww, qq, rr};
+              const dim_t storeIndices[] = {0, yy, zz, ww, qq, rr};
+
+              if (!exclusive) {
+                storeH.at(storeIndices) += eInputH.at(destIndices);
+              }
+
+              eDestH.at(destIndices) = storeH.at(storeIndices);
+
+              if (exclusive) {
+                storeH.at(storeIndices) += eInputH.at(destIndices);
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
