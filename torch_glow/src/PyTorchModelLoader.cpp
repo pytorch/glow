@@ -6759,6 +6759,7 @@ PyTorchModelLoader::PyTorchModelLoader(
       c10::ScalarType inputScalarType;
       glow::Placeholder *ph;
       if (!metaStack.inputMetas.empty()) {
+        glow::Type t;
         if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
           inputScalarType = metaStack.inputMetas[i].type;
           // TODO: Change Glow Type to use sdim_t to be consistent
@@ -6769,28 +6770,25 @@ PyTorchModelLoader::PyTorchModelLoader(
           }
 
           if (!c10::isQIntType(metaStack.inputMetas[i].type)) {
-            glow::Type t(scalarTypeToElemKind(metaStack.inputMetas[i].type),
-                         dims);
-            ph = F_.getParent()->createPlaceholder(&t, "input",
-                                                   /*isTrainable*/ false);
+            t = glow::Type(scalarTypeToElemKind(metaStack.inputMetas[i].type),
+                           dims);
           } else if (metaStack.inputMetas[i].type == at::kQUInt8) {
-            glow::Type t(ElemKind::Int8QTy, dims, metaStack.inputMetas[i].scale,
-                         metaStack.inputMetas[i].offset - UINT8_TO_INT8_SHIFT);
-            ph = F_.getParent()->createPlaceholder(&t, "input",
-                                                   /*isTrainable*/ false);
+            t = glow::Type(
+                ElemKind::Int8QTy, dims, metaStack.inputMetas[i].scale,
+                metaStack.inputMetas[i].offset - UINT8_TO_INT8_SHIFT);
           } else {
-            glow::Type t(scalarTypeToElemKind(metaStack.inputMetas[i].type),
-                         dims, metaStack.inputMetas[i].scale,
-                         metaStack.inputMetas[i].offset);
-            ph = F_.getParent()->createPlaceholder(&t, "input",
-                                                   /*isTrainable*/ false);
+            t = glow::Type(scalarTypeToElemKind(metaStack.inputMetas[i].type),
+                           dims, metaStack.inputMetas[i].scale,
+                           metaStack.inputMetas[i].offset);
           }
         } else {
           // Here we assume it's scalar type
-          glow::Type t(typeKindToElemKind(inputValue->type()->kind()), {});
-          ph = F_.getParent()->createPlaceholder(&t, "input", false);
+          t = glow::Type(typeKindToElemKind(inputValue->type()->kind()), {});
           inputScalarType = elemKindToScalarType(t.getElementType());
         }
+        ph =
+            F_.getParent()->createPlaceholder(&t, strFormat("input_%d", int(i)),
+                                              /*isTrainable*/ false);
         RETURN_IF_ERR(
             addValueMapping(inputValue, ph->getOutput(), inputScalarType));
         inputPlaceholders.push_back(ph);
@@ -6811,11 +6809,13 @@ PyTorchModelLoader::PyTorchModelLoader(
             auto newType = glow::Type(
                 ElemKind::Int8QTy, oldType.dims(), oldType.getScale(),
                 oldType.getOffset() - UINT8_TO_INT8_SHIFT);
-            ph = F_.getParent()->createPlaceholder(&newType, "input",
-                                                   /*isTrainable*/ false);
+            ph = F_.getParent()->createPlaceholder(
+                &newType, strFormat("input_%d", int(i)),
+                /*isTrainable*/ false);
           } else {
-            ph = F_.getParent()->createPlaceholder(&t->getType(), "input",
-                                                   /*isTrainable*/ false);
+            ph = F_.getParent()->createPlaceholder(
+                &t->getType(), strFormat("input_%d", int(i)),
+                /*isTrainable*/ false);
           }
           inputScalarType = inputIValue.toTensor().scalar_type();
           RETURN_IF_ERR(
@@ -6833,12 +6833,15 @@ PyTorchModelLoader::PyTorchModelLoader(
     RETURN_IF_ERR(loadNodes(graph));
 
     // Create Glow Placeholders for outputs.
-    for (const torch::jit::Value *output : graph.outputs()) {
+    const auto graphOutputs = graph.outputs();
+    for (size_t i = 0; i < graphOutputs.size(); ++i) {
+      const torch::jit::Value *output = graphOutputs[i];
       glow::NodeValue outputNodeValue;
       // Only allow tensor outputs from Glow subgraph.
       ASSIGN_VALUE_OR_RETURN_ERR(outputNodeValue,
                                  getGlowNodeValueForValue(output));
-      auto *save = F_.createSave("save", outputNodeValue);
+      auto *save =
+          F_.createSave(strFormat("output_%d", int(i)), outputNodeValue);
       outputPlaceholders.push_back(save->getPlaceholder());
 
       c10::ScalarType outputScalarType;

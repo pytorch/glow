@@ -596,6 +596,11 @@ int run() {
   cctx.saturateHost = glow::flags::SaturateHost;
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
+  // Whether to collect results and check accuracy. If we're not checking
+  // accuracy then don't load reference outputs
+  bool runAccuracyChecks =
+      !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
+
   // Parse all input and output files ahead of inference.
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedInputs;
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedOutputs;
@@ -605,32 +610,41 @@ int run() {
       llvm::outs() << "Loading input file: " << inputsOpt[i] << "\n";
       auto inputGroup = parseOnnxFile(inputsOpt[i]);
       parsedInputs.push_back(std::move(inputGroup));
-      llvm::outs() << "Loading output file: " << outputsOpt[i] << "\n";
-      auto outputGroup = parseOnnxFile(outputsOpt[i]);
-      parsedOutputs.push_back(std::move(outputGroup));
+      if (runAccuracyChecks) {
+        llvm::outs() << "Loading output file: " << outputsOpt[i] << "\n";
+        auto outputGroup = parseOnnxFile(outputsOpt[i]);
+        parsedOutputs.push_back(std::move(outputGroup));
+      }
     }
-  } else if (!inputPatternOpt.empty() && !outputPatternOpt.empty() &&
-             seqLenOpt > 0) {
+  } else if (!inputPatternOpt.empty() && seqLenOpt > 0) {
     inputGroupSize = seqLenOpt;
     size_t input_iter = inputPatternOpt.find("{}");
     CHECK_NE(input_iter, std::string::npos)
         << "Input pattern " << inputPatternOpt << " has to contain {}";
-    size_t output_iter = outputPatternOpt.find("{}");
-    CHECK_NE(output_iter, std::string::npos)
-        << "Output pattern " << outputPatternOpt << " has to contain {}";
     for (unsigned i = 0; i < seqLenOpt; ++i) {
       std::string copy = inputPatternOpt;
       copy.replace(input_iter, 2, std::to_string(seqStartOpt + i));
       llvm::outs() << "Loading input file: " << copy << "\n";
       auto inputGroup = parseOnnxFile(copy);
       parsedInputs.push_back(std::move(inputGroup));
-      copy = outputPatternOpt;
-      copy.replace(output_iter, 2, std::to_string(seqStartOpt + i));
-      llvm::outs() << "Loading output file: " << copy << "\n";
-      auto outputGroup = parseOnnxFile(copy);
-      parsedOutputs.push_back(std::move(outputGroup));
+    }
+
+    if (runAccuracyChecks) {
+      CHECK(!outputPatternOpt.empty())
+          << "Output pattern must be provided for accuracy checks";
+      size_t output_iter = outputPatternOpt.find("{}");
+      CHECK_NE(output_iter, std::string::npos)
+          << "Output pattern " << outputPatternOpt << " has to contain {}";
+      for (unsigned i = 0; i < seqLenOpt; ++i) {
+        std::string copy = outputPatternOpt;
+        copy.replace(output_iter, 2, std::to_string(seqStartOpt + i));
+        llvm::outs() << "Loading output file: " << copy << "\n";
+        auto outputGroup = parseOnnxFile(copy);
+        parsedOutputs.push_back(std::move(outputGroup));
+      }
     }
   }
+
   llvm::outs() << "\ninput pattern: " + inputPatternOpt + "\n";
   llvm::outs() << "\nseqlen: " + std::to_string(seqLenOpt) + "\n";
   llvm::outs() << "\ninputgroupsize: " + std::to_string(inputGroupSize) + "\n";
@@ -676,10 +690,6 @@ int run() {
           usingGlowCustomOps);
       inputBindings.emplace_back(std::move(bindings));
     }
-
-    // Whether to collect results and check accuracy
-    bool runAccuracyChecks =
-        !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
 
     if (glow::flags::DumpDebugTraces && glowEnableDeviceTrace) {
       // Start device traces.
@@ -787,7 +797,6 @@ int run() {
         }
         ++numFailed;
       } else {
-        const auto &outputGroup = parsedOutputs[result.index];
         ONNX_NAMESPACE::GraphProto outputG;
         std::ofstream of;
         if (dumpOutputsOpt) {
@@ -798,6 +807,7 @@ int run() {
         }
 
         if (runAccuracyChecks) {
+          const auto &outputGroup = parsedOutputs[result.index];
           CHECK(result.ctx);
           const auto &bindings = *result.ctx->getPlaceholderBindings();
           for (const auto &tp : outputGroup.initializer()) {

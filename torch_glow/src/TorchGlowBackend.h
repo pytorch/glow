@@ -53,6 +53,9 @@ private:
   std::unordered_map<int64_t, std::pair<std::unique_ptr<CachingGraphRunner>,
                                         std::unique_ptr<JITGraphRunner>>>
       handleToRunnerMap_;
+
+  // Number of runs that have failed, used for dumping io files on failures.
+  std::atomic<size_t> failedRunNum_{0};
 };
 
 /// Registers TorchGlowBackend, related custom classes and helper JIT IR ops.

@@ -86,6 +86,7 @@ DEFINE_string(backendSpecificOpts, "",
 DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
             "See PyTorchLoaderSettings");
 DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
+DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -275,6 +276,7 @@ void PyTorchLoaderSettings::initSettings() {
   replicationCount = FLAGS_replicationCount;
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
+  dumpFailedInputsToOnnxFiles = FLAGS_dumpFailedInputsToOnnxFiles;
   writeOnnxToTmp = FLAGS_writeOnnxToTmp;
   randomizeConstants = FLAGS_randomizeConstants;
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
@@ -350,6 +352,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(setIncludeLastOffsets, s);
   INSERT_BOOL_TO_STREAM(enableDebugFuser, s);
   INSERT_BOOL_TO_STREAM(debugContinuouslyVerifyDuringModelLoading, s);
+  INSERT_BOOL_TO_STREAM(dumpFailedInputsToOnnxFiles, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
