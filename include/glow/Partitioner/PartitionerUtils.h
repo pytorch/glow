@@ -66,16 +66,20 @@ void logPartitionInfo(const NodeToFunctionMap &partitions);
 
 /// Print numBytesInTable, deviceID, cost and cost/numBytesInTable.
 /// Print item from [start to end), with start inclusively and end
-/// exclusively.
+/// exclusively. If verbose_only is true, we use VLOG(1), otherwise we use
+/// LOG(INFO).
 void printSlsTableInfo(std::vector<SLSTableInfo>::iterator start,
-                       std::vector<SLSTableInfo>::iterator end);
-void printSlsTableInfo(std::vector<SLSTableInfo> &slsTables);
+                       std::vector<SLSTableInfo>::iterator end,
+                       bool verbose_only = true);
+void printSlsTableInfo(std::vector<SLSTableInfo> &slsTables,
+                       bool verbose_only = true);
 
 /// Print deviceId, used_memory, free_memory, cost, node_size, cost/used_memory.
-/// Used memeory is calculated using \p nodesets and \p contextCount.
+/// Used memeory is calculated using \p nodesets and \p contextCount. If
+/// verbose_only is true, we use VLOG(1), otherwise we use LOG(INFO).
 void printSlsDeviceInfo(const std::vector<SLSDeviceInfo> &slsDevices,
                         const std::vector<NodesSet> &nodesets,
-                        const unsigned contextCount);
+                        const unsigned contextCount, bool verbose_only);
 
 /// Loop through slsDevices, assign \p table to first available \p slsDevices
 /// that can fit \p table.
