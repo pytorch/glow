@@ -2591,6 +2591,22 @@ VectorNormNode *Function::createVectorNorm(llvm::StringRef name,
   return addNode(new VectorNormNode(name, OT, input, axis, p));
 }
 
+CollectRpnProposalsNode *Function::createCollectRpnProposals(
+    llvm::StringRef name, std::vector<NodeValue> &roisIn,
+    std::vector<NodeValue> &roiProbsIn, int64_t rpnMaxLevel,
+    int64_t rpnMinLevel, unsigned_t rpnPostNmsTopN) {
+
+  auto boxDim = roisIn[0].dims()[1];
+
+  assert(rpnPostNmsTopN > 0 && "RpnPostNmsTopN should be greater than zero");
+
+  ShapeVector outDims{rpnPostNmsTopN, boxDim};
+
+  auto OT = getParent()->uniqueTypeWithNewShape(roisIn[0].getType(), outDims);
+  return addNode(new CollectRpnProposalsNode(
+      name, OT, roisIn, roiProbsIn, rpnMaxLevel, rpnMinLevel, rpnPostNmsTopN));
+}
+
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
                                    NodeValue indices, unsigned_t batchDims) {
   auto dDims = data.dims();
