@@ -672,6 +672,35 @@ TEST_F(OnnxImporterTest, importUniBroadcastMultiOutput) {
   (void)onnxLD;
 }
 
+/// Test Onnx QuantizeLinear and DequantizeLinear together.
+TEST_F(OnnxImporterTest, quantizeLinearDequantizeLinear) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string fileName = "QuantizeLinearDequantizeLinear.onnxtxt";
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  std::vector<dim_t> inputShape{6};
+  Type input_type(ElemKind::FloatTy, inputShape);
+  std::string inputName = "x";
+  ONNXModelLoader onnxLD(NetFilename, {inputName.c_str()}, {&input_type}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto *PH = mod.getPlaceholderByNameSlow(inputName);
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  // Compile&run the graph, and check the output
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  auto inHandle = inTensor->getHandle();
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), inHandle.raw(i), 1e-05);
+  }
+}
+
 /// Test loading of Elementwise Unary Ops floating point.
 static void testEltwiseUnaryOpFloat(std::string fileName,
                                     llvm::ArrayRef<dim_t> inputShape,
