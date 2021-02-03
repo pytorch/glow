@@ -1,0 +1,19 @@
+name: "rmsnorm"
+op {
+  input: "x"
+  input: "gamma"
+  input: "beta"
+  output: "y"
+  output: "rrms"
+  name: ""
+  type: "RMSNorm"
+  arg {
+    name: "eps"
+    f: 1
+  }
+}
+external_input: "x"
+external_input: "gamma"
+external_input: "beta"
+external_output: "y"
+external_output: "rrms"
