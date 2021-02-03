@@ -23,6 +23,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -668,7 +669,7 @@ int run() {
     // Figure out which placeholder is input.
     std::unordered_set<std::string> inputTensorNames;
     for (const auto &proto : parsedInputs[0].initializer()) {
-      inputTensorNames.insert(proto.name());
+      inputTensorNames.insert(glow::legalizeName(proto.name()));
     }
 
     glow::PlaceholderList inputPlaceholderList;
