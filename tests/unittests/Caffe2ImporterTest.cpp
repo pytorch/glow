@@ -4506,3 +4506,74 @@ TEST_F(Caffe2ImporterTest, reduceBackSum) {
     }
   }
 }
+
+TEST_F(Caffe2ImporterTest, rmsNorm) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/rmsnorm.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *y;
+  Placeholder *rrms;
+
+  const std::vector<dim_t> xShape{3, 4};
+  const std::vector<dim_t> gammaShape{4};
+  const std::vector<dim_t> betaShape{4};
+
+  Tensor x{ElemKind::FloatTy, xShape};
+  Tensor gamma{ElemKind::FloatTy, gammaShape};
+  Tensor beta{ElemKind::FloatTy, betaShape};
+
+  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  gamma.getHandle() = {1, 2, 3, 4};
+  beta.getHandle() = {1, 2, 3, 4};
+
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"x", "gamma", "beta"},
+        {&x.getType(), &gamma.getType(), &beta.getType()}, *F);
+    y = EXIT_ON_ERR(caffe2LD.getOutputByName("y"));
+    rrms = EXIT_ON_ERR(caffe2LD.getOutputByName("rrms"));
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"x", "gamma", "beta"},
+                                  {&x, &gamma, &beta});
+  }
+
+  EXPECT_NE(y, nullptr);
+  EXPECT_NE(rrms, nullptr);
+
+  auto yRes = bindings.get(y);
+  auto rrmsRes = bindings.get(rrms);
+
+  const std::vector<dim_t> yShapeExpected{xShape};
+  const std::vector<dim_t> rrmsShapeExpected{xShape[0]};
+
+  EXPECT_EQ(yShapeExpected, yRes->dims().vec());
+  EXPECT_EQ(rrmsShapeExpected, rrmsRes->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto yHandle = yRes->getHandle();
+
+  // Results are based on Caffe2 implementation
+  const std::vector<std::vector<float>> yExpected{
+      {1.3429972, 3.3719888, 6.0869746, 9.487955},
+      {1.7495317, 3.798876, 6.148033, 8.797003},
+      {1.8485281, 3.8856182, 6.11127, 8.525484},
+  };
+
+  for (dim_t d1 = 0; d1 < xShape[0]; ++d1) {
+    for (dim_t d2 = 0; d2 < xShape[1]; ++d2) {
+      EXPECT_NEAR(yExpected[d1][d2], yHandle.at({d1, d2}), 1e-5);
+    }
+  }
+}
