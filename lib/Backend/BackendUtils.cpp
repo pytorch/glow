@@ -449,6 +449,11 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
     }
   }
 
+  // Return early if nothing to allocate.
+  if (allocList.empty()) {
+    return;
+  }
+
   // Allocate all segments at once for better allocation efficiency.
   // We use a separate allocator object since the function "allocateAll()"
   // does not work together with the function "allocate()" which could have
