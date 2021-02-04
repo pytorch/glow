@@ -1429,6 +1429,76 @@ TEST_P(OperatorTest, FP16RoiAlignBatchIndexInBoxesTensor) {
                                                  ElemKind::Float16Ty, 1E-2);
 }
 
+template <typename DataType>
+static void randRois(dim_t N, dim_t H, dim_t W, dim_t count,
+                     Handle<DataType> &boxes, Module &mod) {
+  boxes.randomize(static_cast<DataType>(0),
+                  static_cast<DataType>(std::min(H, W)), mod.getPRNG());
+
+  // enforce format [batch_idx, x1, y1, x2, y2] where x2 >= x1 and y2 >= y1
+  for (dim_t n = 0; n < count; ++n) {
+    boxes.at({n, 0}) = 0;
+    if (boxes.at({n, 1}) > boxes.at({n, 3})) {
+      std::swap(boxes.at({n, 1}), boxes.at({n, 3}));
+    }
+    if (boxes.at({n, 2}) > boxes.at({n, 4})) {
+      std::swap(boxes.at({n, 2}), boxes.at({n, 4}));
+    }
+  }
+}
+
+TEST_P(OperatorStatelessTest,
+       FP16RoiAlignBatchIndexInBoxesTensorCompareToInterpreter) {
+  CHECK_IF_ENABLED();
+
+  compareAgainstInterpreter(
+      getBackendName(),
+      [](PlaceholderBindings &bindings, ExecutionEngine &EE) {
+        Module &mod = EE.getModule();
+        Function *F = mod.createFunction("main");
+        dim_t H = 50;
+        dim_t W = 50;
+        dim_t N = 1;
+        dim_t C = 2;
+        dim_t pooled_H = 6;
+        dim_t pooled_W = 6;
+        float samplingRatio = 2;
+        float spatialScale = 0.0625;
+
+        llvm::SmallVector<dim_t, 4> featureMapDims = {N, H, W, C};
+        auto *featureMapT = mod.createPlaceholder(
+            ElemKind::FloatTy, featureMapDims, "featureMap", false);
+        bindings.allocate(featureMapT)
+            ->getHandle()
+            .randomize(0.0f, 1.0f, mod.getPRNG());
+
+        dim_t count = 4;
+        llvm::SmallVector<dim_t, 2> boxesDims = {count, 5};
+        auto *boxesT =
+            mod.createPlaceholder(ElemKind::FloatTy, boxesDims, "boxes",
+                                  /*trainable*/ false);
+        Handle<float> boxesH = bindings.allocate(boxesT)->getHandle<float>();
+        randRois<float>(N, H / spatialScale, W / spatialScale, count, boxesH,
+                        mod);
+
+        llvm::SmallVector<dim_t, 1> batchIndicesDims = {1};
+        llvm::SmallVector<int64_t, 1> batchIndices = {1};
+        auto *batchIndicesT = mod.createPlaceholder(
+            ElemKind::Int64ITy, batchIndicesDims, "batch_indices", false);
+        bindings.allocate(batchIndicesT)->getHandle<int64_t>() = batchIndices;
+
+        auto *R = F->createROIAlign(
+            "roi_align", featureMapT, boxesT, batchIndicesT, pooled_H, pooled_W,
+            samplingRatio, spatialScale, /*aligned*/ true, /*rotated*/ false,
+            PoolingMode::AVG);
+
+        SaveNode *save = F->createSave("save", R);
+        Tensor *saveTensor = bindings.allocate(save->getPlaceholder());
+        return std::make_pair(F, saveTensor);
+      },
+      ElemKind::FloatTy, ElemKind::Float16Ty, 5E-2);
+}
+
 /// RoiAlign test, for batch_index given in caffe2 format, with batch_size==4
 template <typename DataType>
 static void roiAlignC2BatchedTest(PlaceholderBindings &bindings, Module &mod,
@@ -3496,7 +3566,8 @@ TEST_P(OperatorTest, batchedReduceAdd_5Dinput) {
 template <typename DataType>
 static void testVectorNorm(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
-                           glow::ExecutionEngine &EE, ElemKind elemKind) {
+                           glow::ExecutionEngine &EE, ElemKind elemKind,
+                           float maxRefDiff = 0.0000f) {
   auto *input = mod.createPlaceholder(elemKind, {2, 3}, "norm", false);
   bindings.allocate(input)->getHandle<DataType>() = {1, 2, 3, -1, 1, 4};
 
@@ -3508,30 +3579,34 @@ static void testVectorNorm(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(elemKind, {3});
-  expected.getHandle<DataType>() = {1.4142, 2.2361, 5.0000};
-  EXPECT_TRUE(result->isEqual(expected));
+  auto resData = result->getHandle<DataType>();
+
+  EXPECT_NEAR(resData.at({0}), 1.4142, maxRefDiff);
+  EXPECT_NEAR(resData.at({1}), 2.2361, maxRefDiff);
+  EXPECT_NEAR(resData.at({2}), 5.0000, maxRefDiff);
 }
 
 /// Test that VectorNorm is correctly supported in FloatTy.
 TEST_P(OperatorTest, VectorNorm_Float) {
   CHECK_IF_ENABLED();
 
-  testVectorNorm<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+  testVectorNorm<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 4E-5);
 }
 
 /// Test that VectorNorm is correctly supported in Float16Ty.
 TEST_P(OperatorTest, VectorNorm_Float16Ty) {
   CHECK_IF_ENABLED();
 
-  testVectorNorm<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testVectorNorm<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                            5E-3);
 }
 
 /// Test that VectorNorm is correctly supported in BFloat16Ty.
 TEST_P(OperatorTest, VectorNorm_BFloat16) {
   CHECK_IF_ENABLED();
 
-  testVectorNorm<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+  testVectorNorm<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                             2E-3);
 }
 
 /// Test that BatchedReduceAdd works correctly reducing an internal axis.
@@ -14185,18 +14260,15 @@ static void testEmbedding(glow::PlaceholderBindings &bindings,
   // If hasEndOffset then add some additional junk to the end of indices and
   // weights and an extra offset to offsets.
 
-  auto *weights = mod.createPlaceholder(DTy, {3, 2}, "weights", false);
-  auto *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {3}, "indices", false);
+  auto *weights = mod.createConstant(DTy, {3, 2}, "weights");
+  auto *indices = mod.createConstant(ElemKind::Int64ITy, {3}, "indices");
   bool scale = false;
   bool sparse = false;
-
   int64_t indexValues[] = {1, 0, 2};
 
-  bindings.allocate(weights)->getHandle<DataType>() = {2.0, -0.5, 4,
-                                                       5.1, 1,    2.3};
-
-  bindings.allocate(indices)->getHandle<int64_t>() = indexValues;
+  weights->getPayloadMutable().getHandle<DataType>() = {2.0, -0.5, 4,
+                                                        5.1, 1,    2.3};
+  indices->getPayloadMutable().getHandle<int64_t>() = indexValues;
 
   auto *R =
       F->createEmbedding("Embedding", weights, indices, padIdx, scale, sparse);

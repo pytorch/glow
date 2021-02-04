@@ -1408,42 +1408,10 @@ public:
 class EmbeddingNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
-    auto *glowEmbedding = llvm::dyn_cast<EmbeddingNode>(n);
-    LOG_AND_RETURN_IF_NOT(ERROR, glowEmbedding, "Bad node type",
-                          NNPI_INVALID_PARAM);
+    LOG(ERROR) << "All EmbeddingNode should be lowered to GatherNode, please "
+                  "check if importing EmbeddingNode is desired behavior.";
 
-    auto wtDim = glowEmbedding->getWeights().getType()->dims().size();
-    LOG_AND_RETURN_IF_NOT(ERROR, wtDim == 2,
-                          "[Embedding] weight dimensions must be 2",
-                          NNPI_INVALID_PARAM);
-    int64_t padIdx = glowEmbedding->getPadIdx();
-
-    LOG_AND_RETURN_IF_NOT(ERROR, padIdx == -1,
-                          "[Embedding] real padIdx not supported",
-                          NNPI_INVALID_PARAM);
-
-    bool scale = glowEmbedding->getScale();
-    LOG_AND_RETURN_IF_NOT(ERROR, !scale, "[Embedding] scale must be false",
-                          NNPI_INVALID_PARAM);
-
-    bool sparse = glowEmbedding->getSparse();
-    LOG_AND_RETURN_IF_NOT(ERROR, !sparse, "[Embedding] sparse must be false",
-                          NNPI_INVALID_PARAM);
-
-    importer.setUsedTensors(
-        {
-            nodeValueName(glowEmbedding->getWeights()),
-            nodeValueName(glowEmbedding->getIndices()),
-        },
-        {nodeValueName(glowEmbedding->getResult())});
-
-    auto res = nnpiNetworkAddGatherOp(
-        importer.getNetwork(), glowEmbedding->getName().begin(),
-        nodeValueName(glowEmbedding->getWeights()).c_str(),
-        nodeValueName(glowEmbedding->getIndices()).c_str(),
-        nodeValueName(glowEmbedding->getResult()).c_str(), 0);
-
-    return res;
+    return NNPI_IMPORTER_ERROR;
   }
 };
 

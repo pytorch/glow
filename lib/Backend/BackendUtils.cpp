@@ -30,132 +30,12 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-namespace {
-/// Allocate space for the activations of \p instrs using \p allocator and store
-/// the resultant symbols in \p symbolTable.
-void allocateActivations(const glow::IRFunction::InstListTy &instrs,
-                         MemoryAllocator &allocator,
-                         glow::runtime::SymbolTableTy &symbolTable) {
+static llvm::cl::OptionCategory BackendUtilsCat("Glow Backend Utils Options");
 
-  // Get allocation/deallocation sequence.
-  std::list<Allocation> allocList;
-  for (const auto &I : instrs) {
-    if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
-      auto numBytes = I.getSizeInBytes();
-      allocList.emplace_back(A, /* alloc */ true, numBytes);
-      continue;
-    }
-    if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
-      auto *A = D->getAlloc();
-      allocList.emplace_back(A, /* alloc */ false, 0);
-      continue;
-    }
-  }
-
-  // Allocate all segments at once for better allocation efficiency.
-  allocator.allocateAll(allocList);
-
-  // Map addresses of allocated segments.
-  for (const auto &I : instrs) {
-    if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
-      auto numBytes = I.getSizeInBytes();
-      size_t addr = allocator.getAddress(A);
-      assert(!symbolTable.count(std::string(A->getName())) &&
-             "Allocation already made!");
-      runtime::RuntimeSymbolInfo symbol;
-      symbol.offset = addr;
-      symbol.size = numBytes;
-      symbol.type = *A->getType();
-      symbol.input = false;
-      symbol.output = false;
-      symbol.symbolCategory = glow::runtime::SymbolCategory::Activation;
-      symbolTable.emplace(std::string(A->getName()), symbol);
-      DEBUG_GLOW(LOG(INFO) << strFormat(
-                     "Assigned address to activation %s: %zx (%zd bytes)\n",
-                     A->getName().data(), symbol.offset, symbol.size));
-      continue;
-    }
-
-    if (auto *TV = dyn_cast<TensorViewInst>(&I)) {
-      // Calculate and store the length of the offset into the base, using the
-      // source of the tensorview.
-      assert(!symbolTable.count(std::string(TV->getName())) &&
-             "Allocation already made!");
-      auto *tvSource = getOrigin(TV);
-      assert(symbolTable.count(std::string(tvSource->getName())) &&
-             "Source allocation not found!");
-      runtime::RuntimeSymbolInfo symbol;
-      size_t originAddr = symbolTable[std::string(tvSource->getName())].offset;
-      size_t offset = calculateTensorViewOffset(TV);
-
-      symbol.offset = originAddr + offset;
-      symbol.size = TV->getSizeInBytes();
-      symbol.type = *TV->getType();
-      symbol.input = false;
-      symbol.output = false;
-      auto parentCategory =
-          symbolTable.find(tvSource->getName().str())->second.symbolCategory;
-      if (parentCategory == glow::runtime::SymbolCategory::Placeholder) {
-        symbol.symbolCategory =
-            glow::runtime::SymbolCategory::PlaceholderTensorView;
-      } else {
-        symbol.symbolCategory =
-            glow::runtime::SymbolCategory::ConstantTensorView;
-      }
-      symbolTable.emplace(std::string(TV->getName()), symbol);
-      DEBUG_GLOW(LOG(INFO) << strFormat(
-                     "Assigned address to activation %s: %zx (%zd bytes)\n",
-                     TV->getName().data(), symbol.offset, symbol.size));
-      continue;
-    }
-
-    if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
-      assert(symbolTable.count(std::string(D->getAlloc()->getName())) &&
-             "Invalid deallocation!");
-      continue;
-    }
-  }
-}
-
-/// Allocate space for the Constants in \p constants using \p allocator and
-/// store the resultant symbols in \p symbolTable.
-void allocateConstants(const glow::ConstList &constants,
-                       MemoryAllocator &allocator,
-                       glow::runtime::SymbolTableTy &symbolTable) {
-  for (auto const *V : constants) {
-    auto size = V->getType()->getSizeInBytes();
-    auto offset = allocator.allocate(size, V);
-    runtime::RuntimeSymbolInfo symbol;
-    symbol.offset = offset;
-    symbol.size = size;
-    symbol.type = *V->getType();
-    symbol.input = false;
-    symbol.output = false;
-    symbol.symbolCategory = glow::runtime::SymbolCategory::Constant;
-    symbolTable.emplace(V->getName(), symbol);
-  }
-}
-
-/// Allocate space for the Placeholders in \p placeholders using \p allocator
-/// and store the resultant symbols in \p symbolTable.
-void allocatePlaceholders(const ContiguousPlaceholders &placeholders,
-                          MemoryAllocator &allocator,
-                          glow::runtime::SymbolTableTy &symbolTable) {
-  for (const auto &p : placeholders) {
-    auto &V = p.addr;
-    auto size = V->getType()->getSizeInBytes();
-    auto offset = allocator.allocate(size, V);
-    runtime::RuntimeSymbolInfo symbol;
-    symbol.offset = offset;
-    symbol.size = size;
-    symbol.type = *V->getType();
-    symbol.output = p.isOutput;
-    symbol.input = p.isInput;
-    symbol.symbolCategory = glow::runtime::SymbolCategory::Placeholder;
-    symbolTable.emplace(V->getName(), symbol);
-  }
-}
-} // namespace
+static llvm::cl::opt<bool> reuseActivationsMemory(
+    "reuse-activation-memory-allocations",
+    llvm::cl::desc("Should activation memory allocations be reused"),
+    llvm::cl::init(true), llvm::cl::cat(BackendUtilsCat));
 
 glow::runtime::RuntimeBundle::RuntimeBundle(
     glow::runtime::RuntimeBundle &&rhs) {
@@ -484,6 +364,140 @@ bool usedInFunction(const Placeholder *V, const Function *F) {
   return false;
 }
 
+/// Allocate space for the Constants in \p constants using \p allocator and
+/// store the resultant symbols in \p symbolTable.
+template <typename ConstantsTy>
+static void allocateConstantsImpl(const ConstantsTy &constants,
+                                  MemoryAllocator &allocator,
+                                  glow::runtime::SymbolTableTy &symbolTable) {
+  for (auto const *C : constants) {
+    // Same constant may be used multiple times by different functions. But it
+    // should be assigned an address only once.
+    if (symbolTable.count(std::string(C->getName()))) {
+      continue;
+    }
+    auto size = C->getType()->getSizeInBytes();
+    auto offset = allocator.allocate(size, C);
+    runtime::RuntimeSymbolInfo symbol;
+    symbol.offset = offset;
+    symbol.size = size;
+    symbol.type = *C->getType();
+    symbol.input = false;
+    symbol.output = false;
+    symbol.symbolCategory = glow::runtime::SymbolCategory::Constant;
+    symbolTable.emplace(C->getName(), symbol);
+    DEBUG_GLOW(LOG(INFO) << strFormat(
+                   "Assigned address to constant %s: %zx (%zd bytes)\n",
+                   C->getName().data(), symbol.offset, symbol.size));
+  }
+}
+
+void allocateConstants(const ConstList &constants, MemoryAllocator &allocator,
+                       glow::runtime::SymbolTableTy &symbolTable) {
+  allocateConstantsImpl(constants, allocator, symbolTable);
+}
+
+void allocateConstants(const std::vector<const glow::Constant *> &constants,
+                       MemoryAllocator &allocator,
+                       glow::runtime::SymbolTableTy &symbolTable) {
+  allocateConstantsImpl(constants, allocator, symbolTable);
+}
+
+/// Allocate space for the Placeholders in \p placeholders using \p allocator
+/// and store the resultant symbols in \p symbolTable.
+void allocatePlaceholders(const ContiguousPlaceholders &placeholders,
+                          MemoryAllocator &allocator,
+                          glow::runtime::SymbolTableTy &symbolTable) {
+  for (const auto &p : placeholders) {
+    auto &V = p.addr;
+    assert(!symbolTable.count(std::string(V->getName())) &&
+           "Allocation already made!");
+    auto size = V->getType()->getSizeInBytes();
+    auto offset = allocator.allocate(size, V);
+    runtime::RuntimeSymbolInfo symbol;
+    symbol.offset = offset;
+    symbol.size = size;
+    symbol.type = *V->getType();
+    symbol.output = p.isOutput;
+    symbol.input = p.isInput;
+    symbol.symbolCategory = glow::runtime::SymbolCategory::Placeholder;
+    symbolTable.emplace(std::string(V->getName()), symbol);
+    DEBUG_GLOW(LOG(INFO) << strFormat(
+                   "Assigned address to mutable weight %s: %zx (%zd bytes)\n",
+                   V->getName().data(), symbol.offset, symbol.size));
+  }
+}
+
+/// Allocate space for the activations of \p instrs using \p allocator and store
+/// the resultant symbols in \p symbolTable.
+void allocateActivations(const glow::IRFunction::InstListTy &instrs,
+                         MemoryAllocator &allocator,
+                         glow::runtime::SymbolTableTy &symbolTable) {
+  for (const auto &I : instrs) {
+    if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
+      auto numBytes = I.getSizeInBytes();
+      size_t addr = allocator.allocate(numBytes, A);
+      assert(!symbolTable.count(std::string(A->getName())) &&
+             "Allocation already made!");
+      runtime::RuntimeSymbolInfo symbol;
+      symbol.offset = addr;
+      symbol.size = numBytes;
+      symbol.type = *A->getType();
+      symbol.input = false;
+      symbol.output = false;
+      symbol.symbolCategory = glow::runtime::SymbolCategory::Activation;
+      symbolTable.emplace(std::string(A->getName()), symbol);
+      DEBUG_GLOW(LOG(INFO) << strFormat(
+                     "Assigned address to activation %s: %zx (%zd bytes)\n",
+                     A->getName().data(), symbol.offset, symbol.size));
+      continue;
+    }
+
+    if (auto *TV = dyn_cast<TensorViewInst>(&I)) {
+      // Calculate and store the length of the offset into the base, using the
+      // source of the tensorview.
+      assert(!symbolTable.count(std::string(TV->getName())) &&
+             "Allocation already made!");
+      auto *tvSource = getOrigin(TV);
+      assert(symbolTable.count(std::string(tvSource->getName())) &&
+             "Source allocation not found!");
+      runtime::RuntimeSymbolInfo symbol;
+      size_t originAddr = symbolTable[std::string(tvSource->getName())].offset;
+      size_t offset = calculateTensorViewOffset(TV);
+
+      symbol.offset = originAddr + offset;
+      symbol.size = TV->getSizeInBytes();
+      symbol.type = *TV->getType();
+      symbol.input = false;
+      symbol.output = false;
+      auto parentCategory = symbolTable.find(std::string(tvSource->getName()))
+                                ->second.symbolCategory;
+      if (parentCategory == glow::runtime::SymbolCategory::Placeholder) {
+        symbol.symbolCategory =
+            glow::runtime::SymbolCategory::PlaceholderTensorView;
+      } else {
+        symbol.symbolCategory =
+            glow::runtime::SymbolCategory::ConstantTensorView;
+      }
+      symbolTable.emplace(std::string(TV->getName()), symbol);
+      DEBUG_GLOW(LOG(INFO) << strFormat(
+                     "Assigned address to activation %s: %zx (%zd bytes)\n",
+                     TV->getName().data(), symbol.offset, symbol.size));
+      continue;
+    }
+
+    if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
+      auto *A = D->getAlloc();
+      assert(symbolTable.count(std::string(A->getName())) &&
+             "Invalid deallocation!");
+      if (reuseActivationsMemory) {
+        allocator.deallocate(A);
+      }
+      continue;
+    }
+  }
+}
+
 } // namespace glow
 
 runtime::RuntimeBundle
@@ -560,50 +574,16 @@ runtime::RuntimeBundle::create(const IRFunction &F,
   // Handle Constants, Placeholders, and Activations, in that order.
   // Symbol table mapping symbol name to offset for runtime.
   std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
-  // Compute the offsets for Constants.
-  for (auto &v : F.findConstants()) {
-    assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
-    auto *w = cast<WeightVar>(F.getWeightForNode(v));
-    auto numBytes = w->getSizeInBytes();
-    size_t addr = constantAllocator.allocate(numBytes, v);
-    runtime::RuntimeSymbolInfo symbol;
-    symbol.size = numBytes;
-    symbol.offset = addr;
-    symbol.type = *w->getType();
-    symbol.input = false;
-    symbol.output = false;
-    symbol.symbolCategory = SymbolCategory::Constant;
-    symbolTable.emplace(std::string(v->getName()), symbol);
-    DEBUG_GLOW(LOG(INFO) << strFormat(
-                   "Assigned address to constant %s: %zx (%zd bytes)\n",
-                   v->getName().data(), symbol.offset, symbol.size));
-  }
+
+  allocateConstants(F.findConstants(), constantAllocator, symbolTable);
   auto constantMaxSize = constantAllocator.getMaxMemoryUsage();
 
   // Placeholders should be allocated in a order of Input|InputOutput|Output.
   auto contiguousPlaceholders =
       getContiguousPlaceHolder(F.findPlaceholders(), F);
-
   // Compute the offsets for Placeholders.
-  for (auto it = contiguousPlaceholders.begin();
-       it != contiguousPlaceholders.end(); it++) {
-    auto &v = it->addr;
-    assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
-    auto *w = cast<WeightVar>(F.getWeightForNode(v));
-    auto numBytes = w->getSizeInBytes();
-    size_t addr = placeholderAllocator.allocate(numBytes, w);
-    runtime::RuntimeSymbolInfo symbol;
-    symbol.offset = addr;
-    symbol.size = numBytes;
-    symbol.type = *w->getType();
-    symbol.output = it->isOutput;
-    symbol.input = it->isInput;
-    symbol.symbolCategory = SymbolCategory::Placeholder;
-    symbolTable.emplace(std::string(v->getName()), symbol);
-    DEBUG_GLOW(LOG(INFO) << strFormat(
-                   "Assigned address to mutable weight %s: %zx (%zd bytes)\n",
-                   w->getName().data(), symbol.offset, symbol.size));
-  }
+  allocatePlaceholders(contiguousPlaceholders, placeholderAllocator,
+                       symbolTable);
   auto placeholderMaxSize = placeholderAllocator.getMaxMemoryUsage();
   if (contiguous) {
     placeholderMaxSize -= constantMaxSize;

@@ -86,6 +86,7 @@ DEFINE_string(backendSpecificOpts, "",
 DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
             "See PyTorchLoaderSettings");
 DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
+DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -107,14 +108,14 @@ PyTorchLoaderSettings &getPyTorchLoaderSettingsInternalOnly() {
 } // namespace
 
 std::shared_ptr<runtime::HostManager>
-getHostManager(const std::string &backendName, int32_t numDevices) {
+getHostManager(const PyTorchLoaderSettings &settings) {
   static std::mutex m_;
   std::unique_lock<std::mutex> lock(m_);
   static std::unordered_map<std::string, std::weak_ptr<runtime::HostManager>>
       map_;
 
   std::shared_ptr<runtime::HostManager> hostManager;
-  auto it = map_.find(backendName);
+  auto it = map_.find(settings.backendName);
   if (it != map_.end()) {
     hostManager = it->second.lock();
   }
@@ -122,20 +123,20 @@ getHostManager(const std::string &backendName, int32_t numDevices) {
   // If HostManager was found, check that it's valid, otherwise create a new
   // HostManager
   if (hostManager) {
-    if (numDevices != -1) {
-      CHECK_EQ(hostManager->numDevices(), numDevices)
-          << "Tried to create a new HostManager for backend \"" << backendName
+    if (settings.numDevices != -1) {
+      CHECK_EQ(hostManager->numDevices(), settings.numDevices)
+          << "Tried to create a new HostManager for backend \""
+          << settings.backendName
           << "\" but there is already an existing HostManager in use for that "
              "Backend but with a different number of devices";
     }
   } else {
     // If number of devices isn't specified then just use 1 device.
-    if (numDevices < 0) {
-      numDevices = 1;
-    }
     std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
-    for (int i = 0; i < numDevices; i++) {
-      auto config = std::make_unique<runtime::DeviceConfig>(backendName);
+    for (int32_t i = 0, e = settings.numDevices < 0 ? 1 : settings.numDevices;
+         i < e; i++) {
+      auto config =
+          std::make_unique<runtime::DeviceConfig>(settings.backendName);
       config->deviceID = i;
       deviceConfigs.push_back(std::move(config));
     }
@@ -146,8 +147,16 @@ getHostManager(const std::string &backendName, int32_t numDevices) {
     hostManager = std::make_shared<runtime::HostManager>(
         std::move(deviceConfigs), hostConfig);
 
-    map_[backendName] = hostManager;
+    map_[settings.backendName] = hostManager;
   }
+
+  // Update the available devices list if necessary
+  if (!settings.availableDevices.empty()) {
+    std::vector<size_t> availableDevices(settings.availableDevices.begin(),
+                                         settings.availableDevices.end());
+    hostManager->setAvailableDevices(availableDevices);
+  }
+
   return hostManager;
 }
 
@@ -267,6 +276,7 @@ void PyTorchLoaderSettings::initSettings() {
   replicationCount = FLAGS_replicationCount;
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
+  dumpFailedInputsToOnnxFiles = FLAGS_dumpFailedInputsToOnnxFiles;
   writeOnnxToTmp = FLAGS_writeOnnxToTmp;
   randomizeConstants = FLAGS_randomizeConstants;
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
@@ -342,6 +352,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(setIncludeLastOffsets, s);
   INSERT_BOOL_TO_STREAM(enableDebugFuser, s);
   INSERT_BOOL_TO_STREAM(debugContinuouslyVerifyDuringModelLoading, s);
+  INSERT_BOOL_TO_STREAM(dumpFailedInputsToOnnxFiles, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
@@ -572,9 +583,8 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
       auto runner = glow::setGraphRunnerForKey(
           kind + std::to_string(idx), [subgraph, settings] {
             return std::make_unique<glow::CachingGraphRunner>(
-                subgraph,
-                getHostManager(settings.backendName, settings.numDevices),
-                settings, /*useRunOnly*/ true);
+                subgraph, getHostManager(settings), settings,
+                /*useRunOnly*/ true);
           });
 
       InputMetaStack metaStackForCompilation;
@@ -646,8 +656,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
   auto runner =
       glow::setGraphRunnerForKey(symbol.toQualString(), [subgraph, settings] {
         return std::make_unique<glow::CachingGraphRunner>(
-            subgraph, getHostManager(settings.backendName, settings.numDevices),
-            settings, /*useRunOnly*/ true);
+            subgraph, getHostManager(settings), settings, /*useRunOnly*/ true);
       });
 
   auto e = runner->warmCache(metaStack, settings, loader,

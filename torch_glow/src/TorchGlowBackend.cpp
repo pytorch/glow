@@ -155,7 +155,6 @@ Error checkForFatalError(Error err) {
   }
   LOG(FATAL) << "Non-recoverable device error: " << msg;
 }
-
 } // namespace
 
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
@@ -692,11 +691,8 @@ compileImpl(const torch::jit::Module &origModule,
       // Create a corresponding runner and store {handle, runner} pair.
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
-              graph,
-              glow::getHostManager(baseSettings.backendName,
-                                   baseSettings.numDevices),
-              baseSettings, /*useRunOnly*/ true, origGraph,
-              origModule._ivalue());
+              graph, glow::getHostManager(baseSettings), baseSettings,
+              /*useRunOnly*/ true, origGraph, origModule._ivalue());
 
       // Compile each compilation group
       for (const auto &compilationGroup : spec.compilation_groups) {
@@ -762,22 +758,33 @@ TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
   const auto &runnerPair = it->second;
 
   torch::jit::Stack stack;
-
-  Error err = glow::ErrorEmpty();
   if (runnerPair.first) {
     for (const auto &i : inputs) {
       torch::jit::push(stack, i);
     }
-    err = it->second.first->run(stack);
-  } else if (runnerPair.second) {
-    stack = it->second.second->onExecute(inputs);
-  } else {
-    throw std::runtime_error("Could not any type of runner for handle");
-  }
 
-  if (err) {
-    err = checkForFatalError(std::move(err));
-    throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+    auto err = runnerPair.first->run(stack);
+
+    if (err) {
+      const auto failedRunNumLocal = int(failedRunNum_++);
+      // Rebuild input stack
+      torch::jit::Stack rebuiltStack;
+      for (const auto &i : inputs) {
+        torch::jit::push(rebuiltStack, i);
+      }
+      // Dump JIT inputs and outputs to file, log and throw away any errors
+      ERR_TO_VOID(runnerPair.first->writeJitIOToOnnxFile(
+          strFormat("failed_inputs_%d", failedRunNumLocal),
+          strFormat("failed_outputs_%d", failedRunNumLocal), rebuiltStack));
+
+      err = checkForFatalError(std::move(err));
+      throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+    }
+
+  } else if (runnerPair.second) {
+    stack = runnerPair.second->onExecute(inputs);
+  } else {
+    throw std::runtime_error("Could not find any type of runner for handle");
   }
 
   c10::List<at::Tensor> outputList;

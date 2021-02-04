@@ -531,6 +531,8 @@ struct BlacklistInitializer {
       {"ConvertFrom_Int64ITy_To_FloatTy/0", TestBlacklist::AnyDeviceHWEngine},
       {"FP16RoiAlignBatchIndexInBoxesTensor/0",
        TestBlacklist::AnyDeviceAnyEngine},
+      {"FP16RoiAlignBatchIndexInBoxesTensorCompareToInterpreter/0",
+       TestBlacklist::AnyDeviceAnyEngine},
       {"FP16RoiAlignWithAlignedCoordinates/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Float16/0", TestBlacklist::AnyDeviceAnyEngine},

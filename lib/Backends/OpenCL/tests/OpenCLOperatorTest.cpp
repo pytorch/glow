@@ -605,6 +605,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FP16RoiAlign/0",
     "FP16RoiAlignWithAlignedCoordinates/0",
     "FP16RoiAlignBatchIndexInBoxesTensor/0",
+    "FP16RoiAlignBatchIndexInBoxesTensorCompareToInterpreter/0",
     "FP16RoiAlignC2Batched/0",
     "FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
     "Asin_FloatTy/0",
