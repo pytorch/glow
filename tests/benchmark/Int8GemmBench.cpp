@@ -94,7 +94,8 @@ public:
 
       bindings_.allocate(weights)->getHandle<int8_t>().randomize(
           -128, 127, mod->getPRNG());
-      bindings_.allocate(bias)->getHandle<int32_t>().clear(2);
+      bindings_.allocate(bias)->getHandle<int32_t>().randomize(-128, 127,
+                                                               mod->getPRNG());
 
       Node *fc;
       fc = fn->createFullyConnected("fc_" + std::to_string(layer), cur, weights,
