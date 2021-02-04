@@ -4062,45 +4062,47 @@ void BoundInterpreterFunction::fwdBatchedAddInst(
                             I->getBatch()->getElementType(), I);
 }
 
-template <typename ElemTy>
-void BoundInterpreterFunction::fwdBatchedReduceAddInstImpl(
-    Value *batch, Value *dest, unsigned_t axis, const ShapeVector &eBatchDims,
-    const ShapeVector &eDestDims) {
-  static_assert(
-      std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t,
-                       typename std::remove_cv<ElemTy>::type>::value ||
-          std::is_same<bfloat16_t,
-                       typename std::remove_cv<ElemTy>::type>::value ||
-          std::is_same<int, typename std::remove_cv<ElemTy>::type>::value,
-      "This implementation is for floating-point and int32 values only");
-
-  // Get unowned handles of the batch and dest with these new expanded dims.
-  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
-  auto eDest = getTensor(dest)->getUnowned(eDestDims);
-  auto eBatchH = eBatch.getHandle<ElemTy>();
-  auto eDestH = eDest.getHandle<ElemTy>();
-  eDestH.clear();
-
-  // We can use this loop for all shapes. Use the same indices for both the
-  // batch and dest, except for setting the axis index in the dest to 0.
-  for (dim_t x = 0; x < eBatchDims[0]; x++) {
-    for (dim_t y = 0; y < eBatchDims[1]; y++) {
-      for (dim_t z = 0; z < eBatchDims[2]; z++) {
-        for (dim_t w = 0; w < eBatchDims[3]; w++) {
-          for (dim_t q = 0; q < eBatchDims[4]; q++) {
-            for (dim_t r = 0; r < eBatchDims[5]; r++) {
-              dim_t destIndices[] = {x, y, z, w, q, r};
-              destIndices[axis] = 0;
-              eDestH.at(destIndices) =
-                  eDestH.at(destIndices) + eBatchH.at({x, y, z, w, q, r});
-            }
-          }
-        }
-      }
-    }
+// Macro to define the ReduceAdd/Prod kernel implementation.
+#define DEFINE_REDUCEADDPROD_INST_IMPL(func, init, op, inst)                   \
+  template <typename ElemTy>                                                   \
+  void BoundInterpreterFunction::fwdBatched##func##inst(                       \
+      Value *batch, Value *dest, unsigned_t axis,                              \
+      const ShapeVector &eBatchDims, const ShapeVector &eDestDims) {           \
+    /*Get unowned handles of the batch and dest with these new expanded        \
+     * dims.*/                                                                 \
+    auto eBatch = getTensor(batch)->getUnowned(eBatchDims);                    \
+    auto eDest = getTensor(dest)->getUnowned(eDestDims);                       \
+    auto eBatchH = eBatch.getHandle<ElemTy>();                                 \
+    auto eDestH = eDest.getHandle<ElemTy>();                                   \
+    eDestH.clear(init);                                                        \
+                                                                               \
+    /* We can use this loop for all shapes. Use the same indices for both the  \
+     * batch and dest, except for setting the axis index in the dest to 0.*/   \
+    for (dim_t x = 0; x < eBatchDims[0]; x++) {                                \
+      for (dim_t y = 0; y < eBatchDims[1]; y++) {                              \
+        for (dim_t z = 0; z < eBatchDims[2]; z++) {                            \
+          for (dim_t w = 0; w < eBatchDims[3]; w++) {                          \
+            for (dim_t q = 0; q < eBatchDims[4]; q++) {                        \
+              for (dim_t r = 0; r < eBatchDims[5]; r++) {                      \
+                dim_t destIndices[] = {x, y, z, w, q, r};                      \
+                destIndices[axis] = 0;                                         \
+                eDestH.at(destIndices) =                                       \
+                    eDestH.at(destIndices) op eBatchH.at({x, y, z, w, q, r});  \
+              }                                                                \
+            }                                                                  \
+          }                                                                    \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
   }
-}
+
+/// Define fwdBatchedReduceAddInstImpl
+DEFINE_REDUCEADDPROD_INST_IMPL(ReduceAdd, 0, +, InstImpl)
+
+/// Define fwdBatchedReduceAddInstImpl
+DEFINE_REDUCEADDPROD_INST_IMPL(ReduceProd, 1, *, InstFloatImpl)
+
+#undef DEFINE_REDUCEADDPROD_INST_IMPL
 
 void BoundInterpreterFunction::fwdBatchedReduceAddInst(
     const glow::BatchedReduceAddInst *I) {
@@ -4178,6 +4180,32 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
   dispatchFloatingPointAndInt32Impl(fwdBatchedReduceAddInstImpl,
                                     batch->getElementType(), batch, dest, axis,
                                     eBatchDims, eDestDims);
+}
+
+void BoundInterpreterFunction::fwdBatchedReduceProdInst(
+    const glow::BatchedReduceProdInst *I) {
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
+
+  auto *batch = I->getBatch();
+  auto *dest = I->getDest();
+  const auto axis = I->getAxis();
+
+  // Initialize both expanded batch and dest dims to the expanded batch
+  // dims. This allows us below to iterate over the tensor regardless of its
+  // shape using max_tensor_dimensions loops below.
+  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+  ShapeVector eDestDims = eBatchDims;
+
+  // Set the destination axis dimension (the one we are reducing) to 1.
+  eDestDims[axis] = 1;
+
+  assert(!batch->getType()->isQuantizedType() &&
+         "Quantized implementation for ReduceProd not supported yet.");
+
+  dispatchArithmeticImpl(fwdBatchedReduceProdInstFloatImpl,
+                         batch->getElementType(), batch, dest, axis, eBatchDims,
+                         eDestDims);
 }
 
 /// Macro to define ReduceMin/Max kernel implementation.

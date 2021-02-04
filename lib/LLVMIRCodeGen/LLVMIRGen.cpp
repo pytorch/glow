@@ -2078,6 +2078,35 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::BatchedReduceProdInstKind: {
+    auto *BR = cast<BatchedReduceProdInst>(I);
+    auto *dest = BR->getDest();
+    auto *batch = BR->getBatch();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *batchPtr = emitValueAddress(builder, batch);
+    auto *axis = emitConstDimT(builder, BR->getAxis());
+
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+    ShapeVector eDestDims = eBatchDims;
+    eDestDims[BR->getAxis()] = 1;
+
+    auto *batchDims =
+        emitConstDimTArray(builder, llvm::makeArrayRef(eBatchDims));
+    auto *destDims = emitConstDimTArray(builder, llvm::makeArrayRef(eDestDims));
+
+    auto *F = getFunction("batchedreduceprod", dest->getElementType());
+
+    assert(!batch->getType()->isQuantizedType() &&
+           "Quantized implementation for ReduceProd not supported yet.");
+
+    auto *destSize = emitConstDimT(builder, dest->size());
+
+    createCall(builder, F,
+               {destPtr, batchPtr, destSize, destDims, batchDims, axis});
+
+    break;
+  }
+
 #define BATCHED_REDUCE_MINMAX_CASE(INST_NAME_, FUN_NAME_)                      \
   case Kinded::Kind::Batched##INST_NAME_##InstKind: {                          \
     auto *BR = cast<Batched##INST_NAME_##Inst>(I);                             \

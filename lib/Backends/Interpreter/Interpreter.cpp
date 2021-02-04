@@ -80,6 +80,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedReduceMaxNodeKind:
+  case Kinded::Kind::BatchedReduceProdNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
