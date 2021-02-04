@@ -34,7 +34,7 @@ static llvm::cl::OptionCategory BackendUtilsCat("Glow Backend Utils Options");
 
 static llvm::cl::opt<bool> reuseActivationsMemory(
     "reuse-activation-memory-allocations",
-    llvm::cl::desc("Should activation memory allocations be reused"),
+    llvm::cl::desc("Reuse activations memory between different IR functions"),
     llvm::cl::init(true), llvm::cl::cat(BackendUtilsCat));
 
 glow::runtime::RuntimeBundle::RuntimeBundle(
@@ -453,18 +453,22 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
   // We use a separate allocator object since the function "allocateAll()"
   // does not work together with the function "allocate()" which could have
   // been used with the original allocator.
-  MemoryAllocator tempAllocator("allocator", 0, allocator.getAlignment());
-  uint64_t activationsSize = tempAllocator.allocateAll(allocList);
+  MemoryAllocator activationsAllocator("mem", 0, allocator.getAlignment());
+  uint64_t activationsSize = activationsAllocator.allocateAll(allocList);
 
-  // Increase the memory usage of the original allocator.
-  uint64_t baseAddr = allocator.getMaxMemoryUsage();
-  allocator.addMemoryUsage(activationsSize);
+  // Allocate a contiguous segment for the activations of the current function.
+  // The individual buffers within this segment are placed according to the
+  // logic of allocateAll for better efficiency.
+  uint64_t activationsBaseAddr = allocator.allocate(activationsSize, nullptr);
+  if (reuseActivationsMemory) {
+    allocator.deallocate(nullptr);
+  }
 
   // Map addresses of allocated segments.
   for (const auto &I : instrs) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      size_t addr = baseAddr + tempAllocator.getAddress(A);
+      size_t addr = activationsBaseAddr + activationsAllocator.getAddress(A);
       assert(!symbolTable.count(std::string(A->getName())) &&
              "Allocation already made!");
       runtime::RuntimeSymbolInfo symbol;

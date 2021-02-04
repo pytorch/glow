@@ -50,25 +50,6 @@ float MemoryAllocator::getAllocationEfficiency() const {
   }
 };
 
-uint64_t MemoryAllocator::addMemoryUsage(uint64_t size) {
-  uint64_t alignedSize = getEffectiveSize(size);
-  if (memorySize_) {
-    if ((maxUsedSize_ + alignedSize) <= memorySize_) {
-      maxUsedSize_ += alignedSize;
-      liveSize_ += alignedSize;
-      maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
-      return maxUsedSize_;
-    } else {
-      return MemoryAllocator::npos;
-    }
-  } else {
-    maxUsedSize_ += alignedSize;
-    liveSize_ += alignedSize;
-    maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
-    return maxUsedSize_;
-  }
-}
-
 uint64_t MemoryAllocator::getEffectiveSize(uint64_t size) const {
   return alignedSize(size, alignment_);
 }

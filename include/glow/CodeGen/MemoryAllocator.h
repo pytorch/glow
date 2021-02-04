@@ -193,12 +193,6 @@ public:
   /// \returns the name of the memory region.
   const std::string &getName() const { return name_; }
 
-  /// Function to virtually increase the memory usage of the allocator with
-  /// \p size (in bytes). \returns the new memory usage or MemoryAllocator::npos
-  /// if the new memory usage exceeds the memory size. The given \p size when
-  /// used internally is rounded up to nearest multiple of the alignment.
-  uint64_t addMemoryUsage(uint64_t size);
-
 private:
   /// The name of the memory region.
   std::string name_;
