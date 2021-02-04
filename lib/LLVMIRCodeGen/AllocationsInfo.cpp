@@ -104,8 +104,7 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   // Maps activations and views to some offset within the heap.
   llvm::DenseMap<const Value *, uint64_t> activationAddr;
 
-  // Get allocation/deallocation sequence.
-  std::list<Allocation> allocList;
+  // Assign device-space addresses to the activations.
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       assert(symbolTable_.find(std::string(A->getName())) !=
