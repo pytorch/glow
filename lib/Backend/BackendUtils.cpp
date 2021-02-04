@@ -449,11 +449,6 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
     }
   }
 
-  // Return early if nothing to allocate.
-  if (allocList.empty()) {
-    return;
-  }
-
   // Allocate all segments at once for better allocation efficiency.
   // We use a separate allocator object since the function "allocateAll()"
   // does not work together with the function "allocate()" which could have
@@ -464,11 +459,14 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
   // Allocate a contiguous segment for the activations of the current function.
   // The individual buffers within this segment are placed according to the
   // logic of allocateAll for better efficiency.
-  MemoryAllocator::Handle activationsHandle = &instrs;
-  uint64_t activationsBaseAddr =
-      allocator.allocate(activationsSize, activationsHandle);
-  if (reuseActivationsMemory) {
-    allocator.deallocate(activationsHandle);
+  uint64_t activationsBaseAddr = 0;
+  if (activationsSize) {
+    MemoryAllocator::Handle activationsHandle = &instrs;
+    activationsBaseAddr =
+        allocator.allocate(activationsSize, activationsHandle);
+    if (reuseActivationsMemory) {
+      allocator.deallocate(activationsHandle);
+    }
   }
 
   // Map addresses of allocated segments.
