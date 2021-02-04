@@ -459,9 +459,11 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
   // Allocate a contiguous segment for the activations of the current function.
   // The individual buffers within this segment are placed according to the
   // logic of allocateAll for better efficiency.
-  uint64_t activationsBaseAddr = allocator.allocate(activationsSize, nullptr);
+  MemoryAllocator::Handle activationsHandle = &instrs;
+  uint64_t activationsBaseAddr = allocator.allocate(activationsSize,
+                                                    activationsHandle);
   if (reuseActivationsMemory) {
-    allocator.deallocate(nullptr);
+    allocator.deallocate(activationsHandle);
   }
 
   // Map addresses of allocated segments.
