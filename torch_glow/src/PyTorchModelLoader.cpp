@@ -1034,6 +1034,15 @@ struct CompareInputs {
   };
 };
 
+/// Indexes of aten::cumsum inputs.
+struct CumSumInputs {
+  enum {
+    input = 0,
+    dim = 1,
+    dtype = 2,
+  };
+};
+
 } // namespace
 
 // static
@@ -1196,6 +1205,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::clamp_min"}, &PyTorchModelLoader::loadClampMin},
       {{"aten::expand_as"}, &PyTorchModelLoader::loadExpandAs},
       {{"glow::nnckernel"}, &PyTorchModelLoader::loadNNCKernel},
+      {{"aten::cumsum"}, &PyTorchModelLoader::loadCumSum},
   });
 
   // Add in custom operator loaders.
@@ -6289,6 +6299,50 @@ Error PyTorchModelLoader::loadNNCKernel(const torch::jit::Node *ptNode) {
       F_.createExternalFunctionCall("external_function_call", outTy, glowInputs,
                                     kernelName, kernelSrc, "BLOCK");
   return addValueMapping(outputs[0], glowNode);
+}
+
+Error PyTorchModelLoader::loadCumSum(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      in, getGlowNodeValueForValue(inputs[CumSumInputs::input]));
+
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[CumSumInputs::dim])));
+
+  // TODO do we need to support cumsum (axis/dim) on dimensions greater than
+  // zero
+  RETURN_ERR_IF_NOT(
+      dim == 0,
+      glow::strFormat("cumsum is only supported on dimension 0 (requested %ld",
+                      dim));
+
+  // TODO support needs to be added F_.createCumSum to support more than 1D,
+  auto nDims = in.dims().size();
+  RETURN_ERR_IF_NOT(
+      nDims <= 1,
+      glow::strFormat(
+          "cumsum is currently only supported for 1D (requested %ld)", nDims));
+
+  // Convert to supplied dtype is specified
+  GlowIValue *dtypeIVal = nullptr;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dtypeIVal, getGlowIValueForValue(inputs[CumSumInputs::dtype]));
+  // Default value for dtype is None
+  if (dtypeIVal->getTag() != GlowIValue::Tag::None) {
+    int32_t dtype;
+    ASSIGN_VALUE_OR_RETURN_ERR(dtype, iValToInt(dtypeIVal));
+    const auto glowElemKind =
+        scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+    in = F_.createConvertTo("cast", in, glowElemKind)->getResult();
+  }
+
+  RETURN_ERR(
+      addValueMapping(outputs[0], F_.createCumSum("cumsum", in)->getResult()));
 }
 
 Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
