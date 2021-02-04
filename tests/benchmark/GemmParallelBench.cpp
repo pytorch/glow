@@ -102,8 +102,12 @@ public:
             dtype, {k, n}, "weights" + std::to_string(core), false);
         bias[core] = mod->createPlaceholder(
             dtype, {n}, "bias" + std::to_string(core), false);
-        bindings_.allocate(weights[core])->getHandle<float16_t>().clear(0);
-        bindings_.allocate(bias[core])->getHandle<float16_t>().clear(32);
+        bindings_.allocate(weights[core])
+            ->getHandle<float16_t>()
+            .randomize(-128.f, 128.f, mod->getPRNG());
+        bindings_.allocate(bias[core])
+            ->getHandle<float16_t>()
+            .randomize(-128.f, 128.f, mod->getPRNG());
         fc[core] = fn->createFullyConnected(
             "fc" + std::to_string(core) + "_" + std::to_string(layer),
             cur[core], weights[core], bias[core]);
