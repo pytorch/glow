@@ -169,7 +169,8 @@ public:
 
   void run() override {
     dispatchInference("singleNode", hostManager_.get(), context_,
-                      param_.numAsyncLaunches_);
+                      param_.numAsyncLaunches_,
+                      /*useNewExecutionContext*/ true);
   }
 
   void teardown() override {}
