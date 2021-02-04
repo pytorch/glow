@@ -457,10 +457,10 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
   uint64_t activationsSize = tempAllocator.allocateAll(allocList);
 
   // Increase the memory usage of the original allocator.
+  uint64_t baseAddr = allocator.getMaxMemoryUsage();
   allocator.addMemoryUsage(activationsSize);
 
   // Map addresses of allocated segments.
-  uint64_t baseAddr = allocator.getMaxMemoryUsage();
   for (const auto &I : instrs) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
