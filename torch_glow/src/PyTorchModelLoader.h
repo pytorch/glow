@@ -780,6 +780,10 @@ private:
   /// \returns error on failure.
   Error loadNumToTensor(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::shape_as_tensor node.
+  /// \returns error on failure.
+  Error loadShapeAsTensor(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);

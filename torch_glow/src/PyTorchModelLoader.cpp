@@ -1046,6 +1046,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::detach"}, &PyTorchModelLoader::loadDetach},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
+      {{"aten::_shape_as_tensor"}, &PyTorchModelLoader::loadShapeAsTensor},
       {{"aten::Int"}, &PyTorchModelLoader::loadInt},
       {{"aten::arange"}, &PyTorchModelLoader::loadArange},
       {{"aten::zeros"}, &PyTorchModelLoader::loadZeros},
@@ -3170,6 +3171,29 @@ Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
   auto output =
       F_.getParent()->createConstant("NumToTensor_output", std::move(t));
   RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadShapeAsTensor(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto dims = input.getType()->dims();
+  std::vector<dim_t> outputValues{dims.begin(), dims.end()};
+
+  auto type =
+      F_.getParent()->uniqueType(glow::ElemKind::Int64ITy, outputValues.size());
+
+  auto outputTensor = glow::Tensor(outputValues.data(), type);
+
+  auto output = F_.getParent()->createConstant("ShapeAsTensor_output",
+                                               std::move(outputTensor));
+
+  output->ensureIsOwned(); // Prevents heap use after free
+  RETURN_ERR(addValueMapping(ptNode->output(), output));
 }
 
 Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
