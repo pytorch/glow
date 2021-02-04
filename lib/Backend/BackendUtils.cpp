@@ -465,8 +465,8 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
   // The individual buffers within this segment are placed according to the
   // logic of allocateAll for better efficiency.
   MemoryAllocator::Handle activationsHandle = &instrs;
-  uint64_t activationsBaseAddr = allocator.allocate(activationsSize,
-                                                    activationsHandle);
+  uint64_t activationsBaseAddr =
+      allocator.allocate(activationsSize, activationsHandle);
   if (reuseActivationsMemory) {
     allocator.deallocate(activationsHandle);
   }
