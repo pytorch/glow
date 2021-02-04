@@ -433,10 +433,38 @@ void allocatePlaceholders(const ContiguousPlaceholders &placeholders,
 void allocateActivations(const glow::IRFunction::InstListTy &instrs,
                          MemoryAllocator &allocator,
                          glow::runtime::SymbolTableTy &symbolTable) {
+
+  // Gather allocation/deallocation sequence.
+  std::list<Allocation> allocList;
   for (const auto &I : instrs) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      size_t addr = allocator.allocate(numBytes, A);
+      allocList.emplace_back(A, /* alloc */ true, numBytes);
+      continue;
+    }
+    if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
+      auto *A = D->getAlloc();
+      allocList.emplace_back(A, /* alloc */ false, 0);
+      continue;
+    }
+  }
+
+  // Allocate all segments at once for better allocation efficiency.
+  // We use a separate allocator object since the function "allocateAll()"
+  // does not work together with the function "allocate()" which could have
+  // been used with the original allocator.
+  MemoryAllocator tempAllocator("allocator", 0, allocator.getAlignment());
+  uint64_t activationsSize = tempAllocator.allocateAll(allocList);
+
+  // Increase the memory usage of the original allocator.
+  allocator.addMemoryUsage(activationsSize);
+
+  // Map addresses of allocated segments.
+  uint64_t baseAddr = allocator.getMaxMemoryUsage();
+  for (const auto &I : instrs) {
+    if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
+      auto numBytes = I.getSizeInBytes();
+      size_t addr = baseAddr + tempAllocator.getAddress(A);
       assert(!symbolTable.count(std::string(A->getName())) &&
              "Allocation already made!");
       runtime::RuntimeSymbolInfo symbol;
@@ -487,13 +515,8 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
     }
 
     if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
-      auto *A = D->getAlloc();
-      assert(symbolTable.count(std::string(A->getName())) &&
+      assert(symbolTable.count(std::string(D->getAlloc()->getName())) &&
              "Invalid deallocation!");
-      if (reuseActivationsMemory) {
-        allocator.deallocate(A);
-      }
-      continue;
     }
   }
 }

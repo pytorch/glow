@@ -50,6 +50,25 @@ float MemoryAllocator::getAllocationEfficiency() const {
   }
 };
 
+uint64_t MemoryAllocator::addMemoryUsage(uint64_t size) {
+  uint64_t alignedSize = getEffectiveSize(size);
+  if (memorySize_) {
+    if ((maxUsedSize_ + alignedSize) <= memorySize_) {
+      maxUsedSize_ += alignedSize;
+      liveSize_ += alignedSize;
+      maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
+      return maxUsedSize_;
+    } else {
+      return MemoryAllocator::npos;
+    }
+  } else {
+    maxUsedSize_ += alignedSize;
+    liveSize_ += alignedSize;
+    maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
+    return maxUsedSize_;
+  }
+}
+
 uint64_t MemoryAllocator::getEffectiveSize(uint64_t size) const {
   return alignedSize(size, alignment_);
 }
@@ -256,6 +275,7 @@ bool MemoryAllocator::verifySegments(
     const std::list<Allocation> &allocList) const {
   // Segments handles should match allocation handles.
   // Segments sizes should match allocation sizes (with alignment).
+  // Segments begin addresses must be aligned.
   // Segments end addresses must not surpass the memory size.
   for (const auto &alloc : allocList) {
     if (!alloc.alloc_) {
@@ -267,6 +287,9 @@ bool MemoryAllocator::verifySegments(
     }
     Segment seg = it->second;
     if (seg.size() != getEffectiveSize(alloc.size_)) {
+      return false;
+    }
+    if (seg.begin_ % alignment_) {
       return false;
     }
     if (memorySize_ && seg.end_ > memorySize_) {

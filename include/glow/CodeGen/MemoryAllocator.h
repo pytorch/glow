@@ -145,6 +145,8 @@ public:
   /// Upon function return information about the allocated segments can be
   /// retrieved with \ref getSegment(). \returns the total memory usage or
   /// MemoryAllocator::npos if the allocation failed.
+  /// NOTE: Do not use the functions allocateAll() and allocate() for the same
+  /// allocator object since these functions are not compatible with each other.
   uint64_t allocateAll(const std::list<Allocation> &allocList,
                        bool reuseMemory = true);
 
@@ -190,6 +192,12 @@ public:
 
   /// \returns the name of the memory region.
   const std::string &getName() const { return name_; }
+
+  /// Function to virtually increase the memory usage of the allocator with
+  /// \p size (in bytes). \returns the new memory usage or MemoryAllocator::npos
+  /// if the new memory usage exceeds the memory size. The given \p size when
+  /// used internally is rounded up to nearest multiple of the alignment.
+  uint64_t addMemoryUsage(uint64_t size);
 
 private:
   /// The name of the memory region.
