@@ -64,7 +64,7 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
       maxUsedSize_ = std::max(maxUsedSize_, prev + segmentSize);
       liveSize_ += segmentSize;
       maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
-      setHandle(prev, segmentSize, handle);
+      setHandle(prev, size, handle);
       return prev;
     }
     prev = it->end_;
@@ -81,7 +81,7 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
   maxUsedSize_ = std::max(maxUsedSize_, prev + segmentSize);
   liveSize_ += segmentSize;
   maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
-  setHandle(prev, segmentSize, handle);
+  setHandle(prev, size, handle);
   return prev;
 }
 
