@@ -1,3 +1,21 @@
+################################################################################
+# This file describes a sequence of activation memory allocation/deallocation
+# instructions for multiple models. This file is used to test the function
+# "allocateAll()" from the MemoryAllocator object. This file was generated
+# automatically using a Matlab script which parses the Glow IR obtained during
+# Glow compilation with the option -dump-ir for all the models. This text file
+# has a <key, value(s)> format with the following convention:
+#   NAME              - Model name (used as delimiter between models).
+#   ALIGN <ALIGNMENT> - Alignment (in bytes) used for memory allocator.
+#   ALLOC <ID> <SIZE> - Instruction to allocate a buffer with identifier <ID>
+#                       and size <SIZE>. Each buffer must have a unique ID.
+#   FREE <ID>         - Instruction to free a previously allocated buffer with
+#                       identifier <ID>. For a given model every buffer which
+#                       is allocated must be later freed.
+#   MEM <SIZE>        - Expected memory usage for the alloc/free sequence.
+#   EFF <RATIO>       - Expected efficiency of the allocation
+# You can define manually additional unit tests following the given convention.
+################################################################################
 MODEL cifar10_quant.tflite
 ALIGN 64
 ALLOC 1 32768

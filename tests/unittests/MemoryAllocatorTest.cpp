@@ -586,6 +586,10 @@ TEST(MemAlloc, testAllocateAllForModels) {
   assert(fs.is_open() && "Error opening file!");
   std::string line;
   while (std::getline(fs, line)) {
+    // Skip comments.
+    if (line.front() == '#') {
+      continue;
+    }
     // Read model parameters.
     std::stringstream ss(line);
     std::string key;

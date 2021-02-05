@@ -183,7 +183,7 @@ bool MemoryAllocator::hasAddress(Handle handle) const {
   return it != handleToSegmentMap_.end();
 }
 
-Segment MemoryAllocator::getSegment(Handle handle) const {
+const Segment &MemoryAllocator::getSegment(Handle handle) const {
   auto it = handleToSegmentMap_.find(handle);
   assert(it != handleToSegmentMap_.end() && "Unknown handle");
   return it->second;
@@ -289,8 +289,8 @@ bool MemoryAllocator::verifySegments(
       for (const auto &liveHandle : liveHandleList) {
         auto liveIt = handleToSegmentMap_.find(liveHandle);
         Segment liveSeg = liveIt->second;
-        bool segOverlap = intervalsOverlap(seg.begin, seg.end, liveSeg.begin,
-                                           liveSeg.end);
+        bool segOverlap =
+            intervalsOverlap(seg.begin, seg.end, liveSeg.begin, liveSeg.end);
         if (segOverlap) {
           return false;
         }
@@ -446,8 +446,12 @@ static std::vector<MemAllocStrategy> memAllocStrategies = {
     MaxLiveSizeMaxBuffSize, MaxLiveSizeMaxBuffTime, SameOrder};
 
 /// Utility function to allocate all the segments at once using the given
-/// \p strategy. All the other parameters represent context information provided
-/// by the function \ref allocateAll about the buffer sizes and live intervals.
+/// \p strategy and the memory size \p memorySize. The buffer information
+/// is incapsulated in the array \p buffInfoArray and the buffer liveness
+/// information before the allocation is incapsulated in the input array
+/// \p liveInfoArrayInit. At the end of the allocation the segments are
+/// written in \p idSegMap which is a map between the allocation handles
+/// and the associated segments.
 static uint64_t allocateAllWithStrategy(
     uint64_t memorySize, const std::vector<BuffInfo> &buffInfoArray,
     const std::vector<LiveInfo> &liveInfoArrayInit,

@@ -159,7 +159,7 @@ public:
   bool hasHandle(uint64_t ptr) const;
 
   /// \returns the segment currently associated with the \p handle.
-  Segment getSegment(Handle handle) const;
+  const Segment &getSegment(Handle handle) const;
 
   /// \returns the address currently associated with the \p handle.
   uint64_t getAddress(Handle handle) const;
@@ -245,13 +245,14 @@ private:
   /// Associates a \p handle with an allocated address \p ptr and size \p size.
   void setHandle(uint64_t ptr, uint64_t size, Handle handle);
 
-  /// Function to verify the allocations before allocating the segments with
-  /// \ref allocateAll. \returns true if allocations are valid and false
-  /// otherwise.
+  /// Function to verify the list of allocations \p allocList before allocating
+  /// the segments with \ref allocateAll. \returns true if allocations are valid
+  /// and false otherwise.
   bool verifyAllocations(const std::list<Allocation> &allocList) const;
 
-  /// Function to verify the segments allocated with \ref allocateAll.
-  /// \returns true if segments are valid and false otherwise.
+  /// Function to verify the segments allocated with \ref allocateAll after
+  /// using the allocation list \p allocList. \returns true if segments are
+  /// valid and false otherwise.
   bool verifySegments(const std::list<Allocation> &allocList) const;
 
   /// Utility function to map the handles used in the allocations \p allocList
