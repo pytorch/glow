@@ -255,7 +255,7 @@ bool MemoryAllocator::verifyAllocations(
 bool MemoryAllocator::verifySegments(
     const std::list<Allocation> &allocList) const {
   // Segments handles should match allocation handles.
-  // Segments sizes should match allocation sizes (with alignment).
+  // Segments sizes should match allocation sizes.
   // Segments begin addresses must be aligned.
   // Segments end addresses must not surpass the memory size.
   for (const auto &alloc : allocList) {
@@ -267,7 +267,7 @@ bool MemoryAllocator::verifySegments(
       return false;
     }
     Segment seg = it->second;
-    if (seg.size() != getEffectiveSize(alloc.size_)) {
+    if (seg.size() != alloc.size_) {
       return false;
     }
     if (seg.begin_ % alignment_) {
@@ -311,7 +311,9 @@ bool MemoryAllocator::verifySegments(
 
 /// Buffer information structure.
 struct BuffInfo {
-  // Buffer size in bytes.
+  // Allocation size in bytes (requested size without alignment).
+  uint64_t allocSize;
+  // Buffer size in bytes (effective size with alignment).
   uint64_t size;
   // Allocation start time (inclusive) for this buffer.
   uint64_t timeStart;
@@ -652,6 +654,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList,
 
       // Update buffer information.
       if (alloc.alloc_) {
+        buffInfoArray[buffId].allocSize = alloc.size_;
         buffInfoArray[buffId].size = buffSize;
         buffInfoArray[buffId].timeStart = allocIdx;
       } else {
@@ -731,6 +734,11 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList,
   for (const auto &idSeg : idSegMap) {
     size_t id = idSeg.first;
     Segment segment = idSeg.second;
+    // Since the segment allocation was done using the aligned size, we restore
+    // the segment size to the value of the original allocation size.
+    segment.end_ = segment.begin_ + buffInfoArray[id].allocSize;
+    // When memory is not reused we adjust the segment position based on the
+    // previous memory usage.
     if (!reuseMemory) {
       segment.begin_ += maxUsedSize_;
       segment.end_ += maxUsedSize_;
