@@ -405,8 +405,8 @@ TEST(MemAlloc, testAllocateAllAlignment) {
   EXPECT_EQ(MA.getAddress(handle1), 128);
   EXPECT_EQ(MA.getSegment(handle0).size(), 65);
   EXPECT_EQ(MA.getSegment(handle1).size(), 64);
-  EXPECT_EQ(MA.getSegment(handle0).begin_, 0);
-  EXPECT_EQ(MA.getSegment(handle1).begin_, 128);
+  EXPECT_EQ(MA.getSegment(handle0).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin, 128);
   EXPECT_EQ(MA.getMaxMemoryUsage(), 192);
   EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
 }
@@ -479,7 +479,7 @@ TEST(MemAlloc, testAllocateAllSize0) {
   EXPECT_EQ(MA.getSize(handle), 0);
   EXPECT_EQ(MA.getAddress(handle), 0);
   EXPECT_EQ(MA.getSegment(handle).size(), 0);
-  EXPECT_EQ(MA.getSegment(handle).begin_, 0);
+  EXPECT_EQ(MA.getSegment(handle).begin, 0);
 }
 
 /// Test allocating multiple segments of size 0 with allocateAll.
@@ -513,15 +513,15 @@ TEST(MemAlloc, testAllocateAllMultipleSize0) {
   EXPECT_EQ(MA.getSize(handle3), 0);
   EXPECT_EQ(MA.getAddress(handle3), 0);
   EXPECT_EQ(MA.getSegment(handle3).size(), 0);
-  EXPECT_EQ(MA.getSegment(handle3).begin_, 0);
+  EXPECT_EQ(MA.getSegment(handle3).begin, 0);
   EXPECT_EQ(MA.getSize(handle4), 0);
   EXPECT_EQ(MA.getAddress(handle4), 0);
   EXPECT_EQ(MA.getSegment(handle4).size(), 0);
-  EXPECT_EQ(MA.getSegment(handle4).begin_, 0);
+  EXPECT_EQ(MA.getSegment(handle4).begin, 0);
   EXPECT_EQ(MA.getSize(handle5), 0);
   EXPECT_EQ(MA.getAddress(handle5), 0);
   EXPECT_EQ(MA.getSegment(handle5).size(), 0);
-  EXPECT_EQ(MA.getSegment(handle5).begin_, 0);
+  EXPECT_EQ(MA.getSegment(handle5).begin, 0);
 }
 
 /// Test empty allocs for allocateAll.
@@ -557,8 +557,8 @@ static void testAllocateAllForModel(size_t alignment,
   uint64_t usedSize = MA.allocateAll(allocs);
   EXPECT_EQ(usedSize, expectedUsedSize);
   for (const auto &alloc : allocs) {
-    if (alloc.alloc_) {
-      EXPECT_EQ(MA.getSize(alloc.handle_), alloc.size_);
+    if (alloc.alloc) {
+      EXPECT_EQ(MA.getSize(alloc.handle), alloc.size);
     }
   };
   EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), expectedEfficiency);
@@ -661,10 +661,10 @@ TEST(MemAlloc, testAllocateAllMultipleFunctionsWithReuse) {
   EXPECT_EQ(MA.getAddress(handle1), 10);
   EXPECT_EQ(MA.getAddress(handle2), 0);
   EXPECT_EQ(MA.getAddress(handle3), 20);
-  EXPECT_EQ(MA.getSegment(handle0).begin_, 0);
-  EXPECT_EQ(MA.getSegment(handle1).begin_, 10);
-  EXPECT_EQ(MA.getSegment(handle2).begin_, 0);
-  EXPECT_EQ(MA.getSegment(handle3).begin_, 20);
+  EXPECT_EQ(MA.getSegment(handle0).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin, 10);
+  EXPECT_EQ(MA.getSegment(handle2).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle3).begin, 20);
   EXPECT_EQ(MA.getMaxMemoryUsage(), 40);
   EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
 }
@@ -709,10 +709,10 @@ TEST(MemAlloc, testAllocateAllMultipleFunctionsWithoutReuse) {
   EXPECT_EQ(MA.getAddress(handle1), 10);
   EXPECT_EQ(MA.getAddress(handle2), 20);
   EXPECT_EQ(MA.getAddress(handle3), 40);
-  EXPECT_EQ(MA.getSegment(handle0).begin_, 0);
-  EXPECT_EQ(MA.getSegment(handle1).begin_, 10);
-  EXPECT_EQ(MA.getSegment(handle2).begin_, 20);
-  EXPECT_EQ(MA.getSegment(handle3).begin_, 40);
+  EXPECT_EQ(MA.getSegment(handle0).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin, 10);
+  EXPECT_EQ(MA.getSegment(handle2).begin, 20);
+  EXPECT_EQ(MA.getSegment(handle3).begin, 40);
   EXPECT_EQ(MA.getMaxMemoryUsage(), 60);
   EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
 }
@@ -752,8 +752,8 @@ TEST(MemAlloc, testAllocateAllMultipleFunctionsWithoutReuseFail) {
   EXPECT_EQ(MA.getSegment(handle1).size(), 9);
   EXPECT_EQ(MA.getAddress(handle0), 0);
   EXPECT_EQ(MA.getAddress(handle1), 10);
-  EXPECT_EQ(MA.getSegment(handle0).begin_, 0);
-  EXPECT_EQ(MA.getSegment(handle1).begin_, 10);
+  EXPECT_EQ(MA.getSegment(handle0).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin, 10);
   EXPECT_EQ(MA.getMaxMemoryUsage(), 20);
   EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
 }

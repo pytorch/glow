@@ -59,7 +59,7 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
   uint64_t segmentSize = getEffectiveSize(size);
   uint64_t prev = 0;
   for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
-    if (it->begin_ - prev >= segmentSize) {
+    if (it->begin - prev >= segmentSize) {
       segments_.emplace(it, prev, prev + segmentSize);
       maxUsedSize_ = std::max(maxUsedSize_, prev + segmentSize);
       liveSize_ += segmentSize;
@@ -67,7 +67,7 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
       setHandle(prev, size, handle);
       return prev;
     }
-    prev = it->end_;
+    prev = it->end;
   }
   // Could not find a place for the new buffer in the middle of the list. Push
   // the new allocation to the end of the stack.
@@ -96,16 +96,16 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
   llvm::SmallVector<std::pair<Segment, Handle>, 16> evictionCandidates;
   for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
     // Skip any allocations below the start address.
-    if (it->begin_ < startAddress) {
+    if (it->begin < startAddress) {
       continue;
     }
-    auto curHandle = getHandle(it->begin_);
+    auto curHandle = getHandle(it->begin);
     if (mustNotEvict.count(curHandle)) {
       DEBUG_GLOW(llvm::dbgs()
                  << "Cannot evict a buffer from '" << name_ << "' : "
-                 << "address: " << it->begin_ << " size: " << size << "\n");
+                 << "address: " << it->begin << " size: " << size << "\n");
       // The block cannot be evicted. Start looking after it.
-      begin = it->end_;
+      begin = it->end;
       evictionCandidates.clear();
       hasSeenNonEvicted = true;
       continue;
@@ -113,13 +113,13 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
     // Remember current block as a candidate.
     evictionCandidates.emplace_back(std::make_pair(*it, curHandle));
     // If the total to be evicted size is enough, no need to look any further.
-    if (it->end_ - begin >= size) {
+    if (it->end - begin >= size) {
       break;
     }
   }
 
   if ((!evictionCandidates.empty() &&
-       evictionCandidates.back().first.end_ - begin >= size) ||
+       evictionCandidates.back().first.end - begin >= size) ||
       (!hasSeenNonEvicted && memorySize_ >= size)) {
     // Now evict all eviction candidates.
     for (auto &candidate : evictionCandidates) {
@@ -127,7 +127,7 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
       auto &segment = candidate.first;
       (void)segment;
       DEBUG_GLOW(llvm::dbgs() << "Evict a buffer from the '" << name_ << "': "
-                              << "address: " << segment.begin_
+                              << "address: " << segment.begin
                               << " size: " << segment.size() << "\n");
       deallocate(curHandle);
       evicted.emplace_back(curHandle);
@@ -155,7 +155,7 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle,
 void MemoryAllocator::deallocate(Handle handle) {
   auto ptr = getAddress(handle);
   for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
-    if (it->begin_ == ptr) {
+    if (it->begin == ptr) {
       liveSize_ -= it->size();
       maxLiveSize_ = std::max(maxLiveSize_, liveSize_);
       segments_.erase(it);
@@ -190,7 +190,7 @@ Segment MemoryAllocator::getSegment(Handle handle) const {
 }
 
 uint64_t MemoryAllocator::getAddress(Handle handle) const {
-  return getSegment(handle).begin_;
+  return getSegment(handle).begin;
 }
 
 uint64_t MemoryAllocator::getSize(Handle handle) const {
@@ -214,7 +214,7 @@ bool MemoryAllocator::verifyAllocations(
   // Number of ALLOC must be equal to number of FREE.
   size_t numAlloc = 0;
   for (const auto &alloc : allocList) {
-    if (alloc.alloc_) {
+    if (alloc.alloc) {
       numAlloc++;
     }
   }
@@ -226,14 +226,14 @@ bool MemoryAllocator::verifyAllocations(
   std::list<Handle> allocHandleList;
   for (auto allocIt = allocList.begin(); allocIt != allocList.end();
        ++allocIt) {
-    if (!allocIt->alloc_) {
+    if (!allocIt->alloc) {
       continue;
     }
     // Find a FREE instruction associated to this ALLOC.
-    auto allocHandle = allocIt->handle_;
+    auto allocHandle = allocIt->handle;
     bool freeFound = false;
     for (auto it = allocIt; it != allocList.end(); ++it) {
-      if ((!it->alloc_) && (it->handle_ == allocHandle)) {
+      if ((!it->alloc) && (it->handle == allocHandle)) {
         freeFound = true;
         break;
       }
@@ -259,21 +259,21 @@ bool MemoryAllocator::verifySegments(
   // Segments begin addresses must be aligned.
   // Segments end addresses must not surpass the memory size.
   for (const auto &alloc : allocList) {
-    if (!alloc.alloc_) {
+    if (!alloc.alloc) {
       continue;
     }
-    auto it = handleToSegmentMap_.find(alloc.handle_);
+    auto it = handleToSegmentMap_.find(alloc.handle);
     if (it == handleToSegmentMap_.end()) {
       return false;
     }
     Segment seg = it->second;
-    if (seg.size() != alloc.size_) {
+    if (seg.size() != alloc.size) {
       return false;
     }
-    if (seg.begin_ % alignment_) {
+    if (seg.begin % alignment_) {
       return false;
     }
-    if (memorySize_ && seg.end_ > memorySize_) {
+    if (memorySize_ && seg.end > memorySize_) {
       return false;
     }
   }
@@ -281,16 +281,16 @@ bool MemoryAllocator::verifySegments(
   // segments.
   std::list<Handle> liveHandleList;
   for (const auto &alloc : allocList) {
-    auto allocHandle = alloc.handle_;
-    if (alloc.alloc_) {
+    auto allocHandle = alloc.handle;
+    if (alloc.alloc) {
       // Verify current segment is not overlapping with the other live segments.
-      auto it = handleToSegmentMap_.find(alloc.handle_);
+      auto it = handleToSegmentMap_.find(alloc.handle);
       Segment seg = it->second;
       for (const auto &liveHandle : liveHandleList) {
         auto liveIt = handleToSegmentMap_.find(liveHandle);
         Segment liveSeg = liveIt->second;
-        bool segOverlap = intervalsOverlap(seg.begin_, seg.end_, liveSeg.begin_,
-                                           liveSeg.end_);
+        bool segOverlap = intervalsOverlap(seg.begin, seg.end, liveSeg.begin,
+                                           liveSeg.end);
         if (segOverlap) {
           return false;
         }
@@ -496,7 +496,7 @@ static uint64_t allocateAllWithStrategy(
 
       // If segment overlaps with previous then store the previous segment.
       if (overlap) {
-        prevSegAddr.emplace_back(prevSeg.begin_, prevSeg.end_);
+        prevSegAddr.emplace_back(prevSeg.begin, prevSeg.end);
       }
     }
 
@@ -589,9 +589,9 @@ void MemoryAllocator::mapHandlesToIds(
   size_t id = 0;
   for (const auto &alloc : allocList) {
     // We only map the Handles of ALLOCs.
-    if (alloc.alloc_) {
-      handleToIdMap[alloc.handle_] = id;
-      idToHandleMap[id] = alloc.handle_;
+    if (alloc.alloc) {
+      handleToIdMap[alloc.handle] = id;
+      idToHandleMap[id] = alloc.handle;
       id++;
     }
   }
@@ -654,22 +654,22 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList,
     for (const auto &alloc : allocList) {
 
       // Current buffer handle and mapped ID.
-      auto buffHandle = alloc.handle_;
+      auto buffHandle = alloc.handle;
       auto buffId = handleToIdMap[buffHandle];
 
       // Current buffer size. We only use the buffer size of an ALLOC request.
       // For a FREE request we use the buffer size of the associated ALLOC.
       // We round the requested buffer size using the alignment.
       uint64_t buffSize;
-      if (alloc.alloc_) {
-        buffSize = getEffectiveSize(alloc.size_);
+      if (alloc.alloc) {
+        buffSize = getEffectiveSize(alloc.size);
       } else {
         buffSize = buffInfoArray[buffId].size;
       }
 
       // Update buffer information.
-      if (alloc.alloc_) {
-        buffInfoArray[buffId].allocSize = alloc.size_;
+      if (alloc.alloc) {
+        buffInfoArray[buffId].allocSize = alloc.size;
         buffInfoArray[buffId].size = buffSize;
         buffInfoArray[buffId].timeStart = allocIdx;
       } else {
@@ -677,7 +677,7 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList,
       }
 
       // Update liveness information.
-      if (alloc.alloc_) {
+      if (alloc.alloc) {
         liveBuffSize = liveBuffSize + buffSize;
         liveBuffIdList.emplace_back(buffId);
       } else {
@@ -751,17 +751,17 @@ uint64_t MemoryAllocator::allocateAll(const std::list<Allocation> &allocList,
     Segment segment = idSeg.second;
     // Since the segment allocation was done using the aligned size, we restore
     // the segment size to the value of the original allocation size.
-    segment.end_ = segment.begin_ + buffInfoArray[id].allocSize;
+    segment.end = segment.begin + buffInfoArray[id].allocSize;
     // When memory is not reused we adjust the segment position based on the
     // previous memory usage.
     if (!reuseMemory) {
-      segment.begin_ += maxUsedSize_;
-      segment.end_ += maxUsedSize_;
+      segment.begin += maxUsedSize_;
+      segment.end += maxUsedSize_;
     }
     Handle handle = idToHandleMap[id];
     segments_.emplace_back(segment);
     handleToSegmentMap_.insert(std::make_pair(handle, segment));
-    addrToHandleMap_[segment.begin_] = handle;
+    addrToHandleMap_[segment.begin] = handle;
   }
   if (reuseMemory) {
     maxUsedSize_ = std::max(maxUsedSize_, usedSizeMax);

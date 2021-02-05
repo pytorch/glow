@@ -43,38 +43,38 @@ struct Allocation {
 
   /// Allocation handle which uniquely identifies the buffer to be allocated.
   /// The provided handle must be unique for each buffer.
-  Handle handle_;
-
-  /// Allocation request type flag: true for ALLOC, false for FREE.
-  bool alloc_;
+  Handle handle;
 
   /// Allocation buffer size in bytes. This field is mandatory for ALLOC
   /// and is ignored for FREE.
-  uint64_t size_;
+  uint64_t size;
+
+  /// Allocation request type flag: true for ALLOC, false for FREE.
+  bool alloc;
 
   Allocation(Handle handle, bool alloc, uint64_t size)
-      : handle_(handle), alloc_(alloc), size_(size) {}
+      : handle(handle), size(size), alloc(alloc) {}
 
   Allocation(size_t id, bool alloc, uint64_t size)
-      : handle_((Handle)(id)), alloc_(alloc), size_(size) {}
+      : handle((Handle)(id)), size(size), alloc(alloc) {}
 };
 
 /// A POD struct that represents a single half-open allocation [start .. end).
 struct Segment {
 
   /// The allocation starts at this address.
-  uint64_t begin_;
+  uint64_t begin;
 
   /// The allocation ends before this address (half-open interval).
-  uint64_t end_;
+  uint64_t end;
 
-  Segment(uint64_t begin, uint64_t end) : begin_(begin), end_(end) {}
+  Segment(uint64_t begin, uint64_t end) : begin(begin), end(end) {}
 
   /// \returns the size of the interval.
-  uint64_t size() const { return end_ - begin_; }
+  uint64_t size() const { return end - begin; }
 
   /// \returns True if the value \p idx falls within this segment.
-  bool contains(uint64_t idx) const { return idx >= begin_ && idx < end_; }
+  bool contains(uint64_t idx) const { return idx >= begin && idx < end; }
 };
 
 /// Allocates segments of memory.
