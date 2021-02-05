@@ -337,6 +337,29 @@ using MemAllocStrategy = std::function<uint64_t(
     size_t buffIdx, const std::vector<BuffInfo> &buffInfoArray,
     const std::vector<LiveInfo> &liveInfoArray)>;
 
+/// Utility function to retrieve the list of IDs of all the buffers within the
+/// live allocation with maximum size. We must take into account the corner case
+/// when all the live allocations contain buffers with size 0.
+const std::list<uint64_t> &
+getMaxLiveSizeBuffIdList(const std::vector<LiveInfo> &liveInfoArray) {
+  size_t liveSizeMaxIdx = 0;
+  uint64_t liveSizeMax = 0;
+  for (size_t idx = 0, end = liveInfoArray.size(); idx < end; ++idx) {
+    const auto &liveInfo = liveInfoArray[idx];
+    // Skip empty live allocations.
+    if (liveInfo.idList.empty()) {
+      continue;
+    }
+    // Find maximum live allocation size. If the maximum was not updated
+    // we update it regardless in case we have allocations of size 0.
+    if (liveInfo.size > liveSizeMax || liveSizeMax == 0) {
+      liveSizeMax = liveInfo.size;
+      liveSizeMaxIdx = idx;
+    }
+  }
+  return liveInfoArray[liveSizeMaxIdx].idList;
+}
+
 /// Memory allocation strategy based on the following logic:
 /// 1. Find maximum live size.
 /// 2. Find buffer with maximum size.
@@ -346,15 +369,11 @@ MaxLiveSizeMaxBuffSize(size_t buffIdx,
                        const std::vector<BuffInfo> &buffInfoArray,
                        const std::vector<LiveInfo> &liveInfoArray) {
   // Find maximum total live allocation.
-  auto liveBuffSizeMaxIt = std::max_element(
-      liveInfoArray.begin(), liveInfoArray.end(),
-      [](const LiveInfo &a, const LiveInfo &b) { return a.size < b.size; });
-  auto liveBuffSizeMaxIdx =
-      std::distance(liveInfoArray.begin(), liveBuffSizeMaxIt);
-  const auto &liveBuffIdList = liveInfoArray[liveBuffSizeMaxIdx].idList;
+  const auto &liveBuffIdList = getMaxLiveSizeBuffIdList(liveInfoArray);
   // Find buffer with maximum size within the maximum allocation.
-  uint64_t buffIdMax = 0;
-  uint64_t buffSizeMax = 0;
+  assert(liveBuffIdList.size() && "Live buffer ID list is empty!");
+  uint64_t buffIdMax = liveBuffIdList.front();
+  uint64_t buffSizeMax = buffInfoArray[buffIdMax].size;
   for (auto buffIdIter : liveBuffIdList) {
     auto buffSizeIter = buffInfoArray[buffIdIter].size;
     // Choose buffer with maximum size.
@@ -385,13 +404,9 @@ MaxLiveSizeMaxBuffTime(size_t buffIdx,
                        const std::vector<BuffInfo> &buffInfoArray,
                        const std::vector<LiveInfo> &liveInfoArray) {
   // Find maximum total live allocation.
-  auto liveBuffSizeMaxIt = std::max_element(
-      liveInfoArray.begin(), liveInfoArray.end(),
-      [](const LiveInfo &a, const LiveInfo &b) { return a.size < b.size; });
-  auto liveBuffSizeMaxIdx =
-      std::distance(liveInfoArray.begin(), liveBuffSizeMaxIt);
-  const auto &liveBuffIdList = liveInfoArray[liveBuffSizeMaxIdx].idList;
+  const auto &liveBuffIdList = getMaxLiveSizeBuffIdList(liveInfoArray);
   // Find buffer with maximum live interval within the maximum allocation.
+  assert(liveBuffIdList.size() && "Live buffer ID list is empty!");
   uint64_t buffIdMax = 0;
   uint64_t buffTimeMax = 0;
   for (auto buffIdIter : liveBuffIdList) {

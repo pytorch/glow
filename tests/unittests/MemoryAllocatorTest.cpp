@@ -467,7 +467,7 @@ TEST(MemAlloc, testAllocateAllInvalidHandles2) {
 #endif
 }
 
-/// Test segment size 0 for allocateAll.
+/// Test allocating segment of size 0 with allocateAll.
 TEST(MemAlloc, testAllocateAllSize0) {
   MemoryAllocator MA("test", 0, 64);
   void *handle = reinterpret_cast<void *>(0);
@@ -477,6 +477,51 @@ TEST(MemAlloc, testAllocateAllSize0) {
   uint64_t usedSize = MA.allocateAll(allocList);
   EXPECT_EQ(usedSize, 0);
   EXPECT_EQ(MA.getSize(handle), 0);
+  EXPECT_EQ(MA.getAddress(handle), 0);
+  EXPECT_EQ(MA.getSegment(handle).size(), 0);
+  EXPECT_EQ(MA.getSegment(handle).begin_, 0);
+}
+
+/// Test allocating multiple segments of size 0 with allocateAll.
+TEST(MemAlloc, testAllocateAllMultipleSize0) {
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  void *handle2 = reinterpret_cast<void *>(2);
+  void *handle3 = reinterpret_cast<void *>(3);
+  void *handle4 = reinterpret_cast<void *>(4);
+  void *handle5 = reinterpret_cast<void *>(5);
+
+  MemoryAllocator MA("test", 0, 10);
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle5, true, 0);
+  allocList.emplace_back(handle0, true, 10);
+  allocList.emplace_back(handle3, true, 0);
+  allocList.emplace_back(handle1, true, 10);
+  allocList.emplace_back(handle4, true, 0);
+  allocList.emplace_back(handle0, false, 0);
+  allocList.emplace_back(handle2, true, 20);
+  allocList.emplace_back(handle3, false, 0);
+  allocList.emplace_back(handle1, false, 0);
+  allocList.emplace_back(handle4, false, 0);
+  allocList.emplace_back(handle2, false, 0);
+  allocList.emplace_back(handle5, false, 0);
+
+  uint64_t usedSize = MA.allocateAll(allocList);
+  EXPECT_EQ(usedSize, 30);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 30);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.00);
+  EXPECT_EQ(MA.getSize(handle3), 0);
+  EXPECT_EQ(MA.getAddress(handle3), 0);
+  EXPECT_EQ(MA.getSegment(handle3).size(), 0);
+  EXPECT_EQ(MA.getSegment(handle3).begin_, 0);
+  EXPECT_EQ(MA.getSize(handle4), 0);
+  EXPECT_EQ(MA.getAddress(handle4), 0);
+  EXPECT_EQ(MA.getSegment(handle4).size(), 0);
+  EXPECT_EQ(MA.getSegment(handle4).begin_, 0);
+  EXPECT_EQ(MA.getSize(handle5), 0);
+  EXPECT_EQ(MA.getAddress(handle5), 0);
+  EXPECT_EQ(MA.getSegment(handle5).size(), 0);
+  EXPECT_EQ(MA.getSegment(handle5).begin_, 0);
 }
 
 /// Test empty allocs for allocateAll.
