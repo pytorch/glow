@@ -497,6 +497,10 @@ private:
   /// \returns error on failure.
   Error loadSum(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch cumulative sum node.
+  /// \returns error on failure.
+  Error loadCumSum(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch max node.
   /// \returns error on failure.
   Error loadMax(const torch::jit::Node *ptNode);
