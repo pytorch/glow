@@ -332,6 +332,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
+  /// Accumulates all of the layers in the batch along the Axis dimension and
+  /// produce a tensor that has the same dimensions as the input tensor without
+  /// the Axis dimension.
+  BB.newInstr("BatchedReduceProd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Batch", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Axis")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
+      .autoIRGen();
+
   // Does a running accumulation of all values in input (inclusive).
   // e.g [1, 2, 3, 4] -> [1, 3, 6, 10]
   BB.newInstr("CumSum")
