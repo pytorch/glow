@@ -2604,6 +2604,42 @@ ArgMinNode *Function::createArgMin(llvm::StringRef name, NodeValue input,
   return addNode(new ArgMinNode(name, OT, input, axis, keepDims));
 }
 
+DistributeFpnProposalsNode *Function::createDistributeFpnProposals(
+    llvm::StringRef name, NodeValue input, int64_t roiMaxLevel,
+    int64_t roiMinLevel, int64_t roiCanonicalLevel, int64_t roiCanonicalScale,
+    ElemKind outIndicesTyKind, bool legacyPlusOne) {
+
+  // Input dimensions can be the maximum dimension for any distributed roi
+  int64_t fpnLevels = roiMaxLevel - roiMinLevel + 1;
+  auto inDims = input.dims();
+  ShapeVector outMaxDims{inDims[0], 5};
+  auto outTypeRoi =
+      getParent()->uniqueTypeWithNewShape(input.getType(), outMaxDims);
+  ShapeVector idxDims{inDims[0]};
+  auto outTypeIndices =
+      getParent()->uniqueType(Type(outIndicesTyKind, idxDims));
+
+  DistributeFpnProposalsNode *node = addNode(new DistributeFpnProposalsNode(
+      name, input, roiMaxLevel, roiMinLevel, roiCanonicalLevel,
+      roiCanonicalScale, legacyPlusOne));
+
+  while (fpnLevels) {
+    node->addExtraResult(outTypeRoi);
+    fpnLevels--;
+  }
+  node->addExtraResult(outTypeIndices);
+  return node;
+}
+
+DistributeFpnProposalsNode *Function::createDistributeFpnProposals(
+    llvm::StringRef name, NodeValue input, int64_t roi_max_level,
+    int64_t roi_min_level, int64_t roi_canonical_level,
+    int64_t roi_canonical_scale, bool legacy_plus_one) {
+  return createDistributeFpnProposals(name, input, roi_max_level, roi_min_level,
+                                      roi_canonical_level, roi_canonical_scale,
+                                      ElemKind::Int64ITy, legacy_plus_one);
+}
+
 VectorNormNode *Function::createVectorNorm(llvm::StringRef name,
                                            NodeValue input, unsigned_t axis,
                                            unsigned_t p) {

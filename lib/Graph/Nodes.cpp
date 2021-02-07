@@ -2493,6 +2493,43 @@ bool FullyConnectedGradNode::verify() const {
              getGradOfInputNamedBias(), getGradOfOriginalOutputNamedResult());
 }
 
+bool DistributeFpnProposalsNode::verify() const {
+  bool isValid = true;
+  auto input = getRois();
+
+  isValid &= expectCompareTrue(
+      "Upright boxes with dimension 4 or 5 are supported",
+      (input.dims()[1] == 4 || input.dims()[1] == 5), true, this);
+
+  isValid &= expectCompareTrue(
+      "ROI min level should be less than or equal to ROI max level",
+      getRoiMinLevel() <= getRoiMaxLevel(), true, this);
+
+  dim_t fpnLevels = getRoiMaxLevel() - getRoiMinLevel() + 1;
+
+  isValid &= expectCompareTrue("Wrong number of outputs",
+                               getNumResults() == fpnLevels + 1, true, this);
+
+  for (dim_t i = 0; i < fpnLevels; i++) {
+    isValid &= checkType(getNthResult(i), input.getElementType(), this);
+    isValid &= expectCompareTrue(
+        "Output Rois and input must have same first dimension",
+        getNthResult(i).dims()[0], input.dims()[0], this);
+    isValid &=
+        expectCompareTrue("Output Rois should have box dimension 5",
+                          getNthResult(i).dims()[1], dim_t(5), this);
+  }
+
+  isValid &= checkType(
+      getNthResult(fpnLevels),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+  isValid &= expectCompareTrue(
+      "RoisRestoreIdx and input must have same first dimension",
+      getNthResult(fpnLevels).dims()[0], input.dims()[0], this);
+
+  return isValid;
+}
+
 bool ConcatNode::verify() const {
   auto inputs = getInputs();
   auto dimension = getDim();

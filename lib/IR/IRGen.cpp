@@ -463,6 +463,37 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(SLWSG->getGradOfInputNamedWeights(), weightsGrad);
     break;
   }
+  case glow::Kinded::Kind::DistributeFpnProposalsNodeKind: {
+    auto *DFPN = llvm::cast<DistributeFpnProposalsNode>(N);
+
+    std::vector<Value *> dests;
+
+    int64_t numLevels = DFPN->getRoiMaxLevel() - DFPN->getRoiMinLevel() + 1;
+
+    // Adding ROIs at Fpn levels and RoiRestoreIdx
+    for (unsigned i = 0; i < numLevels + 1; i++) {
+      NodeValue res = DFPN->getNthResult(i);
+      std::string allocName =
+          std::string(DFPN->getName()) + ".res." + std::to_string(i);
+      auto *dest = builder_.createAllocActivationInst(allocName, res.getType());
+      dests.emplace_back(dest);
+    }
+
+    // Create DtributeFpnProposal instruction
+    auto *inst = builder_.createDistributeFpnProposalsInst(
+        DFPN->getName(), valueForNode(DFPN->getRois()), DFPN->getRoiMaxLevel(),
+        DFPN->getRoiMinLevel(), DFPN->getRoiCanonicalLevel(),
+        DFPN->getRoiCanonicalScale(), DFPN->getLegacyPlusOne());
+
+    // Register IR for outputs
+    for (unsigned i = 0; i < numLevels + 1; i++) {
+      NodeValue res = DFPN->getNthResult(i);
+      inst->pushOperand({dests[i], OperandKind::Out});
+      registerIR(res, dests[i]);
+    }
+
+    break;
+  }
   case glow::Kinded::Kind::BatchedPairwiseDotProductNodeKind: {
     auto *BPDPN = llvm::cast<BatchedPairwiseDotProductNode>(N);
     auto firstInput = BPDPN->getInputs()[0];

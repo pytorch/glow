@@ -422,6 +422,9 @@ private:
   void fwdAvgPool2DGradInst(const AvgPoolGradInst *I);
   void fwdAvgPool3DGradInst(const AvgPoolGradInst *I);
 
+  template <typename ElemTy, typename IdxElemTy>
+  void fwdDistributeFpnProposalsInstImpl(const DistributeFpnProposalsInst *I);
+
   ///@}
 };
 

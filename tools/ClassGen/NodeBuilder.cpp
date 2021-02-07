@@ -363,7 +363,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
 void NodeBuilder::emitCloner(std::ostream &os) const {
   os << "\nNode* " << name_ << "Node::clone() const {\n";
 
-  os << "  return new " << name_ << "Node(getName()";
+  os << "  " << name_ << "Node *n = new " << name_ << "Node(getName()";
 
   // Pass the external type arguments:
   for (const auto &paramName : ctorTypeParams_) {
@@ -385,7 +385,17 @@ void NodeBuilder::emitCloner(std::ostream &os) const {
     os << ", get" << op.second << "()";
   }
 
-  os << ");\n}\n";
+  os << ");\n";
+
+  // Append extra results, if any.
+  if (hasExtraResults_) {
+    os << "  const int numImplOutputs = n->getNumResults();\n";
+    os << "  const int numOutputs = getNumResults();\n";
+    os << "  for( int i = numImplOutputs; i < numOutputs; i++) {\n";
+    os << "    n->addExtraResult(getType(i));\n  }\n";
+  }
+
+  os << "  return n;\n}\n";
 }
 
 /// \returns true if a can be a part of a valid C/C++ identifier.

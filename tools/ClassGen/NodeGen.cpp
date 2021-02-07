@@ -1474,6 +1474,22 @@ int main(int argc, char **argv) {
           "If proposals from multiple images in a batch are present, they "
           "should be grouped sequentially and in incremental order.");
 
+  BB.newNode("DistributeFpnProposals")
+      .addInput("Rois")
+      .addMember(MemberType::Int64, "RoiMaxLevel")
+      .addMember(MemberType::Int64, "RoiMinLevel")
+      .addMember(MemberType::Int64, "RoiCanonicalLevel")
+      .addMember(MemberType::Int64, "RoiCanonicalScale")
+      .addMember(MemberType::Boolean, "LegacyPlusOne")
+      .hasExtraResults()
+      .setDocstring(
+          "Given roi_max_level and roi_min_level , DistributeFpnProposals"
+          "distribute proposals in input to their appropriate FPN levels"
+          "for Faster RCNN. Returns RPN proposals at different ROI level"
+          "format (image_index, x1, y1, x2, y2). Also outputs permutation"
+          "on the concatenation of all rois_fpn such that when applied"
+          "RPN RoIs are restored to their original order in the input.");
+
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//

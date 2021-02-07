@@ -1331,6 +1331,13 @@ Error ONNXModelWriter::writeConcat(const ConcatNode *node, GraphType &graph) {
   return writeAllWithNode("Concat", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeDistributeFpnProposals(
+    const DistributeFpnProposalsNode *node, GraphType &graph) {
+
+  return writeAllWithNode("DistributeFpnProposals", node, graph,
+                          graph.add_node());
+}
+
 Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
                                       GraphType &graph) {
   // Some nodes create transpose for outputs.

@@ -65,6 +65,14 @@ protected:
     ASSERT_TRUE(F_->verify(&EE_.getBackend()))
         << "Function must pass verification.";
 
+    // Disable ONNX write, load and compare for DistributeFpnProposals.
+    std::string name =
+        ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    if (name.find("DistributeFpnProposals") != std::string::npos) {
+      unownedTensors_.clear();
+      return;
+    }
+
     // Now export the model to later import it back in.
     llvm::SmallString<64> path;
     auto tempFileRes =
@@ -4575,6 +4583,375 @@ TEST_P(OperatorTest, Gelu_Float) {
 TEST_P(OperatorTest, Gelu_Float16) {
   CHECK_IF_ENABLED();
   testGelu<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 1.5E-2);
+}
+
+TEST_P(OperatorTest, DistributeFpnProposalsBoxDim5) {
+  CHECK_IF_ENABLED();
+
+  int64_t roiMaxLevel = 5;
+  int64_t roiMinLevel = 2;
+  int64_t roiCanonicalScale = 224;
+  int64_t roiCanonicalLevel = 4;
+  dim_t rpnPostNmsTopN = 16;
+  bool legacyPlusOne = true;
+
+  auto *roisIn = mod_.createPlaceholder(ElemKind::FloatTy, {rpnPostNmsTopN, 5},
+                                        "roisIn", false);
+
+  bindings_.allocate(roisIn)->getHandle() = {
+      0.0000,
+      143.8594,
+      19.3218,
+      251.7623,
+      154.5081,
+      2.0000,
+      45.6530,
+      27.9770,
+      68.4480,
+      78.9252,
+      4.0000,
+      197.2495,
+      103.3920,
+      276.2648,
+      107.1423,
+      0.0000,
+      143.8594,
+      19.3218,
+      251.7623,
+      154.5081,
+      4.0000,
+      197.2495,
+      103.3920,
+      276.2648,
+      107.1423,
+      1.0000,
+      114.7378,
+      17.3863,
+      117.4763,
+      67.8375,
+      1.0000,
+      2.9721,
+      122.3951,
+      114.3890,
+      127.8918,
+      1.0000,
+      89.9781,
+      90.6893,
+      138.7310,
+      100.2276,
+      0.0000,
+      143.8594,
+      19.3218,
+      251.7623,
+      154.5081,
+      2.0000,
+      45.6530,
+      27.9770,
+      68.4480,
+      78.9252,
+      4.0000,
+      347.2802,
+      40.6496,
+      354.4507,
+      41.0738,
+      4.0000,
+      198.2395,
+      312.7085,
+      255.8497,
+      413.1700,
+      4.0000,
+      347.2802,
+      40.6496,
+      354.4507,
+      41.0738,
+      0.0000,
+      119.0237,
+      104.2961,
+      262.1163,
+      242.5623,
+      /* Adding invalid rois in input*/
+      0.0000,
+      0.0000,
+      0.0000,
+      0.0000,
+      0.0000,
+      0.0000,
+      0.0000,
+      0.0000,
+      0.0000,
+      0.0000,
+  };
+
+  auto *roisFpn2 = mod_.createPlaceholder(
+      ElemKind::FloatTy, {rpnPostNmsTopN, 5}, "roiFpn2", false);
+
+  bindings_.allocate(roisFpn2);
+
+  auto *roisFpn3 = mod_.createPlaceholder(
+      ElemKind::FloatTy, {rpnPostNmsTopN, 5}, "roiFpn3", false);
+
+  bindings_.allocate(roisFpn3);
+
+  auto *roisFpn4 = mod_.createPlaceholder(
+      ElemKind::FloatTy, {rpnPostNmsTopN, 5}, "roiFpn4", false);
+
+  bindings_.allocate(roisFpn4);
+
+  auto *roisFpn5 = mod_.createPlaceholder(
+      ElemKind::FloatTy, {rpnPostNmsTopN, 5}, "roiFpn5", false);
+
+  bindings_.allocate(roisFpn5);
+
+  /// Both Int64ITy and Int32ITy is suported for roisIdxRestore
+  auto *roisIdxRestore = mod_.createPlaceholder(
+      ElemKind::Int32ITy, {rpnPostNmsTopN}, "roiIdxRestore", false);
+
+  bindings_.allocate(roisIdxRestore);
+
+  auto *R = F_->createDistributeFpnProposals(
+      "DistributeFpnProposal", roisIn, roiMaxLevel, roiMinLevel,
+      roiCanonicalLevel, roiCanonicalScale, ElemKind::Int32ITy, legacyPlusOne);
+
+  F_->createSave("save.roiFpn2", {R, 0}, roisFpn2);
+  F_->createSave("save.roiFpn3", {R, 1}, roisFpn3);
+  F_->createSave("save.roiFpn4", {R, 2}, roisFpn4);
+  F_->createSave("save.roiFpn5", {R, 3}, roisFpn5);
+  F_->createSave("save.roiIdxRestore", {R, 4}, roisIdxRestore);
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto V = bindings_.get(roisFpn2)->getHandle<float>();
+
+  std::vector<std::vector<float>> refRoisFpn2 = {
+      {2.0000, 45.6530, 27.9770, 68.4480, 78.9252},
+      {4.0000, 197.2495, 103.3920, 276.2648, 107.1423},
+      {4.0000, 197.2495, 103.3920, 276.2648, 107.1423},
+      {1.0000, 114.7378, 17.3863, 117.4763, 67.8375},
+      {1.0000, 2.9721, 122.3951, 114.3890, 127.8918},
+      {1.0000, 89.9781, 90.6893, 138.7310, 100.2276},
+      {2.0000, 45.6530, 27.9770, 68.4480, 78.9252},
+      {4.0000, 347.2802, 40.6496, 354.4507, 41.0738},
+      {4.0000, 198.2395, 312.7085, 255.8497, 413.1700},
+      {4.0000, 347.2802, 40.6496, 354.4507, 41.0738},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+
+  };
+
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (uint32_t j = 0; j < 5; j++) {
+      EXPECT_NEAR(V.at({i, j}), refRoisFpn2[i][j], 1E-4);
+    }
+  }
+
+  V = bindings_.get(roisFpn3)->getHandle<float>();
+
+  std::vector<std::vector<float>> refRoisFpn3 = {
+      {0.0000, 143.8594, 19.3218, 251.7623, 154.5081},
+      {0.0000, 143.8594, 19.3218, 251.7623, 154.5081},
+      {0.0000, 143.8594, 19.3218, 251.7623, 154.5081},
+      {0.0000, 119.0237, 104.2961, 262.1163, 242.5623},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+  };
+
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (uint32_t j = 0; j < 5; j++) {
+      EXPECT_NEAR(V.at({i, j}), refRoisFpn3[i][j], 1E-4);
+    }
+  }
+
+  V = bindings_.get(roisFpn4)->getHandle<float>();
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (uint32_t j = 0; j < 5; j++) {
+      EXPECT_NEAR(V.at({i, j}), 0.0f, 1E-4);
+    }
+  }
+
+  V = bindings_.get(roisFpn5)->getHandle<float>();
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (uint32_t j = 0; j < 5; j++) {
+      EXPECT_NEAR(V.at({i, j}), 0.0f, 1E-4);
+    }
+  }
+
+  auto I = bindings_.get(roisIdxRestore)->getHandle<int32_t>();
+  /// Caffe2 Output (variable outputs size and no invalid rois) :
+  /// [10,  0,  1, 11,  2,  3,  4,  5, 12,  6,  7,  8,  9, 13]
+  /// We are fixing the output size to [rpnPostNmsTopN, boxDim]
+  /// So there can be two kinds of invalid rois present in output, ones
+  /// generated to fix the output size, which result in offset in indices
+  /// e.g 10->16, 11->17, 12->18 etc.
+  /// Secondly, those present in input itself, which results in -1
+  /// index values.
+  std::vector<int32_t> refRoisIdxRestore = {16, 0, 1, 17, 2, 3,  4,  5,
+                                            18, 6, 7, 8,  9, 19, -1, -1};
+
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    EXPECT_EQ(I.at({i}), refRoisIdxRestore[i]);
+  }
+}
+
+TEST_P(OperatorTest, DistributeFpnProposalsBoxDim4) {
+  CHECK_IF_ENABLED();
+
+  dim_t boxDimIn = 4;
+  dim_t boxDimOut = 5;
+  int64_t roiMaxLevel = 5;
+  int64_t roiMinLevel = 2;
+  int64_t roiCanonicalScale = 224;
+  int64_t roiCanonicalLevel = 4;
+  dim_t rpnPostNmsTopN = 14;
+  bool legacyPlusOne = true;
+
+  auto *roisIn = mod_.createPlaceholder(
+      ElemKind::FloatTy, {rpnPostNmsTopN, boxDimIn}, "roisIn", false);
+
+  bindings_.allocate(roisIn)->getHandle() = {
+      143.8594, 19.3218,  251.7623, 154.5081, 45.6530,  27.9770,  68.4480,
+      78.9252,  197.2495, 103.3920, 276.2648, 107.1423, 143.8594, 19.3218,
+      251.7623, 154.5081, 197.2495, 103.3920, 276.2648, 107.1423, 114.7378,
+      17.3863,  117.4763, 67.8375,  2.9721,   122.3951, 114.3890, 127.8918,
+      89.9781,  90.6893,  138.7310, 100.2276, 143.8594, 19.3218,  251.7623,
+      154.5081, 45.6530,  27.9770,  68.4480,  78.9252,  347.2802, 40.6496,
+      354.4507, 41.0738,  198.2395, 312.7085, 255.8497, 413.1700, 347.2802,
+      40.6496,  354.4507, 41.0738,  119.0237, 104.2961, 262.1163, 242.5623};
+
+  auto *roisFpn2 = mod_.createPlaceholder(
+      ElemKind::FloatTy, {rpnPostNmsTopN, boxDimOut}, "roiFpn2", false);
+
+  bindings_.allocate(roisFpn2);
+
+  auto *roisFpn3 = mod_.createPlaceholder(
+      ElemKind::FloatTy, {rpnPostNmsTopN, boxDimOut}, "roiFpn3", false);
+
+  bindings_.allocate(roisFpn3);
+
+  auto *roisFpn4 = mod_.createPlaceholder(
+      ElemKind::FloatTy, {rpnPostNmsTopN, boxDimOut}, "roiFpn4", false);
+
+  bindings_.allocate(roisFpn4);
+
+  auto *roisFpn5 = mod_.createPlaceholder(
+      ElemKind::FloatTy, {rpnPostNmsTopN, boxDimOut}, "roiFpn5", false);
+
+  bindings_.allocate(roisFpn5);
+
+  /// Both Int64ITy and Int32ITy is suported for roisIdxRestore
+  auto *roisIdxRestore = mod_.createPlaceholder(
+      ElemKind::Int32ITy, {rpnPostNmsTopN}, "roiIdxRestore", false);
+
+  bindings_.allocate(roisIdxRestore);
+
+  auto *R = F_->createDistributeFpnProposals(
+      "DistributeFpnProposal", roisIn, roiMaxLevel, roiMinLevel,
+      roiCanonicalLevel, roiCanonicalScale, ElemKind::Int32ITy, legacyPlusOne);
+
+  F_->createSave("save.roiFpn2", {R, 0}, roisFpn2);
+  F_->createSave("save.roiFpn3", {R, 1}, roisFpn3);
+  F_->createSave("save.roiFpn4", {R, 2}, roisFpn4);
+  F_->createSave("save.roiFpn5", {R, 3}, roisFpn5);
+  F_->createSave("save.roiIdxRestore", {R, 4}, roisIdxRestore);
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto V = bindings_.get(roisFpn2)->getHandle<float>();
+
+  std::vector<std::vector<float>> refRoisFpn2 = {
+      {0.0000, 45.6530, 27.9770, 68.4480, 78.9252},
+      {0.0000, 197.2495, 103.3920, 276.2648, 107.1423},
+      {0.0000, 197.2495, 103.3920, 276.2648, 107.1423},
+      {0.0000, 114.7378, 17.3863, 117.4763, 67.8375},
+      {0.0000, 2.9721, 122.3951, 114.3890, 127.8918},
+      {0.0000, 89.9781, 90.6893, 138.7310, 100.2276},
+      {0.0000, 45.6530, 27.9770, 68.4480, 78.9252},
+      {0.0000, 347.2802, 40.6496, 354.4507, 41.0738},
+      {0.0000, 198.2395, 312.7085, 255.8497, 413.1700},
+      {0.0000, 347.2802, 40.6496, 354.4507, 41.0738},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+  };
+
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (uint32_t j = 0; j < boxDimOut; j++) {
+      EXPECT_NEAR(V.at({i, j}), refRoisFpn2[i][j], 1E-4);
+    }
+  }
+
+  V = bindings_.get(roisFpn3)->getHandle<float>();
+
+  std::vector<std::vector<float>> refRoisFpn3 = {
+      {0.0000, 143.8594, 19.3218, 251.7623, 154.5081},
+      {0.0000, 143.8594, 19.3218, 251.7623, 154.5081},
+      {0.0000, 143.8594, 19.3218, 251.7623, 154.5081},
+      {0.0000, 119.0237, 104.2961, 262.1163, 242.5623},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+      {0.0000, 0.0000, 0.0000, 0.0000, 0.0000},
+  };
+
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (uint32_t j = 0; j < boxDimOut; j++) {
+      EXPECT_NEAR(V.at({i, j}), refRoisFpn3[i][j], 1E-4);
+    }
+  }
+
+  V = bindings_.get(roisFpn4)->getHandle<float>();
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (uint32_t j = 0; j < boxDimOut; j++) {
+      EXPECT_NEAR(V.at({i, j}), 0.0f, 1E-4);
+    }
+  }
+
+  V = bindings_.get(roisFpn5)->getHandle<float>();
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (uint32_t j = 0; j < boxDimOut; j++) {
+      EXPECT_NEAR(V.at({i, j}), 0.0f, 1E-4);
+    }
+  }
+
+  auto I = bindings_.get(roisIdxRestore)->getHandle<int32_t>();
+  /// Caffe2 Output (variable outputs size and no invalid rois) :
+  /// [10,  0,  1, 11,  2,  3,  4,  5, 12,  6,  7,  8,  9, 13]
+  /// We are fixing the output size to [rpnPostNmsTopN, boxDimOut]
+  /// So there can be two kinds of invalid rois present in output ones
+  /// generated to fix the output size, which result in offset in indices
+  /// e.g 10->14 (0 + rpnPostNmsTopN), 11->15 (1 + rpnPostNmsTopN) etc.
+  /// Secondly, those present in input itself, which results in -1
+  /// index values.
+  std::vector<int32_t> refRoisIdxRestore = {14, 0,  1, 15, 2, 3, 4,
+                                            5,  16, 6, 7,  8, 9, 17};
+
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    EXPECT_EQ(I.at({i}), refRoisIdxRestore[i]);
+  }
 }
 
 TEST_P(OperatorTest, TopK) {

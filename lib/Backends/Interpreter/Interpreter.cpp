@@ -603,6 +603,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(ScatterDataNode::ResultIdx) ==
             NI.getInElemTy(ScatterDataNode::SlicesIdx));
 
+  case Kinded::Kind::DistributeFpnProposalsNodeKind:
+    return (NI.getInElemTy(DistributeFpnProposalsNode::RoisIdx) ==
+            ElemKind::FloatTy) ||
+           (NI.getInElemTy(DistributeFpnProposalsNode::RoisIdx) ==
+            ElemKind::Float16Ty) ||
+           (NI.getInElemTy(DistributeFpnProposalsNode::RoisIdx) ==
+            ElemKind::BFloat16Ty);
   // We just clip 64 to 32 SelectedIdx silently with the SoftMax
   // SelectedIdx in case dim_t is 32b.
   case Kinded::Kind::SoftMaxNodeKind:

@@ -1254,6 +1254,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Rois", "ImInfo"})
       .autoIRGen();
 
+  BB.newInstr("DistributeFpnProposals")
+      .addOperand("Rois", OperandKind::In)
+      .addMember(MemberType::Int64, "RoiMaxLevel")
+      .addMember(MemberType::Int64, "RoiMinLevel")
+      .addMember(MemberType::Int64, "RoiCanonicalLevel")
+      .addMember(MemberType::Int64, "RoiCanonicalScale")
+      .addMember(MemberType::Boolean, "LegacyPlusOne")
+      .autoVerify(VerifyKind::NoVerify);
+
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//

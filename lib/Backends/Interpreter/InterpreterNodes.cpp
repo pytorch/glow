@@ -1345,6 +1345,125 @@ void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
                             I->getPads());
 }
 
+template <typename ElemTy, typename IdxElemTy>
+void BoundInterpreterFunction::fwdDistributeFpnProposalsInstImpl(
+    const glow::DistributeFpnProposalsInst *I) {
+
+  std::vector<IdxElemTy> roiRestoreIdx;
+  std::map<IdxElemTy, std::vector<dim_t>> lvlIdxMap;
+  int64_t roiMaxLevel = I->getRoiMaxLevel();
+  int64_t roiMinLevel = I->getRoiMinLevel();
+  int64_t roiCanonicalLevel = I->getRoiCanonicalLevel();
+  int64_t roiCanonicalScale = I->getRoiCanonicalScale();
+  bool legacyPlusOne = I->getLegacyPlusOne();
+  int64_t fpnLevels = roiMaxLevel - roiMinLevel + 1;
+  auto rois = I->getRois();
+  auto roisH = getTensor(rois)->getHandle<ElemTy>();
+
+  // The number of roisOutput will be limited to rpnPostNmsTopN
+  const dim_t rpnPostNmsTopN = rois->dims()[0];
+  dim_t validRpnPostNmsTopN = rpnPostNmsTopN;
+  // Getting box dimension of rois, it can be 4 or 5 or 6
+  const dim_t boxDim = rois->dims()[1];
+  // Calculate area and determine rpnlevel for each roi
+  for (dim_t i = 0; i < rpnPostNmsTopN; i++) {
+    dim_t start_idx = 0;
+    if (boxDim == 4) {
+      // With no batch_idx in rois
+      start_idx = 0;
+    } else if (boxDim == 5) {
+      // With upright boxes and batch_idx in rois
+      start_idx = 1;
+    } else {
+      // TO DO for rotated boxes
+    }
+
+    float h = roisH.at({i, start_idx + 2}) - roisH.at({i, start_idx + 0});
+    float w = roisH.at({i, start_idx + 3}) - roisH.at({i, start_idx + 1});
+
+    if ((h == 0.f) && (w == 0.f)) {
+      // Skip invalid rois and updating count of valid rois
+      validRpnPostNmsTopN--;
+      continue;
+    }
+
+    h = h + float(legacyPlusOne);
+
+    w = w + float(legacyPlusOne);
+
+    float sqrtArea = std::sqrt(h * w);
+
+    int64_t lvl =
+        std::floor(roiCanonicalLevel +
+                   std::log2((double)((sqrtArea / roiCanonicalScale) + 1e-6f)));
+    auto lvlClipped = std::max(roiMinLevel, std::min(lvl, roiMaxLevel));
+    lvlIdxMap[lvlClipped].push_back(i);
+  }
+
+  // Distribute rois to different fpn levels
+  auto distributeRoiFpnProposalsAtLevel = [&](Tensor *outputTensor,
+                                              IdxElemTy lvl) {
+    dim_t i = 0;
+    // Inserting the rois for fpnLevel==lvl in corresponding output tensor
+    for (auto &x : lvlIdxMap[lvl]) {
+      for (dim_t j = 0; j < boxDim; j++) {
+        // Handling case when input shape is [N, 4]
+        if (boxDim == 4) {
+          outputTensor->getHandle<ElemTy>().at({i, j + 1}) = roisH.at({x, j});
+        } else {
+          outputTensor->getHandle<ElemTy>().at({i, j}) = roisH.at({x, j});
+        }
+      }
+      roiRestoreIdx.push_back(x);
+      i++;
+    }
+
+    // Filling the remaining indexes with max
+    while (i < rpnPostNmsTopN) {
+      roiRestoreIdx.push_back(std::numeric_limits<IdxElemTy>::max());
+      i++;
+    }
+  };
+
+  dim_t outputIdx = 0;
+  int64_t lvl = roiMinLevel;
+  for (outputIdx = 1; outputIdx <= fpnLevels; outputIdx++) {
+    Tensor *roiOutFpn = getTensor(I->getOperand(outputIdx).first);
+    // Initialing each output rois with zero
+    roiOutFpn->zero();
+    distributeRoiFpnProposalsAtLevel(roiOutFpn, lvl);
+    lvl++;
+  }
+
+  // Reverse ordering roiRestoreIdx
+  std::vector<IdxElemTy> order(roiRestoreIdx.size());
+  std::iota(order.begin(), order.end(), 0);
+  auto comp = [&](dim_t lhs, dim_t rhs) -> bool {
+    return roiRestoreIdx[lhs] < roiRestoreIdx[rhs];
+  };
+  std::sort(order.begin(), order.end(), comp);
+
+  // Saving roiRestoreIdx to last Output
+  Tensor *roiRestoreIdxOut = getTensor(I->getOperand(outputIdx).first);
+  for (dim_t i = 0; i < rpnPostNmsTopN; i++) {
+    roiRestoreIdx[i] = order[i];
+    if (i < validRpnPostNmsTopN) {
+      roiRestoreIdxOut->getHandle<IdxElemTy>().at({i}) = roiRestoreIdx[i];
+    } else {
+      // Sentinal value in roiRestoreIdx for invalid Rois
+      roiRestoreIdxOut->getHandle<IdxElemTy>().at({i}) = IdxElemTy(-1);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdDistributeFpnProposalsInst(
+    const glow::DistributeFpnProposalsInst *I) {
+  dim_t lastOutputIndex = I->getRoiMaxLevel() - I->getRoiMinLevel() + 2;
+  dispatchFloatingPointAndIndexImpl(
+      fwdDistributeFpnProposalsInstImpl, I->getRois()->getElementType(),
+      I->getOperand(lastOutputIndex).first->getElementType(), I);
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
   staticAssertFloatingPointType(ElemTy);

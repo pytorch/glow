@@ -426,4 +426,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "batchedReduceAdd_Int32ITy/0",
     "Float16ArgMaxKeepDim/0",
     "Float16ArgMaxNoKeepDim/0",
+    "DistributeFpnProposalsBoxDim5/0",
+    "DistributeFpnProposalsBoxDim4/0",
 };

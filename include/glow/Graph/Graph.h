@@ -1486,6 +1486,24 @@ public:
   TopKNode *createTopK(llvm::StringRef name, NodeValue input, unsigned_t k,
                        ElemKind outIndicesTyKind);
 
+  /// Given \p roiMaxLevel and \p roiMinLevel , DistributeFpnProposals
+  /// distribute proposals in \p input to their appropriate FPN levels
+  /// for Faster RCNN. Returns RPN proposals at different ROI level
+  /// format (image_index, x1, y1, x2, y2).
+  /// Also outputs a permutation on the concatenation of all rois_fpni,
+  /// such that when applied the RPN RoIs are restored to their original
+  /// order in the \p input.
+
+  DistributeFpnProposalsNode *createDistributeFpnProposals(
+      llvm::StringRef name, NodeValue input, int64_t roiMaxLevel,
+      int64_t roiMinLevel, int64_t roiCanonicalLevel, int64_t roiCanonicalScale,
+      bool legacyPlusOne = false);
+
+  DistributeFpnProposalsNode *createDistributeFpnProposals(
+      llvm::StringRef name, NodeValue input, int64_t roiMaxLevel,
+      int64_t roiMinLevel, int64_t roiCanonicalLevel, int64_t roiCanonicalScale,
+      ElemKind outIndicesTyKind, bool legacyPlusOne = false);
+
   /// Gathers entries of the outer-most dimension of \p data indexed by
   /// \p indices, and concatenates them. A non-zero \p batchDims specifies the
   /// batch, and the result is the concatenation of the operation on each sample
