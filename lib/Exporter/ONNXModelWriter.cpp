@@ -2415,6 +2415,19 @@ Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
   return Error::success();
 }
 
+Error ONNXModelWriter::writeRMSNorm(const RMSNormNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  proto->set_name(node->getName());
+  proto->set_op_type("RMSNorm");
+  inputsToProto(node, proto);
+  addValueAttribute(proto, "Epsilon", node->getEpsilon());
+
+  outputsToProto(node, graph, proto);
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeVectorNorm(const VectorNormNode *node,
                                        GraphType &graph) {
   auto *proto = graph.add_node();

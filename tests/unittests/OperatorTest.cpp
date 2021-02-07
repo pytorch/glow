@@ -18815,10 +18815,8 @@ TEST_P(OperatorTest, RMSNorm) {
   bindings_.allocate(gamma)->getHandle<float>() = {1, 2, 3, 4};
   bindings_.allocate(beta)->getHandle<float>() = {1, 2, 3, 4};
   auto rmsNorm = F_->createRMSNorm("rmsnorm", X, gamma, beta, epsilon);
-  auto *save0 = F_->createSave("save", rmsNorm[0]);
-  auto *save1 = F_->createSave("save", rmsNorm[1]);
+  auto *save0 = F_->createSave("save", rmsNorm->getOutput());
   auto *resultY = bindings_.allocate(save0->getPlaceholder());
-  auto *resultRrms = bindings_.allocate(save1->getPlaceholder());
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
@@ -18835,14 +18833,6 @@ TEST_P(OperatorTest, RMSNorm) {
       EXPECT_NEAR(expectedY[i][j], hY.at({i, j}), 1e-5)
           << "at pos (" << i << "," << j << ")";
     }
-  }
-
-  const std::vector<dim_t> expectedRrmsShape{XShape[0]};
-  const std::vector<float> expectedRrms{0.3429972, 0.14990634, 0.09428091};
-  EXPECT_EQ(expectedRrmsShape, resultRrms->dims().vec());
-  auto hRrms = resultRrms->getHandle<float>();
-  for (dim_t i = 0; i < expectedRrmsShape[0]; ++i) {
-    EXPECT_NEAR(expectedRrms[i], hRrms.at({i}), 1e-5) << "at pos " << i;
   }
 }
 

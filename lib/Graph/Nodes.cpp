@@ -1871,6 +1871,21 @@ bool ArgMinNode::verify() const {
   return isValid;
 }
 
+bool RMSNormNode::verify() const {
+  bool isValid = true;
+
+  isValid &= expectCompareTrue("Input should be a 2D tensor.",
+                               getInput().dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Gamma should be a 1D tensor.",
+                               getGamma().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Beta should be a 1D tensor.",
+                               getBeta().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Invalid output dims", getOutput().dims().size(),
+                               size_t(getInput().dims().size()), this);
+
+  return true;
+}
+
 bool VectorNormNode::verify() const {
   bool isValid = true;
 
