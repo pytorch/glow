@@ -1268,6 +1268,46 @@ static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(), DN);
 }
 
+static void lowerRMSNormNode(Function *F, CompilationContext &cctx,
+                             const RMSNormNode &RN) {
+  LOG_SCOPE(F->getLogContext(), "lowerRMSNormNode")
+
+  auto name = RN.getName();
+  auto X = RN.getInput();
+  auto gamma = RN.getGamma();
+  auto beta = RN.getBeta();
+  float epsilon = RN.getEpsilon();
+
+  auto square = F->createSquare(name.str() + ".square", X);
+  auto mean = F->createBatchedReduceMean(name.str() + ".mean", square, {1});
+  auto eps = F->getParent()->createConstant(ElemKind::FloatTy, 1, "eps");
+  eps->getPayloadMutable() = {epsilon};
+  auto bcastEps =
+      F->createBroadcast(name.str() + ".bcastEps", eps, {X.dims()[0]}, 0);
+  auto addEps = F->createAdd(name.str() + ".addEps", mean, bcastEps);
+  auto sqrt = F->createPow(name.str() + ".sqrt", addEps, 0.5f);
+  auto one = F->getParent()->createConstant(ElemKind::FloatTy, 1, "one");
+  one->getPayloadMutable() = {1};
+  auto bcastOne =
+      F->createBroadcast(name.str() + ".bcastOne", one, {X.dims()[0]}, 0);
+
+  // Duplicate rrms to use as input to nomalized values.
+  auto rrms = F->createDiv(name.str() + ".rrms", bcastOne, sqrt);
+  auto reshape =
+      F->createReshape(name.str() + ".expandD", rrms, {X.dims()[0], 1});
+  auto bcastReshape =
+      F->createBroadcast(name.str() + ".bcastReshape", reshape, X.dims(), 0);
+  auto mul = F->createMul(name.str() + "mul", X, bcastReshape);
+  auto bcastGamma =
+      F->createBroadcast(name.str() + ".bcastGamma", gamma, X.dims(), 1);
+  auto mulGamma = F->createMul(name.str() + ".mulGamma", mul, bcastGamma);
+  auto bcastBeta =
+      F->createBroadcast(name.str() + ".bcastBeta", beta, X.dims(), 1);
+  auto Y = F->createAdd(name.str() + ".Y", mulGamma, bcastBeta);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, RN.getOutput(), Y);
+}
+
 static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
                                 const VectorNormNode &VN) {
   LOG_SCOPE(F->getLogContext(), "lowerVectorNormNode")
@@ -1787,6 +1827,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
+    CASE_LOWER(RMSNorm);
     CASE_LOWER(VectorNorm);
     CASE_LOWER(Bucketize);
     CASE_LOWER(ChannelShuffle);

@@ -312,6 +312,14 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Performs L2 norm of the Input operand based on Axis.");
 
+  BB.newNode("RMSNorm")
+      .addInput("Input")
+      .addInput("Gamma")
+      .addInput("Beta")
+      .addMember(MemberType::Float, "Epsilon")
+      .addResultFromCtorArg("Output")
+      .setDocstring("Performs Root Mean Square Layer Normalization.");
+
   //===--------------------------------------------------------------------===//
   //                     Bucketing
   //===--------------------------------------------------------------------===//

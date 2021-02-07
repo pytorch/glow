@@ -1771,9 +1771,9 @@ public:
 
   /// Creates an RMSNorm pair. \p X should be a 2D tensor, \p gamma and \p beta
   /// should be 1D tensors.
-  std::array<Node *, 2> createRMSNorm(llvm::StringRef name, NodeValue X,
-                                      NodeValue gamma, NodeValue beta,
-                                      float epsilon = .0f);
+  RMSNormNode *createRMSNorm(llvm::StringRef name, NodeValue input,
+                             NodeValue gamma, NodeValue beta,
+                             float epsilon = .0f);
 
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the

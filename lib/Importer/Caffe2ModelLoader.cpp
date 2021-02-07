@@ -1727,9 +1727,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(dict["eps"]));
     }
 
-    auto nodes = G_->createRMSNorm(opName, X, gamma, beta, epsilon);
-    nodeValueByName_[op.output(0)] = nodes[0];
-    nodeValueByName_[op.output(1)] = nodes[1];
+    auto *nodes = G_->createRMSNorm(opName, X, gamma, beta, epsilon);
+    nodeValueByName_[op.output(0)] = nodes->getOutput();
     return Error::success();
   }
 

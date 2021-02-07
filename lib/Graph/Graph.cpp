@@ -1336,51 +1336,12 @@ BroadcastNode *Function::createBroadcast(llvm::StringRef name, NodeValue input,
   return addNode(new BroadcastNode(name, OT, input, axis, newShape.vec()));
 }
 
-std::array<Node *, 2> Function::createRMSNorm(llvm::StringRef name, NodeValue X,
-                                              NodeValue gamma, NodeValue beta,
-                                              float epsilon) {
-  // np.square(X)
-  auto square = createSquare(name.str() + ".square", X);
+RMSNormNode *Function::createRMSNorm(llvm::StringRef name, NodeValue input,
+                                     NodeValue gamma, NodeValue beta,
+                                     float epsilon) {
+  auto OT = getParent()->uniqueType(*input.getType());
 
-  // np.mean(np.square(X), axis=1)
-  auto mean = createBatchedReduceMean(name.str() + ".mean", square, {1});
-
-  // np.mean(np.square(X), axis=1) + eps
-  auto eps = getParent()->createConstant(ElemKind::FloatTy, 1, "eps");
-  eps->getPayloadMutable() = {epsilon};
-  auto bcastEps =
-      createBroadcast(name.str() + ".bcastEps", eps, {X.dims()[0]}, 0);
-  auto addEps = createAdd(name.str() + ".addEps", mean, bcastEps);
-
-  // np.sqrt(np.mean(np.square(X), axis=1) + eps)
-  auto sqrt = createPow(name.str() + ".sqrt", addEps, 0.5f);
-
-  // rrms = 1.0 / np.sqrt(np.mean(np.square(X), axis=1) + eps)
-  auto one = getParent()->createConstant(ElemKind::FloatTy, 1, "one");
-  one->getPayloadMutable() = {1};
-  auto bcastOne =
-      createBroadcast(name.str() + ".bcastOne", one, {X.dims()[0]}, 0);
-  auto rrms = createDiv(name.str() + ".rrms", bcastOne, sqrt);
-
-  // np.expand_dims(rrms, axis=1)
-  auto reshape = createReshape(name.str() + ".expandD", rrms, {X.dims()[0], 1});
-  auto bcastReshape =
-      createBroadcast(name.str() + ".bcastReshape", reshape, X.dims(), 0);
-
-  // X * np.expand_dims(rrms, axis=1)
-  auto mul = createMul(name.str() + "mul", X, bcastReshape);
-
-  // X * np.expand_dims(rrms, axis=1) * gamma
-  auto bcastGamma =
-      createBroadcast(name.str() + ".bcastGamma", gamma, X.dims(), 1);
-  auto mulGamma = createMul(name.str() + ".mulGamma", mul, bcastGamma);
-
-  // Y = X * np.expand_dims(rrms, axis=1) * gamma + beta
-  auto bcastBeta =
-      createBroadcast(name.str() + ".bcastBeta", beta, X.dims(), 1);
-  auto Y = createAdd(name.str() + ".Y", mulGamma, bcastBeta);
-
-  return {Y, rrms};
+  return addNode(new RMSNormNode(name, OT, input, gamma, beta, epsilon));
 }
 
 /// \returns true if \p T1 and T2 has the exact same type except for dimension
