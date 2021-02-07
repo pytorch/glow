@@ -318,6 +318,7 @@ int main(int argc, char **argv) {
       .addInput("Beta")
       .addMember(MemberType::Float, "Epsilon")
       .addResultFromCtorArg("Output")
+      .addResultFromCtorArg("Rrms")
       .setDocstring("Performs Root Mean Square Layer Normalization.");
 
   //===--------------------------------------------------------------------===//

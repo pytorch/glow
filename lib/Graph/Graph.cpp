@@ -1340,8 +1340,10 @@ RMSNormNode *Function::createRMSNorm(llvm::StringRef name, NodeValue input,
                                      NodeValue gamma, NodeValue beta,
                                      float epsilon) {
   auto OT = getParent()->uniqueType(*input.getType());
+  auto RRMST =
+      getParent()->uniqueType(input.getElementType(), {input.dims()[0]});
 
-  return addNode(new RMSNormNode(name, OT, input, gamma, beta, epsilon));
+  return addNode(new RMSNormNode(name, OT, RRMST, input, gamma, beta, epsilon));
 }
 
 /// \returns true if \p T1 and T2 has the exact same type except for dimension

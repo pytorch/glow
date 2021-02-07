@@ -1306,6 +1306,9 @@ static void lowerRMSNormNode(Function *F, CompilationContext &cctx,
   auto Y = F->createAdd(name.str() + ".Y", mulGamma, bcastBeta);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, RN.getOutput(), Y);
+
+  auto rrmsOut = F->createDiv(name.str() + ".out.rrms", bcastOne, sqrt);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, RN.getRrms(), rrmsOut);
 }
 
 static void lowerVectorNormNode(Function *F, CompilationContext &cctx,

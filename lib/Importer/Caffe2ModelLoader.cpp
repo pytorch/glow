@@ -1729,6 +1729,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     auto *nodes = G_->createRMSNorm(opName, X, gamma, beta, epsilon);
     nodeValueByName_[op.output(0)] = nodes->getOutput();
+    // Rrms is a dummy node (not used and does not have valid values).
+    nodeValueByName_[op.output(1)] = nodes->getRrms();
+
     return Error::success();
   }
 
