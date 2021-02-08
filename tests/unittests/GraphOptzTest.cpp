@@ -1363,16 +1363,19 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   Node *K = F_->createAdd("arith", T1, T2);
-  SaveNode *O = F_->createSave("ret", K);
+  Node *P = F_->createPow("pow", K, T2);
+  SaveNode *O = F_->createSave("ret", P);
 
-  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 5);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Add->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
   ASSERT_NE(transpose, nullptr);
-  auto *add = llvm::dyn_cast<AddNode>(transpose->getInput());
+  auto *pow = llvm::dyn_cast<PowNode>(transpose->getInput());
+  ASSERT_TRUE(pow);
+  auto *add = llvm::dyn_cast<AddNode>(pow->getLHS());
   ASSERT_TRUE(add);
   // Check that the dimensions of the input and output have been
   // updated to compensate the absence of transpose.
@@ -1382,7 +1385,7 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   EXPECT_EQ(add->getLHS().getNode(), A1);
   EXPECT_EQ(add->getRHS().getNode(), A2);
 
-  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 }
 
 /// Check that Transpose node is sunk below arithmetic nodes when one of the

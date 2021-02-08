@@ -659,6 +659,13 @@ TEST_F(OnnxImporterTest, importDivUniBroadcastOp6Axis) {
       [](float a, float b) { return a / b; });
 }
 
+TEST_F(OnnxImporterTest, importPowMultiBroadcastOp7) {
+  importArithMultiBroadcastTest<PowNode>(
+      "powMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, /* multi */ true,
+      /* leftBroadcast */ true, /* rightBroadcast */ true,
+      [](float a, float b) { return std::pow(a, b); });
+}
+
 /// This tests reproduces issue #2135.
 TEST_F(OnnxImporterTest, importUniBroadcastMultiOutput) {
   ExecutionEngine EE{};

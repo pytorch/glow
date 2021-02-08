@@ -879,6 +879,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         ARITHMETIC_CASE(Div);
         ARITHMETIC_CASE(Max);
         ARITHMETIC_CASE(Min);
+        ARITHMETIC_CASE(Pow);
         BOOLEAN_OP_CASE(CmpLTE);
         BOOLEAN_OP_CASE(CmpEQ);
       default:
