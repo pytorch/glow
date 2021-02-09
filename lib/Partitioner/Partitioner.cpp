@@ -87,13 +87,13 @@ Error Partitioner::finalize(const DAGListTy &partitions,
   if (logPartition) {
     LOG(INFO) << "The number of partitions is : "
               << mapping.getPartitions().size();
-    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.";
-    dumpDAG("DAG.dot", partitions);
     logPartitionInfo(mapping);
   }
 
   // Dump the graph of each function after partitioning.
   if (dumpPartition) {
+    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.";
+    dumpDAG("DAG.dot", partitions);
     for (const auto &node : partitions[0].nodes) {
       Function *subF = module_->getFunction(node->name);
       if (!subF) {
