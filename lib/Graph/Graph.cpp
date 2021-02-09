@@ -1249,6 +1249,21 @@ SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
   return addNode(new SoftMaxNode(name, outTy, input, selected));
 }
 
+LogSoftMaxNode *Function::createLogSoftMax(llvm::StringRef name,
+                                           NodeValue input, NodeValue selected,
+                                           TypeRef outTy, float beta) {
+  // Create input multiplier with beta.
+  if (beta != 1.0) {
+    auto *splat = createSplat(name, input.getType(), 1);
+    input = createMul(name, input, splat);
+  }
+  // By default, pick the input type.
+  if (!outTy) {
+    outTy = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new LogSoftMaxNode(name, outTy, input, selected));
+}
+
 CrossEntropyLossNode *Function::createCrossEntropyLoss(llvm::StringRef name,
                                                        NodeValue input,
                                                        NodeValue labels) {

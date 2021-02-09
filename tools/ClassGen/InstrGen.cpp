@@ -265,6 +265,12 @@ int main(int argc, char **argv) {
       .addOperand("SrcGrad", OperandKind::Out)
       .autoVerify(VerifyKind::SameType, {"OrigDest", "OrigSrc", "SrcGrad"});
 
+  BB.newInstr("LogSoftMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoIRGen();
+
   BB.newInstr("CrossEntropyLoss")
       .addOperand("P", OperandKind::In)
       .addOperand("Labels", OperandKind::In)

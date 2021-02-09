@@ -774,6 +774,10 @@ public:
                              NodeValue selected, TypeRef outTy = nullptr,
                              float beta = 1.0);
 
+  LogSoftMaxNode *createLogSoftMax(llvm::StringRef name, NodeValue input,
+                                   NodeValue selected, TypeRef outTy = nullptr,
+                                   float beta = 1.0);
+
   CrossEntropyLossNode *createCrossEntropyLoss(llvm::StringRef name,
                                                NodeValue input,
                                                NodeValue labels);

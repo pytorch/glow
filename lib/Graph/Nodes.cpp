@@ -480,6 +480,15 @@ static bool verifySoftMax(NodeValue src, NodeValue dest) {
   return checkSameType(src, dest, parent);
 }
 
+static bool verifyLogSoftMax(NodeValue src, NodeValue dest) {
+  const Node *parent = dest.getNode();
+  if (src.getType()->isQuantizedType()) {
+    return checkType(src, dest.getElementType(), parent) &&
+           checkSameShape(src, dest, parent);
+  }
+  return checkSameType(src, dest, parent);
+}
+
 static bool verifyCrossEntropyLoss(NodeValue P, NodeValue CE,
                                    NodeValue labels) {
   const Node *parent = CE.getNode();
@@ -1081,6 +1090,29 @@ bool SoftMaxGradNode::verify() const {
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
   isValid &= verifySoftMax(getGradOfInputNamedInput(),
                            getGradOfOriginalOutputNamedResult());
+  return isValid;
+}
+
+bool LogSoftMaxNode::verify() const {
+  return verifyLogSoftMax(getInput(), getResult());
+}
+
+bool LogSoftMaxGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= ((verifyInputAndGradInputTypes(
+                  getSelected(), getGradOfInputNamedSelected(), this))
+                  ? 1
+                  : 0);
+  isValid &= ((verifyOutputAndGradOutputTypes(
+                  getOriginalOutputForResult(),
+                  getGradOfOriginalOutputNamedResult(), this))
+                  ? 1
+                  : 0);
+  isValid &= ((verifyLogSoftMax(getGradOfInputNamedInput(),
+                                getGradOfOriginalOutputNamedResult()))
+                  ? 1
+                  : 0);
   return isValid;
 }
 
