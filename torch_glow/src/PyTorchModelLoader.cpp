@@ -4965,7 +4965,12 @@ Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
     ASSIGN_VALUE_OR_RETURN_ERR(keepdims, iValToBool(getGlowIValueForValue(
                                              inputs[MeanInputs::keepdims])));
     if (keepdims == true) {
-      return MAKE_ERR("We don't currently support keeping dims");
+      std::vector<dim_t> shape = input.dims();
+      std::sort(axis->begin(), axis->end());
+      for (auto i : *axis) {
+        shape.insert(shape.begin() + i, static_cast<dim_t>(1));
+      }
+      input = F_.createReshape("reshape", input, shape)->getResult();
     }
   }
 
