@@ -3834,6 +3834,8 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[ConvInputs::input]));
 
+  const auto inputOriginalDims = input.dims().size();
+
   // Glow expects conv weights to be in CRSK but PyTorch keeps them in CKRS
   // so we transpose them. C - output_depth, R - filter_height, S -
   // filter_width, K - input_depth.
@@ -3841,26 +3843,45 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       weights, getGlowNodeValueForValue(inputs[ConvInputs::weights]));
 
-  RETURN_ERR_IF_NOT((input.dims().size() == 4 || input.dims().size() == 5) &&
-                        input.dims().size() == weights.dims().size(),
-                    "Expect 4 dims in input and weights for conv2d and 5 dims "
+  RETURN_ERR_IF_NOT((input.dims().size() >= 3 && input.dims().size() <= 5) &&
+                        (input.dims().size() == weights.dims().size()),
+                    "Expect 3 dims in input and weights for conv1d, 4 dims in "
+                    "input and weights for conv2d and 5 dims "
                     "in input and weights for conv3d");
 
   bool transposed;
   ASSIGN_VALUE_OR_RETURN_ERR(transposed, iValToBool(getGlowIValueForValue(
                                              inputs[ConvInputs::transposed])));
+  if (inputOriginalDims != 4 && transposed) {
+    return MAKE_ERR(
+        glow::strFormat("Only conv_transpose2d is currently supported (4 "
+                        "input dimensions), got %lu-dimensional input instead.",
+                        inputOriginalDims));
+  }
 
   bool isConv3d = input.dims().size() == 5;
-  if (isConv3d) {
+  if (inputOriginalDims == 5) {
     input = F_.createTranspose("conv_input_transposed", input, NCTHW2NTHWC);
     weights =
         F_.createTranspose("conv_weights_transposed", weights, NCTHW2NTHWC);
-  } else if (transposed) {
-    input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
-    weights = F_.createTranspose("conv_weights_transposed", weights, CNHW2NHWC);
   } else {
+    // If 1D conv, add an extra dimension to input and weights
+    if (inputOriginalDims == 3) {
+      input = F_.createExpandDims("conv_input_expand_dims", input, 2);
+      weights = F_.createExpandDims("conv_weights_expand_dims", weights, 2);
+    }
+
+    if (inputOriginalDims == 4 && transposed) {
+      // If conv_transpose2d, transpose weights CNHW -> NHWC
+      weights =
+          F_.createTranspose("conv_weights_transposed", weights, CNHW2NHWC);
+    } else {
+      weights =
+          F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
+    }
+
+    // Transpose input NCHW -> NHWC
     input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
-    weights = F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
   }
 
   // If a bias was provided then use it otherwise create a 0 bias.
@@ -3873,7 +3894,10 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       strides, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
                    getGlowIValueForValue(inputs[ConvInputs::stride]),
-                   input.dims().size() - 2)));
+                   inputOriginalDims - 2)));
+  if (inputOriginalDims == 3) {
+    strides.insert(strides.begin(), 1);
+  }
 
   std::vector<glow::unsigned_t> pads;
   if (isConv3d) {
@@ -3888,7 +3912,11 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
     ASSIGN_VALUE_OR_RETURN_ERR(
         pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
                  getGlowIValueForValue(inputs[ConvInputs::padding]))));
-    pads = {pad, pad, pad, pad};
+    if (inputOriginalDims == 4) {
+      pads = {pad, pad, pad, pad};
+    } else { // 1D conv
+      pads = {0, pad, 0, pad};
+    }
   }
 
   std::vector<glow::unsigned_t> dilations;
@@ -3904,9 +3932,13 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
                       "Dilation not supported for conv3d");
   } else {
     ASSIGN_VALUE_OR_RETURN_ERR(
-        dilations,
-        castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-            getGlowIValueForValue(inputs[ConvInputs::dilation]), 2)));
+        dilations, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+                       getGlowIValueForValue(inputs[ConvInputs::dilation]),
+                       inputOriginalDims - 2)));
+
+    if (inputOriginalDims == 3) { // 1D conv
+      dilations.push_back(dilations[0]);
+    }
   }
 
   glow::unsigned_t groups;
@@ -3944,24 +3976,33 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   }
 
   glow::TransposeNode *output = nullptr;
-  if (isConv3d) {
+  if (inputOriginalDims == 5) { // 3D conv
     glow::Convolution3DNode *conv = F_.createConv3D(
         "conv3d", input, weights, bias, outTy, kernels, strides, pads, groups);
     output = F_.createTranspose("conv_output_transposed", conv->getResult(),
                                 NTHWC2NCTHW);
-  } else if (transposed) {
+  } else if (inputOriginalDims == 4 && transposed) { // 2D transposed conv
     glow::ConvTransposeNode *convTranspose =
         F_.createConvTranspose("convTranspose", input, weights, bias, outTy,
                                kernels, strides, pads, groups);
-    output = F_.createTranspose("convTranpose_output_transposed",
+    output = F_.createTranspose("conv_tranpose_output_transposed",
                                 convTranspose->getResult(), NHWC2NCHW);
-  } else {
+  } else if (inputOriginalDims == 4 && !transposed) { // 2D conv
     glow::ConvolutionNode *conv =
-        F_.createConv("conv", input, weights, bias, outTy, kernels, strides,
+        F_.createConv("conv2d", input, weights, bias, outTy, kernels, strides,
                       pads, groups, dilations);
     output = F_.createTranspose("conv_output_transposed", conv->getResult(),
                                 NHWC2NCHW);
+  } else { // 1D conv
+    glow::ConvolutionNode *conv =
+        F_.createConv("conv1d", input, weights, bias, outTy, kernels, strides,
+                      pads, groups, dilations);
+    auto *squeezeNode =
+        F_.createSqueeze("conv_output_squeezed", conv->getResult(), {1});
+    output = F_.createTranspose("conv_output_transposed",
+                                squeezeNode->getResult(), {0, 2, 1});
   }
+
   RETURN_ERR(addValueMapping(outputs[0], output->getResult()));
 }
 
