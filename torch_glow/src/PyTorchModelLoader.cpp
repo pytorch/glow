@@ -1058,6 +1058,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
       {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
       {{"aten::log"}, &PyTorchModelLoader::loadLog},
+      {{"aten::neg"}, &PyTorchModelLoader::loadNeg},
       {{"aten::sum"}, &PyTorchModelLoader::loadSum},
       {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
       {{"aten::silu"}, &PyTorchModelLoader::loadSilu},
@@ -2589,6 +2590,17 @@ Error PyTorchModelLoader::loadLog(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[0]));
 
   return addValueMapping(outputs[0], F_.createLog("log", glowInput));
+}
+
+Error PyTorchModelLoader::loadNeg(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  RETURN_ERR(addValueMapping(outputs[0], F_.createNeg("neg", input)));
 }
 
 Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {

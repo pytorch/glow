@@ -469,6 +469,10 @@ private:
   /// \returns error on failure.
   Error loadAdd(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch neg node.
+  /// \returns error on failure.
+  Error loadNeg(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch index_select node.
   /// \returns error on failure.
   Error loadIndexSelect(const torch::jit::Node *ptNode) noexcept;
