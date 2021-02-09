@@ -171,6 +171,13 @@ public:
 /// has_getFusedActivation that looks for said method.
 CLASS_CONTAINS_METHOD(getFusedActivation)
 
+/// If \p W is a weight that is read from \returns true.
+bool isInput(const Value *W);
+
+/// If \p W is an output weight \returns true. This is determined by checking if
+/// the weight has a user which uses it as a write output.
+bool isOutput(const Value *W);
+
 /// If \p PH is an output placeholder in the IRFunction \p F,
 /// \returns true.
 /// This is determined by checking if the PH has weights which are referenced by
