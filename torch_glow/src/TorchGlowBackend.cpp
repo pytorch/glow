@@ -158,7 +158,7 @@ Error checkForFatalError(Error err) {
 } // namespace
 
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
-  static auto cls = torch::jit::backend<TorchGlowBackend>("glow");
+  static auto cls = torch::jit::backend<TorchGlowBackend>("glow", preprocess);
   return cls;
 }
 
@@ -166,6 +166,12 @@ void registerTorchGlowBackendAndDeps() {
   (void)torchGlowBackend();
   registerPyTorchGlowCustomClasses();
   registerGlowHelperOps();
+}
+
+c10::IValue
+preprocess(const torch::jit::Module &mod,
+           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec) {
+  return mod._ivalue();
 }
 
 /// Unpacks conv2d and linear packed parameters and replaces
