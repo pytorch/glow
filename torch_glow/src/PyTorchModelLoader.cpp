@@ -6756,7 +6756,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     const at::ArrayRef<torch::jit::IValue> inputs,
     const InputMetaStack &metaStack)
     : F_(F), settings_(settings), inputs_(inputs) {
-  std::cerr << "loading PyTorch graph\n" << graph << std::endl;
+  std::cerr << "loading PyTorch graph\n" << graph << std::endl << std::flush;
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 
