@@ -220,7 +220,7 @@ Provisioner::generateDeviceAssignments(
             ErrorValue::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
             strFormat(
                 "Logical Device is too large to fit in available device "
-                "memory. Largest device memory: %lu, logic device size:  %lu",
+                "memory. Largest device memory: %lu, logic device size: %lu",
                 deviceMemoryMap[backendName][0].second, logicalDevice.second));
       }
     }

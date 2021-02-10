@@ -1308,12 +1308,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     }
   }
 
-  // Fill up the last partition with NonSLS nodes.
   NodesSet nonSLSPartitionNodes;
   for (auto &node : F->getNodes()) {
     if (!slsPartitionNodes.count(&node)) {
-      partitionConfig.nodeToPartition[node.getName()] =
-          cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards;
       nonSLSPartitionNodes.insert(&node);
     }
   }
@@ -1333,24 +1330,65 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
   // Create table of devices
   std::vector<SLSDeviceInfo> slsDevices;
-  for (unsigned int device = 0;
-       device < cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards;
-       device++) {
-    slsDevices.push_back({device, allowedSLSMemBytes, 0});
+  std::vector<std::unordered_set<NodeValue>> frontierValues;
+  unsigned int snnNumCards =
+      cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards;
+  bool partitionSucceeded = false;
+  std::vector<unsigned int> factors;
+  factors.push_back(snnNumCards);
+  for (unsigned int i = snnNumCards + 1, e = deviceInfo_.size(); i <= e; ++i) {
+    if (deviceInfo_.size() % i == 0) {
+      factors.push_back(i);
+    }
   }
-  std::vector<std::unordered_set<NodeValue>> frontierValues(slsDevices.size());
+  auto it = std::lower_bound(factors.begin(), factors.end(), snnNumCards);
+  for (unsigned i = std::distance(factors.begin(), it); i < factors.size();
+       i++) {
+    snnNumCards = factors[i];
+    LOG(INFO) << "Trying " << snnNumCards << " sparse partitions.";
+    // Reset some of the contexts.
+    slsDevices.clear();
+    for (unsigned int device = 0; device < snnNumCards; device++) {
+      slsDevices.push_back({device, allowedSLSMemBytes, 0});
+    }
+    frontierValues.clear();
+    frontierValues.resize(slsDevices.size());
 
-  // Now assign SLS Nodes to devices
-  if (ERR_TO_BOOL(assignSlsTablesToDevices(slsTables, slsDevices,
-                                           frontierValues, contextCount_))) {
-    LOG(INFO)
-        << "Failed to partition SLS tables, fall back to greedy algorithm.";
-    RETURN_IF_ERR(assignSlsTablesToDevicesGreedy(
-        slsTables, slsDevices, frontierValues, contextCount_));
+    // Now assign SLS Nodes to devices
+    if (ERR_TO_BOOL(assignSlsTablesToDevices(slsTables, slsDevices,
+                                             frontierValues, contextCount_))) {
+      LOG(INFO)
+          << "Failed to partition SLS tables, fall back to greedy algorithm.";
+      if (!ERR_TO_BOOL(assignSlsTablesToDevicesGreedy(
+              slsTables, slsDevices, frontierValues, contextCount_))) {
+        partitionSucceeded = true;
+      };
+    } else {
+      partitionSucceeded = true;
+    }
+
+    if (partitionSucceeded) {
+      LOG(INFO) << "Successfully got a SparseNN parition solution with "
+                << snnNumCards << " sparse partitions.";
+      break;
+    } else {
+      LOG(WARNING) << "Cannot find a valid SparseNN partition solution with "
+                   << snnNumCards << " sparse partitions.";
+    }
   }
-  // Print final table assignments
+
+  if (!partitionSucceeded) {
+    return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
+                    "SLS Balancing Partitioning Error: Not enough memory");
+  }
+
   VLOG(1) << "Final table assignments: ";
   printSlsTableInfo(slsTables);
+
+  // Fill up the last partition with NonSLS nodes.
+  for (auto *node : nonSLSPartitionNodes) {
+    partitionConfig.nodeToPartition[node->getName()] = snnNumCards;
+  }
 
   // Create manual partition
   partitionConfig.numOfPartitions = slsDevices.size() + 1;
@@ -1414,8 +1452,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   ASSIGN_VALUE_OR_RETURN_ERR(partitions,
                              partitionFromConfig(partitionConfig, cctx));
   if (cctx.saturateHost) {
-    saturateHost(cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards,
-                 partitions);
+    saturateHost(snnNumCards, partitions);
   }
   return std::move(partitions);
 }
