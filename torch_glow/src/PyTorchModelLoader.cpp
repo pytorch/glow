@@ -6841,8 +6841,9 @@ PyTorchModelLoader::PyTorchModelLoader(
         inputs.size() == graphInputValues.size() ||
             metaStack.inputMetas.size() == graphInputValues.size(),
         glow::strFormat("Number of Graph inputs %lu must match the "
-                        "number of provided inputs %lu.",
-                        graphInputValues.size(), inputs.size()));
+                        "number of provided inputs %lu or inputMeta %lu.",
+                        graphInputValues.size(), inputs.size(),
+                        metaStack.inputMetas.size()));
     // Create Glow Placeholders for inputs.
     for (size_t i = 0; i < graphInputValues.size(); ++i) {
       const torch::jit::Value *inputValue = graphInputValues[i];
