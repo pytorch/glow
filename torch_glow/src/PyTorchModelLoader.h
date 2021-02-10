@@ -784,6 +784,14 @@ private:
   /// \returns error on failure.
   Error loadShapeAsTensor(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::argmin node.
+  /// \returns error on failure.
+  Error loadArgMin(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::argmax node.
+  /// \returns error on failure.
+  Error loadArgMax(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);

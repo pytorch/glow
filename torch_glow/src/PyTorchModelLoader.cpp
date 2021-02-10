@@ -410,6 +410,15 @@ struct ZerosInputs {
   };
 };
 
+// Indexes of aten:arg_min and arg_max inputs.
+struct ArgMaxMinInputs {
+  enum {
+    input = 0,
+    axis = 1,
+    keepDims = 2,
+  };
+};
+
 /// Indexes of aten::lstm inputs.
 struct LSTMInputs {
   enum {
@@ -1047,6 +1056,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
       {{"aten::_shape_as_tensor"}, &PyTorchModelLoader::loadShapeAsTensor},
+      {{"aten::argmin"}, &PyTorchModelLoader::loadArgMin},
+      {{"aten::argmax"}, &PyTorchModelLoader::loadArgMax},
       {{"aten::Int"}, &PyTorchModelLoader::loadInt},
       {{"aten::arange"}, &PyTorchModelLoader::loadArange},
       {{"aten::zeros"}, &PyTorchModelLoader::loadZeros},
@@ -3193,6 +3204,61 @@ Error PyTorchModelLoader::loadShapeAsTensor(const torch::jit::Node *ptNode) {
                                                std::move(outputTensor));
 
   output->ensureIsOwned(); // Prevents heap use after free
+  RETURN_ERR(addValueMapping(ptNode->output(), output));
+}
+
+Error PyTorchModelLoader::loadArgMin(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ArgMaxMinInputs::input]));
+
+  glow::unsigned_t axis = 0;
+  if (hasGlowIValueForValue(inputs[ArgMaxMinInputs::axis],
+                            /*ignoreNones*/ true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+                  getGlowIValueForValue(inputs[ArgMaxMinInputs::axis]))));
+  }
+
+  bool keepDims = true;
+  if (inputs.size() > 2 &&
+      hasGlowIValueForValue(inputs[ArgMaxMinInputs::keepDims])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        keepDims,
+        iValToBool(getGlowIValueForValue(inputs[ArgMaxMinInputs::keepDims])));
+  }
+
+  auto output = F_.createArgMin("argmin", input, axis, keepDims);
+  RETURN_ERR(addValueMapping(ptNode->output(), output));
+}
+
+Error PyTorchModelLoader::loadArgMax(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ArgMaxMinInputs::input]));
+
+  glow::unsigned_t axis = 0;
+  if (hasGlowIValueForValue(inputs[ArgMaxMinInputs::axis],
+                            /*ignoreNones*/ true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+                  getGlowIValueForValue(inputs[ArgMaxMinInputs::axis]))));
+  }
+
+  bool keepDims = true;
+  if (inputs.size() > 2 &&
+      hasGlowIValueForValue(inputs[ArgMaxMinInputs::keepDims])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        keepDims,
+        iValToBool(getGlowIValueForValue(inputs[ArgMaxMinInputs::keepDims])));
+  }
+  auto output = F_.createArgMax("argmax", input, axis, keepDims);
   RETURN_ERR(addValueMapping(ptNode->output(), output));
 }
 
