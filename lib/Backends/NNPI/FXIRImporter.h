@@ -16,12 +16,13 @@
 #ifndef FX_NNPI_IMPORTER_H
 #define FX_NNPI_IMPORTER_H
 
-#include "glow/fb/fx_nnpi_importer/Utils.h"
+#include "glow/fb/fx/nnpi_importer/Utils.h"
 #include "glow/lib/Backends/NNPI/NNPIOptions.h"
 #include "nnpi_network_builder.h"
 #include "nnpi_network_builder_EXPERIMENTAL.h"
 #include "nnpi_transformer.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include <folly/dynamic.h>
 #include <unordered_set>
@@ -72,13 +73,29 @@ public:
                              const std::string &offsetTensor = {},
                              bool forceSymlowp = false);
 
-  /// \returns the constants
-  const void *getConstant(const std::string &name) const;
+  /// \returns the Constant known by \p name. If \p name is from a getattr the
+  /// constant will be looked up by the underlying name found by
+  /// \ref getConstantName.
+  const void *getConstant(llvm::StringRef name) const;
+
+  /// \returns the underlying name of a Constant given provided \p name. If \p
+  /// name is already the name of a Constant it is returned, else looks for
+  /// getattr aliases to return the name of the actual underlying Constant.
+  const char *getConstantName(llvm::StringRef name) const;
+
+  /// \returns the NNPITensorDesc for node by \p name.
+  const NNPITensorDesc &getTensorDesc(llvm::StringRef name) const;
 
 private:
   /// Mapping from constant name to a void pointer points to where the constant
   /// is actually stored.
   const llvm::StringMap<const void *> *constants_;
+
+  /// Mapping from getattrs to the underlying name of the constants they alias.
+  llvm::StringMap<const std::string> getattrs_;
+
+  /// Mapping from output node names to the tensor descriptor for that node.
+  llvm::StringMap<NNPITensorDesc> tensorDescs_;
 
   /// Set of tensors written to by the function.
   std::unordered_set<std::string> writeTensors_;

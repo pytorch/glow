@@ -1,7 +1,7 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
 #include "glow/Flags/Flags.h"
-#include "glow/fb/fx_nnpi_importer/Utils.h"
+#include "glow/fb/fx/nnpi_importer/Utils.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
 #include "glow/lib/Backends/NNPI/NNPICompiledFunction.h"
