@@ -1067,16 +1067,12 @@ static Error validateBackendSpecificNodeInfo(
     }
     auto &nodeInfo = curNodeInfoIt->second;
 
-    RETURN_ERR_IF_NOT(!nodeInfo.count(parallelTransformKindKey),
-                      strFormat("Node %s should not have a "
-                                "parallelTransformKind after parallelization",
-                                node.getName().str().c_str()));
-
-    RETURN_ERR_IF_NOT(
-        !nodeInfo.count(numParallelChunksKey),
-        strFormat(
-            "Node %s should not have a numParallelChunks after parallelization",
-            node.getName().str().c_str()));
+    // If we find parallelization info here then it means the node was not
+    // parallelized; log and continue.
+    bool skippedPar = nodeInfo.erase(parallelTransformKindKey);
+    skippedPar |= nodeInfo.erase(numParallelChunksKey);
+    LOG_IF(WARNING, skippedPar)
+        << "Parallelization was skipped for Node: " << node.getDebugDesc();
 
     RETURN_ERR_IF_NOT(
         !nodeInfo.count(coreAssignmentsKey),
@@ -1246,14 +1242,17 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
       parallelizeOps(F, numChunks, parOpts, defaultNumParallelChunks,
                      defaultModelParallelSplitAlignment));
 
-  RETURN_ERR_IF_NOT(numChunks.size() == replacedMap.size(),
-                    "Expected that numChunks and replacedMap have same size.");
-
   if (usePerNodeParallelizationSpec) {
     // If parallelization was based on backend-specific node info then
     // validate the new nodes that were added.
     RETURN_IF_ERR(validateBackendSpecificNodeInfo(
         F, replacedMap, opts.backendSpecificNodeInfo));
+  } else if (numChunks.size() != replacedMap.size()) {
+    for (const auto &pair : numChunks) {
+      Node *N = pair.first;
+      LOG_IF(WARNING, !replacedMap.count(N))
+          << "Parallelization was skipped for Node: " << N->getDebugDesc();
+    }
   }
 
   return true;
@@ -1445,6 +1444,84 @@ static_assert(ActivationIOIdx == SigmoidNode::InputIdx, "Format incorrect");
 static_assert(ActivationIOIdx == SigmoidNode::ResultIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::InputIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::ResultIdx, "Format incorrect");
+
+template <typename T>
+void zeroOutEmbeddingTable(Tensor &tensor, const int64_t &padIdx) {
+  auto handle = tensor.getHandle<T>();
+  size_t base = handle.getElementPtr({static_cast<unsigned long>(padIdx)});
+  for (unsigned i = 0; i < tensor.dims()[1]; i++) {
+    handle.raw(base + i) = 0;
+  }
+}
+
+/// Helper which looks for EmbeddingNode that has padIdx specified and lower it
+/// to GatherNode. Since Gather doesn't support padIdx so we'll need to zero out
+/// those index before creating GatherNode.
+bool lowerEmbeddingToGather(Function *F) {
+  bool changed = false;
+
+  for (auto &N : F->getNodes()) {
+    auto *EN = llvm::dyn_cast<EmbeddingNode>(&N);
+    if (!EN) {
+      continue;
+    }
+
+    auto weightsNV = EN->getWeights();
+    auto padIdx = EN->getPadIdx();
+
+    DCHECK(weightsNV.dims().size() == 2)
+        << "Expect [Embedding] weight dimensions be 2, but got "
+        << weightsNV.dims().size();
+    DCHECK(!EN->getScale()) << "[Embedding] scale must be false";
+    DCHECK(!EN->getSparse()) << "[Embedding] sparse must be false";
+
+    auto *weightsConstant = llvm::dyn_cast<glow::Constant>(weightsNV.getNode());
+
+    // If weightsConstant is not available, probably means we are doing AOT
+    if (!weightsConstant) {
+      continue;
+    }
+
+    // Zero out embedding table if padIdx is not -1
+    if (padIdx != -1) {
+      // If embedding table only has one user, we don't make additional copies
+      if (weightsConstant->hasOneUse()) {
+        auto &weightsTensorNew = weightsConstant->getPayloadMutable();
+
+        if (weightsTensorNew.getElementType() == ElemKind::FloatTy) {
+          zeroOutEmbeddingTable<float>(weightsTensorNew, padIdx);
+        } else if (weightsTensorNew.getElementType() == ElemKind::Float16Ty) {
+          zeroOutEmbeddingTable<float16_t>(weightsTensorNew, padIdx);
+        } else {
+          LOG(ERROR)
+              << "Unsupported Embedding weight Elemtype for transformation: "
+              << Type::getElementName(weightsTensorNew.getElementType()).str();
+        }
+      } else { // Embedding table has more than one user
+        auto weightsTensorNew = weightsConstant->getPayload().clone();
+
+        if (weightsTensorNew.getElementType() == ElemKind::FloatTy) {
+          zeroOutEmbeddingTable<float>(weightsTensorNew, padIdx);
+        } else if (weightsTensorNew.getElementType() == ElemKind::Float16Ty) {
+          zeroOutEmbeddingTable<float16_t>(weightsTensorNew, padIdx);
+        } else {
+          LOG(ERROR)
+              << "Unsupported Embedding weight Elemtype for transformation: "
+              << Type::getElementName(weightsTensorNew.getElementType()).str();
+        }
+
+        weightsConstant = F->getParent()->createConstant(
+            "PaddedEmbeddingWeights", std::move(weightsTensorNew));
+      }
+    }
+
+    auto *GN = F->createGather("embedding", weightsConstant, EN->getIndices());
+    EN->getResult().replaceAllUsesOfWith(GN);
+    changed = true;
+  }
+
+  return changed;
+}
 
 /// Helper which looks for Quantized Conv whose kernel is smaller than stride in
 /// one or more dimension. These kernels will be padded to at least stride size.
@@ -1653,6 +1730,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
 
   bool changed = removeClipsBlockingFusion(F);
   changed |= padKernelToStride(F);
+  changed |= lowerEmbeddingToGather(F);
   auto it =
       cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
   if (it != cctx.backendOpts.backendSpecificOpts.end() && it->second == "1") {

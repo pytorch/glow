@@ -179,6 +179,9 @@ public:
 
   /// Indices of available backend devices on the machine.
   std::vector<int32_t> availableDevices;
+
+  /// Whether to dump out failed inputs and reference outputs to onnx files.
+  bool dumpFailedInputsToOnnxFiles = false;
 };
 
 /// Represents different possible output types from to_glow modules.

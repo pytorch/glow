@@ -87,13 +87,13 @@ Error Partitioner::finalize(const DAGListTy &partitions,
   if (logPartition) {
     LOG(INFO) << "The number of partitions is : "
               << mapping.getPartitions().size();
-    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.";
-    dumpDAG("DAG.dot", partitions);
     logPartitionInfo(mapping);
   }
 
   // Dump the graph of each function after partitioning.
   if (dumpPartition) {
+    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.";
+    dumpDAG("DAG.dot", partitions);
     for (const auto &node : partitions[0].nodes) {
       Function *subF = module_->getFunction(node->name);
       if (!subF) {
@@ -1036,24 +1036,6 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
   return std::move(partitions);
 }
 
-namespace {
-struct SLSTableInfo {
-  Node *node;
-  std::unordered_set<Node *> neighbors;
-  std::unordered_set<NodeValue> frontier;
-  uint64_t numBytesInTable;
-  unsigned int deviceId;
-  NodeValue slsResult;
-  uint64_t cost;
-};
-
-struct SLSDeviceInfo {
-  unsigned int deviceId;
-  uint64_t memAvailableInBytes;
-  size_t currentCost;
-};
-} // namespace
-
 // Do a search starting at an SLS output to capture any Clip or
 // LayerNormalization nodes which are there
 static void expandFrontier(Node *node, const NodeValue &value,
@@ -1326,12 +1308,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     }
   }
 
-  // Fill up the last partition with NonSLS nodes.
   NodesSet nonSLSPartitionNodes;
   for (auto &node : F->getNodes()) {
     if (!slsPartitionNodes.count(&node)) {
-      partitionConfig.nodeToPartition[node.getName()] =
-          cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards;
       nonSLSPartitionNodes.insert(&node);
     }
   }
@@ -1349,93 +1328,66 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
           totalDeviceMemory));
   const uint64_t allowedSLSMemBytes = totalDeviceMemory - nonSLSPartitionSize;
 
-  // Now sort SLS tables by size decreasing
-  VLOG(1) << "SLS tables sorted by size decreasing" << std::endl;
-  std::sort(slsTables.begin(), slsTables.end(),
-            [](const SLSTableInfo &l, const SLSTableInfo &r) {
-              return l.numBytesInTable > r.numBytesInTable;
-            });
-
-  // Print SLS tables
-  for (auto &table : slsTables) {
-    VLOG(1) << "(numBytesInTable, deviceID, cost)"
-            << "\t" << table.numBytesInTable << "\t" << table.deviceId << "\t"
-            << table.cost << std::endl;
-  }
-
   // Create table of devices
   std::vector<SLSDeviceInfo> slsDevices;
-  for (unsigned int device = 0;
-       device < cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards;
-       device++) {
-    slsDevices.push_back({device, allowedSLSMemBytes, 0});
+  std::vector<std::unordered_set<NodeValue>> frontierValues;
+  unsigned int snnNumCards =
+      cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards;
+  bool partitionSucceeded = false;
+  std::vector<unsigned int> factors;
+  factors.push_back(snnNumCards);
+  for (unsigned int i = snnNumCards + 1, e = deviceInfo_.size(); i <= e; ++i) {
+    if (deviceInfo_.size() % i == 0) {
+      factors.push_back(i);
+    }
   }
+  auto it = std::lower_bound(factors.begin(), factors.end(), snnNumCards);
+  for (unsigned i = std::distance(factors.begin(), it); i < factors.size();
+       i++) {
+    snnNumCards = factors[i];
+    LOG(INFO) << "Trying " << snnNumCards << " sparse partitions.";
+    // Reset some of the contexts.
+    slsDevices.clear();
+    for (unsigned int device = 0; device < snnNumCards; device++) {
+      slsDevices.push_back({device, allowedSLSMemBytes, 0});
+    }
+    frontierValues.clear();
+    frontierValues.resize(slsDevices.size());
 
-  // Now assign SLS Nodes to devices
-  std::vector<std::unordered_set<NodeValue>> frontierValues(slsDevices.size());
-  std::vector<NodesSet> nodesets(slsDevices.size());
-  for (auto &table : slsTables) {
-
-    // Sort by cost increasing
-    std::sort(slsDevices.begin(), slsDevices.end(),
-              [](const SLSDeviceInfo &l, const SLSDeviceInfo &r) {
-                return l.currentCost < r.currentCost;
-              });
-
-    VLOG(1) << "Devices sorted by cost increasing" << std::endl;
-    for (const auto &device : slsDevices) {
-      const auto deviceId = device.deviceId;
-      auto meminfo = getGraphMemInfo(nodesets[deviceId], contextCount_);
-      const auto totalSize = meminfo.getTotalMemSize();
-      VLOG(1) << "(deviceId, memAvailableInBytes, totalSize, currentCost): "
-              << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
-              << totalSize << "\t" << device.currentCost << std::endl;
+    // Now assign SLS Nodes to devices
+    if (ERR_TO_BOOL(assignSlsTablesToDevices(slsTables, slsDevices,
+                                             frontierValues, contextCount_))) {
+      LOG(INFO)
+          << "Failed to partition SLS tables, fall back to greedy algorithm.";
+      if (!ERR_TO_BOOL(assignSlsTablesToDevicesGreedy(
+              slsTables, slsDevices, frontierValues, contextCount_))) {
+        partitionSucceeded = true;
+      };
+    } else {
+      partitionSucceeded = true;
     }
 
-    // Pick the first that fits
-    bool deviceFound = false;
-    for (auto &d : slsDevices) {
-      const auto deviceId = d.deviceId;
-      // Calculate the memory needed if we merge SLS and its neighboring nodes
-      // into existing partition
-      auto nodesSetd = nodesets[deviceId];
-      nodesSetd.insert(table.node);
-      nodesSetd.insert(table.neighbors.begin(), table.neighbors.end());
-      auto meminfo = getGraphMemInfo(nodesSetd, contextCount_);
-      const auto totalSize = meminfo.getTotalMemSize();
-      if (d.memAvailableInBytes >= totalSize) {
-        deviceFound = true;
-        d.currentCost += (size_t)table.cost;
-        table.deviceId = d.deviceId;
-        frontierValues[table.deviceId].insert(table.frontier.begin(),
-                                              table.frontier.end());
-        nodesets[deviceId].swap(nodesSetd);
-        break;
-      }
-    }
-    if (!deviceFound) {
-      return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
-                      "SLS Balancing Partitioning Error: Not enough memory");
+    if (partitionSucceeded) {
+      LOG(INFO) << "Successfully got a SparseNN parition solution with "
+                << snnNumCards << " sparse partitions.";
+      break;
+    } else {
+      LOG(WARNING) << "Cannot find a valid SparseNN partition solution with "
+                   << snnNumCards << " sparse partitions.";
     }
   }
 
-  // Print final device info
-  VLOG(1) << "Devices sorted by cost increasing: ";
-  for (const auto &d : slsDevices) {
-    const auto deviceId = d.deviceId;
-    auto meminfo = getGraphMemInfo(nodesets[deviceId], contextCount_);
-    const auto totalSize = meminfo.getTotalMemSize();
-    VLOG(1) << "deviceId: " << deviceId << ", used memory: " << totalSize
-            << ", available memory: " << (d.memAvailableInBytes - totalSize)
-            << ", cost: " << d.currentCost
-            << ", node size: " << nodesets[deviceId].size();
+  if (!partitionSucceeded) {
+    return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
+                    "SLS Balancing Partitioning Error: Not enough memory");
   }
 
-  // Print assignments
-  for (auto &table : slsTables) {
-    VLOG(1) << "(numBytesInTable, deviceId, cost)"
-            << "\t" << table.numBytesInTable << "\t" << table.deviceId << "\t"
-            << table.cost << std::endl;
+  VLOG(1) << "Final table assignments: ";
+  printSlsTableInfo(slsTables);
+
+  // Fill up the last partition with NonSLS nodes.
+  for (auto *node : nonSLSPartitionNodes) {
+    partitionConfig.nodeToPartition[node->getName()] = snnNumCards;
   }
 
   // Create manual partition
@@ -1500,8 +1452,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   ASSIGN_VALUE_OR_RETURN_ERR(partitions,
                              partitionFromConfig(partitionConfig, cctx));
   if (cctx.saturateHost) {
-    saturateHost(cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards,
-                 partitions);
+    saturateHost(snnNumCards, partitions);
   }
   return std::move(partitions);
 }

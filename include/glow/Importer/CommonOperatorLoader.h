@@ -1086,6 +1086,8 @@ protected:
       node = G_->createBatchedReduceMin(opName, in, axes);
     } else if (typeName == "ReduceMax") {
       node = G_->createBatchedReduceMax(opName, in, axes);
+    } else if (typeName == "ReduceProd") {
+      node = G_->createBatchedReduceProd(opName, in, axes);
     } else {
       return MAKE_ERR("Unsupported Reduce Op " + typeName.str());
     }
@@ -1599,7 +1601,8 @@ protected:
       return true;
     }
     if (typeName == "ReduceMean" || typeName == "ReduceSum" ||
-        typeName == "ReduceMin" || typeName == "ReduceMax") {
+        typeName == "ReduceMin" || typeName == "ReduceMax" ||
+        typeName == "ReduceProd") {
       RETURN_IF_ERR(loadReduceOp(typeName, op, dict));
       return true;
     }

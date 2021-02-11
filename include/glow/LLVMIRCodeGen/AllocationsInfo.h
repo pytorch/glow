@@ -16,6 +16,7 @@
 #ifndef GLOW_LLVMIRCODEGEN_ALLOCATIONSINFO_H
 #define GLOW_LLVMIRCODEGEN_ALLOCATIONSINFO_H
 
+#include "glow/Backend/BackendUtils.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Nodes.h"
 #include "llvm/IR/Module.h"
@@ -28,10 +29,6 @@ class IRFunction;
 class WeightVar;
 class Constant;
 class PlaceholderBindings;
-
-namespace runtime {
-class RuntimeBundle;
-}
 
 /// Information about allocations for activations, constant weight variables
 /// and mutable weight variables.
@@ -97,6 +94,8 @@ protected:
   /// Use a memory allocator with no upper bound on how much memory we can
   /// allocate.
   MemoryAllocator activationsAllocator_;
+  /// Symbol table for the allocated symbols.
+  glow::runtime::SymbolTableTy symbolTable_;
 };
 
 } // namespace glow

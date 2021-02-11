@@ -30,19 +30,26 @@ namespace glow {
 struct InputMeta {
   c10::ScalarType type;
   std::vector<glow::sdim_t> dims;
+  double scale;
+  int64_t offset;
 
-  InputMeta(c10::ScalarType type_, std::vector<glow::sdim_t> &&dims_)
-      : type(type_), dims(std::move(dims_)) {}
+  InputMeta(c10::ScalarType type_, std::vector<glow::sdim_t> &&dims_,
+            double scale_ = 1.0, int64_t offset_ = 0)
+      : type(type_), dims(std::move(dims_)), scale(scale_), offset(offset_) {}
 
-  InputMeta(c10::ScalarType type_, const std::vector<glow::sdim_t> &dims_)
-      : type(type_), dims(dims_) {}
+  InputMeta(c10::ScalarType type_, const std::vector<glow::sdim_t> &dims_,
+            double scale_ = 1.0, int64_t offset_ = 0)
+      : type(type_), dims(dims_), scale(scale_), offset(offset_) {}
 
-  InputMeta(c10::ScalarType type_, c10::IntArrayRef dims_)
+  InputMeta(c10::ScalarType type_, c10::IntArrayRef dims_, double scale_ = 1.0,
+            int64_t offset_ = 0)
       : type(type_),
-        dims(std::vector<glow::sdim_t>(dims_.begin(), dims_.end())) {}
+        dims(std::vector<glow::sdim_t>(dims_.begin(), dims_.end())),
+        scale(scale_), offset(offset_) {}
 
   bool operator==(const InputMeta &other) const {
-    return type == other.type && dims == other.dims;
+    return type == other.type && dims == other.dims && scale == other.scale &&
+           offset == other.offset;
   }
 
   /// Produce a printable string for the InputMeta
