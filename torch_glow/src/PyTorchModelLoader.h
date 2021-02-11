@@ -736,6 +736,10 @@ private:
   /// \returns error on failure.
   Error loadSoftMax(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch LogSoftMax node.
+  /// \returns error on failure.
+  Error loadLogSoftMax(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch Abs node.
   /// \returns error on failure.
   Error loadAbs(const torch::jit::Node *ptNode);

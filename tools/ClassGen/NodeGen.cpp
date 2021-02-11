@@ -333,6 +333,13 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs SoftMax normalization on the Input tensor.");
 
+  BB.newNode("LogSoftMax")
+      .addInput("Input")
+      .addInput("Selected")
+      .addResultFromCtorArg()
+      .addGradient()
+      .setDocstring("Performs LogSoftMax normalization on the Input tensor.");
+
   BB.newNode("CrossEntropyLoss")
       .addInput("P")
       .addInput("Labels")

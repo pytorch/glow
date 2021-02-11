@@ -6261,6 +6261,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     SoftMaxNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::LogSoftMaxNodeKind: {
+        splitDims[LogSoftMaxNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, LogSoftMaxNode::InputIdx,
+                    LogSoftMaxNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::TanhNodeKind: {
         splitDims[TanhNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(

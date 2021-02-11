@@ -612,6 +612,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int32ITy ||
             NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
 
+  case Kinded::Kind::LogSoftMaxNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+               {LogSoftMaxNode::SelectedIdx}) &&
+           (NI.getInElemTy(LogSoftMaxNode::SelectedIdx) == ElemKind::Int32ITy ||
+            NI.getInElemTy(LogSoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
+
   case Kinded::Kind::GatherRangesNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::Int32ITy, ElemKind::Int64ITy},

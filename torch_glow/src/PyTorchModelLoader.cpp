@@ -716,6 +716,9 @@ struct SoftMaxInputs {
   };
 };
 
+/// Indexes of aten::log_softmax inputs.
+using LogSoftMaxInputs = SoftMaxInputs;
+
 /// Indexes of aten::flatten inputs.
 struct FlattenInputs {
   enum {
@@ -1176,6 +1179,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::prelu"}, &PyTorchModelLoader::loadPRelu},
       {{"aten::slice"}, &PyTorchModelLoader::loadSlice},
       {{"aten::softmax"}, &PyTorchModelLoader::loadSoftMax},
+      {{"aten::log_softmax"}, &PyTorchModelLoader::loadLogSoftMax},
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
       {{"aten::to"}, &PyTorchModelLoader::loadTo},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
@@ -5458,6 +5462,54 @@ Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   auto outTransposeShufle = getInverseTranspose(inTransposeShuffle);
   out = F_.createTranspose("transpose_after_softmax", out, outTransposeShufle)
             ->getResult();
+  RETURN_ERR(addValueMapping(outputs[0], out));
+}
+
+Error PyTorchModelLoader::loadLogSoftMax(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      in, getGlowNodeValueForValue(inputs[LogSoftMaxInputs::input]));
+
+  const auto inDims = in.dims();
+
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[LogSoftMaxInputs::dim])));
+
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getPositiveIndex(dim, inDims.size()));
+
+  // transpose dim to inner dimension
+  std::vector<unsigned_t> inTransposeShuffle;
+  for (auto i = 0; i < inDims.size(); ++i) {
+    inTransposeShuffle.push_back(i);
+  }
+  inTransposeShuffle.erase(inTransposeShuffle.begin() + dim);
+  inTransposeShuffle.push_back(dim);
+  in =
+      F_.createTranspose("transpose_before_log_softmax", in, inTransposeShuffle)
+          ->getResult();
+
+  // flatten outer dims
+  auto dimsBeforeFlatten = in.dims();
+  in = F_.createFlatten("flatten_before_log_softmax", in, inDims.size() - 1);
+
+  // LogSoftmax
+  auto selected = F_.getParent()->createConstant(
+      glow::ElemKind::Int64ITy, {in.dims()[0], 1}, "log_softmax_selected");
+  auto out = F_.createLogSoftMax("log_softmax", in, selected)->getResult();
+
+  // unflatten
+  out = F_.createReshape("reshape_after_log_softmax", out, dimsBeforeFlatten);
+
+  // transpose dim back to where it started
+  auto outTransposeShufle = getInverseTranspose(inTransposeShuffle);
+  out =
+      F_.createTranspose("transpose_after_log_softmax", out, outTransposeShufle)
+          ->getResult();
   RETURN_ERR(addValueMapping(outputs[0], out));
 }
 

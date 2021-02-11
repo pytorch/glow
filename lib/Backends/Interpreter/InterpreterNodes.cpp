@@ -2072,6 +2072,41 @@ void BoundInterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
 }
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdLogSoftMaxInstImpl(const LogSoftMaxInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto idim = inW.dims();
+  // using log(softmax(x)) = x - max_x - log(sum)
+  // https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/SoftMax.cpp#L14-L64
+  for (dim_t n = 0; n < idim[0]; n++) {
+    // Find Max.
+    float max = float(inW.at({n, 0}));
+    for (dim_t i = 1; i < idim[1]; i++) {
+      max = std::max(max, float(inW.at({n, i})));
+    }
+
+    // Compute sum of exp(x-max).
+    float sum = 0;
+    for (dim_t i = 0; i < idim[1]; i++) {
+      float e = std::exp(float(inW.at({n, i})) - max);
+      sum += e;
+    }
+
+    // Output = x - max - log(sum)
+    for (dim_t i = 0; i < idim[1]; i++) {
+      outW.at({n, i}) = ElemTy(float(inW.at({n, i})) - max - std::log(sum));
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdLogSoftMaxInst(const LogSoftMaxInst *I) {
+  dispatchFloatingPointImpl(fwdLogSoftMaxInstImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdCrossEntropyLossInstFloatImpl(
     const CrossEntropyLossInst *I) {
   staticAssertFloatingPointType(ElemTy);

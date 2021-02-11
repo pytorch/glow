@@ -1933,6 +1933,20 @@ Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node, GraphType &graph) {
   return Error::success();
 }
 
+Error ONNXModelWriter::writeLogSoftMax(const LogSoftMaxNode *node,
+                                       GraphType &graph) {
+  auto *proto = graph.add_node();
+  proto->set_name(node->getName());
+  proto->set_op_type("LogSoftmax");
+  outputsToProto(node, graph, proto);
+  // Find input from Reshape node
+  proto->add_input(node->getInput().getNode()->getName());
+
+  // Mark selected input as visited.
+  reportedNodes_.insert(node->getSelected().getNode());
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeReplaceNaN(const ReplaceNaNNode *node,
                                        GraphType &graph) {
   auto *proto = graph.add_node();
@@ -2547,6 +2561,7 @@ DEF_UNSUPPORTED_NODE(AvgPoolGrad)
 DEF_UNSUPPORTED_NODE(MaxPoolGrad)
 DEF_UNSUPPORTED_NODE(SigmoidGrad)
 DEF_UNSUPPORTED_NODE(SoftMaxGrad)
+DEF_UNSUPPORTED_NODE(LogSoftMaxGrad)
 DEF_UNSUPPORTED_NODE(RegressionGrad)
 DEF_UNSUPPORTED_NODE(ConvolutionGrad)
 DEF_UNSUPPORTED_NODE(CrossEntropyLoss)
