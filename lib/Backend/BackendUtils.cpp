@@ -34,7 +34,7 @@ static llvm::cl::OptionCategory BackendUtilsCat("Glow Backend Utils Options");
 
 static llvm::cl::opt<bool> reuseActivationsMemory(
     "reuse-activation-memory-allocations",
-    llvm::cl::desc("Reuse activations memory between different IR functions"),
+    llvm::cl::desc("Should activation memory allocations be reused"),
     llvm::cl::init(true), llvm::cl::cat(BackendUtilsCat));
 
 glow::runtime::RuntimeBundle::RuntimeBundle(
@@ -436,16 +436,35 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
 
   // Gather allocation/deallocation sequence.
   std::list<Allocation> allocList;
-  for (const auto &I : instrs) {
-    if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
-      auto numBytes = I.getSizeInBytes();
-      allocList.emplace_back(A, /* alloc */ true, numBytes);
-      continue;
+  if (reuseActivationsMemory) {
+    // When reusing memory we register allocs/deallocs in their original order.
+    for (const auto &I : instrs) {
+      if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
+        auto numBytes = I.getSizeInBytes();
+        allocList.emplace_back(A, /* alloc */ true, numBytes);
+        continue;
+      }
+      if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
+        auto *A = D->getAlloc();
+        allocList.emplace_back(A, /* alloc */ false, 0);
+        continue;
+      }
     }
-    if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
-      auto *A = D->getAlloc();
-      allocList.emplace_back(A, /* alloc */ false, 0);
-      continue;
+  } else {
+    // When not reusing memory we register first the allocs then the deallocs.
+    for (const auto &I : instrs) {
+      if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
+        auto numBytes = I.getSizeInBytes();
+        allocList.emplace_back(A, /* alloc */ true, numBytes);
+        continue;
+      }
+    }
+    for (const auto &I : instrs) {
+      if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
+        auto *A = D->getAlloc();
+        allocList.emplace_back(A, /* alloc */ false, 0);
+        continue;
+      }
     }
   }
 
