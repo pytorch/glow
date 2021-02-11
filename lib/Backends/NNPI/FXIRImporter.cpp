@@ -421,6 +421,8 @@ FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
   }
 
   // Add ops node.
+  // TODO, currently we assume that the target of get_attr nodes matches the
+  // name of the node, if they don't match we fail to load the graph.
   for (const auto &node : mod["nodes"]) {
     const auto &opCode = node["op_code"].getString();
     if (isOps(opCode)) {

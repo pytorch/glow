@@ -514,9 +514,12 @@ void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
                             std::vector<Tensor> *partialTensorPayloads,
                             bool usingGlowCustomOps) {
   for (const auto &tensorProto : inputGroup.initializer()) {
+    const std::string glowLegalizedName =
+        glow::legalizeName(tensorProto.name());
     auto *tensor =
-        bindings->get(bindings->getPlaceholderByNameSlow(tensorProto.name()));
-    CHECK(tensor) << "Missing " << tensorProto.name();
+        bindings->get(bindings->getPlaceholderByNameSlow(glowLegalizedName));
+    CHECK(tensor) << "Missing " << tensorProto.name()
+                  << ", Glow legalized name " << glowLegalizedName;
     size_t fullSize = tensor->getSizeInBytes();
     const auto fullType = tensor->getType();
     auto error = loadTensor(tensorProto, tensor, usingGlowCustomOps);
@@ -525,8 +528,8 @@ void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
     size_t loadedSize = tensor->getSizeInBytes();
     if (loadedSize != fullSize) {
       if (partialTensorPayloads) {
-        VLOG(1) << "Loading " << tensorProto.name()
-                << " as a partial tensor: partial size="
+        VLOG(1) << "Loading " << tensorProto.name() << ", Glow legalized name "
+                << glowLegalizedName << " as a partial tensor: partial size="
                 << tensor->getType().toString()
                 << " full size=" << fullType.toString();
         Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
@@ -539,6 +542,7 @@ void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
       } else {
         // pad with 0
         VLOG(1) << "Loading and padding " << tensorProto.name()
+                << ", Glow legalized name " << glowLegalizedName
                 << " as a partial tensor: partial size="
                 << tensor->getType().toString()
                 << " full size=" << fullType.toString();

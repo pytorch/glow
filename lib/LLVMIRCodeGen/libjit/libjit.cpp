@@ -1893,27 +1893,35 @@ void libjit_batchedadd_i32_i8(int8_t *dest, const int8_t *batch,
                               sliceScale);
 }
 
-/// The dimensions passed in here are pre-expanded in LLVMIRGen with 1s so that
-/// we can iterate over the shape here, regardless of the shape of the tensor.
-void libjit_batchedreduceadd_f(float *dest, const float *batch, dim_t destSize,
-                               const dim_t *destDims, const dim_t *batchDims,
-                               dim_t axis) {
-  for (dim_t i = 0; i < destSize; i++)
-    dest[i] = 0.0;
+// /// The dimensions passed in here are pre-expanded in LLVMIRGen with 1s so
+// that
+// /// we can iterate over the shape here, regardless of the shape of the
+// tensor.
+#define DEFINE_BATCHEDREDUCE_KERNEL_FLOAT(name, type, init, op)                \
+  void libjit_##name(type *dest, const type *batch, dim_t destSize,            \
+                     const dim_t *destDims, const dim_t *batchDims,            \
+                     dim_t axis) {                                             \
+    for (dim_t i = 0; i < destSize; i++)                                       \
+      dest[i] = init;                                                          \
+    for (dim_t x = 0; x < batchDims[0]; x++)                                   \
+      for (dim_t y = 0; y < batchDims[1]; y++)                                 \
+        for (dim_t z = 0; z < batchDims[2]; z++)                               \
+          for (dim_t w = 0; w < batchDims[3]; w++)                             \
+            for (dim_t q = 0; q < batchDims[4]; q++)                           \
+              for (dim_t r = 0; r < batchDims[5]; r++) {                       \
+                dim_t I[] = {x, y, z, w, q, r};                                \
+                I[axis] = 0;                                                   \
+                dest[libjit_getXYZWQR(destDims, I[0], I[1], I[2], I[3], I[4],  \
+                                      I[5])] =                                 \
+                    dest[libjit_getXYZWQR(destDims, I[0], I[1], I[2], I[3],    \
+                                          I[4], I[5])] op                      \
+                        batch[libjit_getXYZWQR(batchDims, x, y, z, w, q, r)];  \
+              }                                                                \
+  }
 
-  for (dim_t x = 0; x < batchDims[0]; x++)
-    for (dim_t y = 0; y < batchDims[1]; y++)
-      for (dim_t z = 0; z < batchDims[2]; z++)
-        for (dim_t w = 0; w < batchDims[3]; w++)
-          for (dim_t q = 0; q < batchDims[4]; q++)
-            for (dim_t r = 0; r < batchDims[5]; r++) {
-              dim_t I[] = {x, y, z, w, q, r};
-              I[axis] = 0;
-              dest[libjit_getXYZWQR(destDims, I[0], I[1], I[2], I[3], I[4],
-                                    I[5])] +=
-                  batch[libjit_getXYZWQR(batchDims, x, y, z, w, q, r)];
-            }
-}
+DEFINE_BATCHEDREDUCE_KERNEL_FLOAT(batchedreduceadd_f, float, 0.0, +)
+DEFINE_BATCHEDREDUCE_KERNEL_FLOAT(batchedreduceprod_f, float, 1.0, *)
+#undef DEFINE_BATCHEDREDUCE_KERNEL_FLOAT
 
 /// Macro to reducemin/max wrapper kernels.
 #define DEFINE_REDUCE_MINMAX(func, suffix, type, init)                         \

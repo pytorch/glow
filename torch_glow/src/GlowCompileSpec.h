@@ -71,11 +71,14 @@ void registerPyTorchGlowCustomClasses();
                   (fieldName), (dyn).at((fieldName)).typeName()));             \
   } while (0)
 
+// For checking if contains double, we also consider int as double. This is
+// because sometimes when we write a doulbe that doesn't have decimal digit to
+// json, the decimal point will be emitted.
 #define CHECK_DYN_CONTAINS_DOUBLE(dyn, fieldName)                              \
   do {                                                                         \
     CHECK_DYN_CONTAINS_FIELD((dyn), (fieldName));                              \
     RETURN_ERR_IF_NOT(                                                         \
-        (dyn).at((fieldName)).isDouble(),                                      \
+        (dyn).at((fieldName)).isDouble() || (dyn).at((fieldName)).isInt(),     \
         strFormat("Expected field %s to be an double but found a %s",          \
                   (fieldName), (dyn).at((fieldName)).typeName()));             \
   } while (0)
@@ -101,10 +104,16 @@ void registerPyTorchGlowCustomClasses();
     output = (dyn).at(fieldName).getBool();                                    \
   } while (0)
 
+// If the field contains an integer, we'll cast it to double instead of throwing
+// error.
 #define ASSIGN_DOUBLE_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, output, fieldName)     \
   do {                                                                         \
     CHECK_DYN_CONTAINS_DOUBLE((dyn), (fieldName));                             \
-    output = (dyn).at(fieldName).getDouble();                                  \
+    if ((dyn).at(fieldName).isDouble()) {                                      \
+      output = (dyn).at(fieldName).getDouble();                                \
+    } else {                                                                   \
+      output = static_cast<double>((dyn).at(fieldName).getInt());              \
+    }                                                                          \
   } while (0)
 
 #define ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, output, fieldName)        \
@@ -473,31 +482,65 @@ struct InputSpec : public JsonSerializableCustomClass {
   bool initialized = false;
   c10::ScalarType elem_type;
   std::vector<int64_t> dims;
+  double scale;
+  int64_t offset;
 
   c10::ScalarType get_elem_type() { return elem_type; }
   std::vector<int64_t> get_dims() { return dims; }
+  double get_scale() { return scale; }
+  int64_t get_offset() { return offset; }
 
-  void set(std::vector<int64_t> dims_param, c10::ScalarType elem_type_param) {
+  void set_quantized_tensor(std::vector<int64_t> dims_param,
+                            c10::ScalarType elem_type_param, double scale_param,
+                            int64_t offset_param) {
+    CHECK(c10::isQIntType(elem_type_param))
+        << "Trying to set quantized tensor but elem_type is not quantized "
+           "type.";
     dims = dims_param;
     elem_type = elem_type_param;
+    scale = scale_param;
+    offset = offset_param;
+    initialized = true;
+  }
+
+  void set_non_quantized_tensor(std::vector<int64_t> dims_param,
+                                c10::ScalarType elem_type_param) {
+    CHECK(!c10::isQIntType(elem_type_param))
+        << "Trying to set non quantized tensor but elem_type is quantized "
+           "type.";
+    dims = dims_param;
+    elem_type = elem_type_param;
+    scale = 1.0;
+    offset = 0;
     initialized = true;
   }
 
   void set_same_as(const at::Tensor &t) {
-    if (t.is_quantized()) {
-      throw std::invalid_argument(
-          "Quantized PyTorch Tensor is not supported yet in InputSpec.");
-    }
     std::vector<int64_t> sizesCopy;
     std::copy(t.sizes().begin(), t.sizes().end(),
               std::back_inserter(sizesCopy));
-    set(sizesCopy, t.scalar_type());
+
+    if (t.is_quantized()) {
+      CHECK(t.qscheme() == at::kPerTensorAffine ||
+            t.qscheme() == at::kPerTensorSymmetric)
+          << "Expect per_tensor quantization scheme";
+      set_quantized_tensor(sizesCopy, t.scalar_type(), t.q_scale(),
+                           t.q_zero_point());
+    } else {
+      set_non_quantized_tensor(sizesCopy, t.scalar_type());
+    }
   }
 
   Expected<folly::dynamic> toDynamicImpl() const override {
     folly::dynamic obj = folly::dynamic::object();
     obj["elem_type"] = static_cast<int64_t>(elem_type);
     obj["dims"] = dynArrayFromVec(dims);
+
+    if (c10::isQIntType(elem_type)) {
+      obj["scale"] = scale;
+      obj["offset"] = offset;
+    }
+
     return obj;
   }
 
@@ -516,6 +559,13 @@ struct InputSpec : public JsonSerializableCustomClass {
     CHECK_DYN_CONTAINS_ARRAY(dyn, "dims");
     ASSIGN_VALUE_OR_RETURN_ERR(dims, dynArrayToVec<int64_t>(dyn.at("dims")));
 
+    if (dyn.count("scale")) {
+      ASSIGN_DOUBLE_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, scale, "scale");
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, offset, "offset");
+    }
+
+    // initialized should be set at the last so that it doesn't get set
+    // prematurely.
     initialized = true;
     return Error::success();
   }

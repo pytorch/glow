@@ -413,6 +413,15 @@ struct ZerosInputs {
   };
 };
 
+// Indexes of aten:arg_min and arg_max inputs.
+struct ArgMaxMinInputs {
+  enum {
+    input = 0,
+    axis = 1,
+    keepDims = 2,
+  };
+};
+
 /// Indexes of aten::lstm inputs.
 struct LSTMInputs {
   enum {
@@ -1179,6 +1188,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::detach"}, &PyTorchModelLoader::loadDetach},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
+      {{"aten::_shape_as_tensor"}, &PyTorchModelLoader::loadShapeAsTensor},
+      {{"aten::argmin"}, &PyTorchModelLoader::loadArgMin},
+      {{"aten::argmax"}, &PyTorchModelLoader::loadArgMax},
       {{"aten::Int"}, &PyTorchModelLoader::loadInt},
       {{"aten::arange"}, &PyTorchModelLoader::loadArange},
       {{"aten::zeros"}, &PyTorchModelLoader::loadZeros},
@@ -3303,6 +3315,84 @@ Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
   auto output =
       F_.getParent()->createConstant("NumToTensor_output", std::move(t));
   RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadShapeAsTensor(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto dims = input.getType()->dims();
+  std::vector<dim_t> outputValues{dims.begin(), dims.end()};
+
+  auto type =
+      F_.getParent()->uniqueType(glow::ElemKind::Int64ITy, outputValues.size());
+
+  auto outputTensor = glow::Tensor(outputValues.data(), type);
+
+  auto output = F_.getParent()->createConstant("ShapeAsTensor_output",
+                                               std::move(outputTensor));
+
+  output->ensureIsOwned(); // Prevents heap use after free
+  RETURN_ERR(addValueMapping(ptNode->output(), output));
+}
+
+Error PyTorchModelLoader::loadArgMin(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ArgMaxMinInputs::input]));
+
+  glow::unsigned_t axis = 0;
+  if (hasGlowIValueForValue(inputs[ArgMaxMinInputs::axis],
+                            /*ignoreNones*/ true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+                  getGlowIValueForValue(inputs[ArgMaxMinInputs::axis]))));
+  }
+
+  bool keepDims = true;
+  if (inputs.size() > 2 &&
+      hasGlowIValueForValue(inputs[ArgMaxMinInputs::keepDims])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        keepDims,
+        iValToBool(getGlowIValueForValue(inputs[ArgMaxMinInputs::keepDims])));
+  }
+
+  auto output = F_.createArgMin("argmin", input, axis, keepDims);
+  RETURN_ERR(addValueMapping(ptNode->output(), output));
+}
+
+Error PyTorchModelLoader::loadArgMax(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ArgMaxMinInputs::input]));
+
+  glow::unsigned_t axis = 0;
+  if (hasGlowIValueForValue(inputs[ArgMaxMinInputs::axis],
+                            /*ignoreNones*/ true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+                  getGlowIValueForValue(inputs[ArgMaxMinInputs::axis]))));
+  }
+
+  bool keepDims = true;
+  if (inputs.size() > 2 &&
+      hasGlowIValueForValue(inputs[ArgMaxMinInputs::keepDims])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        keepDims,
+        iValToBool(getGlowIValueForValue(inputs[ArgMaxMinInputs::keepDims])));
+  }
+  auto output = F_.createArgMax("argmax", input, axis, keepDims);
+  RETURN_ERR(addValueMapping(ptNode->output(), output));
 }
 
 Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
@@ -6884,40 +6974,45 @@ PyTorchModelLoader::PyTorchModelLoader(
         inputs.size() == graphInputValues.size() ||
             metaStack.inputMetas.size() == graphInputValues.size(),
         glow::strFormat("Number of Graph inputs %lu must match the "
-                        "number of provided inputs %lu.",
-                        graphInputValues.size(), inputs.size()));
+                        "number of provided inputs %lu or inputMeta %lu.",
+                        graphInputValues.size(), inputs.size(),
+                        metaStack.inputMetas.size()));
     // Create Glow Placeholders for inputs.
     for (size_t i = 0; i < graphInputValues.size(); ++i) {
       const torch::jit::Value *inputValue = graphInputValues[i];
       c10::ScalarType inputScalarType;
       glow::Placeholder *ph;
       if (!metaStack.inputMetas.empty()) {
+        glow::Type t;
         if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
           inputScalarType = metaStack.inputMetas[i].type;
-          glow::ElemKind elemKind;
-          if (metaStack.inputMetas[i].type != at::kQUInt8) {
-            elemKind = scalarTypeToElemKind(metaStack.inputMetas[i].type);
-          } else {
-            elemKind = ElemKind::Int8QTy;
-          }
-
           // TODO: Change Glow Type to use sdim_t to be consistent
           // with other places.
           std::vector<glow::dim_t> dims;
           for (auto d : metaStack.inputMetas[i].dims) {
             dims.push_back(static_cast<glow::dim_t>(d));
           }
-          glow::Type t(elemKind, dims);
 
-          ph = F_.getParent()->createPlaceholder(&t, "input",
-                                                 /*isTrainable*/ false);
-
+          if (!c10::isQIntType(metaStack.inputMetas[i].type)) {
+            t = glow::Type(scalarTypeToElemKind(metaStack.inputMetas[i].type),
+                           dims);
+          } else if (metaStack.inputMetas[i].type == at::kQUInt8) {
+            t = glow::Type(
+                ElemKind::Int8QTy, dims, metaStack.inputMetas[i].scale,
+                metaStack.inputMetas[i].offset - UINT8_TO_INT8_SHIFT);
+          } else {
+            t = glow::Type(scalarTypeToElemKind(metaStack.inputMetas[i].type),
+                           dims, metaStack.inputMetas[i].scale,
+                           metaStack.inputMetas[i].offset);
+          }
         } else {
           // Here we assume it's scalar type
-          glow::Type t(typeKindToElemKind(inputValue->type()->kind()), {});
-          ph = F_.getParent()->createPlaceholder(&t, "input", false);
+          t = glow::Type(typeKindToElemKind(inputValue->type()->kind()), {});
           inputScalarType = elemKindToScalarType(t.getElementType());
         }
+        ph =
+            F_.getParent()->createPlaceholder(&t, strFormat("input_%d", int(i)),
+                                              /*isTrainable*/ false);
         RETURN_IF_ERR(
             addValueMapping(inputValue, ph->getOutput(), inputScalarType));
         inputPlaceholders.push_back(ph);
@@ -6938,11 +7033,13 @@ PyTorchModelLoader::PyTorchModelLoader(
             auto newType = glow::Type(
                 ElemKind::Int8QTy, oldType.dims(), oldType.getScale(),
                 oldType.getOffset() - UINT8_TO_INT8_SHIFT);
-            ph = F_.getParent()->createPlaceholder(&newType, "input",
-                                                   /*isTrainable*/ false);
+            ph = F_.getParent()->createPlaceholder(
+                &newType, strFormat("input_%d", int(i)),
+                /*isTrainable*/ false);
           } else {
-            ph = F_.getParent()->createPlaceholder(&t->getType(), "input",
-                                                   /*isTrainable*/ false);
+            ph = F_.getParent()->createPlaceholder(
+                &t->getType(), strFormat("input_%d", int(i)),
+                /*isTrainable*/ false);
           }
           inputScalarType = inputIValue.toTensor().scalar_type();
           RETURN_IF_ERR(
@@ -6960,12 +7057,15 @@ PyTorchModelLoader::PyTorchModelLoader(
     RETURN_IF_ERR(loadNodes(graph));
 
     // Create Glow Placeholders for outputs.
-    for (const torch::jit::Value *output : graph.outputs()) {
+    const auto graphOutputs = graph.outputs();
+    for (size_t i = 0; i < graphOutputs.size(); ++i) {
+      const torch::jit::Value *output = graphOutputs[i];
       glow::NodeValue outputNodeValue;
       // Only allow tensor outputs from Glow subgraph.
       ASSIGN_VALUE_OR_RETURN_ERR(outputNodeValue,
                                  getGlowNodeValueForValue(output));
-      auto *save = F_.createSave("save", outputNodeValue);
+      auto *save =
+          F_.createSave(strFormat("output_%d", int(i)), outputNodeValue);
       outputPlaceholders.push_back(save->getPlaceholder());
 
       c10::ScalarType outputScalarType;

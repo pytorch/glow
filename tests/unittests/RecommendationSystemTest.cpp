@@ -104,6 +104,10 @@ llvm::cl::list<unsigned> lengthsMinMaxOpt(
     llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
     llvm::cl::cat(recSysTestCat));
 
+llvm::cl::opt<unsigned> randomSeedOpt(
+    "random-seed", llvm::cl::desc("Seed for the random data generation"),
+    llvm::cl::Optional, llvm::cl::init(2001), llvm::cl::cat(recSysTestCat));
+
 llvm::cl::list<unsigned> tableSizesOpt(
     "embedding-table-sizes",
     llvm::cl::desc("Comma-separated list of embedding table sizes."),
@@ -599,7 +603,7 @@ protected:
 
     for (unsigned int i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
-          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
+          bindings_.allocate(lengths[i])->getHandle<int32_t>(), randomSeedOpt,
           lengthsMin, lengthsMax);
 
       dim_t sum =
@@ -607,7 +611,7 @@ protected:
       auto *indices = mod.createPlaceholder(
           ElemKind::Int64ITy, {sum}, "indices" + std::to_string(i), false);
       fillStableRandomIndex(bindings_.allocate(indices)->getHandle<int64_t>(),
-                            2001, 0, embSizes[i]);
+                            randomSeedOpt, 0, embSizes[i]);
 
       // output is size {MB, embDim}
       if (quantizeSLWSData) {
@@ -679,7 +683,7 @@ protected:
       std::vector<NodeValue> &embeddings, uint32_t weightsSize = 1000) {
     for (size_t i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
-          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
+          bindings_.allocate(lengths[i])->getHandle<int32_t>(), randomSeedOpt,
           lengthsMin, lengthsMax);
 
       dim_t sum =
@@ -687,7 +691,7 @@ protected:
       auto *indices = mod.createPlaceholder(
           ElemKind::Int64ITy, {sum}, "indices" + std::to_string(i), false);
       fillStableRandomIndex(bindings_.allocate(indices)->getHandle<int64_t>(),
-                            2001, 0, tableSizes[i]);
+                            randomSeedOpt, 0, tableSizes[i]);
 
       // Should be able to pass weights - fix later. Currently, just a
       // randomized constant.
@@ -699,8 +703,8 @@ protected:
           mod.createPlaceholder(ElemKind::Int32ITy, {sum},
                                 "weight_indices" + std::to_string(i), false);
       fillStableRandomIndex(
-          bindings_.allocate(weightIndices)->getHandle<int32_t>(), 2001, 0,
-          weightsSize - 1);
+          bindings_.allocate(weightIndices)->getHandle<int32_t>(),
+          randomSeedOpt, 0, weightsSize - 1);
 
       auto *weights = F_->createGather("weight_gather" + std::to_string(i),
                                        weightsConst, weightIndices, 0);
@@ -786,8 +790,8 @@ protected:
                                             false); // denseDim can be anything
 
     // First Dense embedding
-    fillStableRandomData(bindings.allocate(denseData)->getHandle(), 2001,
-                         0.001);
+    fillStableRandomData(bindings.allocate(denseData)->getHandle(),
+                         randomSeedOpt, 0.001);
     NodeValue bottomMLP;
     if (quantizeFC) {
       bottomMLP = createQuantizedMLP(mod, F, denseData, denseData->dims()[1],

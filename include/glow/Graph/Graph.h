@@ -1215,6 +1215,19 @@ public:
   createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
                           llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceProd operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
+  BatchedReduceProdNode *
+  createBatchedReduceProd(llvm::StringRef name, NodeValue batch,
+                          llvm::ArrayRef<unsigned_t> axes);
+
+  /// Create a node, performing BatchedReduceProd operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceProdNode *
+  createBatchedReduceProd(llvm::StringRef name, TypeRef outTy, NodeValue batch,
+                          llvm::ArrayRef<unsigned_t> axes);
+
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue slice);
 

@@ -461,7 +461,8 @@ Constant *createRandomizedConstant(Module &mod, TypeRef type,
 void dispatchInference(const std::string &fname,
                        runtime::HostManager *hostManager,
                        ExecutionContext &context,
-                       unsigned concurrentRequestsOpt);
+                       unsigned concurrentRequestsOpt,
+                       bool useNewExecutionContext = false);
 } // namespace glow
 
 #endif // GLOW_TESTS_BACKENDTESTUTILS_H
