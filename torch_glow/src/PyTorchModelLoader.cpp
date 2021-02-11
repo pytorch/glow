@@ -1043,6 +1043,14 @@ struct CompareInputs {
   };
 };
 
+/// Indexes used for aten::remainder inputs
+struct RemainderInputs {
+  enum {
+    input = 0,
+    other,
+  };
+};
+
 } // namespace
 
 // static
@@ -1065,6 +1073,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
       {{"aten::floor_divide", "aten::floor_divide_"},
        &PyTorchModelLoader::loadFloorDiv},
+      {{"aten::remainder"}, &PyTorchModelLoader::loadRemainder},
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
       {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
@@ -2497,6 +2506,31 @@ Error PyTorchModelLoader::loadFloorDiv(const torch::jit::Node *ptNode) {
   auto res = F_.createFloorDivWithBroadcast(
       "floor_divide", /* axis */ -1, lhsInput, rhsInput, /* truncate */ true);
   RETURN_ERR(addValueMapping(outputs[0], res));
+}
+
+Error PyTorchModelLoader::loadRemainder(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input, other;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[RemainderInputs::input]));
+  // Other can be either a tensor (NodeValue) or a scalar (IValue). If it is a
+  // scalar it needs to be broadcasted to the input's dimensions
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      other, loadNodeValueOrBroadcastedIValue(inputs[RemainderInputs::other],
+                                              input.dims()));
+
+  // For remainder(x / y), calculate x - floor(x / y) * y
+  auto *floorDivNode =
+      F_.createNodeWithBroadcast<FloorDivNode>("floor_div", -1, input, other);
+  auto *mulNode =
+      F_.createNodeWithBroadcast<MulNode>("mul", -1, floorDivNode, other);
+  auto *subNode =
+      F_.createNodeWithBroadcast<SubNode>("sub", -1, input, mulNode);
+
+  RETURN_ERR(addValueMapping(outputs[0], subNode));
 }
 
 Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
