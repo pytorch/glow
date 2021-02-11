@@ -879,6 +879,10 @@ private:
   /// Load an NNCKernel node.
   /// \returns error on failure.
   Error loadNNCKernel(const torch::jit::Node *ptNode);
+
+  /// Load an CumSum node.
+  /// \returns error on failure.
+  Error loadCumSum(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
