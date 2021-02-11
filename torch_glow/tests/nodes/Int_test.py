@@ -38,6 +38,17 @@ class SimpleIntModule(torch.nn.Module):
         return res
 
 
+class SimpleIntModuleEmptyShape(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, a):
+        d = torch._shape_as_tensor(a)[0]  # tensor with empty shape
+        i = torch.ops.aten.Int(d)
+        res = torch.ops.prim.NumToTensor(i)
+        return res
+
+
 class TestInt(unittest.TestCase):
     def test_Int(self):
         """Basic test of the PyTorch Int Node on Glow, along with constant
@@ -55,4 +66,12 @@ class TestInt(unittest.TestCase):
         x = torch.randn(2, 3, 4, dtype=torch.float32)
         utils.compare_tracing_methods(
             SimpleIntModule(torch.int64), x, fusible_ops={"aten::Int"}, scripted=True
+        )
+
+    def test_Int_empty_shape(self):
+        """Basic test of the PyTorch Int Node on Glow. Input tensor has empty shape."""
+
+        x = torch.randn(2, 3, 4, dtype=torch.float32)
+        utils.compare_tracing_methods(
+            SimpleIntModuleEmptyShape(), x, fusible_ops={"aten::Int"}, scripted=True
         )

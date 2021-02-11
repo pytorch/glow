@@ -3282,11 +3282,11 @@ Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
   int value;
 
   if (inputElementType == glow::ElemKind::Int32ITy) {
-    value = intConstant->getPayload().getHandle<int32_t>().at({0});
+    value = intConstant->getPayload().getHandle<int32_t>().raw(0);
   } else if (inputElementType == glow::ElemKind::Int64ITy) {
-    value = intConstant->getPayload().getHandle<int64_t>().at({0});
+    value = intConstant->getPayload().getHandle<int64_t>().raw(0);
   } else if (inputElementType == glow::ElemKind::FloatTy) {
-    auto value_f = intConstant->getPayload().getHandle<float>().at({0});
+    auto value_f = intConstant->getPayload().getHandle<float>().raw(0);
     value = static_cast<int>(value_f);
   } else {
     return MAKE_ERR("Expected integer/float tensor in loadInt");
