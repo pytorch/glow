@@ -890,7 +890,8 @@ class BinaryEltwiseNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
     auto *glowEltwise = llvm::dyn_cast<EltwiseNodeType>(n);
-    LOG_AND_RETURN_IF_NOT(ERROR, glowEltwise, "Bad node type",
+    LOG_AND_RETURN_IF_NOT(ERROR, glowEltwise,
+                          "Bad node type, node name: " + n->getName().str(),
                           NNPI_INVALID_PARAM);
 
     importer.setUsedTensors({nodeValueName(glowEltwise->getRHS()),
@@ -913,7 +914,8 @@ class UnaryEltwiseNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
     auto *glowEltwise = llvm::dyn_cast<EltwiseNodeType>(n);
-    LOG_AND_RETURN_IF_NOT(ERROR, glowEltwise, "Bad node type",
+    LOG_AND_RETURN_IF_NOT(ERROR, glowEltwise,
+                          "Bad node type, node name: " + n->getName().str(),
                           NNPI_INVALID_PARAM);
 
     importer.setUsedTensors(
