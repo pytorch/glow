@@ -182,6 +182,7 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
   case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::UInt4FusedQTy:
   case ElemKind::UInt8QTy:
+  case ElemKind::UInt8ITy:
   case ElemKind::Int16QTy:
   case ElemKind::Int32QTy:
     LOG(DFATAL) << "Not supported yet.";
