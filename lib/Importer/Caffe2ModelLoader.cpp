@@ -1733,6 +1733,46 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "Mean") {
+    const unsigned numInputs = op.input_size();
+    RETURN_ERR_IF_NOT(numInputs > 0,
+                      opErrMsg(op, "Expect at least one input."));
+
+    std::vector<NodeValue> inputs;
+    inputs.reserve(numInputs);
+    for (unsigned i = 0; i < numInputs; i++) {
+      NodeValue in;
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
+      inputs.push_back(std::move(in));
+    }
+
+    // Check that all inputs have the same shape
+    const auto shape = inputs[0].dims();
+    for (unsigned i = 1; i < numInputs; i++) {
+      RETURN_ERR_IF_NOT(
+          shape == inputs[i].dims(),
+          opErrMsg(op,
+                   "All inputs should have the same shape, violating input " +
+                       op.input(i)));
+    }
+
+    if (numInputs == 1) {
+      RETURN_IF_ERR(addNodeAsOutput(op, inputs[0]));
+      return Error::success();
+    }
+
+    Node *node = G_->createConcat(opName + ".concat", inputs, 0);
+
+    std::vector<dim_t> newShape{numInputs};
+    newShape.insert(newShape.end(), shape.begin(), shape.end());
+    node = G_->createReshape(opName + ".reshape", node, newShape);
+
+    node = G_->createBatchedReduceMean(opName + ".reduceMean", node, 0);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
