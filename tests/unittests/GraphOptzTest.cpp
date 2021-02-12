@@ -6191,7 +6191,7 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
   optimizedF_ = optimizeFunctionForTest(F_, {}, cctx_);
   // Now do const folding with constants swapped back in.
   constModPreventer.deactivateAndCleanup();
-  constantFoldAndRecord(optimizedF_, cctx_);
+  ConstantFoldingRecordMap record = constantFoldAndRecord(optimizedF_, cctx_);
   runDCEPass(optimizedF_, cctx_);
 
   // Because Muls and Add are folded in, they should not exist anymore, nor
@@ -6199,6 +6199,10 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind));
+
+  // Remove the temporary constant folding Functions and their Placeholders
+  // so that they don't participate in 'checkNumericalEquivalence'.
+  cleanupConstantFolding(mod_, record, &bindings_);
 
   // Now compile/run/compare F_ and optimizedF_.
   bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
