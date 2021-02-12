@@ -481,6 +481,30 @@ private:
   /// \returns error on failure.
   Error loadZeros(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch empty_like node.
+  /// \returns error on failure.
+  Error loadEmptyLike(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch zeros_like node.
+  /// \returns error on failure.
+  Error loadZerosLike(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch ones_like node.
+  /// \returns error on failure.
+  Error loadOnesLike(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch full_like node.
+  /// \returns error on failure.
+  Error loadFullLike(const torch::jit::Node *ptNode);
+
+  /// Shared implementation for loadZerosLike, loadOnesLike, loadEmptyLike, and
+  /// loadFullLike. \returns error on failure.
+  Error loadFullLikeImpl(llvm::StringRef name,
+                         const torch::jit::Value *inputTensorValue,
+                         const torch::jit::Value *dtypeValue,
+                         at::optional<double> fillValue,
+                         const torch::jit::Value *outputValue);
+
   /// Load a PyTorch sub node.
   /// \returns error on failure.
   Error loadSub(const torch::jit::Node *ptNode);
