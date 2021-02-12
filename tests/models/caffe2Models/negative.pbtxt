@@ -1,0 +1,9 @@
+name: "negative"
+op {
+  input: "input"
+  output: "output"
+  name: ""
+  type: "Negative"
+}
+external_input: "input"
+external_output: "output"
