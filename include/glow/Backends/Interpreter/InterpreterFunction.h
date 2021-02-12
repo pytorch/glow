@@ -424,6 +424,9 @@ private:
   void fwdAvgPool2DGradInst(const AvgPoolGradInst *I);
   void fwdAvgPool3DGradInst(const AvgPoolGradInst *I);
 
+  void fwdMaxPoolWithArgmax2DGradInstImpl(const MaxPoolWithArgmaxGradInst *I);
+  void fwdMaxPoolWithArgmax3DGradInstImpl(const MaxPoolWithArgmaxGradInst *I);
+
   ///@}
 };
 

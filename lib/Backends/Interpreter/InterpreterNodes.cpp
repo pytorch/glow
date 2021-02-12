@@ -1243,10 +1243,10 @@ void BoundInterpreterFunction::fwdBatchNormalizationInst(
 //                       Pooling
 //===----------------------------------------------------------------------===//
 template <class T>
-static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
-                       llvm::ArrayRef<unsigned_t> kernelSizes,
-                       llvm::ArrayRef<unsigned_t> strides,
-                       llvm::ArrayRef<unsigned_t> pads) {
+static void fwdMaxPool2D(Tensor *inW, Tensor *outW, Tensor *argmaxW,
+                         llvm::ArrayRef<unsigned_t> kernelSizes,
+                         llvm::ArrayRef<unsigned_t> strides,
+                         llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC odim(outW->dims());
   ShapeNHWC idim(inW->dims());
   Handle<T> inHandle = inW->getHandle<T>();
@@ -1312,20 +1312,112 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
   }       // N
 }
 
+template <typename T>
+static void fwdMaxPool3D(Tensor *inW, Tensor *outW, Tensor *argmaxW,
+                         llvm::ArrayRef<unsigned_t> kernelSizes,
+                         llvm::ArrayRef<unsigned_t> strides,
+                         llvm::ArrayRef<unsigned_t> pads) {
+  ShapeNTHWC odim(outW->dims());
+  ShapeNTHWC idim(inW->dims());
+  Handle<T> inHandle = inW->getHandle<T>();
+  Handle<T> outHandle = outW->getHandle<T>();
+  PaddingNFTBLR pdim(pads);
+  ShapeTHW kdim(kernelSizes);
+  ShapeTHW sdim(strides);
+  const std::vector<dim_t> istrides = {idim.c * idim.t * idim.h * idim.w,
+                                       idim.t * idim.h * idim.w,
+                                       idim.h * idim.w, idim.w, 1};
+
+  llvm::Optional<Handle<int64_t>> argmaxH;
+  if (argmaxW) {
+    argmaxH = argmaxW->getHandle<int64_t>();
+  }
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+
+            // When the MaxPool window includes only padding pixels then for
+            // that window by convention we return 0.
+            bool first = true;
+            T max_value = outW->getType().isQuantizedType()
+                              ? static_cast<T>(outW->getType().getOffset())
+                              : static_cast<T>(0);
+            dim_t argmaxNHWC = 0;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  sdim_t ot = t + ft;
+                  sdim_t ox = x + fx;
+                  sdim_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    continue;
+                  }
+
+                  T val = inHandle.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z});
+                  if (first || (val >= max_value)) {
+                    first = false;
+                    max_value = val;
+                    if (argmaxW) {
+                      argmaxNHWC = getFlattenedOffset(
+                          istrides, {n, z, (dim_t)ot, (dim_t)ox, (dim_t)oy});
+                    }
+                  }
+                }
+              }
+            }
+
+            outHandle.at({n, at, ax, ay, z}) = max_value;
+
+            if (argmaxW) {
+              (*argmaxH).at({n, at, ax, ay, z}) = argmaxNHWC;
+            }
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
 void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
+  const bool is3D = is3DData(ConvolutionLayout(I->getLayout()));
+  const bool isQuantized = inW->getType().isQuantizedType();
 
-  if (inW->getType().isQuantizedType()) {
-    dispatchQuantizedImpl(fwdMaxPool, inW->getType().getElementType(), inW,
-                          outW, nullptr, I->getKernels(), I->getStrides(),
-                          I->getPads());
-    return;
-  }
-
-  dispatchFloatingPointImpl(fwdMaxPool, inW->getType().getElementType(), inW,
+  if (is3D) {
+    if (isQuantized) {
+      dispatchQuantizedImpl(fwdMaxPool3D, inW->getType().getElementType(), inW,
                             outW, nullptr, I->getKernels(), I->getStrides(),
                             I->getPads());
+    } else {
+      dispatchFloatingPointImpl(fwdMaxPool3D, inW->getType().getElementType(),
+                                inW, outW, nullptr, I->getKernels(),
+                                I->getStrides(), I->getPads());
+    }
+  } else {
+    if (isQuantized) {
+      dispatchQuantizedImpl(fwdMaxPool2D, inW->getType().getElementType(), inW,
+                            outW, nullptr, I->getKernels(), I->getStrides(),
+                            I->getPads());
+    } else {
+      dispatchFloatingPointImpl(fwdMaxPool2D, inW->getType().getElementType(),
+                                inW, outW, nullptr, I->getKernels(),
+                                I->getStrides(), I->getPads());
+    }
+  }
 }
 
 void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
@@ -1333,16 +1425,30 @@ void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
   auto argmaxW = getTensor(I->getArgmax());
+  const bool is3D = is3DData(ConvolutionLayout(I->getLayout()));
+  const bool isQuantized = inW->getType().isQuantizedType();
 
-  if (inW->getType().isQuantizedType()) {
-    dispatchQuantizedImpl(fwdMaxPool, inW->getType().getElementType(), inW,
-                          outW, argmaxW, I->getKernels(), I->getStrides(),
-                          I->getPads());
-    return;
-  }
-  dispatchFloatingPointImpl(fwdMaxPool, inW->getType().getElementType(), inW,
+  if (is3D) {
+    if (isQuantized) {
+      dispatchQuantizedImpl(fwdMaxPool3D, inW->getType().getElementType(), inW,
                             outW, argmaxW, I->getKernels(), I->getStrides(),
                             I->getPads());
+    } else {
+      dispatchFloatingPointImpl(fwdMaxPool3D, inW->getType().getElementType(),
+                                inW, outW, argmaxW, I->getKernels(),
+                                I->getStrides(), I->getPads());
+    }
+  } else {
+    if (isQuantized) {
+      dispatchQuantizedImpl(fwdMaxPool2D, inW->getType().getElementType(), inW,
+                            outW, argmaxW, I->getKernels(), I->getStrides(),
+                            I->getPads());
+    } else {
+      dispatchFloatingPointImpl(fwdMaxPool2D, inW->getType().getElementType(),
+                                inW, outW, argmaxW, I->getKernels(),
+                                I->getStrides(), I->getPads());
+    }
+  }
 }
 
 template <typename ElemTy>
@@ -1778,12 +1884,11 @@ void BoundInterpreterFunction::fwdAdaptiveAvgPoolGradInst(
 #undef END_IND
 }
 
-void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
+void BoundInterpreterFunction::fwdMaxPoolWithArgmax2DGradInstImpl(
     const MaxPoolWithArgmaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
-
   inG.clear();
 
   ShapeNHWC idim(inG.dims());
@@ -1807,6 +1912,49 @@ void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
       }   // H
     }     // C
   }       // N
+}
+
+void BoundInterpreterFunction::fwdMaxPoolWithArgmax3DGradInstImpl(
+    const MaxPoolWithArgmaxGradInst *I) {
+  auto inG = getWeightHandle(I->getSrcGrad());
+  auto outW = getWeightHandle(I->getDest());
+  auto outG = getWeightHandle(I->getDestGrad());
+  inG.clear();
+
+  ShapeNTHWC idim(inG.dims());
+  ShapeNTHWC odim(outW.dims());
+
+  auto argmax = getWeightHandle<int64_t>(I->getArgmax());
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+
+    // Compute the gradient. For each layer in the output tensor:
+    for (dim_t z = 0; z < odim.c; z++) {
+
+      // For each convolution 'jump' in the input tensor:
+      for (dim_t at = 0; at < odim.t; at++) {
+        for (dim_t ax = 0; ax < odim.h; ax++) {
+          for (dim_t ay = 0; ay < odim.w; ay++) {
+            // Reuse precomputed linear index of max element from argmax.
+            float chainGrad = outG.at({n, at, ax, ay, z});
+            inG.raw(argmax.at({n, at, ax, ay, z})) += chainGrad;
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
+    const MaxPoolWithArgmaxGradInst *I) {
+  const bool is3D = is3DData(ConvolutionLayout(I->getLayout()));
+
+  if (is3D) {
+    fwdMaxPoolWithArgmax3DGradInstImpl(I);
+  } else {
+    fwdMaxPoolWithArgmax2DGradInstImpl(I);
+  }
 }
 
 void BoundInterpreterFunction::fwdAvgPool2DGradInst(const AvgPoolGradInst *I) {

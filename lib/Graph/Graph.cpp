@@ -943,15 +943,36 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> pads,
                                      ElemKind elemTyAMT,
                                      ConvolutionLayout layout) {
-  ShapeNHWC idim = ShapeNHWC(input.dims());
-  checkKernelSize(idim, kernels, pads);
+  if (!is3DData(layout)) {
+    assert(input.dims().size() == 4 && "Expected 4D input");
 
-  auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+    ShapeNHWC idim = ShapeNHWC(input.dims());
+    checkKernelSize(idim, kernels, pads);
+
+    auto outSz =
+        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+    auto OT = getParent()->uniqueTypeWithNewShape(
+        input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
+    auto AMT = getParent()->uniqueType(
+        elemTyAMT, {idim.n, outSz.first, outSz.second, idim.c});
+
+    return addNode(
+        new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads, layout));
+  }
+
+  assert(input.dims().size() == 5 && "Expected 5D input");
+
+  ShapeNTHWC idim = ShapeNTHWC(input.dims());
+  check3DKernelSize(idim, kernels, pads);
+
+  auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w, kernels,
+                                             strides, pads);
   auto OT = getParent()->uniqueTypeWithNewShape(
-      input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
-  auto AMT = getParent()->uniqueType(
-      elemTyAMT, {idim.n, outSz.first, outSz.second, idim.c});
+      input.getType(),
+      {idim.n, outSz.temporal_frames, outSz.height, outSz.width, idim.c});
+  auto AMT =
+      getParent()->uniqueType(elemTyAMT, {idim.n, outSz.temporal_frames,
+                                          outSz.height, outSz.width, idim.c});
 
   return addNode(
       new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads, layout));
@@ -961,9 +982,21 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      unsigned_t kernel, unsigned_t stride,
                                      unsigned_t pad, ElemKind elemTyAMT,
                                      ConvolutionLayout layout) {
-  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
-  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  if (!is3DData(layout)) {
+    assert(input.dims().size() == 4 && "Expected 4D input");
+
+    llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+    llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+    llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+    return createMaxPool(name, input, kernels, strides, pads, elemTyAMT,
+                         layout);
+  }
+
+  assert(input.dims().size() == 5 && "Expected 5D input");
+
+  llvm::SmallVector<unsigned_t, 5> pads = {pad, pad, pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 3> strides = {stride, stride, stride};
+  llvm::SmallVector<unsigned_t, 3> kernels = {kernel, kernel, kernel};
   return createMaxPool(name, input, kernels, strides, pads, elemTyAMT, layout);
 }
 

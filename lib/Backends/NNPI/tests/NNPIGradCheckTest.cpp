@@ -46,6 +46,7 @@ struct BlacklistInitializer {
             {"gradientCheckBatchedPairwiseDotProduct/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"gradientCheckFC2/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckMaxPool3D/0", TestBlacklist::AnyDeviceAnyEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

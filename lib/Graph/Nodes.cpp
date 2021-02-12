@@ -816,7 +816,14 @@ bool MaxPoolNode::verify() const {
     return verifyPool<ShapeNCHW>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_,
                                  /* isAvgPool */ false);
-  default: // MaxPool3D is unsupported
+  case NTHWC:
+    return verifyPool3D<ShapeNTHWC>(getInput(), getResult(), Kernels_, Strides_,
+                                    Pads_, /* isAvgPool */ false);
+  case NCTHW:
+    return verifyPool3D<ShapeNCTHW>(getInput(), getResult(), Kernels_, Strides_,
+                                    Pads_, /* isAvgPool */ false);
+
+  default:
     return false;
   }
 }
@@ -907,14 +914,26 @@ bool MaxPoolGradNode::verify() const {
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
 
-  if (getLayout() == NHWC) {
+  const auto layout = getLayout();
+  if (layout == NHWC) {
     isValid &= verifyPool<ShapeNHWC>(
         getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
         Kernels_, Strides_, Pads_, /* isAvgPool */ false);
-  } else {
+  } else if (layout == NHWC) {
     isValid &= verifyPool<ShapeNCHW>(
         getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
         Kernels_, Strides_, Pads_, /* isAvgPool */ false);
+  } else if (layout == NCTHW) {
+    isValid &= verifyPool3D<ShapeNCTHW>(
+        getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+        Kernels_, Strides_, Pads_, /* isAvgPool */ false);
+  } else if (layout == NTHWC) {
+    isValid &= verifyPool3D<ShapeNTHWC>(
+        getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+        Kernels_, Strides_, Pads_, /* isAvgPool */ false);
+  } else {
+    isValid = false;
+    llvm_unreachable("Invalid MaxPoolGradNode layout");
   }
   return isValid;
 }

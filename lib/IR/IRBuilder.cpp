@@ -75,7 +75,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 
     outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
         input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
-  } else {
+  } else if (layout == NCHW) {
     ShapeNCHW idim(input->dims());
 
     auto outSz =
@@ -88,6 +88,19 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 
     outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
         input->getType(), {idim.n, idim.c, outSz.first, outSz.second});
+  } else {
+    ShapeNTHWC idim(input->dims());
+
+    auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w, kernels,
+                                               strides, pads);
+
+    argmax = createAllocActivationInst(
+        name.str() + ".argmax", argMaxIndicesTy,
+        {idim.n, outSz.temporal_frames, outSz.height, outSz.width, idim.c});
+
+    outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+        input->getType(),
+        {idim.n, outSz.temporal_frames, outSz.height, outSz.width, idim.c});
   }
 
   Value *dest = createAllocActivationInst(name.str() + ".res", outTy);

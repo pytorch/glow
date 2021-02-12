@@ -11980,6 +11980,40 @@ TEST_MAX_POOL2D_LARGE_PADS(FloatTy, FloatTy, 1e-5)
 TEST_MAX_POOL2D_LARGE_PADS(Int8QTy, Int8QTy, 0.005)
 #undef TEST_MAX_POOL2D_LARGE_PADS
 
+/// Create a simple MaxPool network with large pads.
+static FunctionTensorPair
+createAndInitMaxPool3DLargePads(glow::PlaceholderBindings &bindings,
+                                glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::vector<dim_t> inputDims = {3, 4, 5, 6, 7};
+  std::vector<unsigned_t> kernels = {2, 3, 4};
+  std::vector<unsigned_t> strides = {1, 2, 3};
+  std::vector<unsigned_t> pads = {4, 5, 6, 7, 8, 9};
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  MaxPoolNode *pool = F->createMaxPool("pool", input, kernels, strides, pads,
+                                       ElemKind::Int64ITy, NTHWC);
+  SaveNode *save = F->createSave("save", pool->getResult());
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+/// MaxPool3D tests with large pads.
+/// Compare with the Interpreter float implementation.
+#define TEST_MAX_POOL3D_LARGE_PADS(NAME, TYPE, TOL)                            \
+  TEST_P(OperatorStatelessTest, MaxPool3DLargePads_##NAME) {                   \
+    CHECK_IF_ENABLED();                                                        \
+    compareAgainstInterpreter(getBackendName(),                                \
+                              createAndInitMaxPool3DLargePads,                 \
+                              ElemKind::FloatTy, ElemKind::TYPE, TOL);         \
+  }
+TEST_MAX_POOL3D_LARGE_PADS(FloatTy, FloatTy, 1e-5)
+TEST_MAX_POOL3D_LARGE_PADS(Int8QTy, Int8QTy, 0.005)
+#undef TEST_MAX_POOL3D_LARGE_PADS
+
 /// Verify that the AdaptiveAvgPool operator works correctly.
 TEST_P(OperatorTest, AdaptiveAvgPool) {
   CHECK_IF_ENABLED();
@@ -12167,6 +12201,143 @@ TEST_P(OperatorTest, Int8MaxPool) {
   for (size_t i = 0; i < 2 * 2; i++) {
     EXPECT_EQ(result.raw(i), out.getHandle<int8_t>().raw(i));
   }
+}
+
+TEST_P(OperatorTest, MaxPool3D) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 3, 4, 2},
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<float>() = {
+      -1.1258e+00, -1.1524e+00, -2.5058e-01, -4.3388e-01, 8.4871e-01,
+      6.9201e-01,  -3.1601e-01, -2.1152e+00, 3.2227e-01,  -1.2633e+00,
+      3.4998e-01,  3.0813e-01,  1.1984e-01,  1.2377e+00,  1.1168e+00,
+      -2.4728e-01, -1.3527e+00, -1.6959e+00, 5.6665e-01,  7.9351e-01,
+      5.9884e-01,  -1.5551e+00, -3.4136e-01, 1.8530e+00,  7.5019e-01,
+      -5.8550e-01, -1.7340e-01, 1.8348e-01,  1.3894e+00,  1.5863e+00,
+      9.4630e-01,  -8.4368e-01, -6.1358e-01, 3.1593e-02,  -4.9268e-01,
+      2.4841e-01,  4.3970e-01,  1.1241e-01,  6.4079e-01,  4.4116e-01,
+      -1.0231e-01, 7.9244e-01,  -2.8967e-01, 5.2507e-02,  5.2286e-01,
+      2.3022e+00,  -1.4689e+00, -1.5867e+00, -6.7309e-01, 8.7283e-01,
+      1.0554e+00,  1.7784e-01,  -2.3034e-01, -3.9175e-01, 5.4329e-01,
+      -3.9516e-01, -4.4622e-01, 7.4402e-01,  1.5210e+00,  3.4105e+00,
+      -1.5312e+00, -1.2341e+00, 1.8197e+00,  -5.5153e-01, -5.6925e-01,
+      9.1997e-01,  1.1108e+00,  1.2899e+00,  -1.4782e+00, 2.5672e+00,
+      -4.7312e-01, 3.3555e-01,  -1.6293e+00, -5.4974e-01, -4.7983e-01,
+      -4.9968e-01, -1.0670e+00, 1.1149e+00,  -1.4067e-01, 8.0575e-01,
+      -9.3348e-02, 6.8705e-01,  -8.3832e-01, 8.9182e-04,  8.4189e-01,
+      -4.0003e-01, 1.0395e+00,  3.5815e-01,  -2.4600e-01, 2.3025e+00,
+      -1.8817e+00, -4.9727e-02, -1.0450e+00, -9.5650e-01, 3.3532e-02,
+      7.1009e-01,  1.6459e+00,  -1.3602e+00, 3.4457e-01,  5.1987e-01,
+      -2.6133e+00, -1.6965e+00, -2.2824e-01, 2.7995e-01,  2.4693e-01,
+      7.6887e-02,  3.3801e-01,  4.5440e-01,  4.5694e-01,  -8.6537e-01,
+      7.8131e-01,  -9.2679e-01, -2.1883e-01, -2.4351e+00, -7.2915e-02,
+      -3.3986e-02, 9.6252e-01,  3.4917e-01,  -9.2146e-01, -5.6195e-02,
+      -6.2270e-01, -4.6372e-01, 1.9218e+00,  -4.0255e-01, 1.2390e-01,
+      1.1648e+00,  9.2337e-01,  1.3873e+00,  -8.8338e-01, -4.1891e-01,
+      -8.0483e-01, 5.6561e-01,  6.1036e-01,  4.6688e-01,  1.9507e+00,
+      -1.0631e+00, -7.7326e-02, 1.1640e-01,  -5.9399e-01, -1.2439e+00,
+      -1.0209e-01, -1.0335e+00, -3.1264e-01, 2.4579e-01};
+
+  auto *pool = F_->createMaxPool(
+      "pool", input, {2, 2, 2}, {1, 1, 1}, {0, 0, 0, 0, 0, 0},
+      /* ArgMax type */ ElemKind::Int64ITy, /* layout */ NTHWC);
+  auto *SResult = F_->createSave("save_result", pool->getResult());
+  auto *SArgmax = F_->createSave("save_argmax", pool->getArgmax());
+  bindings_.allocate(SResult->getPlaceholder());
+  bindings_.allocate(SArgmax->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(SResult->getPlaceholder());
+  auto resultIndices = bindings_.get(SArgmax->getPlaceholder());
+
+  const std::vector<dim_t> outShape = {3, 1, 2, 3, 2};
+  Tensor out(ElemKind::FloatTy, outShape);
+  out.getHandle() = {
+      0.7502, 0.3081, 1.3894, 1.5863, 1.3894, 1.5863, 0.5667, 0.7935, 0.5988,
+      2.3022, 1.1168, 2.3022, 1.5210, 3.4105, 1.5210, 3.4105, 1.8197, 1.1149,
+      1.5210, 3.4105, 1.5210, 3.4105, 1.8197, 2.5672, 1.9218, 0.5656, 1.9218,
+      1.1648, 1.9507, 1.3873, 0.3380, 0.5656, 0.9625, 0.5656, 1.9507, 0.4669};
+
+  Tensor indices(ElemKind::Int64ITy, outShape);
+  indices.getHandle<int64_t>() = {12,  29,  14,  38,  14,  38,  9,   33,  10,
+                                  46,  7,   46,  53,  77,  53,  77,  55,  86,
+                                  53,  77,  53,  77,  55,  82,  109, 137, 109,
+                                  134, 115, 135, 101, 137, 106, 137, 115, 138};
+  resultIndices->dump();
+  EXPECT_TRUE(out.isEqual(*result));
+  EXPECT_TRUE(indices.isEqual(*resultIndices));
+}
+
+TEST_P(OperatorTest, FP16MaxPool3D) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 3, 1},
+                                       "input", false);
+  auto inHandle = bindings_.allocate(input)->getHandle<float16_t>();
+  for (int i = 0; i < 3 * 3 * 3; ++i) {
+    inHandle.raw(i) = i;
+  }
+  auto *pool =
+      F_->createMaxPool("pool", input, 2, 1, 0, ElemKind::Int64ITy, NTHWC);
+  auto *S = F_->createSave("save", pool->getResult());
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 2, 2, 2, 1});
+  out.getHandle<float16_t>() = {13., 14., 16., 17., 22., 23., 25., 26.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+TEST_P(OperatorTest, BFloat16MaxPool3D) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 3, 3, 3, 1},
+                                       "input", false);
+  auto inHandle = bindings_.allocate(input)->getHandle<bfloat16_t>();
+  for (int i = 0; i < 3 * 3 * 3; ++i) {
+    inHandle.raw(i) = i;
+  }
+  auto *pool =
+      F_->createMaxPool("pool", input, 2, 1, 0, ElemKind::Int64ITy, NTHWC);
+  auto *S = F_->createSave("save", pool->getResult());
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::BFloat16Ty, {1, 2, 2, 2, 1});
+  out.getHandle<bfloat16_t>() = {13., 14., 16., 17., 22., 23., 25., 26.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+TEST_P(OperatorTest, Int8MaxPool3D) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3, 3, 3, 1}, 1, 0,
+                                       "input", false);
+  auto inHandle = bindings_.allocate(input)->getHandle<int8_t>();
+  for (int i = 0; i < 3 * 3 * 3; ++i) {
+    inHandle.raw(i) = i;
+  }
+  auto *Pool =
+      F_->createMaxPool("pool", input, 2, 1, 0, ElemKind::Int64ITy, NTHWC);
+  auto *S = F_->createSave("save", Pool->getResult());
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Int8QTy, {1, 2, 2, 2, 1}, 1, 0);
+  out.getHandle<int8_t>() = {13, 14, 16, 17, 22, 23, 25, 26};
+  EXPECT_TRUE(out.isEqual(*result));
 }
 
 #define COMPARE_UNARY_OP_FUN(_OP_NAME_, LEN, LOW, HIGH)                        \
@@ -12499,6 +12670,46 @@ TEST_P(OperatorTest, QuantizedMaxPoolWithArgmax) {
 }
 
 template <typename DataType>
+static void testMaxPool3DWithArgmax(glow::PlaceholderBindings &bindings,
+                                    glow::Module &mod, glow::Function *F,
+                                    glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *input = createPlaceholderConditionallyQuantized(
+      mod, DTy, {1, 3, 3, 3, 1}, "input", false, "NTHWC");
+  bindings.allocate(input)->getHandle<DataType>() = {
+      44,  -81, -11, 64, -61, 123, 67,  -25, -119, 83, -107, 114, -92, -41,
+      -58, 88,  -40, 12, -70, 65,  102, -89, -41,  46, -40,  -47, 37};
+  auto *pool =
+      F->createMaxPool("pool", input, 2, 1, 0, ElemKind::Int64ITy, NTHWC);
+  auto *SResult = F->createSave("save_result", pool->getResult());
+  auto *SArgmax = F->createSave("save_argmax", pool->getArgmax());
+  bindings.allocate(SResult->getPlaceholder());
+  bindings.allocate(SArgmax->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = bindings.get(SResult->getPlaceholder());
+  auto argmax = bindings.get(SArgmax->getPlaceholder());
+  Tensor out1 = createTensorConditionallyQuantized(DTy, {1, 2, 2, 2, 1});
+  out1.getHandle<DataType>() = {83, 123, 88, 123, 83, 114, 88, 46};
+  EXPECT_TRUE(out1.isEqual(*result));
+
+  Tensor out2(ElemKind::Int64ITy, {1, 2, 2, 2, 1});
+  out2.getHandle<int64_t>() = {9, 5, 15, 5, 9, 11, 15, 23};
+  EXPECT_TRUE(out2.isEqual(*argmax));
+}
+
+TEST_P(OperatorTest, FloatMaxPool3DWithArgmax) {
+  CHECK_IF_ENABLED();
+  testMaxPool3DWithArgmax<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedMaxPool3DWithArgmax) {
+  CHECK_IF_ENABLED();
+  testMaxPool3DWithArgmax<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+template <typename DataType>
 static void
 testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
                                 glow::Module &mod, glow::Function *F,
@@ -12556,6 +12767,65 @@ TEST_P(OperatorTest, QuantizedMaxPoolWithArgmaxTransposed) {
   CHECK_IF_ENABLED();
   testMaxPoolWithArgmaxTransposed<int8_t>(bindings_, mod_, F_, EE_,
                                           ElemKind::Int8QTy);
+}
+
+template <typename DataType>
+static void
+testMaxPool3DWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
+                                  glow::Module &mod, glow::Function *F,
+                                  glow::ExecutionEngine &EE, ElemKind DTy) {
+  // Show that sequence Tensor(NCHW) -> Transpose(NCHWtoNHWC) ->
+  // MaxPool3DWithArgmax -> Transpose(NHWCtoNCHW) produces correct
+  // linearization.
+  auto *inputNCTHW = createPlaceholderConditionallyQuantized(
+      mod, DTy, {1, 3, 4, 4, 4}, "input", false, "NCHW");
+  auto inHandle = bindings.allocate(inputNCTHW)->getHandle<DataType>();
+  inHandle.clear(0.);
+  inHandle.at({0, 0, 2, 2, 2}) = 11;
+  inHandle.at({0, 1, 2, 2, 2}) = 22;
+  inHandle.at({0, 2, 2, 2, 2}) = 33;
+
+  // Input NCTHW to NTHWC conversion.
+  auto *inputNHWC = F->createTranspose("transposeInput", inputNCTHW,
+                                       {0, 2, 3, 4, 1}, "NTHWC");
+  auto *pool =
+      F->createMaxPool("pool", inputNHWC, 4, 4, 0, ElemKind::Int64ITy, NTHWC);
+
+  // NTHWC to NCTHW conversion.
+  auto *resultNCTHW = F->createTranspose("transposeRes", pool->getResult(),
+                                         {0, 4, 1, 2, 3}, "NCTHW");
+  auto *argmaxNCTHW = F->createTranspose("transposeArgmax", pool->getArgmax(),
+                                         {0, 4, 1, 2, 3}, "NCTHW");
+
+  auto *SResult = F->createSave("save_result", resultNCTHW);
+  auto *SArgmax = F->createSave("save_argmax", argmaxNCTHW);
+  bindings.allocate(SResult->getPlaceholder());
+  bindings.allocate(SArgmax->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = bindings.get(SResult->getPlaceholder());
+  auto argmax = bindings.get(SArgmax->getPlaceholder());
+  Tensor out1 = createTensorConditionallyQuantized(DTy, {1, 3, 1, 1, 1});
+  out1.getHandle<DataType>() = {11, 22, 33};
+  EXPECT_TRUE(out1.isEqual(*result));
+
+  Tensor out2(ElemKind::Int64ITy, {1, 3, 1, 1, 1});
+  out2.getHandle<int64_t>() = {42, 106, 170};
+  EXPECT_TRUE(out2.isEqual(*argmax));
+}
+
+TEST_P(OperatorTest, FloatMaxPool3DWithArgmaxTransposed) {
+  CHECK_IF_ENABLED();
+  testMaxPool3DWithArgmaxTransposed<float>(bindings_, mod_, F_, EE_,
+                                           ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedMaxPool3DWithArgmaxTransposed) {
+  CHECK_IF_ENABLED();
+  testMaxPool3DWithArgmaxTransposed<int8_t>(bindings_, mod_, F_, EE_,
+                                            ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorStatelessTest, Int8Tanh) {
@@ -12968,6 +13238,30 @@ TEST_P(OperatorTest, NonSquareKernelMaxPool) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
 }
 
+/// Check Non-square kernel for MaxPool 3D.
+TEST_P(OperatorTest, NonSquareKernelMaxPool3D) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
+                                       "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  for (size_t i = 0; i < 4 * 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createMaxPool("pool", input, {2, 3, 4}, {1, 1, 1},
+                                 {0, 0, 0, 0, 0, 0}, ElemKind::Int64ITy, NTHWC);
+  auto *S = F_->createSave("save", Pool->getResult());
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+
+  static const float ref[] = {28., 32., 44., 48., 60., 64.};
+  for (size_t i = 0; i < 6; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
 /// Check Non-square stride for conv.
 TEST_P(OperatorTest, NonSquareStrideConvolution) {
   CHECK_IF_ENABLED();
@@ -13208,6 +13502,30 @@ TEST_P(OperatorTest, NonSquareStrideMaxPool) {
 
   static const float ref[] = {6, 8, 14, 16};
   for (size_t i = 0; i < 4; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square stride for MaxPool 3D.
+TEST_P(OperatorTest, NonSquareStrideMaxPool3D) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
+                                       "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  for (size_t i = 0; i < 4 * 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createMaxPool("pool", input, {2, 3, 4}, {3, 2, 1},
+                                 {0, 0, 1, 1, 1, 1}, ElemKind::Int64ITy, NTHWC);
+  auto *S = F_->createSave("save", Pool->getResult());
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+
+  static const float ref[] = {23., 24., 24., 31., 32., 32.};
+  for (size_t i = 0; i < 6; i++)
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
 }
 
