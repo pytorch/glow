@@ -1015,6 +1015,16 @@ static bool isOverlappingWithAnyBundleBufferOperands(
   return false;
 }
 
+template <typename T> bool matchPair(T a, T b) { return a == b; }
+
+template <typename T> bool matchPair(T a) { return false; }
+
+/// Returns true if the input /p a matches with at least one of the inputs in
+/// the variadic list \p b ....
+template <typename T, typename... Args> bool matchPair(T a, T b, Args... args) {
+  return a == b || matchPair(a, args...);
+}
+
 void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
   // Go over the instructions and try to group them into bundles.
   auto &instrs = F_->getInstrs();
@@ -1479,7 +1489,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     break;
   }
 
-#define ARITHMETIC_BINARY_OP_CASE(INST_NAME_, FUN_NAME_)                       \
+#define ARITHMETIC_BINARY_OP_CASE(INST_NAME_, FUN_NAME_, ...)                  \
   case Kinded::Kind::INST_NAME_##InstKind: {                                   \
     auto *AN = cast<INST_NAME_##Inst>(I);                                      \
     auto *dest = AN->getDest();                                                \
@@ -1493,7 +1503,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *elementTy = getElementType(builder, dest);                           \
     auto *pointerNull =                                                        \
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
-                                                                               \
+    bool typesMatched = matchPair(dest->getElementType(), __VA_ARGS__);        \
     if (lhs->getType()->isQuantizedType()) {                                   \
       auto *destTy = dest->getType();                                          \
       auto *lhsTy = lhs->getType();                                            \
@@ -1524,20 +1534,23 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,         \
                                          loopCount, "buffer.element.addr");    \
       builder.CreateStore(stackedOpCall, destAddr);                            \
-    } else {                                                                   \
+    } else if (typesMatched) {                                                 \
       auto *stackedOpCall = createUncheckedCall(                               \
           builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});               \
       auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
                                          "buffer.element.addr");               \
       builder.CreateStore(stackedOpCall, destAddr);                            \
+    } else {                                                                   \
+      llvm_unreachable("Unsupported Type in " #INST_NAME_);                    \
     }                                                                          \
     break;                                                                     \
   }
-    ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add");
-    ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub");
-    ARITHMETIC_BINARY_OP_CASE(ElementMax, "element_max");
-    ARITHMETIC_BINARY_OP_CASE(ElementMin, "element_min");
-    ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
+    ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add", ElemKind::FloatTy,
+                              ElemKind::Int32ITy, ElemKind::Int64ITy);
+    ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub", ElemKind::FloatTy);
+    ARITHMETIC_BINARY_OP_CASE(ElementMax, "element_max", ElemKind::FloatTy);
+    ARITHMETIC_BINARY_OP_CASE(ElementMin, "element_min", ElemKind::FloatTy);
+    ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow", ElemKind::FloatTy);
 #undef ARITHMETIC_BINARY_OP_CASE
 
   case Kinded::Kind::ElementNotInstKind: {
