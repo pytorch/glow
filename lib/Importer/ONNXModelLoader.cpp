@@ -5170,6 +5170,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Transpose") {
     return loadTranspose(op, dict, "perm");
   }
+  if (typeName == "ReduceSumSquare") {
+    return loadReduceOp(typeName, op, dict);
+  }
   if (typeName == "MatMul") {
     return loadMatMul(op, dict);
   }

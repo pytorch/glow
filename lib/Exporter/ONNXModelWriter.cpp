@@ -1554,6 +1554,24 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   return Error::success();
 }
 
+Error ONNXModelWriter::writeBatchedReduceSumSquare(
+    const BatchedReduceSumSquareNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  unsigned_t axis = node->getAxis();
+  llvm::ArrayRef<unsigned_t> axes(axis);
+  addValueAttribute(proto, "axes", axes);
+
+  proto->set_name(node->getName());
+  proto->set_op_type("ReduceSum");
+  inputsToProto(node, proto);
+
+  addValueAttribute(proto, "keepdims", 0);
+  outputsToProto(node, graph, proto);
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeBatchedReduceMax(const BatchedReduceMaxNode *node,
                                              GraphType &graph) {
   auto *proto = graph.add_node();
