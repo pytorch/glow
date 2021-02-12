@@ -410,6 +410,37 @@ struct ZerosInputs {
   };
 };
 
+/// Indexes of aten::empty_like inputs.
+struct EmptyLikeInputs {
+  enum {
+    self = 0,
+    dtype = 1,
+    layout = 2,
+    device = 3,
+    pin_memory = 4,
+    memory_format = 5,
+  };
+};
+
+/// Indexes of aten::zeros_like inputs.
+using ZerosLikeInputs = EmptyLikeInputs;
+
+/// Indexes of aten::ones_like inputs.
+using OnesLikeInputs = EmptyLikeInputs;
+
+/// Indexes of aten::full_like inputs.
+struct FullLikeInputs {
+  enum {
+    self = 0,
+    fill_value = 1,
+    dtype = 2,
+    layout = 3,
+    device = 4,
+    pin_memory = 5,
+    memory_format = 6,
+  };
+};
+
 // Indexes of aten:arg_min and arg_max inputs.
 struct ArgMaxMinInputs {
   enum {
@@ -1073,6 +1104,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::Int"}, &PyTorchModelLoader::loadInt},
       {{"aten::arange"}, &PyTorchModelLoader::loadArange},
       {{"aten::zeros"}, &PyTorchModelLoader::loadZeros},
+      {{"aten::empty_like"}, &PyTorchModelLoader::loadEmptyLike},
+      {{"aten::zeros_like"}, &PyTorchModelLoader::loadZerosLike},
+      {{"aten::ones_like"}, &PyTorchModelLoader::loadOnesLike},
+      {{"aten::full_like"}, &PyTorchModelLoader::loadFullLike},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
       {{"aten::floor_divide", "aten::floor_divide_"},
@@ -3337,6 +3372,82 @@ Error PyTorchModelLoader::loadZeros(const torch::jit::Node *ptNode) {
             F_.getParent()->uniqueType(glowElemKind, inputSizeArrayRef), 0)
           ->getResult();
   return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadEmptyLike(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
+
+  const auto fillValue = at::nullopt;
+  return loadFullLikeImpl("empty_like", inputs[EmptyLikeInputs::self],
+                          inputs[EmptyLikeInputs::dtype], fillValue,
+                          outputs[0]);
+}
+
+Error PyTorchModelLoader::loadZerosLike(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
+
+  const double fillValue = 0.0;
+  return loadFullLikeImpl("zeros_like", inputs[ZerosLikeInputs::self],
+                          inputs[ZerosLikeInputs::dtype], fillValue,
+                          outputs[0]);
+}
+
+Error PyTorchModelLoader::loadOnesLike(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
+
+  const double fillValue = 1.0;
+  return loadFullLikeImpl("ones_like", inputs[OnesLikeInputs::self],
+                          inputs[OnesLikeInputs::dtype], fillValue, outputs[0]);
+}
+
+Error PyTorchModelLoader::loadFullLike(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+
+  double fillValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      fillValue,
+      iValToDouble(getGlowIValueForValue(inputs[FullLikeInputs::fill_value])));
+
+  return loadFullLikeImpl("full_like", inputs[FullLikeInputs::self],
+                          inputs[FullLikeInputs::dtype], fillValue, outputs[0]);
+}
+
+Error PyTorchModelLoader::loadFullLikeImpl(
+    llvm::StringRef name, const torch::jit::Value *inputTensorValue,
+    const torch::jit::Value *dtypeValue, at::optional<double> fillValue,
+    const torch::jit::Value *outputValue) {
+  glow::NodeValue inputTensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(inputTensor,
+                             getGlowNodeValueForValue(inputTensorValue));
+
+  int32_t dtype;
+  ASSIGN_VALUE_OR_RETURN_ERR(dtype,
+                             iValToInt(getGlowIValueForValue(dtypeValue)));
+
+  llvm::ArrayRef<glow::dim_t> selfDims(inputTensor.getType()->dims());
+  auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+
+  glow::NodeValue outputTensor;
+  if (fillValue.has_value()) {
+    outputTensor =
+        F_.createSplat(name, F_.getParent()->uniqueType(glowElemKind, selfDims),
+                       fillValue.value())
+            ->getResult();
+  } else {
+    outputTensor = F_.getParent()
+                       ->createConstant(glowElemKind, selfDims, name)
+                       ->getOutput();
+  }
+
+  return addValueMapping(outputValue, outputTensor);
 }
 
 Error PyTorchModelLoader::loadArange(const torch::jit::Node *ptNode) {
