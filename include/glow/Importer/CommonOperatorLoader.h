@@ -790,6 +790,8 @@ protected:
         node = G_->createNodeWithBroadcast<SubNode>(opName, axis, in0, in1);
       } else if (typeName == "Div") {
         node = G_->createNodeWithBroadcast<DivNode>(opName, axis, in0, in1);
+      } else if (typeName == "Pow") {
+        node = G_->createNodeWithBroadcast<PowNode>(opName, axis, in0, in1);
       } else {
         return MAKE_ERR("Unsupported arithmetic typeName");
       }
@@ -802,6 +804,8 @@ protected:
         node = G_->createSub(opName, in0, in1);
       } else if (typeName == "Div") {
         node = G_->createDiv(opName, in0, in1);
+      } else if (typeName == "Pow") {
+        node = G_->createPow(opName, in0, in1);
       } else {
         return MAKE_ERR("Unsupported arithmetic typeName");
       }
@@ -1569,7 +1573,7 @@ protected:
       return true;
     }
     if (typeName == "Mul" || typeName == "Add" || typeName == "Sub" ||
-        typeName == "Div") {
+        typeName == "Div" || typeName == "Pow") {
       RETURN_IF_ERR(loadArithmetic(typeName, op, dict));
       return true;
     }
