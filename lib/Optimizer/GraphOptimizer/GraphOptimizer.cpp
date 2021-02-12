@@ -2129,6 +2129,16 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   return true;
 }
 
+/// Gets Constant or returns nullptr if input is not Constant.
+/// Skips QuantizeNode if present.
+static Constant *getConstant(const NodeValue &NV) {
+  Node *N = NV.getNode();
+  if (isa<QuantizeNode>(N)) {
+    N = N->getNthInput(QuantizeNode::InputIdx);
+  }
+  return dyn_cast<Constant>(N);
+}
+
 bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
@@ -2137,44 +2147,71 @@ bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
 
   // For each node:
   for (auto &node : nodes) {
-    // Merge the Batch Normalization operation into the convolution that comes
-    // before it by updating the weights of the filter and bias.
-    if (auto *BN = dyn_cast<BatchNormalizationNode>(&node)) {
-      auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
-      if (!CV) {
-        continue;
-      }
-
-      // We can't modify conv operators that have multiple users.
-      if (!CV->hasOneUse()) {
-        continue;
-      }
-
-      bool normalizationHappened = false;
-      switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
-      case ElemKind::FloatTy:
-        normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
-        break;
-      case ElemKind::Float16Ty:
-        normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
-        break;
-      case ElemKind::BFloat16Ty:
-        normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
-        break;
-      default:
-        llvm_unreachable("Type not supported");
-      }
-
-      if (!normalizationHappened) {
-        continue;
-      }
-
-      // Take the predicate of what was expected for the output.
-      CV->setPredicate(BN->getPredicate());
-      BN->getResult().replaceAllUsesOfWith(CV);
-      changed = true;
+    auto *BN = dyn_cast<BatchNormalizationNode>(&node);
+    if (!BN) {
       continue;
     }
+
+    // Remove BN if mean,var,eps,scale,beta values make it redundant as per
+    // expression (X - mean) * (1.0 / sqrt(var + eps)) * scale + bias.
+    float scale, bias, mean, var;
+    auto *scaleC = getConstant(BN->getScale());
+    auto *biasC = getConstant(BN->getBias());
+    auto *meanC = getConstant(BN->getMean());
+    auto *varC = getConstant(BN->getVar());
+    if (scaleC && biasC && meanC && varC &&
+        isUniformConstant<float>(*scaleC, scale) &&
+        isUniformConstant<float>(*biasC, bias) &&
+        isUniformConstant<float>(*meanC, mean) &&
+        isUniformConstant<float>(*varC, var)) {
+      float eps = BN->getEpsilon();
+      // Relaxed redundancy check based on reduced BN expression so that A
+      // is 1.0 and B is 0.0  in Y = A*X + B where,
+      // A = scale * (1.0 / (sqrt(var + eps))
+      // B = (bias - mean * (1.0 / sqrt(var + eps)) * scale)
+      if (bias == mean && (sqrt(var + eps) == scale)) {
+        BN->getResult().replaceAllUsesOfWith(BN->getInput());
+        changed = true;
+        continue;
+      }
+    }
+
+    // Merge the Batch Normalization operation into the convolution that comes
+    // before it by updating the weights of the filter and bias.
+    auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
+    if (!CV) {
+      continue;
+    }
+
+    // We can't modify conv operators that have multiple users.
+    if (!CV->hasOneUse()) {
+      continue;
+    }
+
+    bool normalizationHappened = false;
+    switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
+    case ElemKind::FloatTy:
+      normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
+      break;
+    case ElemKind::Float16Ty:
+      normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
+      break;
+    case ElemKind::BFloat16Ty:
+      normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
+      break;
+    default:
+      llvm_unreachable("Type not supported");
+    }
+
+    if (!normalizationHappened) {
+      continue;
+    }
+
+    // Take the predicate of what was expected for the output.
+    CV->setPredicate(BN->getPredicate());
+    BN->getResult().replaceAllUsesOfWith(CV);
+    changed = true;
+    continue;
   } // For all nodes in the graph.
   return changed;
 }
@@ -3503,16 +3540,6 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
   }
 
   return changed;
-}
-
-/// Gets Constant or returns nullptr if input is not Constant.
-/// Skips QuantizeNode if present.
-static Constant *getConstant(const NodeValue &NV) {
-  Node *N = NV.getNode();
-  if (isa<QuantizeNode>(N)) {
-    N = N->getNthInput(QuantizeNode::InputIdx);
-  }
-  return dyn_cast<Constant>(N);
 }
 
 /// Eliminate nodes which don't do anything useful.
