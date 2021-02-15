@@ -555,6 +555,12 @@ TypeRef Module::uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType) {
   return uniqueType(Type::newShape(*T, shapeType));
 }
 
+TypeRef Module::uniqueTypeWithNewQuantParams(TypeRef T,
+                                             TypeRef quantParamType) {
+  return uniqueType(Type::newQuantparams(*T, quantParamType->getScale(),
+                                         quantParamType->getOffset()));
+}
+
 TypeRef Module::uniqueType(const Type &T) {
   for (auto &tp : types_) {
     if (T.isEqual(tp)) {

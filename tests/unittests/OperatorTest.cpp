@@ -4258,7 +4258,7 @@ TEST_P(OperatorTest, batchedReduceMeanUsingAvgPoolQuantized) {
   std::vector<dim_t> dims = {2, 3, 3, 4};
 
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, dims, 1, 0);
-  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {dims[0], dims[1]}, 1, 0);
+  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {dims[0], dims[1]}, 3, 0);
   auto *batch = mod_.createPlaceholder(ElemKind::Int8QTy, dims, BT->getScale(),
                                        BT->getOffset(), "batch", false);
 

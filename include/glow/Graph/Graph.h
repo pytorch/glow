@@ -159,6 +159,11 @@ public:
   /// the type \p shapeType.
   TypeRef uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType);
 
+  /// Return a pointer to a uniqued type \p T.
+  /// The new type is identical to \p T, with new scale and offset taken from
+  /// the type \p quantParamType.
+  TypeRef uniqueTypeWithNewQuantParams(TypeRef T, TypeRef quantParamType);
+
   /// Return the void type.
   TypeRef getVoidTy();
 

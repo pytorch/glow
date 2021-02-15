@@ -569,6 +569,13 @@ struct Type final {
     return ty;
   }
 
+  /// Reshape existing type. This method takes care of quantized types.
+  static Type newQuantparams(const Type &T, float scale, int32_t offset) {
+    assert(T.isQuantizedType() &&
+           "Can't modify scale and offset of non quantized types");
+    return Type(T.getElementType(), T.dims(), scale, offset);
+  }
+
   /// An empty type.
   Type() = default;
 
