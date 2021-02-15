@@ -620,6 +620,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Asin_Int8QTy/0",
     "Acos_Int8QTy/0",
     "Atan_Int8QTy/0",
+    "PRelu_Int8/0",
     "BBoxTransform_Float/0",
     "BBoxTransform_Float16/0",
     "BBoxTransform_Rotated_Float/0",

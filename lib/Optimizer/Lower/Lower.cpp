@@ -479,8 +479,9 @@ static void lowerPReluNode(Function *F, CompilationContext &cctx,
       F->createCmpLTE(DECORATE_NODE_NAME(R, "cmplte"), zeroSplat, R.getInput());
   auto *mul =
       F->createMul(DECORATE_NODE_NAME(R, "mul"), R.getSlope(), R.getInput());
-  auto *prelu = F->createSelect(DECORATE_NODE_NAME(R, "select"), cmplgt,
-                                R.getInput(), mul);
+  auto *prelu =
+      F->createSelect(DECORATE_NODE_NAME(R, "select"), R.getResult().getType(),
+                      cmplgt, R.getInput(), mul);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), prelu);
 }
