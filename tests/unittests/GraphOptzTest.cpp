@@ -6612,12 +6612,7 @@ public:
 #endif /* GLOW_WITH_CPU */
 };
 
-/// Check that we replace a Node with 0.f scale in fp16 with a splat
-/// correctly. Note that when running this on the Interpreter backend (i.e. with
-/// the GraphOptz fixure) there are numerical differences because the
-/// Interpreter backend does not handle tiny scales correctly. Hence, for now
-/// run on the CPU backend for comparison. TODO to fix the Interpreter Int8 FC
-/// impl to handle correctly.
+/// Check that we replace a Node with 0.f scale in fp16 with a splat correctly.
 TEST_F(GraphOptzOnCPU, ReplaceZeroScaleFP16QuantConstOpt) {
   auto *input =
       mod_.createPlaceholder(ElemKind::Int8QTy, {1, 1}, 1.0, 0, "input", false);
@@ -6626,11 +6621,8 @@ TEST_F(GraphOptzOnCPU, ReplaceZeroScaleFP16QuantConstOpt) {
       mod_.createConstant(ElemKind::Int8QTy, {1, 1}, 1e-9, 0, "weights");
   weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
                                                              mod_.getPRNG());
-  auto *bias = mod_.createConstant(ElemKind::Int8QTy, {1}, 1.0, 0, "bias");
-  bias->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
-                                                          mod_.getPRNG());
-  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
-  auto *DQ = F_->createDequantize("dq", FC, ElemKind::FloatTy);
+  auto *MM = F_->createMatMul("matmul", input, weights);
+  auto *DQ = F_->createDequantize("dq", MM, ElemKind::FloatTy);
   F_->createSave("save", DQ);
 
   optimizedF_ = optimizeFunctionForTest(
@@ -6647,10 +6639,10 @@ TEST_F(GraphOptzOnCPU, ReplaceZeroScaleFP16QuantConstOpt) {
 
   auto *optDQ = llvm::dyn_cast<DequantizeNode>(save->getInput());
   ASSERT_TRUE(optDQ);
-  auto *optFC = llvm::dyn_cast<FullyConnectedNode>(optDQ->getInput());
-  ASSERT_TRUE(optFC);
+  auto *optMM = llvm::dyn_cast<MatMulNode>(optDQ->getInput());
+  ASSERT_TRUE(optMM);
 
-  SplatNode *splat = llvm::dyn_cast<SplatNode>(optFC->getWeights());
+  SplatNode *splat = llvm::dyn_cast<SplatNode>(optMM->getRHS());
   ASSERT_TRUE(splat);
   EXPECT_EQ(splat->getValue(), 0.f);
   const TypeRef splatQTy = splat->getResult().getType();
