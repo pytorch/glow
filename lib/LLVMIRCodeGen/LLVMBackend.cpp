@@ -439,6 +439,15 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
                 FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
             ElemKind::FloatTy);
 
+  case Kinded::Kind::FullyConnectedNodeKind:
+    if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
+      return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+    }
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
+           (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int8QTy ||
+            NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int32QTy);
+
   case Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind:
     return (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::InputIdx) ==
             ElemKind::Int8QTy) &&
