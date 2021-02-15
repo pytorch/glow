@@ -4639,9 +4639,10 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
       mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
 
   if (opsetVersion_ == 13) {
-    int axis = -1;
+    int axis = in.dims().size() - 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
     }
     RETURN_ERR_IF_NOT(in.dims().size() == 4, "SoftMax 13 input dims must be 4");
     // Compute the shuffle layout  based on axis input.
@@ -4686,7 +4687,8 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
     // softmax function. This is basimilar to a bitcast operation.
     int axis = 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
     }
     auto *FN = G_->createFlatten("reshapeInput", in, axis);
     auto *SM = G_->createSoftMax(opName, FN, selected);

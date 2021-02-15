@@ -3,7 +3,7 @@ ir_version : 3 producer_name : "softmax11-onnx-example" graph {
   input:
     "x" output : "y" op_type : "Softmax" attribute {
     name:
-      "axis" i : 2 type : INT
+      "axis" i : -2 type : INT
     }
   }
 name:
