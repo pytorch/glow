@@ -682,7 +682,7 @@ private:
 
   /// Load a PyTorch max_pool2d node.
   /// \returns error on failure.
-  Error loadMaxPool2d(const torch::jit::Node *ptNode);
+  Error loadMaxPool(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch sigmoid node.
   /// \returns error on failure.
