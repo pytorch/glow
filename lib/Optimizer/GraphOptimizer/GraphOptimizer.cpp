@@ -1906,6 +1906,14 @@ bool OptimizeReduceMean::run(Function *F, const CompilationContext &cctx) {
           RM->getName().str() + ".transposeNCHW2NHWC", in, NCHW2NHWC, "NHWC");
       auto *AP = F->createAvgPool(RM->getName().str() + ".avgPool", TR1,
                                   kernels, strides, pads);
+      if (AP->getResult().getType()->isQuantizedType()) {
+        auto TypeAP = F->getParent()->uniqueType(
+            AP->getResult().getType()->getElementType(),
+            AP->getResult().getType()->dims(),
+            RM->getResult().getType()->getScale(),
+            RM->getResult().getType()->getOffset());
+        AP->getResult().setType(TypeAP);
+      }
       auto *TR2 = F->createTranspose(
           RM->getName().str() + ".transposeNHWC2NCHW", AP, NHWC2NCHW, "NCHW");
 
