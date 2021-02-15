@@ -58,7 +58,7 @@ void IRBuilder::deallocateActiveInstrs() {
 MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
     llvm::StringRef name, Value *input, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t layout, ElemKind argMaxIndicesTy) {
+    unsigned_t layout, ElemKind argMaxIndicesTy, bool flattenIndices) {
   TypeRef outTy{nullptr};
   Value *argmax{nullptr};
 
@@ -93,7 +93,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
   Value *dest = createAllocActivationInst(name.str() + ".res", outTy);
 
   return createMaxPoolWithArgmaxInst(name, dest, input, argmax, kernels,
-                                     strides, pads, layout);
+                                     strides, pads, layout, flattenIndices);
 }
 
 ArgMaxInst *IRBuilder::createArgMaxOp(llvm::StringRef name, Value *input,

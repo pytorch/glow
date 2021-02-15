@@ -12441,10 +12441,12 @@ TEST_P(OperatorTest, QuantizedMaxPoolWithArgmax) {
 }
 
 template <typename DataType>
-static void
-testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
-                                glow::Module &mod, glow::Function *F,
-                                glow::ExecutionEngine &EE, ElemKind DTy) {
+static void testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
+                                            glow::Module &mod,
+                                            glow::Function *F,
+                                            glow::ExecutionEngine &EE,
+                                            ElemKind DTy, bool flattenIndices,
+                                            const Tensor &expectedIndices) {
   // Show that sequence Tensor(NCHW) -> Transpose(NCHWtoNHWC) ->
   // MaxPoolWithArgmax -> Transpose(NHWCtoNCHW) produces correct
   // linearization.
@@ -12459,8 +12461,8 @@ testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
   // Input NCHW to NHWC conversion.
   auto *inputNHWC =
       F->createTranspose("transposeInput", inputNCHW, {0, 2, 3, 1}, "NHWC");
-  auto *pool =
-      F->createMaxPool("pool", inputNHWC, {4, 4}, {4, 4}, {0, 0, 0, 0});
+  auto *pool = F->createMaxPool("pool", inputNHWC, {4, 4}, {4, 4}, {0, 0, 0, 0},
+                                ElemKind::Int64ITy, NHWC, flattenIndices);
 
   // NHWC to NCHW conversion.
   auto *resultNCHW = F->createTranspose("transposeRes", pool->getResult(),
@@ -12482,29 +12484,45 @@ testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
   out1.getHandle<DataType>() = {11, 22, 33};
   EXPECT_TRUE(out1.isEqual(*result));
 
-  Tensor out2(ElemKind::Int64ITy, {1, 3, 1, 1});
-  out2.getHandle<int64_t>() = {0 + 2 * 3 + 2 * 12, 1 + 2 * 3 + 2 * 12,
-                               2 + 2 * 3 + 2 * 12};
-  EXPECT_TRUE(out2.isEqual(*argmax));
+  EXPECT_TRUE(expectedIndices.isEqual(*argmax));
 }
 
 TEST_P(OperatorTest, FloatMaxPoolWithArgmaxTransposed) {
   CHECK_IF_ENABLED();
-  testMaxPoolWithArgmaxTransposed<float>(bindings_, mod_, F_, EE_,
-                                         ElemKind::FloatTy);
+
+  Tensor expectedIndices(ElemKind::Int64ITy, {1, 3, 1, 1});
+  expectedIndices.getHandle<int64_t>() = {
+      0 + 2 * 3 + 2 * 12, 1 + 2 * 3 + 2 * 12, 2 + 2 * 3 + 2 * 12};
+  testMaxPoolWithArgmaxTransposed<float>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, true, expectedIndices);
 }
 
 TEST_P(OperatorTest, QuantizedMaxPoolWithArgmaxTransposed) {
   CHECK_IF_ENABLED();
-  testMaxPoolWithArgmaxTransposed<int8_t>(bindings_, mod_, F_, EE_,
-                                          ElemKind::Int8QTy);
+
+  Tensor expectedIndices(ElemKind::Int64ITy, {1, 3, 1, 1});
+  expectedIndices.getHandle<int64_t>() = {
+      0 + 2 * 3 + 2 * 12, 1 + 2 * 3 + 2 * 12, 2 + 2 * 3 + 2 * 12};
+  testMaxPoolWithArgmaxTransposed<int8_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Int8QTy, true, expectedIndices);
 }
 
-TEST_P(OperatorStatelessTest, Int8Tanh) {
+TEST_P(OperatorTest, NonFlattenedIndicesMaxPoolWithArgmaxTransposed) {
   CHECK_IF_ENABLED();
-  compareAgainstInterpreter(getBackendName(), createAndInitBasicTanhTest,
-                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f,
-                            parCloneCountOpt);
+
+  Tensor expectedIndices(ElemKind::Int64ITy, {1, 3, 1, 1});
+  expectedIndices.getHandle<int64_t>() = {10, 10, 10};
+  testMaxPoolWithArgmaxTransposed<float>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, false, expectedIndices);
+}
+
+TEST_P(OperatorTest, NonFlattenedIndicesQuantizedMaxPoolWithArgmaxTransposed) {
+  CHECK_IF_ENABLED();
+
+  Tensor expectedIndices(ElemKind::Int64ITy, {1, 3, 1, 1});
+  expectedIndices.getHandle<int64_t>() = {10, 10, 10};
+  testMaxPoolWithArgmaxTransposed<int8_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Int8QTy, false, expectedIndices);
 }
 
 TEST_P(OperatorStatelessTest, Tanh_Float16) {

@@ -590,13 +590,15 @@ public:
                              llvm::ArrayRef<unsigned_t> strides,
                              llvm::ArrayRef<unsigned_t> pads,
                              ElemKind elemTyAMT = ElemKind::Int64ITy,
-                             ConvolutionLayout layout = NHWC);
+                             ConvolutionLayout layout = NHWC,
+                             bool flattenIndices = true);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
                              unsigned_t kernel, unsigned_t stride,
                              unsigned_t pad,
                              ElemKind elemTyAMT = ElemKind::Int64ITy,
-                             ConvolutionLayout layout = NHWC);
+                             ConvolutionLayout layout = NHWC,
+                             bool flattenIndices = true);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              llvm::ArrayRef<unsigned_t> kernels,

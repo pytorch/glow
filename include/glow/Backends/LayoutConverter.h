@@ -84,7 +84,8 @@ inline std::pair<Node *, Node *> convertMaxPoolToNCHWPool(MaxPoolNode *PN,
                                                     dimsNCHW);
 
   auto *MPN = new MaxPoolNode(PN->getName(), outTy, AMT, NI, PN->getKernels(),
-                              PN->getStrides(), PN->getPads(), NCHW);
+                              PN->getStrides(), PN->getPads(), NCHW,
+                              PN->getFlattenIndices());
   F->addNode(MPN);
   auto *NR = F->createTranspose("maxpool.result", MPN->getResult(), NCHW2NHWC);
   auto *NA = F->createTranspose("maxpool.argmax", MPN->getArgmax(), NCHW2NHWC);
@@ -109,7 +110,7 @@ inline Node *convertMaxPoolGradToNCHWPool(MaxPoolGradNode *PGN, Function *F) {
 
   auto *NPGN = F->addNode(new MaxPoolGradNode(
       PGN->getName(), NI, NOR, NGR, NOA, NGA, PGN->getKernels(),
-      PGN->getStrides(), PGN->getPads(), NCHW));
+      PGN->getStrides(), PGN->getPads(), NCHW, PGN->getFlattenIndices()));
   auto *NR = F->createTranspose("maxpoolgrad.result",
                                 NPGN->getGradOfInputNamedInput(), NCHW2NHWC);
 

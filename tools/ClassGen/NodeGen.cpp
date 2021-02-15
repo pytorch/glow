@@ -158,6 +158,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Enum, "Layout")
+      .addMember(MemberType::Boolean, "FlattenIndices")
       .addResultFromCtorArg("Result")
       .addResultFromCtorArg("Argmax")
       .addGradient()
@@ -165,7 +166,11 @@ int main(int argc, char **argv) {
           "Performs a Max Pool with Argmax operation on the Input "
           "given provided Kernels, Strides, and Pads. Argmax is a flattened "
           "index corresponding to respective max element. Supported layouts "
-          "are defined in the ConvolutionLayout enum: NHWC and NCHW.");
+          "are defined in the ConvolutionLayout enum: NHWC and NCHW. If "
+          "FlattenIndices is set to true, the returned indices are flattened "
+          "and are relative to the whole tensor (similar to ONNX). If it is "
+          "set to false, the returned indices are relative to the H and W "
+          "dimensions (similar ot pytorch).");
 
   BB.newNode("ArgMax")
       .addInput("Input")

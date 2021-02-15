@@ -166,6 +166,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Layout")
+      .addMember(MemberType::Boolean, "FlattenIndices")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest", "Src", "Argmax"}, {"Dest", "Src"});
 

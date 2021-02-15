@@ -55,7 +55,7 @@ public:
   MaxPoolWithArgmaxInst *createMaxPoolWithArgmaxOp(
       llvm::StringRef name, Value *input, llvm::ArrayRef<unsigned_t> kernels,
       llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-      unsigned_t layout, ElemKind argMaxIndicesTy);
+      unsigned_t layout, ElemKind argMaxIndicesTy, bool flattenIndices = true);
 
   ArgMaxInst *createArgMaxOp(llvm::StringRef name, Value *input,
                              unsigned_t axis, bool keepDims,
