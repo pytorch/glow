@@ -671,7 +671,7 @@ Error assignSlsTablesToDevices(
   });
 
   // Now sort SLS tables by size decreasing
-  LOG(INFO) << "SLS tables sorted by size decreasing" << std::endl;
+  VLOG(1) << "SLS tables sorted by size decreasing";
   std::sort(slsTables.begin(), slsTables.end(),
             [](const SLSTableInfo &l, const SLSTableInfo &r) {
               return l.numBytesInTable > r.numBytesInTable;

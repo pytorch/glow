@@ -890,7 +890,8 @@ class BinaryEltwiseNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
     auto *glowEltwise = llvm::dyn_cast<EltwiseNodeType>(n);
-    LOG_AND_RETURN_IF_NOT(ERROR, glowEltwise, "Bad node type",
+    LOG_AND_RETURN_IF_NOT(ERROR, glowEltwise,
+                          "Bad node type, node name: " + n->getName().str(),
                           NNPI_INVALID_PARAM);
 
     importer.setUsedTensors({nodeValueName(glowEltwise->getRHS()),
@@ -913,7 +914,8 @@ class UnaryEltwiseNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
     auto *glowEltwise = llvm::dyn_cast<EltwiseNodeType>(n);
-    LOG_AND_RETURN_IF_NOT(ERROR, glowEltwise, "Bad node type",
+    LOG_AND_RETURN_IF_NOT(ERROR, glowEltwise,
+                          "Bad node type, node name: " + n->getName().str(),
                           NNPI_INVALID_PARAM);
 
     importer.setUsedTensors(
@@ -2408,6 +2410,8 @@ std::unordered_map<
     {"Gelu", glow::make_unique<GeluNodeImporter>()},
     {"Exp", glow::make_unique<
                 UnaryEltwiseNodeImporter<glow::ExpNode, NNPI_ELTWISE_EXP>>()},
+    {"Neg", glow::make_unique<
+                UnaryEltwiseNodeImporter<glow::NegNode, NNPI_ELTWISE_NEG>>()},
     {"Max", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::MaxNode, NNPI_ELTWISE_MAX>>()},
     {"Min", glow::make_unique<

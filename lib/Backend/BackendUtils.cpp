@@ -122,12 +122,11 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
 
 namespace glow {
 
-/// If \p PH is an output placeholder in the function \p F, \returns true.
-/// This is determined by checking if the PH has a user which uses the PH as an
-/// overwritten input.
-bool isOutput(const Placeholder *PH, const IRFunction &F) {
-  auto *weight = F.getWeightForNode(PH);
-  assert(weight && "Weight for a node was not found");
+/// If \p W is an output weight \returns true. This is determined by checking if
+/// the weight has a user which uses it as a write output.
+bool isOutput(const Value *W) {
+  auto *weight = llvm::dyn_cast<WeightVar>(W);
+  DCHECK(weight) << "Expected WeightVar";
   for (const auto &use : ValueUses(weight)) {
     Instruction *user = use.get();
     // Ignore deallocs.
@@ -142,16 +141,28 @@ bool isOutput(const Placeholder *PH, const IRFunction &F) {
   return false;
 }
 
-/// If \p PH is an input placeholder in the function \p F, \returns true.
-bool isInput(const Placeholder *PH, const IRFunction &F) {
-  // Check that the PH is always used as an @in parameter by the current
-  // function.
+/// If \p PH is an output placeholder in the function \p F, \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
+bool isOutput(const Placeholder *PH, const IRFunction &F) {
   auto *weight = F.getWeightForNode(PH);
-  assert(weight && "Weight for a node was not found");
+  DCHECK(weight) << "Weight for a node was not found";
+  return isOutput(weight);
+}
+
+/// If \p W is a weight that is read from \returns true.
+bool isInput(const Value *W) {
+  auto *weight = llvm::dyn_cast<WeightVar>(W);
+  DCHECK(weight) << "Expected WeightVar";
+
   for (const auto &use : ValueUses(weight)) {
     Instruction *user = use.get();
     // Ignore deallocs.
     if (isa<DeallocActivationInst>(user)) {
+      continue;
+    }
+    // TensorView instruction doesn't read from a placeholder.
+    if (isa<TensorViewInst>(user)) {
       continue;
     }
     OperandKind kind = use.getOperand().second;
@@ -160,6 +171,15 @@ bool isInput(const Placeholder *PH, const IRFunction &F) {
     }
   }
   return false;
+}
+
+/// If \p PH is an input placeholder in the function \p F, \returns true.
+bool isInput(const Placeholder *PH, const IRFunction &F) {
+  // Check that the PH is always used as an @in parameter by the current
+  // function.
+  auto *weight = F.getWeightForNode(PH);
+  DCHECK(weight) << "Weight for a node was not found";
+  return isInput(weight);
 }
 
 /// \returns true if \p PH is an output Placeholder for any function in \p

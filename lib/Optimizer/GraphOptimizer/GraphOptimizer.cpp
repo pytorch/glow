@@ -879,6 +879,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         ARITHMETIC_CASE(Div);
         ARITHMETIC_CASE(Max);
         ARITHMETIC_CASE(Min);
+        ARITHMETIC_CASE(Pow);
         BOOLEAN_OP_CASE(CmpLTE);
         BOOLEAN_OP_CASE(CmpEQ);
       default:
@@ -6259,6 +6260,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, SoftMaxNode::InputIdx,
                     SoftMaxNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::LogSoftMaxNodeKind: {
+        splitDims[LogSoftMaxNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, LogSoftMaxNode::InputIdx,
+                    LogSoftMaxNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::TanhNodeKind: {

@@ -678,6 +678,8 @@ public:
       return isEqualImpl<int16_t>(other, allowedError, verbose);
     case ElemKind::Int32QTy:
       return isEqualImpl<int32_t>(other, allowedError, verbose);
+    case ElemKind::UInt8ITy:
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::Int32ITy:
       return isEqualImpl<int32_t>(other, allowedError, verbose);
     case ElemKind::Int64ITy:

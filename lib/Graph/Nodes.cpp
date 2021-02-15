@@ -480,6 +480,15 @@ static bool verifySoftMax(NodeValue src, NodeValue dest) {
   return checkSameType(src, dest, parent);
 }
 
+static bool verifyLogSoftMax(NodeValue src, NodeValue dest) {
+  const Node *parent = dest.getNode();
+  if (src.getType()->isQuantizedType()) {
+    return checkType(src, dest.getElementType(), parent) &&
+           checkSameShape(src, dest, parent);
+  }
+  return checkSameType(src, dest, parent);
+}
+
 static bool verifyCrossEntropyLoss(NodeValue P, NodeValue CE,
                                    NodeValue labels) {
   const Node *parent = CE.getNode();
@@ -1084,6 +1093,29 @@ bool SoftMaxGradNode::verify() const {
   return isValid;
 }
 
+bool LogSoftMaxNode::verify() const {
+  return verifyLogSoftMax(getInput(), getResult());
+}
+
+bool LogSoftMaxGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= ((verifyInputAndGradInputTypes(
+                  getSelected(), getGradOfInputNamedSelected(), this))
+                  ? 1
+                  : 0);
+  isValid &= ((verifyOutputAndGradOutputTypes(
+                  getOriginalOutputForResult(),
+                  getGradOfOriginalOutputNamedResult(), this))
+                  ? 1
+                  : 0);
+  isValid &= ((verifyLogSoftMax(getGradOfInputNamedInput(),
+                                getGradOfOriginalOutputNamedResult()))
+                  ? 1
+                  : 0);
+  return isValid;
+}
+
 bool CrossEntropyLossNode::verify() const {
   return verifyCrossEntropyLoss(getP(), getCE(), getLabels());
 }
@@ -1508,6 +1540,15 @@ bool BatchedMulNode::verify() const {
     isValid &=
         checkType(getBatch(), getSlice().getType()->getElementType(), this);
   }
+  return isValid;
+}
+
+bool BatchedReduceSumSquareNode::verify() const {
+  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+
+  isValid &=
+      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
+                        this, CompareOperatorGreaterThan<size_t>());
   return isValid;
 }
 

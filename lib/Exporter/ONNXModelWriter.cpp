@@ -1124,6 +1124,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
   case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::UInt4FusedQTy:
   case ElemKind::UInt8QTy:
+  case ElemKind::UInt8ITy:
     return TensorType::UINT8;
   case ElemKind::Int16QTy:
     return TensorType::INT16;
@@ -1558,6 +1559,24 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   return Error::success();
 }
 
+Error ONNXModelWriter::writeBatchedReduceSumSquare(
+    const BatchedReduceSumSquareNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  unsigned_t axis = node->getAxis();
+  llvm::ArrayRef<unsigned_t> axes(axis);
+  addValueAttribute(proto, "axes", axes);
+
+  proto->set_name(node->getName());
+  proto->set_op_type("ReduceSum");
+  inputsToProto(node, proto);
+
+  addValueAttribute(proto, "keepdims", 0);
+  outputsToProto(node, graph, proto);
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeBatchedReduceMax(const BatchedReduceMaxNode *node,
                                              GraphType &graph) {
   auto *proto = graph.add_node();
@@ -1929,6 +1948,20 @@ Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
   proto->set_op_type("Softmax");
+  outputsToProto(node, graph, proto);
+  // Find input from Reshape node
+  proto->add_input(node->getInput().getNode()->getName());
+
+  // Mark selected input as visited.
+  reportedNodes_.insert(node->getSelected().getNode());
+  return Error::success();
+}
+
+Error ONNXModelWriter::writeLogSoftMax(const LogSoftMaxNode *node,
+                                       GraphType &graph) {
+  auto *proto = graph.add_node();
+  proto->set_name(node->getName());
+  proto->set_op_type("LogSoftmax");
   outputsToProto(node, graph, proto);
   // Find input from Reshape node
   proto->add_input(node->getInput().getNode()->getName());
@@ -2552,6 +2585,7 @@ DEF_UNSUPPORTED_NODE(AvgPoolGrad)
 DEF_UNSUPPORTED_NODE(MaxPoolGrad)
 DEF_UNSUPPORTED_NODE(SigmoidGrad)
 DEF_UNSUPPORTED_NODE(SoftMaxGrad)
+DEF_UNSUPPORTED_NODE(LogSoftMaxGrad)
 DEF_UNSUPPORTED_NODE(RegressionGrad)
 DEF_UNSUPPORTED_NODE(ConvolutionGrad)
 DEF_UNSUPPORTED_NODE(CrossEntropyLoss)

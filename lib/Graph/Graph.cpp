@@ -1249,6 +1249,21 @@ SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
   return addNode(new SoftMaxNode(name, outTy, input, selected));
 }
 
+LogSoftMaxNode *Function::createLogSoftMax(llvm::StringRef name,
+                                           NodeValue input, NodeValue selected,
+                                           TypeRef outTy, float beta) {
+  // Create input multiplier with beta.
+  if (beta != 1.0) {
+    auto *splat = createSplat(name, input.getType(), 1);
+    input = createMul(name, input, splat);
+  }
+  // By default, pick the input type.
+  if (!outTy) {
+    outTy = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new LogSoftMaxNode(name, outTy, input, selected));
+}
+
 CrossEntropyLossNode *Function::createCrossEntropyLoss(llvm::StringRef name,
                                                        NodeValue input,
                                                        NodeValue labels) {
@@ -1989,6 +2004,32 @@ Function::createBatchedReduceAdd(llvm::StringRef name, TypeRef outTy,
          "Incorrect number of elements in the output type.");
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new BatchedReduceAddNode(name, OT, batch, axis));
+}
+
+BatchedReduceSumSquareNode *
+Function::createBatchedReduceSumSquare(llvm::StringRef name, NodeValue batch,
+                                       llvm::ArrayRef<unsigned_t> axes) {
+  auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
+  auto OT = getParent()->uniqueTypeWithNewShape(batch.getType(), outDims);
+  return createBatchedReduceSumSquare(name, OT, batch, axes);
+}
+
+BatchedReduceSumSquareNode *
+Function::createBatchedReduceSumSquare(llvm::StringRef name, TypeRef outTy,
+                                       NodeValue batch,
+                                       llvm::ArrayRef<unsigned_t> axes) {
+  assert(axes.size() == 1 && "Only supporting single reduction for now.");
+  auto axis = axes[0];
+
+  // Calculate the expected total number of elements in the output tensor
+  // based on the number of elements in the batch divided by the axis
+  // dimension.
+  const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new BatchedReduceSumSquareNode(name, OT, batch, axis));
 }
 
 BatchedReduceAddNode *

@@ -348,6 +348,10 @@ class ONNXModelLoader
   Error loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);
 
+  /// Load Onnx QuantizeLinear operator.
+  Error loadQuantizeLinear(const ONNX_NAMESPACE::NodeProto &op,
+                           ArgumentDictionaryTy &dict);
+
   /// Load Glow ConvertTo operator.
   Error loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
                       ArgumentDictionaryTy &dict);

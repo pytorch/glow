@@ -333,6 +333,13 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs SoftMax normalization on the Input tensor.");
 
+  BB.newNode("LogSoftMax")
+      .addInput("Input")
+      .addInput("Selected")
+      .addResultFromCtorArg()
+      .addGradient()
+      .setDocstring("Performs LogSoftMax normalization on the Input tensor.");
+
   BB.newNode("CrossEntropyLoss")
       .addInput("P")
       .addInput("Labels")
@@ -651,6 +658,15 @@ int main(int argc, char **argv) {
       .setDocstring("Accumulates all of the layers in the batch and produce a "
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
+
+  BB.newNode("BatchedReduceSumSquare")
+      .addInput("Batch")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Accumulates squares of all of the layers in the batch and produce a "
+          "tensor that has the same dimensions as the input tensor "
+          "without the first dimension.");
 
   BB.newNode("BatchedReduceMean")
       .addInput("Batch")

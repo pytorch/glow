@@ -496,6 +496,30 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   EXPECT_EQ(table.find("FC_reshape2D_tensorview")->second.output, false);
 }
 
+// Test that using a buffer in a TensorView instruction doesn't get it marked
+// as an input buffer.
+TEST(IR, testInputToTensorView) {
+  Module mod;
+  Function *F = mod.createFunction("main");
+  IRFunction M(F);
+  IRBuilder builder(&M);
+  auto T0 = mod.uniqueType(ElemKind::FloatTy, {1024, 1024});
+  auto T1 = mod.uniqueType(ElemKind::FloatTy, {512, 1024});
+  auto *input0 = builder.createWeightVar(T1, "A");
+  auto *input1 = builder.createWeightVar(T1, "B");
+  auto *output = builder.createWeightVar(T0, "C");
+  auto *tvo0 =
+      builder.createTensorViewInst("outuput_view0", output, T0, {0, 0});
+  auto *tvo1 =
+      builder.createTensorViewInst("outuput_view1", output, T0, {512, 0});
+  builder.createElementAddInst("add0", tvo0, input0, input1);
+  builder.createElementAddInst("add1", tvo1, input0, input1);
+  // output0 is only used as an input to a TensorView instruction, The buffer
+  // should not be marked as an input buffer since that doesn't include any
+  // reads of the buffer.
+  EXPECT_EQ(isInput(output), false);
+}
+
 // Test if the placeholders are allocated contiguously as
 // Input|InputOutput|Output.
 TEST(RuntimeBundle, ContiguousPlaceholder) {
