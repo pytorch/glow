@@ -181,6 +181,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "sliceVectors_Int32I/0",
     "sliceVectors_Int64/0",
     "sliceVectors_Float16/0",
+    "sliceVectors_BoolTy/0",
     "sliceConcatVectors_Int64/0",
     "sliceConcatVectors_Float16/0",
     "ChannelShuffle/0",
