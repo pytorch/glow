@@ -1144,6 +1144,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::logical_and", "aten::__iand__"},
        &PyTorchModelLoader::loadLogicalAnd},
       {{"aten::logical_not"}, &PyTorchModelLoader::loadLogicalNot},
+      {{"aten::bitwise_not"}, &PyTorchModelLoader::loadBitwiseNot},
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
       {{"aten::le", "aten::le_"}, &PyTorchModelLoader::loadCmp<CmpLTENode>},
@@ -3820,6 +3821,29 @@ Error PyTorchModelLoader::loadLogicalNot(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[0]));
 
   return addValueMapping(outputs[0], F_.createNot("logical_not", glowInput));
+}
+
+Error PyTorchModelLoader::loadBitwiseNot(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue glowInput;
+
+  ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[0]));
+
+  auto inputElementType = glowInput.getType()->getElementType();
+
+  if (inputElementType == glow::ElemKind::BoolTy) {
+    // if bool, use existing logical_not implementation
+    return addValueMapping(outputs[0], F_.createNot("logical_not", glowInput));
+  } else if (inputElementType == glow::ElemKind::Int32ITy ||
+             inputElementType == glow::ElemKind::Int64ITy) {
+    return addValueMapping(outputs[0],
+                           F_.createBitwiseNot("bitwise_not", glowInput));
+  } else {
+    return MAKE_ERR("Expected integer/boolean tensor in loadBitwiseNot");
+  }
 }
 
 Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {

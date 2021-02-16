@@ -681,6 +681,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("Not");
 
+  BB.newInstr("ElementBitwiseNot")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("BitwiseNot");
+
   BB.newInstr("ElementNeg")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
