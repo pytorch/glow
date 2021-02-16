@@ -123,6 +123,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "concatVectorsRepeated_Float16/0",
     "sliceVectors_BFloat16/0",
     "sliceVectors_Float16/0",
+    "sliceVectors_BoolTy/0",
     "sliceConcatVectors_BFloat16/0",
     "sliceConcatVectors_Float16/0",
     "ExpandDims_BFloat16/0",

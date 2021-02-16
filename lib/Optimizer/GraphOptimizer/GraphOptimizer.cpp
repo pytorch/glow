@@ -6246,6 +6246,16 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           splitDims, 0));
         break;
       }
+      case Kinded::Kind::SelectNodeKind: {
+        splitDims[SelectNode::LHSIdx] = 0;
+        splitDims[SelectNode::RHSIdx] = 0;
+        splitDims[SelectNode::CondIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          SelectNode::LHSIdx,
+                                          SelectNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::SigmoidNodeKind: {
         splitDims[SigmoidNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -6443,6 +6453,21 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, ClipNode::InputIdx,
                     ClipNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::SelectNodeKind: {
+        auto *SL = llvm::cast<SelectNode>(curNode);
+        if (SL->getNthInput(SelectNode::LHSIdx).dims().size() < 2) {
+          break;
+        }
+        splitDims[SelectNode::LHSIdx] = 1;
+        splitDims[SelectNode::RHSIdx] = 1;
+        splitDims[SelectNode::CondIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, SelectNode::LHSIdx,
+                    SelectNode::ResultIdx, splitDims,
                     /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
