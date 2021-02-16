@@ -373,6 +373,22 @@ public:
 #include "glow/AutoGenNodes.def"
 };
 
+// helper to get a string name for an OpType
+template <typename T> const char *getNodeName() {
+  static_assert(std::is_base_of<Node, T>());
+
+// Do this for every known node
+#undef DEF_NODE
+#define DEF_NODE(CLASS, NAME)                                                  \
+  if (std::is_same<T, CLASS>()) {                                              \
+    return #NAME;                                                              \
+  }
+// @lint-ignore facebook-hte-DuplicateInclude
+#include "glow/AutoGenNodes.def"
+
+  llvm_unreachable("Not reachable, values are not handled here");
+};
+
 /// Signifiers for exporting and importing properties of Nodes.
 constexpr char layoutSignifier[] = "layout";
 constexpr char staticSignifier[] = "offline";

@@ -28,6 +28,7 @@
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
 #include <torch/csrc/jit/ir/ir.h>
+#include <type_traits>
 #include <unordered_map>
 
 namespace glow {
@@ -1139,11 +1140,20 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::ceil"}, &PyTorchModelLoader::loadCeil},
       {{"aten::mean"}, &PyTorchModelLoader::loadMean},
       {{"aten::pow"}, &PyTorchModelLoader::loadPow},
-      {{"aten::logical_xor"}, &PyTorchModelLoader::loadLogicalXor},
-      {{"aten::logical_or"}, &PyTorchModelLoader::loadLogicalOr},
-      {{"aten::logical_and", "aten::__iand__"},
+      {{"aten::logical_xor", "aten::logical_xor_"},
+       &PyTorchModelLoader::loadLogicalXor},
+      {{"aten::logical_or", "aten::logical_or_"},
+       &PyTorchModelLoader::loadLogicalOr},
+      {{"aten::logical_and", "aten::logical_and_"},
        &PyTorchModelLoader::loadLogicalAnd},
-      {{"aten::logical_not"}, &PyTorchModelLoader::loadLogicalNot},
+      {{"aten::logical_not", "aten::logical_not_"},
+       &PyTorchModelLoader::loadLogicalNot},
+      {{"aten::__ixor__", "aten::__xor__"},
+       &PyTorchModelLoader::loadBitwiseBooleanOp<XorNode>},
+      {{"aten::__ior__", "aten::__or__"},
+       &PyTorchModelLoader::loadBitwiseBooleanOp<OrNode>},
+      {{"aten::__iand__", "aten::__and__"},
+       &PyTorchModelLoader::loadBitwiseBooleanOp<AndNode>},
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
       {{"aten::le", "aten::le_"}, &PyTorchModelLoader::loadCmp<CmpLTENode>},
@@ -3773,6 +3783,31 @@ Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
   }
 
   RETURN_ERR(addValueMapping(outputs[0], PN->getResult()));
+}
+
+template <typename GlowNode>
+Error PyTorchModelLoader::loadBitwiseBooleanOp(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  for (int i = 0; i <= 1; i++) {
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[i]));
+    auto inputElementType = input.getType()->getElementType();
+
+    if (inputElementType != glow::ElemKind::BoolTy) {
+      return MAKE_ERR("Bitwise ops are only supported on Bool");
+    }
+  }
+
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<GlowNode>(
+               glow::strFormat("bitwise_%s", glow::getNodeName<GlowNode>()),
+               inputs[0], inputs[1]));
+
+  RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
 Error PyTorchModelLoader::loadLogicalXor(const torch::jit::Node *ptNode) {
