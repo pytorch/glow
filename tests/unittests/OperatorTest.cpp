@@ -4242,7 +4242,7 @@ TEST_P(OperatorTest, batchedReduceMeanUsingAvgPoolQuantized) {
   std::vector<dim_t> dims = {2, 3, 3, 4};
 
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, dims, 1, 0);
-  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {dims[0], dims[1]}, 2, 0);
+  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {dims[0], dims[1]}, 1, 0);
   auto *batch = mod_.createPlaceholder(ElemKind::Int8QTy, dims, BT->getScale(),
                                        BT->getOffset(), "batch", false);
 
@@ -6909,6 +6909,44 @@ TEST_P(OperatorTest, IntMatMul) {
   EXPECT_NEAR(H.at({2, 0}), 26.6, 1.0);
   EXPECT_NEAR(H.at({2, 1}), 69.8, 1.0);
   EXPECT_NEAR(H.at({2, 2}), 58.8, 1.0);
+}
+
+/// Gemm test for quantized case with Int32QTy bias
+TEST_P(OperatorTest, IntGemm) {
+  CHECK_IF_ENABLED();
+
+  TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2}, 1, 0);
+
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {1, 5}, 1, 0, "inp", false);
+  bindings_.allocate(inp);
+  auto *weight =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {2, 5}, 1, 0, "weight", false);
+  bindings_.allocate(weight);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::Int32QTy, {2}, 1, 0, "bias", false);
+  bindings_.allocate(bias);
+
+  bindings_.get(inp)->getHandle<int8_t>() = {
+      1, 1, 1, 1, 1,
+  };
+
+  bindings_.get(weight)->getHandle<int8_t>() = {2, 2, 2, 2, 2, 3, 3, 3, 3, 3};
+
+  bindings_.get(bias)->getHandle<int32_t>() = {1, 2};
+
+  auto *gemmnode = F_->createGemm("gemm", resTy, inp, weight, bias, 1, 1, 0, 1);
+
+  auto *S = F_->createSave("save", gemmnode);
+  bindings_.allocate(S->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+  Tensor expected(resTy);
+  expected.getHandle<int8_t>() = {11, 17};
+  EXPECT_TRUE(expected.isEqual(*result));
 }
 
 TEST_P(OperatorTest, IntBatchedArith) {
