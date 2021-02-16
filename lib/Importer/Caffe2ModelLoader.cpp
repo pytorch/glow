@@ -1778,6 +1778,39 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "LpNorm") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    int p = 2;
+    if (dict.count("p")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(p, loadInt(dict["p"]));
+      RETURN_ERR_IF_NOT(p == 1 || p == 2,
+                        opErrMsg(op, "p should be either 1 or 2."));
+    }
+    bool average = false;
+    if (dict.count("average")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(average, loadInt(dict["average"]));
+    }
+    RETURN_ERR_IF_NOT(!average, opErrMsg(op, "average is not supported."));
+
+    Node *node = nullptr;
+    if (p == 1) {
+      node = G_->createAbs(opName, in);
+    } else {
+      node = G_->createPow(opName, in, 2);
+    }
+
+    const auto dims1D = flattenCdr(in.dims(), in.dims().size());
+    node = G_->createReshape(opName + ".reshape1D", node, dims1D.first);
+
+    auto outputType = mod_.uniqueType(in.getElementType(), {1});
+    node = G_->createBatchedReduceAdd(opName + ".sum", outputType, node, 0);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
