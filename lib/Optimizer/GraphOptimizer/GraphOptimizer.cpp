@@ -6219,6 +6219,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     FullyConnectedNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::MatMulNodeKind: {
+        splitDims[MatMulNode::LHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MatMulNode::LHSIdx,
+                                          MatMulNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::AddNodeKind: {
         splitDims[AddNode::LHSIdx] = 0;
         splitDims[AddNode::RHSIdx] = 0;

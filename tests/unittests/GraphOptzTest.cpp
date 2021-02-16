@@ -4934,6 +4934,114 @@ TEST_F(GraphOptz, ParallelizeGraph_FC_ModelParallel_Split140by3) {
   checkNumericalEquivalence();
 }
 
+/// Test Splitting MatMul into multiple MatMuls
+TEST_F(GraphOptz, SplitMatMulIntoMultipleOps_Data) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {12, 32}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 32}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {12, 32}, "output", false);
+  bindings_.allocate(output);
+
+  auto *mm = F_->createMatMul("mm", input1, input2);
+  auto *save = F_->createSave("save", mm, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[mm] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // 12 Slices from LHS
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  // 12 newly created MatMuls.
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
+
+  auto *concatNode = llvm::dyn_cast<ConcatNode>(save->getInput());
+  ASSERT_TRUE(concatNode);
+  // 12 FCs are connected to the concat node.
+  EXPECT_EQ(12, concatNode->getInputs().size());
+
+  for (unsigned i = 0; i < 12; ++i) {
+    auto *mmInput = llvm::dyn_cast<MatMulNode>(concatNode->getNthInput(i));
+    ASSERT_TRUE(mmInput);
+    EXPECT_TRUE(mmInput->getResult().dims().equals({1, 32}));
+  }
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting MatMul into multiple MatMuls
+TEST_F(GraphOptz, SplitMatMulIntoMultipleOps_Model) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {12, 48}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {48, 48}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {12, 48}, "output", false);
+  bindings_.allocate(output);
+
+  auto *mm = F_->createMatMul("mm", input1, input2);
+  auto *save = F_->createSave("save", mm, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[mm] = ParallelTransformKind::Model;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // 12 Slices from RHS
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  // 12 newly created MatMuls.
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
+
+  auto *concatNode = llvm::dyn_cast<ConcatNode>(save->getInput());
+  ASSERT_TRUE(concatNode);
+  // 12 FCs are connected to the concat node.
+  EXPECT_EQ(12, concatNode->getInputs().size());
+
+  for (unsigned i = 0; i < 12; ++i) {
+    auto *mmInput = llvm::dyn_cast<MatMulNode>(concatNode->getNthInput(i));
+    ASSERT_TRUE(mmInput);
+    EXPECT_TRUE(mmInput->getResult().dims().equals({12, 4}));
+  }
+
+  checkNumericalEquivalence();
+}
+
 /// Test Splitting Add into multiple Adds.
 TEST_F(GraphOptz, ParallelizeGraph_Add) {
   auto *input1 =
