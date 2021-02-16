@@ -1776,6 +1776,15 @@ traversePostOrder(const runtime::DAGNode *root,
   postOrder.push_back(root);
 }
 
+unsigned NNPIBackend::getContextCount(CompilationContext &cctx) const {
+  if (cctx.enableP2P || cctx.enableDRT) {
+    return cctx.maxActiveRequestsPerInstance;
+  } else {
+    auto opts = NNPICompilationOptions(cctx.backendOpts.backendSpecificOpts);
+    return opts.numWorkers;
+  }
+}
+
 Error NNPIBackend::bindContexts(
     llvm::ArrayRef<runtime::ContextBinding> bindings,
     const runtime::DAGNode *root, bool enableP2P, bool enableDRT) {

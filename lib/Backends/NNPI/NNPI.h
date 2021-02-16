@@ -88,6 +88,10 @@ public:
                              const runtime::DAGNode *root, bool enableP2P,
                              bool enableDRT) override;
 
+  /// Get the number of copies of inputs/outputs that will be reserved on a
+  /// device per network.
+  unsigned getContextCount(CompilationContext &cctx) const override;
+
   /// Estimate performance cost for a given Node \p N.
   /// \returns a unitless value to be used when comparing to other estimates.
   /// or -1 if no estimate could be generated.
