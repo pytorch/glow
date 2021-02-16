@@ -375,7 +375,7 @@ public:
 
 // helper to get a string name for an OpType
 template <typename T> const char *getNodeName() {
-  static_assert(std::is_base_of<Node, T>());
+  static_assert(std::is_base_of<Node, T>(), "Must be node");
 
 // Do this for every known node
 #undef DEF_NODE
