@@ -4243,8 +4243,8 @@ void BoundInterpreterFunction::fwdBatchedReduceProdInst(
                          eDestDims);
 }
 
-/// Macro to define ReduceMin/Max kernel implementation.
-#define DEFINE_REDUCEMINMAX_INST_IMPL(func, compare)                           \
+/// Macro to define ReduceCompare kernel implementation.
+#define DEFINE_REDUCECOMPARE_INST_IMPL(func, compare)                          \
   template <typename ElemTy>                                                   \
   void BoundInterpreterFunction::fwdBatched##func##InstImpl(                   \
       Value *batch, Value *dest, const ShapeVector &eBatchDims,                \
@@ -4286,15 +4286,18 @@ void BoundInterpreterFunction::fwdBatchedReduceProdInst(
   }
 
 /// Define fwdBatchedReduceMaxInstImpl.
-DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMax, std::max)
+DEFINE_REDUCECOMPARE_INST_IMPL(ReduceMax, std::max)
 
 /// Define fwdBatchedReduceMinInstImpl.
-DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
+DEFINE_REDUCECOMPARE_INST_IMPL(ReduceMin, std::min)
 
-#undef DEFINE_REDUCEMINMAX_INST_IMPL
+/// Define fwdBatchedReduceAndInstImpl.
+DEFINE_REDUCECOMPARE_INST_IMPL(ReduceAnd, [](bool L, bool R) { return L && R; })
 
-/// Macro to define ReduceMin/Max instruction.
-#define DEFINE_REDUCEMINMAX_INST(func, init)                                   \
+#undef DEFINE_REDUCECOMPARE_INST_IMPL
+
+/// Macro to define ReduceCompare instruction.
+#define DEFINE_REDUCECOMPARE_INST(func, init, dispatchMacro)                   \
   void BoundInterpreterFunction::fwdBatched##func##Inst(                       \
       const glow::Batched##func##Inst *I) {                                    \
                                                                                \
@@ -4312,18 +4315,28 @@ DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
       eDestDims[axes[i]] = 1;                                                  \
     }                                                                          \
                                                                                \
-    dispatchArithmeticImpl(fwdBatched##func##InstImpl,                         \
-                           batch->getElementType(), batch, dest, eBatchDims,   \
-                           eDestDims, init);                                   \
+    dispatchMacro(func, batch, dest, eBatchDims, eDestDims, init)              \
   }
 
+#define DISPATCH_REDUCEARITH(func, batch, dest, eBatchDims, eDestDims, init)   \
+  dispatchArithmeticImpl(fwdBatched##func##InstImpl, batch->getElementType(),  \
+                         batch, dest, eBatchDims, eDestDims, init);
 // Define fwdBatchedMinInst
-DEFINE_REDUCEMINMAX_INST(ReduceMin, std::numeric_limits<int32_t>::max())
+DEFINE_REDUCECOMPARE_INST(ReduceMin, std::numeric_limits<int32_t>::max(),
+                          DISPATCH_REDUCEARITH)
 
 // Define fwdBatchedMaxInst
-DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
+DEFINE_REDUCECOMPARE_INST(ReduceMax, std::numeric_limits<int32_t>::min(),
+                          DISPATCH_REDUCEARITH)
+#undef DISPATCH_REDUCEARITH
 
-#undef DEFINE_REDUCEMINMAX_INST
+#define DISPATCH_REDUCEBOOL(func, batch, dest, eBatchDims, eDestDims, init)    \
+  fwdBatched##func##InstImpl<bool>(batch, dest, eBatchDims, eDestDims, init);
+
+// Define fwdBatchedAndInst
+DEFINE_REDUCECOMPARE_INST(ReduceAnd, true, DISPATCH_REDUCEBOOL);
+
+#undef DEFINE_REDUCECOMPARE_INST
 
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,

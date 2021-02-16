@@ -1579,6 +1579,17 @@ DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceProd)
 
 #undef DEFINE_BATCHED_REDUCTION_VERIFICATION
 
+bool BatchedReduceAndNode::verify() const {
+  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+  isValid &=
+      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
+                        this, CompareOperatorGreaterThan<size_t>());
+  isValid &= expectCompareTrue("Data must be of type Bool",
+                               getBatch().getType()->getElementType(),
+                               ElemKind::BoolTy, this);
+  return isValid;
+}
+
 bool SparseLengthsSumNode::verify() const {
   return verifySparseLengthsSum(getResult(), getData(), getIndices(),
                                 getLengths());

@@ -3594,6 +3594,154 @@ TEST_P(OperatorTest, batchedReduceAdd_5Dinput) {
   EXPECT_TRUE(result->isEqual(expected));
 }
 
+/// Basic Test to check that BatchedReduceAnd is correctly supported.
+TEST_P(OperatorTest, batchedReduceAnd) {
+  CHECK_IF_ENABLED();
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::BoolTy, {2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<bool>() = {1, 1, 1, 1, 1, 1, 0, 1};
+
+  auto *R = F_->createBatchedReduceAnd("reduce.asd", batch, /* axis */ 0);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::BoolTy, {4});
+  expected.getHandle<bool>() = {1, 1, 0, 1};
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceAnd works correctly reducing the outermost axis.
+TEST_P(OperatorTest, batchedReduceAnd_outerAxis) {
+  CHECK_IF_ENABLED();
+
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::BoolTy, {2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<bool>() = {1, 0, 0, 1, 1, 1, 1, 0,
+                                                  1, 0, 0, 1, 1, 1, 1, 0};
+
+  auto *R = F_->createBatchedReduceAnd("reduce.and", batch, /* axis */ 0);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::BoolTy, {2, 4});
+  expected.getHandle<bool>() = {true, false, false, true,
+                                true, true,  true,  false};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceAnd works correctly reducing an internal axis.
+TEST_P(OperatorTest, batchedReduceAnd_innerAxis) {
+  CHECK_IF_ENABLED();
+
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::BoolTy, {2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<bool>() = {1, 0, 0, 1, 1, 1, 1, 0,
+                                                  1, 0, 0, 1, 1, 1, 1, 0};
+
+  auto *R = F_->createBatchedReduceAnd("reduce.and", batch, /* axis */ 1);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::BoolTy, {2, 4});
+  expected.getHandle<bool>() = {true, false, false, false,
+                                true, false, false, false};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceAnd works correctly reducing the innermost axis.
+TEST_P(OperatorTest, batchedReduceAnd_lastAxis) {
+  CHECK_IF_ENABLED();
+
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::BoolTy, {2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<bool>() = {1, 0, 0, 1, 1, 1, 1, 0,
+                                                  1, 0, 0, 1, 1, 1, 1, 0};
+  auto *R = F_->createBatchedReduceAnd("reduce.and", batch, /* axis */ 2);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::BoolTy, {2, 2});
+  expected.getHandle<bool>() = {false, false, false, false};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchReducedAdd works on a 4D input.
+TEST_P(OperatorTest, batchedReduceAnd_4Dinput) {
+  CHECK_IF_ENABLED();
+
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::BoolTy, {2, 2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<bool>() = {
+      1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1,
+      0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1};
+
+  auto *R = F_->createBatchedReduceAnd("reduce.and", batch, /* axis */ 0);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::BoolTy, {2, 2, 4});
+  expected.getHandle<bool>() = {false, false, true,  true,  true,  false,
+                                false, false, true,  false, false, true,
+                                true,  false, false, true};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchReducedAdd works on a 5D input.
+TEST_P(OperatorTest, batchedReduceAnd_5Dinput) {
+  CHECK_IF_ENABLED();
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::BoolTy, {2, 2, 2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<bool>() = {
+      true,  false, true, false, false, true,  true,  false, true,  false,
+      true,  false, true, false, true,  true,  true,  false, false, false,
+      true,  true,  true, true,  false, false, false, true,  true,  false,
+      true,  false, true, false, true,  true,  false, false, true,  true,
+      false, false, true, false, true,  false, false, true,  true,  false,
+      false, true,  true, false, false, true,  false, true,  true,  false,
+      true,  false, true, true};
+
+  auto *R = F_->createBatchedReduceAnd("reduce.and", batch, /* axis */ 2);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::BoolTy, {2, 2, 2, 4});
+  expected.getHandle<bool>() = {true,  false, true,  false, false, false, true,
+                                false, false, false, false, false, true,  false,
+                                true,  false, false, false, true,  false, false,
+                                false, false, true,  false, false, false, false,
+                                true,  false, false, true};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
 /// Helper to test VectorNorm using \p DTy.
 template <typename DataType>
 static void testVectorNorm(glow::PlaceholderBindings &bindings,

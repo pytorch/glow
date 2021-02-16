@@ -318,6 +318,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
+  /// Performs a logical `and` operation of all of the layers in the batch along
+  /// the axis dimensions and produces a tensor that has the same dimensions as
+  /// the input tensor without the Axis dimension.
+  BB.newInstr("BatchedReduceAnd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Batch", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Axes")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
+      .autoIRGen();
+
   /// Calculates minimum of all of the layers in the batch along the axes
   /// dimensions and produce a tensor that has the same dimensions as the input
   /// tensor without the Axes dimension.
