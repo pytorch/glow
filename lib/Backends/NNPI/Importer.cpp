@@ -2408,6 +2408,8 @@ std::unordered_map<
     {"Relu", glow::make_unique<ReluNodeImporter>()},
     {"PRelu", glow::make_unique<PReluNodeImporter>()},
     {"Gelu", glow::make_unique<GeluNodeImporter>()},
+    {"Abs", glow::make_unique<
+                UnaryEltwiseNodeImporter<glow::AbsNode, NNPI_ELTWISE_ABS>>()},
     {"Exp", glow::make_unique<
                 UnaryEltwiseNodeImporter<glow::ExpNode, NNPI_ELTWISE_EXP>>()},
     {"Neg", glow::make_unique<
