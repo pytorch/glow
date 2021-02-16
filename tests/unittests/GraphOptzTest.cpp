@@ -5082,6 +5082,122 @@ TEST_F(GraphOptz, ParallelizeGraph_Transpose3D_120) {
   checkNumericalEquivalence();
 }
 
+/// Test Splitting Select into multiple Selects.
+TEST_F(GraphOptz, ParallelizeGraphData_Select) {
+  auto *sel1_lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel1_lhs", false);
+  bindings_.allocate(sel1_lhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel1_rhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel1_rhs", false);
+  bindings_.allocate(sel1_rhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel1_cond =
+      mod_.createPlaceholder(ElemKind::BoolTy, {32, 2048}, "sel1_cond", false);
+  bindings_.allocate(sel1_cond)->getHandle<bool>().randomize(0, 1,
+                                                             mod_.getPRNG());
+  auto *sel2_rhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel2_rhs", false);
+  bindings_.allocate(sel2_rhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel2_cond =
+      mod_.createPlaceholder(ElemKind::BoolTy, {32, 2048}, "sel2_cond", false);
+  bindings_.allocate(sel2_cond)->getHandle<bool>().randomize(0, 1,
+                                                             mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *sel1 = F_->createSelect("sel1", sel1_cond, sel1_lhs, sel1_rhs);
+  auto *sel2 = F_->createSelect("sel2", sel2_cond, sel1, sel2_rhs);
+  F_->createSave("save", sel2, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[sel1] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 12 Selects from sel1, as well as the original sel2 which is
+  // unchanged.
+  EXPECT_EQ(13, countNodeKind(F_, Kinded::Kind::SelectNodeKind));
+
+  // Each input (3 total inputs) of the 12 Selects are sliced.
+  EXPECT_EQ(36, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  // One concat to bring all of the parallelized sliced Select together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Select into multiple Selects.
+TEST_F(GraphOptz, ParallelizeGraphModel_Select) {
+  auto *sel1_lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel1_lhs", false);
+  bindings_.allocate(sel1_lhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel1_rhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel1_rhs", false);
+  bindings_.allocate(sel1_rhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel1_cond =
+      mod_.createPlaceholder(ElemKind::BoolTy, {32, 2048}, "sel1_cond", false);
+  bindings_.allocate(sel1_cond)->getHandle<bool>().randomize(0, 1,
+                                                             mod_.getPRNG());
+  auto *sel2_rhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel2_rhs", false);
+  bindings_.allocate(sel2_rhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel2_cond =
+      mod_.createPlaceholder(ElemKind::BoolTy, {32, 2048}, "sel2_cond", false);
+  bindings_.allocate(sel2_cond)->getHandle<bool>().randomize(0, 1,
+                                                             mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *sel1 = F_->createSelect("sel1", sel1_cond, sel1_lhs, sel1_rhs);
+  auto *sel2 = F_->createSelect("sel2", sel2_cond, sel1, sel2_rhs);
+  F_->createSave("save", sel2, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[sel1] = ParallelTransformKind::Model;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 12 Selects from sel1, as well as the original sel2 which is
+  // unchanged.
+  EXPECT_EQ(13, countNodeKind(F_, Kinded::Kind::SelectNodeKind));
+
+  // Each input (3 total inputs) of the 12 Selects are sliced.
+  EXPECT_EQ(36, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  // One concat to bring all of the parallelized sliced Select together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
 TEST_F(GraphOptz, SinkClipBelowReshape) {
   Placeholder *in =
       mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);

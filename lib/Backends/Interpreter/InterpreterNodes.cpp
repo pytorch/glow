@@ -2267,6 +2267,7 @@ void BoundInterpreterFunction::fwdExtractTensorInst(
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32ITy);
+  TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
 
   llvm_unreachable("Unsupported tensor type");

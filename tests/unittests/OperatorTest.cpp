@@ -8203,6 +8203,32 @@ TEST_P(OperatorTest, sliceVectors_Int32I) {
   testSliceVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
+/// Test slicing with BoolTy.
+TEST_P(OperatorTest, sliceVectors_BoolTy) {
+  CHECK_IF_ENABLED();
+  auto *input = mod_.createPlaceholder(ElemKind::BoolTy, {5}, "inp", false);
+  bindings_.allocate(input)->getHandle<bool>() = {false, true, false, true,
+                                                  true};
+
+  Node *S1 = F_->createSlice("slice1", input, {0}, {2});
+  Node *S2 = F_->createSlice("slice2", input, {2}, {5});
+  auto *save1 = F_->createSave("save", S1);
+  auto *save2 = F_->createSave("save", S2);
+  auto *out1 = bindings_.allocate(save1->getPlaceholder());
+  auto *out2 = bindings_.allocate(save2->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH1 = out1->getHandle<bool>();
+  auto outH2 = out2->getHandle<bool>();
+  EXPECT_EQ(outH1.size(), 2);
+  EXPECT_EQ(outH2.size(), 3);
+  EXPECT_EQ(outH1.raw(0), false);
+  EXPECT_EQ(outH1.raw(1), true);
+  EXPECT_EQ(outH2.raw(0), false);
+  EXPECT_EQ(outH2.raw(1), true);
+  EXPECT_EQ(outH2.raw(2), true);
+}
+
 /// Helper to test SliceConcatVectors using \p DTy.
 template <typename DataType>
 static void testSliceConcatVectors(glow::PlaceholderBindings &bindings,
