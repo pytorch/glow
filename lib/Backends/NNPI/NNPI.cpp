@@ -395,6 +395,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          NI.getInElemTy(GatherRangesNode::DataIdx));
     break;
   case Kinded::Kind::SliceNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int64ITy, ElemKind::BoolTy});
+    break;
   case Kinded::Kind::ReshapeNodeKind:
 
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
