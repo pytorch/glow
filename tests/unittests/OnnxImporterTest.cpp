@@ -440,11 +440,11 @@ static void importExpandTest(const std::string &netFilename,
 }
 
 /// Import maxPool1D
-static void importMaxPool1DTest(std::string &netFilename,
-                                llvm::ArrayRef<float> inputValues,
-                                llvm::ArrayRef<dim_t> inputShape,
-                                llvm::ArrayRef<dim_t> outputShape,
-                                llvm::ArrayRef<float> expectedValues) {
+static void importMaxPoolTest(std::string &netFilename,
+                              llvm::ArrayRef<float> inputValues,
+                              llvm::ArrayRef<dim_t> inputShape,
+                              llvm::ArrayRef<dim_t> outputShape,
+                              llvm::ArrayRef<float> expectedValues) {
   float delta = 1e-08;
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -521,8 +521,24 @@ TEST_F(OnnxImporterTest, maxPool1D) {
   };
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/maxPool1D.onnxtxt");
-  importMaxPool1DTest(netFilename, inputValues, inputShape, outputShape,
-                      expectedValues);
+  importMaxPoolTest(netFilename, inputValues, inputShape, outputShape,
+                    expectedValues);
+}
+
+TEST_F(OnnxImporterTest, maxPool3D) {
+  std::vector<float> inputValues = {
+      -1.1258, -1.1524, -0.2506, -0.4339, 0.8487, 0.6920,  -0.3160, -2.1152,
+      0.4681,  -0.1577, 1.4437,  0.2660,  0.1665, 0.8744,  -0.1435, -0.1116,
+      0.9318,  1.2590,  2.0050,  0.0537,  0.6181, -0.4128, -0.8411, -2.3160};
+
+  std::vector<dim_t> inputShape = {1, 3, 2, 2, 2};
+  std::vector<dim_t> outputShape = {1, 3, 1, 1, 2};
+  std::vector<float> expectedValues = {0.8487, 0.6920, 1.4437,
+                                       0.8744, 2.0050, 1.2590};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/maxPool3D.onnxtxt");
+  importMaxPoolTest(netFilename, inputValues, inputShape, outputShape,
+                    expectedValues);
 }
 
 /// Test loading LeakyRelu op from an ONNX model.
@@ -3371,6 +3387,104 @@ TEST_F(OnnxImporterTest, importMaxPoolWithArgmax) {
     EXPECT_EQ(result.raw(i), expectedResult[i]);
     EXPECT_EQ(indices.raw(i), expectedIndices[i]);
   }
+}
+
+static void
+importMaxPool3DWithArgmax(const std::string &modelFile,
+                          const std::vector<float> &expectedResult,
+                          const std::vector<int64_t> &expectedIndices,
+                          const std::vector<dim_t> &expectedDims) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH modelFile);
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *resultPH, *indicesPH;
+  Tensor inputTensor(ElemKind::FloatTy, {1, 2, 3, 3, 3});
+
+  inputTensor.getHandle() = {
+      -1.1258, -1.1524, -0.2506, -0.4339, 0.8487,  0.6920,  -0.3160, -2.1152,
+      0.3223,  -1.2633, 0.3500,  0.3081,  0.1198,  1.2377,  1.1168,  -0.2473,
+      -1.3527, -1.6959, 0.5667,  0.7935,  0.5988,  -1.5551, -0.3414, 1.8530,
+      0.7502,  -0.5855, -0.1734, 0.1835,  1.3894,  1.5863,  0.9463,  -0.8437,
+      -0.6136, 0.0316,  -0.4927, 0.2484,  0.4397,  0.1124,  0.5433,  -0.3952,
+      0.2055,  -0.4503, -0.5731, -0.5554, 0.5943,  1.5419,  1.8197,  -0.5515,
+      -1.3253, 0.1886,  -0.0691, -0.4949, -1.4959, -0.1938};
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"data"}, {&inputTensor.getType()}, *F);
+    resultPH = EXIT_ON_ERR(onnxLD.getOutputByName("result"));
+    indicesPH = EXIT_ON_ERR(onnxLD.getOutputByName("indices"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&inputTensor});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = bindings.get(resultPH)->getHandle();
+  auto indices = bindings.get(indicesPH)->getHandle<int64_t>();
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_TRUE(indices.dims().vec() == expectedDims);
+
+  for (size_t i = 0; i < expectedResult.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedResult[i]);
+    EXPECT_EQ(indices.raw(i), expectedIndices[i]);
+  }
+}
+
+TEST_F(OnnxImporterTest, maxPool3DWithArgmax) {
+  const std::vector<float> expectedResult = {
+      1.2377, 1.2377, 1.2377, 1.2377, 1.2377, 1.8530, 1.2377, 1.8530,
+      1.3894, 1.5863, 0.9463, 0.5943, 1.8197, 1.8197, 0.2055, 0.5943};
+  const std::vector<int64_t> expectedIndices = {13, 13, 13, 13, 13, 23, 13, 23,
+                                                28, 29, 30, 44, 46, 46, 40, 44};
+  const std::vector<dim_t> expectedDims = {1, 2, 2, 2, 2};
+  const std::string modelFile(
+      "tests/models/onnxModels/maxPool3DWithArgmax.onnxtxt");
+  importMaxPool3DWithArgmax(modelFile, expectedResult, expectedIndices,
+                            expectedDims);
+}
+
+TEST_F(OnnxImporterTest, maxPool3DWithArgmaxSameUpperPad) {
+  std::vector<float> expectedResult = {
+      1.2377,  1.2377,  1.1168,  1.2377,  1.2377,  1.1168, -0.2473, 0.3223,
+      0.3223,  1.2377,  1.8530,  1.8530,  1.2377,  1.8530, 1.8530,  0.7502,
+      -0.1734, -0.1734, 0.7935,  1.8530,  1.8530,  0.7502, 1.8530,  1.8530,
+      0.7502,  -0.1734, -0.1734, 1.3894,  1.5863,  1.5863, 0.9463,  0.5943,
+      0.5943,  0.0316,  0.5943,  0.5943,  1.8197,  1.8197, 0.5433,  0.2055,
+      0.5943,  0.5943,  -0.4949, 0.5943,  0.5943,  1.8197, 1.8197,  -0.0691,
+      0.1886,  0.1886,  -0.0691, -0.4949, -0.1938, -0.1938};
+  std::vector<int64_t> expectedIndices = {
+      13, 13, 14, 13, 13, 14, 15, 8,  8,  13, 23, 23, 13, 23, 23, 24, 26, 26,
+      19, 23, 23, 24, 23, 23, 24, 26, 26, 28, 29, 29, 30, 44, 44, 33, 44, 44,
+      46, 46, 38, 40, 44, 44, 51, 44, 44, 46, 46, 50, 49, 49, 50, 51, 53, 53};
+  const std::vector<dim_t> expectedDims = {1, 2, 3, 3, 3};
+  const std::string modelFile(
+      "tests/models/onnxModels/maxPool3DWithArgmaxSameUpper.onnxtxt");
+  importMaxPool3DWithArgmax(modelFile, expectedResult, expectedIndices,
+                            expectedDims);
+}
+
+TEST_F(OnnxImporterTest, maxPool3DWithArgmaxSameLowerPad) {
+  std::vector<float> expectedResult = {
+      -1.1258, -1.1258, -0.2506, -0.4339, 0.8487, 0.8487, -0.3160, 0.8487,
+      0.8487,  -1.1258, 0.3500,  0.3500,  0.1198, 1.2377, 1.2377,  0.1198,
+      1.2377,  1.2377,  0.5667,  0.7935,  0.7935, 0.5667, 1.2377,  1.8530,
+      0.7502,  1.2377,  1.8530,  0.1835,  1.3894, 1.5863, 0.9463,  1.3894,
+      1.5863,  0.9463,  0.9463,  0.2484,  0.4397, 1.3894, 1.5863,  0.9463,
+      1.3894,  1.5863,  0.9463,  0.9463,  0.5943, 1.5419, 1.8197,  1.8197,
+      1.5419,  1.8197,  1.8197,  -0.3952, 0.2055, 0.5943};
+  std::vector<int64_t> expectedIndices = {
+      0,  0,  2,  3,  4,  4,  6,  4,  4,  0,  10, 10, 12, 13, 13, 12, 13, 13,
+      18, 19, 19, 18, 13, 23, 24, 13, 23, 27, 28, 29, 30, 28, 29, 30, 30, 35,
+      36, 28, 29, 30, 28, 29, 30, 30, 44, 45, 46, 46, 45, 46, 46, 39, 40, 44};
+  const std::vector<dim_t> expectedDims = {1, 2, 3, 3, 3};
+  const std::string modelFile(
+      "tests/models/onnxModels/maxPool3dWithArgmaxSameLower.onnxtxt");
+  importMaxPool3DWithArgmax(modelFile, expectedResult, expectedIndices,
+                            expectedDims);
 }
 
 TEST_F(OnnxImporterTest, importMean) {

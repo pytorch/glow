@@ -217,7 +217,8 @@ class ONNXModelLoader
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.
   Error loadPool(const ONNX_NAMESPACE::NodeProto &op,
-                 ArgumentDictionaryTy &dict, llvm::StringRef typeName);
+                 ArgumentDictionaryTy &dict, llvm::StringRef typeName,
+                 size_t poolNumDims);
 
   /// Load Glow pooling operator with quantized inputs. Since this isn't a
   /// normal part of the ops supported by onnx, the assumption is that this op

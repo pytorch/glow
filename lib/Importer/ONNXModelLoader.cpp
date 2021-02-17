@@ -1129,15 +1129,18 @@ using Pads = std::vector<unsigned_t>;
 } // namespace
 
 /// Get the Pads value based on setting for auto_pad.
-/// \p kdim : kernel sizes (HW)
-/// \p sdim: stride sizes (HW)
-/// \p idim: input sizes (HW)
+/// \p kdim : kernel sizes (HW for 2D inputs, THW for 3D inputs)
+/// \p sdim: stride sizes (HW for 2D inputs, THW for 3D inputs)
+/// \p idim: input sizes (HW for 2D inputs, THW for 3D inputs)
 Expected<Pads> getPads(ArgumentDictionaryTy &dict,
                        llvm::ArrayRef<unsigned_t> kdim,
                        llvm::ArrayRef<unsigned_t> sdim,
                        llvm::ArrayRef<unsigned_t> idim) {
-  // TODO: ONNX spec disallows using "pads" and "auto_pad" together. However,
-  // the implementation allows mixing them and onnxruntime gives pads priority.
+  const bool is3D = (kdim.size() == 3);
+
+  // TODO: ONNX spec disallows using "pads" and "auto_pad" together.
+  // However, the implementation allows mixing them and onnxruntime gives
+  // pads priority.
   if (dict.count("pads")) {
     if (dict.at("pads")->ints_size() == 2) { // For maxPool1D
       return Pads({0, (unsigned_t)dict.at("pads")->ints(0), 0,
@@ -1150,9 +1153,9 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
     ASSIGN_VALUE_OR_RETURN_ERR(padStr, loadStr(dict.at("auto_pad")));
     if (padStr == "VALID") {
       // Return default value 0 for pads.
-      return Pads({0, 0, 0, 0});
+      return Pads(kdim.size() * 2, 0);
     } else if (padStr == "SAME_UPPER" || padStr == "SAME_LOWER") {
-      unsigned_t top, left, bottom, right;
+      unsigned_t near, far, top, left, bottom, right;
       // From https://arxiv.org/pdf/1603.07285.pdf 2.4,
       // o = floor((i + 2*p - k)/s) + 1
       // Also, from https://github.com/onnx/onnx/blob/master/docs/Operators.md
@@ -1162,7 +1165,7 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
       //     (output_spatial_shape[i] - 1) * strides_spatial_shape[i]
       //         + kernel_spatial_shape[i] - input_spatial_shape[i]
       // Use the smallest padding possible out of the possible options.
-      llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
+      std::vector<unsigned_t> pdim(kdim.size()); // Total Paddding, (T)HW.
       unsigned_t odim;
       for (size_t i = 0, e = pdim.size(); i < e; i++) {
         odim = ceil<unsigned_t>((float)idim[i] / (float)sdim[i]);
@@ -1170,25 +1173,49 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
       }
       if (padStr == "SAME_UPPER") {
         // SAME_UPPPER: if odd number for pdim[i], use extra padding at the end.
-        top = pdim[0] / 2;
-        bottom = top + (pdim[0] & 0x1);
-        left = pdim[1] / 2;
-        right = left + (pdim[1] & 0x1);
+        if (is3D) {
+          near = pdim[0] / 2;
+          far = near + (pdim[0] & 0x1);
+          top = pdim[1] / 2;
+          bottom = top + (pdim[1] & 0x1);
+          left = pdim[2] / 2;
+          right = left + (pdim[2] & 0x1);
+        } else {
+          top = pdim[0] / 2;
+          bottom = top + (pdim[0] & 0x1);
+          left = pdim[1] / 2;
+          right = left + (pdim[1] & 0x1);
+        }
       } else {
         // SAME_LOWER: if odd number for pdim[i], use extra padding at the
         // beginning.
-        bottom = pdim[0] / 2;
-        top = bottom + (pdim[0] & 0x1);
-        right = pdim[1] / 2;
-        left = right + (pdim[1] & 0x1);
+        if (is3D) {
+          far = pdim[0] / 2;
+          near = far + (pdim[0] & 0x1);
+          bottom = pdim[1] / 2;
+          top = bottom + (pdim[1] & 0x1);
+          right = pdim[2] / 2;
+          left = right + (pdim[2] & 0x1);
+        } else {
+          bottom = pdim[0] / 2;
+          top = bottom + (pdim[0] & 0x1);
+          right = pdim[1] / 2;
+          left = right + (pdim[1] & 0x1);
+        }
       }
-      return Pads({top, left, bottom, right});
+
+      if (is3D) {
+        // MaxPool3D and AvgPool3D expect padding in the format NFTBLR
+        return Pads({near, far, top, bottom, left, right});
+      } else {
+        return Pads({top, left, bottom, right});
+      }
     }
     return MAKE_ERR(
         "only auto_pad==VALID, SAME_UPPER and SAME_LOWER are supported");
   }
   // Return default value 0 for pads.
-  return Pads({0, 0, 0, 0});
+  return Pads(kdim.size() * 2, 0);
 }
 
 /// Get the Pads value based on setting for auto_pad.
@@ -2015,16 +2042,20 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
 
 Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict,
-                                llvm::StringRef typeName) {
+                                llvm::StringRef typeName, size_t poolNumDims) {
   const std::string &opName = loadOperatorName(op);
+
+  if (poolNumDims == 3 && opName == "AveragePool") {
+    return MAKE_ERR(opErrMsg(op, "3D AveragePool is currently not supported"),
+                    ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+  }
 
   // Load the inputs:
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  std::vector<unsigned_t> strides(2, 1);
-
-  size_t inDim = in.dims().size();
+  // Strides default to 1 along each spatial axis.
+  std::vector<unsigned_t> strides(poolNumDims == 3 ? 3 : 2, 1);
 
   std::vector<unsigned_t> kernelsShape;
   ASSIGN_VALUE_OR_RETURN_ERR(kernelsShape,
@@ -2038,8 +2069,8 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(
       countIncludePads, getCountIncludePads(dict, /* defaultValue */ false));
 
-  // For maxPool1D inDim = 3
-  if (inDim == 3) {
+  // maxPool1D
+  if (poolNumDims == 1) {
     in = G_->createExpandDims(opName, in, 2);
     if (kerDim != 1) {
       return MAKE_ERR(
@@ -2055,21 +2086,28 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
     }
   }
 
-  if (kerDim == 2) { // For maxPool2D
-    kernels[0] = kernelsShape[0];
+  // For 2D and 3D load strides if they are present, otherwise use default value
+  if (poolNumDims != 1) {
+    kernels = kernelsShape;
     if (dict.count("strides")) {
       ASSIGN_VALUE_OR_RETURN_ERR(strides,
                                  getShape<unsigned_t>(dict["strides"]));
     }
   }
 
-  if (in.dims().size() != 4 || kernels.size() != 2) {
-    // Glow only handles 2D pooling currently.
-    return MAKE_ERR(opErrMsg(op, "Glow only handles 2D pooling currently."),
-                    ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+  if (!(in.dims().size() == 4 || in.dims().size() == 5)) {
+    // Glow only handles 2D and 3D pooling currently.
+    return MAKE_ERR(
+        opErrMsg(op, "Glow only handles 2D and 3D pooling currently."),
+        ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
   }
 
-  auto *tr = G_->createTranspose(opName, in, NCHW2NHWC);
+  TransposeNode *tr = nullptr;
+  if (poolNumDims == 3) {
+    tr = G_->createTranspose(opName, in, NCTHW2NTHWC);
+  } else {
+    tr = G_->createTranspose(opName, in, NCHW2NHWC);
+  }
 
   // If 'global_pooling' is set then the operation will pool over the size of
   // the input by doing: kernel = height/width.
@@ -2077,32 +2115,59 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
     auto Ty = in.getType();
     kernels[0] = Ty->dims()[2];
     kernels[1] = Ty->dims()[3];
+    if (poolNumDims == 3) { // maxPool3D
+      kernels[2] = in.dims()[4];
+    }
   }
 
   // NHWC
-  llvm::SmallVector<unsigned_t, 2> idimHW(2);
-  idimHW[0] = in.dims()[2]; // As per NCHW format
-  idimHW[1] = in.dims()[3];
+  std::vector<unsigned_t> idimSpatial(in.dims().size());
+  idimSpatial[0] = in.dims()[2]; // As per NC(T)HW format
+  idimSpatial[1] = in.dims()[3];
+  if (poolNumDims == 3) { // maxPool3D
+    idimSpatial[2] = in.dims()[4];
+  }
 
   Pads pads;
-  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
+  if (poolNumDims == 3 && dict.count("pads")) {
+    // Reorder input pads from NTLFBR from to NFTBLR for 3D pooling
+    for (size_t i = 0; i < poolNumDims; ++i) {
+      pads.push_back(dict.at("pads")->ints(i));
+      pads.push_back(dict.at("pads")->ints(i + poolNumDims));
+    }
+  } else {
+    ASSIGN_VALUE_OR_RETURN_ERR(pads,
+                               getPads(dict, kernels, strides, idimSpatial));
+  }
 
   Node *node = nullptr;
-  if (op.output_size() > 1) {
+  if (op.output_size() > 1) { // With Argmax
     if (typeName != "MaxPool") {
       return MAKE_ERR(
           opErrMsg(op, "Pool Argmax output is only supported for MaxPool!"),
           ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
     }
 
-    node = G_->createMaxPool(opName, tr, kernels, strides, pads);
-    auto *res = G_->createTranspose(opName, NodeValue(node, 0), NHWC2NCHW);
-    auto *argmax = G_->createTranspose(opName, NodeValue(node, 1), NHWC2NCHW);
+    node =
+        G_->createMaxPool(opName, tr, kernels, strides, pads,
+                          ElemKind::Int64ITy, poolNumDims == 3 ? NTHWC : NHWC);
+
+    TransposeNode *res = nullptr;
+    TransposeNode *argmax = nullptr;
+    if (poolNumDims == 3) { // 3D
+      res = G_->createTranspose(opName, NodeValue(node, 0), NTHWC2NCTHW);
+      argmax = G_->createTranspose(opName, NodeValue(node, 1), NTHWC2NCTHW);
+    } else { // 2D and 1D
+      res = G_->createTranspose(opName, NodeValue(node, 0), NHWC2NCHW);
+      argmax = G_->createTranspose(opName, NodeValue(node, 1), NHWC2NCHW);
+    }
     RETURN_IF_ERR(assignNodeOutputs(op, {res, argmax}));
   } else {
     size_t idx = 0;
     if (typeName == "MaxPool") {
-      node = G_->createMaxPool(opName, tr, kernels, strides, pads);
+      node = G_->createMaxPool(opName, tr, kernels, strides, pads,
+                               ElemKind::Int64ITy,
+                               poolNumDims == 3 ? NTHWC : NHWC);
       idx = MaxPoolNode::ResultIdx;
     } else {
       node = G_->createAvgPool(opName, tr, kernels, strides, pads, NHWC,
@@ -2111,15 +2176,18 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
     }
 
     Node *N = nullptr;
-    if (inDim == 3) { // For maxPool1D
+    if (poolNumDims == 3) { // 3D
+      N = G_->createTranspose(opName, NodeValue(node, idx), NTHWC2NCTHW);
+    } else if (poolNumDims == 2) { // 2D
+      N = G_->createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
+    } else { // 1D
       auto *R = G_->createSqueeze(opName, NodeValue(node, idx), 1);
       N = G_->createTranspose(opName, R, {0, 2, 1});
-    } else {
-      N = G_->createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
     }
 
     RETURN_IF_ERR(addNodeAsOutput(op, N));
   }
+
   return Error::success();
 }
 
@@ -5142,9 +5210,10 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // loadTensorwiseQuantizedPool.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    const auto poolNumDims = in.dims().size() - 2;
     return in.getType()->isQuantizedType()
                ? loadTensorwiseQuantizedPool(op, dict, typeName)
-               : loadPool(op, dict, typeName);
+               : loadPool(op, dict, typeName, poolNumDims);
   }
   if (typeName == "GlobalAveragePool") {
     return loadGlobalAveragePool(op, dict);
