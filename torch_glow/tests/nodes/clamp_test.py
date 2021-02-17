@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -17,12 +14,12 @@ class SimpleClampModel(torch.nn.Module):
         return torch.clamp(input, self.min, self.max)
 
 
-class TestClamp(unittest.TestCase):
-    @parameterized.expand(
+class TestClamp(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("basic", 0.0, 0.8),
-            ("no_min", None, 0.8),
-            ("no_max", 0.0, None),
+            lambda: ("basic", 0.0, 0.8),
+            lambda: ("no_min", None, 0.8),
+            lambda: ("no_max", 0.0, None),
         ]
     )
     def test_clamp(self, _, min, max):

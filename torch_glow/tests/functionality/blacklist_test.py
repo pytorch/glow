@@ -1,14 +1,13 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 from tests.utils import GLOW_FUSION_GROUP, SUBGRAPH_ATTR
 
 
-class TestBlackList(unittest.TestCase):
+class TestBlackList(utils.TorchGlowTestCase):
     def test_op_blacklist(self):
         """Test Glow fuser op kind blacklisting mechanism."""
 

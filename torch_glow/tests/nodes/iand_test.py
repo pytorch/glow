@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -16,20 +15,20 @@ class SimpleIandModule(torch.nn.Module):
         return torch.logical_or(a, b)
 
 
-class TestIand(unittest.TestCase):
-    @parameterized.expand(
+class TestIand(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 torch.tensor([True, True, False, False], dtype=torch.bool),
                 torch.tensor([True, False, True, False], dtype=torch.bool),
             ),
-            (
+            lambda: (
                 "basic_3d",
                 torch.zeros((3, 4, 5), dtype=torch.bool),
                 torch.ones((3, 4, 5), dtype=torch.bool),
             ),
-            (
+            lambda: (
                 "broadcast_3d",
                 torch.zeros((3, 4, 5), dtype=torch.bool),
                 torch.ones((4, 5), dtype=torch.bool),

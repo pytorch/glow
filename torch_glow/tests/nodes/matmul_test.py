@@ -1,10 +1,8 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import random
-import unittest
 
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -16,16 +14,16 @@ class SimpleMatmulModule(torch.nn.Module):
         return a.matmul(b + b)
 
 
-class TestMatMul(unittest.TestCase):
-    @parameterized.expand(
+class TestMatMul(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("1d_1d", torch.randn(4), torch.randn(4)),
-            ("1d_2d", torch.randn(4), torch.randn(4, 9)),
-            ("1d_3d", torch.randn(4), torch.randn(3, 4, 9)),
-            ("1d_4d", torch.randn(4), torch.randn(5, 3, 4, 9)),
-            ("2d_1d", torch.randn(9, 4), torch.randn(4)),
-            ("3d_1d", torch.randn(6, 9, 4), torch.randn(4)),
-            ("4d_1d", torch.randn(2, 6, 9, 4), torch.randn(4)),
+            lambda: ("1d_1d", torch.randn(4), torch.randn(4)),
+            lambda: ("1d_2d", torch.randn(4), torch.randn(4, 9)),
+            lambda: ("1d_3d", torch.randn(4), torch.randn(3, 4, 9)),
+            lambda: ("1d_4d", torch.randn(4), torch.randn(5, 3, 4, 9)),
+            lambda: ("2d_1d", torch.randn(9, 4), torch.randn(4)),
+            lambda: ("3d_1d", torch.randn(6, 9, 4), torch.randn(4)),
+            lambda: ("4d_1d", torch.randn(2, 6, 9, 4), torch.randn(4)),
         ]
     )
     def test_matmul(self, _, left, right):

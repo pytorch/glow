@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import numpy as np
 import torch
 from tests import utils
@@ -65,7 +63,7 @@ def create_bbox_transform_inputs(roi_counts, num_classes, rotated):
     return rois, deltas, im_info
 
 
-class TestBBoxTransform(unittest.TestCase):
+class TestBBoxTransform(utils.TorchGlowTestCase):
     def test_bbox_transform_basic(self):
         """Test of the _caffe2::BBoxTransform Node on Glow."""
 

@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -38,7 +36,7 @@ class SimpleIntModule(torch.nn.Module):
         return res
 
 
-class TestInt(unittest.TestCase):
+class TestInt(utils.TorchGlowTestCase):
     def test_Int(self):
         """Basic test of the PyTorch Int Node on Glow, along with constant
         propagation. Using int32 dtype, and aten::add."""

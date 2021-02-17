@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.nn.functional as F
 from tests import utils
@@ -23,7 +21,7 @@ class SimpleMaxPool2dTest(torch.nn.Module):
         )
 
 
-class TestMaxPool2d(unittest.TestCase):
+class TestMaxPool2d(utils.TorchGlowTestCase):
     def test_max_pool2d_basic(self):
         """Basic test of the PyTorch max_pool2d Node on Glow."""
 

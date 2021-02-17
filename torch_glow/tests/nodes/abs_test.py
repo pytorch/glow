@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -14,7 +12,7 @@ class SimpleAbsModule(torch.nn.Module):
         return torch.abs(a + a)
 
 
-class TestAbs(unittest.TestCase):
+class TestAbs(utils.TorchGlowTestCase):
     def test_abs_basic(self):
         """Basic test of the PyTorch Abs Node on Glow."""
 

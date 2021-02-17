@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -16,7 +14,7 @@ class SimpleStackModel(torch.nn.Module):
         return torch.stack((d, d), 2)
 
 
-class TestStack(unittest.TestCase):
+class TestStack(utils.TorchGlowTestCase):
     def test_stack_basic(self):
         """Basic test of the PyTorch aten::stack Node on Glow."""
 

@@ -1,7 +1,4 @@
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -14,12 +11,12 @@ class IndexSelectModule(torch.nn.Module):
         return torch.index_select(tensor, self.dimension, index)
 
 
-class TestIndexSelect(unittest.TestCase):
-    @parameterized.expand(
+class TestIndexSelect(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("0-dim", torch.randn(3, 4), 0, torch.tensor([0, 2])),
-            ("1-dim", torch.randn(3, 4), 1, torch.tensor([0, 2])),
-            ("repeat index", torch.randn(3, 4), 1, torch.tensor([2, 2])),
+            lambda: ("0-dim", torch.randn(3, 4), 0, torch.tensor([0, 2])),
+            lambda: ("1-dim", torch.randn(3, 4), 1, torch.tensor([0, 2])),
+            lambda: ("repeat index", torch.randn(3, 4), 1, torch.tensor([2, 2])),
         ]
     )
     def test_index_select(self, _, tensor, dimension, index):

@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -19,32 +16,47 @@ class SimpleDivModule(torch.nn.Module):
             return c.div(c)
 
 
-class TestDiv(unittest.TestCase):
-    @parameterized.expand(
+class TestDiv(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("basic", SimpleDivModule(), torch.randn(4), torch.randn(4)),
-            (
+            lambda: ("basic", SimpleDivModule(), torch.randn(4), torch.randn(4)),
+            lambda: (
                 "broadcast",
                 SimpleDivModule(),
                 torch.randn(8, 3, 4, 2),
                 torch.randn(4, 2),
             ),
-            (
+            lambda: (
                 "broadcast",
                 SimpleDivModule(),
                 torch.randn(8, 3, 4, 2),
                 torch.randn(1, 2),
             ),
-            (
+            lambda: (
                 "broadcast",
                 SimpleDivModule(),
                 torch.randn(4, 2),
                 torch.randn(8, 3, 4, 2),
             ),
-            ("float_tensor", SimpleDivModule(), torch.randn(4), torch.tensor(3.9)),
-            ("int_tensor", SimpleDivModule(), torch.tensor([4]), torch.tensor([10])),
+            lambda: (
+                "float_tensor",
+                SimpleDivModule(),
+                torch.randn(4),
+                torch.tensor(3.9),
+            ),
+            lambda: (
+                "int_tensor",
+                SimpleDivModule(),
+                torch.tensor([4]),
+                torch.tensor([10]),
+            ),
             # This one will go through (a * a) / b.item() and b.item() is an integer.
-            ("int_number", SimpleDivModule(), torch.tensor([4]), torch.tensor(10)),
+            lambda: (
+                "int_number",
+                SimpleDivModule(),
+                torch.tensor([4]),
+                torch.tensor(10),
+            ),
         ]
     )
     def test_div(self, _, module, a, b):

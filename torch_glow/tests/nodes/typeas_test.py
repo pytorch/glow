@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -21,36 +18,36 @@ class SimpleTypeasModel(torch.nn.Module):
         return typed + typed
 
 
-class TestTypeAs(unittest.TestCase):
-    @parameterized.expand(
+class TestTypeAs(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "to_int32",
                 SimpleTypeasModel(),
                 torch.randn(4),
                 torch.zeros(4, dtype=torch.int32),
             ),
-            (
+            lambda: (
                 "from_int32",
                 SimpleTypeasModel(),
                 torch.randn(4).to(dtype=torch.int32),
                 torch.zeros(4),
             ),
-            (
+            lambda: (
                 "from_bool",
                 SimpleTypeasModel(),
                 torch.randn(4).to(dtype=torch.bool),
                 torch.zeros(4),
             ),
-            ("self", SimpleTypeasModel(), torch.randn(4), None, False),
-            (
+            lambda: ("self", SimpleTypeasModel(), torch.randn(4), None, False),
+            lambda: (
                 "f2f2",
                 SimpleTypeasModel(),
                 torch.randn(4, 2),
                 torch.randn(8, 3, 4, 2),
                 False,
             ),
-            (
+            lambda: (
                 "f2i2",
                 SimpleTypeasModel(),
                 torch.randn(4, 2),

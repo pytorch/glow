@@ -1,15 +1,12 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import numpy as np
 import torch
-from parameterized import parameterized
 from tests import utils
 from tests.utils import DEFAULT_BACKEND, check_skip
 
 
-class TestEmbeddingBag(unittest.TestCase):
+class TestEmbeddingBag(utils.TorchGlowTestCase):
     supported_backends = {"Interpreter", "NNPI"}
 
     def test_embedding_bag_basic(self):
@@ -42,12 +39,12 @@ class TestEmbeddingBag(unittest.TestCase):
         )
 
 
-class TestQuantizedEmbeddingBag(unittest.TestCase):
+class TestQuantizedEmbeddingBag(utils.TorchGlowTestCase):
     supported_backends = {"Interpreter", "NNPI"}
 
-    @parameterized.expand(
+    @utils.deterministic_expand(
         [
-            [
+            lambda: (
                 "{len}{bits}{weighted}{fp16}{sample_weights}{backend}".format(
                     len=num_lengths,
                     bits="_4bit" if is4bit else "_byte",
@@ -63,7 +60,7 @@ class TestQuantizedEmbeddingBag(unittest.TestCase):
                 is_weighted,
                 use_fp16,
                 per_sample_weights_fp16,
-            ]
+            )
             for num_lengths in [0, 8]
             for is4bit in [False, True]
             for is_weighted in [False, True]
