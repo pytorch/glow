@@ -660,9 +660,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
       // Write input tensors to file
       if (settings.writeToOnnx) {
-        writeGlowTensorsToOnnx(
+        RETURN_IF_ERR(writeGlowTensorsToOnnx(
             strFormat("%s_input_%zu", onnxFileNamePrefix.c_str(), runId),
-            settings, info.inputPlaceholders, glowTensorInputs);
+            settings, info.inputPlaceholders, glowTensorInputs));
       }
 
       // Populate PlaceholderBindings
@@ -794,14 +794,15 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
       if (settings.writeToOnnx) {
         // Write Glow outputs to file
-        writeGlowTensorsToOnnx(
+        RETURN_IF_ERR(writeGlowTensorsToOnnx(
             strFormat("%s_glow_output_%zu", onnxFileNamePrefix.c_str(), runId),
-            info.settings, info.outputPlaceholders, convertedGlowTensors);
+            info.settings, info.outputPlaceholders, convertedGlowTensors));
 
         // Convert JIT outputs to Glow outputs and write to file
-        writeJITOutputsToOnnxFile(strFormat("%s_pytorch_output_%zu",
-                                            onnxFileNamePrefix.c_str(), runId),
-                                  copyStack, info);
+        RETURN_IF_ERR(writeJITOutputsToOnnxFile(
+            strFormat("%s_pytorch_output_%zu", onnxFileNamePrefix.c_str(),
+                      runId),
+            copyStack, info));
       }
     }
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
