@@ -329,6 +329,11 @@ private:
   Expected<NodeValue> loadAvgPoolImpl(const torch::jit::Node *ptNode,
                                       int numDims);
 
+  /// Common function to load both 2D and 3D MaxPool nodes
+  /// \returns error on failure.
+  Expected<NodeValue> loadMaxPoolImpl(const torch::jit::Node *ptNode,
+                                      int numDims);
+
   /// Load a PyTorch quantized batch_norm2d or batch_norm3d node.
   /// \returns error on failure.
   Expected<NodeValue> loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
@@ -712,6 +717,10 @@ private:
   /// Load a PyTorch max_pool2d node.
   /// \returns error on failure.
   Error loadMaxPool2d(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch max_pool3d node.
+  /// \returns error on failure.
+  Error loadMaxPool3d(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch sigmoid node.
   /// \returns error on failure.
