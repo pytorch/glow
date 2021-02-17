@@ -56,29 +56,10 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   }
 
   // Handle device version.
-  if (compilationOptions.inferOnDevice &&
-      compilationOptions.deviceVersion == -1) {
-    compilationOptions.trySetDeviceVersion();
-  }
-
-  if (compilationOptions.deviceVersion > 0) {
-    switch (compilationOptions.deviceVersion) {
-    case 1:
-      config_.deviceType = NNPI_1000_A;
-      break;
-    case 2:
-      config_.deviceType = NNPI_1000_B;
-      break;
-    case 3:
-      config_.deviceType = NNPI_1000_C;
-      break;
-    default:
-      LOG_IF_NOT_RETURN_LLVMERROR(
-          false, "INVALID NNPI_DEVICE_VERSION, valid values are 1,2,3");
-    }
-  } else if (!compilationOptions_.inferOnDevice) {
-    config_.deviceType = NNPI_1000_C;
-  }
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      config_.deviceType,
+      NNPIOptions::getDeviceVersion(compilationOptions.inferOnDevice,
+                                    compilationOptions.deviceVersion));
 
   if (compilationOptions.iceCores > 0) {
     config_.numCoresToUse = static_cast<uint32_t>(compilationOptions.iceCores);
