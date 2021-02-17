@@ -90,6 +90,8 @@ TEST(IR, basicQuantizedTypes) {
   EXPECT_FALSE(TF.isQuantizedType());
   Type T64I(ElemKind::Int64ITy, {2, 3});
   EXPECT_FALSE(T64I.isQuantizedType());
+  Type TU8I(ElemKind::UInt8ITy, {2, 3});
+  EXPECT_FALSE(TU8I.isQuantizedType());
 }
 
 TEST(IR, basicUseList) {
@@ -160,7 +162,7 @@ static IRFunction *createTestIRFunction(Module &mod) {
     builder.createCopyInst("", I1, I0);
     builder.createConvolutionInst("", I3, I1, F0, B0, {7, 7}, {2, 2},
                                   {3, 3, 3, 3}, 1, {1, 1}, NHWC,
-                                  FusedActivation::NONE);
+                                  FusedActivation::NONE, {});
     builder.createMaxPoolInst("", I4, I0, {7, 7}, {2, 2}, {3, 3, 3, 3}, NHWC);
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);

@@ -19,12 +19,17 @@
 
 #include "PyTorchCommon.h"
 
+#include "FuseKnownPatterns.h"
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 #include "Registration.h"
 #include "ShapeInferenceEngine.h"
 
+#include "glow/Flags/Flags.h"
+#include "llvm/Support/FileSystem.h"
+
 #include "torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h"
+#include <torch/csrc/jit/passes/freeze_module.h>
 #include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/runtime/graph_executor.h>
@@ -62,6 +67,7 @@ DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
 DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
+DEFINE_bool(writeOnnxToTmp, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
@@ -79,6 +85,8 @@ DEFINE_string(backendSpecificOpts, "",
               "CompilationContext.");
 DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
             "See PyTorchLoaderSettings");
+DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
+DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -100,14 +108,14 @@ PyTorchLoaderSettings &getPyTorchLoaderSettingsInternalOnly() {
 } // namespace
 
 std::shared_ptr<runtime::HostManager>
-getHostManager(const std::string &backendName, int32_t numDevices) {
+getHostManager(const PyTorchLoaderSettings &settings) {
   static std::mutex m_;
   std::unique_lock<std::mutex> lock(m_);
   static std::unordered_map<std::string, std::weak_ptr<runtime::HostManager>>
       map_;
 
   std::shared_ptr<runtime::HostManager> hostManager;
-  auto it = map_.find(backendName);
+  auto it = map_.find(settings.backendName);
   if (it != map_.end()) {
     hostManager = it->second.lock();
   }
@@ -115,20 +123,20 @@ getHostManager(const std::string &backendName, int32_t numDevices) {
   // If HostManager was found, check that it's valid, otherwise create a new
   // HostManager
   if (hostManager) {
-    if (numDevices != -1) {
-      CHECK_EQ(hostManager->numDevices(), numDevices)
-          << "Tried to create a new HostManager for backend \"" << backendName
+    if (settings.numDevices != -1) {
+      CHECK_EQ(hostManager->numDevices(), settings.numDevices)
+          << "Tried to create a new HostManager for backend \""
+          << settings.backendName
           << "\" but there is already an existing HostManager in use for that "
              "Backend but with a different number of devices";
     }
   } else {
     // If number of devices isn't specified then just use 1 device.
-    if (numDevices < 0) {
-      numDevices = 1;
-    }
     std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
-    for (int i = 0; i < numDevices; i++) {
-      auto config = std::make_unique<runtime::DeviceConfig>(backendName);
+    for (int32_t i = 0, e = settings.numDevices < 0 ? 1 : settings.numDevices;
+         i < e; i++) {
+      auto config =
+          std::make_unique<runtime::DeviceConfig>(settings.backendName);
       config->deviceID = i;
       deviceConfigs.push_back(std::move(config));
     }
@@ -139,8 +147,16 @@ getHostManager(const std::string &backendName, int32_t numDevices) {
     hostManager = std::make_shared<runtime::HostManager>(
         std::move(deviceConfigs), hostConfig);
 
-    map_[backendName] = hostManager;
+    map_[settings.backendName] = hostManager;
   }
+
+  // Update the available devices list if necessary
+  if (!settings.availableDevices.empty()) {
+    std::vector<size_t> availableDevices(settings.availableDevices.begin(),
+                                         settings.availableDevices.end());
+    hostManager->setAvailableDevices(availableDevices);
+  }
+
   return hostManager;
 }
 
@@ -166,6 +182,7 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
   case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::UInt4FusedQTy:
   case ElemKind::UInt8QTy:
+  case ElemKind::UInt8ITy:
   case ElemKind::Int16QTy:
   case ElemKind::Int32QTy:
     LOG(DFATAL) << "Not supported yet.";
@@ -260,6 +277,8 @@ void PyTorchLoaderSettings::initSettings() {
   replicationCount = FLAGS_replicationCount;
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
+  dumpFailedInputsToOnnxFiles = FLAGS_dumpFailedInputsToOnnxFiles;
+  writeOnnxToTmp = FLAGS_writeOnnxToTmp;
   randomizeConstants = FLAGS_randomizeConstants;
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
@@ -271,6 +290,7 @@ void PyTorchLoaderSettings::initSettings() {
   enableRemoveMutation = FLAGS_enableRemoveMutation;
   debugContinuouslyVerifyDuringModelLoading =
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
+  nominalBatchIdx = FLAGS_nominalBatchIdx;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -279,20 +299,8 @@ void PyTorchLoaderSettings::initSettings() {
     }
   }
 
-  if (!FLAGS_backendSpecificOpts.empty()) {
-    llvm::StringRef opts(FLAGS_backendSpecificOpts);
-    llvm::SmallVector<llvm::StringRef, 4> splitOpts;
-    opts.split(splitOpts, ',');
-
-    for (const llvm::StringRef &opt : splitOpts) {
-      LOG(INFO) << "Adding backend specific option: " << opt.str();
-      auto keyValPair = opt.split('=');
-      if (keyValPair.second.empty()) {
-        LOG(ERROR) << "No '=' found in backend-specific opt " << opt.str();
-      }
-      backendSpecificOpts.emplace(keyValPair.first, keyValPair.second);
-    }
-  }
+  glow::flags::processBackendSpecificOpts(backendSpecificOpts,
+                                          FLAGS_backendSpecificOpts);
 }
 
 PyTorchLoaderSettings::PyTorchLoaderSettings() { initSettings(); }
@@ -335,6 +343,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(numTracesPerDump, s);
   INSERT_BOOL_TO_STREAM(writeToOnnx, s);
   INSERT_BOOL_TO_STREAM(onnxZipMode, s);
+  INSERT_BOOL_TO_STREAM(writeOnnxToTmp, s);
   INSERT_BOOL_TO_STREAM(jitVsGlowCompare, s);
   INSERT_BOOL_TO_STREAM(randomizeConstants, s);
   INSERT_BOOL_TO_STREAM(writeWithoutRandomize, s);
@@ -344,6 +353,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(setIncludeLastOffsets, s);
   INSERT_BOOL_TO_STREAM(enableDebugFuser, s);
   INSERT_BOOL_TO_STREAM(debugContinuouslyVerifyDuringModelLoading, s);
+  INSERT_BOOL_TO_STREAM(dumpFailedInputsToOnnxFiles, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
@@ -500,6 +510,16 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   }
 }
 
+// Preprocess jit module to prepare for lowering. Here we leverage JIT freeze
+// API to cleanup the IR after IR rewrites.
+void modelPreprocessing(torch::jit::Module &model) {
+  auto graph = model.get_method("forward").function().graph();
+
+  torch::jit::CanonicalizeOps(graph);
+  detail::rewriteQuantizedLinear(graph);
+  model = torch::jit::freeze_module(model);
+}
+
 // Similar to glowAOTFusion() however supports multiple Glow subgraphs and
 // runners. We'd still need both since in some cases we may not be able to infer
 // the entire model and would leverage glowAOTFusion() to run the partially
@@ -508,12 +528,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
                                      const InputMetaStack &metaStack,
                                      runtime::DeferredWeightLoader *loader,
                                      const PyTorchLoaderSettings &settings) {
-
   auto graph = model.get_method("forward").function().graph();
-
-  // fuse ListUnpack and Chunk into ConstantChunk. Put it here to work around
-  // some JIT serialization/deserialization problem.
-  torch::jit::CanonicalizeOps(graph);
 
   // create some fake inputs to run shape inference.
   // Usually users provide one set of inputs for the entire
@@ -569,9 +584,8 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
       auto runner = glow::setGraphRunnerForKey(
           kind + std::to_string(idx), [subgraph, settings] {
             return std::make_unique<glow::CachingGraphRunner>(
-                subgraph,
-                getHostManager(settings.backendName, settings.numDevices),
-                settings, /*useRunOnly*/ true);
+                subgraph, getHostManager(settings), settings,
+                /*useRunOnly*/ true);
           });
 
       InputMetaStack metaStackForCompilation;
@@ -611,6 +625,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    const PyTorchLoaderSettings &settings) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
+  modelPreprocessing(model);
+
   if (FLAGS_inferShapeForCompilation) {
     return glowAOTFusionWithShapeInference(model, metaStack, loader, settings);
   }
@@ -618,10 +634,6 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
   // We assume the model is flattened and only one graph will be lowered. In the
   // future we may need to support multiple graphs.
   auto graph = model.get_method("forward").function().graph();
-
-  // fuse ListUnpack and Chunk into ConstantChunk. Put it here to work around
-  // some JIT serialization/deserialization problem.
-  torch::jit::CanonicalizeOps(graph);
 
   c10::Symbol symbol = glow::getGlowSymbol(graph);
   glow::registerGlowOp(symbol);
@@ -645,8 +657,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
   auto runner =
       glow::setGraphRunnerForKey(symbol.toQualString(), [subgraph, settings] {
         return std::make_unique<glow::CachingGraphRunner>(
-            subgraph, getHostManager(settings.backendName, settings.numDevices),
-            settings, /*useRunOnly*/ true);
+            subgraph, getHostManager(settings), settings, /*useRunOnly*/ true);
       });
 
   auto e = runner->warmCache(metaStack, settings, loader,
@@ -670,6 +681,17 @@ void enableSignalHandlerOverrides(bool enable) {
 
 bool signalHandlerOverridesEnabled() {
   return _signalHandlerOverridesEnabled();
+}
+
+/// Get a temporary file location given \p name and \p suffix.
+Expected<std::string> getTempFileLoc(const std::string &name,
+                                     const std::string &suffix) {
+  llvm::SmallString<64> path;
+  auto tempFileRes =
+      llvm::sys::fs::createTemporaryFile("export", name + suffix, path);
+  RETURN_ERR_IF_NOT(tempFileRes.value() == 0,
+                    "Failed to create temp file to write into.");
+  return std::string(path.c_str());
 }
 
 } // namespace glow

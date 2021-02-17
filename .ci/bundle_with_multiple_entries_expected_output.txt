@@ -1,0 +1,15 @@
+Testing first bundle entry point:
+Allocated weights of size: 3072
+Expected weights of size: 3072
+Loaded weights of size: 3072 from the file testBundle.weights.bin
+Allocated mutable weight variables of size: 256
+Allocated activations variable of size: 128
+Output weight output1: 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00 2.00
+
+Testing second bundle entry point:
+Allocated weights of size: 3072
+Expected weights of size: 3072
+Loaded weights of size: 3072 from the file testBundle.weights.bin
+Allocated mutable weight variables of size: 256
+Allocated activations variable of size: 128
+Output weight output2: 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00 6.00

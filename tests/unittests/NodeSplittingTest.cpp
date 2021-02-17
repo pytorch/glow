@@ -32,6 +32,36 @@ bool operator==(const std::vector<dim_t> &lhs, const std::vector<dim_t> &rhs) {
   return std::equal(lhs.begin(), lhs.end(), rhs.begin());
 }
 
+/// Test for checking the LLVM style RTTI used for split options.
+TEST(TestSplitNodeOption, CheckLLVMStyleRTTI) {
+  // Check orthogonal options.
+  auto opt1 = SplitNodeByNumChunks({0}, {1});
+  auto opt2 = SplitNodeByChunkSize({0}, {1});
+  auto opt3 = SplitNodeByChunkSizes({0}, {{1}});
+  auto opt4 = SplitNodeByChunkWeights({0}, {{1}});
+  EXPECT_EQ(opt1.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeByNumChunks);
+  EXPECT_EQ(opt2.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeByChunkSize);
+  EXPECT_EQ(opt3.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeByChunkSizes);
+  EXPECT_EQ(opt4.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeByChunkWeights);
+  std::vector<SplitNodeOption *> orthogonalOpts = {&opt1, &opt2, &opt3, &opt4};
+  for (auto opt : orthogonalOpts) {
+    EXPECT_NE(nullptr, dyn_cast<SplitNodeOptionOrthogonal>(opt));
+    EXPECT_EQ(nullptr, dyn_cast<SplitNodeBySliceRanges>(opt));
+  }
+  // Check non-orthogonal options.
+  std::vector<SliceRange> sliceRanges = {SliceRange({{0, 1}})};
+  auto opt5 = SplitNodeBySliceRanges(sliceRanges);
+  EXPECT_EQ(opt5.getKind(),
+            SplitNodeOption::SplitNodeKind::SplitNodeBySliceRanges);
+  SplitNodeOption *nonOrthogonalOpt = &opt5;
+  EXPECT_EQ(nullptr, dyn_cast<SplitNodeOptionOrthogonal>(nonOrthogonalOpt));
+  EXPECT_NE(nullptr, dyn_cast<SplitNodeBySliceRanges>(nonOrthogonalOpt));
+}
+
 /// Test for SplitNodeByNumChunks option.
 TEST(TestSplitNodeOption, SplitNodeByNumChunksOptionTest) {
   auto opt1 = SplitNodeByNumChunks({0, 1, 2, 3}, {1, 2, 3, 4},
@@ -157,7 +187,6 @@ static void splitConv2DBasic(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -167,7 +196,6 @@ static void splitConv2DBasic(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 3 * totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConvolutionNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -251,7 +279,6 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -261,7 +288,6 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 3 * totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConvolutionNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -316,11 +342,9 @@ static void splitConv2DGrouped(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimC}, {numChunks});
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), numChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 3 * numChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConvolutionNodeKind), numChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), numChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -379,12 +403,10 @@ TEST_F(NodeSplitting, Conv2D_IllDefined_DimHW) {
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   dim_t totNumChunks = numChunks[0] * numChunks[1];
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 3 * totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
             totNumChunks);
@@ -415,13 +437,11 @@ TEST_F(NodeSplitting, Conv2D_MaxMem) {
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes,
       ::glow::splitNode(node, SplitNodeMaxMemConstraint(splitMaxMemSize)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   auto totNumChunks = countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind);
   EXPECT_TRUE(totNumChunks > 1);
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 3 * totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
             totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
@@ -455,7 +475,6 @@ TEST_F(NodeSplitting, Conv2D_NoSplit) {
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes, ::glow::splitNode(node, SplitNodeMaxMemConstraint(0)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), 0);
@@ -465,6 +484,270 @@ TEST_F(NodeSplitting, Conv2D_NoSplit) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 0);
   checkNumericalEquivalence(0);
 }
+
+///===---------------------------------------------------------------------===//
+///                         ChannelwiseQuantizedConv2D
+///===---------------------------------------------------------------------===//
+/// Utility function to create a simple network with a CWQConv2D node using
+/// the function \p F and the bindings \p bindings.
+static Node *createCWQConv2D(
+    Function *F, PlaceholderBindings &bindings, llvm::ArrayRef<dim_t> inputDims,
+    llvm::ArrayRef<dim_t> filterDims, llvm::ArrayRef<dim_t> biasDims,
+    llvm::ArrayRef<dim_t> outputDims, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    dim_t group, llvm::ArrayRef<unsigned_t> dilation) {
+  // Create quantized input placeholder.
+  auto &mod = *(F->getParent());
+  auto *inputQ = mod.createPlaceholder(ElemKind::Int8QTy, inputDims, 1.0, 0,
+                                       "inputQ", false);
+  bindings.allocate(inputQ)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod.getPRNG());
+  // Create float filter constant.
+  auto *filterF = mod.createConstant(ElemKind::FloatTy, filterDims, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                            mod.getPRNG());
+  // Create float bias constant.
+  auto *biasF = mod.createConstant(ElemKind::FloatTy, biasDims, "biasF");
+  biasF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod.getPRNG());
+  // Create ChannelwiseQuantizedConv2D.
+  auto *outTy = mod.uniqueType(ElemKind::Int8QTy, outputDims, 1.0, 0);
+  auto *conv = F->createChannelwiseQuantizedConv(
+      "cwqconv", inputQ, filterF, biasF,
+      /* filterScales */ nullptr, /* filterOffsets */ nullptr,
+      /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy, kernels,
+      strides, pads, group, dilation,
+      /* quantizeFilter */ true, /* quantizeBias */ true);
+  SaveNode *save = F->createSave("save", conv);
+  bindings.allocate(save->getPlaceholder());
+  return conv;
+}
+
+/// Utility function to test splitting a basic CWQConv2D node along the
+/// dimensions \p splitDims in the given number chunks \p numChunks. The split
+/// is done implicitly relative to the Conv2D output operand.
+static void splitCWQConv2DBasic(Function *F, Function *&optF,
+                                PlaceholderBindings &bindings,
+                                CompilationContext &cctx,
+                                llvm::ArrayRef<size_t> splitDims,
+                                llvm::ArrayRef<dim_t> numChunks) {
+  Node *node = createCWQConv2D(F, bindings,
+                               /* inputDims */ {5, 7, 8, 2},
+                               /* filterDims */ {8, 2, 2, 1},
+                               /* biasDims */ {8},
+                               /* outputDims */ {5, 6, 7, 8},
+                               /* kernels */ {2, 2},
+                               /* strides */ {1, 1},
+                               /* pads */ {0, 0, 0, 0},
+                               /* group */ 2,
+                               /* dilation */ {1, 1});
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+
+  // Compute total number of chunks.
+  dim_t totNumChunks = 1;
+  for (auto numChunk : numChunks) {
+    totNumChunks *= numChunk;
+  }
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(
+      countNodeKind(F, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind),
+      totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting a CWQConv2D along dimension N, H, W or C.
+/// Not all the combinations are allowed when splitting along C.
+#define TEST_CWQCONV2D_BASIC_SPLIT(splitDim, numChunks)                        \
+  TEST_F(NodeSplitting, CWQConv2D_Basic_Dim##splitDim##_Chunks##numChunks) {   \
+    splitCWQConv2DBasic(F_, optimizedF_, bindings_, cctx_,                     \
+                        {ShapeNHWC::Dim##splitDim}, {numChunks});              \
+    checkNumericalEquivalence(0);                                              \
+  }
+TEST_CWQCONV2D_BASIC_SPLIT(N, 2)
+TEST_CWQCONV2D_BASIC_SPLIT(N, 3)
+TEST_CWQCONV2D_BASIC_SPLIT(N, 4)
+TEST_CWQCONV2D_BASIC_SPLIT(N, 5)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 2)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 3)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 4)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 5)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 6)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 2)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 3)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 4)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 5)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 6)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 7)
+TEST_CWQCONV2D_BASIC_SPLIT(C, 2)
+TEST_CWQCONV2D_BASIC_SPLIT(C, 4)
+TEST_CWQCONV2D_BASIC_SPLIT(C, 8)
+#undef TEST_CWQCONV2D_BASIC_SPLIT
+
+/// Test splitting a CWQConv2D along dimensions N, H.
+TEST_F(NodeSplitting, CWQConv2D_Basic_DimNH_Chunks4) {
+  splitCWQConv2DBasic(F_, optimizedF_, bindings_, cctx_,
+                      {ShapeNHWC::DimN, ShapeNHWC::DimH}, {2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a CWQConv2D along dimensions N, H, W.
+TEST_F(NodeSplitting, CWQConv2D_Basic_DimNHW_Chunks8) {
+  splitCWQConv2DBasic(F_, optimizedF_, bindings_, cctx_,
+                      {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW},
+                      {2, 2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a CWQConv2D along dimensions N, H, W, C.
+TEST_F(NodeSplitting, CWQConv2D_Basic_DimNHWC_Chunks16) {
+  splitCWQConv2DBasic(
+      F_, optimizedF_, bindings_, cctx_,
+      {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC},
+      {2, 2, 2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Utility function to test splitting a CWQConv2D node with non-zero padding
+/// along the dimensions \p splitDims in the given number chunks \p numChunks.
+/// The split is done implicitly relative to the Conv2D output operand.
+static void splitCWQConv2DNonZeroPad(Function *F, Function *&optF,
+                                     PlaceholderBindings &bindings,
+                                     CompilationContext &cctx,
+                                     llvm::ArrayRef<size_t> splitDims,
+                                     llvm::ArrayRef<dim_t> numChunks) {
+  Node *node = createCWQConv2D(F, bindings,
+                               /* inputDims */ {1, 8, 9, 1},
+                               /* filterDims */ {1, 2, 3, 1},
+                               /* biasDims */ {1},
+                               /* outputDims */ {1, 11, 10, 1},
+                               /* kernels */ {2, 3},
+                               /* strides */ {1, 1},
+                               /* pads */ {2, 1, 3, 4},
+                               /* group */ 1,
+                               /* dilation */ {2, 2});
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+
+  // Compute total number of chunks.
+  dim_t totNumChunks = 1;
+  for (auto numChunk : numChunks) {
+    totNumChunks *= numChunk;
+  }
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(
+      countNodeKind(F, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind),
+      totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting a CWQConv2D with padding along dimension N, H, W or C.
+#define TEST_CWQCONV2D_NONZEROPAD_SPLIT(splitDim, numChunks)                   \
+  TEST_F(NodeSplitting,                                                        \
+         CWQConv2D_NonZeroPad_Dim##splitDim##_Chunks##numChunks) {             \
+    splitCWQConv2DNonZeroPad(F_, optimizedF_, bindings_, cctx_,                \
+                             {ShapeNHWC::Dim##splitDim}, {numChunks});         \
+    checkNumericalEquivalence(0);                                              \
+  }
+TEST_CWQCONV2D_NONZEROPAD_SPLIT(H, 2)
+TEST_CWQCONV2D_NONZEROPAD_SPLIT(H, 3)
+TEST_CWQCONV2D_NONZEROPAD_SPLIT(W, 2)
+TEST_CWQCONV2D_NONZEROPAD_SPLIT(W, 3)
+#undef TEST_CWQCONV2D_NONZEROPAD_SPLIT
+
+/// Test splitting a CWQConv2D with padding along dimensions H, W.
+TEST_F(NodeSplitting, CWQConv2D_NonZeroPad_DimHW_Chunks9) {
+  splitCWQConv2DNonZeroPad(F_, optimizedF_, bindings_, cctx_,
+                           {ShapeNHWC::DimH, ShapeNHWC::DimW}, {3, 3});
+  checkNumericalEquivalence(0);
+}
+
+/// Utility function to test splitting a group CWQConv2D node along dimension C
+/// in \p numChunks having the given number of \p inputChannels,
+/// \p outputChannels and the given \p group. The split is done implicitly
+/// relative to the Conv2D output operand.
+static void splitCWQConv2DGrouped(Function *F, Function *&optF,
+                                  PlaceholderBindings &bindings,
+                                  CompilationContext &cctx, dim_t inputChannels,
+                                  dim_t outputChannels, dim_t group,
+                                  dim_t numChunks) {
+  dim_t filterChannels = inputChannels / group;
+  dim_t filterNum = outputChannels;
+  Node *node =
+      createCWQConv2D(F, bindings,
+                      /* inputDims */ {1, 2, 2, inputChannels},
+                      /* filterDims */ {filterNum, 2, 2, filterChannels},
+                      /* biasDims */ {outputChannels},
+                      /* outputDims */ {1, 1, 1, outputChannels},
+                      /* kernels */ {2, 2},
+                      /* strides */ {1, 1},
+                      /* pads */ {0, 0, 0, 0},
+                      /* group */ group,
+                      /* dilation */ {1, 1});
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimC}, {numChunks});
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), numChunks);
+  EXPECT_EQ(
+      countNodeKind(F, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind),
+      numChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), numChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting a grouped Conv2D along dimension C.
+#define TEST_CWQCONV2D_GROUP_SPLIT(IC, OC, G, chunks)                          \
+  TEST_F(                                                                      \
+      NodeSplitting,                                                           \
+      CWQConv2D_Group_DimC_InpC##IC##_OutC##OC##_Group##G##_Chunks##chunks) {  \
+    splitCWQConv2DGrouped(F_, optimizedF_, bindings_, cctx_, IC, OC, G,        \
+                          chunks);                                             \
+    checkNumericalEquivalence(0);                                              \
+  }
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 2, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 2, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 2, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 4, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 4, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 4, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 8, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 8, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 8, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 2, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 2, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 2, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 4, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 4, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 4, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 8, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 8, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 8, 8)
+#undef TEST_CWQCONV2D_GROUP_SPLIT
 
 ///===---------------------------------------------------------------------===//
 ///                                   MaxPool
@@ -514,7 +797,6 @@ static void splitMaxPoolBasic(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -524,7 +806,6 @@ static void splitMaxPoolBasic(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::MaxPoolNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -577,7 +858,6 @@ static void splitMaxPoolNonZeroPad(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -587,7 +867,6 @@ static void splitMaxPoolNonZeroPad(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::MaxPoolNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -634,12 +913,10 @@ TEST_F(NodeSplitting, MaxPool_IllDefined_DimHW) {
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   dim_t totNumChunks = numChunks[0] * numChunks[1];
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
             totNumChunks);
@@ -666,12 +943,10 @@ TEST_F(NodeSplitting, MaxPool_MaxMem) {
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes,
       ::glow::splitNode(node, SplitNodeMaxMemConstraint(splitMaxMemSize)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   auto totNumChunks = countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind);
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
             totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
@@ -712,7 +987,6 @@ TEST_F(NodeSplitting, MaxPool_Argmax_NoSplit) {
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes,
                             ::glow::splitNode(maxpool, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), 0);
@@ -741,7 +1015,6 @@ TEST_F(NodeSplitting, MaxPool_NoSplit) {
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes, ::glow::splitNode(node, SplitNodeMaxMemConstraint(0)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), 0);
@@ -800,7 +1073,6 @@ static void splitAvgPoolBasic(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -810,7 +1082,6 @@ static void splitAvgPoolBasic(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::AvgPoolNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -863,7 +1134,6 @@ static void splitAvgPoolNonZeroPad(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -873,7 +1143,6 @@ static void splitAvgPoolNonZeroPad(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::AvgPoolNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -920,12 +1189,10 @@ TEST_F(NodeSplitting, AvgPool_IllDefined_DimHW) {
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   dim_t totNumChunks = numChunks[0] * numChunks[1];
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
             totNumChunks);
@@ -952,12 +1219,10 @@ TEST_F(NodeSplitting, AvgPool_MaxMem) {
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes,
       ::glow::splitNode(node, SplitNodeMaxMemConstraint(splitMaxMemSize)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   auto totNumChunks = countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind);
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
             totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
@@ -987,7 +1252,6 @@ TEST_F(NodeSplitting, AvgPool_NoSplit) {
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(
       splitNodes, ::glow::splitNode(node, SplitNodeMaxMemConstraint(0)));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), 0);
@@ -1034,7 +1298,6 @@ static void splitFullyConnected(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1044,7 +1307,6 @@ static void splitFullyConnected(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 3 * totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::FullyConnectedNodeKind),
             totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
@@ -1098,7 +1360,6 @@ static void splitMatMul(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1108,7 +1369,6 @@ static void splitMatMul(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 2 * totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::MatMulNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -1162,7 +1422,6 @@ static void splitBatchMatMul(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1172,7 +1431,6 @@ static void splitBatchMatMul(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 2 * totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::BatchMatMulNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -1241,7 +1499,6 @@ static void splitBatchedAdd(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1251,7 +1508,6 @@ static void splitBatchedAdd(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 2 * totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::BatchedAddNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -1314,7 +1570,6 @@ static void splitTranspose(Function *F, Function *&optF,
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
-  runDCEPass(F, cctx);
 
   // Compute total number of chunks.
   dim_t totNumChunks = 1;
@@ -1324,7 +1579,6 @@ static void splitTranspose(Function *F, Function *&optF,
 
   // Check node count.
   EXPECT_EQ(splitNodes.size(), totNumChunks);
-  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TransposeNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
@@ -1413,7 +1667,6 @@ TEST_F(NodeSplitting, BinaryOps) {
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(splitMap, ::glow::splitNodes(F_, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(2, splitMap[add].size());
@@ -1457,7 +1710,8 @@ TEST_F(NodeSplitting, UnaryOps) {
   bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
                                                           mod_.getPRNG());
   Node *relu = F_->createRELU("relu", input);
-  Node *clip = F_->createClip("clip", relu, 1.0, 10.0);
+  Node *leakyRelu = F_->createLeakyRELU("leakyrelu", relu, 0.1);
+  Node *clip = F_->createClip("clip", leakyRelu, 1.0, 10.0);
   Node *tanh = F_->createTanh("tanh", clip);
   Node *sigmoid = F_->createSigmoid("sigmoid", tanh);
   Node *log = F_->createLog("log", sigmoid);
@@ -1478,10 +1732,10 @@ TEST_F(NodeSplitting, UnaryOps) {
   auto splitOption = SplitNodeByNumChunks({0}, {2});
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_FAIL_TEST(splitMap, ::glow::splitNodes(F_, splitOption));
-  runDCEPass(F_, cctx_);
 
   // Check node count.
   EXPECT_EQ(2, splitMap[relu].size());
+  EXPECT_EQ(2, splitMap[leakyRelu].size());
   EXPECT_EQ(2, splitMap[clip].size());
   EXPECT_EQ(2, splitMap[tanh].size());
   EXPECT_EQ(2, splitMap[sigmoid].size());
@@ -1492,6 +1746,7 @@ TEST_F(NodeSplitting, UnaryOps) {
   EXPECT_EQ(2, splitMap[dequantize].size());
   EXPECT_EQ(2, splitMap[convert].size());
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::LeakyReluNodeKind));
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ClipNodeKind));
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::TanhNodeKind));
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::SigmoidNodeKind));
@@ -1501,8 +1756,631 @@ TEST_F(NodeSplitting, UnaryOps) {
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::RescaleQuantizedNodeKind));
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::DequantizeNodeKind));
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ConvertToNodeKind));
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10 * 2);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 10 * 2);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 10);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 11 * 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 11 * 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 11);
   checkNumericalEquivalence(0);
+}
+
+///===---------------------------------------------------------------------===//
+///                            Non-Orthogonal Split
+///===---------------------------------------------------------------------===//
+/// Utility function to test splitting a Conv2D non-orthogonally based on given
+/// raw \p sliceRanges.
+static void splitConv2DNonOrthogonal(Function *F, Function *&optF,
+                                     PlaceholderBindings &bindings,
+                                     CompilationContext &cctx,
+                                     llvm::ArrayRef<SliceRange> sliceRanges) {
+  Node *node = createConv2D(F, bindings,
+                            /* inputDims */ {5, 4, 4, 7},
+                            /* filterDims */ {8, 3, 3, 7},
+                            /* biasDims */ {8},
+                            /* outputDims */ {5, 4, 4, 8},
+                            /* kernels */ {3, 3},
+                            /* strides */ {1, 1},
+                            /* pads */ {1, 1, 1, 1},
+                            /* group */ 1,
+                            /* dilation */ {1, 1});
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeBySliceRanges(sliceRanges);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+
+  // Check node count.
+  dim_t totNumChunks = sliceRanges.size();
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConvolutionNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting a Conv2D non-orthogonally along N dimension.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimN) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 4}, {0, 4}, {0, 4}, {0, 8}}),
+      SliceRange({{2, 5}, {0, 4}, {0, 4}, {0, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along H dimension.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimH) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 3}, {0, 4}, {0, 8}}),
+      SliceRange({{0, 5}, {2, 4}, {0, 4}, {0, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along W dimension.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimW) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 4}, {0, 3}, {0, 8}}),
+      SliceRange({{0, 5}, {0, 4}, {2, 4}, {0, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along C dimension.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimC) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 4}, {0, 4}, {0, 6}}),
+      SliceRange({{0, 5}, {0, 4}, {0, 4}, {2, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along H and W dimensions.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimHW) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 3}, {0, 3}, {0, 8}}),
+      SliceRange({{0, 5}, {0, 3}, {1, 4}, {0, 8}}),
+      SliceRange({{0, 5}, {1, 4}, {0, 3}, {0, 8}}),
+      SliceRange({{0, 5}, {1, 4}, {1, 4}, {0, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along H, W and C dimensions.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimHWC) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 3}, {0, 3}, {0, 6}}),
+      SliceRange({{0, 5}, {0, 3}, {1, 4}, {0, 6}}),
+      SliceRange({{0, 5}, {1, 4}, {0, 3}, {0, 6}}),
+      SliceRange({{0, 5}, {1, 4}, {1, 4}, {0, 6}}),
+      SliceRange({{0, 5}, {0, 3}, {0, 3}, {2, 8}}),
+      SliceRange({{0, 5}, {0, 3}, {1, 4}, {2, 8}}),
+      SliceRange({{0, 5}, {1, 4}, {0, 3}, {2, 8}}),
+      SliceRange({{0, 5}, {1, 4}, {1, 4}, {2, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along N, H, W and C dimensions.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimNHWC) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 4}, {0, 3}, {0, 3}, {0, 6}}),
+      SliceRange({{0, 4}, {0, 3}, {1, 4}, {0, 6}}),
+      SliceRange({{0, 4}, {1, 4}, {0, 3}, {0, 6}}),
+      SliceRange({{0, 4}, {1, 4}, {1, 4}, {0, 6}}),
+      SliceRange({{0, 4}, {0, 3}, {0, 3}, {2, 8}}),
+      SliceRange({{0, 4}, {0, 3}, {1, 4}, {2, 8}}),
+      SliceRange({{0, 4}, {1, 4}, {0, 3}, {2, 8}}),
+      SliceRange({{0, 4}, {1, 4}, {1, 4}, {2, 8}}),
+      SliceRange({{2, 5}, {0, 3}, {0, 3}, {0, 6}}),
+      SliceRange({{2, 5}, {0, 3}, {1, 4}, {0, 6}}),
+      SliceRange({{2, 5}, {1, 4}, {0, 3}, {0, 6}}),
+      SliceRange({{2, 5}, {1, 4}, {1, 4}, {0, 6}}),
+      SliceRange({{2, 5}, {0, 3}, {0, 3}, {2, 8}}),
+      SliceRange({{2, 5}, {0, 3}, {1, 4}, {2, 8}}),
+      SliceRange({{2, 5}, {1, 4}, {0, 3}, {2, 8}}),
+      SliceRange({{2, 5}, {1, 4}, {1, 4}, {2, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+///===---------------------------------------------------------------------===//
+///                            Recursive Split
+///===---------------------------------------------------------------------===//
+/// Utility function to split Conv2D with Relu recursively.
+static void splitConv2DReluRecursive(Function *F, Function *&optF,
+                                     PlaceholderBindings &bindings,
+                                     CompilationContext &cctx,
+                                     SplitNodeOption &splitOption) {
+  // Conv2D params.
+  std::vector<dim_t> inputDims = {5, 8, 8, 4};
+  std::vector<dim_t> filterDims = {16, 3, 3, 4};
+  std::vector<dim_t> biasDims = {16};
+  std::vector<dim_t> outputDims = {5, 4, 4, 16};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {2, 2};
+  std::vector<unsigned_t> pads = {1, 1, 0, 0};
+  dim_t group = 1;
+  std::vector<unsigned_t> dilation = {1, 1};
+
+  // Create input placeholder.
+  auto &mod = *(F->getParent());
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  // Create filter constant.
+  auto *filter = mod.createConstant(ElemKind::FloatTy, filterDims, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod.getPRNG());
+  // Create bias constant.
+  auto *bias = mod.createConstant(ElemKind::FloatTy, biasDims, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  // Create Conv2D.
+  auto *outTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
+  auto *conv = F->createConv("conv", input, filter, bias, outTy, kernels,
+                             strides, pads, group, dilation);
+  // Create Relu.
+  auto *relu = F->createRELU("relu", conv);
+  // Create Save.
+  SaveNode *save = F->createSave("save", relu);
+  bindings.allocate(save->getPlaceholder());
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node recursively.
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap,
+      ::glow::splitNodeRecursively(relu, splitOption, /* maxDepth */ 10));
+
+  EXPECT_EQ(splitMap.size(), 2);
+  EXPECT_TRUE(splitMap.count(conv));
+  EXPECT_TRUE(splitMap.count(relu));
+}
+
+/// Test splitting Conv2D with Relu along N dimension.
+TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimN) {
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimN}, {2});
+  splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu along H dimension.
+TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimH) {
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimH}, {2});
+  splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu along W dimension.
+TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimW) {
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimW}, {2});
+  splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu along C dimension.
+TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimC) {
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimC}, {2});
+  splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu along H and W dimensions.
+TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimHW) {
+  auto splitOption =
+      SplitNodeByNumChunks({ShapeNHWC::DimH, ShapeNHWC::DimW}, {2, 2});
+  splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu along H, W and C dimensions.
+TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimHWC) {
+  auto splitOption = SplitNodeByNumChunks(
+      {ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC}, {2, 2, 2});
+  splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu along N, H, W and C dimensions.
+TEST_F(NodeSplitting, Conv2D_Relu_Recursive_DimNHWC) {
+  auto splitOption = SplitNodeByNumChunks(
+      {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC},
+      {2, 2, 2, 2});
+  splitConv2DReluRecursive(F_, optimizedF_, bindings_, cctx_, splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Utility function to split Conv2D with Relu and MaxPool recursively.
+static void splitConv2DReluMaxPoolRecursive(Function *F, Function *&optF,
+                                            PlaceholderBindings &bindings,
+                                            CompilationContext &cctx,
+                                            SplitNodeOption &splitOption) {
+  // Conv2D params.
+  std::vector<dim_t> inputDims = {5, 16, 16, 4};
+  std::vector<dim_t> filterDims = {16, 3, 3, 4};
+  std::vector<dim_t> biasDims = {16};
+  std::vector<dim_t> outputDims = {5, 8, 8, 16};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {2, 2};
+  std::vector<unsigned_t> pads = {1, 1, 0, 0};
+  dim_t group = 1;
+  std::vector<unsigned_t> dilation = {1, 1};
+
+  // MaxPool params.
+  std::vector<unsigned_t> poolKernels = {3, 3};
+  std::vector<unsigned_t> poolStrides = {2, 2};
+  std::vector<unsigned_t> poolPads = {1, 1, 1, 1};
+
+  // Create input placeholder.
+  auto &mod = *(F->getParent());
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  // Create filter constant.
+  auto *filter = mod.createConstant(ElemKind::FloatTy, filterDims, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod.getPRNG());
+  // Create bias constant.
+  auto *bias = mod.createConstant(ElemKind::FloatTy, biasDims, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  // Create Conv2D.
+  auto *outTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
+  auto *conv = F->createConv("conv", input, filter, bias, outTy, kernels,
+                             strides, pads, group, dilation);
+  // Create Relu.
+  auto *relu = F->createRELU("relu", conv);
+  // Create MaxPool.
+  auto *pool =
+      F->createMaxPool("pool", relu, poolKernels, poolStrides, poolPads);
+  // Create Save.
+  SaveNode *save = F->createSave("save", pool->getResult());
+  bindings.allocate(save->getPlaceholder());
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node recursively.
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap,
+      ::glow::splitNodeRecursively(pool, splitOption, /* maxDepth */ 10));
+
+  EXPECT_EQ(splitMap.size(), 3);
+  EXPECT_TRUE(splitMap.count(conv));
+  EXPECT_TRUE(splitMap.count(relu));
+  EXPECT_TRUE(splitMap.count(pool));
+}
+
+/// Test splitting Conv2D with Relu and MaxPool along N dimension.
+TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimN) {
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimN}, {2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splittingConv2D with Relu and MaxPool along H dimension.
+TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimH) {
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimH}, {2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu and MaxPool along W dimension.
+TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimW) {
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimW}, {2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu and MaxPool along C dimension.
+TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimC) {
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimC}, {2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu and MaxPool along H and W dimensions.
+TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimHW) {
+  auto splitOption =
+      SplitNodeByNumChunks({ShapeNHWC::DimH, ShapeNHWC::DimW}, {2, 2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu and MaxPool along H, W and C dimensions.
+TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimHWC) {
+  auto splitOption = SplitNodeByNumChunks(
+      {ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC}, {2, 2, 2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Conv2D with Relu and MaxPool along N, H, W and C dimensions.
+TEST_F(NodeSplitting, Conv2D_Relu_MaxPool_Recursive_DimNHWC) {
+  auto splitOption = SplitNodeByNumChunks(
+      {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC},
+      {2, 2, 2, 2});
+  splitConv2DReluMaxPoolRecursive(F_, optimizedF_, bindings_, cctx_,
+                                  splitOption);
+  checkNumericalEquivalence(0);
+}
+
+/// Verify that the recursive splitting max depth parameter is honored.
+TEST_F(NodeSplitting, Recursive_MaxDepth) {
+  std::vector<dim_t> dims = {10, 10};
+
+  // Create network with chained unary operators.
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  Node *relu = F_->createRELU("relu", input);
+  Node *clip = F_->createClip("clip", relu, 1.0, 10.0);
+  Node *tanh = F_->createTanh("tanh", clip);
+  Node *sigmoid = F_->createSigmoid("sigmoid", tanh);
+  SaveNode *output = F_->createSave("output", sigmoid);
+  bindings_.allocate(output->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  unsigned maxDepth = 2;
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth));
+
+  // Check node count.
+  EXPECT_EQ(splitMap.size(), 2);
+  EXPECT_EQ(0, splitMap.count(relu));
+  EXPECT_EQ(0, splitMap.count(clip));
+  EXPECT_EQ(1, splitMap.count(tanh));
+  EXPECT_EQ(1, splitMap.count(sigmoid));
+  EXPECT_EQ(2, splitMap[tanh].size());
+  EXPECT_EQ(2, splitMap[sigmoid].size());
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ClipNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::TanhNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::SigmoidNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  checkNumericalEquivalence(0);
+}
+
+/// Verify recursive splitting for nodes with single output uses.
+TEST_F(NodeSplitting, Recursive_SingleOutputUse) {
+  std::vector<dim_t> dims = {10, 10};
+
+  // Create network with chained unary operators.
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  Node *relu = F_->createRELU("relu", input);
+  Node *clip = F_->createClip("clip", relu, 1.0, 10.0);
+  Node *tanh = F_->createTanh("tanh", clip);
+  Node *sigmoid = F_->createSigmoid("sigmoid", tanh);
+  SaveNode *output1 = F_->createSave("output1", clip);
+  SaveNode *output2 = F_->createSave("output2", sigmoid);
+  bindings_.allocate(output1->getPlaceholder());
+  bindings_.allocate(output2->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  bool singleUseOnly = true;
+  unsigned maxDepth = 10;
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth,
+                                             singleUseOnly));
+
+  // Check node count.
+  EXPECT_EQ(splitMap.size(), 2);
+  EXPECT_EQ(0, splitMap.count(relu));
+  EXPECT_EQ(0, splitMap.count(clip));
+  EXPECT_EQ(1, splitMap.count(tanh));
+  EXPECT_EQ(1, splitMap.count(sigmoid));
+  EXPECT_EQ(2, splitMap[tanh].size());
+  EXPECT_EQ(2, splitMap[sigmoid].size());
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ClipNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::TanhNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::SigmoidNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  checkNumericalEquivalence(0);
+}
+
+/// Verify recursive splitting for nodes with multiple output uses.
+TEST_F(NodeSplitting, Recursive_MultipleOutputUses) {
+  std::vector<dim_t> dims = {10, 10};
+
+  // Create network with chained unary operators.
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  Node *relu = F_->createRELU("relu", input);
+  Node *clip = F_->createClip("clip", relu, 1.0, 10.0);
+  Node *tanh = F_->createTanh("tanh", clip);
+  Node *sigmoid = F_->createSigmoid("sigmoid", tanh);
+  SaveNode *output1 = F_->createSave("output1", clip);
+  SaveNode *output2 = F_->createSave("output2", sigmoid);
+  bindings_.allocate(output1->getPlaceholder());
+  bindings_.allocate(output2->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  bool singleUseOnly = false;
+  unsigned maxDepth = 10;
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(sigmoid, splitOption, maxDepth,
+                                             singleUseOnly));
+
+  // Check node count.
+  EXPECT_EQ(splitMap.size(), 4);
+  EXPECT_EQ(1, splitMap.count(relu));
+  EXPECT_EQ(1, splitMap.count(clip));
+  EXPECT_EQ(1, splitMap.count(tanh));
+  EXPECT_EQ(1, splitMap.count(sigmoid));
+  EXPECT_EQ(2, splitMap[relu].size());
+  EXPECT_EQ(2, splitMap[clip].size());
+  EXPECT_EQ(2, splitMap[tanh].size());
+  EXPECT_EQ(2, splitMap[sigmoid].size());
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ClipNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::TanhNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::SigmoidNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 4);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 2);
+  checkNumericalEquivalence(0);
+}
+
+/// Verify that the recursive splitting stops based on constraint.
+TEST_F(NodeSplitting, Recursive_StopConstraint) {
+  std::vector<dim_t> dims = {10, 10};
+
+  // Create network with chained unary operators.
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  Node *relu = F_->createRELU("relu", input);
+  Node *clip = F_->createClip("clip", relu, 1.0, 10.0);
+  Node *tanh = F_->createTanh("tanh", clip);
+  Node *sigmoid = F_->createSigmoid("sigmoid", tanh);
+  SaveNode *output1 = F_->createSave("output1", clip);
+  SaveNode *output2 = F_->createSave("output2", sigmoid);
+  bindings_.allocate(output1->getPlaceholder());
+  bindings_.allocate(output2->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  unsigned maxDepth = 10;
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeConstraint splitConstraint =
+      [=](const Node *origNode, const std::vector<Node *> &splitNodes) -> bool {
+    return (origNode->getKind() != Kinded::Kind::ClipNodeKind);
+  };
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(sigmoid, &splitOption,
+                                             &splitConstraint, maxDepth));
+
+  // Check node count.
+  EXPECT_EQ(splitMap.size(), 2);
+  EXPECT_EQ(0, splitMap.count(relu));
+  EXPECT_EQ(0, splitMap.count(clip));
+  EXPECT_EQ(1, splitMap.count(tanh));
+  EXPECT_EQ(1, splitMap.count(sigmoid));
+  EXPECT_EQ(2, splitMap[tanh].size());
+  EXPECT_EQ(2, splitMap[sigmoid].size());
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ClipNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::TanhNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::SigmoidNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  checkNumericalEquivalence(0);
+}
+
+/// Verify that the recursive splitting stops when reaching unsupported node.
+TEST_F(NodeSplitting, Recursive_StopUnsupportedNode) {
+  std::vector<dim_t> inputDims = {1, 5, 5, 4};
+  std::vector<dim_t> outputDims = {1, 10, 10, 4};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  auto *outTy = mod_.uniqueType(ElemKind::FloatTy, outputDims);
+  auto *resize = F_->createResizeBilinear("resize", input, outTy);
+  Node *relu = F_->createRELU("relu", resize);
+  SaveNode *output = F_->createSave("output", relu);
+  bindings_.allocate(output->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  unsigned maxDepth = 10;
+  auto splitOption = SplitNodeByNumChunks({1}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(relu, splitOption, maxDepth));
+
+  // Check node count.
+  EXPECT_EQ(splitMap.size(), 1);
+  EXPECT_EQ(1, splitMap.count(relu));
+  EXPECT_EQ(0, splitMap.count(resize));
+  EXPECT_EQ(2, splitMap[relu].size());
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ResizeBilinearNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  checkNumericalEquivalence(0);
+}
+
+/// Verify that the recursive splitting only attempts to split the first output
+/// operand. In this example we verify that the recursive splitting does not
+/// attempt to split the ArgMax operand of MaxPool.
+TEST_F(NodeSplitting, Recursive_OnlyFirstOutputOperand) {
+  std::vector<dim_t> inputDims = {2, 8, 8, 4};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {1, 1, 1, 1};
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  auto *pool = F_->createMaxPool("pool", input, kernels, strides, pads);
+  Node *relu = F_->createRELU("relu", pool->getArgmax());
+  SaveNode *result = F_->createSave("result", pool->getResult());
+  SaveNode *argmax = F_->createSave("argmax", relu);
+  bindings_.allocate(result->getPlaceholder());
+  bindings_.allocate(argmax->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  unsigned maxDepth = 10;
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(relu, splitOption, maxDepth));
+
+  // Check node count.
+  EXPECT_EQ(splitMap.size(), 1);
+  EXPECT_EQ(1, splitMap.count(relu));
+  EXPECT_EQ(0, splitMap.count(pool));
+  EXPECT_EQ(2, splitMap[relu].size());
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  // Note: We do not run the inference since we do not support Relu for INT64.
 }

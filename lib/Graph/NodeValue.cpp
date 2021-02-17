@@ -111,11 +111,15 @@ ElemKind NodeValue::getElementType() const {
   return getType()->getElementType();
 }
 
+float NodeValue::getScale() const { return getType()->getScale(); }
+
+int32_t NodeValue::getOffset() const { return getType()->getOffset(); }
+
 llvm::ArrayRef<dim_t> NodeValue::dims() const { return getType()->dims(); }
 
 std::string
 NodeValue::generateNodeOutputName(bool stripResNoFor0thInput) const {
-  return generateNodeOutputName(node_->getName(), resNo_,
+  return generateNodeOutputName(node_->getName().str(), resNo_,
                                 stripResNoFor0thInput);
 }
 

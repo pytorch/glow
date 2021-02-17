@@ -190,8 +190,8 @@ void BundleSaver::setIRFunction(llvm::StringRef mainEntryName,
   }
 }
 
-bool BundleSaver::WeightAddrComparator::
-operator()(const WeightInfo &LHS, const WeightInfo &RHS) const {
+bool BundleSaver::WeightAddrComparator::operator()(
+    const WeightInfo &LHS, const WeightInfo &RHS) const {
   auto lhsAddr =
       bundleSaver_->allocationsInfo_.allocatedAddress_.lookup(LHS.first);
   auto rhsAddr =
@@ -632,10 +632,10 @@ void BundleSaver::performBundleMemoryAllocation() {
   // Perform memory allocation for the current function.
   auto *F = savedIRFunctions_.back().savedF;
   allocationsInfo_.numberValues(F);
-  allocationsInfo_.allocateActivations(F);
   // Tell the allocateWeightVars to not reuse any existing addresses for weights
   // and to assign new ones.
   allocationsInfo_.allocateWeightVars(F);
+  allocationsInfo_.allocateActivations(F);
   allocationsInfo_.allocateTensorViews(F);
 }
 

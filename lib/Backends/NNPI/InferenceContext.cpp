@@ -19,8 +19,10 @@
 #include "NNPI.h"
 #include "NNPIAdapterContainer.h"
 #include "NNPIDeviceManager.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Runtime/RequestData.h"
 #include "llvm/Support/raw_ostream.h"
+#include <folly/Random.h>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -52,6 +54,7 @@ bool InferenceContext::init(
     NNPIDeviceNetwork deviceNetwork, NNPIAdapterContainer *adapter,
     NNPIDeviceContext device,
     const std::unordered_set<const Placeholder *> &partialInputs,
+    const std::vector<ValidateSLSInfo> &validateSLSInputs,
     const std::unordered_set<const Placeholder *> &paddedInputs,
     const std::unordered_set<const Placeholder *> &staticInputs,
     StaticPlaceholderMap *staticPlaceholderMap,
@@ -64,6 +67,7 @@ bool InferenceContext::init(
   device_ = device;
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
+  validateSLSInputs_ = &validateSLSInputs;
   paddedInputs_ = &paddedInputs;
   functionName_ = functionName;
 
@@ -375,6 +379,10 @@ void InferenceContext::execute(RunIdentifierTy runId,
   TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::COPY,
                          tracePreProcessContextName_, attributes);
 
+  // Sanitize inputs before running inference
+  LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+      ERROR, sanitize(bindings), "Failed santization.", runId, ctx, resultCB);
+
   // Pre-inference
   std::vector<void *> rawInputs, rawOutputs;
   unsigned idx = 0;
@@ -433,7 +441,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
       uint32_t numErrors(0);
       // First wait for the command list to complete.
       NNPIInferenceErrorCode res = nnpiCommandListWait(
-          commandList_, deviceOptions_->inferTimeout, NULL, 0, &numErrors);
+          commandList_, deviceOptions_->inferTimeoutUs, NULL, 0, &numErrors);
       uint64_t completeTime = TraceEvent::now();
       // Set batchDeviceTimestamps.
       auto *requestDataRun = ::glow::runtime::RequestData::get();
@@ -462,7 +470,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
         // Then query all errors using another wait call (should return
         // immediately).
         NNPIInferenceErrorCode tmpRes =
-            nnpiCommandListWait(commandList_, deviceOptions_->inferTimeout,
+            nnpiCommandListWait(commandList_, deviceOptions_->inferTimeoutUs,
                                 commandErrors, numErrors, &numErrors);
         if (tmpRes != NNPI_INF_NO_ERROR) {
           FATAL_CALLBACK_IF_NOT(false /* fatal */,
@@ -625,6 +633,130 @@ void InferenceContext::dumpRuntime() const {
     DotWriter::addEdge(functionName_ + ":" + out->getName(),
                        std::to_string(out->getDeviceResource()));
   }
+}
+
+template <class T>
+static bool sanitizeSLS(Handle<int64_t> &indices, Handle<T> &lenOrOffset,
+                        size_t tableHeight, bool isOffset) {
+  size_t totalLensSum;
+  size_t indicesLen = indices.getRealNumElements();
+  size_t lenOrOffsetLen = lenOrOffset.getRealNumElements();
+  // indices in [0, n)
+  for (auto i = 0; i < indicesLen; i++) {
+    LOG_AND_RETURN_IF(ERROR,
+                      indices.raw(i) < 0 || indices.raw(i) >= tableHeight,
+                      "index out of range " + to_string(indices.raw(i)) +
+                              " at idx " + to_string(i) + " tableHeight "
+                          << to_string(tableHeight),
+                      false);
+  }
+  // last offset = len(indices)
+  if (isOffset) {
+    for (auto i = 0; i < lenOrOffsetLen - 1; i++) {
+      LOG_AND_RETURN_IF(ERROR, lenOrOffset.raw(i) >= lenOrOffset.raw(i + 1),
+                        "offset should be monotonically increasing " +
+                            to_string(lenOrOffset.raw(i)) + " " +
+                            to_string(lenOrOffset.raw(i + 1)),
+                        false);
+    }
+    totalLensSum = lenOrOffset.raw(lenOrOffsetLen - 1);
+  } else {
+    // sum(lens) = len(indices)
+    totalLensSum = std::accumulate(lenOrOffset.begin(), lenOrOffset.end(), 0U);
+  }
+
+  LOG_AND_RETURN_IF(
+      ERROR, indicesLen != totalLensSum,
+      "santize failed, indices length " + std::to_string(indicesLen) +
+          " different from sum of lengths " + std::to_string(totalLensSum),
+      false);
+
+  return true;
+}
+
+bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
+  if (flags::SanitizeInputsPercent == 0 ||
+      folly::Random::rand32() % 100 > flags::SanitizeInputsPercent) {
+    return true;
+  }
+
+  LOG_EVERY_N(INFO, 1000) << "===== Sanitizing " << validateSLSInputs_->size()
+                          << " set of inputs at "
+                          << flags::SanitizeInputsPercent << " probability";
+  for (const auto &sls : *validateSLSInputs_) {
+    size_t indicesLen, weightsLen, totalLensSum = 0;
+    auto *indices = bindings.get(sls.indices);
+
+    // Either a constant or some node internal to the function, skip
+    if (indices == nullptr) {
+      continue;
+    }
+
+    // The indices tensor is not partial
+    if (indices->getSizeInBytes() == indices->getUnpaddedSizeInBytes()) {
+      continue;
+    }
+    indicesLen = indices->getRealNumElements();
+    if (sls.weights) {
+      auto *weights = bindings.get(sls.weights);
+      // If this is a weigthed one and the placeholder is real (not a constant
+      // or internal to the function, then sanitize
+      if (weights != nullptr) {
+        weightsLen = weights->getRealNumElements();
+        LOG_AND_RETURN_IF(
+            ERROR, indicesLen != weightsLen,
+            "santize failed, indices length: " + std::to_string(indicesLen) +
+                " different from weights length: " + std::to_string(weightsLen),
+            false);
+      }
+    }
+    auto I = indices->getHandle<int64_t>();
+    bool ret;
+    if (sls.isEmbeddingBag) {
+      // EmbeddingBag case
+      auto *offsets = bindings.get(sls.offsets);
+      // Either a constant or some node internal to the function, skip
+      if (offsets == nullptr) {
+        continue;
+      }
+
+      if (offsets->getElementType() == ElemKind::Int32ITy) {
+        auto O = offsets->getHandle<int32_t>();
+        ret = sanitizeSLS<int32_t>(I, O, sls.tableHeight, sls.isEmbeddingBag);
+      } else if (offsets->getElementType() == ElemKind::Int64ITy) {
+        auto O = offsets->getHandle<int64_t>();
+        ret = sanitizeSLS<int64_t>(I, O, sls.tableHeight,
+
+                                   sls.isEmbeddingBag);
+      } else {
+        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type", false);
+      }
+    } else {
+      // SLS case
+      auto *lengths = bindings.get(const_cast<Placeholder *>(sls.lengths));
+      // Either a constant or some node internal to the function, skip
+      if (lengths == nullptr) {
+        continue;
+      }
+
+      if (lengths->getElementType() == ElemKind::Int32ITy) {
+        auto L = lengths->getHandle<int32_t>();
+        ret = sanitizeSLS<int32_t>(I, L, sls.tableHeight,
+
+                                   sls.isEmbeddingBag);
+      } else if (lengths->getElementType() == ElemKind::Int64ITy) {
+        auto L = lengths->getHandle<int64_t>();
+        ret = sanitizeSLS<int64_t>(I, L, sls.tableHeight,
+
+                                   sls.isEmbeddingBag);
+      } else {
+        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type", false);
+      }
+    }
+    LOG_AND_RETURN_IF(ERROR, !ret, "failed SLS sanitization", false);
+  }
+
+  return true;
 }
 
 } // namespace runtime

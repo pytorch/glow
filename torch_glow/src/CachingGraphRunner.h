@@ -28,11 +28,11 @@
 #include <shared_mutex>
 
 namespace glow {
-
 /// For a given PyTorch JIT graph, this class is responsible for maintaining a
 /// mapping from PyTorch input information to Glow Function used to run that
 /// graph in Glow.
 class CachingGraphRunner {
+public:
   /// Information that is stored per-Glow graph for running it using
   /// HostManager.
   struct PerGlowGraphInfo {
@@ -56,6 +56,7 @@ class CachingGraphRunner {
     PyTorchLoaderSettings settings;
   };
 
+private:
   /// The PyTorch JIT Graph that this CachingGraphRunner caches Glow functions
   /// for.
   std::shared_ptr<torch::jit::Graph> graph_;
@@ -82,13 +83,13 @@ class CachingGraphRunner {
 
   /// Mapping from hash of PyTorch inputs to PerGlowGraphInfo for the Glow
   /// function that will run inputs matching that hash.
-  std::unordered_map<InputMetaStack, std::shared_ptr<PerGlowGraphInfo>>
+  std::unordered_map<size_t, std::shared_ptr<PerGlowGraphInfo>>
       perGlowGraphInfoMap_;
 
   /// Here we assume this is only one corresponding Glow function.
   /// Mapping from hash of PyTorch inputs to PerGlowGraphShape for the Glow
   /// function that will run inputs matching that hash.
-  std::unordered_map<InputMetaStack, MetaStack> perGlowGraphShapeMap_;
+  std::unordered_map<size_t, MetaStack> perGlowGraphShapeMap_;
 
   /// In AOT flow, compile a single Glow function and use it for all input
   /// sizes. The PyTorch tensor inputs in this case should be smaller that the
@@ -173,8 +174,31 @@ class CachingGraphRunner {
   /// file no matter what.
   void aggregateAndDumpTraces(TraceContext *traceContext, bool flush = false);
 
+  /// Converts PyTorch input tensor \p ptTensor to a Glow input tensor for the
+  /// Placeholder \p ph. \returns the pair of the created Glow tensor and
+  /// PyTorch tensor which may have been created in order to make it the
+  /// original PyTorch tensor more suitable for Glow for example by making it
+  /// contiguous. The new PyTorch tensor owns the memory used by the Glow tensor
+  /// so much live at least as long as it.
+  Expected<std::pair<glow::Tensor, torch::Tensor>>
+  convertPyTorchInputToGlowInput(torch::Tensor ptTensor,
+                                 const glow::Placeholder *ph);
+
+  /// Calls convertPyTorchInputToGlowInput for several \p inputs and \p
+  /// inputPlaceholders.
+  Expected<std::pair<std::vector<glow::Tensor>, std::vector<torch::Tensor>>>
+  processPyTorchInputs(at::ArrayRef<at::IValue> inputs,
+                       const std::vector<Placeholder *> &inputPlaceholders);
+
   /// The Glow Function should've already been created. Returns an error if not.
   Error runOnly(torch::jit::Stack &stack);
+
+  /// Get key of caching graph map from inputMetaStack.
+  size_t getGraphMapKeyFromInputStack(const InputMetaStack &metaStack);
+
+  /// Find the PerGlowGraphInfo corresponding to a given \p stack.
+  Expected<std::shared_ptr<PerGlowGraphInfo>>
+  findGraphInfoForStack(const torch::jit::Stack &stack);
 
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
@@ -201,6 +225,13 @@ public:
                   const PyTorchLoaderSettings &settings,
                   runtime::DeferredWeightLoader *loader,
                   bool useMaxSizeCompilation = true);
+
+  /// Writes PyTorch tensor inputs on the \p stack to file \p inputFilePrefix,
+  /// then runs the JIT GraphExecutor to get the outputs and writes those to \p
+  /// outputFilePrefix.
+  Error writeJitIOToOnnxFile(const std::string &inputFilePrefix,
+                             const std::string &outputFilePrefix,
+                             const torch::jit::Stack &stack);
 };
 
 } // namespace glow

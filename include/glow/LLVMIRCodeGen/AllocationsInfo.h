@@ -16,6 +16,7 @@
 #ifndef GLOW_LLVMIRCODEGEN_ALLOCATIONSINFO_H
 #define GLOW_LLVMIRCODEGEN_ALLOCATIONSINFO_H
 
+#include "glow/Backend/BackendUtils.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Nodes.h"
 #include "llvm/IR/Module.h"
@@ -28,10 +29,6 @@ class IRFunction;
 class WeightVar;
 class Constant;
 class PlaceholderBindings;
-
-namespace runtime {
-class RuntimeBundle;
-}
 
 /// Information about allocations for activations, constant weight variables
 /// and mutable weight variables.
@@ -58,9 +55,9 @@ public:
 
   /// Ctor.
   AllocationsInfo()
-      : constantWeightVarsAllocator("ConstantWeights", 0),
-        mutableWeightVarsAllocator("MutableWeights", 0),
-        activationsAllocator("Activations", 0) {}
+      : constantWeightVarsAllocator_("ConstantWeights", 0),
+        mutableWeightVarsAllocator_("MutableWeights", 0),
+        activationsAllocator_("Activations", 0) {}
   virtual ~AllocationsInfo() = default;
   /// Assign offsets to all of the variables in the module \p M and to the
   /// placeholders.
@@ -78,17 +75,27 @@ public:
   /// Number all allocations and weight variables by assigning them unique
   /// numbers.
   virtual void numberValues(const IRFunction *F);
+  /// Getters for allocators.
+  MemoryAllocator &getConstantWeightVarsAllocator() {
+    return constantWeightVarsAllocator_;
+  }
+  MemoryAllocator &getMutableWeightVarsAllocator() {
+    return mutableWeightVarsAllocator_;
+  }
+  MemoryAllocator &getActivationsAllocator() { return activationsAllocator_; }
 
 protected:
   /// Index to be used for a new value.
   size_t valueIdx_{0};
   /// Use two different allocators, because constant weights and mutable weights
   /// may use different memory blocks.
-  MemoryAllocator constantWeightVarsAllocator;
-  MemoryAllocator mutableWeightVarsAllocator;
+  MemoryAllocator constantWeightVarsAllocator_;
+  MemoryAllocator mutableWeightVarsAllocator_;
   /// Use a memory allocator with no upper bound on how much memory we can
   /// allocate.
-  MemoryAllocator activationsAllocator;
+  MemoryAllocator activationsAllocator_;
+  /// Symbol table for the allocated symbols.
+  glow::runtime::SymbolTableTy symbolTable_;
 };
 
 } // namespace glow

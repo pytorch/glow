@@ -155,11 +155,10 @@ Error checkForFatalError(Error err) {
   }
   LOG(FATAL) << "Non-recoverable device error: " << msg;
 }
-
 } // namespace
 
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
-  static auto cls = torch::jit::backend<TorchGlowBackend>("glow");
+  static auto cls = torch::jit::backend<TorchGlowBackend>("glow", preprocess);
   return cls;
 }
 
@@ -167,6 +166,12 @@ void registerTorchGlowBackendAndDeps() {
   (void)torchGlowBackend();
   registerPyTorchGlowCustomClasses();
   registerGlowHelperOps();
+}
+
+c10::IValue
+preprocess(const torch::jit::Module &mod,
+           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec) {
+  return mod._ivalue();
 }
 
 /// Unpacks conv2d and linear packed parameters and replaces
@@ -410,8 +415,11 @@ static Error processLinearPackedQParams(torch::jit::Graph &graph,
       overrideTensorGradient(t);
       paramConst = torch::jit::insertConstant(graph, t);
       node->outputs().at(1)->replaceAllUsesWith(paramConst);
-    } else { // TODO Handle bias-not-exists case
-      return MAKE_ERR("Preprocess for empty bias is not yet supported.");
+    } else {
+      at::Tensor t = at::zeros(ptWeightTensor.size(0));
+      overrideTensorGradient(t);
+      paramConst = torch::jit::insertConstant(graph, t);
+      node->outputs().at(1)->replaceAllUsesWith(paramConst);
     }
   }
   return Error::success();
@@ -538,6 +546,83 @@ Error applyFuserSettingsToPyTorchLoaderSettings(
   return Error::success();
 }
 
+// Runs preprocessing flow on the JIT graph.
+// Returns the processed and frozen module or Error.
+// nameToOrigGraph: maps method name to the JIT graph before Glow
+// transformations. This origGraph is used in runOnJIT / writeToOnnx flows and
+// therefore it should have the same outputs as the lowered graph (i.e. a
+// returned tuple is lowered to tensors.)
+// The original module is saved in __processed_module python class attribute
+// (it should be a serializable module with a single output).
+//  OrigModule
+//      |
+//  inline and cleanup profiling and shapes info
+//      |
+//    clone
+//     / \
+//  save   lowerAllTuples
+//          \
+//         runOnJit/writeToOnnx
+static Expected<torch::jit::Module> preprocessImpl(
+    const torch::jit::Module &origModule,
+    const std::vector<std::string> &methodNames,
+    std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
+        &nameToOrigGraph) {
+  // Check input and outputs types of each method and inline and remove profiled
+  // shapes (this must happen before other optimizations)
+  for (const auto &methodName : methodNames) {
+    auto method = origModule.get_method(methodName);
+    auto graph = method.graph();
+
+    GraphOutputType graphOutputType;
+    ASSIGN_VALUE_OR_RETURN_ERR(graphOutputType,
+                               checkGraphInputsAndOutputs(*graph));
+
+    // Output lists no supported yet
+    if (graphOutputType == GraphOutputType::TENSOR_LIST) {
+      return MAKE_ERR("Tensor list output not supported.");
+    }
+
+    torch::jit::Inline(*graph);
+    torch::jit::ClearProfilingInformation(graph);
+    torch::jit::EraseShapeInformation(graph);
+  }
+
+  auto processedModule = origModule.clone();
+
+  // JIT graph optimizations before freezing
+  for (const auto &methodName : methodNames) {
+    auto method = processedModule.get_method(methodName);
+    auto graph = method.graph();
+
+    LowerAllTuples(graph);
+    nameToOrigGraph[methodName] = graph->copy();
+
+    RewriteQuantPackedParamOps(graph);
+    RETURN_IF_ERR(ProcessPackedParams(*graph, processedModule._ivalue()));
+  }
+
+  // Freeze
+  auto frozenModule = torch::jit::freeze_module(processedModule);
+
+  // Cleanup JIT graphs
+  for (const auto &methodName : methodNames) {
+    auto method = frozenModule.get_method(methodName);
+    auto graph = method.graph();
+
+    torch::jit::RemoveListMutation(graph);
+    torch::jit::RemoveTensorMutation(graph);
+
+    detail::fuseConcat(graph);
+    torch::jit::CanonicalizeOps(graph);
+    EliminateCommonSubexpression(graph);
+    ConstantPooling(graph);
+    // EliminateDeadCode should be last
+    EliminateDeadCode(graph);
+  }
+  return frozenModule;
+}
+
 /// Implementation of to_backend compile method for Glow. \returns a map from
 /// function name in the preprocessed module to the CachingGraphRunner or
 /// JITGraphRunner depending on settings for each method or if an
@@ -555,65 +640,19 @@ compileImpl(const torch::jit::Module &origModule,
   std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
       nameToOrigGraph;
 
-  // Check input and outputs types of each method and inline and remove profiled
-  // shapes (this must happen before other optimizations)
+  std::vector<std::string> methodNames;
   for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
-    auto method = origModule.get_method(methodName);
-    auto graph = method.graph();
-
-    GraphOutputType graphOutputType;
-    ASSIGN_VALUE_OR_RETURN_ERR(graphOutputType,
-                               checkGraphInputsAndOutputs(*graph));
-
-    // Output lists no supported yet
-    if (graphOutputType == GraphOutputType::TENSOR_LIST) {
-      return MAKE_ERR("Tensor list output not supported.");
-    }
-
-    torch::jit::Inline(*graph);
-    torch::jit::ClearProfilingInformation(graph);
-    torch::jit::EraseShapeInformation(graph);
-    nameToOrigGraph[methodName] = graph->copy();
-    /* Note: The following LowerAllTuples call is a bit of a hack. The
-     * GraphExecutor that takes this copy of the graph would otherwise not have
-     * the tuples lowered, which would cause an issue, given that the two
-     * versions would have different output types.
-     */
-    LowerAllTuples(nameToOrigGraph[methodName]);
+    methodNames.push_back(kv.key().toStringRef());
+  }
+  auto frozenModuleOrErr =
+      preprocessImpl(origModule, methodNames, nameToOrigGraph);
+  if (!frozenModuleOrErr) {
+    auto err = frozenModuleOrErr.takeError();
+    err = checkForFatalError(std::move(err));
+    throw std::runtime_error(ERR_TO_STRING(std::move(err)));
   }
 
-  // JIT graph optimizations before freezing
-  for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
-    auto method = origModule.get_method(methodName);
-    auto graph = method.graph();
-
-    RewriteQuantPackedParamOps(graph);
-    RETURN_IF_ERR(ProcessPackedParams(*graph, origModule._ivalue()));
-  }
-
-  // Freeze
-  auto frozenModule = torch::jit::freeze_module(origModule);
-
-  // Cleanup JIT graphs
-  for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
-    auto method = frozenModule.get_method(methodName);
-    auto graph = method.graph();
-
-    torch::jit::RemoveListMutation(graph);
-    torch::jit::RemoveTensorMutation(graph);
-
-    detail::fuseConcat(graph);
-    torch::jit::CanonicalizeOps(graph);
-    EliminateCommonSubexpression(graph);
-    ConstantPooling(graph);
-    // EliminateDeadCode should be last
-    EliminateDeadCode(graph);
-  }
-
-  auto compileModule = frozenModule.clone();
+  auto compileModule = frozenModuleOrErr.get();
   // Compile each method
   for (const auto &kv : method_compile_spec) {
     const auto methodName = kv.key().toString()->string();
@@ -648,8 +687,6 @@ compileImpl(const torch::jit::Module &origModule,
     auto graph = method.function().graph();
     graph = graph->copy();
 
-    LowerAllTuples(graph);
-
     if (baseSettings.enableDebugFuser) {
       LOG(WARNING) << "TorchGlowBackend using GlowFuser";
 
@@ -668,11 +705,8 @@ compileImpl(const torch::jit::Module &origModule,
       // Create a corresponding runner and store {handle, runner} pair.
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
-              graph,
-              glow::getHostManager(baseSettings.backendName,
-                                   baseSettings.numDevices),
-              baseSettings, /*useRunOnly*/ true, origGraph,
-              origModule._ivalue());
+              graph, glow::getHostManager(baseSettings), baseSettings,
+              /*useRunOnly*/ true, origGraph, origModule._ivalue());
 
       // Compile each compilation group
       for (const auto &compilationGroup : spec.compilation_groups) {
@@ -738,22 +772,33 @@ TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
   const auto &runnerPair = it->second;
 
   torch::jit::Stack stack;
-
-  Error err = glow::ErrorEmpty();
   if (runnerPair.first) {
     for (const auto &i : inputs) {
       torch::jit::push(stack, i);
     }
-    err = it->second.first->run(stack);
-  } else if (runnerPair.second) {
-    stack = it->second.second->onExecute(inputs);
-  } else {
-    throw std::runtime_error("Could not any type of runner for handle");
-  }
 
-  if (err) {
-    err = checkForFatalError(std::move(err));
-    throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+    auto err = runnerPair.first->run(stack);
+
+    if (err) {
+      const auto failedRunNumLocal = int(failedRunNum_++);
+      // Rebuild input stack
+      torch::jit::Stack rebuiltStack;
+      for (const auto &i : inputs) {
+        torch::jit::push(rebuiltStack, i);
+      }
+      // Dump JIT inputs and outputs to file, log and throw away any errors
+      ERR_TO_VOID(runnerPair.first->writeJitIOToOnnxFile(
+          strFormat("failed_inputs_%d", failedRunNumLocal),
+          strFormat("failed_outputs_%d", failedRunNumLocal), rebuiltStack));
+
+      err = checkForFatalError(std::move(err));
+      throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+    }
+
+  } else if (runnerPair.second) {
+    stack = runnerPair.second->onExecute(inputs);
+  } else {
+    throw std::runtime_error("Could not find any type of runner for handle");
   }
 
   c10::List<at::Tensor> outputList;
@@ -823,4 +868,52 @@ int JITGraphRunner::countFusionNodes() {
   }
   return count;
 }
+
+/*static*/
+void TorchGlowBackend::preview(torch::jit::Module mod) {
+  std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
+      nameToOrigGraph;
+
+  std::vector<std::string> methodNames;
+  for (const auto &method : mod.get_methods()) {
+    methodNames.push_back(method.name());
+  }
+  auto frozenModuleOrErr = preprocessImpl(mod, methodNames, nameToOrigGraph);
+  if (!frozenModuleOrErr) {
+    auto err = frozenModuleOrErr.takeError();
+    err = checkForFatalError(std::move(err));
+    throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+  }
+  for (const auto &method : mod.get_methods()) {
+    auto graph = method.graph();
+    std::unordered_set<torch::jit::NodeKind> supportedKinds;
+    std::unordered_set<torch::jit::NodeKind> unsupportedKinds;
+    for (auto node : graph->nodes()) {
+      auto nk = node->kind();
+      if (supportedKinds.count(nk) == 0) {
+        if (PyTorchModelLoader::isNodeSupported(node)) {
+          supportedKinds.emplace(nk);
+        } else if (unsupportedKinds.count(nk) == 0) {
+          unsupportedKinds.emplace(nk);
+        }
+      }
+    }
+    // Print findings
+    std::cout << "=== Glow lowering preview ===" << std::endl;
+
+    if (unsupportedKinds.size() == 0) {
+      std::cout << "No unsupported nodes detected." << std::endl;
+    } else {
+      std::cout << "Unsupported Nodes:" << std::endl;
+      for (auto nk : unsupportedKinds) {
+        std::cout << nk.toQualString() << std::endl;
+      }
+    }
+    std::cout << "Supported Nodes:" << std::endl;
+    for (auto nk : supportedKinds) {
+      std::cout << nk.toQualString() << std::endl;
+    }
+  }
+}
+
 } // namespace glow

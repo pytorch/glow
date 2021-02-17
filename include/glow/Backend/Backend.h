@@ -26,6 +26,12 @@
 
 #include "llvm/ADT/StringRef.h"
 
+#if FACEBOOK_INTERNAL
+namespace folly {
+struct dynamic;
+}
+#endif
+
 namespace glow {
 
 class IRFunction;
@@ -87,6 +93,17 @@ public:
     return compile(F, opts);
   }
 
+  /// Generate compiled function from FXIR
+
+#if FACEBOOK_INTERNAL
+  virtual Expected<std::unique_ptr<CompiledFunction>>
+  compileFX(const folly::dynamic &FXIR, const std::string &submod,
+            const llvm::StringMap<const void *> &constants,
+            const BackendOptions &opts, Module *glowModule) const {
+    LOG(FATAL) << "Compiling FXIR is not supported by the backend";
+  }
+#endif
+
   /// Generate code for input function \param F given settings in \p opts.
   virtual Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const = 0;
@@ -117,12 +134,11 @@ public:
     return false;
   }
 
-  /// \returns true if Constants must be actually quantized before
-  /// Post-Lowering, false if it must be done after post-lowering.
-  /// Prequantize constants flag should only be true when external
-  /// quantization is disabled
+  /// Prequantize constants flag should only be true when compatibility
+  /// dequantization is disabled as constants should be quantized only when
+  /// deuqantization using compatibility-dequantization is complete.
   virtual bool shouldPreQuantizeConstants(CompilationContext &cctx) const {
-    return !cctx.precisionConfig.externalQuantization;
+    return !cctx.precisionConfig.compatibilityDequantization;
   }
 
   /// \returns whether the provided \p NI is supported by the backend.

@@ -171,6 +171,13 @@ public:
 /// has_getFusedActivation that looks for said method.
 CLASS_CONTAINS_METHOD(getFusedActivation)
 
+/// If \p W is a weight that is read from \returns true.
+bool isInput(const Value *W);
+
+/// If \p W is an output weight \returns true. This is determined by checking if
+/// the weight has a user which uses it as a write output.
+bool isOutput(const Value *W);
+
 /// If \p PH is an output placeholder in the IRFunction \p F,
 /// \returns true.
 /// This is determined by checking if the PH has weights which are referenced by
@@ -230,6 +237,30 @@ using ContiguousPlaceholders = std::vector<PlaceholderInputOutputInfo>;
 template <typename FUN, typename ARR>
 ContiguousPlaceholders getContiguousPlaceHolder(const ARR &holders,
                                                 const FUN &F);
+
+/// Allocate \p placeholders using the provided \p allocator and store the
+/// allocation results into a \p symbolTable.
+void allocatePlaceholders(const ContiguousPlaceholders &placeholders,
+                          MemoryAllocator &allocator,
+                          glow::runtime::SymbolTableTy &symbolTable);
+
+/// Allocate \p constants using the provided \p allocator and store the
+/// allocation results into a \p symbolTable.
+void allocateConstants(const ConstList &constants, MemoryAllocator &allocator,
+                       glow::runtime::SymbolTableTy &symbolTable);
+
+/// Allocate \p constants using the provided \p allocator and store the
+/// allocation results into a \p symbolTable.
+void allocateConstants(const std::vector<const glow::Constant *> &constants,
+                       MemoryAllocator &allocator,
+                       glow::runtime::SymbolTableTy &symbolTable);
+
+/// Allocate activations from the instruction stream \p instrs using the
+/// provided \p allocator and store the allocation results into a \p
+/// symbolTable.
+void allocateActivations(const glow::IRFunction::InstListTy &instrs,
+                         MemoryAllocator &allocator,
+                         glow::runtime::SymbolTableTy &symbolTable);
 
 /// \returns true if \p V is capable of handling a partial tensor as input.
 bool allowsPartialInput(const Placeholder *V, const Function *F);

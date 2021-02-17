@@ -80,6 +80,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedReduceMaxNodeKind:
+  case Kinded::Kind::BatchedReduceProdNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
@@ -87,6 +88,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MulNodeKind:
+  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::ClipNodeKind:
@@ -105,12 +107,37 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
 
+  case Kinded::Kind::BatchNormalizationNodeKind: {
+    auto elemType = NI.getInElemTy(BatchNormalizationNode::InputIdx);
+
+    // input can be int8, float16 or float32
+    bool isNodePrecisionSupported =
+        (elemType == ElemKind::Int8QTy || elemType == ElemKind::FloatTy ||
+         elemType == ElemKind::Float16Ty);
+
+    // parameters have to be float16 or float
+    isNodePrecisionSupported = isNodePrecisionSupported &&
+                               NI.allInputsAndOutputsHaveSameElemKind(
+                                   {ElemKind::FloatTy, ElemKind::Float16Ty},
+                                   {BatchNormalizationNode::InputIdx},
+                                   {BatchNormalizationNode::ResultIdx});
+
+    // input and output element types have to match
+    isNodePrecisionSupported =
+        isNodePrecisionSupported &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {elemType},
+            {BatchNormalizationNode::ScaleIdx, BatchNormalizationNode::BiasIdx,
+             BatchNormalizationNode::MeanIdx, BatchNormalizationNode::VarIdx});
+    return isNodePrecisionSupported;
+  }
+
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
-         ElemKind::Int8QTy});
+        {ElemKind::Int32ITy, ElemKind::FloatTy, ElemKind::Float16Ty,
+         ElemKind::BFloat16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::MatMulNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -118,7 +145,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int8QTy, ElemKind::Int16QTy});
 
   case Kinded::Kind::FullyConnectedNodeKind:
-    if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
+    if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
     }
@@ -146,7 +173,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ArgMaxNodeKind:
   case Kinded::Kind::ArgMinNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
                {ArgMaxNode::ResultIdx}) &&
            (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy ||
             NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int32ITy);
@@ -169,8 +196,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int32QTy, ElemKind::Int64ITy,
-         ElemKind::Int32ITy});
-  case Kinded::Kind::DivNodeKind:
+         ElemKind::Int32ITy, ElemKind::BoolTy});
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -208,10 +234,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ReciprocalNodeKind:
   case Kinded::Kind::SinNodeKind:
   case Kinded::Kind::CosNodeKind:
+  case Kinded::Kind::ErfNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
   case Kinded::Kind::FloorNodeKind:
+  case Kinded::Kind::TruncateNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
@@ -347,6 +375,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
+
+  case Kinded::Kind::EmbeddingNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+               {EmbeddingNode::IndicesIdx}) &&
+           (NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int64ITy ||
+            NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::EmbeddingBagNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -577,6 +612,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int32ITy ||
             NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
 
+  case Kinded::Kind::LogSoftMaxNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+               {LogSoftMaxNode::SelectedIdx}) &&
+           (NI.getInElemTy(LogSoftMaxNode::SelectedIdx) == ElemKind::Int32ITy ||
+            NI.getInElemTy(LogSoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
+
   case Kinded::Kind::GatherRangesNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::Int32ITy, ElemKind::Int64ITy},
@@ -794,6 +836,7 @@ bool Interpreter::shouldLower(const Node *N) const {
   case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
+  case Kinded::Kind::BatchNormalizationNodeKind:
     return false;
   default:
     return true;
@@ -856,13 +899,13 @@ static bool quantizeRQFCFloatBias(Function *F,
                   "Constant in order to quantize the bias");
 
   auto TQPs = getTensorQuantizationParams(
-      biasC->getPayload(), quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+      biasC->getPayload(), quantization::Schema::Asymmetric, ElemKind::Int32QTy,
       0, biasC->dims()[0]);
 
   DCHECK_EQ(TQPs.size(), 1) << "Should only be one dimension to quantize on";
 
-  auto biasQuantizedT =
-      quantization::quantizeTensor(biasC->getPayload(), TQPs[0]);
+  auto biasQuantizedT = quantization::quantizeTensor(
+      biasC->getPayload(), TQPs[0], ElemKind::Int32QTy);
 
   auto biasQuantizedC = F->getParent()->createConstant(
       biasC->getName(), std::move(biasQuantizedT));
@@ -970,13 +1013,4 @@ Expected<bool> Interpreter::transformPostLowering(
 }
 
 void Interpreter::parseBackendSpecificOptions(
-    const BackendOptions &opts) const {
-  auto interpreterMaxMemOpt =
-      opts.backendSpecificOpts.find("interpreter-memory");
-  if (interpreterMaxMemOpt != opts.backendSpecificOpts.end()) {
-    glow::runtime::flags::InterpreterMemory =
-        std::stoi(interpreterMaxMemOpt->second);
-    llvm::outs() << "Interpreter memory set to "
-                 << glow::runtime::flags::InterpreterMemory << "\n";
-  }
-}
+    const BackendOptions &opts) const {}

@@ -92,6 +92,7 @@ add_glow_test(NAME Caffe2ImporterTest
 
 add_executable(LoaderTest
                LoaderTest.cpp ../../tools/loader/Loader.cpp)
+
 target_link_libraries(LoaderTest
                                 PRIVATE
                                   Backends
@@ -321,6 +322,33 @@ if(PNG_FOUND)
                 ${GLOW_BINARY_DIR}/tests/ImageTest
                     --gtest_output=xml:ImageTest.xml
                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(ImageLoaderTest
+               ImageLoaderTest.cpp
+               ../../tools/loader/Loader.cpp
+               ../../tools/loader/ExecutorCore.cpp
+               ../../tools/loader/ExecutorCoreHelperFunctions.cpp)
+
+target_link_libraries(ImageLoaderTest
+                      PRIVATE
+                        Backend
+                        Backends
+                        Base
+                        Converter
+                        ExecutionEngine
+                        HostManager
+                        Graph
+                        Importer
+                        GraphOptimizer
+                        Quantization
+                        LLVMSupport
+                        gtest
+                        TestMain)
+
+add_glow_test(NAME ImageLoaderTest
+                        COMMAND ${GLOW_BINARY_DIR}/tests/ImageLoaderTest
+                           --gtest_output=xml:LoaderTest.xml --test_skip_cmd_args
+                        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}) 
 endif()
 
 if(GLOW_WITH_CPU)
@@ -349,7 +377,12 @@ target_link_libraries(MemoryAllocatorTest
                         TestMain)
 add_glow_test(MemoryAllocatorTest
               ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest
-                  --gtest_output=xml:MemoryAllocatorTest.xml)
+                  --gtest_output=xml:MemoryAllocatorTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/MemoryAllocatorTestModels.txt
+               ${CMAKE_CURRENT_BINARY_DIR}/MemoryAllocatorTestModels.txt
+               COPYONLY)
 
 add_executable(NodeSplittingTest
                NodeSplittingTest.cpp)

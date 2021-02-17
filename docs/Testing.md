@@ -148,6 +148,24 @@ running the tests.
 ## Example programs
 
 We rely on external test suites to test the compiler. We use the data sets
-CIFAR10 and MNIST (located in the "example/" directory) to test the correctness
+CIFAR10 and MNIST (located in the "examples/" directory) to test the correctness
 of the whole system.  The script under 'utils/' downloads and extracts the data
 set.
+
+## Using NUMPY npy files
+
+Numpy files are loaded automatically by recognizing the file header. Format limitations:
+ - Little-endian only.
+ - No FORTRAN data ordering support.
+ - Format v2.0 and v3.0 are not supported.
+
+NUMPY files accept `input-layout=LAYOUT` command line argument. LAYOUT can be:
+`NHWC` or `NCHW`: tensors must be 3D or 4D only. 3D ones are expanded with 
+   the batch. If the layout is not matching the one specified using existing `-image-layout` 
+   command line argument, the input tensor is transposed accordingly. Tensors from multiple 
+   files are concatenated along the batch dimensions. Thus, the batch dimension can differ 
+   from file to file but other dimensions must match.
+`NonImage`: Can be uses for 1D-4D tensors. In this case, -input-layout is ignored, input 
+   files are not transposed, and batching is not possible.  Also, these tensors accept a 
+   single mean/stddev only.
+

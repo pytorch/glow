@@ -67,12 +67,12 @@ class TestQuantizedBatchNorm3DRelu(unittest.TestCase):
         # We set eps big enough.
         # Batchnorm introduced great accuracy issues, which could create up to
         # ~1e-2 difference in some rare cases. In order to prevent this test
-        # to be flaky, atol is set to be 0.1.
+        # to be flaky, atol is set to be 0.1 and rtol is set to 0.00001.
         utils.compare_tracing_methods(
             model,
             inputs,
             fusible_ops={"quantized::batch_norm3d_relu"},
             atol=1e-1,
-            fp16=True,
+            rtol=1e-5,
             skip_to_glow=True,
         )

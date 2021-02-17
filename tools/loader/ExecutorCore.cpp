@@ -25,6 +25,7 @@
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Optimizer/IROptimizer/CommandLine.h"
+#include "glow/Support/Support.h"
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
@@ -55,25 +56,24 @@ public:
   /// and executes them.
   /// \return accumulated errors. Value greater then 0 indicates one or more
   /// errros have occured.
-  int processOutputs(
-      const llvm::StringMap<Placeholder *> &PHM, PlaceholderBindings &bindings,
-      llvm::ArrayRef<std::string> inputImageBatchFilenames) override;
+  int processOutputs(const llvm::StringMap<Placeholder *> &PHM,
+                     PlaceholderBindings &bindings,
+                     VecVecRef<std::string> inputImageBatchFilenames) override;
 
   /// Registers Post Processing Output extensions.
   void registerPostProcessOutputExtensions(
-      const std::vector<
-          std::function<std::unique_ptr<PostProcessOutputDataExtension>()>>
-          &extVector);
+      const std::vector<PostProcessExtFuncPtr> &extVector);
 
 private:
-  std::vector<std::unique_ptr<PostProcessOutputDataExtension>> extensions_;
+  UniquePtrVec<PostProcessOutputDataExtension> extensions_;
 };
 
 class PreProcessInputExecutor : public PreProcessInputDataExtension {
 public:
   /// Iterates over PreProcessInputDataExtension extensions and executes them
-  /// one by ene.
-  void processInputTensor(Tensor &inputImageData, size_t startId, size_t endId,
+  /// one by one.
+  void processInputTensor(llvm::ArrayRef<Tensor *> inputImageData,
+                          size_t startId, size_t endId,
                           size_t batchSz) override;
 
   /// Registers Input Data Preprocessing Extensions.
@@ -83,13 +83,11 @@ public:
           &extVector);
 
 private:
-  std::vector<std::unique_ptr<PreProcessInputDataExtension>> extensions_;
+  UniquePtrVec<PreProcessInputDataExtension> extensions_;
 };
 
 void PostProcessExecutor::registerPostProcessOutputExtensions(
-    const std::vector<
-        std::function<std::unique_ptr<PostProcessOutputDataExtension>()>>
-        &extVector) {
+    const std::vector<PostProcessExtFuncPtr> &extVector) {
   for (auto &f : extVector) {
     extensions_.push_back(f());
   }
@@ -97,11 +95,11 @@ void PostProcessExecutor::registerPostProcessOutputExtensions(
 
 } // namespace
 
-/// Iterates over registered extensions for processing and Printing results
-/// and executes them.
+/// Iterates over registered extensions for processing and Printing results and
+/// executes them.
 int PostProcessExecutor::processOutputs(
     const llvm::StringMap<Placeholder *> &PHM, PlaceholderBindings &bindings,
-    llvm::ArrayRef<std::string> inputImageBatchFilenames) {
+    VecVecRef<std::string> inputImageBatchFilenames) {
   int numErrors = 0;
   for (auto &f : extensions_) {
     numErrors += f->processOutputs(PHM, bindings, inputImageBatchFilenames);
@@ -109,11 +107,11 @@ int PostProcessExecutor::processOutputs(
   return numErrors;
 }
 
-/// Iterates over PreProcessInputDataExtension extensions and executes them one
-/// by ene.
-void PreProcessInputExecutor::processInputTensor(Tensor &inputImageData,
-                                                 size_t startId, size_t endId,
-                                                 size_t batchSz) {
+/// Iterates over PreProcessInputDataExtension extensions and execute them one
+/// by one.
+void PreProcessInputExecutor::processInputTensor(
+    llvm::ArrayRef<Tensor *> inputImageData, size_t startId, size_t endId,
+    size_t batchSz) {
   for (auto &f : extensions_) {
     f->processInputTensor(inputImageData, startId, endId, batchSz);
   }
@@ -130,21 +128,23 @@ void PreProcessInputExecutor::registerInputDataPreProcessingExtension(
 
 Executor::Executor(std::string appName, int argc, char **argv) {
   appName_ = appName;
+  // Clear all external storage for command args set variables. This is
+  // necessary in order to support multiple calls to parse the command
+  // line; it seems that clearing the command line options is not possible,
+  // thus, we clear their external storage only. With each successive
+  // call to parse the arguments, arguments are pilling up in the ::cl
+  // argument, however, external storage will be set by the arguments from the
+  // current call only.
+  // NOTE: llvm::cl::ResetAllOptionOccurrences() or opt.reset() should do the
+  // job but they don't work.
+  // TODO: Loader should provide function to register callbacks.
+  initExecutorCoreCmdArgVars();
+  initImageCmdArgVars();
   // Verify/initialize command line parameters, and then loader initializes
   // the ExecutionEngine and Function.
+
   parseCommandLine(argc, argv);
-
-  for (const auto &inputImageDir : inputImageDirs) {
-    parseInputDir(inputImageDir);
-  }
-
-  if (!inputImageListFile.empty()) {
-    CHECK_EQ(inputImageFilenames.size(), 0)
-        << "When using -input-image-list-file all Input images must be "
-           "specified "
-           "using -input-image-list-file option.";
-    parseInputList(inputImageListFile);
-  }
+  processImageCmdArgVars(modelInputsOpt.size());
 }
 
 /// Registers a Loader Extension that will be invoked after model is loaded.
@@ -166,8 +166,7 @@ void Executor::registerInputDataPreProcessingExtension(
 /// Registers extension that will be invoked for each execution of the
 /// network. If multiple extensions are registered they will be executed in
 /// order they were registered.
-void Executor::registerPostProcessOutputExtension(
-    std::function<std::unique_ptr<PostProcessOutputDataExtension>()> func) {
+void Executor::registerPostProcessOutputExtension(PostProcessExtFuncPtr func) {
   ppOutputDataExtensions_.push_back(func);
 }
 
@@ -179,33 +178,96 @@ void Executor::addLoaderExtensions(Loader &ld) {
   }
 }
 
-/// This will parse command line, load, build and execute a network.
-int Executor::executeNetwork() {
-
-  if (inputImageListFile.empty() && inputTensorListFile.empty() &&
-      inputImageFilenames.size() == 0) {
-    llvm::errs() << "Args: Either positional inputImageFilenames or "
-                    "-inputImageListFile or "
-                    "-inputTensorListFile "
+void parseInputFiles(VecVec<std::string> &inputImageFiles) {
+  if (inputImageListFileOpt.empty() && inputTensorListFile.empty() &&
+      inputImageFilenamesOpt.size() == 0) {
+    llvm::errs() << "Args: Either positional image list or "
+                    "-input-image-list-file or "
+                    "-input-tensor-list-file  "
                     "must be used to specify input images.\n";
-    return 1;
+    return;
+  }
+
+  if (!inputImageDirs.empty() &&
+      (!inputImageListFileOpt.empty() || inputImageFilenamesOpt.size() != 0)) {
+    LOG(FATAL) << "Args: Specifying image using input-image-dir cannot be "
+                  "combined with "
+                  "-input-image-list-file or the positional image list.\n";
+  }
+
+  if (!inputImageListFileOpt.empty() && inputImageFilenamesOpt.size() != 0) {
+    LOG(FATAL) << "Args: positional image list cannot be combined with "
+                  "-input-image-list-file to specify input images.\n";
+  }
+
+  int32_t numInputNames = modelInputsOpt.size();
+
+  // if positional list of images, we support one input only. Assign 1st input
+  // vector list.
+  if (inputImageFilenamesOpt.size() != 0) {
+    CHECK_EQ(numInputNames, 1) << "When using positional image list, single "
+                                  "input networks are supported only.";
+    inputImageFiles.push_back(inputImageFilenamesOpt);
+    return;
   }
 
   if (!inputTensorListFile.empty()) {
-    CHECK_EQ(inputImageFilenames.size(), 0)
+    CHECK_EQ(inputImageFilenamesOpt.size(), 0)
         << "When using -input-tensor-list-file all Input images must be "
            "specified "
            "using -input-tensor-list-file option.";
-    parseInputList(inputTensorListFile);
+    CHECK_EQ(inputImageListFileOpt.size(), 0)
+        << "When using -input-tensor-list-file all Input images must be "
+           "specified "
+           "using -input-tensor-list-file option.";
+    CHECK_EQ(numInputNames, 1) << "When using -input-tensor-list-file single "
+                                  "input networks are supported only.";
+    std::vector<std::string> imageFiles;
+    parseInputList(inputTensorListFile, imageFiles);
+    inputImageFiles.push_back(imageFiles);
+    return;
   }
+
+  if (!inputImageDirs.empty()) {
+    CHECK_EQ(numInputNames, 1)
+        << "When using image dir. single input networks are supported only.";
+    for (const auto &inputImageDir : inputImageDirs) {
+      std::vector<std::string> imageFiles;
+      parseInputDir(inputImageDir, imageFiles);
+      inputImageFiles.push_back(imageFiles);
+    }
+  }
+
+  // If images are given using vector of lists of images
+  CHECK_EQ(numInputNames, inputImageListFileOpt.size())
+      << "Args: number of inputs and number of inputs image lists must match.";
+
+  size_t numInputImages = 0;
+  for (int i = 0; i < numInputNames; i++) {
+    std::vector<std::string> imageFiles;
+    parseInputList(inputImageListFileOpt[i], imageFiles);
+    inputImageFiles.push_back(imageFiles);
+    if (i > 0) {
+      CHECK_EQ(numInputImages, inputImageFiles[i].size())
+          << "Each image list file should have the same number of images.";
+    } else {
+      numInputImages = inputImageFiles[i].size();
+    }
+  }
+}
+
+/// This will parse command line, load, build and execute a network.
+int Executor::executeNetwork() {
+
+  parseInputFiles(inputImageFilenames_);
 
   if (excludedFirstWarmupRuns && excludedFirstWarmupRuns >= warmup) {
     llvm::errs() << "Excluding all warmup runs does not make sense\n";
     return 1;
   }
   // Stream input mode.
-  const bool streamInputFilenamesMode =
-      inputImageFilenames.size() == 1 && inputImageFilenames.front() == "-";
+  const bool streamInputFilenamesMode = inputImageFilenamesOpt.size() == 1 &&
+                                        inputImageFilenamesOpt.front() == "-";
 
   CHECK(!(streamInputFilenamesMode && emittingBundle()))
       << "Cannot emit a bundle and also stream inputs.";
@@ -221,7 +283,7 @@ int Executor::executeNetwork() {
   CHECK(((!miniBatchMode) || (!streamInputFilenamesMode)))
       << "The minibatch option is not compatible with the stream input "
          "image mode.";
-  CHECK(((!miniBatchMode) || (inputImageFilenames.size() % miniBatch == 0)))
+  CHECK(((!miniBatchMode) || (inputImageFilenames_[0].size() % miniBatch == 0)))
       << "The number of input images must be a multiple of the mini-batch.";
 
   CHECK(((!iterationsOpt) || (!miniBatchMode) ||
@@ -240,6 +302,12 @@ int Executor::executeNetwork() {
     CHECK(!instrumentDebug)
         << "The minibatch option is not compatible with debug instrumentation.";
   }
+
+  CHECK(!preloadAllImages || (modelInputsOpt.size() == 1))
+      << "Preloading all images doesn't support networks with multiple inputs.";
+
+  CHECK(!iterationsOpt || (modelInputsOpt.size() == 1))
+      << "Benchmark mode doesn't support networks with multiple inputs.";
 
   // Print out the inferred image classification.
   llvm::outs() << "Model: " << Loader::getModelOptPath() << "\n";
@@ -266,14 +334,13 @@ int Executor::executeNetwork() {
         ppInputDataExtensions_);
 
     if (!inputTensorListFile.empty()) {
-      loadInputImageFromFileWithType(inputImageFilenames,
-                                     &preloadedInputImageData, imageLayout);
+      loadInputImageFromFileWithType(
+          inputImageFilenames_[0], &preloadedInputImageData, imageLayoutOpt[0]);
     } else {
-      loadImagesAndPreprocess(inputImageFilenames, &preloadedInputImageData,
-                              imageNormMode, imageChannelOrder, imageLayout);
-
-      ppImageExecutor.processInputTensor(preloadedInputImageData, 0,
-                                         inputImageFilenames.size(),
+      // Load and process the image data into the inputImageData Tensor.
+      loadImagesAndPreprocess(inputImageFilenames_, {&preloadedInputImageData});
+      ppImageExecutor.processInputTensor({&preloadedInputImageData}, 0,
+                                         inputImageFilenames_[0].size(),
                                          preloadedInputImageData.dims()[0]);
     }
   }
@@ -304,25 +371,36 @@ int Executor::executeNetwork() {
     // streaming.
     bool isFirstRun = true;
 
+    // Perform graph profiling initialization if needed.
+    // if (profilingGraph()) {
+    //  loader.initGraphProfiling(
+    //      bindings, miniBatch > 0 ? miniBatch :
+    //      inputImageFilenames_[0].size(), inputImageFilenames_[0].size());
+    //}
+
     // These will be set during the first run.
-    Placeholder *inputImagePH = nullptr;
-    std::vector<Placeholder *> outputPHV;
-    llvm::StringMap<Placeholder *> PHM;
+    llvm::StringMap<Placeholder *> iPHM;
+    llvm::StringMap<Placeholder *> oPHM;
+    std::vector<Placeholder *> inPHs;
+    std::vector<Placeholder *> outPHs;
 
     size_t miniBatchIndex = startIndex;
-    Tensor inputImageData;
+    std::vector<Tensor> inputData(modelInputsOpt.size());
     if (preloadAllImages) {
-      inputImageData = preloadedInputImageData.getUnowned();
+      inputData[0] = preloadedInputImageData.getUnowned();
     }
-    std::vector<std::string> inputImageBatchFilenames;
-    if (!miniBatchMode && !streamInputFilenamesMode) {
-      inputImageBatchFilenames = inputImageFilenames;
+
+    VecVec<std::string> inputImageBatchFilenames;
+    if ((!miniBatchMode) &&
+        (!streamInputFilenamesMode || singleBatchRepeatedMode)) {
+      inputImageBatchFilenames = inputImageFilenames_;
     } else if (singleBatchRepeatedMode) {
-      inputImageBatchFilenames =
-          miniBatchMode ? std::vector<std::string>(inputImageFilenames.begin(),
-                                                   inputImageFilenames.begin() +
-                                                       miniBatch)
-                        : inputImageFilenames;
+      for (size_t i = 0, e = modelInputsOpt.size(); i < e; i++) {
+        std::vector<std::string> names(inputImageFilenames_[0].begin(),
+                                       inputImageFilenames_[0].begin() +
+                                           miniBatch);
+        inputImageBatchFilenames.push_back(names);
+      }
     }
     if (!tracePath.empty()) {
       loader.getHostManager()->setTraceContext(
@@ -337,13 +415,19 @@ int Executor::executeNetwork() {
       }
     }
 
+    // Pass input tensors around as array of pointers.
+    std::vector<Tensor *> inputImageData;
+    for (auto &data : inputData) {
+      inputImageData.push_back(&data);
+    }
+
     unsigned repeatedLoopCountRemaining = repeatSingleBatchCount;
 
     auto loopCond = [&]() {
       // If in stream mode then get the next image filenames if they exist,
       // otherwise exit.
       if (streamInputFilenamesMode) {
-        return getNextImageFilenames(&inputImageBatchFilenames);
+        return getNextStdinImageFilenames(inputImageBatchFilenames);
       }
 
       // If a single batch is going to be loaded once and repeated then keep
@@ -356,7 +440,7 @@ int Executor::executeNetwork() {
       // images (will break inside loop once done), or otherwise get the next
       // miniBatch image filenames if they exist, otherwise exit.
       if (miniBatchMode) {
-        return getNextMiniBatch(inputImageBatchFilenames, inputImageFilenames,
+        return getNextMiniBatch(inputImageBatchFilenames, inputImageFilenames_,
                                 miniBatchIndex, miniBatch, endIndex);
       }
 
@@ -368,15 +452,13 @@ int Executor::executeNetwork() {
       if (!preloadAllImages && (!singleBatchRepeatedMode || isFirstRun)) {
         // Load and process the image data into the inputImageData Tensor.
         if (!inputTensorListFile.empty()) {
-          loadInputImageFromFileWithType(inputImageBatchFilenames,
-                                         &inputImageData, imageLayout);
+          loadInputImageFromFileWithType(inputImageBatchFilenames[0],
+                                         inputImageData[0], imageLayoutOpt[0]);
         } else {
-          loadImagesAndPreprocess(inputImageBatchFilenames, &inputImageData,
-                                  imageNormMode, imageChannelOrder,
-                                  imageLayout);
-
-          ppImageExecutor.processInputTensor(
-              inputImageData, startIndex, endIndex, inputImageData.dims()[0]);
+          loadImagesAndPreprocess(inputImageBatchFilenames, inputImageData);
+          ppImageExecutor.processInputTensor(inputImageData, startIndex,
+                                             endIndex,
+                                             inputImageData[0]->dims()[0]);
         }
       }
 
@@ -384,8 +466,8 @@ int Executor::executeNetwork() {
       // miniBatch to get the start index.
       const dim_t startMiniBatchIndex = miniBatchIndex - miniBatch;
 
-      ShapeVector imageShape(inputImageData.getType().dims().begin(),
-                             inputImageData.getType().dims().end());
+      ShapeVector imageShape(inputImageData[0]->getType().dims().begin(),
+                             inputImageData[0]->getType().dims().end());
       if (miniBatch) {
         imageShape[0] = miniBatch;
       } else if (iterationsOpt) {
@@ -394,51 +476,84 @@ int Executor::executeNetwork() {
 
       // If we are benchmarking reset the image data to the batch size we need.
       if (iterationsOpt) {
-        // Resize the Tensor to the appropriate size.
-        inputImageData.reset(ElemKind::FloatTy, imageShape);
+        auto resetTensor = [](Tensor *tensor) {
+          ShapeVector imageSize(tensor->getType().dims().begin(),
+                                tensor->getType().dims().end());
+          imageSize[0] = miniBatch ? miniBatch : iterationsOpt;
+          tensor->reset(ElemKind::FloatTy, imageSize);
+        };
+        std::for_each(inputImageData.begin(), inputImageData.end(),
+                      resetTensor);
       }
 
       // If this is the first run, then we need to build and compile the model.
       if (isFirstRun) {
         isFirstRun = false;
 
-        // Build and compile the graph, and then get back the input Placeholder
-        // and output Placeholder.
-        std::pair<Placeholder *, llvm::StringMap<Placeholder *>>
-            inputOutputPair = buildAndCompileAndGetInAndOutPair(
-                loader, bindings,
-                preloadAllImages
-                    ? Type::newShape(inputImageData.getType(), imageShape)
-                    : inputImageData.getType());
+        std::vector<TypeRef> types;
+        auto preloadTy =
+            Type::newShape(inputImageData[0]->getType(), imageShape);
+
+        if (preloadAllImages) {
+          types.push_back(&preloadTy);
+        } else {
+          // get types of all input tensors.
+          for_each(inputImageData.begin(), inputImageData.end(),
+                   [&](auto *t) { types.push_back(&t->getType()); });
+        }
+
+        // Build and compile the graph, then get input and output Placeholders.
+        std::tie(iPHM, oPHM) =
+            buildAndCompileAndGetInAndOutPair(loader, bindings, types);
 
         // If in bundle mode, the bundle has been saved by the above call, so we
         // can safely return.
         if (emittingBundle()) {
-          LOG(INFO) << "Emit bndle mode is on. Network is compiled only.";
+          LOG(INFO) << "Emit bundle mode is on. Network is compiled only.";
           return;
         }
 
-        inputImagePH = inputOutputPair.first;
-        PHM = inputOutputPair.second;
-        for (auto phI = PHM.begin(), e = PHM.end(); phI != e; ++phI) {
-          CHECK(phI->second) << "Placeholder in output map is NULL.";
-          outputPHV.push_back(phI->second);
-        }
+        // Obtain input/output placeholders from input/output map.
+        for_each(iPHM.begin(), iPHM.end(), [&](auto &p) {
+          CHECK(p.second) << "Placeholder in input map is NULL.";
+          inPHs.push_back(p.second);
+        });
+        for_each(oPHM.begin(), oPHM.end(), [&](auto &p) {
+          CHECK(p.second) << "Placeholder in output map is NULL.";
+          outPHs.push_back(p.second);
+        });
       }
 
-      Tensor inputImageDataBatch = inputImageData.getUnowned(
-          imageShape, {preloadAllImages ? startMiniBatchIndex : 0, 0, 0, 0});
+      // preloadAllImages - set a new Tensor that takes a slice from the 1st
+      // (and only) input tensor. Assign this new Tensor the tensor array of
+      // pointers, inputImageData, used further.
+      Tensor inputImageDataBatch;
+      if (preloadAllImages) {
+        std::vector<dim_t> imgSliceStart(imageShape.size(), 0);
+        imgSliceStart[0] = startMiniBatchIndex;
+        inputImageDataBatch =
+            inputImageData[0]->getUnowned(imageShape, imgSliceStart);
+        inputImageData[0] = &inputImageDataBatch;
+      }
 
-      CHECK(inputImagePH) << "Input must be valid.";
-      CHECK(!PHM.empty()) << "Output must be valid.";
-      CHECK(inputImagePH->dims() == inputImageDataBatch.dims())
-          << "New input shape does not match the compiled function: "
-          << inputImagePH->dims() << " vs " << inputImageDataBatch.dims();
+      // Compile done.
+      CHECK(!inPHs.empty()) << "Input must be valid.";
+      CHECK(!outPHs.empty()) << "Output must be valid.";
+      CHECK_EQ(inPHs.size(), inputImageData.size())
+          << "Number of input placeholders and tensors must match";
+      for (size_t i = 0, e = inputImageData.size(); i < e; i++) {
+        CHECK(inPHs[i]->dims() == inputImageData[i]->dims())
+            << "New input shape does not match the compiled function: "
+            << inPHs[i]->dims() << " vs " << inputImageData[i]->dims();
+      }
 
       // Convert the raw input to fp16. This must be done every time we get new
       // image data.
+      // Convert the raw input to fp16.
       if (convertInAndOutToFp16) {
-        inputImageDataBatch.convertToType(ElemKind::Float16Ty);
+        for (auto &t : inputImageData) {
+          t->convertToType(ElemKind::Float16Ty);
+        }
       }
 
       // If we are benchmarking we are done with the while loop.
@@ -451,10 +566,10 @@ int Executor::executeNetwork() {
 
       // About to run inference, so update the input image Placeholder's backing
       // Tensor with inputImageDataBatch.
-      updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageDataBatch});
+      updateInputPlaceholders(bindings, inPHs, inputImageData);
 
       // Perform the inference execution, updating output tensors.
-      auto batchSize = inputImageDataBatch.dims()[0];
+      auto batchSize = inputImageData[0]->dims()[0];
       loader.runInference(exContext.get(), batchSize);
       if (traceContext) {
         traceContext->merge(exContext->getTraceContext());
@@ -464,7 +579,7 @@ int Executor::executeNetwork() {
       // depending on type of the network.
       {
         std::lock_guard<std::mutex> lock(ioMu);
-        numErrors += ppResultExecutor.processOutputs(PHM, bindings,
+        numErrors += ppResultExecutor.processOutputs(oPHM, bindings,
                                                      inputImageBatchFilenames);
       }
 
@@ -474,8 +589,8 @@ int Executor::executeNetwork() {
 
     if (iterationsOpt) {
       // Image tensors loaded up to be run at once for benchmark mode.
-      std::vector<std::unique_ptr<ExecutionContext>> contexts =
-          setupContextPool(outputPHV, inputImagePH, inputImageData);
+      UniquePtrVec<ExecutionContext> contexts =
+          setupContextPool(outPHs, inPHs[0], *inputImageData[0]);
 
       std::string name = loader.getFunctionName();
       std::unique_ptr<llvm::Timer> restRunsTimer = nullptr;
@@ -509,11 +624,10 @@ int Executor::executeNetwork() {
       }
     }
 
-    // If profiling, generate and serialize the profiling infos now that we
-    // have run inference one or more times to gather the profile.
     if (profilingGraph()) {
       loader.generateAndSerializeProfilingInfos(bindings);
     }
+
     if (!tracePath.empty()) {
       Error err = loader.getHostManager()->stopDeviceTrace();
       if (err) {
@@ -535,7 +649,7 @@ int Executor::executeNetwork() {
       (runAllInputsOnAllDevices || miniBatchMode) && !emittingBundle() &&
       !profilingGraph();
   const size_t numBatches =
-      miniBatchMode ? inputImageFilenames.size() / miniBatch : 1u;
+      miniBatchMode ? inputImageFilenames_[0].size() / miniBatch : 1u;
   const size_t numThreads =
       runAllInputsOnAllDevices
           ? miniBatchThreads
@@ -557,10 +671,10 @@ int Executor::executeNetwork() {
     if (!runAllInputsOnAllDevices && numThreads > 1) {
       startIndex = i * miniBatchesPerThread * miniBatch;
       endIndex = std::min((i + 1) * miniBatchesPerThread * miniBatch,
-                          inputImageFilenames.size());
+                          inputImageFilenames_[0].size());
     } else {
       startIndex = 0;
-      endIndex = inputImageFilenames.size();
+      endIndex = inputImageFilenames_[0].size();
     }
     auto worker = [&processImageRange, startIndex, endIndex, i]() {
       processImageRange(startIndex, endIndex, i);

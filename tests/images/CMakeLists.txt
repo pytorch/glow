@@ -7,6 +7,11 @@ foreach(filename ${files})
   configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)
 endforeach(filename)
 
+file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} npy/*.npy npy/*.txt)
+foreach(filename ${files})
+  configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)
+endforeach(filename)
+
 file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} imagenet_299/*.png)
 foreach(filename ${files})
   configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)

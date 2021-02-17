@@ -57,6 +57,12 @@ ShapeVector expandDimsToMax(llvm::ArrayRef<dim_t> currDims);
 ShapeVector reduceDims(llvm::ArrayRef<dim_t> dims,
                        llvm::ArrayRef<unsigned_t> axes, bool keepDims);
 
+/// Helper function that \returns the transpose shuffle that would undo the
+/// given \p shuffle so that if two transposes were composed with the given
+/// shuffle and the result of this function, it would result in the identity
+/// shuffle.
+std::vector<unsigned_t> getInverseTranspose(llvm::ArrayRef<unsigned_t> shuffle);
+
 namespace runtime {
 class DeviceManager;
 }
@@ -470,10 +476,12 @@ public:
 
     // If the new size is identical to the allocated size then there is no need
     // to re-allocate the buffer.
-    const bool isOrigPadded = getSizeInBytes() != getUnpaddedSizeInBytes();
-    const bool isNewPadded = T.getSizeInBytes() != unpaddedSize;
-    const bool isBufReuseAllowed = (isOrigPadded == isNewPadded) &&
-                                   (getUnpaddedSizeInBytes() == unpaddedSize);
+    const bool isOrigPadded =
+        getSizeInBytes() != uint64_t(getUnpaddedSizeInBytes());
+    const bool isNewPadded = T.getSizeInBytes() != size_t(unpaddedSize);
+    const bool isBufReuseAllowed =
+        (isOrigPadded == isNewPadded) &&
+        (getUnpaddedSizeInBytes() == size_t(unpaddedSize));
     if (type_ == T && getData() && isBufReuseAllowed) {
 #ifdef GLOW_DEBUG_TENSOR_INIT
       PseudoRNG rng;
@@ -670,6 +678,8 @@ public:
       return isEqualImpl<int16_t>(other, allowedError, verbose);
     case ElemKind::Int32QTy:
       return isEqualImpl<int32_t>(other, allowedError, verbose);
+    case ElemKind::UInt8ITy:
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::Int32ITy:
       return isEqualImpl<int32_t>(other, allowedError, verbose);
     case ElemKind::Int64ITy:

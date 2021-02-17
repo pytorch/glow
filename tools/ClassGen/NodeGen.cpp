@@ -109,11 +109,12 @@ int main(int argc, char **argv) {
       .addInput("FilterOffsets")
       .addInput("BiasScales")
       .addInput("BiasOffsets")
-      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Kernels", /* addSetter */ true)
       .addMember(MemberType::VectorUnsigned, "Strides")
-      .addMember(MemberType::VectorUnsigned, "Pads")
-      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
+      .addMember(MemberType::Unsigned, "Group", /* addSetter */ true)
       .addMember(MemberType::VectorUnsigned, "Dilation")
+      .addFusedActivation()
       .addResultFromCtorArg()
       .setDocstring(
           "Performs 2D Convolution using a given Input, Filter, and "
@@ -254,7 +255,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "ChannelIdx")
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs batch normalization on the Input tensor with the "
                     "provided Scale, Bias, Mean, Var, ChannelIdx, Epsilon, and "
@@ -332,6 +333,13 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs SoftMax normalization on the Input tensor.");
 
+  BB.newNode("LogSoftMax")
+      .addInput("Input")
+      .addInput("Selected")
+      .addResultFromCtorArg()
+      .addGradient()
+      .setDocstring("Performs LogSoftMax normalization on the Input tensor.");
+
   BB.newNode("CrossEntropyLoss")
       .addInput("P")
       .addInput("Labels")
@@ -392,9 +400,12 @@ int main(int argc, char **argv) {
   BB.newNode("FloorDiv")
       .addInput("LHS")
       .addInput("RHS")
+      .addMember(MemberType::Boolean, "Truncate")
       .addResultFromCtorArg()
       .dataParallel()
-      .setDocstring("Performs Div on the LHS and RHS operands, then Floor.");
+      .setDocstring(
+          "Performs Div on the LHS and RHS operands, then Floor. If Truncate "
+          "is set to true then truncate the quotient to zero instead.");
 
   BB.newNode("Max")
       .addInput("LHS")
@@ -517,6 +528,13 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Performs an element-wise ROUND(x) of the Input operand.");
 
+  BB.newNode("Truncate")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring(
+          "Performs an element-wise TRUNCATE(x) of the Input operand.");
+
   BB.newNode("Sqrt")
       .addInput("Input")
       .addResultFromCtorArg()
@@ -573,6 +591,12 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs an element-wise Arctan(x) of the Input operand.");
+
+  BB.newNode("Erf")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Erf(x) of the Input operand.");
 
   BB.newNode("Exp")
       .addInput("Input")
@@ -635,6 +659,15 @@ int main(int argc, char **argv) {
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
 
+  BB.newNode("BatchedReduceSumSquare")
+      .addInput("Batch")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Accumulates squares of all of the layers in the batch and produce a "
+          "tensor that has the same dimensions as the input tensor "
+          "without the first dimension.");
+
   BB.newNode("BatchedReduceMean")
       .addInput("Batch")
       .addMember(MemberType::VectorUnsigned, "Axes")
@@ -655,6 +688,14 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Performs Reduce Max operation on the Input given "
                     "Axes.");
+
+  BB.newNode("BatchedReduceProd")
+      .addInput("Batch")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring("Accumulates the product all of the layers in the batch "
+                    " and produce a tensor that has the same dimensions as "
+                    " the input tensor without the first dimension.");
 
   BB.newNode("ChannelShuffle")
       .addInput("Input")
@@ -719,6 +760,16 @@ int main(int argc, char **argv) {
                     "individual slice is scaled by its weight: Result[0] = "
                     "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
                     "It implies that len(Weights) == len(Indices).");
+
+  BB.newNode("Embedding")
+      .addInput("Weights")
+      .addInput("Indices")
+      .addMember(MemberType::Int64, "PadIdx")
+      .addMember(MemberType::Boolean, "Scale")
+      .addMember(MemberType::Boolean, "Sparse")
+      .addResultFromCtorArg()
+      .setDocstring("Gathers slices of the outer-most dimension of Weights "
+                    "indexed by Indices tensor.");
 
   BB.newNode("EmbeddingBag")
       .addInput("Data")
@@ -1102,8 +1153,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorFloat, "Scale")
       .addResultFromCtorArg()
       .setDocstring(
-          "Given Input tensor of [N,H,W,C], where N is the batch, C is the "
-          "channel or depth, H is the height and W is the width, Generates an "
+          "Given Input tensor of 3D, 4D, 5D or 6D, generates an "
           "Output tensor with resized spatial dimensions using nearest "
           "neighbor interpolation. The Output tensor is of shape "
           "floor(input_dimension * scale)");
@@ -1299,6 +1349,31 @@ int main(int argc, char **argv) {
           "Moreover the input and output types must not be quantized types. "
           "Quantized types should use the appropriate Quantize, Dequantize, "
           "and Rescale nodes.");
+
+  //===--------------------------------------------------------------------===//
+  //                Custom kernels invocations
+  //===--------------------------------------------------------------------===//
+  BB.newNode("ExternalFunctionCall")
+      .addMember(MemberType::VectorNodeValue, "Inputs")
+      // For now use single output.
+      .addResultFromCtorArg()
+      .addMember(MemberType::String, "FunctionName")
+      // Examples are function source code, binary, or as needed.
+      // The use of the following two fields will vary depending
+      // on which kind of external function is used.
+      .addMember(MemberType::String, "FunctionImpl")
+      // Function kind, e.g. CUDA, function pointer, binary, backend-specific
+      // source code.
+      .addMember(MemberType::String, "FunctionKind")
+      .skipAutogenSerialization()
+      .setHasSideEffects(true)
+      .setDocstring("This is a node representing an external function call. "
+                    "One possible use of this capability is to pass a source "
+                    "code for a function/kernel. When processing this node, a "
+                    "backend can compile and execute the source code. This "
+                    "node can also be used to pass binary or pointers to "
+                    "executable code. The semantics and implementation of this "
+                    "node not standardized and is very backend-specific.");
 
   //===--------------------------------------------------------------------===//
   //                Pre Processing

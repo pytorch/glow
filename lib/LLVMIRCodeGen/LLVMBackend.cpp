@@ -42,8 +42,8 @@ namespace {
 /// Perform memory allocation for a JIT execution.
 void allocateJITMemory(const IRFunction *F, AllocationsInfo &allocationsInfo) {
   allocationsInfo.numberValues(F);
-  allocationsInfo.allocateActivations(F);
   allocationsInfo.allocateWeightVars(F);
+  allocationsInfo.allocateActivations(F);
   allocationsInfo.allocateTensorViews(F);
 }
 
@@ -57,6 +57,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedReduceMinNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
+
+  case Kinded::Kind::BatchedReduceProdNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::MulNodeKind:
@@ -160,6 +163,11 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
                 ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
+
+  case Kinded::Kind::EmbeddingNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy}, {EmbeddingNode::IndicesIdx}) &&
+           (NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::EmbeddingBagNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

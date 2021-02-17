@@ -23,6 +23,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -523,7 +524,12 @@ int run() {
         glow::flags::SparseNNPartitioningSchemeNumCoresOther;
   }
 
-#ifdef GLOW_WITH_NNPI
+  if (!glow::flags::processBackendSpecificOpts(
+          cctx.backendOpts.backendSpecificOpts,
+          glow::flags::BackendSpecificOpts)) {
+    return -1;
+  }
+
   if (glow::nnpi::flags::NumParallelChunks > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
         std::to_string(glow::nnpi::flags::NumParallelChunks);
@@ -532,8 +538,6 @@ int run() {
     cctx.backendOpts.backendSpecificOpts["NNPIModelParallelSplitAlignment"] =
         std::to_string(glow::nnpi::flags::ModelParallelSplitAlignment);
   }
-#endif
-
   if (glow::flags::UseDAGOptimizer) {
     cctx.callDAGOptimizer = true;
     cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
@@ -543,7 +547,6 @@ int run() {
     cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
         glow::flags::DAGOptimizerPlacementTaggingAlgorithm;
   }
-
   if (glow::flags::DelayAndRecordConstantModification) {
     cctx.optimizationOpts.delayAndRecordConstantModification = true;
   }
@@ -594,41 +597,58 @@ int run() {
   cctx.saturateHost = glow::flags::SaturateHost;
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
+  // Whether to collect results and check accuracy. If we're not checking
+  // accuracy then don't load reference outputs
+  bool runAccuracyChecks =
+      !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
+
   // Parse all input and output files ahead of inference.
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedInputs;
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedOutputs;
   size_t inputGroupSize = inputsOpt.size();
   if (inputGroupSize) {
-    for (int i = 0; i < inputGroupSize; ++i) {
+    for (size_t i = 0; i < inputGroupSize; ++i) {
       llvm::outs() << "Loading input file: " << inputsOpt[i] << "\n";
       auto inputGroup = parseOnnxFile(inputsOpt[i]);
       parsedInputs.push_back(std::move(inputGroup));
-      llvm::outs() << "Loading output file: " << outputsOpt[i] << "\n";
-      auto outputGroup = parseOnnxFile(outputsOpt[i]);
-      parsedOutputs.push_back(std::move(outputGroup));
+      if (runAccuracyChecks) {
+        llvm::outs() << "Loading output file: " << outputsOpt[i] << "\n";
+        auto outputGroup = parseOnnxFile(outputsOpt[i]);
+        parsedOutputs.push_back(std::move(outputGroup));
+      }
     }
-  } else if (!inputPatternOpt.empty() && !outputPatternOpt.empty() &&
-             seqLenOpt > 0) {
+  } else if (!inputPatternOpt.empty() && seqLenOpt > 0) {
     inputGroupSize = seqLenOpt;
     size_t input_iter = inputPatternOpt.find("{}");
     CHECK_NE(input_iter, std::string::npos)
         << "Input pattern " << inputPatternOpt << " has to contain {}";
-    size_t output_iter = outputPatternOpt.find("{}");
-    CHECK_NE(output_iter, std::string::npos)
-        << "Output pattern " << outputPatternOpt << " has to contain {}";
     for (unsigned i = 0; i < seqLenOpt; ++i) {
       std::string copy = inputPatternOpt;
       copy.replace(input_iter, 2, std::to_string(seqStartOpt + i));
       llvm::outs() << "Loading input file: " << copy << "\n";
       auto inputGroup = parseOnnxFile(copy);
       parsedInputs.push_back(std::move(inputGroup));
-      copy = outputPatternOpt;
-      copy.replace(output_iter, 2, std::to_string(seqStartOpt + i));
-      llvm::outs() << "Loading output file: " << copy << "\n";
-      auto outputGroup = parseOnnxFile(copy);
-      parsedOutputs.push_back(std::move(outputGroup));
+    }
+
+    if (runAccuracyChecks) {
+      CHECK(!outputPatternOpt.empty())
+          << "Output pattern must be provided for accuracy checks";
+      size_t output_iter = outputPatternOpt.find("{}");
+      CHECK_NE(output_iter, std::string::npos)
+          << "Output pattern " << outputPatternOpt << " has to contain {}";
+      for (unsigned i = 0; i < seqLenOpt; ++i) {
+        std::string copy = outputPatternOpt;
+        copy.replace(output_iter, 2, std::to_string(seqStartOpt + i));
+        llvm::outs() << "Loading output file: " << copy << "\n";
+        auto outputGroup = parseOnnxFile(copy);
+        parsedOutputs.push_back(std::move(outputGroup));
+      }
     }
   }
+
+  llvm::outs() << "\ninput pattern: " + inputPatternOpt + "\n";
+  llvm::outs() << "\nseqlen: " + std::to_string(seqLenOpt) + "\n";
+  llvm::outs() << "\ninputgroupsize: " + std::to_string(inputGroupSize) + "\n";
 
   if (parsedInputs.empty()) {
     llvm::outs() << "No inputs are provided. Exiting...\n";
@@ -649,7 +669,7 @@ int run() {
     // Figure out which placeholder is input.
     std::unordered_set<std::string> inputTensorNames;
     for (const auto &proto : parsedInputs[0].initializer()) {
-      inputTensorNames.insert(proto.name());
+      inputTensorNames.insert(glow::legalizeName(proto.name()));
     }
 
     glow::PlaceholderList inputPlaceholderList;
@@ -671,10 +691,6 @@ int run() {
           usingGlowCustomOps);
       inputBindings.emplace_back(std::move(bindings));
     }
-
-    // Whether to collect results and check accuracy
-    bool runAccuracyChecks =
-        !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
 
     if (glow::flags::DumpDebugTraces && glowEnableDeviceTrace) {
       // Start device traces.
@@ -707,7 +723,7 @@ int run() {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
-          traceContext->setThreadName("Caller");
+          traceContext->setThreadName("Request Thread");
         }
         TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
                           "Dispatch to prep input and dispatch");
@@ -776,9 +792,12 @@ int run() {
 
       if (result.error) {
         llvm::outs() << "Inference failed!\n";
+        if (result.error.peekErrorValue()->isFatalError()) {
+          std::string msg = result.error.peekErrorValue()->logToString();
+          llvm::outs() << "Non-recoverable device error: " << msg << "\n";
+        }
         ++numFailed;
       } else {
-        const auto &outputGroup = parsedOutputs[result.index];
         ONNX_NAMESPACE::GraphProto outputG;
         std::ofstream of;
         if (dumpOutputsOpt) {
@@ -789,6 +808,7 @@ int run() {
         }
 
         if (runAccuracyChecks) {
+          const auto &outputGroup = parsedOutputs[result.index];
           CHECK(result.ctx);
           const auto &bindings = *result.ctx->getPlaceholderBindings();
           for (const auto &tp : outputGroup.initializer()) {
@@ -810,8 +830,8 @@ int run() {
               assert(tensor->size() == tensorRef.size());
               auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
               auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
-              assert(sortedResults.size() == topKCompare &&
-                     sortedResults.size() == topKCompare);
+              assert(sortedResults.size() == size_t(topKCompare) &&
+                     sortedResults.size() == size_t(topKCompare));
 
               bool allKMatch = true;
               std::stringstream ss;

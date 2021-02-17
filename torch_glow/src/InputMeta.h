@@ -30,19 +30,26 @@ namespace glow {
 struct InputMeta {
   c10::ScalarType type;
   std::vector<glow::sdim_t> dims;
+  double scale;
+  int64_t offset;
 
-  InputMeta(c10::ScalarType type_, std::vector<glow::sdim_t> &&dims_)
-      : type(type_), dims(std::move(dims_)) {}
+  InputMeta(c10::ScalarType type_, std::vector<glow::sdim_t> &&dims_,
+            double scale_ = 1.0, int64_t offset_ = 0)
+      : type(type_), dims(std::move(dims_)), scale(scale_), offset(offset_) {}
 
-  InputMeta(c10::ScalarType type_, const std::vector<glow::sdim_t> &dims_)
-      : type(type_), dims(dims_) {}
+  InputMeta(c10::ScalarType type_, const std::vector<glow::sdim_t> &dims_,
+            double scale_ = 1.0, int64_t offset_ = 0)
+      : type(type_), dims(dims_), scale(scale_), offset(offset_) {}
 
-  InputMeta(c10::ScalarType type_, c10::IntArrayRef dims_)
+  InputMeta(c10::ScalarType type_, c10::IntArrayRef dims_, double scale_ = 1.0,
+            int64_t offset_ = 0)
       : type(type_),
-        dims(std::vector<glow::sdim_t>(dims_.begin(), dims_.end())) {}
+        dims(std::vector<glow::sdim_t>(dims_.begin(), dims_.end())),
+        scale(scale_), offset(offset_) {}
 
   bool operator==(const InputMeta &other) const {
-    return type == other.type && dims == other.dims;
+    return type == other.type && dims == other.dims && scale == other.scale &&
+           offset == other.offset;
   }
 
   /// Produce a printable string for the InputMeta
@@ -65,14 +72,21 @@ struct InputMetaStack {
 
   /// Hash the InputMetaStack
   size_t hash() const;
+
+  /// This function is to optimize caching map performance.
+  /// nominalBatchIdx is index of input to get batchSize.
+  /// The return value (batchSize if inputs are valid) will be used as key of
+  /// caching graph map
+  size_t optimizedHash(int32_t nominalBatchIdx) const;
 };
 
 /// \returns a InputMetaStack representing the stack \p inputs or an Error if
-/// one occurs. If \p ignoreObjects is true then any Object IValues will be
-/// ignored, otherwise all IValues on the inputs stack must be PyTorch tensors.
+/// one occurs. If \p ignoreNonTensors is true then any non-tensor IValues will
+/// be ignored, otherwise all IValues on the inputs stack must be PyTorch
+/// tensors.
 Expected<InputMetaStack>
 inputMetaStackFromStack(const c10::ArrayRef<c10::IValue> &inputs,
-                        bool ignoreObjects = false);
+                        bool ignoreNonTensors = false);
 
 /// Deserialize an InputMeta from string \p raw_data.
 InputMetaStack loadInputMeta(const std::string &raw_data);

@@ -117,6 +117,16 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   EXPECT_NEAR(1.6, max, 0.00001);
 }
 
+/// Creates an interpreter with a given \p name and custom instruction handler
+/// \p hook. \retruns a newly created custom interpreter.
+static Backend *createCustomInterpreter(llvm::StringRef name,
+                                        IRInstructionProcessingFn hook) {
+  auto interpreter = new Interpreter();
+  interpreter->setIRInstructionProcessingHandler(hook);
+  interpreter->setName(name);
+  return interpreter;
+}
+
 #ifdef GLOW_WITH_CPU
 
 /// A couple of counters to check that custom processing has happened.
@@ -155,16 +165,6 @@ static IRInstructionProcessingFn customInterpreterHook =
   }
   return false;
 };
-
-/// Creates an interpreter with a given \p name and custom instruction handler
-/// \p hook. \retruns a newly created custom interpreter.
-static Backend *createCustomInterpreter(llvm::StringRef name,
-                                        IRInstructionProcessingFn hook) {
-  auto interpreter = new Interpreter();
-  interpreter->setIRInstructionProcessingHandler(hook);
-  interpreter->setName(name);
-  return interpreter;
-}
 
 /// Check support for intercepting and customizing the processing of
 /// instructions suppored by Interpreter.
@@ -252,6 +252,152 @@ TEST(Interpreter, customHandleUnsupportedInstruction) {
 }
 
 #endif
+
+/// An interceptor to be invoked when executing the interpreter instructions.
+/// This is similar in spirit to customInterpreterHook.
+/// Please remember, the user can choose to do what she wants to with funcImpl
+/// -- they can compile and call it (like CUDA), or just invoke it, if it's a
+/// handle to an external function. In this case, based on funcImpl being "PLUS"
+/// or not, we add the inputs and return the value in the output.
+static IRInstructionProcessingFn externFnCallInterpreterHook =
+    [](const Instruction *I, IRInstructionProcessingStage executionStage,
+       void *ctx) -> bool {
+  // Only handle instructions in the processing stage.
+  if (executionStage != IRInstructionProcessingStage::PROCESSING) {
+    return false;
+  }
+
+  if (llvm::isa<ExternalFunctionCallInst>(I)) {
+    auto boundInterpFn = reinterpret_cast<BoundInterpreterFunction *>(ctx);
+    auto EFCI = llvm::dyn_cast<ExternalFunctionCallInst>(I);
+    auto funcImpl = EFCI->getFunctionImpl();
+
+    auto output = EFCI->getDest();
+    auto input1 = EFCI->getOperand(1).first;
+    auto input2 = EFCI->getOperand(2).first;
+    auto out = boundInterpFn->getWeightHandle<float>(output);
+    auto in1 = boundInterpFn->getWeightHandle<float>(input1);
+    auto in2 = boundInterpFn->getWeightHandle<float>(input2);
+
+    // In this simple test, we check the funcImpl of the instruction is PLUS
+    // or MINUS. If so, we return the sum or difference of the inputs. If it's
+    // anything else we zero the output. Note that this test shows a simple use
+    // of the ExternalFunctionCallInst. The user based on their needs can
+    // compile, compile and invoke, or invoke an external function. PLEASE NOTE
+    // HERE WE COULD HAVE INVOKED AN EXTERNAL FUNCTION OR COMPILED AND RAN CODE.
+    if (funcImpl == "PLUS") {
+      for (dim_t i = 0, e = out.size(); i < e; i++) {
+        out.raw(i) = in1.raw(i) + in2.raw(i);
+      }
+    } else if (funcImpl == "MINUS") {
+      for (dim_t i = 0, e = out.size(); i < e; i++) {
+        out.raw(i) = in1.raw(i) - in2.raw(i);
+      }
+    } else {
+      // Only PLUS and MINUS are supported.
+      for (dim_t i = 0, e = out.size(); i < e; i++) {
+        out.raw(i) = 0.0;
+      }
+    }
+    // Tell the backend to skip standard processing of this instruction.
+    return true;
+  }
+  return false;
+};
+
+TEST(Interpreter, ExternalFunctionCallTest) {
+  // Register a custom Interpreter-based backend with a hook for handling the
+  // ExternalFunctionCall instructions.
+  REGISTER_DYNAMIC_GLOW_BACKEND_FACTORY(
+      CustomInterpreterFactory, Interpreter, "CustomInterpreter",
+      createCustomInterpreter("CustomInterpreter", externFnCallInterpreterHook))
+  // Create a custom interpreter backend.
+  ExecutionEngine customInterpreterEE("CustomInterpreter");
+  auto *customInterpreterBackend =
+      &customInterpreterEE.getBackend("CustomInterpreter");
+  auto &mod = customInterpreterEE.getModule();
+  auto *F = mod.createFunction("test");
+
+  Tensor inputs(ElemKind::FloatTy, {10});
+  inputs.zero();
+
+  auto *input1 = mod.createPlaceholder(ElemKind::FloatTy, {10}, "in1", false);
+  auto *input2 = mod.createPlaceholder(ElemKind::FloatTy, {10}, "in2", false);
+
+  // For this test, we send in a toy external function. We call it plus_call.
+  // The functionImpl is just a string "PLUS". Based on this string being equal
+  // to "PLUS", we compute an add operation with the inputs and store it to the
+  // output. PLEASE NOTE: This test is just a toy example. The user can choose
+  // to do what she wants to with funcImpl -- they can compile and call it (like
+  // CUDA), or just invoke it, if it's a handle to an external function, and use
+  // the inputs and outputs as they see fit.
+
+  std::string fnName = "plus_call";
+  // This can be source code like OpenCL, CUDA, or a handle to a function.
+  std::string fnImplPlus = "PLUS";
+  std::string fnImplMinus = "MINUS";
+  std::string fnImplMul = "MUL";
+  std::string fnKind = "CUSTOM_OP";
+
+  auto *extFnCallPlus = F->createExternalFunctionCall(
+      "external_function_call", input1->getType(), {input1, input2}, fnName,
+      fnImplPlus, fnKind);
+  auto *extFnCallMinus = F->createExternalFunctionCall(
+      "external_function_call", input1->getType(), {input1, input2}, fnName,
+      fnImplMinus, fnKind);
+  auto *extFnCallMul = F->createExternalFunctionCall(
+      "external_function_call", input1->getType(), {input1, input2}, fnName,
+      fnImplMul, fnKind);
+  auto *savePlus = F->createSave("save", extFnCallPlus);
+  auto *saveMinus = F->createSave("save", extFnCallMinus);
+  auto *saveMul = F->createSave("save", extFnCallMul);
+
+  std::unique_ptr<PlaceholderBindings> customInterpreterBindings(
+      new PlaceholderBindings);
+  customInterpreterBindings->allocate(
+      {input1, input2, savePlus->getPlaceholder(), saveMinus->getPlaceholder(),
+       saveMul->getPlaceholder()});
+
+  // Now get the tensors and set their values.
+  auto inTensor1 = customInterpreterBindings->get(input1)->getHandle<float>();
+  auto inTensor2 = customInterpreterBindings->get(input2)->getHandle<float>();
+  for (dim_t i = 0, e = inTensor1.size(); i < e; i++) {
+    inTensor1.raw(i) = 5.0;
+    inTensor2.raw(i) = 4.0;
+  }
+
+  // Generate the IR for the custom backend.
+  std::unique_ptr<IRFunction> customInterpreterIR =
+      glow::generateAndOptimizeIR(F, *customInterpreterBackend, false);
+
+  auto customInterpreterCompiledF(
+      reinterpret_cast<BackendUsingGlowIR *>(customInterpreterBackend)
+          ->compileIR(std::move(customInterpreterIR)));
+
+  ExecutionContext customInterpreterExecCtx(
+      std::move(customInterpreterBindings));
+
+  FAIL_TEST_IF_ERR(
+      customInterpreterCompiledF->execute(&customInterpreterExecCtx));
+
+  // Get bindings, then get the input and output tensors.
+  auto *bindings = customInterpreterExecCtx.getPlaceholderBindings();
+  auto in1 = bindings->get(input1)->getHandle<float>();
+  auto in2 = bindings->get(input2)->getHandle<float>();
+  auto outputPlus =
+      bindings->get(savePlus->getPlaceholder())->getHandle<float>();
+  auto outputMinus =
+      bindings->get(saveMinus->getPlaceholder())->getHandle<float>();
+  auto outputMul = bindings->get(saveMul->getPlaceholder())->getHandle<float>();
+
+  // Verify the output tensors. Add and Minus should have been processed in the
+  // hook. Mul is not supported, and this ouptut should be zero'd.
+  for (dim_t i = 0, e = outputPlus.size(); i < e; i++) {
+    EXPECT_TRUE(outputPlus.raw(i) == in1.raw(i) + in2.raw(i));
+    EXPECT_TRUE(outputMinus.raw(i) == in1.raw(i) - in2.raw(i));
+    EXPECT_TRUE(outputMul.raw(i) == 0.0);
+  }
+}
 
 /// Check that new backends and backend factories can be registered dynamically.
 TEST(Interpreter, DynamicBackendFactory) {
@@ -348,6 +494,30 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   // Check that tensor views are labelled correctly.
   EXPECT_EQ(table.find("FC_reshape2D_tensorview")->second.input, false);
   EXPECT_EQ(table.find("FC_reshape2D_tensorview")->second.output, false);
+}
+
+// Test that using a buffer in a TensorView instruction doesn't get it marked
+// as an input buffer.
+TEST(IR, testInputToTensorView) {
+  Module mod;
+  Function *F = mod.createFunction("main");
+  IRFunction M(F);
+  IRBuilder builder(&M);
+  auto T0 = mod.uniqueType(ElemKind::FloatTy, {1024, 1024});
+  auto T1 = mod.uniqueType(ElemKind::FloatTy, {512, 1024});
+  auto *input0 = builder.createWeightVar(T1, "A");
+  auto *input1 = builder.createWeightVar(T1, "B");
+  auto *output = builder.createWeightVar(T0, "C");
+  auto *tvo0 =
+      builder.createTensorViewInst("outuput_view0", output, T0, {0, 0});
+  auto *tvo1 =
+      builder.createTensorViewInst("outuput_view1", output, T0, {512, 0});
+  builder.createElementAddInst("add0", tvo0, input0, input1);
+  builder.createElementAddInst("add1", tvo1, input0, input1);
+  // output0 is only used as an input to a TensorView instruction, The buffer
+  // should not be marked as an input buffer since that doesn't include any
+  // reads of the buffer.
+  EXPECT_EQ(isInput(output), false);
 }
 
 // Test if the placeholders are allocated contiguously as

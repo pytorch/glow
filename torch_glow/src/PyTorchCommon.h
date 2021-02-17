@@ -28,7 +28,7 @@ DECLARE_bool(dumpFinalGlowGraph);
 
 namespace glow {
 
-struct InputMeta;
+struct InputMetaStack;
 
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
@@ -105,6 +105,9 @@ public:
   /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
   bool enableRemoveMutation = true;
 
+  /// Dump statistics about the operators and fusion support in the graph.
+  bool dumpOperatorInventory = false;
+
   /// Number of traces per json trace file dump.
   size_t numTracesPerDump = 1;
 
@@ -122,6 +125,13 @@ public:
   /// Whether or not to use zip mode when writing graphs to ONNX files
   bool onnxZipMode = false;
 
+  /// Whether or not to write onnx files to /tmp/ directory.
+  /// Must be true in twshared hosts.
+  bool writeOnnxToTmp = false;
+
+  /// Optional prefix for naming of onnx files (otherwise an internal id)
+  std::string onnxFileNamePrefix = "";
+
   /// Whether or not to do a numerical comparions of Glow and jit outputs
   bool jitVsGlowCompare = false;
 
@@ -136,9 +146,9 @@ public:
   /// PyTorchModelLoader.
   bool randomizeConstants = false;
 
-  // If true then writing to Onnx without randomizing the constants is allowed.
-  // Otherwise, program will be abort if trying to write to Onnx without
-  // randomizing the constants.
+  /// If true then writing to Onnx without randomizing the constants is allowed.
+  /// Otherwise, program will be abort if trying to write to Onnx without
+  /// randomizing the constants.
   bool writeWithoutRandomize = false;
 
   /// Name of the Glow backend to use.
@@ -162,6 +172,16 @@ public:
   /// Glow graph errors as soon as possible during loading. This is disabled by
   /// default because it can slow down model loading.
   bool debugContinuouslyVerifyDuringModelLoading = false;
+
+  /// Index of input to extract batch size
+  /// NOTE: this should only be used for development testing.
+  int32_t nominalBatchIdx = -1;
+
+  /// Indices of available backend devices on the machine.
+  std::vector<int32_t> availableDevices;
+
+  /// Whether to dump out failed inputs and reference outputs to onnx files.
+  bool dumpFailedInputsToOnnxFiles = false;
 };
 
 /// Represents different possible output types from to_glow modules.
@@ -188,14 +208,14 @@ PyTorchLoaderSettings getGlobalPyTorchLoaderSettingsSnapshot();
 PyTorchLoaderSettings &getGlobalPyTorchLoaderSettingsMutable();
 
 /// \returns the HostManager singleton used to run all PyTorch graphs with for
-/// the Glow backend \p backendName. The HostManager will have \p numDevices
-/// devices. If a previous HostManager is actively being used with the same
-/// backend but a different number of devices then this is an error. If
-/// numDevices is -1 then the active HostManager for the given backend will be
-/// returned, if no active HostManager is found then a HostManager with 1 device
-/// will be returned.
+/// the Glow backend specified by \p settings. The HostManager will have the
+/// number of devices specified by settings. If a previous HostManager is
+/// actively being used with the same backend but a different number of devices
+/// then this is an error. If the specified number of devices is -1 then the
+/// active HostManager for the given backend will be returned, if no active
+/// HostManager is found then a HostManager with 1 device will be returned.
 std::shared_ptr<runtime::HostManager>
-getHostManager(const std::string &backendName, int32_t numDevices = -1);
+getHostManager(const PyTorchLoaderSettings &settings);
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run. \p g is the PyTorch graph to
@@ -227,7 +247,7 @@ void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
 void glowAOTFusionWithShapeInference(torch::jit::Module &module,
-                                     const std::vector<glow::InputMeta> &meta,
+                                     const glow::InputMetaStack &metaStack,
                                      runtime::DeferredWeightLoader *loader,
                                      const PyTorchLoaderSettings &settings);
 
@@ -239,6 +259,9 @@ void enableSignalHandlerOverrides(bool enable = true);
 
 /// \returns whether or not signal handler overriding is enabled.
 bool signalHandlerOverridesEnabled();
+
+Expected<std::string> getTempFileLoc(const std::string &name,
+                                     const std::string &suffix);
 
 } // namespace glow
 

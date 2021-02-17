@@ -1,0 +1,51 @@
+ir_version: 3
+producer_name: "onnx-arith-broadcast"
+opset_import {
+  version: 7
+}
+
+graph {
+  node {
+    input: "data"
+    input: "const"
+    output: "out"
+    name: "op"
+    op_type: "Pow"
+  }
+  name: "test-model"
+  initializer {
+    dims: 4
+    dims: 1
+    data_type: 1
+    float_data: 2.0
+    float_data: 2.0
+    float_data: 2.0
+    float_data: 2.0
+   name: "const"
+  }
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "out"
+   }
+}

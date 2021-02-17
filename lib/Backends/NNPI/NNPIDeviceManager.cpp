@@ -66,7 +66,7 @@ NNPIDeviceManager::NNPIDeviceManager(
     deviceId_ = static_cast<unsigned>(deviceOptions_->deviceId);
   }
   if (flags::NNPITimeoutMs != 0) {
-    deviceOptions_->inferTimeout = flags::NNPITimeoutMs * 1000;
+    deviceOptions_->inferTimeoutUs = flags::NNPITimeoutMs * 1000;
   }
 }
 
@@ -116,11 +116,11 @@ Error NNPIDeviceManager::init() {
     // Create NNPI device.
     LOG_NNPI_INF_IF_ERROR_RETURN_FATAL_LLVMERROR(
         nnpiDeviceContextCreate(pAdapter_->getHandle(), deviceId_, &device_),
-        "Failed to create NNPI Device");
+        strFormat("Failed to create NNPI Device for device %u", deviceId_));
     NNPIDeviceInfo deviceInfo;
     LOG_NNPI_INF_IF_ERROR_RETURN_FATAL_LLVMERROR(
         nnpiDeviceGetInfo(deviceId_, &deviceInfo),
-        "Failed to get NNPI Device Info");
+        strFormat("Failed to get NNPI Device Info for device %u", deviceId_));
     maxMemoryBytes_ =
         static_cast<uint64_t>(deviceInfo.totalUnprotectedMemory) * KB;
     LOG(INFO) << "NNPI Driver Version "

@@ -416,6 +416,7 @@ inline Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
 #include "glow/AutoGenNodes.def"
   LOG(FATAL) << "Unknown node name: " << nodeName.str();
 }
+
 } // namespace glow
 
 namespace llvm {

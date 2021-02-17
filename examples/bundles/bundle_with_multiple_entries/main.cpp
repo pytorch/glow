@@ -24,6 +24,8 @@
 
 #include "testBundle.h"
 
+#define PRINT_CONSTANTS 0
+
 //===----------------------------------------------------------------------===//
 //                 Wrapper code for executing a bundle
 //===----------------------------------------------------------------------===//
@@ -93,6 +95,7 @@ static uint8_t *initConstantWeights(const char *weightsFileName,
            weightsFileName);
   }
   fclose(weightsFile);
+#if PRINT_CONSTANTS
   float *dataPtr = (float *)baseConstantWeightVarsAddr;
   printf("Constants:");
   for (size_t idx = 0, e = fileSize / sizeof(float); idx < e; ++idx) {
@@ -100,9 +103,10 @@ static uint8_t *initConstantWeights(const char *weightsFileName,
       printf("\n");
       printf("offset %4ld: ", idx * sizeof(float));
     }
-    printf(" %f", dataPtr[idx]);
+    printf(" %.2f", dataPtr[idx]);
   }
   printf("\n");
+#endif
   return baseConstantWeightVarsAddr;
 }
 
@@ -123,7 +127,7 @@ static void dumpInferenceResult(const BundleConfig &config,
       reinterpret_cast<float *>(mutableWeightVars + outputWeight.offset);
   printf("Output weight %s:", name);
   for (size_t idx = 0, e = outputWeight.size; idx < e; ++idx) {
-    printf(" %f", outputWeightPtr[idx]);
+    printf(" %.2f", outputWeightPtr[idx]);
   }
   printf("\n");
 }
@@ -142,8 +146,11 @@ static uint8_t *initMutableWeightVars(const BundleConfig &config,
 }
 
 static uint8_t *initActivations(const BundleConfig &config) {
-  return static_cast<uint8_t *>(
-      alignedAlloc(config, config.activationsMemSize));
+  auto *activations =
+      static_cast<uint8_t *>(alignedAlloc(config, config.activationsMemSize));
+  printf("Allocated activations variable of size: %" PRIu64 "\n",
+         config.activationsMemSize);
+  return activations;
 }
 
 /// Invoke \p bundleEntry with the input \p inputName and output \p outputName.
@@ -172,6 +179,8 @@ void testBundleEntry(const char *outputName, const char *inputName,
 
 int main(int argc, char **argv) {
   // Invoke all entry points of the bundle.
+  printf("Testing first bundle entry point:\n");
   testBundleEntry("output1", "input1", testMainEntry1);
+  printf("\nTesting second bundle entry point:\n");
   testBundleEntry("output2", "input2", testMainEntry2);
 }

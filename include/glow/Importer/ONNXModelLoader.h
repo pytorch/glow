@@ -143,6 +143,10 @@ class ONNXModelLoader
   Error loadAcos(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
 
+  /// Load Erf ONNX operator
+  Error loadErf(const ONNX_NAMESPACE::NodeProto &op,
+                const ArgumentDictionaryTy &dict);
+
   Error loadAtan(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
 
@@ -174,6 +178,10 @@ class ONNXModelLoader
   /// Load Sign ONNX operator
   Error loadSign(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
+
+  /// Load Softmax ONNX operator
+  Error loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
+                    const ArgumentDictionaryTy &dict);
 
   /// Load Conv ONNX operator.
   Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
@@ -340,6 +348,10 @@ class ONNXModelLoader
   Error loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);
 
+  /// Load Onnx QuantizeLinear operator.
+  Error loadQuantizeLinear(const ONNX_NAMESPACE::NodeProto &op,
+                           ArgumentDictionaryTy &dict);
+
   /// Load Glow ConvertTo operator.
   Error loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
                       ArgumentDictionaryTy &dict);
@@ -414,6 +426,10 @@ class ONNXModelLoader
   Error loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
                          ArgumentDictionaryTy &dict);
 
+  /// Load If ONNX operator.
+  Error loadIf(const ONNX_NAMESPACE::NodeProto &op,
+               const ArgumentDictionaryTy &dict);
+
   /// Load AdaptiveAvgPool Glow operator.
   /// NOTE: since this operator is not a standard onnx op, assume this is from
   /// OnnxModelWriter and is therefore in NHWC format.
@@ -427,6 +443,10 @@ class ONNXModelLoader
   /// Load AudioSpectrogram Glow operator.
   Error loadAudioSpectrogram(const ONNX_NAMESPACE::NodeProto &op,
                              ArgumentDictionaryTy &dict);
+
+  /// Load Loop operator.
+  Error loadLoop(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
 
   /// Load MFCC Glow operator.
   Error loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
@@ -515,6 +535,12 @@ protected:
   /// they're added to \ref staticPlaceholderTypes_. If \ref
   /// staticPlaceholderTypes_ is a nullptr then this method is a no-op.
   Error setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net);
+
+  /// Associate all inputs of \p net with nodes in \p NVs. Number of inputs of
+  /// \p net should match the number of elements of \p NVs.
+  /// \returns error code in case of error.
+  Error assignGraphInputs(const ONNX_NAMESPACE::GraphProto &net,
+                          llvm::ArrayRef<NodeValue> NVs);
 
   /// Creates a ONNX model loader to build \p F.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
@@ -612,6 +638,12 @@ public:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
   ONNXModelLoader(Function &F, Error *errPtr = nullptr);
+
+  /// Update \p inTensorNames and \p inTypes from inputs of onnx model from
+  /// filename
+  static Error getInputsNamesAndTypes(std::vector<std::string> &inTensorNames,
+                                      std::vector<Type> &inTypes,
+                                      const std::string &filename);
 
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p F.

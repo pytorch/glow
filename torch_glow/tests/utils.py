@@ -5,6 +5,7 @@ import itertools
 import os
 from contextlib import contextmanager
 from copy import deepcopy
+from io import BytesIO
 
 import torch
 import torch_glow
@@ -70,43 +71,30 @@ def check_skip(case):
         case.skipTest("Skipping tests for backend: " + backend)
 
 
-def generate_glow_spec(module, backend, *inputs):
-    spec = torch_glow.CompilationSpec()
-    spec.get_settings().set_glow_backend(backend)
-    compilation_group = torch_glow.CompilationGroup()
-    spec.compilation_groups_append(compilation_group)
-
-    input_specs = []
-    for input in inputs:
-        input_spec = torch_glow.InputSpec()
-        input_spec.set_same_as(input)
-        input_specs.append(input_spec)
-    compilation_group.input_sets_append(input_specs)
-    return spec
-
-
-def assert_equivalent(result, other_result, atol=5e-4, rtol=1e-3):
-    if isinstance(result, tuple) or isinstance(other_result, tuple):
-        assert isinstance(result, tuple) and isinstance(other_result, tuple)
-        assert len(result) == len(other_result)
+def assert_equivalent(
+    result1_name, result1, result2_name, result2, atol=5e-4, rtol=1e-3
+):
+    if isinstance(result1, tuple) or isinstance(result2, tuple):
+        assert isinstance(result1, tuple) and isinstance(result2, tuple)
+        assert len(result1) == len(result2)
         return all(
-            assert_equivalent(a, b, atol=atol, rtol=rtol)
-            for a, b in zip(result, other_result)
+            assert_equivalent(result1_name, a, result2_name, b, atol=atol, rtol=rtol)
+            for a, b in zip(result1, result2)
         )
-    elif other_result.dtype == torch.bool:
-        diff = torch.eq(result, other_result)
+    elif result2.dtype == torch.bool:
+        diff = torch.eq(result1, result2)
         if torch.all(diff):
             return True
         else:
             error = f"Diff:{diff}\n"
             raise AssertionError(error)
     else:
-        if torch.allclose(result, other_result, atol, rtol):
+        if torch.allclose(result1, result2, atol, rtol):
             return True
         else:
-            diff = torch.abs(result - other_result)
-            error = f"First result:\n{result}\n"
-            error += f"Second result:\n{other_result}\n"
+            diff = torch.abs(result1 - result2)
+            error = f"{result1_name} result:\n{result1}\n"
+            error += f"{result2_name} result:\n{result2}\n"
             error += f"Diff:\n{diff}\n"
             error += f"Max diff:\n{torch.max(diff)}"
             raise AssertionError(error)
@@ -156,20 +144,54 @@ def compare_tracing_methods(
         with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
             if not skip_to_glow:
                 glow_inputs = deepcopy(inputs)
-                glow_spec = generate_glow_spec(module, DEFAULT_BACKEND, *glow_inputs)
+                glow_spec = torch_glow.generate_glow_compilation_spec(
+                    module, DEFAULT_BACKEND, *glow_inputs
+                )
                 glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
                 glow_result = glow_trace(*glow_inputs)
         if reference:
-            assert_equivalent(reference, fusion_trace, atol=atol, rtol=rtol)
-            assert_equivalent(reference, torchscript_result, atol=atol, rtol=rtol)
+            assert_equivalent(
+                "Reference",
+                reference,
+                "Glow fusion",
+                fusion_trace,
+                atol=atol,
+                rtol=rtol,
+            )
+            assert_equivalent(
+                "Reference",
+                reference,
+                "TorchScript",
+                torchscript_result,
+                atol=atol,
+                rtol=rtol,
+            )
             if not skip_to_glow:
-                assert_equivalent(reference, glow_result, atol=atol, rtol=rtol)
+                assert_equivalent(
+                    "Reference", reference, "Glow", glow_result, atol=atol, rtol=rtol
+                )
         # This is written out manually instead of using combinations in order to aid
         # debugging. TODO: Clean up.
-        assert_equivalent(fusion_result, torchscript_result, atol=atol, rtol=rtol)
+        assert_equivalent(
+            "Glow fusion",
+            fusion_result,
+            "TorchScript",
+            torchscript_result,
+            atol=atol,
+            rtol=rtol,
+        )
         if not skip_to_glow:
-            assert_equivalent(fusion_result, glow_result, atol=atol, rtol=rtol)
-            assert_equivalent(torchscript_result, glow_result, atol=atol, rtol=rtol)
+            assert_equivalent(
+                "Glow fusion", fusion_result, "Glow", glow_result, atol=atol, rtol=rtol
+            )
+            assert_equivalent(
+                "TorchScript",
+                torchscript_result,
+                "Glow",
+                glow_result,
+                atol=atol,
+                rtol=rtol,
+            )
 
 
 def assert_fused(fused_graph, *ops, accept_any=False, strict=False):
@@ -196,3 +218,17 @@ def graph_contains_str(graph, substr):
 def assertModulesEqual(case, mod1, mod2, message=None):
     for p1, p2 in itertools.zip_longest(mod1.parameters(), mod2.parameters()):
         case.assertTrue(p1.equal(p2), message)
+
+
+def save_and_reload_model(model):
+    buf = BytesIO()
+
+    print("saving ...")
+    torch.jit.save(model, buf)
+    print("done")
+
+    print("reloading....")
+    buf.seek(0)
+    reloaded_model = torch.jit.load(buf)
+    print("done")
+    return reloaded_model

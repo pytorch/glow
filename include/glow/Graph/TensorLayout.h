@@ -98,7 +98,7 @@ public:
   /// \returns number of dimensions.
   size_t getNumDims() const { return numDims_; }
   /// \returns layout name.
-  llvm::StringRef getSerializedLayout() const { return serializedLayout_; }
+  std::string getSerializedLayout() const { return serializedLayout_; }
   /// \returns true if the layout is "*" in all dimensions.
   bool isAnyLayout();
   std::string getDebugDesc() const;

@@ -674,7 +674,7 @@ public:
   /// scales and \p offsets. The output is quantized in the regular way, and its
   /// type \p outTy is a quantized type.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, Constant *scales,
+      llvm::StringRef name, NodeValue input, NodeValue W, Constant *scales,
       Constant *offsets, NodeValue B, TypeRef outTy);
 
   /// Create a row-wise quantized fully connected node. This node is only used
@@ -684,7 +684,7 @@ public:
   /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
   /// be transposed first.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, NodeValue B,
+      llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
       TypeRef outTy, quantization::Schema schema, bool transposeWeight = false);
 
   /// Implement an operation that computes the row-wise dot product of its
@@ -773,6 +773,10 @@ public:
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
                              NodeValue selected, TypeRef outTy = nullptr,
                              float beta = 1.0);
+
+  LogSoftMaxNode *createLogSoftMax(llvm::StringRef name, NodeValue input,
+                                   NodeValue selected, TypeRef outTy = nullptr,
+                                   float beta = 1.0);
 
   CrossEntropyLossNode *createCrossEntropyLoss(llvm::StringRef name,
                                                NodeValue input,
@@ -884,6 +888,12 @@ public:
   ReshapeNode *createFlatten(llvm::StringRef name, NodeValue input,
                              unsigned_t axis);
 
+  /// Flattens the input tensor into a 2D matrix. If input tensor has shape
+  /// (d_0, d_1, ... d_n) then the output will have shape:
+  /// ((d_0 X d_1 ... d_(axis-1) X d_(axis+1) ... X d_n), d_axis).
+  ReshapeNode *createFlattenV1(llvm::StringRef name, NodeValue input,
+                               unsigned_t axis);
+
   /// Create \p outputNum slice nodes of \p input. Slices happen along dimension
   /// number \p axis. Array \p split defines lengths of slices. If \p split is
   /// empty, \p input is split to equal sized parts.
@@ -891,11 +901,10 @@ public:
                    unsigned_t axis, llvm::ArrayRef<dim_t> split,
                    std::vector<SliceNode *> &outputs);
 
-  BatchNormalizationNode *
-  createBatchNormalization(llvm::StringRef name, NodeValue input,
-                           NodeValue beta, NodeValue scale, NodeValue mean,
-                           NodeValue var, unsigned_t channelIdx = 0,
-                           float epsilon = 1e-5, float momentum = 0.9);
+  BatchNormalizationNode *createBatchNormalization(
+      llvm::StringRef name, TypeRef resType, NodeValue input, NodeValue beta,
+      NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx = 0,
+      float epsilon = 1e-5, float momentum = 0.9);
 
   /// Creates and \returns a LayerNormalizationNode that computes the layer
   /// normalization of the inner most layers of \p input based on the shape of
@@ -945,6 +954,8 @@ public:
   UNARY_ARITHMETIC_FUN_DECL(Reciprocal)
   UNARY_ARITHMETIC_FUN_DECL(Sin)
   UNARY_ARITHMETIC_FUN_DECL(Cos)
+  UNARY_ARITHMETIC_FUN_DECL(Erf)
+  UNARY_ARITHMETIC_FUN_DECL(Truncate)
 #undef UNARY_ARITHMETIC_FUN_DECL
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -956,7 +967,6 @@ public:
   ARITHMETIC_FUN_DECL(Mul);
   ARITHMETIC_FUN_DECL(Sub);
   ARITHMETIC_FUN_DECL(Div);
-  ARITHMETIC_FUN_DECL(FloorDiv);
   ARITHMETIC_FUN_DECL(Max);
   ARITHMETIC_FUN_DECL(Min);
   ARITHMETIC_FUN_DECL(CmpEQ);
@@ -994,7 +1004,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
-                          Args &&... inputArgs) {                              \
+                          Args &&...inputArgs) {                               \
     BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, inputs[0].getType(), inputs[0], inputs[1]); \
   }
@@ -1004,19 +1014,19 @@ public:
   /// automatically for multi directional broadcast.
   DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
-  DECLARE_BROADCAST_NODE(FloorDiv, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Xor, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Or, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Pow, /* NUM_INPUTS */ 2)
 
 #define DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(NODE_NAME, NUM_INPUTS,            \
                                              OUTTYPEREF)                       \
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcastOutTy(const std::string &name, int axis,              \
-                               TypeRef OUTTYPEREF, Args &&... inputArgs) {     \
+                               TypeRef OUTTYPEREF, Args &&...inputArgs) {      \
     BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, OUTTYPEREF, inputs[0], inputs[1]);          \
   }
@@ -1025,7 +1035,6 @@ public:
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Sub, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Mul, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Div, /* NUM_INPUTS */ 2, outTy)
-  DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(FloorDiv, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Min, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Max, /* NUM_INPUTS */ 2, outTy)
 
@@ -1033,7 +1042,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
-                          Args &&... inputArgs) {                              \
+                          Args &&...inputArgs) {                               \
     BROADCAST_FUNC_COMMON_CODE(2)                                              \
     return create##NODE_NAME(name, inputs[0], inputs[1]);                      \
   }
@@ -1043,6 +1052,7 @@ public:
   /// automatically for multi directional broadcast.
   DECLARE_CMP_BROADCAST_NODE(CmpLT)
   DECLARE_CMP_BROADCAST_NODE(CmpEQ)
+  DECLARE_CMP_BROADCAST_NODE(CmpNEQ)
   DECLARE_CMP_BROADCAST_NODE(CmpLTE)
   DECLARE_CMP_BROADCAST_NODE(Min)
   DECLARE_CMP_BROADCAST_NODE(Max)
@@ -1053,7 +1063,7 @@ public:
   template <class T, class... Args>
   typename enable_if_same_t<T, SelectNode>::type *
   createNodeWithBroadcast(const std::string &name, int axis,
-                          Args &&... inputArgs) {
+                          Args &&...inputArgs) {
     BROADCAST_FUNC_COMMON_CODE(3)
     return createSelect(name, inputs[1].getType(), inputs[0], inputs[1],
                         inputs[2]);
@@ -1064,6 +1074,36 @@ public:
 #undef DECLARE_BROADCAST_NODE_WITH_OUT_TYPE
 #undef DECLARE_CMP_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
+
+  /// Create a FloorDivNode with given \p name which divides \p LHS with \p RHS
+  /// and floors the quotient. If \p truncate is true then truncates the
+  /// quotient instead of flooring.
+  FloorDivNode *createFloorDiv(llvm::StringRef name, NodeValue LHS,
+                               NodeValue RHS, bool truncate = false);
+
+  /// Create a FloorDivNode with given \p name and output type \p outTy which
+  /// divides \p LHS with \p RHS and floors the quotient. If \p truncate is true
+  /// then truncates the quotient to zero instead of flooring.
+  FloorDivNode *createFloorDiv(llvm::StringRef name, TypeRef outTy,
+                               NodeValue LHS, NodeValue RHS,
+                               bool truncate = false);
+
+  /// Create a FloorDivNode with given \p name which divides \p LHS with \p RHS
+  /// and floors the quotient. If \p truncate is true then truncates the
+  /// quotient to zero instead of flooring. The inputs are broadcasted based on
+  /// \p axis.
+  FloorDivNode *createFloorDivWithBroadcast(llvm::StringRef name, int axis,
+                                            NodeValue LHS, NodeValue RHS,
+                                            bool truncate = false);
+
+  /// Create a FloorDivNode with given \p name and output type \p outTy which
+  /// divides \p LHS with \p RHS and floors the quotient. If \p truncate is true
+  /// then truncates the quotient to zero instead of flooring. The inputs are
+  /// broadcasted based on \p axis.
+  FloorDivNode *createFloorDivWithBroadcast(llvm::StringRef name, int axis,
+                                            TypeRef outTy, NodeValue LHS,
+                                            NodeValue RHS,
+                                            bool truncate = false);
 
   /// Create an element-wise GREATER THAN comparison between \p LHS and \p RHS
   /// by creating a CmpLTNode with given \p name and swapped inputs.
@@ -1139,6 +1179,20 @@ public:
                                                TypeRef outTy, NodeValue batch,
                                                llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceSumSquare operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
+  BatchedReduceSumSquareNode *
+  createBatchedReduceSumSquare(llvm::StringRef name, NodeValue batch,
+                               llvm::ArrayRef<unsigned_t> axes);
+
+  /// Create a node, performing BatchedReduceSumSquare operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceSumSquareNode *
+  createBatchedReduceSumSquare(llvm::StringRef name, TypeRef outTy,
+                               NodeValue batch,
+                               llvm::ArrayRef<unsigned_t> axes);
+
   /// Create a node, performing BatchedReduceMin operation. Output type is
   /// based on the input \p batch type with dimensions specified with \p axes
   /// removed.
@@ -1164,6 +1218,19 @@ public:
   /// removed.
   BatchedReduceMeanNode *
   createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
+                          llvm::ArrayRef<unsigned_t> axes);
+
+  /// Create a node, performing BatchedReduceProd operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
+  BatchedReduceProdNode *
+  createBatchedReduceProd(llvm::StringRef name, NodeValue batch,
+                          llvm::ArrayRef<unsigned_t> axes);
+
+  /// Create a node, performing BatchedReduceProd operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceProdNode *
+  createBatchedReduceProd(llvm::StringRef name, TypeRef outTy, NodeValue batch,
                           llvm::ArrayRef<unsigned_t> axes);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
@@ -1212,6 +1279,18 @@ public:
       llvm::StringRef name, NodeValue data, NodeValue weights,
       NodeValue indices, NodeValue lengths,
       LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
+
+  /// Create an Embedding node
+  /// weights is a 2D tensor capturing the embedding table
+  /// indices is a tesnor of arbitrary shape containing the indices to extract
+  /// padIdx, if given, zeros the output vector when encounters padIdx
+  /// scale, if true, will scale gradients by the inverse of the frequency of
+  /// words in mini-batch (currently not supported, default=false)
+  /// sparse, if true, gradinet w.r.t. weight matrix will be a sparse tensor
+  /// (currently not supported, default=false)
+  EmbeddingNode *createEmbedding(llvm::StringRef name, NodeValue weights,
+                                 NodeValue indices, int64_t padIdx, bool scale,
+                                 bool sparse);
 
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
   /// expects an extra offset to be appended to \p offsets which marks the end
@@ -1483,12 +1562,6 @@ public:
   ReshapeNode *createDepthToSpace(llvm::StringRef name, NodeValue input,
                                   unsigned blockSize, bool isCRD = false);
 
-  /// Given \p input tensor, \returns an upsampled tensor which has
-  /// doubled the size of dimensions N, N-1, N-2...N-numLeadingDims,
-  /// copying the nearest pixel value to the new locations.
-  ReshapeNode *createUpsample(llvm::StringRef name, NodeValue input,
-                              dim_t numLeadingDims);
-
   /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
   /// or depth, H is the height and W is the width, and \p scale tensor with
   /// tensor format same as \p input then ResizeNearest generates an Output
@@ -1713,6 +1786,12 @@ public:
                                            llvm::StringRef name,
                                            NodeValue input, dim_t outDepth,
                                            unsigned_t axis = 1);
+
+  /// Creates an RMSNorm pair. \p X should be a 2D tensor, \p gamma and \p beta
+  /// should be 1D tensors.
+  std::array<Node *, 2> createRMSNorm(llvm::StringRef name, NodeValue X,
+                                      NodeValue gamma, NodeValue beta,
+                                      float epsilon = .0f);
 
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
@@ -2150,6 +2229,17 @@ public:
                       int64_t angleBoundLo, int64_t angleBoundHi,
                       float clipAngleThresh, bool legacyPlusOne);
 
+  /// Create an ExternFunctionCall node. \p funcImpl will contain body
+  /// of or reference to the function which can be invoked.
+  /// \p funcKind contains the type of function. The type of function  could be
+  /// source code, like OpenCL, CUDA, or could be a binary or
+  /// a handle to an external function.
+  ExternalFunctionCallNode *
+  createExternalFunctionCall(llvm::StringRef name, TypeRef outTy,
+                             llvm::ArrayRef<glow::NodeValue> inputs,
+                             llvm::StringRef funcName, llvm::StringRef funcImpl,
+                             llvm::StringRef funcKind);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 
@@ -2290,6 +2380,10 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 1u, 2u, 0u, 3u }
 #define CNHW2NHWC                                                              \
   { 1u, 2u, 3u, 0u }
+#define NHWC2CHWN                                                              \
+  { 3u, 1u, 2u, 0u }
+#define CHWN2NHWC                                                              \
+  { 3u, 1u, 2u, 0u }
 #define D2S_DCR                                                                \
   { 0u, 1u, 3u, 2u, 4u, 5u }
 #define D2S_CRD                                                                \

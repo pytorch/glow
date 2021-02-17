@@ -1,0 +1,13 @@
+name: "constant_fill_use_input_shape"
+op {
+  input: "inputs_0"
+  output: "result"
+  name: ""
+  type: "ConstantFill"
+  arg {
+    name: "value"
+    f: 3.0
+  }
+}
+external_input: "inputs_0"
+external_output: "result"

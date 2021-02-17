@@ -63,5 +63,63 @@ std::set<Kinded::Kind> generateNodeKindsSet(llvm::StringRef names);
 
 /// Log the info of current partition \p partitions.
 void logPartitionInfo(const NodeToFunctionMap &partitions);
+
+/// Print numBytesInTable, deviceID, cost and cost/numBytesInTable.
+/// Print item from [start to end), with start inclusively and end
+/// exclusively. If verbose_only is true, we use VLOG(1), otherwise we use
+/// LOG(INFO).
+void printSlsTableInfo(std::vector<SLSTableInfo>::iterator start,
+                       std::vector<SLSTableInfo>::iterator end,
+                       bool verbose_only = true);
+void printSlsTableInfo(std::vector<SLSTableInfo> &slsTables,
+                       bool verbose_only = true);
+
+/// Print deviceId, used_memory, free_memory, cost, node_size, cost/used_memory.
+/// Used memeory is calculated using \p nodesets and \p contextCount. If
+/// verbose_only is true, we use VLOG(1), otherwise we use LOG(INFO).
+void printSlsDeviceInfo(const std::vector<SLSDeviceInfo> &slsDevices,
+                        const std::vector<NodesSet> &nodesets,
+                        const unsigned contextCount, bool verbose_only);
+
+/// Loop through slsDevices, assign \p table to first available \p slsDevices
+/// that can fit \p table.
+/// \returns Error if we could not find one.
+Error assignSlsTableToFirstAvailableDevice(
+    SLSTableInfo &table, std::vector<SLSDeviceInfo> &slsDevices,
+    std::vector<NodesSet> &nodesets,
+    std::vector<std::unordered_set<NodeValue>> &frontierValues,
+    const unsigned contextCount);
+
+/// Assign \p slsTables to \p slsDevices by:
+/// 1. Sort \p slsTables by size decreasing.
+/// 2. Split \p slsTables into two parts: large tables, and small tables where
+/// large tables have numBytesInTable >
+/// glow::runtime::flags::BigTableThresholdBytes.
+/// 3. For large tables, we sort tables by size, and then for each table we
+/// assign it to the device with lowest size.
+/// 4. For small tables, we sort tables by cost, and then for each table we
+/// assign it to the device with lowest cost.
+///
+/// \returns Error if we could not find a feasible partitioning plan to fit all
+/// slsTables into slsDevices.
+/// In case of error, all the inputs will be restored to original values.
+Error assignSlsTablesToDevices(
+    std::vector<SLSTableInfo> &slsTables,
+    std::vector<SLSDeviceInfo> &slsDevices,
+    std::vector<std::unordered_set<NodeValue>> &frontierValues,
+    const unsigned contextCount);
+
+/// Assign \p slsTables to \p slsDevices by:
+/// Sort \p slsTables by size, then for each sls table, assign to slsDevice with
+/// lowest cost.
+///
+/// \returns Error if we could not find a feasible allocation plan to fit all
+/// slsTables into slsDevices.
+/// In case of error, all the inputs will be restored to original values.
+Error assignSlsTablesToDevicesGreedy(
+    std::vector<SLSTableInfo> &slsTables,
+    std::vector<SLSDeviceInfo> &slsDevices,
+    std::vector<std::unordered_set<NodeValue>> &frontierValues,
+    const unsigned contextCount);
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONUTILS_H

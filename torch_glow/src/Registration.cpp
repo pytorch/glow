@@ -143,9 +143,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
         if (!graphRunner) {
           auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
           graphRunner = std::make_unique<CachingGraphRunner>(
-              node->g(at::attr::Subgraph),
-              getHostManager(settings.backendName, settings.numDevices),
-              settings);
+              node->g(at::attr::Subgraph), getHostManager(settings), settings);
         }
 
         return [graphRunner =
@@ -194,8 +192,8 @@ void registerGlowOp(const c10::Symbol &symbol) {
 }
 
 void registerGlowFusionPass(std::function<bool()> enablePassFn) {
-  torch::jit::RegisterPass pass([enablePassFn = std::move(enablePassFn)](
-                                    std::shared_ptr<torch::jit::Graph> &g) {
+  torch::jit::registerPostPass([enablePassFn = std::move(enablePassFn)](
+                                   std::shared_ptr<torch::jit::Graph> &g) {
     if (enablePassFn()) {
       auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
       glow::glowCustomFuse(g, settings, getGlowSymbol());

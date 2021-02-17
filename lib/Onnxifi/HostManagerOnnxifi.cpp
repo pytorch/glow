@@ -133,7 +133,7 @@ onnxStatus HostManagerBackend::addNetwork(
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   cctx.maxActiveRequestsPerInstance = glow::flags::MaxActiveRequestsPerInstance;
 
-  if (glow::flags::UseDAGOptimizerAOT || deferredBlobReader) {
+  if (glow::flags::SkipProvisioning || deferredBlobReader) {
     // Generate a map of type date for all static placeholders. Do this
     // regardless of whether we have deferredBlobReader because we don't have
     // one for AOT but we still want to use this info for serialization.
@@ -238,10 +238,10 @@ onnxStatus HostManagerBackend::addNetwork(
         glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
     cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
         glow::flags::DAGOptimizerNumParallelChunks;
-    if (glow::flags::UseDAGOptimizerAOT) {
-      LOG(INFO) << "Using AOT mode for DAG optimizer.";
-      cctx.useDAGOptimizerAOTMode = true;
-    }
+  }
+  if (glow::flags::SkipProvisioning) {
+    LOG(INFO) << "Will skip provisioning (likely due to AOT opt).";
+    cctx.skipProvisioning = true;
   }
   if (glow::onnxifi::flags::SaveDAG) {
     LOG(INFO) << "Serializing DAG after optimization and partitioning.";
@@ -254,41 +254,24 @@ onnxStatus HostManagerBackend::addNetwork(
   }
   cctx.saturateHost = glow::flags::SaturateHost;
 
-  if (!glow::flags::BackendSpecificOpts.empty()) {
-    llvm::StringRef opts(glow::flags::BackendSpecificOpts);
-    llvm::SmallVector<llvm::StringRef, 4> splitOpts;
-    opts.split(splitOpts, ',');
-
-    for (const llvm::StringRef &opt : splitOpts) {
-      LOG(INFO) << "Adding backend specific option: " << opt.str();
-      auto keyValPair = opt.split('=');
-      if (keyValPair.second.empty()) {
-        LOG(ERROR) << "No '=' found in backend-specific opt " << opt.str();
-        return ONNXIFI_STATUS_INTERNAL_ERROR;
-      }
-      cctx.backendOpts.backendSpecificOpts.emplace(keyValPair.first,
-                                                   keyValPair.second);
-    }
+  if (!glow::flags::processBackendSpecificOpts(
+          cctx.backendOpts.backendSpecificOpts,
+          glow::flags::BackendSpecificOpts)) {
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
   auto err = hostManager_->addNetwork(std::move(module), cctx);
-  auto errorCode = ONNXIFI_STATUS_SUCCESS;
 
   if (err) {
-    if (err.peekErrorValue() && err.peekErrorValue()->isFatalError()) {
-      errorCode = ONNXIFI_STATUS_FATAL_ERROR;
-      std::string msg = err.peekErrorValue()->logToString();
-      auto reporters = ErrorReporterRegistry::ErrorReporters();
-      if (reporters) {
-        reporters->report(msg);
-      }
-      LOG(FATAL) << "Non-recoverable device error when adding network: " << msg;
-    } else {
-      errorCode = ONNXIFI_STATUS_INTERNAL_ERROR;
-      LOG(ERROR) << ERR_TO_STRING(std::move(err));
+    std::string msg = err.peekErrorValue()->logToString();
+    auto reporters = ErrorReporterRegistry::ErrorReporters();
+    if (reporters) {
+      reporters->report(msg);
     }
+    LOG(FATAL) << "Non-recoverable device error when adding network: " << msg;
   }
-  return errorCode;
+
+  return ONNXIFI_STATUS_SUCCESS;
 }
 
 onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {

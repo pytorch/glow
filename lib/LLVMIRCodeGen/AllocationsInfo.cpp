@@ -39,16 +39,17 @@ using llvm::isa;
 void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
   // Compute the new offsets for all the weights, do not reuse their current
   // addresses. Process all constant WeightVars first.
-  for (auto &v : F->findConstants()) {
-    assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
-    auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    if (allocatedAddress_.count(v)) {
-      allocatedAddress_[w] = allocatedAddress_[v];
+  allocateConstants(F->findConstants(), constantWeightVarsAllocator_,
+                    symbolTable_);
+  for (auto &c : F->findConstants()) {
+    assert(symbolTable_.find(std::string(c->getName())) != symbolTable_.end());
+    auto *w = cast<WeightVar>(F->getWeightForNode(c));
+    if (allocatedAddress_.count(c)) {
+      allocatedAddress_[w] = allocatedAddress_[c];
       continue;
     }
-    auto numBytes = w->getSizeInBytes();
-    size_t addr = constantWeightVarsAllocator.allocate(numBytes, v);
-    allocatedAddress_[v] = addr;
+    auto addr = symbolTable_[std::string(c->getName())].offset;
+    allocatedAddress_[c] = addr;
     allocatedAddress_[w] = addr;
   }
 
@@ -57,24 +58,24 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
   auto contiguousPlaceholders =
       getContiguousPlaceHolder(F->findPlaceholders(), *F);
 
+  allocatePlaceholders(contiguousPlaceholders, mutableWeightVarsAllocator_,
+                       symbolTable_);
   // Compute the offsets and total memory requirements for Placeholders.
   for (auto it = contiguousPlaceholders.begin();
        it != contiguousPlaceholders.end(); it++) {
     auto &v = it->addr;
-    // Get the WeightVar for each Placeholder to calculate offsets.
-    assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
+    assert(symbolTable_.find(std::string(v->getName())) != symbolTable_.end());
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     if (allocatedAddress_.count(w)) {
       continue;
     }
-    auto numBytes = w->getSizeInBytes();
-    size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
+    auto addr = symbolTable_[std::string(v->getName())].offset;
     allocatedAddress_[w] = addr;
   }
 
   // Remember that max required memory size for each kind of weights.
-  constantWeightVarsMemSize_ = constantWeightVarsAllocator.getMaxMemoryUsage();
-  mutableWeightVarsMemSize_ = mutableWeightVarsAllocator.getMaxMemoryUsage();
+  constantWeightVarsMemSize_ = constantWeightVarsAllocator_.getMaxMemoryUsage();
+  mutableWeightVarsMemSize_ = mutableWeightVarsAllocator_.getMaxMemoryUsage();
 
   DEBUG_GLOW(for (auto &A
                   : allocatedAddress_) {
@@ -97,28 +98,25 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
 }
 
 void AllocationsInfo::allocateActivations(const IRFunction *F) {
+  glow::allocateActivations(F->getInstrs(), activationsAllocator_,
+                            symbolTable_);
+
   // Maps activations and views to some offset within the heap.
   llvm::DenseMap<const Value *, uint64_t> activationAddr;
 
   // Assign device-space addresses to the activations.
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
-      auto numBytes = I.getSizeInBytes();
-      size_t addr = activationsAllocator.allocate(numBytes, A);
+      assert(symbolTable_.find(std::string(A->getName())) !=
+             symbolTable_.end());
       assert(!activationAddr.count(A) && "Allocation already made!");
+      auto addr = symbolTable_[std::string(A->getName())].offset;
       activationAddr[A] = addr;
-      continue;
-    }
-
-    if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
-      auto *A = D->getAlloc();
-      assert(activationAddr.count(A) && "Invalid deallocation!");
-      activationsAllocator.deallocate(A);
       continue;
     }
   }
 
-  activationsMemSize_ = activationsAllocator.getMaxMemoryUsage();
+  activationsMemSize_ = activationsAllocator_.getMaxMemoryUsage();
 
   // Register specific addresses within the heap to activations.
   for (auto &A : activationAddr) {

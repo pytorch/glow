@@ -137,12 +137,16 @@ private:
   static Expected<TensorOutput> addmm(const MetaStack &variableMetas);
   // Shape inference for aten::t
   static Expected<TensorOutput> t(const MetaStack &variableMetas);
+  // Shape inference for aten::sum
+  static Expected<TensorOutput> sum(const MetaStack &variableMetas);
   // Shape inference for prim::ConstantChunk
   static Expected<TensorListOutput>
   constantChunk(const MetaStack &variableMetas, int64_t chunks, int64_t dim);
   // Shape inference for prim::FusedConcat
   static Expected<TensorOutput> fusedConcat(const MetaStack &variableMetas,
                                             int64_t dim);
+  static Expected<TensorOutput>
+  fusedBroadcastConcat(const MetaStack &variableMetas, int64_t dim);
   // Shape inference for prim::ListConstruct
   static Expected<TensorListOutput>
   listConstruct(const MetaStack &variableMetas);
@@ -161,6 +165,8 @@ private:
   // Shape inference for glow::fused_stack
   static Expected<TensorOutput> fusedStack(const MetaStack &variableMetas,
                                            int64_t dim);
+  static Expected<TensorOutput>
+  fusedBroadcastStack(const MetaStack &variableMetas, int64_t dim);
   // Shape inference for glow::fused_split
   static Expected<TensorListOutput> fusedSplit(const MetaStack &variableMetas);
   // Shape inference for quantized::embedding_bag_byte_rowwise_offsets
@@ -174,6 +180,9 @@ private:
   glowUnpackedQuantizedLinear(const MetaStack &variableMetas);
   // Shape inference for aten::embedding_bag
   static Expected<TensorOutput> embeddingBag(const MetaStack &variableMetas);
+  // Shape inference for fb::glowEmbedding_bag
+  static Expected<TensorOutput>
+  glowEmbeddingBag(const MetaStack &variableMetas);
   // Shape inference for aten::chuck
   static Expected<TensorListOutput> chunk(const MetaStack &variableMetas);
   // Shape inference for aten::stack
@@ -191,6 +200,15 @@ private:
   static Expected<TensorOutput> fastGather(const MetaStack &variableMetas);
   // Shape inference for fb::lengths_range
   static Expected<TensorOutput> lengthsRange(const MetaStack &variableMetas);
+  // Shape inference for aten::quantize_per_tensor
+  static Expected<TensorOutput>
+  quantizePerTensor(const MetaStack &variableMetas);
+  // Shape inference for aten::dequantize
+  static Expected<TensorOutput> dequantize(const MetaStack &variableMetas);
+  // Shape inference for quantized::mul
+  static Expected<TensorOutput> quantizedMul(const MetaStack &variableMetas);
+  // Shape inference for aten::matmul
+  static Expected<TensorOutput> matmul(const MetaStack &variableMetas);
 };
 
 } // namespace glow

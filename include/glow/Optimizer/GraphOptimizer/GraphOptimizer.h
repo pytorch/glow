@@ -55,11 +55,18 @@ void fold(Function *F, const CompilationContext &cctx,
 /// Performs the actual constant quantization in function \p F.
 void convertQuantizedConstants(Function *F, CompilationContext &cctx);
 
-/// Performs External Quantization pass which convert unsupported INT8 node
-/// for given backend to FP16 or FP32 and add dequantization and
-/// quantization nodes at the input and output of the corresponding node.
-void externalQuantizationPass(const Backend &B, Function *F,
-                              CompilationContext &cctx);
+// Check for FP16 support for a quantized node given the target backend
+// It clones the given node in the function and modifies all the input and
+// output NodeValues to FP16 to check for FP16 compatibility.
+bool isQuantizedNodeSupportedInFP16(Function *F, const Backend &B, Node *node);
+
+// Dquantize a pre quantized node given its backend compatibility. If the
+// backend doesn't support a node in INT8, try converting that node to FP16. If
+// FP16 is also not supported by the backend, fall back to FP32 datatype. Along
+// with data type modification, add dequantization and quantization nodes
+// respectively at the input and the output of the target node.
+void compatibilityDequantizationPass(const Backend &B, Function *F,
+                                     CompilationContext &cctx);
 
 /// Lower the high-level neural network nodes found in \p F into low-level
 /// linear algebra operators. If \p B is not a nullptr then it can prevent

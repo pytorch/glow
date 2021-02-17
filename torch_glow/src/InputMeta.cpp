@@ -32,6 +32,9 @@ std::string InputMeta::print() const {
     oss << dims[i];
   }
   oss << "]";
+  if (c10::isQIntType(type)) {
+    oss << " scale: " << scale << " offset: " << offset;
+  }
   return oss.str();
 }
 
@@ -39,6 +42,10 @@ size_t InputMeta::hash() const {
   size_t h = static_cast<size_t>(type);
   for (const auto &d : dims) {
     h = folly::hash::hash_combine(h, d);
+  }
+  if (c10::isQIntType(type)) {
+    h = folly::hash::hash_combine(h, scale);
+    h = folly::hash::hash_combine(h, offset);
   }
   return h;
 }
@@ -64,13 +71,33 @@ size_t InputMetaStack::hash() const {
   return h;
 }
 
+size_t InputMetaStack::optimizedHash(int32_t nominalBatchIdx) const {
+  size_t batchSize = 0;
+  bool validInput = true;
+  if (nominalBatchIdx < 0 || nominalBatchIdx >= inputMetas.size()) {
+    validInput = false;
+  } else {
+    const auto &inputMeta = inputMetas[nominalBatchIdx];
+    if (inputMeta.dims.size() == 0) {
+      validInput = false;
+    } else {
+      batchSize = inputMeta.dims[0];
+    }
+  }
+  if (validInput && batchSize != 0) {
+    return batchSize;
+  } else { // If input is not valid, fallback to default hash function.
+    return hash();
+  }
+}
+
 Expected<InputMetaStack>
 inputMetaStackFromStack(const c10::ArrayRef<c10::IValue> &inputs,
-                        bool ignoreObjects) {
+                        bool ignoreNonTensors) {
   InputMetaStack metaStack;
   metaStack.inputMetas.reserve(inputs.size());
   for (const auto &input : inputs) {
-    if (ignoreObjects && input.isObject()) {
+    if (ignoreNonTensors && !input.isTensor()) {
       continue;
     }
 
@@ -79,8 +106,17 @@ inputMetaStackFromStack(const c10::ArrayRef<c10::IValue> &inputs,
         strFormat("Cannot create InputMeta from IValue of type %s",
                   input.tagKind().c_str()));
     const auto tensorInput = input.toTensor();
-    InputMeta meta(tensorInput.scalar_type(), tensorInput.sizes());
-    metaStack.inputMetas.push_back(std::move(meta));
+    if (tensorInput.is_quantized()) {
+      RETURN_ERR_IF_NOT(tensorInput.qscheme() == at::kPerTensorAffine ||
+                            tensorInput.qscheme() == at::kPerTensorSymmetric,
+                        "Expect per_tensor quantization scheme");
+      metaStack.inputMetas.emplace_back(
+          tensorInput.scalar_type(), tensorInput.sizes(), tensorInput.q_scale(),
+          tensorInput.q_zero_point());
+    } else {
+      metaStack.inputMetas.emplace_back(tensorInput.scalar_type(),
+                                        tensorInput.sizes());
+    }
   }
   return metaStack;
 }
@@ -118,7 +154,9 @@ getInputMetas(const std::vector<c10::intrusive_ptr<InputSpec>> &inputSet) {
     for (auto d : inputSpec->dims) {
       dims.emplace_back(static_cast<glow::sdim_t>(d));
     }
-    metaStack.inputMetas.emplace_back(inputSpec->elem_type, std::move(dims));
+
+    metaStack.inputMetas.emplace_back(inputSpec->elem_type, std::move(dims),
+                                      inputSpec->scale, inputSpec->offset);
   }
   return metaStack;
 }

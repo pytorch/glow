@@ -232,6 +232,40 @@ static void importReduceL2Test(const std::string &netFilename,
   }
 }
 
+/// Test the utility function that gets the inputs name and glow types
+/// from updated graph proto
+
+TEST_F(OnnxImporterTest, getInputNamesAndTypes) {
+  // Set onnx-define-symbol if present in model
+  std::string inputSymbol = "batch_size,5";
+  setOnnxDefineSymbol({inputSymbol});
+
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/getInputsOnnxDefineSample.onnxtxt");
+
+  bool isError = false;
+
+  std::vector<std::string> names;
+  std::vector<Type> types;
+
+  std::vector<std::string> expectedNames = {"input"};
+  std::vector<std::vector<dim_t>> expectedDims = {{5, 3, 224, 224}};
+
+  isError = ERR_TO_BOOL(
+      ONNXModelLoader::getInputsNamesAndTypes(names, types, netFilename));
+
+  EXPECT_FALSE(isError);
+
+  for (size_t i = 0; i < expectedNames.size(); i++) {
+    EXPECT_TRUE(expectedNames[i] == names[i]);
+    std::vector<dim_t> dims = types[i].dims();
+    for (size_t j = 0; j < expectedDims[i].size(); j++) {
+      EXPECT_EQ(expectedDims[i][j], dims[j]);
+    }
+  }
+}
+
 /// Test the utility function which wraps a negative axis.
 TEST_F(OnnxImporterTest, getPositiveAxis) {
   int axisPos;
@@ -625,6 +659,13 @@ TEST_F(OnnxImporterTest, importDivUniBroadcastOp6Axis) {
       [](float a, float b) { return a / b; });
 }
 
+TEST_F(OnnxImporterTest, importPowMultiBroadcastOp7) {
+  importArithMultiBroadcastTest<PowNode>(
+      "powMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, /* multi */ true,
+      /* leftBroadcast */ true, /* rightBroadcast */ true,
+      [](float a, float b) { return std::pow(a, b); });
+}
+
 /// This tests reproduces issue #2135.
 TEST_F(OnnxImporterTest, importUniBroadcastMultiOutput) {
   ExecutionEngine EE{};
@@ -636,6 +677,35 @@ TEST_F(OnnxImporterTest, importUniBroadcastMultiOutput) {
   Tensor data(ElemKind::FloatTy, {20});
   ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
   (void)onnxLD;
+}
+
+/// Test Onnx QuantizeLinear and DequantizeLinear together.
+TEST_F(OnnxImporterTest, quantizeLinearDequantizeLinear) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string fileName = "QuantizeLinearDequantizeLinear.onnxtxt";
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  std::vector<dim_t> inputShape{6};
+  Type input_type(ElemKind::FloatTy, inputShape);
+  std::string inputName = "x";
+  ONNXModelLoader onnxLD(NetFilename, {inputName.c_str()}, {&input_type}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto *PH = mod.getPlaceholderByNameSlow(inputName);
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  // Compile&run the graph, and check the output
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  auto inHandle = inTensor->getHandle();
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), inHandle.raw(i), 1e-05);
+  }
 }
 
 /// Test loading of Elementwise Unary Ops floating point.
@@ -698,7 +768,12 @@ TEST_F(OnnxImporterTest, importCos) {
                           [](float a) { return std::cos(a); });
 }
 
-TEST_F(OnnxImporterTest, importAbs) {
+TEST_F(OnnxImporterTest, importErf) {
+  testEltwiseUnaryOpFloat("Erf.onnxtxt", {1, 3, 4, 5}, "input", 0.002,
+                          [](float a) { return std::erf(a); });
+}
+
+TEST(onnx, importAbs) {
   testEltwiseUnaryOpFloat("abs.onnxtxt", {1, 2, 3, 2}, "input", 0.002,
                           [](float a) { return std::abs(a); });
 }
@@ -1542,6 +1617,46 @@ TEST_F(OnnxImporterTest, reduceMean2AvgPoolKeepDims) {
                    {2.5, 6.5, 10.5, 14.5});
 }
 
+/// Test loading ReduceSumSquare op from a ONNX model.
+/// Input shape is 4D, one dimension is reduced, and output shape is 4D.
+TEST_F(OnnxImporterTest, reduceSumSquare4D) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/reduceSumSquare4D.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+  {
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {2, 2, 2, 1};
+  std::vector<float> expectedValues = {5, 25, 61, 113, 181, 265, 365, 481};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 8; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+  // Constant Folding Test.
+  FAIL_TEST_IF_ERR(
+      checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
+}
+
 /// Test loading ReduceMean op from a ONNX model.
 /// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
 /// optimization using AvgPool. Output shape is 2D.
@@ -1586,6 +1701,13 @@ TEST_F(OnnxImporterTest, reduceMinNoKeepDims) {
 /// Input shape is 4D, two dimensions are reduced,Output shape is 4D.
 TEST_F(OnnxImporterTest, reduceMinKeepDimsDefaultAxis) {
   testReductionOps("reduceMinDefaultAxis.onnxtxt", {1, 1, 1, 1}, {1});
+}
+
+/// Test loading ReduceProd op from a ONNX model.
+/// Input shape is 4D, one dimension is reduced, and output shape is 4D
+TEST_F(OnnxImporterTest, reduceProd4D) {
+  testReductionOps("reduceProd.onnxtxt", {2, 2, 2, 1},
+                   {2, 12, 30, 56, 90, 132, 182, 240});
 }
 
 static void testDepthToSpace(std::string &filename,
@@ -2962,6 +3084,98 @@ TEST_F(OnnxImporterTest, tile) {
   }
 }
 
+static void importPowTest(const std::string &netFilename, Tensor &x, Tensor &y,
+                          std::vector<dim_t> &expectedDims,
+                          std::vector<float> &expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+
+  ONNXModelLoader onnxLD(netFilename, {"base", "exp"},
+                         {&x.getType(), &y.getType()}, *F);
+  output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  bindings.allocate(mod.getPlaceholders());
+  updateInputPlaceholdersByName(bindings, &mod, {"base"}, {&x});
+  updateInputPlaceholdersByName(bindings, &mod, {"exp"}, {&y});
+
+  auto *outputT = bindings.get(output);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = outputT->getHandle();
+
+  EXPECT_TRUE(outputH.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(outputH.raw(i), expectedValues[i]);
+  }
+}
+
+TEST_F(OnnxImporterTest, pow_scalar_broadcast) {
+  Tensor x(ElemKind::FloatTy, {2, 3});
+  x.getHandle() = {1, 2, 3, 4, 5, 6};
+
+  Tensor y(ElemKind::FloatTy, {1});
+  y.getHandle() = {
+      3,
+  };
+
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/pow_scalar_broadcast.onnxtxt");
+
+  std::vector<dim_t> expectedDims = {2, 3};
+  std::vector<float> expectedValues = {
+      1., 8., 27., 64., 125, 216.,
+  };
+
+  importPowTest(netFilename, x, y, expectedDims, expectedValues);
+}
+
+TEST_F(OnnxImporterTest, pow_vector_broadcast) {
+  Tensor x(ElemKind::FloatTy, {2, 3});
+  x.getHandle() = {1, 2, 3, 4, 5, 6};
+
+  Tensor y(ElemKind::FloatTy, {3});
+  y.getHandle() = {
+      1,
+      2,
+      3,
+  };
+
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/pow_array_broadcast.onnxtxt");
+
+  std::vector<dim_t> expectedDims = {2, 3};
+  std::vector<float> expectedValues = {
+      1., 4., 27., 4., 25, 216.,
+  };
+
+  importPowTest(netFilename, x, y, expectedDims, expectedValues);
+}
+
+TEST_F(OnnxImporterTest, pow_element_wise) {
+  Tensor x(ElemKind::FloatTy, {3});
+  x.getHandle() = {1, 2, 3};
+
+  Tensor y(ElemKind::FloatTy, {3});
+  y.getHandle() = {4, 5, 6};
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/pow_element_wise.onnxtxt");
+
+  std::vector<dim_t> expectedDims = {3};
+  std::vector<float> expectedValues = {
+      1.,
+      32.,
+      729.,
+  };
+
+  importPowTest(netFilename, x, y, expectedDims, expectedValues);
+}
+
 TEST_F(OnnxImporterTest, topK) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -3880,6 +4094,214 @@ TEST(onnx, importSign) {
   importUnary(netFilename, input, inputShape, outputShape, expectedValues);
 }
 
+static void
+testLoop(std::string &filename, const std::vector<dim_t> &expected_v_finalDims,
+         const std::vector<dim_t> &expected_scan_output_finalDims,
+         const std::vector<float> &expected_v_finalValues,
+         const std::vector<float> &expectedscan_output_finalValues) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *v_final;
+  Placeholder *scan_output_final;
+
+  Tensor init_i(ElemKind::FloatTy, {1});
+  init_i.getHandle() = {0};
+  Tensor inc(ElemKind::FloatTy, {1});
+  inc.getHandle() = {1};
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"init_i", "inc"},
+                           {&init_i.getType(), &inc.getType()}, *F);
+
+    v_final = EXIT_ON_ERR(onnxLD.getOutputByName("v_final"));
+    scan_output_final =
+        EXIT_ON_ERR(onnxLD.getOutputByName("scan_output_final"));
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"init_i", "inc"},
+                                  {&init_i, &inc});
+  }
+
+  auto *v_finalT = bindings.get(v_final);
+  auto *scan_output_finalT = bindings.get(scan_output_final);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto v_finalH = v_finalT->getHandle();
+  auto scan_output_finalH = scan_output_finalT->getHandle();
+
+  EXPECT_EQ(v_finalH.dims().vec(), expected_v_finalDims);
+  EXPECT_EQ(scan_output_finalH.dims().vec(), expected_scan_output_finalDims);
+  for (size_t i = 0; i < expected_v_finalValues.size(); i++) {
+    EXPECT_FLOAT_EQ(v_finalH.raw(i), expected_v_finalValues[i]);
+  }
+  for (size_t i = 0; i < expectedscan_output_finalValues.size(); i++) {
+    EXPECT_FLOAT_EQ(scan_output_finalH.raw(i),
+                    expectedscan_output_finalValues[i]);
+  }
+}
+
+TEST_F(OnnxImporterTest, importLoopStatic) {
+  // In this loop, cond is not changed in the loop body.
+  //
+  // input (trip_count, cond)
+  //
+  // int max_trip_count = 10;
+  // cond = true;
+  // init_i = 0;
+  // for (i=0; i< max_trip_count && cond; ++i){
+  //   scan_output[i] = init_i;
+  //   inti_i = init_i + inc;
+  // }
+  std::string filename("loop_static.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {10, 1};
+  std::vector<float> expected_v_finalValues = {10.};
+  std::vector<float> expectedscan_output_finalValues = {0., 1., 2., 3., 4.,
+                                                        5., 6., 7., 8., 9.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST_F(OnnxImporterTest, importLoopNoIteration) {
+  // The loop should be zero iteration.
+  //
+  // input (trip_count, 0)
+  //
+  // int max_trip_count = 10;
+  // cond = false;
+  // init_i = 0;
+  // for (i=0; i < max_trip_count && cond; ++i) {
+  //   scan_output[i] = init_i;
+  //   inti_i = init_i + inc;
+  // }
+  std::string filename("loop_no_iteration.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {1, 1};
+  std::vector<float> expected_v_finalValues = {0.};
+  std::vector<float> expectedscan_output_finalValues = {0.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopCond) {
+  // In this loop, cond is updated in the loop body, but it should be folded
+  // into a Constant during loading time.
+  // The loop should exit by cond.
+  //
+  // input(trip_count, cond) :
+  //
+  // int max_trip_count = 9223372036854775807;
+  // int reduce_i = 20;
+  // for (i=0; i < max_trip_count && cond; ++i) {
+  //   scan_output[i] = reduce_i;
+  //   reduce_i = reduce_i - 1;
+  //   cond = (bool)(reduce_i - 1);
+  // }
+  std::string filename("loop_cond.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {20, 1};
+  std::vector<float> expected_v_finalValues = {0.};
+  std::vector<float> expectedscan_output_finalValues = {
+      20., 19., 18., 17., 16., 15., 14., 13., 12., 11.,
+      10., 9.,  8.,  7.,  6.,  5.,  4.,  3.,  2.,  1.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopTripCount) {
+  // The loop should exit by trip_count.
+  //
+  // input(trip_count, cond) :
+  //
+  // int max_trip_count = 20;
+  // int reduce_i = 20;
+  // for (i=0; i < max_trip_count && cond; ++i) {
+  //   scan_output[i] = reduce_i;
+  //   reduce_i = reduce_i - 1;
+  //   cond = (bool)(reduce_i - 1);
+  //  }
+  std::string filename("loop_tripcount.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {20, 1};
+  std::vector<float> expected_v_finalValues = {0.0};
+  std::vector<float> expectedscan_output_finalValues = {
+      20., 19., 18., 17., 16., 15., 14., 13., 12., 11.,
+      10., 9.,  8.,  7.,  6.,  5.,  4.,  3.,  2.,  1.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopEmptyTripCount) {
+  // The loop should ignore trip-count, so exit by cond.
+  //
+  // input ("", 1)
+  //
+  // int reduce_i = 10;
+  // bool cond = true;
+  // for (int i = 0; cond; ++i) {
+  //   scan_output[i] = reduce_i;
+  //   reduce_i = reduce_i - 1;
+  //   cond = (bool)reduce_i;
+  // }
+  std::string filename("loop_empty_tripcount.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {10, 1};
+  std::vector<float> expected_v_finalValues = {0.};
+  std::vector<float> expectedscan_output_finalValues = {10., 9., 8., 7., 6.,
+                                                        5.,  4., 3., 2., 1.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopEmptyCond) {
+  // The loop should ignore cond, so exit by trip_count.
+  //
+  // input(trip_count, "") :
+  //
+  // int max_trip_count = 7;
+  // int reduce_i = 5;
+  // for (i=0; i < max_trip_count; ++i) {
+  //   scan_output[i] = reduce_i;
+  //   reduce_i = reduce_i - 1;
+  //   cond = (bool)(reduce_i - 1); // ignored
+  // }
+  std::string filename("loop_emptycond.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {7, 1};
+  std::vector<float> expected_v_finalValues = {-2.0};
+  std::vector<float> expectedscan_output_finalValues = {5., 4., 3., 2.,
+                                                        1., 0., -1.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
+TEST(onnx, importLoopWithoutN) {
+  // The loop should exit by trip_count.
+  //
+  // input(trip_count, cond) :
+  // bool cond = true;
+  // int max_trip_count = 10;
+  // for (i=0; i < max_trip_count && cond; ++i) {
+  //   scan_output[i] = i;
+  //  }
+  std::string filename("loop_withoutN.onnxtxt");
+  std::vector<dim_t> expected_v_finalDims = {1};
+  std::vector<dim_t> expected_scan_output_finalDims = {10, 1};
+  std::vector<float> expected_v_finalValues = {0.0};
+  std::vector<float> expectedscan_output_finalValues = {0., 1., 2., 3., 4.,
+                                                        5., 6., 7., 8., 9.};
+  testLoop(filename, expected_v_finalDims, expected_scan_output_finalDims,
+           expected_v_finalValues, expectedscan_output_finalValues);
+}
+
 /// Test loading RNN from a ONNX model. The ONNX model already computes
 /// the error compared to a PyTorch reference implementation.
 static void importRNN(std::string fileName) {
@@ -4211,9 +4633,9 @@ TEST_F(OnnxImporterTest, CustomGlowTopKQuantized) {
   }
 
   // Verify structure: PH -> TopK -> Save -> PH.
-  //                           \
-  //                            v
-  //                          Save -> PH
+  //                           |
+  //                           v
+  //                         Save -> PH
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
   // TopK, Save nodes
   EXPECT_EQ(F->getNodes().size(), 3);
@@ -4373,6 +4795,45 @@ TEST_F(OnnxImporterTest, importUpsampleOpset9) {
   importUpsampleTest(netFilename);
 }
 
+static void testIf(std::string filename, float inputVal, float outputVal) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename = std::string(GLOW_DATA_PATH) + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {1});
+    x.getHandle() = {inputVal};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+
+  std::vector<float> expectedValues = {outputVal};
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+TEST(onnx, testIfConstantTrue) {
+  testIf("tests/models/onnxModels/if_true.onnxtxt", 3.0f, 6.0f);
+}
+
+TEST(onnx, testIfConstantFalse) {
+  testIf("tests/models/onnxModels/if_false.onnxtxt", 3.0f, 9.0f);
+}
+
 /// ResizeNearest Test Helper
 static void importResizeNearest(std::string filename) {
   ExecutionEngine EE;
@@ -4396,12 +4857,10 @@ static void importResizeNearest(std::string filename) {
   auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
-  ASSERT_EQ(4, F->getNodes().size());
+  ASSERT_EQ(2, F->getNodes().size());
 
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *TR = llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(TR);
-  auto *RN = llvm::dyn_cast<ResizeNearestNode>(TR->getInput());
+  auto *RN = llvm::dyn_cast<ResizeNearestNode>(saveNode->getInput());
   ASSERT_TRUE(RN);
 
   auto result = res->getHandle();
@@ -4968,7 +5427,7 @@ TEST(onnx, importNames) {
   vector<std::string> origNames = {"a__1",  "a__1", "a__3__3", "a__2",
                                    "a__1_", "a__b", "a"};
   auto *currNode = (Node *)getSaveNodeFromDest(graphOutputVar);
-  for (int i = 0; i < origNames.size(); i++) {
+  for (size_t i = 0; i < origNames.size(); i++) {
     auto *prevNode = currNode->getNthInput(0).getNode();
     // Make sure original names are retained in the legalized names.
     EXPECT_EQ(prevNode->getName().find(origNames[i]), 0);
@@ -5008,4 +5467,56 @@ TEST(onnx, importClipV11) {
   for (size_t i = 0; i < 8; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
+}
+
+// Utility function to test ONNX Softmax
+static void testSoftmax(const std::string &modelName,
+                        const std::vector<dim_t> &expectedDims,
+                        const std::vector<float> &expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Input.
+  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+  x.getHandle() = {0.0, 1.0, 2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
+                   8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0};
+
+  // Load model.
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + modelName;
+  ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+  Placeholder *output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  // Allocate placeholders.
+  PlaceholderBindings bindings;
+  bindings.allocate(mod.getPlaceholders());
+  updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Compare results.
+  auto result = res->getHandle();
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (dim_t i = 0; i < result.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading Softmax from a ONNX model.
+TEST_F(OnnxImporterTest, softmax) {
+  testSoftmax("softmax11.onnxtxt", {2, 2, 2, 2},
+              {5.7661277e-04, 1.5673960e-03, 4.2606238e-03, 1.1581578e-02,
+               3.1481992e-02, 8.5576929e-02, 2.3262219e-01, 6.3233274e-01,
+               5.7661277e-04, 1.5673960e-03, 4.2606238e-03, 1.1581578e-02,
+               3.1481992e-02, 8.5576929e-02, 2.3262219e-01, 6.3233274e-01});
+}
+/// Test loading Softmax opset13 from a ONNX model.
+TEST_F(OnnxImporterTest, softmax13) {
+  testSoftmax("softmax13.onnxtxt", {2, 2, 2, 2},
+              {0.11920292, 0.11920292, 0.880797, 0.880797, 0.11920292,
+               0.11920292, 0.880797, 0.880797, 0.11920292, 0.11920292, 0.880797,
+               0.880797, 0.11920292, 0.11920292, 0.880797, 0.880797});
 }

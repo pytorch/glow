@@ -120,6 +120,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::NegNodeKind:
+  case Kinded::Kind::AbsNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
     break;
@@ -154,6 +156,15 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {ElemKind::Float16Ty}, {ROIAlignNode::BatchIndicesIdx}) &&
         (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int64ITy);
     break;
+  case Kinded::Kind::LSTMUnitNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+    break;
+  case Kinded::Kind::ResizeNearestNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32QTy,
+         ElemKind::Int8QTy, ElemKind::UInt8QTy});
+    break;
 #endif // NNPI > 1.1
   case Kinded::Kind::MulNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
@@ -177,9 +188,18 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         (elemType == ElemKind::Int8QTy || elemType == ElemKind::FloatTy ||
          elemType == ElemKind::Float16Ty);
 
-    isNodePrecisionSupported &= NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty},
-        {BatchNormalizationNode::InputIdx});
+    isNodePrecisionSupported = isNodePrecisionSupported &&
+                               NI.allInputsAndOutputsHaveSameElemKind(
+                                   {ElemKind::FloatTy, ElemKind::Float16Ty},
+                                   {BatchNormalizationNode::InputIdx},
+                                   {BatchNormalizationNode::ResultIdx});
+
+    isNodePrecisionSupported =
+        isNodePrecisionSupported &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {elemType},
+            {BatchNormalizationNode::ScaleIdx, BatchNormalizationNode::BiasIdx,
+             BatchNormalizationNode::MeanIdx, BatchNormalizationNode::VarIdx});
     break;
   }
   case Kinded::Kind::AvgPoolNodeKind:
@@ -376,6 +396,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          NI.getInElemTy(GatherRangesNode::DataIdx));
     break;
   case Kinded::Kind::SliceNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int64ITy, ElemKind::BoolTy});
+    break;
   case Kinded::Kind::ReshapeNodeKind:
 
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
@@ -462,6 +486,14 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
              ElemKind::Int32ITy) &&
         (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
          ElemKind::Int32ITy);
+    break;
+  case Kinded::Kind::EmbeddingNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {EmbeddingNode::IndicesIdx}) &&
+        (NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int64ITy ||
+         NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::EmbeddingBagNodeKind:
     isNodePrecisionSupported =
@@ -605,10 +637,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     break;
-  case Kinded::Kind::LSTMUnitNodeKind:
-    isNodePrecisionSupported =
-        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
-    break;
   default:
     isNodeHasAnySupport = false;
     isNodePrecisionSupported = false;
@@ -724,6 +752,24 @@ static void setupBasicParallelizationConfigs(
             std::min((size_t)numParallelChunks, R->getResult().dims()[0]);
         continue;
       }
+    }
+
+    if (auto *R = llvm::dyn_cast<RescaleQuantizedNode>(node)) {
+      // For Rescales that are preceded by FC or Relu, mirror their
+      // parallelization.
+      Node *inputNode = R->getInput().getNode();
+      if (!llvm::isa<FullyConnectedNode>(inputNode) &&
+          !llvm::isa<ReluNode>(inputNode)) {
+        continue;
+      }
+      auto numChunksIt = numChunks.find(inputNode);
+      auto parOptsIt = parOpts.find(inputNode);
+      if (numChunksIt == numChunks.end() || parOptsIt == parOpts.end()) {
+        continue;
+      }
+      parOpts[R] = parOptsIt->second;
+      numChunks[R] = numChunksIt->second;
+      continue;
     }
 
     // Split Gelu layers in data parallel fashion
@@ -1027,16 +1073,12 @@ static Error validateBackendSpecificNodeInfo(
     }
     auto &nodeInfo = curNodeInfoIt->second;
 
-    RETURN_ERR_IF_NOT(!nodeInfo.count(parallelTransformKindKey),
-                      strFormat("Node %s should not have a "
-                                "parallelTransformKind after parallelization",
-                                node.getName().str().c_str()));
-
-    RETURN_ERR_IF_NOT(
-        !nodeInfo.count(numParallelChunksKey),
-        strFormat(
-            "Node %s should not have a numParallelChunks after parallelization",
-            node.getName().str().c_str()));
+    // If we find parallelization info here then it means the node was not
+    // parallelized; log and continue.
+    bool skippedPar = nodeInfo.erase(parallelTransformKindKey);
+    skippedPar |= nodeInfo.erase(numParallelChunksKey);
+    LOG_IF(WARNING, skippedPar)
+        << "Parallelization was skipped for Node: " << node.getDebugDesc();
 
     RETURN_ERR_IF_NOT(
         !nodeInfo.count(coreAssignmentsKey),
@@ -1206,14 +1248,17 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
       parallelizeOps(F, numChunks, parOpts, defaultNumParallelChunks,
                      defaultModelParallelSplitAlignment));
 
-  RETURN_ERR_IF_NOT(numChunks.size() == replacedMap.size(),
-                    "Expected that numChunks and replacedMap have same size.");
-
   if (usePerNodeParallelizationSpec) {
     // If parallelization was based on backend-specific node info then
     // validate the new nodes that were added.
     RETURN_IF_ERR(validateBackendSpecificNodeInfo(
         F, replacedMap, opts.backendSpecificNodeInfo));
+  } else if (numChunks.size() != replacedMap.size()) {
+    for (const auto &pair : numChunks) {
+      Node *N = pair.first;
+      LOG_IF(WARNING, !replacedMap.count(N))
+          << "Parallelization was skipped for Node: " << N->getDebugDesc();
+    }
   }
 
   return true;
@@ -1406,6 +1451,204 @@ static_assert(ActivationIOIdx == SigmoidNode::ResultIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::InputIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::ResultIdx, "Format incorrect");
 
+template <typename T>
+void zeroOutEmbeddingTable(Tensor &tensor, const int64_t &padIdx) {
+  auto handle = tensor.getHandle<T>();
+  size_t base = handle.getElementPtr({static_cast<unsigned long>(padIdx)});
+  for (unsigned i = 0; i < tensor.dims()[1]; i++) {
+    handle.raw(base + i) = 0;
+  }
+}
+
+/// Helper which looks for EmbeddingNode that has padIdx specified and lower it
+/// to GatherNode. Since Gather doesn't support padIdx so we'll need to zero out
+/// those index before creating GatherNode.
+bool lowerEmbeddingToGather(Function *F) {
+  bool changed = false;
+
+  for (auto &N : F->getNodes()) {
+    auto *EN = llvm::dyn_cast<EmbeddingNode>(&N);
+    if (!EN) {
+      continue;
+    }
+
+    auto weightsNV = EN->getWeights();
+    auto padIdx = EN->getPadIdx();
+
+    DCHECK(weightsNV.dims().size() == 2)
+        << "Expect [Embedding] weight dimensions be 2, but got "
+        << weightsNV.dims().size();
+    DCHECK(!EN->getScale()) << "[Embedding] scale must be false";
+    DCHECK(!EN->getSparse()) << "[Embedding] sparse must be false";
+
+    auto *weightsConstant = llvm::dyn_cast<glow::Constant>(weightsNV.getNode());
+
+    // If weightsConstant is not available, probably means we are doing AOT
+    if (!weightsConstant) {
+      continue;
+    }
+
+    // Zero out embedding table if padIdx is not -1
+    if (padIdx != -1) {
+      // If embedding table only has one user, we don't make additional copies
+      if (weightsConstant->hasOneUse()) {
+        auto &weightsTensorNew = weightsConstant->getPayloadMutable();
+
+        if (weightsTensorNew.getElementType() == ElemKind::FloatTy) {
+          zeroOutEmbeddingTable<float>(weightsTensorNew, padIdx);
+        } else if (weightsTensorNew.getElementType() == ElemKind::Float16Ty) {
+          zeroOutEmbeddingTable<float16_t>(weightsTensorNew, padIdx);
+        } else {
+          LOG(ERROR)
+              << "Unsupported Embedding weight Elemtype for transformation: "
+              << Type::getElementName(weightsTensorNew.getElementType()).str();
+        }
+      } else { // Embedding table has more than one user
+        auto weightsTensorNew = weightsConstant->getPayload().clone();
+
+        if (weightsTensorNew.getElementType() == ElemKind::FloatTy) {
+          zeroOutEmbeddingTable<float>(weightsTensorNew, padIdx);
+        } else if (weightsTensorNew.getElementType() == ElemKind::Float16Ty) {
+          zeroOutEmbeddingTable<float16_t>(weightsTensorNew, padIdx);
+        } else {
+          LOG(ERROR)
+              << "Unsupported Embedding weight Elemtype for transformation: "
+              << Type::getElementName(weightsTensorNew.getElementType()).str();
+        }
+
+        weightsConstant = F->getParent()->createConstant(
+            "PaddedEmbeddingWeights", std::move(weightsTensorNew));
+      }
+    }
+
+    auto *GN = F->createGather("embedding", weightsConstant, EN->getIndices());
+    EN->getResult().replaceAllUsesOfWith(GN);
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Helper which looks for Quantized Conv whose kernel is smaller than stride in
+/// one or more dimension. These kernels will be padded to at least stride size.
+static bool padKernelToStride(Function *F) {
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    if (N.getKind() == Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind) {
+      auto *glowChannelwiseQuantizedConv =
+          llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(&N);
+      auto filterNodeValue = glowChannelwiseQuantizedConv->getFilter();
+      auto filterOffsetNodeValue =
+          glowChannelwiseQuantizedConv->getFilterOffsets();
+
+      auto *filterConstant =
+          llvm::dyn_cast<glow::Constant>(filterNodeValue.getNode());
+
+      // Show whether there is kernel < stride in any dimension of N.
+      bool isKernelPadded = false;
+
+      // Quantized Conv's attributes.
+      const uint32_t SPATIAL_DIMS2 = 2;
+      uint32_t kernel[SPATIAL_DIMS2] = {
+          glowChannelwiseQuantizedConv->getKernels()[0],
+          glowChannelwiseQuantizedConv->getKernels()[1]};
+      // Kernel size before padding.
+      uint32_t kernelOrig[SPATIAL_DIMS2] = {kernel[0], kernel[1]};
+      uint32_t paddingStart[SPATIAL_DIMS2] = {
+          glowChannelwiseQuantizedConv->getPads()[0],
+          glowChannelwiseQuantizedConv->getPads()[1]};
+      uint32_t paddingEnd[SPATIAL_DIMS2] = {
+          glowChannelwiseQuantizedConv->getPads()[2],
+          glowChannelwiseQuantizedConv->getPads()[3]};
+      uint32_t stride[SPATIAL_DIMS2] = {
+          glowChannelwiseQuantizedConv->getStrides()[0],
+          glowChannelwiseQuantizedConv->getStrides()[1]};
+
+      for (int i = 0; i < SPATIAL_DIMS2; i++) {
+        if (kernel[i] < stride[i]) {
+          isKernelPadded = true;
+          // Pad the kernel to make it not smaller than stride.
+
+          // First we need to make sure inputSize[i + 1] % stride[i] == 0
+          // inputSize[i + 1] is for NHWC layout.
+          // If it is not, we maybe need to pad the input.
+          uint32_t inputSize =
+              glowChannelwiseQuantizedConv->getInput().getType()->dims()[i + 1];
+          uint32_t paddedInputSize =
+              inputSize + paddingStart[i] + paddingEnd[i];
+          // inputSize[i + 1] % stride[i] need to be greater than original
+          // kernel size to generate one more output pixel. In this case, we pad
+          // to make sure output size is still correct.
+          if (paddedInputSize % stride[i] >= kernel[i]) {
+            // We pad at the end.
+            paddingEnd[i] += stride[i] - (paddedInputSize % stride[i]);
+          }
+
+          // Then we expand the kernel to at least stride size.
+          kernel[i] = stride[i];
+        }
+      }
+
+      // Create a new filter tensor that overwrites the old one in
+      // filterConstant.
+      if (isKernelPadded) {
+        changed = true;
+        // Set new pad size and kernel size.
+        glowChannelwiseQuantizedConv->setPads(
+            {paddingStart[0], paddingStart[1], paddingEnd[0], paddingEnd[1]});
+        glowChannelwiseQuantizedConv->setKernels({kernel[0], kernel[1]});
+
+        glow::Tensor filterTensorOrig = filterConstant->getPayload().clone();
+        glow::Tensor filterOffsetTensor =
+            llvm::dyn_cast<glow::Constant>(filterOffsetNodeValue.getNode())
+                ->getPayload()
+                .clone();
+        glow::Tensor filterTensorNew(glow::ElemKind::Int8QTy,
+                                     {filterTensorOrig.dims()[0], kernel[0],
+                                      kernel[1], filterTensorOrig.dims()[3]},
+                                     1.0, 0);
+        filterTensorNew.zero();
+
+        for (unsigned nn = 0; nn < filterTensorNew.dims()[0]; nn++) {
+          // Currently we only support padding weights offset are all zeros on
+          // card.
+          int32_t offset = filterOffsetTensor.getHandle<int32_t>().at({nn});
+          LOG_AND_RETURN_IF(ERROR, offset != 0,
+                            "Weight offset should be all zeros", false);
+          // Also, we will not be able to pad the kernel if offset is too big,
+          // even if weights offset is supported in the future.
+          LOG_AND_RETURN_IF(
+              ERROR, offset < INT8_MIN || offset > INT8_MAX,
+              "Fatal error: offset exceed int8 limit while padding "
+              "kernel. Please contact Glow team to solve.",
+              false);
+          for (unsigned hh = 0; hh < filterTensorNew.dims()[1]; hh++) {
+            for (unsigned ww = 0; ww < filterTensorNew.dims()[2]; ww++) {
+              for (unsigned cc = 0; cc < filterTensorNew.dims()[3]; cc++) {
+                // If the content is in original area, we just simply copy it.
+                // Or else we pad it with the value of offset.
+                if (hh < kernelOrig[0] && ww < kernelOrig[1]) {
+                  filterTensorNew.getHandle<int8_t>().at({nn, hh, ww, cc}) =
+                      filterTensorOrig.getHandle<int8_t>().at({nn, hh, ww, cc});
+                } else {
+                  filterTensorNew.getHandle<int8_t>().at({nn, hh, ww, cc}) =
+                      static_cast<int8_t>(offset);
+                }
+              }
+            }
+          }
+        }
+        auto filterConstantNew = F->getParent()->createConstant(
+            "StridePaddedFilter", std::move(filterTensorNew));
+        // Set filter.
+        N.setNthInput(ChannelwiseQuantizedConvolutionNode::FilterIdx,
+                      filterConstantNew->getOutput());
+      }
+    }
+  }
+  return changed;
+}
+
 /// Helper which looks for FC -> Clip -> Activation -> Clip, and removes the
 /// Clip between the FC and Activation. These activations block FC-Activation
 /// fusion from occurring.
@@ -1459,6 +1702,8 @@ NNPIBackend::transformPostOptPipeline(Function *F,
     // parallelization we performed on quantizes/dequantizes.
     auto P = getOptimizationPipeline();
     P->removeAllInstancesOfPass(FunctionPassID::SinkConversions);
+    P->removeAllInstancesOfPass(FunctionPassID::SinkConcatBelowQuantize);
+    P->removeAllInstancesOfPass(FunctionPassID::MergeMatMul);
 
     // Do not re-merge ConcatNodes, as we may be parallelizing them.
     const bool restoreMerge = cctx.optimizationOpts.skipConcatMerging;
@@ -1491,6 +1736,8 @@ Expected<bool> NNPIBackend::transformPostLowering(
   }
 
   bool changed = removeClipsBlockingFusion(F);
+  changed |= padKernelToStride(F);
+  changed |= lowerEmbeddingToGather(F);
   auto it =
       cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
   if (it != cctx.backendOpts.backendSpecificOpts.end() && it->second == "1") {

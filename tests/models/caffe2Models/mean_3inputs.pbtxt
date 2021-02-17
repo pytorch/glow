@@ -1,0 +1,13 @@
+name: "mean_3inputs"
+op {
+  input: "input1"
+  input: "input2"
+  input: "input3"
+  output: "output"
+  name: ""
+  type: "Mean"
+}
+external_input: "input1"
+external_input: "input2"
+external_input: "input3"
+external_output: "output"

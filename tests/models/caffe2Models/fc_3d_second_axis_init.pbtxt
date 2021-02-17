@@ -1,0 +1,49 @@
+name: "init"
+op {
+  output: "weights"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 5
+    ints: 4
+  }
+  arg {
+    name: "values"
+    floats: 0
+    floats: 1
+    floats: 2
+    floats: 3
+    floats: 4
+    floats: 5
+    floats: 6
+    floats: 7
+    floats: 8
+    floats: 9
+    floats: 10
+    floats: 11
+    floats: 12
+    floats: 13
+    floats: 14
+    floats: 15
+    floats: 16
+    floats: 17
+    floats: 18
+    floats: 19
+  }
+}
+op {
+  output: "bias"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 5
+  }
+  arg {
+    name: "values"
+    floats: 0
+    floats: 1
+    floats: 2
+    floats: 3
+    floats: 4
+  }
+}

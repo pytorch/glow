@@ -60,6 +60,14 @@ run_and_check_bundle_instrument() {
     cd -
 }
 
+run_and_check_bundle_with_multiple_entries() {
+    cd "${GLOW_BUILD_DIR}/bundles/bundle_with_multiple_entries/"
+    # Compare console output.
+    ./bundle_with_multiple_entries >> raw_results.txt
+    diff raw_results.txt "${GLOW_SRC}/.ci/bundle_with_multiple_entries_expected_output.txt"
+    cd -
+}
+
 run_pytorch_tests() {
     cd "${GLOW_SRC}/torch_glow"
     if hash sccache 2>/dev/null; then
@@ -104,6 +112,7 @@ case ${CIRCLE_JOB} in
         run_and_check_lenet_mnist_bundle
         run_and_check_resnet50_bundle
         run_and_check_bundle_instrument
+        run_and_check_bundle_with_multiple_entries
         ;;
     COVERAGE)
         cd "${GLOW_SRC}"
@@ -115,7 +124,7 @@ case ${CIRCLE_JOB} in
         ;;
     CHECK_CLANG_AND_PEP8_FORMAT)
         cd "${GLOW_SRC}"
-        sudo ln -s /usr/bin/clang-format-7 /usr/bin/clang-format
+        sudo ln -s /usr/bin/clang-format-11 /usr/bin/clang-format
         source /tmp/venv/bin/activate
         ./utils/format.sh check
         ;;

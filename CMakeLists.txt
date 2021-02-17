@@ -275,7 +275,7 @@ if (GLOW_BUILD_TESTS)
   get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
 
   # All tests except expensive tests and stress tests.
-  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -LE EXPENSIVE\\|STRESS
+  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -LE EXPENSIVE\\|STRESS
                       DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
 
   # All tests including expensive tests but not stress tests.

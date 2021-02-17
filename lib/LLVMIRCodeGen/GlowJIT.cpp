@@ -105,28 +105,232 @@ public:
 
 } // namespace
 
+//==============================================================================
+#if LLVM_VERSION_MAJOR < 8 && FACEBOOK_INTERNAL
+//==============================================================================
+llvm::JITSymbol GlowJIT::resolveSymbol(const std::string &name) {
+  // Search for symbols which may not be exported.  On PE/COFF targets
+  // (i.e. Windows), not all symbols are implicitly exported.  If the
+  // symbols is not marked as DLLExport, it is not considered
+  // exported, and the symbol lookup may fail.  This may also occur on
+  // ELF/MachO targets if built with hidden visibility.  The JIT
+  // however maintains a list of all symbols and can find unexported
+  // symbols as well.
+  if (auto Sym = compileLayer_.findSymbol(Name, /*ExportedSymbolsOnly=*/false))
+    return Sym;
+  else if (auto Err = Sym.takeError())
+    return std::move(Err);
+  if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
+    return JITSymbol(SymAddr, JITSymbolFlags::Exported);
+  return nullptr;
+}
+
+template <typename LegacyLookupFn>
+static std::shared_ptr<llvm::orc::LegacyLookupFnResolver<LegacyLookupFn>>
+createLookupResolver(llvm::orc::ExecutionSession &, LegacyLookupFn LegacyLookup,
+                     std::function<void(llvm::Error)> ErrorReporter) {
+  return createLegacyLookupResolver(std::move(LegacyLookup),
+                                    std::move(ErrorReporter));
+}
+
+//==============================================================================
+#elif LLVM_VERSION_MAJOR < 8
+//==============================================================================
+llvm::JITSymbol GlowJIT::resolveSymbol(const std::string &name) {
+  if (auto localSym = compileLayer_.findSymbol(name, false)) {
+    return localSym;
+  } else if (auto Err = localSym.takeError()) {
+    return std::move(Err);
+  }
+  // Some symbols are overridden, in particular __dso_handle and
+  // __cxa_atexit .
+  if (auto overriddenSym = cxxSymbolOverride_.searchOverrides(name)) {
+    return overriddenSym;
+  }
+  // FIXME: looking for symbols external to libjit in the process is
+  // dangerous because it can be environment dependent. For example,
+  // we get cases where a symbol is found in the Linux environment,
+  // but not in the Windows environment.
+  if (auto processSymAddr =
+          RTDyldMemoryManager::getSymbolAddressInProcess(name)) {
+    return JITSymbol(processSymAddr, JITSymbolFlags::Exported);
+  }
+  // The symbol was not resolved. This will make the retreival of
+  // 'main' function symbol fail later without much information about
+  // the source of the problem. Then, we dump an error message now to
+  // ease debugging.
+  DEBUG_GLOW(llvm::dbgs() << "JIT: Error resolving symbol '" << name << "'\n");
+  // Return a 'symbol not found' JITSymbol object (nullptr).
+  return nullptr;
+}
+
+template <typename LegacyLookupFn>
+static std::shared_ptr<llvm::orc::LegacyLookupFnResolver<LegacyLookupFn>>
+createLookupResolver(llvm::orc::ExecutionSession &ES,
+                     LegacyLookupFn LegacyLookup,
+                     std::function<void(llvm::Error)> ErrorReporter) {
+  return createLegacyLookupResolver(ES, std::move(LegacyLookup),
+                                    std::move(ErrorReporter));
+}
+
+//==============================================================================
+#else // 8 <= LLVM_VERSION_MAJOR
+//==============================================================================
+static bool symbolFound(llvm::JITSymbol &s) {
+  const llvm::JITSymbolFlags flags = s.getFlags();
+  if (flags.getRawFlagsValue() || flags.getTargetFlags()) {
+    return true;
+  }
+
+  llvm::Expected<llvm::JITTargetAddress> expAddr = s.getAddress();
+  if (!expAddr) {
+    return false; // should never get here since no flags are set
+  }
+
+  return expAddr.get() != 0;
+}
+
+llvm::JITSymbol GlowJIT::resolveSymbol(const std::string &name) {
+
+  // Search accross all modules for a strong symbol. If no strong symbol is
+  // found, return the first matching weak symbol found if any.
+  bool weakFound = false;
+  JITSymbol firstWeak(nullptr);
+  for (auto k : vModKeys_) {
+    JITSymbol localSym = compileLayer_.findSymbolIn(k, name, false);
+    if (auto Err = localSym.takeError()) {
+      return std::move(Err);
+    }
+
+    if (!symbolFound(localSym)) {
+      continue;
+    }
+
+    JITSymbolFlags flags = localSym.getFlags();
+    if (flags.isStrong()) {
+      return localSym;
+    }
+
+    // This is a matching weak or common symbol. Remember the first one we find
+    // in case we don't find a subsequent strong one.
+    if (!weakFound) {
+      firstWeak = std::move(localSym);
+      weakFound = true;
+    }
+  }
+
+#if !FACEBOOK_INTERNAL
+  // Some symbols are overridden, in particular __dso_handle and
+  // __cxa_atexit .
+  if (auto overriddenSym = cxxSymbolOverride_.searchOverrides(name)) {
+    return overriddenSym;
+  }
+#endif
+  // FIXME: looking for symbols external to libjit in the process is
+  // dangerous because it can be environment dependent. For example,
+  // we get cases where a symbol is found in the Linux environment,
+  // but not in the Windows environment.
+  if (auto processSymAddr =
+          RTDyldMemoryManager::getSymbolAddressInProcess(name)) {
+    return JITSymbol(processSymAddr, JITSymbolFlags::Exported);
+  }
+
+  // No strong symbol found. Return a weak symbol if we found one.
+  if (weakFound) {
+    return firstWeak;
+  }
+
+  // The symbol was not resolved. This will make the retreival of
+  // 'main' function symbol fail later without much information about
+  // the source of the problem. Then, we dump an error message now to
+  // ease debugging.
+  DEBUG_GLOW(llvm::dbgs() << "JIT: Error resolving symbol '" << name << "'\n");
+  // Return a 'symbol not found' JITSymbol object (nullptr).
+  return nullptr;
+}
+
+namespace {
+// In order to work around a bug in the llvm-provided
+// 'getResponsibilitySetWithLegacyFn' involving the handling of weak symbols, we
+// provide our own implementation, called indirectly through this implementation
+// of the 'llvm::orc::SymbolResolver' interface.
+template <typename LegacyLookupFn>
+class LookupFnResolver final : public llvm::orc::SymbolResolver {
+private:
+  using Error = llvm::Error;
+  using ErrorReporter = std::function<void(Error)>;
+  using SymbolNameSet = llvm::orc::SymbolNameSet;
+  using AsynchronousSymbolQuery = llvm::orc::AsynchronousSymbolQuery;
+  using ExecutionSession = llvm::orc::ExecutionSession;
+  using JITSymbol = llvm::JITSymbol;
+  using JITSymbolFlags = llvm::JITSymbolFlags;
+  using JITTargetAddress = llvm::JITTargetAddress;
+
+  ExecutionSession &ES;
+  LegacyLookupFn LegacyLookup;
+  ErrorReporter ReportError;
+
+  llvm::Expected<SymbolNameSet>
+  getResponsibilitySetWithLegacyFn(const SymbolNameSet &Symbols) {
+    SymbolNameSet Result;
+
+    for (auto &S : Symbols) {
+      // Note that we don't use Sym's operator bool() here since that returns
+      // false for symbols with no address (which includes weak symbols).
+      JITSymbol Sym = LegacyLookup(*S);
+      if (auto Err = Sym.takeError()) {
+        return std::move(Err);
+      }
+      if (!Sym.getFlags().isStrong()) {
+        Result.insert(S);
+      }
+    }
+
+    return Result;
+  }
+
+public:
+  LookupFnResolver(ExecutionSession &ES, LegacyLookupFn LegacyLookup,
+                   ErrorReporter ReportError)
+      : ES(ES), LegacyLookup(std::move(LegacyLookup)),
+        ReportError(std::move(ReportError)) {}
+
+  SymbolNameSet lookup(std::shared_ptr<AsynchronousSymbolQuery> Query,
+                       SymbolNameSet Symbols) final {
+    return llvm::orc::lookupWithLegacyFn(ES, *Query, Symbols, LegacyLookup);
+  }
+
+  SymbolNameSet getResponsibilitySet(const SymbolNameSet &Symbols) final {
+    auto ResponsibilitySet = getResponsibilitySetWithLegacyFn(Symbols);
+
+    if (ResponsibilitySet) {
+      return std::move(*ResponsibilitySet);
+    }
+
+    ReportError(ResponsibilitySet.takeError());
+    return SymbolNameSet();
+  }
+};
+} // namespace
+
+template <typename LegacyLookupFn>
+static std::shared_ptr<LookupFnResolver<LegacyLookupFn>>
+createLookupResolver(llvm::orc::ExecutionSession &ES,
+                     LegacyLookupFn LegacyLookup,
+                     std::function<void(llvm::Error)> ErrorReporter) {
+  return std::make_shared<LookupFnResolver<LegacyLookupFn>>(
+      ES, std::move(LegacyLookup), std::move(ErrorReporter));
+}
+#endif
+
 GlowJIT::GlowJIT(llvm::TargetMachine &TM)
     : TM_(TM), DL_(TM_.createDataLayout()),
 #if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
       ES_(SSP_),
-      resolver_(createLegacyLookupResolver(
+      resolver_(createLookupResolver(
+          ES_,
           [this](const std::string &Name) -> JITSymbol {
-            // Search for symbols which may not be exported.  On PE/COFF targets
-            // (i.e. Windows), not all symbols are implicitly exported.  If the
-            // symbols is not marked as DLLExport, it is not considered
-            // exported, and the symbol lookup may fail.  This may also occur on
-            // ELF/MachO targets if built with hidden visibility.  The JIT
-            // however maintains a list of all symbols and can find unexported
-            // symbols as well.
-            if (auto Sym = compileLayer_.findSymbol(
-                    Name, /*ExportedSymbolsOnly=*/false))
-              return Sym;
-            else if (auto Err = Sym.takeError())
-              return std::move(Err);
-            if (auto SymAddr =
-                    RTDyldMemoryManager::getSymbolAddressInProcess(Name))
-              return JITSymbol(SymAddr, JITSymbolFlags::Exported);
-            return nullptr;
+            return this->resolveSymbol(Name);
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
       objectLayer_(ES_,
@@ -140,53 +344,28 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
       cxxSymbolOverride_(
           [this](const std::string &name) { return mangle(name); }),
 #endif
-      resolver_(createLegacyLookupResolver(
+      resolver_(createLookupResolver(
           ES_,
           [this](const std::string &name) -> JITSymbol {
-            if (auto localSym = compileLayer_.findSymbol(name, false)) {
-              return localSym;
-            } else if (auto Err = localSym.takeError()) {
-              return std::move(Err);
-            }
-#if !FACEBOOK_INTERNAL
-            // Some symbols are overridden, in particular __dso_handle and
-            // __cxa_atexit .
-            if (auto overriddenSym = cxxSymbolOverride_.searchOverrides(name)) {
-              return overriddenSym;
-            }
-#endif
-            // FIXME: looking for symbols external to libjit in the process is
-            // dangerous because it can be environment dependent. For example,
-            // we get cases where a symbol is found in the Linux environment,
-            // but not in the Windows environment.
-            if (auto processSymAddr =
-                    RTDyldMemoryManager::getSymbolAddressInProcess(name)) {
-              return JITSymbol(processSymAddr, JITSymbolFlags::Exported);
-            }
-            // The symbol was not resolved. This will make the retreival of
-            // 'main' function symbol fail later without much information about
-            // the source of the problem. Then, we dump an error message now to
-            // ease debugging.
-            DEBUG_GLOW(llvm::dbgs()
-                       << "JIT: Error resolving symbol '" << name << "'\n");
-            // Return a 'symbol not found' JITSymbol object (nullptr).
-            return nullptr;
+            return this->resolveSymbol(name);
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
 #if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
-      objectLayer_(ES_,
-                   [this](llvm::orc::VModuleKey) {
-                     return RTDyldObjectLinkingLayer::Resources{
-                         std::make_shared<SectionMemoryManager>(), resolver_};
-                   },
-                   NotifyLoadedFunctor(this)),
+      objectLayer_(
+          ES_,
+          [this](llvm::orc::VModuleKey) {
+            return RTDyldObjectLinkingLayer::Resources{
+                std::make_shared<SectionMemoryManager>(), resolver_};
+          },
+          NotifyLoadedFunctor(this)),
 #else
-      objectLayer_(ES_,
-                   [this](llvm::orc::VModuleKey) {
-                     return LegacyRTDyldObjectLinkingLayer::Resources{
-                         std::make_shared<SectionMemoryManager>(), resolver_};
-                   },
-                   NotifyLoadedFunctor(this)),
+      objectLayer_(
+          ES_,
+          [this](llvm::orc::VModuleKey) {
+            return LegacyRTDyldObjectLinkingLayer::Resources{
+                std::make_shared<SectionMemoryManager>(), resolver_};
+          },
+          NotifyLoadedFunctor(this)),
 #endif
 #endif
       compileLayer_(objectLayer_, SimpleCompiler(TM_)) {
@@ -227,6 +406,7 @@ GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<llvm::Module> M) {
     dtorNames.push_back(mangle(dtor.Func->getName()));
 
   cantFail(compileLayer_.addModule(K, std::move(M)));
+  vModKeys_.insert(K);
 
 #if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
   CtorDtorRunner<decltype(compileLayer_)> ctorRunner(std::move(ctorNames), K);
@@ -243,6 +423,7 @@ GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<llvm::Module> M) {
 }
 
 void GlowJIT::removeModule(GlowJIT::ModuleHandle H) {
+  vModKeys_.erase(H);
   cantFail(compileLayer_.removeModule(H));
 }
 

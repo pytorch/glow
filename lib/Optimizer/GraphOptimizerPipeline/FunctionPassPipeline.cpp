@@ -135,6 +135,17 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize away intermediate type conversions.
       {FunctionPassID::OptimizeConversions},
 
+      // Eliminate clips outside the FP16 range. This is a specialized pass that
+      // is disabled by default.
+      {FunctionPassID::EliminateClipsOutsideFP16Range},
+
+      // Look for float Relus that we can fuse up into quantized FCs.
+      {FunctionPassID::OptimizeQuantFCFloatRelu},
+
+      // Eliminate clips outside the FP16 range. This is a specialized pass that
+      // is disabled by default.
+      {FunctionPassID::EliminateClipsOutsideFP16Range},
+
       // Optimize away intermediate consecutive Clips.
       {FunctionPassID::OptimizeClips},
 
@@ -152,6 +163,13 @@ createDefaultGraphOptimizationPassPipeline() {
 
       // Optimize combinations of Quantized Nodes and Clips.
       {FunctionPassID::OptimizeQuantizeClip},
+
+      // Fold a Convolution dilated manually using Transpose, SpaceToDepth and
+      // DepthToSpace nodes into a single Convolution node.
+      // Run Reshape/Transpose optimizations afterwards to clean up the graph.
+      {FunctionPassID::FoldDilatedConv},
+      {FunctionPassID::OptimizeReshape},
+      {FunctionPassID::SinkCode, ConvergenceMode::UntilFixedPoint},
 
       // Fold Arithmetic chain w/ constants into Batch Norm, when Conv preceeds.
       {FunctionPassID::FoldArithmeticChainUnderConvIntoBN,
@@ -187,6 +205,17 @@ createFP16GraphOptimizationPassPipeline() {
   std::initializer_list<FunctionPassConfig> configs{
       // Optimize away intermediate type conversions.
       {FunctionPassID::OptimizeConversions},
+
+      // Eliminate clips outside the FP16 range. This is a specialized pass that
+      // is disabled by default.
+      {FunctionPassID::EliminateClipsOutsideFP16Range},
+
+      // Look for float Relus that we can fuse up into quantized FCs.
+      {FunctionPassID::OptimizeQuantFCFloatRelu},
+
+      // Eliminate clips outside the FP16 range. This is a specialized pass that
+      // is disabled by default.
+      {FunctionPassID::EliminateClipsOutsideFP16Range},
 
       // Optimize away intermediate consecutive Clips.
       {FunctionPassID::OptimizeClips},

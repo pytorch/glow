@@ -54,7 +54,6 @@ class TestQuantizedBatchNorm3D(unittest.TestCase):
             model,
             inputs,
             fusible_ops={"quantized::batch_norm3d"},
-            fp16=True,
             skip_to_glow=True,
         )
 
@@ -103,6 +102,5 @@ class TestQuantizedBatchNorm3D(unittest.TestCase):
             model,
             inputs,
             fusible_ops={"quantized::batch_norm3d"},
-            fp16=True,
             skip_to_glow=True,
         )

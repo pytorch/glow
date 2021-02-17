@@ -41,7 +41,7 @@ class Foo(torch.nn.Module):
         self.baz = baz
 
     def forward(self, a, b):
-        return self.baz(self.bar(a, b), b)
+        return self.baz(self.bar(a.reshape(1, -1), b.reshape(1, -1)), b)
 
 
 class Model(torch.nn.Module):
@@ -69,30 +69,57 @@ foo = Foo(bar, baz)
 model = Model(foo, qux)
 
 
+def get_compilation_spec(inputs):
+    """helper function to get the compilation spec of the submodule"""
+    spec = torch_glow.CompilationSpec()
+    spec.get_settings().set_glow_backend("Interpreter")
+
+    compilation_group = torch_glow.CompilationGroup()
+    spec.compilation_groups_append(compilation_group)
+
+    compilation_group.input_sets_append(torch_glow.input_specs_from_tensors(inputs))
+    return spec
+
+
 class TestSelectiveToGlow(unittest.TestCase):
     def test_to_glow_selective(self):
-        a = torch.zeros(4) + 8
-        b = torch.zeros(4) + 7
-        torch_res = model(a, b)
+        inputs = (torch.zeros(4) + 8, torch.zeros(4) + 7)
+        torch_res = model(*inputs)
 
-        spec = torch_glow.CompilationSpec()
-        spec.get_settings().set_glow_backend("Interpreter")
-
-        compilation_group = torch_glow.CompilationGroup()
-        spec.compilation_groups_append(compilation_group)
-
-        a_spec = torch_glow.InputSpec()
-        a_spec.set_same_as(a)
-        b_spec = torch_glow.InputSpec()
-        b_spec.set_same_as(b)
-
-        compilation_group.input_sets_append([a_spec, b_spec])
+        bar_inputs = torch_glow.get_submod_inputs(model, "foo.bar", inputs)
+        qux_inputs = torch_glow.get_submod_inputs(model, "qux", inputs)
 
         glow_mod = torch_glow.to_glow_selective(
-            model, {"foo.bar": (spec, (a, b)), "qux": (spec, (a, b))}
+            model,
+            {
+                "foo.bar": (get_compilation_spec(bar_inputs), bar_inputs),
+                "qux": (get_compilation_spec(qux_inputs), qux_inputs),
+            },
+            inplace=False,
         )
 
-        glow_mod = torch.jit.trace(glow_mod, (a, b))
-        glow_res = glow_mod(a, b)
+        glow_mod = torch.jit.trace(glow_mod, inputs)
+        glow_res = glow_mod(*inputs)
 
+        assert torch.allclose(torch_res, glow_res)
+
+    def test_to_glow_selective_already_scripted(self):
+        inputs = (torch.zeros(4) + 8, torch.zeros(4) + 7)
+        torch_res = model(*inputs)
+
+        bar_inputs = torch_glow.get_submod_inputs(model, "foo.bar", inputs)
+        qux_inputs = torch_glow.get_submod_inputs(model, "qux", inputs)
+
+        with torch.no_grad():
+            traced_model = torch.jit.trace(model, inputs)
+
+        glow_mod = torch_glow.to_glow_selective(
+            traced_model,
+            {
+                "foo.bar": get_compilation_spec(bar_inputs),
+                "qux": get_compilation_spec(qux_inputs),
+            },
+            inplace=False,
+        )
+        glow_res = glow_mod(*inputs)
         assert torch.allclose(torch_res, glow_res)

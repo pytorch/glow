@@ -80,6 +80,14 @@ Below you can see the list of currently supported graph optimizations in Glow:
 Majority of the common optimizations above can be used on a quantized graph.
 But in addition to those there are quantization specific optimizations:
 
+  * Compatibility Dequantization Pass
+
+    If a given node is quantized and the backend doesn't support the
+    quantized operator, dequantize the node given the -compatibility-dequantization flag.
+    This feature tries to convert the INT8 operator to FP16 first if FP16 is supported, if
+    FP16 is not supported for the operator, convert the operator to FP32. Add dequantize
+    and quantize nodes respectively at the input and the output of the node for dequantization.
+
   * Quantize(Dequantize(X)) -> RescaleQuantized(X)
 
     If the Quantize-Dequantize sequence does not change the type then this
@@ -101,13 +109,6 @@ But in addition to those there are quantization specific optimizations:
     phase. This optimization replaces Quantize(Constant) with just a Constant
     with updated quantized weights based on the quantization parameters from the
     Quantize node.
-
-  * External Quantization Pass
-
-    In external quantization, nodes are added in model loader with the assumption of INT8 support
-    from the backend. If the backend doesn't support a node in INT8, this pass converts that node to FP32
-    or FP16 depending upon the convert-to-fp16 flag. Along with data type modification, it adds
-    dequantization and quantization nodes respectively at the input and the output of the target node.
 
   * RescaleQuantized(Max(X,Y)) -> Max(RescaleQuantized(X), RescaleQuantized(Y))
 

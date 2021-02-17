@@ -47,14 +47,24 @@ public:
   c10::impl::GenericList execute(c10::IValue handle,
                                  c10::impl::GenericList inputs) override;
 
+  static void preview(torch::jit::Module mod);
+
 private:
   std::unordered_map<int64_t, std::pair<std::unique_ptr<CachingGraphRunner>,
                                         std::unique_ptr<JITGraphRunner>>>
       handleToRunnerMap_;
+
+  // Number of runs that have failed, used for dumping io files on failures.
+  std::atomic<size_t> failedRunNum_{0};
 };
 
 /// Registers TorchGlowBackend, related custom classes and helper JIT IR ops.
 void registerTorchGlowBackendAndDeps();
+
+/// TorchGlowBackend preprocessing.
+c10::IValue
+preprocess(const torch::jit::Module &mod,
+           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec);
 
 // Register TorchGlowBackend
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend();

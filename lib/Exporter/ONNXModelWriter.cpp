@@ -390,6 +390,7 @@ void writeTransposeInput(const Node *node, const Node *input,
   transformProto->add_output(newName);
   proto->add_input(newName);
 }
+
 /// Writes Arithmetic operators with name \p opName from Node \p node into
 /// provided graph protobuf \p graph. Arithmetic node may have been broadcasted,
 /// \p hasMultidirectionalBroadcast indicates the node can be multidirectional
@@ -1123,6 +1124,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
   case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::UInt4FusedQTy:
   case ElemKind::UInt8QTy:
+  case ElemKind::UInt8ITy:
     return TensorType::UINT8;
   case ElemKind::Int16QTy:
     return TensorType::INT16;
@@ -1135,6 +1137,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::BOOL;
   }
   LOG(DFATAL) << "Cannot reach here.";
+  return TensorType::UNDEFINED; // Avoids a compilation warning.
 }
 
 /// Add quantization parameters to the doc_string in \p out based on \p type.
@@ -1551,6 +1554,24 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   return Error::success();
 }
 
+Error ONNXModelWriter::writeBatchedReduceSumSquare(
+    const BatchedReduceSumSquareNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  unsigned_t axis = node->getAxis();
+  llvm::ArrayRef<unsigned_t> axes(axis);
+  addValueAttribute(proto, "axes", axes);
+
+  proto->set_name(node->getName());
+  proto->set_op_type("ReduceSum");
+  inputsToProto(node, proto);
+
+  addValueAttribute(proto, "keepdims", 0);
+  outputsToProto(node, graph, proto);
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeBatchedReduceMax(const BatchedReduceMaxNode *node,
                                              GraphType &graph) {
   auto *proto = graph.add_node();
@@ -1567,6 +1588,24 @@ Error ONNXModelWriter::writeBatchedReduceMin(const BatchedReduceMinNode *node,
   addValueAttribute(proto, "axes", node->getAxes());
 
   return writeAllWithNode("ReduceMin", node, graph, proto);
+}
+
+Error ONNXModelWriter::writeBatchedReduceProd(const BatchedReduceProdNode *node,
+                                              GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  unsigned_t axis = node->getAxis();
+  llvm::ArrayRef<unsigned_t> axes(axis);
+  addValueAttribute(proto, "axes", axes);
+
+  proto->set_name(node->getName());
+  proto->set_op_type("ReduceProd");
+  inputsToProto(node, proto);
+
+  addValueAttribute(proto, "keepdims", 0);
+  outputsToProto(node, graph, proto);
+
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeBatchNormalization(
@@ -1913,6 +1952,20 @@ Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node, GraphType &graph) {
   return Error::success();
 }
 
+Error ONNXModelWriter::writeLogSoftMax(const LogSoftMaxNode *node,
+                                       GraphType &graph) {
+  auto *proto = graph.add_node();
+  proto->set_name(node->getName());
+  proto->set_op_type("LogSoftmax");
+  outputsToProto(node, graph, proto);
+  // Find input from Reshape node
+  proto->add_input(node->getInput().getNode()->getName());
+
+  // Mark selected input as visited.
+  reportedNodes_.insert(node->getSelected().getNode());
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeReplaceNaN(const ReplaceNaNNode *node,
                                        GraphType &graph) {
   auto *proto = graph.add_node();
@@ -2237,6 +2290,7 @@ DEF_ALL_WRITER_NODE(Reciprocal)
 DEF_ALL_WRITER_NODE(Sin)
 DEF_ALL_WRITER_NODE(Cos)
 DEF_ALL_WRITER_NODE(LSTMUnit)
+DEF_ALL_WRITER_NODE(Erf)
 DEF_ALL_WRITER_NODE(Min)
 DEF_ALL_WRITER_NODE(Max)
 DEF_ALL_WRITER_NODE(Log)
@@ -2257,6 +2311,7 @@ DEF_ALL_WRITER_NODE(LengthsToRanges)
 DEF_ALL_WRITER_NODE(SparseLengthsSum)
 DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(EmbeddingBag)
+DEF_ALL_WRITER_NODE(Embedding)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpNEQ)
@@ -2271,6 +2326,7 @@ DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(NonMaxSuppression)
 DEF_ALL_WRITER_NODE(ConvTranspose)
 DEF_ALL_WRITER_NODE(Logit)
+DEF_ALL_WRITER_NODE(Truncate)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
@@ -2510,6 +2566,7 @@ DEF_UNSUPPORTED_NODE(Broadcast)
 DEF_UNSUPPORTED_NODE(SGD)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
+DEF_UNSUPPORTED_NODE(ExternalFunctionCall)
 // TODO: Turn to ScatterNd when it is supported in ONNX.
 DEF_UNSUPPORTED_NODE(ScatterData)
 // Gradient nodes.
@@ -2523,6 +2580,7 @@ DEF_UNSUPPORTED_NODE(AvgPoolGrad)
 DEF_UNSUPPORTED_NODE(MaxPoolGrad)
 DEF_UNSUPPORTED_NODE(SigmoidGrad)
 DEF_UNSUPPORTED_NODE(SoftMaxGrad)
+DEF_UNSUPPORTED_NODE(LogSoftMaxGrad)
 DEF_UNSUPPORTED_NODE(RegressionGrad)
 DEF_UNSUPPORTED_NODE(ConvolutionGrad)
 DEF_UNSUPPORTED_NODE(CrossEntropyLoss)
@@ -2585,8 +2643,8 @@ bool ONNXModelWriter::hasMultidirectionalBroadcast(
         (typeName == "Div") || (typeName == "Equal") ||
         (typeName == "Greater") || (typeName == "Less") ||
         (typeName == "Max") || (typeName == "Mean") || (typeName == "Min") ||
-        (typeName == "Mul") || (typeName == "Or") || (typeName == "Pow") ||
-        (typeName == "Sum") || (typeName == "Xor")) {
+        (typeName == "Or") || (typeName == "Pow") || (typeName == "Sum") ||
+        (typeName == "Xor")) {
       return true;
     }
   }

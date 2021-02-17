@@ -108,7 +108,8 @@ void registerPyTorchGlowCustomClasses() {
           .def(torch::init())
           .def("get_elem_type", &InputSpec::get_elem_type)
           .def("get_dims", &InputSpec::get_dims)
-          .def("set", &InputSpec::set)
+          .def("set_non_quantized_tensor", &InputSpec::set_non_quantized_tensor)
+          .def("set_quantized_tensor", &InputSpec::set_quantized_tensor)
           .def("set_same_as", &InputSpec::set_same_as);
   addSerializationDefs<InputSpec>(InputSpec_registry);
 

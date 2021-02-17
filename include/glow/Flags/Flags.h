@@ -16,7 +16,9 @@
 #ifndef GLOW_FLAGS_FLAGS_H
 #define GLOW_FLAGS_FLAGS_H
 
+#include "llvm/ADT/StringRef.h"
 #include <gflags/gflags.h>
+#include <map>
 
 namespace glow {
 namespace flags {
@@ -35,6 +37,7 @@ extern bool EnablePartialTensors;
 extern bool UseCustomOpsForExport;
 extern std::string BackendSpecificOpts;
 extern bool EnableLoadBalancedPartitioning;
+extern bool SkipProvisioning;
 
 // FP16 Constants
 extern bool ConvertToFP16;
@@ -70,15 +73,16 @@ extern bool SparseNNPartitioningPairLNWithSLS;
 
 // Dag Optimizer Constants
 extern bool UseDAGOptimizer;
-extern bool UseDAGOptimizerAOT;
 extern int32_t DAGOptimizerNumParallelChunks;
 extern std::string DAGOptimizerPlacementTaggingAlgorithm;
 extern std::string DAGOptimizerParallelizationTaggingAlgorithm;
 
+/// Helper for processing opts in \p optsStr into \p opts. \returns if there is
+/// any error encountered when processing \p optsStr.
+bool processBackendSpecificOpts(std::map<std::string, std::string> &optsMap,
+                                llvm::StringRef optsStr);
 } // namespace flags
 } // namespace glow
-
-#ifdef GLOW_WITH_NNPI
 
 namespace glow {
 namespace nnpi {
@@ -95,8 +99,6 @@ extern bool UsePerPartitionIcetConfig;
 } // namespace flags
 } // namespace nnpi
 } // namespace glow
-
-#endif
 
 namespace glow {
 namespace torch_glow {
@@ -120,24 +122,20 @@ extern bool SaveDAG;
 namespace glow {
 namespace runtime {
 namespace flags {
-#ifdef GLOW_WITH_CPU
 extern unsigned CPUMemory;
-#endif
 
-#ifdef GLOW_WITH_HABANA
 extern unsigned HabanaMemory;
-#endif
 
-#ifdef GLOW_WITH_NNPI
 extern unsigned NNPIMemory;
 extern unsigned NNPITimeoutMs;
-#endif
 
 extern std::string AvailableDevices;
 extern unsigned InterpreterMemory;
 extern bool EnableP2P;
 extern bool EnableDRT;
 extern unsigned DeviceInitTimeoutMs;
+extern uint64_t BigTableThresholdBytes;
+extern unsigned SanitizeInputsPercent;
 } // namespace flags
 } // namespace runtime
 } // namespace glow

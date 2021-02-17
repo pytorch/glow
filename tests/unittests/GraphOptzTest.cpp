@@ -583,8 +583,8 @@ TEST_F(GraphOptz, MergeBatchNormalizationWithArithmeticChainTest) {
   llvm::cast<Constant>(addC)->getHandle<float>().clear(addV);
   llvm::cast<Constant>(divC)->getHandle<float>().clear(divV);
 
-  BatchNormalizationNode *bn =
-      F_->createBatchNormalization("batch", input, beta, gamma, mean, var, 3);
+  BatchNormalizationNode *bn = F_->createBatchNormalization(
+      "batch", input->getType(), input, beta, gamma, mean, var, 3);
 
   auto *sub = F_->createSub("sub", bn, subC);
   auto *mul = F_->createMul("mul", sub, mulC);
@@ -975,7 +975,7 @@ public:
   NodeValue getNodeFromInput(TestSinkTransposeNodesKind testNode, Node *T) {
     switch (testNode) {
     case TestSinkTransposeNodesKind::BatchNormalization: {
-      return F_->createBatchNormalization(bindings_, "batch", T, 3, 0.0001, 0.9)
+      return F_->createBatchNormalization(bindings_, "batch", T, 1, 0.0001, 0.9)
           ->getResult();
     }
     case TestSinkTransposeNodesKind::Relu: {
@@ -1002,6 +1002,7 @@ public:
     }
     }
     LOG(DFATAL) << "Cannot reach here.";
+    return NodeValue(); // Prevents a compilation warning.
   }
 };
 
@@ -1362,16 +1363,19 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   Node *K = F_->createAdd("arith", T1, T2);
-  SaveNode *O = F_->createSave("ret", K);
+  Node *P = F_->createPow("pow", K, T2);
+  SaveNode *O = F_->createSave("ret", P);
 
-  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 5);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Add->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
   ASSERT_NE(transpose, nullptr);
-  auto *add = llvm::dyn_cast<AddNode>(transpose->getInput());
+  auto *pow = llvm::dyn_cast<PowNode>(transpose->getInput());
+  ASSERT_TRUE(pow);
+  auto *add = llvm::dyn_cast<AddNode>(pow->getLHS());
   ASSERT_TRUE(add);
   // Check that the dimensions of the input and output have been
   // updated to compensate the absence of transpose.
@@ -1381,7 +1385,7 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   EXPECT_EQ(add->getLHS().getNode(), A1);
   EXPECT_EQ(add->getRHS().getNode(), A2);
 
-  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 }
 
 /// Check that Transpose node is sunk below arithmetic nodes when one of the
@@ -2876,6 +2880,44 @@ TEST_F(GraphFold, optimizeSmallConv) {
   checkNumericalEquivalence();
 }
 
+/// Fold a Convolution dilated manually using Transpose, SpaceToDepth and
+/// DepthToSpace nodes into a single Convolution node. Pattern:
+/// NHWC2CHWN -> S2D -> CHWN2NHWC -> Conv -> NHWC2CHWN -> D2S -> CHWN2NHWC
+TEST_F(GraphFold, foldDilatedConv) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 16}, "input", true);
+
+  auto *T1 = F_->createTranspose("t1", input, NHWC2CHWN, "NHWC");
+  auto *S2D = F_->createSpaceToDepth("s2d", T1, 2);
+  auto *T2 = F_->createTranspose("t2", S2D, CHWN2NHWC, "NHWC");
+  auto *CN = F_->createConv(bindings_, "conv", T2, 16, 3, 1, 0, 16, {1, 1});
+  auto *T3 = F_->createTranspose("t3", CN, NHWC2CHWN, "NHWC");
+  auto *D2S = F_->createDepthToSpace("d2s", T3, 2);
+  auto *T4 = F_->createTranspose("t4", D2S, CHWN2NHWC, "NHWC");
+  auto *save = F_->createSave("save", T4);
+
+  // To spice things up, add additional users for some nodes. The pattern should
+  // still be recognized.
+  F_->createSave("save_t1", T1);
+  F_->createSave("save_s2d", S2D);
+  F_->createSave("save_t2", T2);
+
+  EXPECT_EQ(13, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(8, optimizedF_->getNodes().size());
+
+  const auto *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+
+  auto *newCN = llvm::dyn_cast<ConvolutionNode>(optSave->getInput());
+  ASSERT_TRUE(newCN);
+  EXPECT_TRUE(isUniformArray(newCN->getDilation(), 2u));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
   const dim_t inputDims[] = {3, 136, 28, 28};
@@ -2930,8 +2972,10 @@ class MockBackendWithFusion : public MockBackend {
     case Kinded::Kind::ConvolutionNodeKind:
       switch (activation->getKind()) {
       case Kinded::Kind::ReluNodeKind:
+      case Kinded::Kind::ClipNodeKind:
       case Kinded::Kind::SigmoidNodeKind:
       case Kinded::Kind::TanhNodeKind:
+      case Kinded::Kind::LeakyReluNodeKind:
         return true;
       default:
         return false;
@@ -2942,13 +2986,13 @@ class MockBackendWithFusion : public MockBackend {
   }
 };
 
-#define CONV_ACTIVATION_TEST(ACTIVATION_, CREATOR_)                            \
+#define CONV_ACTIVATION_TEST(ACTIVATION_, CREATOR_, ...)                       \
   TEST_F(GraphFold, FoldConv##ACTIVATION_##Activation) {                       \
     auto *A =                                                                  \
         mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false); \
     ConvolutionNode *CV =                                                      \
         F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);                  \
-    auto *AN = F_->CREATOR_(#ACTIVATION_, CV);                                 \
+    auto *AN = F_->CREATOR_(__VA_ARGS__);                                      \
     SaveNode *SN = F_->createSave("ret", AN);                                  \
                                                                                \
     EXPECT_EQ(F_->getNodes().size(), 3);                                       \
@@ -2963,9 +3007,11 @@ class MockBackendWithFusion : public MockBackend {
     EXPECT_EQ(fusedCV->getFusedActivation(), FusedActivation::ACTIVATION_);    \
   }
 
-CONV_ACTIVATION_TEST(RELU, createRELU);
-CONV_ACTIVATION_TEST(SIGMOID, createSigmoid);
-CONV_ACTIVATION_TEST(TANH, createTanh);
+CONV_ACTIVATION_TEST(RELU, createRELU, "Relu", CV);
+CONV_ACTIVATION_TEST(CLIP, createClip, "Clip", CV, 0.0, 1.0);
+CONV_ACTIVATION_TEST(SIGMOID, createSigmoid, "Sigmoid", CV);
+CONV_ACTIVATION_TEST(TANH, createTanh, "Tanh", CV);
+CONV_ACTIVATION_TEST(LEAKY_RELU, createLeakyRELU, "LeakyRelu", CV, 1.0);
 
 #undef CONV_ACTIVATION_TEST
 
@@ -4892,6 +4938,114 @@ TEST_F(GraphOptz, ParallelizeGraph_FC_ModelParallel_Split140by3) {
   checkNumericalEquivalence();
 }
 
+/// Test Splitting MatMul into multiple MatMuls
+TEST_F(GraphOptz, SplitMatMulIntoMultipleOps_Data) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {12, 32}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 32}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {12, 32}, "output", false);
+  bindings_.allocate(output);
+
+  auto *mm = F_->createMatMul("mm", input1, input2);
+  auto *save = F_->createSave("save", mm, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[mm] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // 12 Slices from LHS
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  // 12 newly created MatMuls.
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
+
+  auto *concatNode = llvm::dyn_cast<ConcatNode>(save->getInput());
+  ASSERT_TRUE(concatNode);
+  // 12 FCs are connected to the concat node.
+  EXPECT_EQ(12, concatNode->getInputs().size());
+
+  for (unsigned i = 0; i < 12; ++i) {
+    auto *mmInput = llvm::dyn_cast<MatMulNode>(concatNode->getNthInput(i));
+    ASSERT_TRUE(mmInput);
+    EXPECT_TRUE(mmInput->getResult().dims().equals({1, 32}));
+  }
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting MatMul into multiple MatMuls
+TEST_F(GraphOptz, SplitMatMulIntoMultipleOps_Model) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {12, 48}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {48, 48}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {12, 48}, "output", false);
+  bindings_.allocate(output);
+
+  auto *mm = F_->createMatMul("mm", input1, input2);
+  auto *save = F_->createSave("save", mm, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[mm] = ParallelTransformKind::Model;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // 12 Slices from RHS
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  // 12 newly created MatMuls.
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
+
+  auto *concatNode = llvm::dyn_cast<ConcatNode>(save->getInput());
+  ASSERT_TRUE(concatNode);
+  // 12 FCs are connected to the concat node.
+  EXPECT_EQ(12, concatNode->getInputs().size());
+
+  for (unsigned i = 0; i < 12; ++i) {
+    auto *mmInput = llvm::dyn_cast<MatMulNode>(concatNode->getNthInput(i));
+    ASSERT_TRUE(mmInput);
+    EXPECT_TRUE(mmInput->getResult().dims().equals({12, 4}));
+  }
+
+  checkNumericalEquivalence();
+}
+
 /// Test Splitting Add into multiple Adds.
 TEST_F(GraphOptz, ParallelizeGraph_Add) {
   auto *input1 =
@@ -4968,6 +5122,190 @@ TEST_F(GraphOptz, ParallelizeGraph_Transpose) {
   runDCEPass(F_, cctx_);
 
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::TransposeNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Transpose into multiple Transposes.
+TEST_F(GraphOptz, ParallelizeGraph_Transpose3D_210) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 15, 23}, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {23, 15, 4}, "output", false);
+  bindings_.allocate(output);
+
+  auto *trans1 = F_->createTranspose("trans1", input, {2, 1, 0});
+  F_->createSave("save", trans1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, size_t> numChunks;
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  numChunks[trans1] = 8;
+  parOpts[trans1] = ParallelTransformKind::Data;
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+
+  runDCEPass(F_, cctx_);
+
+  EXPECT_EQ(8, countNodeKind(F_, Kinded::Kind::TransposeNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Transpose into multiple Transposes.
+TEST_F(GraphOptz, ParallelizeGraph_Transpose3D_120) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {15, 8, 23}, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {8, 23, 15}, "output", false);
+  bindings_.allocate(output);
+
+  auto *trans1 = F_->createTranspose("trans1", input, {1, 2, 0});
+  F_->createSave("save", trans1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, size_t> numChunks;
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  numChunks[trans1] = 8;
+  parOpts[trans1] = ParallelTransformKind::Data;
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+
+  runDCEPass(F_, cctx_);
+
+  EXPECT_EQ(8, countNodeKind(F_, Kinded::Kind::TransposeNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Select into multiple Selects.
+TEST_F(GraphOptz, ParallelizeGraphData_Select) {
+  auto *sel1_lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel1_lhs", false);
+  bindings_.allocate(sel1_lhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel1_rhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel1_rhs", false);
+  bindings_.allocate(sel1_rhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel1_cond =
+      mod_.createPlaceholder(ElemKind::BoolTy, {32, 2048}, "sel1_cond", false);
+  bindings_.allocate(sel1_cond)->getHandle<bool>().randomize(0, 1,
+                                                             mod_.getPRNG());
+  auto *sel2_rhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel2_rhs", false);
+  bindings_.allocate(sel2_rhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel2_cond =
+      mod_.createPlaceholder(ElemKind::BoolTy, {32, 2048}, "sel2_cond", false);
+  bindings_.allocate(sel2_cond)->getHandle<bool>().randomize(0, 1,
+                                                             mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *sel1 = F_->createSelect("sel1", sel1_cond, sel1_lhs, sel1_rhs);
+  auto *sel2 = F_->createSelect("sel2", sel2_cond, sel1, sel2_rhs);
+  F_->createSave("save", sel2, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[sel1] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 12 Selects from sel1, as well as the original sel2 which is
+  // unchanged.
+  EXPECT_EQ(13, countNodeKind(F_, Kinded::Kind::SelectNodeKind));
+
+  // Each input (3 total inputs) of the 12 Selects are sliced.
+  EXPECT_EQ(36, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  // One concat to bring all of the parallelized sliced Select together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Select into multiple Selects.
+TEST_F(GraphOptz, ParallelizeGraphModel_Select) {
+  auto *sel1_lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel1_lhs", false);
+  bindings_.allocate(sel1_lhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel1_rhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel1_rhs", false);
+  bindings_.allocate(sel1_rhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel1_cond =
+      mod_.createPlaceholder(ElemKind::BoolTy, {32, 2048}, "sel1_cond", false);
+  bindings_.allocate(sel1_cond)->getHandle<bool>().randomize(0, 1,
+                                                             mod_.getPRNG());
+  auto *sel2_rhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "sel2_rhs", false);
+  bindings_.allocate(sel2_rhs)->getHandle<float>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+  auto *sel2_cond =
+      mod_.createPlaceholder(ElemKind::BoolTy, {32, 2048}, "sel2_cond", false);
+  bindings_.allocate(sel2_cond)->getHandle<bool>().randomize(0, 1,
+                                                             mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *sel1 = F_->createSelect("sel1", sel1_cond, sel1_lhs, sel1_rhs);
+  auto *sel2 = F_->createSelect("sel2", sel2_cond, sel1, sel2_rhs);
+  F_->createSave("save", sel2, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[sel1] = ParallelTransformKind::Model;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 12 Selects from sel1, as well as the original sel2 which is
+  // unchanged.
+  EXPECT_EQ(13, countNodeKind(F_, Kinded::Kind::SelectNodeKind));
+
+  // Each input (3 total inputs) of the 12 Selects are sliced.
+  EXPECT_EQ(36, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  // One concat to bring all of the parallelized sliced Select together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
 
   checkNumericalEquivalence();
 }
@@ -6072,24 +6410,34 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
       F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
 
   // This MulNode has a Placeholder as RHS and shouldn't be fused into LayerNorm
-  auto *mulIn =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 10, 20}, "in", false);
+  Tensor mulT(ElemKind::FloatTy, {1, 1, 10, 20});
+  mulT.getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  Constant *mulC = mod_.createConstant("mulC", std::move(mulT));
   MN = F_->createNodeWithBroadcast<MulNode>("mul_not_fuse", /* axis */ -1, AN,
-                                            mulIn);
+                                            mulC);
   F_->createSave("save", MN);
 
-  optimizedF_ = optimizeFunctionForTest(F_);
+  ConstantModificationPreventer constModPreventer(mod_, cctx_);
+  constModPreventer.activate();
+  optimizedF_ = optimizeFunctionForTest(F_, {}, cctx_);
+  // Now do const folding with constants swapped back in.
+  constModPreventer.deactivateAndCleanup();
+  ConstantFoldingRecordMap record = constantFoldAndRecord(optimizedF_, cctx_);
+  runDCEPass(optimizedF_, cctx_);
 
-  // Because Mul and Add are folded in, they should not exist anymore, nor
-  // should tiles that expand them to match the output of LN.
-  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
+  // Because Muls and Add are folded in, they should not exist anymore, nor
+  // should Broadcasts that expand them to match the output of LN.
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
-  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind));
+
+  // Remove the temporary constant folding Functions and their Placeholders
+  // so that they don't participate in 'checkNumericalEquivalence'.
+  cleanupConstantFolding(mod_, record, &bindings_);
 
   // Now compile/run/compare F_ and optimizedF_.
   bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
-  bindings_.allocate(mulIn)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
-  checkNumericalEquivalence(1e-6);
+  checkNumericalEquivalence(1.2e-7);
 }
 
 /// Test that Mul and Add can be folded into LayerNorm when the leading dims are
@@ -6393,6 +6741,44 @@ TEST_F(GraphOptz, foldMinMaxToClipTest) {
   checkNumericalEquivalence();
 }
 
+/// Test that Min -> Max Fold pass does not break with a reshape LHS input.
+TEST_F(GraphOptz, foldMinMaxToClipReshapeNoBroadcastTest) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 100},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  auto *reshape = F_->createReshape("reshape", input, {100, 1});
+  const TypeRef T = reshape->getResult().getType();
+
+  auto *maxSplat = F_->createSplat("max_splat", T, -2);
+  auto *minSplat = F_->createSplat("min_splat", T, 5);
+  auto *max = F_->createMax("max", reshape, maxSplat);
+  auto *min = F_->createMin("min", max, minSplat);
+  SaveNode *save = F_->createSave("save", min);
+  bindings_.allocate(save->getPlaceholder());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::FoldMinMaxToClip, getDCEPassConfig()});
+
+  EXPECT_EQ(3, optimizedF_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MinNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MaxNodeKind));
+
+  save = llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName("save_save"));
+  ASSERT_TRUE(save);
+  auto *CN = llvm::dyn_cast<ClipNode>(save->getInput().getNode());
+  ASSERT_TRUE(CN);
+  EXPECT_EQ(-2, CN->getMin());
+  EXPECT_EQ(5, CN->getMax());
+  auto *RN = llvm::dyn_cast<ReshapeNode>(CN->getInput());
+  ASSERT_TRUE(RN);
+  EXPECT_TRUE(RN->getResult().getType()->isEqual(T));
+  EXPECT_EQ(RN->getInput(), input->getOutput());
+
+  checkNumericalEquivalence();
+}
+
 /// Check that we replace a Node with 0.f scale in fp16 with a splat correctly.
 TEST_F(GraphOptz, ReplaceZeroScaleFP16QuantOpt) {
   auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {20, 30}, "LHS", false);
@@ -6607,4 +6993,117 @@ TEST_F(GraphOptz, mergeQuantizeDequantizeToConvertTo) {
   auto *newN = S->getInput().getNode();
   EXPECT_NE(nullptr, newN);
   EXPECT_NE(nullptr, llvm::dyn_cast<ConvertToNode>(newN));
+}
+
+TEST_F(GraphOptz, TestUpdateQuantReluTypesChained) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 0.11, -1,
+                                       "input", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::Int8QTy, {32, 32}, 0.2, 3,
+                                         "weights", false);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::Int32QTy, {32}, 0.01, 2, "bias", false);
+  auto *addW =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {128}, 0.3, -4, "addw", false);
+
+  auto *fc = F_->createFullyConnected("fc", input, weights, bias);
+  auto *qRelu = F_->createRELU("relu", fc->getResult());
+  auto *qConcat = F_->createConcat("concat", {qRelu, qRelu}, 0);
+  auto *qReshape = F_->createReshape("reshape", qConcat, {128});
+  auto *qAdd = F_->createAdd("add", qReshape, addW);
+  F_->createSave("save", qAdd);
+
+  updateQuantReluTypes(F_);
+
+  const auto fcRange = fc->getResult().getType()->getQuantizedValueRange();
+  const auto reluRange = qRelu->getResult().getType()->getQuantizedValueRange();
+  EXPECT_NE(reluRange.first, fcRange.first);
+  EXPECT_EQ(reluRange.first, 0);
+  EXPECT_EQ(reluRange.second, fcRange.second);
+
+  // Check that the relu's type now also matches that of the chain of shape
+  // users after it.
+  const TypeRef qReluTy = qRelu->getResult().getType();
+  EXPECT_EQ(qReluTy->getScale(), qConcat->getResult().getType()->getScale());
+  EXPECT_EQ(qReluTy->getOffset(), qConcat->getResult().getType()->getOffset());
+  EXPECT_EQ(qReluTy->getScale(), qReshape->getResult().getType()->getScale());
+  EXPECT_EQ(qReluTy->getOffset(), qReshape->getResult().getType()->getOffset());
+}
+
+TEST_F(GraphOptz, SinkReshapeBelowQuantize) {
+  auto *I = mod_.createPlaceholder(ElemKind::FloatTy, {32, 64}, "A", false);
+  auto *RN = F_->createReshape("reshape", I, {32, 64, 1});
+  auto *QN = F_->createQuantize("quantize", RN, ElemKind::Int8QTy, 0.2f, 1);
+  auto *SN = F_->createSave("ret", QN);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::SinkCode, getDCEPassConfig()});
+
+  auto *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  auto *optRN = llvm::dyn_cast<ReshapeNode>(optSN->getInput());
+  ASSERT_TRUE(optRN);
+  EXPECT_EQ(optRN->getResult().getElementType(), ElemKind::Int8QTy);
+  EXPECT_EQ(optRN->getResult().getScale(), 0.2f);
+  EXPECT_EQ(optRN->getResult().getOffset(), 1);
+  EXPECT_EQ(optRN->getResult().dims(), RN->getResult().dims());
+  auto *optQN = llvm::dyn_cast<QuantizeNode>(optRN->getInput());
+  ASSERT_TRUE(optQN);
+  EXPECT_EQ(optQN->getResult().getElementType(), ElemKind::Int8QTy);
+  EXPECT_EQ(optQN->getResult().getScale(), 0.2f);
+  EXPECT_EQ(optQN->getResult().getOffset(), 1);
+  EXPECT_EQ(optQN->getInput().getNode(), I);
+
+  bindings_.allocate(I)->getHandle<float>().randomize(-30, 30, mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, SinkReshapeBelowConvertTo) {
+  auto *I = mod_.createPlaceholder(ElemKind::FloatTy, {32, 64}, "A", false);
+  auto *RN = F_->createReshape("reshape", I, {32, 64, 1});
+  auto *CN = F_->createConvertTo("convert", RN, ElemKind::Float16Ty);
+  auto *SN = F_->createSave("ret", CN);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::SinkCode, getDCEPassConfig()});
+
+  auto *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  auto *optRN = llvm::dyn_cast<ReshapeNode>(optSN->getInput());
+  ASSERT_TRUE(optRN);
+  EXPECT_EQ(optRN->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(optRN->getResult().dims(), RN->getResult().dims());
+  auto *optCN = llvm::dyn_cast<ConvertToNode>(optRN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(optCN->getInput().getNode(), I);
+
+  bindings_.allocate(I)->getHandle<float>().randomize(-30, 30, mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, OptConvertToDequantize) {
+  auto *I =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {32, 64}, 0.2f, 1, "A", false);
+  auto *DN = F_->createDequantize("deq", I, ElemKind::Float16Ty);
+  auto *CN = F_->createConvertTo("convert", DN, ElemKind::FloatTy);
+  auto *SN = F_->createSave("ret", CN);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_,
+      {FunctionPassID::OptimizeOutIntermediateConversions, getDCEPassConfig()});
+
+  auto *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  auto *optDN = llvm::dyn_cast<DequantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optDN);
+  EXPECT_EQ(optDN->getResult().getElementType(), ElemKind::FloatTy);
+  EXPECT_EQ(optDN->getResult().dims(), DN->getResult().dims());
+  EXPECT_EQ(optDN->getInput().getNode(), I);
+
+  bindings_.allocate(I)->getHandle<int8_t>().randomize(-128, 127,
+                                                       mod_.getPRNG());
+  checkNumericalEquivalence(0.007f);
 }

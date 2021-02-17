@@ -66,13 +66,11 @@ struct SLSParam {
 };
 
 std::string getSLSDescription(SLSParam param) {
-  std::string SLSStr = (param.slsKind == NONQUANTIZED_UNWEIGHTED)
-                           ? std::string("SLS")
-                           : (param.slsKind == NONQUANTIZED_WEIGHTED)
-                                 ? std::string("SLWS")
-                                 : (param.slsKind == QUANTIZED_UNWEIGHTED)
-                                       ? std::string("RWQLSS")
-                                       : std::string("RWQLSWS");
+  std::string SLSStr =
+      (param.slsKind == NONQUANTIZED_UNWEIGHTED) ? std::string("SLS")
+      : (param.slsKind == NONQUANTIZED_WEIGHTED) ? std::string("SLWS")
+      : (param.slsKind == QUANTIZED_UNWEIGHTED)  ? std::string("RWQLSS")
+                                                 : std::string("RWQLSWS");
 
   return strFormat(
       "%s_%zu_%zu_%zu_%zu", SLSStr.c_str(), (size_t)param.numIndicesPerBatch,
@@ -297,7 +295,7 @@ public:
 
     // Add SLS nodes
     for (auto &param : params_) {
-      for (int i = 0; i < param.numSLSNodes; i++) {
+      for (dim_t i = 0; i < param.numSLSNodes; i++) {
         addSLSNode(mod, fn, param);
       }
     }

@@ -128,8 +128,11 @@ struct PrecisionConfiguration {
   /// are clipped inside the FP16 range.
   bool clipQuantRangeToFP16{false};
 
-  /// Whether to run External Quantization pass
-  bool externalQuantization{false};
+  /// If true, run quantization compatibility pass.
+  /// Using the backend compatibility information, this pass
+  /// converts the nodes into higher supported precision in order of FP16->FP32,
+  /// by dequantizing the model.
+  bool compatibilityDequantization{false};
 
   /// Converts a float16 \p format into an ElemKind.
   static ElemKind getElementType(Float16Format format) {
@@ -169,6 +172,10 @@ struct OptimizationOptions {
   /// will be put back in place automatically afterward, and then Constant
   /// Folding will be run.
   bool delayAndRecordConstantModification{false};
+
+  /// A set used to hold all temporary PHs that were swapped in for real PHs
+  /// when delayAndRecordConstantModification is set.
+  std::unordered_set<Placeholder *> tempPHsForConstants;
 
   /// If true, then there will be no error checking for backend support during
   /// the optimization pipeline. Expected that the caller will check if desired
@@ -340,6 +347,9 @@ struct CompilationContext {
 
   /// Whether we're loading a model that has been AOT optimized.
   bool loadingAOTModel{false};
+
+  /// Whether to skip provisioning, e.g. if we're doing AOT optimization.
+  bool skipProvisioning{false};
 
   /// Static placeholder type info used for AOT optimization.
   std::map<std::string, Type> staticPlaceholderTypesForAOT;
