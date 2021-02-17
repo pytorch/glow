@@ -907,6 +907,10 @@ private:
   /// Load an CumSum node.
   /// \returns error on failure.
   Error loadCumSum(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::all node.
+  /// \returns error on failure.
+  Error loadAll(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

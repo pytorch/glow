@@ -1226,6 +1226,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::log_softmax"}, &PyTorchModelLoader::loadLogSoftMax},
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
       {{"aten::to"}, &PyTorchModelLoader::loadTo},
+      {{"aten::all"}, &PyTorchModelLoader::loadAll},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
       {{"aten::embedding"}, &PyTorchModelLoader::loadEmbedding},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
@@ -5874,6 +5875,66 @@ Error PyTorchModelLoader::loadSelect(const torch::jit::Node *ptNode) {
   // Reshape to flatten unary dimension
   auto reshapeOutput = F_.createReshape("reshape", gatherRes, outDims);
   return addValueMapping(outputs[0], reshapeOutput);
+}
+Error PyTorchModelLoader::loadAll(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  int64_t axis = 0;
+  bool keepDim = false;
+  bool needsFlatten = false;
+  if (inputs.size() == 1) {
+    // Load torch.all(input)
+    axis = 0;
+    needsFlatten = true;
+  } else {
+    // Load torch.all(input, axis, keepdim)
+    ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                               iValToInt(getGlowIValueForValue(inputs[1])));
+    GlowIValue *keepDimIVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        keepDimIVal, getGlowIValueForValue(ptNode->namedInput("keepdim")));
+    if (keepDimIVal->getTag() != GlowIValue::Tag::None) {
+      ASSIGN_VALUE_OR_RETURN_ERR(keepDim, iValToBool(keepDimIVal));
+    }
+
+    const auto inputRank = input.getType()->dims().size();
+    RETURN_ERR_IF_NOT((axis < 0 ? axis >= -inputRank : axis < inputRank),
+                      "[aten::all] Axis must be in the range [-r, r-1]");
+
+    // Convert negative axis to corresponding positive axis
+    if (axis < 0) {
+      axis += inputRank;
+    }
+  }
+
+  ReshapeNode *flattenNode = nullptr;
+  if (needsFlatten) {
+    flattenNode =
+        F_.createFlatten("flatten", input, input.getType()->dims().size());
+  }
+
+  auto batchedReduceAndNode = F_.createBatchedReduceAnd(
+      "All",
+      needsFlatten ? static_cast<NodeValue>(flattenNode)
+                   : static_cast<NodeValue>(input),
+      {static_cast<unsigned_t>(axis)});
+
+  if (!keepDim) {
+    return addValueMapping(outputs[0], batchedReduceAndNode);
+  } else {
+    // If keepDim is true we need to insert the removed dimension(s) manually by
+    // reshaping
+    std::vector<dim_t> shape =
+        batchedReduceAndNode->getResult().getType()->dims();
+    shape.insert(shape.begin() + axis, static_cast<dim_t>(1));
+    auto reshapeNode = F_.createReshape("reshape", batchedReduceAndNode, shape);
+    return addValueMapping(outputs[0], reshapeNode);
+  }
 }
 
 Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
