@@ -522,6 +522,8 @@ struct BlacklistInitializer {
        TestBlacklist::AnyDeviceAnyEngine},
       {"MaxPool2DLargePads_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"MaxPool2DLargePads_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"FP16BatchNorm0D/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"FP16BatchNorm1D/0", TestBlacklist::AnyDeviceAnyEngine},
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
       {"BBoxTransform_Rotated_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"IntLookupTable/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -545,8 +547,6 @@ struct BlacklistInitializer {
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ConvertFrom_FloatTy_To_BoolTy/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"FP16BatchNorm0D/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"FP16BatchNorm1D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Int8BatchNorm2D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"FP16BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Int8BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
