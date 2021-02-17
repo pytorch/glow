@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 #include "../NNPIOptions.h"
+#include "glow/Support/Support.h"
+#include "nnpi_transformer_types.h"
 #include <cstring>
 #include <iostream>
 #include <map>
@@ -44,37 +46,46 @@ const uint32_t A0AnyEngine = NNPI_DEVICE_VERSION_1 | NNPI_EXECUTION_ENGINE_ANY;
 const uint32_t A0B0DeviceAnyEngine =
     NNPI_DEVICE_VERSION_1 | NNPI_DEVICE_VERSION_2 | NNPI_EXECUTION_ENGINE_ANY;
 
-static uint32_t getCurrentDeviceVersion() {
-  static const std::map<std::string, NNPI_DEVICE_VERSION> devices = {
-      {"1", NNPI_DEVICE_VERSION_1},
-      {"2", NNPI_DEVICE_VERSION_2},
-      {"3", NNPI_DEVICE_VERSION_3},
-  };
-  auto nnpiDeviceVersion = getenv("NNPI_DEVICE_VERSION");
-  if (nnpiDeviceVersion && devices.count(nnpiDeviceVersion)) {
-    return devices.at(nnpiDeviceVersion);
+/// Note: This function follows similar logic to the auto-device step detection
+/// and setting used when compilation occurs.
+static uint32_t getCurrentDeviceVersion(bool inferOnDevice) {
+  int devVer = -1;
+  auto devVerStr = getenv("NNPI_DEVICE_VERSION");
+  if (devVerStr) {
+    auto devVerOrErr = glow::getIntFromStr(devVerStr);
+    CHECK(devVerOrErr) << "Expected integer NNPI_DEVICE_VERSION: " << devVerStr;
+    devVer = *devVerOrErr;
   }
-  int defaultDevVer = glow::NNPIOptions::getFirstDeviceSteppingVersion();
-  if (defaultDevVer >= NNPI_DEVICE_VERSION_1) {
-    return defaultDevVer;
+
+  auto devVerOrErr = glow::NNPIOptions::getDeviceVersion(inferOnDevice, devVer);
+  CHECK(devVerOrErr) << "Error when getting device version.";
+  switch (*devVerOrErr) {
+  case NNPI_1000_A:
+    return NNPI_DEVICE_VERSION_1;
+  case NNPI_1000_B:
+    return NNPI_DEVICE_VERSION_2;
+  case NNPI_1000_C:
+    return NNPI_DEVICE_VERSION_3;
+  default:
+    LOG(FATAL) << "Error mapping device stepping to version";
   }
-  return NNPI_DEVICE_VERSION_1;
 }
 
 static uint32_t getCurrentEngine() {
   auto useInfAPI = getenv("USE_INF_API");
-  if (useInfAPI && !strcmp(useInfAPI, "0")) {
-    return NNPI_EXECUTION_ENGINE_SW;
+  if (useInfAPI && !strcmp(useInfAPI, "1")) {
+    return NNPI_EXECUTION_ENGINE_HW;
   }
-  return NNPI_EXECUTION_ENGINE_HW;
+  return NNPI_EXECUTION_ENGINE_SW;
 }
 
 typedef std::pair<std::string, uint32_t> TestSetup;
 
 void prepareBlacklist(const std::vector<TestSetup> &testBlacklistedSetups,
                       std::set<std::string> &testBlacklist) {
-  auto currentDeviceVersion = getCurrentDeviceVersion();
   auto currentExecutionEngine = getCurrentEngine();
+  auto currentDeviceVersion = getCurrentDeviceVersion(currentExecutionEngine ==
+                                                      NNPI_EXECUTION_ENGINE_HW);
 
   auto currentSetup = currentDeviceVersion | currentExecutionEngine;
   for (const auto testBlacklistedSetup : testBlacklistedSetups) {
