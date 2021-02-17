@@ -364,11 +364,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   }
   VLOG(1) << "Before partitioner";
   Partitioner partitioner(module.get(), deviceInfo, skipOptimizations);
-  if (cctx.enableP2P || cctx.enableDRT) {
-    partitioner.setContextCount(cctx.maxActiveRequestsPerInstance);
-  } else {
-    partitioner.setContextCount(2);
-  }
+  auto backendName = devices_[0]->getBackendName();
+  const auto &backend = provisioner_->getBackend(backendName);
+  auto contextCount = backend.getContextCount(cctx);
+  partitioner.setContextCount(contextCount);
   DAGListTy nodeList;
   auto result = partitioner.partition(cctx);
   VLOG(1) << "After partitioner";
