@@ -936,36 +936,43 @@ void LLVMIRGen::emitDataParallelKernel(
 }
 
 /// Check if the provided operand overlaps with an operand of an instruction
-/// already in the bundle, but is not exactly the same memory region.
+/// already in the bundle.
 /// Such memory regions cannot be considered data-parallel in the scope of the
 /// same kernel.
 ///
 /// \param allocationsInfo information about allocations
 /// \param bundle current bundle of stacked instructions
 /// \param buf the buffer operand to be checked for overlaps with the \p bundle.
+/// \param isInput the buffer is an input buffer.
 static bool isOverlappingWithAnyBundleBufferOperands(
     AllocationsInfo &allocationsInfo,
-    llvm::SmallVectorImpl<const Instruction *> &bundle, Value *buf) {
+    llvm::SmallVectorImpl<const Instruction *> &bundle, Value *buf,
+    bool isInput) {
   auto addr1 = allocationsInfo.allocatedAddress_[buf];
   auto size1 = buf->getSizeInBytes();
   for (auto bi : bundle) {
     for (auto bop : bi->getOperands()) {
-      auto buf2 = bop.first;
-      auto addr2 = allocationsInfo.allocatedAddress_[buf2];
-      auto size2 = buf2->getSizeInBytes();
-      if (addr1 == addr2 && size1 == size2) {
-        // The two buffers are the exact same memory region. The operations
-        // cannot be within the same bundle because the buffer pointers are
-        // "noalias" qualified, so the kernel operations can be reordered by
-        // LLVM's optimizations.
-        // TODO investigate if removing "noalias" can be used to create bigger
-        // and faster bundles.
-        return true;
-      }
-      if ((addr1 >= addr2 && addr1 < addr2 + size2) ||
-          (addr2 >= addr1 && addr2 < addr1 + size1)) {
-        // Two intervals overlap, but are not the same.
-        return true;
+      if (!isInput || bop.second != OperandKind::In) {
+        // Input buffers shall not overlap any output buffer used by the bundle
+        // and output buffers shall not overlap any input/output buffer used by
+        // the bundle.
+        auto buf2 = bop.first;
+        auto addr2 = allocationsInfo.allocatedAddress_[buf2];
+        auto size2 = buf2->getSizeInBytes();
+        if (addr1 == addr2 && size1 == size2) {
+          // The two buffers are the exact same memory region. The operations
+          // cannot be within the same bundle because the buffer pointers are
+          // "noalias" qualified, so the kernel operations can be reordered by
+          // LLVM's optimizations.
+          // TODO investigate if removing "noalias" can be used to create bigger
+          // and faster bundles.
+          return true;
+        }
+        if ((addr1 >= addr2 && addr1 < addr2 + size2) ||
+            (addr2 >= addr1 && addr2 < addr1 + size1)) {
+          // Two intervals overlap, but are not the same.
+          return true;
+        }
       }
     }
   }
@@ -1005,19 +1012,18 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
       isBundleCompatible = val->size() == bundleVal->size();
     }
 
-    // Check all mutated operands of the current instruction. Their memory
-    // regions should not have a non-exact overlap with any operands of the
+    // Check all mutated operands of the current and previous instructions.
+    // Their memory regions should not overlap with any operands of the
     // bundled instructions. In case this condition does not hold, the current
     // instruction cannot be included into the data-parallel bundle, because
     // overlapping operand buffers are not data parallel.
     for (auto op : I.getOperands()) {
-      // Skip non-mutated operands.
-      if (op.second == OperandKind::In)
-        continue;
-      // If the mutated operand buffer overlaps with any buffer already used by
-      // the bundle, the current instruction cannot become a part of the bundle.
-      if (isOverlappingWithAnyBundleBufferOperands(allocationsInfo_, bundle,
-                                                   op.first)) {
+      // If a mutated operand buffer overlaps with any buffer already used by
+      // the bundle, or if a non-mutated operand overlaps with a mutated buffer
+      // used by bundle the current instruction cannot become a part of the
+      // bundle.
+      if (isOverlappingWithAnyBundleBufferOperands(
+          allocationsInfo_, bundle, op.first, op.second == OperandKind::In)) {
         isBundleCompatible = false;
         break;
       }
