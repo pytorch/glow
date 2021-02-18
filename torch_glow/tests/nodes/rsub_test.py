@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -19,30 +16,30 @@ class SimpleRsubModel(torch.nn.Module):
             return torch.rsub(third, third)
 
 
-class TestRsub(unittest.TestCase):
-    @parameterized.expand(
+class TestRsub(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("basic", SimpleRsubModel(), torch.randn(4), torch.randn(4)),
-            (
+            lambda: ("basic", SimpleRsubModel(), torch.randn(4), torch.randn(4)),
+            lambda: (
                 "broadcast",
                 SimpleRsubModel(),
                 torch.randn(8, 3, 4, 2),
                 torch.randn(4, 2),
             ),
-            (
+            lambda: (
                 "broadcast",
                 SimpleRsubModel(),
                 torch.randn(8, 3, 4, 2),
                 torch.randn(1, 2),
             ),
-            (
+            lambda: (
                 "broadcast",
                 SimpleRsubModel(),
                 torch.randn(4, 2),
                 torch.randn(8, 3, 4, 2),
             ),
-            ("float", SimpleRsubModel(), torch.randn(4), torch.tensor(13.293)),
-            ("int", SimpleRsubModel(), torch.randn(4), torch.tensor(4)),
+            lambda: ("float", SimpleRsubModel(), torch.randn(4), torch.tensor(13.293)),
+            lambda: ("int", SimpleRsubModel(), torch.randn(4), torch.tensor(4)),
         ]
     )
     def test_rsub(self, _, module, tensor, other):

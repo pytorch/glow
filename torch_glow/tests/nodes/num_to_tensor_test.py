@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -25,7 +23,7 @@ class SimpleNumToTensorModule(torch.nn.Module):
         return torch.cat((at0.reshape(1), at1.reshape(1)))
 
 
-class TestNumToTensor(unittest.TestCase):
+class TestNumToTensor(utils.TorchGlowTestCase):
     def test_NumToTensor_basic(self):
         """Basic test of the PyTorch NumToTensor Node on Glow."""
 

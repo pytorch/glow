@@ -4,7 +4,6 @@ import unittest
 
 import torch
 import torch.nn.functional as F
-from parameterized import parameterized
 from tests import utils
 
 
@@ -17,19 +16,19 @@ class SimpleLogSoftmaxModel(torch.nn.Module):
         return F.log_softmax(tensor, self.dimension)
 
 
-class TestLogSoftmax(unittest.TestCase):
-    @parameterized.expand(
+class TestLogSoftmax(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (-2, [2, 3]),
-            (-1, [2, 3]),
-            (0, [2, 3]),
-            (1, [2, 3]),
-            (-3, [2, 3, 4]),
-            (-2, [2, 3, 4]),
-            (-1, [2, 3, 4]),
-            (0, [2, 3, 4]),
-            (1, [2, 3, 4]),
-            (2, [2, 3, 4]),
+            lambda: (-2, [2, 3]),
+            lambda: (-1, [2, 3]),
+            lambda: (0, [2, 3]),
+            lambda: (1, [2, 3]),
+            lambda: (-3, [2, 3, 4]),
+            lambda: (-2, [2, 3, 4]),
+            lambda: (-1, [2, 3, 4]),
+            lambda: (0, [2, 3, 4]),
+            lambda: (1, [2, 3, 4]),
+            lambda: (2, [2, 3, 4]),
         ]
     )
     def test_log_softmax(self, dim, input_dims):

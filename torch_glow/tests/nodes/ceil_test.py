@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -12,7 +10,7 @@ class SimpleCeilModule(torch.nn.Module):
         return torch.ceil(c)
 
 
-class TestCeil(unittest.TestCase):
+class TestCeil(utils.TorchGlowTestCase):
     def test_ceil(self):
         """Basic test of the PyTorch Ceil Node on Glow."""
 

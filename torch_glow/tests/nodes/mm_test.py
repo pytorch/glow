@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -15,7 +13,7 @@ class SimpleMmModule(torch.nn.Module):
         return r.mm(t)
 
 
-class TestMm(unittest.TestCase):
+class TestMm(utils.TorchGlowTestCase):
     def test_mm_basic(self):
         """Test of the PyTorch mm Node on Glow."""
 

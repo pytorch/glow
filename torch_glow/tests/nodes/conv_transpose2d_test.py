@@ -1,11 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
 from collections import namedtuple
 
 import torch
 import torch.nn.functional as F
-from parameterized import parameterized
 from tests import utils
 
 
@@ -32,16 +30,16 @@ class SimpleConvTranspose2dModule(torch.nn.Module):
         return F.relu(convTranspose)
 
 
-class TestConvTranpose2d(unittest.TestCase):
-    @parameterized.expand(
+class TestConvTranpose2d(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 SimpleConvTranspose2dModule(padding=1),
                 torch.randn(1, 4, 5, 5),
                 torch.randn(4, 8, 3, 3),
             ),
-            (
+            lambda: (
                 "with_bias",
                 SimpleConvTranspose2dModule(padding=1),
                 torch.randn(1, 4, 5, 5),

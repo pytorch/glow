@@ -3,12 +3,14 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import itertools
 import os
+import unittest
 from contextlib import contextmanager
 from copy import deepcopy
 from io import BytesIO
 
 import torch
 import torch_glow
+from parameterized import parameterized
 
 GLOW_FUSION_GROUP = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
@@ -232,3 +234,24 @@ def save_and_reload_model(model):
     reloaded_model = torch.jit.load(buf)
     print("done")
     return reloaded_model
+
+
+class TorchGlowTestCase(unittest.TestCase):
+    """
+    Base class for torch_glow tests that ensure that torch.manual_seed is
+    called before each test.
+    NOTE: this won't effect arguments to the test case so make sure that test
+    cases generate their own inputs to the test network within the test case not
+    outside of it.
+    """
+
+    def setUp(self):
+        torch.manual_seed(0)
+        print("running the setup for TorchGlowTest")
+
+
+def deterministic_expand(params):
+    """Takes params as a list of lambdas where each lambda produces a tuple of
+    unique parameters for the test"""
+    torch.manual_seed(0)
+    return parameterized.expand([p() for p in params])

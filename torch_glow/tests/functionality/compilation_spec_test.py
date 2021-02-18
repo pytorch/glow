@@ -2,13 +2,13 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import pickle
-import unittest
 
 import torch
 import torch_glow
+from tests import utils
 
 
-class TestCompilationSpec(unittest.TestCase):
+class TestCompilationSpec(utils.TorchGlowTestCase):
     def build_compiliation_spec(self):
         compilation_spec = torch_glow.CompilationSpec()
 

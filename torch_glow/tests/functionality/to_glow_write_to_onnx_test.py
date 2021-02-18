@@ -3,10 +3,10 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import glob
 import os
-import unittest
 
 import torch
 import torch_glow
+from tests import utils
 
 
 class Foo(torch.nn.Module):
@@ -54,7 +54,7 @@ def create_model(x, ModType):
     return model
 
 
-class TestToGlowWriteToOnnx(unittest.TestCase):
+class TestToGlowWriteToOnnx(utils.TorchGlowTestCase):
     def lower_and_write_to_onnx_helper(self, ModType, onnx_prefix):
         x = torch.randn(1, 3, 8, 8)
         model = create_model(x, ModType)

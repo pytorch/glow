@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -16,7 +14,7 @@ class SimpleReciprocalModel(torch.nn.Module):
         return other.reciprocal_() if self.inplace else torch.reciprocal(other)
 
 
-class TestReciprocal(unittest.TestCase):
+class TestReciprocal(utils.TorchGlowTestCase):
     def test_reciprocal(self):
         """Test of the PyTorch reciprocal Node on Glow."""
 

@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -11,7 +9,7 @@ class SimpleBmmModule(torch.nn.Module):
         return (a + a).bmm(b)
 
 
-class TestBmm(unittest.TestCase):
+class TestBmm(utils.TorchGlowTestCase):
     def test_bmm(self):
         """Basic test of the PyTorch bmm Node on Glow."""
 

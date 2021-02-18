@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -24,15 +21,15 @@ class SimpleQuantizedMaxPoolModel(torch.nn.Module):
         return dequantize(maxpool(quantize(tensor)))
 
 
-class TestQuantizedMaxPool(unittest.TestCase):
-    @parameterized.expand(
+class TestQuantizedMaxPool(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 SimpleQuantizedMaxPoolModel(1.0 / 128, 3, torch.quint8, 3),
                 torch.randn(1, 4, 5, 5),
             ),
-            (
+            lambda: (
                 "cut_q",
                 SimpleQuantizedMaxPoolModel(1.0 / 128, 3, torch.quint8, 3),
                 torch.randn(1, 4, 5, 5),

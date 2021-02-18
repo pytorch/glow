@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -25,7 +23,7 @@ class SimpleQuantizedAddModule(torch.nn.Module):
         )
 
 
-class TestQuantizedAdd(unittest.TestCase):
+class TestQuantizedAdd(utils.TorchGlowTestCase):
     def test_quantized_add_zerooffset(self):
         """Basic test of the PyTorch quantized::add Node on Glow with zero offset."""
 

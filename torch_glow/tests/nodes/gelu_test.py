@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.nn.functional as F
 from tests import utils
@@ -12,7 +10,7 @@ class SimpleGeluModule(torch.nn.Module):
         return F.gelu(tensor + tensor)
 
 
-class TestGelu(unittest.TestCase):
+class TestGelu(utils.TorchGlowTestCase):
     def test_gelu_basic(self):
         """Basic test of the PyTorch gelu Node on Glow."""
 

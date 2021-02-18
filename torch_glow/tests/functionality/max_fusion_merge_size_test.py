@@ -1,14 +1,13 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 from tests.utils import GLOW_FUSION_GROUP
 
 
-class TestMaxFusionMergeSize(unittest.TestCase):
+class TestMaxFusionMergeSize(utils.TorchGlowTestCase):
     def test_max_fusion_merge_size(self):
         """Test Glow fuser maximum fusion merge size mechanism."""
 

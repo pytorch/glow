@@ -1,10 +1,9 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 
 
 class Qux(torch.nn.Module):
@@ -81,7 +80,7 @@ def get_compilation_spec(inputs):
     return spec
 
 
-class TestSelectiveToGlow(unittest.TestCase):
+class TestSelectiveToGlow(utils.TorchGlowTestCase):
     def test_to_glow_selective(self):
         inputs = (torch.zeros(4) + 8, torch.zeros(4) + 7)
         torch_res = model(*inputs)

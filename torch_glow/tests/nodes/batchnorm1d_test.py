@@ -1,13 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.nn as nn
 from tests import utils
 
 
-class TestBatchNorm1D(unittest.TestCase):
+class TestBatchNorm1D(utils.TorchGlowTestCase):
     def test_batchnorm_basic(self):
         """
         Basic test of the PyTorch 1D batchnorm Node on Glow.

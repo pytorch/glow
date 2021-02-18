@@ -1,7 +1,4 @@
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -48,10 +45,10 @@ def _make_input(size, duplications, shape, dtype=torch.float):
     return tensor
 
 
-class TestQuantizedLinear(unittest.TestCase):
-    @parameterized.expand(
+class TestQuantizedLinear(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 SimpleQuantizedLinearModel(
                     5,
@@ -65,7 +62,7 @@ class TestQuantizedLinear(unittest.TestCase):
                 ),
                 _make_input(5, 6, [3, 2, 5]),
             ),
-            (
+            lambda: (
                 "no_bias",
                 SimpleQuantizedLinearModel(
                     5,
@@ -78,7 +75,7 @@ class TestQuantizedLinear(unittest.TestCase):
                 ),
                 _make_input(5, 6, [3, 2, 5]),
             ),
-            (
+            lambda: (
                 "exclude_dq",
                 SimpleQuantizedLinearModel(
                     5,
@@ -93,7 +90,7 @@ class TestQuantizedLinear(unittest.TestCase):
                 _make_input(5, 6, [3, 2, 5]),
                 {"aten::dequantize"},
             ),
-            (
+            lambda: (
                 "rowwise",
                 SimpleQuantizedLinearModel(
                     6,
@@ -105,7 +102,7 @@ class TestQuantizedLinear(unittest.TestCase):
                 ),
                 _make_input(36, 1, [3, 2, 6]),
             ),
-            (
+            lambda: (
                 "tensorwise",
                 SimpleQuantizedLinearModel(
                     6,

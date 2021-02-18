@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -12,7 +10,7 @@ class SimpleFloorModule(torch.nn.Module):
         return torch.floor(c)
 
 
-class TestFloor(unittest.TestCase):
+class TestFloor(utils.TorchGlowTestCase):
     def test_floor(self):
         """Basic test of the PyTorch floor Node on Glow."""
 

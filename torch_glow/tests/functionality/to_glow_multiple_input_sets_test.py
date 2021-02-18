@@ -1,9 +1,8 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 
 
 class Foo(torch.nn.Module):
@@ -14,7 +13,7 @@ class Foo(torch.nn.Module):
         return x + y
 
 
-class TestToGlowMultpleInputSets(unittest.TestCase):
+class TestToGlowMultpleInputSets(utils.TorchGlowTestCase):
     def test_to_glow_multiple_groups_and_input_sets(self):
         x1 = torch.randn(1, 4)
         y1 = torch.randn(2, 4)

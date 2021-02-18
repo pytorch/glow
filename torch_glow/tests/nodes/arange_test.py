@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -21,7 +18,7 @@ class SimpleArangeModule(torch.nn.Module):
         return torch.arange(start=start, end=end, step=step)
 
 
-class TestArange(unittest.TestCase):
+class TestArange(utils.TorchGlowTestCase):
     """
     Tests for torch.arange glow fusion.
 
@@ -31,20 +28,24 @@ class TestArange(unittest.TestCase):
     happening. Otherwise, there would be nothing to fuse.
     """
 
-    @parameterized.expand(
+    @utils.deterministic_expand(
         [
-            ("simple", SimpleArangeModule(end=lambda x: x.size(0)), torch.randn(10)),
-            (
+            lambda: (
+                "simple",
+                SimpleArangeModule(end=lambda x: x.size(0)),
+                torch.randn(10),
+            ),
+            lambda: (
                 "all_args",
                 SimpleArangeModule(start=lambda x: x.size(0), end=30, step=1),
                 torch.randn(10),
             ),
-            (
+            lambda: (
                 "floats",
                 SimpleArangeModule(start=lambda x: x.size(0), end=30.5, step=0.8),
                 torch.randn(10),
             ),
-            (
+            lambda: (
                 "negative_step",
                 SimpleArangeModule(
                     start=lambda x: x.size(0), end=lambda x: x.size(1), step=-1.2

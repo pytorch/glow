@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -16,22 +13,24 @@ class SimpleCumSumModule(torch.nn.Module):
         return torch.cumsum(tensor, dim=0)
 
 
-class TestCumSum(unittest.TestCase):
-    @parameterized.expand(
+class TestCumSum(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("1", torch.randn(1)),
-            ("2", torch.randn(2)),
-            ("20", torch.randn(20)),
+            lambda: ("1", False, torch.randn(1)),
+            lambda: ("2", False, torch.randn(2)),
+            lambda: ("20", False, torch.randn(20)),
             # TODO add these tests when multi-dimension is supported
-            # ("3x3", torch.randn(3, 3)),
-            # ("5x4", torch.randn(5, 4)),
-            # ("3x3x3", torch.randn(3, 4, 5)),
-            # ("3x4x5", torch.randn(3, 4, 5)),
-            # ("4x4x4x4", torch.randn(6, 5, 4, 3)),
-            # ("6x5x4x3", torch.randn(6, 5, 4, 3)),
+            lambda: ("3x3", True, torch.randn(3, 3)),
+            lambda: ("5x4", True, torch.randn(5, 4)),
+            lambda: ("3x3x3", True, torch.randn(3, 4, 5)),
+            lambda: ("3x4x5", True, torch.randn(3, 4, 5)),
+            lambda: ("4x4x4x4", True, torch.randn(6, 5, 4, 3)),
+            lambda: ("6x5x4x3", True, torch.randn(6, 5, 4, 3)),
         ]
     )
-    def test_cumsum(self, _, tensor):
+    def test_cumsum(self, _, skip, tensor):
+        if skip:
+            self.skipTest("multi-dimension is supported yet support")
         utils.compare_tracing_methods(
             SimpleCumSumModule(), tensor, fusible_ops={"aten::cumsum"}
         )

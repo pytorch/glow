@@ -1,11 +1,10 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.jit
 import torch_glow
+from tests import utils
 from tests import utils
 
 
@@ -29,7 +28,7 @@ class Bar(torch.nn.Module):
         return self.model(x)
 
 
-class TestToGlowSavePreprocessedModule(unittest.TestCase):
+class TestToGlowSavePreprocessedModule(utils.TorchGlowTestCase):
     def test_save_preprocessed_module(self):
         with torch.no_grad():
             x = torch.randn([1, 4, 4, 4], dtype=torch.float32)

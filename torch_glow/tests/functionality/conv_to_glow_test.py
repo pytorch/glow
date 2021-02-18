@@ -1,11 +1,11 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
 from collections import OrderedDict
 
 import torch
 import torch_glow
+from tests import utils
 
 
 def create_model(x, relu, bias=True):
@@ -69,7 +69,7 @@ def run_to_glow(m, x):
     return lowered_module
 
 
-class TestConvToGlow(unittest.TestCase):
+class TestConvToGlow(utils.TorchGlowTestCase):
     def test_conv2d_to_glow(self):
         x = torch.randn([1, 3, 30, 30])
         m = create_model(x, False)

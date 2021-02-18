@@ -5,7 +5,6 @@ from collections import namedtuple
 
 import torch
 import torch.nn.functional as F
-from parameterized import parameterized
 from tests import utils
 
 
@@ -30,23 +29,23 @@ class SimpleConv2dModule(torch.nn.Module):
         return F.relu(conv)
 
 
-class TestConv2d(unittest.TestCase):
-    @parameterized.expand(
+class TestConv2d(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 SimpleConv2dModule(padding=1),
                 torch.randn(1, 4, 5, 5),
                 torch.randn(8, 4, 3, 3),
             ),
-            (
+            lambda: (
                 "with_bias",
                 SimpleConv2dModule(padding=1),
                 torch.randn(1, 4, 5, 5),
                 torch.randn(8, 4, 3, 3),
                 torch.randn(8),
             ),
-            (
+            lambda: (
                 "nonsquare_dilation",
                 SimpleConv2dModule(padding=1, dilation=[1, 2]),
                 torch.randn(1, 4, 5, 5),
@@ -61,7 +60,6 @@ class TestConv2d(unittest.TestCase):
             module, inputs, filters, fusible_ops={"aten::_convolution"}
         )
 
-    @unittest.skip(reason="not ready")
     def test_conv2d_param_sweep(self):
         """
         Test of the PyTorch conv2d Node sweeping through various parameters of the
@@ -88,13 +86,16 @@ class TestConv2d(unittest.TestCase):
 
         for setting in settings:
 
-            def test_f(inputs, filters):
-                conv = F.conv2d(inputs, filters, padding=setting.p, groups=setting.g)
-                return F.relu(conv)
+            class Conv2dTestModule(torch.nn.Module):
+                def forward(self, inputs, filters):
+                    conv = F.conv2d(
+                        inputs, filters, padding=setting.p, groups=setting.g
+                    )
+                    return F.relu(conv)
 
             inputs = torch.randn(2, 4, setting.h, setting.w)
-            filters = torch.randn(8, 4 / setting.g, 3, 3)
+            filters = torch.randn(8, 4 // setting.g, 3, 3)
 
             utils.compare_tracing_methods(
-                test_f, inputs, filters, fusible_ops={"aten::_convolution"}
+                Conv2dTestModule(), inputs, filters, fusible_ops={"aten::_convolution"}
             )

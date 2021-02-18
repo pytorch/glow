@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -21,29 +18,33 @@ class SimpleTransposeModel(torch.nn.Module):
             return t.t_() if self.inplace else t.t()
 
 
-class TestTranspose(unittest.TestCase):
-    @parameterized.expand(
+class TestTranspose(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("2d", SimpleTransposeModel(), torch.randn(7, 4)),
-            ("1d", SimpleTransposeModel(), torch.randn(7)),
-            ("inplace", SimpleTransposeModel(inplace=True), torch.randn(7, 4)),
+            lambda: ("2d", SimpleTransposeModel(), torch.randn(7, 4)),
+            lambda: ("1d", SimpleTransposeModel(), torch.randn(7)),
+            lambda: ("inplace", SimpleTransposeModel(inplace=True), torch.randn(7, 4)),
         ]
     )
     def test_t(self, _, module, tensor):
         utils.compare_tracing_methods(module, tensor, fusible_ops={"aten::t"})
 
-    @parameterized.expand(
+    @utils.deterministic_expand(
         [
-            ("simple", SimpleTransposeModel(1, 2), torch.randn(2, 3, 4)),
-            ("inplace", SimpleTransposeModel(1, 2, inplace=True), torch.randn(2, 3, 4)),
-            ("neg_dim", SimpleTransposeModel(-2, -1), torch.randn(2, 3, 4)),
+            lambda: ("simple", SimpleTransposeModel(1, 2), torch.randn(2, 3, 4)),
+            lambda: (
+                "inplace",
+                SimpleTransposeModel(1, 2, inplace=True),
+                torch.randn(2, 3, 4),
+            ),
+            lambda: ("neg_dim", SimpleTransposeModel(-2, -1), torch.randn(2, 3, 4)),
         ]
     )
     def test_transpose(self, _, module, tensor, reference=None):
         utils.compare_tracing_methods(module, tensor, fusible_ops={"aten::transpose"})
 
-    @parameterized.expand(
-        [("oob_neg_dim", SimpleTransposeModel(-2, -4), torch.randn(2, 3, 4))]
+    @utils.deterministic_expand(
+        [lambda: ("oob_neg_dim", SimpleTransposeModel(-2, -4), torch.randn(2, 3, 4))]
     )
     def test_transpose_failure(self, _, module, tensor):
         with self.assertRaises(IndexError):
