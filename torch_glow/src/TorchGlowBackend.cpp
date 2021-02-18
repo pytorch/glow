@@ -483,13 +483,6 @@ static Error ProcessPackedParams(torch::jit::Graph &graph,
   return Error::success();
 }
 
-c10::IValue
-TorchGlowBackend::preprocess(c10::IValue mod,
-                             c10::impl::GenericDict method_compile_spec) {
-  // We do nothing in the preprocess, instead we do them in compile()
-  return mod;
-}
-
 Error applySettingsOverrideFlagsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings) {
   // TODO:
