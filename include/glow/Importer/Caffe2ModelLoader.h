@@ -75,6 +75,9 @@ class Caffe2ModelLoader
   /// Load the Conv or ConvRelu operators.
   Error loadConv(const caffe2::OperatorDef &op, ArgumentDictionaryTy &dict);
 
+  /// Load the Softmax operator
+  Error loadSoftmax(const caffe2::OperatorDef &op, ArgumentDictionaryTy &dict);
+
   /// Load the ConvTranspose operator.
   Error loadConvTranspose(const caffe2::OperatorDef &op,
                           ArgumentDictionaryTy &dict);

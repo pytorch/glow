@@ -80,6 +80,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedReduceMaxNodeKind:
+  case Kinded::Kind::BatchedReduceProdNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
@@ -87,6 +88,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MulNodeKind:
+  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::ClipNodeKind:
@@ -143,7 +145,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int8QTy, ElemKind::Int16QTy});
 
   case Kinded::Kind::FullyConnectedNodeKind:
-    if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
+    if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
     }
@@ -171,7 +173,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ArgMaxNodeKind:
   case Kinded::Kind::ArgMinNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
                {ArgMaxNode::ResultIdx}) &&
            (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy ||
             NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int32ITy);
@@ -194,8 +196,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int32QTy, ElemKind::Int64ITy,
-         ElemKind::Int32ITy});
-  case Kinded::Kind::DivNodeKind:
+         ElemKind::Int32ITy, ElemKind::BoolTy});
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -238,6 +239,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
   case Kinded::Kind::FloorNodeKind:
+  case Kinded::Kind::TruncateNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
@@ -609,6 +611,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {SoftMaxNode::SelectedIdx}) &&
            (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int32ITy ||
             NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::LogSoftMaxNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+               {LogSoftMaxNode::SelectedIdx}) &&
+           (NI.getInElemTy(LogSoftMaxNode::SelectedIdx) == ElemKind::Int32ITy ||
+            NI.getInElemTy(LogSoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::GatherRangesNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -1004,13 +1013,4 @@ Expected<bool> Interpreter::transformPostLowering(
 }
 
 void Interpreter::parseBackendSpecificOptions(
-    const BackendOptions &opts) const {
-  auto interpreterMaxMemOpt =
-      opts.backendSpecificOpts.find("interpreter-memory");
-  if (interpreterMaxMemOpt != opts.backendSpecificOpts.end()) {
-    glow::runtime::flags::InterpreterMemory =
-        std::stoi(interpreterMaxMemOpt->second);
-    llvm::outs() << "Interpreter memory set to "
-                 << glow::runtime::flags::InterpreterMemory << "\n";
-  }
-}
+    const BackendOptions &opts) const {}

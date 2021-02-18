@@ -60,6 +60,14 @@ run_and_check_bundle_instrument() {
     cd -
 }
 
+run_and_check_bundle_with_multiple_entries() {
+    cd "${GLOW_BUILD_DIR}/bundles/bundle_with_multiple_entries/"
+    # Compare console output.
+    ./bundle_with_multiple_entries >> raw_results.txt
+    diff raw_results.txt "${GLOW_SRC}/.ci/bundle_with_multiple_entries_expected_output.txt"
+    cd -
+}
+
 run_and_check_bundle_with_extra_objects() {
     cd "${GLOW_BUILD_DIR}/bundles/bundle_with_extra_objects/"
     # Compare console output.
@@ -112,6 +120,7 @@ case ${CIRCLE_JOB} in
         run_and_check_lenet_mnist_bundle
         run_and_check_resnet50_bundle
         run_and_check_bundle_instrument
+        run_and_check_bundle_with_multiple_entries
         run_and_check_bundle_with_extra_objects
         ;;
     COVERAGE)

@@ -80,7 +80,7 @@ apt-get update
 apt-get install -y --no-install-recommends libprotobuf-dev protobuf-compiler
 ```
 
-### Install [ananconda python 3.6](https://github.com/pytorch/pytorch/blob/master/.circleci/docker/common/install_conda.sh) and packages
+### Install [anaconda python 3.6](https://github.com/pytorch/pytorch/blob/master/.circleci/docker/common/install_conda.sh) and packages
 ```
 sudo bash
 BASE_URL="https://repo.anaconda.com/miniconda"

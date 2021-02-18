@@ -75,9 +75,10 @@ Error Provisioner::checkActiveNetworks(
 
   std::lock_guard<std::mutex> networkLock(functionsLock_);
   for (auto &network : networks) {
+#if FACEBOOK_INTERNAL
     LOG(INFO) << "Checking for active networks when adding: "
               << network.root->name;
-
+#endif
     for (auto &node : network.nodes) {
       //  Check to see if another thread is actively working on the same
       //  networks.
@@ -91,8 +92,10 @@ Error Provisioner::checkActiveNetworks(
                                       node->name)
                             .str());
       }
+#if FACEBOOK_INTERNAL
       LOG(INFO) << "Adding partition name: " << node->name
                 << " to activeFunctions_";
+#endif
       localActiveNames.push_back(node->name);
       activeFunctions_.insert(node->name);
     }
@@ -217,7 +220,7 @@ Provisioner::generateDeviceAssignments(
             ErrorValue::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
             strFormat(
                 "Logical Device is too large to fit in available device "
-                "memory. Largest device memory: %lu, logic device size:  %lu",
+                "memory. Largest device memory: %lu, logic device size: %lu",
                 deviceMemoryMap[backendName][0].second, logicalDevice.second));
       }
     }
@@ -909,8 +912,10 @@ void Provisioner::cleanupProvision(
     // Remove any partitions added to devices.
     for (auto &device : currentNetworkResidency) {
       for (auto &network : device.second) {
+#if FACEBOOK_INTERNAL
         LOG(INFO) << "Removing network " << network << " from device "
                   << device.first;
+#endif
         Error evictErr = evictFunction(network, devices_[device.first]);
         if (evictErr) {
           LOG(ERROR) << "Unable to evict network: " << network << "\n";

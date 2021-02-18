@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -16,11 +13,11 @@ class SimpleViewModule(torch.nn.Module):
         return (tensor + tensor).view(self.shape)
 
 
-class TestView(unittest.TestCase):
-    @parameterized.expand(
+class TestView(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (SimpleViewModule(2, -1), torch.rand(2, 3, 4)),
-            (SimpleViewModule(-1, 2), torch.rand(2, 3, 4)),
+            lambda: (SimpleViewModule(2, -1), torch.rand(2, 3, 4)),
+            lambda: (SimpleViewModule(-1, 2), torch.rand(2, 3, 4)),
         ]
     )
     def test_simple(self, module, tensor):

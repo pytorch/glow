@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -12,7 +10,7 @@ class SimpleExpModule(torch.nn.Module):
         return torch.exp(other)
 
 
-class TestExp(unittest.TestCase):
+class TestExp(utils.TorchGlowTestCase):
     def test_exp_basic(self):
         """Test of the PyTorch exp Node on Glow."""
 

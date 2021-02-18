@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -17,15 +14,23 @@ class SimpleFlattenModule(torch.nn.Module):
         return torch.flatten(input, start_dim=self.start_dim, end_dim=self.end_dim)
 
 
-class TestFlatten(unittest.TestCase):
-    @parameterized.expand(
+class TestFlatten(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("basic", SimpleFlattenModule(), torch.randn(2, 3, 2, 5)),
-            ("start_at_0", SimpleFlattenModule(0, 2), torch.randn(2, 3, 2, 5)),
-            ("start_in_middle", SimpleFlattenModule(1, 2), torch.randn(2, 3, 2, 5)),
-            ("negative_end_dim", SimpleFlattenModule(0, -2), torch.randn(2, 3, 2, 5)),
-            ("same_dim", SimpleFlattenModule(2, 2), torch.randn(2, 3, 2, 5)),
-            (
+            lambda: ("basic", SimpleFlattenModule(), torch.randn(2, 3, 2, 5)),
+            lambda: ("start_at_0", SimpleFlattenModule(0, 2), torch.randn(2, 3, 2, 5)),
+            lambda: (
+                "start_in_middle",
+                SimpleFlattenModule(1, 2),
+                torch.randn(2, 3, 2, 5),
+            ),
+            lambda: (
+                "negative_end_dim",
+                SimpleFlattenModule(0, -2),
+                torch.randn(2, 3, 2, 5),
+            ),
+            lambda: ("same_dim", SimpleFlattenModule(2, 2), torch.randn(2, 3, 2, 5)),
+            lambda: (
                 "negative_start_dim",
                 SimpleFlattenModule(-3, -1),
                 torch.randn(2, 3, 2, 5),

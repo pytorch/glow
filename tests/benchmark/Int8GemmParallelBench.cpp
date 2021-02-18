@@ -107,8 +107,12 @@ public:
         bias[core] =
             mod->createPlaceholder(ElemKind::Int32QTy, {n}, 1.0, 0,
                                    "bias_" + std::to_string(core), false);
-        bindings_.allocate(weights[core])->getHandle<int8_t>().clear(0);
-        bindings_.allocate(bias[core])->getHandle<int32_t>().clear(0);
+        bindings_.allocate(weights[core])
+            ->getHandle<int8_t>()
+            .randomize(0, 128, mod->getPRNG());
+        bindings_.allocate(bias[core])
+            ->getHandle<int32_t>()
+            .randomize(0, 128, mod->getPRNG());
         fc[core] = fn->createFullyConnected(
             "fc" + std::to_string(core) + "_" + std::to_string(layer),
             cur[core], weights[core], bias[core]);

@@ -5,9 +5,10 @@ import unittest
 
 import torch
 import torch_glow
+from tests import utils
 
 
-class TestFuseParallelBranches(unittest.TestCase):
+class TestFuseParallelBranches(utils.TorchGlowTestCase):
     def test_fuse_parallel_branches_with_fusible_root(self):
         r"""Test GlowFuser fusing parallel branches with a common fusible root
 

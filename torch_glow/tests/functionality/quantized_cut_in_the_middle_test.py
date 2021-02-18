@@ -1,14 +1,13 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 from tests.utils import GLOW_FUSION_GROUP
 
 
-class TestQuantizedCut(unittest.TestCase):
+class TestQuantizedCut(utils.TorchGlowTestCase):
     def test_quantized_cut(self):
         """Test cut quantized chunk in the middle."""
         torch._C._jit_set_profiling_executor(False)

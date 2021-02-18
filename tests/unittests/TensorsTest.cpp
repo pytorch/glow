@@ -358,6 +358,7 @@ TEST(Tensor, assignment) {
   testAssignment<uint8_t>(Type{ElemKind::UInt8QTy, dim, 1., 0});
   testAssignment<int16_t>(Type{ElemKind::Int16QTy, dim, 1., 0});
   testAssignment<int32_t>(Type{ElemKind::Int32QTy, dim, 1., 0});
+  testAssignment<uint8_t>(Type{ElemKind::UInt8ITy, dim});
   testAssignment<int32_t>(Type{ElemKind::Int32ITy, dim});
   testAssignment<int64_t>(Type{ElemKind::Int64ITy, dim});
 }
@@ -1341,6 +1342,7 @@ TEST(Tensor, typeSerialization) {
   testType(Type(ElemKind::UInt8QTy, {1, 2, 3}, 1.2, 2));
   testType(Type(ElemKind::Int16QTy, {1, 2, 3}, 1.3, 3));
   testType(Type(ElemKind::Int32QTy, {1, 2, 3}, 1.4, 4));
+  testType(Type(ElemKind::UInt8ITy, {1, 2, 3}));
   testType(Type(ElemKind::Int32ITy, {1, 2, 3}));
   testType(Type(ElemKind::Int64ITy, {1, 2, 3}));
   testType(Type(ElemKind::UInt8FusedQTy, {1, 2, 3}, 1.5, 5));

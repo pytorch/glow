@@ -1,10 +1,10 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import io
-import unittest
 
 import torch
 import torch_glow
+from tests import utils
 from tests.utils import assertModulesEqual
 
 
@@ -26,7 +26,7 @@ class OneTupleModule(torch.nn.Module):
         return (y,)
 
 
-class TestToGlowTupleOutput(unittest.TestCase):
+class TestToGlowTupleOutput(utils.TorchGlowTestCase):
     def tuple_test_helper(self, ModType):
         input = torch.randn(4)
 

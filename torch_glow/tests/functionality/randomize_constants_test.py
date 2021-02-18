@@ -1,10 +1,9 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 
 
 class Model(torch.nn.Module):
@@ -40,7 +39,7 @@ def run_model(m, input, randomize):
     return glow_m(input)
 
 
-class TestRandomizeWeights(unittest.TestCase):
+class TestRandomizeWeights(utils.TorchGlowTestCase):
     def test_randomize_weights(self):
         m = Model()
         input = torch.randn(5)

@@ -701,10 +701,10 @@ void BundleSaver::performBundleMemoryAllocation() {
   // Perform memory allocation for the current function.
   auto *F = savedIRFunctions_.back().savedF;
   allocationsInfo_.numberValues(F);
-  allocationsInfo_.allocateActivations(F);
   // Tell the allocateWeightVars to not reuse any existing addresses for weights
   // and to assign new ones.
   allocationsInfo_.allocateWeightVars(F);
+  allocationsInfo_.allocateActivations(F);
   allocationsInfo_.allocateTensorViews(F);
 }
 

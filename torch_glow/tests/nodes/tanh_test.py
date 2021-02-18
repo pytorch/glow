@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -16,7 +14,7 @@ class SimpleTanhModel(torch.nn.Module):
         return tensor.tanh_() if self.inplace else tensor.tanh()
 
 
-class TestTanh(unittest.TestCase):
+class TestTanh(utils.TorchGlowTestCase):
     def test_tanh(self):
         """Basic test of the PyTorch aten::tanh Node on Glow."""
 

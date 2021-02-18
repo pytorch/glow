@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -20,7 +18,7 @@ class SimpleSqrtModel(torch.nn.Module):
             return torch.sqrt(tensor)
 
 
-class TestSqrt(unittest.TestCase):
+class TestSqrt(utils.TorchGlowTestCase):
     def test_sqrt_basic(self):
         """Test of the PyTorch sqrt Node on Glow."""
 

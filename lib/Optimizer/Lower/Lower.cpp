@@ -172,12 +172,36 @@ static void lowerFloorDivNode(Function *F, CompilationContext &cctx,
 
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
+  bool truncate = node.getTruncate();
+  NodeValue result = nullptr;
 
-  auto *div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"),
-                           node.getResult().getType(), LHS, RHS);
+  if (isNonQuantizedIntElemKind(node.getResult().getElementType())) {
+    LHS = F->createConvertTo(
+        "floordiv_lhs_convert", LHS,
+        F->getParent()->uniqueType(ElemKind::FloatTy, LHS.getType()->dims()));
+    RHS = F->createConvertTo(
+        "floordiv_rhs_convert", RHS,
+        F->getParent()->uniqueType(ElemKind::FloatTy, RHS.getType()->dims()));
 
-  auto *result = F->createFloor(DECORATE_NODE_NAME(node, "floor"),
-                                node.getResult().getType(), div);
+    auto div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"), LHS, RHS);
+
+    if (truncate) {
+      result = F->createTruncate(DECORATE_NODE_NAME(node, "truncate"), div);
+    } else {
+      result = F->createFloor(DECORATE_NODE_NAME(node, "floor"), div);
+    }
+
+    result = F->createConvertTo("floordiv_result_convert", result,
+                                node.getResult().getElementType());
+  } else {
+    auto div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"),
+                            node.getResult().getType(), LHS, RHS);
+    if (truncate) {
+      result = F->createTruncate(DECORATE_NODE_NAME(node, "truncate"), div);
+    } else {
+      result = F->createFloor(DECORATE_NODE_NAME(node, "floor"), div);
+    }
+  }
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), result);
 }
@@ -1244,6 +1268,27 @@ static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(), DN);
 }
 
+static void
+lowerBatchedReduceSumSquareNode(Function *F, CompilationContext &cctx,
+                                const BatchedReduceSumSquareNode &BR) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchReduceSumSquareNode")
+
+  auto input = BR.getBatch();
+
+  auto axis = BR.getAxis();
+  assert(axis < input.dims().size() &&
+         "Axis to remove must fit inside dimensions of the provided dims.");
+
+  // Lower to mul + reduceAdd.
+  MulNode *mul =
+      F->createMul(BR.getName().str() + "_mul", input.getType(), input, input);
+
+  auto *BRA = F->createBatchedReduceAdd(BR.getName().str() + ".reduceAdd",
+                                        BR.getResult().getType(), mul, axis);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BR.getResult(), BRA);
+}
+
 static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
                                 const VectorNormNode &VN) {
   LOG_SCOPE(F->getLogContext(), "lowerVectorNormNode")
@@ -1763,6 +1808,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
+    CASE_LOWER(BatchedReduceSumSquare);
     CASE_LOWER(VectorNorm);
     CASE_LOWER(Bucketize);
     CASE_LOWER(ChannelShuffle);

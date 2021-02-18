@@ -13,9 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "glow/Partitioner/PartitionerUtils.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Partitioner/PartitionerTypes.h"
+#include "glow/Support/Support.h"
+
 #include <unordered_set>
 
 using llvm::isa;
@@ -27,6 +29,7 @@ namespace {
 auto compFunc = [](const Node *n1, Node *n2) -> bool {
   return n1->compareByName(*n2);
 };
+constexpr uint32_t MB = 1024 * 1024;
 } // namespace
 
 /// The nodes in function \p F which be grouped into levels based on how far
@@ -555,4 +558,275 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
     }
   }
 }
+
+void printSlsTableInfo(std::vector<SLSTableInfo>::iterator start,
+                       std::vector<SLSTableInfo>::iterator end,
+                       bool verbose_only) {
+  if (start >= end) {
+    return;
+  }
+  std::stringstream ss;
+  ss << "(numBytesInTable(MB), deviceID, cost, cost/numBytesInTable) "
+     << strFormat(" - %zu tables -", end - start) << "\n";
+  while (start < end) {
+    const auto tableSizeInMB = (float)start->numBytesInTable / MB;
+    const auto costPerByte = tableSizeInMB == 0
+                                 ? "nan"
+                                 : std::to_string(start->cost / tableSizeInMB);
+    ss << "        " << tableSizeInMB << "        " << start->deviceId
+       << "      " << start->cost << "      " << costPerByte << std::endl;
+    start++;
+  }
+  if (verbose_only) {
+    VLOG(1) << ss.str();
+  } else {
+    LOG(INFO) << ss.str();
+  }
+}
+
+void printSlsTableInfo(std::vector<SLSTableInfo> &slsTables,
+                       bool verbose_only) {
+  printSlsTableInfo(slsTables.begin(), slsTables.end(), verbose_only);
+}
+
+void printSlsDeviceInfo(const std::vector<SLSDeviceInfo> &slsDevices,
+                        const std::vector<NodesSet> &nodesets,
+                        const unsigned contextCount, bool verbose_only) {
+  std::stringstream ss;
+  ss << "(deviceId, used_memory(MB), free_memory(MB), cost, "
+        "node_size, cost/used_memory)"
+     << strFormat(" - %zu devices -", slsDevices.size()) << "\n";
+  for (const auto &d : slsDevices) {
+    const auto deviceId = d.deviceId;
+    const auto meminfo = getGraphMemInfo(nodesets[deviceId], contextCount);
+    const auto usedMem = (float)meminfo.getTotalMemSize() / MB;
+    const auto availMem = (float)d.memAvailableInBytes / MB;
+    const auto freeMem = availMem - usedMem;
+    const auto costPerUsedMemory =
+        usedMem == 0 ? "nan" : std::to_string(d.currentCost / usedMem);
+    ss << "    " << deviceId << "         " << usedMem << "         " << freeMem
+       << "      " << d.currentCost << "      " << nodesets[deviceId].size()
+       << "      " << costPerUsedMemory << "\n";
+  }
+  if (verbose_only) {
+    VLOG(1) << ss.str();
+  } else {
+    LOG(INFO) << ss.str();
+  }
+}
+
+Error assignSlsTableToFirstAvailableDevice(
+    SLSTableInfo &table, std::vector<SLSDeviceInfo> &slsDevices,
+    std::vector<NodesSet> &nodesets,
+    std::vector<std::unordered_set<NodeValue>> &frontierValues,
+    const unsigned contextCount) {
+  DCHECK(slsDevices.size() == nodesets.size() &&
+         slsDevices.size() == frontierValues.size());
+  bool deviceFound = false;
+  for (auto &d : slsDevices) {
+    const auto deviceId = d.deviceId;
+    // Calculate the memory needed if we merge SLS and its neighboring nodes
+    // into existing partition
+    auto nodesSetd = nodesets[deviceId];
+    nodesSetd.insert(table.node);
+    nodesSetd.insert(table.neighbors.begin(), table.neighbors.end());
+    auto meminfo = getGraphMemInfo(nodesSetd, contextCount);
+    const auto totalSize = meminfo.getTotalMemSize();
+    if (d.memAvailableInBytes >= totalSize) {
+      d.currentCost += (size_t)table.cost;
+      table.deviceId = deviceId;
+      frontierValues[deviceId].insert(table.frontier.begin(),
+                                      table.frontier.end());
+      nodesets[deviceId].swap(nodesSetd);
+      deviceFound = true;
+      break;
+    }
+  }
+  if (!deviceFound) {
+    return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
+                    "SLS Balancing Partitioning Error: Not enough memory");
+  }
+  return Error::success();
+}
+
+Error assignSlsTablesToDevices(
+    std::vector<SLSTableInfo> &slsTables,
+    std::vector<SLSDeviceInfo> &slsDevices,
+    std::vector<std::unordered_set<NodeValue>> &frontierValues,
+    const unsigned contextCount) {
+  if (slsTables.empty()) {
+    LOG(INFO) << "SLS tables empty!";
+    return Error::success();
+  }
+  // Keep a copy of input parameters, so that ScopeGuard could restore
+  // inputs in case of error.
+  std::vector<SLSTableInfo> slsTablesCopy = slsTables;
+  std::vector<SLSDeviceInfo> slsDevicesCopy = slsDevices;
+  std::vector<std::unordered_set<NodeValue>> frontierValuesCopy =
+      frontierValues;
+  ScopeGuard restoreInputsOnError([&]() {
+    slsTables.swap(slsTablesCopy);
+    slsDevices.swap(slsDevicesCopy);
+    frontierValues.swap(frontierValuesCopy);
+  });
+
+  // Now sort SLS tables by size decreasing
+  VLOG(1) << "SLS tables sorted by size decreasing";
+  std::sort(slsTables.begin(), slsTables.end(),
+            [](const SLSTableInfo &l, const SLSTableInfo &r) {
+              return l.numBytesInTable > r.numBytesInTable;
+            });
+
+  // slsTables is in sorted order decreasingly by numBytesInTable.
+  // The tables between [slsTablesLeft, slsTableRight) are large tables that
+  // have numBytesInTable > BigTableThresholdBytes.
+  // slsTablesLeft and slsTablesRight will be both pointed to slsTables.begin()
+  // if we could not find any large tables.
+  auto slsTablesLeft = slsTables.begin();
+  auto slsTableRight = slsTables.end();
+  if (slsTablesLeft->numBytesInTable >
+      glow::runtime::flags::BigTableThresholdBytes) {
+    for (auto it = slsTables.begin(); it < slsTables.end(); it++) {
+      if (it->numBytesInTable <= glow::runtime::flags::BigTableThresholdBytes) {
+        slsTableRight = it;
+        break;
+      }
+    }
+  } else {
+    // No large table found.
+    slsTablesLeft = slsTables.begin();
+    slsTableRight = slsTables.begin();
+  }
+
+  // We first assign large tables to devices. After allocation, each device
+  // should has roughly the same size.
+  LOG(INFO) << strFormat("Now assign %zu large tables to %zu devices.",
+                         (slsTableRight - slsTablesLeft), slsDevices.size());
+  // Print Large SLS tables
+  VLOG(1) << "Large tables by size decreasing: ";
+  printSlsTableInfo(slsTablesLeft, slsTableRight);
+  std::vector<NodesSet> nodesets(slsDevices.size());
+  while (slsTablesLeft < slsTableRight) {
+    // Sort devices by size increasingly.
+    std::sort(slsDevices.begin(), slsDevices.end(),
+              [&nodesets, contextCount](const SLSDeviceInfo &l,
+                                        const SLSDeviceInfo &r) {
+                auto lTotalSize =
+                    getGraphMemInfo(nodesets[l.deviceId], contextCount)
+                        .getTotalMemSize();
+                auto rTotalSize =
+                    getGraphMemInfo(nodesets[r.deviceId], contextCount)
+                        .getTotalMemSize();
+                return lTotalSize < rTotalSize;
+              });
+    VLOG(1) << "Devices sorted by used memory increasing: ";
+    printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                       true /* verbose_only */);
+
+    // Pick the first that fits
+    auto &table = *slsTablesLeft;
+    RETURN_IF_ERR(assignSlsTableToFirstAvailableDevice(
+        table, slsDevices, nodesets, frontierValues, contextCount));
+    slsTablesLeft++;
+  }
+  VLOG(1) << "Done assigning large tables, devices info: ";
+  printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                     true /* verbose_only */);
+
+  // Now let us assign small size tables.
+  // First sort tables by cost decreasingly. For each table, we would like to
+  // assign it to the device with lowest cost.
+  LOG(INFO) << strFormat("Now assign %zu small tables to %zu devices.",
+                         (slsTables.end() - slsTablesLeft), slsDevices.size());
+  if (slsTablesLeft < slsTables.end()) {
+    std::sort(slsTablesLeft, slsTables.end(),
+              [](const SLSTableInfo &l, const SLSTableInfo &r) {
+                return l.cost > r.cost;
+              });
+  }
+  VLOG(1) << "Small tables by cost decreasingly: ";
+  printSlsTableInfo(slsTablesLeft, slsTables.end());
+
+  while (slsTablesLeft < slsTables.end()) {
+    // Sort devices by cost increasingly.
+    std::sort(slsDevices.begin(), slsDevices.end(),
+              [](const SLSDeviceInfo &l, const SLSDeviceInfo &r) {
+                return l.currentCost < r.currentCost;
+              });
+
+    VLOG(1) << "Devices sorted by cost increasing: ";
+    printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                       true /* verbose_only */);
+
+    // Pick the first that fits
+    auto &table = *slsTablesLeft;
+    RETURN_IF_ERR(assignSlsTableToFirstAvailableDevice(
+        table, slsDevices, nodesets, frontierValues, contextCount));
+    slsTablesLeft++;
+  }
+  // Print final device info
+  LOG(INFO) << "Done assigning small tables, final devices info: ";
+  printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                     false /* verbose_only */);
+  restoreInputsOnError.dismiss();
+  return Error::success();
+}
+
+Error assignSlsTablesToDevicesGreedy(
+    std::vector<SLSTableInfo> &slsTables,
+    std::vector<SLSDeviceInfo> &slsDevices,
+    std::vector<std::unordered_set<NodeValue>> &frontierValues,
+    const unsigned contextCount) {
+  if (slsTables.empty()) {
+    LOG(INFO) << "SLS tables empty!";
+    return Error::success();
+  }
+  // Keep a copy of input parameters, so that ScopeGuard could restore
+  // inputs in case of error.
+  std::vector<SLSTableInfo> slsTablesCopy = slsTables;
+  std::vector<SLSDeviceInfo> slsDevicesCopy = slsDevices;
+  std::vector<std::unordered_set<NodeValue>> frontierValuesCopy =
+      frontierValues;
+  ScopeGuard restoreInputsOnError([&]() {
+    slsTables.swap(slsTablesCopy);
+    slsDevices.swap(slsDevicesCopy);
+    frontierValues.swap(frontierValuesCopy);
+  });
+
+  // Now sort SLS tables by size decreasing
+  VLOG(1) << "SLS tables sorted by size decreasing" << std::endl;
+  std::sort(slsTables.begin(), slsTables.end(),
+            [](const SLSTableInfo &l, const SLSTableInfo &r) {
+              return l.numBytesInTable > r.numBytesInTable;
+            });
+
+  // Print SLS tables
+  printSlsTableInfo(slsTables);
+
+  // Now assign SLS Nodes to devices
+  std::vector<NodesSet> nodesets(slsDevices.size());
+  for (auto &table : slsTables) {
+
+    // Sort by cost increasing
+    std::sort(slsDevices.begin(), slsDevices.end(),
+              [](const SLSDeviceInfo &l, const SLSDeviceInfo &r) {
+                return l.currentCost < r.currentCost;
+              });
+
+    VLOG(1) << "Devices sorted by cost increasing" << std::endl;
+    printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                       true /* verbose_only */);
+
+    // Pick the first that fits
+    RETURN_IF_ERR(assignSlsTableToFirstAvailableDevice(
+        table, slsDevices, nodesets, frontierValues, contextCount));
+  }
+  // Print final device info
+  LOG(INFO) << "Devices sorted by cost increasing: ";
+  printSlsDeviceInfo(slsDevices, nodesets, contextCount,
+                     false /* verbose_only */);
+  restoreInputsOnError.dismiss();
+  return Error::success();
+}
+
 } // namespace glow

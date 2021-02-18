@@ -427,6 +427,7 @@ protected:
   LOAD_UNARY_OP(Neg)
   LOAD_UNARY_OP(Floor)
   LOAD_UNARY_OP(Ceil)
+  LOAD_UNARY_OP(Truncate)
   LOAD_UNARY_OP(Log)
 
   Error loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -513,44 +514,6 @@ protected:
       Node *node = G_->createBatchedReduceAdd(opName, concat, /* axis */ {0});
       RETURN_IF_ERR(addNodeAsOutput(op, node));
     }
-    return Error::success();
-  }
-
-  Error loadSoftmax(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
-
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-
-    RETURN_ERR_IF_NOT(
-        in.dims().size() >= 2,
-        opErrMsg(
-            op,
-            strFormat(
-                "SoftMax input dims must be >= 2, but found input dims %zu ",
-                in.dims().size())));
-
-    // Create a constant to store labels to be used in SoftMaxGradNode.
-    auto *selected = G_->createSplat(
-        opName + ".selected",
-        mod_.uniqueType(ElemKind::Int64ITy, {in.dims()[0], 1}), 0.f);
-
-    // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
-    // softmax function. This is similar to a bitcast operation.
-    int axis = 1;
-    if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis,
-                                 loadAxis<int>(dict["axis"], in.dims().size()));
-    }
-
-    auto *FN = G_->createFlatten(opName + ".reshapeInput", in, axis);
-
-    auto *SM = G_->createSoftMax(opName, FN, selected);
-
-    // The output should have the same shape as the original input.
-    auto origInDims = in.getType()->dims();
-    auto *RN = G_->createReshape(opName + ".reshapeOutput", SM, origInDims);
-    RETURN_IF_ERR(addNodeAsOutput(op, RN));
     return Error::success();
   }
 
@@ -827,6 +790,8 @@ protected:
         node = G_->createNodeWithBroadcast<SubNode>(opName, axis, in0, in1);
       } else if (typeName == "Div") {
         node = G_->createNodeWithBroadcast<DivNode>(opName, axis, in0, in1);
+      } else if (typeName == "Pow") {
+        node = G_->createNodeWithBroadcast<PowNode>(opName, axis, in0, in1);
       } else {
         return MAKE_ERR("Unsupported arithmetic typeName");
       }
@@ -839,6 +804,8 @@ protected:
         node = G_->createSub(opName, in0, in1);
       } else if (typeName == "Div") {
         node = G_->createDiv(opName, in0, in1);
+      } else if (typeName == "Pow") {
+        node = G_->createPow(opName, in0, in1);
       } else {
         return MAKE_ERR("Unsupported arithmetic typeName");
       }
@@ -1123,6 +1090,10 @@ protected:
       node = G_->createBatchedReduceMin(opName, in, axes);
     } else if (typeName == "ReduceMax") {
       node = G_->createBatchedReduceMax(opName, in, axes);
+    } else if (typeName == "ReduceProd") {
+      node = G_->createBatchedReduceProd(opName, in, axes);
+    } else if (typeName == "ReduceSumSquare") {
+      node = G_->createBatchedReduceSumSquare(opName, in, axes);
     } else {
       return MAKE_ERR("Unsupported Reduce Op " + typeName.str());
     }
@@ -1595,10 +1566,6 @@ protected:
       RETURN_IF_ERR(loadSum(op, dict));
       return true;
     }
-    if (typeName == "Softmax") {
-      RETURN_IF_ERR(loadSoftmax(op, dict));
-      return true;
-    }
     if (typeName == "LRN") {
       RETURN_IF_ERR(loadLRN(op, dict));
       return true;
@@ -1608,7 +1575,7 @@ protected:
       return true;
     }
     if (typeName == "Mul" || typeName == "Add" || typeName == "Sub" ||
-        typeName == "Div") {
+        typeName == "Div" || typeName == "Pow") {
       RETURN_IF_ERR(loadArithmetic(typeName, op, dict));
       return true;
     }
@@ -1640,7 +1607,8 @@ protected:
       return true;
     }
     if (typeName == "ReduceMean" || typeName == "ReduceSum" ||
-        typeName == "ReduceMin" || typeName == "ReduceMax") {
+        typeName == "ReduceMin" || typeName == "ReduceMax" ||
+        typeName == "ReduceProd") {
       RETURN_IF_ERR(loadReduceOp(typeName, op, dict));
       return true;
     }

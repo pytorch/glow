@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -16,7 +14,7 @@ class SimpleAddMmModule(torch.nn.Module):
         return (a + a).addmm(b, c)
 
 
-class TestAddMM(unittest.TestCase):
+class TestAddMM(utils.TorchGlowTestCase):
     def test_addmm_basic(self):
         """Basic test of the PyTorch addmm Node on Glow."""
         utils.compare_tracing_methods(

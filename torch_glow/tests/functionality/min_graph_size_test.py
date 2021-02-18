@@ -1,14 +1,13 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 from tests.utils import GLOW_FUSION_GROUP
 
 
-class TestMinGraphSize(unittest.TestCase):
+class TestMinGraphSize(utils.TorchGlowTestCase):
     def test_min_graph_size(self):
         """Test Glow fuser minimum fusion group size mechanism."""
 

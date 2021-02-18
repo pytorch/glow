@@ -377,7 +377,12 @@ target_link_libraries(MemoryAllocatorTest
                         TestMain)
 add_glow_test(MemoryAllocatorTest
               ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest
-                  --gtest_output=xml:MemoryAllocatorTest.xml)
+                  --gtest_output=xml:MemoryAllocatorTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/MemoryAllocatorTestModels.txt
+               ${CMAKE_CURRENT_BINARY_DIR}/MemoryAllocatorTestModels.txt
+               COPYONLY)
 
 add_executable(NodeSplittingTest
                NodeSplittingTest.cpp)

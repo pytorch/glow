@@ -232,6 +232,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt16Ty();
   case ElemKind::Int32QTy:
     return builder.getInt32Ty();
+  case ElemKind::UInt8ITy:
+    return builder.getInt8Ty();
   case ElemKind::Int32ITy:
     return builder.getInt32Ty();
   case ElemKind::UInt8FusedQTy:
@@ -365,6 +367,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     break;
   case ElemKind::Int32ITy:
     T = llvm::Type::getInt32PtrTy(getLLVMContext());
+    break;
+  case ElemKind::UInt8ITy:
+    T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   case ElemKind::UInt8FusedQTy:
     T = llvm::Type::getInt8PtrTy(getLLVMContext());
@@ -623,6 +628,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt16(static_cast<int16_t>(val));
   case ElemKind::Int32QTy:
     return builder.getInt32(static_cast<int32_t>(val));
+  case ElemKind::UInt8ITy:
+    return builder.getInt8(static_cast<uint8_t>(val));
   case ElemKind::Int32ITy:
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::UInt8FusedQTy:
@@ -2094,6 +2101,35 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       createCall(builder, F,
                  {destPtr, batchPtr, destSize, destDims, batchDims, axis});
     }
+    break;
+  }
+
+  case Kinded::Kind::BatchedReduceProdInstKind: {
+    auto *BR = cast<BatchedReduceProdInst>(I);
+    auto *dest = BR->getDest();
+    auto *batch = BR->getBatch();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *batchPtr = emitValueAddress(builder, batch);
+    auto *axis = emitConstDimT(builder, BR->getAxis());
+
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+    ShapeVector eDestDims = eBatchDims;
+    eDestDims[BR->getAxis()] = 1;
+
+    auto *batchDims =
+        emitConstDimTArray(builder, llvm::makeArrayRef(eBatchDims));
+    auto *destDims = emitConstDimTArray(builder, llvm::makeArrayRef(eDestDims));
+
+    auto *F = getFunction("batchedreduceprod", dest->getElementType());
+
+    assert(!batch->getType()->isQuantizedType() &&
+           "Quantized implementation for ReduceProd not supported yet.");
+
+    auto *destSize = emitConstDimT(builder, dest->size());
+
+    createCall(builder, F,
+               {destPtr, batchPtr, destSize, destDims, batchDims, axis});
+
     break;
   }
 

@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels", /* addSetter */ true)
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
-      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Group", /* addSetter */ true)
       .addMember(MemberType::VectorUnsigned, "Dilation")
       .addFusedActivation()
       .addResultFromCtorArg()
@@ -333,6 +333,13 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs SoftMax normalization on the Input tensor.");
 
+  BB.newNode("LogSoftMax")
+      .addInput("Input")
+      .addInput("Selected")
+      .addResultFromCtorArg()
+      .addGradient()
+      .setDocstring("Performs LogSoftMax normalization on the Input tensor.");
+
   BB.newNode("CrossEntropyLoss")
       .addInput("P")
       .addInput("Labels")
@@ -393,9 +400,12 @@ int main(int argc, char **argv) {
   BB.newNode("FloorDiv")
       .addInput("LHS")
       .addInput("RHS")
+      .addMember(MemberType::Boolean, "Truncate")
       .addResultFromCtorArg()
       .dataParallel()
-      .setDocstring("Performs Div on the LHS and RHS operands, then Floor.");
+      .setDocstring(
+          "Performs Div on the LHS and RHS operands, then Floor. If Truncate "
+          "is set to true then truncate the quotient to zero instead.");
 
   BB.newNode("Max")
       .addInput("LHS")
@@ -517,6 +527,13 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs an element-wise ROUND(x) of the Input operand.");
+
+  BB.newNode("Truncate")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring(
+          "Performs an element-wise TRUNCATE(x) of the Input operand.");
 
   BB.newNode("Sqrt")
       .addInput("Input")
@@ -642,6 +659,15 @@ int main(int argc, char **argv) {
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
 
+  BB.newNode("BatchedReduceSumSquare")
+      .addInput("Batch")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Accumulates squares of all of the layers in the batch and produce a "
+          "tensor that has the same dimensions as the input tensor "
+          "without the first dimension.");
+
   BB.newNode("BatchedReduceMean")
       .addInput("Batch")
       .addMember(MemberType::VectorUnsigned, "Axes")
@@ -662,6 +688,14 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Performs Reduce Max operation on the Input given "
                     "Axes.");
+
+  BB.newNode("BatchedReduceProd")
+      .addInput("Batch")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring("Accumulates the product all of the layers in the batch "
+                    " and produce a tensor that has the same dimensions as "
+                    " the input tensor without the first dimension.");
 
   BB.newNode("ChannelShuffle")
       .addInput("Input")

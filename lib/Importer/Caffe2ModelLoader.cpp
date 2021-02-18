@@ -332,6 +332,41 @@ Error Caffe2ModelLoader::loadPRelu(const caffe2::OperatorDef &op,
   return Error::success();
 }
 
+Error Caffe2ModelLoader::loadSoftmax(const caffe2::OperatorDef &op,
+                                     ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  RETURN_ERR_IF_NOT(
+      in.dims().size() >= 2,
+      opErrMsg(op,
+               strFormat(
+                   "SoftMax input dims must be >= 2, but found input dims %zu ",
+                   in.dims().size())));
+
+  // Create a constant to store labels to be used in SoftMaxGradNode.
+  auto *selected = G_->createSplat(
+      opName + ".selected",
+      mod_.uniqueType(ElemKind::Int64ITy, {in.dims()[0], 1}), 0.f);
+
+  int axis = 1;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                               loadAxis<int>(dict["axis"], in.dims().size()));
+  }
+
+  auto *FN = G_->createFlatten(opName + ".reshapeInput", in, axis);
+  auto *SM = G_->createSoftMax(opName, FN, selected);
+
+  // The output should have the same shape as the original input.
+  auto origInDims = in.getType()->dims();
+  auto *RN = G_->createReshape(opName + ".reshapeOutput", SM, origInDims);
+  RETURN_IF_ERR(addNodeAsOutput(op, RN));
+  return Error::success();
+}
+
 Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -742,6 +777,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return loadConv(op, dict);
   }
 
+  if (typeName == "Softmax") {
+    return loadSoftmax(op, dict);
+  }
+
   if (typeName == "PRelu") {
     return loadPRelu(op, dict);
   }
@@ -1135,8 +1174,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Node *node = nullptr;
     if (typeName == "Int8FC") {
-      // Create the node with quantized type.
-      auto outputDims = flattenCdr(in.dims(), in.dims().size() - 1);
+      // Create a node with quantized type.
+      auto outputDims = flattenCdr(in.dims(), axis);
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
           outTy,
@@ -1155,7 +1194,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       auto *fp16Bias =
           G_->createConvertTo(opName + ".ConvertBias", B, fp16BiasType);
 
-      auto outputDims = flattenCdr(in.dims(), in.dims().size() - 1);
+      auto outputDims = flattenCdr(in.dims(), axis);
       TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
                                    {outputDims.first, B->getType()->dims()[0]});
       auto fc = G_->createFullyConnected(opName, in, W, fp16Bias, OT, axis);
@@ -1163,7 +1202,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           mod_.uniqueType(ElemKind::FloatTy, fc->getResult().dims());
       node = G_->createConvertTo(opName + ".ConvertOutput", fc, outputType);
     } else {
-      node = G_->createFullyConnected(opName, in, W, B, axis);
+      auto outputDims = flattenCdr(in.dims(), axis);
+      TypeRef outputType = mod_.uniqueType(
+          ElemKind::FloatTy, {outputDims.first, B->getType()->dims()[0]});
+      node = G_->createFullyConnected(opName, in, W, B, outputType, axis);
     }
 
     // If number of original input dims is greater than 2, expand the output
@@ -1688,6 +1730,84 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto nodes = G_->createRMSNorm(opName, X, gamma, beta, epsilon);
     nodeValueByName_[op.output(0)] = nodes[0];
     nodeValueByName_[op.output(1)] = nodes[1];
+    return Error::success();
+  }
+
+  if (typeName == "Mean") {
+    const unsigned numInputs = op.input_size();
+    RETURN_ERR_IF_NOT(numInputs > 0,
+                      opErrMsg(op, "Expect at least one input."));
+
+    std::vector<NodeValue> inputs;
+    inputs.reserve(numInputs);
+    for (unsigned i = 0; i < numInputs; i++) {
+      NodeValue in;
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
+      inputs.push_back(std::move(in));
+    }
+
+    // Check that all inputs have the same shape
+    const auto shape = inputs[0].dims();
+    for (unsigned i = 1; i < numInputs; i++) {
+      RETURN_ERR_IF_NOT(
+          shape == inputs[i].dims(),
+          opErrMsg(op,
+                   "All inputs should have the same shape, violating input " +
+                       op.input(i)));
+    }
+
+    if (numInputs == 1) {
+      RETURN_IF_ERR(addNodeAsOutput(op, inputs[0]));
+      return Error::success();
+    }
+
+    Node *node = G_->createConcat(opName + ".concat", inputs, 0);
+
+    std::vector<dim_t> newShape{numInputs};
+    newShape.insert(newShape.end(), shape.begin(), shape.end());
+    node = G_->createReshape(opName + ".reshape", node, newShape);
+
+    node = G_->createBatchedReduceMean(opName + ".reduceMean", node, 0);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "Negative") {
+    RETURN_IF_ERR(loadNeg(op, dict));
+    return Error::success();
+  }
+
+  if (typeName == "LpNorm") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    int p = 2;
+    if (dict.count("p")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(p, loadInt(dict["p"]));
+      RETURN_ERR_IF_NOT(p == 1 || p == 2,
+                        opErrMsg(op, "p should be either 1 or 2."));
+    }
+    bool average = false;
+    if (dict.count("average")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(average, loadInt(dict["average"]));
+    }
+    RETURN_ERR_IF_NOT(!average, opErrMsg(op, "average is not supported."));
+
+    Node *node = nullptr;
+    if (p == 1) {
+      node = G_->createAbs(opName, in);
+    } else {
+      node = G_->createPow(opName, in, 2);
+    }
+
+    const auto dims1D = flattenCdr(in.dims(), in.dims().size());
+    node = G_->createReshape(opName + ".reshape1D", node, dims1D.first);
+
+    auto outputType = mod_.uniqueType(in.getElementType(), {1});
+    node = G_->createBatchedReduceAdd(opName + ".sum", outputType, node, 0);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
 

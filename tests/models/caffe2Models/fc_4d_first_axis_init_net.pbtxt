@@ -1,0 +1,18 @@
+name: "init"
+op {
+  output: "weights"
+  type: "ConstantFill"
+  arg {
+    name: "shape"
+    ints: 3
+    ints: 5
+  }
+}
+op {
+  output: "bias"
+  type: "ConstantFill"
+  arg {
+    name: "shape"
+    ints: 3
+  }
+}

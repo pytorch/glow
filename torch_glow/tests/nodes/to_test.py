@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -48,23 +45,23 @@ class SimplePrimToModel(torch.nn.Module):
         return torch.ops.prim.NumToTensor(dummy.size(0)).to(self.conversion)
 
 
-class TestTo(unittest.TestCase):
-    @parameterized.expand(
+class TestTo(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("to_int", SimpleToModel(torch.int), torch.randn(1, 2, 3, 4)),
-            ("to_float", SimpleToModel(torch.float), torch.randn(1, 2, 3, 4)),
-            (
+            lambda: ("to_int", SimpleToModel(torch.int), torch.randn(1, 2, 3, 4)),
+            lambda: ("to_float", SimpleToModel(torch.float), torch.randn(1, 2, 3, 4)),
+            lambda: (
                 "to_int_to_float",
                 SimpleToModel(torch.int, torch.float),
                 torch.randn(1, 2, 3, 4),
             ),
-            (
+            lambda: (
                 "to_int_with_device",
                 ToWithDeviceModel(torch.int),
                 torch.randn(1, 2, 3, 4),
             ),
-            ("to_cpu", SimpleToModel("cpu"), torch.randn(1, 2, 3, 4)),
-            (
+            lambda: ("to_cpu", SimpleToModel("cpu"), torch.randn(1, 2, 3, 4)),
+            lambda: (
                 "to_tensor",
                 SimpleToModel(torch.randn(3, 4).type(torch.int32)),
                 torch.randn(1, 2, 3, 4),
@@ -74,12 +71,16 @@ class TestTo(unittest.TestCase):
     def test_to(self, _, module, tensor):
         utils.compare_tracing_methods(module, tensor, fusible_ops={"aten::to"})
 
-    @parameterized.expand(
+    @utils.deterministic_expand(
         [
-            ("to_prim_dtype", SimplePrimToModel(torch.float), torch.randn(5, 6, 7)),
+            lambda: (
+                "to_prim_dtype",
+                SimplePrimToModel(torch.float),
+                torch.randn(5, 6, 7),
+            ),
             # The following test is not yet supported:
             # ("to_prim_device", SimplePrimToModel("cpu"), torch.randn(5, 6, 7)),
-            (
+            lambda: (
                 "to_prim_device_with_dtype",
                 SimplePrimToModel(torch.float, "cpu"),
                 torch.randn(5, 6, 7),

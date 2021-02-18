@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -16,13 +13,13 @@ class SimplePowModule(torch.nn.Module):
         return torch.pow(tensor, self.power)
 
 
-class TestPow(unittest.TestCase):
-    @parameterized.expand(
+class TestPow(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("float", 2.2),
-            ("tensor_basic", torch.randn(4) + 2),
-            ("tensor_size[]", torch.tensor(2.2)),
-            ("tensor_broadcast", torch.randn(1) + 2),
+            lambda: ("float", 2.2),
+            lambda: ("tensor_basic", torch.randn(4) + 2),
+            lambda: ("tensor_size[]", torch.tensor(2.2)),
+            lambda: ("tensor_broadcast", torch.randn(1) + 2),
         ]
     )
     def test_pow_basic(self, _, power):
