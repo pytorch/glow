@@ -2067,6 +2067,15 @@ void writeTensorwiseQuantizedPool(const T *node, const std::string &op,
 
   if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
     addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+    addValueAttribute(proto, "out_scale",
+                      APN->getType(AvgPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      APN->getType(AvgPoolNode::ResultIdx)->getOffset());
+  } else if (auto *MPN = llvm::dyn_cast<MaxPoolNode>(node)) {
+    addValueAttribute(proto, "out_scale",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getOffset());
   }
 
   proto->add_input(node->getInput().getNode()->getName());
