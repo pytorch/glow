@@ -608,6 +608,48 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents)(
   return ONNXIFI_STATUS_SUCCESS;
 }
 
+/// Set Onnxifi option
+EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetOption)(const char *optionName,
+                                                     const char *optionValue) {
+  if (!optionName || !optionValue) {
+    return ONNXIFI_STATUS_INVALID_POINTER;
+  }
+  onnxStatus ret = ONNXIFI_STATUS_SUCCESS;
+  int d = 0;
+  if (!strcmp(optionName, "glow_num_devices")) {
+    if (sscanf(optionValue, "%d", &d) == 1) {
+      glow::flags::NumDevices = d;
+    } else {
+      ret = ONNXIFI_STATUS_UNSUPPORTED_ATTRIBUTE;
+    }
+  } else {
+    ret = ONNXIFI_STATUS_INVALID_NAME;
+  }
+  return ret;
+}
+
+/// Get Onnxifi option
+EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetOption)(
+    const char *optionName, char *optionValue, size_t *optionValueLength) {
+  if (!optionName || !optionValue || !optionValueLength) {
+    return ONNXIFI_STATUS_INVALID_POINTER;
+  }
+  onnxStatus ret = ONNXIFI_STATUS_SUCCESS;
+  if (!strcmp(optionName, "glow_num_devices")) {
+    int n = snprintf(optionValue, *optionValueLength, "%d",
+                     glow::flags::NumDevices);
+    if (n < 0) {
+      ret = ONNXIFI_STATUS_UNSUPPORTED_ATTRIBUTE;
+    } else if (n < *optionValueLength) {
+      *optionValueLength = n;
+    }
+  } else {
+    ret = ONNXIFI_STATUS_INVALID_NAME;
+  }
+  return ret;
+}
 /// Get pointer to onnxifi extension function with \p name.
 EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetExtensionFunctionAddress)(
@@ -617,11 +659,16 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetExtensionFunctionAddress)(
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
-  auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
-
-  auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backendID);
-  if (!manager.isValid(glowBackend)) {
-    return ONNXIFI_STATUS_INVALID_ID;
+  // We don't check backend id for set/get option functions as the options
+  // global to Glow.
+  static const std::unordered_set<std::string> bypass{"onnxSetOptionFunction",
+                                                      "onnxGetOptionFunction"};
+  if (bypass.find(name) == bypass.end()) {
+    auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
+    auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backendID);
+    if (!manager.isValid(glowBackend)) {
+      return ONNXIFI_STATUS_INVALID_ID;
+    }
   }
 
   // Map of name to onnxExtensionFunctionPointer, one entry for each implemented
@@ -638,7 +685,13 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetExtensionFunctionAddress)(
                GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEventFor))},
           {"onnxReleaseTraceEventsFunction",
            reinterpret_cast<onnxExtensionFunctionPointer>(
-               GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents))}};
+               GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents))},
+          {"onnxSetOptionFunction",
+           reinterpret_cast<onnxExtensionFunctionPointer>(
+               GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetOption))},
+          {"onnxGetOptionFunction",
+           reinterpret_cast<onnxExtensionFunctionPointer>(
+               GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetOption))}};
 
   auto extensionIt = extensionMap.find(name);
 
