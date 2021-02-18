@@ -2720,12 +2720,6 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
   // Input Type.
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
-  ElemKind inputType = input.getType()->getElementType();
-
-  // Only supports float types.
-  RETURN_ERR_IF_NOT(isFloatElemKind(inputType),
-                    opErrMsg(op, "LeakyRelu: Unsupported Type for LeakyRelu "
-                                 "(Supports only Float types)"));
 
   // ONNX spec says default is 0.01, but doesn't explicitly say it's optional.
   // like for others. The default example just omits alpha.
