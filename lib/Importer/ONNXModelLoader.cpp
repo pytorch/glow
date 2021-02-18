@@ -1618,20 +1618,20 @@ Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
   dim_t depth = filterTransposedValue.dims()[0];
 
   // Construct the Bias field.
-  Constant *bias = nullptr;
-
+  NodeValue B;
   // Check if we have a serialized bias vector.
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
-    // Load the serialized bias vector.
-    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(biasTensorName));
+    // Load the serialized bias vector as NodeValue.
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(biasTensorName));
   }
 
   // If a serialized bias wasn't found then create a zero bias.
-  if (!bias) {
-    Tensor biasTensor(ElemKind::FloatTy, {depth});
+  if (op.input_size() == 2) {
+    auto biasTy = mod_.uniqueTypeWithNewShape(in.getType(), {depth});
+    Tensor biasTensor(biasTy);
     biasTensor.zero();
-    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
+    B = mod_.createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
@@ -1653,8 +1653,8 @@ Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
                                            pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
-  auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
+  auto outTy = mod_.uniqueTypeWithNewShape(in.getType(), outDims);
+  auto *node = G_->createConv(opName, tr, filterTransposeNode, B, outTy,
                               kernelShape, strides, pads, group, dilations);
 
   auto *N = G_->createSqueeze(opName, node, 1 /*axes*/);
@@ -1730,20 +1730,20 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Construct the Bias field.
-  Constant *bias = nullptr;
-
+  NodeValue B;
   // Check if we have a serialized bias vector.
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
-    // Load the serialized bias vector.
-    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(biasTensorName));
+    // Load the serialized bias vector as NodeValue.
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(biasTensorName));
   }
 
   // If a serialized bias wasn't found then create a zero bias.
-  if (!bias) {
-    Tensor biasTensor(ElemKind::FloatTy, {depth});
+  if (op.input_size() == 2) {
+    auto biasTy = mod_.uniqueTypeWithNewShape(in.getType(), {depth});
+    Tensor biasTensor(biasTy);
     biasTensor.zero();
-    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
+    B = mod_.createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
@@ -1763,9 +1763,9 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
                                            pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = mod_.uniqueTypeWithNewShape(in.getType(), outDims);
 
-  auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
+  auto *node = G_->createConv(opName, tr, filterTransposeNode, B, outTy,
                               kernelShape, strides, pads, group, dilations);
 
   // Transpose the output back.
@@ -1930,20 +1930,20 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Construct the Bias field.
-  Constant *bias = nullptr;
-
+  NodeValue B;
   // Check if we have a serialized bias vector.
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
-    // Load the serialized bias vector.
-    bias = getConstantByNameOrNull(biasTensorName);
+    // Load the serialized bias vector as constant or NodeValue.
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(biasTensorName));
   }
 
   // If a serialized bias wasn't found then create a zero bias.
-  if (!bias) {
-    Tensor biasTensor(ElemKind::FloatTy, {depth});
+  if (op.input_size() == 2) {
+    auto biasTy = mod_.uniqueTypeWithNewShape(in.getType(), {depth});
+    Tensor biasTensor(biasTy);
     biasTensor.zero();
-    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
+    B = mod_.createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
@@ -2000,10 +2000,10 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
                                              pads, dilations);
   }
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = mod_.uniqueTypeWithNewShape(in.getType(), outDims);
 
   auto *node =
-      G_->createConvTranspose(opName, tr, filterTransposeNode, bias, outTy,
+      G_->createConvTranspose(opName, tr, filterTransposeNode, B, outTy,
                               kernels, strides, pads, group, dilations);
 
   // Transpose the output back.
@@ -2553,14 +2553,14 @@ Error ONNXModelLoader::loadBatchNormalization(
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  Constant *scale;
-  ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
-  Constant *bias;
-  ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(op.input(2)));
-  Constant *mean;
-  ASSIGN_VALUE_OR_RETURN_ERR(mean, getConstantByName(op.input(3)));
-  Constant *var;
-  ASSIGN_VALUE_OR_RETURN_ERR(var, getConstantByName(op.input(4)));
+  NodeValue scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(scale, getNodeValueByName(op.input(1)));
+  NodeValue bias;
+  ASSIGN_VALUE_OR_RETURN_ERR(bias, getNodeValueByName(op.input(2)));
+  NodeValue mean;
+  ASSIGN_VALUE_OR_RETURN_ERR(mean, getNodeValueByName(op.input(3)));
+  NodeValue var;
+  ASSIGN_VALUE_OR_RETURN_ERR(var, getNodeValueByName(op.input(4)));
   float epsilon = 1e-5f; // default
   auto epsilonIt = dict.find("epsilon");
   if (epsilonIt != dict.end()) {
@@ -4220,13 +4220,10 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
                                           ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  Constant *W;
-  ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
-  Constant *B = getConstantByNameOrNull(op.input(2));
+  NodeValue w;
+  ASSIGN_VALUE_OR_RETURN_ERR(w, getNodeValueByName(op.input(1)));
   NodeValue b;
-  if (!B) {
-    ASSIGN_VALUE_OR_RETURN_ERR(b, getNodeValueByName(op.input(2)));
-  }
+  ASSIGN_VALUE_OR_RETURN_ERR(b, getNodeValueByName(op.input(2)));
 
   unsigned_t axis = 1;
   if (dict.count("axis")) {
@@ -4234,8 +4231,7 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
         axis, loadAxis<unsigned_t>(dict.at("axis"), in.dims().size()));
   }
 
-  Node *N =
-      G_->createFullyConnected(loadOperatorName(op), in, W, B ? B : b, axis);
+  Node *N = G_->createFullyConnected(loadOperatorName(op), in, w, b, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
