@@ -1482,6 +1482,16 @@ VERIFY_TRIGONOMERTRIC_OPS(Asin);
 VERIFY_TRIGONOMERTRIC_OPS(Atan);
 #undef VERIFY_UNARY_ARITHMETIC
 
+bool FmodNode::verify() const {
+  auto res = getResult();
+  auto LHS = getLHS();
+  auto RHS = getRHS();
+  return checkSameShape(res, LHS, res.getNode()) &&
+         checkSameShape(LHS, RHS, res.getNode()) &&
+         LHS.getElementType() != ElemKind::Int8QTy &&
+         RHS.getElementType() != ElemKind::Int8QTy;
+}
+
 bool BatchedPairwiseDotProductNode::verify() const {
   auto inputs = getInputs();
 

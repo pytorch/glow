@@ -877,6 +877,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         ARITHMETIC_CASE(Mul);
         ARITHMETIC_CASE(Sub);
         ARITHMETIC_CASE(Div);
+        ARITHMETIC_CASE(Fmod);
         ARITHMETIC_CASE(Max);
         ARITHMETIC_CASE(Min);
         ARITHMETIC_CASE(Pow);
@@ -4650,6 +4651,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       case Kinded::Kind::SubNodeKind:
       case Kinded::Kind::MulNodeKind:
       case Kinded::Kind::DivNodeKind:
+      case Kinded::Kind::FmodNodeKind:
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:

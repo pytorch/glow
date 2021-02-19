@@ -560,6 +560,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Div");
 
+  BB.newInstr("ElementFmod")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoIRGen("Fmod");
+
   BB.newInstr("ElementMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)

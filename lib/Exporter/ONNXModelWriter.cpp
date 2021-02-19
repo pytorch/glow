@@ -2267,6 +2267,7 @@ ARITHMETIC_NODE_WRITER(Less, CmpLT)
 // Ops that Onnx doesn't have
 ARITHMETIC_NODE_WRITER(CmpLTE, CmpLTE)
 ARITHMETIC_NODE_WRITER(FloorDiv, FloorDiv);
+ARITHMETIC_NODE_WRITER(Fmod, Fmod)
 #undef ARITHMETIC_NODE_WRITER
 
 // Default exporting algorithm.

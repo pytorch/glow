@@ -27,7 +27,6 @@
 
 #include <chrono>
 #include <cmath>
-#include <math.h>
 #include <numeric>
 
 #ifdef WIN32
@@ -3081,6 +3080,69 @@ void BoundInterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
 
   dispatchArithmeticImpl(fwdElementMulInstArithmeticImpl,
                          I->getDest()->getElementType(), I);
+}
+
+void BoundInterpreterFunction::fwdElementFmodInst(const ElementFmodInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    auto destTy = I->getDest()->getType();
+    auto lhsTy = I->getLHS()->getType();
+    auto rhsTy = I->getRHS()->getType();
+
+    float destScale = destTy->getScale();
+    float lhsScale = lhsTy->getScale();
+    float rhsScale = rhsTy->getScale();
+
+    int32_t destOffset = destTy->getOffset();
+    int32_t lhsOffset = lhsTy->getOffset();
+    int32_t rhsOffset = rhsTy->getOffset();
+
+    auto outW = getWeightHandle<int8_t>(I->getDest());
+    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      float l = lhsScale * float(lhsW.raw(i) - lhsOffset);
+      float r = rhsScale * destScale * float(rhsW.raw(i) - rhsOffset);
+      int32_t q = std::round(std::fmod(l, r) + destOffset);
+      outW.raw(i) = quantization::clip<int32_t, int8_t>(q);
+    }
+    return;
+  }
+
+#define FMOD_LOOP(TYPE_)                                                       \
+  staticAssertArithmeticType(TYPE_);                                           \
+  auto outW = getWeightHandle<TYPE_>(I->getDest());                            \
+  auto lhsW = getWeightHandle<TYPE_>(I->getLHS());                             \
+  auto rhsW = getWeightHandle<TYPE_>(I->getRHS());                             \
+  for (size_t i = 0, e = outW.size(); i < e; i++) {                            \
+    outW.raw(i) = std::fmod((float)lhsW.raw(i), (float)rhsW.raw(i));           \
+  }
+
+  auto *T = getTensor(I->getDest());
+  switch (T->getElementType()) {
+  case ElemKind::Int64ITy: {
+    FMOD_LOOP(int64_t);
+    return;
+  }
+  case ElemKind::Int32ITy: {
+    FMOD_LOOP(int32_t);
+    return;
+  }
+  case ElemKind::FloatTy: {
+    FMOD_LOOP(float);
+    return;
+  }
+  case ElemKind::Float16Ty: {
+    FMOD_LOOP(float16_t);
+    return;
+  }
+  case ElemKind::BFloat16Ty: {
+    FMOD_LOOP(bfloat16_t);
+    return;
+  }
+
+  default:
+    llvm_unreachable("Unsupported type for Fmod.");
+  }
 }
 
 void BoundInterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {

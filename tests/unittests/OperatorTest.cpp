@@ -35,6 +35,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <cmath>
 #include <functional>
 #include <numeric>
 
@@ -6624,6 +6625,7 @@ COMPARE_ARITH_FUN(Div)
 COMPARE_ARITH_FUN(FloorDiv)
 COMPARE_ARITH_FUN(Max)
 COMPARE_ARITH_FUN(Min)
+COMPARE_ARITH_FUN(Fmod)
 #undef COMPARE_ARITH_FUN
 
 #define COMPARE_ARITH_FLOAT_VS_INT8(_OP_NAME_)                                 \
@@ -6663,6 +6665,7 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Div)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(FloorDiv)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Max)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Min)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Fmod)
 
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Add)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Sub)
@@ -6671,6 +6674,7 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Div)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(FloorDiv)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Max)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
+COMPARE_ARITH_FLOAT_VS_BFLOAT16(Fmod)
 #undef COMPARE_ARITH_FLOAT_VS_FLOAT16
 #undef COMPARE_ARITH_FLOAT_VS_BFLOAT16
 
@@ -6712,6 +6716,11 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
                                                  _ELEM_KIND_);                 \
   }
 
+template <typename DataType> static DataType fMod(DataType a, DataType b) {
+  return static_cast<DataType>(
+      std::fmod(static_cast<float>(a), static_cast<float>(b)));
+}
+
 #define ARITH_FUNC_TEST(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)        \
   ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)               \
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, int32_t, ElemKind::Int32ITy)                \
@@ -6726,11 +6735,11 @@ ARITH_FUNC_TEST(Mul, std::multiplies, ())
 ARITH_FUNC_TEST(Div, std::divides, ())
 ARITH_FUNC_TEST(Max, std::max, )
 ARITH_FUNC_TEST(Min, std::min, )
+ARITH_FUNC_TEST(Fmod, fMod, )
 
 #undef ARITH_FUN_IMPL
 #undef ARITH_FUNC_TEST_TYPED
 #undef ARITH_FUNC_TEST
-#undef ARITH_FUNC_TEST_FLOAT
 
 /// Reference function for FloorDivide
 template <typename DataType>

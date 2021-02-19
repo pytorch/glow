@@ -1357,6 +1357,7 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
   case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::DivNodeKind:
+  case Kinded::Kind::FmodNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::CmpLTENodeKind:
