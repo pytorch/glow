@@ -104,6 +104,11 @@ llvm::cl::opt<int>
              llvm::cl::init(1000), llvm::cl::value_desc("N"),
              llvm::cl::cat(category));
 
+llvm::cl::opt<unsigned> numCompileThreads(
+    "numCompileThreads",
+    llvm::cl::desc("Number of threads to use for compilation"),
+    llvm::cl::init(1), llvm::cl::value_desc("N"), llvm::cl::cat(category));
+
 llvm::cl::opt<bool>
     avgPool("avgPool",
             llvm::cl::desc("Add quantized AdaptiveAvgPool node to the graph. "
@@ -180,9 +185,10 @@ private:
     std::vector<unsigned_t> kernels = {kernel, kernel};
     std::vector<unsigned_t> strides = {stride, stride};
     std::vector<unsigned_t> pads = {pad, pad, pad, pad};
+    std::vector<unsigned_t> dilations = {dilation, dilation};
 
     auto outSz = calculateConvPoolOutputDims(inputShape.h, inputShape.w,
-                                             kernels, strides, pads, dilation);
+                                             kernels, strides, pads, dilations);
     std::array<dim_t, 4> outDims = {
         {inputShape.n, outSz.first, outSz.second, outChannels}};
 
@@ -190,7 +196,7 @@ private:
       auto *outTy = F_->getParent()->uniqueType(ElemKind::FloatTy, outDims);
       return F_
           ->createConv("conv", input, filter, bias, outTy, kernels, strides,
-                       pads, groups, dilation)
+                       pads, groups, dilations)
           ->getResult();
     } else {
       auto *outTy =
@@ -201,7 +207,7 @@ private:
               "conv", input, filter, bias, /*filterScales*/ nullptr,
               /*filterOffsets*/ nullptr, /*biasScales*/ nullptr,
               /*biasOffsets*/ nullptr, outTy, kernels, strides, pads, groups,
-              dilation,
+              dilations,
               /*quantizeFilter*/ true, /*quantizeBias*/ false,
               /*schema*/ quantization::Schema::Symmetric)
           ->getResult();
@@ -426,18 +432,54 @@ public:
     hostManager_ =
         std::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
 
-    auto mod = std::make_unique<Module>();
-    LOG(INFO) << "Building networks";
-    bundles_ = makeNetworks(builder_, *mod, shapes_);
+    const auto numCompileThreadsToUse =
+        std::min(size_t(numCompileThreads), shapes_.size());
 
-    glow::CompilationContext cctx;
-    cctx.replicationCount = replicationCount;
-    cctx.saturateHost = saturateHost;
-    cctx.precisionConfig.convertToFP16 = convertToFP16;
-    cctx.dumpFinalGraph = dumpDAG;
-    int64_t compilationStartTime = TraceEvent::now();
+    // Divide Functions up for compilation threads
+    LOG(INFO) << "Building networks";
+    std::vector<std::unique_ptr<Module>> modules;
+    for (size_t i = 0; i < numCompileThreadsToUse; ++i) {
+      auto mod = std::make_unique<Module>();
+      const auto beginIt =
+          shapes_.begin() + ((shapes_.size() / numCompileThreadsToUse) * i);
+      const auto endIt =
+          i == numCompileThreadsToUse - 1
+              ? shapes_.end()
+              : shapes_.begin() +
+                    ((shapes_.size() / numCompileThreadsToUse) * (i + 1));
+      std::vector<ShapeNCHW> threadShapes{beginIt, endIt};
+      auto bundles = makeNetworks(builder_, *mod, threadShapes);
+      for (auto &bundle : bundles) {
+        bundles_.push_back(std::move(bundle));
+      }
+      modules.push_back(std::move(mod));
+    }
+
+    auto compileFn = [this](std::unique_ptr<Module> mod) {
+      glow::CompilationContext cctx;
+      cctx.replicationCount = replicationCount;
+      cctx.saturateHost = saturateHost;
+      cctx.precisionConfig.convertToFP16 = convertToFP16;
+      cctx.dumpFinalGraph = dumpDAG;
+      hostManager_->addNetwork(std::move(mod), cctx);
+    };
+
+    // Compile modules in parallel
     LOG(INFO) << "Compiling networks";
-    hostManager_->addNetwork(std::move(mod), cctx);
+    int64_t compilationStartTime = TraceEvent::now();
+    std::vector<std::thread> threads;
+    for (size_t i = 1; i < numCompileThreadsToUse; ++i) {
+      auto mod = std::move(modules[i]);
+      std::thread t(compileFn, std::move(mod));
+      threads.push_back(std::move(t));
+    }
+
+    compileFn(std::move(modules[0]));
+
+    for (auto &t : threads) {
+      t.join();
+    }
+
     int64_t compilationEndTime = TraceEvent::now();
     compilationTime_ = compilationEndTime - compilationStartTime;
 
@@ -484,12 +526,15 @@ public:
     int64_t totatTimeMs = (endTime - startTime) / 1000;
 
     std::cout << "Total runtime: " << totatTimeMs << "ms" << std::endl;
-    std::cout << "Avg requests/second: " << numReqs / (totatTimeMs / 1000)
-              << std::endl;
-    std::cout << "Avg images/second: "
-              << (batchSize * numReqs) / (totatTimeMs / 1000) << std::endl;
-    std::cout << "Avg runtime per request " << totatTimeMs / numReqs << "ms"
-              << std::endl;
+    if (totatTimeMs > 0) {
+      std::cout << "Avg requests/second: "
+                << numReqs / (double(totatTimeMs) / 1000) << std::endl;
+      std::cout << "Avg images/second: "
+                << (batchSize * numReqs) / (double(totatTimeMs) / 1000)
+                << std::endl;
+      std::cout << "Avg runtime per request " << double(totatTimeMs) / numReqs
+                << "ms" << std::endl;
+    }
     std::cout << "numBins: " << numBins << std::endl;
     std::cout << "baseSize: " << baseSize << "x" << baseSize << std::endl;
     std::cout << "batchSize: " << batchSize << std::endl;
