@@ -407,6 +407,13 @@ int main(int argc, char **argv) {
           "Performs Div on the LHS and RHS operands, then Floor. If Truncate "
           "is set to true then truncate the quotient to zero instead.");
 
+  BB.newNode("Fmod")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Computes the element-wise remainder of division.");
+
   BB.newNode("Max")
       .addInput("LHS")
       .addInput("RHS")

@@ -427,4 +427,11 @@ std::set<std::string> glow::backendTestBlacklist = {
     "batchedReduceAdd_Int32ITy/0",
     "Float16ArgMaxKeepDim/0",
     "Float16ArgMaxNoKeepDim/0",
+    "ArithFmod_int32_t/0",
+    "ArithFmod_int64_t/0",
+    "ArithFmod_float/0",
+    "ArithFmod_float16_t/0",
+    "ArithFmod_bfloat16_t/0",
+    "BasicFmodNetFloatVsFloat16/0",
+    "BasicFmodNetFloatVsBFloat16/0",
 };

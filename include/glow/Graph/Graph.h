@@ -977,6 +977,7 @@ public:
   ARITHMETIC_FUN_DECL(Or);
   ARITHMETIC_FUN_DECL(Xor);
   ARITHMETIC_FUN_DECL(Pow);
+  ARITHMETIC_FUN_DECL(Fmod);
 #undef ARITHMETIC_FUN_DECL
 
 #define TRIGONOMETRIC_FUN_DECL(NODE_NAME_)                                     \
@@ -1020,6 +1021,7 @@ public:
   DECLARE_BROADCAST_NODE(Xor, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Or, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Pow, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Fmod, /* NUM_INPUTS */ 2)
 
 #define DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(NODE_NAME, NUM_INPUTS,            \
                                              OUTTYPEREF)                       \
@@ -1037,6 +1039,7 @@ public:
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Div, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Min, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Max, /* NUM_INPUTS */ 2, outTy)
+  DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Fmod, /* NUM_INPUTS */ 2, outTy)
 
 #define DECLARE_CMP_BROADCAST_NODE(NODE_NAME)                                  \
   template <class T, class... Args>                                            \

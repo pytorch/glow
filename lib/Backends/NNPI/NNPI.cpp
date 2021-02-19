@@ -213,6 +213,12 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int8QTy, ElemKind::Float16Ty});
     break;
+  case Kinded::Kind::FmodNodeKind:
+    // Supporting these two for now because for fp inputs NNPI returns result
+    // with the same sign as the divisor instead of the dividend.
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int64ITy, ElemKind::Int32ITy});
+    break;
   case Kinded::Kind::DivNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
