@@ -63,6 +63,7 @@ struct SLSParam {
   bool useFP16Accumulation;
   ElemKind fusedDtype;
   ElemKind dtype;
+  bool convertFusedToFP32;
 };
 
 std::string getSLSDescription(SLSParam param) {
@@ -87,19 +88,27 @@ class SLSBench : public Benchmark {
   dim_t asyncLaunchSize_;
   std::string backendStr_;
   std::vector<SLSParam> params_;
+  bool convertFusedToFP32_;
   std::string devId_;
 
 public:
   SLSBench(dim_t batchSize_, dim_t asyncLaunchSize_, std::string backendStr_,
-           std::vector<SLSParam> params_, std::string devId_ = std::string(""))
+           std::vector<SLSParam> params_, bool convertFusedToFP32,
+           std::string devId_ = std::string(""))
       : batchSize_(batchSize_), asyncLaunchSize_(asyncLaunchSize_),
-        backendStr_(backendStr_), params_(params_), devId_(devId_) {}
+        backendStr_(backendStr_), params_(params_),
+        convertFusedToFP32_(convertFusedToFP32), devId_(devId_) {}
 
   double countSLSGbytes(SLSParam param) const {
 
     dim_t elementSize = 2;
     if (param.dtype == ElemKind::FloatTy) {
       elementSize = 4;
+    }
+
+    dim_t scaleSize = 2;
+    if (param.convertFusedToFP32) {
+      scaleSize = 4;
     }
 
     // Embedding data
@@ -114,12 +123,12 @@ public:
       if (param.fusedDtype == ElemKind::UInt8FusedFP16QTy) {
         input_gbytes +=
             (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
-             (param.numElementsPerRow + 2 * elementSize)) /
+             (param.numElementsPerRow + 2 * scaleSize)) /
             1e9;
       } else { // Int4
         input_gbytes +=
             (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
-             ((param.numElementsPerRow + 1) / 2 + 2 * elementSize)) /
+             ((param.numElementsPerRow + 1) / 2 + 2 * scaleSize)) /
             1e9;
       }
     }
@@ -302,6 +311,12 @@ public:
 
     fn->dumpDAG("slsbench.dot");
     CompilationContext ctx;
+
+    if (convertFusedToFP32_) {
+      ctx.precisionConfig.convert4BitFusedToFP32 = true;
+      ctx.precisionConfig.convert8BitFusedToFP32 = true;
+    }
+
     EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
 
@@ -406,12 +421,19 @@ SLSParam parseArgs(int argc, char *argv[]) {
   } else {
     llvm_unreachable("Invalid addClipStr");
   }
+  param.convertFusedToFP32 = false;
   if (argc > ROWWISE_QUANT) {
-    printf("fusedDtype%s\n", argv[ROWWISE_QUANT]);
+    printf("fusedDtype %s\n", argv[ROWWISE_QUANT]);
     if (std::string(argv[ROWWISE_QUANT]) == "Int8") {
       param.fusedDtype = ElemKind::UInt8FusedFP16QTy;
+    } else if (std::string(argv[ROWWISE_QUANT]) == "Int8_Fp32") {
+      param.fusedDtype = ElemKind::UInt8FusedFP16QTy;
+      param.convertFusedToFP32 = true;
     } else if (std::string(argv[ROWWISE_QUANT]) == "Int4") {
       param.fusedDtype = ElemKind::UInt4FusedFP16QTy;
+    } else if (std::string(argv[ROWWISE_QUANT]) == "Int4_Fp32") {
+      param.fusedDtype = ElemKind::UInt4FusedFP16QTy;
+      param.convertFusedToFP32 = true;
     } else {
       llvm_unreachable("Invalid Quantization datatype");
     }
@@ -516,7 +538,7 @@ int main(int argc, char *argv[]) {
 
   SLSParam param = params.front();
   SLSBench b(param.batchSize, param.numAsyncLaunches, param.backendStr, params,
-             param.devId);
+             param.convertFusedToFP32, param.devId);
   auto times = bench(&b, param.numReps);
 
   printf("%s,runtime,gbytesPerSec\n", runHeader.c_str());
