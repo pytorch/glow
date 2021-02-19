@@ -700,6 +700,15 @@ struct QuantizedUnpackedLinearInputs {
   };
 };
 
+/// Indexes of aten::linear inputs.
+struct LinearInput {
+  enum {
+    input = 0,
+    weight = 1,
+    bias = 2,
+  };
+};
+
 /// Indexes of quantized::linear inputs.
 struct QuantizedLinearInputs {
   enum {
@@ -1197,6 +1206,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"glow::unpacked_quantized_linear"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked},
       {{"glow::fused_split"}, &PyTorchModelLoader::loadFusedSplit},
+      {{"aten::linear"}, &PyTorchModelLoader::loadLinear},
       {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
       {{"quantized::conv2d"}, &PyTorchModelLoader::loadQuantizedConv},
       {{"quantized::conv3d"}, &PyTorchModelLoader::loadQuantizedConv},
@@ -2161,6 +2171,52 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
   }
 }
 
+Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[LinearInput::input]));
+
+  // Flatten outer dims if necessary
+  auto inputDims = input.dims();
+  if (inputDims.size() > 2) {
+    input = F_.createFlatten("flatten", input, inputDims.size() - 1);
+  }
+
+  // Expand dims if necessary
+  if (inputDims.size() == 1) {
+    input = F_.createReshape("reshape", input, {1, inputDims[0]});
+  }
+
+  glow::NodeValue weight;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weight, getGlowNodeValueForValue(inputs[LinearInput::weight]));
+  weight = F_.createTranspose("weight_transpose", weight, {1, 0});
+
+  // Get bias or create a zero bias if no bias is found.
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[LinearInput::bias], "linear_bias",
+      glow::Type(ElemKind::FloatTy, {weight.dims()[1]}), 0.0);
+
+  NodeValue output = F_.createFullyConnected("linear", input, weight, bias);
+
+  // Restore original outer dims
+  if (inputDims.size() > 2) {
+    std::vector<dim_t> finalDims = inputDims.vec();
+    finalDims.back() = output.dims().back();
+    output = F_.createReshape("linear_reshape", output, finalDims);
+  }
+
+  if (inputDims.size() == 1) {
+    output = F_.createReshape("linear_reshape", output, {output.dims()[1]});
+  }
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
 // implementation for per_tensor and per_channel quantized linear from either
 // packed or unpacked linear
 Error PyTorchModelLoader::loadQuantizedLinearImpl(
@@ -2205,7 +2261,7 @@ Error PyTorchModelLoader::loadQuantizedLinearImpl(
   if (inputDims.size() > 2) {
     std::vector<dim_t> finalDims = inputDims.vec();
     finalDims.back() = output.dims().back();
-    output = F_.createReshape("expand", output, finalDims);
+    output = F_.createReshape("fc_reshape", output, finalDims);
   }
 
   RETURN_ERR(addValueMapping(outputValue, output, outputDtype));

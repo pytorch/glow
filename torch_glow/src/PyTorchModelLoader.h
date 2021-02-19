@@ -709,6 +709,10 @@ private:
   /// \return error on failure.
   Error loadQuantizedLinear(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::linear node.
+  /// \return error on failure.
+  Error loadLinear(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantize_per_tensor node.
   /// \returns error on failure.
   Error loadQuantize(const torch::jit::Node *ptNode);
