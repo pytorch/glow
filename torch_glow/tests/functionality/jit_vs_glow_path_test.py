@@ -7,7 +7,6 @@ import torch_glow
 from tests import utils
 
 
-
 class TestJITVsGlowPath(utils.TorchGlowTestCase):
     def test_jit_vs_glow_path(self):
         """Basic test of the JIT vs. Glow logging feature."""
