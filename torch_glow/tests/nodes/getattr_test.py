@@ -5,11 +5,9 @@ import torch
 import torch_glow
 from tests import utils
 from tests.utils import GLOW_FUSION_GROUP, SUBGRAPH_ATTR
-import unittest
 
 
 class TestGetAttr(utils.TorchGlowTestCase):
-    @unittest.skip("Temp disabled")
     def test_getattr(self):
         """Test fusion of the PyTorch prim::GetAttr Node into the Glow subgraph."""
         with torch.no_grad():

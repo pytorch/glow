@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch
 import torch.nn.functional as F
 from tests import utils
-import unittest
 
 
 class SimpleLinearModule(torch.nn.Module):
@@ -15,7 +14,6 @@ class SimpleLinearModule(torch.nn.Module):
 
 
 class TestLinear(utils.TorchGlowTestCase):
-    @unittest.skip("Temp disabled")
     def test_linear_basic(self):
         """Basic test of the PyTorch aten::linear op on Glow."""
 
@@ -29,12 +27,10 @@ class TestLinear(utils.TorchGlowTestCase):
         input = torch.randn(n, in_features)
         weight = torch.randn(out_features, in_features)
 
-        # fusible_ops has is empty because linear gets lowered to other ops
         utils.compare_tracing_methods(
-            SimpleLinearModule(), input, weight, fusible_ops={}
+            SimpleLinearModule(), input, weight, fusible_ops={"aten::linear"}
         )
 
-    @unittest.skip("True")
     def test_linear_bias(self):
         """Test of the PyTorch aten::linear op on Glow."""
 
@@ -49,12 +45,10 @@ class TestLinear(utils.TorchGlowTestCase):
         weight = torch.randn(out_features, in_features)
         bias = torch.randn(out_features)
 
-        # fusible_ops has is empty because linear gets lowered to other ops
         utils.compare_tracing_methods(
-            SimpleLinearModule(), input, weight, bias, fusible_ops={}
+            SimpleLinearModule(), input, weight, bias, fusible_ops={"aten::linear"}
         )
 
-    @unittest.skip("Temp disabled")
     def test_linear_broadcast(self):
         """Test of the PyTorch aten::linear op with broadcasting on Glow."""
 
@@ -68,7 +62,6 @@ class TestLinear(utils.TorchGlowTestCase):
         input = torch.randn(n, 9, 7, in_features)
         weight = torch.randn(out_features, in_features)
 
-        # fusible_ops has is empty because linear gets lowered to other ops
         utils.compare_tracing_methods(
-            SimpleLinearModule(), input, weight, fusible_ops={}
+            SimpleLinearModule(), input, weight, fusible_ops={"aten::linear"}
         )

@@ -5,11 +5,10 @@ import torch
 import torch.nn.functional as F
 import torch_glow
 from tests import utils
-import unittest
+
 
 
 class TestJITVsGlowPath(utils.TorchGlowTestCase):
-    @unittest.skip("Temp disabled")
     def test_jit_vs_glow_path(self):
         """Basic test of the JIT vs. Glow logging feature."""
 
@@ -30,7 +29,7 @@ class TestJITVsGlowPath(utils.TorchGlowTestCase):
             TestModule(),
             input,
             weight,
-            fusible_ops={"aten::add", "aten::t", "aten::matmul"},
+            fusible_ops={"aten::add", "aten::linear"},
         )
 
     def test_jit_vs_glow_int_path(self):
