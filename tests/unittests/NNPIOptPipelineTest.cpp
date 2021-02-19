@@ -660,8 +660,8 @@ TEST_F(NNPIOptPipelineTest, DataParallelLNClip) {
   scaleT.getHandle<float16_t>().randomize(0.0f, 1.0f, mod_.getPRNG());
   Constant *scaleC = mod_.createConstant("scale", std::move(scaleT));
   SplatNode *biasS = F_->createSplat("bias", scaleC->getType(), 1.5f);
-  auto *ln =
-      F_->createLayerNormalization("layernorm", tiled, scaleC, biasS, 1e-4);
+  auto *ln = F_->createLayerNormalization(
+      "layernorm", tiled->getResult().getType(), tiled, scaleC, biasS, 1e-4);
   auto *clipped = F_->createClip("clip", ln, -128.0f, 128.0f);
   F_->createSave("ret", clipped);
 

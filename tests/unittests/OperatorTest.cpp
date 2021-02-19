@@ -2535,12 +2535,19 @@ TEST_P(OperatorTest, pow) {
   auto *Exp = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Exp", false);
 
   bindings_.allocate(X)->getHandle() = {5, 0.1f, -3};
-  bindings_.allocate(Y)->getHandle() = {2, 100};
-  bindings_.allocate(Exp)->getHandle() = {2, -1};
+  bindings_.allocate(Y)->getHandle() = {2, 0.25};
+  bindings_.allocate(Exp)->getHandle() = {2, -0.5};
 
   auto *Pow1 = F_->createPow("Pow1", X, 2.0);
   auto *Pow2 = F_->createPow("Pow2", Y, 0.5);
   auto *Pow3 = F_->createPow("Pow3", Y, Exp);
+
+  // Create quantized Pow
+  auto *quantY = F_->createQuantize(
+      "Y_quant", Y, mod_.uniqueType(ElemKind::Int8QTy, {2}, 0.05, 0));
+  auto *quantExp = F_->createQuantize(
+      "exp_quant", Exp, mod_.uniqueType(ElemKind::Int8QTy, {2}, 0.1, 0));
+  auto *Pow4 = F_->createPow("Pow4", quantY, quantExp);
 
   auto *save1 = F_->createSave("save", Pow1);
   auto *savePlaceholder1 = save1->getPlaceholder();
@@ -2551,9 +2558,13 @@ TEST_P(OperatorTest, pow) {
   auto *save3 = F_->createSave("save", Pow3);
   auto *savePlaceholder3 = save3->getPlaceholder();
 
+  auto *save4 = F_->createSave("save", Pow4);
+  auto *savePlaceholder4 = save4->getPlaceholder();
+
   bindings_.allocate(savePlaceholder1);
   bindings_.allocate(savePlaceholder2);
   bindings_.allocate(savePlaceholder3);
+  bindings_.allocate(savePlaceholder4);
 
   EE_.compile(CompilationMode::Infer);
 
@@ -2566,11 +2577,15 @@ TEST_P(OperatorTest, pow) {
 
   auto H_Y = bindings_.get(savePlaceholder2)->getHandle();
   EXPECT_NEAR(H_Y.at({0}), sqrt(2.0), 1E-5);
-  EXPECT_NEAR(H_Y.at({1}), 10, 1E-5);
+  EXPECT_NEAR(H_Y.at({1}), 0.5, 1E-5);
 
   auto H_Z = bindings_.get(savePlaceholder3)->getHandle();
   EXPECT_NEAR(H_Z.at({0}), 4, 1E-5);
-  EXPECT_NEAR(H_Z.at({1}), 0.01, 1E-5);
+  EXPECT_NEAR(H_Z.at({1}), 2, 1E-5);
+
+  auto H_A = bindings_.get(savePlaceholder4)->getHandle<int8_t>();
+  EXPECT_NEAR(H_A.at({0}) * 0.05, 4, 1E-5);
+  EXPECT_NEAR(H_A.at({1}) * 0.05, 2, 1E-5);
 }
 
 /// Helper to test ReplaceNaN using \p DTy.
@@ -18624,8 +18639,8 @@ createAndInitLayerNormTest(glow::PlaceholderBindings &bindings,
   biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
   Constant *biasC = mod.createConstant("bias", std::move(biasT));
 
-  LayerNormalizationNode *LNN =
-      F->createLayerNormalization("LN", input, scaleC, biasC, 1e-5);
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
 
   bindings.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
 
@@ -18661,12 +18676,51 @@ TEST_P(OperatorStatelessTest, LayerNorm_BFloat16) {
                             parCloneCountOpt);
 }
 
-/// Test LayerNorm with Int8Ty.
-TEST_P(OperatorStatelessTest, LayerNorm_Int8) {
+template <typename DataType>
+static void QuantizedLayerNormTest(glow::PlaceholderBindings &bindings,
+                                   glow::Module &mod, glow::Function *F,
+                                   glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *input =
+      mod.createPlaceholder(ElemKind::Int8QTy, {1, 1, 2, 2}, /* scale */ 0.3,
+                            /* offset */ 0, "in", false);
+  bindings.allocate(input)->getHandle<int8_t>() = {-4, 3, -2, 3};
+
+  auto scaleT = createTensorConditionallyQuantized(DTy, {2, 2});
+  scaleT.getHandle<DataType>() = {1, 2, 1, 2};
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  auto biasT = createTensorConditionallyQuantized(DTy, {2, 2});
+  biasT.getHandle<DataType>() = {1, -1, 0, 1};
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  auto outTy = F->getParent()->uniqueType(ElemKind::Int8QTy, input->dims(),
+                                          /* scale */ 0.1, /* offset */ 0);
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", outTy, input, scaleC, biasC, /* eps */ 1e-5);
+
+  auto *result = F->createSave("save", LNN);
+  bindings.allocate(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto resultH = bindings.get(result->getPlaceholder())->getHandle<int8_t>();
+  EXPECT_NEAR(resultH.at({0, 0, 0, 0}) * 0.1, -0.3, 1e-04);
+  EXPECT_NEAR(resultH.at({0, 0, 0, 1}) * 0.1, 0.9, 1.1e-01);
+  EXPECT_NEAR(resultH.at({0, 0, 1, 0}) * 0.1, -0.6, 1e-04);
+  EXPECT_NEAR(resultH.at({0, 0, 1, 1}) * 0.1, 2.9, 1.1e-01);
+}
+
+TEST_P(OperatorTest, LayerNorm_Int8_With_Int8_Scale_Bias) {
   CHECK_IF_ENABLED();
-  compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
-                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.04f,
-                            parCloneCountOpt);
+
+  QuantizedLayerNormTest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, LayerNorm_Int8_With_Float_Scale_Bias) {
+  CHECK_IF_ENABLED();
+
+  QuantizedLayerNormTest<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 static void testDequantizeFRWQ(glow::PlaceholderBindings &bindings,

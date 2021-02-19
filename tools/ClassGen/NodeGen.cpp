@@ -290,7 +290,7 @@ int main(int argc, char **argv) {
       .addInput("Scale")
       .addInput("Bias")
       .addMember(MemberType::Float, "Epsilon")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .setDocstring("Performs layer normalization on the Input tensor with the "
                     "provided Scale, Bias, and Epsilon. Layer sizes are "
                     "determined by the dimensions of Scale and Bias. Similar "

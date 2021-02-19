@@ -329,7 +329,8 @@ public:
 
       // Layer norm
       auto *ZWO_norm = fn->createLayerNormalization(
-          strFormat("LayerNorm1_core%d", core), ZWO, LN1_scale, LN1_bias, 1e-5);
+          strFormat("LayerNorm1_core%d", core), ZWO->getNthResult(0).getType(),
+          ZWO, LN1_scale, LN1_bias, 1e-5);
 
       // FC1
       auto *FC1 = createFC(fn, mod, strFormat("Gemm_FC1_core%d", core),
@@ -344,7 +345,8 @@ public:
 
       // Layer norm
       auto *FC2_norm = fn->createLayerNormalization(
-          strFormat("LayerNorm2_core%d", core), FC2, LN2_scale, LN2_bias, 1e-5);
+          strFormat("LayerNorm2_core%d", core), FC2->getNthResult(0).getType(),
+          FC2, LN2_scale, LN2_bias, 1e-5);
 
       // Save result
       S[core] = fn->createSave(strFormat("save_core%d", core), FC2_norm);

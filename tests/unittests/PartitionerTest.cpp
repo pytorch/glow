@@ -791,8 +791,8 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatInputs,
         biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
         bias = mod.createConstant("LN_bias", std::move(biasT));
       }
-      auto *layerNormed =
-          F->createLayerNormalization("LN", clipped, scale, bias, 1e-5);
+      auto *layerNormed = F->createLayerNormalization(
+          "LN", clipped->getResult().getType(), clipped, scale, bias, 1e-5);
 
       /* Clip */
       auto *layerNormedClipped =
