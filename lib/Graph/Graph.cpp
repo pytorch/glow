@@ -1665,12 +1665,12 @@ BatchNormalizationNode *Function::createBatchNormalization(
                                             momentum));
 }
 
-LayerNormalizationNode *Function::createLayerNormalization(llvm::StringRef name,
-                                                           NodeValue input,
-                                                           NodeValue scale,
-                                                           NodeValue bias,
-                                                           float epsilon) {
-  return addNode(new LayerNormalizationNode(name, input, scale, bias, epsilon));
+LayerNormalizationNode *
+Function::createLayerNormalization(llvm::StringRef name, TypeRef outTy,
+                                   NodeValue input, NodeValue scale,
+                                   NodeValue bias, float epsilon) {
+  return addNode(
+      new LayerNormalizationNode(name, outTy, input, scale, bias, epsilon));
 }
 
 BucketizeNode *Function::createBucketizeNode(llvm::StringRef name,

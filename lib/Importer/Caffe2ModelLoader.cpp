@@ -640,7 +640,7 @@ Error Caffe2ModelLoader::loadLayerNorm(const caffe2::OperatorDef &op,
   }
 
   LayerNormalizationNode *node =
-      G_->createLayerNormalization(opName, in, weight, bias, eps);
+      G_->createLayerNormalization(opName, in.getType(), in, weight, bias, eps);
 
   // We only support one output for LayoutNorm. Ignoring the
   // rest of the outputs.

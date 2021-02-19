@@ -649,6 +649,10 @@ private:
   /// \returns error on failure.
   Error loadLayerNorm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::layer_norm node.
+  /// \returns error on failure.
+  Error loadQuantizedLayerNorm(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch dropout node.
   /// \returns error on failure.
   Error loadDropout(const torch::jit::Node *ptNode);

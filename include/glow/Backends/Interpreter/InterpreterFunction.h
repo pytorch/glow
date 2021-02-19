@@ -300,6 +300,8 @@ private:
   template <typename ElemTy>
   void fwdElementPowInstFloatImpl(const ElementPowInst *I);
 
+  void fwdElementPowInstI8Impl(const ElementPowInst *I);
+
   template <typename ElemTy>
   void fwdElementIsNaNInstFloatImpl(const ElementIsNaNInst *I);
 

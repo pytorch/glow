@@ -906,15 +906,14 @@ public:
       NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx = 0,
       float epsilon = 1e-5, float momentum = 0.9);
 
-  /// Creates and \returns a LayerNormalizationNode that computes the layer
-  /// normalization of the inner most layers of \p input based on the shape of
-  /// \p scale and \p bias. \p epsilon is a small perterbation used to avoid
-  /// division by 0 during normalization.
-  LayerNormalizationNode *createLayerNormalization(llvm::StringRef name,
-                                                   NodeValue input,
-                                                   NodeValue scale,
-                                                   NodeValue bias,
-                                                   float epsilon = 1e-5);
+  /// Creates and \returns a LayerNormalizationNode with result type of \p outTy
+  /// that computes the layer normalization of the inner most layers of \p input
+  /// based on the shape of \p scale and \p bias. \p epsilon is a small
+  /// perterbation used to avoid division by 0 during normalization.
+  LayerNormalizationNode *
+  createLayerNormalization(llvm::StringRef name, TypeRef outTy, NodeValue input,
+                           NodeValue scale, NodeValue bias,
+                           float epsilon = 1e-5);
 
   /// Bucketizes the input tensor based on monotonically increasing \p
   /// boundaries for each value in \p input. For each value x in input, the

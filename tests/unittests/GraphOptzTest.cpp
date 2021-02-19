@@ -6439,7 +6439,8 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
   Constant *scaleC = mod_.createConstant("scale", std::move(scaleT));
   SplatNode *biasS = F_->createSplat("bias", scaleC->getType(), 1.5f);
 
-  auto *LN = F_->createLayerNormalization("LN", input, scaleC, biasS, 1e-5);
+  auto *LN = F_->createLayerNormalization("LN", input->getType(), input, scaleC,
+                                          biasS, 1e-5);
 
   SplatNode *splat = F_->createSplat("splat", scaleC->getType(), 0.5f);
   MulNode *MN =
@@ -6493,7 +6494,8 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNormNoBatch) {
   Constant *scaleC = mod_.createConstant("scale", std::move(scaleT));
   SplatNode *biasS = F_->createSplat("bias", scaleC->getType(), 1.5f);
 
-  auto *LN = F_->createLayerNormalization("LN", input, scaleC, biasS, 1e-5);
+  auto *LN = F_->createLayerNormalization("LN", input->getType(), input, scaleC,
+                                          biasS, 1e-5);
 
   SplatNode *splat = F_->createSplat("splat", scaleC->getType(), 0.5f);
   MulNode *MN =
