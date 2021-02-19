@@ -260,6 +260,7 @@ endif()
 if(GLOW_WITH_NNPI)
   add_executable(NNPIOptPipelineTest
           NNPIOptPipelineTest.cpp)
+  target_include_directories(NNPIOptPipelineTest PRIVATE ${NNPI_API_DIR})
   target_link_libraries(NNPIOptPipelineTest
           PRIVATE
           Backends

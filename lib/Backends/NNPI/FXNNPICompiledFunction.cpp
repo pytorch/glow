@@ -1,7 +1,7 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
 #include "glow/Flags/Flags.h"
-#include "glow/fb/fx_nnpi_importer/Utils.h"
+#include "glow/fb/fx/nnpi_importer/Utils.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
 #include "glow/lib/Backends/NNPI/NNPICompiledFunction.h"
@@ -34,8 +34,8 @@ Error NNPICompiledFunction::compileFX(
   LOG_IF_NOT_RETURN_LLVMERROR(
       compilationFileName_.length() < NNPI_MAX_STRING_LEN, "Bad filename");
 
-  FXNNPIImporter importer(compilationOptions_);
-  network_ = importer.importFunction(FXIR, submod, constants);
+  FXNNPIImporter importer(compilationOptions_, constants);
+  network_ = importer.importFunction(FXIR, submod);
 
   LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
   // Setting the network name.

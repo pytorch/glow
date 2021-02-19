@@ -5088,6 +5088,52 @@ TEST_F(GraphOptz, ParallelizeGraph_Add) {
   checkNumericalEquivalence();
 }
 
+/// Test Splitting Sub into multiple Subs.
+TEST_F(GraphOptz, ParallelizeGraph_Sub) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *sub1 = F_->createSub("sub1", input1, input2);
+  auto *sub2 = F_->createSub("sub2", sub1, sub1);
+  F_->createSave("save", sub2, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[sub1] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 12 Subs from sub1, as well as the original sub2 which is
+  // unchanged.
+  EXPECT_EQ(13, countNodeKind(F_, Kinded::Kind::SubNodeKind));
+
+  // Each input of the 12 Subs are sliced.
+  EXPECT_EQ(24, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  // One concat to bring all of the parallelized sliced Subs together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
 /// Test Splitting Transpose into multiple Transposes.
 TEST_F(GraphOptz, ParallelizeGraph_Transpose) {
   auto *input =

@@ -570,6 +570,10 @@ private:
   /// \returns error on failure.
   Error loadLogicalNot(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::index_put or aten::index_put_ node.
+  /// \returns error on failure.
+  Error loadIndexPut(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch sqrt node.
   /// \returns error on failure.
   Error loadSqrt(const torch::jit::Node *ptNode);
