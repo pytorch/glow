@@ -3738,11 +3738,18 @@ template <typename DataType>
 static void testBatchedReduceMax(glow::PlaceholderBindings &bindings,
                                  glow::Module &mod, glow::Function *F,
                                  glow::ExecutionEngine &EE, ElemKind DTy) {
+  const bool isQuantized = isQuantizedElemKind(DTy);
+  const std::vector<dim_t> dims = {2, 4};
+  const std::vector<dim_t> expectedDims = {4};
+  auto BT = isQuantized ? mod.uniqueType(DTy, dims, 0.5, 3)
+                        : mod.uniqueType(DTy, dims);
+  auto OT = isQuantized ? mod.uniqueType(DTy, expectedDims, 2.0, -1)
+                        : mod.uniqueType(DTy, expectedDims);
 
-  auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
+  auto *batch = mod.createPlaceholder(BT, "batch", false);
   bindings.allocate(batch)->getHandle<DataType>() = {-10, 20, 30, 40,
                                                      -1,  2,  3,  4};
-  auto *R = F->createBatchedReduceMax("reduce.Max", batch, /* axis */ 0);
+  auto *R = F->createBatchedReduceMax("reduce.Max", OT, batch, /* axis */ 0);
 
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
@@ -3750,7 +3757,7 @@ static void testBatchedReduceMax(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(DTy, {4});
+  Tensor expected(OT);
   expected.getHandle<DataType>() = {-1, 20, 30, 40};
 
   EXPECT_TRUE(result->isEqual(expected));
@@ -3762,17 +3769,26 @@ static void testBatchedReduceMaxMultiAxis(glow::PlaceholderBindings &bindings,
                                           glow::Module &mod, glow::Function *F,
                                           glow::ExecutionEngine &EE,
                                           ElemKind DTy) {
-  auto *batch = mod.createPlaceholder(DTy, {2, 2, 2, 2}, "batch", false);
+  const bool isQuantized = isQuantizedElemKind(DTy);
+  const std::vector<dim_t> dims = {2, 2, 2, 2};
+  const std::vector<dim_t> expectedDims = {2, 2};
+  auto BT = isQuantized ? mod.uniqueType(DTy, dims, 0.5, 3)
+                        : mod.uniqueType(DTy, dims);
+  auto OT = isQuantized ? mod.uniqueType(DTy, expectedDims, 2.0, -1)
+                        : mod.uniqueType(DTy, expectedDims);
+
+  auto *batch = mod.createPlaceholder(BT, "batch", false);
   bindings.allocate(batch)->getHandle<DataType>() = {
       1, -2, 3, -4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-  auto *R = F->createBatchedReduceMax("reduce.Max", batch, /* axis */ {1, 3});
+  auto *R =
+      F->createBatchedReduceMax("reduce.Max", OT, batch, /* axis */ {1, 3});
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
 
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(DTy, {2, 2});
+  Tensor expected(OT);
   expected.getHandle<DataType>() = {6, 8, 14, 16};
   EXPECT_TRUE(result->isEqual(expected));
 }
@@ -3793,6 +3809,12 @@ TEST_P(OperatorTest, batchedReduceMax_Int32) {
 TEST_P(OperatorTest, batchedReduceMax_Int64) {
   CHECK_IF_ENABLED();
   testBatchedReduceMax<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test that BatchedReduceMax is correctly supported in Int8QTy.
+TEST_P(OperatorTest, batchedReduceMax_Int8) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceMax<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Test that BatchedReduceMax is correctly supported in FloatTy.
@@ -3816,16 +3838,31 @@ TEST_P(OperatorTest, batchedReduceMaxMultiAxis_Int64) {
                                          ElemKind::Int64ITy);
 }
 
+/// Test that BatchedReduceMax is correctly supported in Int64Ty.
+TEST_P(OperatorTest, batchedReduceMaxMultiAxis_Int8) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceMaxMultiAxis<int8_t>(bindings_, mod_, F_, EE_,
+                                        ElemKind::Int8QTy);
+}
+
 /// Helper to test BatchedReduceMin using \p DTy.
 template <typename DataType>
 static void testBatchedReduceMin(glow::PlaceholderBindings &bindings,
                                  glow::Module &mod, glow::Function *F,
                                  glow::ExecutionEngine &EE, ElemKind DTy) {
+  const bool isQuantized = isQuantizedElemKind(DTy);
+  const std::vector<dim_t> dims = {2, 4};
+  const std::vector<dim_t> expectedDims = {4};
+  auto BT = isQuantized ? mod.uniqueType(DTy, dims, 0.5, 3)
+                        : mod.uniqueType(DTy, dims);
+  auto OT = isQuantized ? mod.uniqueType(DTy, expectedDims, 2.0, -1)
+                        : mod.uniqueType(DTy, expectedDims);
 
-  auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
+  auto *batch = mod.createPlaceholder(BT, "batch", false);
+
   bindings.allocate(batch)->getHandle<DataType>() = {10, 20, 30, 40,
                                                      1,  2,  3,  4};
-  auto *R = F->createBatchedReduceMin("reduce.min", batch, /* axis */ 0);
+  auto *R = F->createBatchedReduceMin("reduce.min", OT, batch, /* axis */ 0);
 
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
@@ -3833,7 +3870,7 @@ static void testBatchedReduceMin(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(DTy, {4});
+  auto expected = Tensor(OT);
   expected.getHandle<DataType>() = {1, 2, 3, 4};
 
   EXPECT_TRUE(result->isEqual(expected));
@@ -3845,17 +3882,28 @@ static void testBatchedReduceMinMultiAxis(glow::PlaceholderBindings &bindings,
                                           glow::Module &mod, glow::Function *F,
                                           glow::ExecutionEngine &EE,
                                           ElemKind DTy) {
-  auto *batch = mod.createPlaceholder(DTy, {2, 2, 2, 2}, "batch", false);
+  const bool isQuantized = isQuantizedElemKind(DTy);
+  std::vector<dim_t> dims = {2, 2, 2, 2};
+  std::vector<dim_t> expectedDims = {4};
+
+  auto BT = isQuantized ? mod.uniqueType(DTy, dims, 0.5, 3)
+                        : mod.uniqueType(DTy, dims);
+  auto OT = isQuantized ? mod.uniqueType(DTy, expectedDims, 2.0, -1)
+                        : mod.uniqueType(DTy, expectedDims);
+
+  auto *batch = mod.createPlaceholder(BT, "batch", false);
+
   bindings.allocate(batch)->getHandle<DataType>() = {
       1, -2, 3, -4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-  auto *R = F->createBatchedReduceMin("reduce.min", batch, /* axis */ {1, 3});
+  auto *R =
+      F->createBatchedReduceMin("reduce.min", OT, batch, /* axis */ {1, 3});
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
 
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(DTy, {2, 2});
+  Tensor expected(OT);
   expected.getHandle<DataType>() = {-2, -4, 9, 11};
   EXPECT_TRUE(result->isEqual(expected));
 }
@@ -3878,6 +3926,12 @@ TEST_P(OperatorTest, batchedReduceMin_Int64) {
   testBatchedReduceMin<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
+/// Test that BatchedReduceMin is correctly supported in Int8QTy.
+TEST_P(OperatorTest, batchedReduceMin_Int8) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceMin<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
 /// Test that BatchedReduceMin is correctly supported in FloatTy.
 TEST_P(OperatorTest, batchedReduceMinMultiAxis_Float) {
   CHECK_IF_ENABLED();
@@ -3897,6 +3951,13 @@ TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int64) {
   CHECK_IF_ENABLED();
   testBatchedReduceMinMultiAxis<int64_t>(bindings_, mod_, F_, EE_,
                                          ElemKind::Int64ITy);
+}
+
+/// Test that BatchedReduceMin is correctly supported in Int64Ty.
+TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int8) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceMinMultiAxis<int8_t>(bindings_, mod_, F_, EE_,
+                                        ElemKind::Int8QTy);
 }
 
 /// Helper to test BatchedReduceZeroDimResult using \p DTy.

@@ -78,8 +78,6 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
 
 bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
-  case Kinded::Kind::BatchedReduceMinNodeKind:
-  case Kinded::Kind::BatchedReduceMaxNodeKind:
   case Kinded::Kind::BatchedReduceProdNodeKind:
   case Kinded::Kind::FmodNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -93,6 +91,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::ClipNodeKind:
+  case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::BatchedReduceMaxNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
