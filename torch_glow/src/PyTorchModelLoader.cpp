@@ -556,6 +556,19 @@ struct LayerNormInputs {
   };
 };
 
+/// Indexes of quantized::layer_norm inputs.
+struct QuantizedLayerNormInputs {
+  enum {
+    input = 0,
+    normalized_shape = 1,
+    weight = 2,
+    bias = 3,
+    eps = 4,
+    output_scale = 5,
+    output_zero_point = 6,
+  };
+};
+
 /// Indexes of aten::dropout inputs.
 struct DropoutInputs {
   enum {
@@ -1237,6 +1250,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"quantized::batch_norm3d_relu"},
        &PyTorchModelLoader::loadQuantizedBatchNorm3dRelu},
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
+      {{"quantized::layer_norm"}, &PyTorchModelLoader::loadQuantizedLayerNorm},
       {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
       {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool2d},
       {{"aten::avg_pool3d"}, &PyTorchModelLoader::loadAvgPool3d},
@@ -1941,7 +1955,11 @@ NodeValue PyTorchModelLoader::loadNodeValueOrCreateBroadcastedConstant(
     const T &val) {
   glow::NodeValue nodeValue;
   if (hasGlowNodeValueForValue(value)) {
-    return EXIT_ON_ERR(getGlowNodeValueForValue(value));
+    auto NV = EXIT_ON_ERR(getGlowNodeValueForValue(value));
+    CHECK(NV.getType()->isEqual(ty))
+        << "Found NodeValue with type " << NV.getType()->toString()
+        << ", expect " << ty.toString();
+    return NV;
   } else {
     glow::Tensor t(ty);
     t.init(glow::Tensor::InitKind::Broadcast, val, F_.getParent()->getPRNG());
@@ -4424,8 +4442,63 @@ Error PyTorchModelLoader::loadLayerNorm(const torch::jit::Node *ptNode) {
       inputs[LayerNormInputs::bias], "layernorm_bias",
       glow::Type(ElemKind::FloatTy, normalizedShapeCast), 0.0);
 
+  auto output = F_.createLayerNormalization("layernorm", input.getType(), input,
+                                            weight, bias, eps)
+                    ->getResult();
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadQuantizedLayerNorm(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[QuantizedLayerNormInputs::input]));
+
+  float eps = 1e-5;
+  if (hasGlowIValueForValue(inputs[LayerNormInputs::eps])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        eps, iValToDouble(
+                 getGlowIValueForValue(inputs[QuantizedLayerNormInputs::eps])));
+  }
+
+  std::vector<int64_t> *normalizedShape;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      normalizedShape,
+      iValToIntList(getGlowIValueForValue(
+          inputs[QuantizedLayerNormInputs::normalized_shape])));
+
+  std::vector<glow::dim_t> normalizedShapeCast =
+      castVector<glow::dim_t>(*normalizedShape);
+
+  glow::NodeValue weight = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[LayerNormInputs::weight], "layernorm_weight",
+      glow::Type(ElemKind::FloatTy, normalizedShapeCast), 1.0);
+
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[LayerNormInputs::bias], "layernorm_bias",
+      glow::Type(ElemKind::FloatTy, normalizedShapeCast), 0.0);
+
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outScale, iValToDouble(getGlowIValueForValue(
+                    inputs[QuantizedLayerNormInputs::output_scale])));
+
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outOffset, iValToInt(getGlowIValueForValue(
+                     inputs[QuantizedLayerNormInputs::output_zero_point])));
+
+  auto outTy =
+      F_.getParent()->uniqueType(ElemKind::Int8QTy, input.dims(), outScale,
+                                 outOffset - UINT8_TO_INT8_SHIFT);
+
   auto output =
-      F_.createLayerNormalization("layernorm", input, weight, bias, eps)
+      F_.createLayerNormalization("layernorm", outTy, input, weight, bias, eps)
           ->getResult();
 
   RETURN_ERR(addValueMapping(outputs[0], output));

@@ -661,6 +661,17 @@ static void lowerLayerNormalizationNode(Function *F, CompilationContext &cctx,
 
   auto nodeName = LN.getName();
 
+  if (in.getType()->isQuantizedType()) {
+    in = F->createDequantize("layernorm_input_dequant", in, ElemKind::FloatTy);
+  }
+
+  if (gamma.getType()->isQuantizedType()) {
+    gamma = F->createDequantize("layernorm_scale_dequant", gamma,
+                                ElemKind::FloatTy);
+    beta =
+        F->createDequantize("layernorm_bias_dequant", beta, ElemKind::FloatTy);
+  }
+
   // input shape -> {M, N} where N is the size of each layer to be normalized.
   dim_t N = std::accumulate(gamma.dims().begin(), gamma.dims().end(), 1,
                             std::multiplies<size_t>());
@@ -770,6 +781,10 @@ static void lowerLayerNormalizationNode(Function *F, CompilationContext &cctx,
 
   // {M, N} -> output shape
   output = F->createReshape(nodeName, output, out.getType()->dims());
+
+  if (out.getType()->isQuantizedType()) {
+    output = F->createQuantize("layernorm_output_quant", output, out.getType());
+  }
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, out, output);
 }

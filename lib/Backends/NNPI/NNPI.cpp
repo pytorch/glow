@@ -170,10 +170,18 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
     break;
-  case Kinded::Kind::LayerNormalizationNodeKind:
-    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::Float16Ty, ElemKind::Int8QTy});
+  case Kinded::Kind::LayerNormalizationNodeKind: {
+    auto scaleType = NI.getInElemTy(LayerNormalizationNode::ScaleIdx);
+    auto biasType = NI.getInElemTy(LayerNormalizationNode::BiasIdx);
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {LayerNormalizationNode::ScaleIdx,
+             LayerNormalizationNode::BiasIdx}) &&
+        scaleType == biasType &&
+        (scaleType == ElemKind::Float16Ty || scaleType == ElemKind::Int8QTy);
     break;
+  }
   case Kinded::Kind::SwishNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy});
@@ -1457,6 +1465,59 @@ static_assert(ActivationIOIdx == SigmoidNode::ResultIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::InputIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::ResultIdx, "Format incorrect");
 
+/// Looks for LayernormNode that has int8 input with fp scale and bias and
+/// quantize the scale and bias. This pass is a temporary workaround which
+/// should be diabled after NNPI supports fp scale and bias.
+bool quantizeLayernormScaleAndBias(Function *F) {
+  bool changed = false;
+
+  for (auto &N : F->getNodes()) {
+    auto *LN = llvm::dyn_cast<LayerNormalizationNode>(&N);
+    if (!LN) {
+      continue;
+    }
+
+    auto in = LN->getInput();
+    auto gamma = LN->getScale();
+    auto beta = LN->getBias();
+
+    // Skip if input is not quantized type or gamma is quantized type.
+    if (!in.getType()->isQuantizedType() ||
+        gamma.getType()->isQuantizedType()) {
+      continue;
+    }
+
+    auto *gammaC = llvm::dyn_cast<Constant>(gamma);
+    auto *betaC = llvm::dyn_cast<Constant>(beta);
+    if (!gammaC || !betaC) {
+      continue;
+    }
+
+    auto gammaTQP = quantization::getTensorQuantizationParams(
+        gammaC->getPayload(), quantization::Schema::Asymmetric,
+        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ gamma.dims()[0]);
+    auto betaTQP = quantization::getTensorQuantizationParams(
+        betaC->getPayload(), quantization::Schema::Asymmetric,
+        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    auto *gammaQ = F->createQuantize(
+        "layernorm_scale_quant", gamma,
+        F->getParent()->uniqueType(ElemKind::Int8QTy, gamma.dims(),
+                                   gammaTQP[0].scale, gammaTQP[0].offset));
+    auto *betaQ = F->createQuantize(
+        "layernorm_bias_quant", beta,
+        F->getParent()->uniqueType(ElemKind::Int8QTy, beta.dims(),
+                                   betaTQP[0].scale, betaTQP[0].offset));
+    auto *QLN =
+        F->createLayerNormalization("layernorm", LN->getResult().getType(), in,
+                                    gammaQ, betaQ, LN->getEpsilon());
+    LN->getResult().replaceAllUsesOfWith(QLN->getResult());
+
+    changed = true;
+  }
+
+  return changed;
+}
+
 template <typename T>
 void zeroOutEmbeddingTable(Tensor &tensor, const int64_t &padIdx) {
   auto handle = tensor.getHandle<T>();
@@ -1744,6 +1805,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
   bool changed = removeClipsBlockingFusion(F);
   changed |= padKernelToStride(F);
   changed |= lowerEmbeddingToGather(F);
+  changed |= quantizeLayernormScaleAndBias(F);
   auto it =
       cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
   if (it != cctx.backendOpts.backendSpecificOpts.end() && it->second == "1") {

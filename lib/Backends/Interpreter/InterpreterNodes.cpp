@@ -3644,8 +3644,45 @@ void BoundInterpreterFunction::fwdElementPowInstFloatImpl(
   }
 }
 
+void BoundInterpreterFunction::fwdElementPowInstI8Impl(
+    const ElementPowInst *I) {
+  assert(getTensor(I->getLHS())->getType().isQuantizedType() &&
+         "Expect quantized type");
+  auto baseTy = I->getLHS()->getType();
+  auto expTy = I->getRHS()->getType();
+  auto destTy = I->getDest()->getType();
+
+  float baseScale = baseTy->getScale();
+  int32_t baseOffset = baseTy->getOffset();
+  TensorQuantizationParams baseTQP{baseScale, baseOffset};
+
+  float expScale = expTy->getScale();
+  int32_t expOffset = expTy->getOffset();
+  TensorQuantizationParams expTQP{expScale, expOffset};
+
+  float destScale = destTy->getScale();
+  int32_t destOffset = destTy->getOffset();
+  TensorQuantizationParams destTQP{destScale, destOffset};
+
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto baseW = getWeightHandle<int8_t>(I->getLHS());
+  auto expW = getWeightHandle<int8_t>(I->getRHS());
+
+  for (dim_t i = 0, e = outW.size(); i < e; i++) {
+    float base = quantization::dequantize(baseW.raw(i), baseTQP);
+    float exp = quantization::dequantize(expW.raw(i), expTQP);
+    outW.raw(i) = quantization::quantize(std::pow(base, exp), destTQP);
+  }
+}
+
 void BoundInterpreterFunction::fwdElementPowInst(
     const glow::ElementPowInst *I) {
+  auto *T = getTensor(I->getLHS());
+  if (T->getType().isQuantizedType()) {
+    fwdElementPowInstI8Impl(I);
+    return;
+  }
+
   dispatchFloatingPointImpl(fwdElementPowInstFloatImpl,
                             I->getLHS()->getElementType(), I);
 }
