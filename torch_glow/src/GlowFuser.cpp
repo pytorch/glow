@@ -440,7 +440,7 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
 
   // Register Glow specific nodes.
   torch::jit::RegisterOperators reg({torch::jit::Operator(
-      "glow::nnckernel(...) -> ...", [](torch::jit::Stack &) { return 0; },
+      "glow::nnckernel(...) -> ...", [](torch::jit::Stack *) { return; },
       c10::AliasAnalysisKind::PURE_FUNCTION)});
 
   processTensorExprGroups(graph);
