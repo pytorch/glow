@@ -245,20 +245,19 @@ static void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, dim_t *offset,
 
 template <typename ElemTy>
 static void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, dim_t *offset,
-                                  dim_t *tensorDim, dim_t *sliceDim,
-                                  dim_t numDimsTensor, dim_t numDimsSlice,
-                                  dim_t offsetDim) {
+                                  dim_t *tensorDim, dim_t *sliceDim, dim_t numDims) {
+
   // Source coordinates.
   dim_t C[5];
 
   // A local copy of the offsets buffer. We copy the buffer to make it clear
   // to the optimizer that the inputs don't alias. This loop is optimized away.
   dim_t offsets_cpy[5];
-  for (dim_t i = 0; i < numDimsSlice; i++) {
+  for (dim_t i = 0; i < numDims; i++) {
     offsets_cpy[i] = offset[i];
   }
 
-  if (numDimsSlice == 5) {
+  if (numDims == 5) {
     for (dim_t x = 0; x < sliceDim[0]; x++)
       for (dim_t y = 0; y < sliceDim[1]; y++)
         for (dim_t z = 0; z < sliceDim[2]; z++)
@@ -269,14 +268,14 @@ static void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, dim_t *offset,
               C[2] = z + offsets_cpy[2];
               C[3] = w + offsets_cpy[3];
               C[4] = q + offsets_cpy[4];
-              slice[libjit_getXYZWQ(sliceDim, x, y, z, w, q)] =
+              *slice++ =
                   tensor[libjit_getXYZWQ(tensorDim, C[0], C[1], C[2], C[3],
                                          C[4])];
             }
     return;
   }
 
-  if (numDimsSlice == 4) {
+  if (numDims == 4) {
     for (dim_t x = 0; x < sliceDim[0]; x++)
       for (dim_t y = 0; y < sliceDim[1]; y++)
         for (dim_t z = 0; z < sliceDim[2]; z++)
@@ -285,39 +284,39 @@ static void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, dim_t *offset,
             C[1] = y + offsets_cpy[1];
             C[2] = z + offsets_cpy[2];
             C[3] = w + offsets_cpy[3];
-            slice[libjit_getXYZW(sliceDim, x, y, z, w)] =
+            *slice++ =
                 tensor[libjit_getXYZW(tensorDim, C[0], C[1], C[2], C[3])];
           }
     return;
   }
 
-  if (numDimsSlice == 3) {
+  if (numDims == 3) {
     for (dim_t x = 0; x < sliceDim[0]; x++)
       for (dim_t y = 0; y < sliceDim[1]; y++)
         for (dim_t z = 0; z < sliceDim[2]; z++) {
           C[0] = x + offsets_cpy[0];
           C[1] = y + offsets_cpy[1];
           C[2] = z + offsets_cpy[2];
-          slice[libjit_getXYZ(sliceDim, x, y, z)] =
+          *slice++ =
               tensor[libjit_getXYZ(tensorDim, C[0], C[1], C[2])];
         }
     return;
   }
 
-  if (numDimsSlice == 2) {
+  if (numDims == 2) {
     for (dim_t x = 0; x < sliceDim[0]; x++)
       for (dim_t y = 0; y < sliceDim[1]; y++) {
         C[0] = x + offsets_cpy[0];
         C[1] = y + offsets_cpy[1];
-        slice[libjit_getXY(sliceDim, x, y)] =
+        *slice++ =
             tensor[libjit_getXY(tensorDim, C[0], C[1])];
       }
     return;
   }
 
-  if (numDimsSlice == 1) {
+  if (numDims == 1) {
     for (dim_t x = 0; x < sliceDim[0]; x++) {
-      slice[x] = tensor[x + offsets_cpy[0]];
+      *slice++ = tensor[x + offsets_cpy[0]];
     }
     return;
   }
@@ -2991,44 +2990,12 @@ void libjit_insert_tensor_i32(int32_t *tensor, int32_t *slice, dim_t *offset,
                        numDimsTensor, numDimsSlice, offsetDim, count, axis);
 }
 
-void libjit_extract_tensor_f(float *tensor, float *slice, dim_t *offset,
-                             dim_t *tensorDim, dim_t *sliceDim,
-                             dim_t numDimsTensor, dim_t numDimsSlice,
-                             dim_t offsetDim) {
-  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim,
-                        numDimsTensor, numDimsSlice, offsetDim);
-}
-
-void libjit_extract_tensor_i8(int8_t *tensor, int8_t *slice, dim_t *offset,
-                              dim_t *tensorDim, dim_t *sliceDim,
-                              dim_t numDimsTensor, dim_t numDimsSlice,
-                              dim_t offsetDim) {
-  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim,
-                        numDimsTensor, numDimsSlice, offsetDim);
-}
-
-void libjit_extract_tensor_i32(int32_t *tensor, int32_t *slice, dim_t *offset,
-                               dim_t *tensorDim, dim_t *sliceDim,
-                               dim_t numDimsTensor, dim_t numDimsSlice,
-                               dim_t offsetDim) {
-  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim,
-                        numDimsTensor, numDimsSlice, offsetDim);
-}
-
 void libjit_insert_tensor_u(int64_t *tensor, int64_t *slice, dim_t *offset,
                             dim_t *tensorDim, dim_t *sliceDim,
                             dim_t numDimsTensor, dim_t numDimsSlice,
                             dim_t offsetDim, dim_t count, dim_t axis) {
   libjit_insert_tensor(tensor, slice, offset, tensorDim, sliceDim,
                        numDimsTensor, numDimsSlice, offsetDim, count, axis);
-}
-
-void libjit_extract_tensor_u(int64_t *tensor, int64_t *slice, dim_t *offset,
-                             dim_t *tensorDim, dim_t *sliceDim,
-                             dim_t numDimsTensor, dim_t numDimsSlice,
-                             dim_t offsetDim) {
-  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim,
-                        numDimsTensor, numDimsSlice, offsetDim);
 }
 
 void libjit_insert_tensor_i8(int8_t *tensor, int8_t *slice, dim_t *offset,
@@ -3045,6 +3012,26 @@ void libjit_insert_tensor_b(int8_t *tensor, int8_t *slice, dim_t *offset,
                             dim_t offsetDim, dim_t count, dim_t axis) {
   libjit_insert_tensor(tensor, slice, offset, tensorDim, sliceDim,
                        numDimsTensor, numDimsSlice, offsetDim, count, axis);
+}
+
+void libjit_extract_tensor_f(float *tensor, float *slice, dim_t *offset,
+                             dim_t *tensorDim, dim_t *sliceDim, dim_t numDims) {
+  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim, numDims);
+}
+
+void libjit_extract_tensor_i8(int8_t *tensor, int8_t *slice, dim_t *offset,
+                              dim_t *tensorDim, dim_t *sliceDim, dim_t numDims) {
+  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim, numDims);
+}
+
+void libjit_extract_tensor_i32(int32_t *tensor, int32_t *slice, dim_t *offset,
+                               dim_t *tensorDim, dim_t *sliceDim, dim_t numDims) {
+  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim, numDims);
+}
+
+void libjit_extract_tensor_u(int64_t *tensor, int64_t *slice, dim_t *offset,
+                             dim_t *tensorDim, dim_t *sliceDim, dim_t numDims) {
+  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim, numDims);
 }
 
 void libjit_space_to_depth_f(const float *inTensor, float *outTensor,

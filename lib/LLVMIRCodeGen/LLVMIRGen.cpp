@@ -2900,10 +2900,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *destDimsSize = emitConstDimT(builder, dest->getType()->dims().size());
-    auto *srcDimsSize = emitConstDimT(builder, src->getType()->dims().size());
+    auto *numDims = emitConstDimT(builder, src->getType()->dims().size());
     auto *offsetsPtr = emitConstDimTArray(builder, offsets);
-    auto *offsetsArraySize = emitConstDimT(builder, offsets.size());
 
     // Don't specialize the offsetPtr because we typically generate lots of
     // extracts from different offsets and specializing on this argument does
@@ -2912,8 +2910,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *F = getFunction("extract_tensor", dest->getElementType());
     createCall(builder, F,
-               {srcPtr, destPtr, offsetsPtr, srcDims, destDims, srcDimsSize,
-                destDimsSize, offsetsArraySize});
+               {srcPtr, destPtr, offsetsPtr, srcDims, destDims, numDims});
     break;
   }
 
