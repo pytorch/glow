@@ -2887,27 +2887,28 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   case Kinded::Kind::ExtractTensorInstKind: {
-    auto *ITI = llvm::cast<ExtractTensorInst>(I);
-    auto *dest = ITI->getDest();
-    auto *src = ITI->getSrc();
-    auto offsets = ITI->getOffsets();
-    auto *destPtr = emitValueAddress(builder, dest);
+    auto *ETI = llvm::cast<ExtractTensorInst>(I);
+    auto *src = ETI->getSrc();
+    auto *dest = ETI->getDest();
     auto *srcPtr = emitValueAddress(builder, src);
-
+    auto *destPtr = emitValueAddress(builder, dest);
     auto *destDims = emitValueDims(builder, dest);
-    auto *srcDims = emitValueDims(builder, src);
+    auto *numDims = emitConstDimT(builder, dest->getType()->dims().size());
 
-    auto *numDims = emitConstDimT(builder, src->getType()->dims().size());
-    auto *offsetsPtr = emitConstDimTArray(builder, offsets);
-
-    // Don't specialize the offsetPtr because we typically generate lots of
-    // extracts from different offsets and specializing on this argument does
-    // not speed things up.
-    markArgAsUnspecialized(offsetsPtr);
+    // Get tensor access pattern.
+    dim_t tensorStartVal;
+    std::vector<sdim_t> tensorOffsetsVal;
+    getSliceAccessPattern(src->getType()->dims(),
+                          dest->getType()->dims(),
+                          ETI->getOffsets(),
+                          tensorStartVal,
+                          tensorOffsetsVal);
+    auto *tensorStart = emitConstDimT(builder, tensorStartVal);
+    auto *tensorOffsets = emitConstSDimTArray(builder, llvm::makeArrayRef(tensorOffsetsVal));
 
     auto *F = getFunction("extract_tensor", dest->getElementType());
     createCall(builder, F,
-               {srcPtr, destPtr, offsetsPtr, srcDims, destDims, numDims});
+               {srcPtr, destPtr, destDims, numDims, tensorStart, tensorOffsets});
     break;
   }
 

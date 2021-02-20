@@ -1030,4 +1030,58 @@ bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
   return true;
 }
 
+void getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                           llvm::ArrayRef<dim_t> sliceDims,
+                           llvm::ArrayRef<dim_t> sliceStarts,
+                           llvm::ArrayRef<sdim_t> sliceSteps,
+                           dim_t &tensorStart,
+                           std::vector<sdim_t> &tensorOffsets) {
+
+  // TODO: Validate input params.
+  size_t numDims = tensorDims.size();
+  assert(numDims > 0 && "Tensor rank must be strictly positive!");
+  assert(sliceDims.size() == numDims && "Slice rank invalid!");
+  assert(sliceStarts.size() == numDims && "Slice starts rank invalid!");
+  assert(sliceSteps.size() == numDims && "Slice steps rank invalid!");
+
+  // Get tensor dimensions products.
+  std::vector<dim_t> tensorDimProd(numDims);
+  tensorDimProd[numDims - 1] = 1;
+  for (ssize_t dimIdx = numDims - 2; dimIdx >= 0; dimIdx--) {
+    tensorDimProd[dimIdx] = tensorDimProd[dimIdx + 1] * tensorDims[dimIdx + 1];
+  }
+
+  // Get tensor start.
+  tensorStart = 0;
+  for (size_t dimIdx = 0; dimIdx < numDims; dimIdx++) {
+    tensorStart += sliceStarts[dimIdx] * tensorDimProd[dimIdx];
+  }
+
+  // Get tensor offsets.
+  tensorOffsets = std::vector<sdim_t>(numDims);
+  tensorOffsets[numDims - 1] = sliceSteps[numDims - 1] * tensorDimProd[numDims - 1];
+  for (ssize_t dimIdx = numDims - 2; dimIdx >= 0; dimIdx--) {
+    // Revert all the updates done in the next inner loop.
+    tensorOffsets[dimIdx] -= sliceDims[dimIdx + 1] * sliceSteps[dimIdx + 1] * tensorDimProd[dimIdx + 1];
+    // Add update for the current loop.
+    tensorOffsets[dimIdx] += sliceSteps[dimIdx] * tensorDimProd[dimIdx];
+  }
+}
+
+void getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                           llvm::ArrayRef<dim_t> sliceDims,
+                           llvm::ArrayRef<dim_t> sliceStarts,
+                           dim_t &tensorStart,
+                           std::vector<sdim_t> &tensorOffsets) {
+  // Get slice access pattern using slice steps of 1.
+  size_t numDims = tensorDims.size();
+  std::vector<sdim_t> sliceSteps(numDims, 1);
+  getSliceAccessPattern(tensorDims,
+                        sliceDims,
+                        sliceStarts,
+                        sliceSteps,
+                        tensorStart,
+                        tensorOffsets);
+}
+
 } // namespace glow

@@ -1136,6 +1136,20 @@ inline size_t getFlattenedOffset(llvm::ArrayRef<dim_t> strides,
 bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
                        llvm::ArrayRef<dim_t> tensorShape);
 
+/// TODO: Add comments...
+void getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                           llvm::ArrayRef<dim_t> sliceDims,
+                           llvm::ArrayRef<dim_t> sliceStarts,
+                           llvm::ArrayRef<sdim_t> sliceSteps,
+                           dim_t &tensorStart,
+                           std::vector<sdim_t> &tensorOffsets);
+
+void getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                           llvm::ArrayRef<dim_t> sliceDims,
+                           llvm::ArrayRef<dim_t> sliceStarts,
+                           dim_t &tensorStart,
+                           std::vector<sdim_t> &tensorOffsets);
+
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
 /// value semantics is to allow efficient index calculation that the compiler

@@ -210,6 +210,12 @@ protected:
                                   llvm::ArrayRef<T> vals);
 
   /// Generates LLVM IR that materializes the constant array \p vals. Note that
+  /// it will cast non-sdim_t types T into sdim_t.
+  template <typename T>
+  llvm::Value *emitConstSDimTArray(llvm::IRBuilder<> &builder,
+                                  llvm::ArrayRef<T> vals);
+
+  /// Generates LLVM IR that materializes the constant array \p vals. Note that
   /// int32 data type is accepted.
   llvm::Value *emitConstI32Array(llvm::IRBuilder<> &builder,
                                  llvm::ArrayRef<int32_t> vals);
@@ -456,6 +462,7 @@ template <typename T>
 llvm::Value *LLVMIRGen::emitConstSizeTArray(llvm::IRBuilder<> &builder,
                                             llvm::ArrayRef<T> vals) {
   assert(std::is_integral<T>() && "Can only convert integral type to size_t.");
+  assert(std::is_unsigned<T>() && "Can only convert unsigned type to size_t.");
   auto SizeTType = builder.getIntNTy(getLibjitSizeTWidth());
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
@@ -471,15 +478,33 @@ template <typename T>
 llvm::Value *LLVMIRGen::emitConstDimTArray(llvm::IRBuilder<> &builder,
                                            llvm::ArrayRef<T> vals) {
   assert(std::is_integral<T>() && "Can only convert integral type to dim_t.");
+  assert(std::is_unsigned<T>() && "Can only convert unsigned type to dim_t.");
   auto DimTType = builder.getIntNTy(sizeof(dim_t) * 8);
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
-    assert(I >= 0 && "Only allow casting positive values into size_t.");
+    assert(I >= 0 && "Only allow casting positive values into dim_t.");
     assert(I <= std::numeric_limits<dim_t>::max() &&
-           "Do not allow overflow of size_t.");
+           "Do not allow overflow of dim_t.");
     elems.push_back(llvm::ConstantInt::get(DimTType, (dim_t)I));
   }
   return emitConstArray(builder, elems, DimTType);
+}
+
+template <typename T>
+llvm::Value *LLVMIRGen::emitConstSDimTArray(llvm::IRBuilder<> &builder,
+                                            llvm::ArrayRef<T> vals) {
+  assert(std::is_integral<T>() && "Can only convert integral type to sdim_t.");
+  assert(std::is_signed<T>() && "Can only convert signed type to sdim_t.");
+  auto SDimTType = builder.getIntNTy(sizeof(sdim_t) * 8);
+  std::vector<llvm::Constant *> elems;
+  for (auto I : vals) {
+    assert(I >= std::numeric_limits<sdim_t>::min() &&
+           "Do not allow overflow of sdim_t.");
+    assert(I <= std::numeric_limits<sdim_t>::max() &&
+           "Do not allow overflow of sdim_t.");
+    elems.push_back(llvm::ConstantInt::get(SDimTType, (sdim_t)I));
+  }
+  return emitConstArray(builder, elems, SDimTType);
 }
 
 } // namespace glow
