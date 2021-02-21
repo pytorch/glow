@@ -3371,6 +3371,12 @@ void BoundInterpreterFunction::fwdUnaryArithmeticImpl(
   }
 }
 
+void BoundInterpreterFunction::fwdElementBitwiseNotInst(
+    const ElementBitwiseNotInst *I) {
+  auto func = [](int64_t i) -> int64_t { return ~i; };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
 void BoundInterpreterFunction::fwdElementAbsInst(const ElementAbsInst *I) {
   auto func = [](float x) -> float { return std::abs(x); };
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);

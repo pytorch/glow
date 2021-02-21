@@ -938,6 +938,9 @@ public:
   /// Create a logical NOT node with name \p name and input \p input.
   NotNode *createNot(llvm::StringRef name, NodeValue input);
 
+  // Create a BitwiseNot node with name \p name and input \p input.
+  BitwiseNotNode *createBitwiseNot(llvm::StringRef name, NodeValue input);
+
 #define UNARY_ARITHMETIC_FUN_DECL(NODE_NAME_)                                  \
   NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue input); \
   NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, TypeRef Ty,       \

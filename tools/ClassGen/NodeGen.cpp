@@ -498,6 +498,13 @@ int main(int argc, char **argv) {
       .setDocstring("Performs an element-wise logical NOT of the Input "
                     "operand.");
 
+  BB.newNode("BitwiseNot")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise bitwise NOT of the Input "
+                    "operand.");
+
   BB.newNode("Neg")
       .addInput("Input")
       .addResultFromCtorArg()

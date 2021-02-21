@@ -1700,6 +1700,12 @@ NotNode *Function::createNot(llvm::StringRef name, NodeValue input) {
   return addNode(new NotNode(name, OT, input));
 }
 
+BitwiseNotNode *Function::createBitwiseNot(llvm::StringRef name,
+                                           NodeValue input) {
+  TypeRef OT = getParent()->uniqueType(*input.getType());
+  return addNode(new BitwiseNotNode(name, OT, input));
+}
+
 #define UNARY_ARITHMETIC_FUN_DEF(NODE_NAME_)                                   \
   NODE_NAME_##Node *Function::create##NODE_NAME_(llvm::StringRef name,         \
                                                  NodeValue input) {            \
