@@ -69,6 +69,10 @@ void initializeCompiliationContextFromSettings(
     cctx.saturateHost = settings.saturateHost;
   }
 
+  if (glow::flags::UseDAGOptimizer) {
+    cctx.callDAGOptimizer = true;
+  }
+
   if (!settings.backendSpecificOpts.empty()) {
     cctx.backendOpts.backendSpecificOpts = settings.backendSpecificOpts;
   }
