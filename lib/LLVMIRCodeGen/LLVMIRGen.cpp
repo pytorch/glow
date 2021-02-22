@@ -2826,8 +2826,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
 
-    // Get tensor access pattern.
-    auto pattern = getShuffleAccessPattern(src->getType()->dims(), TI->getShuffle());
+    // Get transpose access pattern.
+    auto pattern = getTransposeAccessPattern(src->getType()->dims(), TI->getShuffle());
     auto *numLoops = emitConstDimT(builder, pattern.numLoops);
     auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
     auto *inOffsets = emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
@@ -2864,14 +2864,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *slicePtr = emitValueAddress(builder, src);
     auto *tensorPtr = emitValueAddress(builder, dest);
 
-    // Get tensor access pattern.
+    // Get insert access pattern. For now we use slice steps/strides of 1 but
+    // we can easily change this if the Insert instruction needs striding.
     std::vector<sdim_t> sliceSteps(dest->getType()->dims().size(), 1);
-    auto pattern = getSliceWithCountAccessPattern(dest->getType()->dims(),
-                                                  src->getType()->dims(),
-                                                  ITI->getOffsets(),
-                                                  sliceSteps,
-                                                  ITI->getCount(),
-                                                  ITI->getAxis());
+    auto pattern = getInsertAccessPattern(dest->getType()->dims(),
+                                          src->getType()->dims(),
+                                          ITI->getOffsets(),
+                                          sliceSteps,
+                                          ITI->getCount(),
+                                          ITI->getAxis());
     auto *numLoops = emitConstDimT(builder, pattern.numLoops);
     auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
     auto *tensorStart = emitConstDimT(builder, pattern.addrStart);
@@ -2890,15 +2891,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *tensorPtr = emitValueAddress(builder, src);
     auto *slicePtr = emitValueAddress(builder, dest);
 
-    // Get tensor access pattern.
-    std::vector<unsigned_t> sliceShuffle(src->getType()->dims().size());
-    std::iota(sliceShuffle.begin(), sliceShuffle.end(), 0);
+    // Get extract access pattern. For now we use slice steps/strides of 1 but
+    // we can easily change this if the Extract instruction needs striding.
     std::vector<sdim_t> sliceSteps(src->getType()->dims().size(), 1);
-    auto pattern = getSliceAccessPattern(src->getType()->dims(),
-                                         dest->getType()->dims(),
-                                         ETI->getOffsets(),
-                                         sliceSteps,
-                                         sliceShuffle);
+    auto pattern = getExtractAccessPattern(src->getType()->dims(),
+                                           dest->getType()->dims(),
+                                           ETI->getOffsets(),
+                                           sliceSteps);
     auto *numLoops = emitConstDimT(builder, pattern.numLoops);
     auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
     auto *tensorStart = emitConstDimT(builder, pattern.addrStart);

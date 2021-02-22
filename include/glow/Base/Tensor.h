@@ -1163,16 +1163,21 @@ TensorAccessPattern getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
                                           llvm::ArrayRef<unsigned_t> sliceShuffle);
 
 /// TODO: Add comments...
-TensorAccessPattern getSliceWithCountAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                                                   llvm::ArrayRef<dim_t> sliceDims,
-                                                   llvm::ArrayRef<dim_t> sliceStarts,
-                                                   llvm::ArrayRef<sdim_t> sliceSteps,
-                                                   dim_t count,
-                                                   dim_t axis);
+TensorAccessPattern getInsertAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                                           llvm::ArrayRef<dim_t> sliceDims,
+                                           llvm::ArrayRef<dim_t> sliceStarts,
+                                           llvm::ArrayRef<sdim_t> sliceSteps,
+                                           dim_t count,
+                                           dim_t axis);
+
+TensorAccessPattern getExtractAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                                            llvm::ArrayRef<dim_t> sliceDims,
+                                            llvm::ArrayRef<dim_t> sliceStarts,
+                                            llvm::ArrayRef<sdim_t> sliceSteps);
 
 /// TODO: Add comments...
-TensorAccessPattern getShuffleAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                                            llvm::ArrayRef<unsigned_t> shuffle);
+TensorAccessPattern getTransposeAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                                              llvm::ArrayRef<unsigned_t> shuffle);
 
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
