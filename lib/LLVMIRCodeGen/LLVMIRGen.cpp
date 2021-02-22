@@ -2826,20 +2826,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
 
-    auto *destDims = emitValueDims(builder, dest);
-    auto *srcDims = emitValueDims(builder, src);
-
-    // Convert the mask to size_t type.
-    ShapeVector shuffSizeT;
-    for (auto D : TI->getShuffle()) {
-      shuffSizeT.push_back((size_t)D);
-    }
-
-    auto *shuffle = emitConstDimTArray(builder, llvm::makeArrayRef(shuffSizeT));
-    auto *len = emitConstDimT(builder, TI->getShuffle().size());
+    // Get tensor access pattern.
+    auto pattern = getShuffleAccessPattern(src->getType()->dims(), TI->getShuffle());
+    auto *numLoops = emitConstDimT(builder, pattern.numLoops);
+    auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
+    auto *inOffsets = emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
 
     auto *F = getFunction("transpose", dest->getElementType());
-    createCall(builder, F, {srcPtr, destPtr, srcDims, destDims, shuffle, len});
+    createCall(builder, F, {srcPtr, destPtr, numLoops, loopCounts, inOffsets});
     break;
   }
 
@@ -2897,11 +2891,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *slicePtr = emitValueAddress(builder, dest);
 
     // Get tensor access pattern.
+    std::vector<unsigned_t> sliceShuffle(src->getType()->dims().size());
+    std::iota(sliceShuffle.begin(), sliceShuffle.end(), 0);
     std::vector<sdim_t> sliceSteps(src->getType()->dims().size(), 1);
     auto pattern = getSliceAccessPattern(src->getType()->dims(),
                                          dest->getType()->dims(),
                                          ETI->getOffsets(),
-                                         sliceSteps);
+                                         sliceSteps,
+                                         sliceShuffle);
     auto *numLoops = emitConstDimT(builder, pattern.numLoops);
     auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
     auto *tensorStart = emitConstDimT(builder, pattern.addrStart);
