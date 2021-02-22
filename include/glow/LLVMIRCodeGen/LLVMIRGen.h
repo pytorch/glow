@@ -193,6 +193,8 @@ protected:
   llvm::Value *emitConstSizeT(llvm::IRBuilder<> &builder, size_t val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstDimT(llvm::IRBuilder<> &builder, dim_t val);
+  /// Generates LLVM IR that materializes the constant \p val.
+  llvm::Value *emitConstSDimT(llvm::IRBuilder<> &builder, sdim_t val);
   /// Generates LLVM IR that materializes the constant \p val as a constant of
   /// the type specified by \p kind.
   llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val,

@@ -1030,12 +1030,10 @@ bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
   return true;
 }
 
-void getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                           llvm::ArrayRef<dim_t> sliceDims,
-                           llvm::ArrayRef<dim_t> sliceStarts,
-                           llvm::ArrayRef<sdim_t> sliceSteps,
-                           dim_t &tensorStart,
-                           std::vector<sdim_t> &tensorOffsets) {
+TensorAccessPattern getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                                          llvm::ArrayRef<dim_t> sliceDims,
+                                          llvm::ArrayRef<dim_t> sliceStarts,
+                                          llvm::ArrayRef<sdim_t> sliceSteps) {
 
   // TODO: Validate input params.
   size_t numDims = tensorDims.size();
@@ -1051,37 +1049,63 @@ void getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
     tensorDimProd[dimIdx] = tensorDimProd[dimIdx + 1] * tensorDims[dimIdx + 1];
   }
 
-  // Get tensor start.
-  tensorStart = 0;
+  // Get tensor start address.
+  dim_t addrStart = 0;
   for (size_t dimIdx = 0; dimIdx < numDims; dimIdx++) {
-    tensorStart += sliceStarts[dimIdx] * tensorDimProd[dimIdx];
+    addrStart += sliceStarts[dimIdx] * tensorDimProd[dimIdx];
   }
 
-  // Get tensor offsets.
-  tensorOffsets = std::vector<sdim_t>(numDims);
-  tensorOffsets[numDims - 1] = sliceSteps[numDims - 1] * tensorDimProd[numDims - 1];
+  // Get tensor address offsets.
+  auto addrOffsets = std::vector<sdim_t>(numDims);
+  addrOffsets[numDims - 1] = sliceSteps[numDims - 1] * tensorDimProd[numDims - 1];
   for (ssize_t dimIdx = numDims - 2; dimIdx >= 0; dimIdx--) {
     // Revert all the updates done in the next inner loop.
-    tensorOffsets[dimIdx] -= sliceDims[dimIdx + 1] * sliceSteps[dimIdx + 1] * tensorDimProd[dimIdx + 1];
+    addrOffsets[dimIdx] -= sliceDims[dimIdx + 1] * sliceSteps[dimIdx + 1] * tensorDimProd[dimIdx + 1];
     // Add update for the current loop.
-    tensorOffsets[dimIdx] += sliceSteps[dimIdx] * tensorDimProd[dimIdx];
+    addrOffsets[dimIdx] += sliceSteps[dimIdx] * tensorDimProd[dimIdx];
   }
+
+  // Return tensor access pattern.
+  TensorAccessPattern pattern;
+  pattern.numLoops = numDims;
+  pattern.addrStart = addrStart;
+  pattern.loopCounts = sliceDims;
+  pattern.addrOffsets = addrOffsets;
+  return pattern;
 }
 
-void getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                           llvm::ArrayRef<dim_t> sliceDims,
-                           llvm::ArrayRef<dim_t> sliceStarts,
-                           dim_t &tensorStart,
-                           std::vector<sdim_t> &tensorOffsets) {
-  // Get slice access pattern using slice steps of 1.
+
+TensorAccessPattern getSliceWithCountAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                                                   llvm::ArrayRef<dim_t> sliceDims,
+                                                   llvm::ArrayRef<dim_t> sliceStarts,
+                                                   llvm::ArrayRef<sdim_t> sliceSteps,
+                                                   dim_t count,
+                                                   dim_t axis) {
+
+  auto pattern = getSliceAccessPattern(tensorDims,
+                                       sliceDims,
+                                       sliceStarts,
+                                       sliceSteps);
+
+  // TODO: Validate input params.
   size_t numDims = tensorDims.size();
-  std::vector<sdim_t> sliceSteps(numDims, 1);
-  getSliceAccessPattern(tensorDims,
-                        sliceDims,
-                        sliceStarts,
-                        sliceSteps,
-                        tensorStart,
-                        tensorOffsets);
-}
+  assert(axis < numDims && "Axis parameter invalid!");
 
+  sdim_t offBw = sliceSteps[0] * sliceDims[0];
+  for (size_t dimIdx = 1; dimIdx < numDims; dimIdx++) {
+    offBw *= tensorDims[dimIdx];
+  }
+
+  sdim_t offFw = sliceSteps[axis] * sliceDims[axis];
+  for (size_t dimIdx = axis + 1; dimIdx < numDims; dimIdx++) {
+    offFw *= tensorDims[dimIdx];
+  }
+
+  sdim_t countOffset = -offBw + offFw;
+
+  pattern.numLoops++;
+  pattern.loopCounts.insert(pattern.loopCounts.begin(), 1, count);
+  pattern.addrOffsets.insert(pattern.addrOffsets.begin(), 1, countOffset);
+  return pattern;
+}
 } // namespace glow

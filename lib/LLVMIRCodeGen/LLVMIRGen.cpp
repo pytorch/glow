@@ -590,6 +590,10 @@ llvm::Value *LLVMIRGen::emitConstDimT(llvm::IRBuilder<> &builder, dim_t val) {
   return builder.getIntN(sizeof(dim_t) * 8, val);
 }
 
+llvm::Value *LLVMIRGen::emitConstSDimT(llvm::IRBuilder<> &builder, sdim_t val) {
+  return builder.getIntN(sizeof(sdim_t) * 8, val);
+}
+
 llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
                                   glow::ElemKind kind) {
   switch (kind) {
@@ -2861,28 +2865,27 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::InsertTensorInstKind: {
     auto *ITI = llvm::cast<InsertTensorInst>(I);
-    auto *dest = ITI->getDest();
     auto *src = ITI->getSrc();
-    auto offsets = ITI->getOffsets();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *srcPtr = emitValueAddress(builder, src);
+    auto *dest = ITI->getDest();
+    auto *slicePtr = emitValueAddress(builder, src);
+    auto *tensorPtr = emitValueAddress(builder, dest);
 
-    auto *destDims = emitValueDims(builder, dest);
-    auto *srcDims = emitValueDims(builder, src);
-
-    auto *numDims = emitConstDimT(builder, src->getType()->dims().size());
-    auto *offsetsPtr = emitConstDimTArray(builder, offsets);
-    auto *count = emitConstDimT(builder, ITI->getCount());
-    auto *axis = emitConstDimT(builder, ITI->getAxis());
-
-    // Don't specialize the offsetPtr because we typically generate lots of
-    // extracts from different offsets and specializing on this argument does
-    // not speed things up.
-    markArgAsUnspecialized(offsetsPtr);
+    // Get tensor access pattern.
+    std::vector<sdim_t> sliceSteps(dest->getType()->dims().size(), 1);
+    auto pattern = getSliceWithCountAccessPattern(dest->getType()->dims(),
+                                                  src->getType()->dims(),
+                                                  ITI->getOffsets(),
+                                                  sliceSteps,
+                                                  ITI->getCount(),
+                                                  ITI->getAxis());
+    auto *numLoops = emitConstDimT(builder, pattern.numLoops);
+    auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
+    auto *tensorStart = emitConstDimT(builder, pattern.addrStart);
+    auto *tensorOffsets = emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
 
     auto *F = getFunction("insert_tensor", dest->getElementType());
     createCall(builder, F,
-               {destPtr, srcPtr, offsetsPtr, destDims, srcDims, numDims, count, axis});
+               {tensorPtr, slicePtr, numLoops, loopCounts, tensorStart, tensorOffsets});
     break;
   }
 
@@ -2890,25 +2893,23 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *ETI = llvm::cast<ExtractTensorInst>(I);
     auto *src = ETI->getSrc();
     auto *dest = ETI->getDest();
-    auto *srcPtr = emitValueAddress(builder, src);
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *destDims = emitValueDims(builder, dest);
-    auto *numDims = emitConstDimT(builder, dest->getType()->dims().size());
+    auto *tensorPtr = emitValueAddress(builder, src);
+    auto *slicePtr = emitValueAddress(builder, dest);
 
     // Get tensor access pattern.
-    dim_t tensorStartVal;
-    std::vector<sdim_t> tensorOffsetsVal;
-    getSliceAccessPattern(src->getType()->dims(),
-                          dest->getType()->dims(),
-                          ETI->getOffsets(),
-                          tensorStartVal,
-                          tensorOffsetsVal);
-    auto *tensorStart = emitConstDimT(builder, tensorStartVal);
-    auto *tensorOffsets = emitConstSDimTArray(builder, llvm::makeArrayRef(tensorOffsetsVal));
+    std::vector<sdim_t> sliceSteps(src->getType()->dims().size(), 1);
+    auto pattern = getSliceAccessPattern(src->getType()->dims(),
+                                         dest->getType()->dims(),
+                                         ETI->getOffsets(),
+                                         sliceSteps);
+    auto *numLoops = emitConstDimT(builder, pattern.numLoops);
+    auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
+    auto *tensorStart = emitConstDimT(builder, pattern.addrStart);
+    auto *tensorOffsets = emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
 
     auto *F = getFunction("extract_tensor", dest->getElementType());
     createCall(builder, F,
-               {srcPtr, destPtr, destDims, numDims, tensorStart, tensorOffsets});
+               {tensorPtr, slicePtr, numLoops, loopCounts, tensorStart, tensorOffsets});
     break;
   }
 

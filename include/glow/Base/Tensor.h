@@ -1136,19 +1136,38 @@ inline size_t getFlattenedOffset(llvm::ArrayRef<dim_t> strides,
 bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
                        llvm::ArrayRef<dim_t> tensorShape);
 
-/// TODO: Add comments...
-void getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                           llvm::ArrayRef<dim_t> sliceDims,
-                           llvm::ArrayRef<dim_t> sliceStarts,
-                           llvm::ArrayRef<sdim_t> sliceSteps,
-                           dim_t &tensorStart,
-                           std::vector<sdim_t> &tensorOffsets);
 
-void getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                           llvm::ArrayRef<dim_t> sliceDims,
-                           llvm::ArrayRef<dim_t> sliceStarts,
-                           dim_t &tensorStart,
-                           std::vector<sdim_t> &tensorOffsets);
+struct TensorAccessPattern {
+  /// Number of loops.
+  dim_t numLoops;
+
+  /// Address offset (measured in number of elements) relative to the base of
+  /// the tensor which must be applied before entering the nested loop section.
+  dim_t addrStart;
+
+  /// Count associated to each loop. Loops are ordered starting with the
+  /// outer-most loop and ending with the inner-most loop.
+  std::vector<dim_t> loopCounts;
+
+  /// Address offset (measured in number of elements) associated to each loop.
+  /// The offset addrOffsets[k] must be applied at the end of the iteration
+  /// for loop[k].
+  std::vector<sdim_t> addrOffsets;
+};
+
+/// TODO: Add comments...
+TensorAccessPattern getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                                          llvm::ArrayRef<dim_t> sliceDims,
+                                          llvm::ArrayRef<dim_t> sliceStarts,
+                                          llvm::ArrayRef<sdim_t> sliceSteps);
+
+/// TODO: Add comments...
+TensorAccessPattern getSliceWithCountAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                                                   llvm::ArrayRef<dim_t> sliceDims,
+                                                   llvm::ArrayRef<dim_t> sliceStarts,
+                                                   llvm::ArrayRef<sdim_t> sliceSteps,
+                                                   dim_t count,
+                                                   dim_t axis);
 
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
