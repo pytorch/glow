@@ -578,6 +578,10 @@ private:
   /// \returns error on failure.
   Error loadIndexPut(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch bitwise_not node.
+  /// \returns error on failure.
+  Error loadBitwiseNot(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch sqrt node.
   /// \returns error on failure.
   Error loadSqrt(const torch::jit::Node *ptNode);

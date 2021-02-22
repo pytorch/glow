@@ -2313,6 +2313,7 @@ DEF_ALL_WRITER_NODE(SparseLengthsSum)
 DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(EmbeddingBag)
 DEF_ALL_WRITER_NODE(Embedding)
+DEF_ALL_WRITER_NODE(BitwiseNot)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpNEQ)
