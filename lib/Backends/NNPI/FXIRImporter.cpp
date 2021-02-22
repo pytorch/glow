@@ -540,23 +540,36 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
   for (const auto &node : mod["nodes"]) {
     const auto &opCode = node["op_code"].getString();
 
-    if (!isOps(opCode)) {
-      const auto &name = opCode != "output" ? node["name"].getString()
-                                            : getInputNodeName(node["args"][0]);
-      bool inputVar(readTensors_.count(name) && !writeTensors_.count(name));
-      bool outputVar(!readTensors_.count(name) && writeTensors_.count(name));
-      DBG("Add placeholder: " << name);
+    if (opCode == "placeholder") {
+      const auto &name = node["name"].getString();
 
-      if (inputVar || outputVar) {
+      DBG("Add placeholder: " << name);
+      CHECK(!writeTensors_.count(name)) << "Placeholder can't be written";
+
+      if (readTensors_.count(name)) {
         LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
             addTensor(name, node["dtype"].getString(),
                       toIntegerArray<glow::dim_t>(node["shape"].getString()),
-                      inputVar, outputVar),
+                      /* input */ true, /* output */ false),
             "Failed to add placeholder");
-        DBG("[--IO--] Setting IO variable: " << name << ", R:" << inputVar
-                                             << ", W:" << outputVar);
       } else {
         DBG("[--IO--] Unused Placeholder: " << name);
+      }
+    } else if (opCode == "output") {
+      const auto &args = node["args"];
+
+      for (const auto &arg : args) {
+        const auto &outputName = getInputNodeName(arg);
+
+        DBG("Add output" << outputName);
+        CHECK(writeTensors_.count(outputName))
+            << "output must be in writeTensors_";
+
+        LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
+            addTensor(outputName, arg["dtype"].getString(),
+                      toIntegerArray<glow::dim_t>(arg["shape"].getString()),
+                      /* input */ false, /* output */ true),
+            "Failed to add output");
       }
     }
   }
