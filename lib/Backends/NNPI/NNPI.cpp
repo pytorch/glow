@@ -647,6 +647,14 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {}, {ArgMaxNode::ResultIdx}) &&
         (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
     break;
+  case Kinded::Kind::ArgMinNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::FloatTy, ElemKind::Int8QTy,
+             ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy},
+            {}, {ArgMinNode::ResultIdx}) &&
+        (NI.getOutElemTy(ArgMinNode::ResultIdx) == ElemKind::Int64ITy);
+    break;
   case Kinded::Kind::LogitNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});

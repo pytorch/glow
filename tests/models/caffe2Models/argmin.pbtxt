@@ -1,0 +1,17 @@
+name: "argmin"
+op {
+  input: "input"
+  output: "output"
+  name: ""
+  type: "ArgMin"
+  arg {
+    name: "axis"
+    i: 1
+  }
+  arg {
+    name: "keepdims"
+    i: 0
+  }
+}
+external_input: "input"
+external_output: "output"

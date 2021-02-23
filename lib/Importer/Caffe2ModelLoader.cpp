@@ -1811,6 +1811,23 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "ArgMin") {
+    NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+    int axis = 0;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+    }
+    bool keepDims = true;
+    if (dict.count("keepdims")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(keepDims, loadInt(dict.at("keepdims")));
+    }
+
+    auto node = G_->createArgMin(opName, input, axis, keepDims);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 

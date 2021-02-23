@@ -1198,6 +1198,26 @@ public:
   }
 };
 
+class ArgMinNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowArgMin = llvm::dyn_cast<ArgMinNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowArgMin, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowArgMin->getInput())},
+                            {nodeValueName(glowArgMin->getResult())});
+
+    uint32_t axis = glowArgMin->getAxis();
+    auto keepDims = glowArgMin->getKeepDims() ? 1 : 0;
+    return nnpiNetworkAddReduceOp(
+        importer.getNetwork(), glowArgMin->getName().begin(),
+        nodeValueName(glowArgMin->getInput()).c_str(),
+        nodeValueName(glowArgMin->getResult()).c_str(), NNPI_REDUCE_ARG_MIN,
+        &axis, 1, keepDims);
+  }
+};
+
 class ReduceAddNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2441,6 +2461,7 @@ std::unordered_map<
      glow::make_unique<
          BinaryEltwiseNodeImporter<glow::CmpLTNode, NNPI_ELTWISE_LESS>>()},
     {"ArgMax", glow::make_unique<ArgMaxNodeImporter>()},
+    {"ArgMin", glow::make_unique<ArgMinNodeImporter>()},
     {"Reshape", glow::make_unique<ReshapeNodeImporter>()},
     {"Quantize", glow::make_unique<ConvertNodeImporter<QuantizeNode>>()},
     {"Dequantize", glow::make_unique<ConvertNodeImporter<DequantizeNode>>()},
