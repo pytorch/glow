@@ -119,7 +119,7 @@ void ThreadPoolExecutor::run(const DAGNode *root,
   auto *traceContext = context->getTraceContext();
 
   // Get and bind state.
-  auto currentState = states_[root]->getNextNetworkExecutionState();
+  auto currentState = states_.rlock()->at(root)->getNextNetworkExecutionState();
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME,
                     "bind network execution state");
   currentState->bind(std::move(context), std::move(cb), runId);
@@ -292,8 +292,9 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     auto runId = executionState->getRunId();
     auto err = executionState->getErrorContainer().get();
     auto resultCtx = executionState->getUniqueResultContextPtr();
-    states_[executionState->getRoot()]->returnNetworkExecutionState(
-        executionState);
+    states_.rlock()
+        ->at(executionState->getRoot())
+        ->returnNetworkExecutionState(executionState);
 
     cb(runId, std::move(err), std::move(resultCtx));
   }
@@ -358,10 +359,14 @@ void ThreadPoolExecutor::createPool(const DAGNode *root, unsigned poolSize,
     newState->init(deviceManagers_, assignment);
     pool->addNewState(std::move(newState));
   }
-  states_[root] = std::move(pool);
+
+  states_.wlock()->emplace(root, std::move(pool));
 }
 
-void ThreadPoolExecutor::freePool(const DAGNode *root) { states_.erase(root); }
+void ThreadPoolExecutor::freePool(const DAGNode *root) {
+
+  states_.wlock()->erase(root);
+}
 
 } // namespace runtime
 } // namespace glow

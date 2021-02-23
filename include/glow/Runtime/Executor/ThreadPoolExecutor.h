@@ -21,6 +21,7 @@
 #include <unordered_map>
 
 #include "NetworkExecutionState.h"
+#include "folly/Synchronized.h"
 #include "folly/executors/CPUThreadPoolExecutor.h"
 #include "glow/Runtime/Executor/Executor.h"
 
@@ -104,8 +105,8 @@ private:
   folly::CPUThreadPoolExecutor threadPool_;
 
   /// Map of networkExecutionState pools for each network.
-  std::unordered_map<const DAGNode *,
-                     std::unique_ptr<NetworkExecutionStatePool>>
+  folly::Synchronized<std::unordered_map<
+      const DAGNode *, std::unique_ptr<NetworkExecutionStatePool>>>
       states_;
 
   /// Barrier for making sure all asynchronous requests made to the
