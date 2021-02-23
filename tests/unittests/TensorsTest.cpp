@@ -1749,3 +1749,273 @@ TEST(Tensor, typeConvert_UInt8FusedFP16QTy_To_UInt8FusedQTy) {
 TEST(Tensor, typeConvert_UInt4FusedQTy_To_UInt8FusedQTy) {
   testConvertToUInt8FusedQTy<float>(ElemKind::UInt4FusedQTy, 10, 10);
 }
+
+/// Utility function to test the function getSliceAccessPattern.
+static void testSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                                   llvm::ArrayRef<dim_t> sliceDims,
+                                   llvm::ArrayRef<dim_t> sliceStarts,
+                                   llvm::ArrayRef<sdim_t> sliceSteps,
+                                   llvm::ArrayRef<unsigned_t> sliceShuffle) {
+
+  // Generate random tensor.
+  PseudoRNG PRNG;
+  Tensor tensor(ElemKind::FloatTy, tensorDims);
+  auto tensorH = tensor.getHandle<float>();
+  tensorH.randomize(-1.0, 1.0, PRNG);
+
+  // Get reference slice data using multidimensional indexing.
+  Tensor sliceRefTild(ElemKind::FloatTy, sliceDims);
+  auto sliceRefH = sliceRefTild.getHandle<float>();
+  if (tensorDims.size() == 6) {
+    for (dim_t idx0 = 0; idx0 < sliceDims[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < sliceDims[1]; idx1++) {
+        for (dim_t idx2 = 0; idx2 < sliceDims[2]; idx2++) {
+          for (dim_t idx3 = 0; idx3 < sliceDims[3]; idx3++) {
+            for (dim_t idx4 = 0; idx4 < sliceDims[4]; idx4++) {
+              for (dim_t idx5 = 0; idx5 < sliceDims[5]; idx5++) {
+                dim_t t0 = idx0 * sliceSteps[0] + sliceStarts[0];
+                dim_t t1 = idx1 * sliceSteps[1] + sliceStarts[1];
+                dim_t t2 = idx2 * sliceSteps[2] + sliceStarts[2];
+                dim_t t3 = idx3 * sliceSteps[3] + sliceStarts[3];
+                dim_t t4 = idx4 * sliceSteps[4] + sliceStarts[4];
+                dim_t t5 = idx5 * sliceSteps[5] + sliceStarts[5];
+                sliceRefH.at({idx0, idx1, idx2, idx3, idx4, idx5}) =
+                    tensorH.at({t0, t1, t2, t3, t4, t5});
+              }
+            }
+          }
+        }
+      }
+    }
+  } else if (tensorDims.size() == 5) {
+    for (dim_t idx0 = 0; idx0 < sliceDims[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < sliceDims[1]; idx1++) {
+        for (dim_t idx2 = 0; idx2 < sliceDims[2]; idx2++) {
+          for (dim_t idx3 = 0; idx3 < sliceDims[3]; idx3++) {
+            for (dim_t idx4 = 0; idx4 < sliceDims[4]; idx4++) {
+              dim_t t0 = idx0 * sliceSteps[0] + sliceStarts[0];
+              dim_t t1 = idx1 * sliceSteps[1] + sliceStarts[1];
+              dim_t t2 = idx2 * sliceSteps[2] + sliceStarts[2];
+              dim_t t3 = idx3 * sliceSteps[3] + sliceStarts[3];
+              dim_t t4 = idx4 * sliceSteps[4] + sliceStarts[4];
+              sliceRefH.at({idx0, idx1, idx2, idx3, idx4}) =
+                  tensorH.at({t0, t1, t2, t3, t4});
+            }
+          }
+        }
+      }
+    }
+  } else if (tensorDims.size() == 4) {
+    for (dim_t idx0 = 0; idx0 < sliceDims[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < sliceDims[1]; idx1++) {
+        for (dim_t idx2 = 0; idx2 < sliceDims[2]; idx2++) {
+          for (dim_t idx3 = 0; idx3 < sliceDims[3]; idx3++) {
+            dim_t t0 = idx0 * sliceSteps[0] + sliceStarts[0];
+            dim_t t1 = idx1 * sliceSteps[1] + sliceStarts[1];
+            dim_t t2 = idx2 * sliceSteps[2] + sliceStarts[2];
+            dim_t t3 = idx3 * sliceSteps[3] + sliceStarts[3];
+            sliceRefH.at({idx0, idx1, idx2, idx3}) =
+                tensorH.at({t0, t1, t2, t3});
+          }
+        }
+      }
+    }
+  } else if (tensorDims.size() == 3) {
+    for (dim_t idx0 = 0; idx0 < sliceDims[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < sliceDims[1]; idx1++) {
+        for (dim_t idx2 = 0; idx2 < sliceDims[2]; idx2++) {
+          dim_t t0 = idx0 * sliceSteps[0] + sliceStarts[0];
+          dim_t t1 = idx1 * sliceSteps[1] + sliceStarts[1];
+          dim_t t2 = idx2 * sliceSteps[2] + sliceStarts[2];
+          sliceRefH.at({idx0, idx1, idx2}) = tensorH.at({t0, t1, t2});
+        }
+      }
+    }
+  } else if (tensorDims.size() == 2) {
+    for (dim_t idx0 = 0; idx0 < sliceDims[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < sliceDims[1]; idx1++) {
+        dim_t t0 = idx0 * sliceSteps[0] + sliceStarts[0];
+        dim_t t1 = idx1 * sliceSteps[1] + sliceStarts[1];
+        sliceRefH.at({idx0, idx1}) = tensorH.at({t0, t1});
+      }
+    }
+  } else if (tensorDims.size() == 1) {
+    for (dim_t idx0 = 0; idx0 < sliceDims[0]; idx0++) {
+      dim_t t0 = idx0 * sliceSteps[0] + sliceStarts[0];
+      sliceRefH.at({idx0}) = tensorH.at({t0});
+    }
+  }
+
+  // Transpose slice based on shuffle.
+  Tensor sliceRef;
+  sliceRefTild.transpose(&sliceRef, sliceShuffle);
+
+  // Get tensor access pattern.
+  TensorAccessPattern pattern = getSliceAccessPattern(
+      tensorDims, sliceDims, sliceStarts, sliceSteps, sliceShuffle);
+
+  // Get output data slice produced by the pattern.
+  Tensor sliceOut(ElemKind::FloatTy, sliceRef.dims());
+  auto sliceOutH = sliceOut.getHandle<float>();
+  dim_t slicePtr = 0;
+  dim_t tensorPtr = pattern.addrStart;
+  if (pattern.numLoops == 6) {
+    for (dim_t idx0 = 0; idx0 < pattern.loopCounts[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < pattern.loopCounts[1]; idx1++) {
+        for (dim_t idx2 = 0; idx2 < pattern.loopCounts[2]; idx2++) {
+          for (dim_t idx3 = 0; idx3 < pattern.loopCounts[3]; idx3++) {
+            for (dim_t idx4 = 0; idx4 < pattern.loopCounts[4]; idx4++) {
+              for (dim_t idx5 = 0; idx5 < pattern.loopCounts[5]; idx5++) {
+                sliceOutH.raw(slicePtr++) = tensorH.raw(tensorPtr);
+                tensorPtr += pattern.addrOffsets[5];
+              }
+              tensorPtr += pattern.addrOffsets[4];
+            }
+            tensorPtr += pattern.addrOffsets[3];
+          }
+          tensorPtr += pattern.addrOffsets[2];
+        }
+        tensorPtr += pattern.addrOffsets[1];
+      }
+      tensorPtr += pattern.addrOffsets[0];
+    }
+  } else if (pattern.numLoops == 5) {
+    for (dim_t idx0 = 0; idx0 < pattern.loopCounts[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < pattern.loopCounts[1]; idx1++) {
+        for (dim_t idx2 = 0; idx2 < pattern.loopCounts[2]; idx2++) {
+          for (dim_t idx3 = 0; idx3 < pattern.loopCounts[3]; idx3++) {
+            for (dim_t idx4 = 0; idx4 < pattern.loopCounts[4]; idx4++) {
+              sliceOutH.raw(slicePtr++) = tensorH.raw(tensorPtr);
+              tensorPtr += pattern.addrOffsets[4];
+            }
+            tensorPtr += pattern.addrOffsets[3];
+          }
+          tensorPtr += pattern.addrOffsets[2];
+        }
+        tensorPtr += pattern.addrOffsets[1];
+      }
+      tensorPtr += pattern.addrOffsets[0];
+    }
+  } else if (pattern.numLoops == 4) {
+    for (dim_t idx0 = 0; idx0 < pattern.loopCounts[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < pattern.loopCounts[1]; idx1++) {
+        for (dim_t idx2 = 0; idx2 < pattern.loopCounts[2]; idx2++) {
+          for (dim_t idx3 = 0; idx3 < pattern.loopCounts[3]; idx3++) {
+            sliceOutH.raw(slicePtr++) = tensorH.raw(tensorPtr);
+            tensorPtr += pattern.addrOffsets[3];
+          }
+          tensorPtr += pattern.addrOffsets[2];
+        }
+        tensorPtr += pattern.addrOffsets[1];
+      }
+      tensorPtr += pattern.addrOffsets[0];
+    }
+  } else if (pattern.numLoops == 3) {
+    for (dim_t idx0 = 0; idx0 < pattern.loopCounts[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < pattern.loopCounts[1]; idx1++) {
+        for (dim_t idx2 = 0; idx2 < pattern.loopCounts[2]; idx2++) {
+          sliceOutH.raw(slicePtr++) = tensorH.raw(tensorPtr);
+          tensorPtr += pattern.addrOffsets[2];
+        }
+        tensorPtr += pattern.addrOffsets[1];
+      }
+      tensorPtr += pattern.addrOffsets[0];
+    }
+  } else if (pattern.numLoops == 2) {
+    for (dim_t idx0 = 0; idx0 < pattern.loopCounts[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < pattern.loopCounts[1]; idx1++) {
+        sliceOutH.raw(slicePtr++) = tensorH.raw(tensorPtr);
+        tensorPtr += pattern.addrOffsets[1];
+      }
+      tensorPtr += pattern.addrOffsets[0];
+    }
+  } else if (pattern.numLoops == 1) {
+    for (dim_t idx0 = 0; idx0 < pattern.loopCounts[0]; idx0++) {
+      sliceOutH.raw(slicePtr++) = tensorH.raw(tensorPtr);
+      tensorPtr += pattern.addrOffsets[0];
+    }
+  }
+
+  // Compare slices.
+  EXPECT_TRUE(sliceRef.isEqual(sliceOut, /* allowDifferentShape */ true));
+}
+
+TEST(Tensor, testSliceAccessPattern1D) {
+  testSliceAccessPattern(/* tensorDims */ {6, 5},
+                         /* sliceDims */ {4, 3},
+                         /* sliceStarts */ {0, 1},
+                         /* sliceSteps */ {1, 1},
+                         /* sliceShuffle */ {0, 1});
+}
+
+TEST(Tensor, testSliceAccessPattern2D) {
+  testSliceAccessPattern(/* tensorDims */ {6, 5},
+                         /* sliceDims */ {4, 3},
+                         /* sliceStarts */ {0, 1},
+                         /* sliceSteps */ {1, 1},
+                         /* sliceShuffle */ {0, 1});
+}
+
+TEST(Tensor, testSliceAccessPattern3D) {
+  testSliceAccessPattern(/* tensorDims */ {6, 5, 4},
+                         /* sliceDims */ {4, 3, 2},
+                         /* sliceStarts */ {0, 1, 2},
+                         /* sliceSteps */ {1, 1, 1},
+                         /* sliceShuffle */ {0, 1, 2});
+}
+
+TEST(Tensor, testSliceAccessPattern4D) {
+  testSliceAccessPattern(/* tensorDims */ {6, 5, 4, 3},
+                         /* sliceDims */ {4, 3, 2, 1},
+                         /* sliceStarts */ {0, 1, 2, 1},
+                         /* sliceSteps */ {1, 1, 1, 1},
+                         /* sliceShuffle */ {0, 1, 2, 3});
+}
+
+TEST(Tensor, testSliceAccessPattern5D) {
+  testSliceAccessPattern(/* tensorDims */ {2, 3, 4, 5, 6},
+                         /* sliceDims */ {1, 2, 3, 4, 5},
+                         /* sliceStarts */ {0, 1, 0, 1, 0},
+                         /* sliceSteps */ {1, 1, 1, 1, 1},
+                         /* sliceShuffle */ {0, 1, 2, 3, 4});
+}
+
+TEST(Tensor, testSliceAccessPattern6D) {
+  testSliceAccessPattern(/* tensorDims */ {2, 3, 4, 5, 6, 7},
+                         /* sliceDims */ {1, 2, 3, 4, 5, 6},
+                         /* sliceStarts */ {1, 0, 1, 0, 1, 0},
+                         /* sliceSteps */ {1, 1, 1, 1, 1, 1},
+                         /* sliceShuffle */ {0, 1, 2, 3, 4, 5});
+}
+
+TEST(Tensor, testSliceAccessPatternReverse) {
+  testSliceAccessPattern(/* tensorDims */ {2, 3, 4, 5},
+                         /* sliceDims */ {1, 2, 3, 4},
+                         /* sliceStarts */ {2, 3, 4, 5},
+                         /* sliceSteps */ {-1, -1, -1, -1},
+                         /* sliceShuffle */ {0, 1, 2, 3});
+}
+
+TEST(Tensor, testSliceAccessPatternTranspose) {
+  testSliceAccessPattern(/* tensorDims */ {2, 3, 4, 5},
+                         /* sliceDims */ {1, 2, 3, 4},
+                         /* sliceStarts */ {2, 3, 4, 5},
+                         /* sliceSteps */ {-1, -1, -1, -1},
+                         /* sliceShuffle */ {3, 2, 1, 0});
+}
+
+TEST(Tensor, testSliceAccessPatternStepsReverse) {
+  testSliceAccessPattern(/* tensorDims */ {8, 8, 8, 8},
+                         /* sliceDims */ {1, 2, 3, 4},
+                         /* sliceStarts */ {0, 0, 0, 0},
+                         /* sliceSteps */ {4, 3, 2, 1},
+                         /* sliceShuffle */ {0, 1, 2, 3});
+}
+
+TEST(Tensor, testSliceAccessPatternStepsTranspose) {
+  testSliceAccessPattern(/* tensorDims */ {8, 8, 8, 8},
+                         /* sliceDims */ {1, 2, 3, 4},
+                         /* sliceStarts */ {0, 0, 0, 0},
+                         /* sliceSteps */ {4, 3, 2, 1},
+                         /* sliceShuffle */ {3, 2, 1, 0});
+}
