@@ -122,6 +122,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::NegNodeKind:
   case Kinded::Kind::AbsNodeKind:
+  case Kinded::Kind::ExpNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
     break;
@@ -130,7 +131,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
-  case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Float16Ty, ElemKind::Int8QTy});
