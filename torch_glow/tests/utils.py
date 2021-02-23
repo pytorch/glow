@@ -26,7 +26,11 @@ def get_backend_name():
 
 @contextmanager
 def ephemeral_torchglow_settings(
-    fp16=False, backend=DEFAULT_BACKEND, fusion=False, blocklist=None
+    fp16=False,
+    backend=DEFAULT_BACKEND,
+    fusion=False,
+    blocklist=None,
+    accept_all_layouts=False,
 ):
     old_fp16 = torch_glow.get_convert_to_fp16()
     old_clip = torch_glow.get_clip_fp16()
@@ -51,6 +55,10 @@ def ephemeral_torchglow_settings(
             torch_glow.clearFusionBlacklist()
         else:
             torch_glow.setFusionBlacklist(list(blocklist))
+        if accept_all_layouts:
+            torch_glow.enable_accept_all_layout()
+        else:
+            torch_glow.disable_accept_all_layout()
         torch_glow.setGlowBackend(backend)
         yield
     finally:
@@ -114,6 +122,7 @@ def compare_tracing_methods(
     fp16=False,
     scripted=False,
     check_trace=True,
+    accept_all_layouts=False,
     skip_to_glow=False,  # Ugly hack, TODO: Remove
 ):
     if not isinstance(module, torch.nn.Module):
@@ -127,7 +136,10 @@ def compare_tracing_methods(
 
     with torch.no_grad():
         with ephemeral_torchglow_settings(
-            fusion=True, fp16=fp16, blocklist=fusion_blocklist
+            fusion=True,
+            fp16=fp16,
+            blocklist=fusion_blocklist,
+            accept_all_layouts=accept_all_layouts,
         ):
             fusion_inputs = deepcopy(inputs)
             fusion_trace = trace(module, fusion_inputs)
@@ -137,14 +149,18 @@ def compare_tracing_methods(
                 accept_any=fusible_ops is None,
             )
             fusion_result = fusion_trace(*fusion_inputs)
-        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+        with ephemeral_torchglow_settings(
+            fusion=False, fp16=fp16, accept_all_layouts=accept_all_layouts
+        ):
             if scripted:
                 torchscript_result = module(*deepcopy(inputs))
             else:
                 torchscript_inputs = deepcopy(inputs)
                 torchscript_trace = trace(module, torchscript_inputs)
                 torchscript_result = torchscript_trace(*torchscript_inputs)
-        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+        with ephemeral_torchglow_settings(
+            fusion=False, fp16=fp16, accept_all_layouts=accept_all_layouts
+        ):
             if not skip_to_glow:
                 glow_inputs = deepcopy(inputs)
                 glow_spec = torch_glow.generate_glow_compilation_spec(

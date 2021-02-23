@@ -15,6 +15,7 @@
  */
 #include "glow/Graph/Graph.h"
 #include "glow/Backend/Backend.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/TensorLayout.h"
@@ -5843,18 +5844,25 @@ insertAndReport(std::unordered_map<std::string, const Node *> &nameToNode,
 
 bool Function::verify(const Backend *backend) const {
   bool isValid = true;
-  if (backend) {
-    if (backend->getTensorLayoutRequirements().isEnabled()) {
+  // Check if the layout verifying is disabled, which will accept all layout for
+  // any ops.
+  LOG(INFO) << "Layout requirements checking is "
+            << (glow::flags::DisableLayoutVerifying ? "disabled" : "enabled");
+  if (!glow::flags::DisableLayoutVerifying) {
+    if (backend) {
+      if (backend->getTensorLayoutRequirements().isEnabled()) {
+        isValid &= expectCompareTrue(
+            "Expected correct backend-specific layouts for the graph",
+            verifyLayouts(*this, backend->getTensorLayoutRequirements()), true,
+            this);
+      }
+    } else {
+      // Always run verification pre-lowering / when we don't have backend:
       isValid &= expectCompareTrue(
-          "Expected correct backend-specific layouts for the graph",
-          verifyLayouts(*this, backend->getTensorLayoutRequirements()), true,
+          "Expected correct Glow canonical layouts for the graph",
+          verifyLayouts(*this, CanonicalTensorLayout::getInstance()), true,
           this);
     }
-  } else {
-    // Always run verification pre-lowering / when we don't have backend:
-    isValid &= expectCompareTrue(
-        "Expected correct Glow canonical layouts for the graph",
-        verifyLayouts(*this, CanonicalTensorLayout::getInstance()), true, this);
   }
   std::unordered_map<std::string, const Node *> nameToNode;
 

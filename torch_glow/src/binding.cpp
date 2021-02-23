@@ -292,6 +292,13 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().dumpOperatorInventory = true;
   });
 
+  m.def("enable_accept_all_layout", []() {
+    getGlobalPyTorchLoaderSettingsMutable().disableLayoutVerifying = true;
+  });
+  m.def("disable_accept_all_layout", []() {
+    getGlobalPyTorchLoaderSettingsMutable().disableLayoutVerifying = false;
+  });
+
   /// Set the active HostManager to one that owns 1 of type \p backendName.
   m.def("setGlowBackend", [](const std::string &backendName) {
     getGlobalPyTorchLoaderSettingsMutable().backendName = backendName;

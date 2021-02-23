@@ -38,6 +38,7 @@ extern bool UseCustomOpsForExport;
 extern std::string BackendSpecificOpts;
 extern bool EnableLoadBalancedPartitioning;
 extern bool SkipProvisioning;
+extern bool DisableLayoutVerifying;
 
 // FP16 Constants
 extern bool ConvertToFP16;
