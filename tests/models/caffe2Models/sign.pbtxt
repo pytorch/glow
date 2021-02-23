@@ -1,0 +1,10 @@
+name: "sign"
+op {
+  input: "input"
+  output: "output"
+  name: ""
+  type: "Sign"
+}
+external_input: "input"
+external_output: "output"
+

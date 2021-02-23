@@ -1828,6 +1828,25 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "Sign") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    Node *zeroes = G_->createSplat(opName + ".zeroes", in.getType(), 0.f);
+
+    Node *isPos = G_->createCmpLT(opName + ".isPos", zeroes, in);
+    Node *isNeg = G_->createCmpLT(opName + ".isNeg", in, zeroes);
+
+    Node *posOnes = G_->createSplat(opName + ".posOnes", in.getType(), 1);
+    Node *negOnes = G_->createSplat(opName + ".negOnes", in.getType(), -1);
+
+    Node *node = G_->createSelect(opName + ".fillPos", isPos, posOnes, zeroes);
+    node = G_->createSelect(opName + ".fillNeg", isNeg, negOnes, node);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
