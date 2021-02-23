@@ -435,7 +435,7 @@ private:
 
   /// Load a PyTorch contiguous node.
   /// \returns error on failure.
-  Error loadContiguous(const torch::jit::Node *ptNode);
+  Error loadCopy(const torch::jit::Node *ptNode);
 
   /// NOP - aten::detach returns
   Error loadDetach(const torch::jit::Node *ptNode);

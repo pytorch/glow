@@ -1125,7 +1125,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
   // First build mapping with standard PyTorch operators.
   auto symbolLoaderMapping = MappingOfMemberFunctions({
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
-      {{"aten::contiguous"}, &PyTorchModelLoader::loadContiguous},
+      {{"aten::contiguous", "aten::clone"}, &PyTorchModelLoader::loadCopy},
       {{"aten::detach"}, &PyTorchModelLoader::loadDetach},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
@@ -2525,7 +2525,7 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
-Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadCopy(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
