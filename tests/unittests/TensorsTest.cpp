@@ -1991,25 +1991,25 @@ TEST(Tensor, testSliceAccessPattern6D) {
 TEST(Tensor, testSliceAccessPatternReverse) {
   testSliceAccessPattern(/* tensorDims */ {2, 3, 4, 5},
                          /* sliceDims */ {1, 2, 3, 4},
-                         /* sliceStarts */ {2, 3, 4, 5},
+                         /* sliceStarts */ {1, 2, 3, 4},
                          /* sliceSteps */ {-1, -1, -1, -1},
                          /* sliceShuffle */ {0, 1, 2, 3});
 }
 
-TEST(Tensor, testSliceAccessPatternTranspose) {
-  testSliceAccessPattern(/* tensorDims */ {2, 3, 4, 5},
-                         /* sliceDims */ {1, 2, 3, 4},
-                         /* sliceStarts */ {2, 3, 4, 5},
-                         /* sliceSteps */ {-1, -1, -1, -1},
-                         /* sliceShuffle */ {3, 2, 1, 0});
-}
-
-TEST(Tensor, testSliceAccessPatternStepsReverse) {
+TEST(Tensor, testSliceAccessPatternSteps) {
   testSliceAccessPattern(/* tensorDims */ {8, 8, 8, 8},
                          /* sliceDims */ {1, 2, 3, 4},
                          /* sliceStarts */ {0, 0, 0, 0},
                          /* sliceSteps */ {4, 3, 2, 1},
                          /* sliceShuffle */ {0, 1, 2, 3});
+}
+
+TEST(Tensor, testSliceAccessPatternReverseTranspose) {
+  testSliceAccessPattern(/* tensorDims */ {2, 3, 4, 5},
+                         /* sliceDims */ {1, 2, 3, 4},
+                         /* sliceStarts */ {1, 2, 3, 4},
+                         /* sliceSteps */ {-1, -1, -1, -1},
+                         /* sliceShuffle */ {3, 2, 1, 0});
 }
 
 TEST(Tensor, testSliceAccessPatternStepsTranspose) {
