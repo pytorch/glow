@@ -1136,48 +1136,78 @@ inline size_t getFlattenedOffset(llvm::ArrayRef<dim_t> strides,
 bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
                        llvm::ArrayRef<dim_t> tensorShape);
 
-
+/// Structure which encodes the access pattern of a multidimensional tensor
+/// traversed using a nested loop sequence. For example, for a 3D tensor with
+/// a raw base pointer \ref tensorPtr, this structure encodes the following
+/// access pattern based on a nested sequence of 3 loops:
+///   tensorPtr += addrStart;
+///   for (dim_t idx0 = 0; idx0 < loopCounts[0]; idx0++) {
+///     for (dim_t idx1 = 0; idx1 < loopCounts[1]; idx1++) {
+///       for (dim_t idx2 = 0; idx2 < loopCounts[2]; idx2++) {
+///         // Read/write/process current tensor value.
+///         T tensorVal = *tensorPtr;
+///         // Advance tensor pointer for loop #2 (inner-most).
+///         tensorPtr += addrOffsets[2];
+///       }
+///       // Advance tensor pointer for loop #1 (middle).
+///       tensorPtr += addrOffsets[1];
+///     }
+///     // Advance tensor pointer for loop #0 (outer-most).
+///     tensorPtr += addrOffsets[0];
+///   }
+/// This access pattern is capable to encode different operations performed
+/// on the tensor like Insert, Extract, Tranpose or any combination of them.
 struct TensorAccessPattern {
   /// Number of loops.
   dim_t numLoops;
-
   /// Address offset (measured in number of elements) relative to the base of
   /// the tensor which must be applied before entering the nested loop section.
   dim_t addrStart;
-
   /// Count associated to each loop. Loops are ordered starting with the
   /// outer-most loop and ending with the inner-most loop.
   std::vector<dim_t> loopCounts;
-
   /// Address offset (measured in number of elements) associated to each loop.
   /// The offset addrOffsets[k] must be applied at the end of the iteration
-  /// for loop[k].
+  /// for loop #k.
   std::vector<sdim_t> addrOffsets;
 };
 
-/// TODO: Add comments...
-TensorAccessPattern getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                                          llvm::ArrayRef<dim_t> sliceDims,
-                                          llvm::ArrayRef<dim_t> sliceStarts,
-                                          llvm::ArrayRef<sdim_t> sliceSteps,
-                                          llvm::ArrayRef<unsigned_t> sliceShuffle);
+/// Generic primitive used to compute the access pattern of traversing a slice
+/// with dimensions \p sliceDims within a larger tensor with dimensions
+/// \p tensorDims. The slice starts at \p sliceStarts and is sliced using the
+/// steps \p sliceSteps. The order in which the slice dimensions are traversed
+/// is given by \p sliceShuffle. Note that the slice steps can also be negative
+/// indicating a backwards traversal of some dimensions.
+TensorAccessPattern getSliceAccessPattern(
+    llvm::ArrayRef<dim_t> tensorDims, llvm::ArrayRef<dim_t> sliceDims,
+    llvm::ArrayRef<dim_t> sliceStarts, llvm::ArrayRef<sdim_t> sliceSteps,
+    llvm::ArrayRef<unsigned_t> sliceShuffle);
 
-/// TODO: Add comments...
+/// Compute the tensor access pattern associated to an Insert operation for
+/// which a contiguous slice with dimensions \p sliceDims is inserted into a
+/// larger tensor with dimensions \p tensorDims. The insertion is done starting
+/// with the offsets \p sliceStarts and using the steps \p sliceSteps. The slice
+/// is inserted \p count times along \p axis.
 TensorAccessPattern getInsertAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
                                            llvm::ArrayRef<dim_t> sliceDims,
                                            llvm::ArrayRef<dim_t> sliceStarts,
                                            llvm::ArrayRef<sdim_t> sliceSteps,
-                                           dim_t count,
-                                           dim_t axis);
+                                           dim_t count, dim_t axis);
 
+/// Compute the tensor access pattern associated to an Extract operation for
+/// which a contiguous slice with dimensions \p sliceDims is extracted from
+/// a larger tensor with dimensions \p tensorDims. The extraction is done
+/// starting with the offsets \p sliceStarts and using the steps \p sliceSteps.
 TensorAccessPattern getExtractAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
                                             llvm::ArrayRef<dim_t> sliceDims,
                                             llvm::ArrayRef<dim_t> sliceStarts,
                                             llvm::ArrayRef<sdim_t> sliceSteps);
 
-/// TODO: Add comments...
-TensorAccessPattern getTransposeAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                                              llvm::ArrayRef<unsigned_t> shuffle);
+/// Compute the tensor access pattern associated to a Transpose operation for
+/// which a tensor with dimensions \p tensorDims is transposed using \p shuffle.
+TensorAccessPattern
+getTransposeAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                          llvm::ArrayRef<unsigned_t> shuffle);
 
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class

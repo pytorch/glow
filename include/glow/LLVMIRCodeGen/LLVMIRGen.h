@@ -215,7 +215,7 @@ protected:
   /// it will cast non-sdim_t types T into sdim_t.
   template <typename T>
   llvm::Value *emitConstSDimTArray(llvm::IRBuilder<> &builder,
-                                  llvm::ArrayRef<T> vals);
+                                   llvm::ArrayRef<T> vals);
 
   /// Generates LLVM IR that materializes the constant array \p vals. Note that
   /// int32 data type is accepted.

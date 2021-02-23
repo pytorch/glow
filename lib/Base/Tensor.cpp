@@ -1030,13 +1030,11 @@ bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
   return true;
 }
 
-TensorAccessPattern getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                                          llvm::ArrayRef<dim_t> sliceDims,
-                                          llvm::ArrayRef<dim_t> sliceStarts,
-                                          llvm::ArrayRef<sdim_t> sliceSteps,
-                                          llvm::ArrayRef<unsigned_t> sliceShuffle) {
+TensorAccessPattern getSliceAccessPattern(
+    llvm::ArrayRef<dim_t> tensorDims, llvm::ArrayRef<dim_t> sliceDims,
+    llvm::ArrayRef<dim_t> sliceStarts, llvm::ArrayRef<sdim_t> sliceSteps,
+    llvm::ArrayRef<unsigned_t> sliceShuffle) {
 
-  // TODO: Validate input params.
   size_t numDims = tensorDims.size();
   assert(numDims > 0 && "Tensor rank must be strictly positive!");
   assert(sliceDims.size() == numDims && "Slice rank invalid!");
@@ -1060,13 +1058,17 @@ TensorAccessPattern getSliceAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
   // Get tensor address offsets.
   auto addrOffsets = std::vector<sdim_t>(numDims);
   auto lastDim = sliceShuffle[numDims - 1];
+  assert(lastDim < numDims && "Slice shuffle value invalid!");
   addrOffsets[numDims - 1] = sliceSteps[lastDim] * tensorDimProd[lastDim];
   for (ssize_t dimIdx = numDims - 2; dimIdx >= 0; dimIdx--) {
     // Subtract all the updates done in the previous inner loop.
     auto prevDim = sliceShuffle[dimIdx + 1];
-    addrOffsets[dimIdx] -= sliceDims[prevDim] * sliceSteps[prevDim] * tensorDimProd[prevDim];
+    assert(prevDim < numDims && "Slice shuffle value invalid!");
+    addrOffsets[dimIdx] -=
+        sliceDims[prevDim] * sliceSteps[prevDim] * tensorDimProd[prevDim];
     // Add update for the current loop.
     auto currDim = sliceShuffle[dimIdx];
+    assert(currDim < numDims && "Slice shuffle value invalid!");
     addrOffsets[dimIdx] += sliceSteps[currDim] * tensorDimProd[currDim];
   }
 
@@ -1089,21 +1091,15 @@ TensorAccessPattern getInsertAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
                                            llvm::ArrayRef<dim_t> sliceDims,
                                            llvm::ArrayRef<dim_t> sliceStarts,
                                            llvm::ArrayRef<sdim_t> sliceSteps,
-                                           dim_t count,
-                                           dim_t axis) {
-
-  // TODO: Validate input params.
-  size_t numDims = tensorDims.size();
-  assert(axis < numDims && "Axis parameter invalid!");
+                                           dim_t count, dim_t axis) {
 
   // Get access pattern for walking one slice of the tensor.
+  size_t numDims = tensorDims.size();
+  assert(axis < numDims && "Axis parameter invalid!");
   std::vector<unsigned_t> sliceShuffle(numDims);
   std::iota(sliceShuffle.begin(), sliceShuffle.end(), 0);
-  auto pattern = getSliceAccessPattern(tensorDims,
-                                       sliceDims,
-                                       sliceStarts,
-                                       sliceSteps,
-                                       sliceShuffle);
+  auto pattern = getSliceAccessPattern(tensorDims, sliceDims, sliceStarts,
+                                       sliceSteps, sliceShuffle);
 
   // Subtract offset after walking one slice of the tensor.
   sdim_t offsetSub = sliceSteps[0] * sliceDims[0];
@@ -1118,7 +1114,7 @@ TensorAccessPattern getInsertAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
   }
   sdim_t countOffset = -offsetSub + offsetAdd;
 
-  // Add "count" loop as inner-most that is in front of other loops.
+  // Add "count" loop as outer-most that is in front of the other loops.
   pattern.numLoops++;
   pattern.loopCounts.insert(pattern.loopCounts.begin(), 1, count);
   pattern.addrOffsets.insert(pattern.addrOffsets.begin(), 1, countOffset);
@@ -1131,21 +1127,16 @@ TensorAccessPattern getExtractAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
                                             llvm::ArrayRef<sdim_t> sliceSteps) {
   std::vector<unsigned_t> sliceShuffle(tensorDims.size());
   std::iota(sliceShuffle.begin(), sliceShuffle.end(), 0);
-  return getSliceAccessPattern(tensorDims,
-                               sliceDims,
-                               sliceStarts,
-                               sliceSteps,
+  return getSliceAccessPattern(tensorDims, sliceDims, sliceStarts, sliceSteps,
                                sliceShuffle);
 }
 
-TensorAccessPattern getTransposeAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
-                                              llvm::ArrayRef<unsigned_t> shuffle) {
+TensorAccessPattern
+getTransposeAccessPattern(llvm::ArrayRef<dim_t> tensorDims,
+                          llvm::ArrayRef<unsigned_t> shuffle) {
   std::vector<dim_t> sliceStarts(tensorDims.size(), 0);
   std::vector<sdim_t> sliceSteps(tensorDims.size(), 1);
-  return getSliceAccessPattern(tensorDims,
-                               tensorDims,
-                               sliceStarts,
-                               sliceSteps,
+  return getSliceAccessPattern(tensorDims, tensorDims, sliceStarts, sliceSteps,
                                shuffle);
 }
 } // namespace glow

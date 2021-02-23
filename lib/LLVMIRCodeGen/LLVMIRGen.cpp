@@ -2827,10 +2827,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcPtr = emitValueAddress(builder, src);
 
     // Get transpose access pattern.
-    auto pattern = getTransposeAccessPattern(src->getType()->dims(), TI->getShuffle());
+    auto pattern =
+        getTransposeAccessPattern(src->getType()->dims(), TI->getShuffle());
+    assert(pattern.addrStart == 0 && "Tensor address start should be 0!");
     auto *numLoops = emitConstDimT(builder, pattern.numLoops);
-    auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
-    auto *inOffsets = emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
+    auto *loopCounts =
+        emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
+    auto *inOffsets =
+        emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
 
     auto *F = getFunction("transpose", dest->getElementType());
     createCall(builder, F, {srcPtr, destPtr, numLoops, loopCounts, inOffsets});
@@ -2867,20 +2871,20 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     // Get insert access pattern. For now we use slice steps/strides of 1 but
     // we can easily change this if the Insert instruction needs striding.
     std::vector<sdim_t> sliceSteps(dest->getType()->dims().size(), 1);
-    auto pattern = getInsertAccessPattern(dest->getType()->dims(),
-                                          src->getType()->dims(),
-                                          ITI->getOffsets(),
-                                          sliceSteps,
-                                          ITI->getCount(),
-                                          ITI->getAxis());
+    auto pattern = getInsertAccessPattern(
+        dest->getType()->dims(), src->getType()->dims(), ITI->getOffsets(),
+        sliceSteps, ITI->getCount(), ITI->getAxis());
     auto *numLoops = emitConstDimT(builder, pattern.numLoops);
-    auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
+    auto *loopCounts =
+        emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
     auto *tensorStart = emitConstDimT(builder, pattern.addrStart);
-    auto *tensorOffsets = emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
+    auto *tensorOffsets =
+        emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
 
     auto *F = getFunction("insert_tensor", dest->getElementType());
     createCall(builder, F,
-               {tensorPtr, slicePtr, numLoops, loopCounts, tensorStart, tensorOffsets});
+               {tensorPtr, slicePtr, numLoops, loopCounts, tensorStart,
+                tensorOffsets});
     break;
   }
 
@@ -2894,18 +2898,20 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     // Get extract access pattern. For now we use slice steps/strides of 1 but
     // we can easily change this if the Extract instruction needs striding.
     std::vector<sdim_t> sliceSteps(src->getType()->dims().size(), 1);
-    auto pattern = getExtractAccessPattern(src->getType()->dims(),
-                                           dest->getType()->dims(),
-                                           ETI->getOffsets(),
-                                           sliceSteps);
+    auto pattern =
+        getExtractAccessPattern(src->getType()->dims(), dest->getType()->dims(),
+                                ETI->getOffsets(), sliceSteps);
     auto *numLoops = emitConstDimT(builder, pattern.numLoops);
-    auto *loopCounts = emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
+    auto *loopCounts =
+        emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
     auto *tensorStart = emitConstDimT(builder, pattern.addrStart);
-    auto *tensorOffsets = emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
+    auto *tensorOffsets =
+        emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
 
     auto *F = getFunction("extract_tensor", dest->getElementType());
     createCall(builder, F,
-               {tensorPtr, slicePtr, numLoops, loopCounts, tensorStart, tensorOffsets});
+               {tensorPtr, slicePtr, numLoops, loopCounts, tensorStart,
+                tensorOffsets});
     break;
   }
 
