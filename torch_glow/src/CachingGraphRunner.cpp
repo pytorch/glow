@@ -61,6 +61,10 @@ void initializeCompiliationContextFromSettings(
     cctx.precisionConfig.forceFP16AccumSLS = settings.forceFP16AccumSLS;
     LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
   }
+  if (settings.disableLayoutVerifying) {
+    glow::flags::DisableLayoutVerifying = true;
+    LOG(INFO) << "Skipping all layout verifying";
+  }
 
   if (settings.dumpFinalGlowGraph) {
     cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
@@ -195,6 +199,9 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);
 
+  glow::CompilationContext cctx;
+  initializeCompiliationContextFromSettings(cctx, settings);
+
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
   {
     RECORD_USER_SCOPE("loadJITGraph");
@@ -203,9 +210,6 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
         outputCorrectType_, settings, inputs, {}));
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
-
-  glow::CompilationContext cctx;
-  initializeCompiliationContextFromSettings(cctx, settings);
 
   if (settings.convertToFP16) {
     cctx.precisionConfig.precisionModeKindSet.insert(

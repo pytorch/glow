@@ -48,6 +48,7 @@ bool UseCustomOpsForExport = true;
 std::string BackendSpecificOpts = "";
 bool EnableLoadBalancedPartitioning = true;
 bool SkipProvisioning = false;
+bool DisableLayoutVerifying = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;

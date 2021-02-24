@@ -105,6 +105,9 @@ public:
   /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
   bool enableRemoveMutation = true;
 
+  /// Disable all tensor layout verifying for all nodes.
+  bool disableLayoutVerifying = true;
+
   /// Dump statistics about the operators and fusion support in the graph.
   bool dumpOperatorInventory = false;
 
