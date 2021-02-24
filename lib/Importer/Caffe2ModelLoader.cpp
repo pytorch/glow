@@ -1847,6 +1847,21 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "Softplus") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    Node *node = G_->createExp(opName + ".exp", in);
+
+    auto ones = G_->createSplat(opName + ".ones", in.getType(), 1);
+    node = G_->createAdd(opName + ".add", node, ones);
+
+    node = G_->createLog(opName + ".log", node);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
