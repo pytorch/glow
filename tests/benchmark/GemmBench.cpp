@@ -38,6 +38,13 @@ using namespace glow;
  * end-to-end workloads.
  */
 
+llvm::cl::OptionCategory GemmBenchCat("GemmBench Category");
+llvm::cl::opt<bool> checkCorrectness(
+    "check-results",
+    llvm::cl::desc("Check the correctness of the results against the reference "
+                   "backend (Interpreter)"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(GemmBenchCat));
+
 struct GemmParam {
   dim_t m_;
   dim_t n_;
@@ -57,24 +64,32 @@ class GemmBench : public Benchmark {
   PlaceholderBindings &bindings_;
   std::unique_ptr<runtime::HostManager> hostManager_;
 
+  // Refernce bindings and network:
+  ExecutionContext refContext_;
+  PlaceholderBindings &refBindings_;
+  std::unique_ptr<runtime::HostManager> refHostManager_;
+
 public:
   explicit GemmBench(GemmParam param_)
-      : param_(param_), bindings_(*context_.getPlaceholderBindings()) {}
+      : param_(param_), bindings_(*context_.getPlaceholderBindings()),
+        refBindings_(*refContext_.getPlaceholderBindings()) {}
 
-  void addGemmNode(std::unique_ptr<Module> &mod, Function *fn,
-                   GemmParam param) {
+  void addGemmNode(std::unique_ptr<Module> &mod, Function *fn, GemmParam param,
+                   bool isRef) {
+    PlaceholderBindings &bindings = isRef ? refBindings_ : bindings_;
     auto *input = mod->createPlaceholder(param.dtype_, {param.m_, param.k_},
                                          "input", false);
     if (param.dtype_ == ElemKind::Float16Ty) {
-      bindings_.allocate(input)->getHandle<float16>().randomize(-1.f, 1.f,
-                                                                mod->getPRNG());
+      bindings.allocate(input)->getHandle<float16>().randomize(-1.f, 1.f,
+                                                               mod->getPRNG());
     } else {
       assert(param.dtype_ == ElemKind::FloatTy);
-      bindings_.allocate(input)->getHandle<float>().randomize(-1.f, 1.f,
-                                                              mod->getPRNG());
+      bindings.allocate(input)->getHandle<float>().randomize(-1.f, 1.f,
+                                                             mod->getPRNG());
     }
     auto *output = mod->createPlaceholder(param.dtype_, {param.m_, param.n_},
                                           "output", false);
+    bindings.allocate(output);
     Node *cur = input;
 
     Placeholder *ones;
@@ -82,9 +97,9 @@ public:
       ones = mod->createPlaceholder(
           param.dtype_, {param.m_ * (param.k_ - param.n_)}, "ones", false);
       if (param.dtype_ == ElemKind::Float16Ty) {
-        bindings_.allocate(ones)->getHandle<float16_t>().clear(1.0);
+        bindings.allocate(ones)->getHandle<float16_t>().clear(1.0);
       } else if (param.dtype_ == ElemKind::FloatTy) {
-        bindings_.allocate(ones)->getHandle<float>().clear(1.0);
+        bindings.allocate(ones)->getHandle<float>().clear(1.0);
       }
     }
 
@@ -100,13 +115,13 @@ public:
                                     "bias" + std::to_string(layer), false);
 
       if (param.dtype_ == ElemKind::Float16Ty) {
-        bindings_.allocate(weights)->getHandle<float16_t>().randomize(
+        bindings.allocate(weights)->getHandle<float16_t>().randomize(
             -1.f, 1.f, mod->getPRNG());
-        bindings_.allocate(bias)->getHandle<float16_t>().clear(32);
+        bindings.allocate(bias)->getHandle<float16_t>().clear(32);
       } else if (param.dtype_ == ElemKind::FloatTy) {
-        bindings_.allocate(weights)->getHandle<float>().randomize(
+        bindings.allocate(weights)->getHandle<float>().randomize(
             -1.f, 1.f, mod->getPRNG());
-        bindings_.allocate(bias)->getHandle<float>().clear(32);
+        bindings.allocate(bias)->getHandle<float>().clear(32);
       }
 
       Node *fc;
@@ -130,24 +145,30 @@ public:
       }
     }
     fn->createSave("save1", cur, output);
-    ::glow::convertPlaceholdersToConstants(fn, bindings_, {input, output});
+    ::glow::convertPlaceholdersToConstants(fn, bindings, {input, output});
   }
 
-  void setup() override {
+  void setupInternal(bool isRef) {
     // Setup host manager
+    std::string backendStr = isRef ? "Interpreter" : param_.backendStr_.c_str();
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config =
-        glow::make_unique<runtime::DeviceConfig>(param_.backendStr_.c_str());
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr.c_str());
     if (param_.devId_ != "") {
       config->parameters["DeviceID"] = param_.devId_.c_str();
     }
     configs.push_back(std::move(config));
-    hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
+    if (isRef) {
+      refHostManager_ =
+          glow::make_unique<runtime::HostManager>(std::move(configs));
+    } else {
+      hostManager_ =
+          glow::make_unique<runtime::HostManager>(std::move(configs));
+    }
 
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
 
-    addGemmNode(mod, fn, param_);
+    addGemmNode(mod, fn, param_, isRef);
 
     // Split weights
     if (param_.numSplits_ > 1) {
@@ -156,13 +177,49 @@ public:
 
     CompilationContext ctx;
     ctx.dumpFinalGraph = true;
-    EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
+    if (isRef) {
+      EXIT_ON_ERR(refHostManager_->addNetwork(std::move(mod), ctx));
+    } else {
+      EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
+    }
   }
 
+  void checkOutput() {
+    // First run on the reference backend
+    dispatchInference("singleNode", refHostManager_.get(), refContext_,
+                      param_.numAsyncLaunches_,
+                      /*useNewExecutionContext*/ true);
+    Tensor *refTensor =
+        refBindings_.get(refBindings_.getPlaceholderByNameSlow("output"));
+    CHECK(refTensor) << "Reference Tensor not found";
+
+    Tensor *noRefTensor =
+        bindings_.get(bindings_.getPlaceholderByNameSlow("output"));
+    CHECK(noRefTensor) << "non-reference Tensor not found";
+
+    // Compare the tensors
+    if (!noRefTensor->isEqual(*refTensor)) {
+      noRefTensor->dump();
+      refTensor->dump();
+      LOG(FATAL) << "Tensors don't match\n";
+    } else {
+      LOG(INFO) << "Tensors match\n";
+    }
+  }
+
+  void setup() override {
+    if (checkCorrectness) {
+      setupInternal(/* isRef */ true);
+    }
+    setupInternal(/* isRef */ false);
+  }
   void run() override {
     dispatchInference("singleNode", hostManager_.get(), context_,
                       param_.numAsyncLaunches_,
                       /*useNewExecutionContext*/ true);
+    if (checkCorrectness) {
+      checkOutput();
+    }
   }
 
   void teardown() override {}
