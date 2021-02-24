@@ -699,7 +699,8 @@ compileImpl(const torch::jit::Module &origModule,
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
               graph, glow::getHostManager(baseSettings), baseSettings,
-              /*useRunOnly*/ true, origGraph, origModule._ivalue());
+              /*useRunOnly*/ !baseSettings.lazyCompile, origGraph,
+              origModule._ivalue());
 
       // Compile each compilation group
       for (const auto &compilationGroup : spec.compilation_groups) {
@@ -707,7 +708,8 @@ compileImpl(const torch::jit::Module &origModule,
         auto compilationGroupSettings = baseSettings;
         RETURN_IF_ERR(applyCompilationGroupSettingsToPyTorchLoaderSettings(
             compilationGroupSettings, *compilationGroup->settings));
-        // Compile each input set
+        // Compile each input set (if lazy-compile is set, only the compilation
+        // settings will be stored)
         for (const auto &inputSet : compilationGroup->input_sets) {
           InputMetaStack metaStack = getInputMetas(inputSet);
           auto err = runner->warmCache(metaStack, compilationGroupSettings,

@@ -236,6 +236,10 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().runShapeInference = false;
   });
 
+  /// Defer compilation to runtime.
+  m.def("enable_lazy_compile",
+        []() { getGlobalPyTorchLoaderSettingsMutable().lazyCompile = true; });
+
   /// Set interpreter device memory (in KiB).
   m.def("set_interpreter_memory", [](const unsigned &memorySize) {
     glow::runtime::flags::InterpreterMemory = memorySize;

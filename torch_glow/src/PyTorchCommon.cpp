@@ -87,6 +87,7 @@ DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
             "See PyTorchLoaderSettings");
 DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
 DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
+DEFINE_bool(lazyCompile, false, "see PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -291,6 +292,7 @@ void PyTorchLoaderSettings::initSettings() {
   debugContinuouslyVerifyDuringModelLoading =
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
   nominalBatchIdx = FLAGS_nominalBatchIdx;
+  lazyCompile = FLAGS_lazyCompile;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -354,6 +356,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(enableDebugFuser, s);
   INSERT_BOOL_TO_STREAM(debugContinuouslyVerifyDuringModelLoading, s);
   INSERT_BOOL_TO_STREAM(dumpFailedInputsToOnnxFiles, s);
+  INSERT_BOOL_TO_STREAM(lazyCompile, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";

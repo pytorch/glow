@@ -185,6 +185,11 @@ public:
 
   /// Whether to dump out failed inputs and reference outputs to onnx files.
   bool dumpFailedInputsToOnnxFiles = false;
+
+  /// Whether to defer compilation to runtime
+  /// NOTE: this might cause real request timeout, should only be used for
+  ///       development testing.
+  bool lazyCompile = false;
 };
 
 /// Represents different possible output types from to_glow modules.
