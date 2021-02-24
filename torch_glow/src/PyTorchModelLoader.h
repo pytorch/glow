@@ -925,6 +925,10 @@ private:
   /// \returns error on failure.
   Error loadExpandAs(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::expand node.
+  /// \returns error on failure.
+  Error loadExpand(const torch::jit::Node *ptNode);
+
   /// Load an NNCKernel node.
   /// \returns error on failure.
   Error loadNNCKernel(const torch::jit::Node *ptNode);
