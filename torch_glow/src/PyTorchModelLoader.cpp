@@ -993,6 +993,14 @@ struct ExpandAsInputs {
   };
 };
 
+/// Indexes of aten::expand inputs.
+struct ExpandInputs {
+  enum {
+    input = 0,
+    shape,
+  };
+};
+
 /// Indexes of fb::glow_embedding_bag inputs.
 struct GlowEmbeddingBagInputs {
   enum {
@@ -1300,6 +1308,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::index_select"}, &PyTorchModelLoader::loadIndexSelect},
       {{"aten::clamp_min"}, &PyTorchModelLoader::loadClampMin},
       {{"aten::expand_as"}, &PyTorchModelLoader::loadExpandAs},
+      {{"aten::expand"}, &PyTorchModelLoader::loadExpand},
       {{"glow::nnckernel"}, &PyTorchModelLoader::loadNNCKernel},
       {{"aten::cumsum"}, &PyTorchModelLoader::loadCumSum},
   });
@@ -5243,6 +5252,58 @@ Error PyTorchModelLoader::loadExpandAs(const torch::jit::Node *ptNode) {
 
   auto output = F_.createBroadcast("expand_as", input, other.dims(),
                                    other.dims().size() - input.dims().size());
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadExpand(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ExpandInputs::input]));
+  auto shapeOriginal = input.dims();
+
+  std::vector<int64_t> *shapeInput;
+  ASSIGN_VALUE_OR_RETURN_ERR(shapeInput, iValToIntList(getGlowIValueForValue(
+                                             inputs[ExpandInputs::shape])));
+
+  // Copy shapeInput so we can modify it.
+  std::vector<int64_t> shapeDesired = *shapeInput;
+
+  if (shapeDesired.size() < shapeOriginal.size()) {
+    return MAKE_ERR(
+        strFormat("Expanded shape may not have fewer dimensions than original "
+                  "shape : %ld vs %ld",
+                  shapeDesired.size(), shapeOriginal.size()));
+  }
+
+  // -1 for some dimension means keep its original size, so loop through
+  // shapeDesired and perform this lookup where needed. Also check for
+  // invalid input (<0 && !=-1). Note that the desired shape is aligned
+  // to the *end* of the original shape.
+  auto iterDesired = shapeDesired.rbegin();
+  auto iterOriginal = shapeOriginal.rbegin();
+  while (iterDesired != shapeDesired.rend()) {
+    if (*iterDesired == 0 || *iterDesired < -1 ||
+        (*iterDesired == -1 && iterOriginal == shapeOriginal.rend())) {
+      return MAKE_ERR(
+          strFormat("Could not determine a size for dimension %" PRId64,
+                    std::distance(iterDesired, shapeDesired.rend())));
+    }
+    if (iterOriginal != shapeOriginal.rend()) {
+      if (*iterDesired == -1) {
+        *iterDesired = *iterOriginal;
+      }
+      ++iterOriginal;
+    }
+    ++iterDesired;
+  }
+
+  auto output =
+      F_.createBroadcast("expand", input, castVector<dim_t>(shapeDesired),
+                         shapeDesired.size() - shapeOriginal.size());
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
 

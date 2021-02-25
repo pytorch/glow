@@ -213,6 +213,61 @@ def compare_tracing_methods(
             )
 
 
+def compare_tracing_methods_error(
+    module,
+    *inputs,
+    fusible_ops=None,
+    fusion_blocklist=None,
+    fp16=False,
+):
+    if not isinstance(module, torch.nn.Module):
+        raise AssertionError("to_glow only supports nn.Modules")
+
+    def trace(mod, ins):
+        return torch.jit.trace(mod, ins)
+
+    with torch.no_grad():
+        with ephemeral_torchglow_settings(
+            fusion=True, fp16=fp16, blocklist=fusion_blocklist
+        ):
+            fusion_inputs = deepcopy(inputs)
+            try:
+                fusion_trace = trace(module, fusion_inputs)
+                assert_fused(
+                    fusion_trace.graph_for(*fusion_inputs),
+                    *(fusible_ops or []),
+                    accept_any=fusible_ops is None,
+                )
+                fusion_trace(*fusion_inputs)
+            except Exception:
+                pass
+            else:
+                raise AssertionError("Error expected (fusion), but none were received")
+        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+            try:
+                torchscript_inputs = deepcopy(inputs)
+                torchscript_trace = trace(module, torchscript_inputs)
+                torchscript_trace(*torchscript_inputs)
+            except Exception:
+                pass
+            else:
+                raise AssertionError(
+                    "Error expected (torchscript), but none were received"
+                )
+        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+            try:
+                glow_inputs = deepcopy(inputs)
+                glow_spec = torch_glow.generate_glow_compilation_spec(
+                    module, DEFAULT_BACKEND, *glow_inputs
+                )
+                glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
+                glow_trace(*glow_inputs)
+            except Exception:
+                pass
+            else:
+                raise AssertionError("Error expected (glow), but none were received")
+
+
 def assert_fused(fused_graph, *ops, accept_any=False, strict=False):
     expected = set(ops)
     fused = set()
