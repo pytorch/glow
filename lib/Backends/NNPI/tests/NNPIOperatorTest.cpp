@@ -558,8 +558,7 @@ struct BlacklistInitializer {
       {"FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
        TestBlacklist::AnyDeviceAnyEngine},
 #else
-      {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"dotProduct2D_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
 #endif
       {"Erf_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Erf_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
