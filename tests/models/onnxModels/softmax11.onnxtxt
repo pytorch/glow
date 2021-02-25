@@ -7,7 +7,7 @@ graph {
     op_type: "Softmax"
     attribute {
       name: "axis"
-      i: 1
+      i: -3
       type: INT
     }
   }
