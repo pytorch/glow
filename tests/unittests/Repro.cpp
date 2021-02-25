@@ -321,7 +321,7 @@ public:
     ::ONNX_NAMESPACE::TensorProto t;
     t.ParseFromString(largeBuffer_);
 
-    currentBlobName_ = t.name();
+    currentBlobName_ = glow::legalizeName(t.name());
     auto tyIdx = typeInfo_.find(currentBlobName_);
     if (tyIdx == typeInfo_.end()) {
       return ::MAKE_ERR(
