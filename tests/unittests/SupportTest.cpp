@@ -49,6 +49,18 @@ TEST(Support, legalizeName) {
   // Check that a legal name won't be converted.
   std::string str3 = legalizeName("abc_1aBc");
   EXPECT_TRUE(str3.compare("abc_1aBc") == 0);
+
+  // Check that a long name should be truncated.
+  std::string str4 = legalizeName("string_with_25_characters", 20);
+  EXPECT_EQ("string_with__trunc_1", str4);
+
+  // Check that a long name is truncated and truncation counter is increased.
+  std::string str5 = legalizeName("long_string_with_30_characters", 20);
+  EXPECT_EQ("long_string__trunc_2", str5);
+
+  // Check that a long name is not truncated twice.
+  std::string str6 = legalizeName("string_with_25_characters", 20);
+  EXPECT_EQ("string_with__trunc_1", str6);
 }
 
 /// Check the reading Device config from a yaml file.

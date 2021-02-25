@@ -1249,6 +1249,21 @@ SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
   return addNode(new SoftMaxNode(name, outTy, input, selected));
 }
 
+LogSoftMaxNode *Function::createLogSoftMax(llvm::StringRef name,
+                                           NodeValue input, NodeValue selected,
+                                           TypeRef outTy, float beta) {
+  // Create input multiplier with beta.
+  if (beta != 1.0) {
+    auto *splat = createSplat(name, input.getType(), 1);
+    input = createMul(name, input, splat);
+  }
+  // By default, pick the input type.
+  if (!outTy) {
+    outTy = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new LogSoftMaxNode(name, outTy, input, selected));
+}
+
 CrossEntropyLossNode *Function::createCrossEntropyLoss(llvm::StringRef name,
                                                        NodeValue input,
                                                        NodeValue labels) {
@@ -1605,6 +1620,12 @@ ReshapeNode *Function::createFlatten(llvm::StringRef name, NodeValue input,
   return createReshape(name, input, {xDim.first, xDim.second});
 }
 
+ReshapeNode *Function::createFlattenV1(llvm::StringRef name, NodeValue input,
+                                       unsigned_t axis) {
+  auto xDim = collapseShape(input.getType()->dims(), axis);
+  return createReshape(name, input, {xDim.first, xDim.second});
+}
+
 void Function::createSplit(llvm::StringRef name, NodeValue input,
                            unsigned_t outputNum, unsigned_t axis,
                            llvm::ArrayRef<dim_t> split,
@@ -1701,6 +1722,7 @@ UNARY_ARITHMETIC_FUN_DEF(Reciprocal)
 UNARY_ARITHMETIC_FUN_DEF(Sin)
 UNARY_ARITHMETIC_FUN_DEF(Cos)
 UNARY_ARITHMETIC_FUN_DEF(Erf)
+UNARY_ARITHMETIC_FUN_DEF(Truncate)
 #undef UNARY_ARITHMETIC_FUN_DEF
 
 #define ARITHMETIC_FUN_DEF(NODE_NAME_)                                         \
@@ -1721,7 +1743,6 @@ ARITHMETIC_FUN_DEF(Add);
 ARITHMETIC_FUN_DEF(Mul);
 ARITHMETIC_FUN_DEF(Sub);
 ARITHMETIC_FUN_DEF(Div);
-ARITHMETIC_FUN_DEF(FloorDiv);
 ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
 ARITHMETIC_FUN_DEF(Pow);
@@ -1745,6 +1766,40 @@ TRIGONOMETRIC_FUN_DEF(Acos)
 TRIGONOMETRIC_FUN_DEF(Asin)
 TRIGONOMETRIC_FUN_DEF(Atan)
 #undef TRIGONOMETRIC_FUN_DEF
+
+FloorDivNode *Function::createFloorDiv(llvm::StringRef name, NodeValue LHS,
+                                       NodeValue RHS, bool truncate) {
+  return createFloorDiv(name, LHS.getType(), LHS, RHS, truncate);
+}
+
+FloorDivNode *Function::createFloorDiv(llvm::StringRef name, TypeRef outTy,
+                                       NodeValue LHS, NodeValue RHS,
+                                       bool truncate) {
+  DCHECK(LHS.dims() == RHS.dims())
+      << "Invalid operand shapes LHS:" << LHS.getNode()->getName().str()
+      << " RHS: " << RHS.getNode()->getName().str() << " " << LHS.dims()
+      << " vs " << RHS.dims();
+  TypeRef OT = getParent()->uniqueType(*outTy);
+  return addNode(new FloorDivNode(name, OT, LHS, RHS, truncate));
+}
+
+FloorDivNode *Function::createFloorDivWithBroadcast(llvm::StringRef name,
+                                                    int axis, NodeValue LHS,
+                                                    NodeValue RHS,
+                                                    bool truncate) {
+  std::vector<NodeValue> inputs = broadcastInputs(axis, {LHS, RHS});
+  return createFloorDiv(name, inputs[0].getType(), inputs[0], inputs[1],
+                        truncate);
+}
+
+FloorDivNode *Function::createFloorDivWithBroadcast(llvm::StringRef name,
+                                                    int axis, TypeRef outTy,
+                                                    NodeValue LHS,
+                                                    NodeValue RHS,
+                                                    bool truncate) {
+  std::vector<NodeValue> inputs = broadcastInputs(axis, {LHS, RHS});
+  return createFloorDiv(name, outTy, inputs[0], inputs[1], truncate);
+}
 
 CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS) {
@@ -1951,6 +2006,32 @@ Function::createBatchedReduceAdd(llvm::StringRef name, TypeRef outTy,
   return addNode(new BatchedReduceAddNode(name, OT, batch, axis));
 }
 
+BatchedReduceSumSquareNode *
+Function::createBatchedReduceSumSquare(llvm::StringRef name, NodeValue batch,
+                                       llvm::ArrayRef<unsigned_t> axes) {
+  auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
+  auto OT = getParent()->uniqueTypeWithNewShape(batch.getType(), outDims);
+  return createBatchedReduceSumSquare(name, OT, batch, axes);
+}
+
+BatchedReduceSumSquareNode *
+Function::createBatchedReduceSumSquare(llvm::StringRef name, TypeRef outTy,
+                                       NodeValue batch,
+                                       llvm::ArrayRef<unsigned_t> axes) {
+  assert(axes.size() == 1 && "Only supporting single reduction for now.");
+  auto axis = axes[0];
+
+  // Calculate the expected total number of elements in the output tensor
+  // based on the number of elements in the batch divided by the axis
+  // dimension.
+  const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new BatchedReduceSumSquareNode(name, OT, batch, axis));
+}
+
 BatchedReduceAddNode *
 Function::createBatchedReduceAdd(llvm::StringRef name, NodeValue batch,
                                  llvm::ArrayRef<unsigned_t> axes) {
@@ -1992,6 +2073,32 @@ Function::createBatchedReduceMax(llvm::StringRef name, NodeValue batch,
   auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
   auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
   return addNode(new BatchedReduceMaxNode(name, OT, batch, axes));
+}
+
+BatchedReduceProdNode *
+Function::createBatchedReduceProd(llvm::StringRef name, TypeRef outTy,
+                                  NodeValue batch,
+                                  llvm::ArrayRef<unsigned_t> axes) {
+  assert(axes.size() == 1 && "Only supporting single reduction for now.");
+  auto axis = axes[0];
+
+  // Calculate the expected total number of elements in the output tensor
+  // based on the number of elements in the batch divided by the axis
+  // dimension.
+  const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new BatchedReduceProdNode(name, OT, batch, axis));
+}
+
+BatchedReduceProdNode *
+Function::createBatchedReduceProd(llvm::StringRef name, NodeValue batch,
+                                  llvm::ArrayRef<unsigned_t> axes) {
+  auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
+  auto OT = getParent()->uniqueTypeWithNewShape(batch.getType(), outDims);
+  return createBatchedReduceProd(name, OT, batch, axes);
 }
 
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,

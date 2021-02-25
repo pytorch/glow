@@ -183,12 +183,16 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
     } else {
       // Device initialization is taking longer than expected, return an error.
       return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
-                      "Timout encountered when initializing device: " +
+                      "Timeout encountered when initializing device: " +
                           std::string(config->name));
     }
     availableDevices_.push_back(deviceCount);
     deviceCount++;
   }
+#ifdef FACEBOOK_INTERNAL
+  LOG(INFO) << "Initialized " << deviceCount << " device(s)";
+#endif
+
   provisioner_.reset(new Provisioner(devices_));
   executor_.reset(
       new ThreadPoolExecutor(devices_, config_.executorThreads, "HostManager"));
@@ -260,7 +264,6 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   LOG(INFO) << "Adding Glow network built with revision hash: " << revisionHash;
 #endif /* FACEBOOK_INTERNAL */
   VLOG(1) << "addNetwork";
-
   ScopeGuard debugDumpDAGGuard([&]() {
     if (cctx.dumpFinalGraph) {
       for (Function *F : module->getFunctions()) {
@@ -361,11 +364,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   }
   VLOG(1) << "Before partitioner";
   Partitioner partitioner(module.get(), deviceInfo, skipOptimizations);
-  if (cctx.enableP2P || cctx.enableDRT) {
-    partitioner.setContextCount(cctx.maxActiveRequestsPerInstance);
-  } else {
-    partitioner.setContextCount(2);
-  }
+  auto backendName = devices_[0]->getBackendName();
+  const auto &backend = provisioner_->getBackend(backendName);
+  auto contextCount = backend.getContextCount(cctx);
+  partitioner.setContextCount(contextCount);
   DAGListTy nodeList;
   auto result = partitioner.partition(cctx);
   VLOG(1) << "After partitioner";
@@ -600,7 +602,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     for (auto &node : nodeList) {
+#if FACEBOOK_INTERNAL
       LOG(INFO) << "Successfully compiled and provisioned " << node.root->name;
+#endif
       auto &networkData = networks_[(node.root)->name];
       networkData.dag = std::move(node);
       networkData.module = sharedModule;
@@ -952,9 +956,10 @@ HostManager::runNetwork(llvm::StringRef networkName,
                         ResultCBTy callback, uint64_t priority) {
   DCHECK(callback != nullptr);
 
-  TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
-                    "HostManager::runNetwork");
+  TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
+                          "HostManager::runNetwork", traceBlock);
   auto currentRun = totalRequestCount_++;
+  traceBlock.addArg("glowRequestId", llvm::formatv("{0}", currentRun).str());
   uint64_t requestReceived = TraceEvent::now();
   size_t queueSize = 0;
 
@@ -968,7 +973,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     }
 
     if (network == nullptr) {
-      TRACE_EVENT_SCOPE_END();
+      TRACE_EVENT_SCOPE_END_NAMED(traceBlock);
       callback(
           currentRun,
           MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
@@ -983,7 +988,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
       if (queueSize >= config_.maxQueueSize) {
         // The queue is full, return an error.
         network->refcount--;
-        TRACE_EVENT_SCOPE_END();
+        TRACE_EVENT_SCOPE_END_NAMED(traceBlock);
         callback(
             currentRun,
             MAKE_ERR(
@@ -1002,7 +1007,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
                                priority, currentRun, requestReceived);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
-      TRACE_EVENT_SCOPE_END();
+      TRACE_EVENT_SCOPE_END_NAMED(traceBlock);
       inferQueue_.push(std::move(queuedRequest));
     }
   }

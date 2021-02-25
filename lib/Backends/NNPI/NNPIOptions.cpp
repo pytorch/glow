@@ -165,9 +165,28 @@ void NNPICompilationOptions::setLogLevel(int logLevel) {
   logStreamSet = true;
 }
 
-void NNPICompilationOptions::trySetDeviceVersion() {
-  int deviceVer = NNPIOptions::getFirstDeviceSteppingVersion();
-  if (deviceVer > 0) {
-    this->deviceVersion.setVal(deviceVer);
+Expected<NNPI_DEVICE_TYPE> NNPIOptions::getDeviceVersion(bool inferOnDevice,
+                                                         int deviceVersion) {
+  // If on device and a specific device version isn't set, check to see if
+  // there's a device attached with a step we can use.
+  if (inferOnDevice && deviceVersion == -1) {
+    deviceVersion = NNPIOptions::getFirstDeviceSteppingVersion();
   }
+
+  if (deviceVersion > 0) {
+    switch (deviceVersion) {
+    case 1:
+      return NNPI_1000_A;
+    case 2:
+      return NNPI_1000_B;
+    case 3:
+      return NNPI_1000_C;
+    default:
+      return MAKE_ERR("INVALID NNPI_DEVICE_VERSION, valid values are 1,2,3");
+    }
+  }
+  if (!inferOnDevice) {
+    return NNPI_1000_C;
+  }
+  return MAKE_ERR("Did not find valid NNPI stepping to use");
 }

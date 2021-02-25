@@ -361,6 +361,7 @@ TEST(exporter, onnxModels) {
     if (name.find("getInputsOnnxDefineSample.onnxtxt") != std::string::npos ||
         name.find("preluInvalidBroadcastSlope.onnxtxt") != std::string::npos ||
         name.find("padReflect.onnxtxt") != std::string::npos ||
+        name.find("powMultiBroadcastOp7.onnxtxt") != std::string::npos ||
         name.find("gatherConstantFolding.onnxtxt") != std::string::npos ||
         name.find("averagePool3D.onnxtxt") != std::string::npos ||
         name.find("sparseLengthsSum.onnxtxt") != std::string::npos ||
@@ -414,6 +415,7 @@ TEST(exporter, onnxModels) {
         name.find("loop_withoutN.onnxtxt") != std::string::npos ||
         name.find("sign.onnxtxt") != std::string::npos ||
         name.find("gatherND.onnxtxt") != std::string::npos ||
+        name.find("softmax13.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=

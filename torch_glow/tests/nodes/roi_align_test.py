@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -16,10 +13,14 @@ def rand_rois(N, H, W, count):
         rois[i][1] *= W - 1  # x1
         rois[i][2] *= H - 1  # y1
 
-        rois[i][3] *= W - rois[i][1]  # x2
-        rois[i][3] += rois[i][1]
-        rois[i][4] *= H - rois[i][2]  # y2
-        rois[i][4] += rois[i][2]
+        f = rois[i][3]
+        if f == 0:  # enforce 0 < f < 1
+            f = 1e-3
+        rois[i][3] = rois[i][1] + f * (W - rois[i][1])  # x2
+        f = rois[i][4]
+        if f == 0:  # enforce 0 < f < 1
+            f = 1e-3
+        rois[i][4] = rois[i][2] + f * (H - rois[i][2])  # y2
 
         assert rois[i][1] > 0 and rois[i][1] < W - 1
         assert rois[i][2] > 0 and rois[i][2] < H - 1
@@ -53,23 +54,23 @@ class SimpleRoiAlignModel(torch.nn.Module):
         return torch.ops._caffe2.RoIAlign(features, rois, **self.kwargs)
 
 
-class TestRoiAlign(unittest.TestCase):
-    @parameterized.expand(
+class TestRoiAlign(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("basic", SimpleRoiAlignModel("NCHW"), torch.randn(1, 3, 16, 20)),
-            ("nhwc", SimpleRoiAlignModel("NHWC"), torch.randn(1, 16, 20, 3)),
-            ("batched", SimpleRoiAlignModel("NCHW"), torch.randn(4, 3, 16, 20)),
-            (
+            lambda: ("basic", SimpleRoiAlignModel("NCHW"), torch.randn(1, 3, 16, 20)),
+            lambda: ("nhwc", SimpleRoiAlignModel("NHWC"), torch.randn(1, 16, 20, 3)),
+            lambda: ("batched", SimpleRoiAlignModel("NCHW"), torch.randn(4, 3, 16, 20)),
+            lambda: (
                 "scaled",
                 SimpleRoiAlignModel("NCHW", spatial_scale=0.0625),
                 torch.randn(1, 3, 224, 224),
             ),
-            (
+            lambda: (
                 "unaligned",
                 SimpleRoiAlignModel("NCHW", aligned=False),
                 torch.randn(1, 3, 16, 20),
             ),
-            (
+            lambda: (
                 "dynamic_sampling",
                 SimpleRoiAlignModel("NCHW", sampling_ratio=0),
                 torch.randn(1, 3, 16, 20),

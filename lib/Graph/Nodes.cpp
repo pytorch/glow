@@ -480,6 +480,15 @@ static bool verifySoftMax(NodeValue src, NodeValue dest) {
   return checkSameType(src, dest, parent);
 }
 
+static bool verifyLogSoftMax(NodeValue src, NodeValue dest) {
+  const Node *parent = dest.getNode();
+  if (src.getType()->isQuantizedType()) {
+    return checkType(src, dest.getElementType(), parent) &&
+           checkSameShape(src, dest, parent);
+  }
+  return checkSameType(src, dest, parent);
+}
+
 static bool verifyCrossEntropyLoss(NodeValue P, NodeValue CE,
                                    NodeValue labels) {
   const Node *parent = CE.getNode();
@@ -1084,6 +1093,29 @@ bool SoftMaxGradNode::verify() const {
   return isValid;
 }
 
+bool LogSoftMaxNode::verify() const {
+  return verifyLogSoftMax(getInput(), getResult());
+}
+
+bool LogSoftMaxGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= ((verifyInputAndGradInputTypes(
+                  getSelected(), getGradOfInputNamedSelected(), this))
+                  ? 1
+                  : 0);
+  isValid &= ((verifyOutputAndGradOutputTypes(
+                  getOriginalOutputForResult(),
+                  getGradOfOriginalOutputNamedResult(), this))
+                  ? 1
+                  : 0);
+  isValid &= ((verifyLogSoftMax(getGradOfInputNamedInput(),
+                                getGradOfOriginalOutputNamedResult()))
+                  ? 1
+                  : 0);
+  return isValid;
+}
+
 bool CrossEntropyLossNode::verify() const {
   return verifyCrossEntropyLoss(getP(), getCE(), getLabels());
 }
@@ -1388,6 +1420,7 @@ VERIFY_UNARY_ARITHMETIC(Reciprocal);
 VERIFY_UNARY_ARITHMETIC(Sin);
 VERIFY_UNARY_ARITHMETIC(Cos);
 VERIFY_UNARY_ARITHMETIC(Erf);
+VERIFY_UNARY_ARITHMETIC(Truncate);
 #undef VERIFY_UNARY_ARITHMETIC
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
@@ -1510,6 +1543,15 @@ bool BatchedMulNode::verify() const {
   return isValid;
 }
 
+bool BatchedReduceSumSquareNode::verify() const {
+  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+
+  isValid &=
+      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
+                        this, CompareOperatorGreaterThan<size_t>());
+  return isValid;
+}
+
 bool CumSumNode::verify() const {
   return checkSameType(getResult(), getInput(), this);
 }
@@ -1533,6 +1575,7 @@ DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceAdd)
 DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceMean)
 DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceMin)
 DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceMax)
+DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceProd)
 
 #undef DEFINE_BATCHED_REDUCTION_VERIFICATION
 

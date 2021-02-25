@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -33,10 +30,10 @@ class SimpleQuantizedMulModel(torch.nn.Module):
             )
 
 
-class TestQuantizedMul(unittest.TestCase):
-    @parameterized.expand(
+class TestQuantizedMul(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "zero_offset",
                 SimpleQuantizedMulModel(
                     torch.nn.quantized.Quantize(
@@ -51,7 +48,7 @@ class TestQuantizedMul(unittest.TestCase):
                 torch.tensor([1, 2, 3, 4], dtype=torch.float32),
                 torch.tensor([5, 6, 7, 8], dtype=torch.float32),
             ),
-            (
+            lambda: (
                 "basic",
                 SimpleQuantizedMulModel(
                     torch.nn.quantized.Quantize(
@@ -66,7 +63,7 @@ class TestQuantizedMul(unittest.TestCase):
                 torch.randn([5, 5]),
                 torch.randn([5, 5]),
             ),
-            (
+            lambda: (
                 "cut_q_dq",
                 SimpleQuantizedMulModel(
                     torch.nn.quantized.Quantize(
@@ -82,7 +79,7 @@ class TestQuantizedMul(unittest.TestCase):
                 torch.randn([5, 5]),
                 ["aten::quantize_per_tensor", "aten::dequantize"],
             ),
-            (
+            lambda: (
                 "broadcast",
                 SimpleQuantizedMulModel(
                     torch.nn.quantized.Quantize(
@@ -98,7 +95,7 @@ class TestQuantizedMul(unittest.TestCase):
                 torch.randn([1, 5, 1, 1]),
                 ["aten::quantize_per_tensor", "aten::dequantize"],
             ),
-            (
+            lambda: (
                 "positive_scalar",
                 SimpleQuantizedMulModel(
                     torch.nn.quantized.Quantize(
@@ -108,7 +105,7 @@ class TestQuantizedMul(unittest.TestCase):
                 torch.randn(1, 2, 3, 4),
                 torch.tensor(3.14),
             ),
-            (
+            lambda: (
                 "negative_scalar",
                 SimpleQuantizedMulModel(
                     torch.nn.quantized.Quantize(
@@ -118,7 +115,7 @@ class TestQuantizedMul(unittest.TestCase):
                 torch.randn(1, 2, 3, 4),
                 torch.tensor(-3.14),
             ),
-            (
+            lambda: (
                 "zero_scalar",
                 SimpleQuantizedMulModel(
                     torch.nn.quantized.Quantize(
@@ -128,7 +125,7 @@ class TestQuantizedMul(unittest.TestCase):
                 torch.randn(1, 2, 3, 4),
                 torch.tensor(0.00),
             ),
-            (
+            lambda: (
                 "negative_int8_scalar",
                 SimpleQuantizedMulModel(
                     torch.nn.quantized.Quantize(

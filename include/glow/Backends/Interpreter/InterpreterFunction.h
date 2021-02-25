@@ -198,6 +198,8 @@ private:
   void fwdAdaptiveAvgPoolInstFloatImpl(const AdaptiveAvgPoolInst *I);
 
   template <typename ElemTy> void fwdSoftMaxInstImpl(const SoftMaxInst *I);
+  template <typename ElemTy>
+  void fwdLogSoftMaxInstImpl(const LogSoftMaxInst *I);
 
   template <typename ElemTy, typename AccumulatorTy>
   void fwdMatMulInstQuantizedImpl(const MatMulInst *I);
@@ -330,6 +332,12 @@ private:
   void fwdBatchedReduceMaxInstImpl(Value *batch, Value *dest,
                                    const ShapeVector &eBatchDims,
                                    const ShapeVector &eDestDims, ElemTy min);
+
+  template <typename ElemTy>
+  void fwdBatchedReduceProdInstFloatImpl(Value *batch, Value *dest,
+                                         unsigned_t axis,
+                                         const ShapeVector &eBatchDims,
+                                         const ShapeVector &eDestDims);
 
   template <typename ElemTy>
   void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,

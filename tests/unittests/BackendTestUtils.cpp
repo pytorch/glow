@@ -181,7 +181,8 @@ setupInterpAndBackendConfigs(
 void dispatchInference(const std::string &fname,
                        runtime::HostManager *hostManager,
                        ExecutionContext &context,
-                       unsigned concurrentRequestsOpt) {
+                       unsigned concurrentRequestsOpt,
+                       bool useNewExecutionContext) {
   // If additional requests are desired, setup additional contexts.
   std::vector<std::unique_ptr<ExecutionContext>> contexts;
   std::unique_ptr<ExecutionContext> originalContextPtr(&context);
@@ -190,9 +191,11 @@ void dispatchInference(const std::string &fname,
     // Clone the placeholder bindings into a new executionContext.
     for (unsigned i = 0, max = concurrentRequestsOpt - 1; i < max; i++) {
       std::unique_ptr<ExecutionContext> newContext =
-          glow::make_unique<ExecutionContext>(
-              glow::make_unique<PlaceholderBindings>(
-                  context.getPlaceholderBindings()->clone()));
+          (useNewExecutionContext)
+              ? glow::make_unique<ExecutionContext>()
+              : glow::make_unique<ExecutionContext>(
+                    glow::make_unique<PlaceholderBindings>(
+                        context.getPlaceholderBindings()->clone()));
       contexts.push_back(std::move(newContext));
     }
   }
@@ -216,7 +219,6 @@ void dispatchInference(const std::string &fname,
   for (auto &future : futures) {
     future.wait();
   }
-
   for (auto &c : contexts) {
     c->getPlaceholderBindings()->ensureOnHost();
   }

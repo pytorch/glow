@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -14,7 +12,7 @@ class SimpleMaxModule(torch.nn.Module):
         return torch.max(a + a, b + b)
 
 
-class TestMax(unittest.TestCase):
+class TestMax(utils.TorchGlowTestCase):
     def test_elementwise_max(self):
         """Test of the PyTorch max Node on Glow."""
 

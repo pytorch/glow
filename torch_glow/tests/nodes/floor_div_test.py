@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -21,57 +18,62 @@ class SimpleFloorDivideModule(torch.nn.Module):
             return (a + a).floor_divide(b)
 
 
-class TestFloorDiv(unittest.TestCase):
-    @unittest.skip(
-        reason="Disabled while PyTorch floor_divide is fixed: github.com/pytorch/pytorch/issues/43874"
-    )
-    def test_floor_div_basic(self):
-        """Basic test of the PyTorch div Node on Glow."""
-
-        def test_f(a, b):
-            return (a + a).floor_divide(1.9)
-
-        x = torch.randn(4)
-        y = torch.randn(4)
-        utils.compare_tracing_methods(test_f, x, y, fusible_ops={"aten::floor_divide"})
-
-    @parameterized.expand(
+class TestFloorDiv(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 SimpleFloorDivideModule(),
                 torch.Tensor(4).random_(0, 5),
                 torch.Tensor(4).random_(1, 5),
             ),
-            (
+            lambda: (
                 "inplace",
                 SimpleFloorDivideModule(True),
                 torch.Tensor(4).random_(0, 5),
                 torch.Tensor(4).random_(1, 5),
             ),
-            (
+            lambda: (
                 "positive_float",
                 SimpleFloorDivideModule(),
                 torch.Tensor(4).random_(0, 5),
                 torch.tensor(3.9),
             ),
-            (
+            lambda: (
+                "negative_float",
+                SimpleFloorDivideModule(),
+                torch.tensor([-4.0]),
+                torch.tensor([3.0]),
+            ),
+            lambda: (
                 "positive_broadcast",
                 SimpleFloorDivideModule(),
                 torch.Tensor(8, 3, 4, 2).random_(0, 5),
                 torch.Tensor(4, 2).random_(1, 5),
             ),
-            (
+            lambda: (
                 "positive_broadcast",
                 SimpleFloorDivideModule(),
                 torch.Tensor(8, 3, 4, 2).random_(0, 5),
                 torch.Tensor(1, 2).random_(1, 5),
             ),
-            (
+            lambda: (
                 "positive_broadcast",
                 SimpleFloorDivideModule(),
                 torch.Tensor(4, 2).random_(0, 5),
                 torch.Tensor(8, 3, 4, 2).random_(1, 5),
+            ),
+            lambda: (
+                "positive_int",
+                SimpleFloorDivideModule(),
+                torch.tensor([5]),
+                torch.tensor([4]),
+            ),
+            lambda: (
+                "negative_int",
+                SimpleFloorDivideModule(),
+                torch.tensor([-5]),
+                torch.tensor([4]),
             ),
         ]
     )

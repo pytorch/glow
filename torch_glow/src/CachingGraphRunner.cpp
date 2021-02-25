@@ -95,18 +95,27 @@ void initializeCompiliationContextFromSettings(
   }
 }
 
-} // namespace
+/// This function slice the input Tensor according to the expected shape in the
+/// zero dimension.
+/// TODO: Multi-dimension slicing will be supported later.
+at::Tensor sliceTensor(at::Tensor &t, const TensorShape &shape) {
+  CHECK_GT(shape.size(), 0);
+  return at::native::slice(t, 0, 0, shape[0]);
+}
 
-static glow::Expected<std::string> getOnnxFilePath(const std::string &filename,
-                                                   bool writeOnnxToTmp) {
+glow::Expected<std::string> getOnnxFilePath(const std::string &filePrefix,
+                                            bool writeOnnxToTmp,
+                                            const char *extension = ".onnx") {
   if (writeOnnxToTmp) {
     std::string filepath;
-    ASSIGN_VALUE_OR_RETURN_ERR(filepath, getTempFileLoc(filename, ".onnx"));
+    ASSIGN_VALUE_OR_RETURN_ERR(filepath, getTempFileLoc(filePrefix, extension));
     return filepath;
   } else {
-    return filename + ".onnx";
+    return filePrefix + extension;
   }
 }
+
+} // namespace
 
 void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
                                                 bool flush) {
@@ -324,12 +333,267 @@ TensorCompareResult compareTensors(glow::Tensor &RefT, glow::Tensor &CmpT) {
   return result;
 }
 
-/// This function slice the input Tensor according to the expected shape in the
-/// zero dimension.
-/// TODO: Multi-dimension slicing will be supported later.
-at::Tensor sliceTensor(at::Tensor &t, const TensorShape &shape) {
-  CHECK_GT(shape.size(), 0);
-  return at::native::slice(t, 0, 0, shape[0]);
+/// Create an onnx graph for the tensors in \p glowTensors with names from \p
+/// placeholders and write the graph to \p filePrefix
+static Error
+writeGlowTensorsToOnnx(const std::string &filePrefix,
+                       const PyTorchLoaderSettings &settings,
+                       const std::vector<glow::Placeholder *> &placeholders,
+                       const std::vector<glow::Tensor> &glowTensors) {
+  DCHECK_EQ(placeholders.size(), glowTensors.size());
+
+  ONNX_NAMESPACE::GraphProto onnxGraph;
+  for (size_t i = 0; i < placeholders.size(); ++i) {
+    auto *onnxT = onnxGraph.add_initializer();
+    const auto *ph = placeholders[i];
+    const auto &t = glowTensors[i];
+    onnxT->set_name(ph->getName());
+    size_t unpaddedSize = t.getUnpaddedSizeInBytes();
+    size_t tensorSize = t.getSizeInBytes();
+    if (unpaddedSize == tensorSize) {
+      ONNXModelWriter::writeTensor(t, onnxT,
+                                   /*useGlowCustomOps*/ true);
+    } else {
+      // If the tensor is a partial tensor, then save only the part
+      // that has data.
+      auto ty = t.getType();
+      auto dims = ty.dims().vec();
+      DCHECK_GT(dims.size(), 0);
+      dims[0] = dims[0] * unpaddedSize / tensorSize;
+      const auto &resized = t.getUnowned(dims);
+      ONNXModelWriter::writeTensor(resized, onnxT,
+                                   /*useGlowCustomOps*/ true);
+    }
+  }
+
+  std::string filename;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      filename, getOnnxFilePath(filePrefix, settings.writeOnnxToTmp));
+  std::ofstream of(filename, std::ios::binary);
+  if (!of) {
+    return MAKE_ERR(
+        strFormat("Cannot create onnx tensor file %s", filename.c_str()));
+  }
+
+  std::string buffer;
+  onnxGraph.SerializeToString(&buffer);
+  of << buffer;
+
+  return Error::success();
+}
+
+/// Get outputs from \p stack which contains PyTorch tensors from running on JIT
+/// GraphExector and create a onnx file for those outputs at \p filePrefix.
+static Error
+writeJITOutputsToOnnxFile(const std::string &filePrefix,
+                          const torch::jit::Stack &stack,
+                          const CachingGraphRunner::PerGlowGraphInfo &info) {
+  // pull outputs off the stack, create corresponding vector of Glow tensors
+  std::vector<glow::Tensor> glowTensorOutputs;
+  std::vector<torch::Tensor> ptTensorOutputs;
+  size_t numOutputs = info.outputPlaceholders.size();
+  for (size_t i = 0; i < numOutputs; ++i) {
+    auto &jitOutput = torch::jit::peek(stack, i, numOutputs);
+    auto jitPtTensor = jitOutput.toTensor().contiguous();
+    glow::Tensor jitGlowT = ptTensorToGlowTensor(jitPtTensor);
+    glowTensorOutputs.push_back(std::move(jitGlowT));
+    ptTensorOutputs.push_back(std::move(jitPtTensor));
+  }
+
+  // write outputs to file
+  RETURN_IF_ERR(writeGlowTensorsToOnnx(
+      filePrefix, info.settings, info.outputPlaceholders, glowTensorOutputs));
+
+  return Error::success();
+}
+
+Error CachingGraphRunner::writeJitIOToOnnxFile(
+    const std::string &inputFilePrefix, const std::string &outputFilePrefix,
+    const torch::jit::Stack &stack) {
+
+  if (!defaultSettings_.dumpFailedInputsToOnnxFiles) {
+    return Error::success();
+  }
+
+  std::shared_ptr<PerGlowGraphInfo> info;
+  ASSIGN_VALUE_OR_RETURN_ERR(info, findGraphInfoForStack(stack));
+
+  // Write inputs
+  size_t numInputs = graph_->inputs().size();
+  const auto inputs = torch::jit::last(stack, numInputs);
+
+  std::vector<glow::Tensor> glowTensorInputs;
+  std::vector<torch::Tensor> ptTensorInputs;
+
+  if (auto tensorsOrErr =
+          processPyTorchInputs(inputs, info->inputPlaceholders)) {
+    glowTensorInputs = std::move(tensorsOrErr->first);
+    ptTensorInputs = std::move(tensorsOrErr->second);
+  } else {
+    RETURN_ERR(tensorsOrErr.takeError());
+  }
+
+  RETURN_IF_ERR(writeGlowTensorsToOnnx(inputFilePrefix, info->settings,
+                                       info->inputPlaceholders,
+                                       glowTensorInputs));
+
+  // Write InputMetaStack to file so we know the type of the inputs
+  InputMetaStack metaStack;
+  ASSIGN_VALUE_OR_RETURN_ERR(metaStack, inputMetaStackFromStack(inputs));
+
+  std::string metaStackFilename;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      metaStackFilename,
+      getOnnxFilePath(inputFilePrefix, info->settings.writeOnnxToTmp, ".txt"));
+  std::ofstream metaStackOF(metaStackFilename, std::ios::binary);
+  if (!metaStackOF) {
+    return MAKE_ERR(strFormat("Cannot create metastack text file %s",
+                              metaStackFilename.c_str()));
+  }
+
+  metaStackOF << metaStack.print();
+
+  // Run the stack on JIT to get outputs then write them to file
+  torch::jit::Stack copyStack;
+  // We will use original graph for runOnJit, which means the first input
+  // should be module.
+  if (origGraph_ != nullptr) {
+    copyStack.push_back(module_);
+  }
+  for (auto &ival : stack) {
+    if (ival.isTensor()) {
+      copyStack.push_back(ival.deepcopy());
+    } else {
+      copyStack.push_back(ival);
+    }
+  }
+  runOnJit(copyStack);
+
+  // Write outputs
+  RETURN_IF_ERR(writeJITOutputsToOnnxFile(outputFilePrefix, copyStack, *info));
+
+  return Error::success();
+}
+
+Expected<std::pair<glow::Tensor, torch::Tensor>>
+CachingGraphRunner::convertPyTorchInputToGlowInput(
+    torch::Tensor ptTensor, const glow::Placeholder *ph) {
+  glow::Tensor glowTensor;
+
+  glow::TypeRef ty = ph->getType();
+
+  if (ptTensor.is_quantized()) {
+    ptTensor = convertQuantizedToDtype(ptTensor, at::kQInt8);
+  }
+
+  // Make sure the runtime pytorch tensor type matches the placeholder.
+  // Note this needs to be placed after convertQuantizedToDtype to
+  // correctly handle quantized types.
+  if (ty->getElementType() != scalarTypeToElemKind(ptTensor.scalar_type())) {
+    std::stringstream ss;
+    ss << "Found type mismatch for input \"" << ph->getName().str() << "\""
+       << ": pytorch tensor is " << ptTensor.toString() << ", ph type is "
+       << ty->toString();
+    return MAKE_ERR(ss.str());
+  }
+
+  if (!ptTensor.is_contiguous()) {
+    ptTensor = ptTensor.contiguous();
+  }
+
+  // Check Tensor size, making sure enough memory is allocated
+  if (ptTensor.numel() > ty->size()) {
+    std::stringstream ss;
+    ss << "Input tensor is too large: " << ptTensor.numel() << " vs "
+       << ty->size() << ": " << ph->getName().str();
+    return MAKE_ERR(ss.str());
+  }
+
+  if (ty->dims().size() == ptTensor.ndimension() &&
+      std::equal(ty->dims().begin(), ty->dims().end(),
+                 ptTensor.sizes().begin())) {
+    glowTensor = glow::Tensor(ptTensor.data_ptr(), ty);
+  } else if (ptTensor.data_ptr() && ptTensor.numel() > 0 &&
+             backend_.supportsPartialTensors()) {
+    // This is a partial tensor, to create padded unown tensor
+    glowTensor = glow::Tensor(ptTensor.data_ptr(), ty, ptTensor.nbytes());
+  } else if (ptTensor.numel() == 0) {
+    // Handles zero-size input tensor
+    // Here zeroLengthSequence_ is pre-allocated if warmCache is called
+    assert(zeroLengthSequence_.getUnsafePtr());
+    glowTensor = glow::Tensor((void *)zeroLengthSequence_.getUnsafePtr(), ty);
+  } else {
+    // For backends that does not support partial tensor, manually pad
+    // zeros
+    auto inputTensorOpt = tensorPool_.get(ty);
+    if (!inputTensorOpt.hasValue()) {
+      std::stringstream ss;
+      ss << "Tensorpool tensor not found for input " << ptTensor.name();
+      return MAKE_ERR(ss.str());
+    }
+    // We want fresh DeviceResidencyInfo for this fresh Tensor.
+    glow::Tensor inputTensor(std::move(inputTensorOpt.getValue()));
+    inputTensor.resetDeviceInfo();
+    if (ptTensor.data_ptr()) {
+      memcpy(inputTensor.getUnsafePtr(), ptTensor.data_ptr(),
+             ptTensor.nbytes());
+      // Pad remaining space with zeroes.
+      memset(inputTensor.getUnsafePtr() + ptTensor.nbytes(), 0,
+             inputTensor.getSizeInBytes() - ptTensor.nbytes());
+    } else {
+      inputTensor.zero();
+    }
+    glowTensor = std::move(inputTensor);
+  }
+
+  std::pair<glow::Tensor, torch::Tensor> tensors = {std::move(glowTensor),
+                                                    std::move(ptTensor)};
+  return tensors;
+}
+
+Expected<std::pair<std::vector<glow::Tensor>, std::vector<torch::Tensor>>>
+CachingGraphRunner::processPyTorchInputs(
+    at::ArrayRef<at::IValue> inputs,
+    const std::vector<Placeholder *> &inputPlaceholders) {
+  size_t numInputs = inputs.size();
+
+  std::vector<glow::Tensor> glowTensorInputs;
+  std::vector<torch::Tensor> ptTensorInputs;
+  glowTensorInputs.reserve(numInputs);
+  ptTensorInputs.reserve(numInputs);
+
+  // We only hold placeholders for tensor inputs so indexing them is
+  // different than indexing all inputs.
+  size_t placeholderI = 0;
+
+  for (const auto &input : inputs) {
+    if (!input.isTensor()) {
+      continue;
+    }
+
+    glow::Placeholder *ph = inputPlaceholders[placeholderI++];
+
+    auto ptTensorOrig = input.toTensor();
+
+    std::pair<glow::Tensor, torch::Tensor> tensors;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        tensors, convertPyTorchInputToGlowInput(ptTensorOrig, ph));
+
+    glowTensorInputs.push_back(std::move(tensors.first));
+
+    // Save the PyTorch tensor in case it owns memory we need for inference
+    ptTensorInputs.push_back(std::move(tensors.second));
+  }
+
+  RETURN_ERR_IF_NOT(inputPlaceholders.size() == glowTensorInputs.size(),
+                    strFormat("Expected %d Tensor inputs but found %d",
+                              int(inputPlaceholders.size()),
+                              int(glowTensorInputs.size())));
+
+  std::pair<std::vector<glow::Tensor>, std::vector<torch::Tensor>> tensors = {
+      std::move(glowTensorInputs), std::move(ptTensorInputs)};
+
+  return tensors;
 }
 
 Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
@@ -339,6 +603,10 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
   int64_t jitRunningTime = 0;
   const PyTorchLoaderSettings &settings = info.settings;
+
+  // Save all of the PyTorch input tensors in case they were allocated here for
+  // things like making an input contiguous.
+  std::vector<torch::Tensor> ptTensorInputs;
 
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
@@ -377,155 +645,33 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
     size_t numInputs = graph_->inputs().size();
     const auto inputs = torch::jit::last(stack, numInputs);
+
     {
       RECORD_USER_SCOPE("adjustInputs");
-      // We only hold placeholders for tensor inputs so indexing them is
-      // different than indexing all inputs.
-      size_t placeholderI = 0;
 
-      for (const auto &input : inputs) {
-        if (input.isTensor()) {
-
-          glow::Placeholder *ph = info.inputPlaceholders[placeholderI++];
-          glow::TypeRef ty = ph->getType();
-
-          auto ptTensor = input.toTensor();
-
-          bool needClone = false;
-
-          if (ptTensor.is_quantized()) {
-            ptTensor = convertQuantizedToDtype(ptTensor, at::kQInt8);
-            // We need to clone a new tensor here since
-            // convertQuantizedToDtype might create a temporary tensor
-            needClone = true;
-          }
-
-          // Make sure the runtime pytorch tensor type matches the placeholder.
-          // Note this needs to be placed after convertQuantizedToDtype to
-          // correctly handle quantized types.
-          if (ty->getElementType() !=
-              scalarTypeToElemKind(ptTensor.scalar_type())) {
-            std::stringstream ss;
-            ss << "Found type mismatch for input #" << placeholderI
-               << ": pytorch tensor is " << ptTensor.toString()
-               << ", ph type is " << ty->toString();
-            return MAKE_ERR(ss.str());
-          }
-
-          if (!ptTensor.is_contiguous()) {
-            ptTensor = ptTensor.contiguous();
-            needClone = true;
-          }
-
-          // Check Tensor size, making sure enough memory is allocated
-          if (ptTensor.numel() > ty->size()) {
-            std::stringstream ss;
-            ss << "Input tensor is too large: " << ptTensor.numel() << " vs "
-               << ty->size() << ": " << ph->getName().str();
-            return MAKE_ERR(ss.str());
-          }
-
-          if (ty->dims().size() == ptTensor.ndimension() &&
-              std::equal(ty->dims().begin(), ty->dims().end(),
-                         ptTensor.sizes().begin())) {
-            glow::Tensor t;
-            if (needClone) {
-              t = glow::Tensor(ptTensor.data_ptr(), ty).clone();
-            } else {
-              t = glow::Tensor(ptTensor.data_ptr(), ty);
-            }
-            bindings->insert(ph, std::move(t));
-          } else if (ptTensor.data_ptr() && ptTensor.numel() > 0 &&
-                     backend_.supportsPartialTensors()) {
-            // This is a partial tensor, to create padded unown tensor
-            glow::Tensor t;
-            if (needClone) {
-              t = glow::Tensor(ptTensor.data_ptr(), ty, ptTensor.nbytes())
-                      .clone();
-            } else {
-              t = glow::Tensor(ptTensor.data_ptr(), ty, ptTensor.nbytes());
-            }
-            bindings->insert(ph, std::move(t));
-          } else if (ptTensor.numel() == 0) {
-            // Handles zero-size input tensor
-            // Here zeroLengthSequence_ is pre-allocated if warmCache is called
-            assert(zeroLengthSequence_.getUnsafePtr());
-            bindings->insert(
-                ph,
-                glow::Tensor((void *)zeroLengthSequence_.getUnsafePtr(), ty));
-          } else {
-            // For backends that does not support partial tensor, manually pad
-            // zeros
-            auto inputTensorOpt = tensorPool_.get(ty);
-            if (!inputTensorOpt.hasValue()) {
-              std::stringstream ss;
-              ss << "Tensorpool tensor not found for input " << ptTensor.name();
-              return MAKE_ERR(ss.str());
-            }
-            // We want fresh DeviceResidencyInfo for this fresh Tensor.
-            Tensor inputTensor(std::move(inputTensorOpt.getValue()));
-            inputTensor.resetDeviceInfo();
-            if (ptTensor.data_ptr()) {
-              memcpy(inputTensor.getUnsafePtr(), ptTensor.data_ptr(),
-                     ptTensor.nbytes());
-              // Pad remaining space with zeroes.
-              memset(inputTensor.getUnsafePtr() + ptTensor.nbytes(), 0,
-                     inputTensor.getSizeInBytes() - ptTensor.nbytes());
-            } else {
-              inputTensor.zero();
-            }
-            bindings->insert(ph, std::move(inputTensor));
-          }
-        } else if (input.isObject()) {
-          // Objects are only used for loading attributes at compile time.
-          continue;
-        } else if (!(input.isBool() || input.isInt() || input.isIntList())) {
-          return MAKE_ERR(
-              "Only Int/IntList, Tensor and Object IValue inputs are accepted");
-        }
+      std::vector<glow::Tensor> glowTensorInputs;
+      if (auto tensorsOrErr =
+              processPyTorchInputs(inputs, info.inputPlaceholders)) {
+        glowTensorInputs = std::move(tensorsOrErr->first);
+        ptTensorInputs = std::move(tensorsOrErr->second);
+      } else {
+        RETURN_ERR(tensorsOrErr.takeError());
       }
 
+      // Write input tensors to file
       if (settings.writeToOnnx) {
-        std::string filename;
-        LOG(ERROR) << onnxFileNamePrefix.c_str();
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            filename,
-            getOnnxFilePath(
-                strFormat("%s_input_%zu", onnxFileNamePrefix.c_str(), runId),
-                settings.writeOnnxToTmp));
-        std::ofstream of(filename, std::ios::binary);
-        if (!of) {
-          LOG(ERROR) << "Cannot create input file " << filename;
-        } else {
-          ONNX_NAMESPACE::GraphProto inputG;
-          for (const auto &p : bindings->pairs()) {
-            auto *onnxT = inputG.add_initializer();
-            const auto ph = p.first;
-            const auto &t = p.second;
-            onnxT->set_name(ph->getName());
-            size_t unpaddedSize = t.getUnpaddedSizeInBytes();
-            size_t tensorSize = t.getSizeInBytes();
-            if (unpaddedSize == tensorSize) {
-              ONNXModelWriter::writeTensor(t, onnxT,
-                                           /*useGlowCustomOps*/ true);
-            } else {
-              // If the input is a partial tensor, then save only the part
-              // that has data.
-              auto ty = t.getType();
-              auto dims = ty.dims().vec();
-              assert(dims.size() > 0);
-              dims[0] = dims[0] * unpaddedSize / tensorSize;
-              const auto &resized = t.getUnowned(dims);
-              ONNXModelWriter::writeTensor(resized, onnxT,
-                                           /*useGlowCustomOps*/ true);
-            }
-          }
-          std::string buffer;
-          inputG.SerializeToString(&buffer);
-          of << buffer;
-        }
+        RETURN_IF_ERR(writeGlowTensorsToOnnx(
+            strFormat("%s_input_%zu", onnxFileNamePrefix.c_str(), runId),
+            settings, info.inputPlaceholders, glowTensorInputs));
       }
-    }
+
+      // Populate PlaceholderBindings
+      for (size_t i = 0; i < glowTensorInputs.size(); ++i) {
+        bindings->insert(info.inputPlaceholders[i],
+                         std::move(glowTensorInputs[i]));
+      }
+    } // end adjustInputs
+
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "adjustInputs");
 
     TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setupOutput");
@@ -578,9 +724,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
 
       torch::jit::drop(stack, numInputs);
-
-      ONNX_NAMESPACE::GraphProto outputG;
-      ONNX_NAMESPACE::GraphProto jitOutputG;
+      std::vector<glow::Tensor> convertedGlowTensors;
       for (int i = 0; i < outputs.size(); i++) {
         auto &output = outputs[i];
         auto ptTensor = output.toTensor();
@@ -596,26 +740,10 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                 strFormat("Fail to propagate quantized dtype to output"));
           }
         }
-
         // Write the output from Glow to ONNX if necessary.
         if (settings.writeToOnnx) {
           glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
-          auto *onnxT = outputG.add_initializer();
-          onnxT->set_name(info.outputPlaceholders[i]->getName());
-          ONNXModelWriter::writeTensor(glowT, onnxT,
-                                       /*useGlowCustomOps*/ true);
-        }
-
-        // Write the output from the JIT output (not from Glow) to ONNX if
-        // necessary.
-        if (settings.writeToOnnx) {
-          auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
-          auto jitPtTensor = jitOutput.toTensor().contiguous();
-          glow::Tensor jitGlowT = ptTensorToGlowTensor(jitPtTensor);
-          auto *jitOnnxT = jitOutputG.add_initializer();
-          jitOnnxT->set_name(info.outputPlaceholders[i]->getName());
-          ONNXModelWriter::writeTensor(jitGlowT, jitOnnxT,
-                                       /*useGlowCustomOps*/ true);
+          convertedGlowTensors.push_back(std::move(glowT));
         }
 
         // Run shape inference and slice out the correct size of the Glow
@@ -665,37 +793,16 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
 
       if (settings.writeToOnnx) {
-        std::string filename;
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            filename,
-            getOnnxFilePath(strFormat("%s_glow_output_%zu",
-                                      onnxFileNamePrefix.c_str(), runId),
-                            settings.writeOnnxToTmp));
-        std::ofstream of(filename, std::ios::binary);
-        if (!of) {
-          LOG(ERROR) << "Cannot create output file " << filename;
-        } else {
-          std::string buffer;
-          outputG.SerializeToString(&buffer);
-          of << buffer;
-        }
-      }
+        // Write Glow outputs to file
+        RETURN_IF_ERR(writeGlowTensorsToOnnx(
+            strFormat("%s_glow_output_%zu", onnxFileNamePrefix.c_str(), runId),
+            info.settings, info.outputPlaceholders, convertedGlowTensors));
 
-      if (settings.writeToOnnx) {
-        std::string filename;
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            filename,
-            getOnnxFilePath(strFormat("%s_pytorch_output_%zu",
-                                      onnxFileNamePrefix.c_str(), runId),
-                            settings.writeOnnxToTmp));
-        std::ofstream of(filename, std::ios::binary);
-        if (!of) {
-          LOG(ERROR) << "Cannot create output file " << filename;
-        } else {
-          std::string buffer;
-          jitOutputG.SerializeToString(&buffer);
-          of << buffer;
-        }
+        // Convert JIT outputs to Glow outputs and write to file
+        RETURN_IF_ERR(writeJITOutputsToOnnxFile(
+            strFormat("%s_pytorch_output_%zu", onnxFileNamePrefix.c_str(),
+                      runId),
+            copyStack, info));
       }
     }
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
@@ -738,8 +845,8 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   return err;
 }
 
-Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
-  std::shared_ptr<PerGlowGraphInfo> info;
+Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
+CachingGraphRunner::findGraphInfoForStack(const torch::jit::Stack &stack) {
   if (useMaxSizeCompilation_) {
     std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
     if (perGlowGraphInfoMap_.size() != 1) {
@@ -747,7 +854,7 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
           "There should be one and only one compiled graph, but got %lu",
           perGlowGraphInfoMap_.size()));
     }
-    info = perGlowGraphInfoMap_.begin()->second;
+    return perGlowGraphInfoMap_.begin()->second;
   } else {
     const auto relevantInputs =
         torch::jit::last(stack, graph_->inputs().size());
@@ -768,10 +875,13 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
       }
       return MAKE_ERR(ss.str());
     }
-    info = it->second;
+    return it->second;
   }
+}
 
-  CHECK(info);
+Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
+  std::shared_ptr<PerGlowGraphInfo> info;
+  ASSIGN_VALUE_OR_RETURN_ERR(info, findGraphInfoForStack(stack));
 
   const PyTorchLoaderSettings &settings = info->settings;
 

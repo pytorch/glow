@@ -265,6 +265,12 @@ int main(int argc, char **argv) {
       .addOperand("SrcGrad", OperandKind::Out)
       .autoVerify(VerifyKind::SameType, {"OrigDest", "OrigSrc", "SrcGrad"});
 
+  BB.newInstr("LogSoftMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoIRGen();
+
   BB.newInstr("CrossEntropyLoss")
       .addOperand("P", OperandKind::In)
       .addOperand("Labels", OperandKind::In)
@@ -329,6 +335,16 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Batch", OperandKind::In)
       .addMember(MemberType::VectorUnsigned, "Axes")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
+      .autoIRGen();
+
+  /// Accumulates all of the layers in the batch along the Axis dimension and
+  /// produce a tensor that has the same dimensions as the input tensor without
+  /// the Axis dimension.
+  BB.newInstr("BatchedReduceProd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Batch", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Axis")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
@@ -709,6 +725,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen("Ceil");
+
+  BB.newInstr("ElementTruncate")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Truncate");
 
   BB.newInstr("ElementRound")
       .addOperand("Dest", OperandKind::Out)

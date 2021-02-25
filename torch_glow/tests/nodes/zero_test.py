@@ -1,12 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
+from tests import utils
 from tests import utils
 
 
-class TestZero(unittest.TestCase):
+class TestZero(utils.TorchGlowTestCase):
     def test_zero_basic(self):
         """Basic test of the PyTorch zero Node on Glow."""
 

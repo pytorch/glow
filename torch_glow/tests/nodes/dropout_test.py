@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.nn.functional as F
 from tests import utils
@@ -20,7 +18,7 @@ class SimpleDropoutModule(torch.nn.Module):
         )
 
 
-class TestDropout(unittest.TestCase):
+class TestDropout(utils.TorchGlowTestCase):
     def test_dropout(self):
         """Basic test of the PyTorch aten::dropout Node on Glow."""
 

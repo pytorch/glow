@@ -255,14 +255,11 @@ public:
 
   /// If a NodeValue is mapped to \p value then return it, otherwise look for a
   /// float or integer IValue mapped to \p value, create a Glow Constant by
-  /// broadcasting that value to a tensor of size \p dims and return the result
-  /// of that Constant.  If the optional flag \p makeFloat is true, generates a
-  /// tensor with floating point elements (default if flag omitted).  Otherwise,
-  /// generates a tensor with integer elements.
+  /// splatting that value to a tensor of the requested dimensions and element
+  /// type.
   Expected<glow::NodeValue>
   loadNodeValueOrBroadcastedIValue(const torch::jit::Value *value,
-                                   llvm::ArrayRef<glow::dim_t> dims,
-                                   bool makeFloat = true);
+                                   TypeRef type);
 
   /// If there is a NodeValue mapped to \p value then return it, otherwise
   /// create a Constant with type \p ty, name \p name, and value \p val
@@ -484,6 +481,30 @@ private:
   /// \returns error on failure.
   Error loadZeros(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch empty_like node.
+  /// \returns error on failure.
+  Error loadEmptyLike(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch zeros_like node.
+  /// \returns error on failure.
+  Error loadZerosLike(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch ones_like node.
+  /// \returns error on failure.
+  Error loadOnesLike(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch full_like node.
+  /// \returns error on failure.
+  Error loadFullLike(const torch::jit::Node *ptNode);
+
+  /// Shared implementation for loadZerosLike, loadOnesLike, loadEmptyLike, and
+  /// loadFullLike. \returns error on failure.
+  Error loadFullLikeImpl(llvm::StringRef name,
+                         const torch::jit::Value *inputTensorValue,
+                         const torch::jit::Value *dtypeValue,
+                         at::optional<double> fillValue,
+                         const torch::jit::Value *outputValue);
+
   /// Load a PyTorch sub node.
   /// \returns error on failure.
   Error loadSub(const torch::jit::Node *ptNode);
@@ -527,6 +548,11 @@ private:
   /// Load a PyTorch pow node.
   /// \returns error on failure.
   Error loadPow(const torch::jit::Node *ptNode);
+
+  /// Load a bitwise Boolean Op.
+  /// \returns error on failure.
+  template <typename GlowNode>
+  Error loadBitwiseBooleanOp(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch xor node.
   /// \returns error on failure.
@@ -691,6 +717,10 @@ private:
   /// \returns error on failure.
   Error loadSigmoid(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch silu node.
+  /// \returns error on failure.
+  Error loadSilu(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch avg_pool2d node.
   /// \returns error on failure.
   Error loadAvgPool2d(const torch::jit::Node *ptNode);
@@ -735,6 +765,10 @@ private:
   /// \returns error on failure.
   Error loadSoftMax(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch LogSoftMax node.
+  /// \returns error on failure.
+  Error loadLogSoftMax(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch Abs node.
   /// \returns error on failure.
   Error loadAbs(const torch::jit::Node *ptNode);
@@ -778,6 +812,18 @@ private:
   /// Load a PyTorch prim::NumToTensor node.
   /// \returns error on failure.
   Error loadNumToTensor(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::shape_as_tensor node.
+  /// \returns error on failure.
+  Error loadShapeAsTensor(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::argmin node.
+  /// \returns error on failure.
+  Error loadArgMin(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::argmax node.
+  /// \returns error on failure.
+  Error loadArgMax(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
@@ -862,6 +908,10 @@ private:
   /// Load an NNCKernel node.
   /// \returns error on failure.
   Error loadNNCKernel(const torch::jit::Node *ptNode);
+
+  /// Load an CumSum node.
+  /// \returns error on failure.
+  Error loadCumSum(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -27,13 +24,17 @@ class SimpleSqueezeModel(torch.nn.Module):
                 return torch.squeeze(tensor + tensor)
 
 
-class TestSqueeze(unittest.TestCase):
-    @parameterized.expand(
+class TestSqueeze(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("basic", SimpleSqueezeModel(), torch.randn(1, 3, 1, 2, 5, 1)),
-            ("with_dim", SimpleSqueezeModel(2), torch.randn(1, 3, 1, 2, 5, 1)),
-            ("with_neg_dim", SimpleSqueezeModel(-1), torch.randn(1, 3, 1, 2, 5, 1)),
-            (
+            lambda: ("basic", SimpleSqueezeModel(), torch.randn(1, 3, 1, 2, 5, 1)),
+            lambda: ("with_dim", SimpleSqueezeModel(2), torch.randn(1, 3, 1, 2, 5, 1)),
+            lambda: (
+                "with_neg_dim",
+                SimpleSqueezeModel(-1),
+                torch.randn(1, 3, 1, 2, 5, 1),
+            ),
+            lambda: (
                 "inplace",
                 SimpleSqueezeModel(inplace=True),
                 torch.randn(1, 3, 1, 2, 5, 1),

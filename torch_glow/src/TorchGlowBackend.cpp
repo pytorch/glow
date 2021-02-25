@@ -155,11 +155,10 @@ Error checkForFatalError(Error err) {
   }
   LOG(FATAL) << "Non-recoverable device error: " << msg;
 }
-
 } // namespace
 
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
-  static auto cls = torch::jit::backend<TorchGlowBackend>("glow");
+  static auto cls = torch::jit::backend<TorchGlowBackend>("glow", preprocess);
   return cls;
 }
 
@@ -167,6 +166,12 @@ void registerTorchGlowBackendAndDeps() {
   (void)torchGlowBackend();
   registerPyTorchGlowCustomClasses();
   registerGlowHelperOps();
+}
+
+c10::IValue
+preprocess(const torch::jit::Module &mod,
+           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec) {
+  return mod._ivalue();
 }
 
 /// Unpacks conv2d and linear packed parameters and replaces
@@ -478,13 +483,6 @@ static Error ProcessPackedParams(torch::jit::Graph &graph,
   return Error::success();
 }
 
-c10::IValue
-TorchGlowBackend::preprocess(c10::IValue mod,
-                             c10::impl::GenericDict method_compile_spec) {
-  // We do nothing in the preprocess, instead we do them in compile()
-  return mod;
-}
-
 Error applySettingsOverrideFlagsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings) {
   // TODO:
@@ -543,6 +541,21 @@ Error applyFuserSettingsToPyTorchLoaderSettings(
 
 // Runs preprocessing flow on the JIT graph.
 // Returns the processed and frozen module or Error.
+// nameToOrigGraph: maps method name to the JIT graph before Glow
+// transformations. This origGraph is used in runOnJIT / writeToOnnx flows and
+// therefore it should have the same outputs as the lowered graph (i.e. a
+// returned tuple is lowered to tensors.)
+// The original module is saved in __processed_module python class attribute
+// (it should be a serializable module with a single output).
+//  OrigModule
+//      |
+//  inline and cleanup profiling and shapes info
+//      |
+//    clone
+//     / \
+//  save   lowerAllTuples
+//          \
+//         runOnJit/writeToOnnx
 static Expected<torch::jit::Module> preprocessImpl(
     const torch::jit::Module &origModule,
     const std::vector<std::string> &methodNames,
@@ -566,26 +579,24 @@ static Expected<torch::jit::Module> preprocessImpl(
     torch::jit::Inline(*graph);
     torch::jit::ClearProfilingInformation(graph);
     torch::jit::EraseShapeInformation(graph);
-    nameToOrigGraph[methodName] = graph->copy();
-    /* Note: The following LowerAllTuples call is a bit of a hack. The
-     * GraphExecutor that takes this copy of the graph would otherwise not have
-     * the tuples lowered, which would cause an issue, given that the two
-     * versions would have different output types.
-     */
-    LowerAllTuples(nameToOrigGraph[methodName]);
   }
+
+  auto processedModule = origModule.clone();
 
   // JIT graph optimizations before freezing
   for (const auto &methodName : methodNames) {
-    auto method = origModule.get_method(methodName);
+    auto method = processedModule.get_method(methodName);
     auto graph = method.graph();
 
+    LowerAllTuples(graph);
+    nameToOrigGraph[methodName] = graph->copy();
+
     RewriteQuantPackedParamOps(graph);
-    RETURN_IF_ERR(ProcessPackedParams(*graph, origModule._ivalue()));
+    RETURN_IF_ERR(ProcessPackedParams(*graph, processedModule._ivalue()));
   }
 
   // Freeze
-  auto frozenModule = torch::jit::freeze_module(origModule);
+  auto frozenModule = torch::jit::freeze_module(processedModule);
 
   // Cleanup JIT graphs
   for (const auto &methodName : methodNames) {
@@ -634,7 +645,7 @@ compileImpl(const torch::jit::Module &origModule,
     throw std::runtime_error(ERR_TO_STRING(std::move(err)));
   }
 
-  auto compileModule = frozenModuleOrErr.get().clone();
+  auto compileModule = frozenModuleOrErr.get();
   // Compile each method
   for (const auto &kv : method_compile_spec) {
     const auto methodName = kv.key().toString()->string();
@@ -669,8 +680,6 @@ compileImpl(const torch::jit::Module &origModule,
     auto graph = method.function().graph();
     graph = graph->copy();
 
-    LowerAllTuples(graph);
-
     if (baseSettings.enableDebugFuser) {
       LOG(WARNING) << "TorchGlowBackend using GlowFuser";
 
@@ -689,11 +698,8 @@ compileImpl(const torch::jit::Module &origModule,
       // Create a corresponding runner and store {handle, runner} pair.
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
-              graph,
-              glow::getHostManager(baseSettings.backendName,
-                                   baseSettings.numDevices),
-              baseSettings, /*useRunOnly*/ true, origGraph,
-              origModule._ivalue());
+              graph, glow::getHostManager(baseSettings), baseSettings,
+              /*useRunOnly*/ true, origGraph, origModule._ivalue());
 
       // Compile each compilation group
       for (const auto &compilationGroup : spec.compilation_groups) {
@@ -759,22 +765,33 @@ TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
   const auto &runnerPair = it->second;
 
   torch::jit::Stack stack;
-
-  Error err = glow::ErrorEmpty();
   if (runnerPair.first) {
     for (const auto &i : inputs) {
       torch::jit::push(stack, i);
     }
-    err = it->second.first->run(stack);
-  } else if (runnerPair.second) {
-    stack = it->second.second->onExecute(inputs);
-  } else {
-    throw std::runtime_error("Could not any type of runner for handle");
-  }
 
-  if (err) {
-    err = checkForFatalError(std::move(err));
-    throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+    auto err = runnerPair.first->run(stack);
+
+    if (err) {
+      const auto failedRunNumLocal = int(failedRunNum_++);
+      // Rebuild input stack
+      torch::jit::Stack rebuiltStack;
+      for (const auto &i : inputs) {
+        torch::jit::push(rebuiltStack, i);
+      }
+      // Dump JIT inputs and outputs to file, log and throw away any errors
+      ERR_TO_VOID(runnerPair.first->writeJitIOToOnnxFile(
+          strFormat("failed_inputs_%d", failedRunNumLocal),
+          strFormat("failed_outputs_%d", failedRunNumLocal), rebuiltStack));
+
+      err = checkForFatalError(std::move(err));
+      throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+    }
+
+  } else if (runnerPair.second) {
+    stack = runnerPair.second->onExecute(inputs);
+  } else {
+    throw std::runtime_error("Could not find any type of runner for handle");
   }
 
   c10::List<at::Tensor> outputList;

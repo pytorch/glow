@@ -134,6 +134,7 @@ extern unsigned InterpreterMemory;
 extern bool EnableP2P;
 extern bool EnableDRT;
 extern unsigned DeviceInitTimeoutMs;
+extern uint64_t BigTableThresholdBytes;
 extern unsigned SanitizeInputsPercent;
 } // namespace flags
 } // namespace runtime

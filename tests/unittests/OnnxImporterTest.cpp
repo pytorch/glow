@@ -659,6 +659,13 @@ TEST_F(OnnxImporterTest, importDivUniBroadcastOp6Axis) {
       [](float a, float b) { return a / b; });
 }
 
+TEST_F(OnnxImporterTest, importPowMultiBroadcastOp7) {
+  importArithMultiBroadcastTest<PowNode>(
+      "powMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, /* multi */ true,
+      /* leftBroadcast */ true, /* rightBroadcast */ true,
+      [](float a, float b) { return std::pow(a, b); });
+}
+
 /// This tests reproduces issue #2135.
 TEST_F(OnnxImporterTest, importUniBroadcastMultiOutput) {
   ExecutionEngine EE{};
@@ -670,6 +677,35 @@ TEST_F(OnnxImporterTest, importUniBroadcastMultiOutput) {
   Tensor data(ElemKind::FloatTy, {20});
   ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
   (void)onnxLD;
+}
+
+/// Test Onnx QuantizeLinear and DequantizeLinear together.
+TEST_F(OnnxImporterTest, quantizeLinearDequantizeLinear) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string fileName = "QuantizeLinearDequantizeLinear.onnxtxt";
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  std::vector<dim_t> inputShape{6};
+  Type input_type(ElemKind::FloatTy, inputShape);
+  std::string inputName = "x";
+  ONNXModelLoader onnxLD(NetFilename, {inputName.c_str()}, {&input_type}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto *PH = mod.getPlaceholderByNameSlow(inputName);
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  // Compile&run the graph, and check the output
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  auto inHandle = inTensor->getHandle();
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), inHandle.raw(i), 1e-05);
+  }
 }
 
 /// Test loading of Elementwise Unary Ops floating point.
@@ -1581,6 +1617,46 @@ TEST_F(OnnxImporterTest, reduceMean2AvgPoolKeepDims) {
                    {2.5, 6.5, 10.5, 14.5});
 }
 
+/// Test loading ReduceSumSquare op from a ONNX model.
+/// Input shape is 4D, one dimension is reduced, and output shape is 4D.
+TEST_F(OnnxImporterTest, reduceSumSquare4D) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/reduceSumSquare4D.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+  {
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {2, 2, 2, 1};
+  std::vector<float> expectedValues = {5, 25, 61, 113, 181, 265, 365, 481};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 8; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+  // Constant Folding Test.
+  FAIL_TEST_IF_ERR(
+      checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
+}
+
 /// Test loading ReduceMean op from a ONNX model.
 /// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
 /// optimization using AvgPool. Output shape is 2D.
@@ -1625,6 +1701,13 @@ TEST_F(OnnxImporterTest, reduceMinNoKeepDims) {
 /// Input shape is 4D, two dimensions are reduced,Output shape is 4D.
 TEST_F(OnnxImporterTest, reduceMinKeepDimsDefaultAxis) {
   testReductionOps("reduceMinDefaultAxis.onnxtxt", {1, 1, 1, 1}, {1});
+}
+
+/// Test loading ReduceProd op from a ONNX model.
+/// Input shape is 4D, one dimension is reduced, and output shape is 4D
+TEST_F(OnnxImporterTest, reduceProd4D) {
+  testReductionOps("reduceProd.onnxtxt", {2, 2, 2, 1},
+                   {2, 12, 30, 56, 90, 132, 182, 240});
 }
 
 static void testDepthToSpace(std::string &filename,
@@ -5384,4 +5467,56 @@ TEST(onnx, importClipV11) {
   for (size_t i = 0; i < 8; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
+}
+
+// Utility function to test ONNX Softmax
+static void testSoftmax(const std::string &modelName,
+                        const std::vector<dim_t> &expectedDims,
+                        const std::vector<float> &expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Input.
+  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+  x.getHandle() = {0.0, 1.0, 2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
+                   8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0};
+
+  // Load model.
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + modelName;
+  ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+  Placeholder *output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  // Allocate placeholders.
+  PlaceholderBindings bindings;
+  bindings.allocate(mod.getPlaceholders());
+  updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Compare results.
+  auto result = res->getHandle();
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (dim_t i = 0; i < result.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading Softmax from a ONNX model.
+TEST_F(OnnxImporterTest, softmax) {
+  testSoftmax("softmax11.onnxtxt", {2, 2, 2, 2},
+              {5.7661277e-04, 1.5673960e-03, 4.2606238e-03, 1.1581578e-02,
+               3.1481992e-02, 8.5576929e-02, 2.3262219e-01, 6.3233274e-01,
+               5.7661277e-04, 1.5673960e-03, 4.2606238e-03, 1.1581578e-02,
+               3.1481992e-02, 8.5576929e-02, 2.3262219e-01, 6.3233274e-01});
+}
+/// Test loading Softmax opset13 from a ONNX model.
+TEST_F(OnnxImporterTest, softmax13) {
+  testSoftmax("softmax13.onnxtxt", {2, 2, 2, 2},
+              {0.11920292, 0.11920292, 0.880797, 0.880797, 0.11920292,
+               0.11920292, 0.880797, 0.880797, 0.11920292, 0.11920292, 0.880797,
+               0.880797, 0.11920292, 0.11920292, 0.880797, 0.880797});
 }

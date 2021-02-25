@@ -249,6 +249,12 @@ public:
     return Error::success();
   }
 
+  /// Get the number of copies of inputs/outputs that will be reserved on a
+  /// device per network.
+  virtual unsigned getContextCount(CompilationContext & /* unused */) const {
+    return 1;
+  }
+
   /// \returns the supported options for compiled functions (name=>description).
   virtual llvm::StringMap<std::string>
   getSupportedCompiledFunctionOptions() const {

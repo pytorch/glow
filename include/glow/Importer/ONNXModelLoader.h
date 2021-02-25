@@ -179,6 +179,10 @@ class ONNXModelLoader
   Error loadSign(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
 
+  /// Load Softmax ONNX operator
+  Error loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
+                    const ArgumentDictionaryTy &dict);
+
   /// Load Conv ONNX operator.
   Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
@@ -343,6 +347,10 @@ class ONNXModelLoader
   /// Load Glow Quantize operator.
   Error loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);
+
+  /// Load Onnx QuantizeLinear operator.
+  Error loadQuantizeLinear(const ONNX_NAMESPACE::NodeProto &op,
+                           ArgumentDictionaryTy &dict);
 
   /// Load Glow ConvertTo operator.
   Error loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,

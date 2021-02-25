@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import numpy as np
 import torch
 from tests import utils
@@ -47,7 +45,7 @@ class SimpleATanModule(torch.nn.Module):
         return torch.atan(a + a)
 
 
-class TestCos(unittest.TestCase):
+class TestCos(utils.TorchGlowTestCase):
     def test_cos(self, skip_to_glow=False):
         # Ensures range is in [-2*pi, 2*pi]
         x = 4 * np.pi * (torch.rand(2, 3, 4) - 0.5)
@@ -56,7 +54,7 @@ class TestCos(unittest.TestCase):
         )
 
 
-class TestSin(unittest.TestCase):
+class TestSin(utils.TorchGlowTestCase):
     def test_sin(self, skip_to_glow=False):
         # Ensures range is in [-2*pi, 2*pi]
         x = 4 * np.pi * (torch.rand(2, 3, 4) - 0.5)
@@ -65,7 +63,7 @@ class TestSin(unittest.TestCase):
         )
 
 
-class TestACos(unittest.TestCase):
+class TestACos(utils.TorchGlowTestCase):
     def test_acos(self, skip_to_glow=False):
         x = torch.rand(2, 3, 4) - 0.5  # Ensures range is in [-1,1]
         utils.compare_tracing_methods(
@@ -73,7 +71,7 @@ class TestACos(unittest.TestCase):
         )
 
 
-class TestASin(unittest.TestCase):
+class TestASin(utils.TorchGlowTestCase):
     def test_asin(self, skip_to_glow=False):
         x = torch.rand(2, 3, 4) - 0.5  # Ensures range is in [-1,1]
         utils.compare_tracing_methods(
@@ -81,7 +79,7 @@ class TestASin(unittest.TestCase):
         )
 
 
-class TestATan(unittest.TestCase):
+class TestATan(utils.TorchGlowTestCase):
     def test_atan(self, skip_to_glow=False):
         x = torch.randn(2, 3, 4)
         utils.compare_tracing_methods(
