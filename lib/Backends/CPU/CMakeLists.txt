@@ -1,6 +1,7 @@
 add_subdirectory(ClassGen)
 
 include(GlowAddLibjit)
+include(GlowSerialize)
 
 # LIBJIT LLVM common source files.
 set(LIBJIT_CPU_SOURCE_FILES)
@@ -79,3 +80,22 @@ target_link_libraries(CPUBackend
 add_dependencies(CPUBackend libjit_cpu_TARGET)
 
 set(linked_backends ${linked_backends} CPUBackend PARENT_SCOPE)
+
+# List the object files from "libobj_cpu" directory.
+FILE(GLOB objects "${CMAKE_CURRENT_LIST_DIR}/libobj_cpu/*.o")
+
+# Add object file for testing.
+if (GLOW_WITH_BUNDLES)
+  list(APPEND objects "${GLOW_SOURCE_DIR}/examples/bundles/bundle_with_extra_objects/test.o")
+endif()
+
+# Serialize external object files.
+glow_serialize(
+  INP_FILES ${objects}
+  OUT_DIR "${GLOW_BINARY_DIR}/libobj/libobj_cpu"
+  OUT_FILE "${GLOW_BINARY_DIR}/libobj/libobj_cpu/cpuObjectRegister.h"
+  OUT_VAR "cpuObjectRegister"
+  OUT_TARGET cpuObjectRegisterTarget
+)
+add_dependencies(CPUBackend cpuObjectRegisterTarget)
+include_directories(${GLOW_BINARY_DIR}/libobj/libobj_cpu)

@@ -62,10 +62,13 @@ protected:
   /// Perform memory allocation for a bundle.
   virtual void performBundleMemoryAllocation();
   /// Create bundle archive by archiving additional object files to the existing
-  /// bundle from \p bundlePath. The object names are given by \p bundleObjects.
-  virtual void
-  createBundleArchive(llvm::StringRef bundlePath,
-                      const std::vector<std::string> &bundleObjects);
+  /// bundle from \p bundlePath. The object names to be archived are given by
+  /// \p bundleObjects and the object raw content is taken from the object array
+  /// \p bundleObjectRegister.
+  virtual void createBundleArchive(
+      llvm::StringRef bundlePath,
+      llvm::ArrayRef<llvm::MemoryBufferRef> bundleObjectRegister,
+      const std::vector<std::string> &bundleObjects);
   /// Save weights for the bundle.
   virtual void saveWeights(llvm::StringRef weightsFileName);
   /// Save header file for the bundle.

@@ -121,8 +121,8 @@ std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(
 std::unique_ptr<LLVMIRGen>
 CPUBackend::createIRGen(const IRFunction *IR,
                         AllocationsInfo &allocationsInfo) const {
-  CPULLVMIRGen *irgen =
-      new CPULLVMIRGen(IR, allocationsInfo, "", getLibjitBitcode());
+  CPULLVMIRGen *irgen = new CPULLVMIRGen(
+      IR, allocationsInfo, "", getLibjitBitcode(), getObjectRegister());
   return std::unique_ptr<CPULLVMIRGen>(irgen);
 }
 
@@ -146,4 +146,15 @@ bool CPUBackend::canDoIndexTypeDemotion(
   precConfig.precisionModeKindSet.insert(
       Kinded::Kind::SparseToDenseMaskNodeKind);
   return fromTy == ElemKind::Int64ITy && toTy == ElemKind::Int32ITy;
+}
+
+/// \returns an array of raw objects which are statically allocated and
+/// initialized by the backend and which can be used for various purposes,
+/// for example to store object files (binary code) which are compiled with
+/// other compilers than clang/LLVM. The raw buffers are encoded as type
+/// MemoryBufferRef which stores for each buffer a name, a raw pointer
+/// and a size (in bytes).
+#include "cpuObjectRegister.h"
+llvm::ArrayRef<llvm::MemoryBufferRef> CPUBackend::getObjectRegister() const {
+  return cpuObjectRegister;
 }

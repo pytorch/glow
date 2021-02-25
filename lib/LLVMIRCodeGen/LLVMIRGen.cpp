@@ -64,8 +64,10 @@ static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
 }
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
-                     std::string mainEntryName, llvm::StringRef libjitBC)
-    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
+                     std::string mainEntryName, llvm::StringRef libjitBC,
+                     llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister)
+    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
+      objectRegister_(objectRegister) {
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
 }
@@ -110,6 +112,25 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
 
 llvm::StringRef LLVMIRGen::getBundleName() const { return bundleName_; }
 
+void LLVMIRGen::setBundleName(const std::string &name) {
+  bundleName_ = name.empty() ? "bundle" : legalizeName(name);
+}
+
+std::string LLVMIRGen::getMainEntryName() const { return mainEntryName_; }
+
+void LLVMIRGen::setMainEntryName(std::string name) {
+  mainEntryName_ = name.empty() ? "main" : legalizeName(name);
+}
+
+llvm::ArrayRef<llvm::MemoryBufferRef> LLVMIRGen::getObjectRegister() const {
+  return objectRegister_;
+}
+
+void LLVMIRGen::setObjectRegister(
+    llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister) {
+  objectRegister_ = objectRegister;
+}
+
 std::vector<std::string> LLVMIRGen::getBundleObjects() const {
   // Default list of object names.
   auto bundleObjects = bundleObjects_;
@@ -127,16 +148,6 @@ void LLVMIRGen::addBundleObject(llvm::StringRef objectName) {
   if (it == bundleObjects_.end()) {
     bundleObjects_.push_back(objectName.str());
   }
-}
-
-void LLVMIRGen::setBundleName(const std::string &name) {
-  bundleName_ = name.empty() ? "bundle" : legalizeName(name);
-}
-
-std::string LLVMIRGen::getMainEntryName() const { return mainEntryName_; }
-
-void LLVMIRGen::setMainEntryName(std::string name) {
-  mainEntryName_ = name.empty() ? "main" : legalizeName(name);
 }
 
 /// Load base addresses of different memory areas so that they can be easily

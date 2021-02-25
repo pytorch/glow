@@ -25,6 +25,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
 
 namespace glow {
@@ -132,9 +133,6 @@ protected:
   AllocationsInfo &allocationsInfo_;
   /// Name of the bundle.
   std::string bundleName_;
-  /// Vector with names of the additional external objects which will be added
-  /// to the bundle. The objects are assumed registered in BundleSaver.
-  std::vector<std::string> bundleObjects_;
   /// Name of the main entry.
   std::string mainEntryName_;
   /// Instruction number for the module.
@@ -164,9 +162,17 @@ protected:
   /// specializer not to specialize.
   llvm::DenseSet<llvm::Value *> dontSpecializeArgsSet_;
 
-  /// Bitcode of the libjit. Containts the starting address and the length of
+  /// Bitcode of the libjit. Contains the starting address and the length of
   /// the bitcode.
   llvm::StringRef libjitBC_;
+
+  /// Array with raw objects which can be optionally used by the code generator
+  /// to archive additional object code into the bundle.
+  llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister_;
+
+  /// Array with the names of the additional objects which will be archived
+  /// into the bundle. The objects must be registered in \ref objectRegister_.
+  std::vector<std::string> bundleObjects_;
 
   /// Whether to print the IR instrumentation callback API.
   bool printInstrumentIR_{false};
@@ -322,7 +328,8 @@ public:
   /// \param mainEntryName Name of the main entry.
   /// \param libjitBC bitcode of the backend's libjit library.
   explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
-                     std::string mainEntryName, llvm::StringRef libjitBC);
+                     std::string mainEntryName, llvm::StringRef libjitBC,
+                     llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister);
 
   /// Init the TargetMachine using settings provided by \p llvmBackend.
   virtual void initTargetMachine(const LLVMBackendOptions &opts);
@@ -377,11 +384,6 @@ public:
   virtual AllocationsInfo &getAllocationsInfo() { return allocationsInfo_; }
   /// \returns the name of the bundle, to be used for filename when saving.
   llvm::StringRef getBundleName() const;
-  /// \returns the names of external objects which will be added to the bundle.
-  std::vector<std::string> getBundleObjects() const;
-  /// Add a bundle object \p objectName to the list of external objects which
-  /// will be added to the bundle.
-  void addBundleObject(llvm::StringRef objectName);
   /// Set the name of the bundle (name is automatically legalized).
   void setBundleName(const std::string &name);
   /// \returns the name of the main entry point.
@@ -458,6 +460,15 @@ public:
   /// \returns a string which is printed at the end of the bundle header file
   /// following the standard content produced by the bundle saver.
   virtual std::string getBundleHeaderExtra() const;
+  /// \returns the object register for this code generator instance.
+  llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegister() const;
+  /// Set the object register for this code generator instance.
+  void setObjectRegister(llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister);
+  /// \returns the names of the objects which are archived into the bundle.
+  std::vector<std::string> getBundleObjects() const;
+  /// Add a bundle object \p objectName to be archived to the bundle. The object
+  /// must be registered in the \ref objectRegister_ otherwise error is thrown.
+  void addBundleObject(llvm::StringRef objectName);
 };
 
 template <typename T>

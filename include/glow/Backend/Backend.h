@@ -23,8 +23,8 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/IROptimizer/IRFunctionPassPipeline.h"
 #include "glow/Support/Register.h"
-
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 #if FACEBOOK_INTERNAL
 namespace folly {
@@ -269,6 +269,16 @@ public:
                          PrecisionConfiguration &precConfig) const {
     return false;
   };
+
+  /// \returns an array of raw objects which are statically allocated and
+  /// initialized by the backend and which can be used for various purposes,
+  /// for example to store object files (binary code) which are compiled with
+  /// other compilers than clang/LLVM. The raw buffers are encoded as type
+  /// MemoryBufferRef which stores for each buffer a name, a raw pointer
+  /// and a size (in bytes).
+  virtual llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegister() const {
+    return llvm::ArrayRef<llvm::MemoryBufferRef>();
+  }
 
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found
