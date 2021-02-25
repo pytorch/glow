@@ -328,6 +328,16 @@ public:
   /// \param mainEntryName Name of the main entry.
   /// \param libjitBC bitcode of the backend's libjit library.
   explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
+                     std::string mainEntryName, llvm::StringRef libjitBC);
+
+  /// Ctor.
+  /// \param M IRFunction to be converted into LLVM IR.
+  /// \param allocationsInfo information about allocation of weights and
+  /// activations.
+  /// \param mainEntryName Name of the main entry.
+  /// \param libjitBC bitcode of the backend's libjit library.
+  /// \param objectRegister array with additional objects for code generation.
+  explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC,
                      llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister);
 

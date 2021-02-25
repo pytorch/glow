@@ -64,6 +64,13 @@ static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
 }
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
+                     std::string mainEntryName, llvm::StringRef libjitBC)
+    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
+  // Legalize main entry name.
+  setMainEntryName(mainEntryName);
+}
+
+LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC,
                      llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister)
     : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
