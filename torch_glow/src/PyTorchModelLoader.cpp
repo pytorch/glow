@@ -1133,8 +1133,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
   // First build mapping with standard PyTorch operators.
   auto symbolLoaderMapping = MappingOfMemberFunctions({
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
-      {{"aten::contiguous"}, &PyTorchModelLoader::loadContiguous},
-      {{"aten::detach"}, &PyTorchModelLoader::loadDetach},
+      {{"aten::contiguous"}, &PyTorchModelLoader::loadCopy<2, false>},
+      {{"aten::detach"}, &PyTorchModelLoader::loadCopy<1, false>},
+      {{"aten::copy_"}, &PyTorchModelLoader::loadCopy<3, true>},
+      {{"aten::clone"}, &PyTorchModelLoader::loadCopy<2, false>},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
       {{"aten::_shape_as_tensor"}, &PyTorchModelLoader::loadShapeAsTensor},
@@ -2533,6 +2535,31 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
       F_.createConvertTo("typeas", dataValue, outType);
 
   RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+}
+
+template <int64_t inputs_size, bool broadcast>
+Error PyTorchModelLoader::loadCopy(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, inputs_size, outputs, 1));
+
+  glow::NodeValue res;
+
+  if (broadcast) {
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+    glow::NodeValue other;
+    ASSIGN_VALUE_OR_RETURN_ERR(other, getGlowNodeValueForValue(inputs[1]));
+
+    auto bn = F_.createBroadcast("copy_broadcast_", other, input.dims(),
+                                 input.dims().size() - other.dims().size());
+    res = bn->getNthResult(0);
+  } else {
+    ASSIGN_VALUE_OR_RETURN_ERR(res, getGlowNodeValueForValue(inputs[0]));
+  }
+
+  RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
 Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
