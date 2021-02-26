@@ -593,6 +593,13 @@ private:
   template <typename CmpType, bool invert = false>
   Error loadCmp(const torch::jit::Node *ptNode);
 
+  /// Load Pytorch copy, contiguous, detach nodes.
+  /// \tparam inputs_size - number of inputs expected.
+  /// \tparam broadcast indicates weather to perform broadcast or not.
+  /// \returns error on failure.
+  template <int64_t inputs_size, bool broadcast = false>
+  Error loadCopy(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch reciprocal node.
   /// \returns error on failure.
   Error loadReciprocal(const torch::jit::Node *ptNode);
