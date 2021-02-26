@@ -1014,6 +1014,25 @@ struct GlowEmbeddingBagInputs {
   };
 };
 
+/// Indexes of fb::xl_embedding_bag inputs.
+/// TODO: Add pruned_weights and compressed_indices_mapping_id
+///       for pruned embeddding bag, refer to
+///       https://fburl.com/diffusion/oms3byed
+struct XLEmbeddingBagInputs {
+  enum {
+    weight_id = 0,
+    indices,
+    offsets,
+    scale_grad_by_freq,
+    mode,
+    sparse,
+    per_sample_weights,
+    include_last_offset,
+    num_embeddings,
+    embedding_dim,
+  };
+};
+
 /// Indexes of fb::lengths_range inputs.
 struct LengthsRangeInputs {
   enum {
@@ -1293,6 +1312,11 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadGlowEmbeddingBag4bitRowwiseOffsets},
       // Disabled for now since this node needs extra information
       //{{"fb::lengths_range"}, &PyTorchModelLoader::loadLengthsRange},
+      {{"fb::xl_embedding_bag"}, &PyTorchModelLoader::loadXLEmbeddingBag},
+      {{"fb::xl_embedding_bag_byte_rowwise_offsets"},
+       &PyTorchModelLoader::loadXLEmbeddingBagByteRowwiseOffsets},
+      {{"fb::xl_embedding_bag_4bit_rowwise_offsets"},
+       &PyTorchModelLoader::loadXLEmbeddingBag4bitRowwiseOffsets},
       {{"_caffe2::BatchPermutation"},
        &PyTorchModelLoader::loadBatchPermutation},
       {{"quantized::embedding_bag_byte_rowwise_offsets"},
@@ -6722,6 +6746,68 @@ Error PyTorchModelLoader::loadGlowEmbeddingBag(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], EB->getResult());
 }
 
+Error PyTorchModelLoader::loadXLEmbeddingBag(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+  // get the shape (num_embeddings, embedding_dim) and qualName for the
+  // embeddingBag, and create placeholder node
+  glow::dim_t numEmbedding;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      numEmbedding, iValToInt(getGlowIValueForValue(
+                        inputs[XLEmbeddingBagInputs::num_embeddings])));
+  glow::dim_t embeddingDim;
+  ASSIGN_VALUE_OR_RETURN_ERR(embeddingDim,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[XLEmbeddingBagInputs::embedding_dim])));
+  std::string *weightID;
+  ASSIGN_VALUE_OR_RETURN_ERR(weightID,
+                             iValToString(getGlowIValueForValue(
+                                 inputs[XLEmbeddingBagInputs::weight_id])));
+  std::vector<glow::dim_t> dims{numEmbedding, embeddingDim};
+  glow::Type phType(ElemKind::FloatTy, dims);
+  auto legalizedWeightID = glow::legalizeName(*weightID);
+  auto ph = F_.getParent()->getPlaceholderByNameSlow(legalizedWeightID);
+  if (!ph) {
+    ph = F_.getParent()->createPlaceholder(&phType, legalizedWeightID,
+                                           /*isTrainable*/ false);
+    ph->setStatic(true);
+  }
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(inputs[XLEmbeddingBagInputs::indices]));
+  glow::NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offsets, getGlowNodeValueForValue(inputs[XLEmbeddingBagInputs::offsets]));
+
+  // If no indices are provided, replace the op with a zero Constant.
+  if (indices.dims()[0] == 0) {
+    glow::Tensor t(
+        ElemKind::FloatTy,
+        {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0, embeddingDim});
+    t.zero();
+    glow::Constant *glowConstant =
+        F_.getParent()->createConstant("EmptyEmbeddingBag", std::move(t));
+    return addValueMapping(outputs[0], glowConstant->getOutput());
+  }
+
+  bool includeLastOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      includeLastOffset,
+      iValToBool(getGlowIValueForValue(
+          inputs[XLEmbeddingBagInputs::include_last_offset])));
+  RETURN_ERR_IF_NOT(includeLastOffset,
+                    "Currently only support include_last_offset='True'");
+  glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[XLEmbeddingBagInputs::per_sample_weights], "EmbeddingBag.ones",
+      glow::Type(ElemKind::FloatTy, {indices.dims()[0]}), 1.0);
+
+  auto *EB =
+      F_.createEmbeddingBag("XLEmbeddingBag", ph->getOutput(), perSampleWeights,
+                            indices, offsets, includeLastOffset);
+  return addValueMapping(outputs[0], EB->getResult());
+}
+
 Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
     const torch::jit::Node *ptNode, bool is4Bit) {
   auto inputs = ptNode->inputs();
@@ -6991,8 +7077,6 @@ Error PyTorchModelLoader::loadRowwiseQuantizedEmbeddingBagHelper(
     glow::Tensor t(
         (is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy),
         {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0,
-         // TODO: this really depends on how embedding_dim is specified during
-         // materialization. Revist here once that's done.
          (is4Bit ? embeddingDim * 2 : embeddingDim) - 2 * sizeof(float)});
     t.zero();
     glow::Constant *glowConstant = F_.getParent()->createConstant(
@@ -7055,6 +7139,123 @@ Error PyTorchModelLoader::loadGlowEmbeddingBagByteRowwiseOffsets(
 Error PyTorchModelLoader::loadGlowEmbeddingBag4bitRowwiseOffsets(
     const torch::jit::Node *ptNode) {
   return loadRowwiseQuantizedEmbeddingBagHelper(ptNode, true);
+}
+
+Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
+    const torch::jit::Node *ptNode, bool is4Bit) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+
+  glow::dim_t numEmbedding;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      numEmbedding, iValToInt(getGlowIValueForValue(
+                        inputs[XLEmbeddingBagInputs::num_embeddings])));
+
+  glow::dim_t embeddingDim;
+  ASSIGN_VALUE_OR_RETURN_ERR(embeddingDim,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[XLEmbeddingBagInputs::embedding_dim])));
+
+  std::string *weightID;
+  ASSIGN_VALUE_OR_RETURN_ERR(weightID,
+                             iValToString(getGlowIValueForValue(
+                                 inputs[XLEmbeddingBagInputs::weight_id])));
+
+  std::vector<glow::dim_t> dims{numEmbedding, embeddingDim};
+  TypeRef fusedTy = F_.getParent()->uniqueType(
+      (is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy), dims,
+      0.0, 0);
+  glow::Placeholder *ph =
+      F_.getParent()->createPlaceholder(fusedTy, *weightID,
+                                        /*isTrainable*/ false);
+  ph->setStatic(true);
+
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(inputs[XLEmbeddingBagInputs::indices]));
+
+  glow::NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offsets, getGlowNodeValueForValue(inputs[XLEmbeddingBagInputs::offsets]));
+
+  bool includeLastOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      includeLastOffset,
+      iValToBool(getGlowIValueForValue(
+          inputs[XLEmbeddingBagInputs::include_last_offset])));
+  RETURN_ERR_IF_NOT(includeLastOffset,
+                    "Currently only support include_last_offset='True'");
+
+  // If no indices are provided, replace the op with a zero Constant.
+  if (indices.dims()[0] == 0) {
+    // Assuming hasEndOffset = true, so the output.dims[0] should be
+    // offsets.dims[0] - 1, if offsets is not empty
+    glow::Tensor t(
+        (is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy),
+        {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0,
+         (is4Bit ? embeddingDim * 2 : embeddingDim) - 2 * sizeof(float)});
+    t.zero();
+    glow::Constant *glowConstant = F_.getParent()->createConstant(
+        "EmptyRowwiseQuantizedEmbeddingBag", std::move(t));
+    RETURN_ERR(addValueMapping(outputs[0], glowConstant->getOutput()));
+  }
+
+  glow::NodeValue perSampleWeights;
+  if (is4Bit) {
+    // Glow supported perSampleWeights is fp16 but PyTorch uses fp32,
+    // therefore the input needs to be cast.
+    auto node = inputs[XLEmbeddingBagInputs::per_sample_weights];
+    if (hasGlowNodeValueForValue(node)) {
+      glow::NodeValue gnode;
+      ASSIGN_VALUE_OR_RETURN_ERR(gnode, getGlowNodeValueForValue(node));
+
+      perSampleWeights =
+          F_.createConvertTo(
+                "ConvertEmbeddingBag4BitRowwiseOffsetsPerSampleWeights", gnode,
+                ElemKind::Float16Ty)
+              ->getResult();
+    } else {
+      glow::Tensor t(ElemKind::Float16Ty, {indices.dims()[0]});
+      t.init(glow::Tensor::InitKind::Broadcast, 1.0, F_.getParent()->getPRNG());
+      perSampleWeights =
+          F_.getParent()
+              ->createConstant("EmbeddingBag4BitRowwiseOffsets.ones",
+                               std::move(t))
+              ->getOutput();
+    }
+  } else {
+    perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
+        inputs[XLEmbeddingBagInputs::per_sample_weights],
+        "EmbeddingBagByteRowwiseOffsets.ones",
+        glow::Type((ElemKind::FloatTy), {indices.dims()[0]}), 1.0);
+  }
+
+  auto *EB = F_.createEmbeddingBagByteRowwiseOffsets(
+      (is4Bit ? "EmbeddingBag4BitRowwiseOffsets"
+              : "EmbeddingBagByteRowwiseOffsets"),
+      ph->getOutput(), perSampleWeights, indices, offsets, false,
+      includeLastOffset);
+
+  // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output type
+  // is Float16.
+  if (is4Bit) {
+    auto *CT = F_.createConvertTo("ConvertEmbeddingBag4BitRowwiseOffsetsOutput",
+                                  EB, ElemKind::FloatTy);
+    RETURN_ERR(addValueMapping(outputs[0], CT->getResult()));
+  } else {
+    RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+  };
+}
+
+Error PyTorchModelLoader::loadXLEmbeddingBagByteRowwiseOffsets(
+    const torch::jit::Node *ptNode) {
+  return loadRowwiseQuantizedXLEmbeddingBagHelper(ptNode, false);
+}
+
+Error PyTorchModelLoader::loadXLEmbeddingBag4bitRowwiseOffsets(
+    const torch::jit::Node *ptNode) {
+  return loadRowwiseQuantizedXLEmbeddingBagHelper(ptNode, true);
 }
 
 Error PyTorchModelLoader::loadFusedSplit(const torch::jit::Node *ptNode) {

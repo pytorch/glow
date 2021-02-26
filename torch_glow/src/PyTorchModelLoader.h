@@ -346,6 +346,10 @@ private:
   // \returns error on failure.
   Error loadGlowEmbeddingBag(const torch::jit::Node *ptNode);
 
+  // Load a PyTorch fb::xl_embedding_bag node.
+  // \returns error on failure.
+  Error loadXLEmbeddingBag(const torch::jit::Node *ptNode);
+
   /// Load a _caffe2::BatchPermutation node.
   Error loadBatchPermutation(const torch::jit::Node *ptNode);
 
@@ -380,12 +384,27 @@ private:
   // \returns error on failure.
   Error loadGlowEmbeddingBag4bitRowwiseOffsets(const torch::jit::Node *ptNode);
 
+  // Load a PyTorch fb::xl_embedding_bag_byte_rowwise_offsets node.
+  // \returns error on failure.
+  Error loadXLEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::xl_embedding_bag_4bit_rowwise_offsets node.
+  // \returns error on failure.
+  Error loadXLEmbeddingBag4bitRowwiseOffsets(const torch::jit::Node *ptNode);
+
   // Helper function that implements the loading logic for
   // fb::glow_embedding_bag_byte_rowwise_offsets and
   // fb::glow_embedding_bag_4bit_rowwise_offsets
   // \returns error on failure
   Error loadRowwiseQuantizedEmbeddingBagHelper(const torch::jit::Node *ptNode,
                                                bool is4Bit = false);
+
+  // Helper function that implements the loading logic for
+  // fb::xl_embedding_bag_byte_rowwise_offsets and
+  // fb::xl_embedding_bag_4bit_rowwise_offsets
+  // \returns error on failure
+  Error loadRowwiseQuantizedXLEmbeddingBagHelper(const torch::jit::Node *ptNode,
+                                                 bool is4Bit = false);
 
   // Load a PyTorch fb::lengths_range node.
   // \returns error on failure.
