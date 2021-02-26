@@ -848,6 +848,125 @@ Error Provisioner::provisionFX(DAGListTy &networks, Module &module,
     }
   }
 
+  // If no deferredWeightLoader provided make sure there are no static PHs.
+  if (!cctx.deferredWeightLoader) {
+    // Make sure there are no static placeholders.
+    for (auto PH : module.getPlaceholders()) {
+      if (PH->isStatic()) {
+        return MAKE_ERR(
+            ErrorValue::ErrorCode::RUNTIME_ERROR,
+            llvm::formatv("Error Placholder: {0} is marked as static but no "
+                          "deferredWeightLoader is provided.",
+                          PH->getName())
+                .str());
+        ;
+      }
+    }
+  }
+  // Map from Placeholder* to DeviceManager, this is used for deferred weight
+  // loading.
+  std::unordered_map<Placeholder *, std::vector<unsigned>>
+      placeholderToDeviceManager;
+  if (cctx.deferredWeightLoader) {
+    // Populate placeholdeToDeviceManager map.
+    for (auto &assignment : assignments) {
+      for (const auto &node : logicalDevices[assignment.first]) {
+        auto symbolTable = node->runtimeBundle->getSymbolTable();
+        for (auto info : symbolTable) {
+          if (info.second.symbolCategory ==
+              glow::runtime::SymbolCategory::Placeholder) {
+            auto PH = module.getPlaceholderByNameSlow(info.first);
+            if (PH->isStatic()) {
+              placeholderToDeviceManager[PH].push_back(assignment.second);
+            }
+          }
+        }
+      }
+    }
+    const size_t totalNumDeferredWeights = placeholderToDeviceManager.size();
+    LOG(INFO) << "Loading " << totalNumDeferredWeights << " deferred weights";
+
+    auto startTime = std::chrono::steady_clock::now();
+    auto loader = cctx.deferredWeightLoader;
+    // Load the first weight.
+    auto err = loader->loadNextWeight();
+    if (err) {
+      RETURN_ERR(err);
+    }
+    std::string weightName = loader->getName();
+    // Load weights while there are weights to be loaded.
+    unsigned int weightCount = 0;
+    while (weightName != "") {
+      LOG(INFO) << "Loading deferred weight (" << ++weightCount << " / "
+                << totalNumDeferredWeights << "): " << weightName;
+      const auto PH = module.getPlaceholderByNameSlow(weightName);
+      if (!PH) {
+        return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                        llvm::formatv("Error loading deferred weight. Name: "
+                                      "{0} not found in module.",
+                                      weightName)
+                            .str());
+      }
+      // Convert the weight if needed.
+      auto newTy = PH->getType();
+      auto weight = loader->getTensor();
+      auto oldKind = weight->getElementType();
+      // Ensure we are working with a static PH.
+      assert(PH->isStatic());
+      if (!weight->getType().isEqual(newTy)) {
+        ElemKind newK = newTy->getElementType();
+
+        if (!isQuantizedElemKind(oldKind) && isQuantizedElemKind(newK)) {
+          Tensor QT = quantization::quantizeTensor(
+              *weight, {newTy->getScale(), newTy->getOffset()}, newK);
+          weight->assign(&QT);
+        } else {
+          weight->convertToType(newK);
+        }
+      }
+      // Transfer weight to all devices needed.
+      std::list<Error> errors;
+      std::list<std::future<void>> futures;
+      for (const auto &device : placeholderToDeviceManager[PH]) {
+        std::promise<void> transferPromise;
+        errors.emplace_back(Error::empty());
+        futures.emplace_back(transferPromise.get_future());
+        devices_[device]->transferStaticPlaceholderToDevice(
+            PH, weight,
+            [&transferPromise, &error = errors.back()](Error err) mutable {
+              error = std::move(err);
+              transferPromise.set_value();
+            });
+      }
+
+      for (auto &done : futures) {
+        done.get();
+      }
+
+      for (auto &error : errors) {
+        RETURN_IF_ERR(error);
+      }
+
+      err = loader->loadNextWeight();
+      if (err) {
+        RETURN_ERR(err);
+      }
+      weightName = loader->getName();
+      // Remove PH from map, this way we can know that we've added all static
+      // PH's
+      placeholderToDeviceManager.erase(PH);
+    }
+    if (placeholderToDeviceManager.size()) {
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                      "Error not all static placeholders were initialized.");
+    }
+
+    std::chrono::duration<double> duration =
+        std::chrono::steady_clock::now() - startTime;
+    LOG(INFO) << "Done loading deferred weights in " << duration.count()
+              << " seconds";
+  }
+
   cleanupProvision(localActiveNames, {}, false);
   return Error::success();
 };
