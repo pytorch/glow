@@ -125,6 +125,12 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, embeddingBag(inputMetas));
   } else if (symbol == "fb::glow_embedding_bag") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, glowEmbeddingBag(inputMetas));
+  } else if (symbol == "fb::glow_embedding_bag_byte_rowwise_offsets") {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        tensorOutput, quantizedGlowEmbeddingBagByteRowwiseOffsets(inputMetas));
+  } else if (symbol == "fb::glow_embedding_bag_4bit_rowwise_offsets") {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        tensorOutput, quantizedGlowEmbeddingBag4BitRowwiseOffsets(inputMetas));
   } else if (symbol == "fb::fast_gather") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fastGather(inputMetas));
   } else if (symbol == "fb::lengths_range") {
@@ -1352,6 +1358,74 @@ ShapeInferenceEngine::glowEmbeddingBag(const MetaStack &variableMetas) {
       strFormat("Expected 1D offset, got %zu.", offsetSahpe.size()));
 
   shape = {offsetSahpe[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+           embeddingDim};
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = c10::ScalarType::Float;
+  return output;
+}
+
+/**
+ * fb::glow_embedding_bag_byte_rowwise_offsets(Tensor indices,
+ *                        Tensor offsets,
+ *                        string? weight_qualname=None,
+ *                        int num_embeddings,
+ *                        int embedding_dim,
+ *                        Tensor? per_sample_weights=None,
+ *                        bool include_last_offset=True)
+ *                        -> Tensor
+ */
+/// In glow, the include_last_offset is always True.
+Expected<TensorOutput>
+ShapeInferenceEngine::quantizedGlowEmbeddingBagByteRowwiseOffsets(
+    const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 7,
+      strFormat("Expected 7 inputs, got %zu.", variableMetas.size()));
+
+  TensorShape shape;
+
+  const auto &offsetShape = variableMetas[1].shape<TensorShape>();
+
+  int64_t embeddingDim = variableMetas[4].intValue[0];
+
+  shape = {offsetShape[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+           embeddingDim};
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = c10::ScalarType::Float;
+  return output;
+}
+
+/**
+ * fb::glow_embedding_bag_4bit_rowwise_offsets(Tensor indices,
+ *                        Tensor offsets,
+ *                        string? weight_qualname=None,
+ *                        int num_embeddings,
+ *                        int embedding_dim,
+ *                        Tensor? per_sample_weights=None,
+ *                        bool include_last_offset=True)
+ *                        -> Tensor
+ */
+/// In glow, the include_last_offset is always True.
+Expected<TensorOutput>
+ShapeInferenceEngine::quantizedGlowEmbeddingBag4BitRowwiseOffsets(
+    const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 7,
+      strFormat("Expected 7 inputs, got %zu.", variableMetas.size()));
+
+  TensorShape shape;
+
+  const auto &offsetShape = variableMetas[1].shape<TensorShape>();
+
+  int64_t embeddingDim = variableMetas[4].intValue[0];
+
+  shape = {offsetShape[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
            embeddingDim};
 
   TensorOutput output;
