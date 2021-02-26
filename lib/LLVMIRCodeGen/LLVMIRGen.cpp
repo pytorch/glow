@@ -72,9 +72,9 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC,
-                     llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister)
+                     llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry)
     : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
-      objectRegister_(objectRegister) {
+      objectRegistry_(objectRegistry) {
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
 }
@@ -129,13 +129,13 @@ void LLVMIRGen::setMainEntryName(std::string name) {
   mainEntryName_ = name.empty() ? "main" : legalizeName(name);
 }
 
-llvm::ArrayRef<llvm::MemoryBufferRef> LLVMIRGen::getObjectRegister() const {
-  return objectRegister_;
+llvm::ArrayRef<llvm::MemoryBufferRef> LLVMIRGen::getObjectRegistry() const {
+  return objectRegistry_;
 }
 
-void LLVMIRGen::setObjectRegister(
-    llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister) {
-  objectRegister_ = objectRegister;
+void LLVMIRGen::setObjectRegistry(
+    llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry) {
+  objectRegistry_ = objectRegistry;
 }
 
 std::vector<std::string> LLVMIRGen::getBundleObjects() const {

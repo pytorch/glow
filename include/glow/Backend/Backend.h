@@ -23,6 +23,7 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/IROptimizer/IRFunctionPassPipeline.h"
 #include "glow/Support/Register.h"
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -282,7 +283,7 @@ public:
   /// other compilers than clang/LLVM. The raw buffers are encoded as type
   /// MemoryBufferRef which stores for each buffer a name, a raw pointer
   /// and a size (in bytes).
-  virtual llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegister() const {
+  virtual llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegistry() const {
     return llvm::ArrayRef<llvm::MemoryBufferRef>();
   }
 

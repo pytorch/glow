@@ -168,10 +168,10 @@ protected:
 
   /// Array with raw objects which can be optionally used by the code generator
   /// to archive additional object code into the bundle.
-  llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister_;
+  llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry_;
 
   /// Array with the names of the additional objects which will be archived
-  /// into the bundle. The objects must be registered in \ref objectRegister_.
+  /// into the bundle. The objects must be registered in \ref objectRegistry_.
   std::vector<std::string> bundleObjects_;
 
   /// Whether to print the IR instrumentation callback API.
@@ -336,10 +336,10 @@ public:
   /// activations.
   /// \param mainEntryName Name of the main entry.
   /// \param libjitBC bitcode of the backend's libjit library.
-  /// \param objectRegister array with additional objects for code generation.
+  /// \param objectRegistry array with additional objects for code generation.
   explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC,
-                     llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister);
+                     llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry);
 
   /// Init the TargetMachine using settings provided by \p llvmBackend.
   virtual void initTargetMachine(const LLVMBackendOptions &opts);
@@ -470,15 +470,16 @@ public:
   /// \returns a string which is printed at the end of the bundle header file
   /// following the standard content produced by the bundle saver.
   virtual std::string getBundleHeaderExtra() const;
-  /// \returns the object register for this code generator instance.
-  llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegister() const;
-  /// Set the object register for this code generator instance.
-  void setObjectRegister(llvm::ArrayRef<llvm::MemoryBufferRef> objectRegister);
+  /// \returns the object registry for this code generator instance.
+  virtual llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegistry() const;
+  /// Set the object registry for this code generator instance.
+  virtual void
+  setObjectRegistry(llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry);
   /// \returns the names of the objects which are archived into the bundle.
-  std::vector<std::string> getBundleObjects() const;
+  virtual std::vector<std::string> getBundleObjects() const;
   /// Add a bundle object \p objectName to be archived to the bundle. The object
-  /// must be registered in the \ref objectRegister_ otherwise error is thrown.
-  void addBundleObject(llvm::StringRef objectName);
+  /// must be registered in the \ref objectRegistry_ otherwise error is thrown.
+  virtual void addBundleObject(llvm::StringRef objectName);
 };
 
 template <typename T>

@@ -68,13 +68,7 @@ public:
   canDoIndexTypeDemotion(ElemKind fromTy, ElemKind toTy,
                          PrecisionConfiguration &precConfig) const override;
 
-  /// \returns an array of raw objects which are statically allocated and
-  /// initialized by the backend and which can be used for various purposes,
-  /// for example to store object files (binary code) which are compiled with
-  /// other compilers than clang/LLVM. The raw buffers are encoded as type
-  /// MemoryBufferRef which stores for each buffer a name, a raw pointer
-  /// and a size (in bytes).
-  llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegister() const override;
+  llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegistry() const override;
   /// @}
 
 public:

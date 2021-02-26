@@ -81,8 +81,7 @@ class MockLLVMIRGen : public CPULLVMIRGen {
 public:
   MockLLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                 std::string mainEntryName, llvm::StringRef libjitBC)
-      : CPULLVMIRGen(F, allocationsInfo, mainEntryName, libjitBC,
-                     llvm::ArrayRef<llvm::MemoryBufferRef>()) {}
+      : CPULLVMIRGen(F, allocationsInfo, mainEntryName, libjitBC) {}
 };
 
 class MockCPUBackend : public CPUBackend {

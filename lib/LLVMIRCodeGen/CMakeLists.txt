@@ -42,7 +42,6 @@ target_link_libraries(LLVMIRCodeGen
                         LLVMTransformUtils
                         LLVMVectorize
                         LLVMipo)
-
 if(LLVM_VERSION_MAJOR VERSION_GREATER 6)
   target_link_libraries(LLVMIRCodeGen
                         PRIVATE

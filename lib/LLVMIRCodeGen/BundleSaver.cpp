@@ -177,7 +177,7 @@ BundleSaver::BundleSaver(const LLVMBackend &llvmBackend,
                                                    llvmTargetFeatures.end());
   irgen_->setBundleName(bundleName);
   irgen_->setOutputDir(outputDir);
-  irgen_->setObjectRegister(llvmBackend.getObjectRegister());
+  irgen_->setObjectRegistry(llvmBackend.getObjectRegistry());
   // Use the bundle code model as a code model for the TargetMachine.
   auto opts = llvmBackend.getOptions();
   opts.setCodeModel(opts.getBundleCodeModel());
@@ -455,7 +455,7 @@ void BundleSaver::emitSymbolTable() {
 
 void BundleSaver::createBundleArchive(
     llvm::StringRef bundlePath,
-    llvm::ArrayRef<llvm::MemoryBufferRef> bundleObjectRegister,
+    llvm::ArrayRef<llvm::MemoryBufferRef> bundleObjectRegistry,
     const std::vector<std::string> &bundleObjects) {
 
   // If we do not have extra object files then return early.
@@ -485,7 +485,7 @@ void BundleSaver::createBundleArchive(
     }
     // Find current object and add it as archive member.
     bool objectFound = false;
-    for (const auto &memBuffRef : bundleObjectRegister) {
+    for (const auto &memBuffRef : bundleObjectRegistry) {
       if (memBuffRef.getBufferIdentifier().str() == objectName) {
         llvm::NewArchiveMember newMember(memBuffRef);
         newMembers.push_back(std::move(newMember));
@@ -499,7 +499,7 @@ void BundleSaver::createBundleArchive(
       errMsg += "Object '" + objectName + "' is not registered in Glow and ";
       errMsg += "cannot be archived into the bundle. The following objects ";
       errMsg += "are available for archiving:\n";
-      for (const auto &memBuffRef : bundleObjectRegister) {
+      for (const auto &memBuffRef : bundleObjectRegistry) {
         errMsg += "  - " + memBuffRef.getBufferIdentifier().str() + "\n";
       }
       CHECK(false) << errMsg;
@@ -589,7 +589,7 @@ void BundleSaver::produceBundle() {
   }
   outputFile.close();
   // Create bundle archive with additional object files.
-  createBundleArchive(fileName, irgen_->getObjectRegister(),
+  createBundleArchive(fileName, irgen_->getObjectRegistry(),
                       irgen_->getBundleObjects());
   // Output weights.
   saveWeights(bundleWeightsBinOut);

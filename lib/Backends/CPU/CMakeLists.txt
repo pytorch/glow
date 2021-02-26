@@ -93,9 +93,9 @@ endif()
 glow_serialize(
   INP_FILES ${objects}
   OUT_DIR "${GLOW_BINARY_DIR}/libobj/libobj_cpu"
-  OUT_FILE "${GLOW_BINARY_DIR}/libobj/libobj_cpu/cpuObjectRegister.h"
-  OUT_VAR "cpuObjectRegister"
-  OUT_TARGET cpuObjectRegisterTarget
+  OUT_FILE "${GLOW_BINARY_DIR}/libobj/libobj_cpu/cpuObjectRegistry.h"
+  OUT_VAR "cpuObjectRegistry"
+  OUT_TARGET cpuObjectRegistryTarget
 )
-add_dependencies(CPUBackend cpuObjectRegisterTarget)
+add_dependencies(CPUBackend cpuObjectRegistryTarget)
 include_directories(${GLOW_BINARY_DIR}/libobj/libobj_cpu)
