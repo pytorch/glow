@@ -148,7 +148,11 @@ bool CPUBackend::canDoIndexTypeDemotion(
   return fromTy == ElemKind::Int64ITy && toTy == ElemKind::Int32ITy;
 }
 
-#if !FACEBOOK_INTERNAL
+#if FACEBOOK_INTERNAL
+llvm::ArrayRef<llvm::MemoryBufferRef> CPUBackend::getObjectRegistry() const {
+  return llvm::ArrayRef<llvm::MemoryBufferRef>();
+}
+#else
 #include "cpuObjectRegistry.h"
 llvm::ArrayRef<llvm::MemoryBufferRef> CPUBackend::getObjectRegistry() const {
   return cpuObjectRegistry;
