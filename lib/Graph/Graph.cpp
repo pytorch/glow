@@ -15,6 +15,7 @@
  */
 #include "glow/Graph/Graph.h"
 #include "glow/Backend/Backend.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/TensorLayout.h"
@@ -1665,12 +1666,12 @@ BatchNormalizationNode *Function::createBatchNormalization(
                                             momentum));
 }
 
-LayerNormalizationNode *Function::createLayerNormalization(llvm::StringRef name,
-                                                           NodeValue input,
-                                                           NodeValue scale,
-                                                           NodeValue bias,
-                                                           float epsilon) {
-  return addNode(new LayerNormalizationNode(name, input, scale, bias, epsilon));
+LayerNormalizationNode *
+Function::createLayerNormalization(llvm::StringRef name, TypeRef outTy,
+                                   NodeValue input, NodeValue scale,
+                                   NodeValue bias, float epsilon) {
+  return addNode(
+      new LayerNormalizationNode(name, outTy, input, scale, bias, epsilon));
 }
 
 BucketizeNode *Function::createBucketizeNode(llvm::StringRef name,
@@ -1698,6 +1699,12 @@ ModuloNode *Function::createModulo(llvm::StringRef name, NodeValue input,
 NotNode *Function::createNot(llvm::StringRef name, NodeValue input) {
   TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, input.dims());
   return addNode(new NotNode(name, OT, input));
+}
+
+BitwiseNotNode *Function::createBitwiseNot(llvm::StringRef name,
+                                           NodeValue input) {
+  TypeRef OT = getParent()->uniqueType(*input.getType());
+  return addNode(new BitwiseNotNode(name, OT, input));
 }
 
 #define UNARY_ARITHMETIC_FUN_DEF(NODE_NAME_)                                   \
@@ -1749,6 +1756,7 @@ ARITHMETIC_FUN_DEF(Pow);
 ARITHMETIC_FUN_DEF(And);
 ARITHMETIC_FUN_DEF(Or);
 ARITHMETIC_FUN_DEF(Xor);
+ARITHMETIC_FUN_DEF(Fmod);
 #undef ARITHMETIC_FUN_DEF
 
 #define TRIGONOMETRIC_FUN_DEF(NODE_NAME_)                                      \
@@ -5852,18 +5860,25 @@ insertAndReport(std::unordered_map<std::string, const Node *> &nameToNode,
 
 bool Function::verify(const Backend *backend) const {
   bool isValid = true;
-  if (backend) {
-    if (backend->getTensorLayoutRequirements().isEnabled()) {
+  // Check if the layout verifying is disabled, which will accept all layout for
+  // any ops.
+  LOG(INFO) << "Layout requirements checking is "
+            << (glow::flags::DisableLayoutVerifying ? "disabled" : "enabled");
+  if (!glow::flags::DisableLayoutVerifying) {
+    if (backend) {
+      if (backend->getTensorLayoutRequirements().isEnabled()) {
+        isValid &= expectCompareTrue(
+            "Expected correct backend-specific layouts for the graph",
+            verifyLayouts(*this, backend->getTensorLayoutRequirements()), true,
+            this);
+      }
+    } else {
+      // Always run verification pre-lowering / when we don't have backend:
       isValid &= expectCompareTrue(
-          "Expected correct backend-specific layouts for the graph",
-          verifyLayouts(*this, backend->getTensorLayoutRequirements()), true,
+          "Expected correct Glow canonical layouts for the graph",
+          verifyLayouts(*this, CanonicalTensorLayout::getInstance()), true,
           this);
     }
-  } else {
-    // Always run verification pre-lowering / when we don't have backend:
-    isValid &= expectCompareTrue(
-        "Expected correct Glow canonical layouts for the graph",
-        verifyLayouts(*this, CanonicalTensorLayout::getInstance()), true, this);
   }
   std::unordered_map<std::string, const Node *> nameToNode;
 

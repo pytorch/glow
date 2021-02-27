@@ -1,12 +1,10 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
 
-class TestFullLike(unittest.TestCase):
+class TestFullLike(utils.TorchGlowTestCase):
     def test_empty_like_basic(self):
         """Basic test of the PyTorch empty_like Node on Glow."""
 

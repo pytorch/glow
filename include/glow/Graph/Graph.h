@@ -906,15 +906,14 @@ public:
       NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx = 0,
       float epsilon = 1e-5, float momentum = 0.9);
 
-  /// Creates and \returns a LayerNormalizationNode that computes the layer
-  /// normalization of the inner most layers of \p input based on the shape of
-  /// \p scale and \p bias. \p epsilon is a small perterbation used to avoid
-  /// division by 0 during normalization.
-  LayerNormalizationNode *createLayerNormalization(llvm::StringRef name,
-                                                   NodeValue input,
-                                                   NodeValue scale,
-                                                   NodeValue bias,
-                                                   float epsilon = 1e-5);
+  /// Creates and \returns a LayerNormalizationNode with result type of \p outTy
+  /// that computes the layer normalization of the inner most layers of \p input
+  /// based on the shape of \p scale and \p bias. \p epsilon is a small
+  /// perterbation used to avoid division by 0 during normalization.
+  LayerNormalizationNode *
+  createLayerNormalization(llvm::StringRef name, TypeRef outTy, NodeValue input,
+                           NodeValue scale, NodeValue bias,
+                           float epsilon = 1e-5);
 
   /// Bucketizes the input tensor based on monotonically increasing \p
   /// boundaries for each value in \p input. For each value x in input, the
@@ -938,6 +937,9 @@ public:
 
   /// Create a logical NOT node with name \p name and input \p input.
   NotNode *createNot(llvm::StringRef name, NodeValue input);
+
+  // Create a BitwiseNot node with name \p name and input \p input.
+  BitwiseNotNode *createBitwiseNot(llvm::StringRef name, NodeValue input);
 
 #define UNARY_ARITHMETIC_FUN_DECL(NODE_NAME_)                                  \
   NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue input); \
@@ -977,6 +979,7 @@ public:
   ARITHMETIC_FUN_DECL(Or);
   ARITHMETIC_FUN_DECL(Xor);
   ARITHMETIC_FUN_DECL(Pow);
+  ARITHMETIC_FUN_DECL(Fmod);
 #undef ARITHMETIC_FUN_DECL
 
 #define TRIGONOMETRIC_FUN_DECL(NODE_NAME_)                                     \
@@ -1020,6 +1023,7 @@ public:
   DECLARE_BROADCAST_NODE(Xor, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Or, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Pow, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Fmod, /* NUM_INPUTS */ 2)
 
 #define DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(NODE_NAME, NUM_INPUTS,            \
                                              OUTTYPEREF)                       \
@@ -1037,6 +1041,7 @@ public:
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Div, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Min, /* NUM_INPUTS */ 2, outTy)
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Max, /* NUM_INPUTS */ 2, outTy)
+  DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Fmod, /* NUM_INPUTS */ 2, outTy)
 
 #define DECLARE_CMP_BROADCAST_NODE(NODE_NAME)                                  \
   template <class T, class... Args>                                            \

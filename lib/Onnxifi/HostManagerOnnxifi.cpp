@@ -268,7 +268,14 @@ onnxStatus HostManagerBackend::addNetwork(
     if (reporters) {
       reporters->report(msg);
     }
-    LOG(FATAL) << "Non-recoverable device error when adding network: " << msg;
+    const std::string errMsg =
+        "Non-recoverable device error when adding network: " + msg;
+    if (cctx.skipProvisioning) {
+      LOG(ERROR) << errMsg;
+      throw std::invalid_argument("Error during non-provisioned addNetwork");
+    } else {
+      LOG(FATAL) << errMsg;
+    }
   }
 
   return ONNXIFI_STATUS_SUCCESS;

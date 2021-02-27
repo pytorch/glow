@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.nn.functional as F
 from tests import utils
@@ -17,7 +15,7 @@ class SimpleAvgPool3dModule(torch.nn.Module):
         return F.avg_pool3d(inputs, self.kernel_size, padding=self.padding)
 
 
-class TestAvgPool3d(unittest.TestCase):
+class TestAvgPool3d(utils.TorchGlowTestCase):
     def test_avg_pool3d_basic(self):
         """Basic test of the PyTorch avg_pool3d Node on Glow."""
 

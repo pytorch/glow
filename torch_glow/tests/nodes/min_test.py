@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -14,7 +12,7 @@ class SimpleMinModule(torch.nn.Module):
         return torch.min(a + a, b + b)
 
 
-class TestMin(unittest.TestCase):
+class TestMin(utils.TorchGlowTestCase):
     def test_elementwise_min(self):
         """Test of the PyTorch min Node on Glow."""
 

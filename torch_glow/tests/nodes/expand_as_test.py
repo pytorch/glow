@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -15,7 +13,7 @@ class ExpandAsModel(torch.nn.Module):
         return a.expand_as(self.other)
 
 
-class TestClamp(unittest.TestCase):
+class TestClamp(utils.TorchGlowTestCase):
     def test_clamp_min(self):
         """Test of the PyTorch expand_as Node on Glow."""
 

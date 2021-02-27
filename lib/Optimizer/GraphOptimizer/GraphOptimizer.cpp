@@ -877,6 +877,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         ARITHMETIC_CASE(Mul);
         ARITHMETIC_CASE(Sub);
         ARITHMETIC_CASE(Div);
+        ARITHMETIC_CASE(Fmod);
         ARITHMETIC_CASE(Max);
         ARITHMETIC_CASE(Min);
         ARITHMETIC_CASE(Pow);
@@ -4650,6 +4651,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       case Kinded::Kind::SubNodeKind:
       case Kinded::Kind::MulNodeKind:
       case Kinded::Kind::DivNodeKind:
+      case Kinded::Kind::FmodNodeKind:
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
@@ -6219,12 +6221,73 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     FullyConnectedNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind: {
+        splitDims[RowwiseQuantizedFullyConnectedNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN,
+            parallelizeAndReplaceNode(
+                F, curNode, curNumOfChunks,
+                RowwiseQuantizedFullyConnectedNode::InputIdx,
+                RowwiseQuantizedFullyConnectedNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MatMulNodeKind: {
+        splitDims[MatMulNode::LHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MatMulNode::LHSIdx,
+                                          MatMulNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind: {
+        splitDims[ChannelwiseQuantizedConvolutionNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN,
+            parallelizeAndReplaceNode(
+                F, curNode, curNumOfChunks,
+                ChannelwiseQuantizedConvolutionNode::InputIdx,
+                ChannelwiseQuantizedConvolutionNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::AdaptiveAvgPoolNodeKind: {
+        splitDims[AdaptiveAvgPoolNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, AdaptiveAvgPoolNode::InputIdx,
+                    AdaptiveAvgPoolNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ReshapeNodeKind: {
+        splitDims[ReshapeNode::InputIdx] = 0;
+        const dim_t batchSize =
+            curNode->getNthInput(ReshapeNode::InputIdx).dims()[0];
+        // Do nothing if reshape applies to the first batch dimension
+        if (batchSize != curNode->getNthResult(0).dims()[0]) {
+          LOG(INFO) << "Reshape changes batch dimension; Disabling data "
+                       "parallel split";
+          break;
+        }
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ReshapeNode::InputIdx,
+                    ReshapeNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::AddNodeKind: {
         splitDims[AddNode::LHSIdx] = 0;
         splitDims[AddNode::RHSIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           AddNode::LHSIdx, AddNode::ResultIdx,
+                                          splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::SubNodeKind: {
+        splitDims[SubNode::LHSIdx] = 0;
+        splitDims[SubNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          SubNode::LHSIdx, SubNode::ResultIdx,
                                           splitDims, 0));
         break;
       }
@@ -6244,6 +6307,16 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           MulNode::LHSIdx, MulNode::ResultIdx,
                                           splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::SelectNodeKind: {
+        splitDims[SelectNode::LHSIdx] = 0;
+        splitDims[SelectNode::RHSIdx] = 0;
+        splitDims[SelectNode::CondIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          SelectNode::LHSIdx,
+                                          SelectNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::SigmoidNodeKind: {
@@ -6443,6 +6516,21 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, ClipNode::InputIdx,
                     ClipNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::SelectNodeKind: {
+        auto *SL = llvm::cast<SelectNode>(curNode);
+        if (SL->getNthInput(SelectNode::LHSIdx).dims().size() < 2) {
+          break;
+        }
+        splitDims[SelectNode::LHSIdx] = 1;
+        splitDims[SelectNode::RHSIdx] = 1;
+        splitDims[SelectNode::CondIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, SelectNode::LHSIdx,
+                    SelectNode::ResultIdx, splitDims,
                     /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }

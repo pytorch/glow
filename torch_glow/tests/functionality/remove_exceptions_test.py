@@ -1,10 +1,9 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 from tests.utils import graph_contains_str
 
 
@@ -19,7 +18,7 @@ def foo(x):
             raise RuntimeError("hi")
 
 
-class TestRemoveException(unittest.TestCase):
+class TestRemoveException(utils.TorchGlowTestCase):
     def test_remove_exceptions(self):
         """Test Glow's removeExceptions JIT pass"""
 

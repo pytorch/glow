@@ -81,6 +81,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedReduceMaxNodeKind:
   case Kinded::Kind::BatchedReduceProdNodeKind:
+  case Kinded::Kind::FmodNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
@@ -185,6 +186,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
   case Kinded::Kind::PowNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
+         ElemKind::Int8QTy});
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::TanhNodeKind:
@@ -196,7 +200,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int32QTy, ElemKind::Int64ITy,
-         ElemKind::Int32ITy});
+         ElemKind::Int32ITy, ElemKind::BoolTy});
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -259,6 +263,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {}, {IsNaNNode::ResultIdx}) &&
            (NI.getOutElemTy(IsNaNNode::ResultIdx) == ElemKind::BoolTy);
 
+  case Kinded::Kind::BitwiseNotNodeKind:
   case Kinded::Kind::ModuloNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int32ITy, ElemKind::Int64ITy});

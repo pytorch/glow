@@ -1198,6 +1198,26 @@ public:
   }
 };
 
+class ArgMinNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowArgMin = llvm::dyn_cast<ArgMinNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowArgMin, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowArgMin->getInput())},
+                            {nodeValueName(glowArgMin->getResult())});
+
+    uint32_t axis = glowArgMin->getAxis();
+    auto keepDims = glowArgMin->getKeepDims() ? 1 : 0;
+    return nnpiNetworkAddReduceOp(
+        importer.getNetwork(), glowArgMin->getName().begin(),
+        nodeValueName(glowArgMin->getInput()).c_str(),
+        nodeValueName(glowArgMin->getResult()).c_str(), NNPI_REDUCE_ARG_MIN,
+        &axis, 1, keepDims);
+  }
+};
+
 class ReduceAddNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -1632,6 +1652,7 @@ public:
                     .c_str()),
         "Bad offset value", NNPI_INVALID_PARAM);
 
+#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
     const uint32_t SPATIAL_DIMS2 = 2;
     LOG_AND_RETURN_IF_NOT(
         ERROR,
@@ -1659,6 +1680,45 @@ public:
         glowChannelwiseQuantizedConv->getStrides()[0],
         glowChannelwiseQuantizedConv->getStrides()[1]};
     uint32_t dilation[SPATIAL_DIMS2] = {1, 1}; // No dilation, default values
+#else
+    const uint32_t spatialDims =
+        glowChannelwiseQuantizedConv->getKernels().size();
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        glowChannelwiseQuantizedConv->getKernels().size() == 2 ||
+            glowChannelwiseQuantizedConv->getKernels().size() == 3,
+        "[Conv] Invalid number of kernel sizes", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          glowChannelwiseQuantizedConv->getPads().size() ==
+                              2 * spatialDims,
+                          "[Conv] Invalid number of pads", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(
+        ERROR, glowChannelwiseQuantizedConv->getStrides().size() == spatialDims,
+        "[Conv] Invalid number of strides", NNPI_INVALID_PARAM);
+
+    uint32_t kernel[spatialDims];
+    uint32_t paddingStart[spatialDims];
+    uint32_t paddingEnd[spatialDims];
+    uint32_t stride[spatialDims];
+    uint32_t dilation[spatialDims];
+
+    for (size_t i = 0; i < spatialDims; i++) {
+      kernel[i] = glowChannelwiseQuantizedConv->getKernels()[i];
+      stride[i] = glowChannelwiseQuantizedConv->getStrides()[i];
+      if (spatialDims == 2) {
+        paddingStart[i] = glowChannelwiseQuantizedConv->getPads()[i];
+        paddingEnd[i] =
+            glowChannelwiseQuantizedConv->getPads()[spatialDims + i];
+        //  Since no dilation, set default values.
+        dilation[i] = 1;
+      } else {
+        paddingStart[i] = glowChannelwiseQuantizedConv->getPads()[i * 2];
+        paddingEnd[i] = glowChannelwiseQuantizedConv->getPads()[i * 2 + 1];
+        //  Since no dilation, set default values.
+        dilation[i] = 1;
+      }
+    }
+#endif
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -1707,7 +1767,7 @@ public:
         {
             nodeValueName(glowChannelwiseQuantizedConv->getResult()),
         });
-
+#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
     return nnpiNetworkAddConvolutionOp(
         importer.getNetwork(), glowChannelwiseQuantizedConv->getName().begin(),
         nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str(),
@@ -1718,6 +1778,18 @@ public:
             : nullptr,
         kernel, paddingStart, paddingEnd, stride, dilation, SPATIAL_DIMS2,
         glowChannelwiseQuantizedConv->getGroup());
+#else
+    return nnpiNetworkAddConvolutionOp(
+        importer.getNetwork(), glowChannelwiseQuantizedConv->getName().begin(),
+        nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str(),
+        nodeValueName(glowChannelwiseQuantizedConv->getResult()).c_str(),
+        nodeValueName(glowChannelwiseQuantizedConv->getFilter()).c_str(),
+        glowChannelwiseQuantizedConv->getBias()
+            ? nodeValueName(glowChannelwiseQuantizedConv->getBias()).c_str()
+            : nullptr,
+        kernel, paddingStart, paddingEnd, stride, dilation, spatialDims,
+        glowChannelwiseQuantizedConv->getGroup());
+#endif
   }
 };
 
@@ -2408,6 +2480,8 @@ std::unordered_map<
     {"Relu", glow::make_unique<ReluNodeImporter>()},
     {"PRelu", glow::make_unique<PReluNodeImporter>()},
     {"Gelu", glow::make_unique<GeluNodeImporter>()},
+    {"Abs", glow::make_unique<
+                UnaryEltwiseNodeImporter<glow::AbsNode, NNPI_ELTWISE_ABS>>()},
     {"Exp", glow::make_unique<
                 UnaryEltwiseNodeImporter<glow::ExpNode, NNPI_ELTWISE_EXP>>()},
     {"Neg", glow::make_unique<
@@ -2426,6 +2500,9 @@ std::unordered_map<
                 BinaryEltwiseNodeImporter<glow::SubNode, NNPI_ELTWISE_SUB>>()},
     {"Pow", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::PowNode, NNPI_ELTWISE_POW>>()},
+    {"Fmod",
+     glow::make_unique<
+         BinaryEltwiseNodeImporter<glow::FmodNode, NNPI_ELTWISE_FLOOR_MOD>>()},
     {"CmpEQ",
      glow::make_unique<
          BinaryEltwiseNodeImporter<glow::CmpEQNode, NNPI_ELTWISE_EQ>>()},
@@ -2436,6 +2513,7 @@ std::unordered_map<
      glow::make_unique<
          BinaryEltwiseNodeImporter<glow::CmpLTNode, NNPI_ELTWISE_LESS>>()},
     {"ArgMax", glow::make_unique<ArgMaxNodeImporter>()},
+    {"ArgMin", glow::make_unique<ArgMinNodeImporter>()},
     {"Reshape", glow::make_unique<ReshapeNodeImporter>()},
     {"Quantize", glow::make_unique<ConvertNodeImporter<QuantizeNode>>()},
     {"Dequantize", glow::make_unique<ConvertNodeImporter<DequantizeNode>>()},

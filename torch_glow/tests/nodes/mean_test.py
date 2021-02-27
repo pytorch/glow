@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -18,7 +16,7 @@ class SimpleMeanModule(torch.nn.Module):
             return torch.mean(a + b)
 
 
-class TestMean(unittest.TestCase):
+class TestMean(utils.TorchGlowTestCase):
     def test_basic(self):
         """Test of the PyTorch mean Node on Glow."""
 

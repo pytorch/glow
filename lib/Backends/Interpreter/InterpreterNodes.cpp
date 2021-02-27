@@ -27,7 +27,6 @@
 
 #include <chrono>
 #include <cmath>
-#include <math.h>
 #include <numeric>
 
 #ifdef WIN32
@@ -2267,6 +2266,7 @@ void BoundInterpreterFunction::fwdExtractTensorInst(
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32ITy);
+  TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
 
   llvm_unreachable("Unsupported tensor type");
@@ -3082,6 +3082,69 @@ void BoundInterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
                          I->getDest()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdElementFmodInst(const ElementFmodInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    auto destTy = I->getDest()->getType();
+    auto lhsTy = I->getLHS()->getType();
+    auto rhsTy = I->getRHS()->getType();
+
+    float destScale = destTy->getScale();
+    float lhsScale = lhsTy->getScale();
+    float rhsScale = rhsTy->getScale();
+
+    int32_t destOffset = destTy->getOffset();
+    int32_t lhsOffset = lhsTy->getOffset();
+    int32_t rhsOffset = rhsTy->getOffset();
+
+    auto outW = getWeightHandle<int8_t>(I->getDest());
+    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+    for (size_t i = 0, e = outW.size(); i < e; i++) {
+      float l = lhsScale * float(lhsW.raw(i) - lhsOffset);
+      float r = rhsScale * destScale * float(rhsW.raw(i) - rhsOffset);
+      int32_t q = std::round(std::fmod(l, r) + destOffset);
+      outW.raw(i) = quantization::clip<int32_t, int8_t>(q);
+    }
+    return;
+  }
+
+#define FMOD_LOOP(TYPE_)                                                       \
+  staticAssertArithmeticType(TYPE_);                                           \
+  auto outW = getWeightHandle<TYPE_>(I->getDest());                            \
+  auto lhsW = getWeightHandle<TYPE_>(I->getLHS());                             \
+  auto rhsW = getWeightHandle<TYPE_>(I->getRHS());                             \
+  for (size_t i = 0, e = outW.size(); i < e; i++) {                            \
+    outW.raw(i) = std::fmod((float)lhsW.raw(i), (float)rhsW.raw(i));           \
+  }
+
+  auto *T = getTensor(I->getDest());
+  switch (T->getElementType()) {
+  case ElemKind::Int64ITy: {
+    FMOD_LOOP(int64_t);
+    return;
+  }
+  case ElemKind::Int32ITy: {
+    FMOD_LOOP(int32_t);
+    return;
+  }
+  case ElemKind::FloatTy: {
+    FMOD_LOOP(float);
+    return;
+  }
+  case ElemKind::Float16Ty: {
+    FMOD_LOOP(float16_t);
+    return;
+  }
+  case ElemKind::BFloat16Ty: {
+    FMOD_LOOP(bfloat16_t);
+    return;
+  }
+
+  default:
+    llvm_unreachable("Unsupported type for Fmod.");
+  }
+}
+
 void BoundInterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto destTy = I->getDest()->getType();
@@ -3306,6 +3369,12 @@ void BoundInterpreterFunction::fwdUnaryArithmeticImpl(
       outH.raw(i) = static_cast<ElemTy>(outVal);
     }
   }
+}
+
+void BoundInterpreterFunction::fwdElementBitwiseNotInst(
+    const ElementBitwiseNotInst *I) {
+  auto func = [](int64_t i) -> int64_t { return ~i; };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
 }
 
 void BoundInterpreterFunction::fwdElementAbsInst(const ElementAbsInst *I) {
@@ -3581,8 +3650,45 @@ void BoundInterpreterFunction::fwdElementPowInstFloatImpl(
   }
 }
 
+void BoundInterpreterFunction::fwdElementPowInstI8Impl(
+    const ElementPowInst *I) {
+  assert(getTensor(I->getLHS())->getType().isQuantizedType() &&
+         "Expect quantized type");
+  auto baseTy = I->getLHS()->getType();
+  auto expTy = I->getRHS()->getType();
+  auto destTy = I->getDest()->getType();
+
+  float baseScale = baseTy->getScale();
+  int32_t baseOffset = baseTy->getOffset();
+  TensorQuantizationParams baseTQP{baseScale, baseOffset};
+
+  float expScale = expTy->getScale();
+  int32_t expOffset = expTy->getOffset();
+  TensorQuantizationParams expTQP{expScale, expOffset};
+
+  float destScale = destTy->getScale();
+  int32_t destOffset = destTy->getOffset();
+  TensorQuantizationParams destTQP{destScale, destOffset};
+
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto baseW = getWeightHandle<int8_t>(I->getLHS());
+  auto expW = getWeightHandle<int8_t>(I->getRHS());
+
+  for (dim_t i = 0, e = outW.size(); i < e; i++) {
+    float base = quantization::dequantize(baseW.raw(i), baseTQP);
+    float exp = quantization::dequantize(expW.raw(i), expTQP);
+    outW.raw(i) = quantization::quantize(std::pow(base, exp), destTQP);
+  }
+}
+
 void BoundInterpreterFunction::fwdElementPowInst(
     const glow::ElementPowInst *I) {
+  auto *T = getTensor(I->getLHS());
+  if (T->getType().isQuantizedType()) {
+    fwdElementPowInstI8Impl(I);
+    return;
+  }
+
   dispatchFloatingPointImpl(fwdElementPowInstFloatImpl,
                             I->getLHS()->getElementType(), I);
 }

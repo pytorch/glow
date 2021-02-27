@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.nn.functional as F
 from tests import utils
@@ -15,7 +13,7 @@ class SimpleLinearModule(torch.nn.Module):
         return F.linear((input + input), weight, bias)
 
 
-class TestLinear(unittest.TestCase):
+class TestLinear(utils.TorchGlowTestCase):
     def test_linear_basic(self):
         """Basic test of the PyTorch aten::linear op on Glow."""
 
@@ -29,9 +27,8 @@ class TestLinear(unittest.TestCase):
         input = torch.randn(n, in_features)
         weight = torch.randn(out_features, in_features)
 
-        # fusible_ops has is empty because linear gets lowered to other ops
         utils.compare_tracing_methods(
-            SimpleLinearModule(), input, weight, fusible_ops={}
+            SimpleLinearModule(), input, weight, fusible_ops={"aten::linear"}
         )
 
     def test_linear_bias(self):
@@ -48,9 +45,8 @@ class TestLinear(unittest.TestCase):
         weight = torch.randn(out_features, in_features)
         bias = torch.randn(out_features)
 
-        # fusible_ops has is empty because linear gets lowered to other ops
         utils.compare_tracing_methods(
-            SimpleLinearModule(), input, weight, bias, fusible_ops={}
+            SimpleLinearModule(), input, weight, bias, fusible_ops={"aten::linear"}
         )
 
     def test_linear_broadcast(self):
@@ -66,7 +62,6 @@ class TestLinear(unittest.TestCase):
         input = torch.randn(n, 9, 7, in_features)
         weight = torch.randn(out_features, in_features)
 
-        # fusible_ops has is empty because linear gets lowered to other ops
         utils.compare_tracing_methods(
-            SimpleLinearModule(), input, weight, fusible_ops={}
+            SimpleLinearModule(), input, weight, fusible_ops={"aten::linear"}
         )

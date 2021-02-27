@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -60,31 +59,43 @@ class SimpleRoiAlignRotatedModel(torch.nn.Module):
         return torch.ops._caffe2.RoIAlignRotated(features, rois, **self.kwargs)
 
 
-class TestRoiAlignRotated(unittest.TestCase):
+class TestRoiAlignRotated(utils.TorchGlowTestCase):
     """TODO: Combine with TestRoiAlign"""
 
-    @parameterized.expand(
+    @utils.deterministic_expand(
         [
-            ("basic", SimpleRoiAlignRotatedModel("NCHW"), torch.randn(1, 3, 16, 20)),
-            ("nhwc", SimpleRoiAlignRotatedModel("NHWC"), torch.randn(1, 16, 20, 3)),
-            ("batched", SimpleRoiAlignRotatedModel("NCHW"), torch.randn(4, 3, 16, 20)),
-            (
+            lambda: (
+                "basic",
+                SimpleRoiAlignRotatedModel("NCHW"),
+                torch.randn(1, 3, 16, 20),
+            ),
+            lambda: (
+                "nhwc",
+                SimpleRoiAlignRotatedModel("NHWC"),
+                torch.randn(1, 16, 20, 3),
+            ),
+            lambda: (
+                "batched",
+                SimpleRoiAlignRotatedModel("NCHW"),
+                torch.randn(4, 3, 16, 20),
+            ),
+            lambda: (
                 "horizontal",
                 SimpleRoiAlignRotatedModel("NCHW"),
                 torch.randn(4, 3, 16, 20),
                 True,
             ),
-            (
+            lambda: (
                 "scaled",
                 SimpleRoiAlignRotatedModel("NCHW", spatial_scale=0.0625),
                 torch.randn(1, 3, 224, 224),
             ),
-            (
+            lambda: (
                 "unaligned",
                 SimpleRoiAlignRotatedModel("NCHW", aligned=False),
                 torch.randn(1, 3, 16, 20),
             ),
-            (
+            lambda: (
                 "dynamic_sampling",
                 SimpleRoiAlignRotatedModel("NCHW", sampling_ratio=0),
                 torch.randn(1, 3, 16, 20),

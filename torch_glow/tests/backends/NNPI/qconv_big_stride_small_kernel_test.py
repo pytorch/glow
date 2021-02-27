@@ -3,11 +3,10 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
-class TestQuantizedConv2dBigStrideSmallKernel(unittest.TestCase):
+class TestQuantizedConv2dBigStrideSmallKernel(utils.TorchGlowTestCase):
     # These tests should be run on NNPI card manually, or else
     # buck test will only run them on emulator.
     supported_backends = {"NNPI"}
@@ -22,29 +21,29 @@ class TestQuantizedConv2dBigStrideSmallKernel(unittest.TestCase):
         "aten::dequantize",
     }
 
-    @parameterized.expand(
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "2d_stride_bigger_in_one_dim",
                 torch.nn.Conv2d(8, 4, [1, 1], groups=1, stride=[2, 1]),
                 torch.randn([1, 8, 8, 8]),
             ),
-            (
+            lambda: (
                 "2d_stride_bigger_in_multi_dims",
                 torch.nn.Conv2d(8, 4, [1, 1], groups=1, stride=[2, 2]),
                 torch.randn([1, 8, 8, 8]),
             ),
-            (
+            lambda: (
                 "2d_stride_bigger_in_multi_groups",
                 torch.nn.Conv2d(8, 4, [1, 1], groups=4, stride=[2, 1]),
                 torch.randn([1, 8, 8, 8]),
             ),
-            (
+            lambda: (
                 "2d_stride_bigger_strong_test_1",
                 torch.nn.Conv2d(4, 8, [2, 3], groups=2, stride=[1, 4]),
                 torch.randn([1, 4, 29, 23]),
             ),
-            (
+            lambda: (
                 "2d_stride_bigger_strong_test_2",
                 torch.nn.Conv2d(6, 8, [7, 3], groups=2, stride=[8, 4]),
                 torch.randn([2, 6, 47, 35]),
@@ -74,9 +73,9 @@ class TestQuantizedConv2dBigStrideSmallKernel(unittest.TestCase):
             )
 
     # Skiped 3d tests
-    @parameterized.expand(
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "3d_stride_bigger_in_one_dim",
                 torch.nn.Conv3d(8, 4, kernel_size=2, groups=1, stride=1),
                 torch.randn([1, 8, 16, 8, 8]),

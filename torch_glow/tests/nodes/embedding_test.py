@@ -1,13 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 from tests.utils import check_skip
 
 
-class TestEmbedding(unittest.TestCase):
+class TestEmbedding(utils.TorchGlowTestCase):
     supported_backends = {"Interpreter", "NNPI"}
 
     def test_embedding_wt_float32_ind_int64(self):

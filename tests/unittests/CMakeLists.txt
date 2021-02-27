@@ -260,6 +260,7 @@ endif()
 if(GLOW_WITH_NNPI)
   add_executable(NNPIOptPipelineTest
           NNPIOptPipelineTest.cpp)
+  target_include_directories(NNPIOptPipelineTest PRIVATE ${NNPI_API_DIR})
   target_link_libraries(NNPIOptPipelineTest
           PRIVATE
           Backends
@@ -377,7 +378,12 @@ target_link_libraries(MemoryAllocatorTest
                         TestMain)
 add_glow_test(MemoryAllocatorTest
               ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest
-                  --gtest_output=xml:MemoryAllocatorTest.xml)
+                  --gtest_output=xml:MemoryAllocatorTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/MemoryAllocatorTestModels.txt
+               ${CMAKE_CURRENT_BINARY_DIR}/MemoryAllocatorTestModels.txt
+               COPYONLY)
 
 add_executable(NodeSplittingTest
                NodeSplittingTest.cpp)

@@ -1,14 +1,13 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 from tests.utils import GLOW_FUSION_GROUP, SUBGRAPH_ATTR
 
 
-class TestGetAttr(unittest.TestCase):
+class TestGetAttr(utils.TorchGlowTestCase):
     def test_getattr(self):
         """Test fusion of the PyTorch prim::GetAttr Node into the Glow subgraph."""
         with torch.no_grad():

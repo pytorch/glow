@@ -1,7 +1,4 @@
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -31,12 +28,12 @@ class ArgMaxModule(torch.nn.Module):
             return torch.argmax(tensor)
 
 
-class TestArgMin(unittest.TestCase):
-    @parameterized.expand(
+class TestArgMin(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("basic", ArgMinModule(), torch.randn(4)),
-            ("dimensions1", ArgMinModule(1, False), torch.randn(4, 4)),
-            ("dimensions2", ArgMinModule(1), torch.randn(5, 5)),
+            lambda: ("basic", ArgMinModule(), torch.randn(4)),
+            lambda: ("dimensions1", ArgMinModule(1, False), torch.randn(4, 4)),
+            lambda: ("dimensions2", ArgMinModule(1), torch.randn(5, 5)),
         ]
     )
     def test_argmin_node(self, _, module, tensor):
@@ -44,12 +41,12 @@ class TestArgMin(unittest.TestCase):
         utils.compare_tracing_methods(module, tensor, fusible_ops={"aten::argmin"})
 
 
-class TestArgMax(unittest.TestCase):
-    @parameterized.expand(
+class TestArgMax(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("basic", ArgMaxModule(), torch.randn(4)),
-            ("dimensions1", ArgMaxModule(1, False), torch.randn(4, 4)),
-            ("dimensions2", ArgMaxModule(1), torch.randn(5, 5)),
+            lambda: ("basic", ArgMaxModule(), torch.randn(4)),
+            lambda: ("dimensions1", ArgMaxModule(1, False), torch.randn(4, 4)),
+            lambda: ("dimensions2", ArgMaxModule(1), torch.randn(5, 5)),
         ]
     )
     def test_argmax_node(self, _, module, tensor):

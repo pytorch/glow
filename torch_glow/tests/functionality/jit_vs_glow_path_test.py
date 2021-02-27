@@ -1,15 +1,13 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.nn.functional as F
 import torch_glow
 from tests import utils
 
 
-class TestJITVsGlowPath(unittest.TestCase):
+class TestJITVsGlowPath(utils.TorchGlowTestCase):
     def test_jit_vs_glow_path(self):
         """Basic test of the JIT vs. Glow logging feature."""
 
@@ -30,7 +28,7 @@ class TestJITVsGlowPath(unittest.TestCase):
             TestModule(),
             input,
             weight,
-            fusible_ops={"aten::add", "aten::t", "aten::matmul"},
+            fusible_ops={"aten::add", "aten::linear"},
         )
 
     def test_jit_vs_glow_int_path(self):

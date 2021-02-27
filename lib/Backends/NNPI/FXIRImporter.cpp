@@ -9,12 +9,17 @@ using namespace utils;
 namespace {
 
 /// \returns true if \p opCode is not either "placeholder" or "output" (which
-/// indicate the node is an operater).
-bool isOps(const std::string &opCode) {
+/// indicate the node is an operator).
+static bool isOps(const std::string &opCode) {
   return opCode != "placeholder" && opCode != "output";
 }
 
-// Node Importers
+/// \returns the final char pointer to pass into NNPI importer APIs for \p str.
+static const char *finalize(const std::string &str) {
+  return str.empty() ? nullptr : str.c_str();
+}
+
+/// Node Importers
 template <NNPI_ELTWISE_TYPE eltwiseType>
 class BinaryEltwiseNodeImporter : public INNPIFXNodeImporter {
 public:
@@ -28,61 +33,76 @@ public:
     // TODO: broadcast inputs if input is not a node.
     std::array<NNPIObjectName, 2> inputNames;
     snprintf(inputNames[0], NNPI_MAX_STRING_LEN, "%s",
-             inputs[0]["name"].getString().c_str());
+             importer.getInputNodeName(inputs[0]).c_str());
     snprintf(inputNames[1], NNPI_MAX_STRING_LEN, "%s",
-             inputs[1]["name"].getString().c_str());
+             importer.getInputNodeName(inputs[1]).c_str());
 
     importer.setUsedTensors({inputNames[0], inputNames[1]}, {name});
-    return nnpiNetworkAddElementwiseOp(importer.getNetwork(), name.c_str(),
-                                       inputNames.data(), 2, name.c_str(),
+    return nnpiNetworkAddElementwiseOp(importer.getNetwork(), finalize(name),
+                                       inputNames.data(), 2, finalize(name),
                                        eltwiseType);
   }
 };
 
 class LinearNodeImporter : public INNPIFXNodeImporter {
 public:
-  NNPIErrorCode importNode(const folly::dynamic &node,
-                           const std::function<string(string)> &getQualName,
-                           FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
     const auto &name = node["name"].getString();
-    const auto &weightName = getQualName("weight");
-    const auto &biasName = getQualName("bias");
+    const auto &kwargs = node["kwargs"];
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &biasName =
+        importer.getInputNodeName(kwargs["bias"], /* optional */ true);
 
-    importer.setUsedTensors(
-        {inputs[0]["name"].getString(), weightName, biasName}, {name});
+    LOG_AND_RETURN_IF_NOT(ERROR, importer.isConstant(weightName),
+                          "linear (" + name + ") weight (" + weightName +
+                              ") must be constant",
+                          NNPI_INVALID_PARAM);
+
+    LOG_AND_RETURN_IF_NOT(
+        ERROR, biasName.empty() || importer.isConstant(biasName),
+        "linear (" + name + ") bias (" + biasName + ") must be constant",
+        NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({inputName, weightName, biasName}, {name});
     return nnpiNetworkAddFullyConnectedOp(
-        importer.getNetwork(), name.c_str(),
-        inputs[0]["name"].getString().c_str(), name.c_str(), weightName.c_str(),
-        importer.getConstant(biasName) ? biasName.c_str() : nullptr);
+        importer.getNetwork(), finalize(name), finalize(inputName),
+        finalize(name), finalize(weightName), finalize(biasName));
   }
 };
 
 template <size_t convDims = 2>
 class ConvolutionNodeImporter : public INNPIFXNodeImporter {
 public:
-  NNPIErrorCode importNode(const folly::dynamic &node,
-                           const std::function<string(string)> &getQualName,
-                           FXNNPIImporter &importer) override {
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+    // TODO T84757346: Move to kwargs instead of args once Conv is correct
+    // normalized.
     const auto &inputs = node["args"];
     const auto &name = node["name"].getString();
-    const auto &filterName = getQualName("weight");
-    const auto &biasName = getQualName("bias");
+    const auto &inputName = importer.getInputNodeName(inputs[0]);
+    const auto &filterName = importer.getInputNodeName(inputs[1]);
+    const auto &biasName =
+        importer.getInputNodeName(inputs[2], /* optional */ true);
 
-    // Get parameters.
-    auto kernelSize =
-        toIntegerArray<uint32_t>(node["parameters"]["kernel_size"].getString(),
-                                 /* length */ convDims);
-    auto stride = toIntegerArray<uint32_t>(
-        node["parameters"]["stride"].getString(), /* length */ convDims);
-    auto padding =
-        toIntegerArray<uint32_t>(node["parameters"]["padding"].getString(),
-                                 /* length */ convDims);
-    auto dilation =
-        toIntegerArray<uint32_t>(node["parameters"]["dilation"].getString(),
-                                 /* length */ convDims);
-    const auto &groups = node["parameters"]["groups"].asInt();
-    const auto &paddingMode = node["parameters"]["padding_mode"].getString();
+    // Kernel size is implicit in the shape of the filter.
+    const auto &filterDesc = importer.getTensorDesc(filterName);
+    LOG_AND_RETURN_IF_NOT(ERROR, filterDesc.numDims == convDims + 2,
+                          "Unexpected filter dims", NNPI_INVALID_PARAM);
+    std::vector<uint32_t> kernelSize;
+    for (size_t i = 0; i < convDims; i++) {
+      kernelSize.push_back(filterDesc.dims[i + 2]);
+    }
+
+    auto stride = toIntegerArray<uint32_t>(inputs[3], /* length */ convDims);
+    auto padding = toIntegerArray<uint32_t>(inputs[4], /* length */ convDims);
+    auto dilation = toIntegerArray<uint32_t>(inputs[5], /* length */ convDims);
+    const auto &groups = inputs[6].asInt();
 
     LOG_AND_RETURN_IF_NOT(ERROR,
                           std::all_of(dilation.cbegin(), dilation.cend(),
@@ -90,16 +110,21 @@ public:
                           "Dilation is not supported", NNPI_INVALID_PARAM);
     LOG_AND_RETURN_IF_NOT(ERROR, groups == 1, "Group is not supported",
                           NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR, paddingMode == "zeros",
-                          "Only support zeros padding mode",
+
+    LOG_AND_RETURN_IF_NOT(ERROR, importer.isConstant(filterName),
+                          "convolution (" + name + ") filter (" + filterName +
+                              ") must be constant",
                           NNPI_INVALID_PARAM);
 
-    importer.setUsedTensors(
-        {inputs[0]["name"].getString(), filterName, biasName}, {name});
+    LOG_AND_RETURN_IF_NOT(
+        ERROR, biasName.empty() || importer.isConstant(biasName),
+        "convolution (" + name + ") bias (" + biasName + ") must be constant",
+        NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({inputName, filterName, biasName}, {name});
     return nnpiNetworkAddConvolutionOp(
-        importer.getNetwork(), name.c_str(),
-        inputs[0]["name"].getString().c_str(), name.c_str(), filterName.c_str(),
-        importer.getConstant(biasName) ? biasName.c_str() : nullptr,
+        importer.getNetwork(), finalize(name), finalize(inputName),
+        finalize(name), finalize(filterName), finalize(biasName),
         kernelSize.data(), padding.data(), padding.data(), stride.data(),
         dilation.data(), convDims, groups);
   }
@@ -110,8 +135,9 @@ public:
   NNPIErrorCode importNode(const folly::dynamic &node,
                            const std::function<string(string)> &getQualName,
                            FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
     const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
     const auto &weightName = getQualName("weight");
     const auto &biasName = getQualName("bias");
     const auto &meanName = getQualName("running_mean");
@@ -120,13 +146,12 @@ public:
     // Get parameters.
     const auto &eps = node["parameters"]["eps"].asDouble();
 
-    importer.setUsedTensors({inputs[0]["name"].getString(), weightName,
-                             biasName, meanName, varName},
-                            {name});
+    importer.setUsedTensors(
+        {inputName, weightName, biasName, meanName, varName}, {name});
     return nnpiNetworkAddBatchNormOp(
-        importer.getNetwork(), name.c_str(),
-        inputs[0]["name"].getString().c_str(), name.c_str(), meanName.c_str(),
-        varName.c_str(), weightName.c_str(), biasName.c_str(), eps);
+        importer.getNetwork(), finalize(name), finalize(inputName),
+        finalize(name), finalize(meanName), finalize(varName),
+        finalize(weightName), finalize(biasName), eps);
   }
 };
 
@@ -136,18 +161,18 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
     const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
 
     // Get parameters.
-    const auto &inplace_ = node["parameters"]["inplace"].asBool();
+    const auto &inplace = kwargs["inplace"].asBool();
     // TODO: replace users of ReLU input after ReLU with ReLU output.
-    LOG_IF_NOT(WARNING, !inplace_) << "Inplace ReLU is not supported";
+    LOG_IF_NOT(WARNING, !inplace) << "Inplace ReLU is not supported";
 
-    importer.setUsedTensors({inputs[0]["name"].getString()}, {name});
-    return nnpiNetworkAddReluOp(importer.getNetwork(), name.c_str(),
-                                inputs[0]["name"].getString().c_str(),
-                                name.c_str());
+    importer.setUsedTensors({inputName}, {name});
+    return nnpiNetworkAddReluOp(importer.getNetwork(), finalize(name),
+                                finalize(inputName), finalize(name));
   }
 };
 
@@ -158,13 +183,14 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
     const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
 
-    importer.setUsedTensors({inputs[0]["name"].getString()}, {name});
-    return nnpiNetworkAddAdaptivePoolingOp(
-        importer.getNetwork(), name.c_str(),
-        inputs[0]["name"].getString().c_str(), name.c_str(), poolType);
+    importer.setUsedTensors({inputName}, {name});
+    return nnpiNetworkAddAdaptivePoolingOp(importer.getNetwork(),
+                                           finalize(name), finalize(inputName),
+                                           finalize(name), poolType);
   }
 };
 
@@ -175,29 +201,27 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
     const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
 
     // Get parameters
-    auto kernelSize =
-        toIntegerArray<uint32_t>(node["parameters"]["kernel_size"].getString(),
-                                 /* length */ poolDims);
-    auto stride = toIntegerArray<uint32_t>(
-        node["parameters"]["stride"].getString(), /* length */ poolDims);
-    auto padding =
-        toIntegerArray<uint32_t>(node["parameters"]["padding"].getString(),
-                                 /* length */ poolDims);
-    const auto &ceilMode = node["parameters"]["ceil_mode"].asBool();
+    auto kernelSize = toIntegerArray<uint32_t>(kwargs["kernel_size"],
+                                               /* length */ poolDims);
+    auto stride = toIntegerArray<uint32_t>(kwargs["stride"],
+                                           /* length */ poolDims);
+    auto padding = toIntegerArray<uint32_t>(kwargs["padding"],
+                                            /* length */ poolDims);
+    const auto &ceilMode = kwargs["ceil_mode"].asBool();
     std::vector<uint32_t> dilation(poolDims, 1);
     auto returnIndices = false;
     bool countIncludePads = true;
     if (poolType == NNPI_POOL_AVG) {
-      countIncludePads = node["parameters"]["count_include_pad"].asBool();
+      countIncludePads = kwargs["count_include_pad"].asBool();
     }
     if (poolType == NNPI_POOL_MAX) {
-      returnIndices = node["parameters"]["return_indices"].asBool();
-      dilation =
-          toIntegerArray<uint32_t>(node["parameters"]["dilation"].getString());
+      returnIndices = kwargs["return_indices"].asBool();
+      dilation = toIntegerArray<uint32_t>(kwargs["dilation"]);
     }
 
     LOG_AND_RETURN_IF_NOT(ERROR,
@@ -208,13 +232,13 @@ public:
                           "Return_indices is not supported",
                           NNPI_INVALID_PARAM);
 
-    importer.setUsedTensors({inputs[0]["name"].getString()}, {name});
-    return nnpiNetworkAddPoolingOp(
-        importer.getNetwork(), name.c_str(),
-        inputs[0]["name"].getString().c_str(), name.c_str(),
-        /* return indices tensor */ nullptr, kernelSize.data(), padding.data(),
-        padding.data(), stride.data(), poolDims, poolType, !countIncludePads,
-        ceilMode);
+    importer.setUsedTensors({inputName}, {name});
+    return nnpiNetworkAddPoolingOp(importer.getNetwork(), finalize(name),
+                                   finalize(inputName), finalize(name),
+                                   /* return indices tensor */ nullptr,
+                                   kernelSize.data(), padding.data(),
+                                   padding.data(), stride.data(), poolDims,
+                                   poolType, !countIncludePads, ceilMode);
   }
 };
 
@@ -226,49 +250,51 @@ public:
              FXNNPIImporter &importer) override {
     const auto &inputs = node["args"];
     const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs[0]);
 
     NNPITensorDesc desc;
     importer.updateDescDimsFromFX(
         toIntegerArray<glow::dim_t>(node["shape"].getString()), desc);
-    importer.setUsedTensors({inputs[0]["name"].getString()}, {name});
-    return nnpiNetworkAddReshapeOp(importer.getNetwork(), name.c_str(),
-                                   inputs[0]["name"].getString().c_str(),
-                                   name.c_str(), &desc);
+    importer.setUsedTensors({inputName}, {name});
+    return nnpiNetworkAddReshapeOp(importer.getNetwork(), finalize(name),
+                                   finalize(inputName), finalize(name), &desc);
   }
 };
 
-std::unordered_map<
-    std::string,
-    std::unique_ptr<INNPIFXNodeImporter>>::value_type FXImporterInit[] = {
-    // _operator
-    {"_operator.add",
-     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_ADD>>()},
+static std::unordered_map<std::string,
+                          std::unique_ptr<INNPIFXNodeImporter>>::value_type
+    FXImporterInit[] = {
+        // _operator
+        {"_operator.add",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_ADD>>()},
 
-    // torch
-    {"torch.flatten", std::make_unique<ReshapeNodeImporter>()},
+        // torch
+        {"torch.flatten", std::make_unique<ReshapeNodeImporter>()},
 
-    // torch.nn.modules
-    {"torch.nn.modules.linear.Linear", std::make_unique<LinearNodeImporter>()},
-    {"torch.nn.modules.conv.Conv2d",
-     std::make_unique<ConvolutionNodeImporter<2>>()},
-    {"torch.nn.modules.batchnorm.BatchNorm2d",
-     std::make_unique<BatchNormalizationNodeImporter>()},
-    {"torch.nn.modules.activation.ReLU", std::make_unique<ReluNodeImporter>()},
-    {"torch.nn.modules.pooling.AdaptiveAvgPool2d",
-     std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
-    {"torch.nn.modules.pooling.MaxPool2d",
-     std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
+        // torch.nn.modules
+        {"torch.nn.functional.linear", std::make_unique<LinearNodeImporter>()},
+        {"torch.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
+        {"torch.nn.modules.batchnorm.BatchNorm2d",
+         std::make_unique<BatchNormalizationNodeImporter>()},
+        {"torch.nn.functional.relu", std::make_unique<ReluNodeImporter>()},
+        {"torch.nn.functional.adaptive_avg_pool2d",
+         std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
+        {"torch.nn.functional.max_pool2d",
+         std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
 };
 
-const std::unordered_map<std::string, std::unique_ptr<INNPIFXNodeImporter>>
+static const std::unordered_map<std::string,
+                                std::unique_ptr<INNPIFXNodeImporter>>
     FXNodeImporters = {std::make_move_iterator(std::begin(FXImporterInit)),
                        std::make_move_iterator(std::end(FXImporterInit))};
 
 } // namespace
 
 FXNNPIImporter::FXNNPIImporter(
-    const glow::NNPICompilationOptions &compileOptions)
-    : network_(NNPI_INVALID_NNPIHANDLE), compileOptions_(compileOptions) {
+    const glow::NNPICompilationOptions &compileOptions,
+    const llvm::StringMap<const void *> &constants)
+    : network_(NNPI_INVALID_NNPIHANDLE), compileOptions_(compileOptions),
+      constants_(constants) {
   ASSERT_LOG_NNPI_ERROR(nnpiNetworkCreate(&network_),
                         "Failed to create NNPI network");
 }
@@ -281,8 +307,53 @@ FXNNPIImporter::~FXNNPIImporter() {
   }
 }
 
-const void *FXNNPIImporter::getConstant(const std::string &name) const {
-  return constants_->count(name) ? constants_->find(name)->second : nullptr;
+const char *FXNNPIImporter::getConstantName(llvm::StringRef name) const {
+  if (name.empty()) {
+    return nullptr;
+  }
+  // If this is a Constant already, return the name back untouched.
+  if (constants_.count(name)) {
+    return name.data();
+  }
+  // Else return the name the getattr maps to if it exists.
+  auto it = getattrs_.find(name);
+  return it != getattrs_.end() ? it->second.c_str() : nullptr;
+}
+
+const void *FXNNPIImporter::getConstant(llvm::StringRef name) const {
+  const char *baseName = getConstantName(name);
+  if (!baseName) {
+    return nullptr;
+  }
+  // There must be a constant with name baseName, so return it.
+  auto it = constants_.find(baseName);
+  CHECK(it != constants_.end())
+      << "Should have found constant with name " << baseName;
+  return it->second;
+}
+
+const NNPITensorDesc &
+FXNNPIImporter::getTensorDesc(llvm::StringRef name) const {
+  auto it = tensorDescs_.find(name);
+  CHECK(it != tensorDescs_.end())
+      << "Did not find NNPITensorDesc for " << name.str();
+  return it->second;
+}
+
+const std::string &FXNNPIImporter::getInputNodeName(const folly::dynamic &node,
+                                                    bool optional) const {
+  if (optional && node.isNull()) {
+    static const std::string empty;
+    return empty;
+  }
+  CHECK(node["is_node"].asBool()) << "Expected is_node";
+
+  const auto &name = node["name"].getString();
+
+  // Check if this name was for a getattr. If so, return the underlying Constant
+  // name. Otherwise return the name unchanged.
+  auto it = getattrs_.find(name);
+  return it != getattrs_.end() ? it->second : name;
 }
 
 void FXNNPIImporter::updateDescQuantFromFX(const DTYPE &dtype,
@@ -375,8 +446,9 @@ FXNNPIImporter::addTensor(const std::string &name, const string &dtypeStr,
     desc.attributes.constant = 1;
     switch (dtype) {
     case DTYPE::INT64: {
-      const auto *pDataInt64 =
-          static_cast<const int64_t *>(constants_->find(name)->second);
+      auto it = constants_.find(name);
+      CHECK(it != constants_.end()) << "Did not find constant for " << name;
+      const auto *pDataInt64 = static_cast<const int64_t *>(it->second);
       const auto &size = std::accumulate(dims.begin(), dims.end(), 1,
                                          [](int x, int y) { return x * y; });
       pDataInt32 = std::make_unique<int[]>(size);
@@ -391,13 +463,17 @@ FXNNPIImporter::addTensor(const std::string &name, const string &dtypeStr,
     }
   }
 
-  return nnpiNetworkAddTensor(network_, name.c_str(), &desc, pRawData);
+  // Outputs have already had their descs added by the named node itself.
+  if (!output) {
+    bool inserted = tensorDescs_.try_emplace(name, desc).second;
+    CHECK(inserted) << "Already found tensor desc with name " << name;
+  }
+
+  return nnpiNetworkAddTensor(network_, finalize(name), &desc, pRawData);
 }
 
-NNPINetwork
-FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
-                               const std::string &submodule,
-                               const llvm::StringMap<const void *> &constants) {
+NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
+                                           const std::string &submodule) {
   const auto &mod = submodule.empty() ? FXIR : FXIR["modules"][submodule];
   const auto &prefix = submodule.empty() ? submodule : submodule + ".";
 
@@ -408,11 +484,11 @@ FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
   DBG_MEM_USAGE("ImportFunction <<");
 
   // Add constants.
-  constants_ = &constants;
   const auto &weights = mod["weights"];
   for (const auto &key : weights.keys()) {
     const auto &name = key.getString();
     DBG("Importing Constant: " << name);
+    CHECK(constants_.count(name)) << "Constant not found for weight " << name;
     LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
         addTensor(
             name, weights[name]["dtype"].getString(),
@@ -425,56 +501,75 @@ FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
   // name of the node, if they don't match we fail to load the graph.
   for (const auto &node : mod["nodes"]) {
     const auto &opCode = node["op_code"].getString();
-    if (isOps(opCode)) {
-      DBG("Importing Node: " << node["name"].getString());
-      // Add node outputs.
-      LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
-          addTensor(node["name"].getString(), node["dtype"].getString(),
-                    toIntegerArray<glow::dim_t>(node["shape"].getString())),
-          "Failed to add intermediate");
-
-      if (opCode != "get_attr") {
-        const auto &targetName = node["target"].getString();
-        const auto &functionName = opCode != "call_module"
-                                       ? targetName
-                                       : node["parameters"]["name"].getString();
-        // Import node.
-        LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
-            FXNodeImporters.at(functionName)
-                ->importNode(
-                    node,
-                    [&prefix, &targetName](const std::string &name) {
-                      return folly::to<std::string>(prefix, targetName, ".",
-                                                    name);
-                    },
-                    *this),
-            "Failed to import node");
-      }
+    const auto &nodeName = node["name"].getString();
+    if (!isOps(opCode)) {
+      continue;
     }
+    DBG("Importing Node: " << nodeName);
+    // Add node outputs.
+    LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
+        addTensor(nodeName, node["dtype"].getString(),
+                  toIntegerArray<glow::dim_t>(node["shape"].getString())),
+        "Failed to add intermediate");
+
+    // Track what Constant each get_attr points to.
+    if (opCode == "get_attr") {
+      bool inserted =
+          getattrs_.try_emplace(nodeName, node["target"].getString()).second;
+      CHECK(inserted) << "Already mapped a getattr by name " << nodeName
+                      << " to its underlying Constant";
+      continue;
+    }
+    const auto &targetName = node["target"].getString();
+    const auto &functionName = opCode != "call_module"
+                                   ? targetName
+                                   : node["parameters"]["name"].getString();
+    // Import node.
+    LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
+        FXNodeImporters.at(functionName)
+            ->importNode(
+                node,
+                [&prefix, &targetName](const std::string &name) {
+                  return folly::to<std::string>(prefix, targetName, ".", name);
+                },
+                *this),
+        "Failed to import node");
   }
 
   // Add placeholder.
   for (const auto &node : mod["nodes"]) {
     const auto &opCode = node["op_code"].getString();
 
-    if (!isOps(opCode)) {
-      const auto &name = opCode != "output"
-                             ? node["name"].getString()
-                             : node["args"][0]["name"].getString();
-      bool inputVar(readTensors_.count(name) && !writeTensors_.count(name));
-      bool outputVar(!readTensors_.count(name) && writeTensors_.count(name));
-      DBG("Add placeholder: " << name);
+    if (opCode == "placeholder") {
+      const auto &name = node["name"].getString();
 
-      if (inputVar || outputVar) {
+      DBG("Add placeholder: " << name);
+      CHECK(!writeTensors_.count(name)) << "Placeholder can't be written";
+
+      if (readTensors_.count(name)) {
         LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
             addTensor(name, node["dtype"].getString(),
                       toIntegerArray<glow::dim_t>(node["shape"].getString()),
-                      inputVar, outputVar),
+                      /* input */ true, /* output */ false),
             "Failed to add placeholder");
-        DBG("[--IO--] Setting IO variable: " << name << ", R:" << inputVar
-                                             << ", W:" << outputVar);
       } else {
         DBG("[--IO--] Unused Placeholder: " << name);
+      }
+    } else if (opCode == "output") {
+      const auto &args = node["args"];
+
+      for (const auto &arg : args) {
+        const auto &outputName = getInputNodeName(arg);
+
+        DBG("Add output" << outputName);
+        CHECK(writeTensors_.count(outputName))
+            << "output must be in writeTensors_";
+
+        LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
+            addTensor(outputName, arg["dtype"].getString(),
+                      toIntegerArray<glow::dim_t>(arg["shape"].getString()),
+                      /* input */ false, /* output */ true),
+            "Failed to add output");
       }
     }
   }

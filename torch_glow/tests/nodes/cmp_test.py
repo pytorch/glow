@@ -1,10 +1,8 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
 from typing import Union
 
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -49,7 +47,7 @@ class SimpleScalarVectorCmpModule(torch.nn.Module):
             return a != self.rhsScalar
 
 
-class TestCmp(unittest.TestCase):
+class TestCmp(utils.TorchGlowTestCase):
     def test_equal_basic(self):
         """Basic test of the PyTorch Equal Node on Glow."""
         utils.compare_tracing_methods(
@@ -158,92 +156,128 @@ class TestCmp(unittest.TestCase):
             fusible_ops={"aten::ge"},
         )
 
-    @parameterized.expand(
+    @utils.deterministic_expand(
         [
-            ("eq_tensor_scalar", "equal", "aten::eq", torch.randn(3, 4, 5), 0.5),
-            ("gt_tensor_scalar", "greaterThan", "aten::gt", torch.randn(3, 4, 5), 0.5),
-            ("ge_tensor_scalar", "greaterEqual", "aten::ge", torch.randn(3, 4, 5), 0.5),
-            ("le_tensor_scalar", "lessEqual", "aten::le", torch.randn(3, 4, 5), 0.5),
-            ("lt_tensor_scalar", "lessThan", "aten::lt", torch.randn(3, 4, 5), 0.5),
-            ("ne_tensor_scalar", "notEqual", "aten::ne", torch.randn(3, 4, 5), 0.5),
-            (
+            lambda: (
+                "eq_tensor_scalar",
+                "equal",
+                "aten::eq",
+                torch.randn(3, 4, 5),
+                0.5,
+            ),
+            lambda: (
+                "gt_tensor_scalar",
+                "greaterThan",
+                "aten::gt",
+                torch.randn(3, 4, 5),
+                0.5,
+            ),
+            lambda: (
+                "ge_tensor_scalar",
+                "greaterEqual",
+                "aten::ge",
+                torch.randn(3, 4, 5),
+                0.5,
+            ),
+            lambda: (
+                "le_tensor_scalar",
+                "lessEqual",
+                "aten::le",
+                torch.randn(3, 4, 5),
+                0.5,
+            ),
+            lambda: (
+                "lt_tensor_scalar",
+                "lessThan",
+                "aten::lt",
+                torch.randn(3, 4, 5),
+                0.5,
+            ),
+            lambda: (
+                "ne_tensor_scalar",
+                "notEqual",
+                "aten::ne",
+                torch.randn(3, 4, 5),
+                0.5,
+            ),
+            lambda: (
                 "eq_tensor_scalar_int64",
                 "equal",
                 "aten::eq",
                 torch.randn(3, 4, 5).to(torch.int64),
                 5,
             ),
-            (
+            lambda: (
                 "gt_tensor_scalar_int64",
                 "greaterThan",
                 "aten::gt",
                 torch.randn(3, 4, 5).to(torch.int64),
                 5,
             ),
-            (
+            lambda: (
                 "ge_tensor_scalar_int64",
                 "greaterEqual",
                 "aten::ge",
                 torch.randn(3, 4, 5).to(torch.int64),
                 5,
             ),
-            (
+            lambda: (
                 "le_tensor_scalar_int64",
                 "lessEqual",
                 "aten::le",
                 torch.randn(3, 4, 5).to(torch.int64),
                 5,
             ),
-            (
+            lambda: (
                 "lt_tensor_scalar_int64",
                 "lessThan",
                 "aten::lt",
                 torch.randn(3, 4, 5).to(torch.int64),
                 5,
             ),
-            (
+            lambda: (
                 "ne_tensor_scalar_int64",
                 "notEqual",
                 "aten::ne",
                 torch.randn(3, 4, 5).to(torch.int64),
                 5,
             ),
-            (
+            lambda: (
                 "eq_tensor_scalar_int32",
                 "equal",
                 "aten::eq",
                 torch.randn(3, 4, 5).to(torch.int32),
                 5,
             ),
-            (
+            lambda: (
                 "gt_tensor_scalar_int32",
                 "greaterThan",
                 "aten::gt",
                 torch.randn(3, 4, 5).to(torch.int32),
                 5,
             ),
-            (
+            lambda: (
                 "lt_tensor_scalar_int32",
                 "lessThan",
                 "aten::lt",
                 torch.randn(3, 4, 5).to(torch.int32),
                 5,
             ),
-            (
+            lambda: (
                 "eq_tensor_scalar_float_int",
                 "equal",
                 "aten::eq",
                 torch.randn(3, 4, 5),
                 5,
             ),
-            (
+            lambda: (
                 "gt_tensor_scalar_float_int",
                 "greaterThan",
                 "aten::gt",
                 torch.randn(3, 4, 5),
                 5,
             ),
-            (
+            lambda: (
                 "lt_tensor_scalar_float_int",
                 "lessThan",
                 "aten::lt",

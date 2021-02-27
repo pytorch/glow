@@ -483,13 +483,6 @@ static Error ProcessPackedParams(torch::jit::Graph &graph,
   return Error::success();
 }
 
-c10::IValue
-TorchGlowBackend::preprocess(c10::IValue mod,
-                             c10::impl::GenericDict method_compile_spec) {
-  // We do nothing in the preprocess, instead we do them in compile()
-  return mod;
-}
-
 Error applySettingsOverrideFlagsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings) {
   // TODO:
@@ -548,6 +541,21 @@ Error applyFuserSettingsToPyTorchLoaderSettings(
 
 // Runs preprocessing flow on the JIT graph.
 // Returns the processed and frozen module or Error.
+// nameToOrigGraph: maps method name to the JIT graph before Glow
+// transformations. This origGraph is used in runOnJIT / writeToOnnx flows and
+// therefore it should have the same outputs as the lowered graph (i.e. a
+// returned tuple is lowered to tensors.)
+// The original module is saved in __processed_module python class attribute
+// (it should be a serializable module with a single output).
+//  OrigModule
+//      |
+//  inline and cleanup profiling and shapes info
+//      |
+//    clone
+//     / \
+//  save   lowerAllTuples
+//          \
+//         runOnJit/writeToOnnx
 static Expected<torch::jit::Module> preprocessImpl(
     const torch::jit::Module &origModule,
     const std::vector<std::string> &methodNames,
@@ -571,7 +579,6 @@ static Expected<torch::jit::Module> preprocessImpl(
     torch::jit::Inline(*graph);
     torch::jit::ClearProfilingInformation(graph);
     torch::jit::EraseShapeInformation(graph);
-    nameToOrigGraph[methodName] = graph->copy();
   }
 
   auto processedModule = origModule.clone();
@@ -581,12 +588,8 @@ static Expected<torch::jit::Module> preprocessImpl(
     auto method = processedModule.get_method(methodName);
     auto graph = method.graph();
 
-    /* Note: The following LowerAllTuples call is a bit of a hack. The
-     * GraphExecutor that takes this copy of the graph would otherwise not have
-     * the tuples lowered, which would cause an issue, given that the two
-     * versions would have different output types.
-     */
     LowerAllTuples(graph);
+    nameToOrigGraph[methodName] = graph->copy();
 
     RewriteQuantPackedParamOps(graph);
     RETURN_IF_ERR(ProcessPackedParams(*graph, processedModule._ivalue()));
@@ -642,7 +645,7 @@ compileImpl(const torch::jit::Module &origModule,
     throw std::runtime_error(ERR_TO_STRING(std::move(err)));
   }
 
-  auto compileModule = frozenModuleOrErr.get().clone();
+  auto compileModule = frozenModuleOrErr.get();
   // Compile each method
   for (const auto &kv : method_compile_spec) {
     const auto methodName = kv.key().toString()->string();
@@ -677,8 +680,6 @@ compileImpl(const torch::jit::Module &origModule,
     auto graph = method.function().graph();
     graph = graph->copy();
 
-    LowerAllTuples(graph);
-
     if (baseSettings.enableDebugFuser) {
       LOG(WARNING) << "TorchGlowBackend using GlowFuser";
 
@@ -698,7 +699,8 @@ compileImpl(const torch::jit::Module &origModule,
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
               graph, glow::getHostManager(baseSettings), baseSettings,
-              /*useRunOnly*/ true, origGraph, origModule._ivalue());
+              /*useRunOnly*/ !baseSettings.lazyCompile, origGraph,
+              origModule._ivalue());
 
       // Compile each compilation group
       for (const auto &compilationGroup : spec.compilation_groups) {
@@ -706,7 +708,8 @@ compileImpl(const torch::jit::Module &origModule,
         auto compilationGroupSettings = baseSettings;
         RETURN_IF_ERR(applyCompilationGroupSettingsToPyTorchLoaderSettings(
             compilationGroupSettings, *compilationGroup->settings));
-        // Compile each input set
+        // Compile each input set (if lazy-compile is set, only the compilation
+        // settings will be stored)
         for (const auto &inputSet : compilationGroup->input_sets) {
           InputMetaStack metaStack = getInputMetas(inputSet);
           auto err = runner->warmCache(metaStack, compilationGroupSettings,

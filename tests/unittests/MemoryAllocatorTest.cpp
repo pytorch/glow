@@ -18,6 +18,12 @@
 
 #include "gtest/gtest.h"
 
+#include <fstream>
+
+#ifndef GLOW_DATA_PATH
+#define GLOW_DATA_PATH
+#endif
+
 using namespace glow;
 
 TEST(MemAlloc, simple) {
@@ -154,7 +160,7 @@ TEST(MemAlloc, dealloc2) {
     EXPECT_TRUE(MA.hasHandle(p0));
 
     EXPECT_NE(p0, MemoryAllocator::npos);
-    allocations.push_back(p0);
+    allocations.emplace_back(p0);
 
     if (allocations.size() > 20) {
       MA.deallocate(MA.getHandle(allocations[0]));
@@ -341,4 +347,417 @@ TEST(MemAlloc, testAlignment) {
   auto p3 = MA2.allocate(10, handle3);
   EXPECT_EQ(p2, 128);
   EXPECT_EQ(p3, 256);
+}
+
+/// ----------------------------------------------------------------------------
+///                        Allocate all segments at once
+/// ----------------------------------------------------------------------------
+/// Test efficiency for allocateAll.
+TEST(MemAlloc, testAllocateAllEfficiency) {
+
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  void *handle2 = reinterpret_cast<void *>(2);
+
+  // Simple allocate.
+  MemoryAllocator MA1("test", 0, 10);
+  MA1.allocate(10, handle0);
+  MA1.allocate(10, handle1);
+  MA1.deallocate(handle0);
+  MA1.allocate(20, handle2);
+  MA1.deallocate(handle1);
+  MA1.deallocate(handle2);
+  EXPECT_EQ(MA1.getMaxMemoryUsage(), 40);
+  EXPECT_FLOAT_EQ(MA1.getAllocationEfficiency(), 0.75);
+
+  // Allocate all.
+  MemoryAllocator MA2("test", 0, 10);
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle0, true, 10);
+  allocList.emplace_back(handle1, true, 10);
+  allocList.emplace_back(handle0, false, 0);
+  allocList.emplace_back(handle2, true, 20);
+  allocList.emplace_back(handle1, false, 0);
+  allocList.emplace_back(handle2, false, 0);
+  MA2.allocateAll(allocList);
+  EXPECT_EQ(MA2.getMaxMemoryUsage(), 30);
+  EXPECT_FLOAT_EQ(MA2.getAllocationEfficiency(), 1.00);
+}
+
+/// Test alignment for allocateAll.
+TEST(MemAlloc, testAllocateAllAlignment) {
+  MemoryAllocator MA("test", 192, 64);
+
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle0, true, 65);
+  allocList.emplace_back(handle1, true, 64);
+  allocList.emplace_back(handle0, false, 0);
+  allocList.emplace_back(handle1, false, 0);
+  uint64_t usedSize = MA.allocateAll(allocList);
+
+  EXPECT_EQ(usedSize, 192);
+  EXPECT_EQ(MA.getSize(handle0), 65);
+  EXPECT_EQ(MA.getSize(handle1), 64);
+  EXPECT_EQ(MA.getAddress(handle0), 0);
+  EXPECT_EQ(MA.getAddress(handle1), 128);
+  EXPECT_EQ(MA.getSegment(handle0).size(), 65);
+  EXPECT_EQ(MA.getSegment(handle1).size(), 64);
+  EXPECT_EQ(MA.getSegment(handle0).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin, 128);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 192);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
+}
+
+/// Test invalid number of allocations for allocateAll.
+TEST(MemAlloc, testAllocateAllInvalidNumAllocs) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle, true, 10);
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
+                            "Allocations are invalid!");
+#endif
+}
+
+/// Test invalid FREE before ALLOC for allocateAll.
+TEST(MemAlloc, testAllocateAllInvalidFreeBeforeAlloc) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle, false, 0);
+  allocList.emplace_back(handle, true, 10);
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
+                            "Allocations are invalid!");
+#endif
+}
+
+/// Test invalid handles for allocateAll.
+TEST(MemAlloc, testAllocateAllInvalidHandles1) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle, true, 10);
+  allocList.emplace_back(handle, true, 10);
+  allocList.emplace_back(handle, false, 0);
+  allocList.emplace_back(handle, false, 0);
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
+                            "Allocations are invalid!");
+#endif
+}
+
+/// Test invalid handles for allocateAll.
+TEST(MemAlloc, testAllocateAllInvalidHandles2) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle0, true, 10);
+  allocList.emplace_back(handle0, true, 10);
+  allocList.emplace_back(handle1, false, 0);
+  allocList.emplace_back(handle1, false, 0);
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.allocateAll(allocList),
+                            "Allocations are invalid!");
+#endif
+}
+
+/// Test allocating segment of size 0 with allocateAll.
+TEST(MemAlloc, testAllocateAllSize0) {
+  MemoryAllocator MA("test", 0, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle, true, 0);
+  allocList.emplace_back(handle, false, 0);
+  uint64_t usedSize = MA.allocateAll(allocList);
+  EXPECT_EQ(usedSize, 0);
+  EXPECT_EQ(MA.getSize(handle), 0);
+  EXPECT_EQ(MA.getAddress(handle), 0);
+  EXPECT_EQ(MA.getSegment(handle).size(), 0);
+  EXPECT_EQ(MA.getSegment(handle).begin, 0);
+}
+
+/// Test allocating multiple segments of size 0 with allocateAll.
+TEST(MemAlloc, testAllocateAllMultipleSize0) {
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  void *handle2 = reinterpret_cast<void *>(2);
+  void *handle3 = reinterpret_cast<void *>(3);
+  void *handle4 = reinterpret_cast<void *>(4);
+  void *handle5 = reinterpret_cast<void *>(5);
+
+  MemoryAllocator MA("test", 0, 10);
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle5, true, 0);
+  allocList.emplace_back(handle0, true, 10);
+  allocList.emplace_back(handle3, true, 0);
+  allocList.emplace_back(handle1, true, 10);
+  allocList.emplace_back(handle4, true, 0);
+  allocList.emplace_back(handle0, false, 0);
+  allocList.emplace_back(handle2, true, 20);
+  allocList.emplace_back(handle3, false, 0);
+  allocList.emplace_back(handle1, false, 0);
+  allocList.emplace_back(handle4, false, 0);
+  allocList.emplace_back(handle2, false, 0);
+  allocList.emplace_back(handle5, false, 0);
+
+  uint64_t usedSize = MA.allocateAll(allocList);
+  EXPECT_EQ(usedSize, 30);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 30);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.00);
+  EXPECT_EQ(MA.getSize(handle3), 0);
+  EXPECT_EQ(MA.getAddress(handle3), 0);
+  EXPECT_EQ(MA.getSegment(handle3).size(), 0);
+  EXPECT_EQ(MA.getSegment(handle3).begin, 0);
+  EXPECT_EQ(MA.getSize(handle4), 0);
+  EXPECT_EQ(MA.getAddress(handle4), 0);
+  EXPECT_EQ(MA.getSegment(handle4).size(), 0);
+  EXPECT_EQ(MA.getSegment(handle4).begin, 0);
+  EXPECT_EQ(MA.getSize(handle5), 0);
+  EXPECT_EQ(MA.getAddress(handle5), 0);
+  EXPECT_EQ(MA.getSegment(handle5).size(), 0);
+  EXPECT_EQ(MA.getSegment(handle5).begin, 0);
+}
+
+/// Test empty allocs for allocateAll.
+TEST(MemAlloc, testAllocateAllEmptyAlloc) {
+  MemoryAllocator MA("test", 0, 64);
+  std::list<Allocation> allocList;
+  uint64_t usedSize = MA.allocateAll(allocList);
+  EXPECT_EQ(usedSize, 0);
+}
+
+/// Test memory overflow for allocateAll.
+TEST(MemAlloc, testAllocateAllMemOverflow) {
+  MemoryAllocator MA("test", 10, 64);
+  void *handle = reinterpret_cast<void *>(0);
+  std::list<Allocation> allocList;
+  allocList.emplace_back(handle, true, 100);
+  allocList.emplace_back(handle, false, 0);
+  uint64_t usedSize = MA.allocateAll(allocList);
+  EXPECT_EQ(usedSize, MemoryAllocator::npos);
+#ifndef NDEBUG
+  ASSERT_DEATH_IF_SUPPORTED(MA.getSize(handle), "Unknown handle");
+#endif
+}
+
+/// Utility function to test allocation for a given model using \p alignment
+/// and the allocations \p allocs. The expected memory usage and efficiency
+/// are \p expectedUsedSize and \p expectedEfficiency.
+static void testAllocateAllForModel(size_t alignment,
+                                    const std::list<Allocation> &allocs,
+                                    uint64_t expectedUsedSize,
+                                    float expectedEfficiency) {
+  MemoryAllocator MA("mem", 0, alignment);
+  uint64_t usedSize = MA.allocateAll(allocs);
+  EXPECT_EQ(usedSize, expectedUsedSize);
+  for (const auto &alloc : allocs) {
+    if (alloc.alloc) {
+      EXPECT_EQ(MA.getSize(alloc.handle), alloc.size);
+    }
+  };
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), expectedEfficiency);
+}
+
+/// Test memory allocation for multiple models using a text file with the
+/// following format:
+/// MODEL <model_name>
+/// ALIGN <alignment>
+/// ALLOC <id> <size>
+/// FREE <id>
+/// MEM <expected_memory_usage>
+/// EFF <expected_efficiency>
+TEST(MemAlloc, testAllocateAllForModels) {
+  std::string modelName;
+  unsigned modelIdx = 1;
+  size_t alignment;
+  uint64_t expectedUsedSize;
+  float expectedEfficiency;
+  std::list<Allocation> allocs;
+  std::ifstream fs;
+  std::string filename(GLOW_DATA_PATH
+                       "tests/unittests/MemoryAllocatorTestModels.txt");
+  fs.open(filename);
+  assert(fs.is_open() && "Error opening file!");
+  std::string line;
+  while (std::getline(fs, line)) {
+    // Skip comments.
+    if (line.front() == '#') {
+      continue;
+    }
+    // Read model parameters.
+    std::stringstream ss(line);
+    std::string key;
+    ss >> key;
+    if (key == "MODEL") {
+      ss >> modelName;
+    } else if (key == "ALIGN") {
+      ss >> alignment;
+    } else if (key == "ALLOC") {
+      size_t id;
+      uint64_t size;
+      ss >> id >> size;
+      allocs.emplace_back(id, /* alloc */ true, size);
+    } else if (key == "FREE") {
+      size_t id;
+      ss >> id;
+      allocs.emplace_back(id, /* alloc */ false, 0);
+    } else if (key == "MEM") {
+      ss >> expectedUsedSize;
+    } else if (key == "EFF") {
+      ss >> expectedEfficiency;
+    }
+    // Test allocation for model.
+    if (key == "EFF") {
+      std::cout << "[" << modelIdx++
+                << "] Testing memory allocation for model: " << modelName
+                << "\n";
+      testAllocateAllForModel(alignment, allocs, expectedUsedSize,
+                              expectedEfficiency);
+      allocs.clear();
+    }
+  }
+  fs.close();
+}
+
+/// Test allocating multiple functions with memory reusage for allocateAll.
+TEST(MemAlloc, testAllocateAllMultipleFunctionsWithReuse) {
+
+  // Allocation sequence for 1st function.
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  std::list<Allocation> allocList1;
+  allocList1.emplace_back(handle0, true, 9);
+  allocList1.emplace_back(handle1, true, 9);
+  allocList1.emplace_back(handle0, false, 0);
+  allocList1.emplace_back(handle1, false, 0);
+
+  // Allocation sequence for 2nd function.
+  void *handle2 = reinterpret_cast<void *>(2);
+  void *handle3 = reinterpret_cast<void *>(3);
+  std::list<Allocation> allocList2;
+  allocList2.emplace_back(handle2, true, 19);
+  allocList2.emplace_back(handle3, true, 19);
+  allocList2.emplace_back(handle2, false, 0);
+  allocList2.emplace_back(handle3, false, 0);
+
+  // Allocate all for both functions.
+  MemoryAllocator MA("test", 0, 10);
+  uint64_t usedSize1 = MA.allocateAll(allocList1);
+  uint64_t usedSize2 = MA.allocateAll(allocList2, /* reuseMemory */ true);
+
+  EXPECT_EQ(usedSize1, 20);
+  EXPECT_EQ(usedSize2, 40);
+  EXPECT_EQ(MA.getSize(handle0), 9);
+  EXPECT_EQ(MA.getSize(handle1), 9);
+  EXPECT_EQ(MA.getSize(handle2), 19);
+  EXPECT_EQ(MA.getSize(handle3), 19);
+  EXPECT_EQ(MA.getSegment(handle0).size(), 9);
+  EXPECT_EQ(MA.getSegment(handle1).size(), 9);
+  EXPECT_EQ(MA.getSegment(handle2).size(), 19);
+  EXPECT_EQ(MA.getSegment(handle3).size(), 19);
+  EXPECT_EQ(MA.getAddress(handle0), 0);
+  EXPECT_EQ(MA.getAddress(handle1), 10);
+  EXPECT_EQ(MA.getAddress(handle2), 0);
+  EXPECT_EQ(MA.getAddress(handle3), 20);
+  EXPECT_EQ(MA.getSegment(handle0).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin, 10);
+  EXPECT_EQ(MA.getSegment(handle2).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle3).begin, 20);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 40);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
+}
+
+/// Test allocating multiple functions without memory reusage for allocateAll.
+TEST(MemAlloc, testAllocateAllMultipleFunctionsWithoutReuse) {
+
+  // Allocation sequence for 1st function.
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  std::list<Allocation> allocList1;
+  allocList1.emplace_back(handle0, true, 9);
+  allocList1.emplace_back(handle1, true, 9);
+  allocList1.emplace_back(handle0, false, 0);
+  allocList1.emplace_back(handle1, false, 0);
+
+  // Allocation sequence for 2nd function.
+  void *handle2 = reinterpret_cast<void *>(2);
+  void *handle3 = reinterpret_cast<void *>(3);
+  std::list<Allocation> allocList2;
+  allocList2.emplace_back(handle2, true, 19);
+  allocList2.emplace_back(handle3, true, 19);
+  allocList2.emplace_back(handle2, false, 0);
+  allocList2.emplace_back(handle3, false, 0);
+
+  // Allocate all for both functions.
+  MemoryAllocator MA("test", 0, 10);
+  uint64_t usedSize1 = MA.allocateAll(allocList1);
+  uint64_t usedSize2 = MA.allocateAll(allocList2, /* reuseMemory */ false);
+
+  EXPECT_EQ(usedSize1, 20);
+  EXPECT_EQ(usedSize2, 60);
+  EXPECT_EQ(MA.getSize(handle0), 9);
+  EXPECT_EQ(MA.getSize(handle1), 9);
+  EXPECT_EQ(MA.getSize(handle2), 19);
+  EXPECT_EQ(MA.getSize(handle3), 19);
+  EXPECT_EQ(MA.getSegment(handle0).size(), 9);
+  EXPECT_EQ(MA.getSegment(handle1).size(), 9);
+  EXPECT_EQ(MA.getSegment(handle2).size(), 19);
+  EXPECT_EQ(MA.getSegment(handle3).size(), 19);
+  EXPECT_EQ(MA.getAddress(handle0), 0);
+  EXPECT_EQ(MA.getAddress(handle1), 10);
+  EXPECT_EQ(MA.getAddress(handle2), 20);
+  EXPECT_EQ(MA.getAddress(handle3), 40);
+  EXPECT_EQ(MA.getSegment(handle0).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin, 10);
+  EXPECT_EQ(MA.getSegment(handle2).begin, 20);
+  EXPECT_EQ(MA.getSegment(handle3).begin, 40);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 60);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
+}
+
+/// Test allocating multiple functions without memory reusage and in which the
+/// allocation for 2nd function fails due to unsufficient memory.
+TEST(MemAlloc, testAllocateAllMultipleFunctionsWithoutReuseFail) {
+
+  // Allocation sequence for 1st function.
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  std::list<Allocation> allocList1;
+  allocList1.emplace_back(handle0, true, 9);
+  allocList1.emplace_back(handle1, true, 9);
+  allocList1.emplace_back(handle0, false, 0);
+  allocList1.emplace_back(handle1, false, 0);
+
+  // Allocation sequence for 2nd function.
+  void *handle2 = reinterpret_cast<void *>(2);
+  void *handle3 = reinterpret_cast<void *>(3);
+  std::list<Allocation> allocList2;
+  allocList2.emplace_back(handle2, true, 19);
+  allocList2.emplace_back(handle3, true, 19);
+  allocList2.emplace_back(handle2, false, 0);
+  allocList2.emplace_back(handle3, false, 0);
+
+  // Allocate all for both functions.
+  MemoryAllocator MA("test", 20, 10);
+  uint64_t usedSize1 = MA.allocateAll(allocList1);
+  uint64_t usedSize2 = MA.allocateAll(allocList2, /* reuseMemory */ false);
+
+  EXPECT_EQ(usedSize1, 20);
+  EXPECT_EQ(usedSize2, MemoryAllocator::npos);
+  EXPECT_EQ(MA.getSize(handle0), 9);
+  EXPECT_EQ(MA.getSize(handle1), 9);
+  EXPECT_EQ(MA.getSegment(handle0).size(), 9);
+  EXPECT_EQ(MA.getSegment(handle1).size(), 9);
+  EXPECT_EQ(MA.getAddress(handle0), 0);
+  EXPECT_EQ(MA.getAddress(handle1), 10);
+  EXPECT_EQ(MA.getSegment(handle0).begin, 0);
+  EXPECT_EQ(MA.getSegment(handle1).begin, 10);
+  EXPECT_EQ(MA.getMaxMemoryUsage(), 20);
+  EXPECT_FLOAT_EQ(MA.getAllocationEfficiency(), 1.0);
 }

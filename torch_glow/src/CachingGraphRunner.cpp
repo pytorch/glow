@@ -61,12 +61,20 @@ void initializeCompiliationContextFromSettings(
     cctx.precisionConfig.forceFP16AccumSLS = settings.forceFP16AccumSLS;
     LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
   }
+  if (settings.disableLayoutVerifying) {
+    glow::flags::DisableLayoutVerifying = true;
+    LOG(INFO) << "Skipping all layout verifying";
+  }
 
   if (settings.dumpFinalGlowGraph) {
     cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
   }
   if (settings.saturateHost) {
     cctx.saturateHost = settings.saturateHost;
+  }
+
+  if (glow::flags::UseDAGOptimizer) {
+    cctx.callDAGOptimizer = true;
   }
 
   if (!settings.backendSpecificOpts.empty()) {
@@ -175,42 +183,53 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
                     "perGlowGraphInfoMap__lookup");
   std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   size_t hash = getGraphMapKeyFromInputStack(metaStack);
-  auto it = perGlowGraphInfoMap_.find(hash);
-  if (it != perGlowGraphInfoMap_.end()) {
-    return it->second;
+  {
+    auto it = perGlowGraphInfoMap_.find(hash);
+    if (it != perGlowGraphInfoMap_.end()) {
+      return it->second;
+    }
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
                   "perGlowGraphInfoMap__lookup");
 
   LOG(INFO) << "Compiling graph for inputs:" << std::endl << metaStack.print();
 
+  PyTorchLoaderSettings loadSettings = settings;
+  if (settings.lazyCompile) {
+    auto it = pyTorchLoaderSettingsMap_.find(metaStack.hash());
+    if (it != pyTorchLoaderSettingsMap_.end()) {
+      LOG(INFO) << "Loading compilation settping for hash:" << metaStack.hash();
+      loadSettings = it->second;
+    }
+  }
+
   auto info = std::make_shared<PerGlowGraphInfo>(
       strFormat("pt_function_%lu_%lu", size_t(this), metaStack.hash()),
-      settings);
+      loadSettings);
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);
+
+  glow::CompilationContext cctx;
+  initializeCompiliationContextFromSettings(cctx, loadSettings);
 
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
   {
     RECORD_USER_SCOPE("loadJITGraph");
     RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
         *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-        outputCorrectType_, settings, inputs, {}));
+        outputCorrectType_, loadSettings, inputs, {}));
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
 
-  glow::CompilationContext cctx;
-  initializeCompiliationContextFromSettings(cctx, settings);
-
-  if (settings.convertToFP16) {
+  if (loadSettings.convertToFP16) {
     cctx.precisionConfig.precisionModeKindSet.insert(
         Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
     cctx.precisionConfig.precisionModeKindSet.insert(
         Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
   }
-  cctx.replicationCount = settings.replicationCount;
-  cctx.backendOpts.backendSpecificOpts = settings.backendSpecificOpts;
+  cctx.replicationCount = loadSettings.replicationCount;
+  cctx.backendOpts.backendSpecificOpts = loadSettings.backendSpecificOpts;
 
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "addNetwork");
   {
@@ -219,9 +238,9 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
     // compile context so the host manager knows to load backend options from
     // yaml.
 
-    if (!settings.backendOptionsFile.empty()) {
+    if (!loadSettings.backendOptionsFile.empty()) {
       std::pair<std::string, std::string> loadBackendSpecificOpts(
-          "loadBackendSpecificOptions", settings.backendOptionsFile);
+          "loadBackendSpecificOptions", loadSettings.backendOptionsFile);
       cctx.backendOpts.backendSpecificOpts.insert(loadBackendSpecificOpts);
     }
 
@@ -660,9 +679,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
       // Write input tensors to file
       if (settings.writeToOnnx) {
-        writeGlowTensorsToOnnx(
+        RETURN_IF_ERR(writeGlowTensorsToOnnx(
             strFormat("%s_input_%zu", onnxFileNamePrefix.c_str(), runId),
-            settings, info.inputPlaceholders, glowTensorInputs);
+            settings, info.inputPlaceholders, glowTensorInputs));
       }
 
       // Populate PlaceholderBindings
@@ -794,14 +813,15 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
       if (settings.writeToOnnx) {
         // Write Glow outputs to file
-        writeGlowTensorsToOnnx(
+        RETURN_IF_ERR(writeGlowTensorsToOnnx(
             strFormat("%s_glow_output_%zu", onnxFileNamePrefix.c_str(), runId),
-            info.settings, info.outputPlaceholders, convertedGlowTensors);
+            info.settings, info.outputPlaceholders, convertedGlowTensors));
 
         // Convert JIT outputs to Glow outputs and write to file
-        writeJITOutputsToOnnxFile(strFormat("%s_pytorch_output_%zu",
-                                            onnxFileNamePrefix.c_str(), runId),
-                                  copyStack, info);
+        RETURN_IF_ERR(writeJITOutputsToOnnxFile(
+            strFormat("%s_pytorch_output_%zu", onnxFileNamePrefix.c_str(),
+                      runId),
+            copyStack, info));
       }
     }
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
@@ -925,6 +945,12 @@ Error CachingGraphRunner::warmCache(const InputMetaStack &metaStack,
   }
   size_t hash = getGraphMapKeyFromInputStack(metaStack);
   {
+    if (settings.lazyCompile) {
+      LOG(INFO) << "Caching compilation setting for hash:" << hash;
+      pyTorchLoaderSettingsMap_.emplace(hash, settings);
+      return Error::success();
+    }
+
     TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
                       "torch_glow::warmCache");
     RECORD_USER_SCOPE("torch_glow::warmCache");

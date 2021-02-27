@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -11,7 +9,7 @@ class SimpleBatchPermutationModule(torch.nn.Module):
         return torch.ops._caffe2.BatchPermutation(input + input, indices)
 
 
-class TestBatchPermutation(unittest.TestCase):
+class TestBatchPermutation(utils.TorchGlowTestCase):
     def test_batch_permutation_basic(self):
         """Basic test of the _caffe2::BatchPermutation Node on Glow."""
 

@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -40,18 +37,22 @@ class SelectModule(torch.nn.Module):
                     return (a + a)[self.indices[0], self.indices[1], self.indices[2]]
 
 
-class TestComplexSelect(unittest.TestCase):
-    @parameterized.expand(
+class TestComplexSelect(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("2d_axis_0", SelectModule([1], 0, 2), torch.rand(2, 3)),
-            ("2d_axis_1", SelectModule([2], 1, 2), torch.rand(2, 3)),
-            ("2d_axis_0_1", SelectModule([0, 1], 2, 2), torch.rand(2, 3)),
-            ("3d_axis_0", SelectModule([0], 0, 3), torch.rand(3, 4, 5)),
-            ("3d_axis_0_1", SelectModule([2, 1], 0, 3), torch.rand(3, 4, 5)),
-            ("3d_axis_1", SelectModule([0], 1, 3), torch.rand(3, 4, 5)),
-            ("3d_axis_1_2", SelectModule([2, 1], 1, 3), torch.rand(3, 4, 5)),
-            ("3d_axis_0_2", SelectModule([1, 3], 2, 3), torch.rand(3, 4, 5)),
-            ("3d_axis_0_1_2", SelectModule([2, 0, 4], 1, 3), torch.rand(3, 4, 5)),
+            lambda: ("2d_axis_0", SelectModule([1], 0, 2), torch.rand(2, 3)),
+            lambda: ("2d_axis_1", SelectModule([2], 1, 2), torch.rand(2, 3)),
+            lambda: ("2d_axis_0_1", SelectModule([0, 1], 2, 2), torch.rand(2, 3)),
+            lambda: ("3d_axis_0", SelectModule([0], 0, 3), torch.rand(3, 4, 5)),
+            lambda: ("3d_axis_0_1", SelectModule([2, 1], 0, 3), torch.rand(3, 4, 5)),
+            lambda: ("3d_axis_1", SelectModule([0], 1, 3), torch.rand(3, 4, 5)),
+            lambda: ("3d_axis_1_2", SelectModule([2, 1], 1, 3), torch.rand(3, 4, 5)),
+            lambda: ("3d_axis_0_2", SelectModule([1, 3], 2, 3), torch.rand(3, 4, 5)),
+            lambda: (
+                "3d_axis_0_1_2",
+                SelectModule([2, 0, 4], 1, 3),
+                torch.rand(3, 4, 5),
+            ),
         ]
     )
     def test_f(self, _, module, tensor):

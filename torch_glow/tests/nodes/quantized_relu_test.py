@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -22,7 +20,7 @@ class SimpleQuantizedReluModel(torch.nn.Module):
         return dequantize(relu(quantize(tensor)))
 
 
-class TestQuantizedRelu(unittest.TestCase):
+class TestQuantizedRelu(utils.TorchGlowTestCase):
     def test_quantized_relu(self):
         """Basic test of the PyTorch quantized::relu Node on Glow."""
 

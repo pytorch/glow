@@ -258,6 +258,7 @@ bool Node::isArithmetic() const {
     ARITHMETIC_NODE_CASE(CmpLT)
     ARITHMETIC_NODE_CASE(CmpEQ)
     ARITHMETIC_NODE_CASE(Pow)
+    ARITHMETIC_NODE_CASE(Fmod)
     return true;
   default:
     return false;

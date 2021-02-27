@@ -18,7 +18,10 @@
 
 #include "NNPIUtils.h"
 
+#include "nnpi_transformer_types.h"
+
 #include "glow/Backends/BackendOptions.h"
+#include "glow/Support/Error.h"
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -59,6 +62,12 @@ public:
   /// Get the device version stepping for first installed device.
   /// \returns 1 for A0, 2 for B0, 3 for C0 etc. or 0 if not found.
   static unsigned getFirstDeviceSteppingVersion();
+
+  /// \returns an expected wrapping the NNPI_DEVICE_TYPE based on the
+  /// \p deviceVersion, \p inferOnDevice, as well as device version found from
+  /// \ref getFirstDeviceSteppingVersion().
+  static Expected<NNPI_DEVICE_TYPE> getDeviceVersion(bool inferOnDevice,
+                                                     int deviceVersion);
 
   virtual std::string dumpStatus();
   virtual llvm::StringMap<std::string> getSupportedOptions();
@@ -325,6 +334,18 @@ public:
                       "enableESUnifyAdditionalPass",
                       "Enable Execution Section fusion pass.",
                       "NNPI_ENABLE_ES_FUSION", "0");
+
+  /// Enable Node Splitter at ICE-T level for all Nodes.
+  DECLARE_NNPI_OPTION(enableLayerSplitter, bool, "enableLayerSplitter",
+                      "Enable Generic Layer Splitter for all Nodes.",
+                      "NNPI_ENABLE_LAYER_SPLITTER", "0");
+
+  /// Enable Spatial splitter for Convolution Nodes
+  /// This needs the 'Generic Node splitter' to be enabled.
+  DECLARE_NNPI_OPTION(enableConvSpatialSplitter, bool,
+                      "enableConvSpatialSplitter",
+                      "Enable splits along X-Y Dims of Convolution Nodes.",
+                      "NNPI_ENABLE_CONV_SPATIAL_SPLITTER", "0");
 #endif
 
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
@@ -360,15 +381,14 @@ public:
     INIT_NNPI_OPTIONS(dumpCompilationInfo, parameters);
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
     INIT_NNPI_OPTIONS(enableESUnifyAdditionalPass, parameters);
+    INIT_NNPI_OPTIONS(enableLayerSplitter, parameters);
+    INIT_NNPI_OPTIONS(enableConvSpatialSplitter, parameters);
 #endif
   }
 
   virtual llvm::StringRef getOptionsName() const override {
     return "Compilation Options";
   };
-
-  /// Looks for device stepping and sets it if possible in deviceVersion.
-  void trySetDeviceVersion();
 
 protected:
   /// There is only on logger for NNPI compilation. Setting it's properties can

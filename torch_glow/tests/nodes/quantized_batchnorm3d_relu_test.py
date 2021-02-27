@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.nn as nn
 from tests import utils
@@ -22,7 +20,7 @@ my_qconfig = QConfig(
 )
 
 
-class TestQuantizedBatchNorm3DRelu(unittest.TestCase):
+class TestQuantizedBatchNorm3DRelu(utils.TorchGlowTestCase):
     def test_batchnorm_relu_basic(self):
         """
         Basic test of the PyTorch 3D batchnorm RELU Node on Glow.

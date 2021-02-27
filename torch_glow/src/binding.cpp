@@ -236,6 +236,10 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().runShapeInference = false;
   });
 
+  /// Defer compilation to runtime.
+  m.def("enable_lazy_compile",
+        []() { getGlobalPyTorchLoaderSettingsMutable().lazyCompile = true; });
+
   /// Set interpreter device memory (in KiB).
   m.def("set_interpreter_memory", [](const unsigned &memorySize) {
     glow::runtime::flags::InterpreterMemory = memorySize;
@@ -290,6 +294,13 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// graph.
   m.def("enable_dump_operator_inventory", []() {
     getGlobalPyTorchLoaderSettingsMutable().dumpOperatorInventory = true;
+  });
+
+  m.def("enable_accept_all_layout", []() {
+    getGlobalPyTorchLoaderSettingsMutable().disableLayoutVerifying = true;
+  });
+  m.def("disable_accept_all_layout", []() {
+    getGlobalPyTorchLoaderSettingsMutable().disableLayoutVerifying = false;
   });
 
   /// Set the active HostManager to one that owns 1 of type \p backendName.

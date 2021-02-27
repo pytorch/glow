@@ -86,6 +86,10 @@ private:
   std::unordered_map<size_t, std::shared_ptr<PerGlowGraphInfo>>
       perGlowGraphInfoMap_;
 
+  /// Mapping from hash of PyTorch inputs to PyTorchLoaderSettings for the Glow
+  /// function that will run inputs matching that hash.
+  std::unordered_map<size_t, PyTorchLoaderSettings> pyTorchLoaderSettingsMap_;
+
   /// Here we assume this is only one corresponding Glow function.
   /// Mapping from hash of PyTorch inputs to PerGlowGraphShape for the Glow
   /// function that will run inputs matching that hash.

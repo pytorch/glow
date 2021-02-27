@@ -1306,10 +1306,11 @@ bool LayerNormalizationNode::verify() const {
   auto scale = getScale();
   auto bias = getBias();
 
-  // Check all inputs/outputs have same ElemKind.
+  // Check input and output have same ElemKind.
   bool isValid = checkType(src, dest.getElementType(), this);
-  isValid &= checkType(src, scale.getElementType(), this);
-  isValid &= checkType(src, bias.getElementType(), this);
+
+  // Check scale and bias have same ElemKind
+  isValid &= checkType(bias, scale.getElementType(), this);
 
   // Check inputs/outputs and scale/bias match shapes.
   isValid &= checkSameShape(src, dest, this);
@@ -1421,6 +1422,7 @@ VERIFY_UNARY_ARITHMETIC(Sin);
 VERIFY_UNARY_ARITHMETIC(Cos);
 VERIFY_UNARY_ARITHMETIC(Erf);
 VERIFY_UNARY_ARITHMETIC(Truncate);
+VERIFY_UNARY_ARITHMETIC(BitwiseNot);
 #undef VERIFY_UNARY_ARITHMETIC
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
@@ -1481,6 +1483,16 @@ VERIFY_TRIGONOMERTRIC_OPS(Acos);
 VERIFY_TRIGONOMERTRIC_OPS(Asin);
 VERIFY_TRIGONOMERTRIC_OPS(Atan);
 #undef VERIFY_UNARY_ARITHMETIC
+
+bool FmodNode::verify() const {
+  auto res = getResult();
+  auto LHS = getLHS();
+  auto RHS = getRHS();
+  return checkSameShape(res, LHS, res.getNode()) &&
+         checkSameShape(LHS, RHS, res.getNode()) &&
+         LHS.getElementType() != ElemKind::Int8QTy &&
+         RHS.getElementType() != ElemKind::Int8QTy;
+}
 
 bool BatchedPairwiseDotProductNode::verify() const {
   auto inputs = getInputs();

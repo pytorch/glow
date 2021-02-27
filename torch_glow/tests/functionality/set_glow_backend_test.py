@@ -1,12 +1,11 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch_glow
+from tests import utils
 
 
-class TestSetGlowBackend(unittest.TestCase):
+class TestSetGlowBackend(utils.TorchGlowTestCase):
     def test_set_glow_backend(self):
         """Test setting the Glow backend type"""
 
