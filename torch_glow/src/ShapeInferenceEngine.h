@@ -189,6 +189,8 @@ private:
   // Shape inference for fb::glow_embedding_bag_4bit_rowwise_offsets
   static Expected<TensorOutput>
   quantizedGlowEmbeddingBag4BitRowwiseOffsets(const MetaStack &variableMetas);
+  // Shape inference for fb::xl_embedding_bag
+  static Expected<TensorOutput> xlEmbeddingBag(const MetaStack &variableMetas);
   // Shape inference for aten::chuck
   static Expected<TensorListOutput> chunk(const MetaStack &variableMetas);
   // Shape inference for aten::stack
