@@ -6221,12 +6221,56 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     FullyConnectedNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind: {
+        splitDims[RowwiseQuantizedFullyConnectedNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN,
+            parallelizeAndReplaceNode(
+                F, curNode, curNumOfChunks,
+                RowwiseQuantizedFullyConnectedNode::InputIdx,
+                RowwiseQuantizedFullyConnectedNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::MatMulNodeKind: {
         splitDims[MatMulNode::LHSIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           MatMulNode::LHSIdx,
                                           MatMulNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind: {
+        splitDims[ChannelwiseQuantizedConvolutionNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN,
+            parallelizeAndReplaceNode(
+                F, curNode, curNumOfChunks,
+                ChannelwiseQuantizedConvolutionNode::InputIdx,
+                ChannelwiseQuantizedConvolutionNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::AdaptiveAvgPoolNodeKind: {
+        splitDims[AdaptiveAvgPoolNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, AdaptiveAvgPoolNode::InputIdx,
+                    AdaptiveAvgPoolNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ReshapeNodeKind: {
+        splitDims[ReshapeNode::InputIdx] = 0;
+        const dim_t batchSize =
+            curNode->getNthInput(ReshapeNode::InputIdx).dims()[0];
+        // Do nothing if reshape applies to the first batch dimension
+        if (batchSize != curNode->getNthResult(0).dims()[0]) {
+          LOG(INFO) << "Reshape changes batch dimension; Disabling data "
+                       "parallel split";
+          break;
+        }
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ReshapeNode::InputIdx,
+                    ReshapeNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::AddNodeKind: {

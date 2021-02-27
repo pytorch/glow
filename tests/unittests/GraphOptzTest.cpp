@@ -5352,6 +5352,208 @@ TEST_F(GraphOptz, ParallelizeGraphModel_Select) {
   checkNumericalEquivalence();
 }
 
+/// Test Splitting Reshape into multiple Reshapes.
+TEST_F(GraphOptz, ParallelizeData_Reshape) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 64}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 8, 8}, "output", false);
+  bindings_.allocate(output);
+
+  auto *rs = F_->createReshape("reshape1", input1, {3, 8, 8});
+  F_->createSave("save", rs, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[rs] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(), parOpts, 3));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 3 Reshapes
+  EXPECT_EQ(3, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
+
+  // One concat to bring all of the parallelized sliced Reshapes together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Reshape into multiple Reshapes when the batch
+/// dimension changes. This is not allowed.
+TEST_F(GraphOptz, ParallelizeData_Reshape_badcase) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 64}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {24, 8}, "output", false);
+  bindings_.allocate(output);
+
+  auto *rs = F_->createReshape("reshape1", input1, {24, 8});
+  F_->createSave("save", rs, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[rs] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(), parOpts, 3));
+  EXPECT_EQ(replacedMap.size(), 0); // Nothing gets replaced
+  runDCEPass(F_, cctx_);
+
+  // We now have only 1 Reshape as nothing should have split
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting AdaptiveAvgPool into multiple AdaptiveAvgPools.
+TEST_F(GraphOptz, ParallelizeData_AdaptiveAvgPool) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5, 5, 8}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 1, 8}, "output", false);
+  bindings_.allocate(output);
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {3, 1, 1, 8});
+
+  auto *aap = F_->createAdaptiveAvgPool("AdaptiveAvgPool1", input1, outTy);
+  F_->createSave("save", aap, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[aap] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(), parOpts, 3));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 3 AdaptiveAvgPools
+  EXPECT_EQ(3, countNodeKind(F_, Kinded::Kind::AdaptiveAvgPoolNodeKind));
+
+  // One concat to bring all of the parallelized sliced AdaptiveAvgPools
+  // together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting ChannelwiseQuantizedConvolution into multiple
+/// ChannelwiseQuantizedConvolutions.
+TEST_F(GraphOptz, ParallelizeData_ChannelwiseQuantizedConvolution) {
+  auto *input1 = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5, 5, 8}, 1.0, 0,
+                                        "input1", false);
+  bindings_.allocate(input1)->getHandle<int8_t>().randomize(-4, 4,
+                                                            mod_.getPRNG());
+  auto *filter =
+      mod_.createConstant(ElemKind::FloatTy, {12, 1, 1, 8}, "weights");
+  auto *bias = mod_.createConstant(ElemKind::FloatTy, {12}, "bias");
+  auto *output = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5, 5, 12}, 1.0,
+                                        0, "output", false);
+  bindings_.allocate(output);
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 5, 5, 12}, 1.0, 0);
+
+  auto *cqc = F_->createChannelwiseQuantizedConv(
+      "ChannelwiseQuantizedConvolution1", input1, filter, bias, nullptr,
+      nullptr, nullptr, nullptr, outTy, {1, 1}, {1, 1}, {0, 0, 0, 0}, 1);
+  F_->createSave("save", cqc, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[cqc] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(), parOpts, 3));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 3 ChannelwiseQuantizedConvolutions
+  EXPECT_EQ(3, countNodeKind(
+                   F_, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind));
+
+  // One concat to bring all of the parallelized sliced
+  // ChannelwiseQuantizedConvolutions together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting RowwiseQuantizedFullyConnected into multiple
+/// RowwiseQuantizedFullyConnected nodes.
+TEST_F(GraphOptz, ParallelizeData_RowwiseQuantizedFullyConnected) {
+  auto *input1 = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 8}, 1.0, 0,
+                                        "input1", false);
+  bindings_.allocate(input1)->getHandle<int8_t>().randomize(-4, 4,
+                                                            mod_.getPRNG());
+  auto *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {12, 8}, 1.0, 0, "weights");
+  auto *scales = mod_.createConstant(ElemKind::FloatTy, {12}, "scales");
+  auto *offsets = mod_.createConstant(ElemKind::Int32ITy, {12}, "offsets");
+
+  auto *bias = mod_.createConstant(ElemKind::Int8QTy, {12}, 1.0, 0, "bias");
+  auto *output = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 12}, 1.0, 0,
+                                        "output", false);
+  bindings_.allocate(output);
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 12}, 1.0, 0);
+
+  auto *rqfc = F_->createRowwiseQuantizedFullyConnected(
+      "RowwiseQuantizedFullyConnected1", input1, weights, scales, offsets, bias,
+      outTy);
+  F_->createSave("save", rqfc, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[rqfc] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(), parOpts, 3));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 3 RowwiseQuantizedFullyConnecteds
+  EXPECT_EQ(3, countNodeKind(
+                   F_, Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind));
+
+  // One concat to bring all of the parallelized sliced
+  // RowwiseQuantizedFullyConnecteds together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+}
+
 TEST_F(GraphOptz, SinkClipBelowReshape) {
   Placeholder *in =
       mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
