@@ -1,10 +1,9 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 from tests.utils import graph_contains_str
 
 
@@ -30,7 +29,7 @@ graph(%input : Tensor, %weight : Tensor, %bias : Tensor):
 """
 
 
-class TestFuseLinear(unittest.TestCase):
+class TestFuseLinear(utils.TorchGlowTestCase):
     def test_fuse_linear(self):
         """Test Glow's fuseBranchedLinearPattern JIT pass"""
         graph = torch._C.parse_ir(graph_str)

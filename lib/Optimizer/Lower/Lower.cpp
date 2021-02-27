@@ -661,6 +661,17 @@ static void lowerLayerNormalizationNode(Function *F, CompilationContext &cctx,
 
   auto nodeName = LN.getName();
 
+  if (in.getType()->isQuantizedType()) {
+    in = F->createDequantize("layernorm_input_dequant", in, ElemKind::FloatTy);
+  }
+
+  if (gamma.getType()->isQuantizedType()) {
+    gamma = F->createDequantize("layernorm_scale_dequant", gamma,
+                                ElemKind::FloatTy);
+    beta =
+        F->createDequantize("layernorm_bias_dequant", beta, ElemKind::FloatTy);
+  }
+
   // input shape -> {M, N} where N is the size of each layer to be normalized.
   dim_t N = std::accumulate(gamma.dims().begin(), gamma.dims().end(), 1,
                             std::multiplies<size_t>());
@@ -770,6 +781,10 @@ static void lowerLayerNormalizationNode(Function *F, CompilationContext &cctx,
 
   // {M, N} -> output shape
   output = F->createReshape(nodeName, output, out.getType()->dims());
+
+  if (out.getType()->isQuantizedType()) {
+    output = F->createQuantize("layernorm_output_quant", output, out.getType());
+  }
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, out, output);
 }
@@ -1266,6 +1281,27 @@ static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
   auto *DN = F->createDiv(BRM.getName().str() + ".div", outTy, BRA, SN);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(), DN);
+}
+
+static void
+lowerBatchedReduceSumSquareNode(Function *F, CompilationContext &cctx,
+                                const BatchedReduceSumSquareNode &BR) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchReduceSumSquareNode")
+
+  auto input = BR.getBatch();
+
+  auto axis = BR.getAxis();
+  assert(axis < input.dims().size() &&
+         "Axis to remove must fit inside dimensions of the provided dims.");
+
+  // Lower to mul + reduceAdd.
+  MulNode *mul =
+      F->createMul(BR.getName().str() + "_mul", input.getType(), input, input);
+
+  auto *BRA = F->createBatchedReduceAdd(BR.getName().str() + ".reduceAdd",
+                                        BR.getResult().getType(), mul, axis);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BR.getResult(), BRA);
 }
 
 static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
@@ -1787,6 +1823,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
+    CASE_LOWER(BatchedReduceSumSquare);
     CASE_LOWER(VectorNorm);
     CASE_LOWER(Bucketize);
     CASE_LOWER(ChannelShuffle);

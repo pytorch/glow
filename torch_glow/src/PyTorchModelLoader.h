@@ -346,6 +346,10 @@ private:
   // \returns error on failure.
   Error loadGlowEmbeddingBag(const torch::jit::Node *ptNode);
 
+  // Load a PyTorch fb::xl_embedding_bag node.
+  // \returns error on failure.
+  Error loadXLEmbeddingBag(const torch::jit::Node *ptNode);
+
   /// Load a _caffe2::BatchPermutation node.
   Error loadBatchPermutation(const torch::jit::Node *ptNode);
 
@@ -380,12 +384,27 @@ private:
   // \returns error on failure.
   Error loadGlowEmbeddingBag4bitRowwiseOffsets(const torch::jit::Node *ptNode);
 
+  // Load a PyTorch fb::xl_embedding_bag_byte_rowwise_offsets node.
+  // \returns error on failure.
+  Error loadXLEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::xl_embedding_bag_4bit_rowwise_offsets node.
+  // \returns error on failure.
+  Error loadXLEmbeddingBag4bitRowwiseOffsets(const torch::jit::Node *ptNode);
+
   // Helper function that implements the loading logic for
   // fb::glow_embedding_bag_byte_rowwise_offsets and
   // fb::glow_embedding_bag_4bit_rowwise_offsets
   // \returns error on failure
   Error loadRowwiseQuantizedEmbeddingBagHelper(const torch::jit::Node *ptNode,
                                                bool is4Bit = false);
+
+  // Helper function that implements the loading logic for
+  // fb::xl_embedding_bag_byte_rowwise_offsets and
+  // fb::xl_embedding_bag_4bit_rowwise_offsets
+  // \returns error on failure
+  Error loadRowwiseQuantizedXLEmbeddingBagHelper(const torch::jit::Node *ptNode,
+                                                 bool is4Bit = false);
 
   // Load a PyTorch fb::lengths_range node.
   // \returns error on failure.
@@ -465,6 +484,10 @@ private:
   /// \returns error on failure.
   Error loadFloorDiv(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch Fmod node.
+  /// \returns error on failure.
+  Error loadFmod(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch add node.
   /// \returns error on failure.
   Error loadAdd(const torch::jit::Node *ptNode);
@@ -480,6 +503,30 @@ private:
   /// Load a PyTorch zeros node.
   /// \returns error on failure.
   Error loadZeros(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch empty_like node.
+  /// \returns error on failure.
+  Error loadEmptyLike(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch zeros_like node.
+  /// \returns error on failure.
+  Error loadZerosLike(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch ones_like node.
+  /// \returns error on failure.
+  Error loadOnesLike(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch full_like node.
+  /// \returns error on failure.
+  Error loadFullLike(const torch::jit::Node *ptNode);
+
+  /// Shared implementation for loadZerosLike, loadOnesLike, loadEmptyLike, and
+  /// loadFullLike. \returns error on failure.
+  Error loadFullLikeImpl(llvm::StringRef name,
+                         const torch::jit::Value *inputTensorValue,
+                         const torch::jit::Value *dtypeValue,
+                         at::optional<double> fillValue,
+                         const torch::jit::Value *outputValue);
 
   /// Load a PyTorch sub node.
   /// \returns error on failure.
@@ -525,6 +572,11 @@ private:
   /// \returns error on failure.
   Error loadPow(const torch::jit::Node *ptNode);
 
+  /// Load a bitwise Boolean Op.
+  /// \returns error on failure.
+  template <typename GlowNode>
+  Error loadBitwiseBooleanOp(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch xor node.
   /// \returns error on failure.
   Error loadLogicalXor(const torch::jit::Node *ptNode);
@@ -541,6 +593,14 @@ private:
   /// \returns error on failure.
   Error loadLogicalNot(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::index_put or aten::index_put_ node.
+  /// \returns error on failure.
+  Error loadIndexPut(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch bitwise_not node.
+  /// \returns error on failure.
+  Error loadBitwiseNot(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch sqrt node.
   /// \returns error on failure.
   Error loadSqrt(const torch::jit::Node *ptNode);
@@ -551,6 +611,13 @@ private:
   /// \returns error on failure.
   template <typename CmpType, bool invert = false>
   Error loadCmp(const torch::jit::Node *ptNode);
+
+  /// Load Pytorch copy, contiguous, detach nodes.
+  /// \tparam inputs_size - number of inputs expected.
+  /// \tparam broadcast indicates weather to perform broadcast or not.
+  /// \returns error on failure.
+  template <int64_t inputs_size, bool broadcast = false>
+  Error loadCopy(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch reciprocal node.
   /// \returns error on failure.
@@ -612,6 +679,10 @@ private:
   /// \returns error on failure.
   Error loadLayerNorm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::layer_norm node.
+  /// \returns error on failure.
+  Error loadQuantizedLayerNorm(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch dropout node.
   /// \returns error on failure.
   Error loadDropout(const torch::jit::Node *ptNode);
@@ -671,6 +742,10 @@ private:
   /// Load a PyTorch quantized::linear node.
   /// \return error on failure.
   Error loadQuantizedLinear(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::linear node.
+  /// \return error on failure.
+  Error loadLinear(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch quantize_per_tensor node.
   /// \returns error on failure.
@@ -736,6 +811,10 @@ private:
   /// \returns error on failure.
   Error loadSoftMax(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch LogSoftMax node.
+  /// \returns error on failure.
+  Error loadLogSoftMax(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch Abs node.
   /// \returns error on failure.
   Error loadAbs(const torch::jit::Node *ptNode);
@@ -783,6 +862,14 @@ private:
   /// Load a PyTorch aten::shape_as_tensor node.
   /// \returns error on failure.
   Error loadShapeAsTensor(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::argmin node.
+  /// \returns error on failure.
+  Error loadArgMin(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::argmax node.
+  /// \returns error on failure.
+  Error loadArgMax(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
@@ -864,9 +951,17 @@ private:
   /// \returns error on failure.
   Error loadExpandAs(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::expand node.
+  /// \returns error on failure.
+  Error loadExpand(const torch::jit::Node *ptNode);
+
   /// Load an NNCKernel node.
   /// \returns error on failure.
   Error loadNNCKernel(const torch::jit::Node *ptNode);
+
+  /// Load an CumSum node.
+  /// \returns error on failure.
+  Error loadCumSum(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

@@ -16,12 +16,13 @@
 #ifndef FX_NNPI_IMPORTER_H
 #define FX_NNPI_IMPORTER_H
 
-#include "glow/fb/fx_nnpi_importer/Utils.h"
+#include "glow/fb/fx/nnpi_importer/Utils.h"
 #include "glow/lib/Backends/NNPI/NNPIOptions.h"
 #include "nnpi_network_builder.h"
 #include "nnpi_network_builder_EXPERIMENTAL.h"
 #include "nnpi_transformer.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include <folly/dynamic.h>
 #include <unordered_set>
@@ -29,19 +30,19 @@
 /// This class imports Glow IR to the NNPI backend.
 class FXNNPIImporter {
 public:
-  /// Constructor.
-  explicit FXNNPIImporter(const glow::NNPICompilationOptions &compileOptions);
+  /// Constructor using options taken from \p compileOptions and constant
+  /// pointers stored in \p constants.
+  explicit FXNNPIImporter(const glow::NNPICompilationOptions &compileOptions,
+                          const llvm::StringMap<const void *> &constants);
 
   /// Destructor.
   ~FXNNPIImporter();
 
-  /// The main entry point for the importer functionality
-  /// Imports a submodule if \p submodule is specified, otherwise, import the
-  /// whole \p FXIR using options taken from \p opts and constant pointers
-  /// stored in \p constants \return a nnpi network.
+  /// The main entry point for the importer functionality. Imports a submodule
+  /// if \p submodule is specified, otherwise, import the whole \p FXIR.
+  /// \returns an NNPI network.
   NNPINetwork importFunction(const folly::dynamic &FXIR,
-                             const std::string &submodule,
-                             const llvm::StringMap<const void *> &constants);
+                             const std::string &submodule);
 
   /// Get the network handle.
   NNPINetwork getNetwork() const { return network_; }
@@ -58,7 +59,13 @@ public:
   void
   setUsedTensors(const std::unordered_set<std::string> &readTensors = {},
                  const std::unordered_set<std::string> &writeTensors = {}) {
-    readTensors_.insert(readTensors.begin(), readTensors.end());
+    for (const std::string &str : readTensors) {
+      // Skip empty tensor names. These may be passed in when an optional input
+      // was not used.
+      if (!str.empty()) {
+        readTensors_.insert(str);
+      }
+    }
     writeTensors_.insert(writeTensors.begin(), writeTensors.end());
   }
 
@@ -72,13 +79,47 @@ public:
                              const std::string &offsetTensor = {},
                              bool forceSymlowp = false);
 
-  /// \returns the constants
-  const void *getConstant(const std::string &name) const;
+  /// \returns whether there is a Constant known by \p name. Does not look
+  /// through getattr aliases.
+  bool isConstant(llvm::StringRef name) const {
+    return constants_.count(name);
+  };
+
+  /// \returns the Constant known by \p name. If \p name is from a getattr the
+  /// constant will be looked up by the underlying name found by
+  /// \ref getConstantName.
+  const void *getConstant(llvm::StringRef name) const;
+
+  /// \returns the underlying name of a Constant given provided \p name. If \p
+  /// name is already the name of a Constant it is returned, else looks for
+  /// getattr aliases to return the name of the actual underlying Constant.
+  const char *getConstantName(llvm::StringRef name) const;
+
+  /// \returns the NNPITensorDesc for node by \p name.
+  const NNPITensorDesc &getTensorDesc(llvm::StringRef name) const;
+
+  /// \returns the name of some input \p node. Fatals if \p node is not
+  /// specified as is_node. If \p optional then \returns an empty string if \p
+  /// node is null.
+  const std::string &getInputNodeName(const folly::dynamic &node,
+                                      bool optional = false) const;
 
 private:
+  /// NNPI network handle.
+  NNPINetwork network_;
+
+  /// NNPI Device configuration.
+  const glow::NNPICompilationOptions &compileOptions_;
+
   /// Mapping from constant name to a void pointer points to where the constant
   /// is actually stored.
-  const llvm::StringMap<const void *> *constants_;
+  const llvm::StringMap<const void *> &constants_;
+
+  /// Mapping from getattrs to the underlying name of the constants they alias.
+  llvm::StringMap<const std::string> getattrs_;
+
+  /// Mapping from output node names to the tensor descriptor for that node.
+  llvm::StringMap<NNPITensorDesc> tensorDescs_;
 
   /// Set of tensors written to by the function.
   std::unordered_set<std::string> writeTensors_;
@@ -88,12 +129,6 @@ private:
 
   /// Set of tensors already defined.
   std::unordered_set<std::string> definedTensors_;
-
-  /// NNPI network handle.
-  NNPINetwork network_;
-
-  /// NNPI Device configuration.
-  const glow::NNPICompilationOptions &compileOptions_;
 };
 
 /// Interface class for all node specific importers.

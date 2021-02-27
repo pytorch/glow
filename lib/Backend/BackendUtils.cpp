@@ -122,12 +122,11 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
 
 namespace glow {
 
-/// If \p PH is an output placeholder in the function \p F, \returns true.
-/// This is determined by checking if the PH has a user which uses the PH as an
-/// overwritten input.
-bool isOutput(const Placeholder *PH, const IRFunction &F) {
-  auto *weight = F.getWeightForNode(PH);
-  assert(weight && "Weight for a node was not found");
+/// If \p W is an output weight \returns true. This is determined by checking if
+/// the weight has a user which uses it as a write output.
+bool isOutput(const Value *W) {
+  auto *weight = llvm::dyn_cast<WeightVar>(W);
+  DCHECK(weight) << "Expected WeightVar";
   for (const auto &use : ValueUses(weight)) {
     Instruction *user = use.get();
     // Ignore deallocs.
@@ -142,16 +141,28 @@ bool isOutput(const Placeholder *PH, const IRFunction &F) {
   return false;
 }
 
-/// If \p PH is an input placeholder in the function \p F, \returns true.
-bool isInput(const Placeholder *PH, const IRFunction &F) {
-  // Check that the PH is always used as an @in parameter by the current
-  // function.
+/// If \p PH is an output placeholder in the function \p F, \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
+bool isOutput(const Placeholder *PH, const IRFunction &F) {
   auto *weight = F.getWeightForNode(PH);
-  assert(weight && "Weight for a node was not found");
+  DCHECK(weight) << "Weight for a node was not found";
+  return isOutput(weight);
+}
+
+/// If \p W is a weight that is read from \returns true.
+bool isInput(const Value *W) {
+  auto *weight = llvm::dyn_cast<WeightVar>(W);
+  DCHECK(weight) << "Expected WeightVar";
+
   for (const auto &use : ValueUses(weight)) {
     Instruction *user = use.get();
     // Ignore deallocs.
     if (isa<DeallocActivationInst>(user)) {
+      continue;
+    }
+    // TensorView instruction doesn't read from a placeholder.
+    if (isa<TensorViewInst>(user)) {
       continue;
     }
     OperandKind kind = use.getOperand().second;
@@ -160,6 +171,15 @@ bool isInput(const Placeholder *PH, const IRFunction &F) {
     }
   }
   return false;
+}
+
+/// If \p PH is an input placeholder in the function \p F, \returns true.
+bool isInput(const Placeholder *PH, const IRFunction &F) {
+  // Check that the PH is always used as an @in parameter by the current
+  // function.
+  auto *weight = F.getWeightForNode(PH);
+  DCHECK(weight) << "Weight for a node was not found";
+  return isInput(weight);
 }
 
 /// \returns true if \p PH is an output Placeholder for any function in \p
@@ -433,10 +453,66 @@ void allocatePlaceholders(const ContiguousPlaceholders &placeholders,
 void allocateActivations(const glow::IRFunction::InstListTy &instrs,
                          MemoryAllocator &allocator,
                          glow::runtime::SymbolTableTy &symbolTable) {
+
+  // Gather allocation/deallocation sequence.
+  std::list<Allocation> allocList;
+  if (reuseActivationsMemory) {
+    // When reusing memory we register allocs/deallocs in their original order.
+    for (const auto &I : instrs) {
+      if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
+        auto numBytes = I.getSizeInBytes();
+        allocList.emplace_back(A, /* alloc */ true, numBytes);
+        continue;
+      }
+      if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
+        auto *A = D->getAlloc();
+        allocList.emplace_back(A, /* alloc */ false, 0);
+        continue;
+      }
+    }
+  } else {
+    // When not reusing memory we register first the allocs then the deallocs.
+    for (const auto &I : instrs) {
+      if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
+        auto numBytes = I.getSizeInBytes();
+        allocList.emplace_back(A, /* alloc */ true, numBytes);
+        continue;
+      }
+    }
+    for (const auto &I : instrs) {
+      if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
+        auto *A = D->getAlloc();
+        allocList.emplace_back(A, /* alloc */ false, 0);
+        continue;
+      }
+    }
+  }
+
+  // Allocate all segments at once for better allocation efficiency.
+  // We use a separate allocator object since the function "allocateAll()"
+  // does not work together with the function "allocate()" which could have
+  // been used with the original allocator.
+  MemoryAllocator activationsAllocator("mem", 0, allocator.getAlignment());
+  uint64_t activationsSize = activationsAllocator.allocateAll(allocList);
+
+  // Allocate a contiguous segment for the activations of the current function.
+  // The individual buffers within this segment are placed according to the
+  // logic of allocateAll for better efficiency.
+  uint64_t activationsBaseAddr = 0;
+  if (activationsSize) {
+    MemoryAllocator::Handle activationsHandle = &instrs;
+    activationsBaseAddr =
+        allocator.allocate(activationsSize, activationsHandle);
+    if (reuseActivationsMemory) {
+      allocator.deallocate(activationsHandle);
+    }
+  }
+
+  // Map addresses of allocated segments.
   for (const auto &I : instrs) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      size_t addr = allocator.allocate(numBytes, A);
+      size_t addr = activationsBaseAddr + activationsAllocator.getAddress(A);
       assert(!symbolTable.count(std::string(A->getName())) &&
              "Allocation already made!");
       runtime::RuntimeSymbolInfo symbol;
@@ -487,13 +563,8 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
     }
 
     if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
-      auto *A = D->getAlloc();
-      assert(symbolTable.count(std::string(A->getName())) &&
+      assert(symbolTable.count(std::string(D->getAlloc()->getName())) &&
              "Invalid deallocation!");
-      if (reuseActivationsMemory) {
-        allocator.deallocate(A);
-      }
-      continue;
     }
   }
 }

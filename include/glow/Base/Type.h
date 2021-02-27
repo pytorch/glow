@@ -413,6 +413,8 @@ enum class ElemKind : unsigned char {
   Int16QTy,
   // 32-bit quantized type (int32_t)
   Int32QTy,
+  // 8-bit index type (uint8_t)
+  UInt8ITy,
   // 32-bit index type (int32_t)
   Int32ITy,
   // 64-bit index type (int64_t)
@@ -696,6 +698,8 @@ struct Type final {
       return std::is_same<ElemTy, int16_t>::value;
     case ElemKind::Int32QTy:
       return std::is_same<ElemTy, int32_t>::value;
+    case ElemKind::UInt8ITy:
+      return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::Int32ITy:
       return std::is_same<ElemTy, int32_t>::value;
     case ElemKind::Int64ITy:
@@ -767,6 +771,8 @@ struct Type final {
       return sizeof(int16_t);
     case ElemKind::Int32QTy:
       return sizeof(int32_t);
+    case ElemKind::UInt8ITy:
+      return sizeof(uint8_t);
     case ElemKind::Int32ITy:
       return sizeof(int32_t);
     case ElemKind::Int64ITy:
@@ -793,9 +799,9 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float",        "float16",      "bfloat16", "i8",      "ui8",
-        "i16",          "i32",          "index32",  "index64", "ui8fused",
-        "ui8fusedfp16", "ui4fusedfp16", "ui4fused", "bool",
+        "float",    "float16",      "bfloat16",     "i8",       "ui8",
+        "i16",      "i32",          "uindex8",      "index32",  "index64",
+        "ui8fused", "ui8fusedfp16", "ui4fusedfp16", "ui4fused", "bool",
     };
     return names[(int)Ty];
   }
@@ -818,6 +824,8 @@ struct Type final {
       return ElemKind::Int16QTy;
     } else if (str == Type::getElementName(ElemKind::Int32QTy)) {
       return ElemKind::Int32QTy;
+    } else if (str == Type::getElementName(ElemKind::UInt8ITy)) {
+      return ElemKind::UInt8ITy;
     } else if (str == Type::getElementName(ElemKind::Int32ITy)) {
       return ElemKind::Int32ITy;
     } else if (str == Type::getElementName(ElemKind::Int64ITy)) {

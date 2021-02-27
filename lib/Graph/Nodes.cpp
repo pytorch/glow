@@ -480,6 +480,15 @@ static bool verifySoftMax(NodeValue src, NodeValue dest) {
   return checkSameType(src, dest, parent);
 }
 
+static bool verifyLogSoftMax(NodeValue src, NodeValue dest) {
+  const Node *parent = dest.getNode();
+  if (src.getType()->isQuantizedType()) {
+    return checkType(src, dest.getElementType(), parent) &&
+           checkSameShape(src, dest, parent);
+  }
+  return checkSameType(src, dest, parent);
+}
+
 static bool verifyCrossEntropyLoss(NodeValue P, NodeValue CE,
                                    NodeValue labels) {
   const Node *parent = CE.getNode();
@@ -1084,6 +1093,29 @@ bool SoftMaxGradNode::verify() const {
   return isValid;
 }
 
+bool LogSoftMaxNode::verify() const {
+  return verifyLogSoftMax(getInput(), getResult());
+}
+
+bool LogSoftMaxGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= ((verifyInputAndGradInputTypes(
+                  getSelected(), getGradOfInputNamedSelected(), this))
+                  ? 1
+                  : 0);
+  isValid &= ((verifyOutputAndGradOutputTypes(
+                  getOriginalOutputForResult(),
+                  getGradOfOriginalOutputNamedResult(), this))
+                  ? 1
+                  : 0);
+  isValid &= ((verifyLogSoftMax(getGradOfInputNamedInput(),
+                                getGradOfOriginalOutputNamedResult()))
+                  ? 1
+                  : 0);
+  return isValid;
+}
+
 bool CrossEntropyLossNode::verify() const {
   return verifyCrossEntropyLoss(getP(), getCE(), getLabels());
 }
@@ -1274,10 +1306,11 @@ bool LayerNormalizationNode::verify() const {
   auto scale = getScale();
   auto bias = getBias();
 
-  // Check all inputs/outputs have same ElemKind.
+  // Check input and output have same ElemKind.
   bool isValid = checkType(src, dest.getElementType(), this);
-  isValid &= checkType(src, scale.getElementType(), this);
-  isValid &= checkType(src, bias.getElementType(), this);
+
+  // Check scale and bias have same ElemKind
+  isValid &= checkType(bias, scale.getElementType(), this);
 
   // Check inputs/outputs and scale/bias match shapes.
   isValid &= checkSameShape(src, dest, this);
@@ -1389,6 +1422,7 @@ VERIFY_UNARY_ARITHMETIC(Sin);
 VERIFY_UNARY_ARITHMETIC(Cos);
 VERIFY_UNARY_ARITHMETIC(Erf);
 VERIFY_UNARY_ARITHMETIC(Truncate);
+VERIFY_UNARY_ARITHMETIC(BitwiseNot);
 #undef VERIFY_UNARY_ARITHMETIC
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
@@ -1450,6 +1484,16 @@ VERIFY_TRIGONOMERTRIC_OPS(Asin);
 VERIFY_TRIGONOMERTRIC_OPS(Atan);
 #undef VERIFY_UNARY_ARITHMETIC
 
+bool FmodNode::verify() const {
+  auto res = getResult();
+  auto LHS = getLHS();
+  auto RHS = getRHS();
+  return checkSameShape(res, LHS, res.getNode()) &&
+         checkSameShape(LHS, RHS, res.getNode()) &&
+         LHS.getElementType() != ElemKind::Int8QTy &&
+         RHS.getElementType() != ElemKind::Int8QTy;
+}
+
 bool BatchedPairwiseDotProductNode::verify() const {
   auto inputs = getInputs();
 
@@ -1508,6 +1552,15 @@ bool BatchedMulNode::verify() const {
     isValid &=
         checkType(getBatch(), getSlice().getType()->getElementType(), this);
   }
+  return isValid;
+}
+
+bool BatchedReduceSumSquareNode::verify() const {
+  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+
+  isValid &=
+      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
+                        this, CompareOperatorGreaterThan<size_t>());
   return isValid;
 }
 

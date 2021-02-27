@@ -1,12 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 
 
-class TestPrintJitNodeIndices(unittest.TestCase):
+class TestPrintJitNodeIndices(utils.TorchGlowTestCase):
     """Test printing PyTorch jit node indices."""
 
     def test_print_jit_indices(self):

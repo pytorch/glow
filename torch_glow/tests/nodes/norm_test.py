@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -16,7 +14,7 @@ class SimpleNormModule(torch.nn.Module):
         return torch.norm(tensor, *self.args, **self.kwargs)
 
 
-class TestNorm(unittest.TestCase):
+class TestNorm(utils.TorchGlowTestCase):
     def test_norm_basic(self):
         """Basic test of the PyTorch norm Node on Glow."""
 

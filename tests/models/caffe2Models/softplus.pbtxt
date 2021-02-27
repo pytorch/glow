@@ -1,0 +1,11 @@
+name: "softplus"
+op {
+  input: "input"
+  output: "output"
+  name: ""
+  type: "Softplus"
+}
+external_input: "input"
+external_output: "output"
+
+

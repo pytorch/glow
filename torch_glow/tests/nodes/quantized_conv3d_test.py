@@ -40,7 +40,7 @@ class PackedConv3dModel(torch.nn.Sequential):
         torch.quantization.convert(self, inplace=True)
 
 
-class TestQuantizedConv3d(unittest.TestCase):
+class TestQuantizedConv3d(utils.TorchGlowTestCase):
     @unittest.skip(reason="Requires freezing")
     def test_quantized_conv3d_unpacked(self):
         """Basic test of the PyTorch quantize::conv3d Node with unpacked weights on Glow."""

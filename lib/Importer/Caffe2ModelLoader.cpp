@@ -640,7 +640,7 @@ Error Caffe2ModelLoader::loadLayerNorm(const caffe2::OperatorDef &op,
   }
 
   LayerNormalizationNode *node =
-      G_->createLayerNormalization(opName, in, weight, bias, eps);
+      G_->createLayerNormalization(opName, in.getType(), in, weight, bias, eps);
 
   // We only support one output for LayoutNorm. Ignoring the
   // rest of the outputs.
@@ -1730,6 +1730,135 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto nodes = G_->createRMSNorm(opName, X, gamma, beta, epsilon);
     nodeValueByName_[op.output(0)] = nodes[0];
     nodeValueByName_[op.output(1)] = nodes[1];
+    return Error::success();
+  }
+
+  if (typeName == "Mean") {
+    const unsigned numInputs = op.input_size();
+    RETURN_ERR_IF_NOT(numInputs > 0,
+                      opErrMsg(op, "Expect at least one input."));
+
+    std::vector<NodeValue> inputs;
+    inputs.reserve(numInputs);
+    for (unsigned i = 0; i < numInputs; i++) {
+      NodeValue in;
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
+      inputs.push_back(std::move(in));
+    }
+
+    // Check that all inputs have the same shape
+    const auto shape = inputs[0].dims();
+    for (unsigned i = 1; i < numInputs; i++) {
+      RETURN_ERR_IF_NOT(
+          shape == inputs[i].dims(),
+          opErrMsg(op,
+                   "All inputs should have the same shape, violating input " +
+                       op.input(i)));
+    }
+
+    if (numInputs == 1) {
+      RETURN_IF_ERR(addNodeAsOutput(op, inputs[0]));
+      return Error::success();
+    }
+
+    Node *node = G_->createConcat(opName + ".concat", inputs, 0);
+
+    std::vector<dim_t> newShape{numInputs};
+    newShape.insert(newShape.end(), shape.begin(), shape.end());
+    node = G_->createReshape(opName + ".reshape", node, newShape);
+
+    node = G_->createBatchedReduceMean(opName + ".reduceMean", node, 0);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "Negative") {
+    RETURN_IF_ERR(loadNeg(op, dict));
+    return Error::success();
+  }
+
+  if (typeName == "LpNorm") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    int p = 2;
+    if (dict.count("p")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(p, loadInt(dict["p"]));
+      RETURN_ERR_IF_NOT(p == 1 || p == 2,
+                        opErrMsg(op, "p should be either 1 or 2."));
+    }
+    bool average = false;
+    if (dict.count("average")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(average, loadInt(dict["average"]));
+    }
+    RETURN_ERR_IF_NOT(!average, opErrMsg(op, "average is not supported."));
+
+    Node *node = nullptr;
+    if (p == 1) {
+      node = G_->createAbs(opName, in);
+    } else {
+      node = G_->createPow(opName, in, 2);
+    }
+
+    const auto dims1D = flattenCdr(in.dims(), in.dims().size());
+    node = G_->createReshape(opName + ".reshape1D", node, dims1D.first);
+
+    auto outputType = mod_.uniqueType(in.getElementType(), {1});
+    node = G_->createBatchedReduceAdd(opName + ".sum", outputType, node, 0);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "ArgMin") {
+    NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+    int axis = 0;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+    }
+    bool keepDims = true;
+    if (dict.count("keepdims")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(keepDims, loadInt(dict.at("keepdims")));
+    }
+
+    auto node = G_->createArgMin(opName, input, axis, keepDims);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "Sign") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    Node *zeroes = G_->createSplat(opName + ".zeroes", in.getType(), 0.f);
+
+    Node *isPos = G_->createCmpLT(opName + ".isPos", zeroes, in);
+    Node *isNeg = G_->createCmpLT(opName + ".isNeg", in, zeroes);
+
+    Node *posOnes = G_->createSplat(opName + ".posOnes", in.getType(), 1);
+    Node *negOnes = G_->createSplat(opName + ".negOnes", in.getType(), -1);
+
+    Node *node = G_->createSelect(opName + ".fillPos", isPos, posOnes, zeroes);
+    node = G_->createSelect(opName + ".fillNeg", isNeg, negOnes, node);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "Softplus") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    Node *node = G_->createExp(opName + ".exp", in);
+
+    auto ones = G_->createSplat(opName + ".ones", in.getType(), 1);
+    node = G_->createAdd(opName + ".add", node, ones);
+
+    node = G_->createLog(opName + ".log", node);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
 

@@ -2,13 +2,13 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import tempfile
-import unittest
 
 import torch
 import torch_glow
+from tests import utils
 
 
-class TestLoadBackendSpecificOptions(unittest.TestCase):
+class TestLoadBackendSpecificOptions(utils.TorchGlowTestCase):
     def test_backend_specific_options(self):
         """Test loading backend specific options from YAML file."""
 

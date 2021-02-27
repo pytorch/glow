@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -43,15 +40,15 @@ class SimpleNotModule(torch.nn.Module):
         return torch.logical_not(b)
 
 
-class TestXor(unittest.TestCase):
-    @parameterized.expand(
+class TestXor(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 torch.zeros((3, 4, 5), dtype=torch.bool),
                 torch.ones((3, 4, 5), dtype=torch.bool),
             ),
-            (
+            lambda: (
                 "broadcast",
                 torch.zeros((3, 4, 5), dtype=torch.bool),
                 torch.ones((4, 5), dtype=torch.bool),
@@ -68,15 +65,15 @@ class TestXor(unittest.TestCase):
         )
 
 
-class TestOr(unittest.TestCase):
-    @parameterized.expand(
+class TestOr(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 torch.zeros((3, 4, 5), dtype=torch.bool),
                 torch.ones((3, 4, 5), dtype=torch.bool),
             ),
-            (
+            lambda: (
                 "broadcast",
                 torch.zeros((3, 4, 5), dtype=torch.bool),
                 torch.ones((4, 5), dtype=torch.bool),
@@ -93,15 +90,15 @@ class TestOr(unittest.TestCase):
         )
 
 
-class TestAnd(unittest.TestCase):
-    @parameterized.expand(
+class TestAnd(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 torch.zeros((3, 4, 5), dtype=torch.bool),
                 torch.ones((3, 4, 5), dtype=torch.bool),
             ),
-            (
+            lambda: (
                 "broadcast",
                 torch.zeros((3, 4, 5), dtype=torch.bool),
                 torch.ones((4, 5), dtype=torch.bool),
@@ -118,8 +115,10 @@ class TestAnd(unittest.TestCase):
         )
 
 
-class TestNot(unittest.TestCase):
-    @parameterized.expand([("basic", torch.zeros((3, 4, 5), dtype=torch.bool))])
+class TestNot(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
+        [lambda: ("basic", torch.zeros((3, 4, 5), dtype=torch.bool))]
+    )
     def test_not(self, _, a, skip_to_glow=False):
         utils.compare_tracing_methods(
             SimpleNotModule(),

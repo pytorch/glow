@@ -90,6 +90,8 @@ TEST(IR, basicQuantizedTypes) {
   EXPECT_FALSE(TF.isQuantizedType());
   Type T64I(ElemKind::Int64ITy, {2, 3});
   EXPECT_FALSE(T64I.isQuantizedType());
+  Type TU8I(ElemKind::UInt8ITy, {2, 3});
+  EXPECT_FALSE(TU8I.isQuantizedType());
 }
 
 TEST(IR, basicUseList) {

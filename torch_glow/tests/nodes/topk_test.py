@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -16,7 +14,7 @@ class SimpleTopkModel(torch.nn.Module):
         return torch.topk(tensor, self.count)
 
 
-class TestTopk(unittest.TestCase):
+class TestTopk(utils.TorchGlowTestCase):
     def test_topk_basic(self):
         """Test of the PyTorch TopK Node on Glow."""
         utils.compare_tracing_methods(

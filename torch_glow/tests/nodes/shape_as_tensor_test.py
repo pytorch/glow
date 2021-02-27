@@ -1,10 +1,7 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -17,11 +14,15 @@ class SimpleShapeAsTensorModel(torch.nn.Module):
         return result + result
 
 
-class TestShapeAsTensor(unittest.TestCase):
-    @parameterized.expand(
+class TestShapeAsTensor(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            ("single dimension", SimpleShapeAsTensorModel(), torch.randn(6)),
-            ("multiple dimensions", SimpleShapeAsTensorModel(), torch.randn(3, 2, 4)),
+            lambda: ("single dimension", SimpleShapeAsTensorModel(), torch.randn(6)),
+            lambda: (
+                "multiple dimensions",
+                SimpleShapeAsTensorModel(),
+                torch.randn(3, 2, 4),
+            ),
         ]
     )
     def test_shape_as_tensor(self, _, module, tensor):

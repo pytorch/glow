@@ -37,9 +37,6 @@ public:
   TorchGlowBackend() {}
   ~TorchGlowBackend() override {}
 
-  c10::IValue preprocess(c10::IValue mod,
-                         c10::impl::GenericDict method_compile_spec) override;
-
   c10::impl::GenericDict
   compile(c10::IValue processed,
           c10::impl::GenericDict method_compile_spec) override;
@@ -60,6 +57,11 @@ private:
 
 /// Registers TorchGlowBackend, related custom classes and helper JIT IR ops.
 void registerTorchGlowBackendAndDeps();
+
+/// TorchGlowBackend preprocessing.
+c10::IValue
+preprocess(const torch::jit::Module &mod,
+           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec);
 
 // Register TorchGlowBackend
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend();

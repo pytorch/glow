@@ -6,7 +6,7 @@ import torch
 from tests import utils
 
 
-class TestQuantizedConv2d(unittest.TestCase):
+class TestQuantizedConv2d(utils.TorchGlowTestCase):
     @unittest.skip(reason="Requires freezing")
     def test_quantized_conv2d_unpacked(self):
         """Basic test of the PyTorch quantize::conv2d Node with unpacked weights on Glow."""

@@ -198,6 +198,8 @@ private:
   void fwdAdaptiveAvgPoolInstFloatImpl(const AdaptiveAvgPoolInst *I);
 
   template <typename ElemTy> void fwdSoftMaxInstImpl(const SoftMaxInst *I);
+  template <typename ElemTy>
+  void fwdLogSoftMaxInstImpl(const LogSoftMaxInst *I);
 
   template <typename ElemTy, typename AccumulatorTy>
   void fwdMatMulInstQuantizedImpl(const MatMulInst *I);
@@ -297,6 +299,8 @@ private:
 
   template <typename ElemTy>
   void fwdElementPowInstFloatImpl(const ElementPowInst *I);
+
+  void fwdElementPowInstI8Impl(const ElementPowInst *I);
 
   template <typename ElemTy>
   void fwdElementIsNaNInstFloatImpl(const ElementIsNaNInst *I);

@@ -120,6 +120,9 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::NegNodeKind:
+  case Kinded::Kind::AbsNodeKind:
+  case Kinded::Kind::ExpNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
     break;
@@ -128,7 +131,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
-  case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Float16Ty, ElemKind::Int8QTy});
@@ -168,10 +170,18 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
     break;
-  case Kinded::Kind::LayerNormalizationNodeKind:
-    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::Float16Ty, ElemKind::Int8QTy});
+  case Kinded::Kind::LayerNormalizationNodeKind: {
+    auto scaleType = NI.getInElemTy(LayerNormalizationNode::ScaleIdx);
+    auto biasType = NI.getInElemTy(LayerNormalizationNode::BiasIdx);
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {LayerNormalizationNode::ScaleIdx,
+             LayerNormalizationNode::BiasIdx}) &&
+        scaleType == biasType &&
+        (scaleType == ElemKind::Float16Ty || scaleType == ElemKind::Int8QTy);
     break;
+  }
   case Kinded::Kind::SwishNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy});
@@ -210,6 +220,12 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::ClipNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int8QTy, ElemKind::Float16Ty});
+    break;
+  case Kinded::Kind::FmodNodeKind:
+    // Supporting these two for now because for fp inputs NNPI returns result
+    // with the same sign as the divisor instead of the dividend.
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int64ITy, ElemKind::Int32ITy});
     break;
   case Kinded::Kind::DivNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
@@ -394,6 +410,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          NI.getInElemTy(GatherRangesNode::DataIdx));
     break;
   case Kinded::Kind::SliceNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int64ITy, ElemKind::BoolTy});
+    break;
   case Kinded::Kind::ReshapeNodeKind:
 
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
@@ -626,6 +646,14 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
              ElemKind::Int64ITy, ElemKind::BoolTy},
             {}, {ArgMaxNode::ResultIdx}) &&
         (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::ArgMinNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::FloatTy, ElemKind::Int8QTy,
+             ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy},
+            {}, {ArgMinNode::ResultIdx}) &&
+        (NI.getOutElemTy(ArgMinNode::ResultIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::LogitNodeKind:
     isNodePrecisionSupported =
@@ -1445,6 +1473,59 @@ static_assert(ActivationIOIdx == SigmoidNode::ResultIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::InputIdx, "Format incorrect");
 static_assert(ActivationIOIdx == TanhNode::ResultIdx, "Format incorrect");
 
+/// Looks for LayernormNode that has int8 input with fp scale and bias and
+/// quantize the scale and bias. This pass is a temporary workaround which
+/// should be diabled after NNPI supports fp scale and bias.
+bool quantizeLayernormScaleAndBias(Function *F) {
+  bool changed = false;
+
+  for (auto &N : F->getNodes()) {
+    auto *LN = llvm::dyn_cast<LayerNormalizationNode>(&N);
+    if (!LN) {
+      continue;
+    }
+
+    auto in = LN->getInput();
+    auto gamma = LN->getScale();
+    auto beta = LN->getBias();
+
+    // Skip if input is not quantized type or gamma is quantized type.
+    if (!in.getType()->isQuantizedType() ||
+        gamma.getType()->isQuantizedType()) {
+      continue;
+    }
+
+    auto *gammaC = llvm::dyn_cast<Constant>(gamma);
+    auto *betaC = llvm::dyn_cast<Constant>(beta);
+    if (!gammaC || !betaC) {
+      continue;
+    }
+
+    auto gammaTQP = quantization::getTensorQuantizationParams(
+        gammaC->getPayload(), quantization::Schema::Asymmetric,
+        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ gamma.dims()[0]);
+    auto betaTQP = quantization::getTensorQuantizationParams(
+        betaC->getPayload(), quantization::Schema::Asymmetric,
+        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    auto *gammaQ = F->createQuantize(
+        "layernorm_scale_quant", gamma,
+        F->getParent()->uniqueType(ElemKind::Int8QTy, gamma.dims(),
+                                   gammaTQP[0].scale, gammaTQP[0].offset));
+    auto *betaQ = F->createQuantize(
+        "layernorm_bias_quant", beta,
+        F->getParent()->uniqueType(ElemKind::Int8QTy, beta.dims(),
+                                   betaTQP[0].scale, betaTQP[0].offset));
+    auto *QLN =
+        F->createLayerNormalization("layernorm", LN->getResult().getType(), in,
+                                    gammaQ, betaQ, LN->getEpsilon());
+    LN->getResult().replaceAllUsesOfWith(QLN->getResult());
+
+    changed = true;
+  }
+
+  return changed;
+}
+
 template <typename T>
 void zeroOutEmbeddingTable(Tensor &tensor, const int64_t &padIdx) {
   auto handle = tensor.getHandle<T>();
@@ -1557,6 +1638,18 @@ static bool padKernelToStride(Function *F) {
       uint32_t stride[SPATIAL_DIMS2] = {
           glowChannelwiseQuantizedConv->getStrides()[0],
           glowChannelwiseQuantizedConv->getStrides()[1]};
+
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+      bool is1x1s2Case = true;
+      // This is for special case of 1x1 stride 2.
+      for (int i = 0; i < SPATIAL_DIMS2; i++) {
+        is1x1s2Case &= (kernel[i] == 1 && stride[i] == 2);
+      }
+
+      if (is1x1s2Case) {
+        continue;
+      }
+#endif
 
       for (int i = 0; i < SPATIAL_DIMS2; i++) {
         if (kernel[i] < stride[i]) {
@@ -1697,6 +1790,7 @@ NNPIBackend::transformPostOptPipeline(Function *F,
     auto P = getOptimizationPipeline();
     P->removeAllInstancesOfPass(FunctionPassID::SinkConversions);
     P->removeAllInstancesOfPass(FunctionPassID::SinkConcatBelowQuantize);
+    P->removeAllInstancesOfPass(FunctionPassID::MergeMatMul);
 
     // Do not re-merge ConcatNodes, as we may be parallelizing them.
     const bool restoreMerge = cctx.optimizationOpts.skipConcatMerging;
@@ -1731,6 +1825,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
   bool changed = removeClipsBlockingFusion(F);
   changed |= padKernelToStride(F);
   changed |= lowerEmbeddingToGather(F);
+  changed |= quantizeLayernormScaleAndBias(F);
   auto it =
       cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
   if (it != cctx.backendOpts.backendSpecificOpts.end() && it->second == "1") {
@@ -1767,6 +1862,15 @@ traversePostOrder(const runtime::DAGNode *root,
     }
   }
   postOrder.push_back(root);
+}
+
+unsigned NNPIBackend::getContextCount(CompilationContext &cctx) const {
+  if (cctx.enableP2P || cctx.enableDRT) {
+    return cctx.maxActiveRequestsPerInstance;
+  } else {
+    auto opts = NNPICompilationOptions(cctx.backendOpts.backendSpecificOpts);
+    return opts.numWorkers;
+  }
 }
 
 Error NNPIBackend::bindContexts(

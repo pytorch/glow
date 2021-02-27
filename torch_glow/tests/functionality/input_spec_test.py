@@ -1,10 +1,9 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch_glow
+from tests import utils
 
 
 def get_compilation_spec(inputs):
@@ -37,7 +36,7 @@ class TestModule(torch.nn.Module):
         return self.dequant(self.add(self.quant(a), self.quant(b)))
 
 
-class TestInputSpec(unittest.TestCase):
+class TestInputSpec(utils.TorchGlowTestCase):
     def test_input_spec(self):
         """Test setting quantized and non-quantized input specs."""
         with torch.no_grad():

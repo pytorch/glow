@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -16,7 +14,7 @@ class SimpleContiguousModel(torch.nn.Module):
         return formatted + formatted
 
 
-class TestContiguous(unittest.TestCase):
+class TestContiguous(utils.TorchGlowTestCase):
     def test_contiguous_basic(self):
         """Test of the PyTorch contiguous Node on Glow."""
 

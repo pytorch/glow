@@ -618,11 +618,19 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT8) {
-    Type ty;
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
-    T->reset(ty);
-
+    if (in.has_doc_string()) {
+      Type ty;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
+      T->reset(ty);
+    } else {
+      // Onnx uses Int8 data type through operators like QuantizeLinear.
+      // Also data is passed through raw_data since TensorProto
+      // does not have data field for int8_t or uint8_t.
+      // scale is set to 1 and offset is set to 0 since both scale and offset
+      // themselves are operators inputs.
+      T->reset(ElemKind::Int8QTy, dim, 1 /* scale*/, 0 /* offset*/);
+    }
     if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
@@ -672,10 +680,19 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::UINT8) {
-    Type ty;
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
-    T->reset(ty);
+    if (in.has_doc_string()) {
+      Type ty;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
+      T->reset(ty);
+    } else {
+      // Onnx uses Int8 data type through operators like QuantizeLinear.
+      // Also data is passed through raw_data since TensorProto
+      // does not have data field for int8_t or uint8_t.
+      // scale is set to 1 and offset is set to 0 since both scale and offset
+      // themselves are operators inputs.
+      T->reset(ElemKind::UInt8QTy, dim, 1 /* scale*/, 0 /* offset*/);
+    }
 
     if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
@@ -3898,6 +3915,76 @@ Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadQuantizeLinear(const ONNX_NAMESPACE::NodeProto &op,
+                                          ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  // Onnx documentation expects input to be Float or Int32.
+  if (!(in.getElementType() == ElemKind::FloatTy ||
+        in.getElementType() == ElemKind::Int32ITy)) {
+    return MAKE_ERR(
+        opErrMsg(op, "QuantizeLinear supports input to be Float or Int32."));
+  }
+
+  // Only scale with constant is supported.
+  Constant *scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
+
+  // Glow supports only per layer scale.
+  if (!((scale->getType()->dims().size() == 1 &&
+         scale->getType()->dims()[0] == 1) ||
+        scale->getType()->dims().size() == 0)) {
+    return MAKE_ERR(opErrMsg(op, "QuantizeLinear: y_scale scalar value is only"
+                                 " supported."));
+  }
+
+  float scaleValue = scale->getPayload().getHandle<float>().raw(0);
+
+  // Default values as per Onnx documentation.
+  int32_t offsetValue = 0;
+  auto type = ElemKind::UInt8QTy;
+
+  // Check if we have a offset vector.
+  if (op.input_size() > 2) {
+    auto &offsetTensorName = op.input(2);
+    // Only offset with constant is supported.
+    Constant *offset = nullptr;
+    // Load the serialized offset vector.
+    ASSIGN_VALUE_OR_RETURN_ERR(offset, getConstantByName(offsetTensorName));
+    if (!((offset->getType()->dims().size() == 1 &&
+           offset->getType()->dims()[0] == 1) ||
+          offset->getType()->dims().size() == 0)) {
+      return MAKE_ERR(
+          opErrMsg(op, "QuantizeLinear: y_zero_point scalar value is only"
+                       " supported."));
+    }
+
+    type = offset->getElementType();
+    // Only uint8 and int8 values are supported as per onnx.
+    if (type == ElemKind::UInt8QTy) {
+      offsetValue = static_cast<int32_t>(
+          offset->getPayload().getHandle<uint8_t>().raw(0));
+    } else if (type == ElemKind::Int8QTy) {
+      offsetValue =
+          static_cast<int32_t>(offset->getPayload().getHandle<int8_t>().raw(0));
+    } else {
+      // This condition is hit when there is onnx graph creation issue or
+      // constant is not created correctly.
+      return MAKE_ERR(
+          opErrMsg(op, "QuantizeLinear: Supports only uint8 or int8 data in"
+                       " y_zero_point"));
+    }
+  }
+
+  auto outDims = in.getType()->dims();
+  auto outTy = mod_.uniqueType(type, outDims, scaleValue, offsetValue);
+  Node *N = G_->createQuantize(loadOperatorName(op), in, outTy);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
                                      ArgumentDictionaryTy &dict) {
   NodeValue in;
@@ -4552,9 +4639,10 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
       mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
 
   if (opsetVersion_ == 13) {
-    int axis = -1;
+    int axis = in.dims().size() - 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
     }
     RETURN_ERR_IF_NOT(in.dims().size() == 4, "SoftMax 13 input dims must be 4");
     // Compute the shuffle layout  based on axis input.
@@ -4599,7 +4687,8 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
     // softmax function. This is basimilar to a bitcast operation.
     int axis = 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
     }
     auto *FN = G_->createFlatten("reshapeInput", in, axis);
     auto *SM = G_->createSoftMax(opName, FN, selected);
@@ -5083,6 +5172,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Transpose") {
     return loadTranspose(op, dict, "perm");
   }
+  if (typeName == "ReduceSumSquare") {
+    return loadReduceOp(typeName, op, dict);
+  }
   if (typeName == "MatMul") {
     return loadMatMul(op, dict);
   }
@@ -5143,10 +5235,13 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Quantize") {
     return loadQuantize(op, dict);
   }
+  if (typeName == "QuantizeLinear") {
+    return loadQuantizeLinear(op, dict);
+  }
   if (typeName == "ConvertTo") {
     return loadConvertTo(op, dict);
   }
-  if (typeName == "Dequantize") {
+  if ((typeName == "Dequantize") || (typeName == "DequantizeLinear")) {
     return loadDequantize(op, dict);
   }
   if (typeName == "Regression") {

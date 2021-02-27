@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -16,7 +14,7 @@ class SimpleChunkModel(torch.nn.Module):
         return torch.chunk(input + input, self.chunks, self.dimension)
 
 
-class TestConstantChunk(unittest.TestCase):
+class TestConstantChunk(utils.TorchGlowTestCase):
     def test_constant_chunk_basic(self):
         """Test of prim::ConstantChunk node on glow"""
 

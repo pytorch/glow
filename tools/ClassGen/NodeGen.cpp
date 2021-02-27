@@ -290,7 +290,7 @@ int main(int argc, char **argv) {
       .addInput("Scale")
       .addInput("Bias")
       .addMember(MemberType::Float, "Epsilon")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .setDocstring("Performs layer normalization on the Input tensor with the "
                     "provided Scale, Bias, and Epsilon. Layer sizes are "
                     "determined by the dimensions of Scale and Bias. Similar "
@@ -332,6 +332,13 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs SoftMax normalization on the Input tensor.");
+
+  BB.newNode("LogSoftMax")
+      .addInput("Input")
+      .addInput("Selected")
+      .addResultFromCtorArg()
+      .addGradient()
+      .setDocstring("Performs LogSoftMax normalization on the Input tensor.");
 
   BB.newNode("CrossEntropyLoss")
       .addInput("P")
@@ -399,6 +406,13 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Performs Div on the LHS and RHS operands, then Floor. If Truncate "
           "is set to true then truncate the quotient to zero instead.");
+
+  BB.newNode("Fmod")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Computes the element-wise remainder of division.");
 
   BB.newNode("Max")
       .addInput("LHS")
@@ -482,6 +496,13 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs an element-wise logical NOT of the Input "
+                    "operand.");
+
+  BB.newNode("BitwiseNot")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise bitwise NOT of the Input "
                     "operand.");
 
   BB.newNode("Neg")
@@ -651,6 +672,15 @@ int main(int argc, char **argv) {
       .setDocstring("Accumulates all of the layers in the batch and produce a "
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
+
+  BB.newNode("BatchedReduceSumSquare")
+      .addInput("Batch")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Accumulates squares of all of the layers in the batch and produce a "
+          "tensor that has the same dimensions as the input tensor "
+          "without the first dimension.");
 
   BB.newNode("BatchedReduceMean")
       .addInput("Batch")

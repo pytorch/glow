@@ -4577,3 +4577,311 @@ TEST_F(Caffe2ImporterTest, rmsNorm) {
     }
   }
 }
+
+TEST_F(Caffe2ImporterTest, mean) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/mean_3inputs.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  const std::vector<dim_t> inputShape{5, 6};
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  Tensor input1{ElemKind::FloatTy, inputShape};
+  Tensor input2{ElemKind::FloatTy, inputShape};
+  Tensor input3{ElemKind::FloatTy, inputShape};
+  input1.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  input2.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  input3.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"input1", "input2", "input3"},
+        {&input1.getType(), &input2.getType(), &input3.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getOutputByName("output"));
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod,
+                                  {"input1", "input2", "input3"},
+                                  {&input1, &input2, &input3});
+  }
+
+  auto output = bindings.get(outputPH);
+
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
+      auto val =
+          (input1.getHandle().at({d1, d2}) + input2.getHandle().at({d1, d2}) +
+           input3.getHandle().at({d1, d2})) /
+          3;
+      EXPECT_NEAR(val, outputH.at({d1, d2}), 1e-5);
+    }
+  }
+}
+
+TEST_F(Caffe2ImporterTest, negative) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/negative.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  const std::vector<dim_t> shape{5, 6};
+  Tensor input{ElemKind::FloatTy, shape};
+  input.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getOutputByName("output"));
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto output = bindings.get(outputPH);
+
+  EXPECT_EQ(shape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  for (dim_t d1 = 0; d1 < shape[0]; ++d1) {
+    for (dim_t d2 = 0; d2 < shape[1]; ++d2) {
+      EXPECT_NEAR(-1 * input.getHandle().at({d1, d2}), outputH.at({d1, d2}),
+                  1e-5);
+    }
+  }
+}
+
+TEST_F(Caffe2ImporterTest, lpNorm) {
+  const std::vector<dim_t> inputShape{5, 6};
+
+  const auto runTest =
+      [&inputShape](const std::string &NetDescFilename,
+                    const std::string &NetWeightFilename,
+                    std::function<float(const Tensor &input)> refImpl) {
+        ExecutionEngine EE{};
+        auto &mod = EE.getModule();
+        Function *F = mod.createFunction("main");
+
+        PlaceholderBindings bindings;
+        Placeholder *outputPH;
+
+        Tensor input{ElemKind::FloatTy, inputShape};
+        input.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+
+        // Destroy the loader after the graph is loaded since the following
+        // execution will not depend on anything from the loader.
+        {
+          Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                                     {"input"}, {&input.getType()}, *F);
+          outputPH = EXIT_ON_ERR(caffe2LD.getOutputByName("output"));
+
+          bindings.allocate(mod.getPlaceholders());
+          updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+        }
+
+        auto output = bindings.get(outputPH);
+
+        const std::vector<dim_t> expectedOutputShape{1};
+        EXPECT_EQ(expectedOutputShape, output->dims().vec());
+
+        EE.compile(CompilationMode::Infer);
+        EE.run(bindings);
+
+        auto outputH = output->getHandle();
+
+        EXPECT_NEAR(refImpl(input), outputH.at({0}), 1e-5);
+      };
+
+  const auto refImplP1 = [&inputShape](const Tensor &input) {
+    float sum = 0;
+    for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+      for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
+        auto val = input.getHandle().at({d1, d2});
+        sum += ((val >= 0) ? val : -val);
+      }
+    }
+    return sum;
+  };
+
+  const auto refImplP2 = [&inputShape](const Tensor &input) {
+    float sum = 0;
+    for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+      for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
+        auto val = input.getHandle().at({d1, d2});
+        sum += val * val;
+      }
+    }
+    return sum;
+  };
+
+  runTest(GLOW_DATA_PATH "tests/models/caffe2Models/lpnorm_p1.pbtxt",
+          GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt",
+          refImplP1);
+
+  runTest(GLOW_DATA_PATH "tests/models/caffe2Models/lpnorm_p2.pbtxt",
+          GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt",
+          refImplP2);
+}
+
+TEST_F(Caffe2ImporterTest, argMin) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/argmin.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+
+  std::vector<dim_t> inputShape{1, 50};
+
+  Tensor input{ElemKind::FloatTy, {inputShape}};
+  input.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle<int64_t>();
+  std::vector<dim_t> expectedShape{1};
+  EXPECT_EQ(expectedShape, result.dims().vec());
+
+  dim_t minIndex = 0;
+  for (dim_t d = 1; d < inputShape[1]; ++d) {
+    if (input.getHandle().at({0, d}) < input.getHandle().at({0, minIndex})) {
+      minIndex = d;
+    }
+  }
+  EXPECT_EQ(minIndex, result.at({0}));
+}
+
+TEST_F(Caffe2ImporterTest, sign) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/sign.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  std::vector<dim_t> inputShape{20, 50};
+
+  Tensor input{ElemKind::FloatTy, {inputShape}};
+  input.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  for (dim_t d1 = 1; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 1; d2 < inputShape[1]; ++d2) {
+      auto val = input.getHandle().at({d1, d2});
+      auto exp = (val > 0) ? 1 : (val == 0 ? 0 : -1);
+      EXPECT_EQ(exp, outputH.at({d1, d2}));
+    }
+  }
+}
+
+TEST_F(Caffe2ImporterTest, softplus) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/softplus.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  std::vector<dim_t> inputShape{20, 50};
+
+  Tensor input{ElemKind::FloatTy, {inputShape}};
+  input.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  for (dim_t d1 = 1; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 1; d2 < inputShape[1]; ++d2) {
+      auto val = input.getHandle().at({d1, d2});
+      auto exp = std::log(std::exp(val) + 1);
+      EXPECT_NEAR(exp, outputH.at({d1, d2}), 1e-3);
+    }
+  }
+}

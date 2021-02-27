@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -18,7 +16,7 @@ class SimpleCatModule(torch.nn.Module):
         return other
 
 
-class TestCat(unittest.TestCase):
+class TestCat(utils.TorchGlowTestCase):
     def test_cat_basic(self):
         """Basic test of the PyTorch cat Node on Glow."""
 

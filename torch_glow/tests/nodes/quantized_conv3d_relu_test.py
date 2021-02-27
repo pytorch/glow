@@ -1,13 +1,12 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
 from collections import OrderedDict
 
 import torch
 from tests import utils
 
 
-class TestQuantizedConv3dRelu(unittest.TestCase):
+class TestQuantizedConv3dRelu(utils.TorchGlowTestCase):
     def _test_quantized_conv3d_relu_packed(self, groups):
         """Basic test of PyTorch quantized::conv3d_relu Node with packed weights on Glow."""
         with torch.no_grad():

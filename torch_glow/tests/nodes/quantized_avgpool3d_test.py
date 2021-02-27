@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 from tests import utils
 
@@ -18,7 +16,7 @@ class SimpleQuantizedAvgPool3DModule(torch.nn.Module):
         return torch.nn.quantized.DeQuantize()(self.average_pool(self.quantize(inputs)))
 
 
-class TestQuantizedAvgPool3D(unittest.TestCase):
+class TestQuantizedAvgPool3D(utils.TorchGlowTestCase):
     def test_quantized_avgpool3d(self):
         """Basic test of the PyTorch quantized::avg_pool2d Node on Glow."""
 

@@ -1,7 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
 import torch.nn.functional as F
 from tests import utils
@@ -20,7 +18,7 @@ class SimpleAvgPool2dModule(torch.nn.Module):
         )
 
 
-class TestAvgPool2d(unittest.TestCase):
+class TestAvgPool2d(utils.TorchGlowTestCase):
     def test_avg_pool2d_basic(self):
         """Basic test of the PyTorch avg_pool2d Node on Glow."""
         inputs = torch.randn(1, 4, 5, 5)

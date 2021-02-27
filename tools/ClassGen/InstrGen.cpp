@@ -265,6 +265,12 @@ int main(int argc, char **argv) {
       .addOperand("SrcGrad", OperandKind::Out)
       .autoVerify(VerifyKind::SameType, {"OrigDest", "OrigSrc", "SrcGrad"});
 
+  BB.newInstr("LogSoftMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoIRGen();
+
   BB.newInstr("CrossEntropyLoss")
       .addOperand("P", OperandKind::In)
       .addOperand("Labels", OperandKind::In)
@@ -554,6 +560,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Div");
 
+  BB.newInstr("ElementFmod")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoIRGen("Fmod");
+
   BB.newInstr("ElementMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
@@ -674,6 +689,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::BoolTy"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("Not");
+
+  BB.newInstr("ElementBitwiseNot")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("BitwiseNot");
 
   BB.newInstr("ElementNeg")
       .addOperand("Dest", OperandKind::Out)

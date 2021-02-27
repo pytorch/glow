@@ -35,6 +35,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <cmath>
 #include <functional>
 #include <numeric>
 
@@ -2542,12 +2543,19 @@ TEST_P(OperatorTest, pow) {
   auto *Exp = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Exp", false);
 
   bindings_.allocate(X)->getHandle() = {5, 0.1f, -3};
-  bindings_.allocate(Y)->getHandle() = {2, 100};
-  bindings_.allocate(Exp)->getHandle() = {2, -1};
+  bindings_.allocate(Y)->getHandle() = {2, 0.25};
+  bindings_.allocate(Exp)->getHandle() = {2, -0.5};
 
   auto *Pow1 = F_->createPow("Pow1", X, 2.0);
   auto *Pow2 = F_->createPow("Pow2", Y, 0.5);
   auto *Pow3 = F_->createPow("Pow3", Y, Exp);
+
+  // Create quantized Pow
+  auto *quantY = F_->createQuantize(
+      "Y_quant", Y, mod_.uniqueType(ElemKind::Int8QTy, {2}, 0.05, 0));
+  auto *quantExp = F_->createQuantize(
+      "exp_quant", Exp, mod_.uniqueType(ElemKind::Int8QTy, {2}, 0.1, 0));
+  auto *Pow4 = F_->createPow("Pow4", quantY, quantExp);
 
   auto *save1 = F_->createSave("save", Pow1);
   auto *savePlaceholder1 = save1->getPlaceholder();
@@ -2558,9 +2566,13 @@ TEST_P(OperatorTest, pow) {
   auto *save3 = F_->createSave("save", Pow3);
   auto *savePlaceholder3 = save3->getPlaceholder();
 
+  auto *save4 = F_->createSave("save", Pow4);
+  auto *savePlaceholder4 = save4->getPlaceholder();
+
   bindings_.allocate(savePlaceholder1);
   bindings_.allocate(savePlaceholder2);
   bindings_.allocate(savePlaceholder3);
+  bindings_.allocate(savePlaceholder4);
 
   EE_.compile(CompilationMode::Infer);
 
@@ -2573,11 +2585,15 @@ TEST_P(OperatorTest, pow) {
 
   auto H_Y = bindings_.get(savePlaceholder2)->getHandle();
   EXPECT_NEAR(H_Y.at({0}), sqrt(2.0), 1E-5);
-  EXPECT_NEAR(H_Y.at({1}), 10, 1E-5);
+  EXPECT_NEAR(H_Y.at({1}), 0.5, 1E-5);
 
   auto H_Z = bindings_.get(savePlaceholder3)->getHandle();
   EXPECT_NEAR(H_Z.at({0}), 4, 1E-5);
-  EXPECT_NEAR(H_Z.at({1}), 0.01, 1E-5);
+  EXPECT_NEAR(H_Z.at({1}), 2, 1E-5);
+
+  auto H_A = bindings_.get(savePlaceholder4)->getHandle<int8_t>();
+  EXPECT_NEAR(H_A.at({0}) * 0.05, 4, 1E-5);
+  EXPECT_NEAR(H_A.at({1}) * 0.05, 2, 1E-5);
 }
 
 /// Helper to test ReplaceNaN using \p DTy.
@@ -3399,6 +3415,38 @@ TEST_P(OperatorStatelessTest, ParallelBatchMatMul_Int8) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitParallelBatchMatMulTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.002f, parCloneCountOpt);
+}
+
+/// Helper to test BatchedReduceSumSquare using \p DTy.
+template <typename DataType>
+static void testBatchedReduceSumSquare(glow::PlaceholderBindings &bindings,
+                                       glow::Module &mod, glow::Function *F,
+                                       glow::ExecutionEngine &EE,
+                                       ElemKind DTy) {
+  auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
+  bindings.allocate(batch)->getHandle<DataType>() = {10, 20, 30, 40,
+                                                     1,  2,  3,  4};
+
+  auto *R =
+      F->createBatchedReduceSumSquare("reduce.sumsquare", batch, /* axis */ 0);
+
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(DTy, {4});
+  expected.getHandle<DataType>() = {101, 404, 909, 1616};
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceSumSquare is correctly supported in FloatTy.
+TEST_P(OperatorTest, batchedReduceSumSquare_Float) {
+  CHECK_IF_ENABLED();
+
+  testBatchedReduceSumSquare<float>(bindings_, mod_, F_, EE_,
+                                    ElemKind::FloatTy);
 }
 
 /// Helper to test BatchedReduceAdd using \p DTy.
@@ -6969,6 +7017,7 @@ COMPARE_ARITH_FUN(Div)
 COMPARE_ARITH_FUN(FloorDiv)
 COMPARE_ARITH_FUN(Max)
 COMPARE_ARITH_FUN(Min)
+COMPARE_ARITH_FUN(Fmod)
 #undef COMPARE_ARITH_FUN
 
 #define COMPARE_ARITH_FLOAT_VS_INT8(_OP_NAME_)                                 \
@@ -7008,6 +7057,7 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Div)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(FloorDiv)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Max)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Min)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Fmod)
 
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Add)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Sub)
@@ -7016,6 +7066,7 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Div)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(FloorDiv)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Max)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
+COMPARE_ARITH_FLOAT_VS_BFLOAT16(Fmod)
 #undef COMPARE_ARITH_FLOAT_VS_FLOAT16
 #undef COMPARE_ARITH_FLOAT_VS_BFLOAT16
 
@@ -7057,6 +7108,11 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
                                                  _ELEM_KIND_);                 \
   }
 
+template <typename DataType> static DataType fMod(DataType a, DataType b) {
+  return static_cast<DataType>(
+      std::fmod(static_cast<float>(a), static_cast<float>(b)));
+}
+
 #define ARITH_FUNC_TEST(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)        \
   ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)               \
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, int32_t, ElemKind::Int32ITy)                \
@@ -7071,11 +7127,11 @@ ARITH_FUNC_TEST(Mul, std::multiplies, ())
 ARITH_FUNC_TEST(Div, std::divides, ())
 ARITH_FUNC_TEST(Max, std::max, )
 ARITH_FUNC_TEST(Min, std::min, )
+ARITH_FUNC_TEST(Fmod, fMod, )
 
 #undef ARITH_FUN_IMPL
 #undef ARITH_FUNC_TEST_TYPED
 #undef ARITH_FUNC_TEST
-#undef ARITH_FUNC_TEST_FLOAT
 
 /// Reference function for FloorDivide
 template <typename DataType>
@@ -8546,6 +8602,32 @@ TEST_P(OperatorTest, sliceVectors_Int32Q) {
 TEST_P(OperatorTest, sliceVectors_Int32I) {
   CHECK_IF_ENABLED();
   testSliceVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+/// Test slicing with BoolTy.
+TEST_P(OperatorTest, sliceVectors_BoolTy) {
+  CHECK_IF_ENABLED();
+  auto *input = mod_.createPlaceholder(ElemKind::BoolTy, {5}, "inp", false);
+  bindings_.allocate(input)->getHandle<bool>() = {false, true, false, true,
+                                                  true};
+
+  Node *S1 = F_->createSlice("slice1", input, {0}, {2});
+  Node *S2 = F_->createSlice("slice2", input, {2}, {5});
+  auto *save1 = F_->createSave("save", S1);
+  auto *save2 = F_->createSave("save", S2);
+  auto *out1 = bindings_.allocate(save1->getPlaceholder());
+  auto *out2 = bindings_.allocate(save2->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH1 = out1->getHandle<bool>();
+  auto outH2 = out2->getHandle<bool>();
+  EXPECT_EQ(outH1.size(), 2);
+  EXPECT_EQ(outH2.size(), 3);
+  EXPECT_EQ(outH1.raw(0), false);
+  EXPECT_EQ(outH1.raw(1), true);
+  EXPECT_EQ(outH2.raw(0), false);
+  EXPECT_EQ(outH2.raw(1), true);
+  EXPECT_EQ(outH2.raw(2), true);
 }
 
 /// Helper to test SliceConcatVectors using \p DTy.
@@ -18934,8 +19016,8 @@ createAndInitLayerNormTest(glow::PlaceholderBindings &bindings,
   biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
   Constant *biasC = mod.createConstant("bias", std::move(biasT));
 
-  LayerNormalizationNode *LNN =
-      F->createLayerNormalization("LN", input, scaleC, biasC, 1e-5);
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
 
   bindings.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
 
@@ -18971,12 +19053,51 @@ TEST_P(OperatorStatelessTest, LayerNorm_BFloat16) {
                             parCloneCountOpt);
 }
 
-/// Test LayerNorm with Int8Ty.
-TEST_P(OperatorStatelessTest, LayerNorm_Int8) {
+template <typename DataType>
+static void QuantizedLayerNormTest(glow::PlaceholderBindings &bindings,
+                                   glow::Module &mod, glow::Function *F,
+                                   glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *input =
+      mod.createPlaceholder(ElemKind::Int8QTy, {1, 1, 2, 2}, /* scale */ 0.3,
+                            /* offset */ 0, "in", false);
+  bindings.allocate(input)->getHandle<int8_t>() = {-4, 3, -2, 3};
+
+  auto scaleT = createTensorConditionallyQuantized(DTy, {2, 2});
+  scaleT.getHandle<DataType>() = {1, 2, 1, 2};
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  auto biasT = createTensorConditionallyQuantized(DTy, {2, 2});
+  biasT.getHandle<DataType>() = {1, -1, 0, 1};
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  auto outTy = F->getParent()->uniqueType(ElemKind::Int8QTy, input->dims(),
+                                          /* scale */ 0.1, /* offset */ 0);
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", outTy, input, scaleC, biasC, /* eps */ 1e-5);
+
+  auto *result = F->createSave("save", LNN);
+  bindings.allocate(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto resultH = bindings.get(result->getPlaceholder())->getHandle<int8_t>();
+  EXPECT_NEAR(resultH.at({0, 0, 0, 0}) * 0.1, -0.3, 1e-04);
+  EXPECT_NEAR(resultH.at({0, 0, 0, 1}) * 0.1, 0.9, 1.1e-01);
+  EXPECT_NEAR(resultH.at({0, 0, 1, 0}) * 0.1, -0.6, 1e-04);
+  EXPECT_NEAR(resultH.at({0, 0, 1, 1}) * 0.1, 2.9, 1.1e-01);
+}
+
+TEST_P(OperatorTest, LayerNorm_Int8_With_Int8_Scale_Bias) {
   CHECK_IF_ENABLED();
-  compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
-                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.04f,
-                            parCloneCountOpt);
+
+  QuantizedLayerNormTest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, LayerNorm_Int8_With_Float_Scale_Bias) {
+  CHECK_IF_ENABLED();
+
+  QuantizedLayerNormTest<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 static void testDequantizeFRWQ(glow::PlaceholderBindings &bindings,
