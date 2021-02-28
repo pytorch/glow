@@ -5846,8 +5846,9 @@ bool Function::verify(const Backend *backend) const {
   bool isValid = true;
   // Check if the layout verifying is disabled, which will accept all layout for
   // any ops.
-  LOG(INFO) << "Layout requirements checking is "
-            << (glow::flags::DisableLayoutVerifying ? "disabled" : "enabled");
+  LOG_FIRST_N(INFO, 1) << "Layout requirements checking is "
+                       << (glow::flags::DisableLayoutVerifying ? "disabled"
+                                                               : "enabled");
   if (!glow::flags::DisableLayoutVerifying) {
     if (backend) {
       if (backend->getTensorLayoutRequirements().isEnabled()) {
