@@ -1154,7 +1154,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"aten::contiguous"}, &PyTorchModelLoader::loadCopy<2, false>},
       {{"aten::detach"}, &PyTorchModelLoader::loadCopy<1, false>},
-      {{"aten::copy_"}, &PyTorchModelLoader::loadCopy<3, true>},
+      {{"aten::copy_"}, &PyTorchModelLoader::loadCopy<-2, true>},
       {{"aten::clone"}, &PyTorchModelLoader::loadCopy<2, false>},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
