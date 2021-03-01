@@ -926,10 +926,10 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
   return err;
 }
 
-Error CachingGraphRunner::warmCache(const InputMetaStack &metaStack,
-                                    const PyTorchLoaderSettings &settings,
-                                    runtime::DeferredWeightLoader *loader,
-                                    bool useMaxSizeCompilation) {
+Error CachingGraphRunner::warmCache(
+    const std::vector<InputMetaStack> &metaStacks,
+    const PyTorchLoaderSettings &settings,
+    runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -943,11 +943,22 @@ Error CachingGraphRunner::warmCache(const InputMetaStack &metaStack,
     traceContext = std::make_unique<TraceContext>(TraceLevel::STANDARD);
     traceContext->setThreadName("torch_glow");
   }
-  size_t hash = getGraphMapKeyFromInputStack(metaStack);
+
+  useMaxSizeCompilation_ = useMaxSizeCompilation;
+  std::unique_ptr<Module> glowModule = std::make_unique<Module>();
+
+  glow::CompilationContext cctx;
+  initializeCompiliationContextFromSettings(cctx, settings);
+
   {
     if (settings.lazyCompile) {
-      LOG(INFO) << "Caching compilation setting for hash:" << hash;
-      pyTorchLoaderSettingsMap_.emplace(hash, settings);
+      for (const auto &metaStack : metaStacks) {
+        size_t hash = getGraphMapKeyFromInputStack(metaStack);
+
+        LOG(INFO) << "Caching compilation setting for hash:" << hash;
+        pyTorchLoaderSettingsMap_.emplace(hash, settings);
+      }
+
       return Error::success();
     }
 
@@ -955,67 +966,70 @@ Error CachingGraphRunner::warmCache(const InputMetaStack &metaStack,
                       "torch_glow::warmCache");
     RECORD_USER_SCOPE("torch_glow::warmCache");
 
-    useMaxSizeCompilation_ = useMaxSizeCompilation;
+    for (const auto &metaStack : metaStacks) {
+      size_t hash = getGraphMapKeyFromInputStack(metaStack);
 
-    {
-      std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
-      if (perGlowGraphInfoMap_.find(hash) != perGlowGraphInfoMap_.end()) {
-        return MAKE_ERR(strFormat("There is already a compiled graph for %s",
-                                  metaStack.print().c_str()));
-      }
-    }
-
-    // HostManager is shared across CachingGraphRunner instances so Function
-    // names should be unique so this is included in the name.
-    auto info = std::make_shared<PerGlowGraphInfo>(
-        strFormat("pt_function_%lu_%lu", size_t(this), hash), settings);
-
-    std::unique_ptr<Module> glowModule = std::make_unique<Module>();
-    Function *f = glowModule->createFunction(info->functionName);
-
-    {
-      TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
-                        "loadJITGraph");
-      RECORD_USER_SCOPE("loadJITGraph");
-      RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-          *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-          outputCorrectType_, info->settings, {}, metaStack));
-      TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "loadJITGraph");
-    }
-
-    // Obtain maxSeqLength from metaStack
-    // This step can also be done with a user input, but the overhead of the
-    // following code should not be significant
-    for (auto meta : metaStack.inputMetas) {
-      maxSeqLength_ =
-          std::max(maxSeqLength_,
-                   (size_t)std::accumulate(meta.dims.begin(), meta.dims.end(),
-                                           1, std::multiplies<glow::dim_t>()));
-    }
-    // Allocate zeroLengthSequence with maximum size
-    // Similar to the impl in Onnxifi/Base.cpp
-    glow::Type zt(ElemKind::Int64ITy, {maxSeqLength_});
-    zeroLengthSequence_.reset(zt);
-    zeroLengthSequence_.zero();
-
-    glow::CompilationContext cctx;
-    initializeCompiliationContextFromSettings(cctx, settings);
-
-    if (loader) {
-      std::map<std::string, Type> staticPlaceholderTypes;
-      for (auto *PH : glowModule->getPlaceholders()) {
-        if (PH->isStatic()) {
-          staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+      {
+        std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
+        if (perGlowGraphInfoMap_.find(hash) != perGlowGraphInfoMap_.end()) {
+          return MAKE_ERR(strFormat("There is already a compiled graph for %s",
+                                    metaStack.print().c_str()));
         }
       }
-      loader->setTypeInfo(std::move(staticPlaceholderTypes));
 
-      cctx.deferredWeightLoader = loader;
+      // HostManager is shared across CachingGraphRunner instances so Function
+      // names should be unique so this is included in the name.
+      auto info = std::make_shared<PerGlowGraphInfo>(
+          strFormat("pt_function_%lu_%lu", size_t(this), hash), settings);
 
-      // Signal that we want to fold convertTo and Quantize into static
-      // Placeholders. Also want to do this for AOT optimization even if we
-      // don't have a deferred blob reader present.
-      cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
+      Function *f = glowModule->createFunction(info->functionName);
+
+      {
+        TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
+                          "loadJITGraph");
+        RECORD_USER_SCOPE("loadJITGraph");
+        RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
+            *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
+            outputCorrectType_, info->settings, {}, metaStack));
+        TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
+                        "loadJITGraph");
+      }
+
+      // Obtain maxSeqLength from metaStack
+      // This step can also be done with a user input, but the overhead of the
+      // following code should not be significant
+      for (auto meta : metaStack.inputMetas) {
+        maxSeqLength_ = std::max(
+            maxSeqLength_,
+            (size_t)std::accumulate(meta.dims.begin(), meta.dims.end(), 1,
+                                    std::multiplies<glow::dim_t>()));
+      }
+
+      // Allocate zeroLengthSequence with maximum size
+      // Similar to the impl in Onnxifi/Base.cpp
+      glow::Type zt(ElemKind::Int64ITy, {maxSeqLength_});
+      zeroLengthSequence_.reset(zt);
+      zeroLengthSequence_.zero();
+
+      if (loader) {
+        std::map<std::string, Type> staticPlaceholderTypes;
+        for (auto *PH : glowModule->getPlaceholders()) {
+          if (PH->isStatic()) {
+            staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+          }
+        }
+        loader->setTypeInfo(std::move(staticPlaceholderTypes));
+
+        cctx.deferredWeightLoader = loader;
+
+        // Signal that we want to fold convertTo and Quantize into static
+        // Placeholders. Also want to do this for AOT optimization even if we
+        // don't have a deferred blob reader present.
+        cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
+      }
+
+      // There should be only one element in the map when model is precompiled.
+      perGlowGraphInfoMap_.emplace(hash, info);
     }
 
     {
@@ -1024,8 +1038,6 @@ Error CachingGraphRunner::warmCache(const InputMetaStack &metaStack,
       RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
       TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
     }
-    // There should be only one element in the map when model is precompiled.
-    perGlowGraphInfoMap_.emplace(hash, info);
 
     TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
                     "torch_glow::warmCache");
