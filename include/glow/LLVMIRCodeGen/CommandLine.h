@@ -73,4 +73,7 @@ extern llvm::cl::opt<glow::BundleApiType> bundleAPI;
 /// Option to print more details in the bundle API.
 extern llvm::cl::opt<bool> bundleAPIVerbose;
 
+/// Option to add other external object files to the bundle.
+extern llvm::cl::list<std::string> bundleObjectsOpt;
+
 #endif // GLOW_LLVMIRCODEGEN_COMMANDLINE_H
