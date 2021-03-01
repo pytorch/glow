@@ -217,6 +217,8 @@ private:
   static Expected<TensorOutput> quantizedMul(const MetaStack &variableMetas);
   // Shape inference for aten::matmul
   static Expected<TensorOutput> matmul(const MetaStack &variableMetas);
+  // Shape inference for aten::layerNorm
+  static Expected<TensorOutput> layerNorm(const MetaStack &variableMetas);
 };
 
 } // namespace glow
