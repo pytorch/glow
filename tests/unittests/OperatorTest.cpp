@@ -18967,5 +18967,69 @@ TEST_P(OperatorTest, RMSNorm) {
   }
 }
 
+/* Test a very simple network which does :
+ * Add-->MaMul-->FC
+ *            |
+ *             ->FC
+ */
+TEST_P(OperatorTest, MatMulClipFCSplit) {
+  CHECK_IF_ENABLED();
+  auto *input0 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {4, 4}, "input", false);
+  bindings_.allocate(input0)->getHandle<float16_t>().randomize(0.5, 0.5,
+                                                               mod_.getPRNG());
+
+  auto *weights0 = mod_.createConstant(ElemKind::Float16Ty, {4, 4}, "weights");
+  weights0->getHandle<float16_t>().randomize(0.25, 0.25, mod_.getPRNG());
+
+  auto *weights1 = mod_.createConstant(ElemKind::Float16Ty, {4, 4}, "weights");
+  weights1->getHandle<float16_t>().randomize(1.0, 1.0, mod_.getPRNG());
+  auto *bias1 = mod_.createConstant(ElemKind::Float16Ty, {4}, "bias");
+  bias1->getHandle<float16_t>().randomize(0.0, 0.0, mod_.getPRNG());
+
+  auto *weights2 = mod_.createConstant(ElemKind::Float16Ty, {4, 4}, "weights");
+  weights2->getHandle<float16_t>().randomize(2.0, 2.0, mod_.getPRNG());
+  auto *bias2 = mod_.createConstant(ElemKind::Float16Ty, {4}, "bias");
+  bias2->getHandle<float16_t>().randomize(0.0, 0.0, mod_.getPRNG());
+
+  auto *add1 = F_->createAdd("add1", input0, input0);
+  auto *mm1 = F_->createMatMul("mm1", add1, weights0);
+  auto *fc1 = F_->createFullyConnected("fc1", mm1, weights1, bias1);
+  auto *fc2 = F_->createFullyConnected("fc2", mm1, weights2, bias2);
+  auto *save0 = F_->createSave("save", fc1);
+  auto *save1 = F_->createSave("save", fc2);
+  auto *result0 = bindings_.allocate(save0->getPlaceholder());
+  auto *result1 = bindings_.allocate(save1->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  const std::vector<dim_t> expectedYShape{4, 4};
+  const std::vector<std::vector<float16_t>> expected0{
+      {4.0, 4.0, 4.0, 4.0},
+      {4.0, 4.0, 4.0, 4.0},
+      {4.0, 4.0, 4.0, 4.0},
+      {4.0, 4.0, 4.0, 4.0},
+  };
+  const std::vector<std::vector<float16_t>> expected1{
+      {8.0, 8.0, 8.0, 8.0},
+      {8.0, 8.0, 8.0, 8.0},
+      {8.0, 8.0, 8.0, 8.0},
+      {8.0, 8.0, 8.0, 8.0},
+  };
+  EXPECT_EQ(expectedYShape, result0->dims().vec());
+  EXPECT_EQ(expectedYShape, result1->dims().vec());
+  auto h0 = result0->getHandle<float16_t>();
+  auto h1 = result1->getHandle<float16_t>();
+  for (dim_t i = 0; i < expectedYShape[0]; ++i) {
+    for (dim_t j = 0; j < expectedYShape[1]; ++j) {
+      EXPECT_NEAR(expected0[i][j], h0.at({i, j}), 1e-5)
+          << "at pos (" << i << "," << j << ")";
+      EXPECT_NEAR(expected1[i][j], h1.at({i, j}), 1e-5)
+          << "at pos (" << i << "," << j << ")";
+    }
+  }
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);
