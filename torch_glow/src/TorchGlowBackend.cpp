@@ -708,16 +708,17 @@ compileImpl(const torch::jit::Module &origModule,
         auto compilationGroupSettings = baseSettings;
         RETURN_IF_ERR(applyCompilationGroupSettingsToPyTorchLoaderSettings(
             compilationGroupSettings, *compilationGroup->settings));
-        // Compile each input set (if lazy-compile is set, only the compilation
-        // settings will be stored)
+        // Compile all input sets in the group (if lazy-compile is set, only the
+        // compilation settings will be stored)
+        std::vector<InputMetaStack> metaStacks;
         for (const auto &inputSet : compilationGroup->input_sets) {
-          InputMetaStack metaStack = getInputMetas(inputSet);
-          auto err = runner->warmCache(metaStack, compilationGroupSettings,
-                                       /*loader*/ nullptr,
-                                       /*useMaxSizeCompilation*/ false);
-          err = checkForFatalError(std::move(err));
-          RETURN_IF_ERR(err);
+          metaStacks.push_back(getInputMetas(inputSet));
         }
+        auto err = runner->warmCache(metaStacks, compilationGroupSettings,
+                                     /*loader*/ nullptr,
+                                     /*useMaxSizeCompilation*/ false);
+        err = checkForFatalError(std::move(err));
+        RETURN_IF_ERR(err);
       }
       methodToRunnerMap.emplace(methodName,
                                 std::make_pair(std::move(runner), nullptr));

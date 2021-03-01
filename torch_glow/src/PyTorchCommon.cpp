@@ -453,8 +453,8 @@ at::Tensor convertQuantizedToDtype(at::Tensor ptTensor, c10::ScalarType dtype) {
     LOG(FATAL) << "Can not reach here.";
   }
 
-  float scale = static_cast<float>(ptTensor.q_scale());
-  int32_t offset = static_cast<int32_t>(ptTensor.q_zero_point());
+  auto scale = static_cast<float>(ptTensor.q_scale());
+  auto offset = static_cast<int32_t>(ptTensor.q_zero_point());
   auto ptNewTensor = ptTensor.int_repr().to(targetDQType).add(offsetShift);
   auto ptNewQTensor = at::_make_per_tensor_quantized_tensor(
       ptNewTensor, scale, offset + offsetShift);
@@ -544,7 +544,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
   // could lower whatever we want.
   std::vector<torch::jit::IValue> inputs;
   for (const auto &i : metaStack.inputMetas) {
-    inputs.push_back(
+    inputs.emplace_back(
         torch::empty(i.dims, torch::TensorOptions().dtype(i.type)));
   }
 
@@ -607,7 +607,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
             itr->second.dtype, itr->second.shape<TensorShape>());
       }
 
-      e = runner->warmCache(metaStackForCompilation, settings, loader,
+      e = runner->warmCache({metaStackForCompilation}, settings, loader,
                             /*useMaxSizeCompilation*/ true);
       if (e) {
         // If the graph is already compiled previously, warmCache() will report
@@ -663,7 +663,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
             subgraph, getHostManager(settings), settings, /*useRunOnly*/ true);
       });
 
-  auto e = runner->warmCache(metaStack, settings, loader,
+  auto e = runner->warmCache({metaStack}, settings, loader,
                              /*useMaxSizeCompilation*/ true);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report
