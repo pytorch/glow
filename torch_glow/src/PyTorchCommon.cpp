@@ -48,6 +48,9 @@ DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
 DEFINE_int32(torch_glow_min_fusion_group_size, 1,
              "Minimum number of nodes in the glow fusion group");
 DEFINE_bool(printJITIndex, false, "Enable printing of jit node indexes");
+// TODO: Handle this case with FloorDiv
+DEFINE_bool(ignoreDivRoundingArgs, false,
+            "Ignore the rounding argument to aten::div");
 DEFINE_bool(dumpGlowDag, false, "See PyTorchLoaderSettings");
 DEFINE_bool(jitVsGlowCompare, false, "Enable per-group error check");
 DEFINE_bool(dumpFinalGlowGraph, false, "See PyTorchLoaderSettings");
@@ -264,6 +267,7 @@ void PyTorchLoaderSettings::initSettings() {
   dumpGlowDag = FLAGS_dumpGlowDag;
   jitVsGlowCompare = FLAGS_jitVsGlowCompare;
   printJITIndex = FLAGS_printJITIndex;
+  ignoreDivRoundingArgs = FLAGS_ignoreDivRoundingArgs;
   dumpFinalGlowGraph = FLAGS_dumpFinalGlowGraph;
   enableGlowTracing = FLAGS_enableGlowTracing;
   numTracesPerDump = FLAGS_numTracesPerDump;
@@ -453,8 +457,8 @@ at::Tensor convertQuantizedToDtype(at::Tensor ptTensor, c10::ScalarType dtype) {
     LOG(FATAL) << "Can not reach here.";
   }
 
-  float scale = static_cast<float>(ptTensor.q_scale());
-  int32_t offset = static_cast<int32_t>(ptTensor.q_zero_point());
+  auto scale = static_cast<float>(ptTensor.q_scale());
+  auto offset = static_cast<int32_t>(ptTensor.q_zero_point());
   auto ptNewTensor = ptTensor.int_repr().to(targetDQType).add(offsetShift);
   auto ptNewQTensor = at::_make_per_tensor_quantized_tensor(
       ptNewTensor, scale, offset + offsetShift);
@@ -544,7 +548,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
   // could lower whatever we want.
   std::vector<torch::jit::IValue> inputs;
   for (const auto &i : metaStack.inputMetas) {
-    inputs.push_back(
+    inputs.emplace_back(
         torch::empty(i.dims, torch::TensorOptions().dtype(i.type)));
   }
 
@@ -607,7 +611,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
             itr->second.dtype, itr->second.shape<TensorShape>());
       }
 
-      e = runner->warmCache(metaStackForCompilation, settings, loader,
+      e = runner->warmCache({metaStackForCompilation}, settings, loader,
                             /*useMaxSizeCompilation*/ true);
       if (e) {
         // If the graph is already compiled previously, warmCache() will report
@@ -663,7 +667,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
             subgraph, getHostManager(settings), settings, /*useRunOnly*/ true);
       });
 
-  auto e = runner->warmCache(metaStack, settings, loader,
+  auto e = runner->warmCache({metaStack}, settings, loader,
                              /*useMaxSizeCompilation*/ true);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report

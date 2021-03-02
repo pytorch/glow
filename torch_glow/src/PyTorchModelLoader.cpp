@@ -1154,7 +1154,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"aten::contiguous"}, &PyTorchModelLoader::loadCopy<2, false>},
       {{"aten::detach"}, &PyTorchModelLoader::loadCopy<1, false>},
-      {{"aten::copy_"}, &PyTorchModelLoader::loadCopy<3, true>},
+      {{"aten::copy_"}, &PyTorchModelLoader::loadCopy<-2, true>},
       {{"aten::clone"}, &PyTorchModelLoader::loadCopy<2, false>},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
@@ -2666,7 +2666,13 @@ Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  // TODO: Handle this case with FloorDiv
+  if (settings_.ignoreDivRoundingArgs) {
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  } else {
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+  }
 
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(

@@ -28,6 +28,12 @@ CPULLVMIRGen::CPULLVMIRGen(const IRFunction *F,
                            std::string mainEntryName, llvm::StringRef libjitBC)
     : LLVMIRGen(F, allocationsInfo, mainEntryName, libjitBC) {}
 
+CPULLVMIRGen::CPULLVMIRGen(const IRFunction *F,
+                           AllocationsInfo &allocationsInfo,
+                           std::string mainEntryName, llvm::StringRef libjitBC,
+                           llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry)
+    : LLVMIRGen(F, allocationsInfo, mainEntryName, libjitBC, objectRegistry) {}
+
 void CPULLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
   // TODO: Add here any backend specific logic.
   LLVMIRGen::generateLLVMIRForModule(builder);

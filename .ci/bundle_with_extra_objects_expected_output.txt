@@ -1,0 +1,1 @@
+This is extra bundle object file for testing!
