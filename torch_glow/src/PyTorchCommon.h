@@ -81,6 +81,10 @@ public:
   /// Print all JIT node indexes for debugging use.
   bool printJITIndex = false;
 
+  /// Ignore the rounding argument to aten::div
+  /// TODO: Handle this case with FloorDiv
+  bool ignoreDivRoundingArgs = false;
+
   /// Add clip operators after each fp16 ops during Glow compilation.
   bool clipFP16 = false;
 

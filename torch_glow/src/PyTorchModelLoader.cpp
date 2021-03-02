@@ -2666,7 +2666,13 @@ Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  // TODO: Handle this case with FloorDiv
+  if (settings_.ignoreDivRoundingArgs) {
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  } else {
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+  }
 
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(
