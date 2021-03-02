@@ -4351,11 +4351,11 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
                  getGlowIValueForValue(inputs[ConvInputs::padding]), 3)));
     pads = {pad[0], pad[0], pad[1], pad[1], pad[2], pad[2]};
   } else {
-    glow::unsigned_t pad;
+    std::vector<glow::unsigned_t> pad;
     ASSIGN_VALUE_OR_RETURN_ERR(
-        pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
-                 getGlowIValueForValue(inputs[ConvInputs::padding]))));
-    pads = {pad, pad, pad, pad};
+        pad, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+                 getGlowIValueForValue(inputs[ConvInputs::padding]), 2)));
+    pads = {pad[0], pad[1], pad[0], pad[1]};
   }
 
   std::vector<glow::unsigned_t> dilations;
