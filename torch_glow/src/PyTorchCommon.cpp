@@ -48,6 +48,9 @@ DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
 DEFINE_int32(torch_glow_min_fusion_group_size, 1,
              "Minimum number of nodes in the glow fusion group");
 DEFINE_bool(printJITIndex, false, "Enable printing of jit node indexes");
+// TODO: Handle this case with FloorDiv
+DEFINE_bool(ignoreDivRoundingArgs, false,
+            "Ignore the rounding argument to aten::div");
 DEFINE_bool(dumpGlowDag, false, "See PyTorchLoaderSettings");
 DEFINE_bool(jitVsGlowCompare, false, "Enable per-group error check");
 DEFINE_bool(dumpFinalGlowGraph, false, "See PyTorchLoaderSettings");
@@ -264,6 +267,7 @@ void PyTorchLoaderSettings::initSettings() {
   dumpGlowDag = FLAGS_dumpGlowDag;
   jitVsGlowCompare = FLAGS_jitVsGlowCompare;
   printJITIndex = FLAGS_printJITIndex;
+  ignoreDivRoundingArgs = FLAGS_ignoreDivRoundingArgs;
   dumpFinalGlowGraph = FLAGS_dumpFinalGlowGraph;
   enableGlowTracing = FLAGS_enableGlowTracing;
   numTracesPerDump = FLAGS_numTracesPerDump;
