@@ -70,21 +70,26 @@ public:
   // \returns backend name.
   virtual std::string getBackendName() const = 0;
 
-  /// Generate code for a vector of functions, \p functions. All compilations
-  /// use the same settings provided by \p opts. This allows the compiler to
+  /// Generate code for a vector of functions, \p functions. Each compilation
+  /// has its own settings in \p opts. This allows the compiler to
   /// support shared constants between functions.
-  virtual Expected<std::vector<std::unique_ptr<CompiledFunction>>>
-  compileFunctions(llvm::ArrayRef<Function *> functions,
-                   BackendOptions &opts) const {
-    std::vector<std::unique_ptr<CompiledFunction>> compiledFunctions;
+  virtual Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
+  compileFunctions(std::vector<Function *> &functions,
+                   llvm::StringMap<BackendOptions> &optsMap) const {
+    llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions;
     for (auto &function : functions) {
-      if (auto resOrErr = compile(function, opts)) {
-        compiledFunctions.push_back(std::move(*resOrErr));
+      auto functionName = function->getName();
+      RETURN_ERR_IF_NOT(optsMap.count(functionName),
+                        "Can't find corresponding option for compiling");
+      auto backendOpts = optsMap.find(functionName)->second;
+
+      if (auto resOrErr = compile(function, backendOpts)) {
+        compiledFunctions.insert({functionName, std::move(*resOrErr)});
       } else {
         RETURN_ERR(resOrErr.takeError());
       }
     }
-    return Expected<std::vector<std::unique_ptr<CompiledFunction>>>(
+    return Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>(
         std::move(compiledFunctions));
   }
 
