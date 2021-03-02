@@ -1040,6 +1040,9 @@ TEST_P(BackendExecTest, BundleSharedConstant) {
 TEST_P(BackendExecTest, compileVectorOfFunctions) {
   Module mod;
   std::vector<Function *> functions;
+  llvm::StringMap<BackendOptions> optsMap;
+  BackendOptions opts;
+
   for (unsigned int i = 0; i < 3; i++) {
     Function *F = mod.createFunction("function" + std::to_string(i));
     auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3},
@@ -1047,10 +1050,11 @@ TEST_P(BackendExecTest, compileVectorOfFunctions) {
     auto *pow = F->createPow("Pow" + std::to_string(i), X, 2.0);
     F->createSave("save" + std::to_string(i), pow);
     functions.push_back(F);
+    optsMap.insert({F->getName(), opts});
   }
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
-  BackendOptions opts;
-  auto functionOrErr = backend->compileFunctions(functions, opts);
+
+  auto functionOrErr = backend->compileFunctions(functions, optsMap);
   ASSERT_TRUE((bool)functionOrErr);
 }
 
