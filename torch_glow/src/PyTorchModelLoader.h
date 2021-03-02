@@ -767,13 +767,10 @@ private:
   /// \returns error on failure.
   Error loadSilu(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch avg_pool2d node.
+  /// Load a PyTorch avg_pool1d node.
+  /// \tparam numDims - number of dimentions, support 1d, 2d and 3d.
   /// \returns error on failure.
-  Error loadAvgPool2d(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch avg_pool3d node.
-  /// \returns error on failure.
-  Error loadAvgPool3d(const torch::jit::Node *ptNode);
+  template <size_t numDims> Error loadAvgPool(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch adaptive_avg_pool2d node.
   /// \returns error on failure.

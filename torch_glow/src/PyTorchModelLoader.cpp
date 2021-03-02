@@ -1282,8 +1282,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
       {{"quantized::layer_norm"}, &PyTorchModelLoader::loadQuantizedLayerNorm},
       {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
-      {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool2d},
-      {{"aten::avg_pool3d"}, &PyTorchModelLoader::loadAvgPool3d},
+      {{"aten::avg_pool1d"}, &PyTorchModelLoader::loadAvgPool<1>},
+      {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool<2>},
+      {{"aten::avg_pool3d"}, &PyTorchModelLoader::loadAvgPool<3>},
       {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul},
       {{"aten::mm"}, &PyTorchModelLoader::loadMM},
       {{"aten::bmm"}, &PyTorchModelLoader::loadBmm},
@@ -5132,13 +5133,28 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
                                     int numDims) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -6, outputs, 1));
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AvgPoolInputs::input]));
   bool is3d = (numDims == 3);
-  std::string opName = is3d ? "avgpool3d" : "avgpool2d";
+  bool is1d = (numDims == 1);
+  // aten::avg_pool1d does not have 7th input: divisor_override
+  if (is1d) {
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
+  } else {
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+  }
+  std::string opName = is3d ? "avgpool3d" : (is1d ? "avgpool1d" : "avgpool2d");
+
+  // For 1d avgpool N*M*L, we reshape it to N*M*L*1, and run avgpool2d on it,
+  // and finally reshape it back.
+  if (is1d) {
+    input = F_.createReshape(
+        opName + "_reshape_to_2d", input,
+        {input.dims()[0], input.dims()[1], input.dims()[2], 1});
+  }
 
   if (is3d) {
     input =
@@ -5147,11 +5163,15 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
     input = F_.createTranspose(opName + "_input_transposed", input, NCHW2NHWC);
   }
 
+  // We also change the kernel, pads and stride to 2d for avgpool1d.
   std::vector<glow::unsigned_t> kernels;
   ASSIGN_VALUE_OR_RETURN_ERR(
       kernels,
       castVector<glow::unsigned_t>(expandIntIValIfNeeded(
           getGlowIValueForValue(inputs[AvgPoolInputs::kernel_size]), numDims)));
+  if (is1d) {
+    kernels.push_back(1);
+  }
 
   std::vector<glow::unsigned_t> padsPair;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -5160,6 +5180,9 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
           getGlowIValueForValue(inputs[AvgPoolInputs::padding]), numDims)));
   RETURN_ERR_IF_NOT(padsPair.size() == numDims,
                     "Number of pad values is incorrect");
+  if (is1d) {
+    padsPair.push_back(0);
+  }
   std::vector<glow::unsigned_t> pads;
   if (is3d) {
     pads = {padsPair[0], padsPair[1], padsPair[2],
@@ -5175,6 +5198,9 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
         strides,
         castVector<glow::unsigned_t>(expandIntIValIfNeeded(
             getGlowIValueForValue(inputs[AvgPoolInputs::stride]), numDims)));
+    if (is1d) {
+      strides.push_back(1);
+    }
   } else {
     strides = kernels;
   }
@@ -5197,36 +5223,33 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
   glow::AvgPoolNode *ap =
       F_.createAvgPool(opName, input, kernels, strides, pads,
                        (is3d ? NTHWC : NHWC), countIncludePads);
-  glow::NodeValue ap_output = ap->getResult();
-  const glow::TransposeNode *output;
+  glow::NodeValue output = ap->getResult();
 
   if (is3d) {
-    output = F_.createTranspose(opName + "_output_transposed", ap_output,
-                                NTHWC2NCTHW);
+    output =
+        F_.createTranspose(opName + "_output_transposed", output, NTHWC2NCTHW)
+            ->getResult();
   } else {
     output =
-        F_.createTranspose(opName + "_output_transposed", ap_output, NHWC2NCHW);
+        F_.createTranspose(opName + "_output_transposed", output, NHWC2NCHW)
+            ->getResult();
+  }
+  // Reshape back to 1d
+  if (is1d) {
+    output = F_.createReshape(
+        opName + "_reshape_to_1d", output,
+        {output.dims()[0], output.dims()[1], output.dims()[2]});
   }
 
-  return Expected<NodeValue>(output->getResult());
+  return Expected<NodeValue>(output);
 }
 
-Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
+template <size_t numDims>
+Error PyTorchModelLoader::loadAvgPool(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   glow::NodeValue output;
-  ASSIGN_VALUE_OR_RETURN_ERR(output, loadAvgPoolImpl(ptNode, 2 /* numDims */));
-
-  c10::ScalarType dtype;
-  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
-}
-
-Error PyTorchModelLoader::loadAvgPool3d(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  glow::NodeValue output;
-  ASSIGN_VALUE_OR_RETURN_ERR(output, loadAvgPoolImpl(ptNode, 3 /* numDims */));
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadAvgPoolImpl(ptNode, numDims));
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
