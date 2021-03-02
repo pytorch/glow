@@ -38,9 +38,11 @@ struct GraphMemInfo {
   // The number of contexts reserved on the device, this affecting input/out
   // memory useage.
   unsigned contextCount;
-  // Count of inputs to the graph, this is needed to calculate p2p resource
-  // consumption.
+  // Count of inputs to the graph.
   unsigned inputCount{0};
+  // Count of inputs to the graph that are coming from a peer graph, i.e. are
+  // the output of another graph, and not inputs to the original input model.
+  unsigned inputFromPeerCount{0};
 
   GraphMemInfo()
       : inMemSize(0), outMemSize(0), constMemSize(0), contextCount(1){};

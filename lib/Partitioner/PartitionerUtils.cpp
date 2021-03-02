@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Partitioner/PartitionerUtils.h"
+#include "glow/Backend/BackendUtils.h"
 #include "glow/Flags/Flags.h"
 #include "glow/Partitioner/PartitionerTypes.h"
 #include "glow/Support/Support.h"
@@ -497,9 +498,16 @@ GraphMemInfo getFunctionMemory(Function *func) {
     graphMem.constMemSize += cons->getType()->getSizeInBytes();
   }
 
-  // Walk thru all Placeholders in the function to accumulate input and output
-  // mem size. These utility functions check the users of the PH to determine
-  // if the PH is an input or an output.
+  // Gather all other functions in the module for peer resource usage counting.
+  std::vector<const Function *> otherFuns;
+  std::copy_if(func->getParent()->getFunctions().begin(),
+               func->getParent()->getFunctions().end(),
+               std::back_inserter(otherFuns),
+               [func](Function *F) { return func != F; });
+
+  // Walk thru all Placeholders in the function to accumulate input and
+  // output mem size. These utility functions check the users of the PH to
+  // determine if the PH is an input or an output.
   for (auto &place : func->findPlaceholders()) {
     if (place->isStatic()) {
       graphMem.constMemSize += place->getType()->getSizeInBytes();
@@ -507,6 +515,10 @@ GraphMemInfo getFunctionMemory(Function *func) {
       if (isInput(place, *func)) {
         graphMem.inMemSize += place->getType()->getSizeInBytes();
         graphMem.inputCount += 1;
+        // Check if this placeholder is the output of a peer function.
+        if (isOutput(place, otherFuns)) {
+          graphMem.inputFromPeerCount += 1;
+        }
       }
       if (isOutput(place, *func)) {
         graphMem.outMemSize += place->getType()->getSizeInBytes();
@@ -546,6 +558,8 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
               << partitions.getGraphMemInfo(subF).inMemSize << "\n"
               << "\t\t\t input count :\t"
               << partitions.getGraphMemInfo(subF).inputCount << "\n"
+              << "\t\t\t input only from peers count :\t"
+              << partitions.getGraphMemInfo(subF).inputFromPeerCount << "\n"
               << "\t\t\t output size:\t"
               << partitions.getGraphMemInfo(subF).outMemSize << "\n"
               << "\t\t\t constant size:\t"
