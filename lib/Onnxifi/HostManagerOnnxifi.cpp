@@ -259,6 +259,14 @@ onnxStatus HostManagerBackend::addNetwork(
           glow::flags::BackendSpecificOpts)) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
+  if (glow::runtime::flags::EnableP2P) {
+    LOG(INFO) << "Glow P2P Enabled";
+    cctx.enableP2P = true;
+  }
+  if (glow::runtime::flags::EnableDRT) {
+    LOG(INFO) << "Glow DRT Enabled";
+    cctx.enableDRT = true;
+  }
 
   auto err = hostManager_->addNetwork(std::move(module), cctx);
 

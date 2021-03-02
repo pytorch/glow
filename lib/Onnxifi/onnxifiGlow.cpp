@@ -31,17 +31,6 @@
 
 #define EXTERNC extern "C"
 
-namespace glow {
-namespace onnxifi {
-
-static llvm::cl::opt<std::string, /*external storage*/ true>
-    GlowOnnxifiBackendOpt(
-        "glow-onnxifi-backend", llvm::cl::desc("Glow backend used for ONNXIFI"),
-        llvm::cl::location(glow::onnxifi::flags::BackendName));
-
-} // namespace onnxifi
-} // namespace glow
-
 /**
  * This file contains implementation of the onnxifi interface.
  * Documentation on the functions implementing onnxifi interface in

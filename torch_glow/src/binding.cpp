@@ -87,6 +87,17 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().printJITIndex = false;
   });
 
+  /// Enable ignoring rounding arg in aten::div
+  /// TODO: Handle this case with FloorDiv
+  m.def("enable_ignore_div_rounding_args", []() {
+    getGlobalPyTorchLoaderSettingsMutable().ignoreDivRoundingArgs = true;
+  });
+
+  /// Disable ignoring rounding arg in aten::div
+  m.def("disable_ignore_div_rounding_args", []() {
+    getGlobalPyTorchLoaderSettingsMutable().ignoreDivRoundingArgs = false;
+  });
+
   /// Enable converting fp32 ops to fp16.
   m.def("enable_convert_to_fp16",
         []() { getGlobalPyTorchLoaderSettingsMutable().convertToFP16 = true; });

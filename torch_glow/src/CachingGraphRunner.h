@@ -219,13 +219,14 @@ public:
   /// it as a Glow Function and compiles. \returns error of failure.
   Error run(torch::jit::Stack &stack);
 
-  /// Warm up the cache by compiling a Glow function and storing its info in
-  /// perGlowGraphInfoMap_ with the hash computed using \p metaStack. \p
-  /// metaStack is used to pass Glow shapes and types (Only tensors are valid
-  /// inputs). \p settings enable different settings for each compilation.
-  /// If \p useMaxSizeCompilation , compile only a single Glow graph with an
+  /// Warm up the cache by compiling one Glow function per metaStack and storing
+  /// its info in perGlowGraphInfoMap_ with the hash computed using metaStack in
+  /// \p metaStacks. Each metaStack in \p metaStacks is used to pass Glow shapes
+  /// and types (Only tensors are valid inputs) for one Glow function. \p
+  /// settings enable different settings for each compilation. If \p
+  /// useMaxSizeCompilation , compile only a single Glow graph with an
   /// upper-bound on the input sizes (smaller inputs will be padded by Glow.)
-  Error warmCache(const InputMetaStack &metaStack,
+  Error warmCache(const std::vector<InputMetaStack> &metaStacks,
                   const PyTorchLoaderSettings &settings,
                   runtime::DeferredWeightLoader *loader,
                   bool useMaxSizeCompilation = true);

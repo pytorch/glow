@@ -76,20 +76,6 @@ llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
     llvm::cl::value_desc("configs.yaml"), llvm::cl::Optional,
     llvm::cl::cat(hostManagerCat));
 
-/// Allows enabling DRT support.
-llvm::cl::opt<bool, /* ExternalStorage */ true>
-    enableDRT("enable-DRT", llvm::cl::desc("Enabled DRT support"),
-              llvm::cl::Optional,
-              llvm::cl::location(glow::runtime::flags::EnableDRT),
-              llvm::cl::cat(hostManagerCat));
-
-/// Allows enabling P2P support.
-llvm::cl::opt<bool, /* ExternalStorage */ true>
-    enableP2P("enable-P2P", llvm::cl::desc("Enabled P2P support"),
-              llvm::cl::Optional,
-              llvm::cl::location(glow::runtime::flags::EnableP2P),
-              llvm::cl::cat(hostManagerCat));
-
 /// The value that should be used for device initialization timeout, default:
 /// 5000 milliseconds.
 llvm::cl::opt<unsigned, /* ExternalStorage */ true> deviceInitTimeout(
@@ -587,8 +573,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       // Note: currently getNextNetworkExecutionState assumes that pool size is
       // >= currentInFlight requests, so we set pool size to maxActiveRequests.
       executor_->createPool(node.root.get(), config_.maxActiveRequests,
-                            cctx.enableP2P || flags::EnableP2P,
-                            cctx.enableDRT || flags::EnableDRT);
+                            cctx.enableP2P, cctx.enableDRT);
     }
   }
   // Clear constants contents from the module then put it in a
@@ -727,8 +712,7 @@ Error HostManager::addNetworkFX(
       // Note: currently getNextNetworkExecutionState assumes that pool size is
       // >= currentInFlight requests, so we set pool size to maxActiveRequests.
       executor_->createPool(node.root.get(), config_.maxActiveRequests,
-                            cctx.enableP2P || flags::EnableP2P,
-                            cctx.enableDRT || flags::EnableDRT);
+                            cctx.enableP2P, cctx.enableDRT);
     }
   }
   // Clear constants contents from the module then put it in a

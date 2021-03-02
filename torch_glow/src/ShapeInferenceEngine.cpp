@@ -235,6 +235,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, matmul(inputMetas));
       break;
     }
+    case c10::aten::layer_norm: {
+      ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, layerNorm(inputMetas));
+      break;
+    }
     case c10::aten::stack: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, stack(inputMetas));
       break;
@@ -1885,6 +1889,23 @@ ShapeInferenceEngine::matmul(const MetaStack &variableMetas) {
   shapes.emplace_back(inputTwoShape[2]);
   TensorOutput output;
   output.shapeOrIntValues = shapes;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * aten::layer_norm(Tensor input, int[] normalized_shape, Tensor? weight,
+ * Tensor? bias, float eps, bool cudnn_enable) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::layerNorm(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 6,
+      strFormat("Expected 6 inputs, got %zu.", variableMetas.size()));
+  // The output is the same shape as input
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  TensorOutput output;
+  output.shapeOrIntValues = inputShape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }

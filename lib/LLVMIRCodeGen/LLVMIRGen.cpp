@@ -70,6 +70,15 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
   setMainEntryName(mainEntryName);
 }
 
+LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
+                     std::string mainEntryName, llvm::StringRef libjitBC,
+                     llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry)
+    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
+      objectRegistry_(objectRegistry) {
+  // Legalize main entry name.
+  setMainEntryName(mainEntryName);
+}
+
 /// Mutex to protect LLVM's TargetRegistry.
 static std::mutex initTargetMutex;
 
@@ -118,6 +127,34 @@ std::string LLVMIRGen::getMainEntryName() const { return mainEntryName_; }
 
 void LLVMIRGen::setMainEntryName(std::string name) {
   mainEntryName_ = name.empty() ? "main" : legalizeName(name);
+}
+
+llvm::ArrayRef<llvm::MemoryBufferRef> LLVMIRGen::getObjectRegistry() const {
+  return objectRegistry_;
+}
+
+void LLVMIRGen::setObjectRegistry(
+    llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry) {
+  objectRegistry_ = objectRegistry;
+}
+
+std::vector<std::string> LLVMIRGen::getBundleObjects() const {
+  // Default list of object names.
+  auto bundleObjects = bundleObjects_;
+  // Add object names enforced from command line interface.
+  for (auto bundleObject : bundleObjectsOpt) {
+    bundleObjects.push_back(bundleObject);
+  }
+  return bundleObjects;
+}
+
+void LLVMIRGen::addBundleObject(llvm::StringRef objectName) {
+  // Add bundle object if not already added.
+  auto it =
+      std::find(bundleObjects_.begin(), bundleObjects_.end(), objectName.str());
+  if (it == bundleObjects_.end()) {
+    bundleObjects_.push_back(objectName.str());
+  }
 }
 
 /// Load base addresses of different memory areas so that they can be easily

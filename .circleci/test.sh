@@ -68,6 +68,14 @@ run_and_check_bundle_with_multiple_entries() {
     cd -
 }
 
+run_and_check_bundle_with_extra_objects() {
+    cd "${GLOW_BUILD_DIR}/bundles/bundle_with_extra_objects/"
+    # Compare console output.
+    ./BundleWithExtraObjects >> raw_results.txt
+    diff raw_results.txt "${GLOW_SRC}/.ci/bundle_with_extra_objects_expected_output.txt"
+    cd -
+}
+
 run_pytorch_tests() {
     cd "${GLOW_SRC}/torch_glow"
     if hash sccache 2>/dev/null; then
@@ -113,6 +121,7 @@ case ${CIRCLE_JOB} in
         run_and_check_resnet50_bundle
         run_and_check_bundle_instrument
         run_and_check_bundle_with_multiple_entries
+        run_and_check_bundle_with_extra_objects
         ;;
     COVERAGE)
         cd "${GLOW_SRC}"

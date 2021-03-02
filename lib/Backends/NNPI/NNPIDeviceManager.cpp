@@ -342,10 +342,12 @@ Error NNPIDeviceManager::bindContext(std::string functionName,
                   "Invalid function name.");
   std::shared_ptr<InferenceContext> infCtx(
       inferencePools_.at(functionName).createDetachedInferenceContext(phUsage));
-  ASSERT_WITH_MSG(
-      infCtx, "Failed to create detached context; NNPIDeviceManager status: " +
-                  getStatusStr() +
-                  "; with NNPIDeviceOptions: " + deviceOptions_->dumpStatus());
+  if (!infCtx) {
+    return MAKE_ERR(
+        "Failed to create detached context; NNPIDeviceManager status: " +
+        getStatusStr() +
+        "; with NNPIDeviceOptions: " + deviceOptions_->dumpStatus());
+  }
 
   // Set the inference context into NNPIDeviceBinding and store in the ExCtx.
   ctx->setDeviceBindings(std::make_unique<NNPIDeviceBindings>(infCtx));

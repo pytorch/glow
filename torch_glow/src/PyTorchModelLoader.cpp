@@ -1154,7 +1154,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"aten::contiguous"}, &PyTorchModelLoader::loadCopy<2, false>},
       {{"aten::detach"}, &PyTorchModelLoader::loadCopy<1, false>},
-      {{"aten::copy_"}, &PyTorchModelLoader::loadCopy<3, true>},
+      {{"aten::copy_"}, &PyTorchModelLoader::loadCopy<-2, true>},
       {{"aten::clone"}, &PyTorchModelLoader::loadCopy<2, false>},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
@@ -2666,7 +2666,13 @@ Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  // TODO: Handle this case with FloorDiv
+  if (settings_.ignoreDivRoundingArgs) {
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  } else {
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+  }
 
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -5895,18 +5901,43 @@ Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
       step, iValToInt(getGlowIValueForValue(inputs[SliceInputs::step])));
 
   RETURN_ERR_IF_NOT(step == 1, "loadSlice only supports step == 1");
-  int dimsSize = input.dims().size();
-  std::vector<glow::dim_t> begins(dimsSize);
-  std::vector<glow::dim_t> ends(dimsSize);
+  glow::dim_t rank = input.dims().size();
+  std::vector<glow::dim_t> begins(rank);
+  std::vector<glow::dim_t> ends(rank);
 
-  for (int i = 0; i < dimsSize; ++i) {
-    if (i == dim) {
-      begins[i] = start;
-      ends[i] = end > input.dims()[i] ? input.dims()[i] : end;
-    } else {
+  for (glow::dim_t i = 0; i < rank; ++i) {
+    const glow::dim_t dimSize = input.dims()[i];
+
+    // Only slice along dim
+    if (i != dim) {
       begins[i] = 0;
-      ends[i] = input.dims()[i];
+      ends[i] = dimSize;
+      continue;
     }
+
+    int64_t startPositive, endPositive;
+    ASSIGN_VALUE_OR_RETURN_ERR(startPositive, getPositiveIndex(start, dimSize));
+
+    if (end < 0) {
+      ASSIGN_VALUE_OR_RETURN_ERR(endPositive, getPositiveIndex(end, dimSize));
+    } else if (end > dimSize) {
+      // Ensure that end is no bigger than dimSize, if end isn't provided then
+      // it will be set to int64 maximum.
+      endPositive = dimSize;
+    } else {
+      endPositive = end;
+    }
+
+    RETURN_ERR_IF_NOT(
+        endPositive > startPositive,
+        strFormat(
+            "End index must be greater than start index got start=%ld end=%ld "
+            "which was translated into positive range as start=%ld end=%ld",
+            start, end, startPositive, endPositive)
+            .c_str());
+
+    begins[i] = startPositive;
+    ends[i] = endPositive;
   }
   auto *glowNode = F_.createSlice("sliceOutput", input, begins, ends);
 
