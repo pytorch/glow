@@ -1930,9 +1930,7 @@ Error NNPIBackend::bindContexts(
       runtime::NNPIDeviceManager *nnpiDM =
           dynamic_cast<runtime::NNPIDeviceManager *>(devMgr);
       LOG_IF_NOT_RETURN_LLVMERROR(nnpiDM, "Invalid device manager bound");
-      LOG_IF_NOT_RETURN_LLVMERROR(
-          !nnpiDM->bindContext(dagNode->name, ctx, phUsage),
-          "Failed to bind context");
+      RETURN_IF_ERR(nnpiDM->bindContext(dagNode->name, ctx, phUsage));
     }
   }
 

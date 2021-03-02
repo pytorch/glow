@@ -18,6 +18,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <map>
@@ -669,3 +670,24 @@ bool glow::flags::processBackendSpecificOpts(
   }
   return true;
 }
+
+namespace {
+llvm::cl::OptionCategory flagsLibCat("Glow Flags Lib CmdLine Options");
+/// Allows enabling DRT support.
+llvm::cl::opt<bool, /* ExternalStorage */ true>
+    enableDRT("enable-DRT",
+              llvm::cl::desc(
+                  "Deprecated. Enabled DRT support. Alias to glow_enable_drt."),
+              llvm::cl::Optional,
+              llvm::cl::location(glow::runtime::flags::EnableDRT),
+              llvm::cl::cat(flagsLibCat));
+
+/// Allows enabling P2P support.
+llvm::cl::opt<bool, /* ExternalStorage */ true>
+    enableP2P("enable-P2P",
+              llvm::cl::desc(
+                  "Deprecated. Enabled P2P support. Alias to glow_enable_drt."),
+              llvm::cl::Optional,
+              llvm::cl::location(glow::runtime::flags::EnableP2P),
+              llvm::cl::cat(flagsLibCat));
+} // namespace
