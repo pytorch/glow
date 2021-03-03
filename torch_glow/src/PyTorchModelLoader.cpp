@@ -5584,6 +5584,7 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
 
   int64_t axis;
   int64_t p;
+  bool keepDim;
 
   GlowIValue *pOrAxis;
   ASSIGN_VALUE_OR_RETURN_ERR(pOrAxis, getGlowIValueForValue(inputs[1]));
@@ -5599,6 +5600,8 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
                                       axisList->size()));
     axis = axisList->front();
     p = 2;
+    ASSIGN_VALUE_OR_RETURN_ERR(keepDim,
+                               iValToBool(getGlowIValueForValue(inputs[2])));
   } else {
     // With p in torch.norm(input, p,  dim), inputs[1] is the int representing p
     GlowIValue *pVal;
@@ -5619,7 +5622,7 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
         p == 2,
         glow::strFormat("we currently only support p = 2, but got p = %lu", p));
 
-    // With p in torch.norm(input, p,  dim), inputs[2] is the list of int
+    // With p in torch.norm(input, p, dim), inputs[2] is the list of int
     // representing axis/dim
     std::vector<int64_t> *axisList;
     ASSIGN_VALUE_OR_RETURN_ERR(axisList,
@@ -5629,9 +5632,20 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
                                       "of axis, but got dimension size = %lu",
                                       axisList->size()));
     axis = axisList->front();
+
+    ASSIGN_VALUE_OR_RETURN_ERR(keepDim,
+                               iValToBool(getGlowIValueForValue(inputs[3])));
   }
 
-  auto output = F_.createVectorNorm("norm", input, axis, p);
+  NodeValue output = F_.createVectorNorm("norm", input, axis, p);
+
+  if (keepDim) {
+    std::vector<uint64_t> newShape;
+    for (int64_t i = 0; i < input.dims().size(); i++) {
+      newShape.push_back(i == axis ? 1 : input.dims()[i]);
+    }
+    output = F_.createReshape("norm_reshape", output, newShape);
+  }
 
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
