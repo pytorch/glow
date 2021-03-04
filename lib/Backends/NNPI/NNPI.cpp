@@ -1416,7 +1416,14 @@ bool NNPIBackend::lowerRequiredNodes(Function *F,
       }
       break;
     }
-
+    case Kinded::Kind::GeluNodeKind: {
+      auto it = cctx.backendOpts.backendSpecificOpts.find(
+          std::string("NNPILowerAllGelu"));
+      if (it != cctx.backendOpts.backendSpecificOpts.end()) {
+        shouldLowerNode |= (it->second == "true");
+      }
+      break;
+    }
     case Kinded::Kind::ReshapeNodeKind: {
       shouldLowerNode = false;
       ReshapeNode *RS = llvm::cast<ReshapeNode>(&N);
