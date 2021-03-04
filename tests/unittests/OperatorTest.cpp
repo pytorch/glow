@@ -6340,6 +6340,42 @@ TEST_P(OperatorTest, ScatterData) {
   EXPECT_FLOAT_EQ(H.at({4, 1}), 10.0);
 }
 
+TEST_P(OperatorTest, ScatterDataCumulative) {
+  CHECK_IF_ENABLED();
+
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "indices", false);
+  auto *slices =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 2}, "slices", false);
+
+  bindings_.allocate(data)->getHandle() = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 2, 2, 3};
+  bindings_.allocate(slices)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8};
+
+  auto *R = F_->createScatterData("scatterdata", data, indices, slices,
+                                  true /* cumulative */);
+
+  auto *result = F_->createSave("save", R);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
+
+  EXPECT_FLOAT_EQ(H.at({0, 0}), 0.0);
+  EXPECT_FLOAT_EQ(H.at({0, 1}), 0.0);
+  EXPECT_FLOAT_EQ(H.at({1, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({1, 1}), 2.0);
+  EXPECT_FLOAT_EQ(H.at({2, 0}), 8.0);
+  EXPECT_FLOAT_EQ(H.at({2, 1}), 10.0);
+  EXPECT_FLOAT_EQ(H.at({3, 0}), 7.0);
+  EXPECT_FLOAT_EQ(H.at({3, 1}), 8.0);
+  EXPECT_FLOAT_EQ(H.at({4, 0}), 0.0);
+  EXPECT_FLOAT_EQ(H.at({4, 1}), 0.0);
+}
+
 TEST_P(OperatorTest, ScatterDataQuantized) {
   CHECK_IF_ENABLED();
 

@@ -2110,18 +2110,20 @@ TEST_F(Caffe2ImporterTest, sparseToDense) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Placeholder *output;
+  Placeholder *outputPH;
   PlaceholderBindings bindings;
 
   // Create inputs.
-  constexpr dim_t kNumIndices = 5;
+  constexpr dim_t kNumIndices = 40;
   constexpr dim_t kMaxIndex = 20;
   constexpr dim_t kRows = 10;
   constexpr dim_t kCols = 5;
   Tensor indices(ElemKind::Int64ITy, {kNumIndices});
   Tensor values(ElemKind::FloatTy, {kNumIndices, kRows, kCols});
-  Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
+  Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex});
 
+  indices.getHandle<int64_t>().randomize(0, kMaxIndex - 1, mod.getPRNG());
+  values.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anything from the loader.
   {
@@ -2129,27 +2131,57 @@ TEST_F(Caffe2ImporterTest, sparseToDense) {
         NetDescFilename, NetWeightFilename,
         {"indices", "values", "dataToInferDim"},
         {&indices.getType(), &values.getType(), &dataToInferDim.getType()}, *F);
-    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(bindings, &mod, {"indices", "values"},
                                   {&indices, &values});
   }
 
   // Check that the shape of the output matches that of the expected output.
-  EXPECT_TRUE(output->dims().vec() == dataToInferDim.dims().vec());
+  const std::vector<dim_t> expectedOutputShape{kMaxIndex, kRows, kCols};
+  EXPECT_EQ(expectedOutputShape, outputPH->dims().vec());
 
   // High level checks on the content of the graph.
-  // We should have 1 SparseToDense and 1 Output node = 2 nodes in total.
-  EXPECT_EQ(F->getNodes().size(), 2);
+  // We should have 1 Splat, 1 Reshape, 1 ScatterData and 1 Output node,
+  // i.e. 4 nodes in total.
+  EXPECT_EQ(F->getNodes().size(), 4);
 
   // Check that the graph has the expected shape (SparseToDense -> Save),
   // starting from the output.
-  auto *saveNode = getSaveNodeFromDest(output);
-  auto *STDN = llvm::dyn_cast<SparseToDenseNode>(saveNode->getInput());
+  auto *saveNode = getSaveNodeFromDest(outputPH);
+  auto *STDN = llvm::dyn_cast<ScatterDataNode>(saveNode->getInput());
   ASSERT_TRUE(STDN);
 
   // Graph has three inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
+
+  auto output = bindings.get(outputPH);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  // Initialize with zeroes
+  std::vector<std::vector<std::vector<float>>> expected(
+      kMaxIndex,
+      std::vector<std::vector<float>>(kRows, std::vector<float>(kCols, 0)));
+  for (dim_t d1 = 0; d1 < kNumIndices; ++d1) {
+    dim_t dest_d1 = indices.getHandle<int64_t>().at(d1);
+    for (dim_t d2 = 0; d2 < kRows; ++d2) {
+      for (dim_t d3 = 0; d3 < kCols; ++d3) {
+        expected[dest_d1][d2][d3] += values.getHandle().at({d1, d2, d3});
+      }
+    }
+  }
+
+  for (dim_t d1 = 0; d1 < kMaxIndex; ++d1) {
+    for (dim_t d2 = 0; d2 < kRows; ++d2) {
+      for (dim_t d3 = 0; d3 < kCols; ++d3) {
+        EXPECT_NEAR(expected[d1][d2][d3], outputH.at({d1, d2, d3}), 1e-3);
+      }
+    }
+  }
 }
 
 TEST_F(Caffe2ImporterTest, SparseToDenseMask) {

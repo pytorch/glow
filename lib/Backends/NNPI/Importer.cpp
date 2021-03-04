@@ -801,6 +801,31 @@ public:
   }
 };
 
+class ScatterDataNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    LOG(ERROR) << "ScatterND is not fully supported";
+    return NNPI_NOT_IMPLEMENTED;
+
+    // TODO: uncomment when there is full support for ScatterND op.
+    // auto *glowSD = llvm::dyn_cast<ScatterDataNode>(n);
+    // LOG_AND_RETURN_IF_NOT(ERROR, glowSD, "Bad node type",
+    // NNPI_INVALID_PARAM);
+
+    // importer.setUsedTensors({nodeValueName(glowSD->getData()),
+    //                          nodeValueName(glowSD->getIndices()),
+    //                          nodeValueName(glowSD->getSlices())},
+    //                         {nodeValueName(glowSD->getResult())});
+
+    // return nnpiNetworkAddScatterNDOp(
+    //     importer.getNetwork(), glowSD->getName().begin(),
+    //     nodeValueName(glowSD->getData()).c_str(),
+    //     nodeValueName(glowSD->getIndices()).c_str(),
+    //     nodeValueName(glowSD->getSlices()).c_str(),
+    //     nodeValueName(glowSD->getResult()).c_str(), glowSD->getCumulative());
+  }
+};
+
 class SoftMaxNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2476,6 +2501,7 @@ std::unordered_map<
          AdaptivePoolNodeImporter<glow::AdaptiveAvgPoolNode, NNPI_POOL_AVG>>()},
     {"FullyConnected", glow::make_unique<FullyConnectedNodeImporter>()},
     {"SoftMax", glow::make_unique<SoftMaxNodeImporter>()},
+    {"ScatterData", glow::make_unique<ScatterDataNodeImporter>()},
     {"Save", glow::make_unique<SaveNodeImporter>()},
     {"Relu", glow::make_unique<ReluNodeImporter>()},
     {"PRelu", glow::make_unique<PReluNodeImporter>()},
