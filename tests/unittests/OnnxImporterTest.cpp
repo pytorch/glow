@@ -2249,19 +2249,21 @@ TEST_F(OnnxImporterTest, importSparseToDense) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
   }
 
-  // Verify structure: Inputs -> SparseToDense -> Save.
+  // Verify structure: Inputs -> Splat + Reshape -> ScatterData -> Save.
   ASSERT_EQ(mod.getPlaceholders().size(), 4);
-  ASSERT_EQ(F->getNodes().size(), 2);
+  ASSERT_EQ(F->getNodes().size(), 4);
 
   auto *save = getSaveNodeFromDest(output);
   auto *out = save->getPlaceholder();
   EXPECT_TRUE(out->dims().vec() == dataToInferDim.dims().vec());
 
-  auto *STD = llvm::dyn_cast<SparseToDenseNode>(save->getInput().getNode());
+  auto *STD = llvm::dyn_cast<ScatterDataNode>(save->getInput().getNode());
   ASSERT_TRUE(STD);
-  auto *idx = llvm::dyn_cast<Placeholder>(STD->getIndices().getNode());
+  auto *reshapeNode = llvm::dyn_cast<ReshapeNode>(STD->getIndices().getNode());
+  ASSERT_TRUE(reshapeNode);
+  auto *idx = llvm::dyn_cast<Placeholder>(reshapeNode->getInput().getNode());
   EXPECT_EQ(idx, mod.getPlaceholderByNameSlow("indices"));
-  auto *vals = llvm::dyn_cast<Placeholder>(STD->getValues().getNode());
+  auto *vals = llvm::dyn_cast<Placeholder>(STD->getSlices().getNode());
   EXPECT_EQ(vals, mod.getPlaceholderByNameSlow("values"));
 }
 

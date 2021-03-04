@@ -150,6 +150,7 @@ struct BlacklistInitializer {
       {"ScatterAddNDimensionalSimple/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ScatterAddQuantized/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ScatterData/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"ScatterDataCumulative/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ScatterDataNDimensional/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ScatterDataNDimensionalSimple/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ScatterDataQuantized/0", TestBlacklist::AnyDeviceAnyEngine},

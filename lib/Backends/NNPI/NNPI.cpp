@@ -418,7 +418,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
 
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy});
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
   case Kinded::Kind::CmpLTENodeKind:
   case Kinded::Kind::CmpEQNodeKind:
@@ -608,7 +608,15 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
             {ElemKind::FloatTy}, {SparseToDenseNode::IndicesIdx}) &&
-        (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
+        (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int32ITy ||
+         NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::ScatterDataNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
+                                               {ScatterDataNode::IndicesIdx}) &&
+        (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy ||
+         NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::SoftMaxNodeKind:
     isNodePrecisionSupported =
@@ -674,7 +682,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   if (isNodeSupported(NI) != NodeSupportLevels::PRECISION_SUPPORTED) {
-    llvm::outs() << "Unsupported op:\n" << NI.getDebugDesc() << "\n";
+    LOG(ERROR) << "Unsupported op:\n" << NI.getDebugDesc();
     return false;
   }
   return true;

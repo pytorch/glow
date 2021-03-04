@@ -4701,6 +4701,32 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadScatterData(const ONNX_NAMESPACE::NodeProto &op,
+                                       const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+  NodeValue values;
+  ASSIGN_VALUE_OR_RETURN_ERR(values, getNodeValueByName(op.input(2)));
+
+  RETURN_ERR_IF_NOT(indices.dims().size() == 2,
+                    opErrMsg(op, "Indices must be a 2D tensor!"));
+  RETURN_ERR_IF_NOT(indices.dims()[0] == values.dims()[0],
+                    opErrMsg(op, "Indices and values must have same lengths!"));
+
+  bool cumulative = false;
+  if (dict.count("cumulative")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(cumulative, loadInt(dict.at("cumulative")));
+  }
+
+  Node *node = G_->createScatterData(opName, data, indices, values, cumulative);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadLoop(const ONNX_NAMESPACE::NodeProto &op,
                                 const ArgumentDictionaryTy &dict) {
   int64_t maxTripCount;
@@ -5345,6 +5371,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Softmax") {
     return loadSoftmax(op, dict);
+  }
+  if (typeName == "ScatterData") {
+    return loadScatterData(op, dict);
   }
 
   return MAKE_ERR("Failed to load operator " + typeName + " .",

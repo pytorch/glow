@@ -351,6 +351,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ScatterAddNDimensionalSimple/0",
     "ScatterAddQuantized/0",
     "ScatterData/0",
+    "ScatterDataCumulative/0",
     "ScatterDataNDimensional/0",
     "ScatterDataNDimensionalSimple/0",
     "ScatterDataQuantized/0",
