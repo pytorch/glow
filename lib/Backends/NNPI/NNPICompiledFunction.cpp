@@ -242,14 +242,16 @@ Error NNPICompiledFunction::setupCompilationHints(
         }
 
         std::string edgeName = extraEdgesTargetName[i];
+        if (allNodeNames.count(extraEdgesTargetName[i]) == 0) {
+          LOG(WARNING) << "Discarding edge targeting non-existent node "
+                       << extraEdgesTargetName[i];
+          continue;
+        }
         if (extraEdgesTargetSuffixIt != nodeInfo.end()) {
           auto extraEdgesTargetSuffix = extraEdgesTargetSuffixIt->second;
           edgeName = edgeName + extraEdgesTargetSuffix[i];
         }
 
-        RETURN_ERR_IF_NOT(allNodeNames.count(extraEdgesTargetName[i]),
-                          "Extra edge target " + extraEdgesTargetName[i] +
-                              " is not mapped to a current Node name.");
         NNPICompilationHint hint;
         hint.type = NNPI_HINT_OP_DEPENDENCY;
         strncpy(hint.opDependency.opName, opName.c_str(),
