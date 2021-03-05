@@ -239,6 +239,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, layerNorm(inputMetas));
       break;
     }
+    case c10::aten::linear: {
+      ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, linear(inputMetas));
+      break;
+    }
     case c10::aten::stack: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, stack(inputMetas));
       break;
@@ -1906,6 +1910,32 @@ ShapeInferenceEngine::layerNorm(const MetaStack &variableMetas) {
   const auto &inputShape = variableMetas[0].shape<TensorShape>();
   TensorOutput output;
   output.shapeOrIntValues = inputShape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * aten::linear(Tensor input, Tensor weight, Tensor? bias) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::linear(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected 3 inputs, got %zu.", variableMetas.size()));
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  const auto &weightShape = variableMetas[1].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(inputShape.size() > 0,
+                    "Expected input shape size is larger than 0");
+  RETURN_ERR_IF_NOT(weightShape.size() == 2,
+                    strFormat("Only support weight as 2-d tensor, got %zu.",
+                              weightShape.size()));
+  RETURN_ERR_IF_NOT(
+      inputShape.back() == weightShape[1],
+      "The last dim of input should be the same as 2nd dim of weight");
+  TensorShape outputShape = inputShape;
+  outputShape.back() = weightShape[0];
+  TensorOutput output;
+  output.shapeOrIntValues = outputShape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }
