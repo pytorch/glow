@@ -2132,9 +2132,9 @@ BatchedMulNode *Function::createBatchedMul(llvm::StringRef name, TypeRef outTy,
 }
 
 CumSumNode *Function::createCumSum(llvm::StringRef name, NodeValue input,
-                                   bool exclusive, bool reverse) {
+                                   int64_t dim, bool exclusive, bool reverse) {
   return addNode(
-      new CumSumNode(name, input.getType(), input, exclusive, reverse));
+      new CumSumNode(name, input.getType(), input, dim, exclusive, reverse));
 }
 
 LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,

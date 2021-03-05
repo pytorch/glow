@@ -720,6 +720,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("CumSum")
       .addInput("Input")
+      .addMember(MemberType::Int64, "Dim")
       .addMember(MemberType::Unsigned, "Exclusive")
       .addMember(MemberType::Unsigned, "Reverse")
       .addResultFromCtorArg()

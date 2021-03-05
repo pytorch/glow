@@ -342,7 +342,7 @@ private:
                                          const ShapeVector &eDestDims);
 
   template <typename ElemTy>
-  void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,
+  void fwdCumSumInstImpl(Value *input, Value *dest, int64_t dim, bool exclusive,
                          bool reverse);
 
   template <typename ElemTy>

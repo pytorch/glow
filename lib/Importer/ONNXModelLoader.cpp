@@ -4078,7 +4078,9 @@ Error ONNXModelLoader::loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(reverse, loadInt(dict.at("reverse")));
   }
 
-  Node *N = G_->createCumSum(loadOperatorName(op), input, exclusive, reverse);
+  // TODO: add axis/dim support
+  Node *N =
+      G_->createCumSum(loadOperatorName(op), input, 0, exclusive, reverse);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }
