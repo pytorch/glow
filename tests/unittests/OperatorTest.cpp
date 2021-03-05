@@ -13802,12 +13802,12 @@ TEST_P(OperatorTest, testQuantizedBatchMul_Int8) {
 template <typename DataType>
 static Tensor *testCumSum(glow::PlaceholderBindings &bindings,
                           glow::Module &mod, glow::Function *F,
-                          glow::ExecutionEngine &EE, ElemKind DTy,
+                          glow::ExecutionEngine &EE, ElemKind DTy, int64_t dim,
                           bool exclusive, bool reverse) {
   auto *data = mod.createPlaceholder(DTy, {4}, "data", false);
   bindings.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4};
 
-  auto *CS = F->createCumSum("CumSum", data, exclusive, reverse);
+  auto *CS = F->createCumSum("CumSum", data, dim, exclusive, reverse);
   auto *S = F->createSave("save", CS);
   bindings.allocate(S->getPlaceholder());
 
@@ -13825,7 +13825,7 @@ TEST_P(OperatorTest, CumSum_Float) {
 
   Tensor *result =
       testCumSum<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                        /*exclusive*/ false, /*reverse*/ false);
+                        /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<float>() = {1, 3, 6, 10};
 
@@ -13841,7 +13841,7 @@ TEST_P(OperatorTest, CumSum_Float16) {
 
   Tensor *result =
       testCumSum<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                            /*exclusive*/ false, /*reverse*/ false);
+                            /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<float16_t>() = {1, 3, 6, 10};
 
@@ -13857,7 +13857,7 @@ TEST_P(OperatorTest, CumSum_BFloat16) {
 
   Tensor *result =
       testCumSum<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
-                             /*exclusive*/ false, /*reverse*/ false);
+                             /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<bfloat16_t>() = {1, 3, 6, 10};
 
@@ -13873,7 +13873,7 @@ TEST_P(OperatorTest, CumSum_Int32) {
 
   Tensor *result =
       testCumSum<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
-                          /*exclusive*/ false, /*reverse*/ false);
+                          /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<int32_t>() = {1, 3, 6, 10};
 
@@ -13889,7 +13889,7 @@ TEST_P(OperatorTest, CumSum_Int64) {
 
   Tensor *result =
       testCumSum<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                        /*exclusive*/ false, /*reverse*/ false);
+                        /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<float>() = {1, 3, 6, 10};
 
@@ -13905,7 +13905,7 @@ TEST_P(OperatorTest, CumSum_Exclusive) {
 
   Tensor *result =
       testCumSum<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                        /*exclusive*/ true, /*reverse*/ false);
+                        /*dim*/ 0, /*exclusive*/ true, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<float>() = {0, 1, 3, 6};
 
@@ -13921,7 +13921,7 @@ TEST_P(OperatorTest, CumSum_Reverse) {
 
   Tensor *result =
       testCumSum<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                            /*exclusive*/ false, /*reverse*/ true);
+                            /*dim*/ 0, /*exclusive*/ false, /*reverse*/ true);
   Tensor expected(result->getType());
   expected.getHandle<float16_t>() = {10, 9, 7, 4};
 
@@ -13937,7 +13937,7 @@ TEST_P(OperatorTest, CumSum_Reverse_BFloat16) {
 
   Tensor *result =
       testCumSum<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
-                             /*exclusive*/ false, /*reverse*/ true);
+                             /*dim*/ 0, /*exclusive*/ false, /*reverse*/ true);
   Tensor expected(result->getType());
   expected.getHandle<bfloat16_t>() = {10, 9, 7, 4};
 
@@ -13953,7 +13953,7 @@ TEST_P(OperatorTest, CumSum_ExclusiveReverse) {
 
   Tensor *result =
       testCumSum<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
-                          /*exclusive*/ true, /*reverse*/ true);
+                          /*dim*/ 0, /*exclusive*/ true, /*reverse*/ true);
   Tensor expected(result->getType());
   expected.getHandle<int32_t>() = {9, 7, 4, 0};
 
@@ -13970,7 +13970,7 @@ TEST_P(OperatorTest, CumSum_WithZeroes) {
   auto *data = mod_.createPlaceholder(ElemKind::Int64ITy, {9}, "data", false);
   bindings_.allocate(data)->getHandle<int64_t>() = {0, 0, 1, 0, 0, 2, 0, 0, 3};
 
-  auto *CS = F_->createCumSum("CumSum", data);
+  auto *CS = F_->createCumSum("CumSum", data, 0);
   auto *S = F_->createSave("save", CS);
   bindings_.allocate(S->getPlaceholder());
 

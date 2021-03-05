@@ -7049,19 +7049,11 @@ Error PyTorchModelLoader::loadCumSum(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       dim, iValToInt(getGlowIValueForValue(inputs[CumSumInputs::dim])));
 
-  // TODO do we need to support cumsum (axis/dim) on dimensions greater than
-  // zero
+  int64_t nDims = in.dims().size();
   RETURN_ERR_IF_NOT(
-      dim == 0,
-      glow::strFormat("cumsum is only supported on dimension 0 (requested %ld",
-                      dim));
-
-  // TODO support needs to be added F_.createCumSum to support more than 1D,
-  auto nDims = in.dims().size();
-  RETURN_ERR_IF_NOT(
-      nDims <= 1,
-      glow::strFormat(
-          "cumsum is currently only supported for 1D (requested %ld)", nDims));
+      (dim >= -nDims) && (dim < nDims),
+      glow::strFormat("cumsum dim (%ld) is expected to be in range [%ld, %ld]",
+                      dim, -nDims, nDims - 1));
 
   // Convert to supplied dtype is specified
   GlowIValue *dtypeIVal = nullptr;
@@ -7076,8 +7068,8 @@ Error PyTorchModelLoader::loadCumSum(const torch::jit::Node *ptNode) {
     in = F_.createConvertTo("cast", in, glowElemKind)->getResult();
   }
 
-  RETURN_ERR(
-      addValueMapping(outputs[0], F_.createCumSum("cumsum", in)->getResult()));
+  RETURN_ERR(addValueMapping(outputs[0],
+                             F_.createCumSum("cumsum", in, dim)->getResult()));
 }
 
 Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(

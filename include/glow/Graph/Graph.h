@@ -1253,7 +1253,8 @@ public:
   /// Create a node performing a Cumulative Sum operation, output type matches
   /// \p input type.
   CumSumNode *createCumSum(llvm::StringRef name, NodeValue input,
-                           bool exclusive = false, bool reverse = false);
+                           int64_t dim = 0, bool exclusive = false,
+                           bool reverse = false);
 
   /// Implements an operation that accumulates the values in \p data along the
   /// first dimension into len(\p lengths) entries by summing together the first

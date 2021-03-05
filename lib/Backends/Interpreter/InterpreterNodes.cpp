@@ -4433,17 +4433,28 @@ DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
 
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
-                                                 bool exclusive, bool reverse) {
-  auto *eInput = getTensor(input);
-  auto *eDest = getTensor(dest);
-  auto eInputH = eInput->getHandle<ElemTy>();
-  auto eDestH = eDest->getHandle<ElemTy>();
+                                                 int64_t dim, bool exclusive,
+                                                 bool reverse) {
+  auto eInputH = getTensor(input)->getHandle<ElemTy>();
+  auto eDestH = getTensor(dest)->getHandle<ElemTy>();
   eDestH.clear();
 
-  ElemTy accum = 0;
+  // deal with dim < 0
+  if (dim < 0) {
+    dim += eInputH.dims().size();
+  }
+  assert(dim < eInputH.dims().size() &&
+         "Dim must be less than the number of dimensions of input tensor");
+
+  std::vector<dim_t> accumDims(eInputH.dims());
+  accumDims[dim] = 1;
+
+  Tensor accum(eInputH.getElementType(), accumDims);
+  auto accumH = accum.getHandle<ElemTy>();
+  accumH.clear();
 
   sdim_t s = 0;
-  sdim_t n = eDestH.size();
+  sdim_t n = eInputH.dims()[dim];
   sdim_t dir = 1;
 
   if (reverse) {
@@ -4453,20 +4464,35 @@ void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
   }
 
   for (sdim_t i = s; i != n; i += dir) {
+    std::vector<dim_t> offset(eInputH.dims().size());
+    offset[dim] = i;
+
+    Tensor temp(eInputH.getElementType(), accumDims);
+    auto tempH = temp.getHandle<ElemTy>();
+    eInputH.extractTensors(tempH, offset);
+
     if (!exclusive) {
-      accum += eInputH.at(i);
+      for (auto accumIt = accumH.begin(), tempIt = tempH.begin();
+           accumIt != accumH.end(); ++accumIt, ++tempIt) {
+        *accumIt += *tempIt;
+      }
     }
-    eDestH.at(i) = accum;
+
+    eDestH.insertTensors(accumH, offset, 1, dim);
+
     if (exclusive) {
-      accum += eInputH.at(i);
+      for (auto accumIt = accumH.begin(), tempIt = tempH.begin();
+           accumIt != accumH.end(); ++accumIt, ++tempIt) {
+        *accumIt += *tempIt;
+      }
     }
   }
 }
 
 void BoundInterpreterFunction::fwdCumSumInst(glow::CumSumInst const *I) {
   dispatchArithmeticImpl(fwdCumSumInstImpl, I->getInput()->getElementType(),
-                         I->getInput(), I->getDest(), I->getExclusive(),
-                         I->getReverse());
+                         I->getInput(), I->getDest(), I->getDim(),
+                         I->getExclusive(), I->getReverse());
 }
 
 template <typename ElemTy>

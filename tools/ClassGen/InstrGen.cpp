@@ -353,6 +353,7 @@ int main(int argc, char **argv) {
   BB.newInstr("CumSum")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::Int64, "Dim")
       .addMember(MemberType::Unsigned, "Exclusive")
       .addMember(MemberType::Unsigned, "Reverse")
       .inplaceOperand({"Dest", "Input"})
