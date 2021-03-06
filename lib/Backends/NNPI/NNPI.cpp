@@ -625,6 +625,13 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {SoftMaxNode::SelectedIdx}) &&
         (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
     break;
+  case Kinded::Kind::LogSoftMaxNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {LogSoftMaxNode::SelectedIdx}) &&
+        (NI.getInElemTy(LogSoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
+    break;
   case Kinded::Kind::LengthsRangeFillNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
