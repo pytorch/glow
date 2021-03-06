@@ -2587,28 +2587,6 @@ Error PyTorchModelLoader::loadCopy(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
-Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
-
-  glow::NodeValue dataValue;
-  ASSIGN_VALUE_OR_RETURN_ERR(dataValue, getGlowNodeValueForValue(inputs[0]));
-
-  RETURN_ERR(addValueMapping(outputs[0], dataValue));
-}
-
-Error PyTorchModelLoader::loadDetach(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  RETURN_ERR(addValueMapping(outputs[0], input));
-}
-
 template <typename GlowNode>
 Expected<NodeValue> PyTorchModelLoader::loadArithmeticNode(
     llvm::StringRef name, const torch::jit::Value *lhs,
