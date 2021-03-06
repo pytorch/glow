@@ -1335,7 +1335,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::index_select"}, &PyTorchModelLoader::loadIndexSelect},
       {{"aten::clamp_min"}, &PyTorchModelLoader::loadClampMin},
       {{"aten::expand_as"}, &PyTorchModelLoader::loadExpandAs},
-      {{"aten::expand"}, &PyTorchModelLoader::loadExpand},
+      {{"aten::expand", "aten::repeat"}, &PyTorchModelLoader::loadExpand},
       {{"glow::nnckernel"}, &PyTorchModelLoader::loadNNCKernel},
       {{"aten::cumsum"}, &PyTorchModelLoader::loadCumSum},
   });
@@ -5338,7 +5338,8 @@ Error PyTorchModelLoader::loadExpandAs(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadExpand(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+  // why is this 3 ?
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
