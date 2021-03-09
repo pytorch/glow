@@ -865,6 +865,10 @@ private:
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::repeat node.
+  /// \returns error on failure.
+  Error loadRepeat(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::cos node.
   /// \returns error on failure.
   Error loadCos(const torch::jit::Node *ptNode);
