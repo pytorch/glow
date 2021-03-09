@@ -1555,7 +1555,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
   // Nodes are topologically sorted.
   for (const auto *node : graph.nodes()) {
-    LOG(INFO) << "Loading node: " << jitNodeToString(node).c_str();
+    VLOG(1) << "Loading node: " << jitNodeToString(node).c_str();
     if (auto err = loadNode(node)) {
       ADD_MESSAGE_TO_ERR_STACK(
           err, strFormat("Encountered Error while loading node %s",
