@@ -1,11 +1,9 @@
 import collections
 import copy
-from contextlib import contextmanager
-from enum import Enum
-from typing import List, Tuple, Any, Iterable, Mapping, Optional, Union
+from typing import List, Tuple, Any
 
 import torch
-import torch_glow
+
 
 __all__ = [
     "to_glow",
@@ -18,9 +16,7 @@ __all__ = [
     "FuserSettings",
     "input_spec_from_tensor",
     "input_specs_from_tensors",
-    "lower",
-    "Backend",
-    "onnx_capture",
+    "generate_glow_compilation_spec",
 ]
 
 CompilationSpec = torch.classes.glow.CompilationSpec
@@ -28,34 +24,6 @@ CompilationGroup = torch.classes.glow.CompilationGroup
 InputSpec = torch.classes.glow.InputSpec
 CompilationSpecSettings = torch.classes.glow.CompilationSpecSettings
 FuserSettings = torch.classes.glow.FuserSettings
-
-
-class Backend(Enum):
-    Interpreter = "Interpreter"
-    NNPI = "NNPI"
-    CPU = "CPU"
-
-    def __str__(self):
-        return self.value
-
-
-@contextmanager
-def onnx_capture(filename_prefix=None, zip_mode=True, write_without_randomize=False):
-    try:
-        torch_glow.disableFusionPass()
-        torch_glow.enable_write_to_onnx()
-        if write_without_randomize:
-            torch_glow.enable_write_without_randomize()
-        if zip_mode:
-            torch_glow.enable_onnx_zip_mode()
-        if filename_prefix is not None:
-            torch_glow.set_onnx_file_name_prefix(filename_prefix)
-        yield
-    finally:
-        torch_glow.disable_write_without_randomize()
-        torch_glow.disable_write_to_onnx()
-        torch_glow.disable_onnx_zip_mode()
-        torch_glow.set_onnx_file_name_prefix("")
 
 
 def input_spec_from_tensor(tensor: torch.Tensor) -> InputSpec:
@@ -68,48 +36,13 @@ def input_specs_from_tensors(tensors: List[torch.Tensor]) -> List[InputSpec]:
     return [input_spec_from_tensor(tensor) for tensor in tensors]
 
 
-def lower(
-    model: torch.nn.Module,
-    example_inputs: Iterable[torch.Tensor],
-    backend: Union[str, Backend],
-    convert_to_fp16: Optional[bool] = None,
-    num_devices: Optional[int] = None,
-    replication_count: Optional[int] = None,
-    backend_specific_options: Mapping[str, str] = None,
-):
-    r"""Lower a model to Glow
-
-    This is the simplest interface to lower a model. For more complex lowering,
-    the to_glow function should be used.
-
-    Return:
-        A copy of the model that has been lowered to Glow and will run on
-        Glow backend devices
-    """
-    if not isinstance(model, torch.jit.ScriptModule):
-        try:
-            model = torch.jit.trace(model, example_inputs)
-        except RuntimeError as exc:
-            print(exc.args[0])
-            raise RuntimeError(
-                "Model failed tracing! Try tracing/scripting by yourself first."
-            )
+def generate_glow_compilation_spec(model, backend, *example_inputs):
     spec = CompilationSpec()
-    spec.get_settings().set_glow_backend(Backend(backend).value)
+    spec.get_settings().set_glow_backend(backend)
     compilation_group = CompilationGroup()
-    if convert_to_fp16 is not None:
-        compilation_group.get_settings().set_convert_to_fp16(convert_to_fp16)
-    if num_devices is not None:
-        compilation_group.get_settings().set_num_devices(num_devices)
-    if replication_count is not None:
-        compilation_group.get_settings().set_replication_count(replication_count)
-    if backend_specific_options is not None:
-        compilation_group.get_settings().set_backend_specific_opts(
-            backend_specific_options
-        )
     compilation_group.input_sets_append(input_specs_from_tensors(example_inputs))
     spec.compilation_groups_append(compilation_group)
-    return to_glow(model, {"forward": spec})
+    return spec
 
 
 def to_glow(model, method_compile_spec):
