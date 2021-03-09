@@ -2646,12 +2646,12 @@ Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
 
-  // TODO: Handle this case with FloorDiv
-  if (settings_.ignoreDivRoundingArgs) {
-    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
-  } else {
-    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
-  }
+  // div should take at least two arguments
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+
+  // TODO: implement 3rd argument rounding_mode option
+  LOG_IF(WARNING, inputs.size() > 2)
+      << "Ignoring rounding argument for aten::div";
 
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(
