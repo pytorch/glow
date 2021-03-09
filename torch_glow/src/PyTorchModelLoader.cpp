@@ -4700,16 +4700,15 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
                                  inputs[QuantizedBatchNormInputs::eps]))));
 
   float momentum = 0.1;
-  float output_scale;
-  int32_t output_zero_point;
+  float outScale;
+  int32_t outOffset;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      output_scale, to32Bit(iValToDouble(getGlowIValueForValue(
-                        inputs[QuantizedBatchNormInputs::output_scale]))));
+      outScale, to32Bit(iValToDouble(getGlowIValueForValue(
+                    inputs[QuantizedBatchNormInputs::output_scale]))));
 
   ASSIGN_VALUE_OR_RETURN_ERR(
-      output_zero_point,
-      iValToInt(getGlowIValueForValue(
-          inputs[QuantizedBatchNormInputs::output_zero_point])));
+      outOffset, iValToInt(getGlowIValueForValue(
+                     inputs[QuantizedBatchNormInputs::output_zero_point])));
 
   // Input is in NCHW.
   glow::unsigned_t channelIdx = 1;
@@ -4720,9 +4719,12 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
     opName = "bn2d_quant";
   }
 
-  glow::BatchNormalizationNode *bn = F_.createBatchNormalization(
-      opName, input.getType(), input, biasC, weightsC, meanC, varC, channelIdx,
-      epsilon, momentum);
+  glow::TypeRef outTy =
+      F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, input.dims(),
+                                 outScale, outOffset - UINT8_TO_INT8_SHIFT);
+  glow::BatchNormalizationNode *bn =
+      F_.createBatchNormalization(opName, outTy, input, biasC, weightsC, meanC,
+                                  varC, channelIdx, epsilon, momentum);
   return Expected<NodeValue>(bn->getResult());
 }
 

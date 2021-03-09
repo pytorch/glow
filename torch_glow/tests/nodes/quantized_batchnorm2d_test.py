@@ -19,40 +19,59 @@ class TestQuantizedBatchNorm2D(utils.TorchGlowTestCase):
         """
 
         class SimpleQuantizedBatchNorm(nn.Module):
-            def __init__(self, C, running_mean, running_var, scale, zero_point):
+            def __init__(
+                self,
+                C,
+                running_mean,
+                running_var,
+                in_scale,
+                in_zero_point,
+                out_scale,
+                out_zero_point,
+            ):
                 super(SimpleQuantizedBatchNorm, self).__init__()
                 self.qconfig = my_qconfig
-                self.batchnorm = nn.quantized.BatchNorm2d(C)
-                self.batchnorm.scale = scale
-                self.batchnorm.zero_point = zero_point
+                self.batchnorm = nn.BatchNorm2d(C)
+                self.batchnorm.scale = out_scale
+                self.batchnorm.zero_point = out_zero_point
                 self.batchnorm.running_mean = running_mean
                 self.batchnorm.running_var = running_var
                 self.relu = torch.nn.ReLU()
-                self.dq = torch.nn.quantized.DeQuantize()
+                self.q = torch.quantization.QuantStub()
+                self.q.scale = in_scale
+                self.q.zero_point = in_zero_point
+                self.dq = torch.quantization.DeQuantStub()
 
             def forward(self, x):
-                return self.dq(self.relu(self.batchnorm(x)))
+                qx = self.q(x)
+                qy = self.batchnorm(qx)
+                qy = self.relu(qy)
+                y = self.dq(qy)
+                return y
 
         C = 7
-        in_scale = out_scale = 0.003
-        in_zero_point = out_zero_point = 3
+        in_scale = 0.102
+        out_scale = 0.003
+        in_zero_point = -37
+        out_zero_point = 3
         running_mean = torch.zeros(C)
         running_var = torch.ones(C)
 
         inputs = torch.randn((6, C, 43, 52), requires_grad=False)
-        inputs = torch.quantize_per_tensor(
-            inputs, scale=in_scale, zero_point=in_zero_point, dtype=torch.qint8
-        )
         model = SimpleQuantizedBatchNorm(
-            C, running_mean, running_var, out_scale, out_zero_point
+            C,
+            running_mean,
+            running_var,
+            in_scale,
+            in_zero_point,
+            out_scale,
+            out_zero_point,
         )
         model.eval()
 
         utils.compare_tracing_methods(
             model,
             inputs,
-            fusible_ops={"quantized::batch_norm2d"},
-            fp16=True,
             skip_to_glow=True,
         )
 
@@ -63,44 +82,64 @@ class TestQuantizedBatchNorm2D(utils.TorchGlowTestCase):
 
         class SimpleQuantizedBatchNorm(nn.Module):
             def __init__(
-                self, C, weight, bias, running_mean, running_var, scale, zero_point
+                self,
+                C,
+                weight,
+                bias,
+                running_mean,
+                running_var,
+                in_scale,
+                in_zero_point,
+                out_scale,
+                out_zero_point,
             ):
                 super(SimpleQuantizedBatchNorm, self).__init__()
                 self.qconfig = my_qconfig
-                self.batchnorm = nn.quantized.BatchNorm2d(C)
-                self.batchnorm.scale = scale
-                self.batchnorm.zero_point = zero_point
-                self.batchnorm.weight = torch.nn.Parameter(weight)
-                self.batchnorm.bias = torch.nn.Parameter(bias)
+                self.batchnorm = nn.BatchNorm2d(C)
+                self.batchnorm.scale = out_scale
+                self.batchnorm.zero_point = out_zero_point
+                self.batchnorm.weight = nn.Parameter(weight)
+                self.batchnorm.bias = nn.Parameter(bias)
                 self.batchnorm.running_mean = running_mean
                 self.batchnorm.running_var = running_var
-                self.relu = torch.nn.ReLU()
-                self.dq = torch.nn.quantized.DeQuantize()
+                self.relu = nn.ReLU()
+                self.q = torch.quantization.QuantStub()
+                self.q.scale = in_scale
+                self.q.zero_point = in_zero_point
+                self.dq = torch.quantization.DeQuantStub()
 
             def forward(self, x):
-                return self.dq(self.relu(self.batchnorm(x)))
+                qx = self.q(x)
+                qy = self.batchnorm(qx)
+                y = self.dq(qy)
+                return y
 
         C = 11
-        in_scale = out_scale = 0.003
-        in_zero_point = out_zero_point = -5
+        in_scale = 0.234
+        out_scale = 0.003
+        in_zero_point = -10
+        out_zero_point = -5
         weight = torch.ones(C) + torch.rand(C) * 0.001
         bias = torch.rand(C) * 0.0001
         running_mean = torch.zeros(C)
         running_var = torch.ones(C)
 
-        inputs = torch.randn(6, C, 33, 42)
-        inputs = torch.quantize_per_tensor(
-            inputs, scale=in_scale, zero_point=in_zero_point, dtype=torch.qint8
-        )
+        inputs = torch.randn((6, C, 33, 42), requires_grad=False)
         model = SimpleQuantizedBatchNorm(
-            C, weight, bias, running_mean, running_var, out_scale, out_zero_point
+            C,
+            weight,
+            bias,
+            running_mean,
+            running_var,
+            in_scale,
+            in_zero_point,
+            out_scale,
+            out_zero_point,
         )
         model.eval()
 
         utils.compare_tracing_methods(
             model,
             inputs,
-            fusible_ops={"quantized::batch_norm2d"},
-            fp16=True,
             skip_to_glow=True,
         )
