@@ -1126,12 +1126,12 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
       I->getChannelIdx(); // NOTE: We only support NTHWC, NHWC, NWC and NCW
   float epsilon = I->getEpsilon();
   auto inScale = float(I->getSrc()->getType()->getScale());
-  auto inZero = int8_t(I->getSrc()->getType()->getOffset());
+  auto inZero = I->getSrc()->getType()->getOffset();
 
   // output
   auto outH = getWeightHandle<int8_t>(I->getDest());
   auto outScale = float(I->getDest()->getType()->getScale());
-  auto outZero = int8_t(I->getDest()->getType()->getOffset());
+  auto outZero = I->getDest()->getType()->getOffset();
 
   dim_t N, C, sizeN, sizeImg;
   bool isCMinor;
@@ -1180,6 +1180,7 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
     isCMinor = (channelIdx == 2);
   }
 
+  // See qbatch_norm.cpp/compute_fused_params() for FBGEMM implementation
   std::vector<ParamTy> alpha(C), beta(C);
   for (dim_t c = 0; c < C; c++) {
     float invSigma = 1 / std::sqrt(float(varH.at({c})) + epsilon);
@@ -1189,8 +1190,8 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
                       outScale);
   }
 
-  auto round32 = [](ParamTy val) { return int32_t(std::round(float(val))); };
-
+  // See QuantizedOpKernels.cpp/q_batch_norm_kernel() for FBGEMM implementation
+  TensorQuantizationParams outputQ{1.0f, outZero};
   // For each input in the batch:
   for (dim_t n = 0; n < N; n++) {
     if (isCMinor) {
@@ -1201,8 +1202,7 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
           int index = n * sizeN + i * C + c;
           ParamTy x = inH.raw(index) - inZero;
           ParamTy y = alpha[c] * x + beta[c];
-          outH.raw(index) = quantization::clip<int32_t, int8_t>(
-              round32(y + ParamTy(outZero)));
+          outH.raw(index) = quantization::quantize(y, outputQ);
         } // image
       }   // C
     } else {
@@ -1213,8 +1213,7 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
           int index = n * sizeN + c * sizeImg + i;
           auto x = ParamTy(inH.raw(index) - inZero);
           ParamTy y = alpha[c] * x + beta[c];
-          outH.raw(index) = quantization::clip<int32_t, int8_t>(
-              round32(y + ParamTy(outZero)));
+          outH.raw(index) = quantization::quantize(y, outputQ);
         } // image
       }   // C
     }
@@ -1583,10 +1582,11 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
             }
             // Instead of dividing by filterArea, just change scale.
             assert(filterArea != 0 && "filterArea can't be 0");
+
+            float multiplier = inQP.scale / outQP.scale / filterArea;
+            TensorQuantizationParams outputQ{1.0f / multiplier, outQP.offset};
             outW.at({n, at, ax, ay, z}) =
-                quantization::clip<int32_t, int8_t>(std::round(
-                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
-                    outQP.offset));
+                quantization::quantize(float(sum), outputQ);
           } // W
         }   // H
       }     // T
