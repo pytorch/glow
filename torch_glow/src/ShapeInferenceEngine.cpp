@@ -14,7 +14,6 @@
 
 DEFINE_string(shapeInferenceOpBlocklist, "", "Ops to skip shape inference");
 DEFINE_int32(max_feature_length, -1, "max feature length");
-DEFINE_int32(max_batch_size, -1, "max batch size");
 
 namespace glow {
 
@@ -1792,21 +1791,13 @@ ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(
       variableMetas.size() == 2,
       strFormat("Expected 2 inputs, got %zu.", variableMetas.size()));
-  RETURN_ERR_IF_NOT(
-      FLAGS_max_batch_size > 0,
-      strFormat("Expected max_batch_size > 0, got %d.", FLAGS_max_batch_size));
-  RETURN_ERR_IF_NOT(FLAGS_max_batch_size >=
-                        variableMetas[0].shape<TensorShape>()[0],
-                    strFormat("Expected max_batch_size > input tensor length, "
-                              "got max_batch_size %d, input tensor length %zu.",
-                              FLAGS_max_batch_size,
-                              variableMetas[0].shape<TensorShape>()[0]));
   RETURN_ERR_IF_NOT(FLAGS_max_feature_length > 0,
                     strFormat("Expected max_feature_length > 0, got %d.",
                               FLAGS_max_feature_length));
 
   TensorOutput output;
-  output.shapeOrIntValues = {FLAGS_max_batch_size * FLAGS_max_feature_length};
+  output.shapeOrIntValues = {variableMetas[0].shape<TensorShape>()[0] *
+                             FLAGS_max_feature_length};
   output.dtype = variableMetas[0].dtype;
   return output;
 }
