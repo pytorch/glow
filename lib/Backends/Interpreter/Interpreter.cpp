@@ -1022,3 +1022,8 @@ Expected<bool> Interpreter::transformPostLowering(
 
 void Interpreter::parseBackendSpecificOptions(
     const BackendOptions &opts) const {}
+
+Expected<double> Interpreter::estimateNodeCost(const glow::Node *node) const {
+  // Using default cost from Partitioner which is 1.
+  return 1.0;
+}

@@ -62,6 +62,10 @@ public:
       Function *F, CompilationContext &cctx,
       const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 
+  /// \returns a unitless value to be used when comparing Nodes or
+  /// error if no estimate can be generated.
+  Expected<double> estimateNodeCost(const glow::Node *node) const override;
+
   /// @}
   //
   /// \returns the size of metrics collected for a single TraceEvent.
