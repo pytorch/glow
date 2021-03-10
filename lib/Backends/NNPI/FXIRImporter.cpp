@@ -138,13 +138,13 @@ public:
     const auto &name = node["name"].getString();
     const auto &kwargs = node["kwargs"];
     const auto &inputName = importer.getInputNodeName(kwargs["input"]);
-    const auto &weightName = getQualName("weight");
-    const auto &biasName = getQualName("bias");
-    const auto &meanName = getQualName("running_mean");
-    const auto &varName = getQualName("running_var");
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &biasName = importer.getInputNodeName(kwargs["bias"]);
+    const auto &meanName = importer.getInputNodeName(kwargs["running_mean"]);
+    const auto &varName = importer.getInputNodeName(kwargs["running_var"]);
 
     // Get parameters.
-    const auto &eps = node["parameters"]["eps"].asDouble();
+    const auto &eps = kwargs["eps"].asDouble();
 
     importer.setUsedTensors(
         {inputName, weightName, biasName, meanName, varName}, {name});
@@ -274,7 +274,7 @@ static std::unordered_map<std::string,
         // torch.nn.modules
         {"torch.nn.functional.linear", std::make_unique<LinearNodeImporter>()},
         {"torch.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
-        {"torch.nn.modules.batchnorm.BatchNorm2d",
+        {"torch.nn.functional.batch_norm",
          std::make_unique<BatchNormalizationNodeImporter>()},
         {"torch.nn.functional.relu", std::make_unique<ReluNodeImporter>()},
         {"torch.nn.functional.adaptive_avg_pool2d",
@@ -342,10 +342,12 @@ FXNNPIImporter::getTensorDesc(llvm::StringRef name) const {
 
 const std::string &FXNNPIImporter::getInputNodeName(const folly::dynamic &node,
                                                     bool optional) const {
-  if (optional && node.isNull()) {
+  if (node.isNull()) {
+    CHECK(optional) << "Non-optional node must be non-null";
     static const std::string empty;
     return empty;
   }
+
   CHECK(node["is_node"].asBool()) << "Expected is_node";
 
   const auto &name = node["name"].getString();
