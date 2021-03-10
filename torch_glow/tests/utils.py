@@ -163,11 +163,11 @@ def compare_tracing_methods(
         ):
             if not skip_to_glow:
                 glow_inputs = deepcopy(inputs)
-                glow_spec = torch_glow.generate_glow_compilation_spec(
-                    module, DEFAULT_BACKEND, *glow_inputs
+                traced_module = trace(module, glow_inputs)
+                lowered_module = torch_glow.lower(
+                    traced_module, glow_inputs, DEFAULT_BACKEND
                 )
-                glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
-                glow_result = glow_trace(*glow_inputs)
+                glow_result = lowered_module(*glow_inputs)
         if reference:
             assert_equivalent(
                 "Reference",
