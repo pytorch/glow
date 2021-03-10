@@ -409,6 +409,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "DequantizeFRWQ_Float16/0",
     "Abs_Int8QTy/0",
     "Neg_Int8QTy/0",
+    "Neg_Int32ITy/0",
     "Floor_Int8QTy/0",
     "Truncate_FloatTy/0",
     "Truncate_Float16Ty/0",

@@ -229,7 +229,6 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::BoolTy});
 
   case Kinded::Kind::AbsNodeKind:
-  case Kinded::Kind::NegNodeKind:
   case Kinded::Kind::SignNodeKind:
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
@@ -241,6 +240,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ErfNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
+
+  case Kinded::Kind::NegNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Int8QTy});
 
   case Kinded::Kind::FloorNodeKind:
   case Kinded::Kind::TruncateNodeKind:

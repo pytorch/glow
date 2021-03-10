@@ -424,11 +424,15 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
 
 NNPIErrorCode
 glow::NNPIImporter::addIAExtentionPath(const std::string &extPath) {
-  LOG_AND_RETURN_IF(ERROR, extPath.empty(), "Check if empty IA extension path.",
-                    NNPI_INVALID_PARAM);
+  LOG_AND_RETURN_IF(
+      ERROR, extPath.empty(),
+      strFormat("Check if empty IA extension path: %s", extPath.c_str()),
+      NNPI_INVALID_PARAM);
   std::ifstream extensionFile(extPath.c_str());
-  LOG_AND_RETURN_IF_NOT(ERROR, extensionFile, "IA extension path not found.",
-                        NNPI_INVALID_RESOURCE_NAME);
+  LOG_AND_RETURN_IF_NOT(
+      ERROR, extensionFile,
+      strFormat("IA extension path not found: %s", extPath.c_str()),
+      NNPI_INVALID_RESOURCE_NAME);
   iaExtensionPaths_.push_back(extPath);
   return NNPI_NO_ERROR;
 }

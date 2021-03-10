@@ -8657,6 +8657,22 @@ TEST_P(OperatorTest, Neg_FloatTy) {
   EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
 }
 
+TEST_P(OperatorTest, Neg_Int32ITy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::Int32ITy, {3}, "inp", false);
+  bindings_.allocate(inp)->getHandle<int32_t>() = {1, 0, -1};
+  auto *node = F_->createNeg("neg", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int32_t>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_FLOAT_EQ(outH.raw(0), -1);
+  EXPECT_FLOAT_EQ(outH.raw(1), 0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 1);
+}
+
 TEST_P(OperatorTest, Neg_Int8QTy) {
   CHECK_IF_ENABLED();
   auto *inp =
