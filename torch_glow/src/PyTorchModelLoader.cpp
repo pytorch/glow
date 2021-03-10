@@ -1159,6 +1159,13 @@ struct RepeatInputs {
 const PyTorchModelLoader::MappingOfMemberFunctions
 PyTorchModelLoader::buildSymbolsMapping() {
   // First build mapping with standard PyTorch operators.
+#define UNARY_NODE_LOADER(NODE)                                                \
+  &PyTorchModelLoader::loadUnaryNode<glow::NODE##Node,                         \
+                                     &glow::Function::create##NODE>
+#define UNARY_NODE_LOADER_WITH_TYPE(NODE)                                      \
+  &PyTorchModelLoader::loadUnaryNode<glow::NODE##Node,                         \
+                                     &glow::Function::create##NODE,            \
+                                     /*useCorrectTypeMapping=*/true>
   auto symbolLoaderMapping = MappingOfMemberFunctions({
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"aten::contiguous"}, &PyTorchModelLoader::loadCopy<2, false>},
@@ -1191,22 +1198,22 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::silu"}, &PyTorchModelLoader::loadSilu},
       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
-      {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh},
+      {{"aten::tanh", "aten::tanh_"}, UNARY_NODE_LOADER(Tanh)},
       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT},
       {{"aten::permute"}, &PyTorchModelLoader::loadPermute},
       {{"aten::transpose", "aten::transpose_"},
        &PyTorchModelLoader::loadTranspose},
       {{"aten::min"}, &PyTorchModelLoader::loadMin},
       {{"aten::max"}, &PyTorchModelLoader::loadMax},
-      {{"aten::exp"}, &PyTorchModelLoader::loadExp},
+      {{"aten::exp"}, UNARY_NODE_LOADER(Exp)},
       {{"prim::FusedConcat"}, &PyTorchModelLoader::loadFusedConcat},
       {{"glow::fused_stack"}, &PyTorchModelLoader::loadFusedStack},
       {{"glow::fused_broadcast_cat"},
        &PyTorchModelLoader::loadFusedBroadcastConcat},
       {{"glow::fused_broadcast_stack"},
        &PyTorchModelLoader::loadFusedBroadcastStack},
-      {{"aten::floor"}, &PyTorchModelLoader::loadFloor},
-      {{"aten::ceil"}, &PyTorchModelLoader::loadCeil},
+      {{"aten::floor"}, UNARY_NODE_LOADER_WITH_TYPE(Floor)},
+      {{"aten::ceil"}, UNARY_NODE_LOADER_WITH_TYPE(Ceil)},
       {{"aten::mean"}, &PyTorchModelLoader::loadMean},
       {{"aten::pow"}, &PyTorchModelLoader::loadPow},
       {{"aten::logical_xor", "aten::logical_xor_"},
@@ -1215,8 +1222,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadLogicalOr},
       {{"aten::logical_and", "aten::logical_and_"},
        &PyTorchModelLoader::loadLogicalAnd},
-      {{"aten::logical_not", "aten::logical_not_"},
-       &PyTorchModelLoader::loadLogicalNot},
+      {{"aten::logical_not", "aten::logical_not_"}, UNARY_NODE_LOADER(Not)},
       {{"aten::__ixor__", "aten::__xor__"},
        &PyTorchModelLoader::loadBitwiseBooleanOp<XorNode>},
       {{"aten::__ior__", "aten::__or__"},
@@ -1237,11 +1243,11 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::gt", "aten::gt_"},
        &PyTorchModelLoader::loadCmp<CmpLTNode, true>},
       {{"aten::clamp"}, &PyTorchModelLoader::loadClamp},
-      {{"aten::cos"}, &PyTorchModelLoader::loadCos},
-      {{"aten::sin"}, &PyTorchModelLoader::loadSin},
-      {{"aten::acos"}, &PyTorchModelLoader::loadAcos},
-      {{"aten::asin"}, &PyTorchModelLoader::loadAsin},
-      {{"aten::atan"}, &PyTorchModelLoader::loadAtan},
+      {{"aten::cos"}, UNARY_NODE_LOADER(Cos)},
+      {{"aten::sin"}, UNARY_NODE_LOADER(Sin)},
+      {{"aten::acos"}, UNARY_NODE_LOADER(Acos)},
+      {{"aten::asin"}, UNARY_NODE_LOADER(Asin)},
+      {{"aten::atan"}, UNARY_NODE_LOADER(Atan)},
       {{"quantized::add"}, &PyTorchModelLoader::loadQuantizedAdd},
       {{"quantized::add_relu"}, &PyTorchModelLoader::loadQuantizedAddRelu},
       {{"quantized::mul"}, &PyTorchModelLoader::loadQuantizedMul},
@@ -1274,7 +1280,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadAdaptiveAvgPool2d},
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
       {{"aten::repeat"}, &PyTorchModelLoader::loadRepeat},
-      {{"aten::abs"}, &PyTorchModelLoader::loadAbs},
+      {{"aten::abs"}, UNARY_NODE_LOADER(Abs)},
       {{"aten::upsample_nearest3d"}, &PyTorchModelLoader::loadUpsampleNearest},
       {{"aten::upsample_nearest2d"}, &PyTorchModelLoader::loadUpsampleNearest},
       {{"aten::view"}, &PyTorchModelLoader::loadView},
@@ -1349,6 +1355,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"glow::nnckernel"}, &PyTorchModelLoader::loadNNCKernel},
       {{"aten::cumsum"}, &PyTorchModelLoader::loadCumSum},
   });
+#undef UNARY_NODE_LOADER
+#undef UNARY_NODE_LOADER_WITH_TYPE
 
   // Add in custom operator loaders.
   for (const auto &symbolAndLoader : getCustomPyTorchOpLoaders()) {
@@ -3325,61 +3333,6 @@ Error PyTorchModelLoader::loadFusedBroadcastStack(
       addValueMapping(outputs[0], createReshapeNodeForStack(F_, ptNode, node)));
 }
 
-Error PyTorchModelLoader::loadCos(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  return addValueMapping(outputs[0], F_.createCos("Cos", input));
-}
-
-Error PyTorchModelLoader::loadSin(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  return addValueMapping(outputs[0], F_.createSin("Sin", input));
-}
-
-Error PyTorchModelLoader::loadAcos(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  return addValueMapping(outputs[0], F_.createAcos("Acos", input));
-}
-
-Error PyTorchModelLoader::loadAsin(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  return addValueMapping(outputs[0], F_.createAsin("Asin", input));
-}
-
-Error PyTorchModelLoader::loadAtan(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  return addValueMapping(outputs[0], F_.createAtan("Atan", input));
-}
-
 Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -3801,6 +3754,27 @@ Error PyTorchModelLoader::loadRepeat(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], node));
 }
 
+template <typename Node,
+          Node *(glow::Function::*CreateFn)(llvm::StringRef, glow::NodeValue),
+          bool useCorrectTypeMapping>
+Error PyTorchModelLoader::loadUnaryNode(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  Node *output = (F_.*CreateFn)(glow::getNodeName<Node>(), input);
+  if constexpr (!useCorrectTypeMapping) {
+    return addValueMapping(outputs[0], output);
+  } else {
+    c10::ScalarType dtype;
+    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+    RETURN_ERR(addValueMapping(outputs[0], output, dtype));
+  }
+}
+
 Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -3894,34 +3868,6 @@ Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {
   return PyTorchModelLoader::loadReshape(ptNode);
 }
 
-Error PyTorchModelLoader::loadFloor(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  auto *glowNode = F_.createFloor("floor", input);
-  c10::ScalarType dtype;
-  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
-}
-
-Error PyTorchModelLoader::loadCeil(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  auto *glowNode = F_.createCeil("ceil", input);
-  c10::ScalarType dtype;
-  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
-}
-
 Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -3947,30 +3893,6 @@ Error PyTorchModelLoader::loadGelu(const torch::jit::Node *ptNode) {
 
   auto output = F_.createGELU("gelu", input)->getNthResult(0);
   RETURN_ERR(addValueMapping(outputs[0], output));
-}
-
-Error PyTorchModelLoader::loadTanh(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  glow::TanhNode *glowNode = F_.createTanh("tanh", input);
-  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
-}
-
-Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  glow::ExpNode *glowNode = F_.createExp("exp", input);
-  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
@@ -4055,17 +3977,6 @@ Error PyTorchModelLoader::loadLogicalAnd(const torch::jit::Node *ptNode) {
       res, loadArithmeticNode<AndNode>("logical_and", inputs[0], inputs[1]));
 
   RETURN_ERR(addValueMapping(outputs[0], res));
-}
-
-Error PyTorchModelLoader::loadLogicalNot(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue glowInput;
-  ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[0]));
-
-  return addValueMapping(outputs[0], F_.createNot("logical_not", glowInput));
 }
 
 Error PyTorchModelLoader::loadIndexPut(const torch::jit::Node *ptNode) {
@@ -5544,18 +5455,6 @@ Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[TransposeInputs::input]));
   RETURN_ERR(addValueMapping(outputs[0], output->getResult(), dtype));
-}
-
-Error PyTorchModelLoader::loadAbs(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in, getGlowNodeValueForValue(inputs[0]));
-
-  auto *resultNode = F_.createAbs("Abs", in);
-  return addValueMapping(outputs[0], resultNode);
 }
 
 Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {

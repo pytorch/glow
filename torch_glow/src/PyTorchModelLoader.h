@@ -541,14 +541,6 @@ private:
   /// \returns error on failure.
   Error loadMax(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch floor node.
-  /// \returns error on failure.
-  Error loadFloor(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch ceil node.
-  /// \returns error on failure.
-  Error loadCeil(const torch::jit::Node *ptNode);
-
   /// Load a PyTorch relu node.
   /// \returns error on failure.
   Error loadRelu(const torch::jit::Node *ptNode);
@@ -556,10 +548,6 @@ private:
   /// Load a PyTorch gelu node.
   /// \returns error on failure.
   Error loadGelu(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch exp node.
-  /// \returns error on failure.
-  Error loadExp(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch pow node.
   /// \returns error on failure.
@@ -581,10 +569,6 @@ private:
   /// Load a PyTorch and node.
   /// \returns error on failure.
   Error loadLogicalAnd(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch not node.
-  /// \returns error on failure.
-  Error loadLogicalNot(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::index_put or aten::index_put_ node.
   /// \returns error on failure.
@@ -805,10 +789,6 @@ private:
   /// \returns error on failure.
   Error loadLogSoftMax(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch Abs node.
-  /// \returns error on failure.
-  Error loadAbs(const torch::jit::Node *ptNode);
-
   /// Load a PyTorch flatten node.
   /// \returns error on failure.
   Error loadFlatten(const torch::jit::Node *ptNode);
@@ -869,25 +849,12 @@ private:
   /// \returns error on failure.
   Error loadRepeat(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch aten::cos node.
-  /// \returns error on failure.
-  Error loadCos(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch aten::sin node.
-  /// \returns error on failure.
-  Error loadSin(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch aten::acos node.
-  /// \returns error on failure.
-  Error loadAcos(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch aten::asin node.
-  /// \returns error on failure.
-  Error loadAsin(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch aten::atan node.
-  /// \returns error on failure.
-  Error loadAtan(const torch::jit::Node *ptNode);
+  // Load a PyTorch function that takes a single argument.
+  // The exact return type must be provided as a template argument.
+  template <typename Node,
+            Node *(glow::Function::*CreateFn)(llvm::StringRef, glow::NodeValue),
+            bool useCorrectTypeMapping = false>
+  Error loadUnaryNode(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::upsample_nearest3d or aten::upsample_nearest2d node.
   /// \returns error on failure.
@@ -920,10 +887,6 @@ private:
   /// Load a PyTorch aten::bmm node.
   /// \returns error on failure.
   Error loadBmm(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch aten::tanh node.
-  /// \returns error on failure.
-  Error loadTanh(const torch::jit::Node *ptNode);
 
   /// Load a glow::fused_linear node.
   /// \returns error on failure.
