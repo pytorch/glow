@@ -194,6 +194,10 @@ public:
   /// NOTE: this might cause real request timeout, should only be used for
   ///       development testing.
   bool lazyCompile = false;
+
+  /// Whether to enable device tracing from HostManger. NOTE: this must be set
+  /// before network compilation.
+  bool enableDeviceTracing = false;
 };
 
 /// Represents different possible output types from to_glow modules.
