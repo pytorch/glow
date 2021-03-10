@@ -4021,33 +4021,32 @@ Error PyTorchModelLoader::loadIndexPut(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       value, getGlowNodeValueForValue(inputs[IndexPutInputs::value]));
 
-  auto *concatNode = F_.createConcat("concat", *indices, 0);
-  auto *reshapeNode =
-      F_.createReshape("reshape", concatNode->getResult(),
-                       {indices->size(), (*indices)[0].dims()[0]});
-  auto transposeNode =
-      F_.createTranspose("transpose", reshapeNode->getResult(), {1, 0})
-          ->getResult();
+  std::vector<glow::NodeValue> reshapes;
+  for (auto idx : *indices) {
+    auto *rs = F_.createReshape("reshape", idx, {idx.dims()[0], 1});
+    reshapes.push_back(rs);
+  }
+  auto *concatNode = F_.createConcat("concat", reshapes, 1);
+  auto idxDims = concatNode->getResult().dims();
 
   bool cumulative = false;
   ASSIGN_VALUE_OR_RETURN_ERR(
       cumulative,
       iValToBool(getGlowIValueForValue(ptNode->namedInput("accumulate"))));
 
-  auto expectedValueDims =
-      input.dims().drop_front(transposeNode.dims()[1]).vec();
-  expectedValueDims.insert(expectedValueDims.begin(), transposeNode.dims()[0]);
+  auto expectedValueDims = input.dims().drop_front(idxDims[1]).vec();
+  expectedValueDims.insert(expectedValueDims.begin(), idxDims[0]);
   glow::Tensor t(value.getElementType(), expectedValueDims);
   auto *valueConstant =
       F_.getParent()->createConstant("valueConstant", std::move(t));
   value = F_.broadcastInputs(/* axis */ -1, {value, valueConstant})[0];
 
-  const bool needsValueReshape = transposeNode.dims()[0] != value.dims()[0];
+  const bool needsValueReshape = idxDims[0] != value.dims()[0];
   if (needsValueReshape) {
     value = F_.createReshape("reshape", value, expectedValueDims)->getResult();
   }
 
-  auto *scatterNode = F_.createScatterData("scatter_data", input, transposeNode,
+  auto *scatterNode = F_.createScatterData("scatter_data", input, concatNode,
                                            value, cumulative);
 
   RETURN_ERR(addValueMapping(outputs[0], scatterNode));
