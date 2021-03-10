@@ -3062,7 +3062,7 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
   glow::NodeValue glowInput0;
   ASSIGN_VALUE_OR_RETURN_ERR(glowInput0,
                              loader->getGlowNodeValueForValue(inputs[0]));
-  size_t numInputDims = glowInput0.dims().size();
+  int64_t numInputDims = glowInput0.dims().size();
 
   int64_t dim = ptNode->i(at::attr::dim);
 
@@ -3128,7 +3128,8 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
   }
 
   if (!doBroadcast || noBroadcastNeeded) {
-    return F.createConcat(isStack ? "stack_concat" : "cat", glowInputs, dim);
+    return F.createConcat(isStack ? "stack_concat" : "cat", glowInputs,
+                          std::min(dim, numInputDims - 1));
   }
   // For concat, we perform opportunistic concat before broadcast if
   // the adjacent nodes can be broadcast the same way. Doing this saves the
@@ -3199,7 +3200,7 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
   }
 
   return F.createConcat(isStack ? "stack_concat" : "cat", finalConcatInputs,
-                        dim);
+                        std::min(dim, numInputDims - 1));
 }
 
 Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
@@ -3247,12 +3248,16 @@ createReshapeNodeForStack(glow::Function &F, const torch::jit::Node *ptNode,
 
   auto concat = concatNode->getResult();
   auto concatDims = concat.dims();
-
-  size_t numInputs = inputs.size();
+  uint ndims = concatDims.size();
+  auto numInputs = inputs.size();
   std::vector<glow::dim_t> reshapeDims;
 
-  for (size_t i = 0; i < concatDims.size(); ++i) {
-    if (i == dim) {
+  // if dim == a.dim(), then the correct calculation should be:
+  // torch.stack([a, a], dim=dim)
+  // <==> torch.stack([a, a], dim=dim-1).transpose(dim, dim - 1)
+
+  for (size_t i = 0; i < ndims; ++i) {
+    if ((dim == ndims && i == dim - 1) || i == dim) {
       reshapeDims.push_back(numInputs);
       reshapeDims.push_back(concatDims[i] / numInputs);
     } else {
@@ -3260,13 +3265,19 @@ createReshapeNodeForStack(glow::Function &F, const torch::jit::Node *ptNode,
     }
   }
 
-  // Handle the case when dim is the innermost dimension.
-  if (reshapeDims.size() == concatDims.size()) {
-    reshapeDims.back() /= numInputs;
-    reshapeDims.push_back(numInputs);
-  }
+  auto reshapeNode =
+      F.createReshape("stack_reshape", concat, reshapeDims)->getResult();
 
-  return F.createReshape("stack_reshape", concat, reshapeDims)->getResult();
+  std::vector<glow::unsigned_t> shuffle(reshapeDims.size());
+  std::iota(shuffle.begin(), shuffle.end(), 0);
+  std::swap(shuffle[ndims], shuffle[ndims - 1]);
+
+  if (dim == ndims) {
+    return F.createTranspose("stack_transpose", reshapeNode, shuffle)
+        ->getResult();
+  } else {
+    return reshapeNode;
+  }
 }
 
 Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
