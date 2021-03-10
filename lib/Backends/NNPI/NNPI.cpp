@@ -103,11 +103,23 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   bool isNodePrecisionSupported = false;
   bool isNodeHasAnySupport = true;
   switch (NI.getKind()) {
-  // General math fp32/fp16/i8.
+  // General math fp32/fp16/i8/int32.
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
+  case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Float16Ty,
+         ElemKind::Int8QTy, ElemKind::Int64ITy});
+    break;
+  case Kinded::Kind::DivNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int64ITy, ElemKind::Int32ITy});
+    break;
+
+  // General math fp32/fp16/i8.
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ReplaceNaNNodeKind:
@@ -166,10 +178,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          ElemKind::Int8QTy, ElemKind::UInt8QTy});
     break;
 #endif // NNPI > 1.1
-  case Kinded::Kind::MulNodeKind:
-    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
-    break;
   case Kinded::Kind::LayerNormalizationNodeKind: {
     auto scaleType = NI.getInElemTy(LayerNormalizationNode::ScaleIdx);
     auto biasType = NI.getInElemTy(LayerNormalizationNode::BiasIdx);
@@ -226,11 +234,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     // with the same sign as the divisor instead of the dividend.
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int64ITy, ElemKind::Int32ITy});
-    break;
-  case Kinded::Kind::DivNodeKind:
-    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy});
     break;
   // Data transfer fp32/fp16/i8/i32/i64/bool.
   case Kinded::Kind::SaveNodeKind:
