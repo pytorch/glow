@@ -113,7 +113,7 @@ public:
   NNPIErrorCode addIAExtentionPath(const std::string &extPath);
 
   /// Get AI extension paths.
-  const std::vector<std::string> &getIAExtensionPaths() const {
+  const std::set<std::string> &getIAExtensionPaths() const {
     return iaExtensionPaths_;
   }
 
@@ -153,7 +153,12 @@ private:
   std::unordered_set<std::string> channelwiseConverters_;
 
   /// A list of IA extensions that need to be loaded by the device.
-  std::vector<std::string> iaExtensionPaths_;
+  std::set<std::string> iaExtensionPaths_;
+
+#if FACEBOOK_INTERNAL
+  /// Add the file path for NNPICustomIA nodes.
+  void getNNPICustomKernelPaths(Function *F);
+#endif /* FACEBOOK_INTERNAL */
 };
 
 /// Interface class for all node specific importers.

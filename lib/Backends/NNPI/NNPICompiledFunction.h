@@ -170,7 +170,7 @@ public:
     return devNetConfig_;
   }
 
-  const std::vector<std::string> &getIAExtensionPaths() const {
+  const std::set<std::string> &getIAExtensionPaths() const {
     return iaExtensionPaths_;
   }
 
@@ -194,7 +194,7 @@ private:
   std::vector<std::string> inputNames_;
   std::vector<std::string> outputNames_;
   NNPIDeviceNetworkConfig devNetConfig_;
-  std::vector<std::string> iaExtensionPaths_;
+  std::set<std::string> iaExtensionPaths_;
   NNPICompilationInfo compilationInfo_;
 
   Error updateCompilationConfigFromOptions(

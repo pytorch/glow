@@ -31,7 +31,8 @@ BB.newNode("NNPICustomIA")
     .addMember(MemberType::VectorNodeValue, "Inputs")
     .addResultFromCtorArg() // for now use single output
     .addMember(MemberType::String, "KernelName")
-    .addMember(MemberType::String, "IAPath")
+    .addMember(MemberType::String, "IAExtensionName")
+    .addMember(MemberType::String, "IAExtensionPath", /* addSetter */ true)
     .setDocstring("This is an experimental NNPI-specific node representing a "
                   "custom IA op");
 

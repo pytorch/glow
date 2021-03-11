@@ -433,12 +433,16 @@ glow::NNPIImporter::addIAExtentionPath(const std::string &extPath) {
       ERROR, extensionFile,
       strFormat("IA extension path not found: %s", extPath.c_str()),
       NNPI_INVALID_RESOURCE_NAME);
-  iaExtensionPaths_.push_back(extPath);
+  iaExtensionPaths_.insert(extPath);
   return NNPI_NO_ERROR;
 }
 
 NNPINetwork glow::NNPIImporter::importFunction(Function *F,
                                                const BackendOptions &opts) {
+#if FACEBOOK_INTERNAL
+  getNNPICustomKernelPaths(F);
+#endif /* FACEBOOK_INTERNAL */
+
   if (compileOptions_.normalizeLayerNames) {
     std::map<std::string, uint32_t> type2count;
     std::map<std::string, glow::Node *> nodes;
@@ -2064,7 +2068,12 @@ public:
     outputTensors.insert(nvName);
 
     importer.setUsedTensors(inputTensors, outputTensors);
-    NNPIErrorCode error = importer.addIAExtentionPath(glowIA->getIAPath());
+
+    const auto &extensionPath = glowIA->getIAExtensionPath();
+    LOG_AND_RETURN_IF_NOT(ERROR, !extensionPath.empty(),
+                          "NNPICustomIANode IAExtensionPath was not populated",
+                          NNPI_INVALID_PARAM);
+    NNPIErrorCode error = importer.addIAExtentionPath(extensionPath);
     LOG_AND_RETURN_IF_NOT(ERROR, error == NNPI_NO_ERROR,
                           "Failed to store IA extension", NNPI_INVALID_PARAM);
 
