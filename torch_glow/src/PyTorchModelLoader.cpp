@@ -3729,32 +3729,33 @@ Error PyTorchModelLoader::loadRepeat(const torch::jit::Node *ptNode) {
   std::vector<int64_t> *repeats;
   ASSIGN_VALUE_OR_RETURN_ERR(repeats, iValToIntList(getGlowIValueForValue(
                                           inputs[RepeatInputs::repeats])));
-  RETURN_ERR_IF_NOT(repeats->size() >= input.dims().size(),
+  std::vector<int64_t> repeatsCast = castVector<int64_t>(*repeats);
+  RETURN_ERR_IF_NOT(repeatsCast.size() >= input.dims().size(),
                     "The rank of the input tensor must be greater than or "
                     "equal to the size of repeats vector for aten::repeat");
 
-  const bool needsExpand = input.dims().size() < repeats->size();
-  glow::ReshapeNode *reshapeNode = nullptr;
+  const bool needsExpand = input.dims().size() < repeatsCast.size();
   if (needsExpand) {
-    const auto diff = repeats->size() - input.dims().size();
+    const auto diff = repeatsCast.size() - input.dims().size();
     std::vector<dim_t> newDims;
     for (size_t i = 0; i < diff; ++i) {
       newDims.push_back(1);
     }
     newDims.insert(newDims.end(), input.dims().begin(), input.dims().end());
-    reshapeNode = F_.createReshape("reshape", input, newDims);
+    input = F_.createReshape("reshape", input, newDims)->getResult();
   }
 
-  Node *node = needsExpand ? reshapeNode : input;
-  for (size_t i = 0; i < repeats->size(); ++i) {
-    const auto repeat = (*repeats)[i];
+  NodeValue output = input;
+  for (size_t i = 0; i < repeatsCast.size(); ++i) {
+    const auto repeat = repeatsCast[i];
     RETURN_ERR_IF_NOT(
         repeat > 0,
         "The value of repeat must be greater than 0 for aten::repeat");
-    node = F_.createTile("tile." + std::to_string(i), node, repeat, i);
+    output = F_.createTile("tile." + std::to_string(i), output, repeat, i)
+                 ->getResult();
   }
 
-  RETURN_ERR(addValueMapping(outputs[0], node));
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 template <typename Node,
