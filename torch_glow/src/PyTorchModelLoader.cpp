@@ -1160,12 +1160,9 @@ const PyTorchModelLoader::MappingOfMemberFunctions
 PyTorchModelLoader::buildSymbolsMapping() {
   // First build mapping with standard PyTorch operators.
 #define UNARY_NODE_LOADER(NODE)                                                \
-  &PyTorchModelLoader::loadUnaryNode<glow::NODE##Node,                         \
-                                     &glow::Function::create##NODE>
-#define UNARY_NODE_LOADER_WITH_TYPE(NODE)                                      \
-  &PyTorchModelLoader::loadUnaryNode<glow::NODE##Node,                         \
-                                     &glow::Function::create##NODE,            \
-                                     /*useCorrectTypeMapping=*/true>
+  static_cast<MappingOfMemberFunctionsValue::LoadFn>(                          \
+      &PyTorchModelLoader::loadUnaryNode<glow::NODE##Node,                     \
+                                         &glow::Function::create##NODE>)
   auto symbolLoaderMapping = MappingOfMemberFunctions({
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"aten::contiguous"}, &PyTorchModelLoader::loadCopy<2, false>},
@@ -1194,12 +1191,11 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
       {{"aten::log"}, &PyTorchModelLoader::loadLog},
       {{"aten::sum"}, &PyTorchModelLoader::loadSum},
-      {{"aten::sigmoid", "aten::sigmoid_"},
-       UNARY_NODE_LOADER_WITH_TYPE(Sigmoid)},
+      {{"aten::sigmoid", "aten::sigmoid_"}, UNARY_NODE_LOADER(Sigmoid)},
       {{"aten::silu"}, &PyTorchModelLoader::loadSilu},
       {{"aten::relu", "aten::relu_"},
        &PyTorchModelLoader::loadUnaryNode<glow::ReluNode,
-                                          &glow::Function::createRELU, true>},
+                                          &glow::Function::createRELU>},
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
       {{"aten::tanh", "aten::tanh_"}, UNARY_NODE_LOADER(Tanh)},
       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT},
@@ -1215,8 +1211,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadFusedBroadcastConcat},
       {{"glow::fused_broadcast_stack"},
        &PyTorchModelLoader::loadFusedBroadcastStack},
-      {{"aten::floor"}, UNARY_NODE_LOADER_WITH_TYPE(Floor)},
-      {{"aten::ceil"}, UNARY_NODE_LOADER_WITH_TYPE(Ceil)},
+      {{"aten::floor"}, UNARY_NODE_LOADER(Floor)},
+      {{"aten::ceil"}, UNARY_NODE_LOADER(Ceil)},
       {{"aten::mean"}, &PyTorchModelLoader::loadMean},
       {{"aten::pow"}, &PyTorchModelLoader::loadPow},
       {{"aten::logical_xor", "aten::logical_xor_"},
@@ -1359,7 +1355,6 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::cumsum"}, &PyTorchModelLoader::loadCumSum},
   });
 #undef UNARY_NODE_LOADER
-#undef UNARY_NODE_LOADER_WITH_TYPE
 
   // Add in custom operator loaders.
   for (const auto &symbolAndLoader : getCustomPyTorchOpLoaders()) {
@@ -3759,8 +3754,7 @@ Error PyTorchModelLoader::loadRepeat(const torch::jit::Node *ptNode) {
 }
 
 template <typename Node,
-          Node *(glow::Function::*CreateFn)(llvm::StringRef, glow::NodeValue),
-          bool useCorrectTypeMapping>
+          Node *(glow::Function::*CreateFn)(llvm::StringRef, glow::NodeValue)>
 Error PyTorchModelLoader::loadUnaryNode(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -3770,13 +3764,7 @@ Error PyTorchModelLoader::loadUnaryNode(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   Node *output = (F_.*CreateFn)(glow::getNodeName<Node>(), input);
-  if constexpr (!useCorrectTypeMapping) {
-    return addValueMapping(outputs[0], output);
-  } else {
-    c10::ScalarType dtype;
-    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-    RETURN_ERR(addValueMapping(outputs[0], output, dtype));
-  }
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
