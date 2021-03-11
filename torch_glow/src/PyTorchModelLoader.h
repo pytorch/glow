@@ -844,8 +844,7 @@ private:
   // Load a PyTorch function that takes a single argument.
   // The exact return type must be provided as a template argument.
   template <typename Node,
-            Node *(glow::Function::*CreateFn)(llvm::StringRef, glow::NodeValue),
-            bool useCorrectTypeMapping = false>
+            Node *(glow::Function::*CreateFn)(llvm::StringRef, glow::NodeValue)>
   Error loadUnaryNode(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::upsample_nearest3d or aten::upsample_nearest2d node.
