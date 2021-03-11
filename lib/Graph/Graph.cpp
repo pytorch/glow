@@ -1186,17 +1186,30 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
       name, outTy, input, qWeights, scales, offsets, B));
 }
 
-ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,
-                               TypeRef outTy) {
+ReluNode *Function::createRelu(llvm::StringRef name, TypeRef outTy,
+                               NodeValue input) {
   return addNode(new ReluNode(name, outTy, input));
 }
 
-ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
-  return addNode(new ReluNode(name, input.getType(), input));
+ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy) {
+  return createRelu(name, outTy, input);
 }
 
-Node *Function::createGELU(llvm::StringRef name, NodeValue input) {
+ReluNode *Function::createRelu(llvm::StringRef name, NodeValue input) {
+  return createRelu(name, input.getType(), input);
+}
+
+ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
+  return createRelu(name, input);
+}
+
+GeluNode *Function::createGelu(llvm::StringRef name, NodeValue input) {
   return addNode(new GeluNode(name, input.getType(), input));
+}
+
+GeluNode *Function::createGELU(llvm::StringRef name, NodeValue input) {
+  return createGelu(name, input);
 }
 
 PReluNode *Function::createPRELU(llvm::StringRef name, NodeValue input,
@@ -1218,12 +1231,18 @@ SigmoidNode *Function::createSigmoid(llvm::StringRef name, NodeValue input) {
   return createSigmoid(name, input.getType(), input);
 }
 
+SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input) {
+  return createSwish(name, getParent()->uniqueType(*input.getType()), input);
+}
+
+SwishNode *Function::createSwish(llvm::StringRef name, TypeRef OT,
+                                 NodeValue input) {
+  return addNode(new SwishNode(name, OT, input));
+}
+
 SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input,
                                  TypeRef OT) {
-  if (!OT) {
-    OT = getParent()->uniqueType(*input.getType());
-  }
-  return addNode(new SwishNode(name, OT, input));
+  return createSwish(name, OT, input);
 }
 
 TanhNode *Function::createTanh(llvm::StringRef name, TypeRef outTy,
@@ -1885,9 +1904,18 @@ PowNode *Function::createPow(llvm::StringRef name, NodeValue base, float exp) {
   return createPow(name, base, SP);
 }
 
+LogNode *Function::createLog(llvm::StringRef name, NodeValue input) {
+  return createLog(name, input.getType(), input);
+}
+
+LogNode *Function::createLog(llvm::StringRef name, TypeRef outTy,
+                             NodeValue input) {
+  return addNode(new LogNode(name, outTy, input));
+}
+
 LogNode *Function::createLog(llvm::StringRef name, NodeValue input,
                              TypeRef outTy) {
-  return addNode(new LogNode(name, outTy ? outTy : input.getType(), input));
+  return createLog(name, outTy, input);
 }
 
 ExpNode *Function::createExp(llvm::StringRef name, NodeValue input) {

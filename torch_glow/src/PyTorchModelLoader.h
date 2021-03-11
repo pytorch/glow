@@ -529,10 +529,6 @@ private:
   /// \returns error on failure.
   Error loadRsub(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch log node.
-  /// \returns error on failure.
-  Error loadLog(const torch::jit::Node *ptNode);
-
   /// Load a PyTorch sum node.
   /// \returns error on failure.
   Error loadSum(const torch::jit::Node *ptNode);
@@ -540,10 +536,6 @@ private:
   /// Load a PyTorch max node.
   /// \returns error on failure.
   Error loadMax(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch gelu node.
-  /// \returns error on failure.
-  Error loadGelu(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch pow node.
   /// \returns error on failure.
@@ -731,10 +723,6 @@ private:
   /// Load a PyTorch max_pool2d node.
   /// \returns error on failure.
   Error loadMaxPool2d(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch silu node.
-  /// \returns error on failure.
-  Error loadSilu(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch avg_pool1d node.
   /// \tparam numDims - number of dimentions, support 1d, 2d and 3d.

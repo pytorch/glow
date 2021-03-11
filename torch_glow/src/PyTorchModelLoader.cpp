@@ -1189,14 +1189,12 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
       {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
-      {{"aten::log"}, &PyTorchModelLoader::loadLog},
+      {{"aten::log"}, UNARY_NODE_LOADER(Log)},
       {{"aten::sum"}, &PyTorchModelLoader::loadSum},
       {{"aten::sigmoid", "aten::sigmoid_"}, UNARY_NODE_LOADER(Sigmoid)},
-      {{"aten::silu"}, &PyTorchModelLoader::loadSilu},
-      {{"aten::relu", "aten::relu_"},
-       &PyTorchModelLoader::loadUnaryNode<glow::ReluNode,
-                                          &glow::Function::createRELU>},
-      {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
+      {{"aten::silu"}, UNARY_NODE_LOADER(Swish)},
+      {{"aten::relu", "aten::relu_"}, UNARY_NODE_LOADER(Relu)},
+      {{"aten::gelu"}, UNARY_NODE_LOADER(Gelu)},
       {{"aten::tanh", "aten::tanh_"}, UNARY_NODE_LOADER(Tanh)},
       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT},
       {{"aten::permute"}, &PyTorchModelLoader::loadPermute},
@@ -2812,17 +2810,6 @@ Error PyTorchModelLoader::loadRsub(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
-Error PyTorchModelLoader::loadLog(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue glowInput;
-  ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[0]));
-
-  return addValueMapping(outputs[0], F_.createLog("log", glowInput));
-}
-
 Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -3860,18 +3847,6 @@ Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {
   return PyTorchModelLoader::loadReshape(ptNode);
 }
 
-Error PyTorchModelLoader::loadGelu(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  auto output = F_.createGELU("gelu", input)->getNthResult(0);
-  RETURN_ERR(addValueMapping(outputs[0], output));
-}
-
 Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -4065,20 +4040,6 @@ Error PyTorchModelLoader::loadCmp(const torch::jit::Node *ptNode) {
                                                          axis, lhs, rhs);
     return addValueMapping(outputs[0], glowNode->getResult());
   }
-}
-
-Error PyTorchModelLoader::loadSilu(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  glow::SwishNode *glowNode = F_.createSwish("swish", input);
-  c10::ScalarType dtype;
-  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
 }
 
 Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
