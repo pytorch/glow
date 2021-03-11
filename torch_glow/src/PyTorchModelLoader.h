@@ -541,10 +541,6 @@ private:
   /// \returns error on failure.
   Error loadMax(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch relu node.
-  /// \returns error on failure.
-  Error loadRelu(const torch::jit::Node *ptNode);
-
   /// Load a PyTorch gelu node.
   /// \returns error on failure.
   Error loadGelu(const torch::jit::Node *ptNode);
@@ -735,10 +731,6 @@ private:
   /// Load a PyTorch max_pool2d node.
   /// \returns error on failure.
   Error loadMaxPool2d(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch sigmoid node.
-  /// \returns error on failure.
-  Error loadSigmoid(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch silu node.
   /// \returns error on failure.
