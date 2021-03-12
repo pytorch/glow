@@ -1803,10 +1803,9 @@ static bool removeClipsBlockingFusion(Function *F) {
 Expected<bool>
 NNPIBackend::transformPostOptPipeline(Function *F,
                                       CompilationContext &cctx) const {
-  bool parallelized;
-  ASSIGN_VALUE_OR_RETURN_ERR(parallelized,
-                             parallelizeFunction(F, cctx.backendOpts));
-  if (parallelized) {
+  bool changed;
+  ASSIGN_VALUE_OR_RETURN_ERR(changed, parallelizeFunction(F, cctx.backendOpts));
+  if (changed) {
     // Use the normal NNPI-specific optimization pipeline, but without sinking
     // conversions, because we just parallelized and so don't want to undo any
     // parallelization we performed on quantizes/dequantizes.
@@ -1824,7 +1823,13 @@ NNPIBackend::transformPostOptPipeline(Function *F,
 
     cctx.optimizationOpts.skipConcatMerging = restoreMerge;
   }
-  return parallelized;
+
+  // Swap existing nodes for custom NNPI-specific LUT nodes here. This way,
+  // the parallelization can occur on Glow nodes prior to the swap.
+  bool changedFromSwap;
+  ASSIGN_VALUE_OR_RETURN_ERR(changedFromSwap, swapInSpecializedLUT(F, cctx));
+  changed = changed | changedFromSwap;
+  return changed;
 }
 
 Expected<bool> NNPIBackend::transformPostLowering(
@@ -1845,7 +1850,8 @@ Expected<bool> NNPIBackend::transformPostLowering(
     return false;
   }
 
-  bool changed = removeClipsBlockingFusion(F);
+  bool changed = false;
+  changed |= removeClipsBlockingFusion(F);
   changed |= padKernelToStride(F);
   changed |= lowerEmbeddingToGather(F);
   changed |= quantizeLayernormScaleAndBias(F);
