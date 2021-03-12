@@ -91,6 +91,7 @@ DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
 DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
 DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
 DEFINE_bool(lazyCompile, false, "see PyTorchLoaderSettings");
+DEFINE_bool(enableDeviceTracing, false, "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -150,6 +151,16 @@ getHostManager(const PyTorchLoaderSettings &settings) {
 
     hostManager = std::make_shared<runtime::HostManager>(
         std::move(deviceConfigs), hostConfig);
+
+    if (settings.enableDeviceTracing) {
+      if (!hostManager->getTraceContext()) {
+        hostManager->setTraceContext(
+            glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+      }
+      ERR_TO_VOID(hostManager->startDeviceTrace());
+    } else {
+      ERR_TO_VOID(hostManager->stopDeviceTrace());
+    }
 
     map_[settings.backendName] = hostManager;
   }
@@ -283,6 +294,7 @@ void PyTorchLoaderSettings::initSettings() {
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
   dumpFailedInputsToOnnxFiles = FLAGS_dumpFailedInputsToOnnxFiles;
+  enableDeviceTracing = FLAGS_enableDeviceTracing;
   writeOnnxToTmp = FLAGS_writeOnnxToTmp;
   randomizeConstants = FLAGS_randomizeConstants;
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
@@ -361,6 +373,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(debugContinuouslyVerifyDuringModelLoading, s);
   INSERT_BOOL_TO_STREAM(dumpFailedInputsToOnnxFiles, s);
   INSERT_BOOL_TO_STREAM(lazyCompile, s);
+  INSERT_BOOL_TO_STREAM(enableDeviceTracing, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
