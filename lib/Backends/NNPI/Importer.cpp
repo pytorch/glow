@@ -2258,6 +2258,10 @@ public:
     auto *glowLUT = llvm::dyn_cast<NNPILookupTableNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowLUT, "Bad node type", NNPI_INVALID_PARAM);
 
+    importer.setUsedTensors({nodeValueName(glowLUT->getInput()),
+                             nodeValueName(glowLUT->getLookupTable())},
+                            {nodeValueName(glowLUT->getResult())});
+
     NNPILookupDesc lookupDesc;
     lookupDesc.lookupType =
         static_cast<NNPI_LOOKUP_TYPE>(glowLUT->getLookupType());

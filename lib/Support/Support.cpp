@@ -258,4 +258,15 @@ Expected<int> getIntFromStr(llvm::StringRef input) {
   return val;
 }
 
+Expected<float> getFloatFromStr(llvm::StringRef input) {
+  // StringRef not necessarily null terminated, so get a str from it.
+  const std::string inputStr = input.str();
+  char *end;
+  double val = std::strtod(inputStr.data(), &end);
+  RETURN_ERR_IF_NOT(!(end == inputStr.data() || *end != '\0'),
+                    "Floating point number was not properly specified: " +
+                        inputStr);
+  return (float)val;
+}
+
 } // namespace glow
