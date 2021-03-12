@@ -162,6 +162,21 @@ using namespace glow;
     llvm_unreachable("Type is not supported");                                 \
   }
 
+#define dispatchBitwiseImpl(functionName, elemTy, ...)                         \
+  switch (elemTy) {                                                            \
+  case ElemKind::Int32ITy:                                                     \
+    functionName<int32_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::Int64ITy:                                                     \
+    functionName<int64_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::BoolTy:                                                       \
+    functionName<bool>(__VA_ARGS__);                                           \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define dispatchQuantizedImpl(functionName, elemTy, ...)                       \
   switch (elemTy) {                                                            \
   case ElemKind::Int8QTy:                                                      \
@@ -3297,6 +3312,64 @@ void BoundInterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
 
   dispatchArithmeticImpl(fwdElementMinInstArithmeticImpl,
                          I->getDest()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdElementBitwiseOrInstImpl(
+    const ElementBitwiseOrInst *I) {
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) | rhsW.raw(i);
+  }
+}
+
+void BoundInterpreterFunction::fwdElementBitwiseOrInst(
+    const ElementBitwiseOrInst *I) {
+
+  dispatchBitwiseImpl(fwdElementBitwiseOrInstImpl,
+                      I->getDest()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdElementBitwiseAndInstImpl(
+    const ElementBitwiseAndInst *I) {
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) & rhsW.raw(i);
+  }
+}
+
+void BoundInterpreterFunction::fwdElementBitwiseAndInst(
+    const ElementBitwiseAndInst *I) {
+
+  dispatchBitwiseImpl(fwdElementBitwiseAndInstImpl,
+                      I->getDest()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdElementBitwiseXorInstImpl(
+    const ElementBitwiseXorInst *I) {
+  staticAssertArithmeticType(ElemTy);
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) ^ rhsW.raw(i);
+  }
+}
+
+void BoundInterpreterFunction::fwdElementBitwiseXorInst(
+    const ElementBitwiseXorInst *I) {
+
+  dispatchBitwiseImpl(fwdElementBitwiseXorInstImpl,
+                      I->getDest()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//

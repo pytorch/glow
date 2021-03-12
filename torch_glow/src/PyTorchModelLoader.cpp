@@ -1220,15 +1220,18 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::logical_and", "aten::logical_and_"},
        &PyTorchModelLoader::loadLogicalAnd},
       {{"aten::logical_not", "aten::logical_not_"}, UNARY_NODE_LOADER(Not)},
-      {{"aten::__ixor__", "aten::__xor__"},
-       &PyTorchModelLoader::loadBitwiseBooleanOp<XorNode>},
-      {{"aten::__ior__", "aten::__or__"},
-       &PyTorchModelLoader::loadBitwiseBooleanOp<OrNode>},
-      {{"aten::__iand__", "aten::__and__"},
-       &PyTorchModelLoader::loadBitwiseBooleanOp<AndNode>},
+      {{"aten::bitwise_not"}, &PyTorchModelLoader::loadBitwiseNot},
+      {{"aten::__ixor__", "aten::__xor__", "aten::bitwise_xor",
+        "aten::bitwise_xor_"},
+       &PyTorchModelLoader::loadBitwiseOp<BitwiseXorNode>},
+      {{"aten::__ior__", "aten::__or__", "aten::bitwise_or",
+        "aten::bitwise_or_"},
+       &PyTorchModelLoader::loadBitwiseOp<BitwiseOrNode>},
+      {{"aten::__iand__", "aten::__and__", "aten::bitwise_and",
+        "aten::bitwise_and_"},
+       &PyTorchModelLoader::loadBitwiseOp<BitwiseAndNode>},
       {{"aten::index_put_", "aten::index_put"},
        &PyTorchModelLoader::loadIndexPut},
-      {{"aten::bitwise_not"}, &PyTorchModelLoader::loadBitwiseNot},
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
       {{"aten::le", "aten::le_"}, &PyTorchModelLoader::loadCmp<CmpLTENode>},
@@ -3871,7 +3874,7 @@ Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
 }
 
 template <typename GlowNode>
-Error PyTorchModelLoader::loadBitwiseBooleanOp(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadBitwiseOp(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -3880,12 +3883,15 @@ Error PyTorchModelLoader::loadBitwiseBooleanOp(const torch::jit::Node *ptNode) {
     glow::NodeValue input;
     ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[i]));
     auto inputElementType = input.getType()->getElementType();
-
-    if (inputElementType != glow::ElemKind::BoolTy) {
-      return MAKE_ERR("Bitwise ops are only supported on Bool");
+    switch (inputElementType) {
+    case ElemKind::Int32ITy:
+    case ElemKind::Int64ITy:
+    case ElemKind::BoolTy:
+      break;
+    default:
+      return MAKE_ERR("Bitwise ops are only supported on Int and Bool");
     }
   }
-
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(
       res, loadArithmeticNode<GlowNode>(
@@ -4528,7 +4534,8 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   // Input is in NCHW.
   glow::unsigned_t channelIdx = 1;
   glow::NodeValue output;
-  // 0D. Currently NNPI only supports 2D, will remove this after it supports 0D.
+  // 0D. Currently NNPI only supports 2D, will remove this after it supports
+  // 0D.
   if (numDims == 0) {
     glow::ReshapeNode *twoD = F_.createReshape(
         "bn_NC2NCHW", input, {input.dims()[0], input.dims()[1], 1, 1});
@@ -5467,7 +5474,8 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
     ASSIGN_VALUE_OR_RETURN_ERR(keepDim,
                                iValToBool(getGlowIValueForValue(inputs[2])));
   } else {
-    // With p in torch.norm(input, p,  dim), inputs[1] is the int representing p
+    // With p in torch.norm(input, p,  dim), inputs[1] is the int representing
+    // p
     GlowIValue *pVal;
     ASSIGN_VALUE_OR_RETURN_ERR(pVal, getGlowIValueForValue(inputs[1]));
 
@@ -5600,8 +5608,8 @@ PyTorchModelLoader::loadMatMulImpl(glow::NodeValue lhs, glow::NodeValue rhs) {
     output =
         F_.createReshape("matmul_output_reshape", output, outputTargetDims);
 
-    // If a 1 was prepended to lhs or a 1 was appended to rhs at the beginning,
-    // undo that now.
+    // If a 1 was prepended to lhs or a 1 was appended to rhs at the
+    // beginning, undo that now.
     if (lhsPrepend) {
       std::vector<glow::dim_t> newDims(output.dims().begin(),
                                        output.dims().end() - 2);
@@ -5832,7 +5840,8 @@ Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
     RETURN_ERR_IF_NOT(
         endPositive > startPositive,
         strFormat(
-            "End index must be greater than start index got start=%ld end=%ld "
+            "End index must be greater than start index got start=%ld "
+            "end=%ld "
             "which was translated into positive range as start=%ld end=%ld",
             start, end, startPositive, endPositive)
             .c_str());
@@ -6426,11 +6435,10 @@ PyTorchModelLoader::getGenerictList(const torch::jit::IValue &iVal) {
   } else if (iValList[0].isInt()) {
     std::vector<int64_t> intList;
     for (auto v : iValList) {
-      RETURN_ERR_IF_NOT(
-          v.isInt(),
-          strFormat(
-              "Expect all ival in a PyTorch GenericList to be Int, but got %s.",
-              v.tagKind().c_str()));
+      RETURN_ERR_IF_NOT(v.isInt(),
+                        strFormat("Expect all ival in a PyTorch GenericList "
+                                  "to be Int, but got %s.",
+                                  v.tagKind().c_str()));
       intList.push_back(v.toInt());
     }
     glowIVal.fromIntList(intList);
@@ -6858,8 +6866,8 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
       weightConstant->getOutput(), perSampleWeights, indices, offsets, false,
       includeLastOffset);
 
-  // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output type
-  // is Float16.
+  // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output
+  // type is Float16.
   if (is4Bit) {
     auto *CT = F_.createConvertTo("ConvertEmbeddingBag4BitRowwiseOffsetsOutput",
                                   EB, ElemKind::FloatTy);
@@ -7055,8 +7063,8 @@ Error PyTorchModelLoader::loadRowwiseQuantizedEmbeddingBagHelper(
       ph->getOutput(), perSampleWeights, indices, offsets, false,
       includeLastOffset);
 
-  // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output type
-  // is Float16.
+  // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output
+  // type is Float16.
   if (is4Bit) {
     auto *CT = F_.createConvertTo("ConvertEmbeddingBag4BitRowwiseOffsetsOutput",
                                   EB, ElemKind::FloatTy);
@@ -7172,8 +7180,8 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
       ph->getOutput(), perSampleWeights, indices, offsets, false,
       includeLastOffset);
 
-  // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output type
-  // is Float16.
+  // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output
+  // type is Float16.
   if (is4Bit) {
     auto *CT = F_.createConvertTo("ConvertEmbeddingBag4BitRowwiseOffsetsOutput",
                                   EB, ElemKind::FloatTy);
@@ -7653,8 +7661,8 @@ PyTorchModelLoader::PyTorchModelLoader(
       }
     }
 
-    // When randomizing constants in graphs, don't randomize scales/offsets for
-    // rowwise/channelwise ops.
+    // When randomizing constants in graphs, don't randomize scales/offsets
+    // for rowwise/channelwise ops.
     static std::map<Kinded::Kind, std::set<unsigned>>
         randomizeConstantsIgnoreSet = {
             {Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind,
@@ -7675,7 +7683,8 @@ PyTorchModelLoader::PyTorchModelLoader(
       F_.dumpDAG("failed.dot");
       return MAKE_ERR(
           "Failed Function verification after loading JIT graph. Enable the "
-          "debugContinuouslyVerifyDuringModelLoading setting and run again to "
+          "debugContinuouslyVerifyDuringModelLoading setting and run again "
+          "to "
           "see which JIT node causes the failure.");
     }
 

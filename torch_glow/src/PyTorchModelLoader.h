@@ -544,7 +544,7 @@ private:
   /// Load a bitwise Boolean Op.
   /// \returns error on failure.
   template <typename GlowNode>
-  Error loadBitwiseBooleanOp(const torch::jit::Node *ptNode);
+  Error loadBitwiseOp(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch xor node.
   /// \returns error on failure.

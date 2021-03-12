@@ -1406,6 +1406,19 @@ VERIFY_BINARY_LOGICAL(Or)
 VERIFY_BINARY_LOGICAL(Xor)
 #undef VERIFY_BINARY_LOGICAL
 
+#define VERIFY_BINARY(NODE_NAME_)                                              \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    bool isValid = checkSameShape(getLHS(), getResult(), this);                \
+    isValid &= checkSameShape(getRHS(), getResult(), this);                    \
+    isValid &= checkSameType(getLHS(), getResult(), this);                     \
+    isValid &= checkSameType(getRHS(), getResult(), this);                     \
+    return isValid;                                                            \
+  }
+VERIFY_BINARY(BitwiseAnd)
+VERIFY_BINARY(BitwiseOr)
+VERIFY_BINARY(BitwiseXor)
+#undef VERIFY_BINARY
+
 #define VERIFY_UNARY_ARITHMETIC(NODE_NAME_)                                    \
   bool NODE_NAME_##Node::verify() const {                                      \
     return checkSameShape(getInput(), getResult(), this);                      \
