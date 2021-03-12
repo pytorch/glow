@@ -1189,4 +1189,31 @@ TEST_F(NNPIOptPipelineTest, LowerGelu_FP16) {
                             bindings_, F_, EE_, /* lower */ true);
 }
 
+/// Test data parallel splitting for LUT
+TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluGeluLUT) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {8, 4096}, "input", false);
+
+  auto *gelu = F_->createGELU("gelu", input1);
+  F_->createSave("ret", gelu);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(3);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPIUseGeluLUT"] = "true";
+  cloneAndCompile();
+
+  EXPECT_LT(F_->getNodes().size(), optimizedF_->getNodes().size());
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::GeluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::NNPILookupTableNodeKind),
+            3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::GeluNodeKind), 0);
+
+  bindings_.allocate(input1)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod_.getPRNG());
+
+  // Existing GELU which is used in F_ has very poor accuracy
+  checkNumericalEquivalence(/* allowedError */ 0.1f);
+}
+
 #endif
