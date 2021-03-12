@@ -711,15 +711,21 @@ public:
 
   /// Create a ReLU node with the given \p name and \p input.
   /// Result type will be implicitly set based on the \p input type.
+  ReluNode *createRelu(llvm::StringRef name, NodeValue input);
+  // deprecated.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
 
   /// Create a ReLU node with the given \p name, \p input and
   /// output type \p outTy.
+  ReluNode *createRelu(llvm::StringRef name, TypeRef outTy, NodeValue input);
+  // deprecated.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
   /// Create a series of nodes representing a GeLU with the given \p name and \p
   /// input. Result type will be implicitly set based on the \p input type.
-  Node *createGELU(llvm::StringRef name, NodeValue input);
+  GeluNode *createGelu(llvm::StringRef name, NodeValue input);
+  // deprecated.
+  GeluNode *createGELU(llvm::StringRef name, NodeValue input);
 
   /// Create a PReLU node with the given \p name, \p input and  \p slope.
   /// Result type will be implicitly set based on the \p input type.
@@ -743,8 +749,10 @@ public:
   /// Create a Swish node with the given \p name and \p input.
   /// If \p OT is nullptr, then result type will be implicitly set based on the
   /// \p input type.
-  SwishNode *createSwish(llvm::StringRef name, NodeValue input,
-                         TypeRef OT = nullptr);
+  SwishNode *createSwish(llvm::StringRef name, NodeValue input);
+  SwishNode *createSwish(llvm::StringRef name, TypeRef OT, NodeValue input);
+  // deprecated.
+  SwishNode *createSwish(llvm::StringRef name, NodeValue input, TypeRef OT);
 
   /// Create a Tanh node with the given \p name, \p input and
   /// output type \p outTy.
@@ -764,8 +772,10 @@ public:
 
   /// Create a Log node with \p name, which calculates element-wise natural log
   /// of \p input, with output type \p outTy.
-  LogNode *createLog(llvm::StringRef name, NodeValue input,
-                     TypeRef outTy = nullptr);
+  LogNode *createLog(llvm::StringRef name, NodeValue input);
+  LogNode *createLog(llvm::StringRef name, TypeRef outTy, NodeValue input);
+  // deprecated
+  LogNode *createLog(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
   /// \returns a LogitNode with \p name given \p input and \p eps.
   LogitNode *createLogit(llvm::StringRef name, NodeValue input, float eps);
