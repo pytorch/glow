@@ -1439,10 +1439,14 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                         opErrMsg(op, "Can only cast float to float."));
       break;
     }
-    case caffe2::TensorProto_DataType_INT32:
+    case caffe2::TensorProto_DataType_INT32: {
+      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int32ITy,
+                        opErrMsg(op, "Can only cast int32 to int32."));
+      break;
+    }
     case caffe2::TensorProto_DataType_INT64: {
       RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int64ITy,
-                        opErrMsg(op, "Can only cast int to int."));
+                        opErrMsg(op, "Can only cast int64 to int64."));
       break;
     }
     default:
@@ -2334,7 +2338,16 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       TH.clear(f);
       break;
     }
-    case caffe2::TensorProto_DataType_INT32:
+    case caffe2::TensorProto_DataType_INT32: {
+      T.reset(ElemKind::Int32ITy, dims);
+      auto TH = T.getHandle<int32_t>();
+      int i = 0;
+      if ((dict.count("value") && dict["value"]->has_i())) {
+        ASSIGN_VALUE_OR_RETURN_ERR(i, loadInt(dict["value"]));
+      }
+      TH.clear(i);
+      break;
+    }
     case caffe2::TensorProto_DataType_INT64:
     case caffe2::TensorProto_DataType_BOOL: {
       T.reset(ElemKind::Int64ITy, dims);
