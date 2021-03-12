@@ -1105,4 +1105,88 @@ TEST(NNPIOptPipelineLUTTest, LUTSigmoid_FP16_wide_lut) {
                         NNPILookupType::LOOKUP_LINEAR_INTERPOLATION, -10, 10,
                         -5, 5, 5e-2);
 }
+
+template <size_t inputSize>
+static void inferAndCompareGelu(size_t lutSize, float minLookupTableValue,
+                                float maxLookupTableValue, float minInputValue,
+                                float maxInputValue, float allowedThreshold,
+                                Module &mod_, PlaceholderBindings &bindings_,
+                                Function *F_, ExecutionEngine &EE_, bool lower,
+                                bool sweep = false) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {inputSize}, "in", false);
+  auto *gelu = F_->createGELU("gelu", in);
+  auto *save = F_->createSave("gelu", gelu);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  bindings_.allocate(in)->getHandle<float16_t>().randomize(
+      minInputValue, maxInputValue, mod_.getPRNG());
+
+  auto inH = bindings_.get(in)->getHandle<float16_t>();
+  if (sweep) {
+    for (size_t i = 0; i < inputSize; i++) {
+      inH.raw(i) = -10.0f + (20.0f / inputSize) * i;
+    }
+  }
+  CompilationContext cctx;
+  if (lower) {
+    cctx.backendOpts.backendSpecificOpts["NNPILowerAllGelu"] = "true";
+  } else {
+    cctx.backendOpts.backendSpecificOpts["NNPIUseGeluLUT"] = "true";
+    cctx.backendOpts.backendSpecificOpts["NNPIGeluLUTNumEntries"] =
+        std::to_string(lutSize);
+    cctx.backendOpts.backendSpecificOpts["NNPIGeluLUTMinInput"] =
+        std::to_string(minLookupTableValue);
+    cctx.backendOpts.backendSpecificOpts["NNPIGeluLUTMaxInput"] =
+        std::to_string(maxLookupTableValue);
+    cctx.backendOpts.backendSpecificOpts["NNPIGeluLUTFormula"] = "tanh";
+  }
+  EE_.compile(cctx);
+  EE_.run(bindings_);
+
+  auto resultH = result->getHandle<float16_t>();
+  // see https://arxiv.org/pdf/1606.08415.pdf
+  float geluConst = 0.044715f;
+
+  double accumulated_error = 0.0;
+  for (size_t i = 0; i < inputSize; i++) {
+    auto inHf = static_cast<float>(inH.raw(i));
+    float expectedResult =
+        0.5f * inHf *
+        (1.0f + std::tanh(M_2_SQRTPI * M_SQRT1_2 *
+                          (inHf + geluConst * std::pow(inHf, 3))));
+    accumulated_error +=
+        std::abs((double)resultH.at(i) - (double)expectedResult);
+    EXPECT_NEAR(resultH.at(i), expectedResult, allowedThreshold);
+  }
+  LOG(INFO) << "Average error: " << accumulated_error / (double)inputSize
+            << std::endl;
+}
+
+TEST_F(NNPIOptPipelineTest, LUTGelu_FP16_large) {
+  inferAndCompareGelu<1024>(16384, -8.0f, 8.0f, -4.0f, 4.0f, 5e-3, mod_,
+                            bindings_, F_, EE_, /* lower */ false);
+}
+
+TEST_F(NNPIOptPipelineTest, LUTGelu_FP16_medium) {
+  inferAndCompareGelu<1024>(1024, -8.0f, 8.0f, -4.0f, 4.0f, 5e-3, mod_,
+                            bindings_, F_, EE_, /* lower */ false);
+}
+
+TEST_F(NNPIOptPipelineTest, LUTGelu_FP16_small) {
+  inferAndCompareGelu<1024>(128, -8.0f, 8.0f, -4.0f, 4.0f, 5e-3, mod_,
+                            bindings_, F_, EE_, /* lower */ false);
+}
+
+TEST_F(NNPIOptPipelineTest, LUTGelu_FP16_sweep) {
+  inferAndCompareGelu<1000>(1024, -8.0f, 8.0f, -4.0f, 4.0f, 5e-3, mod_,
+                            bindings_, F_, EE_, /* lower */ false,
+                            /* sweep */ true);
+}
+
+TEST_F(NNPIOptPipelineTest, LowerGelu_FP16) {
+  inferAndCompareGelu<1024>(16384, -8.0f, 8.0f, -4.0f, 4.0f, 5e-3, mod_,
+                            bindings_, F_, EE_, /* lower */ true);
+}
+
 #endif
