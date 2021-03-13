@@ -279,6 +279,15 @@ private:
   template <typename ElemTy>
   void fwdElementMinInstArithmeticImpl(const ElementMinInst *I);
 
+  template <typename ElemTy>
+  void fwdElementBitwiseOrInstImpl(const ElementBitwiseOrInst *I);
+
+  template <typename ElemTy>
+  void fwdElementBitwiseXorInstImpl(const ElementBitwiseXorInst *I);
+
+  template <typename ElemTy>
+  void fwdElementBitwiseAndInstImpl(const ElementBitwiseAndInst *I);
+
   template <typename ElemTy, typename InstKind>
   void fwdUnaryArithmeticImpl(const InstKind *I,
                               std::function<float(float)> func);

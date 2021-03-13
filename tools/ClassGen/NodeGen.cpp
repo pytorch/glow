@@ -475,6 +475,14 @@ int main(int argc, char **argv) {
       .setDocstring("Performs an element-wise logical AND between the LHS and "
                     "RHS operands.");
 
+  BB.newNode("BitwiseAnd")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise bitwise AND between the LHS and "
+                    "RHS operands.");
+
   BB.newNode("Or")
       .addInput("LHS")
       .addInput("RHS")
@@ -483,12 +491,28 @@ int main(int argc, char **argv) {
       .setDocstring("Performs an element-wise logical OR between the LHS and "
                     "RHS operands.");
 
+  BB.newNode("BitwiseOr")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise bitwise OR between the LHS and "
+                    "RHS operands.");
+
   BB.newNode("Xor")
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs an element-wise logical XOR between the LHS and "
+                    "RHS operands.");
+
+  BB.newNode("BitwiseXor")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise bitwise XOR between the LHS and "
                     "RHS operands.");
 
   BB.newNode("Not")

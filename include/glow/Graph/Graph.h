@@ -988,6 +988,9 @@ public:
   ARITHMETIC_FUN_DECL(And);
   ARITHMETIC_FUN_DECL(Or);
   ARITHMETIC_FUN_DECL(Xor);
+  ARITHMETIC_FUN_DECL(BitwiseAnd);
+  ARITHMETIC_FUN_DECL(BitwiseOr);
+  ARITHMETIC_FUN_DECL(BitwiseXor);
   ARITHMETIC_FUN_DECL(Pow);
   ARITHMETIC_FUN_DECL(Fmod);
 #undef ARITHMETIC_FUN_DECL
@@ -1025,13 +1028,16 @@ public:
   /// Template function that creates a node and normalizes its input shapes
   /// with the use of BroadCast nodes. If axis is -1, it calculates it
   /// automatically for multi directional broadcast.
-  DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
-  DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Xor, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Or, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(BitwiseAnd, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(BitwiseXor, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(BitwiseOr, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Pow, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Fmod, /* NUM_INPUTS */ 2)
 

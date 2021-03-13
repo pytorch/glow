@@ -266,6 +266,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {}, {IsNaNNode::ResultIdx}) &&
            (NI.getOutElemTy(IsNaNNode::ResultIdx) == ElemKind::BoolTy);
 
+  case Kinded::Kind::BitwiseAndNodeKind:
+  case Kinded::Kind::BitwiseOrNodeKind:
+  case Kinded::Kind::BitwiseXorNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::BoolTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
+
   case Kinded::Kind::BitwiseNotNodeKind:
   case Kinded::Kind::ModuloNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
