@@ -1681,6 +1681,35 @@ public:
                     .c_str()),
         "Bad offset value", NNPI_INVALID_PARAM);
 
+#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
+    const uint32_t SPATIAL_DIMS2 = 2;
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        glowChannelwiseQuantizedConv->getKernels().size() == SPATIAL_DIMS2,
+        "[Conv] Invalid number of kernel sizes", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          glowChannelwiseQuantizedConv->getPads().size() ==
+                              2 * SPATIAL_DIMS2,
+                          "[Conv] Invalid number of pads", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        glowChannelwiseQuantizedConv->getStrides().size() == SPATIAL_DIMS2,
+        "[Conv] Invalid number of strides", NNPI_INVALID_PARAM);
+
+    uint32_t kernel[SPATIAL_DIMS2] = {
+        glowChannelwiseQuantizedConv->getKernels()[0],
+        glowChannelwiseQuantizedConv->getKernels()[1]};
+    uint32_t paddingStart[SPATIAL_DIMS2] = {
+        glowChannelwiseQuantizedConv->getPads()[0],
+        glowChannelwiseQuantizedConv->getPads()[1]};
+    uint32_t paddingEnd[SPATIAL_DIMS2] = {
+        glowChannelwiseQuantizedConv->getPads()[2],
+        glowChannelwiseQuantizedConv->getPads()[3]};
+    uint32_t stride[SPATIAL_DIMS2] = {
+        glowChannelwiseQuantizedConv->getStrides()[0],
+        glowChannelwiseQuantizedConv->getStrides()[1]};
+    uint32_t dilation[SPATIAL_DIMS2] = {1, 1}; // No dilation, default values
+#else
     const uint32_t spatialDims =
         glowChannelwiseQuantizedConv->getKernels().size();
     LOG_AND_RETURN_IF_NOT(
@@ -1718,6 +1747,7 @@ public:
         dilation[i] = 1;
       }
     }
+#endif
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -1766,6 +1796,18 @@ public:
         {
             nodeValueName(glowChannelwiseQuantizedConv->getResult()),
         });
+#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
+    return nnpiNetworkAddConvolutionOp(
+        importer.getNetwork(), glowChannelwiseQuantizedConv->getName().begin(),
+        nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str(),
+        nodeValueName(glowChannelwiseQuantizedConv->getResult()).c_str(),
+        nodeValueName(glowChannelwiseQuantizedConv->getFilter()).c_str(),
+        glowChannelwiseQuantizedConv->getBias()
+            ? nodeValueName(glowChannelwiseQuantizedConv->getBias()).c_str()
+            : nullptr,
+        kernel, paddingStart, paddingEnd, stride, dilation, SPATIAL_DIMS2,
+        glowChannelwiseQuantizedConv->getGroup());
+#else
     return nnpiNetworkAddConvolutionOp(
         importer.getNetwork(), glowChannelwiseQuantizedConv->getName().begin(),
         nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str(),
@@ -1776,6 +1818,7 @@ public:
             : nullptr,
         kernel, paddingStart, paddingEnd, stride, dilation, spatialDims,
         glowChannelwiseQuantizedConv->getGroup());
+#endif
   }
 };
 
