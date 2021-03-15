@@ -1443,8 +1443,26 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                           axesC->getType()->getElementName().str().c_str())));
       }
 
-      RETURN_ERR_IF_NOT(op.input_size() == 4,
-                        opErrMsg(op, "Steps is not currently supported!"));
+      if (op.input_size() > 4) {
+        std::vector<ssize_t> step;
+        Constant *stepC = getConstantByNameOrNull(op.input(4));
+
+        RETURN_ERR_IF_NOT(stepC, opErrMsg(op, "Step tensor is not Constant."));
+
+        if (stepC->getElementType() == ElemKind::Int64ITy) {
+          helperSetter<int64_t>(stepC, step);
+        } else if (stepC->getElementType() == ElemKind::Int32ITy) {
+          helperSetter<int32_t>(stepC, step);
+        } else {
+          RETURN_ERR_IF_NOT(false,
+                            opErrMsg(op, strFormat("Step Tensor has unsupported type '%s'", stepC->getType()->getElementName().str().c_str())));
+        }
+
+        // Step is interpreted 1 as default.
+        for (size_t i = 0; i < step.size(); i++) {
+          RETURN_ERR_IF_NOT(step[i] == 1, opErrMsg(op, "step!=1 is currently not supported"));
+        }
+      }
     }
   } else {
     // Attributes 'starts' and 'ends' are mandatory and must be consistent.
