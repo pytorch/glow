@@ -1526,12 +1526,28 @@ bool quantizeLayernormScaleAndBias(Function *F) {
       continue;
     }
 
-    auto gammaTQP = quantization::getTensorQuantizationParams(
-        gammaC->getPayload(), quantization::Schema::Asymmetric,
-        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ gamma.dims()[0]);
-    auto betaTQP = quantization::getTensorQuantizationParams(
-        betaC->getPayload(), quantization::Schema::Asymmetric,
-        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    std::vector<TensorQuantizationParams> gammaTQP;
+    std::vector<TensorQuantizationParams> betaTQP;
+    if (gammaC->getElementType() == ElemKind::FloatTy) {
+      gammaTQP = quantization::getTensorQuantizationParams(
+          gammaC->getPayload(), quantization::Schema::Asymmetric,
+          ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ gamma.dims()[0]);
+      betaTQP = quantization::getTensorQuantizationParams(
+          betaC->getPayload(), quantization::Schema::Asymmetric,
+          ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    } else {
+      gammaTQP = quantization::getTensorQuantizationParams(
+          gammaC->getPayload().getCopyConvertedToType(ElemKind::FloatTy),
+          quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ gamma.dims()[0]);
+      betaTQP = quantization::getTensorQuantizationParams(
+          betaC->getPayload().getCopyConvertedToType(ElemKind::FloatTy),
+          quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    }
+
     auto *gammaQ = F->createQuantize(
         "layernorm_scale_quant", gamma,
         F->getParent()->uniqueType(ElemKind::Int8QTy, gamma.dims(),
