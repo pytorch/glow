@@ -3818,30 +3818,46 @@ Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
   TypeRef outTy = nullptr;
   std::string name;
 
-  // Upsample 2D
+  glow::NodeValue input_transposed;
+  glow::NodeValue output;
+  // Upsample 3D
   if (dimSize == 5) {
+    // pytorch default layout is NCTHW: retrieve dimensions and transposed to
+    // Glow's layout NTHWC
     name = "upsample_nearest3d";
     dim_t ia = input.dims()[0];
     dim_t ib = input.dims()[1];
     dim_t ox = (dim_t)(*outputSize)[0];
     dim_t oy = (dim_t)(*outputSize)[1];
     dim_t oz = (dim_t)(*outputSize)[2];
-    outTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
-                                                   {ia, ib, ox, oy, oz});
+    input_transposed = F_.createTranspose("upsample_nearest3d_input_transpose",
+                                          input, NCTHW2NTHWC)
+                           ->getResult();
+
+    outTy = F_.getParent()->uniqueTypeWithNewShape(input_transposed.getType(),
+                                                   {ia, ox, oy, oz, ib});
+    output = F_.createResizeNearest(name, input_transposed, outTy)->getResult();
+    output = F_.createTranspose("upsample_nearest3d_output_transpose", output,
+                                NTHWC2NCTHW)
+                 ->getResult();
   } else { // Upsample 2D
     name = "upsample_nearest2d";
     dim_t iN = input.dims()[0];
     dim_t iC = input.dims()[1];
     dim_t oH = (dim_t)(*outputSize)[0];
     dim_t oW = (dim_t)(*outputSize)[1];
-
-    outTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
-                                                   {iN, iC, oH, oW});
+    input_transposed = F_.createTranspose("upsample_nearest2d_input_transpose",
+                                          input, NCHW2NHWC);
+    outTy = F_.getParent()->uniqueTypeWithNewShape(input_transposed.getType(),
+                                                   {iN, oH, oW, iC});
+    output = F_.createResizeNearest(name, input_transposed, outTy)->getResult();
+    output = F_.createTranspose("upsample_nearest2d_output_transpose", output,
+                                NHWC2NCHW)
+                 ->getResult();
   }
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  RETURN_ERR(addValueMapping(
-      outputs[0], F_.createResizeNearest(name, input, outTy), dtype));
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {
