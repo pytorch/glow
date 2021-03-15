@@ -6522,6 +6522,7 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
     }
     glow::Tensor *t;
     ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
+
     glow::Constant *glowConstant =
         F_.getParent()->createConstant("constant", std::move(*t));
     RETURN_IF_ERR(addValueMapping(outputs[0], glowConstant->getOutput()));
