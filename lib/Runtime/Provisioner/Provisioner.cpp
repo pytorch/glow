@@ -29,6 +29,8 @@
 #include <future>
 #include <map>
 #include <queue>
+#include <set>
+#include <vector>
 
 using namespace glow;
 using namespace runtime;
@@ -236,37 +238,6 @@ Provisioner::generateDeviceAssignments(
   return deviceAssignment;
 }
 
-/// Updates \p allNodeInfo for all Nodes in \p newF given Nodes in \p oldF using
-/// mapping \p oldToNewMap. Copies the final new info added from \p allNodeInfo
-/// into \p origAllNodeInfo.
-static Error propagateBackendSpecificNodeInfo(
-    Function *oldF, Function *newF,
-    const llvm::DenseMap<const Node *, Node *> &oldToNewMap,
-    BackendSpecificNodeInfo &allNodeInfo,
-    BackendSpecificNodeInfo &origAllNodeInfo) {
-  // If there's no old node info for oldF then just return early.
-  if (!allNodeInfo.count(oldF)) {
-    return Error::success();
-  }
-
-  const auto &oldFunInfo = allNodeInfo[oldF];
-  auto &newFunInfo = allNodeInfo[newF];
-
-  for (const auto &oldNodeInfo : oldFunInfo) {
-    const Node *oldN = oldNodeInfo.first;
-    const auto oldToNewIt = oldToNewMap.find(oldN);
-    RETURN_ERR_IF_NOT(oldToNewIt != oldToNewMap.end(), "No old node in map");
-    const Node *newN = oldToNewIt->second;
-    newFunInfo[newN] = oldNodeInfo.second;
-  }
-
-  // Copy into the original info for this Function, since allNodeInfo is from a
-  // local copy of backendOpts we made in the caller to provision this Function.
-  origAllNodeInfo[newF] = newFunInfo;
-
-  return Error::success();
-}
-
 Error Provisioner::provision(DAGListTy &networks, Module &module,
                              CompilationContext &cctx) {
   VLOG(1) << "Started provisioner";
@@ -276,13 +247,12 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   std::vector<std::string> localActiveNames;
   RETURN_IF_ERR(checkActiveNetworks(networks, localActiveNames));
 
-  // Container for duplicated functions and map tracking remaining installs for
-  // a duplicated function. NB: duplicatedFunctions will hold compiled function
-  // which might be used in clean up process by cleanupGuard, hence this needs
-  // to be declared before cleanupGuard. We probably should clean up the
-  // duplicatedFunctions logic to make this more intuitive.
-  std::map<std::string, std::unique_ptr<CompiledFunction>> duplicatedFunctions;
-  std::map<DAGNode *, unsigned> remainingDuplications;
+  // Mapping from function name to its compiled function. NB: compiledFunctions
+  // will hold compiled function which might be used in clean up process by
+  // cleanupGuard, hence this needs to be declared before cleanupGuard. We
+  // probably should clean up the compiledFunctions logic to make this more
+  // intuitive.
+  llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions;
 
   // If any error happens during the provison process, we will clean up the
   // compiled networks.
@@ -377,6 +347,12 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   }
   VLOG(1) << "Before compile";
 
+  // Stores function name and the remaining logical device count for that
+  // function.
+  llvm::StringMap<size_t> remainingDeviceCount;
+  // Mapping from function name to its backend options.
+  llvm::StringMap<BackendOptions> optsMap;
+
   // Compile and load.
   // This is done one logical device at a time. All functions in a logical
   // device are compiled and then added to their assigned device. If a function
@@ -386,134 +362,110 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     auto logicalDevice = assignment.first;
     auto physicalDevice = assignment.second;
     auto deviceBackendName = logicalDevices[logicalDevice][0]->backendName;
+
+    if (backends_.find(deviceBackendName) == backends_.end()) {
+      // Return error requested device type not found.
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEVICE_NOT_FOUND,
+                      "Unable to find device of type: " + deviceBackendName);
+    }
+
+    // Stores all the functions in a logical device.
+    std::vector<glow::Function *> functionsToCompile;
+    // Stores the compiled functions that will be added to physical device.
     FunctionMapTy functionMap;
-    // Container for the compiledFunctions for this logicalDevice.
-    std::map<std::string, std::unique_ptr<CompiledFunction>> compiledFunctions;
 
+    // Collect all the functions in a logical device.
     for (auto &node : logicalDevices[logicalDevice]) {
-      // Check if this is a duplicated function that has already been compiled.
-      if (duplicatedFunctions.find(node->name) != duplicatedFunctions.end()) {
-        functionMap.emplace(node->name, duplicatedFunctions[node->name].get());
-        // Add replications.
-        for (unsigned i = 1; i < node->replicationCount; i++) {
-          auto replicatedName = getReplicatedName(node->name, i);
-          functionMap.emplace(replicatedName,
-                              duplicatedFunctions[replicatedName].get());
+      // If the function name exist we don't need to compile it again.
+      if (optsMap.count(node->name)) {
+        remainingDeviceCount[node->name] -= 1;
+        continue;
+      }
+
+      auto options = cctx.backendOpts;
+      options.backendHints = node->backendHints;
+      // Insert all options loaded in the Partitioner alongside options
+      // previously inserted, with Partitioner options taking precedence in
+      // case of a collision of keys.
+      for (auto &it : node->backendSpecificOpts) {
+        options.backendSpecificOpts[it.first] = it.second;
+      }
+      Function *function = module.getFunction(node->name);
+
+      functionsToCompile.push_back(function);
+      optsMap.insert({function->getName(), options});
+      functionReplicaCount_.emplace(node->name, node->replicationCount);
+      remainingDeviceCount.insert(
+          {node->name, node->logicalDevices.size() - 1});
+    }
+
+    // Compile all the functions in the logical device together.
+    auto compiledOrErr = backends_[deviceBackendName]->compileFunctions(
+        functionsToCompile, optsMap);
+    VLOG(1) << "After compile";
+
+    // Dump graph and logs
+    for (auto *function : functionsToCompile) {
+      // Note: This needs to come after compile above because compile may
+      // modify the Function as well.
+      if (cctx.dumpFinalGraph) {
+        auto fname = strFormat(
+            "%sfinal_graph_%s_%s.dot", cctx.dumpGraphPath.c_str(),
+            deviceBackendName.c_str(), function->getName().str().c_str());
+        LOG(INFO) << "Dumping final graph to " << fname;
+        function->dumpDAG(fname);
+      }
+
+      if (glow::flags::DumpCompilationLog) {
+        llvm::SmallString<64> path;
+        std::string prefix = llvm::formatv("{0}-{1}", cctx.compilationLogPrefix,
+                                           function->getName())
+                                 .str();
+        auto tempFileRes =
+            llvm::sys::fs::createTemporaryFile(prefix, "log", path);
+        if (tempFileRes.value() != 0) {
+          LOG(ERROR) << "Failed to create temp file for Glow compilation log: "
+                     << tempFileRes;
         }
 
-        remainingDuplications[node] -= 1;
-      } else {
-        // Compile and add to function map.
-        auto options = cctx.backendOpts;
-        options.backendHints = node->backendHints;
-        // Insert all options loaded in the Partitioner alongside options
-        // previously inserted, with Partitioner options taking precedence in
-        // case of a collision of keys.
-        for (auto &it : node->backendSpecificOpts) {
-          options.backendSpecificOpts[it.first] = it.second;
-        }
-        Function *function = module.getFunction(node->name);
-        if (backends_.find(deviceBackendName) == backends_.end()) {
-          // Return error requested device type not found.
-          return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEVICE_NOT_FOUND,
-                          "Unable to find device of type: " +
-                              deviceBackendName);
-        }
-
-        std::unordered_map<std::string, std::unique_ptr<glow::CompiledFunction>>
-            compiledReplications;
-        // Before we compile clone the function so we can replicate it on the
-        // device.
-        for (unsigned i = 1; i < node->replicationCount; i++) {
-          std::string replicatedName =
-              getReplicatedName(function->getName().str(), i);
-          llvm::DenseMap<const Node *, Node *> oldToNewMap;
-          auto *clonedFunction = function->clone(replicatedName, &oldToNewMap);
-          RETURN_IF_ERR(propagateBackendSpecificNodeInfo(
-              function, clonedFunction, oldToNewMap,
-              options.backendSpecificNodeInfo,
-              cctx.backendOpts.backendSpecificNodeInfo));
-          auto compiledOrErr2 =
-              backends_[deviceBackendName]->compile(clonedFunction, options);
-          if (!compiledOrErr2) {
-            RETURN_ERR(compiledOrErr2.takeError());
-          }
-          auto compiled2 = std::move(*compiledOrErr2);
-          functionMap.emplace(replicatedName, compiled2.get());
-          compiledReplications.emplace(replicatedName, std::move(compiled2));
-        }
-
-        auto compiledOrErr =
-            backends_[deviceBackendName]->compile(function, options);
-
-        // Note: This needs to come after compile above because compile may
-        // modify the Function as well.
-        if (cctx.dumpFinalGraph) {
-          auto fname = strFormat(
-              "%sfinal_graph_%s_%s.dot", cctx.dumpGraphPath.c_str(),
-              deviceBackendName.c_str(), function->getName().str().c_str());
-          LOG(INFO) << "Dumping final graph to " << fname;
-          function->dumpDAG(fname);
-        }
-
-        if (glow::flags::DumpCompilationLog) {
-          llvm::SmallString<64> path;
-          std::string prefix =
-              llvm::formatv("{0}-{1}", cctx.compilationLogPrefix,
-                            function->getName())
-                  .str();
-          auto tempFileRes =
-              llvm::sys::fs::createTemporaryFile(prefix, "log", path);
-          if (tempFileRes.value() != 0) {
-            LOG(ERROR)
-                << "Failed to create temp file for Glow compilation log: "
-                << tempFileRes;
-          }
-
-          function->getLogContext()->dumpLog(path);
-        }
-
-        // Check to see if an error was encountered while compiling.
-        if (!compiledOrErr) {
-          RETURN_ERR(compiledOrErr.takeError());
-        }
-        auto compiled = std::move(*compiledOrErr);
-
-        // Dump backend-specific IR
-        if (glow::flags::DumpBackendSpecificIRJSON) {
-          compiled->dumpJSON(strFormat("%sbackend_specific_ir_%s.json",
-                                       cctx.dumpGraphPath.c_str(),
-                                       function->getName().str().c_str()));
-        }
-
-        node->runtimeBundle =
-            glow::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
-
-        functionMap.emplace(node->name, compiled.get());
-        // If this function is in more than one logical device store it for
-        // reuse.
-        if (node->logicalDevices.size() > 1) {
-          duplicatedFunctions.emplace(node->name, std::move(compiled));
-          for (unsigned i = 1; i < node->replicationCount; i++) {
-            std::string replicatedName =
-                getReplicatedName(function->getName().str(), i);
-            auto compiled2 = std::move(compiledReplications[replicatedName]);
-            duplicatedFunctions.emplace(replicatedName, std::move(compiled2));
-          }
-
-          remainingDuplications[node] = node->logicalDevices.size() - 1;
-        } else {
-          compiledFunctions.emplace(node->name, std::move(compiled));
-          for (unsigned i = 1; i < node->replicationCount; i++) {
-            std::string replicatedName =
-                getReplicatedName(function->getName().str(), i);
-            auto compiled2 = std::move(compiledReplications[replicatedName]);
-            compiledFunctions.emplace(replicatedName, std::move(compiled2));
-          }
-        }
+        function->getLogContext()->dumpLog(path);
       }
     }
-    VLOG(1) << "After compile";
+
+    // If err return it, else store compiled functions into compiledFunctions.
+    if (!compiledOrErr) {
+      RETURN_ERR(compiledOrErr.takeError());
+    }
+    auto compiled = std::move(*compiledOrErr);
+    for (auto &compiledFunction : compiled) {
+      compiledFunctions.try_emplace(compiledFunction.first(),
+                                    std::move(compiledFunction.second));
+    }
+
+    // Construnct functionMap for physical device.
+    for (auto &node : logicalDevices[logicalDevice]) {
+      RETURN_ERR_IF_NOT(compiledFunctions.count(node->name),
+                        "Can't find corresponding compiled function " +
+                            node->name);
+
+      auto *compiledFunction = compiledFunctions[node->name].get();
+      functionMap.emplace(node->name, compiledFunction);
+
+      for (unsigned i = 1; i < node->replicationCount; i++) {
+        auto replicatedName = getReplicatedName(node->name, i);
+        functionMap.emplace(replicatedName, compiledFunction);
+      }
+
+      // Dump backend-specific IR
+      if (glow::flags::DumpBackendSpecificIRJSON) {
+        compiledFunction->dumpJSON(strFormat("%sbackend_specific_ir_%s.json",
+                                             cctx.dumpGraphPath.c_str(),
+                                             node->name.c_str()));
+      }
+
+      node->runtimeBundle = glow::make_unique<RuntimeBundle>(
+          compiledFunction->getRuntimeBundle());
+    }
 
     // Now that the functions are compiled add them to their assigned device
     // then cleanup.
@@ -531,48 +483,40 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     if (*addErr.get()) {
       return std::move(*addErr.get());
     }
+
     // Add networks successfully loaded on device to addedNetworks, this way if
     // we fail later we can evict them.
-    for (auto &node : logicalDevices[logicalDevice]) {
-      addedNetworks[physicalDevice].push_back(node->name);
+    for (const auto &func : functionMap) {
+      addedNetworks[physicalDevice].push_back(func.first);
     }
     VLOG(1) << "Added networks";
 
     // Free up memory no longer needed by the compiledFunction.
-    for (auto &func : compiledFunctions) {
-      func.second->freeCompilationResources();
-    }
-    {
+    for (auto &node : logicalDevices[logicalDevice]) {
+      // If the compiled function still needs to be added to other device, don't
+      // free the resources.
+      if (remainingDeviceCount[node->name] > 0) {
+        continue;
+      }
+
+      // Free compilation resources. This need to be done after add network and
+      // before move on to next logical device.
+      auto &funtionPtr = compiledFunctions[node->name];
+      funtionPtr->freeCompilationResources();
+
       // Move compiled functions from compiledFunctions to functions_.
-      std::lock_guard<std::mutex> functionsLock(functionsLock_);
-      for (auto &func : compiledFunctions) {
-        functions_.emplace(func.first, std::move(func.second));
+      {
+        std::lock_guard<std::mutex> functionsLock(functionsLock_);
+        functions_.emplace(node->name, std::move(funtionPtr));
       }
-      // Check if any of the duplicated functions can also be moved.
-      for (auto iter = remainingDuplications.begin();
-           iter != remainingDuplications.end();) {
-        const auto &func = *iter;
-        if (func.second == 0) {
 
-          for (unsigned i = 1; i < func.first->replicationCount; i++) {
-            std::string replicatedName = getReplicatedName(func.first->name, i);
-            duplicatedFunctions[replicatedName]->freeCompilationResources();
-            functions_.emplace(replicatedName,
-                               std::move(duplicatedFunctions[replicatedName]));
-            duplicatedFunctions.erase(replicatedName);
-          }
-
-          duplicatedFunctions[func.first->name]->freeCompilationResources();
-          functions_.emplace(func.first->name,
-                             std::move(duplicatedFunctions[func.first->name]));
-          duplicatedFunctions.erase(func.first->name);
-          iter = remainingDuplications.erase(iter);
-        } else {
-          ++iter;
-        }
-      }
+      compiledFunctions.erase(node->name);
     }
   }
+
+  RETURN_ERR_IF_NOT(compiledFunctions.empty(),
+                    "compiledFunctions should be empty because all compiled "
+                    "functions should be moved to Provisioner::function_");
 
   // If a deferredWeightLoader is provided, create a deferredWeightLoader and
   // load deferred weights.
@@ -1003,15 +947,33 @@ Error Provisioner::removeFunction(llvm::StringRef name) {
 
 Error Provisioner::evictFunction(llvm::StringRef name, DeviceManager *device) {
   std::promise<void> evictPromise;
-  Error evictErr = Error::empty();
+  OneErrOnly evictErr;
   auto done = evictPromise.get_future();
   device->evictNetwork(name.str(),
                        [&evictPromise, &evictErr](std::string, Error err) {
-                         evictErr = std::move(err);
+                         evictErr.set(std::move(err));
                          evictPromise.set_value();
                        });
   done.get();
-  return evictErr;
+
+  // If we are evict a main function, evict its replications as well.
+  auto replicaCount = functionReplicaCount_.find(name.str());
+  if (replicaCount != functionReplicaCount_.end()) {
+    for (unsigned i = 1; i < replicaCount->second; i++) {
+      auto replicaName = getReplicatedName(name.str(), i);
+      std::promise<void> evictReplicaPromise;
+      auto done = evictReplicaPromise.get_future();
+      device->evictNetwork(replicaName, [&evictReplicaPromise,
+                                         &evictErr](std::string, Error err) {
+        evictErr.set(std::move(err));
+        evictReplicaPromise.set_value();
+      });
+
+      done.get();
+    }
+  }
+
+  return evictErr.get();
 }
 
 void Provisioner::cleanupProvision(

@@ -5,32 +5,41 @@ from tests import utils
 
 
 class SimpleCumSumModule(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, dim):
         super(SimpleCumSumModule, self).__init__()
+        self.dim = dim
 
     def forward(self, tensor):
-        # TODO remove default of 0 when axis/dimension to sum is supported
-        return torch.cumsum(tensor, dim=0)
+        return torch.cumsum(tensor, self.dim)
 
 
 class TestCumSum(utils.TorchGlowTestCase):
     @utils.deterministic_expand(
         [
-            lambda: ("1", False, torch.randn(1)),
-            lambda: ("2", False, torch.randn(2)),
-            lambda: ("20", False, torch.randn(20)),
-            # TODO add these tests when multi-dimension is supported
-            lambda: ("3x3", True, torch.randn(3, 3)),
-            lambda: ("5x4", True, torch.randn(5, 4)),
-            lambda: ("3x3x3", True, torch.randn(3, 4, 5)),
-            lambda: ("3x4x5", True, torch.randn(3, 4, 5)),
-            lambda: ("4x4x4x4", True, torch.randn(6, 5, 4, 3)),
-            lambda: ("6x5x4x3", True, torch.randn(6, 5, 4, 3)),
+            lambda: ("1", torch.randn(1), 0),
+            lambda: ("2", torch.randn(2), 0),
+            lambda: ("20", torch.randn(20), 0),
+            lambda: ("3x4_0", torch.randn(3, 4), 0),
+            lambda: ("3x4_1", torch.randn(3, 4), 1),
+            lambda: ("3x4_-1", torch.randn(3, 4), -1),
+            lambda: ("3x4_-2", torch.randn(3, 4), -2),
+            lambda: ("3x4x5_0", torch.randn(3, 4, 5), 0),
+            lambda: ("3x4x5_1", torch.randn(3, 4, 5), 1),
+            lambda: ("3x4x5_2", torch.randn(3, 4, 5), 2),
+            lambda: ("3x4x5_-1", torch.randn(3, 4, 5), -1),
+            lambda: ("3x4x5_-2", torch.randn(3, 4, 5), -2),
+            lambda: ("3x4x5_-3", torch.randn(3, 4, 5), -3),
+            lambda: ("6x5x4x3_0", torch.randn(6, 5, 4, 3), 0),
+            lambda: ("6x5x4x3_1", torch.randn(6, 5, 4, 3), 1),
+            lambda: ("6x5x4x3_2", torch.randn(6, 5, 4, 3), 2),
+            lambda: ("6x5x4x3_3", torch.randn(6, 5, 4, 3), 3),
+            lambda: ("6x5x4x3_-1", torch.randn(6, 5, 4, 3), -1),
+            lambda: ("6x5x4x3_-2", torch.randn(6, 5, 4, 3), -2),
+            lambda: ("6x5x4x3_-3", torch.randn(6, 5, 4, 3), -3),
+            lambda: ("6x5x4x3_-4", torch.randn(6, 5, 4, 3), -4),
         ]
     )
-    def test_cumsum(self, _, skip, tensor):
-        if skip:
-            self.skipTest("multi-dimension is supported yet support")
+    def test_cumsum(self, _, tensor, dim):
         utils.compare_tracing_methods(
-            SimpleCumSumModule(), tensor, fusible_ops={"aten::cumsum"}
+            SimpleCumSumModule(dim), tensor, fusible_ops={"aten::cumsum"}
         )

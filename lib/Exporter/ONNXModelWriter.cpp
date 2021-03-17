@@ -2273,6 +2273,9 @@ ARITHMETIC_NODE_WRITER(Less, CmpLT)
 ARITHMETIC_NODE_WRITER(CmpLTE, CmpLTE)
 ARITHMETIC_NODE_WRITER(FloorDiv, FloorDiv);
 ARITHMETIC_NODE_WRITER(Fmod, Fmod)
+ARITHMETIC_NODE_WRITER(BitwiseAnd, BitwiseAnd)
+ARITHMETIC_NODE_WRITER(BitwiseOr, BitwiseOr)
+ARITHMETIC_NODE_WRITER(BitwiseXor, BitwiseXor)
 #undef ARITHMETIC_NODE_WRITER
 
 // Default exporting algorithm.
@@ -2551,6 +2554,13 @@ Error ONNXModelWriter::writeCumSum(const CumSumNode *node, GraphType &graph) {
   return writeAllWithNode("CumSum", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeScatterData(const ScatterDataNode *node,
+                                        GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  return writeAllWithNode("ScatterData", node, graph, proto);
+}
+
 // Unsupported for export Glow nodes.
 #define DEF_UNSUPPORTED_STORAGE(NAME)                                          \
   Error ONNXModelWriter::write##NAME(const NAME *node, GraphType &) {          \
@@ -2574,8 +2584,6 @@ DEF_UNSUPPORTED_NODE(SGD)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
 DEF_UNSUPPORTED_NODE(ExternalFunctionCall)
-// TODO: Turn to ScatterNd when it is supported in ONNX.
-DEF_UNSUPPORTED_NODE(ScatterData)
 // Gradient nodes.
 DEF_UNSUPPORTED_NODE(AddGrad)
 DEF_UNSUPPORTED_NODE(DivGrad)

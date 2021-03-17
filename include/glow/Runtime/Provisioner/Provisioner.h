@@ -39,11 +39,42 @@ class Provisioner final {
 public:
   Provisioner(DeviceManagerMapTy &devices);
 
-  /// Traverses the DAG \p networks and:
-  ///   1. Retrieves each node's Function from the provided \p module.
-  ///   2. Compiles it using the provided CompilationContext \p cctx.
-  ///   3. Assigns a device and calls addNetwork on the chosen device(s).
-  /// \returns a Error indicating if the operation was a success.
+  /// Traverses the DAG \p networks and compiles all the node's Functions from
+  /// \p module using \p cctx. Then add compiled functions to assigned devices.
+  ///
+  /// Pseudocode:
+  ///
+  /// generate device assignments
+  /// create map `optsMap`, `compiledFunctions`, `remainingDeviceCount`
+  ///
+  /// for each assignment
+  ///     create vector functionsToCompile
+  ///     create map functionMap
+  ///     for each node in logical device
+  ///         if Function hasn't been compiled before
+  ///             add Function to `functionsToCompile`
+  ///             add Function's BackendOptions to `optsMap`
+  ///             set `remainingDeviceCount` for Function
+  ///         else
+  ///             decrease `remainingDeviceCount` for Function by 1
+  ///
+  ///     call Backend::compiledFunctions with `functionsToCompile` and
+  ///     `optsMap`
+  ///     move compiled functions to `compiledFunctions`
+  ///
+  ///     for each node in logical device
+  ///         add corresponding compiled functions in `compiledFunctions` to
+  ///         `functionMap`
+  ///         add replications to `functionMap` using the same compiled function
+  ///         with a different name
+  ///
+  ///     call DeviceManager::addNetwork with `FunctionMap`
+  ///
+  ///     for each node in logical device
+  ///         if `remainingDeviceCount` for Function is 0
+  ///             free up compilation resources
+  ///             move corresponding compiled function from `compiledFunctions`
+  ///             to `Provisioner::functions_`
   Error provision(DAGListTy &networks, Module &module,
                   CompilationContext &cctx);
 
@@ -89,6 +120,9 @@ private:
   /// Set of active functions - these are functions that are currently being
   /// compiled/added to devices.
   std::set<std::string> activeFunctions_;
+
+  /// Mapping from function name to its number of replications
+  std::unordered_map<std::string, unsigned> functionReplicaCount_;
 
   /// Mutex for functions_ and activeFunctions_ since add/remove can be called
   /// from multiple threads simultaneously.

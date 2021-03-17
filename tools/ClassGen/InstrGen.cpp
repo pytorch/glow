@@ -353,6 +353,7 @@ int main(int argc, char **argv) {
   BB.newInstr("CumSum")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::Int64, "Dim")
       .addMember(MemberType::Unsigned, "Exclusive")
       .addMember(MemberType::Unsigned, "Reverse")
       .inplaceOperand({"Dest", "Input"})
@@ -656,6 +657,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("And");
 
+  BB.newInstr("ElementBitwiseAnd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoIRGen("BitwiseAnd");
+
   BB.newInstr("ElementOr")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
@@ -668,6 +678,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("Or");
 
+  BB.newInstr("ElementBitwiseOr")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoIRGen("BitwiseOr");
+
   BB.newInstr("ElementXor")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
@@ -679,6 +698,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"RHS", "ElemKind::BoolTy"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("Xor");
+
+  BB.newInstr("ElementBitwiseXor")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoIRGen("BitwiseXor");
 
   BB.newInstr("ElementNot")
       .addOperand("Dest", OperandKind::Out)

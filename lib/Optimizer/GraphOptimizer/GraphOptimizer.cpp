@@ -552,11 +552,14 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           continue;
         }
 
-        auto bnOutTy = RS->getInput().getType();
+        auto bnOutTy = BN->getResult().getType();
+        auto rsInputType = RS->getInput().getType();
+        glow::TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
+            bnOutTy, rsInputType->dims());
         auto *newBN = F->createBatchNormalization(
-            BN->getName(), bnOutTy, RS->getInput(), BN->getBias(),
-            BN->getScale(), BN->getMean(), BN->getVar(), newChannelIdx,
-            BN->getEpsilon(), BN->getMomentum());
+            BN->getName(), outTy, RS->getInput(), BN->getBias(), BN->getScale(),
+            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
+            BN->getMomentum());
         RS->setNthInput(ReshapeNode::InputIdx, newBN);
         BN->getResult().replaceAllUsesOfWith(RS);
         changed = true;
@@ -571,10 +574,15 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         unsigned_t idx = BN->getChannelIdx();
         unsigned_t newChannelIdx = TR->getShuffle()[idx];
 
+        auto bnOutTy = BN->getResult().getType();
+        auto trInputType = TR->getInput().getType();
+        glow::TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
+            bnOutTy, trInputType->dims());
+
         auto *NewBN = F->createBatchNormalization(
-            BN->getName(), TR->getInput().getType(), TR->getInput(),
-            BN->getBias(), BN->getScale(), BN->getMean(), BN->getVar(),
-            newChannelIdx, BN->getEpsilon(), BN->getMomentum());
+            BN->getName(), outTy, TR->getInput(), BN->getBias(), BN->getScale(),
+            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
+            BN->getMomentum());
         NewBN->setPredicate(node->getPredicate());
         auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle(),
                                          TR->getLayout());
@@ -1082,9 +1090,9 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       auto *newSN = F->createSlice(SN->getName(), BN->getInput(),
                                    SN->getStart(), newSNType);
       auto *newBN = F->createBatchNormalization(
-          BN->getName(), newSNType, newSN, BN->getBias(), BN->getScale(),
-          BN->getMean(), BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
-          BN->getMomentum());
+          BN->getName(), SN->getResult().getType(), newSN, BN->getBias(),
+          BN->getScale(), BN->getMean(), BN->getVar(), BN->getChannelIdx(),
+          BN->getEpsilon(), BN->getMomentum());
       SN->getResult().replaceAllUsesOfWith(newBN);
       changed = true;
     }

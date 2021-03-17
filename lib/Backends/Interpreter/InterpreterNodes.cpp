@@ -162,6 +162,21 @@ using namespace glow;
     llvm_unreachable("Type is not supported");                                 \
   }
 
+#define dispatchBitwiseImpl(functionName, elemTy, ...)                         \
+  switch (elemTy) {                                                            \
+  case ElemKind::Int32ITy:                                                     \
+    functionName<int32_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::Int64ITy:                                                     \
+    functionName<int64_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::BoolTy:                                                       \
+    functionName<bool>(__VA_ARGS__);                                           \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define dispatchQuantizedImpl(functionName, elemTy, ...)                       \
   switch (elemTy) {                                                            \
   case ElemKind::Int8QTy:                                                      \
@@ -1126,12 +1141,12 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
       I->getChannelIdx(); // NOTE: We only support NTHWC, NHWC, NWC and NCW
   float epsilon = I->getEpsilon();
   auto inScale = float(I->getSrc()->getType()->getScale());
-  auto inZero = int8_t(I->getSrc()->getType()->getOffset());
+  auto inZero = I->getSrc()->getType()->getOffset();
 
   // output
   auto outH = getWeightHandle<int8_t>(I->getDest());
   auto outScale = float(I->getDest()->getType()->getScale());
-  auto outZero = int8_t(I->getDest()->getType()->getOffset());
+  auto outZero = I->getDest()->getType()->getOffset();
 
   dim_t N, C, sizeN, sizeImg;
   bool isCMinor;
@@ -1180,6 +1195,7 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
     isCMinor = (channelIdx == 2);
   }
 
+  // See qbatch_norm.cpp/compute_fused_params() for FBGEMM implementation
   std::vector<ParamTy> alpha(C), beta(C);
   for (dim_t c = 0; c < C; c++) {
     float invSigma = 1 / std::sqrt(float(varH.at({c})) + epsilon);
@@ -1189,8 +1205,8 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
                       outScale);
   }
 
-  auto round32 = [](ParamTy val) { return int32_t(std::round(float(val))); };
-
+  // See QuantizedOpKernels.cpp/q_batch_norm_kernel() for FBGEMM implementation
+  TensorQuantizationParams outputQ{1.0f, outZero};
   // For each input in the batch:
   for (dim_t n = 0; n < N; n++) {
     if (isCMinor) {
@@ -1201,8 +1217,7 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
           int index = n * sizeN + i * C + c;
           ParamTy x = inH.raw(index) - inZero;
           ParamTy y = alpha[c] * x + beta[c];
-          outH.raw(index) = quantization::clip<int32_t, int8_t>(
-              round32(y + ParamTy(outZero)));
+          outH.raw(index) = quantization::quantize(y, outputQ);
         } // image
       }   // C
     } else {
@@ -1213,8 +1228,7 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
           int index = n * sizeN + c * sizeImg + i;
           auto x = ParamTy(inH.raw(index) - inZero);
           ParamTy y = alpha[c] * x + beta[c];
-          outH.raw(index) = quantization::clip<int32_t, int8_t>(
-              round32(y + ParamTy(outZero)));
+          outH.raw(index) = quantization::quantize(y, outputQ);
         } // image
       }   // C
     }
@@ -1583,10 +1597,11 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
             }
             // Instead of dividing by filterArea, just change scale.
             assert(filterArea != 0 && "filterArea can't be 0");
+
+            float multiplier = inQP.scale / outQP.scale / filterArea;
+            TensorQuantizationParams outputQ{1.0f / multiplier, outQP.offset};
             outW.at({n, at, ax, ay, z}) =
-                quantization::clip<int32_t, int8_t>(std::round(
-                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
-                    outQP.offset));
+                quantization::quantize(float(sum), outputQ);
           } // W
         }   // H
       }     // T
@@ -3299,6 +3314,64 @@ void BoundInterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
                          I->getDest()->getElementType(), I);
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdElementBitwiseOrInstImpl(
+    const ElementBitwiseOrInst *I) {
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) | rhsW.raw(i);
+  }
+}
+
+void BoundInterpreterFunction::fwdElementBitwiseOrInst(
+    const ElementBitwiseOrInst *I) {
+
+  dispatchBitwiseImpl(fwdElementBitwiseOrInstImpl,
+                      I->getDest()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdElementBitwiseAndInstImpl(
+    const ElementBitwiseAndInst *I) {
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) & rhsW.raw(i);
+  }
+}
+
+void BoundInterpreterFunction::fwdElementBitwiseAndInst(
+    const ElementBitwiseAndInst *I) {
+
+  dispatchBitwiseImpl(fwdElementBitwiseAndInstImpl,
+                      I->getDest()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdElementBitwiseXorInstImpl(
+    const ElementBitwiseXorInst *I) {
+  staticAssertArithmeticType(ElemTy);
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) ^ rhsW.raw(i);
+  }
+}
+
+void BoundInterpreterFunction::fwdElementBitwiseXorInst(
+    const ElementBitwiseXorInst *I) {
+
+  dispatchBitwiseImpl(fwdElementBitwiseXorInstImpl,
+                      I->getDest()->getElementType(), I);
+}
+
 //===----------------------------------------------------------------------===//
 //                              Logical operations
 //===----------------------------------------------------------------------===//
@@ -4433,17 +4506,28 @@ DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
 
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
-                                                 bool exclusive, bool reverse) {
-  auto *eInput = getTensor(input);
-  auto *eDest = getTensor(dest);
-  auto eInputH = eInput->getHandle<ElemTy>();
-  auto eDestH = eDest->getHandle<ElemTy>();
+                                                 int64_t dim, bool exclusive,
+                                                 bool reverse) {
+  auto eInputH = getTensor(input)->getHandle<ElemTy>();
+  auto eDestH = getTensor(dest)->getHandle<ElemTy>();
   eDestH.clear();
 
-  ElemTy accum = 0;
+  // deal with dim < 0
+  if (dim < 0) {
+    dim += eInputH.dims().size();
+  }
+  assert(dim < eInputH.dims().size() &&
+         "Dim must be less than the number of dimensions of input tensor");
+
+  std::vector<dim_t> accumDims(eInputH.dims());
+  accumDims[dim] = 1;
+
+  Tensor accum(eInputH.getElementType(), accumDims);
+  auto accumH = accum.getHandle<ElemTy>();
+  accumH.clear();
 
   sdim_t s = 0;
-  sdim_t n = eDestH.size();
+  sdim_t n = eInputH.dims()[dim];
   sdim_t dir = 1;
 
   if (reverse) {
@@ -4453,20 +4537,35 @@ void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
   }
 
   for (sdim_t i = s; i != n; i += dir) {
+    std::vector<dim_t> offset(eInputH.dims().size());
+    offset[dim] = i;
+
+    Tensor temp(eInputH.getElementType(), accumDims);
+    auto tempH = temp.getHandle<ElemTy>();
+    eInputH.extractTensors(tempH, offset);
+
     if (!exclusive) {
-      accum += eInputH.at(i);
+      for (auto accumIt = accumH.begin(), tempIt = tempH.begin();
+           accumIt != accumH.end(); ++accumIt, ++tempIt) {
+        *accumIt += *tempIt;
+      }
     }
-    eDestH.at(i) = accum;
+
+    eDestH.insertTensors(accumH, offset, 1, dim);
+
     if (exclusive) {
-      accum += eInputH.at(i);
+      for (auto accumIt = accumH.begin(), tempIt = tempH.begin();
+           accumIt != accumH.end(); ++accumIt, ++tempIt) {
+        *accumIt += *tempIt;
+      }
     }
   }
 }
 
 void BoundInterpreterFunction::fwdCumSumInst(glow::CumSumInst const *I) {
   dispatchArithmeticImpl(fwdCumSumInstImpl, I->getInput()->getElementType(),
-                         I->getInput(), I->getDest(), I->getExclusive(),
-                         I->getReverse());
+                         I->getInput(), I->getDest(), I->getDim(),
+                         I->getExclusive(), I->getReverse());
 }
 
 template <typename ElemTy>

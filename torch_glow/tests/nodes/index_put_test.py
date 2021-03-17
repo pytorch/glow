@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import unittest
-
 import torch
-from parameterized import parameterized
 from tests import utils
 
 
@@ -19,16 +16,16 @@ class IndexPutModule(torch.nn.Module):
         return tensor
 
 
-class TestIndexPut(unittest.TestCase):
-    @parameterized.expand(
+class TestIndexPut(utils.TorchGlowTestCase):
+    @utils.deterministic_expand(
         [
-            (
+            lambda: (
                 "basic",
                 IndexPutModule([torch.tensor([1, 1]), torch.tensor([0, 1])]),
                 torch.zeros(2, 3),
                 torch.tensor([1.0, 2.0]),
             ),
-            (
+            lambda: (
                 "3d_0",
                 IndexPutModule(
                     [torch.tensor([1, 1]), torch.tensor([0, 1]), torch.tensor([0, 1])]
@@ -36,7 +33,7 @@ class TestIndexPut(unittest.TestCase):
                 torch.zeros(2, 3, 4),
                 torch.tensor([1.0, 2.0]),
             ),
-            (
+            lambda: (
                 "3d_1",
                 IndexPutModule(
                     [
@@ -48,7 +45,7 @@ class TestIndexPut(unittest.TestCase):
                 torch.zeros(2, 3, 4),
                 torch.tensor([1.0, 2.0, 3.0]),
             ),
-            (
+            lambda: (
                 "broadcast_value_0",
                 IndexPutModule(
                     [
@@ -60,7 +57,7 @@ class TestIndexPut(unittest.TestCase):
                 torch.zeros(5, 3, 4),
                 torch.tensor([1.0]),
             ),
-            (
+            lambda: (
                 "broadcast_value_1",
                 IndexPutModule(
                     [
@@ -72,7 +69,7 @@ class TestIndexPut(unittest.TestCase):
                 torch.zeros(5, 3, 4),
                 torch.tensor([1.0]),
             ),
-            (
+            lambda: (
                 "broadcast_value_2",
                 IndexPutModule(
                     [
@@ -83,13 +80,13 @@ class TestIndexPut(unittest.TestCase):
                 torch.zeros(5, 3, 4),
                 torch.tensor([1.0, 1.0, 1.0, 1.0]),
             ),
-            (
+            lambda: (
                 "accumulate_basic",
                 IndexPutModule([torch.tensor([1, 2]), torch.tensor([0, 1])]),
                 torch.zeros(4, 3),
                 torch.tensor([1.0, 2.0]),
             ),
-            (
+            lambda: (
                 "accumulate_broadcast",
                 IndexPutModule(
                     [
@@ -102,7 +99,7 @@ class TestIndexPut(unittest.TestCase):
                 torch.ones(5, 4, 6),
                 torch.tensor([5.0]),
             ),
-            (
+            lambda: (
                 "dim_0",
                 IndexPutModule(
                     [
@@ -112,7 +109,7 @@ class TestIndexPut(unittest.TestCase):
                 torch.zeros(5, 3, 4),
                 torch.tensor([5.0]),
             ),
-            (
+            lambda: (
                 "dim_1",
                 IndexPutModule(
                     [
@@ -122,7 +119,7 @@ class TestIndexPut(unittest.TestCase):
                 torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
                 torch.tensor([-3.0, -4.0]),
             ),
-            (
+            lambda: (
                 "dim_2",
                 IndexPutModule(
                     [
@@ -132,7 +129,7 @@ class TestIndexPut(unittest.TestCase):
                 torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),
                 torch.tensor([-3.0, -4.0]),
             ),
-            (
+            lambda: (
                 "dim_3",
                 IndexPutModule(
                     [

@@ -424,11 +424,15 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
 
 NNPIErrorCode
 glow::NNPIImporter::addIAExtentionPath(const std::string &extPath) {
-  LOG_AND_RETURN_IF(ERROR, extPath.empty(), "Check if empty IA extension path.",
-                    NNPI_INVALID_PARAM);
+  LOG_AND_RETURN_IF(
+      ERROR, extPath.empty(),
+      strFormat("Check if empty IA extension path: %s", extPath.c_str()),
+      NNPI_INVALID_PARAM);
   std::ifstream extensionFile(extPath.c_str());
-  LOG_AND_RETURN_IF_NOT(ERROR, extensionFile, "IA extension path not found.",
-                        NNPI_INVALID_RESOURCE_NAME);
+  LOG_AND_RETURN_IF_NOT(
+      ERROR, extensionFile,
+      strFormat("IA extension path not found: %s", extPath.c_str()),
+      NNPI_INVALID_RESOURCE_NAME);
   iaExtensionPaths_.push_back(extPath);
   return NNPI_NO_ERROR;
 }
@@ -798,6 +802,31 @@ public:
         nodeValueName(glowFC->getResult()).c_str(),
         nodeValueName(glowFC->getWeights()).c_str(),
         glowFC->getBias() ? nodeValueName(glowFC->getBias()).c_str() : nullptr);
+  }
+};
+
+class ScatterDataNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    LOG(ERROR) << "ScatterND is not fully supported";
+    return NNPI_NOT_IMPLEMENTED;
+
+    // TODO: uncomment when there is full support for ScatterND op.
+    // auto *glowSD = llvm::dyn_cast<ScatterDataNode>(n);
+    // LOG_AND_RETURN_IF_NOT(ERROR, glowSD, "Bad node type",
+    // NNPI_INVALID_PARAM);
+
+    // importer.setUsedTensors({nodeValueName(glowSD->getData()),
+    //                          nodeValueName(glowSD->getIndices()),
+    //                          nodeValueName(glowSD->getSlices())},
+    //                         {nodeValueName(glowSD->getResult())});
+
+    // return nnpiNetworkAddScatterNDOp(
+    //     importer.getNetwork(), glowSD->getName().begin(),
+    //     nodeValueName(glowSD->getData()).c_str(),
+    //     nodeValueName(glowSD->getIndices()).c_str(),
+    //     nodeValueName(glowSD->getSlices()).c_str(),
+    //     nodeValueName(glowSD->getResult()).c_str(), glowSD->getCumulative());
   }
 };
 
@@ -2272,6 +2301,10 @@ public:
     auto *glowLUT = llvm::dyn_cast<NNPILookupTableNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowLUT, "Bad node type", NNPI_INVALID_PARAM);
 
+    importer.setUsedTensors({nodeValueName(glowLUT->getInput()),
+                             nodeValueName(glowLUT->getLookupTable())},
+                            {nodeValueName(glowLUT->getResult())});
+
     NNPILookupDesc lookupDesc;
     lookupDesc.lookupType =
         static_cast<NNPI_LOOKUP_TYPE>(glowLUT->getLookupType());
@@ -2476,6 +2509,7 @@ std::unordered_map<
          AdaptivePoolNodeImporter<glow::AdaptiveAvgPoolNode, NNPI_POOL_AVG>>()},
     {"FullyConnected", glow::make_unique<FullyConnectedNodeImporter>()},
     {"SoftMax", glow::make_unique<SoftMaxNodeImporter>()},
+    {"ScatterData", glow::make_unique<ScatterDataNodeImporter>()},
     {"Save", glow::make_unique<SaveNodeImporter>()},
     {"Relu", glow::make_unique<ReluNodeImporter>()},
     {"PRelu", glow::make_unique<PReluNodeImporter>()},

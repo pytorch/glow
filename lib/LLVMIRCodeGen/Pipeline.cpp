@@ -77,6 +77,8 @@ void LLVMIRGen::updateInlineAttributes(llvm::Module *M) {
     bool dontInline = FF.hasFnAttribute(llvm::Attribute::AttrKind::NoInline);
     bool alwaysInline =
         FF.hasFnAttribute(llvm::Attribute::AttrKind::AlwaysInline);
+    bool optnone = FF.hasFnAttribute(llvm::Attribute::AttrKind::OptimizeNone);
+
     auto inlineAttr = getInlinineAttr(&FF);
     if (inlineAttr != llvm::Attribute::AttrKind::None) {
       DCHECK(inlineAttr == llvm::Attribute::AttrKind::AlwaysInline ||
@@ -94,7 +96,7 @@ void LLVMIRGen::updateInlineAttributes(llvm::Module *M) {
       FF.addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
       continue;
     }
-    if (dontInline) {
+    if (dontInline || optnone) {
       FF.addFnAttr(llvm::Attribute::AttrKind::NoInline);
       continue;
     }

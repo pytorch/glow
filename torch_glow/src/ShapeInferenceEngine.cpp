@@ -14,7 +14,6 @@
 
 DEFINE_string(shapeInferenceOpBlocklist, "", "Ops to skip shape inference");
 DEFINE_int32(max_feature_length, -1, "max feature length");
-DEFINE_int32(max_batch_size, -1, "max batch size");
 
 namespace glow {
 
@@ -237,6 +236,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     }
     case c10::aten::layer_norm: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, layerNorm(inputMetas));
+      break;
+    }
+    case c10::aten::linear: {
+      ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, linear(inputMetas));
       break;
     }
     case c10::aten::stack: {
@@ -1777,10 +1780,10 @@ ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
 
 /*
  * fb::lengths_range(Tensor input, int[]? shape) -> Int,
- * e.g. max_feature_length = 200, max_batch_size = 32
+ * e.g. max_feature_length = 200
  * input: [2, 3]
  * original output: [0, 1, 0, 1, 2]
- * output after update: [0, 1, ..., 200, ] * 32
+ * output after update: [0, 1, ..., 200, ] * 2
  */
 Expected<TensorOutput>
 ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
@@ -1788,21 +1791,13 @@ ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(
       variableMetas.size() == 2,
       strFormat("Expected 2 inputs, got %zu.", variableMetas.size()));
-  RETURN_ERR_IF_NOT(
-      FLAGS_max_batch_size > 0,
-      strFormat("Expected max_batch_size > 0, got %d.", FLAGS_max_batch_size));
-  RETURN_ERR_IF_NOT(FLAGS_max_batch_size >=
-                        variableMetas[0].shape<TensorShape>()[0],
-                    strFormat("Expected max_batch_size > input tensor length, "
-                              "got max_batch_size %d, input tensor length %zu.",
-                              FLAGS_max_batch_size,
-                              variableMetas[0].shape<TensorShape>()[0]));
   RETURN_ERR_IF_NOT(FLAGS_max_feature_length > 0,
                     strFormat("Expected max_feature_length > 0, got %d.",
                               FLAGS_max_feature_length));
 
   TensorOutput output;
-  output.shapeOrIntValues = {FLAGS_max_batch_size * FLAGS_max_feature_length};
+  output.shapeOrIntValues = {variableMetas[0].shape<TensorShape>()[0] *
+                             FLAGS_max_feature_length};
   output.dtype = variableMetas[0].dtype;
   return output;
 }
@@ -1906,6 +1901,32 @@ ShapeInferenceEngine::layerNorm(const MetaStack &variableMetas) {
   const auto &inputShape = variableMetas[0].shape<TensorShape>();
   TensorOutput output;
   output.shapeOrIntValues = inputShape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * aten::linear(Tensor input, Tensor weight, Tensor? bias) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::linear(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected 3 inputs, got %zu.", variableMetas.size()));
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  const auto &weightShape = variableMetas[1].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(inputShape.size() > 0,
+                    "Expected input shape size is larger than 0");
+  RETURN_ERR_IF_NOT(weightShape.size() == 2,
+                    strFormat("Only support weight as 2-d tensor, got %zu.",
+                              weightShape.size()));
+  RETURN_ERR_IF_NOT(
+      inputShape.back() == weightShape[1],
+      "The last dim of input should be the same as 2nd dim of weight");
+  TensorShape outputShape = inputShape;
+  outputShape.back() = weightShape[0];
+  TensorOutput output;
+  output.shapeOrIntValues = outputShape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }

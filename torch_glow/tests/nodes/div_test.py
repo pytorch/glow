@@ -1,19 +1,30 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+from typing import Optional
+
 import torch
 from tests import utils
 
 
 class SimpleDivModule(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, rounding_mode: Optional[str] = None):
         super(SimpleDivModule, self).__init__()
+        self.rounding_mode = rounding_mode
 
     def forward(self, a, b):
-        if b.size() == torch.Size([]):
-            return (a * a).div(b.item())
+        rounding_mode = self.rounding_mode
+        if True:  # until 3rd agr is implemented, then: rounding_mode is None:
+            if b.size() == torch.Size([]):
+                return (a * a).div(b.item())
+            else:
+                c = a.div(b)
+                return c.div(c)
         else:
-            c = a.div(b)
-            return c.div(c)
+            if b.size() == torch.Size([]):
+                return (a * a).div(b.item(), rounding_mode=rounding_mode)
+            else:
+                c = a.div(b, rounding_mode=rounding_mode)
+                return c.div(c, rounding_mode=rounding_mode)
 
 
 class TestDiv(utils.TorchGlowTestCase):
@@ -21,8 +32,44 @@ class TestDiv(utils.TorchGlowTestCase):
         [
             lambda: ("basic", SimpleDivModule(), torch.randn(4), torch.randn(4)),
             lambda: (
+                "basic_rm_true",
+                SimpleDivModule(rounding_mode="true"),
+                torch.randn(4),
+                torch.randn(4),
+            ),
+            lambda: (
+                "basic_rm_trunc",
+                SimpleDivModule(rounding_mode="trunc"),
+                torch.randn(4),
+                torch.randn(4),
+            ),
+            lambda: (
+                "basic_rm_floor",
+                SimpleDivModule(rounding_mode="floor"),
+                torch.randn(4),
+                torch.randn(4),
+            ),
+            lambda: (
                 "broadcast",
                 SimpleDivModule(),
+                torch.randn(8, 3, 4, 2),
+                torch.randn(4, 2),
+            ),
+            lambda: (
+                "broadcast_rm_true",
+                SimpleDivModule(rounding_mode="true"),
+                torch.randn(8, 3, 4, 2),
+                torch.randn(4, 2),
+            ),
+            lambda: (
+                "broadcast_rm_trunc",
+                SimpleDivModule(rounding_mode="trunc"),
+                torch.randn(8, 3, 4, 2),
+                torch.randn(4, 2),
+            ),
+            lambda: (
+                "broadcast_rm_floor",
+                SimpleDivModule(rounding_mode="floor"),
                 torch.randn(8, 3, 4, 2),
                 torch.randn(4, 2),
             ),
