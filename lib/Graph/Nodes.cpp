@@ -85,24 +85,24 @@ Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 
 std::string Constant::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName().str()))
-      .addParam("layout", getLayout())
-      .addParam("output", *getType());
+  db.addParam("Name", quote(getName().str()))
+      .addParam("Layout", getLayout())
+      .addParam("Output", *getType());
   if (!skipUsers) {
-    db.addParam("users", getNumUsers());
+    db.addParam("Users", getNumUsers());
   }
   return db;
 }
 
 std::string Placeholder::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName().str()))
-      .addParam("layout", getLayout())
-      .addParam("output", *getType())
-      .addParam("trainable", isTraining())
-      .addParam("static", isStatic());
+  db.addParam("Name", quote(getName().str()))
+      .addParam("Layout", getLayout())
+      .addParam("Output", *getType())
+      .addParam("Trainable", isTraining())
+      .addParam("Static", isStatic());
   if (!skipUsers) {
-    db.addParam("users", getNumUsers());
+    db.addParam("Users", getNumUsers());
   }
   return db;
 }

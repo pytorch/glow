@@ -2124,12 +2124,12 @@ TEST(Graph, testDumpStructure) {
   K->dump(osN1);
   std::string mesN = K->toString();
   std::string expectMes = R"(Placeholder
-name : "input"
-layout : *
-output : float<4 x 320 x 200 x 100 x 3>
-trainable : 1
-static : 0
-users : 0
+Name : "input"
+Layout : *
+Output : float<4 x 320 x 200 x 100 x 3>
+Trainable : 1
+Static : 0
+Users : 0
 )";
   EXPECT_EQ(mesN, expectMes);
   EXPECT_EQ(mesN, osN1.str());
@@ -2149,19 +2149,19 @@ users : 0
   std::string mesF = F2->toString();
   std::string expectMesF = R"(Graph structure F2:
 TopK
-name : topk
+Name : topk
 Input : float<10 x 10>
 K : 3
-users : 0
+Users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
 Placeholder
-name : "input__1"
-layout : *
-output : float<10 x 10>
-trainable : 1
-static : 1
-users : 1
+Name : "input__1"
+Layout : *
+Output : float<10 x 10>
+Trainable : 1
+Static : 1
+Users : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());
@@ -2174,18 +2174,18 @@ users : 1
   mesF = F2->toString(/* skipUsersForStorage */ true);
   expectMesF = R"(Graph structure F2:
 TopK
-name : topk
+Name : topk
 Input : float<10 x 10>
 K : 3
-users : 0
+Users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
 Placeholder
-name : "input__1"
-layout : *
-output : float<10 x 10>
-trainable : 1
-static : 1
+Name : "input__1"
+Layout : *
+Output : float<10 x 10>
+Trainable : 1
+Static : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());
@@ -2197,26 +2197,26 @@ static : 1
   std::string mesM = MD.toString();
   std::string expectMesM = R"(Module structure:
 Constant
-name : "dummy"
-layout : *
-output : float<1 x 1>
-users : 0
+Name : "dummy"
+Layout : *
+Output : float<1 x 1>
+Users : 0
 
 Placeholder
-name : "input__1"
-layout : *
-output : float<10 x 10>
-trainable : 1
-static : 1
-users : 1
+Name : "input__1"
+Layout : *
+Output : float<10 x 10>
+Trainable : 1
+Static : 1
+Users : 1
 
 Placeholder
-name : "input"
-layout : *
-output : float<4 x 320 x 200 x 100 x 3>
-trainable : 1
-static : 0
-users : 0
+Name : "input"
+Layout : *
+Output : float<4 x 320 x 200 x 100 x 3>
+Trainable : 1
+Static : 0
+Users : 0
 
 Function : F2
 Function : F
