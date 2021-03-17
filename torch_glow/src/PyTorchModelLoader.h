@@ -749,6 +749,13 @@ private:
   /// \returns error on failure.
   Error loadMin(const torch::jit::Node *ptNode);
 
+  /// Load Clamp's min or max as a glow NodeValue.
+  /// Various types are supported.
+  /// \returns error on failure.
+  Expected<NodeValue> getClampMinMax(const torch::jit::Value *value,
+                                     const glow::NodeValue input,
+                                     const std::string name);
+
   /// Load a PyTorch clamp node.
   /// \returns error on failure.
   Error loadClamp(const torch::jit::Node *ptNode);

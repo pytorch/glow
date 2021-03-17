@@ -5155,6 +5155,34 @@ Error PyTorchModelLoader::loadAvgPool(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
+Expected<NodeValue>
+PyTorchModelLoader::getClampMinMax(const torch::jit::Value *value,
+                                   const glow::NodeValue input,
+                                   const std::string name) {
+  if (hasGlowIValueForValue(value, true)) {
+    glow::GlowIValue *glowIValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(glowIValue, getGlowIValueForValue(value));
+    if (glowIValue->isDouble()) {
+      double vDouble;
+      float vFloat;
+      ASSIGN_VALUE_OR_RETURN_ERR(vDouble, iValToDouble(glowIValue));
+      ASSIGN_VALUE_OR_RETURN_ERR(vFloat, to32Bit(vDouble));
+      glow::NodeValue SN = F_.createSplat(name, input.getType(), vFloat);
+      return SN;
+    } else if (glowIValue->isInt()) {
+      int vInt;
+      ASSIGN_VALUE_OR_RETURN_ERR(vInt, iValToInt(glowIValue));
+      glow::NodeValue SN = F_.createSplat(name, input.getType(), vInt);
+      return SN;
+    } else {
+      return MAKE_ERR(strFormat("Unexpected Min/Max dtype: %s",
+                                glowIValue->getTagString()));
+    }
+  } else {
+    return nullptr;
+  }
+}
+
 Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -5164,26 +5192,11 @@ Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[ClampInputs::input]));
 
-  double minDouble = 0;
-  float min = 0;
-  NodeValue minSN = nullptr;
-
-  if (hasGlowIValueForValue(inputs[ClampInputs::min], true)) {
-    ASSIGN_VALUE_OR_RETURN_ERR(minDouble, iValToDouble(getGlowIValueForValue(
-                                              inputs[ClampInputs::min])));
-    ASSIGN_VALUE_OR_RETURN_ERR(min, to32Bit(minDouble));
-    minSN = F_.createSplat("minValue", input.getType(), min);
-  }
-
-  double maxDouble = 0;
-  float max = 0;
-  NodeValue maxSN = nullptr;
-  if (hasGlowIValueForValue(inputs[ClampInputs::max], true)) {
-    ASSIGN_VALUE_OR_RETURN_ERR(maxDouble, iValToDouble(getGlowIValueForValue(
-                                              inputs[ClampInputs::max])));
-    ASSIGN_VALUE_OR_RETURN_ERR(max, to32Bit(maxDouble));
-    maxSN = F_.createSplat("maxValue", input.getType(), max);
-  }
+  NodeValue minSN, maxSN;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      minSN, getClampMinMax(inputs[ClampInputs::min], input, "minValue"));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      maxSN, getClampMinMax(inputs[ClampInputs::max], input, "maxValue"));
 
   NodeValue output = input;
   if (minSN) {
