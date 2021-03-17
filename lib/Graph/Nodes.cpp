@@ -2581,9 +2581,8 @@ bool DistributeFpnProposalsNode::verify() const {
     isValid &= expectCompareTrue(
         "Output Rois and input must have same first dimension",
         getNthResult(i).dims()[0], input.dims()[0], this);
-    isValid &=
-        expectCompareTrue("Output Rois should have box dimension 5",
-                          getNthResult(i).dims()[1], dim_t(5), this);
+    isValid &= expectCompareTrue("Output Rois should have box dimension 5",
+                                 getNthResult(i).dims()[1], dim_t(5), this);
   }
 
   isValid &= checkType(
