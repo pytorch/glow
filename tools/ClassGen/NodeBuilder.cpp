@@ -305,7 +305,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
 void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "\nstd::string " << name_ << "Node::getDebugDesc() const {\n"
      << "  DescriptionBuilder db(getKindName());\n"
-     << "  db.addParam(\"name\", truncateString(getName(), 100));\n";
+     << "  db.addParam(\"name\", separateString(getName(), 100, \"\\n\"));\n";
 
   os << "  if (hasPredicate()) db.addParam(\"Predicate\", \"Yes\");\n";
 

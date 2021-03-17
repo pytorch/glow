@@ -74,6 +74,12 @@ inline std::string truncateString(const std::string &str, size_t length,
   return (str.size() > length) ? (str.substr(0, length) + suffix) : str;
 }
 
+/// \returns a string obtained from the input string \p str by adding a
+/// delimiter string \p delimiter after each block of \p length characters.
+/// After the last block no delimiter is added.
+std::string separateString(const std::string &str, size_t length,
+                           const std::string &delimiter = "\n");
+
 /// \returns the escaped content of string \p str.
 /// The char '\n' becomes '\'+'n' and quotes are handled correctly.
 std::string escapeDottyString(const std::string &str);
