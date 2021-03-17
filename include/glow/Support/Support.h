@@ -65,6 +65,15 @@ Stream &operator<<(Stream &os, const llvm::ArrayRef<E> list) {
   return os;
 }
 
+/// \returns a truncated version of the input string \p str to a maximum
+/// length of \p length. If the string effectively needs truncation then a
+/// given \p suffix will pe appended to the truncated string to signal that
+/// string was actually truncated.
+inline std::string truncateString(const std::string &str, size_t length,
+                                  const std::string &suffix = "...") {
+  return (str.size() > length) ? (str.substr(0, length) + suffix) : str;
+}
+
 /// \returns the escaped content of string \p str.
 /// The char '\n' becomes '\'+'n' and quotes are handled correctly.
 std::string escapeDottyString(const std::string &str);

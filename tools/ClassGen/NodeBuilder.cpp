@@ -305,7 +305,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
 void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "\nstd::string " << name_ << "Node::getDebugDesc() const {\n"
      << "  DescriptionBuilder db(getKindName());\n"
-     << "  db.addParam(\"name\", getName());\n";
+     << "  db.addParam(\"Name\", truncateString(getName(), 100));\n";
 
   os << "  if (hasPredicate()) db.addParam(\"Predicate\", \"Yes\");\n";
 
@@ -334,7 +334,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
          << "())\n";
     }
   }
-  os << "    .addParam(\"users\", getNumUsers());\n";
+  os << "    .addParam(\"Users\", getNumUsers());\n";
 
   for (const auto &mem : members_) {
     if ((mem.first).type != MemberType::VectorNodeValue) {
