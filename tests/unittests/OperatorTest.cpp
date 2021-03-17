@@ -19406,6 +19406,66 @@ TEST_P(OperatorStatelessTest, LayerNorm_Float16) {
                             parCloneCountOpt);
 }
 
+/// Mock Test LayerNorm with Float32Ty.
+TEST_P(OperatorStatelessTest, LayerNormMock_Float32) {
+  CHECK_IF_ENABLED();
+  /*
+    WEIGHT = [2.4180, 2.2070, 2.3184, 0.7378, 0.7734, 0.7520]
+    BIAS = [0.1567, 0.0308, 0.0166, 0.2944, 0.2759, 0.5649]
+    INPUT = [
+              1.0,
+              2.0,
+              3.0,
+              4.0,
+              5.0,
+              6.0,
+            ]
+    TARGET = [
+              -3.382883310317993,
+              -1.907626986503601,
+              -0.662156879901886,
+              0.5104053020477295,
+              0.9551836252212524,
+              1.6657130718231201,
+             ]
+  */
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
+
+  PlaceholderBindings bindings;
+
+  bindings.allocate(input)->getHandle() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+  };
+  Tensor scaleT(ElemKind::FloatTy, {6});
+  scaleT.getHandle() = {2.4180f, 2.2070f, 2.3184f, 0.7378f, 0.7734f, 0.7520f};
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {6});
+  biasT.getHandle() = {0.1567f, 0.0308f, 0.0166f, 0.2944f, 0.2759f, 0.5649f};
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+
+  auto *res = F->createSave("save", LNN);
+  bindings.allocate(res->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(ElemKind::FloatTy, {1, 6});
+  expected.getHandle() = {
+      -3.382883310317993f, -1.907626986503601f, -0.662156879901886f,
+      0.5104053020477295f, 0.9551836252212524f, 1.6657130718231201f,
+  };
+
+  EXPECT_TRUE(expected.isEqual(*bindings.get(res->getPlaceholder())));
+}
+
 /// Test LayerNorm with BFloat16Ty.
 TEST_P(OperatorStatelessTest, LayerNorm_BFloat16) {
   CHECK_IF_ENABLED();
