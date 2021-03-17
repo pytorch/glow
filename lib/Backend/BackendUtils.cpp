@@ -182,8 +182,6 @@ bool isInput(const Placeholder *PH, const IRFunction &F) {
   return isInput(weight);
 }
 
-/// \returns true if \p PH is an output Placeholder for any function in \p
-/// funcs.
 bool isOutput(const Placeholder *PH,
               const std::vector<const Function *> &funcs) {
   for (const auto &f : funcs) {

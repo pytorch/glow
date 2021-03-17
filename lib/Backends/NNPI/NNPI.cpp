@@ -103,11 +103,23 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   bool isNodePrecisionSupported = false;
   bool isNodeHasAnySupport = true;
   switch (NI.getKind()) {
-  // General math fp32/fp16/i8.
+  // General math fp32/fp16/i8/int32.
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
+  case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Float16Ty,
+         ElemKind::Int8QTy, ElemKind::Int64ITy});
+    break;
+  case Kinded::Kind::DivNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int64ITy, ElemKind::Int32ITy});
+    break;
+
+  // General math fp32/fp16/i8.
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ReplaceNaNNodeKind:
@@ -166,10 +178,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          ElemKind::Int8QTy, ElemKind::UInt8QTy});
     break;
 #endif // NNPI > 1.1
-  case Kinded::Kind::MulNodeKind:
-    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
-    break;
   case Kinded::Kind::LayerNormalizationNodeKind: {
     auto scaleType = NI.getInElemTy(LayerNormalizationNode::ScaleIdx);
     auto biasType = NI.getInElemTy(LayerNormalizationNode::BiasIdx);
@@ -226,11 +234,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     // with the same sign as the divisor instead of the dividend.
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int64ITy, ElemKind::Int32ITy});
-    break;
-  case Kinded::Kind::DivNodeKind:
-    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy});
     break;
   // Data transfer fp32/fp16/i8/i32/i64/bool.
   case Kinded::Kind::SaveNodeKind:
@@ -418,7 +421,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
 
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy});
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
   case Kinded::Kind::CmpLTENodeKind:
   case Kinded::Kind::CmpEQNodeKind:
@@ -608,7 +611,15 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
             {ElemKind::FloatTy}, {SparseToDenseNode::IndicesIdx}) &&
-        (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
+        (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int32ITy ||
+         NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::ScatterDataNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
+                                               {ScatterDataNode::IndicesIdx}) &&
+        (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy ||
+         NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::SoftMaxNodeKind:
     isNodePrecisionSupported =
@@ -616,6 +627,13 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
             {SoftMaxNode::SelectedIdx}) &&
         (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::LogSoftMaxNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {LogSoftMaxNode::SelectedIdx}) &&
+        (NI.getInElemTy(LogSoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::LengthsRangeFillNodeKind:
     isNodePrecisionSupported =
@@ -674,7 +692,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   if (isNodeSupported(NI) != NodeSupportLevels::PRECISION_SUPPORTED) {
-    llvm::outs() << "Unsupported op:\n" << NI.getDebugDesc() << "\n";
+    LOG(ERROR) << "Unsupported op:\n" << NI.getDebugDesc();
     return false;
   }
   return true;
@@ -1416,7 +1434,14 @@ bool NNPIBackend::lowerRequiredNodes(Function *F,
       }
       break;
     }
-
+    case Kinded::Kind::GeluNodeKind: {
+      auto it = cctx.backendOpts.backendSpecificOpts.find(
+          std::string("NNPILowerAllGelu"));
+      if (it != cctx.backendOpts.backendSpecificOpts.end()) {
+        shouldLowerNode |= (it->second == "true");
+      }
+      break;
+    }
     case Kinded::Kind::ReshapeNodeKind: {
       shouldLowerNode = false;
       ReshapeNode *RS = llvm::cast<ReshapeNode>(&N);
@@ -1501,12 +1526,28 @@ bool quantizeLayernormScaleAndBias(Function *F) {
       continue;
     }
 
-    auto gammaTQP = quantization::getTensorQuantizationParams(
-        gammaC->getPayload(), quantization::Schema::Asymmetric,
-        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ gamma.dims()[0]);
-    auto betaTQP = quantization::getTensorQuantizationParams(
-        betaC->getPayload(), quantization::Schema::Asymmetric,
-        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    std::vector<TensorQuantizationParams> gammaTQP;
+    std::vector<TensorQuantizationParams> betaTQP;
+    if (gammaC->getElementType() == ElemKind::FloatTy) {
+      gammaTQP = quantization::getTensorQuantizationParams(
+          gammaC->getPayload(), quantization::Schema::Asymmetric,
+          ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ gamma.dims()[0]);
+      betaTQP = quantization::getTensorQuantizationParams(
+          betaC->getPayload(), quantization::Schema::Asymmetric,
+          ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    } else {
+      gammaTQP = quantization::getTensorQuantizationParams(
+          gammaC->getPayload().getCopyConvertedToType(ElemKind::FloatTy),
+          quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ gamma.dims()[0]);
+      betaTQP = quantization::getTensorQuantizationParams(
+          betaC->getPayload().getCopyConvertedToType(ElemKind::FloatTy),
+          quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    }
+
     auto *gammaQ = F->createQuantize(
         "layernorm_scale_quant", gamma,
         F->getParent()->uniqueType(ElemKind::Int8QTy, gamma.dims(),
@@ -1780,10 +1821,9 @@ static bool removeClipsBlockingFusion(Function *F) {
 Expected<bool>
 NNPIBackend::transformPostOptPipeline(Function *F,
                                       CompilationContext &cctx) const {
-  bool parallelized;
-  ASSIGN_VALUE_OR_RETURN_ERR(parallelized,
-                             parallelizeFunction(F, cctx.backendOpts));
-  if (parallelized) {
+  bool changed;
+  ASSIGN_VALUE_OR_RETURN_ERR(changed, parallelizeFunction(F, cctx.backendOpts));
+  if (changed) {
     // Use the normal NNPI-specific optimization pipeline, but without sinking
     // conversions, because we just parallelized and so don't want to undo any
     // parallelization we performed on quantizes/dequantizes.
@@ -1801,7 +1841,13 @@ NNPIBackend::transformPostOptPipeline(Function *F,
 
     cctx.optimizationOpts.skipConcatMerging = restoreMerge;
   }
-  return parallelized;
+
+  // Swap existing nodes for custom NNPI-specific LUT nodes here. This way,
+  // the parallelization can occur on Glow nodes prior to the swap.
+  bool changedFromSwap;
+  ASSIGN_VALUE_OR_RETURN_ERR(changedFromSwap, swapInSpecializedLUT(F, cctx));
+  changed = changed | changedFromSwap;
+  return changed;
 }
 
 Expected<bool> NNPIBackend::transformPostLowering(
@@ -1822,7 +1868,8 @@ Expected<bool> NNPIBackend::transformPostLowering(
     return false;
   }
 
-  bool changed = removeClipsBlockingFusion(F);
+  bool changed = false;
+  changed |= removeClipsBlockingFusion(F);
   changed |= padKernelToStride(F);
   changed |= lowerEmbeddingToGather(F);
   changed |= quantizeLayernormScaleAndBias(F);

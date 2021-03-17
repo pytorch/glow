@@ -92,6 +92,11 @@ public:
   /// device per network.
   unsigned getContextCount(CompilationContext &cctx) const override;
 
+  /// Swaps in specialized lookup tables for all supported nodes in \p F.
+  /// \returns whether the function was modified.
+  Expected<bool> swapInSpecializedLUT(Function *F,
+                                      CompilationContext &cctx) const;
+
   /// Estimate performance cost for a given Node \p N.
   /// \returns a unitless value to be used when comparing to other estimates.
   /// or -1 if no estimate could be generated.

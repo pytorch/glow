@@ -683,7 +683,7 @@ void NodeBuilder::emitExportMethods(std::ostream &os) const {
   // Add the node. Note that Glow custom ops are prefixed with "Glow_"
   os << "  opProto = graph.add_node();\n";
   os << "  opProto->set_op_type(\"Glow_" << name_ << "\");\n";
-  os << "  opProto->set_name(N__->getName());\n";
+  os << "  opProto->set_name(glow::legalizeName(N__->getName()));\n";
 
   // Add all of the node's inputs.
   for (const auto &op : nodeInputs_) {

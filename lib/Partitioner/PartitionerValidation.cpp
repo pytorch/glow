@@ -59,7 +59,6 @@ Error resourceCountValidation(
     auto logicalDeviceList = partitions.getLogicalDeviceIDList(func);
     auto backendName = partitions.getPartitionBackendName(func);
     auto graphMem = partitions.getGraphMemInfo(func);
-    auto inputCount = graphMem.inputCount;
     if (!availableInputResources) {
       availableInputResources = backendMap.at(backendName).inputCountMax;
     }
@@ -68,7 +67,10 @@ Error resourceCountValidation(
       if (!logicalIDInputResources.count(dev)) {
         logicalIDInputResources[dev] = 0;
       }
-      logicalIDInputResources[dev] += inputCount;
+      // Scale the number of inputs from peers by the context count, as we make
+      // that many copies of input peer resources.
+      logicalIDInputResources[dev] +=
+          graphMem.inputFromPeerCount * graphMem.contextCount;
     }
   }
 
@@ -81,7 +83,7 @@ Error resourceCountValidation(
       if (resourceCount.second > availableInputResources) {
         return MAKE_ERR(
             llvm::formatv(
-                "Partition failed: the resource count usage({0}) of one "
+                "Partition failed: the resource count usage ({0}) of one "
                 "partition exceeds "
                 "the available resource count ({1}).",
                 resourceCount.second, availableInputResources)

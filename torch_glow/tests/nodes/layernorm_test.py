@@ -14,6 +14,20 @@ class SimpleLayerNormModule(torch.nn.Module):
         return F.layer_norm(input, self.normalized_shape, weight, bias)
 
 
+class OneLayerModule(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.normalized_shape = (6,)
+        self.weight = torch.Tensor([2.4180, 2.2070, 2.3184, 0.7378, 0.7734, 0.7520])
+        self.bias = torch.Tensor([0.1567, 0.0308, 0.0166, 0.2944, 0.2759, 0.5649])
+        self.eps = 1e-5
+
+    def forward(self, tensor):
+        return F.layer_norm(
+            tensor, self.normalized_shape, self.weight, self.bias, self.eps
+        )
+
+
 class LayerNormNHCWLayout(torch.nn.Module):
     def __init__(self, normalized_shape, stride=1, padding=0, dilation=1, groups=1):
         super(LayerNormNHCWLayout, self).__init__()
@@ -142,3 +156,26 @@ class TestLayerNorm(utils.TorchGlowTestCase):
             fusible_ops={"aten::layer_norm", "aten::permute", "aten::_convolution"},
             accept_all_layouts=True,
         )
+
+    def test_layernorm_output(self):
+        """Test with mock inputs to verify that output is as expected"""
+
+        module = OneLayerModule()
+        module_inputs = (torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]),)
+        loc_out = module(*module_inputs)
+        expected_output = torch.tensor(
+            [
+                [
+                    -3.382883310317993,
+                    -1.907626986503601,
+                    -0.662156879901886,
+                    0.5104053020477295,
+                    0.9551836252212524,
+                    1.6657130718231201,
+                ]
+            ]
+        )
+
+        tolerance = 1e-04
+
+        assert tolerance > torch.norm(loc_out - expected_output)

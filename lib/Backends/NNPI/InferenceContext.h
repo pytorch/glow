@@ -45,6 +45,9 @@ private:
   NNPIInferCommand inferCmd_;
   NNPICommandList commandList_;
   std::vector<NNPICommandConfig> cmdConfigs_;
+  uint64_t inferIter_ = 0; // Tracks the number of inferences launched using
+                           // this inference context. Together the inferCmd_
+                           // and inferIter_ can uniquely identify an infer.
 
   /// Set of inputs that can be partial tensors.
   const std::unordered_set<const Placeholder *> *partialInputs_;

@@ -279,6 +279,15 @@ private:
   template <typename ElemTy>
   void fwdElementMinInstArithmeticImpl(const ElementMinInst *I);
 
+  template <typename ElemTy>
+  void fwdElementBitwiseOrInstImpl(const ElementBitwiseOrInst *I);
+
+  template <typename ElemTy>
+  void fwdElementBitwiseXorInstImpl(const ElementBitwiseXorInst *I);
+
+  template <typename ElemTy>
+  void fwdElementBitwiseAndInstImpl(const ElementBitwiseAndInst *I);
+
   template <typename ElemTy, typename InstKind>
   void fwdUnaryArithmeticImpl(const InstKind *I,
                               std::function<float(float)> func);
@@ -342,7 +351,7 @@ private:
                                          const ShapeVector &eDestDims);
 
   template <typename ElemTy>
-  void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,
+  void fwdCumSumInstImpl(Value *input, Value *dest, int64_t dim, bool exclusive,
                          bool reverse);
 
   template <typename ElemTy>

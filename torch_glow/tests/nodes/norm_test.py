@@ -50,3 +50,12 @@ class TestNorm(utils.TorchGlowTestCase):
             torch.arange(16, dtype=torch.float).reshape(2, 2, 2, 2),
             fusible_ops={"aten::frobenius_norm"},
         )
+
+    def test_norm_keepdim(self):
+        """Basic test of the PyTorch norm Node on Glow."""
+
+        utils.compare_tracing_methods(
+            SimpleNormModule(dim=[1], keepdim=True),
+            torch.arange(16, dtype=torch.float).reshape(2, 4, 2),
+            fusible_ops={"aten::frobenius_norm"},
+        )

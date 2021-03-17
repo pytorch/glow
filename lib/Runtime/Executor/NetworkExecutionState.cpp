@@ -82,7 +82,8 @@ void NetworkExecutionState::bind(std::unique_ptr<ExecutionContext> resultCtx,
       for (const auto &pair : externalIOBindings) {
         const auto it = externalPlaceholdersIdx_.find(pair.first);
         CHECK(it != externalPlaceholdersIdx_.end())
-            << "Cannot match extenral placeholder.";
+            << "Cannot match external placeholder: "
+            << pair.first->getDebugDesc();
         ioIdxMapping_.emplace_back(it->second);
       }
     }
