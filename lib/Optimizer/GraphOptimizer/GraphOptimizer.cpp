@@ -1049,6 +1049,33 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       }
     }
 
+    // Sink Transpose below Slice if it can be folded with another Transpose.
+    // The Transpose will be folded by another pass.
+    if (auto *SN = dyn_cast<SliceNode>(node)) {
+      auto *TN = dyn_cast<TransposeNode>(SN->getInput());
+      auto *outputTN =
+          SN->hasOneUse()
+              ? dyn_cast<TransposeNode>(SN->getUsers().front().getUser())
+              : nullptr;
+      if (TN && outputTN) {
+        auto dims = SN->getResult().dims();
+        auto starts = SN->getStart();
+        std::vector<dim_t> newDims;
+        std::vector<dim_t> newStarts;
+        for (auto s : outputTN->getShuffle()) {
+          newDims.push_back(dims[s]);
+          newStarts.push_back(starts[s]);
+        }
+        auto *newSN = F->createSlice(SN->getName(), TN->getInput(), newStarts,
+                                     F->getParent()->uniqueTypeWithNewShape(
+                                         SN->getResult().getType(), newDims));
+        auto *newTN =
+            F->createTranspose(TN->getName(), newSN, TN->getShuffle());
+        SN->getResult().replaceAllUsesOfWith(newTN);
+        changed = true;
+      }
+    }
+
     // Sink Clip below Reshape nodes.
     if (auto *RN = dyn_cast<ReshapeNode>(node)) {
       auto *CN = dyn_cast<ClipNode>(RN->getInput());

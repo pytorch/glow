@@ -4052,6 +4052,74 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
   EXPECT_EQ(CSN->getKernel(), 3);
 }
 
+/// Test Transposes sinking below Slice.
+TEST_F(GraphOptz, sinkTransposeBelowSlice) {
+  const dim_t inputDims[] = {2, 8, 8, 4};
+  const dim_t sliceDims[] = {2, 4, 5, 3};
+  const dim_t sliceStarts[] = {0, 0, 2, 1};
+  const dim_t newDims[] = {2, 5, 3, 4};
+  const dim_t newStarts[] = {0, 2, 1, 0};
+
+  Node *K =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  K = F_->createTranspose("in_transpose", K, NHWC2NCHW);
+  K = F_->createSlice("slice", K, sliceStarts,
+                      mod_.uniqueType(ElemKind::FloatTy, sliceDims));
+  K = F_->createTranspose("out_transpose", K, NCHW2NHWC);
+  auto *save = F_->createSave("ret", K);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Only Slice node should remain.
+  ASSERT_EQ(F_->getNodes().size(), 2);
+
+  // Check if Transposes are removed
+  auto *SN = llvm::dyn_cast<SliceNode>(save->getInput().getNode());
+  ASSERT_NE(nullptr, SN);
+
+  // Check dimensions of new Slice node.
+  EXPECT_EQ(SN->getResult().dims(), llvm::makeArrayRef(newDims));
+  EXPECT_EQ(SN->getStart(), llvm::makeArrayRef(newStarts));
+}
+
+/// Test Transpose elimination across circular padding pattern.
+TEST_F(GraphOptz, sinkTransposeBelowCircularPadding) {
+  const dim_t inputDims[] = {2, 8, 8, 4};
+
+  auto *inPH =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  auto *inT = F_->createTranspose("in_transpose", inPH, NHWC2NCHW);
+  auto *S1 = F_->createSlice("slice1", inT, {0, 0, 0, 0},
+                             mod_.uniqueType(ElemKind::FloatTy, {2, 4, 8, 1}));
+  auto *S2 = F_->createSlice("slice2", inT, {0, 0, 0, 6},
+                             mod_.uniqueType(ElemKind::FloatTy, {2, 4, 8, 1}));
+  auto *C = F_->createConcat("concat", {S2, inT, S1}, 3);
+  auto *outT = F_->createTranspose("out_transpose", C, NCHW2NHWC);
+  auto *save = F_->createSave("ret", outT);
+
+  EXPECT_EQ(F_->getNodes().size(), 6);
+
+  // Eliminate the transposes.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Only Slices and Concat should remain.
+  ASSERT_EQ(F_->getNodes().size(), 4);
+
+  // Check if Transposes are removed
+  auto *CN = llvm::dyn_cast<ConcatNode>(save->getInput().getNode());
+  ASSERT_NE(nullptr, CN);
+  ASSERT_EQ(3, CN->getNumInputs());
+  auto *S2N = llvm::dyn_cast<SliceNode>(CN->getNthInput(0).getNode());
+  ASSERT_NE(nullptr, S2N);
+  auto *S1N = llvm::dyn_cast<SliceNode>(CN->getNthInput(2).getNode());
+  ASSERT_NE(nullptr, S1N);
+
+  ASSERT_EQ(inPH, S2N->getInput().getNode());
+  ASSERT_EQ(inPH, S1N->getInput().getNode());
+}
+
 /// Test BatchNorm sinking below Slice.
 TEST_F(GraphOptz, sinkBatchNormBelowSlice) {
   auto *inputTy = mod_.uniqueType(ElemKind::FloatTy, {1, 10, 10, 3});
