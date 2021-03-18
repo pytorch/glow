@@ -532,8 +532,9 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
 
 // Preprocess jit module to prepare for lowering. Here we leverage JIT freeze
 // API to cleanup the IR after IR rewrites.
-void modelPreprocessing(torch::jit::Module &model) {
-  auto graph = model.get_method("forward").function().graph();
+void modelPreprocessing(torch::jit::Module &model,
+                        const std::string method_name) {
+  auto graph = model.get_method(method_name).function().graph();
 
   torch::jit::CanonicalizeOps(graph);
   detail::rewriteQuantizedLinear(graph);
@@ -547,8 +548,9 @@ void modelPreprocessing(torch::jit::Module &model) {
 void glowAOTFusionWithShapeInference(torch::jit::Module &model,
                                      const InputMetaStack &metaStack,
                                      runtime::DeferredWeightLoader *loader,
-                                     const PyTorchLoaderSettings &settings) {
-  auto graph = model.get_method("forward").function().graph();
+                                     const PyTorchLoaderSettings &settings,
+                                     const std::string method_name) {
+  auto graph = model.get_method(method_name).function().graph();
 
   // create some fake inputs to run shape inference.
   // Usually users provide one set of inputs for the entire
@@ -642,18 +644,20 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
 
 void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    runtime::DeferredWeightLoader *loader,
-                   const PyTorchLoaderSettings &settings) {
+                   const PyTorchLoaderSettings &settings,
+                   const std::string method_name) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
-  modelPreprocessing(model);
+  modelPreprocessing(model, method_name);
 
   if (FLAGS_inferShapeForCompilation) {
-    return glowAOTFusionWithShapeInference(model, metaStack, loader, settings);
+    return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
+                                           method_name);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
   // future we may need to support multiple graphs.
-  auto graph = model.get_method("forward").function().graph();
+  auto graph = model.get_method(method_name).function().graph();
 
   c10::Symbol symbol = glow::getGlowSymbol(graph);
   glow::registerGlowOp(symbol);
