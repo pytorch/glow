@@ -2124,7 +2124,7 @@ TEST(Graph, testDumpStructure) {
   K->dump(osN1);
   std::string mesN = K->toString();
   std::string expectMes = R"(Placeholder
-Name : "input"
+Name : input
 Layout : *
 Output : float<4 x 320 x 200 x 100 x 3>
 Trainable : 1
@@ -2156,7 +2156,7 @@ Users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
 Placeholder
-Name : "input__1"
+Name : input__1
 Layout : *
 Output : float<10 x 10>
 Trainable : 1
@@ -2181,7 +2181,7 @@ Users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
 Placeholder
-Name : "input__1"
+Name : input__1
 Layout : *
 Output : float<10 x 10>
 Trainable : 1
@@ -2197,13 +2197,13 @@ Static : 1
   std::string mesM = MD.toString();
   std::string expectMesM = R"(Module structure:
 Constant
-Name : "dummy"
+Name : dummy
 Layout : *
 Output : float<1 x 1>
 Users : 0
 
 Placeholder
-Name : "input__1"
+Name : input__1
 Layout : *
 Output : float<10 x 10>
 Trainable : 1
@@ -2211,7 +2211,7 @@ Static : 1
 Users : 1
 
 Placeholder
-Name : "input"
+Name : input
 Layout : *
 Output : float<4 x 320 x 200 x 100 x 3>
 Trainable : 1

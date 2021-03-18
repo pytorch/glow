@@ -65,15 +65,6 @@ Stream &operator<<(Stream &os, const llvm::ArrayRef<E> list) {
   return os;
 }
 
-/// \returns a truncated version of the input string \p str to a maximum
-/// length of \p length. If the string effectively needs truncation then a
-/// given \p suffix will pe appended to the truncated string to signal that
-/// string was actually truncated.
-inline std::string truncateString(const std::string &str, size_t length,
-                                  const std::string &suffix = "...") {
-  return (str.size() > length) ? (str.substr(0, length) + suffix) : str;
-}
-
 /// \returns a string obtained from the input string \p str by adding a
 /// delimiter string \p delimiter after each block of \p length characters.
 /// After the last block no delimiter is added.
