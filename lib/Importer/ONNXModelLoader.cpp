@@ -1454,13 +1454,18 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
         } else if (stepC->getElementType() == ElemKind::Int32ITy) {
           helperSetter<int32_t>(stepC, step);
         } else {
-          RETURN_ERR_IF_NOT(false,
-                            opErrMsg(op, strFormat("Step Tensor has unsupported type '%s'", stepC->getType()->getElementName().str().c_str())));
+          RETURN_ERR_IF_NOT(
+              false,
+              opErrMsg(
+                  op,
+                  strFormat("Step Tensor has unsupported type '%s'",
+                            stepC->getType()->getElementName().str().c_str())));
         }
 
         // Step is interpreted 1 as default.
         for (size_t i = 0; i < step.size(); i++) {
-          RETURN_ERR_IF_NOT(step[i] == 1, opErrMsg(op, "step!=1 is currently not supported"));
+          RETURN_ERR_IF_NOT(step[i] == 1,
+                            opErrMsg(op, "step!=1 is currently not supported"));
         }
       }
     }

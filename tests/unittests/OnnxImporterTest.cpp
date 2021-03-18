@@ -2757,7 +2757,8 @@ TEST_F(OnnxImporterTest, importSliceWithStep) {
 }
 
 TEST_F(OnnxImporterTest, importSliceWithUnsupportedStep) {
-  importSliceTest("sliceWithUnsupportedStep.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+  importSliceTest("sliceWithUnsupportedStep.onnxtxt", "data",
+                  {2, 3, 3, 3} /* input */,
                   {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
                   {2, 1, 2, 2} /* output */, true);
 }
