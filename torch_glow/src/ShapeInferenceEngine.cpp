@@ -312,11 +312,14 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       shapeMap_[node->output()].intValue = std::move(tensorListOutput.shape[0]);
       shapeMap_[node->output()].dtype = tensorListOutput.dtype;
     }
-  } else if (symbol == "fb::glow_embedding_bag" ||
-             symbol == "fb::xl_embedding_bag") {
+  } else if (symbol == "fb::glow_embedding_bag") {
     shapeMap_[node->output()].listOfShape.emplace_back(
         std::move(tensorOutput.shapeOrIntValues));
     shapeMap_[node->output()].dtype = tensorOutput.dtype;
+  } else if (symbol == "fb::xl_embedding_bag") {
+    shapeMap_[node->output(0)].listOfShape.emplace_back(
+        std::move(tensorOutput.shapeOrIntValues));
+    shapeMap_[node->output(0)].dtype = tensorOutput.dtype;
   } else if (kind == c10::aten::embedding_bag ||
              symbol == "fb::simple_embedding_bag_sum") {
     shapeMap_[node->output(0)].listOfShape.emplace_back(
@@ -1471,19 +1474,19 @@ ShapeInferenceEngine::xlEmbeddingBag(const MetaStack &variableMetas) {
 
   const auto &indicesShape = variableMetas[1].shape<TensorShape>();
 
-  const auto &offsetSahpe = variableMetas[2].shape<TensorShape>();
+  const auto &offsetShape = variableMetas[2].shape<TensorShape>();
 
-  int64_t embeddingDim = variableMetas[8].intValue[0];
+  int64_t embeddingDim = variableMetas[9].intValue[0];
 
   RETURN_ERR_IF_NOT(
       indicesShape.size() == 1,
       strFormat("Expected 1D input, got %zu.", indicesShape.size()));
 
   RETURN_ERR_IF_NOT(
-      offsetSahpe.size() == 1,
-      strFormat("Expected 1D offset, got %zu.", offsetSahpe.size()));
+      offsetShape.size() == 1,
+      strFormat("Expected 1D offset, got %zu.", offsetShape.size()));
 
-  shape = {offsetSahpe[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+  shape = {offsetShape[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
            embeddingDim};
 
   TensorOutput output;
