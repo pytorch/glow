@@ -1015,12 +1015,9 @@ struct GlowEmbeddingBagInputs {
 };
 
 /// Indexes of fb::xl_embedding_bag inputs.
-/// TODO: Add pruned_weights and compressed_indices_mapping_id
-///       for pruned embeddding bag, refer to
-///       https://fburl.com/diffusion/oms3byed
 struct XLEmbeddingBagInputs {
   enum {
-    weight_id = 0,
+    weight_id,
     indices,
     offsets,
     scale_grad_by_freq,
@@ -6718,7 +6715,7 @@ Error PyTorchModelLoader::loadGlowEmbeddingBag(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadXLEmbeddingBag(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 10, outputs, 4));
   // get the shape (num_embeddings, embedding_dim) and qualName for the
   // embeddingBag, and create placeholder node
   glow::dim_t numEmbedding;
