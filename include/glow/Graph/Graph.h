@@ -644,6 +644,17 @@ public:
                        float beta = 1.0, bool transposeA = false,
                        bool transposeB = false);
 
+  /// Create and \returns a DynamicQuantizedFullyConnectedNode with \p name,
+  /// \p input, weights \p W, bias \p B, flag to indicate mode \p isSymmetric.
+  /// By default it is a dynamic quantized FC node, which takes fp16 inputs,
+  /// symmetrically quantized them, run FC on them, dequantize them and produces
+  /// fp16 output. If \p isSymmetric is set to false, then inputs are
+  /// asymmetrically quantized. if \p isPerBatchElement is set to false, then
+  /// inputs are per tensor quantized.
+  DynamicQuantizedFullyConnectedNode *createDynamicQuantizedFullyConnected(
+      llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
+      bool isSymmetric = true, bool isPerBatchElement = true);
+
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
   /// along \p axis. Note, output type and outputDepth are inferred based on
