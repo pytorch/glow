@@ -1078,6 +1078,21 @@ struct EmbeddingBag4BitRowwiseOffsetsInputs {
   };
 };
 
+struct XLEmbeddingBagRowwiseOffsetsInputs {
+  enum {
+    weight_id = 0,
+    indices,
+    offsets,
+    scale_grad_by_freq,
+    mode,
+    pruned_weights,
+    per_sample_weights,
+    compressed_indices_mapping_id,
+    include_last_offset,
+    num_embeddings,
+    embedding_dim,
+  };
+};
 /// Indexes used for glow::fused_split inputs.
 struct FusedSplitInputs {
   enum {
@@ -7218,22 +7233,24 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
     const torch::jit::Node *ptNode, bool is4Bit) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 11, outputs, 1));
 
   glow::dim_t numEmbedding;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      numEmbedding, iValToInt(getGlowIValueForValue(
-                        inputs[XLEmbeddingBagInputs::num_embeddings])));
+      numEmbedding,
+      iValToInt(getGlowIValueForValue(
+          inputs[XLEmbeddingBagRowwiseOffsetsInputs::num_embeddings])));
 
   glow::dim_t embeddingDim;
-  ASSIGN_VALUE_OR_RETURN_ERR(embeddingDim,
-                             iValToInt(getGlowIValueForValue(
-                                 inputs[XLEmbeddingBagInputs::embedding_dim])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      embeddingDim,
+      iValToInt(getGlowIValueForValue(
+          inputs[XLEmbeddingBagRowwiseOffsetsInputs::embedding_dim])));
 
   std::string *weightID;
-  ASSIGN_VALUE_OR_RETURN_ERR(weightID,
-                             iValToString(getGlowIValueForValue(
-                                 inputs[XLEmbeddingBagInputs::weight_id])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weightID, iValToString(getGlowIValueForValue(
+                    inputs[XLEmbeddingBagRowwiseOffsetsInputs::weight_id])));
 
   std::vector<glow::dim_t> dims{numEmbedding, embeddingDim};
   TypeRef fusedTy = F_.getParent()->uniqueType(
@@ -7246,17 +7263,19 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
 
   glow::NodeValue indices;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      indices, getGlowNodeValueForValue(inputs[XLEmbeddingBagInputs::indices]));
+      indices, getGlowNodeValueForValue(
+                   inputs[XLEmbeddingBagRowwiseOffsetsInputs::indices]));
 
   glow::NodeValue offsets;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      offsets, getGlowNodeValueForValue(inputs[XLEmbeddingBagInputs::offsets]));
+      offsets, getGlowNodeValueForValue(
+                   inputs[XLEmbeddingBagRowwiseOffsetsInputs::offsets]));
 
   bool includeLastOffset;
   ASSIGN_VALUE_OR_RETURN_ERR(
       includeLastOffset,
       iValToBool(getGlowIValueForValue(
-          inputs[XLEmbeddingBagInputs::include_last_offset])));
+          inputs[XLEmbeddingBagRowwiseOffsetsInputs::include_last_offset])));
   RETURN_ERR_IF_NOT(includeLastOffset,
                     "Currently only support include_last_offset='True'");
 
@@ -7278,7 +7297,7 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
   if (is4Bit) {
     // Glow supported perSampleWeights is fp16 but PyTorch uses fp32,
     // therefore the input needs to be cast.
-    auto node = inputs[XLEmbeddingBagInputs::per_sample_weights];
+    auto node = inputs[XLEmbeddingBagRowwiseOffsetsInputs::per_sample_weights];
     if (hasGlowNodeValueForValue(node)) {
       glow::NodeValue gnode;
       ASSIGN_VALUE_OR_RETURN_ERR(gnode, getGlowNodeValueForValue(node));
