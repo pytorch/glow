@@ -2264,9 +2264,9 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   /// Scales tensor format is NHWC for supported modes other than nearest.
-  /// For nearest mode scale can be 3D, 4D, 5D, or 6D.
+  /// For nearest mode scale can be 4D or 5D.
   RETURN_ERR_IF_NOT(
-      (scales.size() >= 3 && scales.size() <= 6 && mode == "nearest") ||
+      (scales.size() >= 4 && scales.size() <= 5 && mode == "nearest") ||
           scales.size() == 4,
       opErrMsg(
           op, strFormat(
@@ -2281,9 +2281,28 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
                                int(val))));
   }
 
-  auto *node = G_->createResizeNearest(opName, in, scales);
-  RETURN_IF_ERR(addNodeAsOutput(op, node));
-  return Error::success();
+  switch (scales.size()) {
+  case 4: {
+    vectorReorder(scales, {NHWC2NCHW});
+    auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
+    auto *node = G_->createResizeNearest(opName, intr, scales);
+    auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+  case 5: {
+    vectorReorder(scales, {NTHWC2NCTHW});
+
+    auto *intr = G_->createTranspose(opName, in, NCTHW2NTHWC);
+    auto *node = G_->createResizeNearest(opName, intr, scales);
+    auto *N = G_->createTranspose(opName, node, NTHWC2NCTHW);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+  default:
+    RETURN_ERR_IF_NOT(
+        false, opErrMsg(op, strFormat("UpSample Scales dimension invalid")));
+  }
 }
 
 Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
