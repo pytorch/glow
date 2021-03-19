@@ -1089,6 +1089,18 @@ GemmNode *Function::createGemm(llvm::StringRef name, TypeRef outTy, NodeValue A,
       new GemmNode(name, OT, A, B, C, alpha, beta, transposeA, transposeB));
 }
 
+DynamicQuantizedFullyConnectedNode *
+Function::createDynamicQuantizedFullyConnected(llvm::StringRef name,
+                                               NodeValue input, NodeValue W,
+                                               NodeValue B, bool isSymmetric,
+                                               bool isPerBatchElement) {
+  TypeRef T = input.getType();
+  TypeRef OT =
+      getParent()->uniqueTypeWithNewShape(T, {input.dims()[0], B.dims()[0]});
+  return addNode(new DynamicQuantizedFullyConnectedNode(
+      name, OT, input, W, B, isSymmetric, isPerBatchElement));
+}
+
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
                                                    Storage *B,

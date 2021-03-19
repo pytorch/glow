@@ -7311,6 +7311,68 @@ TEST_P(OperatorStatelessTest, IntConcat) {
                             parCloneCountOpt);
 }
 
+TEST_P(OperatorTest, DynamicQuantizedFullyConnectedBasic) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 3}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {3, 4}, 1.0, 0.0, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
+  bindings_.allocate(input)->getHandle<float16_t>() = {1.0f, 2.0f, 3.0f,
+                                                       4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4,  7, 10, 2, 5,
+                                                      8, 11, 3, 6,  9, 12};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  auto *DQFC =
+      F_->createDynamicQuantizedFullyConnected("dqfc", input, weights, bias);
+  auto *S = F_->createSave("save", DQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {15.0f, 34.0f, 53.0f,  72.0f,
+                                       33.0f, 79.0f, 125.0f, 171.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++) {
+    // DynQFC's largest error in this unittest is around 2e-1
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 3e-1);
+  }
+}
+
+TEST_P(OperatorTest, DynamicQuantizedFullyConnectedStrongWeights) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {3, 4}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {4, 2}, 0.5, 1, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {2}, "bias");
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 2.0f, 3.0f, 4.0f, 5.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4, 2, 3, 3, 2, 4, 1};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f};
+
+  auto *DQFC =
+      F_->createDynamicQuantizedFullyConnected("dqfc", input, weights, bias);
+  auto *S = F_->createSave("save", DQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {3, 2};
+  std::vector<float> expectedValues = {11.0f, 7.0f, 14.0f, 10.0f, 17.0f, 13.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 3 * 2; i++) {
+    // DynQFC's largest error in this unittest is around 2e-1
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 3e-1);
+  }
+}
+
 TEST_P(OperatorTest, FCWithFlatten) {
   CHECK_IF_ENABLED();
 

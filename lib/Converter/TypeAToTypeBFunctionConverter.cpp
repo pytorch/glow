@@ -87,6 +87,13 @@ TypeRef TypeAToTypeBFunctionConverter::getTargetTypeForOutput(
 TypeRef
 TypeAToTypeBFunctionConverter::getTargetTypeForInput(const Node &use,
                                                      unsigned idx) const {
+#define IGNORE_CONVERT(nodeKind, inputIdx)                                     \
+  if (use.getKind() == nodeKind && idx == inputIdx) {                          \
+    return nullptr;                                                            \
+  }
+  IGNORE_CONVERT(Kinded::Kind::DynamicQuantizedFullyConnectedNodeKind,
+                 DynamicQuantizedFullyConnectedNode::BiasIdx)
+#undef IGNORE_CONVERT
   return getTargetTypeForOutput(use.getNthInput(idx));
 }
 
