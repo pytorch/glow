@@ -258,14 +258,16 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 /// raw string containing the meta data of the glow fuser node input.
 void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
                    runtime::DeferredWeightLoader *loader,
-                   const PyTorchLoaderSettings &settings);
+                   const PyTorchLoaderSettings &settings,
+                   const std::string method_name = "forward");
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
 void glowAOTFusionWithShapeInference(torch::jit::Module &module,
                                      const glow::InputMetaStack &metaStack,
                                      runtime::DeferredWeightLoader *loader,
-                                     const PyTorchLoaderSettings &settings);
+                                     const PyTorchLoaderSettings &settings,
+                                     const std::string method_name = "forward");
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in

@@ -211,6 +211,17 @@ private:
   template <typename ElemTy>
   void fwdFullyConnectedInstFloatImpl(const FullyConnectedInst *I);
 
+  template <typename ElemTy, typename OutputTy, typename AccumulatorTy>
+  void fwdDynRowwiseQuantizedFullyConnectedInstImpl(
+      Handle<ElemTy> inW, Handle<OutputTy> &outW, dim_t baseRow,
+      Handle<ElemTy> weightsW, Handle<float> biasW, Handle<float> scalesW,
+      Handle<int32_t> offsetsW);
+
+  void fwdDynRowwiseQuantizedFullyConnectedInstPreimpl(
+      Tensor *inputTensor, Tensor *weightsTensor, Tensor *biasTensor,
+      Tensor *resultTensor, Tensor *wScaleTensor, Tensor *wOffsetTensor,
+      bool isSymmetric, bool isPerBatchElement);
+
   template <typename ElemTy, typename AccumulatorTy,
             typename BiasElemTy = int32_t>
   void fwdRowwiseQuantizedFullyConnectedInstImpl(Value *inV, Value *outV,

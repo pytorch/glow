@@ -85,24 +85,24 @@ Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 
 std::string Constant::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName().str()))
-      .addParam("layout", getLayout())
-      .addParam("output", *getType());
+  db.addParam("Name", separateString(getName(), 100, "\n"))
+      .addParam("Layout", getLayout())
+      .addParam("Output", *getType());
   if (!skipUsers) {
-    db.addParam("users", getNumUsers());
+    db.addParam("Users", getNumUsers());
   }
   return db;
 }
 
 std::string Placeholder::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName().str()))
-      .addParam("layout", getLayout())
-      .addParam("output", *getType())
-      .addParam("trainable", isTraining())
-      .addParam("static", isStatic());
+  db.addParam("Name", separateString(getName(), 100, "\n"))
+      .addParam("Layout", getLayout())
+      .addParam("Output", *getType())
+      .addParam("Trainable", isTraining())
+      .addParam("Static", isStatic());
   if (!skipUsers) {
-    db.addParam("users", getNumUsers());
+    db.addParam("Users", getNumUsers());
   }
   return db;
 }
@@ -1986,6 +1986,88 @@ bool VectorNormNode::verify() const {
   ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, false);
   isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
+
+bool DynamicQuantizedFullyConnectedNode::verify() const {
+  auto src = getInput();
+  auto weights = getWeights();
+  auto bias = getBias();
+  auto dest = getResult();
+  auto isPerBatchElement = getIsPerBatchElement();
+  auto isSymmetric = getIsSymmetric();
+
+  bool isValid = expectCompareTrue("Inputs should be 2D tensor",
+                                   src.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue(
+      "Only per batch quantized input DynQuantizedFC is supported now",
+      isPerBatchElement, true, this);
+  isValid &= expectCompareTrue(
+      "Only symmetric quantized DynQuantizedFC is supported now", isSymmetric,
+      true, this);
+  isValid &= expectCompareTrue("Weights should be 2D tensor",
+                               weights.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Result should be 2D tensor", dest.dims().size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Bias should be 1D tensor", bias.dims().size(),
+                               size_t(1), this);
+
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 0",
+                               src.dims()[0], dest.dims()[0], this);
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 1",
+                               src.dims()[1], weights.dims()[0], this);
+
+  isValid &= expectCompareTrue("Inconsistent bias/weights sizes",
+                               bias.dims()[0], weights.dims()[1], this);
+  isValid &= expectCompareTrue("Inconsistent bias/dest sizes", bias.dims()[0],
+                               dest.dims()[1], this);
+
+  return isValid;
+}
+
+bool DynamicRowwiseQuantizedFullyConnectedNode::verify() const {
+  auto src = getInput();
+  auto weights = getWeights();
+  auto bias = getBias();
+  auto dest = getResult();
+  auto scales = getScales();
+  auto offsets = getOffsets();
+  auto isPerBatchElement = getIsPerBatchElement();
+  auto isSymmetric = getIsSymmetric();
+
+  bool isValid = expectCompareTrue("Inputs should be 2D tensor",
+                                   src.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue(
+      "Only per batch quantized input DynQuantizedFC is supported now",
+      isPerBatchElement, true, this);
+  isValid &= expectCompareTrue(
+      "Only symmetric quantized DynQuantizedFC is supported now", isSymmetric,
+      true, this);
+  isValid &= expectCompareTrue("Weights should be 2D tensor",
+                               weights.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Result should be 2D tensor", dest.dims().size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Bias should be 1D tensor", bias.dims().size(),
+                               size_t(1), this);
+  isValid &= expectCompareTrue("Offsets should be 1D tensor",
+                               offsets.dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Scales should be 1D tensor",
+                               scales.dims().size(), size_t(1), this);
+
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 0",
+                               src.dims()[0], dest.dims()[0], this);
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 1",
+                               src.dims()[1], weights.dims()[0], this);
+
+  isValid &= expectCompareTrue("Inconsistent bias/weights sizes",
+                               bias.dims()[0], weights.dims()[1], this);
+  isValid &= expectCompareTrue("Inconsistent bias/dest sizes", bias.dims()[0],
+                               dest.dims()[1], this);
+  isValid &= expectCompareTrue("Inconsistent scales/offsets sizes",
+                               scales.dims()[0], offsets.dims()[0], this);
+  isValid &= expectCompareTrue("Inconsistent scales/weights sizes",
+                               scales.dims()[0], weights.dims()[1], this);
+
   return isValid;
 }
 

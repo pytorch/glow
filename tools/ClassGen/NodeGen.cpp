@@ -242,6 +242,38 @@ int main(int argc, char **argv) {
           "Bias and Result are regularly quantized, while Weights use row-wise"
           "quantization.");
 
+  BB.newNode("DynamicQuantizedFullyConnected")
+      .addInput("Input")
+      .addInput("Weights")
+      .addInput("Bias")
+      .addMember(MemberType::Boolean, "IsSymmetric")
+      .addMember(MemberType::Boolean, "IsPerBatchElement")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Creates a DynamicQuantizedFullyConnectedNode which implement the "
+          "functionality of dynamic_quantization => quantized_fc => "
+          "dequantize, which support symmteric/asymmetric quantization. "
+          "Quantize parameters are automatically selected from range of input, "
+          "while weights are pre-quantized to int8 and bias are whether float "
+          "or int32");
+
+  BB.newNode("DynamicRowwiseQuantizedFullyConnected")
+      .addInput("Input")
+      .addInput("Weights")
+      .addInput("Bias")
+      .addInput("Scales")
+      .addInput("Offsets")
+      .addMember(MemberType::Boolean, "IsSymmetric")
+      .addMember(MemberType::Boolean, "IsPerBatchElement")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Creates a DynamicRowwiseQuantizedFullyConnectedNode which implement "
+          "the functionality of dynamic_quantization => quantized_fc => "
+          "dequantize, which support symmteric/asymmetric quantization. "
+          "Quantize parameters are automatically selected from range of input, "
+          "while weights are pre-rowwise-quantized to int8, whose rowwise "
+          "params stored in Scales and Offsets, and bias are whether float "
+          "or int32");
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//

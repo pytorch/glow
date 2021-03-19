@@ -7448,6 +7448,106 @@ TEST_P(OperatorStatelessTest, IntConcat) {
                             parCloneCountOpt);
 }
 
+TEST_P(OperatorTest, DynamicRowwiseQuantizedFullyConnectedBasic) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 3}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {3, 4}, 1000.0, 0.0, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
+  Constant *scales =
+      mod_.createConstant(ElemKind::FloatTy, {4}, "weight_scales");
+  Constant *offsets =
+      mod_.createConstant(ElemKind::Int32ITy, {4}, "weight_offsets");
+  bindings_.allocate(input)->getHandle<float16_t>() = {1.0f, 2.0f, 3.0f,
+                                                       4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4,  7, 10, 2, 5,
+                                                      8, 11, 3, 6,  9, 12};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+  scales->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+  offsets->getPayloadMutable().getHandle<int>() = {0, 0, 0, 0};
+
+  auto *DRQFC = F_->createDynamicRowwiseQuantizedFullyConnected(
+      "drqfc", input, weights, bias, scales, offsets);
+  auto *S = F_->createSave("save", DRQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {15.0f, 66.0f,  153.0f, 276.0f,
+                                       33.0f, 156.0f, 369.0f, 672.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++) {
+    // DynRQFC's largest error in this unittest is around 1.0
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 1.5);
+  }
+}
+
+TEST_P(OperatorTest, DynamicQuantizedFullyConnectedBasic) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 3}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {3, 4}, 1.0, 0.0, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
+  bindings_.allocate(input)->getHandle<float16_t>() = {1.0f, 2.0f, 3.0f,
+                                                       4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4,  7, 10, 2, 5,
+                                                      8, 11, 3, 6,  9, 12};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  auto *DQFC =
+      F_->createDynamicQuantizedFullyConnected("dqfc", input, weights, bias);
+  auto *S = F_->createSave("save", DQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {15.0f, 34.0f, 53.0f,  72.0f,
+                                       33.0f, 79.0f, 125.0f, 171.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++) {
+    // DynQFC's largest error in this unittest is around 2e-1
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 3e-1);
+  }
+}
+
+TEST_P(OperatorTest, DynamicQuantizedFullyConnectedStrongWeights) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {3, 4}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {4, 2}, 0.5, 1, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {2}, "bias");
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 2.0f, 3.0f, 4.0f, 5.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4, 2, 3, 3, 2, 4, 1};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f};
+
+  auto *DQFC =
+      F_->createDynamicQuantizedFullyConnected("dqfc", input, weights, bias);
+  auto *S = F_->createSave("save", DQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {3, 2};
+  std::vector<float> expectedValues = {11.0f, 7.0f, 14.0f, 10.0f, 17.0f, 13.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 3 * 2; i++) {
+    // DynQFC's largest error in this unittest is around 2e-1
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 3e-1);
+  }
+}
+
 TEST_P(OperatorTest, FCWithFlatten) {
   CHECK_IF_ENABLED();
 
@@ -19541,6 +19641,66 @@ TEST_P(OperatorStatelessTest, LayerNorm_Float16) {
   compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f,
                             parCloneCountOpt);
+}
+
+/// Mock Test LayerNorm with Float32Ty.
+TEST_P(OperatorStatelessTest, LayerNormMock_Float32) {
+  CHECK_IF_ENABLED();
+  /*
+    WEIGHT = [2.4180, 2.2070, 2.3184, 0.7378, 0.7734, 0.7520]
+    BIAS = [0.1567, 0.0308, 0.0166, 0.2944, 0.2759, 0.5649]
+    INPUT = [
+              1.0,
+              2.0,
+              3.0,
+              4.0,
+              5.0,
+              6.0,
+            ]
+    TARGET = [
+              -3.382883310317993,
+              -1.907626986503601,
+              -0.662156879901886,
+              0.5104053020477295,
+              0.9551836252212524,
+              1.6657130718231201,
+             ]
+  */
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
+
+  PlaceholderBindings bindings;
+
+  bindings.allocate(input)->getHandle() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+  };
+  Tensor scaleT(ElemKind::FloatTy, {6});
+  scaleT.getHandle() = {2.4180f, 2.2070f, 2.3184f, 0.7378f, 0.7734f, 0.7520f};
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {6});
+  biasT.getHandle() = {0.1567f, 0.0308f, 0.0166f, 0.2944f, 0.2759f, 0.5649f};
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+
+  auto *res = F->createSave("save", LNN);
+  bindings.allocate(res->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(ElemKind::FloatTy, {1, 6});
+  expected.getHandle() = {
+      -3.382883310317993f, -1.907626986503601f, -0.662156879901886f,
+      0.5104053020477295f, 0.9551836252212524f, 1.6657130718231201f,
+  };
+
+  EXPECT_TRUE(expected.isEqual(*bindings.get(res->getPlaceholder())));
 }
 
 /// Test LayerNorm with BFloat16Ty.

@@ -768,6 +768,74 @@ public:
   }
 };
 
+class DynamicQuantizedFullyConnectedNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+
+    auto *glowDQFC = llvm::dyn_cast<DynamicQuantizedFullyConnectedNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowDQFC, "Bad node type", NNPI_INVALID_PARAM);
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addTensor(nodeValueName(glowDQFC->getWeights()),
+                           /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+    importer.setUsedTensors({nodeValueName(glowDQFC->getInput()),
+                             nodeValueName(glowDQFC->getWeights()),
+                             nodeValueName(glowDQFC->getBias())},
+                            {nodeValueName(glowDQFC->getResult())});
+
+    return nnpiNetworkAddFullyConnectedOp(
+        importer.getNetwork(), glowDQFC->getName().begin(),
+        nodeValueName(glowDQFC->getInput()).c_str(),
+        nodeValueName(glowDQFC->getResult()).c_str(),
+        nodeValueName(glowDQFC->getWeights()).c_str(),
+        glowDQFC->getBias() ? nodeValueName(glowDQFC->getBias()).c_str()
+                            : nullptr);
+  }
+};
+
+class DynamicRowwiseQuantizedFullyConnectedNodeImporter
+    : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+
+    auto *glowDRQFC =
+        llvm::dyn_cast<DynamicRowwiseQuantizedFullyConnectedNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowDRQFC, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        !(glowDRQFC->getOffsets()) ||
+            importer.zeroes(nodeValueName(glowDRQFC->getOffsets()).c_str()),
+        "Bad offset value", NNPI_INVALID_PARAM);
+
+    // Create the weights with no offset tensor.
+    // Assert weights & biases have no offset or all zeroes.
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addTensor(nodeValueName(glowDRQFC->getWeights()),
+                           /* alternativeLayout */ true,
+                           nodeValueName(glowDRQFC->getScales()),
+                           nodeValueName(glowDRQFC->getOffsets()),
+                           /* forceSymlowp */ true),
+        "Failed to add tensor to NNPI");
+    // Quantize bias if needed
+    importer.setUsedTensors({nodeValueName(glowDRQFC->getInput()),
+                             nodeValueName(glowDRQFC->getWeights()),
+                             nodeValueName(glowDRQFC->getBias())},
+                            {nodeValueName(glowDRQFC->getResult())});
+
+    return nnpiNetworkAddFullyConnectedOp(
+        importer.getNetwork(), glowDRQFC->getName().begin(),
+        nodeValueName(glowDRQFC->getInput()).c_str(),
+        nodeValueName(glowDRQFC->getResult()).c_str(),
+        nodeValueName(glowDRQFC->getWeights()).c_str(),
+        glowDRQFC->getBias() ? nodeValueName(glowDRQFC->getBias()).c_str()
+                             : nullptr);
+  }
+};
+
 class FullyConnectedNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -795,7 +863,6 @@ public:
                              nodeValueName(glowFC->getWeights()),
                              nodeValueName(glowFC->getBias())},
                             {nodeValueName(glowFC->getResult())});
-
     return nnpiNetworkAddFullyConnectedOp(
         importer.getNetwork(), glowFC->getName().begin(),
         nodeValueName(glowFC->getInput()).c_str(),
@@ -2613,6 +2680,10 @@ std::unordered_map<
     {"ResizeNearest",
      glow::make_unique<
          ResizeNodeImporter<ResizeNearestNode, NNPI_RESIZE_NEAREST>>()},
+    {"DynamicQuantizedFullyConnected",
+     glow::make_unique<DynamicQuantizedFullyConnectedNodeImporter>()},
+    {"DynamicRowwiseQuantizedFullyConnected",
+     glow::make_unique<DynamicRowwiseQuantizedFullyConnectedNodeImporter>()},
 #endif // NNPI >= 1.1
 };
 } // namespace

@@ -81,14 +81,12 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    // TODO T84757346: Move to kwargs instead of args once Conv is correct
-    // normalized.
-    const auto &inputs = node["args"];
+    const auto &inputs = node["kwargs"];
     const auto &name = node["name"].getString();
-    const auto &inputName = importer.getInputNodeName(inputs[0]);
-    const auto &filterName = importer.getInputNodeName(inputs[1]);
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+    const auto &filterName = importer.getInputNodeName(inputs["weight"]);
     const auto &biasName =
-        importer.getInputNodeName(inputs[2], /* optional */ true);
+        importer.getInputNodeName(inputs["bias"], /* optional */ true);
 
     // Kernel size is implicit in the shape of the filter.
     const auto &filterDesc = importer.getTensorDesc(filterName);
@@ -99,10 +97,13 @@ public:
       kernelSize.push_back(filterDesc.dims[i + 2]);
     }
 
-    auto stride = toIntegerArray<uint32_t>(inputs[3], /* length */ convDims);
-    auto padding = toIntegerArray<uint32_t>(inputs[4], /* length */ convDims);
-    auto dilation = toIntegerArray<uint32_t>(inputs[5], /* length */ convDims);
-    const auto &groups = inputs[6].asInt();
+    auto stride =
+        toIntegerArray<uint32_t>(inputs["stride"], /* length */ convDims);
+    auto padding =
+        toIntegerArray<uint32_t>(inputs["padding"], /* length */ convDims);
+    auto dilation =
+        toIntegerArray<uint32_t>(inputs["dilation"], /* length */ convDims);
+    const auto &groups = inputs["groups"].asInt();
 
     LOG_AND_RETURN_IF_NOT(ERROR,
                           std::all_of(dilation.cbegin(), dilation.cend(),
@@ -248,9 +249,9 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
+    const auto &inputs = node["kwargs"];
     const auto &name = node["name"].getString();
-    const auto &inputName = importer.getInputNodeName(inputs[0]);
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
 
     NNPITensorDesc desc;
     importer.updateDescDimsFromFX(
