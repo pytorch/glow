@@ -1782,7 +1782,7 @@ ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
 }
 
 /*
- * fb::lengths_range(Tensor input, int[]? shape) -> Int,
+ * fb::lengths_range(Tensor input, int[]? shape, int? truncation_size) -> Int,
  * e.g. max_feature_length = 200
  * input: [2, 3]
  * original output: [0, 1, 0, 1, 2]
@@ -1790,17 +1790,23 @@ ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
  */
 Expected<TensorOutput>
 ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
-
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 2,
-      strFormat("Expected 2 inputs, got %zu.", variableMetas.size()));
-  RETURN_ERR_IF_NOT(FLAGS_max_feature_length > 0,
-                    strFormat("Expected max_feature_length > 0, got %d.",
-                              FLAGS_max_feature_length));
+      variableMetas.size() == 3,
+      strFormat("Expected 3 inputs, got %zu.", variableMetas.size()));
 
+  int max_feature_length;
+  if (variableMetas[2].intValue.size() == 1) {
+    max_feature_length = variableMetas[2].intValue[0];
+  } else {
+    max_feature_length = FLAGS_max_feature_length;
+  }
+
+  RETURN_ERR_IF_NOT(max_feature_length > 0,
+                    strFormat("Expected max_feature_length > 0, got %d.",
+                              max_feature_length));
   TensorOutput output;
   output.shapeOrIntValues = {variableMetas[0].shape<TensorShape>()[0] *
-                             FLAGS_max_feature_length};
+                             max_feature_length};
   output.dtype = variableMetas[0].dtype;
   return output;
 }
