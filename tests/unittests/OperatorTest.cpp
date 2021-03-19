@@ -7311,6 +7311,44 @@ TEST_P(OperatorStatelessTest, IntConcat) {
                             parCloneCountOpt);
 }
 
+TEST_P(OperatorTest, DynamicRowwiseQuantizedFullyConnectedBasic) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 3}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {3, 4}, 1000.0, 0.0, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
+  Constant *scales =
+      mod_.createConstant(ElemKind::FloatTy, {4}, "weight_scales");
+  Constant *offsets =
+      mod_.createConstant(ElemKind::Int32ITy, {4}, "weight_offsets");
+  bindings_.allocate(input)->getHandle<float16_t>() = {1.0f, 2.0f, 3.0f,
+                                                       4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4,  7, 10, 2, 5,
+                                                      8, 11, 3, 6,  9, 12};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+  scales->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+  offsets->getPayloadMutable().getHandle<int>() = {0, 0, 0, 0};
+
+  auto *DRQFC = F_->createDynamicRowwiseQuantizedFullyConnected(
+      "drqfc", input, weights, bias, scales, offsets);
+  auto *S = F_->createSave("save", DRQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {15.0f, 66.0f,  153.0f, 276.0f,
+                                       33.0f, 156.0f, 369.0f, 672.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++) {
+    // DynRQFC's largest error in this unittest is around 1.0
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 1.5);
+  }
+}
+
 TEST_P(OperatorTest, DynamicQuantizedFullyConnectedBasic) {
   CHECK_IF_ENABLED();
   auto *input =

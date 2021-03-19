@@ -93,6 +93,10 @@ TypeAToTypeBFunctionConverter::getTargetTypeForInput(const Node &use,
   }
   IGNORE_CONVERT(Kinded::Kind::DynamicQuantizedFullyConnectedNodeKind,
                  DynamicQuantizedFullyConnectedNode::BiasIdx)
+  IGNORE_CONVERT(Kinded::Kind::DynamicRowwiseQuantizedFullyConnectedNodeKind,
+                 DynamicRowwiseQuantizedFullyConnectedNode::BiasIdx)
+  IGNORE_CONVERT(Kinded::Kind::DynamicRowwiseQuantizedFullyConnectedNodeKind,
+                 DynamicRowwiseQuantizedFullyConnectedNode::ScalesIdx)
 #undef IGNORE_CONVERT
   return getTargetTypeForOutput(use.getNthInput(idx));
 }

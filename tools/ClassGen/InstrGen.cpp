@@ -242,6 +242,18 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
+  BB.newInstr("DynamicRowwiseQuantizedFullyConnected")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addOperand("Scales", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::Boolean, "IsSymmetric")
+      .addMember(MemberType::Boolean, "IsPerBatchElement")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//
