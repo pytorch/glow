@@ -140,6 +140,15 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::Int32ITy, ElemKind::FloatTy, ElemKind::Float16Ty,
          ElemKind::BFloat16Ty, ElemKind::Int8QTy});
 
+  case Kinded::Kind::DynamicQuantizedFullyConnectedNodeKind:
+    return (NI.getInElemTy(DynamicQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::Float16Ty ||
+            NI.getInElemTy(DynamicQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::FloatTy) &&
+           NI.getInElemTy(DynamicQuantizedFullyConnectedNode::WeightsIdx) ==
+               ElemKind::Int8QTy &&
+           NI.getInElemTy(DynamicQuantizedFullyConnectedNode::BiasIdx) ==
+               ElemKind::FloatTy;
   case Kinded::Kind::MatMulNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,

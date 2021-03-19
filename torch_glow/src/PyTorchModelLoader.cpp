@@ -343,6 +343,7 @@ Expected<int64_t> getPositiveIndex(int64_t index, int64_t dimSize) {
 bool isQParamWeightNode(const torch::jit::Node *node) {
   static std::unordered_set<torch::jit::Symbol> packedQuantNodeKinds = {
       torch::jit::Symbol::fromQualString("quantized::linear"),
+      torch::jit::Symbol::fromQualString("quantized::linear_dynamic"),
       torch::jit::Symbol::fromQualString("quantized::conv2d"),
       torch::jit::Symbol::fromQualString("quantized::conv2d_relu"),
       torch::jit::Symbol::fromQualString("quantized::conv3d"),
@@ -719,6 +720,15 @@ struct LinearInput {
     input = 0,
     weight = 1,
     bias = 2,
+  };
+};
+
+/// Indexes of quantized::linear_dynamic inputs.
+struct DynQuantizedLinearInputs {
+  enum {
+    input = 0,
+    packed_weights = 1,
+    reduce_range = 2,
   };
 };
 
@@ -1263,6 +1273,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"glow::fused_split"}, &PyTorchModelLoader::loadFusedSplit},
       {{"aten::linear"}, &PyTorchModelLoader::loadLinear},
       {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
+      {{"quantized::linear_dynamic"},
+       &PyTorchModelLoader::loadDynQuantizedLinear},
       {{"quantized::conv2d"}, &PyTorchModelLoader::loadQuantizedConv},
       {{"quantized::conv3d"}, &PyTorchModelLoader::loadQuantizedConv},
       {{"quantized::conv2d_relu"}, &PyTorchModelLoader::loadQuantizedConvRelu},
@@ -2335,6 +2347,86 @@ Error PyTorchModelLoader::loadQuantizedLinearImpl(
   }
 
   RETURN_ERR(addValueMapping(outputValue, output, outputDtype));
+}
+
+Error PyTorchModelLoader::loadDynQuantizedLinear(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[DynQuantizedLinearInputs::input]));
+
+  RETURN_ERR_IF_NOT(
+      qparamsMap_.count(inputs[DynQuantizedLinearInputs::packed_weights]),
+      "Cannot find packed weights for DQFC");
+  auto packedParams =
+      qparamsMap_[inputs[DynQuantizedLinearInputs::packed_weights]]
+          .toCustomClass<LinearPackedParamsBase>();
+
+  at::Tensor ptWeightTensor;
+  c10::optional<at::Tensor> ptBiasTensorTmp;
+  std::tie(ptWeightTensor, ptBiasTensorTmp) = packedParams->unpack();
+
+  // unpacked weights
+  auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
+  glow::Constant *weightConstant = F_.getParent()->createConstant(
+      "dynamic_quantized_linear_weights", std::move(weightTensor));
+  weightConstant->ensureIsOwned();
+  RETURN_ERR_IF_NOT(weightConstant->dims().size() == 2,
+                    "Expected 2d Linear weights");
+  auto weights = weightConstant->getOutput();
+  weights = F_.createTranspose("dynamic_quantized_weights_transposed", weights,
+                               {1, 0});
+
+  // unpacked bias
+  glow::Tensor biasTensor;
+  if (ptBiasTensorTmp.has_value()) {
+    auto ptBiasTensor = ptBiasTensorTmp.value().contiguous();
+    biasTensor = ptTensorToGlowTensor(ptBiasTensor);
+  } else {
+    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weights.dims()[0]});
+    biasTensor.zero();
+  }
+
+  glow::Constant *biasConstant = F_.getParent()->createConstant(
+      "dynamic_quantized_linear_bias", std::move(biasTensor));
+  biasConstant->ensureIsOwned();
+  auto bias = biasConstant->getOutput();
+
+  bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
+                            ptWeightTensor.qscheme() == at::kPerChannelAffine;
+
+  // TODO Support rowwise quantized weights
+  RETURN_ERR_IF_NOT(
+      !isRowwiseQuantized,
+      "Rowwise quantized dynamic quantized linear is not supported in Glow.");
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(
+      getCorrectTypeMapping(dtype, inputs[QuantizedLinearInputs::input]));
+
+  // Flatten outer dims if necessary
+  auto inputDims = input.dims();
+  if (inputDims.size() > 2) {
+    input = F_.createFlatten("flatten", input, inputDims.size() - 1);
+  }
+
+  NodeValue output;
+  auto fc = F_.createDynamicQuantizedFullyConnected("dynamic_quantized_fc",
+                                                    input, weights, bias);
+  output = fc->getResult();
+
+  // Restore original outer dims
+  if (inputDims.size() > 2) {
+    std::vector<dim_t> finalDims = inputDims.vec();
+    finalDims.back() = output.dims().back();
+    output = F_.createReshape("fc_reshape", output, finalDims);
+  }
+
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
@@ -6496,6 +6588,15 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   const torch::jit::IValue iVal = *optionalIValue;
 
   GlowIValue glowIVal;
+
+  // If it is a qparam node, we deal with it separately.
+  if (iVal.isObject()) {
+    if (isQParamWeightNode(ptNode)) {
+      qparamsMap_[ptNode->output()] = iVal;
+      return Error::success();
+    }
+  }
+
   // If iVal is a Generic list, it need to be handled separately.
   // Everything inside of a Generic should be same type.
   if (iVal.isList() &&
