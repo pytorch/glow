@@ -590,6 +590,8 @@ struct BlacklistInitializer {
       {"BBoxTransform_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"DynamicRowwiseQuantizedFullyConnectedBasic/0",
+       TestBlacklist::AnyDeviceAnyEngine},
       {"ConvertFrom_FloatTy_To_BoolTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Int8BatchNorm2D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"FP16BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},

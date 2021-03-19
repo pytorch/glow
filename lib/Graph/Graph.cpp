@@ -1101,6 +1101,18 @@ Function::createDynamicQuantizedFullyConnected(llvm::StringRef name,
       name, OT, input, W, B, isSymmetric, isPerBatchElement));
 }
 
+DynamicRowwiseQuantizedFullyConnectedNode *
+Function::createDynamicRowwiseQuantizedFullyConnected(
+    llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
+    NodeValue scales, NodeValue offsets, bool isSymmetric,
+    bool isPerBatchElement) {
+  TypeRef T = input.getType();
+  TypeRef OT =
+      getParent()->uniqueTypeWithNewShape(T, {input.dims()[0], B.dims()[0]});
+  return addNode(new DynamicRowwiseQuantizedFullyConnectedNode(
+      name, OT, input, W, B, scales, offsets, isSymmetric, isPerBatchElement));
+}
+
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
                                                    Storage *B,
