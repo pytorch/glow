@@ -644,6 +644,33 @@ public:
                        float beta = 1.0, bool transposeA = false,
                        bool transposeB = false);
 
+  /// Create and \returns a DynamicQuantizedFullyConnectedNode with \p name,
+  /// \p input, weights \p W, bias \p B, flag to indicate mode \p isSymmetric.
+  /// By default it is a dynamic quantized FC node, which takes fp16 inputs,
+  /// symmetrically quantized them, run FC on them, dequantize them and produces
+  /// fp16 output. If \p isSymmetric is set to false, then inputs are
+  /// asymmetrically quantized. if \p isPerBatchElement is set to false, then
+  /// inputs are per tensor quantized.
+  DynamicQuantizedFullyConnectedNode *createDynamicQuantizedFullyConnected(
+      llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
+      bool isSymmetric = true, bool isPerBatchElement = true);
+
+  /// Create and \returns a DynamicRowwiseQuantizedFullyConnectedNode with \p
+  /// name, \p input, weights \p W, bias \p B, rowwise weight qparams \p wScale
+  /// and \p wOffset, flag to indicate mode \p isSymmetric. By default it is a
+  /// dynamic quantized FC node, which takes fp16 inputs, symmetrically
+  /// quantized them, run FC on them, dequantize them and produces fp16 output.
+  /// If \p isSymmetric is set to false, then inputs are asymmetrically
+  /// quantized. if \p isPerBatchElement is set to false, then inputs are per
+  /// tensor quantized.
+  DynamicRowwiseQuantizedFullyConnectedNode *
+  createDynamicRowwiseQuantizedFullyConnected(llvm::StringRef name,
+                                              NodeValue input, NodeValue W,
+                                              NodeValue B, NodeValue wScale,
+                                              NodeValue wOffset,
+                                              bool isSymmetric = true,
+                                              bool isPerBatchElement = true);
+
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
   /// along \p axis. Note, output type and outputDepth are inferred based on
@@ -711,15 +738,21 @@ public:
 
   /// Create a ReLU node with the given \p name and \p input.
   /// Result type will be implicitly set based on the \p input type.
+  ReluNode *createRelu(llvm::StringRef name, NodeValue input);
+  // deprecated.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
 
   /// Create a ReLU node with the given \p name, \p input and
   /// output type \p outTy.
+  ReluNode *createRelu(llvm::StringRef name, TypeRef outTy, NodeValue input);
+  // deprecated.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
   /// Create a series of nodes representing a GeLU with the given \p name and \p
   /// input. Result type will be implicitly set based on the \p input type.
-  Node *createGELU(llvm::StringRef name, NodeValue input);
+  GeluNode *createGelu(llvm::StringRef name, NodeValue input);
+  // deprecated.
+  GeluNode *createGELU(llvm::StringRef name, NodeValue input);
 
   /// Create a PReLU node with the given \p name, \p input and  \p slope.
   /// Result type will be implicitly set based on the \p input type.
@@ -743,8 +776,10 @@ public:
   /// Create a Swish node with the given \p name and \p input.
   /// If \p OT is nullptr, then result type will be implicitly set based on the
   /// \p input type.
-  SwishNode *createSwish(llvm::StringRef name, NodeValue input,
-                         TypeRef OT = nullptr);
+  SwishNode *createSwish(llvm::StringRef name, NodeValue input);
+  SwishNode *createSwish(llvm::StringRef name, TypeRef OT, NodeValue input);
+  // deprecated.
+  SwishNode *createSwish(llvm::StringRef name, NodeValue input, TypeRef OT);
 
   /// Create a Tanh node with the given \p name, \p input and
   /// output type \p outTy.
@@ -764,8 +799,10 @@ public:
 
   /// Create a Log node with \p name, which calculates element-wise natural log
   /// of \p input, with output type \p outTy.
-  LogNode *createLog(llvm::StringRef name, NodeValue input,
-                     TypeRef outTy = nullptr);
+  LogNode *createLog(llvm::StringRef name, NodeValue input);
+  LogNode *createLog(llvm::StringRef name, TypeRef outTy, NodeValue input);
+  // deprecated
+  LogNode *createLog(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
   /// \returns a LogitNode with \p name given \p input and \p eps.
   LogitNode *createLogit(llvm::StringRef name, NodeValue input, float eps);
@@ -978,6 +1015,9 @@ public:
   ARITHMETIC_FUN_DECL(And);
   ARITHMETIC_FUN_DECL(Or);
   ARITHMETIC_FUN_DECL(Xor);
+  ARITHMETIC_FUN_DECL(BitwiseAnd);
+  ARITHMETIC_FUN_DECL(BitwiseOr);
+  ARITHMETIC_FUN_DECL(BitwiseXor);
   ARITHMETIC_FUN_DECL(Pow);
   ARITHMETIC_FUN_DECL(Fmod);
 #undef ARITHMETIC_FUN_DECL
@@ -1015,13 +1055,16 @@ public:
   /// Template function that creates a node and normalizes its input shapes
   /// with the use of BroadCast nodes. If axis is -1, it calculates it
   /// automatically for multi directional broadcast.
-  DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
-  DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Xor, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Or, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(BitwiseAnd, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(BitwiseXor, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(BitwiseOr, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Pow, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Fmod, /* NUM_INPUTS */ 2)
 

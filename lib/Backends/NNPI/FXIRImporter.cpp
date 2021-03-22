@@ -81,14 +81,12 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    // TODO T84757346: Move to kwargs instead of args once Conv is correct
-    // normalized.
-    const auto &inputs = node["args"];
+    const auto &inputs = node["kwargs"];
     const auto &name = node["name"].getString();
-    const auto &inputName = importer.getInputNodeName(inputs[0]);
-    const auto &filterName = importer.getInputNodeName(inputs[1]);
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+    const auto &filterName = importer.getInputNodeName(inputs["weight"]);
     const auto &biasName =
-        importer.getInputNodeName(inputs[2], /* optional */ true);
+        importer.getInputNodeName(inputs["bias"], /* optional */ true);
 
     // Kernel size is implicit in the shape of the filter.
     const auto &filterDesc = importer.getTensorDesc(filterName);
@@ -99,10 +97,13 @@ public:
       kernelSize.push_back(filterDesc.dims[i + 2]);
     }
 
-    auto stride = toIntegerArray<uint32_t>(inputs[3], /* length */ convDims);
-    auto padding = toIntegerArray<uint32_t>(inputs[4], /* length */ convDims);
-    auto dilation = toIntegerArray<uint32_t>(inputs[5], /* length */ convDims);
-    const auto &groups = inputs[6].asInt();
+    auto stride =
+        toIntegerArray<uint32_t>(inputs["stride"], /* length */ convDims);
+    auto padding =
+        toIntegerArray<uint32_t>(inputs["padding"], /* length */ convDims);
+    auto dilation =
+        toIntegerArray<uint32_t>(inputs["dilation"], /* length */ convDims);
+    const auto &groups = inputs["groups"].asInt();
 
     LOG_AND_RETURN_IF_NOT(ERROR,
                           std::all_of(dilation.cbegin(), dilation.cend(),
@@ -138,13 +139,13 @@ public:
     const auto &name = node["name"].getString();
     const auto &kwargs = node["kwargs"];
     const auto &inputName = importer.getInputNodeName(kwargs["input"]);
-    const auto &weightName = getQualName("weight");
-    const auto &biasName = getQualName("bias");
-    const auto &meanName = getQualName("running_mean");
-    const auto &varName = getQualName("running_var");
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &biasName = importer.getInputNodeName(kwargs["bias"]);
+    const auto &meanName = importer.getInputNodeName(kwargs["running_mean"]);
+    const auto &varName = importer.getInputNodeName(kwargs["running_var"]);
 
     // Get parameters.
-    const auto &eps = node["parameters"]["eps"].asDouble();
+    const auto &eps = kwargs["eps"].asDouble();
 
     importer.setUsedTensors(
         {inputName, weightName, biasName, meanName, varName}, {name});
@@ -248,9 +249,9 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
+    const auto &inputs = node["kwargs"];
     const auto &name = node["name"].getString();
-    const auto &inputName = importer.getInputNodeName(inputs[0]);
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
 
     NNPITensorDesc desc;
     importer.updateDescDimsFromFX(
@@ -274,7 +275,7 @@ static std::unordered_map<std::string,
         // torch.nn.modules
         {"torch.nn.functional.linear", std::make_unique<LinearNodeImporter>()},
         {"torch.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
-        {"torch.nn.modules.batchnorm.BatchNorm2d",
+        {"torch.nn.functional.batch_norm",
          std::make_unique<BatchNormalizationNodeImporter>()},
         {"torch.nn.functional.relu", std::make_unique<ReluNodeImporter>()},
         {"torch.nn.functional.adaptive_avg_pool2d",
@@ -342,10 +343,12 @@ FXNNPIImporter::getTensorDesc(llvm::StringRef name) const {
 
 const std::string &FXNNPIImporter::getInputNodeName(const folly::dynamic &node,
                                                     bool optional) const {
-  if (optional && node.isNull()) {
+  if (node.isNull()) {
+    CHECK(optional) << "Non-optional node must be non-null";
     static const std::string empty;
     return empty;
   }
+
   CHECK(node["is_node"].asBool()) << "Expected is_node";
 
   const auto &name = node["name"].getString();

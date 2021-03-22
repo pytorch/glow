@@ -37,6 +37,8 @@ public:
   TorchGlowBackend() {}
   ~TorchGlowBackend() override {}
 
+  bool is_available() override;
+
   c10::impl::GenericDict
   compile(c10::IValue processed,
           c10::impl::GenericDict method_compile_spec) override;

@@ -299,8 +299,8 @@ TEST_P(OperatorTest, less_float16Cases) {
   dim_t yDims[] = {5};
 
   Handle<bool> saveH =
-      lessHelper<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                          xValues, yValues, xDims, yDims);
+      lessHelper<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                            xValues, yValues, xDims, yDims);
 
   bool refResults[] = {true, true, false, false, false};
 
@@ -7311,6 +7311,106 @@ TEST_P(OperatorStatelessTest, IntConcat) {
                             parCloneCountOpt);
 }
 
+TEST_P(OperatorTest, DynamicRowwiseQuantizedFullyConnectedBasic) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 3}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {3, 4}, 1000.0, 0.0, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
+  Constant *scales =
+      mod_.createConstant(ElemKind::FloatTy, {4}, "weight_scales");
+  Constant *offsets =
+      mod_.createConstant(ElemKind::Int32ITy, {4}, "weight_offsets");
+  bindings_.allocate(input)->getHandle<float16_t>() = {1.0f, 2.0f, 3.0f,
+                                                       4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4,  7, 10, 2, 5,
+                                                      8, 11, 3, 6,  9, 12};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+  scales->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+  offsets->getPayloadMutable().getHandle<int>() = {0, 0, 0, 0};
+
+  auto *DRQFC = F_->createDynamicRowwiseQuantizedFullyConnected(
+      "drqfc", input, weights, bias, scales, offsets);
+  auto *S = F_->createSave("save", DRQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {15.0f, 66.0f,  153.0f, 276.0f,
+                                       33.0f, 156.0f, 369.0f, 672.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++) {
+    // DynRQFC's largest error in this unittest is around 1.0
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 1.5);
+  }
+}
+
+TEST_P(OperatorTest, DynamicQuantizedFullyConnectedBasic) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 3}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {3, 4}, 1.0, 0.0, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
+  bindings_.allocate(input)->getHandle<float16_t>() = {1.0f, 2.0f, 3.0f,
+                                                       4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4,  7, 10, 2, 5,
+                                                      8, 11, 3, 6,  9, 12};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  auto *DQFC =
+      F_->createDynamicQuantizedFullyConnected("dqfc", input, weights, bias);
+  auto *S = F_->createSave("save", DQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {15.0f, 34.0f, 53.0f,  72.0f,
+                                       33.0f, 79.0f, 125.0f, 171.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++) {
+    // DynQFC's largest error in this unittest is around 2e-1
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 3e-1);
+  }
+}
+
+TEST_P(OperatorTest, DynamicQuantizedFullyConnectedStrongWeights) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {3, 4}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {4, 2}, 0.5, 1, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {2}, "bias");
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 2.0f, 3.0f, 4.0f, 5.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4, 2, 3, 3, 2, 4, 1};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f};
+
+  auto *DQFC =
+      F_->createDynamicQuantizedFullyConnected("dqfc", input, weights, bias);
+  auto *S = F_->createSave("save", DQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {3, 2};
+  std::vector<float> expectedValues = {11.0f, 7.0f, 14.0f, 10.0f, 17.0f, 13.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 3 * 2; i++) {
+    // DynQFC's largest error in this unittest is around 2e-1
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 3e-1);
+  }
+}
+
 TEST_P(OperatorTest, FCWithFlatten) {
   CHECK_IF_ENABLED();
 
@@ -8655,6 +8755,22 @@ TEST_P(OperatorTest, Neg_FloatTy) {
   EXPECT_EQ(outH.size(), 2);
   EXPECT_FLOAT_EQ(outH.raw(0), -1.0);
   EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
+}
+
+TEST_P(OperatorTest, Neg_Int32ITy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::Int32ITy, {3}, "inp", false);
+  bindings_.allocate(inp)->getHandle<int32_t>() = {1, 0, -1};
+  auto *node = F_->createNeg("neg", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int32_t>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_FLOAT_EQ(outH.raw(0), -1);
+  EXPECT_FLOAT_EQ(outH.raw(1), 0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 1);
 }
 
 TEST_P(OperatorTest, Neg_Int8QTy) {
@@ -13816,6 +13932,43 @@ static Tensor *testCumSum(glow::PlaceholderBindings &bindings,
   return bindings.get(S->getPlaceholder());
 }
 
+template <typename DataType>
+static Tensor *testCumSum2D(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            int64_t dim, bool exclusive, bool reverse) {
+  auto *data = mod.createPlaceholder(DTy, {3, 4}, "data", false);
+  bindings.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4,  5,  6,
+                                                    7, 8, 9, 10, 11, 12};
+
+  auto *CS = F->createCumSum("CumSum", data, dim, exclusive, reverse);
+  auto *S = F->createSave("save", CS);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  return bindings.get(S->getPlaceholder());
+}
+
+template <typename DataType>
+static Tensor *testCumSum3D(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            int64_t dim, bool exclusive, bool reverse) {
+  auto *data = mod.createPlaceholder(DTy, {2, 3, 4}, "data", false);
+  bindings.allocate(data)->getHandle<DataType>() = {
+      1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+      13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
+
+  auto *CS = F->createCumSum("CumSum", data, dim, exclusive, reverse);
+  auto *S = F->createSave("save", CS);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  return bindings.get(S->getPlaceholder());
+}
+
 TEST_P(OperatorTest, CumSum_Float) {
   CHECK_IF_ENABLED();
   /*
@@ -13981,6 +14134,655 @@ TEST_P(OperatorTest, CumSum_WithZeroes) {
   expected.getHandle<int64_t>() = {0, 0, 1, 1, 1, 3, 3, 3, 6};
 
   EXPECT_TRUE(expected.isEqual(*result));
+}
+
+/*
+  CumSum tests with 2 and 3 dimensions.
+  Define CUMSUM_ND_SUPPORTED in the implementation to run these tests
+
+  These answers were generated using PyTorch, but hardcoded to prevent
+  writing potentially buggy mock implementations.
+
+  2D:
+    DATA  = [
+      1,  2,  3,  4,
+      5,  6,  7,  8,
+      9, 10, 11, 12
+    ] flat: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+
+
+  dim = 0 (sum ALONG ALL rows in a given column)
+    Regular Output = [
+      1,  2,  3,  4,
+      6,  8, 10, 12,
+     15, 18, 21, 24
+    ] flat: {1, 2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24}
+
+    Reversed output = [
+     15, 18, 21, 24,
+     14, 16, 18, 20,
+      9, 10, 11, 12
+    ] flat: {15, 18, 21, 24, 14, 16, 18, 20, 9, 10, 11, 12}
+
+    Exclusive Output = [
+      0,  0,  0,  0,
+      1,  2,  3,  4,
+      6,  8, 10, 12
+    ] flat: {0, 0, 0, 0, 1, 2, 3, 4, 6, 8, 10, 12}
+
+    Exclusive Reversed output = [
+     14, 16, 18, 20,
+      9, 10, 11, 12,
+      0,  0,  0,  0
+    ] flat: {14, 16, 18, 20, 9, 10, 11, 12, 0, 0, 0, 0}
+
+  dim = 1 (sum ALONG ALL columns for a given row)
+    Regular Output = [
+      1,  3,  6, 10,
+      5, 11, 18, 26,
+      9, 19, 30, 42
+    ] flat: {1, 3, 6, 10, 5, 11, 18, 26, 9, 19, 30, 42}
+
+    Reversed output = [
+     10,  9,  7,  4,
+     26, 21, 15,  8,
+     42, 33, 23, 12
+    ] flat: {10, 9, 7, 4, 26, 21, 15, 8, 42, 33, 23, 12}
+
+    Exclusive Output = [
+      0,  1,  3,  6,
+      0,  5, 11, 18,
+      0,  9, 19, 30
+    ] flat: {0, 1, 3, 6, 0, 5, 11, 18, 0, 9, 19, 30}
+
+    Exclusive Reversed output = [
+      9,  7,  4,  0,
+     21, 15,  8,  0,
+     33, 23, 12,  0
+    ] flat: {9, 7, 4, 0, 21, 15, 8, 0, 33, 23, 12, 0}
+
+  3D: Because there are too many moving parameters here, we try each branch
+      but not each combination of branches
+
+  All examples were computed using pytorch.
+  */
+
+TEST_P(OperatorTest, CumSum2D_float_Dim0_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {14, 16, 18, 20, 9, 10,
+                                        11, 12, 0,  0,  0, 0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim0_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0, 0, 0, 0, 1, 2, 3, 4, 6, 8, 10, 12};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim0_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {15, 18, 21, 24, 14, 16,
+                                        18, 20, 9,  10, 11, 12};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  2,  3,  4,  6,  8,
+                                        10, 12, 15, 18, 21, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim1_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {9, 7, 4,  0,  21, 15,
+                                        8, 0, 33, 23, 12, 0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim1_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0, 1, 3, 6, 0, 5, 11, 18, 0, 9, 19, 30};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim1_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {10, 9, 7,  4,  26, 21,
+                                        15, 8, 42, 33, 23, 12};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  3,  6, 10, 5,  11,
+                                        18, 26, 9, 19, 30, 42};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim0_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {13, 14, 15, 16, 17, 18, 19, 20,
+                                        21, 22, 23, 24, 0,  0,  0,  0,
+                                        0,  0,  0,  0,  0,  0,  0,  0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim0_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0,  0,
+                                        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim0_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {14, 16, 18, 20, 22, 24, 26, 28,
+                                        30, 32, 34, 36, 13, 14, 15, 16,
+                                        17, 18, 19, 20, 21, 22, 23, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  2,  3,  4,  5,  6,  7,  8,
+                                        9,  10, 11, 12, 14, 16, 18, 20,
+                                        22, 24, 26, 28, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim1_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {14, 16, 18, 20, 9,  10, 11, 12,
+                                        0,  0,  0,  0,  38, 40, 42, 44,
+                                        21, 22, 23, 24, 0,  0,  0,  0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim1_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0,  0,  0,  0,  1,  2,  3,  4,
+                                        6,  8,  10, 12, 0,  0,  0,  0,
+                                        13, 14, 15, 16, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim1_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {15, 18, 21, 24, 14, 16, 18, 20,
+                                        9,  10, 11, 12, 51, 54, 57, 60,
+                                        38, 40, 42, 44, 21, 22, 23, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  2,  3,  4,  6,  8,  10, 12,
+                                        15, 18, 21, 24, 13, 14, 15, 16,
+                                        30, 32, 34, 36, 51, 54, 57, 60};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim2_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 2,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {9,  7,  4,  0, 21, 15, 8,  0,
+                                        33, 23, 12, 0, 45, 31, 16, 0,
+                                        57, 39, 20, 0, 69, 47, 24, 0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim2_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 2,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0, 1,  3,  6,  0, 5,  11, 18,
+                                        0, 9,  19, 30, 0, 13, 27, 42,
+                                        0, 17, 35, 54, 0, 21, 43, 66};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim2_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 2,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {10, 9,  7,  4,  26, 21, 15, 8,
+                                        42, 33, 23, 12, 58, 45, 31, 16,
+                                        74, 57, 39, 20, 90, 69, 47, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim2) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 2,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  3,  6,  10, 5,  11, 18, 26,
+                                        9,  19, 30, 42, 13, 27, 42, 58,
+                                        17, 35, 54, 74, 21, 43, 66, 90};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float16_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 0,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  2,  3,  4,  6,  8,
+                                            10, 12, 15, 18, 21, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float16_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 1,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  3,  6, 10, 5,  11,
+                                            18, 26, 9, 19, 30, 42};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float16_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 0,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  2,  3,  4,  5,  6,  7,  8,
+                                            9,  10, 11, 12, 14, 16, 18, 20,
+                                            22, 24, 26, 28, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float16_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 1,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  2,  3,  4,  6,  8,  10, 12,
+                                            15, 18, 21, 24, 13, 14, 15, 16,
+                                            30, 32, 34, 36, 51, 54, 57, 60};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float16_Dim2) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 2,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  3,  6,  10, 5,  11, 18, 26,
+                                            9,  19, 30, 42, 13, 27, 42, 58,
+                                            17, 35, 54, 74, 21, 43, 66, 90};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_bfloat16_t_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 0,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  2,  3,  4,  6,  8,
+                                             10, 12, 15, 18, 21, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_bfloat16_t_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 1,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  3,  6, 10, 5,  11,
+                                             18, 26, 9, 19, 30, 42};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_bfloat16_t_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 0,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  2,  3,  4,  5,  6,  7,  8,
+                                             9,  10, 11, 12, 14, 16, 18, 20,
+                                             22, 24, 26, 28, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_bfloat16_t_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 1,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  2,  3,  4,  6,  8,  10, 12,
+                                             15, 18, 21, 24, 13, 14, 15, 16,
+                                             30, 32, 34, 36, 51, 54, 57, 60};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_bfloat16_t_Dim2) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 2,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  3,  6,  10, 5,  11, 18, 26,
+                                             9,  19, 30, 42, 13, 27, 42, 58,
+                                             17, 35, 54, 74, 21, 43, 66, 90};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_int32_t_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 0,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  2,  3,  4,  6,  8,
+                                          10, 12, 15, 18, 21, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_int32_t_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 1,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  3,  6, 10, 5,  11,
+                                          18, 26, 9, 19, 30, 42};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_int32_t_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 0,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  2,  3,  4,  5,  6,  7,  8,
+                                          9,  10, 11, 12, 14, 16, 18, 20,
+                                          22, 24, 26, 28, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_int32_t_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 1,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  2,  3,  4,  6,  8,  10, 12,
+                                          15, 18, 21, 24, 13, 14, 15, 16,
+                                          30, 32, 34, 36, 51, 54, 57, 60};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_int32_t_Dim2) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 2,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  3,  6,  10, 5,  11, 18, 26,
+                                          9,  19, 30, 42, 13, 27, 42, 58,
+                                          17, 35, 54, 74, 21, 43, 66, 90};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
 }
 
 TEST_P(OperatorTest, LengthsSum) {
@@ -18704,6 +19506,66 @@ TEST_P(OperatorStatelessTest, LayerNorm_Float16) {
                             parCloneCountOpt);
 }
 
+/// Mock Test LayerNorm with Float32Ty.
+TEST_P(OperatorStatelessTest, LayerNormMock_Float32) {
+  CHECK_IF_ENABLED();
+  /*
+    WEIGHT = [2.4180, 2.2070, 2.3184, 0.7378, 0.7734, 0.7520]
+    BIAS = [0.1567, 0.0308, 0.0166, 0.2944, 0.2759, 0.5649]
+    INPUT = [
+              1.0,
+              2.0,
+              3.0,
+              4.0,
+              5.0,
+              6.0,
+            ]
+    TARGET = [
+              -3.382883310317993,
+              -1.907626986503601,
+              -0.662156879901886,
+              0.5104053020477295,
+              0.9551836252212524,
+              1.6657130718231201,
+             ]
+  */
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
+
+  PlaceholderBindings bindings;
+
+  bindings.allocate(input)->getHandle() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+  };
+  Tensor scaleT(ElemKind::FloatTy, {6});
+  scaleT.getHandle() = {2.4180f, 2.2070f, 2.3184f, 0.7378f, 0.7734f, 0.7520f};
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {6});
+  biasT.getHandle() = {0.1567f, 0.0308f, 0.0166f, 0.2944f, 0.2759f, 0.5649f};
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+
+  auto *res = F->createSave("save", LNN);
+  bindings.allocate(res->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(ElemKind::FloatTy, {1, 6});
+  expected.getHandle() = {
+      -3.382883310317993f, -1.907626986503601f, -0.662156879901886f,
+      0.5104053020477295f, 0.9551836252212524f, 1.6657130718231201f,
+  };
+
+  EXPECT_TRUE(expected.isEqual(*bindings.get(res->getPlaceholder())));
+}
+
 /// Test LayerNorm with BFloat16Ty.
 TEST_P(OperatorStatelessTest, LayerNorm_BFloat16) {
   CHECK_IF_ENABLED();
@@ -18922,7 +19784,7 @@ TEST_P(OperatorTest, Upsample_Nearest3D_Float) {
 
 TEST_P(OperatorTest, Upsample_Nearest3D_Float16) {
   CHECK_IF_ENABLED();
-  testUpsample3D<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testUpsample3D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, Upsample_Nearest3D_Int8) {
@@ -18937,7 +19799,7 @@ TEST_P(OperatorTest, Upsample_Nearest2D_Float) {
 
 TEST_P(OperatorTest, Upsample_Nearest2D_Float16) {
   CHECK_IF_ENABLED();
-  testUpsample2D<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testUpsample2D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, Upsample_Nearest2D_Int8) {
@@ -18952,7 +19814,7 @@ TEST_P(OperatorTest, Upsample_Nearest1D_Float) {
 
 TEST_P(OperatorTest, Upsample_Nearest1D_Float16) {
   CHECK_IF_ENABLED();
-  testUpsample1D<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testUpsample1D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, Upsample_Nearest1D_Int8) {

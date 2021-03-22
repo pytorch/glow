@@ -140,6 +140,35 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::Int32ITy, ElemKind::FloatTy, ElemKind::Float16Ty,
          ElemKind::BFloat16Ty, ElemKind::Int8QTy});
 
+  case Kinded::Kind::DynamicQuantizedFullyConnectedNodeKind:
+    return (NI.getInElemTy(DynamicQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::Float16Ty ||
+            NI.getInElemTy(DynamicQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::FloatTy) &&
+           NI.getInElemTy(DynamicQuantizedFullyConnectedNode::WeightsIdx) ==
+               ElemKind::Int8QTy &&
+           NI.getInElemTy(DynamicQuantizedFullyConnectedNode::BiasIdx) ==
+               ElemKind::FloatTy;
+
+  case Kinded::Kind::DynamicRowwiseQuantizedFullyConnectedNodeKind:
+    return (NI.getInElemTy(
+                DynamicRowwiseQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::Float16Ty ||
+            NI.getInElemTy(
+                DynamicRowwiseQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::FloatTy) &&
+           NI.getInElemTy(
+               DynamicRowwiseQuantizedFullyConnectedNode::WeightsIdx) ==
+               ElemKind::Int8QTy &&
+           NI.getInElemTy(DynamicRowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(
+               DynamicRowwiseQuantizedFullyConnectedNode::ScalesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(
+               DynamicRowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
+               ElemKind::Int32ITy;
+
   case Kinded::Kind::MatMulNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -229,7 +258,6 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::BoolTy});
 
   case Kinded::Kind::AbsNodeKind:
-  case Kinded::Kind::NegNodeKind:
   case Kinded::Kind::SignNodeKind:
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
@@ -241,6 +269,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ErfNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
+
+  case Kinded::Kind::NegNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Int8QTy});
 
   case Kinded::Kind::FloorNodeKind:
   case Kinded::Kind::TruncateNodeKind:
@@ -262,6 +294,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
                {}, {IsNaNNode::ResultIdx}) &&
            (NI.getOutElemTy(IsNaNNode::ResultIdx) == ElemKind::BoolTy);
+
+  case Kinded::Kind::BitwiseAndNodeKind:
+  case Kinded::Kind::BitwiseOrNodeKind:
+  case Kinded::Kind::BitwiseXorNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::BoolTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
 
   case Kinded::Kind::BitwiseNotNodeKind:
   case Kinded::Kind::ModuloNodeKind:
@@ -1019,3 +1057,8 @@ Expected<bool> Interpreter::transformPostLowering(
 
 void Interpreter::parseBackendSpecificOptions(
     const BackendOptions &opts) const {}
+
+Expected<double> Interpreter::estimateNodeCost(const glow::Node *node) const {
+  // Using default cost from Partitioner which is 1.
+  return 1.0;
+}

@@ -89,6 +89,21 @@
     }                                                                          \
   } while (0)
 
+/// Takes an Expected<T> \p rhsOrErr and if it is an Error then LOG(FATAL)'s,
+/// otherwise takes the value from rhsOrErr and assigns it to \p lhs.
+#define ASSIGN_VALUE_OR_FATAL(lhs, rhsOrErr)                                   \
+  do {                                                                         \
+    auto rhsOrErrV = (rhsOrErr);                                               \
+    static_assert(glow::detail::IsExpected<decltype(rhsOrErrV)>(),             \
+                  "Expected value to be a Expected");                          \
+    if (rhsOrErrV) {                                                           \
+      lhs = std::move(rhsOrErrV.get());                                        \
+    } else {                                                                   \
+      auto err = rhsOrErrV.takeError();                                        \
+      LOG(FATAL) << ERR_TO_STRING(std::move(err));                             \
+    }                                                                          \
+  } while (0)
+
 /// Takes an Error, adds stack information to it, and returns it unconditionally
 #define RETURN_ERR(err)                                                        \
   do {                                                                         \
