@@ -2258,6 +2258,27 @@ public:
   }
 };
 
+class VectorNormNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowVN = llvm::dyn_cast<VectorNormNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowVN, "Bad node type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowVN->getP() == 2,
+                          "Only support Frobenius, p should be 2",
+                          NNPI_INVALID_PARAM);
+    importer.setUsedTensors({nodeValueName(glowVN->getInput())},
+                            {nodeValueName(glowVN->getResult())});
+
+    uint32_t axis = glowVN->getAxis();
+
+    return nnpiNetworkAddReduceOp(importer.getNetwork(),
+                                  glowVN->getName().begin(),
+                                  nodeValueName(glowVN->getInput()).c_str(),
+                                  nodeValueName(glowVN->getResult()).c_str(),
+                                  NNPI_REDUCE_L2, &axis, 1, 0);
+  }
+};
+
 class LogitNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2619,6 +2640,7 @@ std::unordered_map<
     {"Clip", glow::make_unique<ClipNodeImporter>()},
     {"BatchNormalization", glow::make_unique<BatchNormalizationNodeImporter>()},
     {"LayerNormalization", glow::make_unique<LayerNormalizationNodeImporter>()},
+    {"VectorNorm", glow::make_unique<VectorNormNodeImporter>()},
     {"ChannelwiseQuantizedConvolution",
      glow::make_unique<ChannelwiseQuantizedConvolutionNodeImporter>()},
     {"Embedding", glow::make_unique<EmbeddingNodeImporter>()},

@@ -218,6 +218,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
              BatchNormalizationNode::MeanIdx, BatchNormalizationNode::VarIdx});
     break;
   }
+  case Kinded::Kind::VectorNormNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy});
+    break;
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
