@@ -3564,6 +3564,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *scratchPtr = emitValueAddress(builder, scratch);
 
     // Emit parameters.
+    auto *numBoxes = emitConstI32(builder, boxes->getType()->dims()[1]);
+    auto *numTotalClasses = emitConstI32(builder, scores->getType()->dims()[2]);
     auto *numClasses = emitConstI32(builder, DPPI->getNumClasses());
     auto *maxDetections = emitConstI32(builder, DPPI->getMaxDetections());
     auto *maxClassesPerDetection = emitConstI32(builder, DPPI->getMaxClassesPerDetection());
