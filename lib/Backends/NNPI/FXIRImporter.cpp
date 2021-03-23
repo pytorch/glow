@@ -1,6 +1,7 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
+#include "glow/Support/Support.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "nnpi_transformer_types.h"
 
@@ -268,7 +269,12 @@ static std::unordered_map<std::string,
         // _operator
         {"_operator.add",
          std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_ADD>>()},
-
+        {"_operator.sub",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
+        {"_operator.mul",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
+        {"_operator.truediv",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
         // torch
         {"torch.flatten", std::make_unique<ReshapeNodeImporter>()},
 
@@ -528,6 +534,14 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
                                    ? targetName
                                    : node["parameters"]["name"].getString();
     // Import node.
+    if (FXNodeImporters.find(functionName) == FXNodeImporters.end()) {
+      LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
+          NNPIErrorCode::NNPI_INVALID_NETWORK,
+          glow::strFormat(
+              "Could not import node with opCode '%s', target '%s'.",
+              opCode.c_str(), targetName.c_str()))
+    }
+
     LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
         FXNodeImporters.at(functionName)
             ->importNode(
