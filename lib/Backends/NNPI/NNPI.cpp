@@ -1708,7 +1708,6 @@ static bool padKernelToStride(Function *F) {
           glowChannelwiseQuantizedConv->getStrides()[0],
           glowChannelwiseQuantizedConv->getStrides()[1]};
 
-#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
       bool is1x1s2Case = true;
       // This is for special case of 1x1 stride 2.
       for (int i = 0; i < SPATIAL_DIMS2; i++) {
@@ -1718,7 +1717,6 @@ static bool padKernelToStride(Function *F) {
       if (is1x1s2Case) {
         continue;
       }
-#endif
 
       for (int i = 0; i < SPATIAL_DIMS2; i++) {
         if (kernel[i] < stride[i]) {
