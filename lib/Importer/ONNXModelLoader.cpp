@@ -5156,11 +5156,13 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadErf(op, dict);
   }
   if (typeName == "Conv") {
-    // If the Conv operator has quantized inputs, use
+    // If the Conv operator has quantized inputs and
+    // dict contains the scale and offset params, use
     // loadTensorwiseQuantizedConvolution.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    return in.getType()->isQuantizedType()
+    return in.getType()->isQuantizedType() && dict.count("out_scale") &&
+                   dict.count("out_offset")
                ? loadTensorwiseQuantizedConvolution(op, dict)
                : loadConv(op, dict);
   }
@@ -5172,7 +5174,8 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // loadTensorwiseQuantizedPool.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    return in.getType()->isQuantizedType()
+    return in.getType()->isQuantizedType() && dict.count("out_scale") &&
+                   dict.count("out_offset")
                ? loadTensorwiseQuantizedPool(op, dict, typeName)
                : loadPool(op, dict, typeName);
   }
