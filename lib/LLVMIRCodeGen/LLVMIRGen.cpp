@@ -3542,6 +3542,49 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::TFLiteDetectionPostProcessInstKind: {
+    auto *DPPI = llvm::cast<TFLiteDetectionPostProcessInst>(I);
+    auto boxes = DPPI->getBoxes();
+    auto scores = DPPI->getScores();
+    auto anchors = DPPI->getAnchors();
+    auto detectionBoxes = DPPI->getDetectionBoxes();
+    auto detectionClasses = DPPI->getDetectionClasses();
+    auto detectionScores = DPPI->getDetectionScores();
+    auto numDetections = DPPI->getNumDetections();
+    auto scratch = DPPI->getScratch();
+
+    // Emit pointers.
+    auto *boxesPtr = emitValueAddress(builder, boxes);
+    auto *scoresPtr = emitValueAddress(builder, scores);
+    auto *anchorsPtr = emitValueAddress(builder, anchors);
+    auto *detectionBoxesPtr = emitValueAddress(builder, detectionBoxes);
+    auto *detectionClassesPtr = emitValueAddress(builder, detectionClasses);
+    auto *detectionScoresPtr = emitValueAddress(builder, detectionScores);
+    auto *numDetectionsPtr = emitValueAddress(builder, numDetections);
+    auto *scratchPtr = emitValueAddress(builder, scratch);
+
+    // Emit parameters.
+    auto *numClasses = emitConstI32(builder, DPPI->getNumClasses());
+    auto *maxDetections = emitConstI32(builder, DPPI->getMaxDetections());
+    auto *maxClassesPerDetection = emitConstI32(builder, DPPI->getMaxClassesPerDetection());
+    auto *detectionsPerClass = emitConstI32(builder, DPPI->getDetectionsPerClass());
+    auto *iouThreshold = emitConstF32(builder, DPPI->getIouThreshold());
+    auto *scoreThreshold = emitConstF32(builder, DPPI->getScoreThreshold());
+    auto *xScale = emitConstF32(builder, DPPI->getXScale());
+    auto *yScale = emitConstF32(builder, DPPI->getYScale());
+    auto *hScale = emitConstF32(builder, DPPI->getHScale());
+    auto *wScale = emitConstF32(builder, DPPI->getWScale());
+    auto *regularNMS = emitConstI1(builder, DPPI->getRegularNMS());
+
+    // Call function.
+    // auto *F = getFunction("tflite_post_process", boxes->getElementType());
+    // createCall(builder, F, {...});
+
+    // TODO: Finish LLVMIR Gen.
+
+    break;
+  }
+
   case Kinded::Kind::AudioSpectrogramInstKind: {
     auto *ASI = llvm::cast<AudioSpectrogramInst>(I);
     auto winOutScratch = ASI->getWinOutScratch();

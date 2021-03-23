@@ -1504,6 +1504,27 @@ int main(int argc, char **argv) {
                     "V4 by outputting indices and scalar tensor with number of "
                     "valid indices. It pads the rest with global MIN box.");
 
+  BB.newNode("TFLiteDetectionPostProcess")
+      .addInput("Boxes")
+      .addInput("Scores")
+      .addInput("Anchors")
+      .addMember(MemberType::Unsigned, "NumClasses")
+      .addMember(MemberType::Unsigned, "MaxDetections")
+      .addMember(MemberType::Unsigned, "MaxClassesPerDetection")
+      .addMember(MemberType::Unsigned, "DetectionsPerClass")
+      .addMember(MemberType::Float, "IouThreshold")
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Float, "XScale")
+      .addMember(MemberType::Float, "YScale")
+      .addMember(MemberType::Float, "HScale")
+      .addMember(MemberType::Float, "WScale")
+      .addMember(MemberType::Boolean, "RegularNMS")
+      .addResultFromCtorArg("DetectionBoxes")
+      .addResultFromCtorArg("DetectionClasses")
+      .addResultFromCtorArg("DetectionScores")
+      .addResultFromCtorArg("NumDetections")
+      .setDocstring("This is a TensorFlowLite version of NonMaxSuppresion.");
+
   //===--------------------------------------------------------------------===//
   //                Region of Interest nodes
   //===--------------------------------------------------------------------===//

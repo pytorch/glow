@@ -734,6 +734,15 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
             NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
 
+  case Kinded::Kind::TFLiteDetectionPostProcessNodeKind:
+    return NI.getInElemTy(TFLiteDetectionPostProcessNode::BoxesIdx) == ElemKind::Int8QTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::ScoresIdx) == ElemKind::Int8QTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::AnchorsIdx) == ElemKind::Int8QTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionBoxesIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionClassesIdx) == ElemKind::Int32ITy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionScoresIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::NumDetectionsIdx) == ElemKind::Int32ITy;
+
   case Kinded::Kind::AudioSpectrogramNodeKind:
     return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==
                ElemKind::FloatTy &&

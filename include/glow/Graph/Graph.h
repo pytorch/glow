@@ -2111,6 +2111,24 @@ public:
       int64_t centerPointBox, int64_t maxOutputBoxesPerClass,
       float iouThreshold, float scoreThreshold, TypeRef indicesTy);
 
+  /// TODO: Add comment.
+  TFLiteDetectionPostProcessNode *createTFLiteDetectionPostProcess(
+      llvm::StringRef name,
+      NodeValue boxes,
+      NodeValue scores,
+      NodeValue anchors,
+      int32_t numClasses,
+      int32_t maxDetections,
+      int32_t maxClassesPerDetection,
+      int32_t detectionsPerClass,
+      float iouThreshold,
+      float scoreThreshold,
+      float xScale,
+      float yScale,
+      float hScale,
+      float wScale,
+      bool regularNMS);
+
   /// Create a constant node with a 1D cosine windowing function defined as:
   /// w[n] = 0.5 - 0.5 * cos(2 * pi * n / N) for n = 0 .. N - 1 where N
   /// is the window \p length. The node name will be \p name.

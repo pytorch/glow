@@ -148,3 +148,8 @@ dim_t AudioSpectrogramInst::getFftOutScratchSize() const {
 dim_t MFCCInst::getScratchSize() const {
   return getFilterBankCount() * sizeof(float);
 }
+
+dim_t TFLiteDetectionPostProcessInst::getScratchSize() const {
+  // TODO: Compute scratch size.
+  return 0;
+}

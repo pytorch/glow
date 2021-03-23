@@ -2290,6 +2290,12 @@ bool NonMaxSuppressionNode::verify() const {
   return isValid;
 }
 
+bool TFLiteDetectionPostProcessNode::verify() const {
+  // TODO: Perform node validations.
+  bool isValid = true;
+  return isValid;
+}
+
 bool AudioSpectrogramNode::verify() const {
   NodeValue input = getInput();
   NodeValue spectrogram = getSpectrogram();
