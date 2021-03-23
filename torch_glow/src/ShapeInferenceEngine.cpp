@@ -1791,11 +1791,11 @@ ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
 Expected<TensorOutput>
 ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 3,
-      strFormat("Expected 3 inputs, got %zu.", variableMetas.size()));
+      variableMetas.size() >= 2,
+      strFormat("Expected 2 or more inputs, got %zu.", variableMetas.size()));
 
   int max_feature_length;
-  if (variableMetas[2].intValue.size() == 1) {
+  if (variableMetas.size() > 2 && variableMetas[2].intValue.size() == 1) {
     max_feature_length = variableMetas[2].intValue[0];
   } else {
     max_feature_length = FLAGS_max_feature_length;
