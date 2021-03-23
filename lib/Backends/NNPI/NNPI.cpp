@@ -452,12 +452,14 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
   case Kinded::Kind::CmpLTENodeKind:
-  case Kinded::Kind::CmpEQNodeKind:
   case Kinded::Kind::CmpLTNodeKind:
+  case Kinded::Kind::CmpEQNodeKind:
+  case Kinded::Kind::CmpNEQNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
-            {CmpEQNode::ResultIdx}) &&
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+             ElemKind::Int32ITy},
+            {}, {CmpEQNode::ResultIdx}) &&
         (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
     break;
   case Kinded::Kind::SelectNodeKind:
