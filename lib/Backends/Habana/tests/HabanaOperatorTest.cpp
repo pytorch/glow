@@ -321,6 +321,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "pow/0",
     "PReluSimple_Float/0",
     "PReluSimple_Float16/0",
+    "PRelu_Int8/0",
     "QuantizedArgMaxKeepDim/0",
     "QuantizedArgMaxNoKeepDim/0",
     "QuantizedArithmeticRescaled/0",

@@ -4582,6 +4582,37 @@ TEST_P(OperatorTest, PReluSimple_BFloat16) {
                               1E-16);
 }
 
+/// Verify that the PRELU operator works correctly for int8 with different
+/// input and output quantization parameters.
+TEST_P(OperatorTest, PRelu_Int8) {
+  CHECK_IF_ENABLED();
+  auto *in = mod_.createPlaceholder(ElemKind::Int8QTy, {7}, 1, 0, "in", false);
+  auto *slope =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {7}, 1, 0, "slope", false);
+
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {7}, 2, 0);
+  auto *prelu = F_->createPRELU("prelu", in, slope, outTy);
+  auto *save = F_->createSave("prelu", prelu);
+  bindings_.allocate(save->getPlaceholder());
+
+  bindings_.allocate(in)->getHandle<int8_t>() = {0, -1, -2, -3, 4, 5, 6};
+  bindings_.allocate(slope)->getHandle<int8_t>().randomize(1, 10,
+                                                           mod_.getPRNG());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto resultH = bindings_.get(save->getPlaceholder())->getHandle<int8_t>();
+  auto inH = bindings_.get(in)->getHandle<int8_t>();
+  auto slopeH = bindings_.get(slope)->getHandle<int8_t>();
+
+  for (size_t i = 0; i < 7; i++) {
+    int8_t expectedResult = slopeH.raw(i) * std::min<int8_t>(0, inH.raw(i)) +
+                            std::max<int8_t>(0, inH.raw(i));
+    EXPECT_NEAR(resultH.at(i), expectedResult / 2, 1);
+  }
+}
+
 /// Helper to test Gelu using \p DTy.
 template <typename DataType>
 static void testGelu(glow::PlaceholderBindings &bindings, glow::Module &mod,
