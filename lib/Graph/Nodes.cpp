@@ -2546,11 +2546,24 @@ bool GemmNode::verify() const {
   NodeValue Y = getResult();
   bool transA = getTransposeA();
   bool transB = getTransposeB();
+  const Node *parent = Y.getNode();
 
   // Check types.
   bool isValid = checkType(B, A.getElementType(), this);
+  // Check for element kind of bias
   if (C.getNode()) {
-    isValid &= checkType(C, A.getElementType(), this);
+    // Non quantization type check.
+    if (A.getElementType() == ElemKind::FloatTy ||
+        A.getElementType() == ElemKind::Float16Ty) {
+      isValid &= checkType(C, A.getElementType(), parent);
+    }
+    // Quantization type check.
+    if (A.getElementType() == ElemKind::Int8QTy) {
+      isValid &= expectCompareTrue("Bias type should be Int8 or Int32 for Gemm",
+                                   C.getElementType() == ElemKind::Int8QTy ||
+                                       C.getElementType() == ElemKind::Int32QTy,
+                                   true, parent);
+    }
   }
   isValid &= checkType(Y, A.getElementType(), this);
 

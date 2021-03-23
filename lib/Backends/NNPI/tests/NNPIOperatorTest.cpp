@@ -72,6 +72,7 @@ struct BlacklistInitializer {
       {"Int16ConvolutionDepth10/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Int16ConvolutionDepth8/0", TestBlacklist::AnyDeviceAnyEngine},
       {"IntFloorDivBroadcast/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"IntGemm/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
