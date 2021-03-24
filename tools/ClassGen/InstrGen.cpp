@@ -1304,7 +1304,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "NumClasses")
       .addMember(MemberType::Unsigned, "MaxDetections")
       .addMember(MemberType::Unsigned, "MaxClassesPerDetection")
-      .addMember(MemberType::Unsigned, "DetectionsPerClass")
+      .addMember(MemberType::Unsigned, "MaxDetectionsPerClass")
       .addMember(MemberType::Float, "IouThreshold")
       .addMember(MemberType::Float, "ScoreThreshold")
       .addMember(MemberType::Float, "XScale")

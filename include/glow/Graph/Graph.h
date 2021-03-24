@@ -2120,7 +2120,7 @@ public:
       int32_t numClasses,
       int32_t maxDetections,
       int32_t maxClassesPerDetection,
-      int32_t detectionsPerClass,
+      int32_t maxDetectionsPerClass,
       float iouThreshold,
       float scoreThreshold,
       float xScale,

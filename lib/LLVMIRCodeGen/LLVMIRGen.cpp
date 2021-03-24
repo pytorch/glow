@@ -3564,12 +3564,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *scratchPtr = emitValueAddress(builder, scratch);
 
     // Emit parameters.
-    auto *numBoxes = emitConstI32(builder, boxes->getType()->dims()[1]);
-    auto *numTotalClasses = emitConstI32(builder, scores->getType()->dims()[2]);
+    auto *numBoxes = emitConstI32(builder, boxes->dims()[1]);
+    auto *numTotalClasses = emitConstI32(builder, scores->dims()[2]);
     auto *numClasses = emitConstI32(builder, DPPI->getNumClasses());
     auto *maxDetections = emitConstI32(builder, DPPI->getMaxDetections());
     auto *maxClassesPerDetection = emitConstI32(builder, DPPI->getMaxClassesPerDetection());
-    auto *detectionsPerClass = emitConstI32(builder, DPPI->getDetectionsPerClass());
+    auto *maxDetectionsPerClass = emitConstI32(builder, DPPI->getMaxDetectionsPerClass());
     auto *iouThreshold = emitConstF32(builder, DPPI->getIouThreshold());
     auto *scoreThreshold = emitConstF32(builder, DPPI->getScoreThreshold());
     auto *xScale = emitConstF32(builder, DPPI->getXScale());
@@ -3578,12 +3578,34 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *wScale = emitConstF32(builder, DPPI->getWScale());
     auto *regularNMS = emitConstI1(builder, DPPI->getRegularNMS());
 
+    // Current implementation only supports batch size 1.
+    assert(boxes->dims()[0] == 1 && "TFLiteDetectionPostProcess batch not supported!");
+
     // Call function.
-    // auto *F = getFunction("tflite_post_process", boxes->getElementType());
-    // createCall(builder, F, {...});
-
-    // TODO: Finish LLVMIR Gen.
-
+    auto *F = getFunction("tflite_detection_post_process_f");
+    createCall(builder, F, {
+      boxesPtr,
+      scoresPtr,
+      anchorsPtr,
+      detectionBoxesPtr,
+      detectionClassesPtr,
+      detectionScoresPtr,
+      numDetectionsPtr,
+      scratchPtr,
+      numBoxes,
+      numTotalClasses,
+      numClasses,
+      maxDetections,
+      maxClassesPerDetection,
+      maxDetectionsPerClass,
+      iouThreshold,
+      scoreThreshold,
+      xScale,
+      yScale,
+      hScale,
+      wScale,
+      regularNMS
+    });
     break;
   }
 

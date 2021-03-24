@@ -6408,17 +6408,7 @@ void BoundInterpreterFunction::fwdNonMaxSuppressionInst(
 //===----------------------------------------------------------------------===//
 void BoundInterpreterFunction::fwdTFLiteDetectionPostProcessInst(
     glow::TFLiteDetectionPostProcessInst const *I) {
-  switch (I->getBoxes()->getElementType()) {
-  case ElemKind::FloatTy:
-    // Implement Float NMS.
-    break;
-  case ElemKind::Int8QTy:
-    // Implement quantized NMS.
-    break;
-  default:
-    llvm_unreachable("Type is not supported.");
-    break;
-  }
+  // TODO: Implement NMS.
 }
 
 void BoundInterpreterFunction::fwdAudioSpectrogramInstFloatImpl(

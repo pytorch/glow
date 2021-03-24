@@ -3591,6 +3591,39 @@ void libjit_mfcc_f(void *scratch, float *coefficients, const float *spectrogram,
   }
 }
 
+//===----------------------------------------------------------------------===//
+//                          TFLiteDetectionPostProcess
+//===----------------------------------------------------------------------===//
+// TODO: Add comment.
+void libjit_tflite_detection_post_process_f(float *boxes,
+                                            float *scores,
+                                            float *anchors,
+
+                                            float *detectionBoxes,
+                                            int32_t *detectionClasses,
+                                            float *detectionScores,
+                                            int32_t *numDetections,
+                                            int8_t *scratch,
+
+                                            int32_t numBoxes,
+                                            int32_t numTotalClasses,
+                                            int32_t numClasses,
+                                            int32_t maxDetections,
+                                            int32_t maxClassesPerDetection,
+                                            int32_t maxDetectionsPerClass,
+                                            float iouThreshold,
+                                            float scoreThreshold,
+                                            float xScale,
+                                            float yScale,
+                                            float hScale,
+                                            float wScale,
+                                            bool regularNMS) {
+  // Add implementation.
+}
+
+//===----------------------------------------------------------------------===//
+//                          Instrumentation Callbacks
+//===----------------------------------------------------------------------===//
 #ifdef GLOW_LIBJIT_EXTERNAL_FUNCTIONS
 /// Glow IR instrumentation external callbacks.
 void glow_instrument_before(int id, int kind, int opInp, int opOut,

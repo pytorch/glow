@@ -2135,7 +2135,7 @@ Error TFLiteModelLoader::loadTFLiteDetectionPostProcess(const tflite::Operator *
   int32_t maxDetections = opts["max_detections"].AsInt32();
   int32_t maxClassesPerDetection = opts["max_classes_per_detection"].AsInt32();
   constexpr int32_t defaultNumDetectionsPerClass = 100;
-  int32_t detectionsPerClass = (opts["detections_per_class"].IsNull()) ? defaultNumDetectionsPerClass : opts["detections_per_class"].AsInt32();
+  int32_t maxDetectionsPerClass = (opts["detections_per_class"].IsNull()) ? defaultNumDetectionsPerClass : opts["detections_per_class"].AsInt32();
   float iouThreshold = opts["nms_iou_threshold"].AsFloat();
   float scoreThreshold = opts["nms_score_threshold"].AsFloat();
   float xScale = opts["x_scale"].AsFloat();
@@ -2153,7 +2153,7 @@ Error TFLiteModelLoader::loadTFLiteDetectionPostProcess(const tflite::Operator *
     numClasses,
     maxDetections,
     maxClassesPerDetection,
-    detectionsPerClass,
+    maxDetectionsPerClass,
     iouThreshold,
     scoreThreshold,
     xScale,

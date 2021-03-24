@@ -509,9 +509,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
                 ElemKind::Int64ITy);
 
   case Kinded::Kind::TFLiteDetectionPostProcessNodeKind:
-    return NI.getInElemTy(TFLiteDetectionPostProcessNode::BoxesIdx) == ElemKind::Int8QTy &&
-           NI.getInElemTy(TFLiteDetectionPostProcessNode::ScoresIdx) == ElemKind::Int8QTy &&
-           NI.getInElemTy(TFLiteDetectionPostProcessNode::AnchorsIdx) == ElemKind::Int8QTy &&
+    return NI.getInElemTy(TFLiteDetectionPostProcessNode::BoxesIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::ScoresIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::AnchorsIdx) == ElemKind::FloatTy &&
            NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionBoxesIdx) == ElemKind::FloatTy &&
            NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionClassesIdx) == ElemKind::Int32ITy &&
            NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionScoresIdx) == ElemKind::FloatTy &&
