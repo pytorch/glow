@@ -18340,6 +18340,46 @@ TEST_P(OperatorTest, Bucketize) {
   EXPECT_TRUE(expected2.isEqual(*result2));
 }
 
+/// Helper to test SoftPlus using \p DTy.
+template <typename DataType>
+static void testSoftPlus(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                         glow::Function *F, glow::ExecutionEngine &EE,
+                         ElemKind DTy) {
+  auto *input = mod.createPlaceholder(DTy, {1, 6}, "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {0., -2., 2., 5., 2.5, 6.};
+  auto *softPlus = F->createSoftPlus("Softplus", input);
+  auto *S = F->createSave("save", softPlus);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = bindings.get(S->getPlaceholder());
+
+  Tensor out(DTy, {1, 6});
+  out.getHandle<DataType>() = {0.693f, 0.127f, 2.127f, 5.007f, 2.579f, 6.002f};
+  EXPECT_TRUE(out.isEqual(*result, 0.001));
+}
+
+/// Verify that the SoftPlus operator works correctly for Float.
+TEST_P(OperatorTest, SoftPlus_Float) {
+  CHECK_IF_ENABLED();
+
+  testSoftPlus<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the SoftPlus operator works correctly for Float16.
+TEST_P(OperatorTest, SoftPlus_Float16) {
+  CHECK_IF_ENABLED();
+  testSoftPlus<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Verify that the SoftPlus operator works correctly for BFloat16.
+TEST_P(OperatorTest, SoftPlus_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSoftPlus<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
 /// Check the correctness of the SoftMax operator.
 /// The semantic of SoftMax is
 /// res_i = exp(input_i) / (exp(input_0) + ... + exp(input_N)).

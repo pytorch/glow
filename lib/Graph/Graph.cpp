@@ -1278,6 +1278,14 @@ TanhNode *Function::createTanh(llvm::StringRef name, NodeValue input) {
   return createTanh(name, input.getType(), input);
 }
 
+SoftPlusNode *Function::createSoftPlus(llvm::StringRef name, NodeValue input,
+                                       TypeRef outTy) {
+  if (!outTy) {
+    outTy = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new SoftPlusNode(name, outTy, input));
+}
+
 SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
                                      NodeValue selected, TypeRef outTy,
                                      float beta) {

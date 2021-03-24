@@ -914,6 +914,23 @@ public:
   }
 };
 
+class SoftPlusNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowSoftPlus = llvm::dyn_cast<SoftPlusNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowSoftPlus, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowSoftPlus->getInput())},
+                            {nodeValueName(glowSoftPlus->getResult())});
+
+    return nnpiNetworkAddSoftplusOp(
+        importer.getNetwork(), glowSoftPlus->getName().begin(),
+        nodeValueName(glowSoftPlus->getInput()).c_str(),
+        nodeValueName(glowSoftPlus->getResult()).c_str());
+  }
+};
+
 class SaveNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2532,6 +2549,7 @@ std::unordered_map<
      glow::make_unique<
          AdaptivePoolNodeImporter<glow::AdaptiveAvgPoolNode, NNPI_POOL_AVG>>()},
     {"FullyConnected", glow::make_unique<FullyConnectedNodeImporter>()},
+    {"SoftPlus", glow::make_unique<SoftPlusNodeImporter>()},
     {"SoftMax", glow::make_unique<SoftMaxNodeImporter>()},
     {"ScatterData", glow::make_unique<ScatterDataNodeImporter>()},
     {"Save", glow::make_unique<SaveNodeImporter>()},

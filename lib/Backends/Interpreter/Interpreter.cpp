@@ -223,6 +223,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::SoftPlusNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
   case Kinded::Kind::SliceNodeKind:

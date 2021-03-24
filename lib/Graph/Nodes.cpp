@@ -1023,6 +1023,10 @@ bool SigmoidGradNode::verify() const {
   return isValid;
 }
 
+bool SoftPlusNode::verify() const {
+  return verifyActivation(getInput(), getResult());
+}
+
 bool SwishNode::verify() const {
   return verifyActivation(getInput(), getResult());
 }

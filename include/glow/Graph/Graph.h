@@ -807,6 +807,11 @@ public:
   /// \returns a LogitNode with \p name given \p input and \p eps.
   LogitNode *createLogit(llvm::StringRef name, NodeValue input, float eps);
 
+  /// Create a SoftPlus node with the given \p name, \p input and
+  /// output type \p outTy.
+  SoftPlusNode *createSoftPlus(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy = nullptr);
+
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
                              NodeValue selected, TypeRef outTy = nullptr,
                              float beta = 1.0);

@@ -275,6 +275,9 @@ private:
   template <typename ElemTy> void fwdTanhInstFloatImpl(const TanhInst *I);
 
   template <typename ElemTy>
+  void fwdSoftPlusInstFloatImpl(const SoftPlusInst *I);
+
+  template <typename ElemTy>
   void fwdCrossEntropyLossInstFloatImpl(const CrossEntropyLossInst *I);
 
   template <typename ElemTy>

@@ -1089,6 +1089,13 @@ int main(int argc, char **argv) {
           "Applies LeakyReLU = x for positive x and alpha * x for negative x "
           "to each element in the Input tensor.");
 
+  BB.newNode("SoftPlus")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs SoftPlus, ln(exp(x) + 1), to each element in the "
+                    "Input tensor.");
+
   //===--------------------------------------------------------------------===//
   //                Shape transformations
   //===--------------------------------------------------------------------===//
