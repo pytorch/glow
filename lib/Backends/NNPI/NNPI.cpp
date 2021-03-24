@@ -413,9 +413,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::TopKNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
             {TopKNode::IndicesIdx}) &&
-        (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy);
+        (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy ||
+         NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::GatherNodeKind:
     isNodePrecisionSupported =

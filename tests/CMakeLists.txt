@@ -85,10 +85,11 @@ add_output_check_test(NAME en2gr_cpu_test
                       COMMAND ${TEXT_TRANSLATOR_TESTS_DIR}/en2gr_cpu_test.sh
                       REQUIRES MODELS CPU RELEASE)
 
-# Create en2gr_quantization_test OutputCheck test.
-add_output_check_test(NAME en2gr_quantization_test
-                      COMMAND ${TEXT_TRANSLATOR_TESTS_DIR}/en2gr_quantization_test.sh
-                      REQUIRES MODELS RELEASE)
+# TODO: uncomment after en2gr model file is fixed
+# # Create en2gr_quantization_test OutputCheck test.
+# add_output_check_test(NAME en2gr_quantization_test
+#                       COMMAND ${TEXT_TRANSLATOR_TESTS_DIR}/en2gr_quantization_test.sh
+#                       REQUIRES MODELS RELEASE)
 
 # Create en2gr_cpu_partition_test OutputCheck test.
 add_output_check_test(NAME en2gr_cpu_partition_test
