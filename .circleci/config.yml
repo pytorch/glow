@@ -32,7 +32,7 @@ update_submodule: &update_submodule
 linux_default: &linux_default
   resource_class: large
   machine:
-    image: default
+    image: ubuntu-2004:202010-01
   steps:
   - checkout
   - run:
