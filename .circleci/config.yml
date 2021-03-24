@@ -32,7 +32,7 @@ update_submodule: &update_submodule
 linux_default: &linux_default
   resource_class: large
   machine:
-    image: default
+    image: ubuntu-2004:202010-01
   steps:
   - checkout
   - run:
@@ -46,7 +46,7 @@ linux_default: &linux_default
         set -e
         export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_FOR_ECR_READ_WRITE}
         export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY_FOR_ECR_READ_WRITE}
-        sudo pip install awscli==1.16.35 -qqq
+        pip install awscli==1.16.35 -qqq
         eval $(aws ecr get-login --region us-east-1 --no-include-email)
 
         docker pull ${DOCKER_IMAGE}
