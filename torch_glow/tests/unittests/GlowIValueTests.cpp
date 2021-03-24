@@ -18,6 +18,7 @@
 #include <ATen/ATen.h>
 
 #include "glow/Runtime/HostManager/HostManager.h"
+#include "glow/glow/torch_glow/src/PyTorchCommon.h"
 
 #include <gtest/gtest.h>
 
@@ -207,6 +208,21 @@ TEST(GlowIValueTests, PTTensorTest) {
   ASSIGN_VALUE_OR_FAIL_TEST(tPtr, ival.toPTTensor());
 
   EXPECT_TRUE(tPtr->equal(tRef));
+}
+
+TEST(GlowIValueTests, UQInt8PTTensorToQInt8GlowTensor) {
+  auto t = at::_empty_affine_quantized({3}, at::kQUInt8);
+  t[0] = 2.0;
+  t[1] = 4.0;
+  t[2] = 6.0;
+
+  const auto &glowTensor = ptTensorToGlowTensor(t);
+  const auto &handle = glowTensor.getHandle<int8_t>();
+  EXPECT_TRUE(static_cast<int32_t>(handle.at({0})) == -126);
+  EXPECT_TRUE(static_cast<int32_t>(handle.at({1})) == -124);
+  EXPECT_TRUE(static_cast<int32_t>(handle.at({2})) == -122);
+  EXPECT_TRUE(glowTensor.getType().getOffset() == -128);
+  EXPECT_TRUE(glowTensor.getElementType() == ElemKind::Int8QTy);
 }
 
 TEST(GlowIValueTests, GenericMapTest) {
