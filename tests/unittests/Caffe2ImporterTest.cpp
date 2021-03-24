@@ -4917,3 +4917,74 @@ TEST_F(Caffe2ImporterTest, softplus) {
     }
   }
 }
+
+TEST_F(Caffe2ImporterTest, topk) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/topk_k2.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *valuesPH;
+  Placeholder *indicesPH;
+
+  std::vector<dim_t> inputShape{20, 50};
+
+  Tensor input{ElemKind::FloatTy, {inputShape}};
+  input.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    valuesPH = EXIT_ON_ERR(caffe2LD.getOutputByName("values"));
+    indicesPH = EXIT_ON_ERR(caffe2LD.getOutputByName("indices"));
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto values = bindings.get(valuesPH);
+  auto indices = bindings.get(indicesPH);
+  std::vector<dim_t> expectedShape{20, 2};
+  EXPECT_EQ(expectedShape, values->dims().vec());
+  EXPECT_EQ(expectedShape, indices->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto valuesH = values->getHandle();
+  auto indicesH = indices->getHandle<int32_t>();
+
+  for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+    dim_t firstLargestIndex = 0;
+    dim_t secondLargestIndex = 1;
+    if (input.getHandle().at({d1, 1}) > input.getHandle().at({d1, 0})) {
+      std::swap(firstLargestIndex, secondLargestIndex);
+    }
+    float firstLargestValue = input.getHandle().at({d1, firstLargestIndex});
+    float secondLargestValue = input.getHandle().at({d1, secondLargestIndex});
+
+    for (dim_t d2 = 2; d2 < inputShape[1]; ++d2) {
+      auto val = input.getHandle().at({d1, d2});
+      if (val > firstLargestValue) {
+        secondLargestIndex = firstLargestIndex;
+        secondLargestValue = firstLargestValue;
+        firstLargestIndex = d2;
+        firstLargestValue = val;
+      } else if (val > secondLargestValue) {
+        secondLargestIndex = d2;
+        secondLargestValue = val;
+      }
+    }
+
+    EXPECT_EQ(indicesH.at({d1, 0}), firstLargestIndex);
+    EXPECT_EQ(indicesH.at({d1, 1}), secondLargestIndex);
+    EXPECT_EQ(valuesH.at({d1, 0}), firstLargestValue);
+    EXPECT_EQ(valuesH.at({d1, 1}), secondLargestValue);
+  }
+}
