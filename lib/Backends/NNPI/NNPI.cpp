@@ -135,6 +135,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::NegNodeKind:
   case Kinded::Kind::AbsNodeKind:
   case Kinded::Kind::ExpNodeKind:
+  case Kinded::Kind::SoftPlusNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
     break;

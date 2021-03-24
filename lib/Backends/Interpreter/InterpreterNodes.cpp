@@ -2028,6 +2028,24 @@ void BoundInterpreterFunction::fwdTanhInst(const TanhInst *I) {
                             I);
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdSoftPlusInstFloatImpl(const SoftPlusInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  for (dim_t i = 0, e = outW.size(); i < e; i++) {
+    float val = inW.raw(i);
+    outW.raw(i) = ElemTy(std::log(1 + std::exp(val)));
+  }
+}
+
+void BoundInterpreterFunction::fwdSoftPlusInst(const SoftPlusInst *I) {
+  dispatchFloatingPointImpl(fwdSoftPlusInstFloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
 //===----------------------------------------------------------------------===//
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
