@@ -1396,6 +1396,16 @@ FlipNode *Function::createFlip(llvm::StringRef name, NodeValue input,
   return addNode(new FlipNode(name, OT, input, axis));
 }
 
+UnaryMaxNode *Function::createUnaryMax(llvm::StringRef name, NodeValue input) {
+  auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), {1});
+  return addNode(new UnaryMaxNode(name, OT, input));
+}
+
+UnaryMinNode *Function::createUnaryMin(llvm::StringRef name, NodeValue input) {
+  auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), {1});
+  return addNode(new UnaryMinNode(name, OT, input));
+}
+
 BroadcastNode *Function::createBroadcast(llvm::StringRef name, NodeValue input,
                                          UnsignedArrayRef newShape,
                                          unsigned_t axis) {
