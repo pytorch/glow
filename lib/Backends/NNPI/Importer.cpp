@@ -409,6 +409,7 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::AvgPoolNodeKind:
     case Kinded::Kind::MaxPoolNodeKind:
     case Kinded::Kind::BatchNormalizationNodeKind:
+    case Kinded::Kind::ResizeNearestNodeKind:
       return true;
     case Kinded::Kind::FullyConnectedNodeKind:
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
@@ -2511,12 +2512,18 @@ public:
         ERROR, inputDims.size() == 5 && resizeMode != NNPI_RESIZE_NEAREST,
         "NNPI only supports nearest mode for 3D Tensor.", NNPI_INVALID_PARAM);
 
-    for (size_t i = 0; i < 2; i++) {
-      LOG_AND_RETURN_IF_NOT(
-          ERROR, inputDims[i] == outputDims[i],
-          "NNPI doesn't support resize Batch or Channel dimension",
-          NNPI_INVALID_PARAM);
-    }
+    // Overwrite input/output values for layout.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowResizeNode->getInput()),
+                          glowResizeNode->getInput().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowResizeNode->getResult()),
+                          glowResizeNode->getResult().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
 
     importer.setUsedTensors({nodeValueName(glowResizeNode->getInput())},
                             {nodeValueName(glowResizeNode->getResult())});

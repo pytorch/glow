@@ -2420,6 +2420,8 @@ bool isOutput(const Placeholder *PH, const Function &F);
 bool isInput(const Placeholder *PH, const Function &F);
 
 /// Helper vectors for common transpose shuffles.
+#define NCH2NHC                                                                \
+  { 0u, 2u, 1u }
 #define NCHW2NHWC                                                              \
   { 0u, 2u, 3u, 1u }
 #define NCTHW2NTHWC                                                            \
