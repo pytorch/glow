@@ -136,6 +136,9 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fastGather(inputMetas));
   } else if (symbol == "fb::lengths_range") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsRange(inputMetas));
+  } else if (symbol == "fb::lengths_range_w_truncation_size") {
+    // Current shape inference function can handle both cases.
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsRange(inputMetas));
   } else if (symbol == "aten::quantize_per_tensor") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, quantizePerTensor(inputMetas));
   } else if (symbol == "aten::dequantize") {
