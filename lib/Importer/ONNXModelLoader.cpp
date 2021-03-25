@@ -1428,7 +1428,7 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
     if (op.input_size() > 3) {
       Constant *axesC = getConstantByNameOrNull(op.input(3));
 
-      RETURN_ERR_IF_NOT(startsC, opErrMsg(op, "Axes Tensor is not Constant."));
+      RETURN_ERR_IF_NOT(axesC, opErrMsg(op, "Axes Tensor is not Constant."));
 
       if (axesC->getElementType() == ElemKind::Int64ITy) {
         helperSetter<int64_t>(axesC, axes);
