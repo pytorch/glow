@@ -295,6 +295,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
         case ElemKind::UInt8QTy:
+        case ElemKind::Int32ITy:
         case ElemKind::BoolTy:
           return true;
         default:
@@ -307,6 +308,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::Float16Ty:
         case ElemKind::Int8QTy:
         case ElemKind::UInt8QTy:
+        case ElemKind::Int32ITy:
         case ElemKind::BoolTy:
           return true;
         default:
@@ -329,6 +331,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         switch (kindTo) {
         case ElemKind::Int64ITy:
         case ElemKind::FloatTy:
+        case ElemKind::Float16Ty:
+        case ElemKind::BoolTy:
         case ElemKind::Int8QTy:
           return true;
         default:
