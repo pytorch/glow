@@ -7258,7 +7258,7 @@ void computeSortedAnchors(const Handle<T> &anchors, const dim_t W,
     }
   } else if (boxDim == 5) {
     // TO DO: implement shifts for rotated boxes
-    assert(boxDim != 4 &&
+    assert(boxDim == 4 &&
            "GenerateProposals for rotated boxes in not implemented.");
   }
 
@@ -7468,7 +7468,7 @@ void generateProposalsPerImage(
   } else if (boxDim == 5) {
     // TO DO: Implementation of bbox_transform_rotated, clip_boxes_rotated,
     //        filter_boxes_rotated, nms_cpu_rotated
-    assert(boxDim != 4 &&
+    assert(boxDim == 4 &&
            "GenerateProposals for rotated boxes in not implemented.");
   }
   assert((rois.size() <= proposals.size()) && "Error in Rois size");
