@@ -17307,10 +17307,11 @@ TEST_P(OperatorStatelessTest, SLSAllZeroLengths_Float16) {
                             ElemKind::Float16Ty, ElemKind::Float16Ty);
 }
 
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testSparseToDense(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
-                              glow::ExecutionEngine &EE, ElemKind DTy) {
+                              glow::ExecutionEngine &EE, ElemKind DTy,
+                              ElemKind ITy) {
 
   // Create and initialize inputs. Make input 3D to make sure
   // multidimensional values are handled properly.
@@ -17319,14 +17320,13 @@ static void testSparseToDense(glow::PlaceholderBindings &bindings,
   constexpr dim_t kCols = 5;
   constexpr dim_t kMaxIndex = 10;
 
-  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {kNumIndices},
-                                        "indices", false);
+  auto *indices = mod.createPlaceholder(ITy, {kNumIndices}, "indices", false);
   auto *values =
       mod.createPlaceholder(DTy, {kNumIndices, kRows, kCols}, "data", false);
   auto *dataToInferDim = mod.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
                                                "dataToInferDim", false);
 
-  auto IH = bindings.allocate(indices)->getHandle<int64_t>();
+  auto IH = bindings.allocate(indices)->getHandle<IndexType>();
   auto VH = bindings.allocate(values)->getHandle<DataType>();
 
   // Duplicate one index to test that the corresponding values are added.
@@ -17361,12 +17361,20 @@ static void testSparseToDense(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorTest, SparseToDense_Float) {
   CHECK_IF_ENABLED();
-  testSparseToDense<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+  testSparseToDense<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                                    ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, SparseToDense_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testSparseToDense<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                                    ElemKind::Int32ITy);
 }
 
 TEST_P(OperatorTest, SparseToDense_Int64) {
   CHECK_IF_ENABLED();
-  testSparseToDense<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+  testSparseToDense<int64_t, int64_t>(bindings_, mod_, F_, EE_,
+                                      ElemKind::Int64ITy, ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, SparseToDenseMask1) {
