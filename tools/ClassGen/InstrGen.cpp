@@ -232,6 +232,28 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "ElemKind::Int8QTy"});
 
+  BB.newInstr("DynamicQuantizedFullyConnected")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember(MemberType::Boolean, "IsSymmetric")
+      .addMember(MemberType::Boolean, "IsPerBatchElement")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
+  BB.newInstr("DynamicRowwiseQuantizedFullyConnected")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addOperand("Scales", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::Boolean, "IsSymmetric")
+      .addMember(MemberType::Boolean, "IsPerBatchElement")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//
@@ -657,6 +679,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("And");
 
+  BB.newInstr("ElementBitwiseAnd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoIRGen("BitwiseAnd");
+
   BB.newInstr("ElementOr")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
@@ -669,6 +700,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("Or");
 
+  BB.newInstr("ElementBitwiseOr")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoIRGen("BitwiseOr");
+
   BB.newInstr("ElementXor")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
@@ -680,6 +720,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"RHS", "ElemKind::BoolTy"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("Xor");
+
+  BB.newInstr("ElementBitwiseXor")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoIRGen("BitwiseXor");
 
   BB.newInstr("ElementNot")
       .addOperand("Dest", OperandKind::Out)
@@ -964,6 +1013,17 @@ int main(int argc, char **argv) {
       .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
+  BB.newInstr("SoftPlus")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

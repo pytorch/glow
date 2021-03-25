@@ -1428,7 +1428,7 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
     if (op.input_size() > 3) {
       Constant *axesC = getConstantByNameOrNull(op.input(3));
 
-      RETURN_ERR_IF_NOT(startsC, opErrMsg(op, "Axes Tensor is not Constant."));
+      RETURN_ERR_IF_NOT(axesC, opErrMsg(op, "Axes Tensor is not Constant."));
 
       if (axesC->getElementType() == ElemKind::Int64ITy) {
         helperSetter<int64_t>(axesC, axes);
@@ -2720,12 +2720,6 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
   // Input Type.
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
-  ElemKind inputType = input.getType()->getElementType();
-
-  // Only supports float types.
-  RETURN_ERR_IF_NOT(isFloatElemKind(inputType),
-                    opErrMsg(op, "LeakyRelu: Unsupported Type for LeakyRelu "
-                                 "(Supports only Float types)"));
 
   // ONNX spec says default is 0.01, but doesn't explicitly say it's optional.
   // like for others. The default example just omits alpha.
@@ -4729,6 +4723,55 @@ Error ONNXModelLoader::loadScatterData(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadTopK(const ONNX_NAMESPACE::NodeProto &op,
+                                ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  RETURN_ERR_IF_NOT(
+      op.input_size() <= 2,
+      opErrMsg(
+          op,
+          strFormat(
+              "TopK: Maximum number of inputs is 2, but found input size %d ",
+              op.input_size())));
+  unsigned_t k = 0;
+  if (op.input_size() > 1) {
+    Constant *kConst = getConstantByNameOrNull(op.input(1));
+    RETURN_ERR_IF_NOT(
+        kConst, opErrMsg(op, "TopK: Non-constant k is not supported by Glow."));
+    RETURN_ERR_IF_NOT(
+        kConst->getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op,
+                 strFormat("TopK: k input must be of type Int64, but found "
+                           "input type '%s' ",
+                           kConst->getType()->getElementName().str().c_str())));
+    auto constH = kConst->getPayload().getHandle<int64_t>();
+    k = constH.at({0});
+  } else {
+    ASSIGN_VALUE_OR_RETURN_ERR(k, loadInt(dict["k"]));
+  }
+
+  int lastDim = in.dims().size() - 1;
+  int axis = lastDim;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                               loadAxis<int>(dict["axis"], in.dims().size()));
+  }
+
+  RETURN_ERR_IF_NOT(
+      axis == lastDim,
+      opErrMsg(
+          op,
+          strFormat(
+              "TopK: Currently only support axis %d being last dimension %d ",
+              axis, lastDim)));
+
+  auto *R = G_->createTopK(opName, in, k);
+  RETURN_IF_ERR(addNodeAsOutput(op, R));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadLoop(const ONNX_NAMESPACE::NodeProto &op,
                                 const ArgumentDictionaryTy &dict) {
   int64_t maxTripCount;
@@ -5156,11 +5199,13 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadErf(op, dict);
   }
   if (typeName == "Conv") {
-    // If the Conv operator has quantized inputs, use
+    // If the Conv operator has quantized inputs and
+    // dict contains the scale and offset params, use
     // loadTensorwiseQuantizedConvolution.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    return in.getType()->isQuantizedType()
+    return in.getType()->isQuantizedType() && dict.count("out_scale") &&
+                   dict.count("out_offset")
                ? loadTensorwiseQuantizedConvolution(op, dict)
                : loadConv(op, dict);
   }
@@ -5172,7 +5217,8 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // loadTensorwiseQuantizedPool.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    return in.getType()->isQuantizedType()
+    return in.getType()->isQuantizedType() && dict.count("out_scale") &&
+                   dict.count("out_offset")
                ? loadTensorwiseQuantizedPool(op, dict, typeName)
                : loadPool(op, dict, typeName);
   }
@@ -5376,6 +5422,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "ScatterData") {
     return loadScatterData(op, dict);
+  }
+  if (typeName == "TopK") {
+    return loadTopK(op, dict);
   }
 
   return MAKE_ERR("Failed to load operator " + typeName + " .",

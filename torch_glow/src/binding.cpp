@@ -418,4 +418,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("get_available_devices", []() {
     return getGlobalPyTorchLoaderSettingsMutable().availableDevices;
   });
+
+  /// Enable device tracing from HostManager. Must be set before compilaion.
+  m.def("enable_device_tracing", []() {
+    getGlobalPyTorchLoaderSettingsMutable().enableDeviceTracing = true;
+  });
+
+  /// Disable device tracing from HostManager. Must be set before compilaion.
+  m.def("disable_device_tracing", []() {
+    getGlobalPyTorchLoaderSettingsMutable().enableDeviceTracing = false;
+  });
 }

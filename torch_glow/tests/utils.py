@@ -163,11 +163,11 @@ def compare_tracing_methods(
         ):
             if not skip_to_glow:
                 glow_inputs = deepcopy(inputs)
-                glow_spec = torch_glow.generate_glow_compilation_spec(
-                    module, DEFAULT_BACKEND, *glow_inputs
+                traced_module = trace(module, glow_inputs)
+                lowered_module = torch_glow.lower(
+                    traced_module, glow_inputs, DEFAULT_BACKEND
                 )
-                glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
-                glow_result = glow_trace(*glow_inputs)
+                glow_result = lowered_module(*glow_inputs)
         if reference:
             assert_equivalent(
                 "Reference",
@@ -211,6 +211,39 @@ def compare_tracing_methods(
                 atol=atol,
                 rtol=rtol,
             )
+
+
+# Compilation test for glow lowering without executing.
+# This is designed for use cases where the original graph contains placeholder operators.
+def test_lowering(
+    module,
+    *inputs,
+    fusible_ops=None,
+    fusion_blocklist=None,
+    fp16=False,
+    scripted=False,
+    check_trace=True,
+    accept_all_layouts=False,
+):
+    if not isinstance(module, torch.nn.Module):
+        raise AssertionError("to_glow only supports nn.Modules")
+
+    def trace(mod, ins):
+        if scripted:
+            return torch.jit.script(mod)
+        else:
+            return torch.jit.trace(mod, ins, check_trace=check_trace)
+
+    with torch.no_grad():
+        with ephemeral_torchglow_settings(
+            fusion=False, fp16=fp16, accept_all_layouts=accept_all_layouts
+        ):
+            glow_inputs = deepcopy(inputs)
+            traced_module = trace(module, glow_inputs)
+            # If deferred weight loader is not set, it will throw a runtime exception
+            _lowered_module = torch_glow.lower(
+                traced_module, glow_inputs, DEFAULT_BACKEND
+            )  # unused
 
 
 def compare_tracing_methods_error(

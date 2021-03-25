@@ -728,6 +728,9 @@ compileImpl(const torch::jit::Module &origModule,
   return methodToRunnerMap;
 }
 
+// Assumes Glow backend is always available.
+bool TorchGlowBackend::is_available() { return true; }
+
 c10::impl::GenericDict
 TorchGlowBackend::compile(c10::IValue processed,
                           c10::impl::GenericDict method_compile_spec) {

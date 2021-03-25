@@ -656,7 +656,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TraceContext *traceContext = ctx->getTraceContext();
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::runImpl");
   {
-    RECORD_USER_SCOPE("torch_glow::runImpl_" + info.functionName);
+    int64_t runImplTime = TraceEvent::now();
+    RECORD_USER_SCOPE(strFormat("torch_glow::runImpl_%s TS:%li",
+                                info.functionName.c_str(), runImplTime));
 
     auto *bindings = ctx->getPlaceholderBindings();
 

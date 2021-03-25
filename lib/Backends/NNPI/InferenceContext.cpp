@@ -423,7 +423,24 @@ void InferenceContext::execute(RunIdentifierTy runId,
         usedConfigs++;
       }
     }
-    inferContext = llvm::formatv("{0} {1:x}", inferContext, commandList_);
+    int64_t issueTime = TraceEvent::now();
+
+    // Send a timestamp marker packet to NNPI device when tracing is enabled
+    // this allows us to correlate the events in glow and the device level.
+    // XXX: currently this sends a marker only on the first inference
+    // so it is useful during model development. This has to modified to
+    // support on-demand tracing that could be used on production.
+    if (inferIter_ == 0 && ctx->getTraceContext()) {
+      nnpiDeviceContextTraceUserData(device_, "IS", issueTime);
+    }
+
+    inferIter_++;
+
+    // Add annotations of InfCMd and InfIter to correlate trace events
+    // from device.
+    inferContext = llvm::formatv(
+        "{0} RunID:{1} CmdList:{2} InfCmd:{3} Issue TS:{4}, InfIter:{5}",
+        inferContext, runId, commandList_, inferCmd_, issueTime, inferIter_);
     TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                     tracePreProcessContextName_);
     TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
@@ -431,7 +448,6 @@ void InferenceContext::execute(RunIdentifierTy runId,
 
     if (deviceOptions_->disableCommands < 2) {
       // Queue Command list
-      int64_t issueTime = TraceEvent::now();
       FATAL_CALLBACK_IF_NOT(
           nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)),
                                usedConfigs) == NNPI_INF_NO_ERROR,

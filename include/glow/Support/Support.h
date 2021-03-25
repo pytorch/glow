@@ -65,6 +65,12 @@ Stream &operator<<(Stream &os, const llvm::ArrayRef<E> list) {
   return os;
 }
 
+/// \returns a string obtained from the input string \p str by adding a
+/// delimiter string \p delimiter after each block of \p length characters.
+/// After the last block no delimiter is added.
+std::string separateString(const std::string &str, size_t length,
+                           const std::string &delimiter = "\n");
+
 /// \returns the escaped content of string \p str.
 /// The char '\n' becomes '\'+'n' and quotes are handled correctly.
 std::string escapeDottyString(const std::string &str);
@@ -229,6 +235,9 @@ constexpr const char *offsetEndSig = "@@";
 
 /// Convert a string to int. \returns the int or Error if problem parsing.
 Expected<int> getIntFromStr(llvm::StringRef input);
+
+/// Convert a string to float. \returns the float or Error if problem parsing.
+Expected<float> getFloatFromStr(llvm::StringRef input);
 
 /// A helper type for creating compile-time strings.
 template <char... letters> struct string_t {

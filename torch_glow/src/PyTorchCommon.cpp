@@ -91,6 +91,7 @@ DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
 DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
 DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
 DEFINE_bool(lazyCompile, false, "see PyTorchLoaderSettings");
+DEFINE_bool(enableDeviceTracing, false, "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -150,6 +151,16 @@ getHostManager(const PyTorchLoaderSettings &settings) {
 
     hostManager = std::make_shared<runtime::HostManager>(
         std::move(deviceConfigs), hostConfig);
+
+    if (settings.enableDeviceTracing) {
+      if (!hostManager->getTraceContext()) {
+        hostManager->setTraceContext(
+            glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+      }
+      ERR_TO_VOID(hostManager->startDeviceTrace());
+    } else {
+      ERR_TO_VOID(hostManager->stopDeviceTrace());
+    }
 
     map_[settings.backendName] = hostManager;
   }
@@ -283,6 +294,7 @@ void PyTorchLoaderSettings::initSettings() {
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
   dumpFailedInputsToOnnxFiles = FLAGS_dumpFailedInputsToOnnxFiles;
+  enableDeviceTracing = FLAGS_enableDeviceTracing;
   writeOnnxToTmp = FLAGS_writeOnnxToTmp;
   randomizeConstants = FLAGS_randomizeConstants;
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
@@ -361,6 +373,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(debugContinuouslyVerifyDuringModelLoading, s);
   INSERT_BOOL_TO_STREAM(dumpFailedInputsToOnnxFiles, s);
   INSERT_BOOL_TO_STREAM(lazyCompile, s);
+  INSERT_BOOL_TO_STREAM(enableDeviceTracing, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
@@ -506,7 +519,23 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
     }
     auto glowType =
         ptTypeToGlowType(*c10::TensorType::create(ptTensor), scale, offset);
-    return glow::Tensor(ptTensor.data_ptr(), &glowType);
+    glow::Tensor glowTensor(ptTensor.data_ptr(), &glowType);
+
+    // If tensor is of UInt8QTy kind, convert it to Int8QTy.
+    if (glowTensor.getElementType() == ElemKind::UInt8QTy) {
+      auto handle = glowTensor.getHandle<uint8_t>();
+      glow::Tensor newTensor(glow::ElemKind::Int8QTy, glowTensor.dims(),
+                             glowTensor.getType().getScale(),
+                             glowTensor.getType().getOffset() -
+                                 UINT8_TO_INT8_SHIFT);
+      auto newHandle = newTensor.getHandle<int8_t>();
+      for (size_t i = 0; i < handle.size(); i++) {
+        newHandle.raw(i) =
+            static_cast<int8_t>((int32_t)handle.raw(i) - UINT8_TO_INT8_SHIFT);
+      }
+      return newTensor;
+    }
+    return glowTensor;
   } else if (ptTensor.scalar_type() == at::kDouble) {
     at::Tensor atTensor = ptTensor.to(at::kFloat);
     auto glowType = ptTypeToGlowType(*c10::TensorType::create(atTensor));
@@ -519,8 +548,9 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
 
 // Preprocess jit module to prepare for lowering. Here we leverage JIT freeze
 // API to cleanup the IR after IR rewrites.
-void modelPreprocessing(torch::jit::Module &model) {
-  auto graph = model.get_method("forward").function().graph();
+void modelPreprocessing(torch::jit::Module &model,
+                        const std::string method_name) {
+  auto graph = model.get_method(method_name).function().graph();
 
   torch::jit::CanonicalizeOps(graph);
   detail::rewriteQuantizedLinear(graph);
@@ -534,8 +564,9 @@ void modelPreprocessing(torch::jit::Module &model) {
 void glowAOTFusionWithShapeInference(torch::jit::Module &model,
                                      const InputMetaStack &metaStack,
                                      runtime::DeferredWeightLoader *loader,
-                                     const PyTorchLoaderSettings &settings) {
-  auto graph = model.get_method("forward").function().graph();
+                                     const PyTorchLoaderSettings &settings,
+                                     const std::string method_name) {
+  auto graph = model.get_method(method_name).function().graph();
 
   // create some fake inputs to run shape inference.
   // Usually users provide one set of inputs for the entire
@@ -629,18 +660,20 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
 
 void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    runtime::DeferredWeightLoader *loader,
-                   const PyTorchLoaderSettings &settings) {
+                   const PyTorchLoaderSettings &settings,
+                   const std::string method_name) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
-  modelPreprocessing(model);
+  modelPreprocessing(model, method_name);
 
   if (FLAGS_inferShapeForCompilation) {
-    return glowAOTFusionWithShapeInference(model, metaStack, loader, settings);
+    return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
+                                           method_name);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
   // future we may need to support multiple graphs.
-  auto graph = model.get_method("forward").function().graph();
+  auto graph = model.get_method(method_name).function().graph();
 
   c10::Symbol symbol = glow::getGlowSymbol(graph);
   glow::registerGlowOp(symbol);

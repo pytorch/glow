@@ -123,6 +123,7 @@ Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
 }
 
 Error HostManager::startDeviceTrace() {
+  LOG(INFO) << "start device tracing" << std::endl;
   for (auto &dev : devices_) {
     Error err = dev.second->startDeviceTrace(hostTraceContext_.get());
     RETURN_IF_ERR(err);
@@ -131,8 +132,17 @@ Error HostManager::startDeviceTrace() {
 }
 
 Error HostManager::stopDeviceTrace() {
+
+  auto *traceContext = hostTraceContext_.get();
+  if (!traceContext) {
+    LOG(INFO) << "No HostManager TraceContext registered, skipping call to "
+                 "stopDeviceTrace";
+    return Error::success();
+  } else {
+    LOG(INFO) << "stop device tracing";
+  }
   for (auto &dev : devices_) {
-    Error err = dev.second->stopDeviceTrace(hostTraceContext_.get());
+    Error err = dev.second->stopDeviceTrace(traceContext);
     RETURN_IF_ERR(err);
   }
   return Error::success();

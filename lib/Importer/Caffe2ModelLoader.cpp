@@ -1439,10 +1439,14 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                         opErrMsg(op, "Can only cast float to float."));
       break;
     }
-    case caffe2::TensorProto_DataType_INT32:
+    case caffe2::TensorProto_DataType_INT32: {
+      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int32ITy,
+                        opErrMsg(op, "Can only cast int32 to int32."));
+      break;
+    }
     case caffe2::TensorProto_DataType_INT64: {
       RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int64ITy,
-                        opErrMsg(op, "Can only cast int to int."));
+                        opErrMsg(op, "Can only cast int64 to int64."));
       break;
     }
     default:
@@ -1851,14 +1855,57 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-    Node *node = G_->createExp(opName + ".exp", in);
-
-    auto ones = G_->createSplat(opName + ".ones", in.getType(), 1);
-    node = G_->createAdd(opName + ".add", node, ones);
-
-    node = G_->createLog(opName + ".log", node);
+    Node *node = G_->createSoftPlus(opName, in);
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "TopK") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    RETURN_ERR_IF_NOT(
+        op.input_size() <= 2,
+        opErrMsg(
+            op,
+            strFormat(
+                "TopK: Maximum number of inputs is 2, but found input size %d ",
+                op.input_size())));
+    unsigned_t k = 0;
+    if (op.input_size() > 1) {
+      Constant *kConst = getConstantByNameOrNull(op.input(1));
+      RETURN_ERR_IF_NOT(
+          kConst,
+          opErrMsg(op, "TopK: Non-constant k is not supported by Glow."));
+      RETURN_ERR_IF_NOT(
+          kConst->getElementType() == ElemKind::Int64ITy,
+          opErrMsg(op, strFormat(
+                           "TopK: k input must be of type Int64, but found "
+                           "input type '%s' ",
+                           kConst->getType()->getElementName().str().c_str())));
+      auto constH = kConst->getPayload().getHandle<int64_t>();
+      k = constH.at({0});
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(k, loadInt(dict["k"]));
+    }
+
+    int lastDim = in.dims().size() - 1;
+    int axis = lastDim;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                                 loadAxis<int>(dict["axis"], in.dims().size()));
+    }
+
+    RETURN_ERR_IF_NOT(
+        axis == lastDim,
+        opErrMsg(
+            op,
+            strFormat(
+                "TopK: Currently only support axis %d being last dimension %d ",
+                axis, lastDim)));
+
+    TopKNode *R = G_->createTopK(opName, in, k, ElemKind::Int32ITy);
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
 
@@ -2334,7 +2381,16 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       TH.clear(f);
       break;
     }
-    case caffe2::TensorProto_DataType_INT32:
+    case caffe2::TensorProto_DataType_INT32: {
+      T.reset(ElemKind::Int32ITy, dims);
+      auto TH = T.getHandle<int32_t>();
+      int i = 0;
+      if ((dict.count("value") && dict["value"]->has_i())) {
+        ASSIGN_VALUE_OR_RETURN_ERR(i, loadInt(dict["value"]));
+      }
+      TH.clear(i);
+      break;
+    }
     case caffe2::TensorProto_DataType_INT64:
     case caffe2::TensorProto_DataType_BOOL: {
       T.reset(ElemKind::Int64ITy, dims);

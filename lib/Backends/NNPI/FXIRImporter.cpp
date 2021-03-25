@@ -1,6 +1,7 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
+#include "glow/Support/Support.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "nnpi_transformer_types.h"
 
@@ -81,14 +82,12 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    // TODO T84757346: Move to kwargs instead of args once Conv is correct
-    // normalized.
-    const auto &inputs = node["args"];
+    const auto &inputs = node["kwargs"];
     const auto &name = node["name"].getString();
-    const auto &inputName = importer.getInputNodeName(inputs[0]);
-    const auto &filterName = importer.getInputNodeName(inputs[1]);
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+    const auto &filterName = importer.getInputNodeName(inputs["weight"]);
     const auto &biasName =
-        importer.getInputNodeName(inputs[2], /* optional */ true);
+        importer.getInputNodeName(inputs["bias"], /* optional */ true);
 
     // Kernel size is implicit in the shape of the filter.
     const auto &filterDesc = importer.getTensorDesc(filterName);
@@ -99,10 +98,13 @@ public:
       kernelSize.push_back(filterDesc.dims[i + 2]);
     }
 
-    auto stride = toIntegerArray<uint32_t>(inputs[3], /* length */ convDims);
-    auto padding = toIntegerArray<uint32_t>(inputs[4], /* length */ convDims);
-    auto dilation = toIntegerArray<uint32_t>(inputs[5], /* length */ convDims);
-    const auto &groups = inputs[6].asInt();
+    auto stride =
+        toIntegerArray<uint32_t>(inputs["stride"], /* length */ convDims);
+    auto padding =
+        toIntegerArray<uint32_t>(inputs["padding"], /* length */ convDims);
+    auto dilation =
+        toIntegerArray<uint32_t>(inputs["dilation"], /* length */ convDims);
+    const auto &groups = inputs["groups"].asInt();
 
     LOG_AND_RETURN_IF_NOT(ERROR,
                           std::all_of(dilation.cbegin(), dilation.cend(),
@@ -138,13 +140,13 @@ public:
     const auto &name = node["name"].getString();
     const auto &kwargs = node["kwargs"];
     const auto &inputName = importer.getInputNodeName(kwargs["input"]);
-    const auto &weightName = getQualName("weight");
-    const auto &biasName = getQualName("bias");
-    const auto &meanName = getQualName("running_mean");
-    const auto &varName = getQualName("running_var");
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &biasName = importer.getInputNodeName(kwargs["bias"]);
+    const auto &meanName = importer.getInputNodeName(kwargs["running_mean"]);
+    const auto &varName = importer.getInputNodeName(kwargs["running_var"]);
 
     // Get parameters.
-    const auto &eps = node["parameters"]["eps"].asDouble();
+    const auto &eps = kwargs["eps"].asDouble();
 
     importer.setUsedTensors(
         {inputName, weightName, biasName, meanName, varName}, {name});
@@ -248,9 +250,9 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
+    const auto &inputs = node["kwargs"];
     const auto &name = node["name"].getString();
-    const auto &inputName = importer.getInputNodeName(inputs[0]);
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
 
     NNPITensorDesc desc;
     importer.updateDescDimsFromFX(
@@ -267,14 +269,19 @@ static std::unordered_map<std::string,
         // _operator
         {"_operator.add",
          std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_ADD>>()},
-
+        {"_operator.sub",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
+        {"_operator.mul",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
+        {"_operator.truediv",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
         // torch
         {"torch.flatten", std::make_unique<ReshapeNodeImporter>()},
 
         // torch.nn.modules
         {"torch.nn.functional.linear", std::make_unique<LinearNodeImporter>()},
         {"torch.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
-        {"torch.nn.modules.batchnorm.BatchNorm2d",
+        {"torch.nn.functional.batch_norm",
          std::make_unique<BatchNormalizationNodeImporter>()},
         {"torch.nn.functional.relu", std::make_unique<ReluNodeImporter>()},
         {"torch.nn.functional.adaptive_avg_pool2d",
@@ -342,10 +349,12 @@ FXNNPIImporter::getTensorDesc(llvm::StringRef name) const {
 
 const std::string &FXNNPIImporter::getInputNodeName(const folly::dynamic &node,
                                                     bool optional) const {
-  if (optional && node.isNull()) {
+  if (node.isNull()) {
+    CHECK(optional) << "Non-optional node must be non-null";
     static const std::string empty;
     return empty;
   }
+
   CHECK(node["is_node"].asBool()) << "Expected is_node";
 
   const auto &name = node["name"].getString();
@@ -525,6 +534,14 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
                                    ? targetName
                                    : node["parameters"]["name"].getString();
     // Import node.
+    if (FXNodeImporters.find(functionName) == FXNodeImporters.end()) {
+      LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
+          NNPIErrorCode::NNPI_INVALID_NETWORK,
+          glow::strFormat(
+              "Could not import node with opCode '%s', target '%s'.",
+              opCode.c_str(), targetName.c_str()))
+    }
+
     LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
         FXNodeImporters.at(functionName)
             ->importNode(

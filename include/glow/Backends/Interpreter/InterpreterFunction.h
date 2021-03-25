@@ -211,6 +211,17 @@ private:
   template <typename ElemTy>
   void fwdFullyConnectedInstFloatImpl(const FullyConnectedInst *I);
 
+  template <typename ElemTy, typename OutputTy, typename AccumulatorTy>
+  void fwdDynRowwiseQuantizedFullyConnectedInstImpl(
+      Handle<ElemTy> inW, Handle<OutputTy> &outW, dim_t baseRow,
+      Handle<ElemTy> weightsW, Handle<float> biasW, Handle<float> scalesW,
+      Handle<int32_t> offsetsW);
+
+  void fwdDynRowwiseQuantizedFullyConnectedInstPreimpl(
+      Tensor *inputTensor, Tensor *weightsTensor, Tensor *biasTensor,
+      Tensor *resultTensor, Tensor *wScaleTensor, Tensor *wOffsetTensor,
+      bool isSymmetric, bool isPerBatchElement);
+
   template <typename ElemTy, typename AccumulatorTy,
             typename BiasElemTy = int32_t>
   void fwdRowwiseQuantizedFullyConnectedInstImpl(Value *inV, Value *outV,
@@ -264,6 +275,9 @@ private:
   template <typename ElemTy> void fwdTanhInstFloatImpl(const TanhInst *I);
 
   template <typename ElemTy>
+  void fwdSoftPlusInstFloatImpl(const SoftPlusInst *I);
+
+  template <typename ElemTy>
   void fwdCrossEntropyLossInstFloatImpl(const CrossEntropyLossInst *I);
 
   template <typename ElemTy>
@@ -278,6 +292,15 @@ private:
 
   template <typename ElemTy>
   void fwdElementMinInstArithmeticImpl(const ElementMinInst *I);
+
+  template <typename ElemTy>
+  void fwdElementBitwiseOrInstImpl(const ElementBitwiseOrInst *I);
+
+  template <typename ElemTy>
+  void fwdElementBitwiseXorInstImpl(const ElementBitwiseXorInst *I);
+
+  template <typename ElemTy>
+  void fwdElementBitwiseAndInstImpl(const ElementBitwiseAndInst *I);
 
   template <typename ElemTy, typename InstKind>
   void fwdUnaryArithmeticImpl(const InstKind *I,
