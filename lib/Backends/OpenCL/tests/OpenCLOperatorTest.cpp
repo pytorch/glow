@@ -354,6 +354,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "SLSWithZeroLengths/0",
     "SparseToDense_Float/0",
     "SparseToDense_Int64/0",
+    "SparseToDense_Float_Int32/0",
     "SparseToDenseMask1/0",
     "SparseToDenseMask2/0",
     "FP16Reshape/0",
