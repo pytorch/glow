@@ -1220,6 +1220,16 @@ static Error setupPerNodeParallelizationConfigs(
       pKind = ParallelTransformKind::Data;
     } else if (pKindStr == "Model") {
       pKind = ParallelTransformKind::Model;
+    } else if (pKindStr == "Model_Axis1") {
+      pKind = ParallelTransformKind::Model_Axis1;
+    } else if (pKindStr == "Model_Axis2") {
+      pKind = ParallelTransformKind::Model_Axis2;
+    } else if (pKindStr == "Model_Axis3") {
+      pKind = ParallelTransformKind::Model_Axis3;
+    } else if (pKindStr == "Model_Axis4") {
+      pKind = ParallelTransformKind::Model_Axis4;
+    } else if (pKindStr == "Model_Axis5") {
+      pKind = ParallelTransformKind::Model_Axis5;
     } else if (pKindStr == "None") {
       pKind = ParallelTransformKind::None;
     } else {
