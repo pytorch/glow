@@ -1965,6 +1965,147 @@ TEST_P(OperatorTest, BBoxTransform_Rotated_Float16) {
       /* legacyPlusOne */ true, /* absError */ 1.0);
 }
 
+TEST_P(OperatorTest, GenerateProposals) {
+  CHECK_IF_ENABLED();
+
+  const dim_t numImages = 1;
+  const dim_t A = 2;
+  const dim_t H = 4;
+  const dim_t W = 5;
+  const dim_t boxDim = 4;
+  float spatialScale = 1.0 / 16.0;
+  int64_t preNmsTopN = 6000;
+  int64_t postNmsTopN = 300;
+  float nmsThreshold = 0.7;
+  float minSize = 16.0;
+
+  auto *scores = mod_.createPlaceholder(ElemKind::FloatTy, {numImages, H, W, A},
+                                        "scores", false);
+  bindings_.allocate(scores)->getHandle<float>() = {
+      5.44218998e-03f, 2.66913995e-02f, 1.19207997e-03f, 5.26766013e-03f,
+      1.12379994e-03f, 5.05053019e-03f, 1.17181998e-03f, 5.62100019e-03f,
+      1.20544003e-03f, 5.37420018e-03f, 6.17993006e-04f, 5.26280981e-03f,
+      1.05261997e-05f, 2.48894998e-04f, 8.91025957e-06f, 1.06842002e-04f,
+      9.29536981e-09f, 3.92931997e-06f, 6.09605013e-05f, 1.79388002e-03f,
+      4.72735002e-04f, 4.79440019e-03f, 1.13482002e-10f, 3.41609990e-07f,
+      1.50015003e-05f, 5.20430971e-04f, 4.45032993e-06f, 3.34090000e-05f,
+      3.21612994e-08f, 2.19159006e-07f, 8.02662980e-04f, 2.28786003e-03f,
+      1.40488002e-04f, 5.16703985e-05f, 3.12508007e-07f, 4.04523007e-06f,
+      3.02616991e-06f, 1.79227004e-06f, 1.97759000e-08f, 5.32449000e-08f};
+
+  auto *bboxDeltas = mod_.createPlaceholder(
+      ElemKind::FloatTy, {numImages, H, W, boxDim * A}, "bboxDeltas", false);
+  bindings_.allocate(bboxDeltas)->getHandle<float>() = {
+      -1.65040009e-02f, 3.40579003e-01f,  3.27155995e-03f,  -2.15505004e-01f,
+      -5.65053988e-03f, 6.76669031e-02f,  -1.00247003e-02f, 1.29676998e-01f,
+      -1.84051003e-02f, 3.91070992e-01f,  3.71480011e-03f,  -2.19910994e-01f,
+      -9.25739005e-04f, 1.03252999e-01f,  -8.17587040e-03f, 1.16080999e-01f,
+      -1.85930002e-02f, 3.91624004e-01f,  3.60032008e-03f,  -2.20872998e-01f,
+      -1.06790999e-03f, 1.03255004e-01f,  -8.32176022e-03f, 1.15947001e-01f,
+      -2.08263006e-02f, 3.92527014e-01f,  4.27092984e-03f,  -2.12831005e-01f,
+      -2.37016007e-03f, 9.89722982e-02f,  -8.90108012e-03f, 1.21797003e-01f,
+      -1.83814000e-02f, 3.91445011e-01f,  3.74579988e-03f,  -2.19145000e-01f,
+      -9.71166010e-04f, 1.03646003e-01f,  -8.13035015e-03f, 1.16089001e-01f,
+      -2.89172009e-02f, 3.79328012e-01f,  5.95752988e-03f,  -2.27687001e-01f,
+      -8.90910998e-03f, 4.79663983e-02f,  -1.77263003e-02f, 1.44875005e-01f,
+      -3.89706008e-02f, 4.26631987e-01f,  -3.14473989e-03f, -3.43973994e-01f,
+      -1.17592998e-02f, 1.11014001e-01f,  -3.69572006e-02f, 1.15617000e-01f,
+      -7.52277970e-02f, 3.64892989e-01f,  3.52022005e-03f,  -2.75869995e-01f,
+      -2.08992008e-02f, 9.31736007e-02f,  -3.51580009e-02f, 1.31586999e-01f,
+      -1.54091999e-01f, 2.76894987e-01f,  -1.88564006e-02f, -3.19516987e-01f,
+      -4.94231991e-02f, 1.15768999e-01f,  -5.92143014e-02f, 1.74735002e-02f,
+      -2.55433004e-02f, 5.13985991e-01f,  1.65188999e-03f,  -2.50418007e-01f,
+      6.63906988e-03f,  1.04014002e-01f,  -1.80795006e-02f, 1.21973999e-01f,
+      -1.77490003e-02f, 3.79999995e-01f,  1.73791999e-03f,  -2.48537004e-01f,
+      3.20469006e-03f,  -8.90677981e-03f, -5.46086021e-03f, 1.31596997e-01f,
+      -1.10340998e-01f, 1.80457994e-01f,  -3.56074013e-02f, -5.08224010e-01f,
+      -6.44695014e-02f, 1.13103002e-01f,  -4.10550982e-02f, 2.48907991e-02f,
+      -4.20190990e-02f, 4.37402993e-01f,  -1.66615995e-04f, -2.28724003e-01f,
+      -3.11607006e-03f, 1.33085996e-01f,  -1.83081999e-02f, 6.18605018e-02f,
+      -2.71421000e-02f, 4.18545991e-01f,  3.14146001e-03f,  -2.82402009e-01f,
+      2.02738005e-03f,  1.25405997e-01f,  -2.15411000e-02f, 1.12855002e-01f,
+      6.89801015e-03f,  2.51549989e-01f,  -1.11830998e-02f, -3.75815988e-01f,
+      1.48096997e-02f,  1.50051996e-01f,  -1.17953997e-02f, -6.99798986e-02f,
+      5.71171008e-02f,  4.48318988e-01f,  -5.35363983e-03f, -2.86352992e-01f,
+      4.39785011e-02f,  -1.13038003e-01f, 3.33894007e-02f,  9.58312973e-02f,
+      -1.75665006e-01f, 1.68564007e-01f,  6.49790000e-03f,  -5.28333001e-02f,
+      -8.28424022e-02f, 7.01059997e-02f,  -5.29635996e-02f, 1.53593004e-01f,
+      2.30021998e-02f,  4.65440989e-01f,  -9.27671045e-03f, -4.43836004e-01f,
+      3.62076014e-02f,  1.79651007e-01f,  -6.97528012e-03f, -8.75087008e-02f,
+      3.08554992e-02f,  4.21891987e-01f,  -2.83346009e-02f, -4.55134988e-01f,
+      2.71668993e-02f,  1.41055003e-01f,  -3.15250992e-03f, -4.92327996e-02f,
+      -1.39333997e-02f, 4.45928007e-01f,  -1.61233004e-02f, -4.34897989e-01f,
+      1.38250999e-02f,  1.62841007e-01f,  -3.27355005e-02f, -3.32239009e-02f};
+
+  auto *imInfo = mod_.createPlaceholder(ElemKind::FloatTy, {numImages, 3},
+                                        "imInfo", false);
+  bindings_.allocate(imInfo)->getHandle<float>() = {60, 80, 0.166667f};
+
+  auto *anchors =
+      mod_.createPlaceholder(ElemKind::FloatTy, {A, boxDim}, "anchors", false);
+  bindings_.allocate(anchors)->getHandle<float>() = {-38,  -16,  53,  31,
+                                                     -120, -120, 135, 135};
+
+  auto *rois = mod_.createPlaceholder(
+      ElemKind::FloatTy, {postNmsTopN * numImages, boxDim + 1}, "rois", false);
+  bindings_.allocate(rois);
+
+  auto *roisProbs = mod_.createPlaceholder(
+      ElemKind::FloatTy, {postNmsTopN * numImages}, "roisProbs", false);
+  bindings_.allocate(roisProbs);
+
+  auto *GPN = F_->createGenerateProposals(
+      "generateProposals", scores, bboxDeltas, imInfo, anchors, spatialScale,
+      preNmsTopN, postNmsTopN, nmsThreshold, minSize, true, -90, 90, 1.0, true);
+
+  F_->createSave("save.rois", {GPN, 0}, rois);
+  F_->createSave("save.roisProbs", {GPN, 1}, roisProbs);
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto roisH = bindings_.get(rois)->getHandle<float>();
+  auto roisProbsH = bindings_.get(roisProbs)->getHandle<float>();
+
+  std::vector<std::vector<float>> refRois{
+      {0, 0, 0, 79, 59},
+      {0, 0, 5.0005703f, 51.6324f, 42.6950f},
+      {0, 24.13628387f, 7.51243401f, 79, 45.0663f},
+      {0, 0, 7.50924301f, 67.4779f, 45.0336f},
+      {0, 0, 23.09477997f, 50.61448669f, 59},
+      {0, 0, 39.52141571f, 51.44710541f, 59},
+      {0, 23.57396317f, 29.98791885f, 79, 59},
+      {0, 0, 41.90219116f, 79, 59},
+      {0, 0, 23.30098343f, 78.2413f, 58.7287f}};
+
+  for (dim_t i = 0; i < refRois.size(); i++) {
+    for (dim_t j = 0; j < refRois[0].size(); j++) {
+      EXPECT_NEAR(roisH.at({i, j}), refRois[i][j], 1E-4);
+    }
+  }
+
+  for (dim_t i = refRois.size(); i < numImages * postNmsTopN; i++) {
+    for (dim_t j = 0; j < refRois[0].size(); j++) {
+      EXPECT_EQ(roisH.at({i, j}), 0);
+    }
+  }
+
+  std::vector<float> refRoisProbs{
+      2.66913995e-02f, 5.44218998e-03f, 1.20544003e-03f,
+      1.19207997e-03f, 6.17993006e-04f, 4.72735002e-04f,
+      6.09605013e-05f, 1.50015003e-05f, 8.91025957e-06f};
+
+  for (dim_t i = 0; i < refRoisProbs.size(); i++) {
+    EXPECT_NEAR(roisProbsH.at({i}), refRoisProbs[i], 1E-4);
+  }
+
+  float mostNegative = -std::numeric_limits<float>::infinity();
+  for (uint32_t i = refRoisProbs.size(); i < numImages * postNmsTopN; i++) {
+    EXPECT_EQ(roisProbsH.at({i}), mostNegative);
+  }
+}
+
 // Helper to test SpaceToDepth using \p DTy.
 template <typename DataType>
 static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,

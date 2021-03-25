@@ -1414,6 +1414,22 @@ Error ONNXModelWriter::writeBBoxTransform(const BBoxTransformNode *node,
   return writeAllWithNode("BBoxTransform", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeGenerateProposals(const GenerateProposalsNode *node,
+                                              GraphType &graph) {
+  auto *proto = graph.add_node();
+  addValueAttribute(proto, "spatial_scale", node->getSpatialScale());
+  addValueAttribute(proto, "pre_nms_topN", node->getPreNmsTopN());
+  addValueAttribute(proto, "post_nms_topN", node->getPostNmsTopN());
+  addValueAttribute(proto, "nms_thresh", node->getNmsThresh());
+  addValueAttribute(proto, "min_size", node->getMinSize());
+  addValueAttribute(proto, "angle_bound_on", node->getAngleBoundOn());
+  addValueAttribute(proto, "angle_bound_lo", node->getAngleBoundLo());
+  addValueAttribute(proto, "angle_bound_hi", node->getAngleBoundHi());
+  addValueAttribute(proto, "clip_angle_thresh", node->getClipAngleThresh());
+  addValueAttribute(proto, "legacy_plus_one", node->getLegacyPlusOne());
+  return writeAllWithNode("GenerateProposals", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
                                         GraphType &graph) {
   // Loading convolution creates a sandwich with Transpose nodes for Input,

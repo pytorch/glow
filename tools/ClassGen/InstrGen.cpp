@@ -1339,6 +1339,28 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Rois", "ImInfo"})
       .autoIRGen();
 
+  BB.newInstr("GenerateProposals")
+      .addOperand("Rois", OperandKind::Out)
+      .addOperand("RoisProbs", OperandKind::Out)
+      .addOperand("Scores", OperandKind::In)
+      .addOperand("BBoxDeltas", OperandKind::In)
+      .addOperand("ImInfo", OperandKind::In)
+      .addOperand("Anchors", OperandKind::In)
+      .addMember(MemberType::Float, "SpatialScale")
+      .addMember(MemberType::Int64, "PreNmsTopN")
+      .addMember(MemberType::Int64, "PostNmsTopN")
+      .addMember(MemberType::Float, "NmsThresh")
+      .addMember(MemberType::Float, "MinSize")
+      .addMember(MemberType::Boolean, "AngleBoundOn")
+      .addMember(MemberType::Int64, "AngleBoundLo")
+      .addMember(MemberType::Int64, "AngleBoundHi")
+      .addMember(MemberType::Float, "ClipAngleThresh")
+      .addMember(MemberType::Boolean, "LegacyPlusOne")
+      .autoVerify(
+          VerifyKind::SameElementType,
+          {"Rois", "RoisProbs", "BBoxDeltas", "ImInfo", "Scores", "Anchors"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//

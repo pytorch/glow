@@ -1568,6 +1568,44 @@ int main(int argc, char **argv) {
           "If proposals from multiple images in a batch are present, they "
           "should be grouped sequentially and in incremental order.");
 
+  BB.newNode("GenerateProposals")
+      .addInput("Scores")
+      .addInput("BBoxDeltas")
+      .addInput("ImInfo")
+      .addInput("Anchors")
+      .addMember(MemberType::Float, "SpatialScale")
+      .addMember(MemberType::Int64, "PreNmsTopN")
+      .addMember(MemberType::Int64, "PostNmsTopN")
+      .addMember(MemberType::Float, "NmsThresh")
+      .addMember(MemberType::Float, "MinSize")
+      .addMember(MemberType::Boolean, "AngleBoundOn")
+      .addMember(MemberType::Int64, "AngleBoundLo")
+      .addMember(MemberType::Int64, "AngleBoundHi")
+      .addMember(MemberType::Float, "ClipAngleThresh")
+      .addMember(MemberType::Boolean, "LegacyPlusOne")
+      .addResultFromCtorArg("Rois")
+      .addResultFromCtorArg("RoisProbs")
+      .setDocstring(
+          "Generate bounding box proposals for Faster RCNN. The propoasls "
+          "are generated for a list of images based on image score 'scores', "
+          "bounding box regression result 'bboxDeltas' as well as predefined "
+          "bounding box shapes 'anchors'. Greedy non-maximum suppression is "
+          "applied to generate the final bounding boxes."
+          "scores format is (img_count, H, W, A)."
+          "A is number of Anchors, H is Height and W is Width"
+          "bboxDeltas format is (img_count, H, W, B * A)."
+          "B is Box Dimensions"
+          "imInfo has size (img_count, 3) and format (height, width, scale)."
+          "anchors has size (A, B)."
+          "If angleBoundOn is set, angle is normalized to be within "
+          "[angleBoundLo, angleBoundHi] for rotated boxes."
+          "clipAngleThresh - For RRPN, clip almost horizontal boxes within "
+          "the threshold of tolerance for backward compatibility. Set to "
+          "negative value for no clipping."
+          "Output size is capped to (img_count * PostNmsTopN) and for invalid "
+          "Roi indices, the scores are set to 0."
+          "PostNmsTopN must be positive.");
+
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//

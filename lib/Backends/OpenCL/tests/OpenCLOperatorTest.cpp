@@ -722,4 +722,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ArithFmod_float/0",
     "BasicFmodNetFloatVsFloat16/0",
     "BasicFmodNetFloatVsBFloat16/0",
+    "GenerateProposals/0",
 };

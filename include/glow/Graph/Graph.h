@@ -2283,6 +2283,54 @@ public:
                       int64_t angleBoundLo, int64_t angleBoundHi,
                       float clipAngleThresh, bool legacyPlusOne);
 
+  /// Generate bounding box proposals for Faster RCNN. The propoasls are
+  /// generated for a list of images based on image score 'score', bounding
+  /// box regression result 'bboxDeltas' as well as predefined bounding box
+  /// shapes 'anchors'. Greedy non-maximum suppression is applied to generate
+  /// the final bounding boxes.
+  /// Inputs:
+  /// \p scores - Scores from conv layer, size (img_count, H, W, A),
+  ///   A is number of Anchors, H is Height and W is Width
+  /// \p bboxDeltas - Bounding box deltas from conv layer,
+  ///   size (img_count, H, W, B * A), B is Box Dimensions
+  /// \p imInfo - Image info, size (img_count, 3),
+  ///   format (img_height, img_width, scale)
+  /// \p anchors - Bounding box anchors, size (A, B)
+  ///   B is 4 for upright boxes and 5 for rotated boxes
+  /// Arguments:
+  /// \p spatialScale - spatial scale
+  /// \p preNmsTopN - RPN_PRE_NMS_TOP_N
+  /// \p postNmsTopN - RPN_POST_NMS_TOP_N
+  /// \p nmsThresh - RPN_NMS_THRESH
+  /// \p minSize - RPN_MIN_SIZE
+  /// \p angleBoundOn - If set, for rotated boxes, angle is normalized to be
+  /// within [angleBoundLo, angleBoundHi].
+  /// \p angleBoundLo - If set, for rotated boxes, angle is normalized to be
+  /// within [angleBoundLo, angleBoundHi].
+  /// \p angleBoundHi - If set, for rotated boxes, angle is normalized to be
+  /// within [angleBoundLo, angleBoundHi].
+  /// \p clipAngleThresh - For RRPN, clip almost horizontal boxes within this
+  /// threshold of tolerance for backward compatibility. Set to negative value
+  /// for no clipping.
+  /// \p legacyPlusOne - "+1" adjustment for box width and height.
+  /// Outputs:
+  /// rois - Proposals, size (n, B+1),
+  ///   format for upright boxes (image_index, x1, y1, x2, y2)
+  ///   format for rotated boxes (image_index, ctr_x, ctr_y, w, h, angle)
+  /// roisProbs - Scores of proposals, size (n)
+  /// n is fixed to (postNmsTopN * num_count) and for invalid Rois indices,
+  /// scores are set to most negative value. postNmsTopN must be positive.
+  /// See definition:
+  /// https://github.com/pytorch/pytorch/blob/master/caffe2/operators/generate_proposals_op.cc
+  /// Note:  Even though the definition can take all inputs, implementation
+  /// of generate proposals for rotated boxes is not done for now.
+  GenerateProposalsNode *createGenerateProposals(
+      llvm::StringRef name, NodeValue scores, NodeValue bboxDeltas,
+      NodeValue imInfo, NodeValue anchors, float spatialScale,
+      int64_t preNmsTopN, int64_t postNmsTopN, float nmsThresh, float minSize,
+      bool angleBoundOn, int64_t angleBoundLo, int64_t angleBoundHi,
+      float clipAngleThresh, bool legacyPlusOne);
+
   /// Create an ExternFunctionCall node. \p funcImpl will contain body
   /// of or reference to the function which can be invoked.
   /// \p funcKind contains the type of function. The type of function  could be

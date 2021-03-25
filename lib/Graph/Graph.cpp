@@ -5323,6 +5323,35 @@ BBoxTransformNode *Function::createBBoxTransform(
       clipAngleThresh, legacyPlusOne));
 }
 
+GenerateProposalsNode *Function::createGenerateProposals(
+    llvm::StringRef name, NodeValue scores, NodeValue bboxDeltas,
+    NodeValue imInfo, NodeValue anchors, float spatialScale, int64_t preNmsTopN,
+    int64_t postNmsTopN, float nmsThresh, float minSize, bool angleBoundOn,
+    int64_t angleBoundLo, int64_t angleBoundHi, float clipAngleThresh,
+    bool legacyPlusOne) {
+
+  auto numImages = scores.dims()[0];
+  auto boxDim = anchors.dims()[1];
+
+  assert(postNmsTopN > 0 && "Invalid postNmsTopN.");
+
+  // TO DO: Remove this assert after implementation for rotated boxes
+  assert(boxDim == 4 && "Implementation supports only upright boxes for now");
+
+  // To handle dynamic output, output size is capped to img_count*postNmsTopN
+  dim_t outRoisSize = dim_t(postNmsTopN * numImages);
+
+  auto roisTy = getParent()->uniqueTypeWithNewShape(scores.getType(),
+                                                    {outRoisSize, boxDim + 1});
+  auto roisProbsTy =
+      getParent()->uniqueType(scores.getElementType(), {outRoisSize});
+
+  return addNode(new GenerateProposalsNode(
+      name, roisTy, roisProbsTy, scores, bboxDeltas, imInfo, anchors,
+      spatialScale, preNmsTopN, postNmsTopN, nmsThresh, minSize, angleBoundOn,
+      angleBoundLo, angleBoundHi, clipAngleThresh, legacyPlusOne));
+}
+
 ExternalFunctionCallNode *Function::createExternalFunctionCall(
     llvm::StringRef name, TypeRef outTy, llvm::ArrayRef<glow::NodeValue> inputs,
     llvm::StringRef funcName, llvm::StringRef funcImpl,

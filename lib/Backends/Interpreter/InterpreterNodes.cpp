@@ -7230,6 +7230,348 @@ void BoundInterpreterFunction::fwdBBoxTransformInst(
                             I->getRois()->getElementType(), I);
 }
 
+template <typename T>
+void computeSortedAnchors(const Handle<T> &anchors, const dim_t W,
+                          const dim_t A, const dim_t boxDim,
+                          const float featStride, std::vector<dim_t> &order,
+                          std::vector<std::vector<float>> &anchorsSorted) {
+  // Order is flattened in (H, W, A) format. Unravel the indices.
+  std::vector<dim_t> orderIdxA;
+  std::vector<dim_t> orderIdxH;
+  std::vector<dim_t> orderIdxW;
+  for (auto i : order) {
+    orderIdxA.push_back(i % A);
+    orderIdxW.push_back((i / A) % W);
+    orderIdxH.push_back(i / (W * A));
+  }
+
+  // Generate shifts for each location in the H * W grid corresponding
+  // to the sorted scores in (A, H, W) order.
+  std::vector<std::vector<float>> shifts(order.size(),
+                                         std::vector<float>(boxDim));
+  if (boxDim == 4) {
+    for (dim_t i = 0; i < order.size(); i++) {
+      float shiftX = float(orderIdxW[i]) * featStride;
+      float shiftY = float(orderIdxH[i]) * featStride;
+      // Upright boxes in [x1, y1, x2, y2] format
+      shifts[i] = {shiftX, shiftY, shiftX, shiftY};
+    }
+  } else if (boxDim == 5) {
+    // TO DO: implement shifts for rotated boxes
+    assert(boxDim != 4 &&
+           "GenerateProposals for rotated boxes in not implemented.");
+  }
+
+  // Apply shifts to the relevant anchors.
+  for (dim_t i = 0; i < order.size(); i++) {
+    for (dim_t j = 0; j < boxDim; j++) {
+      anchorsSorted[i][j] = float(anchors.at({orderIdxA[i], j})) + shifts[i][j];
+    }
+  }
+}
+
+void bbox_transform_upright(std::vector<std::vector<float>> &boxes,
+                            std::vector<std::vector<float>> &deltas,
+                            const std::vector<float> &weights,
+                            const float bboxXformClip, const bool legacyPlusOne,
+                            std::vector<std::vector<float>> &boxesOut) {
+  for (dim_t i = 0; i < boxes.size(); i++) {
+    float width = boxes[i][2] - boxes[i][0] + float(legacyPlusOne);
+    float height = boxes[i][3] - boxes[i][1] + float(legacyPlusOne);
+    float ctrX = boxes[i][0] + 0.5f * width;
+    float ctrY = boxes[i][1] + 0.5f * height;
+
+    float dx = deltas[i][0] / weights[0];
+    float dy = deltas[i][1] / weights[1];
+    float dw = std::min(deltas[i][2] / weights[2], bboxXformClip);
+    float dh = std::min(deltas[i][3] / weights[3], bboxXformClip);
+
+    // Force predCtrX and predCtrY to be computed in FP32 precision
+    float predCtrX = float(dx) * float(width) + float(ctrX);
+    float predCtrY = float(dy) * float(height) + float(ctrY);
+    float predW = std::exp(float(dw)) * width;
+    float predH = std::exp(float(dh)) * height;
+
+    boxesOut[i] = {predCtrX - 0.5f * predW, predCtrY - 0.5f * predH,
+                   predCtrX + 0.5f * predW - float(legacyPlusOne),
+                   predCtrY + 0.5f * predH - float(legacyPlusOne)};
+  }
+}
+
+void clip_boxes_upright(std::vector<std::vector<float>> &boxes,
+                        const float imHeight, const float imWidth,
+                        bool legacyPlusOne) {
+  for (dim_t i = 0; i < boxes.size(); i++) {
+    // x1 >= 0 && x1 < width
+    boxes[i][0] =
+        std::max(std::min(boxes[i][0], imWidth - float(legacyPlusOne)), 0.f);
+    // y1 >= 0 && y1 < height
+    boxes[i][1] =
+        std::max(std::min(boxes[i][1], imHeight - float(legacyPlusOne)), 0.f);
+    // x2 >= 0 && x2 < width
+    boxes[i][2] =
+        std::max(std::min(boxes[i][2], imWidth - float(legacyPlusOne)), 0.f);
+    // y2 >= 0 && y2 < height
+    boxes[i][3] =
+        std::max(std::min(boxes[i][3], imHeight - float(legacyPlusOne)), 0.f);
+  }
+}
+
+void filter_boxes_upright(std::vector<std::vector<float>> &boxes,
+                          const float minSize, std::vector<float> &imInfo,
+                          const bool legacyPlusOne, std::vector<dim_t> &keep) {
+  // Scale min_size to match image scale
+  const float minSizeScaled = minSize * imInfo[2];
+
+  for (dim_t i = 0; i < boxes.size(); i++) {
+    float ws = boxes[i][2] - boxes[i][0] + float(legacyPlusOne);
+    float hs = boxes[i][3] - boxes[i][1] + float(legacyPlusOne);
+    float xCtr = boxes[i][0] + ws / 2.f;
+    float yCtr = boxes[i][1] + hs / 2.f;
+    if ((ws >= minSizeScaled) && (hs >= minSizeScaled) && (xCtr < imInfo[1]) &&
+        (yCtr < imInfo[0])) {
+      keep.push_back(i);
+    }
+  }
+}
+
+void generate_proposals_nms_upright(std::vector<std::vector<float>> &proposals,
+                                    std::vector<float> &scores,
+                                    std::vector<dim_t> &indices,
+                                    const float thresh, const int64_t topN,
+                                    const bool legacyPlusOne,
+                                    std::vector<std::vector<float>> &rois,
+                                    std::vector<float> &roisProbs) {
+  std::vector<float> areas;
+  for (auto p : proposals) {
+    areas.push_back((p[2] - p[0] + float(legacyPlusOne)) *
+                    (p[3] - p[1] + float(legacyPlusOne)));
+  }
+
+  std::vector<dim_t> keep;
+  for (auto it = indices.begin(); it != indices.end(); it++) {
+    dim_t idx1 = *it;
+    keep.push_back(idx1);
+    // Exit if already enough proposals
+    if (keep.size() >= topN) {
+      break;
+    }
+    for (auto jt = it + 1; jt != indices.end();) {
+      dim_t idx2 = *jt;
+      auto x1 = std::max(proposals[idx1][0], proposals[idx2][0]);
+      auto y1 = std::max(proposals[idx1][1], proposals[idx2][1]);
+      auto x2 = std::min(proposals[idx1][2], proposals[idx2][2]);
+      auto y2 = std::min(proposals[idx1][3], proposals[idx2][3]);
+      auto w = std::max(x2 - x1 + float(legacyPlusOne), 0.f);
+      auto h = std::max(y2 - y1 + float(legacyPlusOne), 0.f);
+      auto inter = h * w;
+      auto ovr = inter / (areas[idx1] + areas[idx2] - inter);
+      if (ovr > thresh)
+        jt = indices.erase(jt);
+      else
+        jt++;
+    }
+  }
+  for (auto i : keep) {
+    rois.push_back(proposals[i]);
+    roisProbs.push_back(scores[i]);
+  }
+}
+
+template <typename T>
+void generateProposalsPerImage(
+    std::vector<float> &imInfo, const Handle<T> &anchors,
+    std::vector<float> &bboxDeltas, std::vector<float> &scores, const dim_t A,
+    const dim_t H, const dim_t W, const dim_t boxDim,
+    std::vector<std::vector<float>> &rois, std::vector<float> &roisProbs,
+    const float spatialScale, const int64_t preNmsTopN,
+    const int64_t postNmsTopN, const float nmsThresh, const float minSize,
+    const bool angleBoundOn, const int64_t angleBoundLo,
+    const int64_t angleBoundHi, const float clipAngleThresh,
+    const bool legacyPlusOne) {
+
+  // Sort indices of sorted scores in descending order
+  std::vector<dim_t> order(scores.size());
+  std::iota(order.begin(), order.end(), 0);
+  if (preNmsTopN <= 0 || preNmsTopN >= scores.size()) {
+    // Sort all (proposal, score) pairs by score from highest to lowest
+    // Take top preNmsTopN (e.g. 6000)
+    std::stable_sort(order.begin(), order.end(), [&scores](int lhs, int rhs) {
+      return scores[lhs] > scores[rhs];
+    });
+  } else {
+    // Avoid sorting possibly large arrays. First partition to get top K
+    // unsorted and then sort just those.
+    // The sort is made stable by comparing the indices when the scores are
+    // equal.
+    std::partial_sort(order.begin(), order.begin() + preNmsTopN, order.end(),
+                      [&scores](int lhs, int rhs) {
+                        return scores[lhs] == scores[rhs]
+                                   ? lhs < rhs
+                                   : scores[lhs] > scores[rhs];
+                      });
+    order.resize(preNmsTopN);
+  }
+
+  // Obtain Sorted scores
+  std::vector<float> scoresSorted(order.size());
+  for (dim_t i = 0; i < order.size(); i++) {
+    scoresSorted[i] = scores[order[i]];
+  }
+
+  // Obtain Sorted bboxDeltas per each box dimension
+  // BBoxDeltas are (H, W, A * boxDim) format from conv output where as
+  // scores are (H, W, A) format
+  std::vector<std::vector<float>> bboxDeltasSorted(order.size(),
+                                                   std::vector<float>(boxDim));
+  for (dim_t i = 0; i < order.size(); i++) {
+    for (dim_t j = 0; j < boxDim; j++) {
+      bboxDeltasSorted[i][j] = bboxDeltas[order[i] * boxDim + j];
+    }
+  }
+
+  // Compute anchors specific to the ordered and pre-filtered indices
+  // in (A, H, W) format.
+  std::vector<std::vector<float>> anchorsSorted(order.size(),
+                                                std::vector<float>(boxDim));
+  computeSortedAnchors<T>(anchors, W, A, boxDim, 1.0f / spatialScale, order,
+                          anchorsSorted);
+
+  static const std::vector<float> bboxWeights{1.0, 1.0, 1.0, 1.0};
+  const float bboxXFormClip = std::log(1000.0 / 16.0);
+
+  std::vector<std::vector<float>> proposals(order.size(),
+                                            std::vector<float>(boxDim));
+  std::vector<dim_t> filteredIdxs;
+
+  if (boxDim == 4) {
+    // Transform anchors into proposals via bbox transformations
+    bbox_transform_upright(anchorsSorted, bboxDeltasSorted, bboxWeights,
+                           bboxXFormClip, legacyPlusOne, proposals);
+
+    // Clip proposals to image (may result in proposals with zero area
+    // that will be removed in the next step)
+    clip_boxes_upright(proposals, imInfo[0], imInfo[1], legacyPlusOne);
+
+    // Remove predicted boxes with either height or width < minSize
+    filter_boxes_upright(proposals, minSize, imInfo, legacyPlusOne,
+                         filteredIdxs);
+    assert((filteredIdxs.size() <= proposals.size()) &&
+           "Filtered boxes size cannot be more than the scores size");
+
+    // Apply loose nms (e.g. threshold = 0.7)
+    // Take postNmsTopN (e.g. 300)
+    // Return the top proposals (-> RoIs top)
+    generate_proposals_nms_upright(proposals, scoresSorted, filteredIdxs,
+                                   nmsThresh, postNmsTopN, legacyPlusOne, rois,
+                                   roisProbs);
+  } else if (boxDim == 5) {
+    // TO DO: Implementation of bbox_transform_rotated, clip_boxes_rotated,
+    //        filter_boxes_rotated, nms_cpu_rotated
+    assert(boxDim != 4 &&
+           "GenerateProposals for rotated boxes in not implemented.");
+  }
+  assert((rois.size() <= proposals.size()) && "Error in Rois size");
+  assert((rois.size() == roisProbs.size()) &&
+         "Rois dimension 0 must be same as RoisProbs");
+}
+
+template <typename T>
+void BoundInterpreterFunction::fwdGenerateProposalsInstImpl(
+    glow::GenerateProposalsInst const *I) {
+  auto scoresIn = I->getScores();
+  auto bboxDeltasIn = I->getBBoxDeltas();
+  auto imInfoIn = I->getImInfo();
+  auto anchorsIn = I->getAnchors();
+  auto roisOut = I->getRois();
+  auto roisProbsOut = I->getRoisProbs();
+  auto spatialScale = I->getSpatialScale();
+  auto preNmsTopN = I->getPreNmsTopN();
+  auto postNmsTopN = I->getPostNmsTopN();
+  auto nmsThresh = I->getNmsThresh();
+  auto minSize = I->getMinSize();
+  auto angleBoundOn = I->getAngleBoundOn();
+  auto angleBoundLo = I->getAngleBoundLo();
+  auto angleBoundHi = I->getAngleBoundHi();
+  auto clipAngleThresh = I->getClipAngleThresh();
+  auto legacyPlusOne = I->getLegacyPlusOne();
+
+  std::vector<dim_t> scoresDim = scoresIn->dims();
+  const auto numImages = scoresDim[0];
+  const auto height = scoresDim[1];
+  const auto width = scoresDim[2];
+  const auto numAnchors = scoresDim[3];
+  const auto boxDim = anchorsIn->dims()[1];
+
+  auto scoresH = getTensor(scoresIn)->getHandle<T>();
+  auto bboxDeltasH = getTensor(bboxDeltasIn)->getHandle<T>();
+  auto imInfoH = getTensor(imInfoIn)->getHandle<T>();
+  auto anchorsH = getTensor(anchorsIn)->getHandle<T>();
+  auto roisH = getTensor(roisOut)->getHandle<T>();
+  auto roisProbsH = getTensor(roisProbsOut)->getHandle<T>();
+
+  dim_t outIdx = 0;
+  for (dim_t i = 0; i < numImages; i++) {
+    // Get current image info, scores and bbox deltas
+    std::vector<float> curImInfo{imInfoH.at({i, 0}), imInfoH.at({i, 1}),
+                                 imInfoH.at({i, 2})};
+
+    std::vector<float> curScores;
+    for (dim_t h = 0; h < height; h++) {
+      for (dim_t w = 0; w < width; w++) {
+        for (dim_t j = 0; j < numAnchors; j++) {
+          curScores.push_back(scoresH.at({i, h, w, j}));
+        }
+      }
+    }
+
+    std::vector<float> curBBoxDeltas;
+    for (dim_t h = 0; h < height; h++) {
+      for (dim_t w = 0; w < width; w++) {
+        for (dim_t j = 0; j < boxDim * numAnchors; j++) {
+          curBBoxDeltas.push_back(bboxDeltasH.at({i, h, w, j}));
+        }
+      }
+    }
+
+    std::vector<std::vector<float>> rois;
+    std::vector<float> roisProbs;
+
+    // Generate proposals for current image
+    generateProposalsPerImage<T>(
+        curImInfo, anchorsH, curBBoxDeltas, curScores, numAnchors, height,
+        width, boxDim, rois, roisProbs, spatialScale, preNmsTopN, postNmsTopN,
+        nmsThresh, minSize, angleBoundOn, angleBoundLo, angleBoundHi,
+        clipAngleThresh, legacyPlusOne);
+
+    // Update Outputs with Rois and RoisProbs of current image
+    for (dim_t j = 0; j < rois.size(); j++) {
+      // rois format for upright boxes is (image_index, x1, y1, x2, y2)
+      roisH.at({outIdx, 0}) = i;
+      for (dim_t k = 0; k < boxDim; k++) {
+        roisH.at({outIdx, k + 1}) = rois[j][k];
+      }
+      roisProbsH.at({outIdx}) = roisProbs[j];
+      outIdx++;
+    }
+  }
+
+  // Roi coordinates at invalid indices are set to 0
+  // Roi scores at invalid indices are set to most negative value
+  for (dim_t j = outIdx; j < numImages * postNmsTopN; j++) {
+    for (dim_t k = 0; k < (boxDim + 1); k++) {
+      roisH.at({j, k}) = T(0);
+    }
+    roisProbsH.at({j}) = T(-std::numeric_limits<float>::infinity());
+  }
+}
+
+void BoundInterpreterFunction::fwdGenerateProposalsInst(
+    glow::GenerateProposalsInst const *I) {
+  dispatchFloatingPointImpl(fwdGenerateProposalsInstImpl,
+                            I->getScores()->getElementType(), I);
+}
+
 void BoundInterpreterFunction::fwdExternalFunctionCallInst(
     glow::ExternalFunctionCallInst const *) {
   LOG(FATAL) << "ExternalFunctionCallInst is not supported yet";

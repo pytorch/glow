@@ -433,6 +433,9 @@ private:
   template <typename T>
   void fwdBBoxTransformInstFloatImpl(glow::BBoxTransformInst const *I);
 
+  template <typename T>
+  void fwdGenerateProposalsInstImpl(glow::GenerateProposalsInst const *I);
+
   template <typename T, typename AccumT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(
       const EmbeddingBagByteRowwiseOffsetsInst *I);

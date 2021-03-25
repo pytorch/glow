@@ -2465,6 +2465,72 @@ bool BBoxTransformNode::verify() const {
   return isValid;
 }
 
+bool GenerateProposalsNode::verify() const {
+  auto scores = getScores();
+  auto bboxDeltas = getBBoxDeltas();
+  auto imInfo = getImInfo();
+  auto anchors = getAnchors();
+  auto rois = getRois();
+  auto roisProbs = getRoisProbs();
+  auto postNmsTopN = getPostNmsTopN();
+
+  auto scoresDims = scores.dims();
+  auto bboxDeltasDims = bboxDeltas.dims();
+  auto imInfoDims = imInfo.dims();
+  auto anchorsDims = anchors.dims();
+  auto roisDims = rois.dims();
+  auto roisProbsDims = roisProbs.dims();
+
+  bool isValid = checkTypeIgnoreShape(scores, bboxDeltas, this);
+  isValid &= checkTypeIgnoreShape(scores, imInfo, this);
+  isValid &= checkTypeIgnoreShape(scores, anchors, this);
+  isValid &= checkTypeIgnoreShape(scores, rois, this);
+  isValid &= checkTypeIgnoreShape(scores, roisProbs, this);
+  isValid &= expectCompareTrue("Scores must be a 4D tensor", scoresDims.size(),
+                               size_t(4), this);
+  isValid &= expectCompareTrue("BBoxDeltas must be a 4D tensor",
+                               bboxDeltasDims.size(), size_t(4), this);
+  isValid &= expectCompareTrue("ImInfo must be a 2D tensor", imInfoDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Anchors must be a 2D tensor",
+                               anchorsDims.size(), size_t(2), this);
+  isValid &= expectCompareTrue("Rois must be a 2D tensor", roisDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("RoisProbs must be a 1D tensor",
+                               roisProbsDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("ImInfo must be a {img_count, 3} tensor",
+                               imInfoDims[1], dim_t(3), this);
+  isValid &= expectCompareTrue(
+      "Anchors dimension 1 must be expected box dimension 4 or 5",
+      (anchorsDims[1] == 4 || anchorsDims[1] == 5), true, this);
+  isValid &=
+      expectCompareTrue("Scores and BBoxDeltas must have same 0 dimension",
+                        scoresDims[0], bboxDeltasDims[0], this);
+  isValid &= expectCompareTrue("Scores and ImInfo must have same 0 dimension",
+                               scoresDims[0], imInfoDims[0], this);
+  isValid &=
+      expectCompareTrue("Scores and BBoxDeltas must have same 1 dimension",
+                        scoresDims[1], bboxDeltasDims[1], this);
+  isValid &=
+      expectCompareTrue("Scores and BBoxDeltas must have same 2 dimension",
+                        scoresDims[2], bboxDeltasDims[2], this);
+  isValid &= expectCompareTrue(
+      "Scores dimension 3 and Anchors dimension 0 must be same", scoresDims[3],
+      anchorsDims[0], this);
+  isValid &= expectCompareTrue(
+      "BBoxDeltas dimension 3 must be same as elements in Anchors tensor",
+      anchorsDims[0] * anchorsDims[1], bboxDeltasDims[3], this);
+  isValid &= expectCompareTrue("Rois and RoisProbs must have same 0 dimension",
+                               roisDims[0], roisProbsDims[0], this);
+  isValid &= expectCompareTrue(
+      "Rois dimension 1 must be more than the box dimension by 1", roisDims[1],
+      anchorsDims[1] + 1, this);
+  isValid &= expectCompareTrue(
+      "Rois dimension must be equal to img_count * postNmsTopN", roisDims[0],
+      scoresDims[0] * postNmsTopN, this);
+  return isValid;
+}
+
 bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }
