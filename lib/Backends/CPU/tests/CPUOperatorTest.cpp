@@ -271,6 +271,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "NoFusedConvert_FP32Accum/0",
     "SLWSTwoColumn_Float16_AccumFloat/0",
     "SparseToDense_Int64/0",
+    "SparseToDense_Float16_Int32/0",
     "SparseToDenseMask1/0",
     "SparseToDenseMask2/0",
     "BoolReshape/0",

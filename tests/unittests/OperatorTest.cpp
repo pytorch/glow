@@ -17331,13 +17331,14 @@ static void testSparseToDense(glow::PlaceholderBindings &bindings,
 
   // Duplicate one index to test that the corresponding values are added.
   IH = {1, 3, 1, 9};
-  VH.randomize(-3.0, 3.0, mod.getPRNG());
 
   auto *STDN = F->createSparseToDense("STDN", indices, values, dataToInferDim);
   auto *S = F->createSave("save", STDN);
   bindings.allocate(S->getPlaceholder());
 
   EE.compile(CompilationMode::Infer);
+
+  VH.randomize(-3.0, 3.0, mod.getPRNG());
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
@@ -17346,12 +17347,30 @@ static void testSparseToDense(glow::PlaceholderBindings &bindings,
   Tensor expected(DTy, {kMaxIndex, kRows, kCols});
   auto EH = expected.getHandle<DataType>();
 
+  Tensor expectedFP32(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
+  auto EHFP32 = expectedFP32.getHandle<float>();
+  expectedFP32.zero();
+
   expected.zero();
   for (dim_t i = 0; i < kNumIndices; ++i) {
     dim_t idx = IH.at({i});
     for (dim_t j = 0; j < kRows; ++j) {
       for (dim_t k = 0; k < kCols; ++k) {
-        EH.at({idx, j, k}) += VH.at({i, j, k});
+        if (std::is_same<DataType, float16_t>::value) {
+          EHFP32.at({idx, j, k}) += (float)VH.at({i, j, k});
+        } else {
+          EH.at({idx, j, k}) += VH.at({i, j, k});
+        }
+      }
+    }
+  }
+
+  if (std::is_same<DataType, float16_t>::value) {
+    for (dim_t i = 0; i < kMaxIndex; ++i) {
+      for (dim_t j = 0; j < kRows; ++j) {
+        for (dim_t k = 0; k < kCols; ++k) {
+          EH.at({i, j, k}) = (float16_t)EHFP32.at({i, j, k});
+        }
       }
     }
   }
@@ -17369,6 +17388,12 @@ TEST_P(OperatorTest, SparseToDense_Float_Int32) {
   CHECK_IF_ENABLED();
   testSparseToDense<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
                                     ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, SparseToDense_Float16_Int32) {
+  CHECK_IF_ENABLED();
+  testSparseToDense<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
 }
 
 TEST_P(OperatorTest, SparseToDense_Int64) {
