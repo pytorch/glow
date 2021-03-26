@@ -3811,7 +3811,7 @@ void libjit_tflite_detection_post_process_f(float *boxes,
     scratch += MIN(numBoxes, maxDetectionsPerClass) * sizeof(float);
 
     int32_t *selected = (int32_t *) scratch;
-      scratch += numBoxes * sizeof(int32_t);
+    scratch += numBoxes * sizeof(int32_t);
 
     int32_t *keep_indices = (int32_t *) (scratch);
     scratch += numBoxes * sizeof(int32_t);
@@ -3835,20 +3835,15 @@ void libjit_tflite_detection_post_process_f(float *boxes,
       }
 
       int32_t num_selected;
-
       tflite_helper(boxes, numBoxes, scoreThreshold, iouThreshold,
          class_scores, numBoxes, selected, &num_selected, num_detections_per_class,
          keep_indices, keep_scores, aux_values, sorted_indices_helper, active_box_candidate);
 
       int32_t output_index = size_of_sorted_indices;
-      int32_t selected_index;
       for (int32_t i = 0; i < num_selected; i++) { 
-        selected_index = selected[i];
-        box_indices_after_regular_nms[output_index] =
-          (selected_index * numTotalClasses + col + label_offset);
-
-        scores_after_regular_nms[output_index] = 
-          class_scores[selected_index];
+        int32_t selected_index = selected[i];
+        box_indices_after_regular_nms[output_index] = (selected_index * numTotalClasses + col + label_offset);
+        scores_after_regular_nms[output_index] =  class_scores[selected_index];
         output_index++;
       }
 
@@ -3872,38 +3867,26 @@ void libjit_tflite_detection_post_process_f(float *boxes,
       size_of_sorted_indices = num_indices_to_sort;
     }
 
-    for (int32_t output_box_index = 0; output_box_index < maxDetections; output_box_index++) {
-      if (output_box_index < size_of_sorted_indices) {
-        const int32_t anchor_index = floor(box_indices_after_regular_nms[output_box_index] /
-                numTotalClasses);
+    for (int32_t output_box_index = 0; output_box_index < size_of_sorted_indices; output_box_index++) {
 
-        const int32_t class_index = box_indices_after_regular_nms[output_box_index] -
-            anchor_index * numTotalClasses - label_offset;
+      const int32_t anchor_index = box_indices_after_regular_nms[output_box_index] / numTotalClasses;
 
-        const float selected_score = 
-            scores_after_regular_nms[output_box_index];
+      const int32_t class_index = box_indices_after_regular_nms[output_box_index] - anchor_index * numTotalClasses - label_offset;
 
-        detectionBoxes[4 * output_box_index] = boxes[4 *anchor_index];
-        detectionBoxes[4 * output_box_index + 1] = boxes[4 *anchor_index + 1];
-        detectionBoxes[4 * output_box_index + 2] = boxes[4 *anchor_index + 2];
-        detectionBoxes[4 * output_box_index + 3] = boxes[4 *anchor_index + 3];
+      const float selected_score = scores_after_regular_nms[output_box_index];
 
-        detectionClasses[output_box_index] = class_index;
+      *detectionBoxes++ = boxes[4 *anchor_index + 0];
+      *detectionBoxes++ = boxes[4 *anchor_index + 1];
+      *detectionBoxes++ = boxes[4 *anchor_index + 2];
+      *detectionBoxes++ = boxes[4 *anchor_index + 3];
 
-        detectionScores[output_box_index] = selected_score;
-      } else {
-        detectionBoxes[4 * output_box_index] = 0.0f;
-        detectionBoxes[4 * output_box_index + 1] = 0.0f;
-        detectionBoxes[4 * output_box_index + 2] = 0.0f;
-        detectionBoxes[4 * output_box_index + 3] = 0.0f;
+      *detectionClasses++ = class_index;
 
-        detectionClasses[output_box_index] = 0;
-
-        detectionScores[output_box_index] = 0.0f;
-      }
+      *detectionScores++ = selected_score;
     }
 
     *numDetections = size_of_sorted_indices;
+
   } else {
     float *max_scores = (float *) scratch;
     scratch += numBoxes * sizeof(float);
@@ -3940,40 +3923,32 @@ void libjit_tflite_detection_post_process_f(float *boxes,
     }
     
     int32_t selected_size = 0;
-
     tflite_helper(boxes, numBoxes, scoreThreshold, iouThreshold,
          max_scores, numBoxes, selected, &selected_size, maxDetections,
          keep_indices, keep_scores, aux_values, sorted_indices_helper,
          active_box_candidate);
 
     int32_t output_box_index = 0;
-    int32_t selected_index;
-
     for (int32_t i = 0; i < selected_size; i++) {
 
-      selected_index = selected[i];
-        const float* box_scores =
-            scores + selected_index * numTotalClasses + label_offset;
-        const int32_t* class_indices =
-            sorted_classes_indices + selected_index * numClasses;
+      int32_t selected_index = selected[i];
+      const float* box_scores = scores + selected_index * numTotalClasses + label_offset;
+      const int32_t* class_indices = sorted_classes_indices + selected_index * numClasses;
 
-        for (int32_t col = 0; col < num_categories_per_anchor; ++col) {
-          int32_t box_offset = num_categories_per_anchor * output_box_index + col;
-          
-          // detectionBoxes
-          detectionBoxes[box_offset * 4] = boxes[selected_index * 4];
-          detectionBoxes[box_offset * 4 + 1] = boxes[selected_index * 4 + 1];
-          detectionBoxes[box_offset * 4 + 2] = boxes[selected_index * 4 + 2];
-          detectionBoxes[box_offset * 4 + 3] = boxes[selected_index * 4 + 3];
+      for (int32_t col = 0; col < num_categories_per_anchor; ++col) {
+        int32_t box_offset = num_categories_per_anchor * output_box_index + col;
 
-          // detectionClasses
-          detectionClasses[box_offset] = (float) class_indices[col];
+        detectionBoxes[box_offset * 4 + 0] = boxes[selected_index * 4 + 0];
+        detectionBoxes[box_offset * 4 + 1] = boxes[selected_index * 4 + 1];
+        detectionBoxes[box_offset * 4 + 2] = boxes[selected_index * 4 + 2];
+        detectionBoxes[box_offset * 4 + 3] = boxes[selected_index * 4 + 3];
 
-          // detectionScores
-            detectionScores[box_offset] = box_scores[class_indices[col]];
-        }
+        detectionClasses[box_offset] = class_indices[col];
 
-        output_box_index++;
+        detectionScores[box_offset] = box_scores[class_indices[col]];
+      }
+
+      output_box_index++;
     }
 
     *numDetections = output_box_index;
