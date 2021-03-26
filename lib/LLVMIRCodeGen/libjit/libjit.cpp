@@ -3594,7 +3594,7 @@ void libjit_mfcc_f(void *scratch, float *coefficients, const float *spectrogram,
 //===----------------------------------------------------------------------===//
 //                          TFLiteDetectionPostProcess
 //===----------------------------------------------------------------------===//
-int32_t partition (int32_t *arr, int32_t low, int32_t high, float *values) { 
+static int32_t partition (int32_t *arr, int32_t low, int32_t high, float *values) { 
   float pivot = values[high];
   int32_t i = (low - 1);
   float swap_float;
@@ -3625,7 +3625,7 @@ int32_t partition (int32_t *arr, int32_t low, int32_t high, float *values) {
   return (i + 1); 
 } 
 
-void partial_sort(int32_t *arr, int32_t i, int32_t j, int32_t k, float *values) {
+static void partial_sort(int32_t *arr, int32_t i, int32_t j, int32_t k, float *values) {
   int32_t p;
   if(i < j) {
     p = partition(arr, i, j, values);
@@ -3637,14 +3637,14 @@ void partial_sort(int32_t *arr, int32_t i, int32_t j, int32_t k, float *values) 
   }
 }
 
-void iota(int32_t *first, int32_t *last, int32_t value) {
+static void iota(int32_t *first, int32_t *last, int32_t value) {
   while(first != last) {
      *first++ = value;
      value++;
   }
 }
 
-void DecreasingPartialArgSort(float *values, int32_t num_values, int32_t num_to_sort, int32_t *indices, float *aux_values) {
+static void DecreasingPartialArgSort(float *values, int32_t num_values, int32_t num_to_sort, int32_t *indices, float *aux_values) {
   iota(indices, indices + num_values, 0);
 
   memcpy(aux_values, values, sizeof(float) * num_values);
@@ -3652,7 +3652,7 @@ void DecreasingPartialArgSort(float *values, int32_t num_values, int32_t num_to_
   partial_sort(indices, 0, num_values - 1, num_to_sort, aux_values);
 }
 
-void SelectDetectionAboveScoreThreshold(float *scores, int32_t num_scores, float threshold, float *keep_values, int32_t *keep_indices, int32_t *num_indices) {
+static void SelectDetectionAboveScoreThreshold(float *scores, int32_t num_scores, float threshold, float *keep_values, int32_t *keep_indices, int32_t *num_indices) {
   int32_t idx = 0;
   for (int32_t i = 0; i < num_scores; i++) {
     if(scores[i] >= threshold) {
@@ -3664,27 +3664,37 @@ void SelectDetectionAboveScoreThreshold(float *scores, int32_t num_scores, float
   *num_indices = idx;
 }
 
-float ComputeintersectionOverUnion(float *boxesPtr, int32_t i, int32_t j) {
+/// Compute the IOU (Intersection Over Union) metric between two boxes. Each
+/// of box1 and box2 is a vector with 4 floating-point values with the box
+/// coordinates in the following format: [ymin, xmin, ymax, xmax].
+static float tflite_compute_iou(float *box1, float *box2) {
 
-  float area_i = (boxesPtr[4 * i + 2] - boxesPtr[4 * i]) * (boxesPtr[4 * i + 3] - boxesPtr[4 * i + 1]);
+  // Compute the areas of the two boxes.
+  float box1Area = (box1[2] - box1[0]) * (box1[3] - box1[1]);
+  float box2Area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
 
-  float area_j = (boxesPtr[4 * j + 2] - boxesPtr[4 * j]) * (boxesPtr[4 * j + 3] - boxesPtr[4 * j + 1]);
-
-  if (area_i < 0 || area_j < 0) {
-    return 0.0;
+  // If box coordinates are invalid we return 0.
+  if (box1Area <= 0 || box2Area <= 0) {
+    return 0.0f;
   }
 
-  float intersection_ymin = MAX(boxesPtr[4 * i], boxesPtr[4 * j]);
-  float intersection_xmin = MAX(boxesPtr[4 * i + 1], boxesPtr[4 * j + 1]);
-  float intersection_ymax = MIN(boxesPtr[4 * i + 2], boxesPtr[4 * j + 2]);
-  float intersection_xmax = MIN(boxesPtr[4 * i + 3], boxesPtr[4 * j + 3]);
+  // Determine the coordinates of the intersection rectangle.
+  float iYmin = MAX(box1[0], box2[0]);
+  float iXmin = MAX(box1[1], box2[1]);
+  float iYmax = MIN(box1[2], box2[2]);
+  float iXmax = MIN(box1[3], box2[3]);
 
-  float intersection_area = MAX(intersection_ymax - intersection_ymin, 0.0) * MAX(intersection_xmax - intersection_xmin, 0.0);
+  // Compute the area of the intersection rectangle.
+  float iArea = MAX(0.0f, iXmax - iXmin) * MAX(0.0f, iYmax - iYmin);
 
-  return intersection_area / (area_i + area_j - intersection_area);
+  // Compute the area of the union (reunion) rectangle.
+  float uArea = box1Area + box2Area - iArea;
+
+  // Compute the Intersection Over Union metric.
+  return iArea / uArea;
 }
 
-void tflite_helper (float *boxesPtr, int32_t num_boxes, float nms_score_threshold,
+static void tflite_helper(float *boxesPtr, int32_t num_boxes, float nms_score_threshold,
     float nms_iou_treshold, float* class_scores, int32_t num_scores,
     int32_t *selected, int32_t *num_selected, int32_t max_detections,
     int32_t *keep_indices, float *keep_scores, float *aux_values,
@@ -3721,10 +3731,11 @@ void tflite_helper (float *boxesPtr, int32_t num_boxes, float nms_score_threshol
 
     for (int32_t j = i + 1; j < num_boxes_kept; ++j) {
       if (active_box_candidate[j] == 1) {
-        float iou = ComputeintersectionOverUnion(boxesPtr,
-          keep_indices[sorted_indices_helper[i]],
-          keep_indices[sorted_indices_helper[j]]);
-        
+
+        float *box1 = boxesPtr + 4 * keep_indices[sorted_indices_helper[i]];
+        float *box2 = boxesPtr + 4 * keep_indices[sorted_indices_helper[j]];
+        float iou = tflite_compute_iou(box1, box2);
+
         if (iou > nms_iou_treshold) {
           active_box_candidate[j] = 0;
           num_active_candidate--;
@@ -3737,13 +3748,11 @@ void tflite_helper (float *boxesPtr, int32_t num_boxes, float nms_score_threshol
 void libjit_tflite_detection_post_process_f(float *boxes,
                                             float *scores,
                                             float *anchors,
-
-                                            float *detection_boxes,
-                                            int32_t *detection_classes,
-                                            float *detection_scores,
-                                            int32_t *num_detections,
+                                            float *detectionBoxes,
+                                            int32_t *detectionClasses,
+                                            float *detectionScores,
+                                            int32_t *numDetections,
                                             int8_t *scratch,
-
                                             int32_t numBoxes,
                                             int32_t numTotalClasses,
                                             int32_t numClasses,
@@ -3761,16 +3770,19 @@ void libjit_tflite_detection_post_process_f(float *boxes,
   // Decode the box coordinates in-place using the anchors.
   for (int32_t i = 0; i < numBoxes; i++) {
 
-    float ycenter = (float)(boxes[i * 4 + 0] * yScaleInv * anchors[i * 4 + 2] + anchors[i * 4 + 0]);
-    float xcenter = (float)(boxes[i * 4 + 1] * xScaleInv * anchors[i * 4 + 3] + anchors[i * 4 + 1]);
+    float *box = &boxes[i * 4];
+    float *anchor = &anchors[i * 4];
 
-    float half_h = (float)(0.5f * expf(boxes[i * 4 + 2] * hScaleInv) * anchors[i * 4 + 2]);
-    float half_w = (float)(0.5f * expf(boxes[i * 4 + 3] * wScaleInv) * anchors[i * 4 + 3]);
+    float ycenter = box[0] * yScaleInv * anchor[2] + anchor[0];
+    float xcenter = box[1] * xScaleInv * anchor[3] + anchor[1];
 
-    boxes[4 * i + 0] = ycenter - half_h;
-    boxes[4 * i + 1] = xcenter - half_w;
-    boxes[4 * i + 2] = ycenter + half_h;
-    boxes[4 * i + 3] = xcenter + half_w;
+    float half_h = 0.5f * expf(box[2] * hScaleInv) * anchor[2];
+    float half_w = 0.5f * expf(box[3] * wScaleInv) * anchor[3];
+
+    box[0] = ycenter - half_h;
+    box[1] = xcenter - half_w;
+    box[2] = ycenter + half_h;
+    box[3] = xcenter + half_w;
   }
 
   int32_t max_categories_per_anchor = maxClassesPerDetection;
@@ -3782,7 +3794,7 @@ void libjit_tflite_detection_post_process_f(float *boxes,
     int32_t num_detections_per_class = maxDetectionsPerClass;
 
     float *class_scores = (float *) (scratch);
-    scratch += numBoxes * sizeof(int32_t);
+    scratch += numBoxes * sizeof(float);
 
     int32_t *box_indices_after_regular_nms = (int32_t *) (scratch);
     scratch += (numBoxes + maxDetections) * sizeof(int32_t);
@@ -3793,7 +3805,7 @@ void libjit_tflite_detection_post_process_f(float *boxes,
     int32_t size_of_sorted_indices = 0;
 
     int32_t *sorted_indices = (int32_t *) (scratch);
-    scratch += (numBoxes + maxDetections) * sizeof(float);
+    scratch += (numBoxes + maxDetections) * sizeof(int32_t);
 
     float *sorted_values = (float *) (scratch);
     scratch += MIN(numBoxes, maxDetectionsPerClass) * sizeof(float);
@@ -3871,27 +3883,27 @@ void libjit_tflite_detection_post_process_f(float *boxes,
         const float selected_score = 
             scores_after_regular_nms[output_box_index];
 
-        detection_boxes[4 * output_box_index] = boxes[4 *anchor_index];
-        detection_boxes[4 * output_box_index + 1] = boxes[4 *anchor_index + 1];
-        detection_boxes[4 * output_box_index + 2] = boxes[4 *anchor_index + 2];
-        detection_boxes[4 * output_box_index + 3] = boxes[4 *anchor_index + 3];
+        detectionBoxes[4 * output_box_index] = boxes[4 *anchor_index];
+        detectionBoxes[4 * output_box_index + 1] = boxes[4 *anchor_index + 1];
+        detectionBoxes[4 * output_box_index + 2] = boxes[4 *anchor_index + 2];
+        detectionBoxes[4 * output_box_index + 3] = boxes[4 *anchor_index + 3];
 
-        detection_classes[output_box_index] = class_index;
+        detectionClasses[output_box_index] = class_index;
 
-        detection_scores[output_box_index] = selected_score;
+        detectionScores[output_box_index] = selected_score;
       } else {
-        detection_boxes[4 * output_box_index] = 0.0f;
-        detection_boxes[4 * output_box_index + 1] = 0.0f;
-        detection_boxes[4 * output_box_index + 2] = 0.0f;
-        detection_boxes[4 * output_box_index + 3] = 0.0f;
+        detectionBoxes[4 * output_box_index] = 0.0f;
+        detectionBoxes[4 * output_box_index + 1] = 0.0f;
+        detectionBoxes[4 * output_box_index + 2] = 0.0f;
+        detectionBoxes[4 * output_box_index + 3] = 0.0f;
 
-        detection_classes[output_box_index] = 0;
+        detectionClasses[output_box_index] = 0;
 
-        detection_scores[output_box_index] = 0.0f;
+        detectionScores[output_box_index] = 0.0f;
       }
     }
 
-    *num_detections = size_of_sorted_indices;
+    *numDetections = size_of_sorted_indices;
   } else {
     float *max_scores = (float *) scratch;
     scratch += numBoxes * sizeof(float);
@@ -3948,23 +3960,23 @@ void libjit_tflite_detection_post_process_f(float *boxes,
         for (int32_t col = 0; col < num_categories_per_anchor; ++col) {
           int32_t box_offset = num_categories_per_anchor * output_box_index + col;
           
-          // detection_boxes
-          detection_boxes[box_offset * 4] = boxes[selected_index * 4];
-          detection_boxes[box_offset * 4 + 1] = boxes[selected_index * 4 + 1];
-          detection_boxes[box_offset * 4 + 2] = boxes[selected_index * 4 + 2];
-          detection_boxes[box_offset * 4 + 3] = boxes[selected_index * 4 + 3];
+          // detectionBoxes
+          detectionBoxes[box_offset * 4] = boxes[selected_index * 4];
+          detectionBoxes[box_offset * 4 + 1] = boxes[selected_index * 4 + 1];
+          detectionBoxes[box_offset * 4 + 2] = boxes[selected_index * 4 + 2];
+          detectionBoxes[box_offset * 4 + 3] = boxes[selected_index * 4 + 3];
 
-          // detection_classes
-          detection_classes[box_offset] = (float) class_indices[col];
+          // detectionClasses
+          detectionClasses[box_offset] = (float) class_indices[col];
 
-          // detection_scores
-            detection_scores[box_offset] = box_scores[class_indices[col]];
+          // detectionScores
+            detectionScores[box_offset] = box_scores[class_indices[col]];
         }
 
         output_box_index++;
     }
 
-    *num_detections = output_box_index;
+    *numDetections = output_box_index;
   }
 }
 
