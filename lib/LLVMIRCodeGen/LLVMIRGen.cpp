@@ -3572,10 +3572,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *maxDetectionsPerClass = emitConstI32(builder, DPPI->getMaxDetectionsPerClass());
     auto *iouThreshold = emitConstF32(builder, DPPI->getIouThreshold());
     auto *scoreThreshold = emitConstF32(builder, DPPI->getScoreThreshold());
-    auto *xScale = emitConstF32(builder, DPPI->getXScale());
-    auto *yScale = emitConstF32(builder, DPPI->getYScale());
-    auto *hScale = emitConstF32(builder, DPPI->getHScale());
-    auto *wScale = emitConstF32(builder, DPPI->getWScale());
+    auto *xScaleInv = emitConstF32(builder, 1.0f / DPPI->getXScale());
+    auto *yScaleInv = emitConstF32(builder, 1.0f / DPPI->getYScale());
+    auto *hScaleInv = emitConstF32(builder, 1.0f / DPPI->getHScale());
+    auto *wScaleInv = emitConstF32(builder, 1.0f / DPPI->getWScale());
     auto *regularNMS = emitConstI1(builder, DPPI->getRegularNMS());
 
     // Current implementation only supports batch size 1.
@@ -3600,10 +3600,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       maxDetectionsPerClass,
       iouThreshold,
       scoreThreshold,
-      xScale,
-      yScale,
-      hScale,
-      wScale,
+      xScaleInv,
+      yScaleInv,
+      hScaleInv,
+      wScaleInv,
       regularNMS
     });
     break;

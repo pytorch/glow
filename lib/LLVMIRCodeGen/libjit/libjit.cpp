@@ -3594,15 +3594,154 @@ void libjit_mfcc_f(void *scratch, float *coefficients, const float *spectrogram,
 //===----------------------------------------------------------------------===//
 //                          TFLiteDetectionPostProcess
 //===----------------------------------------------------------------------===//
-// TODO: Add comment.
+int32_t partition (int32_t *arr, int32_t low, int32_t high, float *values) { 
+  float pivot = values[high];
+  int32_t i = (low - 1);
+  float swap_float;
+  int32_t swap_int;
+
+  for (int32_t j = low; j <= high - 1; j++) {
+    if (values[j] > pivot) { 
+      i++;
+
+      swap_float = values[i];
+      values[i] = values[j];
+      values[j] = swap_float;
+
+      swap_int = arr[i];
+      arr[i] = arr[j];
+      arr[j] = swap_int;
+    }
+  }
+
+  swap_float = values[i + 1];
+  values[i + 1] = values[high];
+  values[high] = swap_float;
+
+  swap_int = arr[i + 1];
+  arr[i + 1] = arr[high];
+  arr[high] = swap_int;
+
+  return (i + 1); 
+} 
+
+void partial_sort(int32_t *arr, int32_t i, int32_t j, int32_t k, float *values) {
+  int32_t p;
+  if(i < j) {
+    p = partition(arr, i, j, values);
+
+    partial_sort(arr, i, p - 1, k, values);
+
+    if (p < k - 1)
+      partial_sort(arr, p + 1, j, k, values);
+  }
+}
+
+void iota(int32_t *first, int32_t *last, int32_t value) {
+  while(first != last) {
+     *first++ = value;
+     value++;
+  }
+}
+
+void DecreasingPartialArgSort(float *values, int32_t num_values, int32_t num_to_sort, int32_t *indices, float *aux_values) {
+  iota(indices, indices + num_values, 0);
+
+  memcpy(aux_values, values, sizeof(float) * num_values);
+
+  partial_sort(indices, 0, num_values - 1, num_to_sort, aux_values);
+}
+
+void SelectDetectionAboveScoreThreshold(float *scores, int32_t num_scores, float threshold, float *keep_values, int32_t *keep_indices, int32_t *num_indices) {
+  int32_t idx = 0;
+  for (int32_t i = 0; i < num_scores; i++) {
+    if(scores[i] >= threshold) {
+      keep_indices[idx] = i;
+      keep_values[idx] = scores[i];
+      idx ++;
+    }
+  }
+  *num_indices = idx;
+}
+
+float ComputeintersectionOverUnion(float *boxesPtr, int32_t i, int32_t j) {
+
+  float area_i = (boxesPtr[4 * i + 2] - boxesPtr[4 * i]) * (boxesPtr[4 * i + 3] - boxesPtr[4 * i + 1]);
+
+  float area_j = (boxesPtr[4 * j + 2] - boxesPtr[4 * j]) * (boxesPtr[4 * j + 3] - boxesPtr[4 * j + 1]);
+
+  if (area_i < 0 || area_j < 0) {
+    return 0.0;
+  }
+
+  float intersection_ymin = MAX(boxesPtr[4 * i], boxesPtr[4 * j]);
+  float intersection_xmin = MAX(boxesPtr[4 * i + 1], boxesPtr[4 * j + 1]);
+  float intersection_ymax = MIN(boxesPtr[4 * i + 2], boxesPtr[4 * j + 2]);
+  float intersection_xmax = MIN(boxesPtr[4 * i + 3], boxesPtr[4 * j + 3]);
+
+  float intersection_area = MAX(intersection_ymax - intersection_ymin, 0.0) * MAX(intersection_xmax - intersection_xmin, 0.0);
+
+  return intersection_area / (area_i + area_j - intersection_area);
+}
+
+void tflite_helper (float *boxesPtr, int32_t num_boxes, float nms_score_threshold,
+    float nms_iou_treshold, float* class_scores, int32_t num_scores,
+    int32_t *selected, int32_t *num_selected, int32_t max_detections,
+    int32_t *keep_indices, float *keep_scores, float *aux_values,
+    int32_t *sorted_indices_helper, uint8_t *active_box_candidate) {
+
+  *num_selected = 0;
+
+  int32_t num_scores_kept;
+  SelectDetectionAboveScoreThreshold(class_scores, num_boxes, nms_score_threshold,
+    keep_scores, keep_indices, &num_scores_kept);
+
+  DecreasingPartialArgSort(keep_scores, num_scores_kept,
+        num_scores_kept, sorted_indices_helper, aux_values);
+
+  int32_t num_boxes_kept = num_scores_kept;
+  int32_t output_size = MIN(num_boxes_kept, max_detections);
+
+  int32_t num_active_candidate = num_boxes_kept;
+
+  for (int32_t row = 0; row < num_boxes_kept; row++) {
+    active_box_candidate[row] = 1;
+  }
+
+  for (int32_t i = 0; i < num_boxes_kept; i++) {
+    if (num_active_candidate == 0 || *num_selected >= output_size) break;
+    if(active_box_candidate[i] == 1) {
+      selected[*num_selected] = keep_indices[sorted_indices_helper[i]];
+      (*num_selected)++;
+      active_box_candidate[i] = 0;
+      num_active_candidate --;
+    } else {
+      continue;
+    }
+
+    for (int32_t j = i + 1; j < num_boxes_kept; ++j) {
+      if (active_box_candidate[j] == 1) {
+        float iou = ComputeintersectionOverUnion(boxesPtr,
+          keep_indices[sorted_indices_helper[i]],
+          keep_indices[sorted_indices_helper[j]]);
+        
+        if (iou > nms_iou_treshold) {
+          active_box_candidate[j] = 0;
+          num_active_candidate--;
+        }
+      }
+    }
+  }
+}
+
 void libjit_tflite_detection_post_process_f(float *boxes,
                                             float *scores,
                                             float *anchors,
 
-                                            float *detectionBoxes,
-                                            int32_t *detectionClasses,
-                                            float *detectionScores,
-                                            int32_t *numDetections,
+                                            float *detection_boxes,
+                                            int32_t *detection_classes,
+                                            float *detection_scores,
+                                            int32_t *num_detections,
                                             int8_t *scratch,
 
                                             int32_t numBoxes,
@@ -3613,12 +3752,220 @@ void libjit_tflite_detection_post_process_f(float *boxes,
                                             int32_t maxDetectionsPerClass,
                                             float iouThreshold,
                                             float scoreThreshold,
-                                            float xScale,
-                                            float yScale,
-                                            float hScale,
-                                            float wScale,
+                                            float xScaleInv,
+                                            float yScaleInv,
+                                            float hScaleInv,
+                                            float wScaleInv,
                                             bool regularNMS) {
-  // Add implementation.
+
+  // Decode the box coordinates in-place using the anchors.
+  for (int32_t i = 0; i < numBoxes; i++) {
+
+    float ycenter = (float)(boxes[i * 4 + 0] * yScaleInv * anchors[i * 4 + 2] + anchors[i * 4 + 0]);
+    float xcenter = (float)(boxes[i * 4 + 1] * xScaleInv * anchors[i * 4 + 3] + anchors[i * 4 + 1]);
+
+    float half_h = (float)(0.5f * expf(boxes[i * 4 + 2] * hScaleInv) * anchors[i * 4 + 2]);
+    float half_w = (float)(0.5f * expf(boxes[i * 4 + 3] * wScaleInv) * anchors[i * 4 + 3]);
+
+    boxes[4 * i + 0] = ycenter - half_h;
+    boxes[4 * i + 1] = xcenter - half_w;
+    boxes[4 * i + 2] = ycenter + half_h;
+    boxes[4 * i + 3] = xcenter + half_w;
+  }
+
+  int32_t max_categories_per_anchor = maxClassesPerDetection;
+  int32_t num_categories_per_anchor = MIN(max_categories_per_anchor, numClasses);
+
+  int32_t label_offset = numTotalClasses - numClasses;
+
+  if (regularNMS) {
+    int32_t num_detections_per_class = maxDetectionsPerClass;
+
+    float *class_scores = (float *) (scratch);
+    scratch += numBoxes * sizeof(int32_t);
+
+    int32_t *box_indices_after_regular_nms = (int32_t *) (scratch);
+    scratch += (numBoxes + maxDetections) * sizeof(int32_t);
+
+    float *scores_after_regular_nms = (float *) (scratch);
+    scratch += (numBoxes + maxDetections) * sizeof(float);
+
+    int32_t size_of_sorted_indices = 0;
+
+    int32_t *sorted_indices = (int32_t *) (scratch);
+    scratch += (numBoxes + maxDetections) * sizeof(float);
+
+    float *sorted_values = (float *) (scratch);
+    scratch += MIN(numBoxes, maxDetectionsPerClass) * sizeof(float);
+
+    int32_t *selected = (int32_t *) scratch;
+      scratch += numBoxes * sizeof(int32_t);
+
+    int32_t *keep_indices = (int32_t *) (scratch);
+    scratch += numBoxes * sizeof(int32_t);
+
+    float *keep_scores = (float *) (scratch);
+    scratch += numBoxes *sizeof(float);
+
+    int32_t *sorted_indices_helper = (int32_t *)scratch;
+    scratch += numBoxes * sizeof(int32_t);
+
+    float *aux_values = (float *)scratch;
+    scratch += numBoxes * sizeof(float);
+
+    uint8_t *active_box_candidate = (uint8_t *)scratch;
+    scratch += numBoxes * sizeof(uint8_t);
+
+    for (int32_t col = 0; col < numClasses; col++) {
+      for (int32_t row = 0; row < numBoxes; row++) {
+        class_scores[row] = 
+          *(scores + row * numTotalClasses + col + label_offset);
+      }
+
+      int32_t num_selected;
+
+      tflite_helper(boxes, numBoxes, scoreThreshold, iouThreshold,
+         class_scores, numBoxes, selected, &num_selected, num_detections_per_class,
+         keep_indices, keep_scores, aux_values, sorted_indices_helper, active_box_candidate);
+
+      int32_t output_index = size_of_sorted_indices;
+      int32_t selected_index;
+      for (int32_t i = 0; i < num_selected; i++) { 
+        selected_index = selected[i];
+        box_indices_after_regular_nms[output_index] =
+          (selected_index * numTotalClasses + col + label_offset);
+
+        scores_after_regular_nms[output_index] = 
+          class_scores[selected_index];
+        output_index++;
+      }
+
+      int32_t num_indices_to_sort = MIN(output_index, maxDetections);
+
+      DecreasingPartialArgSort(scores_after_regular_nms, 
+        output_index, num_indices_to_sort, sorted_indices,
+        aux_values);
+
+      for (int32_t row = 0; row < num_indices_to_sort; row++) {
+        int32_t temp = sorted_indices[row];
+        sorted_indices[row] = box_indices_after_regular_nms[temp];
+        sorted_values[row] = scores_after_regular_nms[temp];
+      }
+
+      for (int32_t row = 0; row < num_indices_to_sort; row++) {
+        box_indices_after_regular_nms[row] = sorted_indices[row];
+        scores_after_regular_nms[row] = sorted_values[row];
+      }
+
+      size_of_sorted_indices = num_indices_to_sort;
+    }
+
+    for (int32_t output_box_index = 0; output_box_index < maxDetections; output_box_index++) {
+      if (output_box_index < size_of_sorted_indices) {
+        const int32_t anchor_index = floor(box_indices_after_regular_nms[output_box_index] /
+                numTotalClasses);
+
+        const int32_t class_index = box_indices_after_regular_nms[output_box_index] -
+            anchor_index * numTotalClasses - label_offset;
+
+        const float selected_score = 
+            scores_after_regular_nms[output_box_index];
+
+        detection_boxes[4 * output_box_index] = boxes[4 *anchor_index];
+        detection_boxes[4 * output_box_index + 1] = boxes[4 *anchor_index + 1];
+        detection_boxes[4 * output_box_index + 2] = boxes[4 *anchor_index + 2];
+        detection_boxes[4 * output_box_index + 3] = boxes[4 *anchor_index + 3];
+
+        detection_classes[output_box_index] = class_index;
+
+        detection_scores[output_box_index] = selected_score;
+      } else {
+        detection_boxes[4 * output_box_index] = 0.0f;
+        detection_boxes[4 * output_box_index + 1] = 0.0f;
+        detection_boxes[4 * output_box_index + 2] = 0.0f;
+        detection_boxes[4 * output_box_index + 3] = 0.0f;
+
+        detection_classes[output_box_index] = 0;
+
+        detection_scores[output_box_index] = 0.0f;
+      }
+    }
+
+    *num_detections = size_of_sorted_indices;
+  } else {
+    float *max_scores = (float *) scratch;
+    scratch += numBoxes * sizeof(float);
+
+    int32_t *sorted_classes_indices = (int32_t *) scratch;
+    scratch += numBoxes * numClasses * sizeof(int32_t);
+
+    int32_t *selected = (int32_t *) scratch;
+    scratch += numBoxes * sizeof(int32_t);
+
+    int32_t *keep_indices = (int32_t *) (scratch);
+    scratch += numBoxes * sizeof(int32_t);
+
+    float *keep_scores = (float *) (scratch);
+    scratch += numBoxes *sizeof(float);
+
+    float *aux_values = (float *)scratch;
+    scratch += numBoxes * sizeof(float);
+
+    int32_t *sorted_indices_helper = (int32_t *)scratch;
+    scratch += numBoxes * sizeof(int32_t);
+
+    uint8_t *active_box_candidate = (uint8_t *)scratch;
+    scratch += numBoxes * sizeof(uint8_t);
+
+    for (int32_t row = 0; row < numBoxes; row++) {
+      float *box_scores = scores + row * numTotalClasses + label_offset;
+      int32_t *class_indices = sorted_classes_indices + row * numClasses;
+
+      DecreasingPartialArgSort(box_scores, numClasses, num_categories_per_anchor, 
+        class_indices, aux_values);
+
+      max_scores[row] = box_scores[class_indices[0]];
+    }
+    
+    int32_t selected_size = 0;
+
+    tflite_helper(boxes, numBoxes, scoreThreshold, iouThreshold,
+         max_scores, numBoxes, selected, &selected_size, maxDetections,
+         keep_indices, keep_scores, aux_values, sorted_indices_helper,
+         active_box_candidate);
+
+    int32_t output_box_index = 0;
+    int32_t selected_index;
+
+    for (int32_t i = 0; i < selected_size; i++) {
+
+      selected_index = selected[i];
+        const float* box_scores =
+            scores + selected_index * numTotalClasses + label_offset;
+        const int32_t* class_indices =
+            sorted_classes_indices + selected_index * numClasses;
+
+        for (int32_t col = 0; col < num_categories_per_anchor; ++col) {
+          int32_t box_offset = num_categories_per_anchor * output_box_index + col;
+          
+          // detection_boxes
+          detection_boxes[box_offset * 4] = boxes[selected_index * 4];
+          detection_boxes[box_offset * 4 + 1] = boxes[selected_index * 4 + 1];
+          detection_boxes[box_offset * 4 + 2] = boxes[selected_index * 4 + 2];
+          detection_boxes[box_offset * 4 + 3] = boxes[selected_index * 4 + 3];
+
+          // detection_classes
+          detection_classes[box_offset] = (float) class_indices[col];
+
+          // detection_scores
+            detection_scores[box_offset] = box_scores[class_indices[col]];
+        }
+
+        output_box_index++;
+    }
+
+    *num_detections = output_box_index;
+  }
 }
 
 //===----------------------------------------------------------------------===//

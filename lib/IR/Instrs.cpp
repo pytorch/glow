@@ -176,7 +176,7 @@ dim_t TFLiteDetectionPostProcessInst::getScratchSize() const {
     scratchSize += numBoxes * numClasses * sizeof(int32_t);
     scratchSize += numBoxes * sizeof(int32_t);
     scratchSize += numBoxes * sizeof(int32_t);
-    scratchSize += numBoxes *sizeof(float);
+    scratchSize += numBoxes * sizeof(float);
     scratchSize += numBoxes * sizeof(float);
     scratchSize += numBoxes * sizeof(int32_t);
     scratchSize += numBoxes * sizeof(uint8_t);
