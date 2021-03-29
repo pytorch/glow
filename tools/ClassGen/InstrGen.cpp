@@ -271,6 +271,18 @@ int main(int argc, char **argv) {
       .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
+  //                     Bucketing
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Bucketize")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorFloat, "Boundaries")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int32ITy"});
+
+  //===--------------------------------------------------------------------===//
   //                      Loss functions
   //===--------------------------------------------------------------------===//
 
