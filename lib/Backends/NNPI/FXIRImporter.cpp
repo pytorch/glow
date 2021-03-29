@@ -28,15 +28,15 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
     const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
 
     // TODO: broadcast inputs if input is not a node.
     std::array<NNPIObjectName, 2> inputNames;
     snprintf(inputNames[0], NNPI_MAX_STRING_LEN, "%s",
-             importer.getInputNodeName(inputs[0]).c_str());
+             importer.getInputNodeName(kwargs["input"]).c_str());
     snprintf(inputNames[1], NNPI_MAX_STRING_LEN, "%s",
-             importer.getInputNodeName(inputs[1]).c_str());
+             importer.getInputNodeName(kwargs["other"]).c_str());
 
     importer.setUsedTensors({inputNames[0], inputNames[1]}, {name});
     return nnpiNetworkAddElementwiseOp(importer.getNetwork(), finalize(name),
@@ -266,27 +266,23 @@ public:
 static std::unordered_map<std::string,
                           std::unique_ptr<INNPIFXNodeImporter>>::value_type
     FXImporterInit[] = {
-        // _operator
-        {"_operator.add",
+        {"acc_ops.add",
          std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_ADD>>()},
-        {"_operator.sub",
+        {"acc_ops.sub",
          std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
-        {"_operator.mul",
+        {"acc_ops.mul",
          std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
-        {"_operator.truediv",
+        {"acc_ops.div",
          std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
-        // torch
         {"torch.flatten", std::make_unique<ReshapeNodeImporter>()},
-
-        // torch.nn.modules
-        {"torch.nn.functional.linear", std::make_unique<LinearNodeImporter>()},
-        {"torch.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
-        {"torch.nn.functional.batch_norm",
+        {"acc_ops.linear", std::make_unique<LinearNodeImporter>()},
+        {"acc_ops.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
+        {"acc_ops.batch_norm",
          std::make_unique<BatchNormalizationNodeImporter>()},
-        {"torch.nn.functional.relu", std::make_unique<ReluNodeImporter>()},
-        {"torch.nn.functional.adaptive_avg_pool2d",
+        {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
+        {"acc_ops.adaptive_avg_pool2d",
          std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
-        {"torch.nn.functional.max_pool2d",
+        {"acc_ops.max_pool2d",
          std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
 };
 

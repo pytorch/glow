@@ -20029,13 +20029,13 @@ template <typename DataType>
 static void testUpsample3D(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
                            glow::ExecutionEngine &EE, ElemKind DTy) {
-  constexpr std::array<dim_t, 5> size{1, 3, 2, 3, 4};
+  constexpr std::array<dim_t, 5> size{1, 2, 3, 4, 3}; // NTHWC
   auto *input =
       createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
 
-  auto *output = F->createResizeNearest("Upsample", input, {1, 1, 4, 2, 3});
+  auto *output = F->createResizeNearest("Upsample", input, {1, 4, 2, 3, 1});
   auto *save = F->createSave("Save", output);
   bindings.allocate(save->getPlaceholder());
 
@@ -20046,21 +20046,21 @@ static void testUpsample3D(glow::PlaceholderBindings &bindings,
   auto inputH = bindings.get(input)->getHandle<DataType>();
 
   EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
-  EXPECT_EQ(resultH.dims()[1], inputH.dims()[1]);
-  EXPECT_EQ(resultH.dims()[2], 4 * inputH.dims()[2]);
-  EXPECT_EQ(resultH.dims()[3], 2 * inputH.dims()[3]);
-  EXPECT_EQ(resultH.dims()[4], 3 * inputH.dims()[4]);
+  EXPECT_EQ(resultH.dims()[1], 4 * inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
+  EXPECT_EQ(resultH.dims()[3], 3 * inputH.dims()[3]);
+  EXPECT_EQ(resultH.dims()[4], inputH.dims()[4]);
   for (dim_t m = 0; m < size[0]; m++) {
-    for (dim_t n = 0; n < size[1]; n++) {
-      for (dim_t i = 0; i < size[2]; i++) {
-        for (dim_t j = 0; j < size[3]; j++) {
-          for (dim_t k = 0; k < size[4]; k++) {
+    for (dim_t i = 0; i < size[1]; i++) {
+      for (dim_t j = 0; j < size[2]; j++) {
+        for (dim_t k = 0; k < size[3]; k++) {
+          for (dim_t n = 0; n < size[4]; n++) {
             for (dim_t i_delta = 0; i_delta < 4; i_delta++) {
               for (dim_t j_delta = 0; j_delta < 2; j_delta++) {
                 for (dim_t k_delta = 0; k_delta < 3; k_delta++) {
-                  EXPECT_EQ(resultH.at({m, n, 4 * i + i_delta, 2 * j + j_delta,
-                                        3 * k + k_delta}),
-                            static_cast<DataType>(inputH.at({m, n, i, j, k})));
+                  EXPECT_EQ(resultH.at({m, 4 * i + i_delta, 2 * j + j_delta,
+                                        3 * k + k_delta, n}),
+                            static_cast<DataType>(inputH.at({m, i, j, k, n})));
                 }
               }
             }
@@ -20075,13 +20075,13 @@ template <typename DataType>
 static void testUpsample2D(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
                            glow::ExecutionEngine &EE, ElemKind DTy) {
-  constexpr std::array<dim_t, 4> size{1, 2, 3, 4};
+  constexpr std::array<dim_t, 4> size{1, 2, 3, 4}; // NHWC
   auto *input =
       createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
 
-  auto *output = F->createResizeNearest("Upsample", input, {1, 1, 2, 3});
+  auto *output = F->createResizeNearest("Upsample", input, {1, 2, 3, 1});
   auto *save = F->createSave("Save", output);
   bindings.allocate(save->getPlaceholder());
 
@@ -20092,17 +20092,17 @@ static void testUpsample2D(glow::PlaceholderBindings &bindings,
   auto inputH = bindings.get(input)->getHandle<DataType>();
 
   EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
-  EXPECT_EQ(resultH.dims()[1], inputH.dims()[1]);
-  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
-  EXPECT_EQ(resultH.dims()[3], 3 * inputH.dims()[3]);
+  EXPECT_EQ(resultH.dims()[1], 2 * inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], 3 * inputH.dims()[2]);
+  EXPECT_EQ(resultH.dims()[3], inputH.dims()[3]);
   for (dim_t m = 0; m < size[0]; m++) {
-    for (dim_t n = 0; n < size[1]; n++) {
-      for (dim_t i = 0; i < size[2]; i++) {
-        for (dim_t j = 0; j < size[3]; j++) {
+    for (dim_t i = 0; i < size[1]; i++) {
+      for (dim_t j = 0; j < size[2]; j++) {
+        for (dim_t n = 0; n < size[3]; n++) {
           for (dim_t i_delta = 0; i_delta < 2; i_delta++) {
             for (dim_t j_delta = 0; j_delta < 3; j_delta++) {
-              EXPECT_EQ(resultH.at({m, n, 2 * i + i_delta, 3 * j + j_delta}),
-                        static_cast<DataType>(inputH.at({m, n, i, j})));
+              EXPECT_EQ(resultH.at({m, 2 * i + i_delta, 3 * j + j_delta, n}),
+                        static_cast<DataType>(inputH.at({m, i, j, n})));
             }
           }
         }
@@ -20115,13 +20115,13 @@ template <typename DataType>
 static void testUpsample1D(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
                            glow::ExecutionEngine &EE, ElemKind DTy) {
-  constexpr std::array<dim_t, 3> size{2, 3, 4};
+  constexpr std::array<dim_t, 3> size{2, 3, 4}; // NHC
   auto *input =
       createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
 
-  auto *output = F->createResizeNearest("Upsample", input, {1, 1, 2});
+  auto *output = F->createResizeNearest("Upsample", input, {1, 2, 1});
   auto *save = F->createSave("Save", output);
   bindings.allocate(save->getPlaceholder());
 
@@ -20132,15 +20132,15 @@ static void testUpsample1D(glow::PlaceholderBindings &bindings,
   auto inputH = bindings.get(input)->getHandle<DataType>();
 
   EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
-  EXPECT_EQ(resultH.dims()[1], inputH.dims()[1]);
-  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
+  EXPECT_EQ(resultH.dims()[1], 2 * inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], inputH.dims()[2]);
   for (dim_t m = 0; m < size[0]; m++) {
-    for (dim_t n = 0; n < size[1]; n++) {
-      for (dim_t i = 0; i < size[2]; i++) {
-        EXPECT_EQ(resultH.at({m, n, 2 * i + 0}),
-                  static_cast<DataType>(inputH.at({m, n, i})));
-        EXPECT_EQ(resultH.at({m, n, 2 * i + 1}),
-                  static_cast<DataType>(inputH.at({m, n, i})));
+    for (dim_t i = 0; i < size[1]; i++) {
+      for (dim_t n = 0; n < size[2]; n++) {
+        EXPECT_EQ(resultH.at({m, 2 * i + 0, n}),
+                  static_cast<DataType>(inputH.at({m, i, n})));
+        EXPECT_EQ(resultH.at({m, 2 * i + 1, n}),
+                  static_cast<DataType>(inputH.at({m, i, n})));
       }
     }
   }
