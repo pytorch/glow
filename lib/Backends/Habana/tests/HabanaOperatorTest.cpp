@@ -394,6 +394,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "SparseToDense_Int64/0",
     "SparseToDenseMask1/0",
     "SparseToDenseMask2/0",
+    "SparseLabelSplit/0",
     "Split_Float16/0",
     "SqueezeExpand/0",
     "Tanh/0",

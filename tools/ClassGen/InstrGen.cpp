@@ -1124,6 +1124,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("SparseLabelSplit")
+      .addOperand("LabelValues", OperandKind::Out)
+      .addOperand("ExampleIds", OperandKind::Out)
+      .addOperand("GradientOffsetMap", OperandKind::Out)
+      .addOperand("Lengths", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .addMember(MemberType::Unsigned, "NumLabels")
+      .autoVerify(VerifyKind::SameElementType, {"Values", "LabelValues"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//

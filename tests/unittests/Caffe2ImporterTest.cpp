@@ -4988,3 +4988,125 @@ TEST_F(Caffe2ImporterTest, topk) {
     EXPECT_EQ(valuesH.at({d1, 1}), secondLargestValue);
   }
 }
+
+TEST_F(Caffe2ImporterTest, SparseLabelSplit) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/sparselabelsplit.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *labelValues0PH;
+  Placeholder *labelValues1PH;
+  Placeholder *labelValues2PH;
+  Placeholder *labelValues3PH;
+  Placeholder *exampleIds0PH;
+  Placeholder *exampleIds1PH;
+  Placeholder *exampleIds2PH;
+  Placeholder *exampleIds3PH;
+  Placeholder *gradientOffsetMapPH;
+
+  Tensor lengths{ElemKind::Int32ITy, {4}};
+  Tensor indices{ElemKind::Int64ITy, {8}};
+  Tensor values{ElemKind::FloatTy, {8}};
+
+  lengths.getHandle<int32_t>() = {1, 3, 2, 2};
+  indices.getHandle<int64_t>() = {3, 1, 2, 0, 0, 2, 1, 3};
+  values.getHandle() = {1.2, 2.3, 3.1, 6.7, 8.3, 9.0, 3.7, 8.8};
+
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"lengths", "indices", "values"},
+        {&lengths.getType(), &indices.getType(), &values.getType()}, *F);
+    labelValues0PH = EXIT_ON_ERR(caffe2LD.getOutputByName("label_values_0"));
+    labelValues1PH = EXIT_ON_ERR(caffe2LD.getOutputByName("label_values_1"));
+    labelValues2PH = EXIT_ON_ERR(caffe2LD.getOutputByName("label_values_2"));
+    labelValues3PH = EXIT_ON_ERR(caffe2LD.getOutputByName("label_values_3"));
+    exampleIds0PH = EXIT_ON_ERR(caffe2LD.getOutputByName("example_ids_0"));
+    exampleIds1PH = EXIT_ON_ERR(caffe2LD.getOutputByName("example_ids_1"));
+    exampleIds2PH = EXIT_ON_ERR(caffe2LD.getOutputByName("example_ids_2"));
+    exampleIds3PH = EXIT_ON_ERR(caffe2LD.getOutputByName("example_ids_3"));
+    gradientOffsetMapPH =
+        EXIT_ON_ERR(caffe2LD.getOutputByName("gradient_offset_map"));
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod,
+                                  {"lengths", "indices", "values"},
+                                  {&lengths, &indices, &values});
+  }
+
+  EXPECT_NE(labelValues0PH, nullptr);
+  EXPECT_NE(labelValues1PH, nullptr);
+  EXPECT_NE(labelValues2PH, nullptr);
+  EXPECT_NE(labelValues3PH, nullptr);
+  EXPECT_NE(exampleIds0PH, nullptr);
+  EXPECT_NE(exampleIds1PH, nullptr);
+  EXPECT_NE(exampleIds2PH, nullptr);
+  EXPECT_NE(exampleIds3PH, nullptr);
+  EXPECT_NE(gradientOffsetMapPH, nullptr);
+
+  auto labelValues0 = bindings.get(labelValues0PH);
+  auto labelValues1 = bindings.get(labelValues1PH);
+  auto labelValues2 = bindings.get(labelValues2PH);
+  auto labelValues3 = bindings.get(labelValues3PH);
+  auto exampleIds0 = bindings.get(exampleIds0PH);
+  auto exampleIds1 = bindings.get(exampleIds1PH);
+  auto exampleIds2 = bindings.get(exampleIds2PH);
+  auto exampleIds3 = bindings.get(exampleIds3PH);
+  auto gradientOffsetMap = bindings.get(gradientOffsetMapPH);
+
+  std::vector<dim_t> expectedOutputShape{2};
+  EXPECT_EQ(expectedOutputShape, labelValues0->dims().vec());
+  EXPECT_EQ(expectedOutputShape, labelValues1->dims().vec());
+  EXPECT_EQ(expectedOutputShape, labelValues2->dims().vec());
+  EXPECT_EQ(expectedOutputShape, labelValues3->dims().vec());
+  EXPECT_EQ(expectedOutputShape, exampleIds0->dims().vec());
+  EXPECT_EQ(expectedOutputShape, exampleIds1->dims().vec());
+  EXPECT_EQ(expectedOutputShape, exampleIds2->dims().vec());
+  EXPECT_EQ(expectedOutputShape, exampleIds3->dims().vec());
+
+  std::vector<dim_t> expectedGradientOffsetMapShape{8};
+  EXPECT_EQ(expectedGradientOffsetMapShape, gradientOffsetMap->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto labelValues0H = labelValues0->getHandle();
+  auto labelValues1H = labelValues1->getHandle();
+  auto labelValues2H = labelValues2->getHandle();
+  auto labelValues3H = labelValues3->getHandle();
+  auto exampleIds0H = exampleIds0->getHandle<int32_t>();
+  auto exampleIds1H = exampleIds1->getHandle<int32_t>();
+  auto exampleIds2H = exampleIds2->getHandle<int32_t>();
+  auto exampleIds3H = exampleIds3->getHandle<int32_t>();
+  auto gradientOffsetMapH = gradientOffsetMap->getHandle<int32_t>();
+
+  EXPECT_NEAR(6.7, labelValues0H.at(0), 1e-3);
+  EXPECT_NEAR(8.3, labelValues0H.at(1), 1e-3);
+  EXPECT_NEAR(2.3, labelValues1H.at(0), 1e-3);
+  EXPECT_NEAR(3.7, labelValues1H.at(1), 1e-3);
+  EXPECT_NEAR(3.1, labelValues2H.at(0), 1e-3);
+  EXPECT_NEAR(9.0, labelValues2H.at(1), 1e-3);
+  EXPECT_NEAR(1.2, labelValues3H.at(0), 1e-3);
+  EXPECT_NEAR(8.8, labelValues3H.at(1), 1e-3);
+
+  EXPECT_EQ(1, exampleIds0H.at(0));
+  EXPECT_EQ(2, exampleIds0H.at(1));
+  EXPECT_EQ(1, exampleIds1H.at(0));
+  EXPECT_EQ(3, exampleIds1H.at(1));
+  EXPECT_EQ(1, exampleIds2H.at(0));
+  EXPECT_EQ(2, exampleIds2H.at(1));
+  EXPECT_EQ(0, exampleIds3H.at(0));
+  EXPECT_EQ(3, exampleIds3H.at(1));
+
+  const std::vector<int32_t> expectedGradientOffsetMap{0, 0, 0, 0, 1, 1, 1, 1};
+  for (dim_t d = 0; d < 8; ++d) {
+    EXPECT_EQ(expectedGradientOffsetMap[d], gradientOffsetMapH.at(d));
+  }
+}

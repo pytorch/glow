@@ -1520,6 +1520,11 @@ public:
                           NodeValue values, NodeValue defaultValue,
                           NodeValue lengths, llvm::ArrayRef<dim_t> mask);
 
+  // TODO: add description
+  SparseLabelSplitNode *
+  createSparseLabelSplit(llvm::StringRef name, NodeValue lengths,
+                         NodeValue indices, NodeValue values, dim_t numLabels);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
 
   /// Creates and \returns a SaveNode of \p input to \p output. If \p skipSuffix

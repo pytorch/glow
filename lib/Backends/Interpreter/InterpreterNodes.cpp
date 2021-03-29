@@ -5588,6 +5588,58 @@ void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
          "Sum of Lengths must be equal to size of indices.");
 }
 
+void BoundInterpreterFunction::fwdSparseLabelSplitInst(
+    const SparseLabelSplitInst *I) {
+  auto lengthsH = getTensor(I->getLengths())->getHandle<int32_t>();
+  auto indicesH = getTensor(I->getIndices())->getHandle<int64_t>();
+  auto valuesH = getTensor(I->getValues())->getHandle();
+
+  const auto numLabels = I->getNumLabels();
+
+  auto labelValuesH = getTensor(I->getLabelValues())->getHandle();
+  auto exampleIdsH = getTensor(I->getExampleIds())->getHandle<int32_t>();
+  auto gradientOffsetMapH =
+      getTensor(I->getGradientOffsetMap())->getHandle<int32_t>();
+
+  // Verifying input sizes.
+  size_t lengthsSum = 0;
+  for (size_t i = 0; i < lengthsH.size(); ++i) {
+    lengthsSum += lengthsH.at(i);
+  }
+  CHECK_EQ(lengthsSum, indicesH.size());
+  CHECK_EQ(indicesH.size(), valuesH.size());
+
+  // Verifying that outputs have same sizes.
+  const auto numValuesPerRow = indicesH.size() / numLabels;
+  std::vector<size_t> numExamplesPerTask(numLabels, 0);
+  for (size_t i = 0; i < indicesH.size(); ++i) {
+    numExamplesPerTask[indicesH.at(i)] += 1;
+  }
+  for (size_t i = 0; i < numLabels; ++i) {
+    CHECK_EQ(numValuesPerRow, numExamplesPerTask[i])
+        << "Unexpected number of values at " << i;
+  }
+
+  // Populating outputs
+  size_t pos = 0;
+  std::fill(numExamplesPerTask.begin(), numExamplesPerTask.end(), 0);
+  for (size_t i = 0; i < lengthsH.size(); ++i) {
+    for (size_t l = 0; l < lengthsH.at(i); ++l) {
+      auto ind = indicesH.at(pos);
+      auto val = valuesH.at(pos);
+
+      auto posOutput = numExamplesPerTask[ind]++;
+      gradientOffsetMapH.at(pos) = posOutput;
+
+      labelValuesH.at(
+          {static_cast<dim_t>(ind), static_cast<dim_t>(posOutput)}) = val;
+      exampleIdsH.at({static_cast<dim_t>(ind), static_cast<dim_t>(posOutput)}) =
+          i;
+      pos++;
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                Instructions used by RNN
 //===----------------------------------------------------------------------===//

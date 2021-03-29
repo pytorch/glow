@@ -1831,6 +1831,29 @@ bool SparseToDenseMaskNode::verify() const {
   return isValid;
 }
 
+bool SparseLabelSplitNode::verify() const {
+  bool isValid =
+      checkType("Input and output values must be of the same type",
+                getLabelValues(), getValues().getElementType(), this);
+  isValid &= checkType("Lengths must be of type int32", getLengths(),
+                       ElemKind::Int32ITy, this);
+  isValid &= checkType("Indices must be of type int64", getIndices(),
+                       ElemKind::Int64ITy, this);
+  isValid &= checkType("ExampleIds must be of type int32", getExampleIds(),
+                       ElemKind::Int32ITy, this);
+  isValid &= checkType("GradientOffsetMap must be of type in32",
+                       getGradientOffsetMap(), ElemKind::Int32ITy, this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Values must be a 1D vector",
+                               getValues().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices and values must have the same shape",
+                               getIndices().dims(), getValues().dims(), this);
+  return isValid;
+}
+
 bool SGDNode::verify() const {
   return checkSameType(getGradient(), getWeight(), this);
 }

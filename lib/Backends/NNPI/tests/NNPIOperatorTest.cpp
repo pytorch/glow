@@ -202,6 +202,7 @@ struct BlacklistInitializer {
       {"SparseToDense_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
       {"SparseToDenseMask1/0", TestBlacklist::AnyDeviceAnyEngine},
       {"SparseToDenseMask2/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"SparseLabelSplit/0", TestBlacklist::AnyDeviceAnyEngine},
       {"TanHSweep_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"testQuantizedBatchAdd_Int8/0", TestBlacklist::AnyDeviceAnyEngine},
       {"testQuantizedBatchAdd_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
