@@ -1978,7 +1978,7 @@ TEST_P(OperatorTest, GenerateProposals) {
   int64_t postNmsTopN = 300;
   float nmsThreshold = 0.7;
   float minSize = 16.0;
-  dim_t totalRoisSize = static_cast<dim_t>(numImages*postNmsTopN);
+  dim_t totalRoisSize = static_cast<dim_t>(numImages * postNmsTopN);
 
   auto *scores = mod_.createPlaceholder(ElemKind::FloatTy, {numImages, H, W, A},
                                         "scores", false);
@@ -2051,8 +2051,8 @@ TEST_P(OperatorTest, GenerateProposals) {
       ElemKind::FloatTy, {totalRoisSize, boxDim + 1}, "rois", false);
   bindings_.allocate(rois);
 
-  auto *roisProbs = mod_.createPlaceholder(
-      ElemKind::FloatTy, {totalRoisSize}, "roisProbs", false);
+  auto *roisProbs = mod_.createPlaceholder(ElemKind::FloatTy, {totalRoisSize},
+                                           "roisProbs", false);
   bindings_.allocate(roisProbs);
 
   auto *GPN = F_->createGenerateProposals(
