@@ -3594,7 +3594,7 @@ void libjit_mfcc_f(void *scratch, float *coefficients, const float *spectrogram,
 //===----------------------------------------------------------------------===//
 //                          TFLiteDetectionPostProcess
 //===----------------------------------------------------------------------===//
-static int32_t partition (int32_t *arr, int32_t low, int32_t high, float *values) { 
+static int32_t partition(int32_t *arr, int32_t low, int32_t high, float *values) { 
   float pivot = values[high];
   int32_t i = (low - 1);
   float swap_float;
@@ -3644,7 +3644,7 @@ static void iota(int32_t *first, int32_t *last, int32_t value) {
   }
 }
 
-static void DecreasingPartialArgSort(float *values, int32_t num_values, int32_t num_to_sort, int32_t *indices, float *aux_values) {
+static void decreasing_partial_arg_sort(float *values, int32_t num_values, int32_t num_to_sort, int32_t *indices, float *aux_values) {
   iota(indices, indices + num_values, 0);
 
   memcpy(aux_values, values, sizeof(float) * num_values);
@@ -3652,7 +3652,7 @@ static void DecreasingPartialArgSort(float *values, int32_t num_values, int32_t 
   partial_sort(indices, 0, num_values - 1, num_to_sort, aux_values);
 }
 
-static void SelectDetectionAboveScoreThreshold(float *scores, int32_t num_scores, float threshold, float *keep_values, int32_t *keep_indices, int32_t *num_indices) {
+static void select_detection_above_score_threshold(float *scores, int32_t num_scores, float threshold, float *keep_values, int32_t *keep_indices, int32_t *num_indices) {
   int32_t idx = 0;
   for (int32_t i = 0; i < num_scores; i++) {
     if(scores[i] >= threshold) {
@@ -3703,10 +3703,10 @@ static void tflite_helper(float *boxesPtr, int32_t num_boxes, float nms_score_th
   *num_selected = 0;
 
   int32_t num_scores_kept;
-  SelectDetectionAboveScoreThreshold(class_scores, num_boxes, nms_score_threshold,
+  select_detection_above_score_threshold(class_scores, num_boxes, nms_score_threshold,
     keep_scores, keep_indices, &num_scores_kept);
 
-  DecreasingPartialArgSort(keep_scores, num_scores_kept,
+  decreasing_partial_arg_sort(keep_scores, num_scores_kept,
         num_scores_kept, sorted_indices_helper, aux_values);
 
   int32_t num_boxes_kept = num_scores_kept;
@@ -3849,7 +3849,7 @@ void libjit_tflite_detection_post_process_f(float *boxes,
 
       int32_t num_indices_to_sort = MIN(output_index, maxDetections);
 
-      DecreasingPartialArgSort(scores_after_regular_nms, 
+      decreasing_partial_arg_sort(scores_after_regular_nms, 
         output_index, num_indices_to_sort, sorted_indices,
         aux_values);
 
@@ -3869,19 +3869,15 @@ void libjit_tflite_detection_post_process_f(float *boxes,
 
     for (int32_t output_box_index = 0; output_box_index < size_of_sorted_indices; output_box_index++) {
 
-      const int32_t anchor_index = box_indices_after_regular_nms[output_box_index] / numTotalClasses;
-
-      const int32_t class_index = box_indices_after_regular_nms[output_box_index] - anchor_index * numTotalClasses - label_offset;
-
-      const float selected_score = scores_after_regular_nms[output_box_index];
+      int32_t anchor_index = box_indices_after_regular_nms[output_box_index] / numTotalClasses;
+      int32_t class_index = box_indices_after_regular_nms[output_box_index] - anchor_index * numTotalClasses - label_offset;
+      float selected_score = scores_after_regular_nms[output_box_index];
 
       *detectionBoxes++ = boxes[4 *anchor_index + 0];
       *detectionBoxes++ = boxes[4 *anchor_index + 1];
       *detectionBoxes++ = boxes[4 *anchor_index + 2];
       *detectionBoxes++ = boxes[4 *anchor_index + 3];
-
       *detectionClasses++ = class_index;
-
       *detectionScores++ = selected_score;
     }
 
@@ -3916,7 +3912,7 @@ void libjit_tflite_detection_post_process_f(float *boxes,
       float *box_scores = scores + row * numTotalClasses + label_offset;
       int32_t *class_indices = sorted_classes_indices + row * numClasses;
 
-      DecreasingPartialArgSort(box_scores, numClasses, num_categories_per_anchor, 
+      decreasing_partial_arg_sort(box_scores, numClasses, num_categories_per_anchor, 
         class_indices, aux_values);
 
       max_scores[row] = box_scores[class_indices[0]];
@@ -3928,30 +3924,24 @@ void libjit_tflite_detection_post_process_f(float *boxes,
          keep_indices, keep_scores, aux_values, sorted_indices_helper,
          active_box_candidate);
 
-    int32_t output_box_index = 0;
     for (int32_t i = 0; i < selected_size; i++) {
 
       int32_t selected_index = selected[i];
-      const float* box_scores = scores + selected_index * numTotalClasses + label_offset;
-      const int32_t* class_indices = sorted_classes_indices + selected_index * numClasses;
+      float *box = boxes + selected_index * 4;
+      float* box_scores = scores + selected_index * numTotalClasses + label_offset;
+      int32_t* class_indices = sorted_classes_indices + selected_index * numClasses;
 
       for (int32_t col = 0; col < num_categories_per_anchor; ++col) {
-        int32_t box_offset = num_categories_per_anchor * output_box_index + col;
-
-        detectionBoxes[box_offset * 4 + 0] = boxes[selected_index * 4 + 0];
-        detectionBoxes[box_offset * 4 + 1] = boxes[selected_index * 4 + 1];
-        detectionBoxes[box_offset * 4 + 2] = boxes[selected_index * 4 + 2];
-        detectionBoxes[box_offset * 4 + 3] = boxes[selected_index * 4 + 3];
-
-        detectionClasses[box_offset] = class_indices[col];
-
-        detectionScores[box_offset] = box_scores[class_indices[col]];
+        *detectionBoxes++ = box[0];
+        *detectionBoxes++ = box[1];
+        *detectionBoxes++ = box[2];
+        *detectionBoxes++ = box[3];
+        *detectionClasses++ = class_indices[col];
+        *detectionScores++ = box_scores[class_indices[col]];
       }
-
-      output_box_index++;
     }
 
-    *numDetections = output_box_index;
+    *numDetections = selected_size;
   }
 }
 
