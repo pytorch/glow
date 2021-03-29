@@ -706,6 +706,18 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseToDenseMaskNode::ValuesIdx) ==
             NI.getOutElemTy(SparseToDenseMaskNode::ResultIdx));
 
+  case Kinded::Kind::SparseLabelSplitNodeKind:
+    return (NI.getInElemTy(SparseLabelSplitNode::LengthsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getInElemTy(SparseLabelSplitNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(SparseLabelSplitNode::ValuesIdx) ==
+            NI.getOutElemTy(SparseLabelSplitNode::LabelValuesIdx)) &&
+           (NI.getOutElemTy(SparseLabelSplitNode::ExampleIdsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getOutElemTy(SparseLabelSplitNode::GradientOffsetMapIdx) ==
+            ElemKind::Int32ITy);
+
   case Kinded::Kind::TraceEventNodeKind:
     return NI.getInElemTy(TraceEventNode::DataIdx) == ElemKind::Int64ITy;
 

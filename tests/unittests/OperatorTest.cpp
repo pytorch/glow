@@ -20093,5 +20093,67 @@ TEST_P(OperatorTest, RMSNorm) {
   }
 }
 
+TEST_P(OperatorTest, SparseLabelSplit) {
+  CHECK_IF_ENABLED();
+
+  const auto numLengths = 4;
+  const auto numIndices = 8;
+  auto lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
+                                        "lengths", false);
+  auto indices = mod_.createPlaceholder(ElemKind::Int64ITy, {numIndices},
+                                        "indices", false);
+  auto values =
+      mod_.createPlaceholder(ElemKind::FloatTy, {numIndices}, "values", false);
+  const auto numLabels = 4;
+
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {1, 3, 2, 2};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {3, 1, 2, 0, 0, 2, 1, 3};
+  bindings_.allocate(values)->getHandle<float>() = {1.2, 2.3, 3.1, 6.7,
+                                                    8.3, 9.0, 3.7, 8.8};
+
+  auto output = F_->createSparseLabelSplit("sparselabelsplit", lengths, indices,
+                                           values, numLabels);
+
+  auto labelValues = F_->createSave("labelValues", output->getLabelValues());
+  auto exampleIds = F_->createSave("exampleIds", output->getExampleIds());
+  auto gradientOffsetMap =
+      F_->createSave("gradientOffsetMap", output->getGradientOffsetMap());
+
+  Tensor *labelValuesT = bindings_.allocate(labelValues->getPlaceholder());
+  Tensor *exampleIdsT = bindings_.allocate(exampleIds->getPlaceholder());
+  Tensor *gradientOffsetMapT =
+      bindings_.allocate(gradientOffsetMap->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  const std::vector<dim_t> expectedOutputShape{numLabels,
+                                               numIndices / numLabels};
+  EXPECT_EQ(expectedOutputShape, labelValuesT->dims().vec());
+  EXPECT_EQ(expectedOutputShape, exampleIdsT->dims().vec());
+
+  const std::vector<dim_t> expectedGradientOffsetMapShape{numIndices};
+  EXPECT_EQ(expectedGradientOffsetMapShape, gradientOffsetMapT->dims().vec());
+
+  const std::vector<std::vector<float>> expectedLabelValues{
+      {6.7, 8.3}, {2.3, 3.7}, {3.1, 9.0}, {1.2, 8.8}};
+  const std::vector<std::vector<int32_t>> expectedExampleIds{
+      {1, 2}, {1, 3}, {1, 2}, {0, 3}};
+  for (dim_t d1 = 0; d1 < numLabels; ++d1) {
+    for (dim_t d2 = 0; d2 < numIndices / numLabels; ++d2) {
+      EXPECT_NEAR(expectedLabelValues[d1][d2],
+                  labelValuesT->getHandle().at({d1, d2}), 1e-3);
+      EXPECT_EQ(expectedExampleIds[d1][d2],
+                exampleIdsT->getHandle<int32_t>().at({d1, d2}));
+    }
+  }
+
+  const std::vector<int32_t> expectedGradientOffsetMap{0, 0, 0, 0, 1, 1, 1, 1};
+  for (dim_t d = 0; d < numIndices; ++d) {
+    EXPECT_EQ(expectedGradientOffsetMap[d],
+              gradientOffsetMapT->getHandle<int32_t>().at(d));
+  }
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);

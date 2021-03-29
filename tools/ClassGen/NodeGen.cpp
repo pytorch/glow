@@ -1256,6 +1256,16 @@ int main(int argc, char **argv) {
           "Broadcast the Input tensor to TargetDim using Axis to indicate the "
           "offset between Input dimension and TargetDim");
 
+  BB.newNode("SparseLabelSplit")
+      .addInput("Lengths")
+      .addInput("Indices")
+      .addInput("Values")
+      .addMember(MemberType::Unsigned, "NumLabels")
+      .addResultFromCtorArg("LabelValues")
+      .addResultFromCtorArg("ExampleIds")
+      .addResultFromCtorArg("GradientOffsetMap")
+      .setDocstring("TODO");
+
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//
