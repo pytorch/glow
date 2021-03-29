@@ -7558,7 +7558,7 @@ void BoundInterpreterFunction::fwdGenerateProposalsInstImpl(
 
   // Roi coordinates at invalid indices are set to 0
   // Roi scores at invalid indices are set to most negative value
-  for (dim_t j = outIdx; j < numImages * postNmsTopN; j++) {
+  for (dim_t j = outIdx; j < dim_t(numImages * postNmsTopN); j++) {
     for (dim_t k = 0; k < (boxDim + 1); k++) {
       roisH.at({j, k}) = T(0);
     }

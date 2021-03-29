@@ -1978,6 +1978,7 @@ TEST_P(OperatorTest, GenerateProposals) {
   int64_t postNmsTopN = 300;
   float nmsThreshold = 0.7;
   float minSize = 16.0;
+  dim_t totalRoisSize = static_cast<dim_t>(numImages*postNmsTopN);
 
   auto *scores = mod_.createPlaceholder(ElemKind::FloatTy, {numImages, H, W, A},
                                         "scores", false);
@@ -2047,11 +2048,11 @@ TEST_P(OperatorTest, GenerateProposals) {
                                                      -120, -120, 135, 135};
 
   auto *rois = mod_.createPlaceholder(
-      ElemKind::FloatTy, {postNmsTopN * numImages, boxDim + 1}, "rois", false);
+      ElemKind::FloatTy, {totalRoisSize, boxDim + 1}, "rois", false);
   bindings_.allocate(rois);
 
   auto *roisProbs = mod_.createPlaceholder(
-      ElemKind::FloatTy, {postNmsTopN * numImages}, "roisProbs", false);
+      ElemKind::FloatTy, {totalRoisSize}, "roisProbs", false);
   bindings_.allocate(roisProbs);
 
   auto *GPN = F_->createGenerateProposals(
@@ -2085,7 +2086,7 @@ TEST_P(OperatorTest, GenerateProposals) {
     }
   }
 
-  for (dim_t i = refRois.size(); i < numImages * postNmsTopN; i++) {
+  for (dim_t i = refRois.size(); i < totalRoisSize; i++) {
     for (dim_t j = 0; j < refRois[0].size(); j++) {
       EXPECT_EQ(roisH.at({i, j}), 0);
     }
@@ -2101,7 +2102,7 @@ TEST_P(OperatorTest, GenerateProposals) {
   }
 
   float mostNegative = -std::numeric_limits<float>::infinity();
-  for (uint32_t i = refRoisProbs.size(); i < numImages * postNmsTopN; i++) {
+  for (dim_t i = refRoisProbs.size(); i < totalRoisSize; i++) {
     EXPECT_EQ(roisProbsH.at({i}), mostNegative);
   }
 }
