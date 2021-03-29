@@ -2527,7 +2527,7 @@ bool GenerateProposalsNode::verify() const {
       anchorsDims[1] + 1, this);
   isValid &= expectCompareTrue(
       "Rois dimension must be equal to img_count * postNmsTopN", roisDims[0],
-      scoresDims[0] * postNmsTopN, this);
+      dim_t(scoresDims[0] * postNmsTopN), this);
   return isValid;
 }
 
