@@ -20097,15 +20097,15 @@ TEST_P(OperatorTest, RMSNorm) {
 TEST_P(OperatorTest, SparseLabelSplit) {
   CHECK_IF_ENABLED();
 
-  const auto numLengths = 4;
-  const auto numIndices = 8;
+  constexpr auto numLengths = 4U;
+  constexpr auto numIndices = 8U;
   auto lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
                                         "lengths", false);
   auto indices = mod_.createPlaceholder(ElemKind::Int64ITy, {numIndices},
                                         "indices", false);
   auto values =
       mod_.createPlaceholder(ElemKind::FloatTy, {numIndices}, "values", false);
-  const auto numLabels = 4;
+  constexpr auto numLabels = 4U;
 
   bindings_.allocate(lengths)->getHandle<int32_t>() = {1, 3, 2, 2};
   bindings_.allocate(indices)->getHandle<int64_t>() = {3, 1, 2, 0, 0, 2, 1, 3};
