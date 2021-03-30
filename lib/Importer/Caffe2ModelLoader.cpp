@@ -1909,6 +1909,105 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "SparseLabelSplit") {
+    NodeValue lengths;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(0)));
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+    NodeValue values;
+    ASSIGN_VALUE_OR_RETURN_ERR(values, getNodeValueByName(op.input(2)));
+
+    dim_t numLabels = 0;
+    RETURN_ERR_IF_NOT(dict.count("num_labels"),
+                      opErrMsg(op, "num_labels was not provided."));
+    ASSIGN_VALUE_OR_RETURN_ERR(numLabels, loadInt(dict.at("num_labels")));
+
+    bool keepGradientOffsetMap = false;
+    if (dict.count("keep_gradient_offset_map")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(keepGradientOffsetMap,
+                                 loadInt(dict.at("keep_gradient_offset_map")));
+    }
+
+    // Validating input types and shapes
+    RETURN_ERR_IF_NOT(lengths.getElementType() == ElemKind::Int32ITy,
+                      opErrMsg(op, "Lengths should be of int32 type."));
+    RETURN_ERR_IF_NOT(lengths.dims().size() == 1 || lengths.dims().size() == 2,
+                      opErrMsg(op, "Lengths should be 1D or 2D tensor."));
+    RETURN_ERR_IF_NOT(indices.getElementType() == ElemKind::Int64ITy,
+                      opErrMsg(op, "Indices should be of int64 type."));
+    RETURN_ERR_IF_NOT(indices.dims().size() == 1 || indices.dims().size() == 2,
+                      opErrMsg(op, "Indices should be 1D or 2D tensor."));
+    RETURN_ERR_IF_NOT(values.getElementType() == ElemKind::FloatTy,
+                      opErrMsg(op, "Values should be of float type."));
+    RETURN_ERR_IF_NOT(values.dims().size() == 1 || values.dims().size() == 2,
+                      opErrMsg(op, "Values should be 1D or 2D tensor."));
+    RETURN_ERR_IF_NOT(
+        indices.dims() == values.dims(),
+        opErrMsg(op, "Indices and values should have the same shape."));
+
+    // Optional conversion from 2D to 1D inputs
+    if (lengths.dims().size() == 2) {
+      RETURN_ERR_IF_NOT(
+          lengths.dims()[1] == 1,
+          opErrMsg(op, "Second dimension should be 1 in lengths."));
+      lengths = G_->createReshape(opName + ".lengths1D", lengths,
+                                  {lengths.dims()[0]});
+    }
+    if (indices.dims().size() == 2) {
+      RETURN_ERR_IF_NOT(
+          indices.dims()[1] == 1,
+          opErrMsg(op, "Second dimension should be 1 in indices."));
+      indices = G_->createReshape(opName + ".indices1D", indices,
+                                  {indices.dims()[0]});
+    }
+    if (values.dims().size() == 2) {
+      RETURN_ERR_IF_NOT(
+          values.dims()[1] == 1,
+          opErrMsg(op, "Second dimension should be 1 in values."));
+      values =
+          G_->createReshape(opName + ".values1D", values, {values.dims()[0]});
+    }
+
+    SparseLabelSplitNode *node =
+        G_->createSparseLabelSplit(opName, lengths, indices, values, numLabels);
+
+    std::vector<SliceNode *> labelValueSlices;
+    G_->createSplit(opName + ".splitLabelValues",
+                    node->getNthResult(SparseLabelSplitNode::LabelValuesIdx),
+                    numLabels, 0, {}, labelValueSlices);
+
+    std::vector<SliceNode *> exampleIdSlices;
+    G_->createSplit(opName + ".splitExampleIds",
+                    node->getNthResult(SparseLabelSplitNode::ExampleIdsIdx),
+                    numLabels, 0, {}, exampleIdSlices);
+
+    const auto numItems = indices.dims()[0] / numLabels;
+
+    std::vector<Node *> labelValues;
+    for (auto slice : labelValueSlices) {
+      labelValues.push_back(
+          G_->createReshape(opName + ".reshapeLabelValue", slice, {numItems}));
+    }
+
+    std::vector<Node *> exampleIds;
+    for (auto slice : exampleIdSlices) {
+      exampleIds.push_back(
+          G_->createReshape(opName + ".reshapeExamplId", slice, {numItems}));
+    }
+
+    for (dim_t i = 0; i < numLabels; ++i) {
+      nodeValueByName_[op.output(i)] = labelValues[i];
+    }
+    for (dim_t i = 0; i < numLabels; ++i) {
+      nodeValueByName_[op.output(numLabels + i)] = exampleIds[i];
+    }
+    if (keepGradientOffsetMap) {
+      nodeValueByName_[op.output(2 * numLabels)] =
+          node->getNthResult(SparseLabelSplitNode::GradientOffsetMapIdx);
+    }
+    return Error::success();
+  }
+
   return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 

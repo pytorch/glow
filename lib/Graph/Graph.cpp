@@ -2579,6 +2579,25 @@ SparseToDenseMaskNode *Function::createSparseToDenseMask(
                                            defaultValue, lengths, mask));
 }
 
+SparseLabelSplitNode *Function::createSparseLabelSplit(llvm::StringRef name,
+                                                       NodeValue lengths,
+                                                       NodeValue indices,
+                                                       NodeValue values,
+                                                       dim_t numLabels) {
+  const auto numItems = indices.dims()[0];
+  // The assumption here is that all output tensors (excluding offsetMap)
+  // will have the same number of elements, i.e. numItems / numLabels.
+  auto labelValuesTy = getParent()->uniqueTypeWithNewShape(
+      values.getType(), {numLabels, numItems / numLabels});
+  auto exampleIdsTy = getParent()->uniqueType(
+      ElemKind::Int32ITy, {numLabels, numItems / numLabels});
+  auto gradientOffsetMapTy =
+      getParent()->uniqueType(ElemKind::Int32ITy, {indices.dims()[0]});
+  return addNode(new SparseLabelSplitNode(name, labelValuesTy, exampleIdsTy,
+                                          gradientOffsetMapTy, lengths, indices,
+                                          values, numLabels));
+}
+
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
   return createSave(name, input, dest);

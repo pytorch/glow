@@ -706,6 +706,18 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseToDenseMaskNode::ValuesIdx) ==
             NI.getOutElemTy(SparseToDenseMaskNode::ResultIdx));
 
+  case Kinded::Kind::SparseLabelSplitNodeKind:
+    return (NI.getInElemTy(SparseLabelSplitNode::LengthsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getInElemTy(SparseLabelSplitNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(SparseLabelSplitNode::ValuesIdx) ==
+            NI.getOutElemTy(SparseLabelSplitNode::LabelValuesIdx)) &&
+           (NI.getOutElemTy(SparseLabelSplitNode::ExampleIdsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getOutElemTy(SparseLabelSplitNode::GradientOffsetMapIdx) ==
+            ElemKind::Int32ITy);
+
   case Kinded::Kind::TraceEventNodeKind:
     return NI.getInElemTy(TraceEventNode::DataIdx) == ElemKind::Int64ITy;
 
@@ -788,6 +800,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::BatchedPairwiseDotProductGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
+  case Kinded::Kind::BucketizeNodeKind:
+    return NI.getInElemTy(BucketizeNode::InputIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(BucketizeNode::ResultIdx) == ElemKind::Int32ITy;
 
   default:
     return false;
@@ -885,6 +901,7 @@ bool Interpreter::shouldLower(const Node *N) const {
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
+  case Kinded::Kind::BucketizeNodeKind:
     return false;
   default:
     return true;

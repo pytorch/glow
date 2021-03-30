@@ -271,6 +271,18 @@ int main(int argc, char **argv) {
       .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
+  //                     Bucketing
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Bucketize")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorFloat, "Boundaries")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int32ITy"});
+
+  //===--------------------------------------------------------------------===//
   //                      Loss functions
   //===--------------------------------------------------------------------===//
 
@@ -1122,6 +1134,17 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorFloat, "Scale")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
+  BB.newInstr("SparseLabelSplit")
+      .addOperand("LabelValues", OperandKind::Out)
+      .addOperand("ExampleIds", OperandKind::Out)
+      .addOperand("GradientOffsetMap", OperandKind::Out)
+      .addOperand("Lengths", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .addMember(MemberType::Unsigned, "NumLabels")
+      .autoVerify(VerifyKind::SameElementType, {"Values", "LabelValues"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
