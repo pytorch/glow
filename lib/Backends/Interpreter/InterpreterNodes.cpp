@@ -2971,6 +2971,24 @@ void BoundInterpreterFunction::fwdLocalResponseNormalizationGradInst(
   }
 }
 
+//===--------------------------------------------------------------------===//
+//                     Bucketing
+//===--------------------------------------------------------------------===//
+
+void BoundInterpreterFunction::fwdBucketizeInst(const BucketizeInst *I) {
+  auto inputH = getTensor(I->getSrc())->getHandle<float>();
+  auto outputH = getTensor(I->getDest())->getHandle<int32_t>();
+  const auto boundaries = I->getBoundaries();
+
+  const auto numItems = inputH.size();
+
+  for (size_t i = 0; i < numItems; ++i) {
+    outputH.raw(i) =
+        std::lower_bound(boundaries.begin(), boundaries.end(), inputH.raw(i)) -
+        boundaries.begin();
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                       Arithmetic operations
 //===----------------------------------------------------------------------===//

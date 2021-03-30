@@ -1624,21 +1624,23 @@ TEST_F(Caffe2ImporterTest, importBucketize) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
+  const std::vector<dim_t> inputShape{3, 2};
   PlaceholderBindings bindings;
-  Placeholder *output;
-  Tensor inputs_0(ElemKind::FloatTy, {3, 2});
+  Placeholder *outputPH;
+  Tensor inputs_0(ElemKind::FloatTy, inputShape);
+  inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input_0"},
                                {&inputs_0.getType()}, *F);
-    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(bindings, &mod, {"input_0"}, {&inputs_0});
   }
 
   EXPECT_EQ(F->getNodes().size(), 2);
-  auto *saveNode = getSaveNodeFromDest(output);
+  auto *saveNode = getSaveNodeFromDest(outputPH);
   auto *bucketizeNode =
       llvm::dyn_cast<BucketizeNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(bucketizeNode);
@@ -1648,6 +1650,26 @@ TEST_F(Caffe2ImporterTest, importBucketize) {
   EXPECT_NEAR(boundriesVec[1], 2.5, 0.00001);
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
+
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle<int32_t>();
+
+  // From the bucketize_op_net.pbtxt file
+  std::array<float, 2> boundaries{0.1, 2.5};
+  for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
+      auto inputVal = inputs_0.getHandle().at({d1, d2});
+      auto exp =
+          std::lower_bound(boundaries.begin(), boundaries.end(), inputVal) -
+          boundaries.begin();
+      EXPECT_EQ(exp, outputH.at({d1, d2}));
+    }
+  }
 }
 
 /// Test loading ResizeNearest op from a Caffe2 model.
