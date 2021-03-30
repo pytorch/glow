@@ -20,8 +20,8 @@
 #include "glow/Graph/Graph.h"
 
 #define FLATBUFFERS_LOCALE_INDEPENDENT 0
-#include "schema_generated.h"
 #include "flatbuffers/flexbuffers.h"
+#include "schema_generated.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -285,7 +285,9 @@ class TFLiteModelLoader {
   Error loadUnpack(const tflite::Operator *op, const OperatorInfo &opInfo);
 
   /// Load TFLite Detection PostProcess custom operator.
-  Error loadTFLiteDetectionPostProcess(const tflite::Operator *op, const OperatorInfo &opInfo, const flexbuffers::Map &opts);
+  Error loadTFLiteDetectionPostProcess(const tflite::Operator *op,
+                                       const OperatorInfo &opInfo,
+                                       const flexbuffers::Map &opts);
 
 public:
   /// \returns the TensorFlowLite model version.

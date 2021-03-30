@@ -584,7 +584,8 @@ TFLiteModelLoader::getOperatorCustomOpts(const tflite::Operator *op) {
                     strFormat("TensorFlowLite: Missing custom options for "
                               "opcode_index %d!",
                               op->opcode_index()));
-  const uint8_t* optsAddr = reinterpret_cast<const uint8_t*>(customOpts->data());
+  const uint8_t *optsAddr =
+      reinterpret_cast<const uint8_t *>(customOpts->data());
   RETURN_ERR_IF_NOT(optsAddr,
                     strFormat("TensorFlowLite: Missing custom options for "
                               "opcode_index %d!",
@@ -2117,9 +2118,9 @@ Error TFLiteModelLoader::loadUnpack(const tflite::Operator *op,
   return setOutputNodeValues(op, outputNodeValues);
 }
 
-Error TFLiteModelLoader::loadTFLiteDetectionPostProcess(const tflite::Operator *op,
-                                                        const OperatorInfo &opInfo,
-                                                        const flexbuffers::Map &opts) {
+Error TFLiteModelLoader::loadTFLiteDetectionPostProcess(
+    const tflite::Operator *op, const OperatorInfo &opInfo,
+    const flexbuffers::Map &opts) {
   NodeValue boxes;
   ASSIGN_VALUE_OR_RETURN_ERR(boxes, getInputNodeValue(op, 0));
   NodeValue scores;
@@ -2135,39 +2136,27 @@ Error TFLiteModelLoader::loadTFLiteDetectionPostProcess(const tflite::Operator *
   int32_t maxDetections = opts["max_detections"].AsInt32();
   int32_t maxClassesPerDetection = opts["max_classes_per_detection"].AsInt32();
   constexpr int32_t defaultNumDetectionsPerClass = 100;
-  int32_t maxDetectionsPerClass = (opts["detections_per_class"].IsNull()) ? defaultNumDetectionsPerClass : opts["detections_per_class"].AsInt32();
+  int32_t maxDetectionsPerClass = (opts["detections_per_class"].IsNull())
+                                      ? defaultNumDetectionsPerClass
+                                      : opts["detections_per_class"].AsInt32();
   float iouThreshold = opts["nms_iou_threshold"].AsFloat();
   float scoreThreshold = opts["nms_score_threshold"].AsFloat();
   float xScale = opts["x_scale"].AsFloat();
   float yScale = opts["y_scale"].AsFloat();
   float hScale = opts["h_scale"].AsFloat();
   float wScale = opts["w_scale"].AsFloat();
-  bool regularNMS = (opts["use_regular_nms"].IsNull()) ? false : opts["use_regular_nms"].AsBool();
+  bool regularNMS = (opts["use_regular_nms"].IsNull())
+                        ? false
+                        : opts["use_regular_nms"].AsBool();
 
   // Create node.
   auto *node = F_->createTFLiteDetectionPostProcess(
-    opInfo.name,
-    boxes,
-    scores,
-    anchors,
-    numClasses,
-    maxDetections,
-    maxClassesPerDetection,
-    maxDetectionsPerClass,
-    iouThreshold,
-    scoreThreshold,
-    xScale,
-    yScale,
-    hScale,
-    wScale,
-    regularNMS
-  );
+      opInfo.name, boxes, scores, anchors, numClasses, maxDetections,
+      maxClassesPerDetection, maxDetectionsPerClass, iouThreshold,
+      scoreThreshold, xScale, yScale, hScale, wScale, regularNMS);
   std::vector<NodeValue> outputNodeValues = {
-    node->getDetectionBoxes(),
-    node->getDetectionClasses(),
-    node->getDetectionScores(),
-    node->getNumDetections()
-  };
+      node->getDetectionBoxes(), node->getDetectionClasses(),
+      node->getDetectionScores(), node->getNumDetections()};
   return setOutputNodeValues(op, outputNodeValues);
 }
 

@@ -2310,27 +2310,40 @@ bool TFLiteDetectionPostProcessNode::verify() const {
                                anchorsDims.size(), size_t(2), this);
   dim_t numBoxes = boxesDims[1];
   dim_t numTotClasses = scoresDims[2];
-  isValid &= expectCompareTrue("Input boxes size invalid!", boxesDims[1], numBoxes, this);
-  isValid &= expectCompareTrue("Input boxes size invalid!", boxesDims[2], dim_t(4), this);
-  isValid &= expectCompareTrue("Input scores size invalid!", scoresDims[0], boxesDims[0], this);
-  isValid &= expectCompareTrue("Input scores size invalid!", scoresDims[1], numBoxes, this);
-  isValid &= expectCompareTrue("Input scores size invalid!", scoresDims[2], numTotClasses, this);
-  isValid &= expectCompareTrue("Input anchors size invalid!", anchorsDims[0], numBoxes, this);
-  isValid &= expectCompareTrue("Input anchors size invalid!", anchorsDims[1], dim_t(4), this);
+  isValid &= expectCompareTrue("Input boxes size invalid!", boxesDims[1],
+                               numBoxes, this);
+  isValid &= expectCompareTrue("Input boxes size invalid!", boxesDims[2],
+                               dim_t(4), this);
+  isValid &= expectCompareTrue("Input scores size invalid!", scoresDims[0],
+                               boxesDims[0], this);
+  isValid &= expectCompareTrue("Input scores size invalid!", scoresDims[1],
+                               numBoxes, this);
+  isValid &= expectCompareTrue("Input scores size invalid!", scoresDims[2],
+                               numTotClasses, this);
+  isValid &= expectCompareTrue("Input anchors size invalid!", anchorsDims[0],
+                               numBoxes, this);
+  isValid &= expectCompareTrue("Input anchors size invalid!", anchorsDims[1],
+                               dim_t(4), this);
 
   // Validate parameters.
-  isValid &= expectCompareTrue("Invalid IOU threshold!", getIouThreshold(), float(0.0), this,
-                               CompareOperatorGreaterThan<float>());
-  isValid &= expectCompareTrue("Invalid IOU threshold!", getIouThreshold(), float(1.0), this,
-                               CompareOperatorLessEqual<float>());
-  isValid &= expectCompareTrue("Invalid score threshold!", getScoreThreshold(), float(0.0), this,
-                               CompareOperatorGreaterThan<float>());
-  isValid &= expectCompareTrue("Invalid score threshold!", getScoreThreshold(), float(1.0), this,
-                               CompareOperatorLessEqual<float>());
-  isValid &= expectCompareTrue("Invalid number of classes!", dim_t(getNumClasses()), numTotClasses, this,
-                               CompareOperatorLessEqual<dim_t>());
-  isValid &= expectCompareTrue("Invalid max detections!", dim_t(getMaxDetections()), dim_t(0), this,
-                               CompareOperatorGreaterThan<dim_t>());
+  isValid &=
+      expectCompareTrue("Invalid IOU threshold!", getIouThreshold(), float(0.0),
+                        this, CompareOperatorGreaterThan<float>());
+  isValid &=
+      expectCompareTrue("Invalid IOU threshold!", getIouThreshold(), float(1.0),
+                        this, CompareOperatorLessEqual<float>());
+  isValid &=
+      expectCompareTrue("Invalid score threshold!", getScoreThreshold(),
+                        float(0.0), this, CompareOperatorGreaterThan<float>());
+  isValid &=
+      expectCompareTrue("Invalid score threshold!", getScoreThreshold(),
+                        float(1.0), this, CompareOperatorLessEqual<float>());
+  isValid &=
+      expectCompareTrue("Invalid number of classes!", dim_t(getNumClasses()),
+                        numTotClasses, this, CompareOperatorLessEqual<dim_t>());
+  isValid &=
+      expectCompareTrue("Invalid max detections!", dim_t(getMaxDetections()),
+                        dim_t(0), this, CompareOperatorGreaterThan<dim_t>());
   return isValid;
 }
 

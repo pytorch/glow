@@ -735,13 +735,22 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
 
   case Kinded::Kind::TFLiteDetectionPostProcessNodeKind:
-    return NI.getInElemTy(TFLiteDetectionPostProcessNode::BoxesIdx) == ElemKind::FloatTy &&
-           NI.getInElemTy(TFLiteDetectionPostProcessNode::ScoresIdx) == ElemKind::FloatTy &&
-           NI.getInElemTy(TFLiteDetectionPostProcessNode::AnchorsIdx) == ElemKind::FloatTy &&
-           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionBoxesIdx) == ElemKind::FloatTy &&
-           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionClassesIdx) == ElemKind::Int32ITy &&
-           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionScoresIdx) == ElemKind::FloatTy &&
-           NI.getOutElemTy(TFLiteDetectionPostProcessNode::NumDetectionsIdx) == ElemKind::Int32ITy;
+    return NI.getInElemTy(TFLiteDetectionPostProcessNode::BoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::ScoresIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::AnchorsIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionBoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(
+               TFLiteDetectionPostProcessNode::DetectionClassesIdx) ==
+               ElemKind::Int32ITy &&
+           NI.getOutElemTy(
+               TFLiteDetectionPostProcessNode::DetectionScoresIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::NumDetectionsIdx) ==
+               ElemKind::Int32ITy;
 
   case Kinded::Kind::AudioSpectrogramNodeKind:
     return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==

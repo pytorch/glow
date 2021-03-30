@@ -240,7 +240,8 @@ TEST(TFLiteImporterTest, TFLiteDetectionPostProcessRegular) {
   Function *F = mod.createFunction("main");
 
   // Load TensorFlowLite model.
-  std::string modelPath = getModelPath("tflite_detection_post_processing_regular.tflite");
+  std::string modelPath =
+      getModelPath("tflite_detection_post_processing_regular.tflite");
   { TFLiteModelLoader(modelPath, F); }
 
   // Allocate tensors for all placeholders.
@@ -248,8 +249,8 @@ TEST(TFLiteImporterTest, TFLiteDetectionPostProcessRegular) {
   bindings.allocate(mod.getPlaceholders());
 
   // Get model input/output placeholders.
-  std::vector<Placeholder*> inputPH;
-  std::vector<Placeholder*> outputPH;
+  std::vector<Placeholder *> inputPH;
+  std::vector<Placeholder *> outputPH;
   for (const auto &ph : mod.getPlaceholders()) {
     if (isInput(ph, *F)) {
       inputPH.push_back(ph);
@@ -259,8 +260,10 @@ TEST(TFLiteImporterTest, TFLiteDetectionPostProcessRegular) {
   }
 
   // Load data into the input placeholders.
-  loadTensor(bindings.get(inputPH[0]), getModelPath("tflite_detection_post_processing_boxes.bin"));
-  loadTensor(bindings.get(inputPH[1]), getModelPath("tflite_detection_post_processing_scores.bin"));
+  loadTensor(bindings.get(inputPH[0]),
+             getModelPath("tflite_detection_post_processing_boxes.bin"));
+  loadTensor(bindings.get(inputPH[1]),
+             getModelPath("tflite_detection_post_processing_scores.bin"));
 
   // Run model.
   EE.compile(CompilationMode::Infer);
@@ -268,70 +271,29 @@ TEST(TFLiteImporterTest, TFLiteDetectionPostProcessRegular) {
 
   // Compare output data versus reference.
   std::vector<float> detectionBoxesRef = {
-   0.270546197891235,
-   0.036445915699005,
-   0.625426292419434,
-   0.715417265892029,
-   0.008843034505844,
-   0.453001916408539,
-   0.434335529804230,
-   1.007383584976196,
-   0.264277368783951,
-   0.225462928414345,
-   0.431514173746109,
-   0.499467015266418,
-   0.012970104813576,
-   0.489649474620819,
-   0.433307945728302,
-   1.010598421096802,
-   0.208248645067215,
-   0.414025753736496,
-   0.256930917501450,
-   0.457198470830917,
-   0.259306669235229,
-   0.276896983385086,
-   0.413792371749878,
-   0.558155655860901,
-   0.296046763658524,
-   0.024428725242615,
-   0.620571494102478,
-   0.726388156414032,
-   0.100624501705170,
-   0.478332787752151,
-   0.341053903102875,
-   0.616274893283844,
-   0.195692524313927,
-   0.446290910243988,
-   0.264245152473450,
-   0.527587413787842,
-   0.232087373733521,
-   0.244561776518822,
-   0.373351573944092,
-   0.512895405292511,
+      0.270546197891235, 0.036445915699005, 0.625426292419434,
+      0.715417265892029, 0.008843034505844, 0.453001916408539,
+      0.434335529804230, 1.007383584976196, 0.264277368783951,
+      0.225462928414345, 0.431514173746109, 0.499467015266418,
+      0.012970104813576, 0.489649474620819, 0.433307945728302,
+      1.010598421096802, 0.208248645067215, 0.414025753736496,
+      0.256930917501450, 0.457198470830917, 0.259306669235229,
+      0.276896983385086, 0.413792371749878, 0.558155655860901,
+      0.296046763658524, 0.024428725242615, 0.620571494102478,
+      0.726388156414032, 0.100624501705170, 0.478332787752151,
+      0.341053903102875, 0.616274893283844, 0.195692524313927,
+      0.446290910243988, 0.264245152473450, 0.527587413787842,
+      0.232087373733521, 0.244561776518822, 0.373351573944092,
+      0.512895405292511,
   };
   std::vector<int32_t> detectionClassesRef = {
-     2,
-     7,
-     2,
-     5,
-     2,
-     2,
-    32,
-     7,
-     2,
-     2,
+      2, 7, 2, 5, 2, 2, 32, 7, 2, 2,
   };
   std::vector<float> detectionScoresRef = {
-   0.709131240844727,
-   0.694569468498230,
-   0.563223838806152,
-   0.540955007076263,
-   0.452089250087738,
-   0.439201682806015,
-   0.433123916387558,
-   0.432144701480865,
-   0.416427463293076,
-   0.408173263072968,
+      0.709131240844727, 0.694569468498230, 0.563223838806152,
+      0.540955007076263, 0.452089250087738, 0.439201682806015,
+      0.433123916387558, 0.432144701480865, 0.416427463293076,
+      0.408173263072968,
   };
   int32_t numDetectionsRef = 10;
   auto detectionBoxesH = bindings.get(outputPH[0])->getHandle<float>();
@@ -355,7 +317,8 @@ TEST(TFLiteImporterTest, TFLiteDetectionPostProcessFast) {
   Function *F = mod.createFunction("main");
 
   // Load TensorFlowLite model.
-  std::string modelPath = getModelPath("tflite_detection_post_processing_fast.tflite");
+  std::string modelPath =
+      getModelPath("tflite_detection_post_processing_fast.tflite");
   { TFLiteModelLoader(modelPath, F); }
 
   // Allocate tensors for all placeholders.
@@ -363,8 +326,8 @@ TEST(TFLiteImporterTest, TFLiteDetectionPostProcessFast) {
   bindings.allocate(mod.getPlaceholders());
 
   // Get model input/output placeholders.
-  std::vector<Placeholder*> inputPH;
-  std::vector<Placeholder*> outputPH;
+  std::vector<Placeholder *> inputPH;
+  std::vector<Placeholder *> outputPH;
   for (const auto &ph : mod.getPlaceholders()) {
     if (isInput(ph, *F)) {
       inputPH.push_back(ph);
@@ -374,8 +337,10 @@ TEST(TFLiteImporterTest, TFLiteDetectionPostProcessFast) {
   }
 
   // Load data into the input placeholders.
-  loadTensor(bindings.get(inputPH[0]), getModelPath("tflite_detection_post_processing_boxes.bin"));
-  loadTensor(bindings.get(inputPH[1]), getModelPath("tflite_detection_post_processing_scores.bin"));
+  loadTensor(bindings.get(inputPH[0]),
+             getModelPath("tflite_detection_post_processing_boxes.bin"));
+  loadTensor(bindings.get(inputPH[1]),
+             getModelPath("tflite_detection_post_processing_scores.bin"));
 
   // Run model.
   EE.compile(CompilationMode::Infer);
@@ -383,70 +348,29 @@ TEST(TFLiteImporterTest, TFLiteDetectionPostProcessFast) {
 
   // Compare output data versus reference.
   std::vector<float> detectionBoxesRef = {
-   0.270546197891235,
-   0.036445915699005,
-   0.625426292419434,
-   0.715417265892029,
-   0.008843034505844,
-   0.453001916408539,
-   0.434335529804230,
-   1.007383584976196,
-   0.264277368783951,
-   0.225462928414345,
-   0.431514173746109,
-   0.499467015266418,
-   0.208248645067215,
-   0.414025753736496,
-   0.256930917501450,
-   0.457198470830917,
-   0.259306669235229,
-   0.276896983385086,
-   0.413792371749878,
-   0.558155655860901,
-   0.100624501705170,
-   0.478332787752151,
-   0.341053903102875,
-   0.616274893283844,
-   0.195692524313927,
-   0.446290910243988,
-   0.264245152473450,
-   0.527587413787842,
-   0.232087373733521,
-   0.244561776518822,
-   0.373351573944092,
-   0.512895405292511,
-   0.275883287191391,
-   0.037467807531357,
-   0.595628619194031,
-   0.463419944047928,
-   0.203831464052200,
-   0.354441434144974,
-   0.266103237867355,
-   0.427350491285324,
+      0.270546197891235, 0.036445915699005, 0.625426292419434,
+      0.715417265892029, 0.008843034505844, 0.453001916408539,
+      0.434335529804230, 1.007383584976196, 0.264277368783951,
+      0.225462928414345, 0.431514173746109, 0.499467015266418,
+      0.208248645067215, 0.414025753736496, 0.256930917501450,
+      0.457198470830917, 0.259306669235229, 0.276896983385086,
+      0.413792371749878, 0.558155655860901, 0.100624501705170,
+      0.478332787752151, 0.341053903102875, 0.616274893283844,
+      0.195692524313927, 0.446290910243988, 0.264245152473450,
+      0.527587413787842, 0.232087373733521, 0.244561776518822,
+      0.373351573944092, 0.512895405292511, 0.275883287191391,
+      0.037467807531357, 0.595628619194031, 0.463419944047928,
+      0.203831464052200, 0.354441434144974, 0.266103237867355,
+      0.427350491285324,
   };
   std::vector<int32_t> detectionClassesRef = {
-     2,
-     7,
-     2,
-     2,
-     2,
-     7,
-     2,
-     2,
-     2,
-     2,
+      2, 7, 2, 2, 2, 7, 2, 2, 2, 2,
   };
   std::vector<float> detectionScoresRef = {
-   0.709131240844727,
-   0.694569468498230,
-   0.563223838806152,
-   0.452089250087738,
-   0.439201682806015,
-   0.432144701480865,
-   0.416427463293076,
-   0.408173263072968,
-   0.405113369226456,
-   0.398936122655869,
+      0.709131240844727, 0.694569468498230, 0.563223838806152,
+      0.452089250087738, 0.439201682806015, 0.432144701480865,
+      0.416427463293076, 0.408173263072968, 0.405113369226456,
+      0.398936122655869,
   };
   int32_t numDetectionsRef = 10;
   auto detectionBoxesH = bindings.get(outputPH[0])->getHandle<float>();
