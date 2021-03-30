@@ -68,7 +68,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::TensorProto &in) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
-      return MAKE_ERR("0 dimemsion is not supported");
+      return MAKE_ERR("0 dimension is not supported");
     }
     dim.push_back(d);
   }
@@ -104,7 +104,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::QTensorProto &in) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
-      return MAKE_ERR("0 dimemsion qtensor is not supported");
+      return MAKE_ERR("0 dimension qtensor is not supported");
     }
     dim.push_back(d);
   }
