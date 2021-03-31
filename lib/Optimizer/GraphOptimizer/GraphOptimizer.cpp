@@ -1120,6 +1120,39 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Code Hoisting.
+bool HoistCode::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    auto *node = &N;
+
+    // Hoist Transpose above Tile nodes.
+    if (auto *TR = dyn_cast<TransposeNode>(node)) {
+      auto *TN = dyn_cast<TileNode>(TR->getInput());
+
+      if (!TN) {
+        continue;
+      }
+
+      auto *newTR = F->createTranspose(TR->getName(), TN->getInput(),
+                                       TR->getShuffle(), TR->getLayout());
+      newTR->setPredicate(node->getPredicate());
+      auto *newTN =
+          F->createTile(TN->getName(), newTR, TN->getCount(),
+                        invertShuffle(TR->getShuffle())[TN->getAxis()]);
+      newTN->setPredicate(node->getPredicate());
+      TR->getResult().replaceAllUsesOfWith(newTN);
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// Remove unnecessary padding and reduce filters for Convolution nodes with
 /// small input tensors.
 bool OptimizeSmallConv::run(Function *F, const CompilationContext &cctx) {
