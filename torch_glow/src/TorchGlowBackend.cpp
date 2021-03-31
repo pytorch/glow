@@ -512,6 +512,9 @@ Error applyCompilationSpecSettingsToPyTorchLoaderSettings(
     const CompilationSpecSettings &newSettings) {
   settings.backendName = newSettings.glow_backend;
   settings.enableDebugFuser = newSettings.enable_fuser;
+  settings.use_dag_optimizer = newSettings.use_dag_optimizer;
+  settings.apl_parallelization_alg = newSettings.apl_parallelization_alg;
+  settings.apl_num_parallel_chunks = newSettings.apl_num_parallel_chunks;
 
   // Ensure override flags are honored
   RETURN_IF_ERR(applySettingsOverrideFlagsToPyTorchLoaderSettings(settings));

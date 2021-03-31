@@ -309,6 +309,10 @@ void PyTorchLoaderSettings::initSettings() {
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
   nominalBatchIdx = FLAGS_nominalBatchIdx;
   lazyCompile = FLAGS_lazyCompile;
+  use_dag_optimizer = glow::flags::UseDAGOptimizer;
+  apl_parallelization_alg =
+      glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
+  apl_num_parallel_chunks = glow::flags::DAGOptimizerNumParallelChunks;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);

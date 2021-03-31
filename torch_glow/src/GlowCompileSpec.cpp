@@ -99,6 +99,12 @@ void registerPyTorchGlowCustomClasses() {
                        CompilationSpecSettings, glow_backend);
   ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
                        CompilationSpecSettings, enable_fuser);
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, use_dag_optimizer);
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, apl_parallelization_alg);
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, apl_num_parallel_chunks);
   addSerializationDefs<CompilationSpecSettings>(
       CompilationSpecSettings_registry);
 
