@@ -4225,8 +4225,10 @@ Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(train == false,
                     "Training is not supported for LSTM in Glow.");
 
-  RETURN_ERR_IF_NOT(batchFirst == false,
-                    "batch_first is not supported for LSTM in Glow.");
+  if (batchFirst) {
+    input = F_.createTranspose("Input_BatchFirst_Transpose", input, {1, 0, 2})
+                ->getResult();
+  }
 
   NodeValue hn, cn;
   std::vector<glow::NodeValue> *params;
@@ -4285,6 +4287,11 @@ Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
              ->getResult();
     F_.createPyTorchLSTM("lstm", input, WxTransposed, WhTransposed, Bx, Bh, hn,
                          cn, output, bidirectional);
+  }
+  if (batchFirst) {
+    output =
+        F_.createTranspose("Output_BatchFirst_Transpose", output, {1, 0, 2})
+            ->getResult();
   }
   RETURN_IF_ERR(addValueMapping(outputs[0], output));
   RETURN_IF_ERR(addValueMapping(outputs[1], hn));
