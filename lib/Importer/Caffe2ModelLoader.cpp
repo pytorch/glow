@@ -2008,6 +2008,18 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "Log1p") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    Node *ones = G_->createSplat(opName + ".ones", in.getType(), 1.0f);
+    Node *add = G_->createAdd(opName + ".add", in, ones);
+    Node *node = G_->createLog(opName + ".log", add);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
