@@ -1287,6 +1287,232 @@ TEST_F(OnnxImporterTest, importConvTransposeOutputShape) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
+static void importConvolution3D(const std::string &netFilename,
+                                const std::vector<dim_t> &inputShape,
+                                const std::vector<dim_t> &weightsShape,
+                                const std::vector<float> &input,
+                                const std::vector<float> &weights,
+                                const std::vector<dim_t> &outputShape,
+                                const std::vector<float> &expectedValues) {
+  constexpr float delta = 1e-4;
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+
+  // Load the .onnxtxt model.
+  Type inputType(ElemKind::FloatTy, inputShape);
+  Type weightsType(ElemKind::FloatTy, weightsShape);
+  ONNXModelLoader onnxLD(netFilename, {"x", "W"}, {&inputType, &weightsType},
+                         *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  auto inputPH = mod.getPlaceholderByNameSlow("x");
+  auto *inputT = bindings.allocate(inputPH);
+  inputT->getHandle() = input;
+
+  auto weightsPH = mod.getPlaceholderByNameSlow("W");
+  auto *weightsT = bindings.allocate(weightsPH);
+  weightsT->getHandle() = weights;
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  Tensor expectedT(ElemKind::FloatTy, outputShape);
+  expectedT.getHandle() = expectedValues;
+
+  auto *resultT = bindings.get(graphOutputVar);
+  ASSERT_TRUE(resultT->isEqual(expectedT, delta));
+}
+
+TEST_F(OnnxImporterTest, Conv3DBasic) {
+  const std::vector<dim_t> inputShape = {1, 2, 3, 3, 3};
+  const std::vector<dim_t> weightsShape = {2, 2, 2, 2, 2};
+  std::vector<float> inputValues = {
+      -1.125840, -1.152360, -0.250579, -0.433879, 0.848710,  0.692009,
+      -0.316013, -2.115219, 0.322275,  -1.263335, 0.349983,  0.308134,
+      0.119842,  1.237658,  1.116777,  -0.247278, -1.352654, -1.695931,
+      0.566651,  0.793508,  0.598839,  -1.555095, -0.341360, 1.853006,
+      0.750189,  -0.585498, -0.173397, 0.183478,  1.389366,  1.586334,
+      0.946298,  -0.843677, -0.613583, 0.031593,  -0.492677, 0.248415,
+      0.439696,  0.112411,  0.543295,  -0.395158, 0.205526,  -0.450330,
+      -0.573077, -0.555358, 0.594323,  1.541943,  1.819725,  -0.551529,
+      -1.325326, 0.188554,  -0.069073, -0.494925, -1.495915, -0.193837};
+  const std::vector<float> weightsValues = {
+      -0.473120, 0.335551,  1.509122,  2.081955,  1.706712, 2.380368,
+      -1.125602, -0.316998, -0.140671, 0.805754,  0.327614, -0.760707,
+      -1.599082, 0.018487,  -0.750427, 0.185408,  1.039462, 0.358153,
+      -0.003304, -0.534441, 1.168688,  0.394503,  1.941462, 0.791498,
+      0.033532,  0.710087,  -1.535287, -0.412679, 0.966303, 1.624783,
+      -0.365619, -1.302440};
+  const std::vector<dim_t> outputShape = {1, 2, 2, 2, 2};
+  const std::vector<float> expectedValues = {
+      1.086994,  3.631998,  0.002103,  3.604199, 6.527717, 4.464715,
+      -4.283467, -1.482732, -1.788878, 6.381417, 0.534487, -2.030857,
+      1.138300,  2.983906,  2.729227,  2.819283};
+  const std::string netFilename(GLOW_DATA_PATH
+                                "tests/models/onnxModels/Conv3D.onnxtxt");
+  importConvolution3D(netFilename, inputShape, weightsShape, inputValues,
+                      weightsValues, outputShape, expectedValues);
+}
+
+TEST_F(OnnxImporterTest, Conv3DPadding) {
+  const std::vector<dim_t> inputShape = {1, 2, 3, 3, 3};
+  const std::vector<dim_t> weightsShape = {2, 2, 2, 2, 2};
+  std::vector<float> inputValues = {
+      -1.125840, -1.152360, -0.250579, -0.433879, 0.848710,  0.692009,
+      -0.316013, -2.115219, 0.322275,  -1.263335, 0.349983,  0.308134,
+      0.119842,  1.237658,  1.116777,  -0.247278, -1.352654, -1.695931,
+      0.566651,  0.793508,  0.598839,  -1.555095, -0.341360, 1.853006,
+      0.750189,  -0.585498, -0.173397, 0.183478,  1.389366,  1.586334,
+      0.946298,  -0.843677, -0.613583, 0.031593,  -0.492677, 0.248415,
+      0.439696,  0.112411,  0.543295,  -0.395158, 0.205526,  -0.450330,
+      -0.573077, -0.555358, 0.594323,  1.541943,  1.819725,  -0.551529,
+      -1.325326, 0.188554,  -0.069073, -0.494925, -1.495915, -0.193837};
+  const std::vector<float> weightsValues = {
+      -0.473120, 0.335551,  1.509122,  2.081955,  1.706712, 2.380368,
+      -1.125602, -0.316998, -0.140671, 0.805754,  0.327614, -0.760707,
+      -1.599082, 0.018487,  -0.750427, 0.185408,  1.039462, 0.358153,
+      -0.003304, -0.534441, 1.168688,  0.394503,  1.941462, 0.791498,
+      0.033532,  0.710087,  -1.535287, -0.412679, 0.966303, 1.624783,
+      -0.365619, -1.302440};
+  const std::vector<dim_t> outputShape = {1, 2, 3, 5, 5};
+  const std::vector<float> expectedValues = {
+      0.000000,  0.000000,  0.000000,  0.000000,  0.000000,  0.390907,
+      1.752456,  0.628033,  -0.908376, 0.000000,  -2.363531, -5.579453,
+      -5.410921, -3.282821, 0.000000,  -0.909264, 0.662102,  7.128015,
+      1.613059,  0.000000,  -0.751642, -5.633970, -2.050514, 0.152795,
+      0.000000,  0.000000,  0.000000,  0.000000,  0.000000,  0.000000,
+      -2.001523, -4.093033, -3.487550, -0.612987, 0.000000,  -4.963438,
+      1.086994,  3.631998,  -0.523274, 0.000000,  0.185033,  0.002103,
+      3.604199,  4.415725,  0.000000,  -0.679790, -3.697387, -4.068120,
+      -4.032256, 0.000000,  0.000000,  0.000000,  0.000000,  0.000000,
+      0.000000,  -2.858425, -2.828425, -1.757606, 0.382830,  0.000000,
+      2.105055,  6.527717,  4.464715,  1.185681,  0.000000,  -4.412835,
+      -4.283467, -1.482732, 0.783957,  0.000000,  1.231844,  -0.053329,
+      1.604381,  0.732798,  0.000000,  0.000000,  0.000000,  0.000000,
+      0.000000,  0.000000,  -1.130069, -4.974515, -5.009680, -1.066482,
+      0.000000,  -1.721947, 1.246597,  5.777477,  2.807879,  0.000000,
+      1.075092,  -2.286218, -4.542262, 0.750695,  0.000000,  -0.073337,
+      -1.973745, -2.417348, 0.616683,  0.000000,  0.000000,  0.000000,
+      0.000000,  0.000000,  0.000000,  -1.046628, -2.718341, -2.475338,
+      -2.035059, 0.000000,  0.393972,  -1.788878, 6.381417,  3.950395,
+      0.000000,  0.628322,  0.534487,  -2.030857, -2.323583, 0.000000,
+      -1.119425, -3.713559, -3.744269, -1.064396, 0.000000,  0.000000,
+      0.000000,  0.000000,  0.000000,  0.000000,  -1.066061, -2.109976,
+      1.504929,  0.529142,  0.000000,  3.182951,  1.138300,  2.983906,
+      4.815914,  0.000000,  -1.397494, 2.729227,  2.819283,  2.071961,
+      0.000000,  -1.003692, -3.418091, -4.123157, -2.132879, 0.000000};
+  const std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/Conv3DPadding.onnxtxt");
+  importConvolution3D(netFilename, inputShape, weightsShape, inputValues,
+                      weightsValues, outputShape, expectedValues);
+}
+
+TEST_F(OnnxImporterTest, Conv3DParams) {
+  const std::vector<dim_t> inputShape = {1, 2, 3, 3, 3};
+  const std::vector<dim_t> weightsShape = {2, 1, 2, 1, 3};
+  std::vector<float> inputValues = {
+      -1.125840, -1.152360, -0.250579, -0.433879, 0.848710,  0.692009,
+      -0.316013, -2.115219, 0.322275,  -1.263335, 0.349983,  0.308134,
+      0.119842,  1.237658,  1.116777,  -0.247278, -1.352654, -1.695931,
+      0.566651,  0.793508,  0.598839,  -1.555095, -0.341360, 1.853006,
+      0.750189,  -0.585498, -0.173397, 0.183478,  1.389366,  1.586334,
+      0.946298,  -0.843677, -0.613583, 0.031593,  -0.492677, 0.248415,
+      0.439696,  0.112411,  0.543295,  -0.395158, 0.205526,  -0.450330,
+      -0.573077, -0.555358, 0.594323,  1.541943,  1.819725,  -0.551529,
+      -1.325326, 0.188554,  -0.069073, -0.494925, -1.495915, -0.193837};
+  const std::vector<float> weightsValues = {
+      1.131731, -0.645473, -1.770292, 0.214273, -0.538217, 0.587993,
+      1.605946, 0.427856,  -0.677638, 1.042191, -1.951262, 0.418615};
+  const std::vector<dim_t> outputShape = {1, 2, 3, 2, 2};
+  const std::vector<float> expectedValues = {
+      -0.071634, 0.231644,  -1.073651, 1.260229,  3.652448,  -0.364618,
+      3.286271,  0.114995,  0.357473,  -2.154694, 1.806170,  3.969456,
+      0.223596,  -1.855735, -0.267888, 1.098258,  -1.673889, 0.280479,
+      1.233116,  0.406793,  -2.135017, -1.788574, 0.470653,  0.761293};
+  const std::string netFilename(GLOW_DATA_PATH
+                                "tests/models/onnxModels/Conv3DParams.onnxtxt");
+  importConvolution3D(netFilename, inputShape, weightsShape, inputValues,
+                      weightsValues, outputShape, expectedValues);
+}
+
+// Test 3D Convolution with auto_pad==VALID
+TEST_F(OnnxImporterTest, Conv3DValidPad) {
+  const std::vector<dim_t> inputShape = {1, 1, 3, 3, 3};
+  const std::vector<dim_t> weightsShape = {1, 1, 2, 2, 2};
+  std::vector<float> inputValues = {
+      -1.125840, -1.152360, -0.250579, -0.433879, 0.848710,  0.692009,
+      -0.316013, -2.115219, 0.322275,  -1.263335, 0.349983,  0.266049,
+      0.166455,  0.874382,  -0.143474, -0.111609, -0.613583, 0.031593,
+      -0.492677, 0.053737,  0.618057,  -0.412802, -0.841065, -2.316042,
+      -0.102310, 0.792444,  -0.289668};
+  const std::vector<float> weightsValues = {-0.225116, 2.346638, -1.108848,
+                                            1.625353,  1.233336, -0.183186,
+                                            -1.314025, -1.689443};
+  const std::vector<dim_t> outputShape = {1, 1, 2, 2, 2};
+  const std::vector<float> expectedValues = {-3.908342, -0.668594, 0.230114,
+                                             6.159684,  3.688169,  4.313841,
+                                             -0.418550, -0.966763};
+  const std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/Conv3DValidPad.onnxtxt");
+  importConvolution3D(netFilename, inputShape, weightsShape, inputValues,
+                      weightsValues, outputShape, expectedValues);
+}
+
+// Test 3D Convolution with auto_pad==SAME_LOWER
+TEST_F(OnnxImporterTest, Conv3DSameLowerdPad) {
+  const std::vector<dim_t> inputShape = {1, 1, 3, 3, 3};
+  const std::vector<dim_t> weightsShape = {1, 1, 2, 2, 2};
+  std::vector<float> inputValues = {
+      -1.125840, -1.152360, -0.250579, -0.433879, 0.848710,  0.692009,
+      -0.316013, -2.115219, 0.322275,  -1.263335, 0.349983,  0.266049,
+      0.166455,  0.874382,  -0.143474, -0.111609, -0.613583, 0.031593,
+      -0.492677, 0.053737,  0.618057,  -0.412802, -0.841065, -2.316042,
+      -0.102310, 0.792444,  -0.289668};
+  const std::vector<float> weightsValues = {-0.225116, 2.346638, -1.108848,
+                                            1.625353,  1.233336, -0.183186,
+                                            -1.314025, -1.689443};
+  const std::vector<dim_t> outputShape = {1, 1, 3, 3, 3};
+  const std::vector<float> expectedValues = {
+      1.902043,  3.426229,  1.937569, 0.939251, -2.041164, -3.659683, 0.613366,
+      3.298202,  3.154966,  0.304446, 0.444171, -0.038848, -3.396937, -3.908342,
+      -0.668594, -1.373723, 0.230114, 6.159684, -1.221015, 2.526298,  -1.070437,
+      -1.906384, 3.688169,  4.313841, 0.457672, -0.418550, -0.966763};
+  const std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/Conv3DSameLowerPad.onnxtxt");
+  importConvolution3D(netFilename, inputShape, weightsShape, inputValues,
+                      weightsValues, outputShape, expectedValues);
+}
+
+// Test 3D Convolution with auto_pad==SAME_UPPER
+TEST_F(OnnxImporterTest, Conv3DSameUpperPad) {
+  const std::vector<dim_t> inputShape = {1, 1, 3, 3, 3};
+  const std::vector<dim_t> weightsShape = {1, 1, 2, 2, 2};
+  std::vector<float> inputValues = {
+      -1.125840, -1.152360, -0.250579, -0.433879, 0.848710,  0.692009,
+      -0.316013, -2.115219, 0.322275,  -1.263335, 0.349983,  0.266049,
+      0.166455,  0.874382,  -0.143474, -0.111609, -0.613583, 0.031593,
+      -0.492677, 0.053737,  0.618057,  -0.412802, -0.841065, -2.316042,
+      -0.102310, 0.792444,  -0.289668};
+  const std::vector<float> weightsValues = {-0.225116, 2.346638, -1.108848,
+                                            1.625353,  1.233336, -0.183186,
+                                            -1.314025, -1.689443};
+  const std::vector<dim_t> outputShape = {1, 1, 3, 3, 3};
+  const std::vector<float> expectedValues = {
+      -3.908342, -0.668594, -0.194267, 0.230114,  6.159684,  -0.731601,
+      -4.917768, 0.469890,  -0.033585, 3.688169,  4.313841,  3.904809,
+      -0.418550, -0.966763, -2.478561, -1.686079, 1.242677,  -0.364370,
+      -0.672282, -1.393513, 2.429005,  -0.479300, -6.595088, 0.842575,
+      1.882611,  -0.858137, 0.065209};
+  const std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/Conv3DSameUpperPad.onnxtxt");
+  importConvolution3D(netFilename, inputShape, weightsShape, inputValues,
+                      weightsValues, outputShape, expectedValues);
+}
+
 /// Helper method to run the Range operator test cases.
 /// \p filename contains the model .onnxtxt.
 /// \p expectedDims: output Tensor dimensions.
