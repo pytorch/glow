@@ -112,6 +112,9 @@ private:
   /// %5: [2 4]
   void printShapeMap();
 
+  /// print graph for debugging purpose
+  void printGraph(const torch::jit::Graph &graph, int64_t level);
+
   /// Put shape/type info of actual graph inputs into \p shapeMap_.
   Error getGraphInputShapeType(const torch::jit::Graph &,
                                const at::ArrayRef<torch::jit::IValue> &);

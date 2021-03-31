@@ -14,6 +14,8 @@
 
 DEFINE_string(shapeInferenceOpBlocklist, "", "Ops to skip shape inference");
 DEFINE_int32(max_feature_length, -1, "max feature length");
+DEFINE_bool(print_shape_inference_graph, false,
+            "print graph for shape inference debugging");
 
 namespace glow {
 
@@ -394,6 +396,9 @@ Error ShapeInferenceEngine::run() {
           (inputs_.size() + 1 == graph_.inputs().size() &&
            graph_.inputs()[0]->type()->is_module()),
       "Number of inputs mismatch between Graph and actual inputs");
+  if (FLAGS_print_shape_inference_graph) {
+    printGraph(graph_, 0);
+  }
   /// Put graph input into shape mapping
   RETURN_IF_ERR(runRecursively(graph_, inputs_));
   /// Extract output from shape mapping
@@ -422,6 +427,29 @@ void ShapeInferenceEngine::printShapeMap() {
       std::cout << "Type doesn't support yet.";
     }
     std::cout << "]" << std::endl;
+  }
+}
+
+void ShapeInferenceEngine::printGraph(const torch::jit::Graph &graph,
+                                      int64_t level) {
+  int index = 0;
+  for (auto *node : graph.nodes()) {
+    if (node->hasAttribute(torch::jit::attr::Subgraph)) {
+      auto subgraph = node->g(torch::jit::attr::Subgraph);
+      LOG(INFO) << "graph level " << level << " node(fusion group) " << index
+                << " " << node->kind().toQualString();
+      printGraph(*subgraph, level + 1);
+    } else {
+      LOG(INFO) << "graph level " << level << " node(leaf) " << index << " "
+                << node->kind().toQualString();
+      for (int i = 0; i < node->inputs().size(); i++) {
+        LOG(INFO) << "  input " << i << ": " << node->output(i)->debugName();
+      }
+      for (int i = 0; i < node->outputs().size(); i++) {
+        LOG(INFO) << "  output " << i << ": " << node->output(i)->debugName();
+      }
+    }
+    index++;
   }
 }
 
