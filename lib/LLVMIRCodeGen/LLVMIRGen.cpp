@@ -611,6 +611,10 @@ llvm::Value *LLVMIRGen::emitConstI32(llvm::IRBuilder<> &builder, int32_t val) {
   return builder.getInt32(val);
 }
 
+llvm::Value *LLVMIRGen::emitConstI16(llvm::IRBuilder<> &builder, int32_t val) {
+  return builder.getInt16(val);
+}
+
 llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
   return builder.getInt8(val);
 }
