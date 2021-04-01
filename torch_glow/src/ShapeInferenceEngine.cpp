@@ -16,6 +16,8 @@ DEFINE_string(shapeInferenceOpBlocklist, "", "Ops to skip shape inference");
 DEFINE_int32(max_feature_length, -1, "max feature length");
 DEFINE_bool(print_shape_inference_graph, false,
             "print graph for shape inference debugging");
+DEFINE_bool(skipReferOperatorsOnCpu, false,
+            "Skip referring shapes running on CPU");
 
 namespace glow {
 
@@ -46,8 +48,9 @@ static std::vector<std::string> splitStr(const std::string &s,
 
 ShapeInferenceEngine::ShapeInferenceEngine(
     const torch::jit::Graph &graph, const at::ArrayRef<at::IValue> &inputs,
-    const std::string &fusionNodeSymbol)
-    : graph_(graph), inputs_(inputs), fusionNodeSymbol_(fusionNodeSymbol) {
+    const std::string &fusionNodeSymbol, const bool &compilationMode)
+    : graph_(graph), inputs_(inputs), fusionNodeSymbol_(fusionNodeSymbol),
+      compilationMode_(compilationMode) {
   if (!FLAGS_shapeInferenceOpBlocklist.empty()) {
     auto ret = splitStr(FLAGS_shapeInferenceOpBlocklist);
     for (const auto &s : ret) {
@@ -61,7 +64,8 @@ void ShapeInferenceEngine::getNodeInputShape(const torch::jit::Node *node,
   for (auto input : node->inputs()) {
     auto it = shapeMap_.find(input);
     CHECK(it != shapeMap_.end())
-        << "Node: " << node->kind() << " input " << input->debugName();
+        << "Node: " << node->kind() << " missing input shape for"
+        << input->debugName();
     inputMetas.emplace_back(shapeMap_[input]);
   }
 }
@@ -354,12 +358,30 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   return Error::success();
 }
 
-Error ShapeInferenceEngine::runRecursively(
+Error ShapeInferenceEngine::runSubGraph(
+    const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs) {
+  RETURN_IF_ERR(getGraphInputShapeType(graph, inputs));
+  for (auto *node : graph.nodes()) {
+    CHECK(!node->hasAttribute(torch::jit::attr::Subgraph));
+    RETURN_IF_ERR(shapeOnNode(node));
+  }
+  return Error::success();
+}
+
+Error ShapeInferenceEngine::runGraph(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> &inputs) {
   // Populate input shapes
   RETURN_IF_ERR(getGraphInputShapeType(graph, inputs));
 
+  int totalFusionNodes = 0;
+  for (auto *node : graph.nodes()) {
+    if (node->kind().toQualString() == fusionNodeSymbol_) {
+      totalFusionNodes += 1;
+    }
+  }
+  int fusionNodeIndex = 0;
   /// Run shape inference for each node
   for (auto *node : graph.nodes()) {
     if (node->hasAttribute(torch::jit::attr::Subgraph)) {
@@ -372,10 +394,10 @@ Error ShapeInferenceEngine::runRecursively(
       std::vector<torch::jit::IValue> subgraphInputs;
       for (auto i : node->inputs()) {
         auto it = shapeMap_.find(i);
-        CHECK(it != shapeMap_.end());
+        CHECK(it != shapeMap_.end()) << "missing input " << i->debugName();
         // Only support tensor input for now
         // TODO Add support for other input types, e.g., tensor list
-        subgraphInputs.push_back(
+        subgraphInputs.emplace_back(
             torch::empty(it->second.shape<TensorShape>(),
                          torch::TensorOptions().dtype(it->second.dtype)));
       }
@@ -383,14 +405,23 @@ Error ShapeInferenceEngine::runRecursively(
       const at::ArrayRef<torch::jit::IValue> inputRefs(subgraphInputs);
 
       auto subgraph = node->g(torch::jit::attr::Subgraph);
-      RETURN_IF_ERR(runRecursively(*subgraph, subgraphInputs));
+      RETURN_IF_ERR(runSubGraph(*subgraph, subgraphInputs));
 
       CHECK_EQ(subgraph->outputs().size(), node->outputs().size());
       for (int i = 0; i < subgraph->outputs().size(); ++i) {
         shapeMap_[node->outputs()[i]] = shapeMap_[subgraph->outputs()[i]];
       }
+      fusionNodeIndex += 1;
     } else {
-      RETURN_IF_ERR(shapeOnNode(node));
+      if (compilationMode_ && fusionNodeIndex == totalFusionNodes &&
+          FLAGS_skipReferOperatorsOnCpu) {
+        LOG(INFO)
+            << "Skip shape inference for node after fusion groups with kind: "
+            << node->kind().toQualString();
+        continue;
+      } else {
+        RETURN_IF_ERR(shapeOnNode(node));
+      }
     }
   }
   return Error::success();
@@ -406,9 +437,11 @@ Error ShapeInferenceEngine::run() {
     printGraph(graph_, 0);
   }
   /// Put graph input into shape mapping
-  RETURN_IF_ERR(runRecursively(graph_, inputs_));
-  /// Extract output from shape mapping
-  RETURN_IF_ERR(generateGraphOutputShape());
+  RETURN_IF_ERR(runGraph(graph_, inputs_));
+  if (!compilationMode_) {
+    /// Extract output from shape mapping
+    RETURN_IF_ERR(generateGraphOutputShape());
+  }
   return Error::success();
 }
 

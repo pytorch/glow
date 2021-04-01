@@ -595,7 +595,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
   // There could be multiple glow fusion nodes created.
   glow::glowCustomFuse(graph, settings);
 
-  ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol);
+  ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
   auto e = shapeInf.run();
   if (e) {
     LOG(ERROR) << ERR_TO_STRING(std::move(e));
