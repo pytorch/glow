@@ -146,6 +146,7 @@ add_library(NNPI
     NNPIUtils_AVX512.cpp
     NNPIAdapterContainer.cpp
     NNPIUtils.cpp
+    SpecializedLookupTables.cpp
 )
 
 target_link_libraries(NNPI

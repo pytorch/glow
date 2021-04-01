@@ -219,6 +219,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
              BatchNormalizationNode::MeanIdx, BatchNormalizationNode::VarIdx});
     break;
   }
+  case Kinded::Kind::VectorNormNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy});
+    break;
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
@@ -652,8 +656,9 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     break;
   case Kinded::Kind::ScatterDataNodeKind:
     isNodePrecisionSupported =
-        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
-                                               {ScatterDataNode::IndicesIdx}) &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {ScatterDataNode::IndicesIdx}) &&
         (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy ||
          NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
     break;
