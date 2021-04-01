@@ -3014,16 +3014,26 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
 
-  glow::NodeValue lhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
-  glow::NodeValue rhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+  if (inputs.size() == 2) {
+    // Binary elementwise max, return a tensor has same type to input
+    glow::NodeValue lhs;
+    ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
+    glow::NodeValue rhs;
+    ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
 
-  glow::MaxNode *glowNode =
-      F_.createNodeWithBroadcast<MaxNode>("max", -1, lhs, rhs);
-  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+    glow::MaxNode *glowNode =
+        F_.createNodeWithBroadcast<MaxNode>("max", -1, lhs, rhs);
+    RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+  } else {
+    // Unary max, return a scalar contains the biggest element in input
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+    glow::UnaryMaxNode *glowNode = F_.createUnaryMax("unary_max", input);
+    RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+  }
 }
 
 Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
@@ -5533,15 +5543,25 @@ Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+  if (inputs.size() == 2) {
+    // Binary elementwise min, return a tensor has same type to input
+    glow::NodeValue lhs;
+    ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
+    glow::NodeValue rhs;
+    ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
 
-  glow::NodeValue lhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
-  glow::NodeValue rhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+    glow::MinNode *glowNode =
+        F_.createNodeWithBroadcast<MinNode>("min", -1, lhs, rhs);
+    RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+  } else {
+    // Unary min, return a scalar contains the biggest element in input
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
-  auto output = F_.createNodeWithBroadcast<MinNode>("min", -1, lhs, rhs);
-  RETURN_ERR(addValueMapping(outputs[0], output));
+    glow::UnaryMinNode *glowNode = F_.createUnaryMin("unary_min", input);
+    RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+  }
 }
 
 Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {

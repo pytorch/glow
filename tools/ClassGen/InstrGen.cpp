@@ -974,6 +974,20 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "NumInputs")
       .addMember(MemberType::Unsigned, "VectorSize")
       .autoVerify(VerifyKind::NoVerify);
+  //===--------------------------------------------------------------------===//
+  //                Unary Comparing Ops
+  //===--------------------------------------------------------------------===//
+  BB.newInstr("UnaryMax")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
+  BB.newInstr("UnaryMin")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities

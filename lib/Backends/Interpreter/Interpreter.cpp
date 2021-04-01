@@ -97,6 +97,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
 
+  case Kinded::Kind::UnaryMaxNodeKind:
+  case Kinded::Kind::UnaryMinNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
+
   case Kinded::Kind::ResizeNearestNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,

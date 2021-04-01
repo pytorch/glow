@@ -1024,6 +1024,21 @@ int main(int argc, char **argv) {
           "Performs the gradient operation for BatchedPairwiseDotProduct");
 
   //===--------------------------------------------------------------------===//
+  //                Unary Comparing Ops
+  //===--------------------------------------------------------------------===//
+  BB.newNode("UnaryMax")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring("Applies unary max to input, generate an output scalar "
+                    "indicate the max element of input");
+
+  BB.newNode("UnaryMin")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring("Applies unary min to input, generate an output scalar "
+                    "indicate the min element of input");
+
+  //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
 

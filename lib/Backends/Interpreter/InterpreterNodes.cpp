@@ -3316,6 +3316,32 @@ void BoundInterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
   }
 }
 
+void BoundInterpreterFunction::fwdUnaryMaxInst(const UnaryMaxInst *I) {
+  auto inputTy = I->getSrc()->getType();
+
+  auto inW = getWeightHandle<int32_t>(I->getSrc());
+  auto outW = getWeightHandle<int32_t>(I->getDest());
+
+  int32_t result = inW.raw(0);
+  for (size_t i = 1; i < inW.size(); i++) {
+    result = std::max(result, inW.raw(i));
+  }
+  outW.raw(0) = result;
+}
+
+void BoundInterpreterFunction::fwdUnaryMinInst(const UnaryMinInst *I) {
+  auto inputTy = I->getSrc()->getType();
+
+  auto inW = getWeightHandle<int32_t>(I->getSrc());
+  auto outW = getWeightHandle<int32_t>(I->getDest());
+
+  int32_t result = inW.raw(0);
+  for (size_t i = 1; i < inW.size(); i++) {
+    result = std::min(result, inW.raw(i));
+  }
+  outW.raw(0) = result;
+}
+
 void BoundInterpreterFunction::fwdElementMaxInstI8Impl(
     const ElementMaxInst *I) {
   assert(getTensor(I->getLHS())->getType().isQuantizedType() &&

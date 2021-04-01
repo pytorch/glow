@@ -119,6 +119,11 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          ElemKind::Int64ITy, ElemKind::Int32ITy});
     break;
 
+  case Kinded::Kind::UnaryMaxNodeKind:
+  case Kinded::Kind::UnaryMinNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
+    break;
   // General math fp32/fp16/i8.
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::ReluNodeKind:

@@ -742,6 +742,11 @@ public:
   // deprecated.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
 
+  /// Create a UnaryMax/Min node with the given \p name and \p input.
+  /// Result is a scalar which indicate the max/min element in \p input.
+  UnaryMaxNode *createUnaryMax(llvm::StringRef name, NodeValue input);
+  UnaryMinNode *createUnaryMin(llvm::StringRef name, NodeValue input);
+
   /// Create a ReLU node with the given \p name, \p input and
   /// output type \p outTy.
   ReluNode *createRelu(llvm::StringRef name, TypeRef outTy, NodeValue input);
