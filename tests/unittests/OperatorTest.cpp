@@ -19689,6 +19689,43 @@ TEST_P(OperatorTest, add_float) {
     }
   }
 }
+static FunctionTensorPair
+createAndInitLayerNormStrongNormShapeTest(glow::PlaceholderBindings &bindings,
+                                          glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 4, 5, 6}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {5, 6});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {5, 6});
+  biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+
+  bindings.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+
+  auto *res = F->createSave("save", LNN);
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {input, res->getPlaceholder()});
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Test LayerNorm with Float16Ty and strong norm_shape(dims > 1 and not
+/// identical)
+TEST_P(OperatorStatelessTest, LayerNorm_Float16_StrongNormShape) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitLayerNormStrongNormShapeTest,
+      ElemKind::FloatTy, ElemKind::Float16Ty, 0.05f, parCloneCountOpt);
+}
 
 static FunctionTensorPair
 createAndInitLayerNormTest(glow::PlaceholderBindings &bindings,
