@@ -1921,6 +1921,67 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::FullyConnectedInstKind: {
+    auto *FCI = cast<FullyConnectedInst>(I);
+    auto *dest = FCI->getDest();
+    auto *src = FCI->getSrc();
+    auto *weights = FCI->getWeights();
+    auto *bias = FCI->getBias();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *biasPtr = emitValueAddress(builder, bias);
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *weightsDims = emitValueDims(builder, weights);
+    auto *biasDims = emitValueDims(builder, bias);
+
+    if (src->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *srcTy = src->getType();
+      auto *weightsTy = weights->getType();
+      auto *biasTy = bias->getType();
+
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+      auto *weightsOffset = emitConstI32(builder, weightsTy->getOffset());
+      auto *biasOffset = emitConstI32(builder, biasTy->getOffset());
+
+      // Calculate the scale of the values that come out of the matrix
+      // multiplication part of the calculation.
+      float matMulScale = srcTy->getScale() * weightsTy->getScale();
+
+      // Calculate the scaling parameters for the bias and output.
+      auto biasScaleParam = quantization::quantizeScaleOffset32To8(
+          biasTy->getScale() / matMulScale, 0);
+      auto outScaleParam = quantization::quantizeScaleOffset32To8(
+          matMulScale / destTy->getScale(), 0);
+
+      // Pass the pre-shift, post-shift and integer scale parameters for the
+      // bias and output calculation.
+      auto *biasPre = emitConstI32(builder, biasScaleParam.pre);
+      auto *biasPost = emitConstI32(builder, biasScaleParam.post);
+      auto *biasScale = emitConstI32(builder, biasScaleParam.scale);
+      auto *outPre = emitConstI32(builder, outScaleParam.pre);
+      auto *outPost = emitConstI32(builder, outScaleParam.post);
+      auto *outScale = emitConstI32(builder, outScaleParam.scale);
+
+      auto *F =
+          getFunction("fc", {dest->getElementType(), bias->getElementType()});
+      createCall(builder, F,
+                 {destPtr, srcPtr, weightsPtr, biasPtr, destDims, srcDims,
+                  weightsDims, biasDims, destOffset, srcOffset, weightsOffset,
+                  biasOffset, biasPre, biasPost, biasScale, outPre, outPost,
+                  outScale});
+    } else {
+      auto *F = getFunction("fc", dest->getElementType());
+      createCall(builder, F,
+                 {destPtr, srcPtr, weightsPtr, biasPtr, destDims, srcDims,
+                  weightsDims, biasDims});
+    }
+    break;
+  }
+
   case Kinded::Kind::RowwiseQuantizedFullyConnectedInstKind: {
     auto *RWQFC = cast<RowwiseQuantizedFullyConnectedInst>(I);
 

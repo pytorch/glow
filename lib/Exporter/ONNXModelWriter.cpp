@@ -2067,6 +2067,15 @@ void writeTensorwiseQuantizedPool(const T *node, const std::string &op,
 
   if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
     addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+    addValueAttribute(proto, "out_scale",
+                      APN->getType(AvgPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      APN->getType(AvgPoolNode::ResultIdx)->getOffset());
+  } else if (auto *MPN = llvm::dyn_cast<MaxPoolNode>(node)) {
+    addValueAttribute(proto, "out_scale",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getOffset());
   }
 
   proto->add_input(node->getInput().getNode()->getName());
@@ -2294,6 +2303,8 @@ DEF_ALL_WRITER_NODE(Reciprocal)
 DEF_ALL_WRITER_NODE(Sin)
 DEF_ALL_WRITER_NODE(Cos)
 DEF_ALL_WRITER_NODE(LSTMUnit)
+DEF_ALL_WRITER_NODE(DynamicQuantizedFullyConnected)
+DEF_ALL_WRITER_NODE(DynamicRowwiseQuantizedFullyConnected)
 DEF_ALL_WRITER_NODE(Erf)
 DEF_ALL_WRITER_NODE(Min)
 DEF_ALL_WRITER_NODE(Max)
@@ -2309,6 +2320,7 @@ DEF_ALL_WRITER_NODE(Tanh)
 DEF_ALL_WRITER_NODE(IsNaN)
 DEF_ALL_WRITER_NODE(Sigmoid)
 DEF_ALL_WRITER_NODE(Swish)
+DEF_ALL_WRITER_NODE(SoftPlus)
 DEF_ALL_WRITER_NODE(LengthsSum)
 DEF_ALL_WRITER_NODE(BatchOneHot)
 DEF_ALL_WRITER_NODE(LengthsToRanges)
@@ -2576,6 +2588,7 @@ DEF_UNSUPPORTED_STORAGE(Storage)
 DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProduct)
 DEF_UNSUPPORTED_NODE(Broadcast)
 DEF_UNSUPPORTED_NODE(SGD)
+DEF_UNSUPPORTED_NODE(SparseLabelSplit)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
 DEF_UNSUPPORTED_NODE(ExternalFunctionCall)

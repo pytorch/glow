@@ -1089,6 +1089,30 @@ GemmNode *Function::createGemm(llvm::StringRef name, TypeRef outTy, NodeValue A,
       new GemmNode(name, OT, A, B, C, alpha, beta, transposeA, transposeB));
 }
 
+DynamicQuantizedFullyConnectedNode *
+Function::createDynamicQuantizedFullyConnected(llvm::StringRef name,
+                                               NodeValue input, NodeValue W,
+                                               NodeValue B, bool isSymmetric,
+                                               bool isPerBatchElement) {
+  TypeRef T = input.getType();
+  TypeRef OT =
+      getParent()->uniqueTypeWithNewShape(T, {input.dims()[0], B.dims()[0]});
+  return addNode(new DynamicQuantizedFullyConnectedNode(
+      name, OT, input, W, B, isSymmetric, isPerBatchElement));
+}
+
+DynamicRowwiseQuantizedFullyConnectedNode *
+Function::createDynamicRowwiseQuantizedFullyConnected(
+    llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
+    NodeValue scales, NodeValue offsets, bool isSymmetric,
+    bool isPerBatchElement) {
+  TypeRef T = input.getType();
+  TypeRef OT =
+      getParent()->uniqueTypeWithNewShape(T, {input.dims()[0], B.dims()[0]});
+  return addNode(new DynamicRowwiseQuantizedFullyConnectedNode(
+      name, OT, input, W, B, scales, offsets, isSymmetric, isPerBatchElement));
+}
+
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
                                                    Storage *B,
@@ -1252,6 +1276,14 @@ TanhNode *Function::createTanh(llvm::StringRef name, TypeRef outTy,
 
 TanhNode *Function::createTanh(llvm::StringRef name, NodeValue input) {
   return createTanh(name, input.getType(), input);
+}
+
+SoftPlusNode *Function::createSoftPlus(llvm::StringRef name, NodeValue input,
+                                       TypeRef outTy) {
+  if (!outTy) {
+    outTy = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new SoftPlusNode(name, outTy, input));
 }
 
 SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
@@ -2545,6 +2577,25 @@ SparseToDenseMaskNode *Function::createSparseToDenseMask(
   auto outTy = getParent()->uniqueTypeWithNewShape(values.getType(), outDims);
   return addNode(new SparseToDenseMaskNode(name, outTy, indices, values,
                                            defaultValue, lengths, mask));
+}
+
+SparseLabelSplitNode *Function::createSparseLabelSplit(llvm::StringRef name,
+                                                       NodeValue lengths,
+                                                       NodeValue indices,
+                                                       NodeValue values,
+                                                       dim_t numLabels) {
+  const auto numItems = indices.dims()[0];
+  // The assumption here is that all output tensors (excluding offsetMap)
+  // will have the same number of elements, i.e. numItems / numLabels.
+  auto labelValuesTy = getParent()->uniqueTypeWithNewShape(
+      values.getType(), {numLabels, numItems / numLabels});
+  auto exampleIdsTy = getParent()->uniqueType(
+      ElemKind::Int32ITy, {numLabels, numItems / numLabels});
+  auto gradientOffsetMapTy =
+      getParent()->uniqueType(ElemKind::Int32ITy, {indices.dims()[0]});
+  return addNode(new SparseLabelSplitNode(name, labelValuesTy, exampleIdsTy,
+                                          gradientOffsetMapTy, lengths, indices,
+                                          values, numLabels));
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {

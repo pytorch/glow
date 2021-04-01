@@ -186,6 +186,10 @@ private:
   void fwdBatchNormalizationI8Impl(const BatchNormalizationInst *I,
                                    int numDims);
 
+  template <typename ElemTy = float>
+  void
+  fwdLayerNormalizationInstFloatImpl(const glow::LayerNormalizationInst *I);
+
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
 
@@ -210,6 +214,17 @@ private:
   void fwdFullyConnectedInstQuantizedImpl(const FullyConnectedInst *I);
   template <typename ElemTy>
   void fwdFullyConnectedInstFloatImpl(const FullyConnectedInst *I);
+
+  template <typename ElemTy, typename OutputTy, typename AccumulatorTy>
+  void fwdDynRowwiseQuantizedFullyConnectedInstImpl(
+      Handle<ElemTy> inW, Handle<OutputTy> &outW, dim_t baseRow,
+      Handle<ElemTy> weightsW, Handle<float> biasW, Handle<float> scalesW,
+      Handle<int32_t> offsetsW);
+
+  void fwdDynRowwiseQuantizedFullyConnectedInstPreimpl(
+      Tensor *inputTensor, Tensor *weightsTensor, Tensor *biasTensor,
+      Tensor *resultTensor, Tensor *wScaleTensor, Tensor *wOffsetTensor,
+      bool isSymmetric, bool isPerBatchElement);
 
   template <typename ElemTy, typename AccumulatorTy,
             typename BiasElemTy = int32_t>
@@ -262,6 +277,9 @@ private:
   template <typename ElemTy> void fwdSigmoidInstFloatImpl(const SigmoidInst *I);
 
   template <typename ElemTy> void fwdTanhInstFloatImpl(const TanhInst *I);
+
+  template <typename ElemTy>
+  void fwdSoftPlusInstFloatImpl(const SoftPlusInst *I);
 
   template <typename ElemTy>
   void fwdCrossEntropyLossInstFloatImpl(const CrossEntropyLossInst *I);

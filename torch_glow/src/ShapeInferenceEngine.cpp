@@ -14,6 +14,10 @@
 
 DEFINE_string(shapeInferenceOpBlocklist, "", "Ops to skip shape inference");
 DEFINE_int32(max_feature_length, -1, "max feature length");
+DEFINE_bool(print_shape_inference_graph, false,
+            "print graph for shape inference debugging");
+DEFINE_bool(skipReferOperatorsOnCpu, false,
+            "Skip referring shapes running on CPU");
 
 namespace glow {
 
@@ -44,8 +48,9 @@ static std::vector<std::string> splitStr(const std::string &s,
 
 ShapeInferenceEngine::ShapeInferenceEngine(
     const torch::jit::Graph &graph, const at::ArrayRef<at::IValue> &inputs,
-    const std::string &fusionNodeSymbol)
-    : graph_(graph), inputs_(inputs), fusionNodeSymbol_(fusionNodeSymbol) {
+    const std::string &fusionNodeSymbol, const bool &compilationMode)
+    : graph_(graph), inputs_(inputs), fusionNodeSymbol_(fusionNodeSymbol),
+      compilationMode_(compilationMode) {
   if (!FLAGS_shapeInferenceOpBlocklist.empty()) {
     auto ret = splitStr(FLAGS_shapeInferenceOpBlocklist);
     for (const auto &s : ret) {
@@ -59,7 +64,8 @@ void ShapeInferenceEngine::getNodeInputShape(const torch::jit::Node *node,
   for (auto input : node->inputs()) {
     auto it = shapeMap_.find(input);
     CHECK(it != shapeMap_.end())
-        << "Node: " << node->kind() << " input " << input->debugName();
+        << "Node: " << node->kind() << " missing input shape for"
+        << input->debugName();
     inputMetas.emplace_back(shapeMap_[input]);
   }
 }
@@ -132,9 +138,18 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
         tensorOutput, quantizedGlowEmbeddingBag4BitRowwiseOffsets(inputMetas));
   } else if (symbol == "fb::xl_embedding_bag") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, xlEmbeddingBag(inputMetas));
+  } else if (symbol == "fb::xl_embedding_bag_byte_rowwise_offsets") {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        tensorOutput, quantizedXLEmbeddingBagByteRowwiseOffsets(inputMetas));
+  } else if (symbol == "fb::xl_embedding_bag_4bit_rowwise_offsets") {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        tensorOutput, quantizedXLEmbeddingBag4BitRowwiseOffsets(inputMetas));
   } else if (symbol == "fb::fast_gather") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fastGather(inputMetas));
   } else if (symbol == "fb::lengths_range") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsRange(inputMetas));
+  } else if (symbol == "fb::lengths_range_w_truncation_size") {
+    // Current shape inference function can handle both cases.
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsRange(inputMetas));
   } else if (symbol == "aten::quantize_per_tensor") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, quantizePerTensor(inputMetas));
@@ -312,11 +327,14 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       shapeMap_[node->output()].intValue = std::move(tensorListOutput.shape[0]);
       shapeMap_[node->output()].dtype = tensorListOutput.dtype;
     }
-  } else if (symbol == "fb::glow_embedding_bag" ||
-             symbol == "fb::xl_embedding_bag") {
+  } else if (symbol == "fb::glow_embedding_bag") {
     shapeMap_[node->output()].listOfShape.emplace_back(
         std::move(tensorOutput.shapeOrIntValues));
     shapeMap_[node->output()].dtype = tensorOutput.dtype;
+  } else if (symbol == "fb::xl_embedding_bag") {
+    shapeMap_[node->output(0)].listOfShape.emplace_back(
+        std::move(tensorOutput.shapeOrIntValues));
+    shapeMap_[node->output(0)].dtype = tensorOutput.dtype;
   } else if (kind == c10::aten::embedding_bag ||
              symbol == "fb::simple_embedding_bag_sum") {
     shapeMap_[node->output(0)].listOfShape.emplace_back(
@@ -340,12 +358,30 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   return Error::success();
 }
 
-Error ShapeInferenceEngine::runRecursively(
+Error ShapeInferenceEngine::runSubGraph(
+    const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs) {
+  RETURN_IF_ERR(getGraphInputShapeType(graph, inputs));
+  for (auto *node : graph.nodes()) {
+    CHECK(!node->hasAttribute(torch::jit::attr::Subgraph));
+    RETURN_IF_ERR(shapeOnNode(node));
+  }
+  return Error::success();
+}
+
+Error ShapeInferenceEngine::runGraph(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> &inputs) {
   // Populate input shapes
   RETURN_IF_ERR(getGraphInputShapeType(graph, inputs));
 
+  int totalFusionNodes = 0;
+  for (auto *node : graph.nodes()) {
+    if (node->kind().toQualString() == fusionNodeSymbol_) {
+      totalFusionNodes += 1;
+    }
+  }
+  int fusionNodeIndex = 0;
   /// Run shape inference for each node
   for (auto *node : graph.nodes()) {
     if (node->hasAttribute(torch::jit::attr::Subgraph)) {
@@ -358,10 +394,10 @@ Error ShapeInferenceEngine::runRecursively(
       std::vector<torch::jit::IValue> subgraphInputs;
       for (auto i : node->inputs()) {
         auto it = shapeMap_.find(i);
-        CHECK(it != shapeMap_.end());
+        CHECK(it != shapeMap_.end()) << "missing input " << i->debugName();
         // Only support tensor input for now
         // TODO Add support for other input types, e.g., tensor list
-        subgraphInputs.push_back(
+        subgraphInputs.emplace_back(
             torch::empty(it->second.shape<TensorShape>(),
                          torch::TensorOptions().dtype(it->second.dtype)));
       }
@@ -369,14 +405,23 @@ Error ShapeInferenceEngine::runRecursively(
       const at::ArrayRef<torch::jit::IValue> inputRefs(subgraphInputs);
 
       auto subgraph = node->g(torch::jit::attr::Subgraph);
-      RETURN_IF_ERR(runRecursively(*subgraph, subgraphInputs));
+      RETURN_IF_ERR(runSubGraph(*subgraph, subgraphInputs));
 
       CHECK_EQ(subgraph->outputs().size(), node->outputs().size());
       for (int i = 0; i < subgraph->outputs().size(); ++i) {
         shapeMap_[node->outputs()[i]] = shapeMap_[subgraph->outputs()[i]];
       }
+      fusionNodeIndex += 1;
     } else {
-      RETURN_IF_ERR(shapeOnNode(node));
+      if (compilationMode_ && fusionNodeIndex == totalFusionNodes &&
+          FLAGS_skipReferOperatorsOnCpu) {
+        LOG(INFO)
+            << "Skip shape inference for node after fusion groups with kind: "
+            << node->kind().toQualString();
+        continue;
+      } else {
+        RETURN_IF_ERR(shapeOnNode(node));
+      }
     }
   }
   return Error::success();
@@ -388,10 +433,15 @@ Error ShapeInferenceEngine::run() {
           (inputs_.size() + 1 == graph_.inputs().size() &&
            graph_.inputs()[0]->type()->is_module()),
       "Number of inputs mismatch between Graph and actual inputs");
+  if (FLAGS_print_shape_inference_graph) {
+    printGraph(graph_, 0);
+  }
   /// Put graph input into shape mapping
-  RETURN_IF_ERR(runRecursively(graph_, inputs_));
-  /// Extract output from shape mapping
-  RETURN_IF_ERR(generateGraphOutputShape());
+  RETURN_IF_ERR(runGraph(graph_, inputs_));
+  if (!compilationMode_) {
+    /// Extract output from shape mapping
+    RETURN_IF_ERR(generateGraphOutputShape());
+  }
   return Error::success();
 }
 
@@ -416,6 +466,29 @@ void ShapeInferenceEngine::printShapeMap() {
       std::cout << "Type doesn't support yet.";
     }
     std::cout << "]" << std::endl;
+  }
+}
+
+void ShapeInferenceEngine::printGraph(const torch::jit::Graph &graph,
+                                      int64_t level) {
+  int index = 0;
+  for (auto *node : graph.nodes()) {
+    if (node->hasAttribute(torch::jit::attr::Subgraph)) {
+      auto subgraph = node->g(torch::jit::attr::Subgraph);
+      LOG(INFO) << "graph level " << level << " node(fusion group) " << index
+                << " " << node->kind().toQualString();
+      printGraph(*subgraph, level + 1);
+    } else {
+      LOG(INFO) << "graph level " << level << " node(leaf) " << index << " "
+                << node->kind().toQualString();
+      for (int i = 0; i < node->inputs().size(); i++) {
+        LOG(INFO) << "  input " << i << ": " << node->output(i)->debugName();
+      }
+      for (int i = 0; i < node->outputs().size(); i++) {
+        LOG(INFO) << "  output " << i << ": " << node->output(i)->debugName();
+      }
+    }
+    index++;
   }
 }
 
@@ -1471,25 +1544,87 @@ ShapeInferenceEngine::xlEmbeddingBag(const MetaStack &variableMetas) {
 
   const auto &indicesShape = variableMetas[1].shape<TensorShape>();
 
-  const auto &offsetSahpe = variableMetas[2].shape<TensorShape>();
+  const auto &offsetShape = variableMetas[2].shape<TensorShape>();
 
-  int64_t embeddingDim = variableMetas[8].intValue[0];
+  int64_t embeddingDim = variableMetas[9].intValue[0];
 
   RETURN_ERR_IF_NOT(
       indicesShape.size() == 1,
       strFormat("Expected 1D input, got %zu.", indicesShape.size()));
 
   RETURN_ERR_IF_NOT(
-      offsetSahpe.size() == 1,
-      strFormat("Expected 1D offset, got %zu.", offsetSahpe.size()));
+      offsetShape.size() == 1,
+      strFormat("Expected 1D offset, got %zu.", offsetShape.size()));
 
-  shape = {offsetSahpe[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+  shape = {offsetShape[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
            embeddingDim};
 
   TensorOutput output;
   output.shapeOrIntValues = shape;
   output.dtype = c10::ScalarType::Float;
   return output;
+}
+
+/**
+ * fb::xl_embedding_bag_byte_rowwise_offsets(string weight_id,
+ *                        Tensor indices,
+ *                        Tensor? offset_in=None,
+ *                        bool? scale_grad_by_freq=False,
+ *                        int mode=0,
+ *                        bool pruned_weights=False,
+ *                        Tensor? per_sample_weights=None,
+ *                        str? compressed_indices_mapping_id=None,
+ *                        bool include_last_offset=False,
+ *                        int num_embeddings=0,
+ *                        int embedding_dim=0)
+ *                        -> Tensor
+ */
+/// In glow, the include_last_offset is always True.
+Expected<TensorOutput>
+ShapeInferenceEngine::quantizedXLEmbeddingBagByteRowwiseOffsets(
+    const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 11,
+      strFormat("Expected 11 inputs, got %zu.", variableMetas.size()));
+
+  TensorShape shape;
+
+  const auto &offsetShape = variableMetas[2].shape<TensorShape>();
+
+  int64_t embeddingDim = variableMetas[10].intValue[0];
+
+  shape = {offsetShape[0] - static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+           embeddingDim};
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = c10::ScalarType::Float;
+  return output;
+}
+
+/**
+ * fb::xl_embedding_bag_4bit_rowwise_offsets(string weight_id,
+ *                        Tensor indices,
+ *                        Tensor? offset_in=None,
+ *                        bool? scale_grad_by_freq=False,
+ *                        int mode=0,
+ *                        bool pruned_weights=False,
+ *                        Tensor? per_sample_weights=None,
+ *                        str? compressed_indices_mapping_id=None,
+ *                        bool include_last_offset=False,
+ *                        int num_embeddings=0,
+ *                        int embedding_dim=0)
+ *                        -> Tensor
+ */
+/// In glow, the include_last_offset is always True.
+/// Remark: We have exactly the same input format and shape inference function
+/// between xl_embedding_bag_4bit_rowwise_offsets and
+/// xl_embedding_bag_byte_rowwise_offsets. Reuse the code here.
+Expected<TensorOutput>
+ShapeInferenceEngine::quantizedXLEmbeddingBag4BitRowwiseOffsets(
+    const MetaStack &variableMetas) {
+  return quantizedXLEmbeddingBagByteRowwiseOffsets(variableMetas);
 }
 
 /**
@@ -1779,7 +1914,7 @@ ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
 }
 
 /*
- * fb::lengths_range(Tensor input, int[]? shape) -> Int,
+ * fb::lengths_range(Tensor input, int[]? shape, int? truncation_size) -> Int,
  * e.g. max_feature_length = 200
  * input: [2, 3]
  * original output: [0, 1, 0, 1, 2]
@@ -1787,17 +1922,23 @@ ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
  */
 Expected<TensorOutput>
 ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
-
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 2,
-      strFormat("Expected 2 inputs, got %zu.", variableMetas.size()));
-  RETURN_ERR_IF_NOT(FLAGS_max_feature_length > 0,
-                    strFormat("Expected max_feature_length > 0, got %d.",
-                              FLAGS_max_feature_length));
+      variableMetas.size() >= 2,
+      strFormat("Expected 2 or more inputs, got %zu.", variableMetas.size()));
 
+  int max_feature_length;
+  if (variableMetas.size() > 2 && variableMetas[2].intValue.size() == 1) {
+    max_feature_length = variableMetas[2].intValue[0];
+  } else {
+    max_feature_length = FLAGS_max_feature_length;
+  }
+
+  RETURN_ERR_IF_NOT(max_feature_length > 0,
+                    strFormat("Expected max_feature_length > 0, got %d.",
+                              max_feature_length));
   TensorOutput output;
   output.shapeOrIntValues = {variableMetas[0].shape<TensorShape>()[0] *
-                             FLAGS_max_feature_length};
+                             max_feature_length};
   output.dtype = variableMetas[0].dtype;
   return output;
 }

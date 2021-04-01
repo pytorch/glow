@@ -83,10 +83,27 @@ bool glow::checkType(NodeValue A, ElemKind expectedType, const Node *parent) {
                            expectedType, parent);
 }
 
+bool glow::checkType(llvm::StringRef msg, NodeValue A, ElemKind expectedType,
+                     const Node *parent) {
+  std::string errorMsg{msg};
+  errorMsg += ", Mismatching element type";
+  return expectCompareTrue(errorMsg.c_str(), A.getElementType(), expectedType,
+                           parent);
+}
+
 bool glow::checkType(NodeValue A, llvm::ArrayRef<ElemKind> expectedTypes,
                      const Node *parent) {
   return expectCompareTrue("Mismatching element type", A.getElementType(),
                            expectedTypes, parent);
+}
+
+bool glow::checkType(llvm::StringRef msg, NodeValue A,
+                     llvm::ArrayRef<ElemKind> expectedTypes,
+                     const Node *parent) {
+  std::string errorMsg{msg};
+  errorMsg += ", Mismatching element type";
+  return expectCompareTrue(errorMsg.c_str(), A.getElementType(), expectedTypes,
+                           parent);
 }
 
 bool glow::checkSameIsQuantized(const TypeRef A, const TypeRef B,

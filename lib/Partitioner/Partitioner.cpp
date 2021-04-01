@@ -1068,47 +1068,44 @@ static void expandFrontier(Node *node, const NodeValue &value,
 /// Helper function for SparseNN Partitioning scheme. Checks for each
 /// kind of SLS table and appends their metadata to the vector.
 template <typename SLSType>
-static Error appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables,
+static Error appendSLSTable(SLSType *SLS, std::vector<SLSTableInfo> &slsTables,
                             bool doPerfModelBalance, Backend *backend,
                             bool addLN) {
-  auto *SLS = llvm::dyn_cast<SLSType>(&node);
-  if (SLS) {
-    uint64_t cost = 1;
-    uint64_t numBytesInTable =
-        (uint64_t)SLS->getData().getType()->getSizeInBytes();
+  uint64_t cost = 1;
+  uint64_t numBytesInTable =
+      (uint64_t)SLS->getData().getType()->getSizeInBytes();
 
-    // If average length is available, then compute cost using perf model
-    if (doPerfModelBalance) {
-      double cost_d;
-      ASSIGN_VALUE_OR_RETURN_ERR(cost_d, backend->estimateNodeCost(SLS));
-      cost = (uint64_t)cost_d;
+  // If average length is available, then compute cost using perf model
+  if (doPerfModelBalance) {
+    double cost_d;
+    ASSIGN_VALUE_OR_RETURN_ERR(cost_d, backend->estimateNodeCost(SLS));
+    cost = (uint64_t)cost_d;
+  }
+  auto slsResult = SLS->getResult();
+
+  std::unordered_set<NodeValue> frontier;
+  std::unordered_set<Node *> neighbors;
+  expandFrontier(SLS, slsResult, frontier, neighbors, addLN);
+
+  // neighbors contains only successors; add all predecessors too.
+  std::queue<Node *> preds;
+  for (auto *N : neighbors) {
+    preds.push(N);
+  }
+  preds.push(SLS);
+  while (!preds.empty()) {
+    auto *cur = preds.front();
+    if (cur != SLS) {
+      neighbors.insert(cur);
     }
-    auto slsResult = SLS->getResult();
-
-    std::unordered_set<NodeValue> frontier;
-    std::unordered_set<Node *> neighbors;
-    expandFrontier(SLS, slsResult, frontier, neighbors, addLN);
-
-    // neighbors contains only successors; add all predecessors too.
-    std::queue<Node *> preds;
-    for (auto *N : neighbors) {
+    preds.pop();
+    for (auto *N : getInputs(cur)) {
       preds.push(N);
     }
-    preds.push(SLS);
-    while (!preds.empty()) {
-      auto *cur = preds.front();
-      if (cur != SLS) {
-        neighbors.insert(cur);
-      }
-      preds.pop();
-      for (auto *N : getInputs(cur)) {
-        preds.push(N);
-      }
-    }
-
-    slsTables.push_back(
-        {SLS, neighbors, frontier, numBytesInTable, 0, slsResult, cost});
   }
+
+  slsTables.push_back(
+      {SLS, neighbors, frontier, numBytesInTable, 0, slsResult, cost});
   return Error::success();
 }
 
@@ -1278,25 +1275,35 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   partitionConfig.funcName = std::string(F->getName());
   VLOG(1) << "Function: " << std::string(F->getName()) << std::endl;
   const bool addLN = cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS;
+  const bool doPerfModelBalance =
+      cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel;
+  size_t totalSLSTableSizes = 0;
   for (auto &node : F->getNodes()) {
-    bool doPerfModelBalance =
-        cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel;
-    RETURN_IF_ERR(
-        appendSLSTable<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
-            node, slsTables, doPerfModelBalance, backends[0], addLN));
-    RETURN_IF_ERR(appendSLSTable<FusedRowwiseQuantizedSparseLengthsSumNode>(
-        node, slsTables, doPerfModelBalance, backends[0], addLN));
-    RETURN_IF_ERR(appendSLSTable<RowwiseQuantizedSparseLengthsWeightedSumNode>(
-        node, slsTables, doPerfModelBalance, backends[0], addLN));
-    RETURN_IF_ERR(appendSLSTable<SparseLengthsSumNode>(
-        node, slsTables, doPerfModelBalance, backends[0], addLN));
-    RETURN_IF_ERR(appendSLSTable<SparseLengthsWeightedSumNode>(
-        node, slsTables, doPerfModelBalance, backends[0], addLN));
-    RETURN_IF_ERR(appendSLSTable<EmbeddingBagNode>(
-        node, slsTables, doPerfModelBalance, backends[0], addLN));
-    RETURN_IF_ERR(appendSLSTable<EmbeddingBagByteRowwiseOffsetsNode>(
-        node, slsTables, doPerfModelBalance, backends[0], addLN));
+    switch (node.getKind()) {
+
+#define APPEND_TABLE_CASE(NODE_NAME_)                                          \
+  case Kinded::Kind::NODE_NAME_##Kind:                                         \
+    RETURN_IF_ERR(appendSLSTable<NODE_NAME_>(llvm::cast<NODE_NAME_>(&node),    \
+                                             slsTables, doPerfModelBalance,    \
+                                             backends[0], addLN));             \
+    totalSLSTableSizes += slsTables.back().numBytesInTable;                    \
+    continue;
+
+      APPEND_TABLE_CASE(FusedRowwiseQuantizedSparseLengthsWeightedSumNode);
+      APPEND_TABLE_CASE(FusedRowwiseQuantizedSparseLengthsSumNode);
+      APPEND_TABLE_CASE(RowwiseQuantizedSparseLengthsWeightedSumNode);
+      APPEND_TABLE_CASE(SparseLengthsSumNode);
+      APPEND_TABLE_CASE(SparseLengthsWeightedSumNode);
+      APPEND_TABLE_CASE(EmbeddingBagNode);
+      APPEND_TABLE_CASE(EmbeddingBagByteRowwiseOffsetsNode);
+#undef APPEND_TABLE_CASE
+
+    default:
+      continue;
+    }
   }
+  LOG(INFO) << "Total size of all " << slsTables.size()
+            << " SLS embedding tables: " << totalSLSTableSizes;
 
   // Now determine all nodes that fit in the NonSLS partition, so we know its
   // total size and can better judge how much space is left for SLS partitions.

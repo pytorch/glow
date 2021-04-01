@@ -232,6 +232,28 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "ElemKind::Int8QTy"});
 
+  BB.newInstr("DynamicQuantizedFullyConnected")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember(MemberType::Boolean, "IsSymmetric")
+      .addMember(MemberType::Boolean, "IsPerBatchElement")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
+  BB.newInstr("DynamicRowwiseQuantizedFullyConnected")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addOperand("Scales", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::Boolean, "IsSymmetric")
+      .addMember(MemberType::Boolean, "IsPerBatchElement")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//
@@ -247,6 +269,29 @@ int main(int argc, char **argv) {
       .setType("Src->getType()")
       .autoVerify(VerifyKind::SameType, {"Dest", "Src", "Scale"})
       .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src"});
+
+  //===--------------------------------------------------------------------===//
+  //                     Bucketing
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Bucketize")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorFloat, "Boundaries")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int32ITy"});
+
+  BB.newInstr("LayerNormalization")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Scale", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember(MemberType::Float, "Epsilon")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .setType("Dest->getType()");
 
   //===--------------------------------------------------------------------===//
   //                      Loss functions
@@ -993,6 +1038,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("SoftPlus")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //                Shape transformations
   //===--------------------------------------------------------------------===//
@@ -1089,6 +1145,17 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorFloat, "Scale")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
+  BB.newInstr("SparseLabelSplit")
+      .addOperand("LabelValues", OperandKind::Out)
+      .addOperand("ExampleIds", OperandKind::Out)
+      .addOperand("GradientOffsetMap", OperandKind::Out)
+      .addOperand("Lengths", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .addMember(MemberType::Unsigned, "NumLabels")
+      .autoVerify(VerifyKind::SameElementType, {"Values", "LabelValues"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

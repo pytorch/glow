@@ -704,6 +704,10 @@ private:
   /// \return error on failure.
   Error loadQuantizedLinearUnpacked(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::linear_dynamic node.
+  /// \return error on failure.
+  Error loadDynQuantizedLinear(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantized::linear node.
   /// \return error on failure.
   Error loadQuantizedLinear(const torch::jit::Node *ptNode);

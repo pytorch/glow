@@ -73,8 +73,12 @@ void initializeCompiliationContextFromSettings(
     cctx.saturateHost = settings.saturateHost;
   }
 
-  if (glow::flags::UseDAGOptimizer) {
+  if (settings.use_dag_optimizer) {
     cctx.callDAGOptimizer = true;
+    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+        settings.apl_parallelization_alg;
+    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+        settings.apl_num_parallel_chunks;
   }
 
   if (!settings.backendSpecificOpts.empty()) {
@@ -656,7 +660,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TraceContext *traceContext = ctx->getTraceContext();
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::runImpl");
   {
-    RECORD_USER_SCOPE("torch_glow::runImpl_" + info.functionName);
+    int64_t runImplTime = TraceEvent::now();
+    RECORD_USER_SCOPE(strFormat("torch_glow::runImpl_%s TS:%li",
+                                info.functionName.c_str(), runImplTime));
 
     auto *bindings = ctx->getPlaceholderBindings();
 

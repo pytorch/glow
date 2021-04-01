@@ -514,10 +514,15 @@ int Executor::executeNetwork() {
         }
 
         // Obtain input/output placeholders from input/output map.
-        for_each(iPHM.begin(), iPHM.end(), [&](auto &p) {
-          CHECK(p.second) << "Placeholder in input map is NULL.";
-          inPHs.push_back(p.second);
-        });
+        // For inputs, we got map but need to convert to array - need to
+        // take from map in order specified by modelInputsOpt.
+        for (size_t i = 0, e = modelInputsOpt.size(); i < e; i++) {
+          auto it = iPHM.find(modelInputsOpt[i]);
+          CHECK(it != iPHM.end())
+              << "Couldn't find placeholder: " << modelInputsOpt[i];
+          CHECK((*it).second) << "Placeholder in input map is NULL.";
+          inPHs.push_back((*it).second);
+        };
         for_each(oPHM.begin(), oPHM.end(), [&](auto &p) {
           CHECK(p.second) << "Placeholder in output map is NULL.";
           outPHs.push_back(p.second);
