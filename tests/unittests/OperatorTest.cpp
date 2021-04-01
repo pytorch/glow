@@ -7659,6 +7659,56 @@ TEST_P(OperatorTest, EntropyLossTest) {
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
 }
 
+/// Check int32 unary max operator
+TEST_P(OperatorTest, Int32UnaryMaxBasic) {
+  CHECK_IF_ENABLED();
+  PseudoRNG PRNG;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {1, 2, 3, 4}, "input", false);
+  bindings_.allocate(input)->getHandle<int32_t>().randomize(-100, 100, PRNG);
+  auto *Max = F_->createUnaryMax("unary_max", input);
+  auto *S = F_->createSave("save", Max);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int32_t>();
+  auto handleInput = bindings_.get(input)->getHandle<int32_t>();
+  ASSERT_EQ(result.size(), 1);
+  int32_t maxInput = handleInput.raw(0);
+  for (int i = 0; i < 24; i++) {
+    maxInput = std::max(maxInput, handleInput.raw(i));
+  }
+  EXPECT_EQ(result.raw(0), maxInput);
+}
+
+/// Check int32 unary min operator
+TEST_P(OperatorTest, Int32UnaryMinBasic) {
+  CHECK_IF_ENABLED();
+  PseudoRNG PRNG;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {1, 2, 3, 4}, "input", false);
+  bindings_.allocate(input)->getHandle<int32_t>().randomize(-100, 100, PRNG);
+  auto *Min = F_->createUnaryMin("unary_min", input);
+  auto *S = F_->createSave("save", Min);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int32_t>();
+  auto handleInput = bindings_.get(input)->getHandle<int32_t>();
+  ASSERT_EQ(result.size(), 1);
+  int32_t minInput = handleInput.raw(0);
+  for (int i = 0; i < 24; i++) {
+    minInput = std::min(minInput, handleInput.raw(i));
+  }
+  EXPECT_EQ(result.raw(0), minInput);
+}
+
 /// Check that the max operator works properly with FP16.
 TEST_P(OperatorTest, FP16Max) {
   CHECK_IF_ENABLED();

@@ -2145,6 +2145,32 @@ bool GatherRangesNode::verify() const {
   return isValid;
 }
 
+bool UnaryMaxNode::verify() const {
+  const auto &outputDims = getResult().dims();
+  bool isValid = expectCompareTrue("Output of UnaryMax should be a scalar",
+                                   outputDims.size(), size_t(1), this);
+  isValid &=
+      expectCompareTrue("Output of UnaryMax should have only one element",
+                        outputDims[0], size_t(1), this);
+  isValid &=
+      expectCompareTrue("Type mismatch", getInput().getType()->getElementType(),
+                        getResult().getType()->getElementType(), this);
+  return isValid;
+}
+
+bool UnaryMinNode::verify() const {
+  const auto &outputDims = getResult().dims();
+  bool isValid = expectCompareTrue("Output of UnaryMax should be a scalar",
+                                   outputDims.size(), size_t(1), this);
+  isValid &=
+      expectCompareTrue("Output of UnaryMax should have only one element",
+                        outputDims[0], size_t(1), this);
+  isValid &=
+      expectCompareTrue("Type mismatch", getInput().getType()->getElementType(),
+                        getResult().getType()->getElementType(), this);
+  return isValid;
+}
+
 bool ScatterDataNode::verify() const {
   const auto &slicesDims = getSlices().dims();
   const auto &dataDims = getData().dims();
