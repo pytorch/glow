@@ -1,0 +1,9 @@
+name: "log1p"
+op {
+  input: "input"
+  output: "output"
+  name: ""
+  type: "Log1p"
+}
+external_input: "input"
+external_output: "output"
