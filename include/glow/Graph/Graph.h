@@ -1546,10 +1546,9 @@ public:
   /// 256 entries for int8. Position 0 in the \p initValues
   /// corresponds to the -128 input number, position 255 to 127.
   template <typename Ty = int8_t>
-  IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
-                                           NodeValue input,
-                                           llvm::ArrayRef<Ty> initValues,
-                                           TypeRef outTy);
+  IntLookupTableNode *
+  createIntLookupTable(llvm::StringRef name, NodeValue input,
+                       llvm::ArrayRef<Ty> initValues, TypeRef outTy);
 
   /// Create quantized tanh.
   IntLookupTableNode *createIntTanh(llvm::StringRef name, NodeValue input,

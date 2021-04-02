@@ -2635,20 +2635,19 @@ Function::createQuantizationProfile(PlaceholderBindings &bindings,
 template <typename Ty>
 IntLookupTableNode *
 Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
-                               llvm::ArrayRef<Ty> initValues,
-                               TypeRef outTy) {
+                               llvm::ArrayRef<Ty> initValues, TypeRef outTy) {
   if (std::is_same<Ty, int8_t>::value) {
     // Create int8 lookup table.
     auto *mapping = getParent()->createConstant(
-      ElemKind::Int8QTy, {(dim_t)initValues.size()}, outTy->getScale(),
-      outTy->getOffset(), "mapping");
+        ElemKind::Int8QTy, {(dim_t)initValues.size()}, outTy->getScale(),
+        outTy->getOffset(), "mapping");
     mapping->getHandle<Ty>() = initValues;
     return addNode(new IntLookupTableNode(name, outTy, input, mapping));
   } else if (std::is_same<Ty, int16_t>::value) {
     // Create int16 lookup table.
     auto *mapping = getParent()->createConstant(
-      ElemKind::Int16QTy, {(dim_t)initValues.size()}, outTy->getScale(),
-      outTy->getOffset(), "mapping");
+        ElemKind::Int16QTy, {(dim_t)initValues.size()}, outTy->getScale(),
+        outTy->getOffset(), "mapping");
     mapping->getHandle<Ty>() = initValues;
     return addNode(new IntLookupTableNode(name, outTy, input, mapping));
   }
@@ -2685,8 +2684,9 @@ IntLookupTableNode *Function::createIntTanh(llvm::StringRef name,
     static int16_t mapping[65536];
     int j = 0;
     for (int i = SHRT_MIN; i <= SHRT_MAX; i++) {
-        mapping[j] = (int16_t)((float)SHRT_MIN * tanh(3*(float)i/(float)SHRT_MIN));
-        j++;
+      mapping[j] =
+          (int16_t)((float)SHRT_MIN * tanh(3 * (float)i / (float)SHRT_MIN));
+      j++;
     }
     return createIntLookupTable<int16_t>(name, input, mapping, outTy);
   }
@@ -2720,12 +2720,15 @@ IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
         126,  126,  126,  127};
     return createIntLookupTable<int8_t>(name, input, mapping, outTy);
   } else {
-    auto sigmoid = [](float x) { return (0.5* 1./(1. + exp(-x) ) - 0.25)*4.; };
+    auto sigmoid = [](float x) {
+      return (0.5 * 1. / (1. + exp(-x)) - 0.25) * 4.;
+    };
     static int16_t mapping[65536];
     int j = 0;
-    for (int i= SHRT_MIN; i <= SHRT_MAX; i++) {
-        mapping[j] = (int16_t)((float)SHRT_MIN * sigmoid(6.*(float)i/(float)SHRT_MIN));
-        j++;
+    for (int i = SHRT_MIN; i <= SHRT_MAX; i++) {
+      mapping[j] =
+          (int16_t)((float)SHRT_MIN * sigmoid(6. * (float)i / (float)SHRT_MIN));
+      j++;
     }
     return createIntLookupTable<int16_t>(name, input, mapping, outTy);
   }

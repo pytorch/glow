@@ -4106,7 +4106,8 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
     auto outTy = mod_.uniqueType(in.getElementType(), shape);
-    Node *N = G_->createIntLookupTable<int8_t>(loadOperatorName(op), in, values, outTy);
+    Node *N = G_->createIntLookupTable<int8_t>(loadOperatorName(op), in, values,
+                                               outTy);
 
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();
@@ -4117,7 +4118,8 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
     auto outTy = mod_.uniqueType(in.getElementType(), shape);
-    Node *N = G_->createIntLookupTable<int16_t>(loadOperatorName(op), in, values, outTy);
+    Node *N = G_->createIntLookupTable<int16_t>(loadOperatorName(op), in,
+                                                values, outTy);
 
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();

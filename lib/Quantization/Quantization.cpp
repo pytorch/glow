@@ -51,28 +51,27 @@ static Node *replaceQuantizedLogWithLookupTable(Function &F,
     return (a == 0.0) ? log(std::numeric_limits<float>::min()) : log(a);
   };
   if (outTy->getElementType() == ElemKind::Int8QTy) {
-      std::vector<int8_t> mapping =
-          glow::quantization::createMapping<int8_t>(inTy, outTy, logFun);
+    std::vector<int8_t> mapping =
+        glow::quantization::createMapping<int8_t>(inTy, outTy, logFun);
 
-      // Create a new int lookup table with this newly calculated mapping to
-      // implement this quantized log.
-      IntLookupTableNode *ILT = F.createIntLookupTable<int8_t>(
-          LN.getName().str() + ".log", LN.getInput(), mapping, outTy);
-      LN.getResult().replaceAllUsesOfWith(ILT);
-      return ILT;
+    // Create a new int lookup table with this newly calculated mapping to
+    // implement this quantized log.
+    IntLookupTableNode *ILT = F.createIntLookupTable<int8_t>(
+        LN.getName().str() + ".log", LN.getInput(), mapping, outTy);
+    LN.getResult().replaceAllUsesOfWith(ILT);
+    return ILT;
   } else if (outTy->getElementType() == ElemKind::Int16QTy) {
-      std::vector<int16_t> mapping =
-          glow::quantization::createMapping<int16_t>(inTy, outTy, logFun);
+    std::vector<int16_t> mapping =
+        glow::quantization::createMapping<int16_t>(inTy, outTy, logFun);
 
-      // Create a new int lookup table with this newly calculated mapping to
-      // implement this quantized log.
-      IntLookupTableNode *ILT = F.createIntLookupTable<int16_t>(
-          LN.getName().str() + ".log", LN.getInput(), mapping, outTy);
-      LN.getResult().replaceAllUsesOfWith(ILT);
-      return ILT;
-  }
-  else {
-      assert(1==0 && "unsupported type");
+    // Create a new int lookup table with this newly calculated mapping to
+    // implement this quantized log.
+    IntLookupTableNode *ILT = F.createIntLookupTable<int16_t>(
+        LN.getName().str() + ".log", LN.getInput(), mapping, outTy);
+    LN.getResult().replaceAllUsesOfWith(ILT);
+    return ILT;
+  } else {
+    llvm_unreachable("Unsupported type for Quantized Log Lookup Table.");
   }
 }
 
@@ -91,38 +90,35 @@ static Node *replaceQuantizedTanhWithLookupTable(Function &F,
   // point range of [-1.0, 1.0].
   if (outTy->getElementType() == ElemKind::Int8QTy ||
       outTy->getElementType() == ElemKind::Int16QTy) {
-      auto inputQuantizationParams =
-          glow::quantization::chooseQuantizationParams({-3.0, 3.0},
-                                                       Asymmetric,
-                                                       outTy->getElementType());
-      auto tanhInTy = F.getParent()->uniqueType(
-          outTy->getElementType(), TN.getResult().dims(), inputQuantizationParams.scale,
-          inputQuantizationParams.offset);
+    auto inputQuantizationParams = glow::quantization::chooseQuantizationParams(
+        {-3.0, 3.0}, Asymmetric, outTy->getElementType());
+    auto tanhInTy = F.getParent()->uniqueType(
+        outTy->getElementType(), TN.getResult().dims(),
+        inputQuantizationParams.scale, inputQuantizationParams.offset);
 
-      // Make sure input is clipped in [-3.0, 3.0] floating point range.
-      auto *rescaleInputNode =
-          F.createRescaleQuantized(TN.getName(), TN.getInput(), tanhInTy);
+    // Make sure input is clipped in [-3.0, 3.0] floating point range.
+    auto *rescaleInputNode =
+        F.createRescaleQuantized(TN.getName(), TN.getInput(), tanhInTy);
 
-      // Make sure output is clipped in [-1.0, 1.0] floating point range.
-      auto outputQuantizationParams =
-          glow::quantization::chooseQuantizationParams({-1.0, 1.0},
-                                                       Asymmetric, 
-                                                       outTy->getElementType());
-      auto resultOutTy = F.getParent()->uniqueType(
-          outTy->getElementType(), rescaleInputNode->getResult().dims(),
-          outputQuantizationParams.scale, outputQuantizationParams.offset);
+    // Make sure output is clipped in [-1.0, 1.0] floating point range.
+    auto outputQuantizationParams =
+        glow::quantization::chooseQuantizationParams({-1.0, 1.0}, Asymmetric,
+                                                     outTy->getElementType());
+    auto resultOutTy = F.getParent()->uniqueType(
+        outTy->getElementType(), rescaleInputNode->getResult().dims(),
+        outputQuantizationParams.scale, outputQuantizationParams.offset);
 
-      // Note: The actual lookup table is created inside this call.
-      auto *quantizedNode =
-          F.createIntTanh(TN.getName(), rescaleInputNode, resultOutTy);
+    // Note: The actual lookup table is created inside this call.
+    auto *quantizedNode =
+        F.createIntTanh(TN.getName(), rescaleInputNode, resultOutTy);
 
-      auto *rescaleOutputNode = F.createRescaleQuantized(
-          TN.getName(), quantizedNode, TN.getResult().getType());
+    auto *rescaleOutputNode = F.createRescaleQuantized(
+        TN.getName(), quantizedNode, TN.getResult().getType());
 
-      TN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
-      return rescaleOutputNode;
+    TN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+    return rescaleOutputNode;
   } else {
-    assert(1==0 && "unsupported type");
+    llvm_unreachable("Unsupported type for Quantized Tanh Lookup Table.");
   }
 }
 
@@ -940,39 +936,36 @@ NodeValue replaceQuantizedSigmoidWithLookupTable(Function &F,
   TypeRef outTy = SN.getResult().getType();
   if (outTy->getElementType() == ElemKind::Int8QTy ||
       outTy->getElementType() == ElemKind::Int16QTy) {
-      auto inputQuantizationParams =
-        glow::quantization::chooseQuantizationParams({-6.0, 6.0},
-                                                     Asymmetric,
+    auto inputQuantizationParams = glow::quantization::chooseQuantizationParams(
+        {-6.0, 6.0}, Asymmetric, outTy->getElementType());
+    auto sigmoidInTy = F.getParent()->uniqueType(
+        outTy->getElementType(), SN.getResult().dims(),
+        inputQuantizationParams.scale, inputQuantizationParams.offset);
+
+    // Make sure input is clipped in [-6.0, 6.0] floating point range.
+    auto *rescaleInputNode =
+        F.createRescaleQuantized(SN.getName(), SN.getInput(), sigmoidInTy);
+
+    // Make sure output is clipped in [0.0, 1.0] floating point range.
+    auto outputQuantizationParams =
+        glow::quantization::chooseQuantizationParams({0.0, 1.0}, Asymmetric,
                                                      outTy->getElementType());
-      auto sigmoidInTy = F.getParent()->uniqueType(
-          outTy->getElementType(), SN.getResult().dims(),
-          inputQuantizationParams.scale, inputQuantizationParams.offset);
+    auto resultOutTy = F.getParent()->uniqueType(
+        outTy->getElementType(), rescaleInputNode->getResult().dims(),
+        outputQuantizationParams.scale, outputQuantizationParams.offset);
 
-      // Make sure input is clipped in [-6.0, 6.0] floating point range.
-      auto *rescaleInputNode =
-          F.createRescaleQuantized(SN.getName(), SN.getInput(), sigmoidInTy);
+    // Note: The actual lookup table is created inside this call.
+    auto *quantizedNode =
+        F.createIntSigmoid(SN.getName(), rescaleInputNode, resultOutTy);
 
-      // Make sure output is clipped in [0.0, 1.0] floating point range.
-      auto outputQuantizationParams =
-          glow::quantization::chooseQuantizationParams({0.0, 1.0},
-                                                     Asymmetric,
-                                                     outTy->getElementType());
-      auto resultOutTy = F.getParent()->uniqueType(
-          outTy->getElementType(), rescaleInputNode->getResult().dims(),
-          outputQuantizationParams.scale, outputQuantizationParams.offset);
+    auto *rescaleOutputNode = F.createRescaleQuantized(
+        SN.getName(), quantizedNode, SN.getResult().getType());
 
-      // Note: The actual lookup table is created inside this call.
-      auto *quantizedNode =
-          F.createIntSigmoid(SN.getName(), rescaleInputNode, resultOutTy);
+    SN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
 
-      auto *rescaleOutputNode = F.createRescaleQuantized(
-          SN.getName(), quantizedNode, SN.getResult().getType());
-
-      SN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
-
-      return rescaleOutputNode->getResult();
+    return rescaleOutputNode->getResult();
   } else {
-      assert(1==0 && "unsupported type");
+    llvm_unreachable("Unsupported type for Quantized Sigmoid Lookup Table.");
   }
 }
 
