@@ -18,7 +18,8 @@
 
 using namespace glow;
 
-INSTANTIATE_BACKEND_TEST(NumericsTest);
+// Placeholder until tests are added
+/* INSTANTIATE_BACKEND_TEST(NumericsTest); */
 
 // NOTE: Specify generic numerics tests below that should be supported by all
 // backends (and blacklisted explicitly if not supported).
