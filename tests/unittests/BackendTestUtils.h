@@ -382,10 +382,12 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      llvm::StringRef kind);
 
 void inferIntLookupTableNetInt8(Tensor *input, Tensor *out,
-                                llvm::ArrayRef<int8_t> table, llvm::StringRef kind);
+                                llvm::ArrayRef<int8_t> table,
+                                llvm::StringRef kind);
 
 void inferIntLookupTableNetInt16(Tensor *input, Tensor *out,
-                                 llvm::ArrayRef<int16_t> table, llvm::StringRef kind);
+                                 llvm::ArrayRef<int16_t> table,
+                                 llvm::StringRef kind);
 
 void inferGroupConv(Tensor *out, llvm::StringRef kind);
 

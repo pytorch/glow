@@ -65,14 +65,12 @@ void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
 /// Support quantized Log \p LN inside \p F by replacing it with an
 /// IntLookupTable. \returns final node in the chain implementing the quantized
 /// Log via the IntLookupTable.
-Node *replaceQuantizedLogWithLookupTable(Function &F,
-                                         const LogNode &LN);
+Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN);
 
 /// Support quantized Tanh \p TN inside \p F by replacing it with an
 /// IntLookupTable. \returns final node in the chain implementing the quantized
 /// Tanh via the IntLookupTable.
-Node *replaceQuantizedTanhWithLookupTable(Function &F,
-                                          const TanhNode &TN);
+Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN);
 
 /// Support quantized Sigmoid \p SN inside \p F by replacing it with an
 /// IntLookupTable. \returns final node in the chain implementing the quantized

@@ -833,8 +833,7 @@ public:
 namespace glow {
 namespace quantization {
 
-Node *replaceQuantizedLogWithLookupTable(Function &F,
-                                         const LogNode &LN) {
+Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN) {
   TypeRef outTy = LN.getResult().getType();
   TypeRef inTy = LN.getInput().getType();
 
@@ -875,8 +874,7 @@ Node *replaceQuantizedLogWithLookupTable(Function &F,
   }
 }
 
-Node *replaceQuantizedTanhWithLookupTable(Function &F,
-                                          const TanhNode &TN) {
+Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN) {
   // Quantized tanh operator expects input to be in a certain floating point
   // range. This operator works based on the precomputed table and has to
   // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
