@@ -64,7 +64,7 @@ void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
 
 /// Support quantized Log \p LN inside \p F by replacing it with an
 /// IntLookupTable. \returns final node in the chain implementing the quantized
-/// Tanh via the IntLookupTable.
+/// Log via the IntLookupTable.
 Node *replaceQuantizedLogWithLookupTable(Function &F,
                                          const LogNode &LN);
 

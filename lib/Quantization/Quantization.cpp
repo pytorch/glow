@@ -918,8 +918,8 @@ Node *replaceQuantizedTanhWithLookupTable(Function &F,
   }
 }
 
-NodeValue replaceQuantizedSigmoidWithLookupTable(Function &F,
-                                                 const SigmoidNode &SN) {
+Node *replaceQuantizedSigmoidWithLookupTable(Function &F,
+                                             const SigmoidNode &SN) {
   // Quantized sigmoid operator expects input to be in a certain floating
   // point range. This operator works based on the precomputed table and has
   // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
