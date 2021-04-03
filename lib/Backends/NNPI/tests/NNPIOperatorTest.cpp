@@ -123,6 +123,9 @@ struct BlacklistInitializer {
       {"CumSum3D_int32_t_Dim2/0", TestBlacklist::AnyDeviceAnyEngine},
       {"LayerNorm_BFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"LayerNorm_Float/0", TestBlacklist::AnyDeviceAnyEngine},
+      // Known issue of normshape for LayerNorm on NNPI
+      {"LayerNorm_Float16_StrongNormShape/0",
+       TestBlacklist::AnyDeviceAnyEngine},
       {"LengthsSum/0", TestBlacklist::AnyDeviceAnyEngine},
       {"LengthsToRanges/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ModuloInt64NoSignFollow/0", TestBlacklist::AnyDeviceAnyEngine},
