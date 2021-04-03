@@ -611,12 +611,12 @@ llvm::Value *LLVMIRGen::emitConstI32(llvm::IRBuilder<> &builder, int32_t val) {
   return builder.getInt32(val);
 }
 
-llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
-  return builder.getInt8(val);
-}
-
 llvm::Value *LLVMIRGen::emitConstI16(llvm::IRBuilder<> &builder, int16_t val) {
   return builder.getInt16(val);
+}
+
+llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
+  return builder.getInt8(val);
 }
 
 llvm::Value *LLVMIRGen::emitConstI1(llvm::IRBuilder<> &builder, bool val) {
@@ -1412,8 +1412,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *stackedOpCall = createUncheckedCall(
         builder, F, {loopCount, srcPtr, destScale, destOffset});
     auto *destType = getElementType(builder, dest);
-    auto *destAddr = builder.CreateGEP(destType, destPtr, loopCount,
-                                       "buffer.element.addr");
+    auto *destAddr =
+        builder.CreateGEP(destType, destPtr, loopCount, "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
     break;
   }

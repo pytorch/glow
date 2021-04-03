@@ -2871,7 +2871,6 @@ float libjit_element_dequantize_kernel_i16(dim_t idx, const int16_t *inW,
   return scale * (inW[idx] - offset);
 }
 
-
 int8_t libjit_element_rescale_kernel_i8(dim_t idx, const int8_t *inW,
                                         int32_t outOffset, int32_t inOffset,
                                         int32_t pre, int32_t post,
