@@ -856,11 +856,12 @@ Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN, Schem
   // +/-1.0 and is already +/-.995 at +/-3.0.
   // The output quantization parameters are chosen to represent the floating
   // point range of [-1.0, 1.0].
+  TypeRef inpTy = TN.getInput().getType();
   TypeRef outTy = TN.getResult().getType();
   auto inputQuantizationParams = glow::quantization::chooseQuantizationParams(
-      {-3.0, 3.0}, schema, outTy->getElementType());
+      {-3.0, 3.0}, schema, inpTy->getElementType());
   auto tanhInTy = F.getParent()->uniqueType(
-      outTy->getElementType(), TN.getResult().dims(),
+      inpTy->getElementType(), TN.getResult().dims(),
       inputQuantizationParams.scale, inputQuantizationParams.offset);
 
   // Make sure input is clipped in [-3.0, 3.0] floating point range.
@@ -893,11 +894,12 @@ Node *replaceQuantizedSigmoidWithLookupTable(Function &F, const SigmoidNode &SN,
   // approaches 0 at -inf and 1 at +inf. It has values of 0.00247262 and
   // 0.997527 at -6.0 and 6.0 correspondingly. The output quantization
   // parameters are chosen to represent the floating point range of [0, 1.0].
+  TypeRef inpTy = SN.getInput().getType();
   TypeRef outTy = SN.getResult().getType();
   auto inputQuantizationParams = glow::quantization::chooseQuantizationParams(
-      {-6.0, 6.0}, schema, outTy->getElementType());
+      {-6.0, 6.0}, schema, inpTy->getElementType());
   auto sigmoidInTy = F.getParent()->uniqueType(
-      outTy->getElementType(), SN.getResult().dims(),
+      inpTy->getElementType(), SN.getResult().dims(),
       inputQuantizationParams.scale, inputQuantizationParams.offset);
 
   // Make sure input is clipped in [-6.0, 6.0] floating point range.

@@ -2696,18 +2696,18 @@ IntLookupTableNode *Function::createIntLog(llvm::StringRef name, NodeValue input
 
 IntLookupTableNode *Function::createIntExp(llvm::StringRef name, NodeValue input,
                                            TypeRef outTy) {
-  return createIntLookupTable(name, input, std::expf, outTy);
+  return createIntLookupTable(name, input, expf, outTy);
 }
 
 IntLookupTableNode *Function::createIntTanh(llvm::StringRef name,
                                             NodeValue input, TypeRef outTy) {
-  return createIntLookupTable(name, input, std::tanhf, outTy);
+  return createIntLookupTable(name, input, tanhf, outTy);
 }
 
 IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
                                                NodeValue input, TypeRef outTy) {
   auto func = [](float x) -> float {
-    return 1.0f / (1.0f + std::expf(-x));
+    return 1.0f / (1.0f + expf(-x));
   };
   return createIntLookupTable(name, input, func, outTy);
 }
