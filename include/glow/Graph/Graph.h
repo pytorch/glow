@@ -1542,7 +1542,7 @@ public:
 
   /// Create lookup table for mapping between quantized operands. \p input and
   /// \p outTy must be quantized types. The table contains all numbers from the
-  /// quantized range, e.g., 256 entries for int8 input. First position in the
+  /// quantized range, e.g. 256 entries for int8 input. First position in the
   /// \p initValues corresponds to the minimum input number and the last
   /// position corresponds to the maximum input number.
   template <typename T = int8_t>

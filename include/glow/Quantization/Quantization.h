@@ -65,18 +65,20 @@ void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
 /// Support quantized Log \p LN inside \p F by replacing it with an
 /// IntLookupTable. \returns final node in the chain implementing the quantized
 /// Log via the IntLookupTable.
-Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN);
+Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN,
+                                         Schema schema = Asymmetric);
 
 /// Support quantized Tanh \p TN inside \p F by replacing it with an
 /// IntLookupTable. \returns final node in the chain implementing the quantized
 /// Tanh via the IntLookupTable.
-Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN);
+Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN,
+                                          Schema schema = Asymmetric);
 
 /// Support quantized Sigmoid \p SN inside \p F by replacing it with an
 /// IntLookupTable. \returns final node in the chain implementing the quantized
 /// Sigmoid via the IntLookupTable.
-Node *replaceQuantizedSigmoidWithLookupTable(Function &F,
-                                             const SigmoidNode &SN);
+Node *replaceQuantizedSigmoidWithLookupTable(Function &F, const SigmoidNode &SN,
+                                             Schema schema = Asymmetric);
 
 } // namespace quantization
 } // namespace glow

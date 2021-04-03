@@ -383,11 +383,11 @@ void specializeBiasWeightsQuantizationParams(
     bool biasZero = false);
 
 /// \returns an integer mapping from the \p inTy to the \p outTy given the
-/// floating-point function \p f.
+/// floating-point function \p func.
 /// \pre inTy and outTy must be quantized types.
 template <typename T = int8_t>
 std::vector<T> createMapping(TypeRef inTy, TypeRef outTy,
-                             std::function<float(float)> f) {
+                             std::function<float(float)> func) {
   assert(inTy->isQuantizedType() && "Input type must be quantized!");
   assert(outTy->isQuantizedType() && "Output type must be quantized!");
   assert(outTy->isType<T>() && "Output type must match template type!");
@@ -402,7 +402,7 @@ std::vector<T> createMapping(TypeRef inTy, TypeRef outTy,
   std::vector<T> mapping(inTy->getQuantizedValueCount());
   TensorQuantizationParams outputTQP{outTy->getScale(), outTy->getOffset()};
   for (size_t i = 0; i < mapping.size(); i++, currInputVal += step) {
-    float currOutputVal = f(currInputVal);
+    float currOutputVal = func(currInputVal);
     mapping[i] = quantization::quantize<T>(currOutputVal, outputTQP);
   }
   return mapping;
