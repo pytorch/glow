@@ -846,7 +846,7 @@ Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN,
 }
 
 Node *replaceQuantizedExpWithLookupTable(Function &F, const ExpNode &EN,
-                                         Schema schema = Asymmetric) {
+                                         Schema schema) {
   IntLookupTableNode *ELT = F.createIntExp(
       EN.getName().str() + ".exp", EN.getInput(), EN.getResult().getType());
   EN.getResult().replaceAllUsesOfWith(ELT);
