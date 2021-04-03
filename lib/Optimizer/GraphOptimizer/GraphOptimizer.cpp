@@ -3897,8 +3897,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
   bool changed = false;
 
   // Change a quantized result type qResult to account for the range from clip.
-  auto updateQuantizeNodeType = [](Function *F, NodeValue qResult,
-                                   ClipNode *clip, bool skipIfQuantParamChange,
+  auto updateQuantizeNodeType = [](Function *F, const CompilationContext &cctx,
+                                   NodeValue qResult, ClipNode *clip,
+                                   bool skipIfQuantParamChange,
                                    bool allowQParamChange) {
     const auto qMinMax = qResult.getType()->getQuantizedValueRange();
     const float newMin = std::max(clip->getMin(), qMinMax.first);
@@ -3948,7 +3949,7 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
 
       // Try to update the quantize's type, otherwise skip this one.
       if (!updateQuantizeNodeType(
-              F, qResult, clip, skipIfQuantParamChange,
+              F, cctx, qResult, clip, skipIfQuantParamChange,
               cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
@@ -3973,7 +3974,7 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
 
       // Try to update the quantize's type, otherwise skip this one.
       if (!updateQuantizeNodeType(
-              F, QN->getResult(), clip, skipIfQuantParamChange,
+              F, cctx, QN->getResult(), clip, skipIfQuantParamChange,
               cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }

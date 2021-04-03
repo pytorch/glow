@@ -331,7 +331,13 @@ protected:
   CASE_SINGLE_MATCHING_INOUT_TYPE(Transpose, Input, Result):                   \
   CASE_SINGLE_MATCHING_INOUT_TYPE(TopK, Input, Values):                        \
   CASE_SINGLE_MATCHING_INOUT_TYPE(Gather, Data, Result):                       \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(MaxPool, Input, Result)
+  CASE_SINGLE_MATCHING_INOUT_TYPE(MaxPool, Input, Result):                     \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(AvgPool, Input, Result):                     \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Relu, Input, Result):                        \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Clip, Input, Result):                        \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(ResizeNearest, Input, Result):               \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(ResizeBilinear, Input, Result):              \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(SpaceToDepth, Input, Result)
   // clang-format on
 
   /// \see FunctionConverter::morphNode.
