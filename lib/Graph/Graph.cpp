@@ -2682,85 +2682,34 @@ Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
   }
 }
 
+IntLookupTableNode *Function::createIntLog(llvm::StringRef name, NodeValue input,
+                                           TypeRef outTy) {
+  auto inputRange = input.getType()->getQuantizedValueRange();
+  (void)inputRange;
+  assert(inputRange.first >= 0 &&
+         "Input range must not be negative since this is input to log().");
+  auto func = [](float x) -> float {
+    return (x == 0.0) ? std::log(std::numeric_limits<float>::min()) : log(x);
+  };
+  return createIntLookupTable(name, input, func, outTy);
+}
+
+IntLookupTableNode *Function::createIntExp(llvm::StringRef name, NodeValue input,
+                                           TypeRef outTy) {
+  return createIntLookupTable(name, input, std::expf, outTy);
+}
+
 IntLookupTableNode *Function::createIntTanh(llvm::StringRef name,
                                             NodeValue input, TypeRef outTy) {
-  if (outTy->getElementType() == ElemKind::Int8QTy) {
-    static int8_t mapping[] = {
-        -128, -127, -126, -126, -126, -126, -126, -126, -126, -126, -126, -126,
-        -126, -126, -126, -126, -126, -126, -126, -126, -125, -125, -125, -125,
-        -125, -125, -125, -125, -125, -125, -125, -124, -124, -124, -124, -124,
-        -124, -124, -123, -123, -123, -123, -123, -123, -122, -122, -122, -122,
-        -121, -121, -121, -120, -120, -120, -120, -119, -119, -118, -118, -118,
-        -117, -117, -116, -116, -115, -115, -114, -114, -113, -112, -112, -111,
-        -110, -109, -109, -108, -107, -106, -105, -104, -103, -102, -101, -100,
-        -99,  -98,  -96,  -95,  -94,  -92,  -91,  -89,  -88,  -86,  -85,  -83,
-        -81,  -79,  -77,  -76,  -74,  -72,  -69,  -67,  -65,  -63,  -61,  -58,
-        -56,  -53,  -51,  -48,  -46,  -43,  -41,  -38,  -35,  -32,  -29,  -27,
-        -24,  -21,  -18,  -15,  -12,  -9,   -6,   -3,   0,    3,    6,    9,
-        12,   15,   18,   21,   24,   27,   29,   32,   35,   38,   41,   43,
-        46,   48,   51,   53,   56,   58,   61,   63,   65,   67,   69,   72,
-        74,   76,   77,   79,   81,   83,   85,   86,   88,   89,   91,   92,
-        94,   95,   96,   98,   99,   100,  101,  102,  103,  104,  105,  106,
-        107,  108,  109,  109,  110,  111,  112,  112,  113,  114,  114,  115,
-        115,  116,  116,  117,  117,  118,  118,  118,  119,  119,  120,  120,
-        120,  120,  121,  121,  121,  122,  122,  122,  122,  123,  123,  123,
-        123,  123,  123,  124,  124,  124,  124,  124,  124,  124,  125,  125,
-        125,  125,  125,  125,  125,  125,  125,  125,  125,  126,  126,  126,
-        126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,
-        126,  126,  126,  127};
-    return createIntLookupTable<int8_t>(name, input, mapping, outTy);
-  } else {
-    static int16_t mapping[65536];
-    int j = 0;
-    for (int i = SHRT_MIN; i <= SHRT_MAX; i++) {
-      mapping[j] =
-          (int16_t)((float)SHRT_MIN * tanh(3 * (float)i / (float)SHRT_MIN));
-      j++;
-    }
-    return createIntLookupTable<int16_t>(name, input, mapping, outTy);
-  }
+  return createIntLookupTable(name, input, std::tanhf, outTy);
 }
 
 IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
                                                NodeValue input, TypeRef outTy) {
-  if (outTy->getElementType() == ElemKind::Int8QTy) {
-    static int8_t mapping[] = {
-        -128, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127,
-        -127, -127, -127, -127, -127, -127, -127, -126, -126, -126, -126, -126,
-        -126, -126, -126, -126, -126, -126, -125, -125, -125, -125, -125, -125,
-        -125, -125, -124, -124, -124, -124, -124, -123, -123, -123, -123, -122,
-        -122, -122, -122, -121, -121, -121, -120, -120, -120, -119, -119, -118,
-        -118, -118, -117, -117, -116, -115, -115, -114, -114, -113, -112, -112,
-        -111, -110, -109, -109, -108, -107, -106, -105, -104, -103, -102, -101,
-        -99,  -98,  -97,  -96,  -94,  -93,  -91,  -90,  -88,  -87,  -85,  -83,
-        -82,  -80,  -78,  -76,  -74,  -72,  -70,  -68,  -66,  -63,  -61,  -59,
-        -56,  -54,  -51,  -49,  -46,  -44,  -41,  -38,  -36,  -33,  -30,  -27,
-        -24,  -21,  -18,  -15,  -12,  -9,   -6,   -3,   -1,   2,    5,    8,
-        11,   14,   17,   20,   23,   26,   29,   32,   35,   37,   40,   43,
-        45,   48,   50,   53,   55,   58,   60,   62,   65,   67,   69,   71,
-        73,   75,   77,   79,   81,   82,   84,   86,   87,   89,   90,   92,
-        93,   95,   96,   97,   98,   100,  101,  102,  103,  104,  105,  106,
-        107,  108,  108,  109,  110,  111,  111,  112,  113,  113,  114,  114,
-        115,  116,  116,  117,  117,  117,  118,  118,  119,  119,  119,  120,
-        120,  120,  121,  121,  121,  121,  122,  122,  122,  122,  123,  123,
-        123,  123,  123,  124,  124,  124,  124,  124,  124,  124,  124,  125,
-        125,  125,  125,  125,  125,  125,  125,  125,  125,  125,  126,  126,
-        126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,  126,
-        126,  126,  126,  127};
-    return createIntLookupTable<int8_t>(name, input, mapping, outTy);
-  } else {
-    auto sigmoid = [](float x) {
-      return (0.5 * 1. / (1. + exp(-x)) - 0.25) * 4.;
-    };
-    static int16_t mapping[65536];
-    int j = 0;
-    for (int i = SHRT_MIN; i <= SHRT_MAX; i++) {
-      mapping[j] =
-          (int16_t)((float)SHRT_MIN * sigmoid(6. * (float)i / (float)SHRT_MIN));
-      j++;
-    }
-    return createIntLookupTable<int16_t>(name, input, mapping, outTy);
-  }
+  auto func = [](float x) -> float {
+    return 1.0f / (1.0f + std::expf(-x));
+  };
+  return createIntLookupTable(name, input, func, outTy);
 }
 
 TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,

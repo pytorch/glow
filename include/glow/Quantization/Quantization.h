@@ -68,6 +68,12 @@ void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
 Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN,
                                          Schema schema = Asymmetric);
 
+/// Support quantized Exp \p EN inside \p F by replacing it with an
+/// IntLookupTable. \returns final node in the chain implementing the quantized
+/// Exp via the IntLookupTable.
+Node *replaceQuantizedExpWithLookupTable(Function &F, const LogNode &EN,
+                                         Schema schema = Asymmetric);
+
 /// Support quantized Tanh \p TN inside \p F by replacing it with an
 /// IntLookupTable. \returns final node in the chain implementing the quantized
 /// Tanh via the IntLookupTable.

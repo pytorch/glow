@@ -1557,6 +1557,14 @@ public:
   createIntLookupTable(llvm::StringRef name, NodeValue input,
                        std::function<float(float)> func, TypeRef outTy);
 
+  /// Create quantized log.
+  IntLookupTableNode *createIntLog(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
+
+  /// Create quantized exp.
+  IntLookupTableNode *createIntExp(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
+
   /// Create quantized tanh.
   IntLookupTableNode *createIntTanh(llvm::StringRef name, NodeValue input,
                                     TypeRef outTy);

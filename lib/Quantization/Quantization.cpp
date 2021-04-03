@@ -488,6 +488,10 @@ protected:
         quantizedNode = replaceQuantizedLogWithLookupTable(
             function_, llvm::cast<LogNode>(node), schema_);
         break;
+      case Kinded::Kind::ExpNodeKind:
+        quantizedNode = replaceQuantizedExpWithLookupTable(
+            function_, llvm::cast<ExpNode>(node), schema_);
+        break;
       case Kinded::Kind::TanhNodeKind:
         quantizedNode = replaceQuantizedTanhWithLookupTable(
             function_, llvm::cast<TanhNode>(node), schema_);
@@ -834,26 +838,15 @@ namespace glow {
 namespace quantization {
 
 Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN, Schema schema) {
-  TypeRef outTy = LN.getResult().getType();
-  TypeRef inTy = LN.getInput().getType();
-  auto inputRange = inTy->getQuantizedValueRange();
-  (void)inputRange;
-  assert(inputRange.first >= 0 &&
-         "Input range must not be negative since this is input to log().");
-
-  // Pass a function returning log here to create the mapping. Note that the
-  // interval is always extended to include zero, so we check if the input is
-  // zero and if so use log(float min), i.e. closest positive value to zero,
-  // as -inf is unsupported to convert to int.
-  auto logFun = [](float a) -> float {
-    return (a == 0.0) ? log(std::numeric_limits<float>::min()) : log(a);
-  };
-
-  // Create a new int lookup table with this newly calculated mapping to
-  // implement this quantized log.
-  IntLookupTableNode *ILT = F.createIntLookupTable(LN.getName().str() + ".log", LN.getInput(), logFun, outTy);
+  IntLookupTableNode *ILT = F.createIntLog(LN.getName().str() + ".log", LN.getInput(), LN.getResult().getType());
   LN.getResult().replaceAllUsesOfWith(ILT);
   return ILT;
+}
+
+Node *replaceQuantizedExpWithLookupTable(Function &F, const ExpNode &EN, Schema schema = Asymmetric) {
+  IntLookupTableNode *ELT = F.createIntExp(EN.getName().str() + ".exp", EN.getInput(), EN.getResult().getType());
+  EN.getResult().replaceAllUsesOfWith(ELT);
+  return ELT;
 }
 
 Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN, Schema schema) {

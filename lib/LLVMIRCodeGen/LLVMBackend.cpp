@@ -107,8 +107,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ReshapeNodeKind:
     // These are implemented via a Copy Instruction.
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32QTy,
-         ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy});
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int16QTy,
+         ElemKind::Int32QTy, ElemKind::Int32ITy, ElemKind::Int64ITy,
+         ElemKind::BoolTy});
 
     // InsertTensor ==> Copy + InsertTensor. Copy supports everything
     // ReshapeNode above supports, so InsertTensor is the limiting factor.
