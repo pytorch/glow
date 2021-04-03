@@ -195,8 +195,9 @@ void libjit_channelwise_quantized_conv2d_generic(
           for (dim_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
 
             // Scale the bias to match the scale of the matrix multiplication.
-            int32_t sum = libjit_scale<int32_t>((int32_t)biasW[d] - biasOffset,
-                                                biasPre, biasPost, biasScale, 0);
+            int32_t sum =
+                libjit_scale<int32_t>((int32_t)biasW[d] - biasOffset, biasPre,
+                                      biasPost, biasScale, 0);
 
             // For each element in the convolution-filter:
             for (dim_t fx = 0; fx < kernel_h; fx++) {
@@ -224,8 +225,8 @@ void libjit_channelwise_quantized_conv2d_generic(
             }
 
             // Scale the result back to the expected destination scale.
-            int32_t scaledSum =
-                libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
+            int32_t scaledSum = libjit_scale<int32_t>(sum, outPre, outPost,
+                                                      outScale, outOffset);
             scaledSum =
                 libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
             outW[libjit_getXYZW(outWdims, n, ax, ay, d)] =
@@ -296,8 +297,9 @@ void libjit_channelwise_quantized_conv3d_generic(
             for (dim_t ay = 0; ay < outWdims[3]; y += stride_w, ay++) {
 
               // Scale the bias to match the scale of the matrix multiplication.
-              int32_t sum = libjit_scale<int32_t>((int32_t)biasW[d] - biasOffset,
-                                                  biasPre, biasPost, biasScale, 0);
+              int32_t sum =
+                  libjit_scale<int32_t>((int32_t)biasW[d] - biasOffset, biasPre,
+                                        biasPost, biasScale, 0);
 
               // For each element in the convolution-filter:
               for (dim_t ft = 0; ft < kernel_t; ft++) {
@@ -332,8 +334,8 @@ void libjit_channelwise_quantized_conv3d_generic(
               }
 
               // Scale the result back to the expected destination scale.
-              int32_t scaledSum =
-                  libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
+              int32_t scaledSum = libjit_scale<int32_t>(sum, outPre, outPost,
+                                                        outScale, outOffset);
               scaledSum =
                   libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
               outW[libjit_getXYZWQ(outWdims, n, at, ax, ay, d)] =

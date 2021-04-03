@@ -145,9 +145,7 @@ float libjit_tanh_f(float input) {
 
 /// \returns the clipped value of the input to INT8 range [-128, 127].
 LIBJIT_ALWAYS_INLINE
-int8_t libjit_clip_i8(int32_t val) {
-  return (int8_t)MIN(MAX(val, -128), 127);
-}
+int8_t libjit_clip_i8(int32_t val) { return (int8_t)MIN(MAX(val, -128), 127); }
 
 /// \returns the clipped value of the input to INT16 range [-32768, 32767].
 LIBJIT_ALWAYS_INLINE
@@ -158,9 +156,8 @@ int16_t libjit_clip_i16(int32_t val) {
 /// Scales a 32-bit or 64-bit integer to a 32-bit integer using the integer
 /// shift-mult-shift method.
 template <typename SrcTy = int32_t, typename DestTy = int32_t>
-LIBJIT_ALWAYS_INLINE
-DestTy libjit_scale(SrcTy input, int32_t pre, int32_t post,
-                    int32_t scale, int32_t offset) {
+LIBJIT_ALWAYS_INLINE DestTy libjit_scale(SrcTy input, int32_t pre, int32_t post,
+                                         int32_t scale, int32_t offset) {
   // The operation x >> post is rounded down to negative infinity. To get to
   // round-nearest we add (1 << (post - 1)) to the value prior to shifting.
   // Rounding is performed only when shifting right (pos > 0).

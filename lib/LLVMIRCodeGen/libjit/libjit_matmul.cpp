@@ -265,8 +265,8 @@ void libjit_fc_generic(ElemTy *outW, const ElemTy *inW, const ElemTy *weightsW,
   dim_t out_w = outWdims[1];
   for (size_t i = 0; i < out_h; i++) {
     for (size_t j = 0; j < out_w; j++) {
-      int32_t sum = libjit_scale<int32_t>(biasW[j] - biasOffset, biasPre, biasPost,
-                                          biasScale, 0);
+      int32_t sum = libjit_scale<int32_t>(biasW[j] - biasOffset, biasPre,
+                                          biasPost, biasScale, 0);
       for (size_t k = 0; k < in_w; k++) {
         int32_t I = inW[libjit_getXY(inWdims, i, k)];
         int32_t W = weightsW[libjit_getXY(weightsWdims, k, j)];
@@ -363,7 +363,8 @@ void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
         int32_t rhs = rhsW[libjit_getXY(rhsWdims, i, y)] - rhsOffset;
         sum += lhs * rhs;
       }
-      int32_t s = libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
+      int32_t s =
+          libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
       outW[libjit_getXY(outWdims, x, y)] = libjit_clip_i8(s);
     }
   }

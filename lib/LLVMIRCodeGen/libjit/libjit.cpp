@@ -1774,10 +1774,11 @@ int8_t libjit_elementselect_kernel_i8(dim_t idx, const int8_t *cond,
                                       int32_t rhsPre, int32_t rhsPost,
                                       int32_t rhsScale) {
   return (cond[idx] != 0)
-             ? libjit_clip_i8(libjit_scale<int32_t>(LHS[idx] - lhsOffset, lhsPre,
-                                                    lhsPost, lhsScale, destOffset))
-             : libjit_clip_i8(libjit_scale<int32_t>(RHS[idx] - rhsOffset, rhsPre,
-                                                    rhsPost, rhsScale, destOffset));
+             ? libjit_clip_i8(libjit_scale<int32_t>(
+                   LHS[idx] - lhsOffset, lhsPre, lhsPost, lhsScale, destOffset))
+             : libjit_clip_i8(libjit_scale<int32_t>(RHS[idx] - rhsOffset,
+                                                    rhsPre, rhsPost, rhsScale,
+                                                    destOffset));
 }
 
 float libjit_element_relu_f(dim_t idx, const float *src) {
@@ -1789,8 +1790,8 @@ int8_t libjit_element_relu_i8(dim_t idx, const int8_t *src, int8_t srcOffset,
                               int8_t destOffset, int32_t destPre,
                               int32_t destPost, int32_t destScale) {
   int32_t reluVal = MAX(src[idx], srcOffset);
-  int32_t scaledVal = libjit_scale<int32_t>(reluVal - srcOffset, destPre, destPost,
-                                            destScale, destOffset);
+  int32_t scaledVal = libjit_scale<int32_t>(reluVal - srcOffset, destPre,
+                                            destPost, destScale, destOffset);
   return libjit_clip_i8(scaledVal);
 }
 
@@ -1804,8 +1805,8 @@ int8_t libjit_element_clip_i8(dim_t idx, const int8_t *src, int8_t clipMin,
                               int8_t destOffset, int32_t destPre,
                               int32_t destPost, int32_t destScale) {
   int32_t clipVal = MIN(MAX(src[idx], clipMin), clipMax);
-  int32_t scaledVal = libjit_scale<int32_t>(clipVal - srcOffset, destPre, destPost,
-                                            destScale, destOffset);
+  int32_t scaledVal = libjit_scale<int32_t>(clipVal - srcOffset, destPre,
+                                            destPost, destScale, destOffset);
   return libjit_clip_i8(scaledVal);
 }
 
@@ -1820,11 +1821,12 @@ int8_t libjit_element_leaky_relu_i8(dim_t idx, const int8_t *src,
                                     int32_t posScale, int32_t negPre,
                                     int32_t negPost, int32_t negScale) {
   int32_t srcVal = src[idx];
-  int32_t scaledVal = (srcVal >= srcOffset)
-                          ? libjit_scale<int32_t>(srcVal - srcOffset, posPre,
-                                                  posPost, posScale, destOffset)
-                          : libjit_scale<int32_t>(srcVal - srcOffset, negPre,
-                                                  negPost, negScale, destOffset);
+  int32_t scaledVal =
+      (srcVal >= srcOffset)
+          ? libjit_scale<int32_t>(srcVal - srcOffset, posPre, posPost, posScale,
+                                  destOffset)
+          : libjit_scale<int32_t>(srcVal - srcOffset, negPre, negPost, negScale,
+                                  destOffset);
   return libjit_clip_i8(scaledVal);
 }
 
@@ -2720,7 +2722,8 @@ void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
 
           // Normalize and store.
           if (countIncludePads) {
-            sum = libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
+            sum = libjit_scale<int32_t>(sum, outPre, outPost, outScale,
+                                        outOffset);
             *outW++ = libjit_clip_i8(sum);
           } else {
             int32_t area = f_h_len * f_w_len;

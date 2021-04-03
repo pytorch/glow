@@ -3923,10 +3923,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     // Replace the old quantized type with the new type with different
     // min/max.
     const TypeRef oldTy = qResult.getType();
-    const auto qParams =
-        quantization::chooseQuantizationParams({newMin, newMax},
-                                               cctx.precisionConfig.quantConfig.schema,
-                                               oldTy->getElementType());
+    const auto qParams = quantization::chooseQuantizationParams(
+        {newMin, newMax}, cctx.precisionConfig.quantConfig.schema,
+        oldTy->getElementType());
     const TypeRef newTy = F->getParent()->uniqueType(
         oldTy->getElementType(), oldTy->dims(), qParams.scale, qParams.offset);
     qResult.getNode()->setType(qResult.getResNo(), newTy);
@@ -4176,9 +4175,8 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
       } else {
         // Use the same type as the FC for the Relu but with 0 as min.
         const auto qParams = quantization::chooseQuantizationParams(
-             {0, FCTy->getQuantizedValueRange().second},
-             cctx.precisionConfig.quantConfig.schema,
-             FCTy->getElementType())
+            {0, FCTy->getQuantizedValueRange().second},
+            cctx.precisionConfig.quantConfig.schema, FCTy->getElementType());
         qReluTy =
             F->getParent()->uniqueType(FCTy->getElementType(), FCTy->dims(),
                                        qParams.scale, qParams.offset);
@@ -6754,10 +6752,8 @@ void glow::updateQuantReluTypes(Function *F) {
     if (qRange.first >= 0) {
       continue;
     }
-    const auto qParams =
-        quantization::chooseQuantizationParams({0, qRange.second},
-                                               quantization::Asymmetric,
-                                               RNTy->getElementType());
+    const auto qParams = quantization::chooseQuantizationParams(
+        {0, qRange.second}, quantization::Asymmetric, RNTy->getElementType());
     const TypeRef qReluTy = F->getParent()->uniqueType(
         RNTy->getElementType(), RNTy->dims(), qParams.scale, qParams.offset);
     RN->setType(ReluNode::ResultIdx, qReluTy);
@@ -6810,10 +6806,8 @@ void glow::updateQuantReluTypes(Function *F) {
     if (qRange.first >= 0) {
       continue;
     }
-    const auto qParams =
-        quantization::chooseQuantizationParams({0, qRange.second},
-                                               quantization::Asymmetric,
-                                               T->getElementType());
+    const auto qParams = quantization::chooseQuantizationParams(
+        {0, qRange.second}, quantization::Asymmetric, T->getElementType());
     const TypeRef qReluTy = F->getParent()->uniqueType(
         T->getElementType(), T->dims(), qParams.scale, qParams.offset);
     N->setType(resultIdx, qReluTy);
