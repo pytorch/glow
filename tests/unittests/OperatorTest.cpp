@@ -7455,7 +7455,7 @@ TEST_P(OperatorTest, DynamicQuantizedFullyConnectedStrongWeights) {
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {3, 4}, "input", false);
   Constant *weights =
-      mod_.createConstant(ElemKind::Int8QTy, {4, 2}, 0.5, 1, "weights");
+      mod_.createConstant(ElemKind::Int8QTy, {4, 2}, 0.5, 0, "weights");
   Constant *bias = mod_.createConstant(ElemKind::FloatTy, {2}, "bias");
   bindings_.allocate(input)->getHandle<float16_t>() = {
       1.0f, 2.0f, 3.0f, 4.0f, 2.0f, 3.0f, 4.0f, 5.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -7472,7 +7472,8 @@ TEST_P(OperatorTest, DynamicQuantizedFullyConnectedStrongWeights) {
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
   std::vector<dim_t> expectedDimensions = {3, 2};
-  std::vector<float> expectedValues = {11.0f, 7.0f, 14.0f, 10.0f, 17.0f, 13.0f};
+  std::vector<float> expectedValues = {16.0f, 12.0f, 21.0f,
+                                       17.0f, 26.0f, 22.0f};
   EXPECT_TRUE(result.dims().vec() == expectedDimensions);
   for (size_t i = 0; i < 3 * 2; i++) {
     // DynQFC's largest error in this unittest is around 2e-1
@@ -19687,6 +19688,43 @@ TEST_P(OperatorTest, add_float) {
       }
     }
   }
+}
+static FunctionTensorPair
+createAndInitLayerNormStrongNormShapeTest(glow::PlaceholderBindings &bindings,
+                                          glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 4, 5, 6}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {5, 6});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {5, 6});
+  biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+
+  bindings.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+
+  auto *res = F->createSave("save", LNN);
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {input, res->getPlaceholder()});
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Test LayerNorm with Float16Ty and strong norm_shape(dims > 1 and not
+/// identical)
+TEST_P(OperatorStatelessTest, LayerNorm_Float16_StrongNormShape) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitLayerNormStrongNormShapeTest,
+      ElemKind::FloatTy, ElemKind::Float16Ty, 0.05f, parCloneCountOpt);
 }
 
 static FunctionTensorPair

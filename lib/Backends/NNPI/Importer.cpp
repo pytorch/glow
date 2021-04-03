@@ -805,11 +805,15 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, glowDRQFC, "Bad node type",
                           NNPI_INVALID_PARAM);
 
+    // Right now we only support symmetric rowwise quantization, therefore we
+    // need to make sure all offsets are zeroes.
     LOG_AND_RETURN_IF_NOT(
         ERROR,
         !(glowDRQFC->getOffsets()) ||
             importer.zeroes(nodeValueName(glowDRQFC->getOffsets()).c_str()),
-        "Bad offset value", NNPI_INVALID_PARAM);
+        "Bad offset values. Currently only symmetric quantization is "
+        "supported.",
+        NNPI_INVALID_PARAM);
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -1693,11 +1697,16 @@ public:
     auto *glowRowwiseFC = llvm::dyn_cast<RowwiseQuantizedFullyConnectedNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowRowwiseFC, "Bad node type",
                           NNPI_INVALID_PARAM);
+
+    // Right now we only support symmetric rowwise quantization, therefore we
+    // need to make sure all offsets are zeroes.
     LOG_AND_RETURN_IF_NOT(
         ERROR,
         !(glowRowwiseFC->getOffsets()) ||
             importer.zeroes(nodeValueName(glowRowwiseFC->getOffsets()).c_str()),
-        "Bad offset value", NNPI_INVALID_PARAM);
+        "Bad offset values. Currently only symmetric quantization is "
+        "supported.",
+        NNPI_INVALID_PARAM);
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.

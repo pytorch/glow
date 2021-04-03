@@ -65,7 +65,8 @@ class ShapeInferenceEngine {
 public:
   ShapeInferenceEngine(const torch::jit::Graph &graph,
                        const at::ArrayRef<torch::jit::IValue> &inputs,
-                       const std::string &fusionNodeSymbol = "ShapeInf");
+                       const std::string &fusionNodeSymbol = "ShapeInf",
+                       const bool &compilationMode = false);
 
   /// Get all VariableMeta for outputs of the given graph.
   const MetaStack &getGraphOutputShape();
@@ -89,6 +90,8 @@ private:
   /// Glow fusion node symbol.
   const std::string fusionNodeSymbol_;
 
+  const bool compilationMode_;
+
   /// This is a mapping which uses torch::jit::Value as a key, VariableMeta as a
   /// value. It is used for tracking the shape for tensors and values for
   /// integers in a graph.
@@ -104,13 +107,20 @@ private:
   /// In Glow, \p hasEndOffset_ always true
   static bool const hasEndOffset_ = true;
 
-  /// Run shape inference recursively
-  Error runRecursively(const torch::jit::Graph &,
-                       const at::ArrayRef<torch::jit::IValue> &);
+  /// Run shape inference on a graph
+  Error runGraph(const torch::jit::Graph &,
+                 const at::ArrayRef<torch::jit::IValue> &);
+
+  /// Run shape inference on a sub graph
+  Error runSubGraph(const torch::jit::Graph &,
+                    const at::ArrayRef<torch::jit::IValue> &);
 
   /// Print shapeMap_ as format:
   /// %5: [2 4]
   void printShapeMap();
+
+  /// print graph for debugging purpose
+  void printGraph(const torch::jit::Graph &graph, int64_t level);
 
   /// Put shape/type info of actual graph inputs into \p shapeMap_.
   Error getGraphInputShapeType(const torch::jit::Graph &,
@@ -191,6 +201,11 @@ private:
   quantizedGlowEmbeddingBag4BitRowwiseOffsets(const MetaStack &variableMetas);
   // Shape inference for fb::xl_embedding_bag
   static Expected<TensorOutput> xlEmbeddingBag(const MetaStack &variableMetas);
+  static Expected<TensorOutput>
+  quantizedXLEmbeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
+  // Shape inference for fb::glow_embedding_bag_4bit_rowwise_offsets
+  static Expected<TensorOutput>
+  quantizedXLEmbeddingBag4BitRowwiseOffsets(const MetaStack &variableMetas);
   // Shape inference for aten::chuck
   static Expected<TensorListOutput> chunk(const MetaStack &variableMetas);
   // Shape inference for aten::stack
