@@ -71,7 +71,7 @@ Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN,
 /// Support quantized Exp \p EN inside \p F by replacing it with an
 /// IntLookupTable. \returns final node in the chain implementing the quantized
 /// Exp via the IntLookupTable.
-Node *replaceQuantizedExpWithLookupTable(Function &F, const LogNode &EN,
+Node *replaceQuantizedExpWithLookupTable(Function &F, const ExpNode &EN,
                                          Schema schema = Asymmetric);
 
 /// Support quantized Tanh \p TN inside \p F by replacing it with an

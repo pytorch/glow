@@ -1553,9 +1553,10 @@ public:
   /// Create lookup table for mapping between quantized operands based on the
   /// floating point function \p func. \p input and \p outTy must be quantized
   /// types.
-  IntLookupTableNode *
-  createIntLookupTable(llvm::StringRef name, NodeValue input,
-                       std::function<float(float)> func, TypeRef outTy);
+  IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
+                                           NodeValue input,
+                                           std::function<float(float)> func,
+                                           TypeRef outTy);
 
   /// Create quantized log.
   IntLookupTableNode *createIntLog(llvm::StringRef name, NodeValue input,

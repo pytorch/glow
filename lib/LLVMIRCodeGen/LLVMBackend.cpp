@@ -229,8 +229,8 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
 
   case Kinded::Kind::IntLookupTableNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy,
-                                                   ElemKind::Int16QTy});
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int8QTy, ElemKind::Int16QTy});
 
   case Kinded::Kind::RescaleQuantizedNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});

@@ -837,19 +837,24 @@ public:
 namespace glow {
 namespace quantization {
 
-Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN, Schema schema) {
-  IntLookupTableNode *ILT = F.createIntLog(LN.getName().str() + ".log", LN.getInput(), LN.getResult().getType());
+Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN,
+                                         Schema schema) {
+  IntLookupTableNode *ILT = F.createIntLog(
+      LN.getName().str() + ".log", LN.getInput(), LN.getResult().getType());
   LN.getResult().replaceAllUsesOfWith(ILT);
   return ILT;
 }
 
-Node *replaceQuantizedExpWithLookupTable(Function &F, const ExpNode &EN, Schema schema = Asymmetric) {
-  IntLookupTableNode *ELT = F.createIntExp(EN.getName().str() + ".exp", EN.getInput(), EN.getResult().getType());
+Node *replaceQuantizedExpWithLookupTable(Function &F, const ExpNode &EN,
+                                         Schema schema = Asymmetric) {
+  IntLookupTableNode *ELT = F.createIntExp(
+      EN.getName().str() + ".exp", EN.getInput(), EN.getResult().getType());
   EN.getResult().replaceAllUsesOfWith(ELT);
   return ELT;
 }
 
-Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN, Schema schema) {
+Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN,
+                                          Schema schema) {
   // Quantized tanh operator expects input to be in a certain floating point
   // range. This operator works based on the precomputed table and has to
   // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
@@ -869,9 +874,8 @@ Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN, Schem
       F.createRescaleQuantized(TN.getName(), TN.getInput(), tanhInTy);
 
   // Make sure output is clipped in [-1.0, 1.0] floating point range.
-  auto outputQuantizationParams =
-      glow::quantization::chooseQuantizationParams({-1.0, 1.0}, schema,
-                                                   outTy->getElementType());
+  auto outputQuantizationParams = glow::quantization::chooseQuantizationParams(
+      {-1.0, 1.0}, schema, outTy->getElementType());
   auto resultOutTy = F.getParent()->uniqueType(
       outTy->getElementType(), rescaleInputNode->getResult().dims(),
       outputQuantizationParams.scale, outputQuantizationParams.offset);
@@ -887,7 +891,8 @@ Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN, Schem
   return rescaleOutputNode;
 }
 
-Node *replaceQuantizedSigmoidWithLookupTable(Function &F, const SigmoidNode &SN, Schema schema) {
+Node *replaceQuantizedSigmoidWithLookupTable(Function &F, const SigmoidNode &SN,
+                                             Schema schema) {
   // Quantized sigmoid operator expects input to be in a certain floating
   // point range. This operator works based on the precomputed table and has
   // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
@@ -907,9 +912,8 @@ Node *replaceQuantizedSigmoidWithLookupTable(Function &F, const SigmoidNode &SN,
       F.createRescaleQuantized(SN.getName(), SN.getInput(), sigmoidInTy);
 
   // Make sure output is clipped in [0.0, 1.0] floating point range.
-  auto outputQuantizationParams =
-      glow::quantization::chooseQuantizationParams({0.0, 1.0}, schema,
-                                                   outTy->getElementType());
+  auto outputQuantizationParams = glow::quantization::chooseQuantizationParams(
+      {0.0, 1.0}, schema, outTy->getElementType());
   auto resultOutTy = F.getParent()->uniqueType(
       outTy->getElementType(), rescaleInputNode->getResult().dims(),
       outputQuantizationParams.scale, outputQuantizationParams.offset);

@@ -2667,23 +2667,27 @@ Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
 
 IntLookupTableNode *
 Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
-                               std::function<float(float)> func, TypeRef outTy) {
+                               std::function<float(float)> func,
+                               TypeRef outTy) {
   if (outTy->isType<int8_t>()) {
-    std::vector<int8_t> initValues = quantization::createMapping<int8_t>(input.getType(), outTy, func);
+    std::vector<int8_t> initValues =
+        quantization::createMapping<int8_t>(input.getType(), outTy, func);
     return createIntLookupTable<int8_t>(name, input, initValues, outTy);
   } else if (outTy->isType<int16_t>()) {
-    std::vector<int16_t> initValues = quantization::createMapping<int16_t>(input.getType(), outTy, func);
+    std::vector<int16_t> initValues =
+        quantization::createMapping<int16_t>(input.getType(), outTy, func);
     return createIntLookupTable<int16_t>(name, input, initValues, outTy);
   } else if (outTy->isType<int32_t>()) {
-    std::vector<int32_t> initValues = quantization::createMapping<int32_t>(input.getType(), outTy, func);
+    std::vector<int32_t> initValues =
+        quantization::createMapping<int32_t>(input.getType(), outTy, func);
     return createIntLookupTable<int32_t>(name, input, initValues, outTy);
   } else {
     llvm_unreachable("Lookup table type not supported.");
   }
 }
 
-IntLookupTableNode *Function::createIntLog(llvm::StringRef name, NodeValue input,
-                                           TypeRef outTy) {
+IntLookupTableNode *Function::createIntLog(llvm::StringRef name,
+                                           NodeValue input, TypeRef outTy) {
   auto inputRange = input.getType()->getQuantizedValueRange();
   (void)inputRange;
   assert(inputRange.first >= 0 &&
@@ -2694,8 +2698,8 @@ IntLookupTableNode *Function::createIntLog(llvm::StringRef name, NodeValue input
   return createIntLookupTable(name, input, func, outTy);
 }
 
-IntLookupTableNode *Function::createIntExp(llvm::StringRef name, NodeValue input,
-                                           TypeRef outTy) {
+IntLookupTableNode *Function::createIntExp(llvm::StringRef name,
+                                           NodeValue input, TypeRef outTy) {
   return createIntLookupTable(name, input, expf, outTy);
 }
 
@@ -2706,9 +2710,7 @@ IntLookupTableNode *Function::createIntTanh(llvm::StringRef name,
 
 IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
                                                NodeValue input, TypeRef outTy) {
-  auto func = [](float x) -> float {
-    return 1.0f / (1.0f + expf(-x));
-  };
+  auto func = [](float x) -> float { return 1.0f / (1.0f + expf(-x)); };
   return createIntLookupTable(name, input, func, outTy);
 }
 

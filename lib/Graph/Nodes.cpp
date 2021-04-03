@@ -1881,14 +1881,13 @@ bool IntLookupTableNode::verify() const {
                         getResult().getType()->isQuantizedType(), true, this);
   isValid &= expectCompareTrue("Mapping should be 1 dimensional",
                                getMapping().dims().size(), size_t(1), this);
-  isValid &=
-      expectCompareTrue("Mapping should cover the whole input quantized range",
-                        getMapping().dims()[0],
-                        (dim_t)(getInput().getType()->getQuantizedValueCount()), this);
-  isValid &=
-      expectCompareTrue("Mapping and result type must be the same",
-                        getMapping().getType()->getElementType(),
-                        getResult().getType()->getElementType(), this);
+  isValid &= expectCompareTrue(
+      "Mapping should cover the whole input quantized range",
+      getMapping().dims()[0],
+      (dim_t)(getInput().getType()->getQuantizedValueCount()), this);
+  isValid &= expectCompareTrue("Mapping and result type must be the same",
+                               getMapping().getType()->getElementType(),
+                               getResult().getType()->getElementType(), this);
   return isValid;
 }
 
