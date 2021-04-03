@@ -2669,14 +2669,14 @@ IntLookupTableNode *
 Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
                                std::function<float(float)> func, TypeRef outTy) {
   if (outTy->isType<int8_t>()) {
-    std::vector<int8_t> initValues = createMapping<int8_t>(input.getType(), outTy, func);
-    return quantization::createIntLookupTable<int8_t>(name, input, initValues, outTy);
+    std::vector<int8_t> initValues = quantization::createMapping<int8_t>(input.getType(), outTy, func);
+    return createIntLookupTable<int8_t>(name, input, initValues, outTy);
   } else if (outTy->isType<int16_t>()) {
-    std::vector<int16_t> initValues = createMapping<int16_t>(input.getType(), outTy, func);
-    return quantization::createIntLookupTable<int16_t>(name, input, initValues, outTy);
+    std::vector<int16_t> initValues = quantization::createMapping<int16_t>(input.getType(), outTy, func);
+    return createIntLookupTable<int16_t>(name, input, initValues, outTy);
   } else if (outTy->isType<int32_t>()) {
-    std::vector<int32_t> initValues = createMapping<int32_t>(input.getType(), outTy, func);
-    return quantization::createIntLookupTable<int32_t>(name, input, initValues, outTy);
+    std::vector<int32_t> initValues = quantization::createMapping<int32_t>(input.getType(), outTy, func);
+    return createIntLookupTable<int32_t>(name, input, initValues, outTy);
   } else {
     llvm_unreachable("Lookup table type not supported.");
   }
