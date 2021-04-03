@@ -233,7 +233,8 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::Int8QTy, ElemKind::Int16QTy});
 
   case Kinded::Kind::RescaleQuantizedNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32QTy});
 
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::AvgPoolGradNodeKind:
@@ -393,10 +394,13 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::QuantizeNodeKind:
     return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy) &&
            ((NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int8QTy) ||
+            (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int16QTy) ||
             (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int32QTy));
 
   case Kinded::Kind::DequantizeNodeKind:
-    return (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) &&
+    return ((NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) ||
+            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int16QTy) ||
+            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int32QTy)) &&
            (NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy);
 
   case Kinded::Kind::SoftMaxNodeKind:

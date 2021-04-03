@@ -83,8 +83,8 @@ void libjit_quantized_conv2d_generic(
 
             for (unsigned i = 0; i < depthUnroll; i++) {
               // Scale the bias to match the scale of the matrix multiplication.
-              sum[i] = libjit_scale_i32i8((int32_t)biasW[d + i] - biasOffset,
-                                          biasPre, biasPost, biasScale, 0);
+              sum[i] = libjit_scale<int32_t>((int32_t)biasW[d + i] - biasOffset,
+                                             biasPre, biasPost, biasScale, 0);
             }
 
             // For each element in the convolution-filter:
@@ -132,12 +132,12 @@ void libjit_quantized_conv2d_generic(
 
             for (unsigned i = 0; i < depthUnroll; i++) {
               // Scale the result back to the expected destination scale.
-              int32_t scaledSum = libjit_scale_i32i8(sum[i], outPre, outPost,
-                                                     outScale, outOffset);
+              int32_t scaledSum = libjit_scale<int32_t>(sum[i], outPre, outPost,
+                                                        outScale, outOffset);
               scaledSum =
                   libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
               outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] =
-                  libjit_clip(scaledSum);
+                  libjit_clip_i8(scaledSum);
             }
           } // W
         }   // H
@@ -195,8 +195,8 @@ void libjit_channelwise_quantized_conv2d_generic(
           for (dim_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
 
             // Scale the bias to match the scale of the matrix multiplication.
-            int32_t sum = libjit_scale_i32i8((int32_t)biasW[d] - biasOffset,
-                                             biasPre, biasPost, biasScale, 0);
+            int32_t sum = libjit_scale<int32_t>((int32_t)biasW[d] - biasOffset,
+                                                biasPre, biasPost, biasScale, 0);
 
             // For each element in the convolution-filter:
             for (dim_t fx = 0; fx < kernel_h; fx++) {
@@ -225,11 +225,11 @@ void libjit_channelwise_quantized_conv2d_generic(
 
             // Scale the result back to the expected destination scale.
             int32_t scaledSum =
-                libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
+                libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
             scaledSum =
                 libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
             outW[libjit_getXYZW(outWdims, n, ax, ay, d)] =
-                libjit_clip(scaledSum);
+                libjit_clip_i8(scaledSum);
           } // W
         }   // H
       }     // C
@@ -296,8 +296,8 @@ void libjit_channelwise_quantized_conv3d_generic(
             for (dim_t ay = 0; ay < outWdims[3]; y += stride_w, ay++) {
 
               // Scale the bias to match the scale of the matrix multiplication.
-              int32_t sum = libjit_scale_i32i8((int32_t)biasW[d] - biasOffset,
-                                               biasPre, biasPost, biasScale, 0);
+              int32_t sum = libjit_scale<int32_t>((int32_t)biasW[d] - biasOffset,
+                                                  biasPre, biasPost, biasScale, 0);
 
               // For each element in the convolution-filter:
               for (dim_t ft = 0; ft < kernel_t; ft++) {
@@ -333,11 +333,11 @@ void libjit_channelwise_quantized_conv3d_generic(
 
               // Scale the result back to the expected destination scale.
               int32_t scaledSum =
-                  libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
+                  libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
               scaledSum =
                   libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
               outW[libjit_getXYZWQ(outWdims, n, at, ax, ay, d)] =
-                  libjit_clip(scaledSum);
+                  libjit_clip_i8(scaledSum);
             } // W
           }   // H
         }     // T
