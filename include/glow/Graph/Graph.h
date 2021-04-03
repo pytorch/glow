@@ -1540,15 +1540,22 @@ public:
   createQuantizationProfile(PlaceholderBindings &bindings, llvm::StringRef name,
                             NodeValue input, dim_t numHistogramBins = 10);
 
-  /// Create lookup table for mapping between quantized numbers.
-  /// \p input and \p outTy must have quantized type.
-  /// Table contains all numbers from the quantized range, e.g.,
-  /// 256 entries for int8. Position 0 in the \p initValues
-  /// corresponds to the -128 input number, position 255 to 127.
-  template <typename Ty = int8_t>
+  /// Create lookup table for mapping between quantized operands. \p input and
+  /// \p outTy must be quantized types. The table contains all numbers from the
+  /// quantized range, e.g., 256 entries for int8 input. First position in the
+  /// \p initValues corresponds to the minimum input number and the last
+  /// position corresponds to the maximum input number.
+  template <typename T = int8_t>
   IntLookupTableNode *
   createIntLookupTable(llvm::StringRef name, NodeValue input,
-                       llvm::ArrayRef<Ty> initValues, TypeRef outTy);
+                       llvm::ArrayRef<T> initValues, TypeRef outTy);
+
+  /// Create lookup table for mapping between quantized operands based on the
+  /// floating point function \p func. \p input and \p outTy must be quantized
+  /// types.
+  IntLookupTableNode *
+  createIntLookupTable(llvm::StringRef name, NodeValue input,
+                       std::function<float(float)> func, TypeRef outTy);
 
   /// Create quantized tanh.
   IntLookupTableNode *createIntTanh(llvm::StringRef name, NodeValue input,

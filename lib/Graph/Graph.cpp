@@ -2632,24 +2632,53 @@ Function::createQuantizationProfile(PlaceholderBindings &bindings,
       input.getNode()->getName().str(), input.getResNo()));
 }
 
-template <typename Ty>
+template <typename T>
 IntLookupTableNode *
 Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
-                               llvm::ArrayRef<Ty> initValues, TypeRef outTy) {
-  if (std::is_same<Ty, int8_t>::value) {
-    // Create int8 lookup table.
+                               llvm::ArrayRef<T> initValues, TypeRef outTy) {
+  assert(initValues.size() == input.getType()->getQuantizedValueCount() &&
+         "Lookup table length must match input type!");
+  assert(outTy->isType<T>() && "Lookup table element must match output type!");
+  if (std::is_same<T, int8_t>::value) {
+    // Create INT8 lookup table.
     auto *mapping = getParent()->createConstant(
         ElemKind::Int8QTy, {(dim_t)initValues.size()}, outTy->getScale(),
         outTy->getOffset(), "mapping");
-    mapping->getHandle<Ty>() = initValues;
+    mapping->getHandle<T>() = initValues;
     return addNode(new IntLookupTableNode(name, outTy, input, mapping));
-  } else if (std::is_same<Ty, int16_t>::value) {
-    // Create int16 lookup table.
+  } else if (std::is_same<T, int16_t>::value) {
+    // Create INT16 lookup table.
     auto *mapping = getParent()->createConstant(
         ElemKind::Int16QTy, {(dim_t)initValues.size()}, outTy->getScale(),
         outTy->getOffset(), "mapping");
-    mapping->getHandle<Ty>() = initValues;
+    mapping->getHandle<T>() = initValues;
     return addNode(new IntLookupTableNode(name, outTy, input, mapping));
+  } else if (std::is_same<T, int32_t>::value) {
+    // Create INT32 lookup table.
+    auto *mapping = getParent()->createConstant(
+        ElemKind::Int32QTy, {(dim_t)initValues.size()}, outTy->getScale(),
+        outTy->getOffset(), "mapping");
+    mapping->getHandle<T>() = initValues;
+    return addNode(new IntLookupTableNode(name, outTy, input, mapping));
+  } else {
+    llvm_unreachable("Lookup table type not supported.");
+  }
+}
+
+IntLookupTableNode *
+Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
+                               std::function<float(float)> func, TypeRef outTy) {
+  if (outTy->isType<int8_t>()) {
+    std::vector<int8_t> initValues = createMapping(input.getType(), outTy, func);
+    return createIntLookupTable<int8_t>(name, input, initValues, outTy);
+  } else if (outTy->isType<int16_t>()) {
+    std::vector<int16_t> initValues = createMapping(input.getType(), outTy, func);
+    return createIntLookupTable<int16_t>(name, input, initValues, outTy);
+  } else if (outTy->isType<int32_t>()) {
+    std::vector<int32_t> initValues = createMapping(input.getType(), outTy, func);
+    return createIntLookupTable<int32_t>(name, input, initValues, outTy);
+  } else {
+    llvm_unreachable("Lookup table type not supported.");
   }
 }
 

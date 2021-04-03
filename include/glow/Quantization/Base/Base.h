@@ -382,15 +382,15 @@ void specializeBiasWeightsQuantizationParams(
     TensorQuantizationParams &weightsTQP, Schema schema, ElemKind biasQTy,
     bool biasZero = false);
 
-/// \returns an int8 or int16 vector mapping from the \p inTy to the \p outTy
-/// given the floating-point function \p f.
-/// \pre inTy and outTy should be Int8QTy or Int16QTy.
+/// \returns an integer mapping from the \p inTy to the \p outTy given the
+/// floating-point function \p f.
+/// \pre inTy and outTy must be quantized types.
 template <typename T = int8_t>
 std::vector<T> createMapping(TypeRef inTy, TypeRef outTy,
                              std::function<float(float)> f) {
-  assert(inTy->getElementType() == outTy->getElementType() &&
-         "Input and output type must have same element kind.");
-  assert(inTy->isQuantizedType() && "Must pass quantized types.");
+  assert(inTy->isQuantizedType() && "Input type must be quantized!");
+  assert(outTy->isQuantizedType() && "Output type must be quantized!");
+  assert(outTy->isType<T>() && "Output type must match template type!");
 
   // Calculate the step which will be added to the currInputVal repeatedly in
   // order to cover the input range of the input type.

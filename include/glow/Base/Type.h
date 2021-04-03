@@ -599,6 +599,16 @@ struct Type final {
     return ::glow::getQuantizedValueRange(scale_, offset_, elementType_);
   }
 
+  /// \returns the number of values associated to the quantized type.
+  size_t getQuantizedValueCount() const {
+    return ::glow::getQuantizedValueCount(elementType_);
+  }
+
+  /// \returns the floating point value step associated to the quantized type.
+  float getQuantizedValueStep() const {
+    return ::glow::getQuantizedValueStep(scale_, offset_, elementType_);
+  }
+
   /// \returns true if \p other is the same type. If \p allowDifferentShape then
   /// shapes will not be considered as part of the equal comparison. If \p
   /// allowDifferentScaleOffset is true, scale and offset will not be considered
