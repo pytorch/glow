@@ -472,6 +472,14 @@ inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
 std::pair<float, float> getQuantizedValueRange(float scale, int32_t offset,
                                                ElemKind elementType);
 
+/// \returns the number of values associated to a quantized type given
+/// \p elementType (e.g. 256 for Int8QTy).
+size_t getQuantizedValueCount(ElemKind elementType);
+
+/// \returns the floating point value step associated to a quantized type given
+/// \p scale, \p offset, and \p elementType.
+float getQuantizedValueStep(float scale, int32_t offset, ElemKind elementType);
+
 /// A class that represents a type of a tensor.
 struct Type final {
   /// Contains the dimensions (sizes) of the tensor. Ex: [sx, sy, sz, ...].

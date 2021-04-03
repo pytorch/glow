@@ -392,44 +392,20 @@ std::vector<T> createMapping(TypeRef inTy, TypeRef outTy,
          "Input and output type must have same element kind.");
   assert(inTy->isQuantizedType() && "Must pass quantized types.");
 
-  if (std::is_same<int8_t, T>::value) {
-    assert(inTy->getElementType() == ElemKind::Int8QTy &&
-           "Input and output type must be Int8QTy for int8 map.");
+  // Calculate the step which will be added to the currInputVal repeatedly in
+  // order to cover the input range of the input type.
+  auto inputRange = inTy->getQuantizedValueRange();
+  const float step = inTy->getQuantizedValueStep();
+  float currInputVal = inputRange.first;
 
-    // Calculate the step which will be added to the currInputVal repeatedly in
-    // order to cover the input range of the input type.
-    auto inputRange = inTy->getQuantizedValueRange();
-    const float step = (inputRange.second - inputRange.first) / 255;
-    float currInputVal = inputRange.first;
-
-    // Calculate the output int value for each possible input value.
-    std::vector<T> mapping(256);
-    TensorQuantizationParams outputTQP{outTy->getScale(), outTy->getOffset()};
-    for (size_t i = 0; i < 256; i++, currInputVal += step) {
-      float currOutputVal = f(currInputVal);
-      mapping[i] = quantization::quantize<T>(currOutputVal, outputTQP);
-    }
-    return mapping;
-
-  } else if (std::is_same<int16_t, T>::value) {
-    assert(inTy->getElementType() == ElemKind::Int16QTy &&
-           "Input and output type must be Int16QTy for int16 map.");
-
-    // Calculate the step which will be added to the currInputVal repeatedly in
-    // order to cover the input range of the input type.
-    auto inputRange = inTy->getQuantizedValueRange();
-    const float step = (inputRange.second - inputRange.first) / 65535;
-    float currInputVal = inputRange.first;
-
-    // Calculate the output int value for each possible input value.
-    std::vector<T> mapping(65536);
-    TensorQuantizationParams outputTQP{outTy->getScale(), outTy->getOffset()};
-    for (size_t i = 0; i < 65536; i++, currInputVal += step) {
-      float currOutputVal = f(currInputVal);
-      mapping[i] = quantization::quantize<T>(currOutputVal, outputTQP);
-    }
-    return mapping;
+  // Calculate the output int value for each possible input value.
+  std::vector<T> mapping(inTy->getQuantizedValueCount());
+  TensorQuantizationParams outputTQP{outTy->getScale(), outTy->getOffset()};
+  for (size_t i = 0; i < mapping.size(); i++, currInputVal += step) {
+    float currOutputVal = f(currInputVal);
+    mapping[i] = quantization::quantize<T>(currOutputVal, outputTQP);
   }
+  return mapping;
 }
 
 /// Row-wise quantize the tensor \p input. \p scales and \p offsets are

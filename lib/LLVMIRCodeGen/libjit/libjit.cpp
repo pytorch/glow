@@ -1756,6 +1756,11 @@ int8_t libjit_intlookuptable_kernel_i8(dim_t idx, const int8_t *src,
   return mapping[src[idx] + 128];
 }
 
+int16_t libjit_intlookuptable_kernel_i16(dim_t idx, const int16_t *src,
+                                         const int16_t *mapping) {
+  return mapping[src[idx] + 32768];
+}
+
 float libjit_elementselect_kernel_f(dim_t idx, const int8_t *cond,
                                     const float *LHS, const float *RHS) {
   return (cond[idx] != 0) ? LHS[idx] : RHS[idx];

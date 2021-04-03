@@ -5999,12 +5999,22 @@ void BoundInterpreterFunction::fwdRescaleQuantizedInst(
 
 void BoundInterpreterFunction::fwdIntLookupTableInst(
     const IntLookupTableInst *I) {
-  auto srcH = getWeightHandle<int8_t>(I->getSrc());
-  auto destH = getWeightHandle<int8_t>(I->getDest());
-  auto mappingH = getWeightHandle<int8_t>(I->getMapping());
-
-  for (size_t i = 0, e = destH.size(); i < e; i++) {
-    destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 128);
+  if (I->getSrc()->getElementType() == ElemKind::Int8QTy) {
+    auto srcH = getWeightHandle<int8_t>(I->getSrc());
+    auto destH = getWeightHandle<int8_t>(I->getDest());
+    auto mappingH = getWeightHandle<int8_t>(I->getMapping());
+    for (size_t i = 0, e = destH.size(); i < e; i++) {
+      destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 128);
+    }
+  } else if (I->getSrc()->getElementType() == ElemKind::Int16QTy) {
+    auto srcH = getWeightHandle<int16_t>(I->getSrc());
+    auto destH = getWeightHandle<int16_t>(I->getDest());
+    auto mappingH = getWeightHandle<int16_t>(I->getMapping());
+    for (size_t i = 0, e = destH.size(); i < e; i++) {
+      destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 32768);
+    }
+  } else {
+    llvm_unreachable("Type not supported for IntLookupTable!");
   }
 }
 
