@@ -1196,7 +1196,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *F = getFunction("intlookuptable_kernel", dest->getElementType());
     auto *stackedOpCall =
         builder.CreateCall(F, {loopCount, srcPtr, mappingPtr});
-    auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
+    auto *destType = getElementType(builder, dest);
+    auto *destAddr = builder.CreateGEP(destType, destPtr, loopCount,
                                        "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
 
