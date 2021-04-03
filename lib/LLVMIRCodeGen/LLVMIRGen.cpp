@@ -615,6 +615,10 @@ llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
   return builder.getInt8(val);
 }
 
+llvm::Value *LLVMIRGen::emitConstI16(llvm::IRBuilder<> &builder, int16_t val) {
+  return builder.getInt16(val);
+}
+
 llvm::Value *LLVMIRGen::emitConstI1(llvm::IRBuilder<> &builder, bool val) {
   return builder.getInt1(val);
 }
@@ -1100,13 +1104,25 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       /* Perform this early and let jit library to work */                     \
       /* with quantized number. */                                             \
       TensorQuantizationParams TQP{destTy->getScale(), destTy->getOffset()};   \
-      auto quantizedValue = quantization::quantize(value, TQP);                \
-      auto *val = emitConstI8(builder, quantizedValue);                        \
-      auto *stackedOpCall = createUncheckedCall(                               \
-          builder, F, {loopCount, val, pointerNull, pointerNull});             \
-      auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
-                                         "buffer.element.addr");               \
-      builder.CreateStore(stackedOpCall, destAddr);                            \
+      if (destTy->getElementType() == ElemKind::Int8QTy) {                     \
+        auto quantizedValue = quantization::quantize<int8_t>(value, TQP);      \
+        auto *val = emitConstI8(builder, quantizedValue);                      \
+        auto *stackedOpCall = createUncheckedCall(                             \
+            builder, F, {loopCount, val, pointerNull, pointerNull});           \
+        auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,      \
+                                           "buffer.element.addr");             \
+        builder.CreateStore(stackedOpCall, destAddr);                          \
+      } else if (destTy->getElementType() == ElemKind::Int16QTy) {             \
+        auto quantizedValue = quantization::quantize<int16_t>(value, TQP);     \
+        auto *val = emitConstI16(builder, quantizedValue);                     \
+        auto *stackedOpCall = createUncheckedCall(                             \
+            builder, F, {loopCount, val, pointerNull, pointerNull});           \
+        auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,      \
+                                           "buffer.element.addr");             \
+        builder.CreateStore(stackedOpCall, destAddr);                          \
+      } else {                                                                 \
+        llvm_unreachable("Quantization precision not supported.");             \
+      }                                                                        \
     } else {                                                                   \
       auto *val = emitConst(builder, value, dest->getElementType());           \
       auto *stackedOpCall = createUncheckedCall(                               \
@@ -1197,8 +1213,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *stackedOpCall =
         builder.CreateCall(F, {loopCount, srcPtr, mappingPtr});
     auto *destType = getElementType(builder, dest);
-    auto *destAddr = builder.CreateGEP(destType, destPtr, loopCount,
-                                       "buffer.element.addr");
+    auto *destAddr =
+        builder.CreateGEP(destType, destPtr, loopCount, "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
 
     break;
@@ -1395,17 +1411,9 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 
     auto *stackedOpCall = createUncheckedCall(
         builder, F, {loopCount, srcPtr, destScale, destOffset});
-    llvm::Value *destAddr = nullptr;
-    if (dest->getElementType() == ElemKind::Int8QTy) {
-      destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
-                                   "buffer.element.addr");
-    } else if (dest->getElementType() == ElemKind::Int32QTy) {
-      destAddr = builder.CreateGEP(builder.getInt32Ty(), destPtr, loopCount,
-                                   "buffer.element.addr");
-    } else {
-      LOG(FATAL) << "Type is not supported";
-    }
-
+    auto *destType = getElementType(builder, dest);
+    auto *destAddr = builder.CreateGEP(destType, destPtr, loopCount,
+                                       "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
     break;
   }
@@ -1419,7 +1427,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *srcTy = src->getType();
     auto *srcScale = emitConstF32(builder, srcTy->getScale());
     auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-    auto *F = getFunction("element_dequantize_kernel", dest->getElementType());
+    auto *F = getFunction("element_dequantize_kernel", src->getElementType());
 
     auto *stackedOpCall = createUncheckedCall(
         builder, F, {loopCount, srcPtr, srcScale, srcOffset});

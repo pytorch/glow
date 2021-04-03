@@ -2849,16 +2849,28 @@ int8_t libjit_element_quantize_kernel_i8(dim_t idx, const float *inW,
   return (int8_t)MAX(INT8_MIN, MIN(INT8_MAX, result));
 }
 
+int16_t libjit_element_quantize_kernel_i16(dim_t idx, const float *inW,
+                                           float scale, int32_t offset) {
+  int32_t result = (int32_t)nearbyintf(inW[idx] / scale + offset);
+  return (int16_t)MAX(INT16_MIN, MIN(INT16_MAX, result));
+}
+
 int32_t libjit_element_quantize_kernel_i32(dim_t idx, const float *inW,
                                            float scale, int32_t offset) {
   int32_t result = (int32_t)nearbyintf(inW[idx] / scale + offset);
   return result;
 }
 
-float libjit_element_dequantize_kernel_f(dim_t idx, const int8_t *inW,
-                                         float scale, int32_t offset) {
+float libjit_element_dequantize_kernel_i8(dim_t idx, const int8_t *inW,
+                                          float scale, int32_t offset) {
   return scale * (inW[idx] - offset);
 }
+
+float libjit_element_dequantize_kernel_i16(dim_t idx, const int16_t *inW,
+                                           float scale, int32_t offset) {
+  return scale * (inW[idx] - offset);
+}
+
 
 int8_t libjit_element_rescale_kernel_i8(dim_t idx, const int8_t *inW,
                                         int32_t outOffset, int32_t inOffset,
