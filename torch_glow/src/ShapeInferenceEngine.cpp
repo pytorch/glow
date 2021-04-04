@@ -482,7 +482,7 @@ void ShapeInferenceEngine::printGraph(const torch::jit::Graph &graph,
       LOG(INFO) << "graph level " << level << " node(leaf) " << index << " "
                 << node->kind().toQualString();
       for (int i = 0; i < node->inputs().size(); i++) {
-        LOG(INFO) << "  input " << i << ": " << node->output(i)->debugName();
+        LOG(INFO) << "  input " << i << ": " << node->input(i)->debugName();
       }
       for (int i = 0; i < node->outputs().size(); i++) {
         LOG(INFO) << "  output " << i << ": " << node->output(i)->debugName();
