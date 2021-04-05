@@ -1995,8 +1995,8 @@ TEST(Quantization, chooseQuantizationSymmetricInf) {
   EXPECT_EQ(chooseQuantizationParams({1.0f, INFINITY}, sym, ElemKind::Int16QTy).offset, 0);
 }
 
-/// Check that Relu can use our symmetric quantization schema for Int8.
-TEST(Quantization, reluCanUseSymmetricSchemaInt8) {
+/// Check that Relu can use our symmetric quantization schema.
+TEST(Quantization, reluCanUseSymmetricSchema) {
   PlaceholderBindings bindings;
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -2021,54 +2021,6 @@ TEST(Quantization, reluCanUseSymmetricSchemaInt8) {
   QuantizeNode *QN =
       F->createQuantize("quant", input,
                         mod.uniqueType(ElemKind::Int8QTy, {10},
-                                       inputParams.scale, inputParams.offset));
-  ReluNode *RN = F->createRELU("relu", QN, reluTy);
-  DequantizeNode *DN = F->createDequantize("dequantize", RN, ElemKind::FloatTy);
-  SaveNode *SN = F->createSave("save", DN);
-  auto *res = bindings.allocate(SN->getPlaceholder());
-
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  // Verify all negative values were correctly set to zero.
-  auto RH = res->getHandle();
-  for (dim_t i = 0; i < 10; i++) {
-    if (i % 2 == 0) {
-      EXPECT_NEAR(RH.at({i}), 5, 0.05);
-    } else {
-      EXPECT_EQ(RH.at({i}), 0);
-    }
-  }
-}
-
-/// Check that Relu can use our symmetric quantization schema for Int16.
-TEST(Quantization, reluCanUseSymmetricSchemaInt16) {
-  PlaceholderBindings bindings;
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  Placeholder *input =
-      mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  auto *inputTensor = bindings.allocate(input);
-  auto IH = inputTensor->getHandle<float>();
-  for (dim_t i = 0; i < 10; i++) {
-    IH.at({i}) = (i % 2 == 0) ? 5 : -5;
-  }
-
-  // Create symmetric params that will be used for Relu.
-  TensorQuantizationParams reluParams =
-      chooseQuantizationParams({0.0, 10.0}, quantization::Schema::Symmetric,
-                               ElemKind::Int16QTy);
-  TypeRef reluTy = mod.uniqueType(ElemKind::Int16QTy, {10}, reluParams.scale,
-                                  reluParams.offset);
-  TensorQuantizationParams inputParams =
-      chooseQuantizationParams({-10.0, 10.0}, quantization::Schema::Symmetric,
-                               ElemKind::Int16QTy);
-
-  QuantizeNode *QN =
-      F->createQuantize("quant", input,
-                        mod.uniqueType(ElemKind::Int16QTy, {10},
                                        inputParams.scale, inputParams.offset));
   ReluNode *RN = F->createRELU("relu", QN, reluTy);
   DequantizeNode *DN = F->createDequantize("dequantize", RN, ElemKind::FloatTy);
