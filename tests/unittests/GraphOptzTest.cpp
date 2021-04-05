@@ -3196,8 +3196,8 @@ TEST_F(GraphOptz, mergeBANodes) {
 }
 
 /// Check that EliminateNoop optimization pass removes nodes which don't do
-/// anything useful for Int8 precision.
-TEST_F(GraphOptz, eliminateNoopInt8) {
+/// anything useful.
+TEST_F(GraphOptz, eliminateNoop) {
   std::vector<dim_t> shape = {1, 2, 2, 3};
   Placeholder *input1 = mod_.createPlaceholder(ElemKind::Int8QTy, shape, 0.004,
                                                0, "input", false);
@@ -3233,48 +3233,6 @@ TEST_F(GraphOptz, eliminateNoopInt8) {
                                                        mod_.getPRNG());
   bindings_.get(input2)->getHandle<int8_t>().randomize(-1.0, 1.0,
                                                        mod_.getPRNG());
-
-  checkNumericalEquivalence();
-}
-
-/// Check that EliminateNoop optimization pass removes nodes which don't do
-/// anything useful for Int16 precision.
-TEST_F(GraphOptz, eliminateNoopInt16) {
-  std::vector<dim_t> shape = {1, 2, 2, 3};
-  Placeholder *input1 = mod_.createPlaceholder(ElemKind::Int16QTy, shape, 0.004,
-                                               0, "input", false);
-  Placeholder *input2 = mod_.createPlaceholder(ElemKind::Int16QTy, shape, 0.004,
-                                               0, "input", false);
-  auto *cond = mod_.createConstant(ElemKind::BoolTy, shape, "input1");
-  cond->getHandle<bool>() = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-
-  auto *select = F_->createSelect("select", cond, input1, input2);
-  auto *slice = F_->createSlice("slice", select, {0, 0, 0, 0}, shape);
-  auto *tile = F_->createTile("tile", slice, 1, 1);
-  auto *pad = F_->createPad("pad", tile, tile->getResult().getType(), 0,
-                            {0, 0, 0, 0, 0, 0, 0, 0}, 0);
-  auto *avgPool = F_->createAvgPool("avgpool", pad, 1, 1, 0);
-  auto *maxPool = F_->createMaxPool("maxpool", avgPool, 1, 1, 0);
-
-  F_->createSave("save", maxPool->getResult());
-
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SelectNodeKind), 1);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 1);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TileNodeKind), 1);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::PadNodeKind), 1);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind), 1);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind), 1);
-
-  optimizedF_ = optimizeFunctionForTest(F_);
-
-  // Check that all nodes except for Save are eliminated.
-  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
-
-  bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(input1)->getHandle<int16_t>().randomize(-1.0, 1.0,
-                                                        mod_.getPRNG());
-  bindings_.get(input2)->getHandle<int16_t>().randomize(-1.0, 1.0,
-                                                        mod_.getPRNG());
 
   checkNumericalEquivalence();
 }
