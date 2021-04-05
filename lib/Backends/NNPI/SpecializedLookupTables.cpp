@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-#include "glow/glow/lib/Backends/NNPI/NNPI.h"
+#include "NNPI.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
