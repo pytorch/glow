@@ -3271,10 +3271,10 @@ TEST_F(GraphOptz, eliminateNoopInt16) {
   EXPECT_EQ(optimizedF_->getNodes().size(), 1);
 
   bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(input1)->getHandle<int8_t>().randomize(-1.0, 1.0,
-                                                       mod_.getPRNG());
-  bindings_.get(input2)->getHandle<int8_t>().randomize(-1.0, 1.0,
-                                                       mod_.getPRNG());
+  bindings_.get(input1)->getHandle<int16_t>().randomize(-1.0, 1.0,
+                                                        mod_.getPRNG());
+  bindings_.get(input2)->getHandle<int16_t>().randomize(-1.0, 1.0,
+                                                        mod_.getPRNG());
 
   checkNumericalEquivalence();
 }
@@ -4276,8 +4276,8 @@ TEST_F(GraphOptz, nopReluInt8) {
 }
 
 TEST_F(GraphOptz, nopReluInt16) {
-  auto *in = mod_.createPlaceholder(ElemKind::Int16QTy, {3, 5}, 0.3, -32768, "lhs",
-                                    false);
+  auto *in = mod_.createPlaceholder(ElemKind::Int16QTy, {3, 5}, 0.3, -32768,
+                                    "lhs", false);
 
   auto *relu = F_->createRELU("relu", in);
   F_->createSave("save", relu);
@@ -6069,14 +6069,12 @@ static void testOptimizeDequantizeClip(PlaceholderBindings &bindings,
   Placeholder *input =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
 
-  const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1},
-                                                              quantization::Asymmetric,
-                                                              elemKind);
+  const auto qParams = quantization::chooseQuantizationParams(
+      {-0.1, 0.1}, quantization::Asymmetric, elemKind);
 
-  QuantizeNode *QN =
-      F->createQuantize("quantize", input,
-                        mod.uniqueType(elemKind, {20, 20},
-                                       qParams.scale, qParams.offset));
+  QuantizeNode *QN = F->createQuantize(
+      "quantize", input,
+      mod.uniqueType(elemKind, {20, 20}, qParams.scale, qParams.offset));
   DequantizeNode *DN = F->createDequantize("dequantize", QN, ElemKind::FloatTy);
   ClipNode *CN =
       F->createClip("clip", DN, enableQuantParamChanges ? 0 : -100, 100);
@@ -6110,13 +6108,15 @@ static void testOptimizeDequantizeClip(PlaceholderBindings &bindings,
 /// Test that OptimizeQuantizeClip pass works as expected for Clip(Dequantize)
 /// when the quantization parameters are allowed to change.
 TEST_F(GraphOptz, OptimizeDequantizeClipTestInt8_QuantParamChanges) {
-  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_, ElemKind::Int8QTy,
+  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_,
+                             ElemKind::Int8QTy,
                              /* enableQuantParamChanges */ true);
   checkNumericalEquivalence(0.0005);
 }
 
 TEST_F(GraphOptz, OptimizeDequantizeClipTestInt16_QuantParamChanges) {
-  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_, ElemKind::Int16QTy,
+  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_,
+                             ElemKind::Int16QTy,
                              /* enableQuantParamChanges */ true);
   checkNumericalEquivalence(0.0005);
 }
@@ -6124,33 +6124,34 @@ TEST_F(GraphOptz, OptimizeDequantizeClipTestInt16_QuantParamChanges) {
 /// Test that OptimizeQuantizeClip pass works as expected for Clip(Dequantize)
 /// when the quantization parameters are not allowed to change.
 TEST_F(GraphOptz, OptimizeDequantizeClipTestInt8_NoQuantParamChanges) {
-  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_, ElemKind::Int8QTy,
+  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_,
+                             ElemKind::Int8QTy,
                              /* enableQuantParamChanges */ false);
   checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, OptimizeDequantizeClipTestInt16_NoQuantParamChanges) {
-  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_, ElemKind::Int16QTy,
+  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_,
+                             ElemKind::Int16QTy,
                              /* enableQuantParamChanges */ false);
   checkNumericalEquivalence();
 }
 
 static void testOptimizeClipQuantize(PlaceholderBindings &bindings, Module &mod,
-                                     Function *F, Function *&optF, ElemKind elemKind,
+                                     Function *F, Function *&optF,
+                                     ElemKind elemKind,
                                      bool enableQuantParamChanges) {
   Placeholder *input =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
 
-  const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1},
-                                                              quantization::Asymmetric,
-                                                              elemKind);
+  const auto qParams = quantization::chooseQuantizationParams(
+      {-0.1, 0.1}, quantization::Asymmetric, elemKind);
 
   ClipNode *CN =
       F->createClip("clip", input, enableQuantParamChanges ? 0 : -100, 100);
-  QuantizeNode *QN =
-      F->createQuantize("quantize", CN,
-                        mod.uniqueType(elemKind, {20, 20},
-                                       qParams.scale, qParams.offset));
+  QuantizeNode *QN = F->createQuantize(
+      "quantize", CN,
+      mod.uniqueType(elemKind, {20, 20}, qParams.scale, qParams.offset));
   DequantizeNode *DN = F->createDequantize("dequantize", QN, ElemKind::FloatTy);
   SaveNode *SN = F->createSave("save", DN);
 
@@ -6212,9 +6213,8 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTestInt8) {
   Placeholder *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
 
-  const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1},
-                                                              quantization::Asymmetric,
-                                                              ElemKind::Int8QTy);
+  const auto qParams = quantization::chooseQuantizationParams(
+      {-0.1, 0.1}, quantization::Asymmetric, ElemKind::Int8QTy);
 
   ConvertToNode *CN = F_->createConvertTo("conv", input, ElemKind::Float16Ty);
   QuantizeNode *QN =
@@ -6272,7 +6272,8 @@ TEST_F(GraphOptz, ClipReluClipElimTest) {
   checkNumericalEquivalence();
 }
 
-/// Test that we can find a non-quantized relu and fuse it up into a quant FC.
+/// Test that we can find a non-quantized relu and fuse it up into a quant FC
+/// for Int8 precision.
 TEST_F(GraphOptz, OptimizeQuantFCFloatReluTestInt8) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 1.0, 0,
                                        "input", false);
@@ -6313,6 +6314,8 @@ TEST_F(GraphOptz, OptimizeQuantFCFloatReluTestInt8) {
   checkNumericalEquivalence();
 }
 
+/// Test that we can find a non-quantized relu and fuse it up into a quant FC
+/// for Int16 precision.
 TEST_F(GraphOptz, OptimizeQuantFCFloatReluTestInt16) {
   auto *input = mod_.createPlaceholder(ElemKind::Int16QTy, {2, 32}, 1.0, 0,
                                        "input", false);
@@ -6345,9 +6348,9 @@ TEST_F(GraphOptz, OptimizeQuantFCFloatReluTestInt16) {
   EXPECT_EQ(rangeRN.second, rangeFC.second);
 
   bindings_.allocate(input)->getHandle<int16_t>().randomize(-32768, 32767,
-                                                           mod_.getPRNG());
+                                                            mod_.getPRNG());
   weights->getPayloadMutable().getHandle<int16_t>().randomize(-32768, 32767,
-                                                             mod_.getPRNG());
+                                                              mod_.getPRNG());
   bias->getPayloadMutable().getHandle<int32_t>().randomize(-32768, 32767,
                                                            mod_.getPRNG());
   checkNumericalEquivalence();
@@ -6457,7 +6460,7 @@ TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTestInt8) {
 }
 
 /// Test that we can find a concat with all dequantize inputs and a quantize at
-/// its output, and then replace quant/dequants with rescales.
+/// its output, and then replace quant/dequants with rescales for Int8.
 TEST_F(GraphOptz, OptimizeDequantConcatQuantInt8) {
   std::array<NodeValue, 5> DQs;
   std::array<Placeholder *, 5> inputs;
@@ -6507,6 +6510,8 @@ TEST_F(GraphOptz, OptimizeDequantConcatQuantInt8) {
   checkNumericalEquivalence();
 }
 
+/// Test that we can find a concat with all dequantize inputs and a quantize at
+/// its output, and then replace quant/dequants with rescales for Int16.
 TEST_F(GraphOptz, OptimizeDequantConcatQuantInt16) {
   std::array<NodeValue, 5> DQs;
   std::array<Placeholder *, 5> inputs;
