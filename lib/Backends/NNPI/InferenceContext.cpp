@@ -380,8 +380,8 @@ void InferenceContext::execute(RunIdentifierTy runId,
                          tracePreProcessContextName_, attributes);
 
   // Sanitize inputs before running inference
-  LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-      ERROR, sanitize(bindings), "Failed santization.", runId, ctx, resultCB);
+  FATAL_CALLBACK_IF_NOT(sanitize(bindings), "Failed santization.", runId, ctx,
+                        resultCB);
 
   // Pre-inference
   std::vector<void *> rawInputs, rawOutputs;
