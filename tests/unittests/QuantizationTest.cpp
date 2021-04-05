@@ -1752,8 +1752,8 @@ TEST(Quantization, optimizeRescaleQuantize) {
 /// the expected scales and offsets for various ranges for Int8.
 TEST(Quantization, chooseQuantizationAsymmetricInt8) {
   // Map float [0.0; 6.0] to int [-128; 127].
-  TensorQuantizationParams asymmetricParams =
-      chooseQuantizationParams({0.0, 6.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
+  TensorQuantizationParams asymmetricParams = chooseQuantizationParams(
+      {0.0, 6.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
   // Dequantization formula is scale(X - offset).
   // So
   // 1. scale(-128 - offset) == 0.0
@@ -1764,8 +1764,8 @@ TEST(Quantization, chooseQuantizationAsymmetricInt8) {
   EXPECT_NEAR(asymmetricParams.scale, 6.0 / 255, 0.001);
 
   // Map float [-3.0; 3.0] to int [-128; 127].
-  asymmetricParams =
-      chooseQuantizationParams({-3.0, 3.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
+  asymmetricParams = chooseQuantizationParams(
+      {-3.0, 3.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
   // Dequantization formula is scale(X - offset).
   // So in theory, we should get
   // 1. scale(-128 - offset) == -3.0
@@ -1782,8 +1782,8 @@ TEST(Quantization, chooseQuantizationAsymmetricInt8) {
   EXPECT_NEAR(asymmetricParams.scale, 6.0 / 255, 0.001);
 
   // Map float [-2.0; 5.0] to int [-128; 127].
-  asymmetricParams =
-      chooseQuantizationParams({-2.0, 5.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
+  asymmetricParams = chooseQuantizationParams(
+      {-2.0, 5.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
   // Scale: (5.0 - (-2.0)) / (127 - (-128)) == 7.0 / 255.0
   // Offset from min: scale(-128 - offset) == -2.0
   //                  7.0 / 255.0 * (-128 - offset) == -2.0
@@ -1796,8 +1796,8 @@ TEST(Quantization, chooseQuantizationAsymmetricInt8) {
   // Map float [2.0; 5.0] to int [-128; 127].
   // Make sure we extend the range to include 0.0, i.e.,
   // we really map [0.0; 5.0] to int [-128; 127].
-  asymmetricParams =
-      chooseQuantizationParams({2.0, 5.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
+  asymmetricParams = chooseQuantizationParams(
+      {2.0, 5.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
   // Scale: (5.0 - (0.0)) / (127 - (-128)) == 5.0 / 255.0
   // Offset from min: scale(-128 - offset) == 0.0
   EXPECT_EQ(asymmetricParams.offset, -128);
@@ -1806,8 +1806,8 @@ TEST(Quantization, chooseQuantizationAsymmetricInt8) {
   // Map float [-8.0; -2.0] to int [-128; 127].
   // Make sure we extend the range to include 0.0, i.e.,
   // we really map [-8.0; 0.0] to int [-128; 127].
-  asymmetricParams =
-      chooseQuantizationParams({-8.0, -2.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
+  asymmetricParams = chooseQuantizationParams(
+      {-8.0, -2.0}, quantization::Schema::Asymmetric, ElemKind::Int8QTy);
   // Scale: (0.0 - (-8.0)) / (127 - (-128)) == 8.0 / 255.0
   // Offset from min: scale(127 - offset) == 0.0
   EXPECT_EQ(asymmetricParams.offset, 127);
@@ -1819,30 +1819,30 @@ TEST(Quantization, chooseQuantizationAsymmetricInt8) {
 TEST(Quantization, chooseQuantizationSymmetricInt8) {
   // Map float [0.0; 6.0] to int [-128; 127].
   // With symmetric mapping, we basically map [-6.0; 6.0]
-  TensorQuantizationParams symmetricParams =
-      chooseQuantizationParams({0.0, 6.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
+  TensorQuantizationParams symmetricParams = chooseQuantizationParams(
+      {0.0, 6.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
   // With symmetric mapping offset should always be zero.
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 12.0 / 255, 0.001);
 
   // Map float [-3.0; 3.0] to int [-128; 127].
-  symmetricParams =
-      chooseQuantizationParams({-3.0, 3.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
+  symmetricParams = chooseQuantizationParams(
+      {-3.0, 3.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 6.0 / 255, 0.001);
 
   // Map float [-2.0; 5.0] to int [-128; 127].
   // => [-5.0; 5.0] range for symmetric mode.
-  symmetricParams =
-      chooseQuantizationParams({-2.0, 5.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
+  symmetricParams = chooseQuantizationParams(
+      {-2.0, 5.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 10.0 / 255, 0.001);
 
   // Map float [2.0; 5.0] to int [-128; 127].
   // Ranges are extended to include 0.
   // => [0.0; 5.0] range for symmetric mode.
-  symmetricParams =
-      chooseQuantizationParams({2.0, 5.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
+  symmetricParams = chooseQuantizationParams(
+      {2.0, 5.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
   // Scale: (5.0 - (0.0)) / (127 - (-128)) == 5.0 / 255.0
   // Offset from min: scale(-128 - offset) == 0.0
   EXPECT_EQ(symmetricParams.offset, 0);
@@ -1850,8 +1850,8 @@ TEST(Quantization, chooseQuantizationSymmetricInt8) {
 
   // Map float [-8.0; -2.0] to int [-128; 127].
   // => [-8.0; 8.0] range for symmetric mode.
-  symmetricParams =
-      chooseQuantizationParams({-8.0, -2.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
+  symmetricParams = chooseQuantizationParams(
+      {-8.0, -2.0}, quantization::Schema::Symmetric, ElemKind::Int8QTy);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 16.0 / 255, 0.001);
 }
@@ -1860,9 +1860,8 @@ TEST(Quantization, chooseQuantizationSymmetricInt8) {
 /// the expected scales and offsets for various ranges for Int16.
 TEST(Quantization, chooseQuantizationAsymmetricInt16) {
   // Map float [0.0; 6.0] to int [-32768; 32767].
-  TensorQuantizationParams asymmetricParams =
-      chooseQuantizationParams({0.0, 6.0}, quantization::Schema::Asymmetric,
-                               ElemKind::Int16QTy);
+  TensorQuantizationParams asymmetricParams = chooseQuantizationParams(
+      {0.0, 6.0}, quantization::Schema::Asymmetric, ElemKind::Int16QTy);
   // Dequantization formula is scale(X - offset).
   // So
   // 1. scale(-32768 - offset) == 0.0
@@ -1873,9 +1872,8 @@ TEST(Quantization, chooseQuantizationAsymmetricInt16) {
   EXPECT_NEAR(asymmetricParams.scale, 6.0 / 65535, 0.00009);
 
   // Map float [-3.0; 3.0] to int [-32768; 32767].
-  asymmetricParams =
-      chooseQuantizationParams({-3.0, 3.0}, quantization::Schema::Asymmetric,
-                               ElemKind::Int16QTy);
+  asymmetricParams = chooseQuantizationParams(
+      {-3.0, 3.0}, quantization::Schema::Asymmetric, ElemKind::Int16QTy);
   // Dequantization formula is scale(X - offset).
   // So in theory, we should get
   // 1. scale(-32768 - offset) == -3.0
@@ -1892,9 +1890,8 @@ TEST(Quantization, chooseQuantizationAsymmetricInt16) {
   EXPECT_NEAR(asymmetricParams.scale, 6.0 / 65535, 0.00009);
 
   // Map float [-2.0; 5.0] to int [-32768; 32767].
-  asymmetricParams =
-      chooseQuantizationParams({-2.0, 5.0}, quantization::Schema::Asymmetric,
-                               ElemKind::Int16QTy);
+  asymmetricParams = chooseQuantizationParams(
+      {-2.0, 5.0}, quantization::Schema::Asymmetric, ElemKind::Int16QTy);
   // Scale: (5.0 - (-2.0)) / (32767 - (-32768)) == 7.0 / 255.0
   // Offset from min: scale(-32768 - offset) == -2.0
   //                  7.0 / 255.0 * (-32768 - offset) == -2.0
@@ -1907,9 +1904,8 @@ TEST(Quantization, chooseQuantizationAsymmetricInt16) {
   // Map float [2.0; 5.0] to int [-32768; 32767].
   // Make sure we extend the range to include 0.0, i.e.,
   // we really map [0.0; 5.0] to int [-32768; 32767].
-  asymmetricParams =
-      chooseQuantizationParams({2.0, 5.0}, quantization::Schema::Asymmetric,
-                               ElemKind::Int16QTy);
+  asymmetricParams = chooseQuantizationParams(
+      {2.0, 5.0}, quantization::Schema::Asymmetric, ElemKind::Int16QTy);
   // Scale: (5.0 - (0.0)) / (32767 - (-32768)) == 5.0 / 255.0
   // Offset from min: scale(-32768 - offset) == 0.0
   EXPECT_EQ(asymmetricParams.offset, -32768);
@@ -1918,9 +1914,8 @@ TEST(Quantization, chooseQuantizationAsymmetricInt16) {
   // Map float [-8.0; -2.0] to int [-32768; 32767].
   // Make sure we extend the range to include 0.0, i.e.,
   // we really map [-8.0; 0.0] to int [-32768; 32767].
-  asymmetricParams =
-      chooseQuantizationParams({-8.0, -2.0}, quantization::Schema::Asymmetric,
-                               ElemKind::Int16QTy);
+  asymmetricParams = chooseQuantizationParams(
+      {-8.0, -2.0}, quantization::Schema::Asymmetric, ElemKind::Int16QTy);
   // Scale: (0.0 - (-8.0)) / (32767 - (-32768)) == 8.0 / 255.0
   // Offset from min: scale(32767 - offset) == 0.0
   EXPECT_EQ(asymmetricParams.offset, 32767);
@@ -1932,34 +1927,30 @@ TEST(Quantization, chooseQuantizationAsymmetricInt16) {
 TEST(Quantization, chooseQuantizationSymmetricInt16) {
   // Map float [0.0; 6.0] to int [-32768; 32767].
   // With symmetric mapping, we basically map [-6.0; 6.0]
-  TensorQuantizationParams symmetricParams =
-      chooseQuantizationParams({0.0, 6.0}, quantization::Schema::Symmetric,
-                               ElemKind::Int16QTy);
+  TensorQuantizationParams symmetricParams = chooseQuantizationParams(
+      {0.0, 6.0}, quantization::Schema::Symmetric, ElemKind::Int16QTy);
   // With symmetric mapping offset should always be zero.
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 12.0 / 65535, 0.00009);
 
   // Map float [-3.0; 3.0] to int [-32768; 32767].
-  symmetricParams =
-      chooseQuantizationParams({-3.0, 3.0}, quantization::Schema::Symmetric,
-                               ElemKind::Int16QTy);
+  symmetricParams = chooseQuantizationParams(
+      {-3.0, 3.0}, quantization::Schema::Symmetric, ElemKind::Int16QTy);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 6.0 / 65535, 0.00009);
 
   // Map float [-2.0; 5.0] to int [-32768; 32767].
   // => [-5.0; 5.0] range for symmetric mode.
-  symmetricParams =
-      chooseQuantizationParams({-2.0, 5.0}, quantization::Schema::Symmetric,
-                               ElemKind::Int16QTy);
+  symmetricParams = chooseQuantizationParams(
+      {-2.0, 5.0}, quantization::Schema::Symmetric, ElemKind::Int16QTy);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 10.0 / 65535, 0.00009);
 
   // Map float [2.0; 5.0] to int [-32768; 32767].
   // Ranges are extended to include 0.
   // => [0.0; 5.0] range for symmetric mode.
-  symmetricParams =
-      chooseQuantizationParams({2.0, 5.0}, quantization::Schema::Symmetric,
-                               ElemKind::Int16QTy);
+  symmetricParams = chooseQuantizationParams(
+      {2.0, 5.0}, quantization::Schema::Symmetric, ElemKind::Int16QTy);
   // Scale: (5.0 - (0.0)) / (32767 - (-32768)) == 5.0 / 65535.0
   // Offset from min: scale(-32768 - offset) == 0.0
   EXPECT_EQ(symmetricParams.offset, 0);
@@ -1967,9 +1958,8 @@ TEST(Quantization, chooseQuantizationSymmetricInt16) {
 
   // Map float [-8.0; -2.0] to int [-32768; 32767].
   // => [-8.0; 8.0] range for symmetric mode.
-  symmetricParams =
-      chooseQuantizationParams({-8.0, -2.0}, quantization::Schema::Symmetric,
-                               ElemKind::Int16QTy);
+  symmetricParams = chooseQuantizationParams(
+      {-8.0, -2.0}, quantization::Schema::Symmetric, ElemKind::Int16QTy);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 16.0 / 65535, 0.00009);
 }
@@ -1978,21 +1968,56 @@ TEST(Quantization, chooseQuantizationSymmetricInt16) {
 TEST(Quantization, chooseQuantizationSymmetricInf) {
   auto sym = quantization::Schema::Symmetric;
   // Check for Int8 precision.
-  EXPECT_EQ(chooseQuantizationParams({-INFINITY, INFINITY}, sym, ElemKind::Int8QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({INFINITY, INFINITY}, sym, ElemKind::Int8QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({-INFINITY, -INFINITY}, sym, ElemKind::Int8QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({-INFINITY, 1.0f}, sym, ElemKind::Int8QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({-INFINITY, -1.0f}, sym, ElemKind::Int8QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({-1.0f, INFINITY}, sym, ElemKind::Int8QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({1.0f, INFINITY}, sym, ElemKind::Int8QTy).offset, 0);
+  EXPECT_EQ(
+      chooseQuantizationParams({-INFINITY, INFINITY}, sym, ElemKind::Int8QTy)
+          .offset,
+      0);
+  EXPECT_EQ(
+      chooseQuantizationParams({INFINITY, INFINITY}, sym, ElemKind::Int8QTy)
+          .offset,
+      0);
+  EXPECT_EQ(
+      chooseQuantizationParams({-INFINITY, -INFINITY}, sym, ElemKind::Int8QTy)
+          .offset,
+      0);
+  EXPECT_EQ(chooseQuantizationParams({-INFINITY, 1.0f}, sym, ElemKind::Int8QTy)
+                .offset,
+            0);
+  EXPECT_EQ(chooseQuantizationParams({-INFINITY, -1.0f}, sym, ElemKind::Int8QTy)
+                .offset,
+            0);
+  EXPECT_EQ(chooseQuantizationParams({-1.0f, INFINITY}, sym, ElemKind::Int8QTy)
+                .offset,
+            0);
+  EXPECT_EQ(
+      chooseQuantizationParams({1.0f, INFINITY}, sym, ElemKind::Int8QTy).offset,
+      0);
   // Check for Int16 precision.
-  EXPECT_EQ(chooseQuantizationParams({-INFINITY, INFINITY}, sym, ElemKind::Int16QTy). offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({INFINITY, INFINITY}, sym, ElemKind::Int16QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({-INFINITY, -INFINITY}, sym, ElemKind::Int16QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({-INFINITY, 1.0f}, sym, ElemKind::Int16QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({-INFINITY, -1.0f}, sym, ElemKind::Int16QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({-1.0f, INFINITY}, sym, ElemKind::Int16QTy).offset, 0);
-  EXPECT_EQ(chooseQuantizationParams({1.0f, INFINITY}, sym, ElemKind::Int16QTy).offset, 0);
+  EXPECT_EQ(
+      chooseQuantizationParams({-INFINITY, INFINITY}, sym, ElemKind::Int16QTy)
+          .offset,
+      0);
+  EXPECT_EQ(
+      chooseQuantizationParams({INFINITY, INFINITY}, sym, ElemKind::Int16QTy)
+          .offset,
+      0);
+  EXPECT_EQ(
+      chooseQuantizationParams({-INFINITY, -INFINITY}, sym, ElemKind::Int16QTy)
+          .offset,
+      0);
+  EXPECT_EQ(chooseQuantizationParams({-INFINITY, 1.0f}, sym, ElemKind::Int16QTy)
+                .offset,
+            0);
+  EXPECT_EQ(
+      chooseQuantizationParams({-INFINITY, -1.0f}, sym, ElemKind::Int16QTy)
+          .offset,
+      0);
+  EXPECT_EQ(chooseQuantizationParams({-1.0f, INFINITY}, sym, ElemKind::Int16QTy)
+                .offset,
+            0);
+  EXPECT_EQ(chooseQuantizationParams({1.0f, INFINITY}, sym, ElemKind::Int16QTy)
+                .offset,
+            0);
 }
 
 /// Check that Relu can use our symmetric quantization schema.
