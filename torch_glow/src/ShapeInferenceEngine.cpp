@@ -59,15 +59,18 @@ ShapeInferenceEngine::ShapeInferenceEngine(
   }
 };
 
-void ShapeInferenceEngine::getNodeInputShape(const torch::jit::Node *node,
+bool ShapeInferenceEngine::getNodeInputShape(const torch::jit::Node *node,
                                              MetaStack &inputMetas) {
   for (auto input : node->inputs()) {
     auto it = shapeMap_.find(input);
-    CHECK(it != shapeMap_.end())
-        << "Node: " << node->kind() << " missing input shape for"
-        << input->debugName();
+    if (it == shapeMap_.end()) {
+      LOG(ERROR) << "Node: " << node->kind().toDisplayString() << " input "
+                 << input->debugName();
+      return false;
+    }
     inputMetas.emplace_back(shapeMap_[input]);
   }
+  return true;
 }
 
 const MetaStack &ShapeInferenceEngine::getGraphOutputShape() {
@@ -87,9 +90,74 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   if (blockList_.count(symbol)) {
     // Skip shape inference for this node. If other nodes have dependency
     // on this one then later their shape inference would fail explicitly.
-    LOG_FIRST_N(INFO, 1) << "Skip shape inference for " << symbol;
+    LOG(INFO) << "Skip shape inference for " << symbol;
     return Error::success();
   }
+
+  // TODO(T88296130): cleanup this part to reuse the code with the if/switch
+  const std::unordered_set<std::string> white_list = {
+      "glow::fused_stack",
+      "glow::fused_broadcast_stack",
+      "glow::fused_broadcast_cat",
+      "glow::fused_split",
+      "quantized::embedding_bag_byte_rowwise_offsets",
+      "quantized::embedding_bag_4bit_rowwise_offsets",
+      "glow::unpacked_quantized_linear",
+      "fb::lengths_to_offsets",
+      "fb::simple_embedding_bag_sum",
+      "fb::glow_embedding_bag",
+      "fb::glow_embedding_bag_byte_rowwise_offsets",
+      "fb::glow_embedding_bag_4bit_rowwise_offsets",
+      "fb::xl_embedding_bag",
+      "fb::xl_embedding_bag_byte_rowwise_offsets",
+      "fb::xl_embedding_bag_4bit_rowwise_offsets",
+      "fb::fast_gather",
+      "fb::lengths_range",
+      "fb::lengths_range_w_truncation_size",
+      "aten::quantize_per_tensor",
+      "aten::dequantize",
+      "quantized::mul",
+      "prim::Constant",
+      "aten::tanh",
+      "aten::relu",
+      "aten::sigmoid",
+      "aten::sub",
+      "aten::pow",
+      "aten::mul",
+      "aten::add",
+      "aten::div",
+      "aten::rsub",
+      "aten::mm",
+      "aten::addmm",
+      "aten::bmm",
+      "aten::t",
+      "aten::transpose",
+      "aten::flatten",
+      "prim::FusedConcat",
+      "prim::ConstantChunk",
+      "aten::chunk",
+      "prim::ListConstruct",
+      "aten::slice",
+      "aten::reshape",
+      "aten::cat",
+      "aten::permute",
+      "aten::embedding_bag",
+      "aten::matmul",
+      "aten::layer_norm",
+      "aten::linear",
+      "aten::stack",
+      "aten::to",
+      "aten::sum",
+      "prim::dtype",
+      "prim::ListUnpack"};
+
+  if (!white_list.count(symbol)) {
+    // Skip shape inference for this node. If other nodes have dependency
+    // on this one then later their shape inference would fail explicitly.
+    LOG(INFO) << "Skip shape inference for " << symbol;
+    return Error::success();
+  }
+
   /// Extract shapes of inputs from shape mapping
   MetaStack inputMetas;
 
@@ -99,7 +167,12 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   TensorOutput tensorOutput;
   TensorListOutput tensorListOutput;
 
-  getNodeInputShape(node, inputMetas);
+  bool ret = getNodeInputShape(node, inputMetas);
+  if (!ret) {
+    LOG(WARNING) << "Skip shape inference for " << symbol
+                 << " due to prior missing shapes";
+    return Error::success();
+  }
 
   // Get output shape or int value of the ops without actual computation
   if (symbol == "glow::fused_stack") {
@@ -401,7 +474,6 @@ Error ShapeInferenceEngine::runGraph(
             torch::empty(it->second.shape<TensorShape>(),
                          torch::TensorOptions().dtype(it->second.dtype)));
       }
-
       const at::ArrayRef<torch::jit::IValue> inputRefs(subgraphInputs);
 
       auto subgraph = node->g(torch::jit::attr::Subgraph);
@@ -482,7 +554,7 @@ void ShapeInferenceEngine::printGraph(const torch::jit::Graph &graph,
       LOG(INFO) << "graph level " << level << " node(leaf) " << index << " "
                 << node->kind().toQualString();
       for (int i = 0; i < node->inputs().size(); i++) {
-        LOG(INFO) << "  input " << i << ": " << node->input(i)->debugName();
+        LOG(INFO) << "  input " << i << ": " << node->output(i)->debugName();
       }
       for (int i = 0; i < node->outputs().size(); i++) {
         LOG(INFO) << "  output " << i << ": " << node->output(i)->debugName();
@@ -539,14 +611,10 @@ Error ShapeInferenceEngine::generateGraphOutputShape() {
   for (auto output : graph_.outputs()) {
     auto it = shapeMap_.find(output);
     if (it == shapeMap_.end()) {
-      if (!blockList_.empty()) {
-        LOG(WARNING) << "Some output shape is missing. Likely due to "
-                        "blockList. Clearing the output shape vector.";
-        outputShape_.clear();
-        return Error::success();
-      } else {
-        return MAKE_ERR("Unexpected missing shape for output.");
-      }
+      LOG(WARNING) << "Some output shape is missing. Likely due to "
+                      "blockList. Clearing the output shape vector.";
+      outputShape_.clear();
+      return Error::success();
     }
     outputShape_.emplace_back(it->second);
   }
@@ -1029,10 +1097,10 @@ ShapeInferenceEngine::fusedConcat(const MetaStack &variableMetas, int64_t dim) {
       if (j == dim) {
         shape[dim] += t[dim];
       } else {
-        RETURN_ERR_IF_NOT(
-            shape[j] == t[j],
-            strFormat("Sizes of tensors must match except in dimension %zu.",
-                      dim));
+        RETURN_ERR_IF_NOT(shape[j] == t[j],
+                          strFormat("Sizes of tensors %lu != %lu must match "
+                                    "except in dimension %zu.",
+                                    shape[j], t[j], dim));
       }
     }
   }
@@ -1923,11 +1991,11 @@ ShapeInferenceEngine::fastGather(const MetaStack &variableMetas) {
 Expected<TensorOutput>
 ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(
-      variableMetas.size() >= 2,
-      strFormat("Expected 2 or more inputs, got %zu.", variableMetas.size()));
+      variableMetas.size() == 3,
+      strFormat("Expected 3 inputs, got %zu.", variableMetas.size()));
 
   int max_feature_length;
-  if (variableMetas.size() > 2 && variableMetas[2].intValue.size() == 1) {
+  if (variableMetas[2].intValue.size() == 1) {
     max_feature_length = variableMetas[2].intValue[0];
   } else {
     max_feature_length = FLAGS_max_feature_length;
