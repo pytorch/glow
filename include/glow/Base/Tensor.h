@@ -670,8 +670,6 @@ public:
       return isEqualImpl<float16_t>(other, allowedError, verbose);
     case ElemKind::BFloat16Ty:
       return isEqualImpl<bfloat16_t>(other, allowedError, verbose);
-    case ElemKind::Float64Ty:
-      return isEqualImpl<double>(other, allowedError, verbose);
     case ElemKind::Int8QTy:
       return isEqualImpl<int8_t>(other, allowedError, verbose);
     case ElemKind::UInt8QTy:

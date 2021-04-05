@@ -1005,8 +1005,6 @@ Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
     return ElemKind::Float16Ty;
   case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
     return ElemKind::BFloat16Ty;
-  case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-    return ElemKind::Float64Ty;
   case ONNX_NAMESPACE::TensorProto_DataType_INT32:
     return ElemKind::Int32ITy;
   case ONNX_NAMESPACE::TensorProto_DataType_INT64:
