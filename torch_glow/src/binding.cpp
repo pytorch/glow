@@ -256,6 +256,10 @@ PYBIND11_MODULE(_torch_glow, m) {
     glow::runtime::flags::InterpreterMemory = memorySize;
   });
 
+  /// Enable NNPI private transforms
+  m.def("enable_nnpi_private_transforms",
+        []() { glow::nnpi::flags::EnablePrivateTransforms = true; });
+
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
   m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {

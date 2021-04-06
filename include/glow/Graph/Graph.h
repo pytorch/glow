@@ -807,6 +807,11 @@ public:
   /// \returns a LogitNode with \p name given \p input and \p eps.
   LogitNode *createLogit(llvm::StringRef name, NodeValue input, float eps);
 
+  /// Create a SoftPlus node with the given \p name, \p input and
+  /// output type \p outTy.
+  SoftPlusNode *createSoftPlus(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy = nullptr);
+
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
                              NodeValue selected, TypeRef outTy = nullptr,
                              float beta = 1.0);
@@ -1514,6 +1519,11 @@ public:
   createSparseToDenseMask(llvm::StringRef name, NodeValue indices,
                           NodeValue values, NodeValue defaultValue,
                           NodeValue lengths, llvm::ArrayRef<dim_t> mask);
+
+  // TODO: add description
+  SparseLabelSplitNode *
+  createSparseLabelSplit(llvm::StringRef name, NodeValue lengths,
+                         NodeValue indices, NodeValue values, dim_t numLabels);
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
 
@@ -2415,6 +2425,8 @@ bool isOutput(const Placeholder *PH, const Function &F);
 bool isInput(const Placeholder *PH, const Function &F);
 
 /// Helper vectors for common transpose shuffles.
+#define NCH2NHC                                                                \
+  { 0u, 2u, 1u }
 #define NCHW2NHWC                                                              \
   { 0u, 2u, 3u, 1u }
 #define NCTHW2NTHWC                                                            \

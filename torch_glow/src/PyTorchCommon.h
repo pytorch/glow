@@ -198,6 +198,12 @@ public:
   /// Whether to enable device tracing from HostManger. NOTE: this must be set
   /// before network compilation.
   bool enableDeviceTracing = false;
+
+  /// Whethere to enable DAG optimizer
+  bool use_dag_optimizer = false;
+  /// Additional parameters to DAG optimizer
+  std::string apl_parallelization_alg = "ParallelizeCVHeuristicData";
+  int32_t apl_num_parallel_chunks = 2;
 };
 
 /// Represents different possible output types from to_glow modules.

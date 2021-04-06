@@ -409,6 +409,7 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::AvgPoolNodeKind:
     case Kinded::Kind::MaxPoolNodeKind:
     case Kinded::Kind::BatchNormalizationNodeKind:
+    case Kinded::Kind::ResizeNearestNodeKind:
       return true;
     case Kinded::Kind::FullyConnectedNodeKind:
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
@@ -804,11 +805,15 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, glowDRQFC, "Bad node type",
                           NNPI_INVALID_PARAM);
 
+    // Right now we only support symmetric rowwise quantization, therefore we
+    // need to make sure all offsets are zeroes.
     LOG_AND_RETURN_IF_NOT(
         ERROR,
         !(glowDRQFC->getOffsets()) ||
             importer.zeroes(nodeValueName(glowDRQFC->getOffsets()).c_str()),
-        "Bad offset value", NNPI_INVALID_PARAM);
+        "Bad offset values. Currently only symmetric quantization is "
+        "supported.",
+        NNPI_INVALID_PARAM);
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -911,6 +916,23 @@ public:
                                    nodeValueName(glowSM->getInput()).c_str(),
                                    nodeValueName(glowSM->getResult()).c_str(),
                                    1); // Defaulting to axis 1 (C).
+  }
+};
+
+class SoftPlusNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowSoftPlus = llvm::dyn_cast<SoftPlusNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowSoftPlus, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowSoftPlus->getInput())},
+                            {nodeValueName(glowSoftPlus->getResult())});
+
+    return nnpiNetworkAddSoftplusOp(
+        importer.getNetwork(), glowSoftPlus->getName().begin(),
+        nodeValueName(glowSoftPlus->getInput()).c_str(),
+        nodeValueName(glowSoftPlus->getResult()).c_str());
   }
 };
 
@@ -1675,11 +1697,16 @@ public:
     auto *glowRowwiseFC = llvm::dyn_cast<RowwiseQuantizedFullyConnectedNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowRowwiseFC, "Bad node type",
                           NNPI_INVALID_PARAM);
+
+    // Right now we only support symmetric rowwise quantization, therefore we
+    // need to make sure all offsets are zeroes.
     LOG_AND_RETURN_IF_NOT(
         ERROR,
         !(glowRowwiseFC->getOffsets()) ||
             importer.zeroes(nodeValueName(glowRowwiseFC->getOffsets()).c_str()),
-        "Bad offset value", NNPI_INVALID_PARAM);
+        "Bad offset values. Currently only symmetric quantization is "
+        "supported.",
+        NNPI_INVALID_PARAM);
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -1748,35 +1775,6 @@ public:
                     .c_str()),
         "Bad offset value", NNPI_INVALID_PARAM);
 
-#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
-    const uint32_t SPATIAL_DIMS2 = 2;
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        glowChannelwiseQuantizedConv->getKernels().size() == SPATIAL_DIMS2,
-        "[Conv] Invalid number of kernel sizes", NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR,
-                          glowChannelwiseQuantizedConv->getPads().size() ==
-                              2 * SPATIAL_DIMS2,
-                          "[Conv] Invalid number of pads", NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        glowChannelwiseQuantizedConv->getStrides().size() == SPATIAL_DIMS2,
-        "[Conv] Invalid number of strides", NNPI_INVALID_PARAM);
-
-    uint32_t kernel[SPATIAL_DIMS2] = {
-        glowChannelwiseQuantizedConv->getKernels()[0],
-        glowChannelwiseQuantizedConv->getKernels()[1]};
-    uint32_t paddingStart[SPATIAL_DIMS2] = {
-        glowChannelwiseQuantizedConv->getPads()[0],
-        glowChannelwiseQuantizedConv->getPads()[1]};
-    uint32_t paddingEnd[SPATIAL_DIMS2] = {
-        glowChannelwiseQuantizedConv->getPads()[2],
-        glowChannelwiseQuantizedConv->getPads()[3]};
-    uint32_t stride[SPATIAL_DIMS2] = {
-        glowChannelwiseQuantizedConv->getStrides()[0],
-        glowChannelwiseQuantizedConv->getStrides()[1]};
-    uint32_t dilation[SPATIAL_DIMS2] = {1, 1}; // No dilation, default values
-#else
     const uint32_t spatialDims =
         glowChannelwiseQuantizedConv->getKernels().size();
     LOG_AND_RETURN_IF_NOT(
@@ -1814,7 +1812,6 @@ public:
         dilation[i] = 1;
       }
     }
-#endif
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -1863,18 +1860,6 @@ public:
         {
             nodeValueName(glowChannelwiseQuantizedConv->getResult()),
         });
-#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
-    return nnpiNetworkAddConvolutionOp(
-        importer.getNetwork(), glowChannelwiseQuantizedConv->getName().begin(),
-        nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str(),
-        nodeValueName(glowChannelwiseQuantizedConv->getResult()).c_str(),
-        nodeValueName(glowChannelwiseQuantizedConv->getFilter()).c_str(),
-        glowChannelwiseQuantizedConv->getBias()
-            ? nodeValueName(glowChannelwiseQuantizedConv->getBias()).c_str()
-            : nullptr,
-        kernel, paddingStart, paddingEnd, stride, dilation, SPATIAL_DIMS2,
-        glowChannelwiseQuantizedConv->getGroup());
-#else
     return nnpiNetworkAddConvolutionOp(
         importer.getNetwork(), glowChannelwiseQuantizedConv->getName().begin(),
         nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str(),
@@ -1885,7 +1870,6 @@ public:
             : nullptr,
         kernel, paddingStart, paddingEnd, stride, dilation, spatialDims,
         glowChannelwiseQuantizedConv->getGroup());
-#endif
   }
 };
 
@@ -2531,18 +2515,23 @@ public:
                           NNPI_INVALID_PARAM);
 
     const auto &inputDims = glowResizeNode->getInput().dims();
-    const auto &outputDims = glowResizeNode->getResult().dims();
 
     LOG_AND_RETURN_IF(
         ERROR, inputDims.size() == 5 && resizeMode != NNPI_RESIZE_NEAREST,
         "NNPI only supports nearest mode for 3D Tensor.", NNPI_INVALID_PARAM);
 
-    for (size_t i = 0; i < 2; i++) {
-      LOG_AND_RETURN_IF_NOT(
-          ERROR, inputDims[i] == outputDims[i],
-          "NNPI doesn't support resize Batch or Channel dimension",
-          NNPI_INVALID_PARAM);
-    }
+    // Overwrite input/output values for layout.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowResizeNode->getInput()),
+                          glowResizeNode->getInput().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowResizeNode->getResult()),
+                          glowResizeNode->getResult().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
 
     importer.setUsedTensors({nodeValueName(glowResizeNode->getInput())},
                             {nodeValueName(glowResizeNode->getResult())});
@@ -2575,6 +2564,7 @@ std::unordered_map<
      glow::make_unique<
          AdaptivePoolNodeImporter<glow::AdaptiveAvgPoolNode, NNPI_POOL_AVG>>()},
     {"FullyConnected", glow::make_unique<FullyConnectedNodeImporter>()},
+    {"SoftPlus", glow::make_unique<SoftPlusNodeImporter>()},
     {"SoftMax", glow::make_unique<SoftMaxNodeImporter>()},
     {"ScatterData", glow::make_unique<ScatterDataNodeImporter>()},
     {"Save", glow::make_unique<SaveNodeImporter>()},

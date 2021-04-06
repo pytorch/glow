@@ -135,6 +135,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::NegNodeKind:
   case Kinded::Kind::AbsNodeKind:
   case Kinded::Kind::ExpNodeKind:
+  case Kinded::Kind::SoftPlusNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
     break;
@@ -296,6 +297,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::UInt8QTy:
         case ElemKind::BoolTy:
           return true;
+        case ElemKind::Int32ITy:
+          return glow::nnpi::flags::EnablePrivateTransforms;
         default:
           return false;
         }
@@ -308,6 +311,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::UInt8QTy:
         case ElemKind::BoolTy:
           return true;
+        case ElemKind::Int32ITy:
+          return glow::nnpi::flags::EnablePrivateTransforms;
         default:
           return false;
         }
@@ -330,6 +335,9 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
           return true;
+        case ElemKind::Float16Ty:
+        case ElemKind::BoolTy:
+          return glow::nnpi::flags::EnablePrivateTransforms;
         default:
           return false;
         }
@@ -413,9 +421,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::TopKNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
             {TopKNode::IndicesIdx}) &&
-        (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy);
+        (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy ||
+         NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::GatherNodeKind:
     isNodePrecisionSupported =
@@ -452,12 +461,14 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
   case Kinded::Kind::CmpLTENodeKind:
-  case Kinded::Kind::CmpEQNodeKind:
   case Kinded::Kind::CmpLTNodeKind:
+  case Kinded::Kind::CmpEQNodeKind:
+  case Kinded::Kind::CmpNEQNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
-            {CmpEQNode::ResultIdx}) &&
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+             ElemKind::Int32ITy},
+            {}, {CmpEQNode::ResultIdx}) &&
         (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
     break;
   case Kinded::Kind::SelectNodeKind:
@@ -1212,6 +1223,16 @@ static Error setupPerNodeParallelizationConfigs(
       pKind = ParallelTransformKind::Data;
     } else if (pKindStr == "Model") {
       pKind = ParallelTransformKind::Model;
+    } else if (pKindStr == "Model_Axis1") {
+      pKind = ParallelTransformKind::Model_Axis1;
+    } else if (pKindStr == "Model_Axis2") {
+      pKind = ParallelTransformKind::Model_Axis2;
+    } else if (pKindStr == "Model_Axis3") {
+      pKind = ParallelTransformKind::Model_Axis3;
+    } else if (pKindStr == "Model_Axis4") {
+      pKind = ParallelTransformKind::Model_Axis4;
+    } else if (pKindStr == "Model_Axis5") {
+      pKind = ParallelTransformKind::Model_Axis5;
     } else if (pKindStr == "None") {
       pKind = ParallelTransformKind::None;
     } else {
@@ -1708,7 +1729,6 @@ static bool padKernelToStride(Function *F) {
           glowChannelwiseQuantizedConv->getStrides()[0],
           glowChannelwiseQuantizedConv->getStrides()[1]};
 
-#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
       bool is1x1s2Case = true;
       // This is for special case of 1x1 stride 2.
       for (int i = 0; i < SPATIAL_DIMS2; i++) {
@@ -1718,7 +1738,6 @@ static bool padKernelToStride(Function *F) {
       if (is1x1s2Case) {
         continue;
       }
-#endif
 
       for (int i = 0; i < SPATIAL_DIMS2; i++) {
         if (kernel[i] < stride[i]) {
@@ -1846,6 +1865,67 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
+// Replace inefficient Concat Nodes with Reshape->Concat->Transpose.
+// For Concat Nodes concatenating inputs on the innermost dimension, if the
+// innermost dimension size of the inputs is small (e.g., 1), the corresponding
+// memory access is inefficient. Therefore, those Concat Nodes need to be
+// replaced by Reshape->Concat->Transpose.
+// Example:
+//   Original: Inputs[4096x1]->Concat[4096x50]
+//   New:      Inputs[4096x1]->Reshape[1x4096]->Concat[50x4096]
+//                           ->Transpose[4096x50]
+static bool replaceInefficientConcat(Function *F) {
+  bool changed = false;
+  // This optimization is applied conservatively to avoid causing potential
+  // perf regression on other models.
+  const int targetInputNumDims = 2;
+  const int targetInputLastDim = 1;
+  const int targetInputOtherDim = 4096;
+  for (auto &N : F->getNodes()) {
+    auto *CN = llvm::dyn_cast<ConcatNode>(&N);
+    if (!CN) {
+      continue;
+    }
+    bool isTargetConcat = true;
+    auto origInputs = CN->getInputs();
+    // Check whether the Concat Node is a target
+    if ((origInputs[0].dims().size() != targetInputNumDims) ||
+        (CN->getDim() != (targetInputNumDims - 1)) ||
+        (origInputs[0].dims()[0] < targetInputOtherDim)) {
+      isTargetConcat = false;
+    } else {
+      for (auto &input : origInputs) {
+        const auto &origInputDims = input.dims();
+        if (origInputDims[origInputDims.size() - 1] != targetInputLastDim) {
+          isTargetConcat = false;
+          break;
+        }
+      }
+    }
+    if (!isTargetConcat) {
+      continue;
+    }
+    // Insert Reshape Nodes
+    std::vector<NodeValue> reshapes(origInputs.size());
+    for (int idx = 0; idx < origInputs.size(); ++idx) {
+      const std::vector<dim_t> newInputDims = {origInputs[idx].dims()[1],
+                                               origInputs[idx].dims()[0]};
+      DCHECK(idx < reshapes.size()) << "out-of-range idx";
+      reshapes[idx] = F->createReshape(
+          origInputs[idx].getNode()->getName().str() + "_reshaped",
+          origInputs[idx].getNode(), newInputDims);
+    }
+    // Create new Concat Node
+    auto *newCN =
+        F->createConcat(CN->getName().str() + "_for_tranpose", reshapes, 0);
+    // Insert Transpose Node
+    auto *newTN = F->createTranspose(CN->getName().str(), newCN, {1, 0});
+    CN->getResult().replaceAllUsesOfWith(newTN->getResult());
+    changed = true;
+  }
+  return changed;
+}
+
 Expected<bool>
 NNPIBackend::transformPostOptPipeline(Function *F,
                                       CompilationContext &cctx) const {
@@ -1901,6 +1981,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
   changed |= padKernelToStride(F);
   changed |= lowerEmbeddingToGather(F);
   changed |= quantizeLayernormScaleAndBias(F);
+  changed |= replaceInefficientConcat(F);
   auto it =
       cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
   if (it != cctx.backendOpts.backendSpecificOpts.end() && it->second == "1") {
@@ -1913,7 +1994,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
   changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
-  if (glow::nnpi::flags::DisablePrivateTransforms) {
+  if (!glow::nnpi::flags::EnablePrivateTransforms) {
     return changed;
   }
   changed |= transformPrivate(F, cctx);

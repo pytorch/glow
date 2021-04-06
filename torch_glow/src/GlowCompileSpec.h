@@ -442,11 +442,17 @@ struct CompilationGroupSettings : public JsonSerializableCustomClass {
 struct CompilationSpecSettings : public JsonSerializableCustomClass {
   ADD_STRING_FIELD(glow_backend, "")
   ADD_BOOL_FIELD(enable_fuser, false)
+  ADD_BOOL_FIELD(use_dag_optimizer, false)
+  ADD_STRING_FIELD(apl_parallelization_alg, "ParallelizeCVHeuristicData")
+  ADD_INT_FIELD(apl_num_parallel_chunks, 2)
 
   Expected<folly::dynamic> toDynamicImpl() const override {
     folly::dynamic obj = folly::dynamic::object();
     obj["glow_backend"] = glow_backend;
     obj["enable_fuser"] = enable_fuser;
+    obj["use_dag_optimizer"] = use_dag_optimizer;
+    obj["apl_parallelization_alg"] = apl_parallelization_alg;
+    obj["apl_num_parallel_chunks"] = apl_num_parallel_chunks;
     return obj;
   }
 
@@ -463,6 +469,21 @@ struct CompilationSpecSettings : public JsonSerializableCustomClass {
     if (dyn.count("enable_fuser")) {
       ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, enable_fuser,
                                                "enable_fuser");
+    }
+
+    if (dyn.count("use_dag_optimizer")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, use_dag_optimizer,
+                                               "use_dag_optimizer");
+    }
+
+    if (dyn.count("apl_parallelization_alg")) {
+      ASSIGN_STRING_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, apl_parallelization_alg,
+                                                 "apl_parallelization_alg");
+    }
+
+    if (dyn.count("apl_num_parallel_chunks")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, apl_num_parallel_chunks,
+                                              "apl_num_parallel_chunks");
     }
 
     return Error::success();

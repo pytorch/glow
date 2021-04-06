@@ -132,9 +132,17 @@ Error HostManager::startDeviceTrace() {
 }
 
 Error HostManager::stopDeviceTrace() {
-  LOG(INFO) << "stop device tracing" << std::endl;
+
+  auto *traceContext = hostTraceContext_.get();
+  if (!traceContext) {
+    LOG(INFO) << "No HostManager TraceContext registered, skipping call to "
+                 "stopDeviceTrace";
+    return Error::success();
+  } else {
+    LOG(INFO) << "stop device tracing";
+  }
   for (auto &dev : devices_) {
-    Error err = dev.second->stopDeviceTrace(hostTraceContext_.get());
+    Error err = dev.second->stopDeviceTrace(traceContext);
     RETURN_IF_ERR(err);
   }
   return Error::success();

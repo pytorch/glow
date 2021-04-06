@@ -1,6 +1,8 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
+#include "glow/Flags/Flags.h"
+#include "glow/Support/Support.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "nnpi_transformer_types.h"
 
@@ -27,15 +29,15 @@ public:
   importNode(const folly::dynamic &node,
              const std::function<string(string)> & /* getQualName */,
              FXNNPIImporter &importer) override {
-    const auto &inputs = node["args"];
     const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
 
     // TODO: broadcast inputs if input is not a node.
     std::array<NNPIObjectName, 2> inputNames;
     snprintf(inputNames[0], NNPI_MAX_STRING_LEN, "%s",
-             importer.getInputNodeName(inputs[0]).c_str());
+             importer.getInputNodeName(kwargs["input"]).c_str());
     snprintf(inputNames[1], NNPI_MAX_STRING_LEN, "%s",
-             importer.getInputNodeName(inputs[1]).c_str());
+             importer.getInputNodeName(kwargs["other"]).c_str());
 
     importer.setUsedTensors({inputNames[0], inputNames[1]}, {name});
     return nnpiNetworkAddElementwiseOp(importer.getNetwork(), finalize(name),
@@ -156,6 +158,43 @@ public:
   }
 };
 
+class EmbeddingBagNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode importNode(const folly::dynamic &node,
+                           const std::function<string(string)> &getQualName,
+                           FXNNPIImporter &importer) override {
+    const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &per_sample_weights =
+        importer.getInputNodeName(kwargs["per_sample_weights"]);
+    const auto &offsetsName = importer.getInputNodeName(kwargs["offsets"]);
+
+    const auto &hasEndOffset = kwargs["include_last_offset"].asBool();
+    LOG_AND_RETURN_IF_NOT(ERROR, hasEndOffset,
+                          "[EmbeddingBag] hasEndOffset must be true",
+                          NNPI_INVALID_PARAM);
+
+    // We will assume that all embedding bags have been legalized to include per
+    // index weights.
+    importer.setUsedTensors(
+        {
+            weightName,
+            per_sample_weights,
+            inputName,
+            offsetsName,
+        },
+        {name});
+
+    return nnpiNetworkAddSparseLengthsWeightedSumOp(
+        importer.getNetwork(), name.c_str(), weightName.c_str(), name.c_str(),
+        per_sample_weights.c_str(), inputName.c_str(), offsetsName.c_str(),
+        /* useFP32Accumulation */ 0, /* useLengthsAsOffsets */ 1,
+        /*avg length*/ NAN, NNPI_LENGTH_VARIABLE);
+  }
+};
+
 class ReluNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -265,22 +304,24 @@ public:
 static std::unordered_map<std::string,
                           std::unique_ptr<INNPIFXNodeImporter>>::value_type
     FXImporterInit[] = {
-        // _operator
-        {"_operator.add",
+        {"acc_ops.add",
          std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_ADD>>()},
-
-        // torch
-        {"torch.flatten", std::make_unique<ReshapeNodeImporter>()},
-
-        // torch.nn.modules
-        {"torch.nn.functional.linear", std::make_unique<LinearNodeImporter>()},
-        {"torch.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
-        {"torch.nn.functional.batch_norm",
+        {"acc_ops.sub",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
+        {"acc_ops.mul",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
+        {"acc_ops.div",
+         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
+        {"acc_ops.reshape", std::make_unique<ReshapeNodeImporter>()},
+        {"acc_ops.linear", std::make_unique<LinearNodeImporter>()},
+        {"acc_ops.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
+        {"acc_ops.batch_norm",
          std::make_unique<BatchNormalizationNodeImporter>()},
-        {"torch.nn.functional.relu", std::make_unique<ReluNodeImporter>()},
-        {"torch.nn.functional.adaptive_avg_pool2d",
+        {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
+        {"acc_ops.adaptive_avg_pool2d",
          std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
-        {"torch.nn.functional.max_pool2d",
+        {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},
+        {"acc_ops.max_pool2d",
          std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
 };
 
@@ -528,6 +569,14 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
                                    ? targetName
                                    : node["parameters"]["name"].getString();
     // Import node.
+    if (FXNodeImporters.find(functionName) == FXNodeImporters.end()) {
+      LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
+          NNPIErrorCode::NNPI_INVALID_NETWORK,
+          glow::strFormat(
+              "Could not import node with opCode '%s', target '%s'.",
+              opCode.c_str(), targetName.c_str()))
+    }
+
     LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
         FXNodeImporters.at(functionName)
             ->importNode(

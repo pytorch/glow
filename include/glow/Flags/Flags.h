@@ -94,11 +94,19 @@ extern bool LowerAllBatchMatMul;
 extern bool AcceptUnarySLS;
 extern bool SpecializeAllOneSLS;
 extern bool DisableTransforms;
-extern bool DisablePrivateTransforms;
+extern bool EnablePrivateTransforms;
 extern bool DumpCompilerData;
 extern bool UsePerPartitionIcetConfig;
 } // namespace flags
 } // namespace nnpi
+} // namespace glow
+
+namespace glow {
+namespace interpreter {
+namespace flags {
+extern bool LowerLayerNormalization;
+} // namespace flags
+} // namespace interpreter
 } // namespace glow
 
 namespace glow {

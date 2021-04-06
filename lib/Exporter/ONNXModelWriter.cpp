@@ -1117,6 +1117,8 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::FLOAT16;
   case ElemKind::BFloat16Ty:
     return TensorType::BFLOAT16;
+  case ElemKind::Float64Ty:
+    return TensorType::DOUBLE;
   case ElemKind::Int8QTy:
     return TensorType::INT8;
   case ElemKind::UInt8FusedQTy:
@@ -2067,6 +2069,15 @@ void writeTensorwiseQuantizedPool(const T *node, const std::string &op,
 
   if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
     addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+    addValueAttribute(proto, "out_scale",
+                      APN->getType(AvgPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      APN->getType(AvgPoolNode::ResultIdx)->getOffset());
+  } else if (auto *MPN = llvm::dyn_cast<MaxPoolNode>(node)) {
+    addValueAttribute(proto, "out_scale",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getOffset());
   }
 
   proto->add_input(node->getInput().getNode()->getName());
@@ -2311,6 +2322,7 @@ DEF_ALL_WRITER_NODE(Tanh)
 DEF_ALL_WRITER_NODE(IsNaN)
 DEF_ALL_WRITER_NODE(Sigmoid)
 DEF_ALL_WRITER_NODE(Swish)
+DEF_ALL_WRITER_NODE(SoftPlus)
 DEF_ALL_WRITER_NODE(LengthsSum)
 DEF_ALL_WRITER_NODE(BatchOneHot)
 DEF_ALL_WRITER_NODE(LengthsToRanges)
@@ -2578,6 +2590,7 @@ DEF_UNSUPPORTED_STORAGE(Storage)
 DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProduct)
 DEF_UNSUPPORTED_NODE(Broadcast)
 DEF_UNSUPPORTED_NODE(SGD)
+DEF_UNSUPPORTED_NODE(SparseLabelSplit)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
 DEF_UNSUPPORTED_NODE(ExternalFunctionCall)

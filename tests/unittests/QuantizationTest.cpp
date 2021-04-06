@@ -35,7 +35,7 @@ namespace glow {
 
 using llvm::cast;
 
-class Quantization : public ::testing::TestWithParam<std::string> {};
+class Quantization : public ::testing::Test {};
 
 class Operator
     : public ::testing::TestWithParam<::std::tuple<std::string, std::string>> {
@@ -51,8 +51,6 @@ protected:
     backendSpecificEE.setBackendName(backend2);
   }
 };
-
-class InterpAndCPU : public Operator {};
 
 bool operator==(const std::vector<float> &lhs, const std::vector<float> &rhs) {
   return std::equal(lhs.begin(), lhs.end(), rhs.begin());
@@ -2996,19 +2994,10 @@ TEST(Quantization, QuantizationZeroUsersResult) {
   EXPECT_TRUE(qTK->getValues().getType()->isQuantizedType());
 }
 
-GLOW_INSTANTIATE_TEST_SUITE_P(Interpreter, Quantization,
-                              ::testing::Values("Interpreter"));
-
 #ifdef GLOW_WITH_CPU
-GLOW_INSTANTIATE_TEST_SUITE_P(CPU, Quantization, ::testing::Values("CPU"));
 
 GLOW_INSTANTIATE_TEST_SUITE_P(
     InterpAndCPUProfAndQuant, Operator,
-    ::testing::Combine(::testing::Values("Interpreter", "CPU"),
-                       ::testing::Values("Interpreter", "CPU")));
-
-GLOW_INSTANTIATE_TEST_SUITE_P(
-    InterpAndCPUProfAndQuant, InterpAndCPU,
     ::testing::Combine(::testing::Values("Interpreter", "CPU"),
                        ::testing::Values("Interpreter", "CPU")));
 
@@ -3018,10 +3007,6 @@ GLOW_INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values("Interpreter"),
                        ::testing::Values("Interpreter")));
 
-GLOW_INSTANTIATE_TEST_SUITE_P(
-    Interpreter, InterpAndCPU,
-    ::testing::Combine(::testing::Values("Interpreter"),
-                       ::testing::Values("Interpreter")));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL

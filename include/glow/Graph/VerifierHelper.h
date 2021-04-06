@@ -198,11 +198,24 @@ bool checkSameShape(NodeValue A, NodeValue B, const Node *parent);
 /// \see expectCompareTrue for more details.
 bool checkType(NodeValue A, ElemKind expectedType, const Node *parent);
 
+/// Check that the element type of the operand \p A matches expected type \p
+/// expectedType. \p parent is used to print the context of that check
+/// in case the it fails.
+/// \see expectCompareTrue for more details.
+bool checkType(llvm::StringRef msg, NodeValue A, ElemKind expectedType,
+               const Node *parent);
+
 /// Check that the element type of the operand \p A matches any of the expected
 /// types \p expectedTypes. \p parent is used to print the context of that
 /// check in case the it fails. \see expectCompareTrue for more details.
 bool checkType(NodeValue A, llvm::ArrayRef<ElemKind> expectedTypes,
                const Node *parent);
+
+/// Check that the element type of the operand \p A matches any of the expected
+/// types \p expectedTypes. \p parent is used to print the context of that
+/// check in case the it fails. \see expectCompareTrue for more details.
+bool checkType(llvm::StringRef msg, NodeValue A,
+               llvm::ArrayRef<ElemKind> expectedTypes, const Node *parent);
 
 /// Check if \p A and \p B have the same value for isQuantized. \p parent is
 /// used to print the context of that check in case the it fails.

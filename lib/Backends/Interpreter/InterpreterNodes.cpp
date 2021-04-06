@@ -1253,6 +1253,63 @@ void BoundInterpreterFunction::fwdBatchNormalizationInst(
 }
 
 //===----------------------------------------------------------------------===//
+//               LayerNormalization
+//===----------------------------------------------------------------------===//
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdLayerNormalizationInstFloatImpl(
+    const glow::LayerNormalizationInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  // input
+  auto inH = getWeightHandle<ElemTy>(I->getSrc());
+  auto scaleH = getWeightHandle<ElemTy>(I->getScale());
+  auto biasH = getWeightHandle<ElemTy>(I->getBias());
+  float epsilon = I->getEpsilon();
+
+  // output
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  auto N = I->getSrc()->dims()[0];
+  auto K = I->getSrc()->dims()[1];
+
+  std::vector<float> val(K);
+  for (dim_t n = 0; n < N; n++) {
+    // 1. mean = x.mean(dim=-1, keepdim=True)
+    float sum = 0.0f;
+    for (dim_t k = 0; k < K; k++) {
+      val[k] = inH.at({n, k});
+      sum += val[k];
+    }
+    float mean = sum / K;
+
+    // 2. var = ((x - mean) ** 2).mean(dim=-1, keepdim=True)
+    float diff_sqr_sum = 0.0f;
+    for (dim_t k = 0; k < K; k++) {
+      float diff = val[k] - mean;
+      diff_sqr_sum += diff * diff;
+    }
+    float var = diff_sqr_sum / K;
+
+    // 3. std = (var + epsilon).sqrt()
+    float std = std::sqrt(var + epsilon);
+
+    for (dim_t k = 0; k < K; k++) {
+      // 4. y = ((x - mean) / std) * scale + bias
+      float scale = scaleH.at({k});
+      float bias = biasH.at({k});
+      outW.at({n, k}) = ElemTy((((val[k] - mean) / std) * scale) + bias);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdLayerNormalizationInst(
+    const LayerNormalizationInst *I) {
+  dispatchFloatingPointImpl(fwdLayerNormalizationInstFloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
+//===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//
 template <class T>
@@ -2026,6 +2083,24 @@ void BoundInterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
 void BoundInterpreterFunction::fwdTanhInst(const TanhInst *I) {
   dispatchFloatingPointImpl(fwdTanhInstFloatImpl, I->getSrc()->getElementType(),
                             I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdSoftPlusInstFloatImpl(const SoftPlusInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  for (dim_t i = 0, e = outW.size(); i < e; i++) {
+    float val = inW.raw(i);
+    outW.raw(i) = ElemTy(std::log(1 + std::exp(val)));
+  }
+}
+
+void BoundInterpreterFunction::fwdSoftPlusInst(const SoftPlusInst *I) {
+  dispatchFloatingPointImpl(fwdSoftPlusInstFloatImpl,
+                            I->getSrc()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2950,6 +3025,24 @@ void BoundInterpreterFunction::fwdLocalResponseNormalizationGradInst(
         }
       }
     }
+  }
+}
+
+//===--------------------------------------------------------------------===//
+//                     Bucketing
+//===--------------------------------------------------------------------===//
+
+void BoundInterpreterFunction::fwdBucketizeInst(const BucketizeInst *I) {
+  auto inputH = getTensor(I->getSrc())->getHandle<float>();
+  auto outputH = getTensor(I->getDest())->getHandle<int32_t>();
+  const auto boundaries = I->getBoundaries();
+
+  const auto numItems = inputH.size();
+
+  for (size_t i = 0; i < numItems; ++i) {
+    outputH.raw(i) =
+        std::lower_bound(boundaries.begin(), boundaries.end(), inputH.raw(i)) -
+        boundaries.begin();
   }
 }
 
@@ -5568,6 +5661,58 @@ void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
 
   assert(posIn == indicesH.dims()[0] &&
          "Sum of Lengths must be equal to size of indices.");
+}
+
+void BoundInterpreterFunction::fwdSparseLabelSplitInst(
+    const SparseLabelSplitInst *I) {
+  auto lengthsH = getTensor(I->getLengths())->getHandle<int32_t>();
+  auto indicesH = getTensor(I->getIndices())->getHandle<int64_t>();
+  auto valuesH = getTensor(I->getValues())->getHandle();
+
+  const auto numLabels = I->getNumLabels();
+
+  auto labelValuesH = getTensor(I->getLabelValues())->getHandle();
+  auto exampleIdsH = getTensor(I->getExampleIds())->getHandle<int32_t>();
+  auto gradientOffsetMapH =
+      getTensor(I->getGradientOffsetMap())->getHandle<int32_t>();
+
+  // Verifying input sizes.
+  size_t lengthsSum = 0;
+  for (size_t i = 0; i < lengthsH.size(); ++i) {
+    lengthsSum += lengthsH.at(i);
+  }
+  CHECK_EQ(lengthsSum, indicesH.size());
+  CHECK_EQ(indicesH.size(), valuesH.size());
+
+  // Verifying that outputs have same sizes.
+  const auto numValuesPerRow = indicesH.size() / numLabels;
+  std::vector<size_t> numExamplesPerTask(numLabels, 0);
+  for (size_t i = 0; i < indicesH.size(); ++i) {
+    numExamplesPerTask[indicesH.at(i)] += 1;
+  }
+  for (size_t i = 0; i < numLabels; ++i) {
+    CHECK_EQ(numValuesPerRow, numExamplesPerTask[i])
+        << "Unexpected number of values at " << i;
+  }
+
+  // Populating outputs
+  size_t pos = 0;
+  std::fill(numExamplesPerTask.begin(), numExamplesPerTask.end(), 0);
+  for (size_t i = 0; i < lengthsH.size(); ++i) {
+    for (size_t l = 0; l < lengthsH.at(i); ++l) {
+      auto ind = indicesH.at(pos);
+      auto val = valuesH.at(pos);
+
+      auto posOutput = numExamplesPerTask[ind]++;
+      gradientOffsetMapH.at(pos) = posOutput;
+
+      labelValuesH.at(
+          {static_cast<dim_t>(ind), static_cast<dim_t>(posOutput)}) = val;
+      exampleIdsH.at({static_cast<dim_t>(ind), static_cast<dim_t>(posOutput)}) =
+          i;
+      pos++;
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//
