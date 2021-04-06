@@ -12,6 +12,7 @@
 #include <ATen/native/quantized/cpu/packed_params.h>
 
 #include <torch/csrc/jit/backends/backend.h>
+#include <torch/csrc/jit/backends/backend_preprocess.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/ir/node_hashing.h>
 #include <torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h>
@@ -158,7 +159,8 @@ Error checkForFatalError(Error err) {
 } // namespace
 
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
-  static auto cls = torch::jit::backend<TorchGlowBackend>("glow", preprocess);
+  static auto cls = torch::jit::backend<TorchGlowBackend>("glow");
+  static auto pre_reg = torch::jit::backend_preprocess_register("glow", preprocess);
   return cls;
 }
 
