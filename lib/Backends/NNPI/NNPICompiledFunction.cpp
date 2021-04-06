@@ -727,12 +727,16 @@ static const std::string tensorToJSON(const NNPICompiledTensor &tensor) {
   fs << "\"type\" : \"" << tensor.type << "\"," << std::endl;
   fs << "\"alloc\" : \"" << dumpAllocType(tensor.allocType) << "\","
      << std::endl;
-  fs << "\"possible_alloc\" : ";
+  fs << "\"possible_alloc\" :";
+  fs << "[";
   for (auto it = tensor.possibleAlloc.begin(); it != tensor.possibleAlloc.end();
        it++) {
+    if (it != tensor.possibleAlloc.begin()) {
+      fs << "," << std::endl;
+    }
     fs << "\"" << dumpAllocType(*it) << "\" ";
   }
-  fs << std::endl;
+  fs << "]," << std::endl;
   fs << "\"size\" : " << std::endl;
   fs << "[" << std::endl;
   for (auto it = tensor.shape.begin(); it != tensor.shape.end(); it++) {
