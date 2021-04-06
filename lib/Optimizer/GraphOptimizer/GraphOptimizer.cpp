@@ -3739,6 +3739,8 @@ static size_t numSignificantBits(ElemKind kind) {
     return std::numeric_limits<int16_t>::digits;
   case ElemKind::FloatTy:
     return std::numeric_limits<float>::digits;
+  case ElemKind::Float64Ty:
+    return std::numeric_limits<double>::digits;
   case ElemKind::Int32QTy:
   case ElemKind::Int32ITy:
     return std::numeric_limits<int32_t>::digits;

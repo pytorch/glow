@@ -1,6 +1,7 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Support/Support.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "nnpi_transformer_types.h"
@@ -157,6 +158,43 @@ public:
   }
 };
 
+class EmbeddingBagNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode importNode(const folly::dynamic &node,
+                           const std::function<string(string)> &getQualName,
+                           FXNNPIImporter &importer) override {
+    const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &per_sample_weights =
+        importer.getInputNodeName(kwargs["per_sample_weights"]);
+    const auto &offsetsName = importer.getInputNodeName(kwargs["offsets"]);
+
+    const auto &hasEndOffset = kwargs["include_last_offset"].asBool();
+    LOG_AND_RETURN_IF_NOT(ERROR, hasEndOffset,
+                          "[EmbeddingBag] hasEndOffset must be true",
+                          NNPI_INVALID_PARAM);
+
+    // We will assume that all embedding bags have been legalized to include per
+    // index weights.
+    importer.setUsedTensors(
+        {
+            weightName,
+            per_sample_weights,
+            inputName,
+            offsetsName,
+        },
+        {name});
+
+    return nnpiNetworkAddSparseLengthsWeightedSumOp(
+        importer.getNetwork(), name.c_str(), weightName.c_str(), name.c_str(),
+        per_sample_weights.c_str(), inputName.c_str(), offsetsName.c_str(),
+        /* useFP32Accumulation */ 0, /* useLengthsAsOffsets */ 1,
+        /*avg length*/ NAN, NNPI_LENGTH_VARIABLE);
+  }
+};
+
 class ReluNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -274,7 +312,7 @@ static std::unordered_map<std::string,
          std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
         {"acc_ops.div",
          std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
-        {"torch.flatten", std::make_unique<ReshapeNodeImporter>()},
+        {"acc_ops.reshape", std::make_unique<ReshapeNodeImporter>()},
         {"acc_ops.linear", std::make_unique<LinearNodeImporter>()},
         {"acc_ops.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
         {"acc_ops.batch_norm",
@@ -282,6 +320,7 @@ static std::unordered_map<std::string,
         {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
         {"acc_ops.adaptive_avg_pool2d",
          std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
+        {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},
         {"acc_ops.max_pool2d",
          std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
 };

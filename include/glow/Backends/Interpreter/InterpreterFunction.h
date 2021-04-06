@@ -186,6 +186,10 @@ private:
   void fwdBatchNormalizationI8Impl(const BatchNormalizationInst *I,
                                    int numDims);
 
+  template <typename ElemTy = float>
+  void
+  fwdLayerNormalizationInstFloatImpl(const glow::LayerNormalizationInst *I);
+
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
 
