@@ -1273,6 +1273,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"quantized::add"}, &PyTorchModelLoader::loadQuantizedAdd},
       {{"quantized::add_relu"}, &PyTorchModelLoader::loadQuantizedAddRelu},
       {{"quantized::mul"}, &PyTorchModelLoader::loadQuantizedMul},
+      {{"quantized::cat"}, &PyTorchModelLoader::loadQuantizedCat},
       {{"quantized::mul_scalar"}, &PyTorchModelLoader::loadQuantizedMul},
       {{"glow::fused_linear"}, &PyTorchModelLoader::loadGlowFusedLinear},
       {{"glow::unpacked_quantized_conv2d"},
@@ -2267,6 +2268,54 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
     RETURN_ERR(addValueMapping(outputs[0], output, dtype));
   }
 }
+Error PyTorchModelLoader::loadQuantizedCat(const torch::jit::Node *ptNode) {
+  // Current strategy for quantized::cat is dequantize->cat->requantize.
+  // TODO: Remove the quantization step to potentially improve performance.
+
+  RETURN_IF_ERR(
+      checkInputAndOutputSizes(ptNode->inputs(), -2, ptNode->outputs(), 1));
+
+  std::vector<glow::NodeValue> *inputTensors;
+  float quantizationScale;
+  int32_t quantizationOffset;
+  int64_t concatDimension;
+
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      inputTensors,
+      iValToNodeValueList(getGlowIValueForValue(ptNode->input(0))));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      quantizationScale, iValToDouble(getGlowIValueForValue(ptNode->input(2))));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      quantizationOffset, iValToInt(getGlowIValueForValue(ptNode->input(3))));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      concatDimension, iValToInt(getGlowIValueForValue(ptNode->input(1))));
+
+  std::vector<glow::NodeValue> dequantizedInputs;
+  for (glow::NodeValue input : *inputTensors) {
+    // Legacy behavior suggests supporting concat of empty tensors, but only
+    // for this specific shape. See the legacy_cat_wrap_dim function in
+    // caffe2/aten/src/ATen/WrapDimUtils.h for more info.
+    if (input.dims() == llvm::ArrayRef<dim_t>({0})) {
+      continue;
+    }
+    dequantizedInputs.emplace_back(F_.createDequantize(
+        "quantized_cat_dequantize", input, ElemKind::FloatTy));
+  }
+
+  glow::NodeValue concatResult =
+      F_.createConcat("quantized_cat_nested_cat", dequantizedInputs,
+                      concatDimension)
+          ->getResult();
+
+  auto *outputTy = F_.getParent()->uniqueType(
+      ElemKind::Int8QTy, concatResult.dims(), quantizationScale,
+      quantizationOffset - UINT8_TO_INT8_SHIFT);
+
+  auto quantizedResult =
+      F_.createQuantize("quantized_cat_requantize", concatResult, outputTy);
+
+  RETURN_ERR(addValueMapping(ptNode->output(0), quantizedResult));
+}
 
 Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
@@ -2732,8 +2781,8 @@ Expected<NodeValue> PyTorchModelLoader::loadArithmeticNode(
 
   // For aten::div, it will promote the output to default scalar type if both
   // inputs are of integer type. However, Glow requires inputs and output have
-  // the same type. In order to achieve same behavior as Pytorch div, we convert
-  // the inputs to default scalar type if they are both integer.
+  // the same type. In order to achieve same behavior as Pytorch div, we
+  // convert the inputs to default scalar type if they are both integer.
   if (convertToDefaultType) {
     if (isNonQuantizedIntElemKind(rhsInput.getElementType()) &&
         isNonQuantizedIntElemKind(lhsInput.getElementType())) {
@@ -2998,8 +3047,8 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
   if (!keepDim) {
     return addValueMapping(outputs[0], batchedReduceAddNode);
   } else {
-    // If keepDim is true we need to insert the removed dimension(s) manually by
-    // reshaping
+    // If keepDim is true we need to insert the removed dimension(s) manually
+    // by reshaping
     std::vector<dim_t> shape =
         batchedReduceAddNode->getResult().getType()->dims();
     std::sort(glowAxes.begin(), glowAxes.end());
@@ -3797,7 +3846,8 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
     }
   }
 
-  // If there was a negative index, replace it with the remaining dims in input.
+  // If there was a negative index, replace it with the remaining dims in
+  // input.
   if (negOneIndex >= 0) {
     shape[negOneIndex] = inputTotalDims / shapeTotalDims;
   }

@@ -664,6 +664,8 @@ private:
   /// \return error on failure.
   Error loadQuantizedMul(const torch::jit::Node *ptNode);
 
+  Error loadQuantizedCat(const torch::jit::Node *ptNode);
+
   /// Load a glow::unpacked_quantized_conv node.
   // \return error on failure.
   Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
