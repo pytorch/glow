@@ -101,7 +101,7 @@ bool LowerAllBatchMatMul = false;
 bool AcceptUnarySLS = false;
 bool SpecializeAllOneSLS = false;
 bool DisableTransforms = false;
-bool DisablePrivateTransforms = false;
+bool EnablePrivateTransforms = false;
 bool DumpCompilerData = false;
 bool UsePerPartitionIcetConfig = false;
 
@@ -511,12 +511,12 @@ DEFINE_validator(glow_disable_nnpi_transforms, [](const char *, bool val) {
   glow::nnpi::flags::DisableTransforms = val;
   return true;
 });
-DEFINE_bool(glow_disable_nnpi_private_transforms,
-            glow::nnpi::flags::DisablePrivateTransforms,
-            "Disable running NNPIBackend::transformPrivate().");
-DEFINE_validator(glow_disable_nnpi_private_transforms,
+DEFINE_bool(glow_enable_nnpi_private_transforms,
+            glow::nnpi::flags::EnablePrivateTransforms,
+            "Enable running NNPIBackend::transformPrivate().");
+DEFINE_validator(glow_enable_nnpi_private_transforms,
                  [](const char *, bool val) {
-                   glow::nnpi::flags::DisablePrivateTransforms = val;
+                   glow::nnpi::flags::EnablePrivateTransforms = val;
                    return true;
                  });
 DEFINE_bool(glow_nnpi_lower_all_batch_matmul,
