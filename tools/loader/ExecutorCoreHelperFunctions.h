@@ -48,6 +48,7 @@ extern llvm::cl::opt<unsigned> repeatSingleBatchCount;
 extern std::unique_ptr<glow::TraceContext> traceContext;
 
 extern llvm::cl::opt<std::string> modelOutputName;
+extern llvm::cl::opt<unsigned> maxNumImages;
 
 /// Read all images from \p inputImageDir in to \p inputImageFilenames.
 void parseInputDir(const std::string &inputImageDir,

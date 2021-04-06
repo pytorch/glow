@@ -4,7 +4,27 @@ add_executable(image-classifier
   ExecutorCore.cpp
   ExecutorCoreHelperFunctions.cpp)
 
+
 target_link_libraries(image-classifier
+                      PRIVATE
+                        Backends
+                        Base
+                        Converter
+                        ExecutionEngine
+                        HostManager
+                        Graph
+                        Importer
+                        GraphOptimizer
+                        Quantization
+                        LLVMSupport)
+
+add_executable(image-segmentation
+  Loader.cpp
+  ImageSegmentation.cpp
+  ExecutorCore.cpp
+  ExecutorCoreHelperFunctions.cpp)
+
+target_link_libraries(image-segmentation
                       PRIVATE
                         Backends
                         Base

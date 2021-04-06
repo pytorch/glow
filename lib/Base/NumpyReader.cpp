@@ -52,7 +52,11 @@ void convertU8S8ToFloat(NpyData &dataNpy, std::vector<float> &data) {
     if (dataNpy.type == NpyType::U1) {
       data[i] = ((uint8_t *)databuf)[i * dataNpy.elemSize];
     } else if (dataNpy.type == NpyType::I1) {
-      data[i] = ((int8_t *)databuf)[i * dataNpy.elemSize] + 128;
+      data[i] = ((int8_t *)databuf)[i * dataNpy.elemSize];
+    } else if (dataNpy.type == NpyType::I8) {
+      data[i] = ((int64_t *)databuf)[i * dataNpy.elemSize];
+    } else if (dataNpy.type == NpyType::F4) {
+      data[i] = ((float *)databuf)[i * dataNpy.elemSize];
     } else {
       LOG(FATAL) << " Datatype not supported: " << (int)dataNpy.type;
     }
@@ -193,8 +197,6 @@ static void normalizeData(ImageLayout imageLayout, llvm::ArrayRef<float> mean,
   size_t chStride = imageLayout == ImageLayout::NCHW ? shape[2] * shape[3] : 1;
   for (size_t i = 0; i < data.size(); i++) {
     size_t chIdx = (i / chStride) % numCh;
-    CHECK(data[i] >= 0. && data[i] <= 255.)
-        << "NPY loader: U8 data expected, got: " << data[i];
     data[i] = (data[i] - meanVal[chIdx]) / stddevVal[chIdx];
     data[i] = data[i] * scale + bias;
   }
@@ -305,4 +307,64 @@ bool glow::isNumpyNpyFormat(const std::string &filename) {
   CHECK(fs) << "NPY loader: Reading file failed: " << filename;
   // check if the header contains numpy magic string.
   return checkNumpyMagicHdr(prefix);
+}
+
+void glow::writeNumpyImage(llvm::StringRef filename, Tensor &data) {
+  std::string numpTy;
+  dim_t dataSize;
+  auto elemTy = data.getType().getElementType();
+  switch (elemTy) {
+  case (glow::ElemKind::FloatTy):
+    numpTy = "f4";
+    dataSize = data.getHandle<float>().size() * sizeof(float);
+    break;
+  case (glow::ElemKind::Float64Ty):
+    numpTy = "f8";
+    dataSize = data.getHandle<double>().size() * sizeof(double);
+    break;
+  case (glow::ElemKind::Int64ITy):
+    numpTy = "i8";
+    dataSize = data.getHandle<int64_t>().size() * sizeof(int64_t);
+    break;
+  case (glow::ElemKind::Int32ITy):
+    numpTy = "i4";
+    dataSize = data.getHandle<int32_t>().size() * sizeof(int32_t);
+    break;
+  case (glow::ElemKind::UInt8ITy):
+    numpTy = "u1";
+    dataSize = data.getHandle<uint8_t>().size() * sizeof(uint8_t);
+    break;
+  default:
+    LOG(FATAL) << "Datatype not supported " << (int)elemTy;
+    break;
+  }
+
+  std::ofstream fs(filename.data(), std::ifstream::binary);
+
+  uint8_t MAGIC[] = {0x93, 0x4E, 0x55, 0x4D, 0x50, 0x59};
+  fs.write((const char *)MAGIC, 6);
+
+  uint16_t version = 1;
+  fs.write((const char *)&version, 2);
+
+  // Create header.
+  std::string hdr =
+      "{'descr':'|" + numpTy + "' , 'fortran_order':False, 'shape':(";
+  auto dims = data.dims();
+  for (dim_t i = 0; i < dims.size(); i++) {
+    hdr += std::to_string(dims[i]);
+    hdr += (i == (dims.size() - 1)) ? "" : ",";
+  }
+  hdr += "),}";
+
+  // Write header length.
+  uint16_t hdrLen = hdr.size();
+  fs.write((const char *)&hdrLen, 2);
+
+  // Write header.
+  fs.write(hdr.data(), hdr.size());
+
+  // Write data.
+  fs.write(data.getUnsafePtr(), dataSize);
+  fs.close();
 }

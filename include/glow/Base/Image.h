@@ -128,6 +128,9 @@ bool readPngImage(Tensor *T, const char *filename,
                   llvm::ArrayRef<float> mean = zeroMean,
                   llvm::ArrayRef<float> stddev = oneStd);
 
+/// Reads a png image in Indexed mode. \returns True if an error occurred.
+bool readPngImageIndexed(Tensor *T, const char *filename);
+
 /// Writes a png image. \returns True if an error occurred. The values of the
 /// image are in the range \p range.
 bool writePngImage(Tensor *T, const char *filename,
@@ -143,9 +146,11 @@ bool readPpmImage(Tensor *T, const char *filename,
                   llvm::ArrayRef<float> mean = zeroMean,
                   llvm::ArrayRef<float> stddev = oneStd);
 
-/// Read a PNG/PPM image and preprocess it according to several parameters.
-/// Create a tensor and store the preprocessed image data into this tensor.
-/// \param filename the PNG/PPM file to read.
+/// Writes a png image. \returns True if an error occurred. The palette used
+/// is specified by  \p palette argument.
+bool writePngImageIndexed(Tensor *T, const char *filename,
+                          const char *pngPaletteFile);
+
 /// \param imageNormMode normalize values to this range.
 /// \param imageChannelOrder the order of color channels.
 /// \param imageLayout the order of dimensions (channel, height, and width).
@@ -249,6 +254,10 @@ void loadNumpyImagesAndPreprocess(
     ImageNormalizationMode imageNormMode, ImageChannelOrder imageChannelOrder,
     ImageLayout imageLayout, ImageLayout inputLayout,
     llvm::ArrayRef<float> mean, llvm::ArrayRef<float> stddev);
+
+/// Write numpy file \p filename from tensor \p data.
+void writeNumpyImage(llvm::StringRef filename, Tensor &data);
+
 } // namespace glow
 
 #endif // GLOW_BASE_IMAGE_H

@@ -173,6 +173,10 @@ llvm::cl::opt<unsigned> repeatSingleBatchCount(
         "and all other inputs are ignored."),
     llvm::cl::init(0), llvm::cl::cat(executorCat));
 
+llvm::cl::opt<unsigned> maxNumImages(
+    "max-num-images", llvm::cl::desc("Limit the number of images to run."),
+    llvm::cl::Optional, llvm::cl::init(UINT_MAX), llvm::cl::cat(executorCat));
+
 /// Read all images from \p inputImageDir into \p imageFilenames.
 void parseInputDir(const std::string &inputImageDir,
                    std::vector<std::string> &imageFilenames) {

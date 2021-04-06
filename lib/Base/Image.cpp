@@ -26,6 +26,7 @@
 
 using namespace glow;
 
+#include <fstream>
 #include <png.h>
 
 namespace glow {
@@ -522,6 +523,98 @@ bool glow::readPpmImage(Tensor *T, const char *filename,
 
   free(buf);
   fclose(fp);
+}
+
+bool glow::readPngImageIndexed(Tensor *T, const char *filename) {
+  unsigned char header[8];
+  // open file and test for it being a png.
+  FILE *fp = fopen(filename, "rb");
+  // Can't open the file.
+  if (!fp) {
+    llvm::outs() << "Can't open image file." << std::string(filename) << "\n";
+    return true;
+  }
+
+  // Validate signature.
+  size_t fread_ret = fread(header, 1, 8, fp);
+  if (fread_ret != 8) {
+    fclose(fp);
+    return true;
+  }
+  if (png_sig_cmp(header, 0, 8)) {
+    fclose(fp);
+    return true;
+  }
+
+  // Initialize stuff.
+  png_structp png_ptr =
+      png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+  if (!png_ptr) {
+    fclose(fp);
+    return true;
+  }
+
+  png_infop info_ptr = png_create_info_struct(png_ptr);
+  if (!info_ptr) {
+    png_destroy_read_struct(&png_ptr, (png_infopp)NULL, (png_infopp)NULL);
+    fclose(fp);
+    return true;
+  }
+
+  if (setjmp(png_jmpbuf(png_ptr))) {
+    png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
+    fclose(fp);
+    return true;
+  }
+
+  png_init_io(png_ptr, fp);
+  png_set_sig_bytes(png_ptr, 8);
+  png_read_info(png_ptr, info_ptr);
+
+  size_t width = png_get_image_width(png_ptr, info_ptr);
+  size_t height = png_get_image_height(png_ptr, info_ptr);
+  int color_type = png_get_color_type(png_ptr, info_ptr);
+  int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+  int number_of_passes = png_set_interlace_handling(png_ptr);
+
+  CHECK_EQ(bit_depth, 8) << "Invalid image bit depth.";
+  CHECK_EQ(color_type, PNG_COLOR_TYPE_PALETTE) << "Invalid image palette.";
+  CHECK_EQ(number_of_passes, 1) << "Invalid image number of passes.";
+
+  png_read_update_info(png_ptr, info_ptr);
+
+  // Error during image read.
+  if (setjmp(png_jmpbuf(png_ptr))) {
+    png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
+    fclose(fp);
+    return true;
+  }
+
+  auto *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
+  for (size_t y = 0; y < height; y++) {
+    row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
+  }
+
+  png_read_image(png_ptr, row_pointers);
+  png_read_end(png_ptr, info_ptr);
+
+  T->reset(ElemKind::Int32ITy, {width, height});
+  auto H = T->getHandle<int32_t>();
+
+  for (size_t row_n = 0; row_n < height; row_n++) {
+    png_byte *row = row_pointers[row_n];
+    for (size_t col_n = 0; col_n < width; col_n++) {
+      png_byte *ptr = &(row[col_n]);
+      H.at({col_n, row_n}) = ptr[0];
+    }
+  }
+
+  for (size_t y = 0; y < height; y++) {
+    free(row_pointers[y]);
+  }
+  free(row_pointers);
+  png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
+  fclose(fp);
   return false;
 }
 
@@ -656,7 +749,8 @@ void glow::readPngPpmImageAndPreprocess(Tensor &imageData,
                            : !readPpmImage(&imageData, filename.data(), range,
                                            meanRGB, stddevRGB);
 
-  CHECK(loadSuccess) "Error reading input image from file: " << filename.str();
+  CHECK(loadSuccess)
+  "Error reading input image from file: " << filename.str();
   dim_t imgHeight = imageData.dims()[0];
   dim_t imgWidth = imageData.dims()[1];
   dim_t numChannels = imageData.dims()[2];
@@ -758,6 +852,167 @@ void glow::readPngPpmImagesAndPreprocess(
         << "All images must have the same dimensions";
     IIDH.insertSlice(localCopy, n);
   }
+}
+
+/// Read palette file.
+void getPaletteFromFile(std::vector<png_color> &paletteVec,
+                        const char *filename) {
+  std::ifstream inFile;
+  inFile.open(filename);
+  CHECK(inFile.good()) << "Can't open palette file with name: " << filename;
+
+  while (!inFile.eof()) {
+    std::string line;
+    getline(inFile, line);
+    uint32_t red, green, blue;
+    std::istringstream iss(line);
+    while (iss >> red >> green >> blue) {
+      paletteVec.push_back({(png_byte)red, (png_byte)green, (png_byte)blue});
+    }
+  }
+  inFile.close();
+}
+
+template <typename T>
+static bool pngWriteIndexedImpl(Handle<T> &H, png_structp &png_ptr,
+                                png_infop &info_ptr, png_colorp &palette,
+                                uint32_t paletteSize) {
+
+  auto odim = H.dims();
+  size_t width = odim[0];
+  size_t height = odim[1];
+
+  png_set_IHDR(png_ptr, info_ptr, width, height, 8, PNG_COLOR_TYPE_PALETTE,
+               PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE,
+               PNG_FILTER_TYPE_BASE);
+
+  png_set_PLTE(png_ptr, info_ptr, palette, paletteSize);
+  png_write_info(png_ptr, info_ptr);
+
+  if (setjmp(png_jmpbuf(png_ptr))) {
+    return true;
+  }
+
+  auto *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
+  for (size_t y = 0; y < height; y++) {
+    row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
+  }
+
+  for (size_t y = 0; y < height; y++) {
+    png_byte *row = row_pointers[y];
+    for (size_t x = 0; x < width; x++) {
+      png_byte *ptr = &(row[x]);
+      ptr[0] = H.at({x, y});
+    }
+  }
+
+  png_write_image(png_ptr, row_pointers);
+
+  if (setjmp(png_jmpbuf(png_ptr))) {
+    return true;
+  }
+
+  png_write_end(png_ptr, nullptr);
+
+  /* cleanup heap allocation */
+  for (size_t y = 0; y < height; y++) {
+    free(row_pointers[y]);
+  }
+  free(row_pointers);
+  png_destroy_write_struct(&png_ptr, &info_ptr);
+  return false;
+}
+
+bool glow::writePngImageIndexed(Tensor *T, const char *imgfile,
+                                const char *palettefile) {
+  /* create file */
+  FILE *fp = fopen(imgfile, "wb");
+  if (!fp) {
+    llvm::outs() << "Error: Failed to open a file for PNG image: "
+                 << std::string(imgfile) << "\n";
+    return true;
+  }
+
+  // Get palette from palette file.
+  std::vector<png_color> paletteVec;
+  getPaletteFromFile(paletteVec, palettefile);
+
+  png_colorp palette = paletteVec.data();
+  uint32_t paletteSize = paletteVec.size();
+
+  if (paletteVec.size() == 0) {
+    llvm::outs() << "Error: PNG palette is empty.\n";
+    return true;
+  }
+
+  /* initialize stuff */
+  png_structp png_ptr =
+      png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+
+  if (!png_ptr) {
+    llvm::outs() << "Error: PNG write, failed to initialize @line " << __LINE__
+                 << "\n";
+    return true;
+  }
+
+  png_infop info_ptr = png_create_info_struct(png_ptr);
+  if (!info_ptr) {
+    llvm::outs() << "Error: PNG write, failed to initialize @line " << __LINE__
+                 << "\n";
+    return true;
+  }
+
+  if (setjmp(png_jmpbuf(png_ptr))) {
+    llvm::outs() << "Error: PNG write, failed to initialize @line " << __LINE__
+                 << "\n";
+    fclose(fp);
+    return true;
+  }
+
+  png_init_io(png_ptr, fp);
+
+  if (setjmp(png_jmpbuf(png_ptr))) {
+    llvm::outs() << "Error: PNG write, failed to initialize @line " << __LINE__
+                 << "\n";
+    fclose(fp);
+    return true;
+  }
+
+  bool status = true;
+  auto elemTy = T->getType().getElementType();
+  switch (elemTy) {
+  case (ElemKind::FloatTy): {
+    auto H = T->getHandle<float>();
+    status = pngWriteIndexedImpl(H, png_ptr, info_ptr, palette, paletteSize);
+    break;
+  }
+  case (ElemKind::Float64Ty): {
+    auto H = T->getHandle<double>();
+    status = pngWriteIndexedImpl(H, png_ptr, info_ptr, palette, paletteSize);
+    break;
+  }
+  case (ElemKind::Int64ITy): {
+    auto H = T->getHandle<int64_t>();
+    status = pngWriteIndexedImpl(H, png_ptr, info_ptr, palette, paletteSize);
+    break;
+  }
+  case (ElemKind::Int32ITy): {
+    auto H = T->getHandle<int32_t>();
+    status = pngWriteIndexedImpl(H, png_ptr, info_ptr, palette, paletteSize);
+    break;
+  }
+  case (ElemKind::UInt8ITy): {
+    auto H = T->getHandle<int32_t>();
+    status = pngWriteIndexedImpl(H, png_ptr, info_ptr, palette, paletteSize);
+    break;
+  }
+  default:
+    llvm::outs() << "Unsupported data type for indexed PNG write: "
+                 << (int)elemTy << "\n";
+    break;
+  }
+  fclose(fp);
+  return status;
 }
 
 /// Dispatching loading to the format handlers.
