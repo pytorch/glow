@@ -73,8 +73,12 @@ void initializeCompiliationContextFromSettings(
     cctx.saturateHost = settings.saturateHost;
   }
 
-  if (glow::flags::UseDAGOptimizer) {
+  if (settings.use_dag_optimizer) {
     cctx.callDAGOptimizer = true;
+    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+        settings.apl_parallelization_alg;
+    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+        settings.apl_num_parallel_chunks;
   }
 
   if (!settings.backendSpecificOpts.empty()) {

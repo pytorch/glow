@@ -160,6 +160,57 @@ TEST_F(NNPIOptPipelineTest, RemoveClipBlockingFCReluFusion) {
   checkNumericalEquivalence(/* allowedError */ 0.f);
 }
 
+/// Test that ReplaceInefficientConcat pass works as expected.
+TEST_F(NNPIOptPipelineTest, ReplaceInefficientConcatTest) {
+  const int num_inputs = 50;
+  const int inputDim1 = 4096;
+  const int inputDim2 = 1;
+  std::vector<NodeValue> inputs;
+
+  for (int idx = 0; idx < num_inputs; ++idx) {
+    Placeholder *input = mod_.createPlaceholder(
+        ElemKind::FloatTy, {inputDim1, inputDim2}, "input", false);
+    bindings_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+    inputs.emplace_back(input);
+  }
+  ConcatNode *CN = F_->createConcat("concat", inputs, 1);
+  SaveNode *save = F_->createSave("save", CN);
+
+  cloneAndCompile();
+
+  auto *optSave =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
+  ASSERT_TRUE(optSave);
+
+  // Check the existence of the Transpose Node and its dimensions
+  auto *optTN = llvm::dyn_cast<TransposeNode>(optSave->getInput().getNode());
+  ASSERT_TRUE(optTN);
+  EXPECT_EQ(optTN->getResult().dims().size(), 2);
+  EXPECT_EQ(optTN->getResult().dims()[0], inputDim1);
+  EXPECT_EQ(optTN->getResult().dims()[1], num_inputs * inputDim2);
+
+  // Check the new Concat Node and its dimensions
+  auto *optCN = llvm::dyn_cast<ConcatNode>(optTN->getInput().getNode());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getResult().dims().size(), 2);
+  EXPECT_EQ(optCN->getResult().dims()[0], num_inputs * inputDim2);
+  EXPECT_EQ(optCN->getResult().dims()[1], inputDim1);
+
+  // Check the Reshape Nodes and their inputs
+  std::vector<NodeValue> optReshapes = optCN->getInputs();
+  EXPECT_EQ(optReshapes.size(), num_inputs);
+  for (int idx = 0; idx < num_inputs; ++idx) {
+    auto *optRN = llvm::dyn_cast<ReshapeNode>(optReshapes[idx]);
+    ASSERT_TRUE(optRN);
+    EXPECT_EQ(optRN->getResult().dims().size(), 2);
+    EXPECT_EQ(optRN->getResult().dims()[0], inputDim2);
+    EXPECT_EQ(optRN->getResult().dims()[1], inputDim1);
+
+    EXPECT_EQ(optRN->getInput().getNode(), inputs[idx]);
+  }
+  checkNumericalEquivalence(0.f);
+}
+
 /// Test data parallel and model parallel splitting inside
 /// of NNPIPrivateTransforms.cpp for FC/RELU
 TEST_F(NNPIOptPipelineTest, SplitParallelizationTestFCReluNNPI) {

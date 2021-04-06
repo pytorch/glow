@@ -242,6 +242,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     llvm_unreachable("Not implemented");
   case ElemKind::BFloat16Ty:
     llvm_unreachable("Not implemented");
+  case ElemKind::Float64Ty:
+    return builder.getDoubleTy();
   case ElemKind::Int8QTy:
     return builder.getInt8Ty();
   case ElemKind::UInt8QTy:
@@ -611,6 +613,10 @@ llvm::Value *LLVMIRGen::emitConstI32(llvm::IRBuilder<> &builder, int32_t val) {
   return builder.getInt32(val);
 }
 
+llvm::Value *LLVMIRGen::emitConstI16(llvm::IRBuilder<> &builder, int32_t val) {
+  return builder.getInt16(val);
+}
+
 llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
   return builder.getInt8(val);
 }
@@ -636,6 +642,9 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     llvm_unreachable("Not implemented");
   case ElemKind::BFloat16Ty:
     llvm_unreachable("Not implemented");
+  case ElemKind::Float64Ty:
+    return llvm::ConstantFP::get(llvm::Type::getDoubleTy(getLLVMContext()),
+                                 val);
   case ElemKind::Int64ITy:
     return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int8QTy:

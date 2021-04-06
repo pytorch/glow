@@ -5132,3 +5132,48 @@ TEST_F(Caffe2ImporterTest, SparseLabelSplit) {
     EXPECT_EQ(expectedGradientOffsetMap[d], gradientOffsetMapH.at(d));
   }
 }
+
+TEST_F(Caffe2ImporterTest, Log1p) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/log1p.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  std::vector<dim_t> inputShape{3, 4};
+
+  Tensor input{ElemKind::FloatTy, {inputShape}};
+  input.getHandle() = {0.5, 0.1, 0.01, 1, 2, 3, 10, 20, 30, 1.1, 1.01, 1.001};
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  for (dim_t d1 = 1; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 1; d2 < inputShape[1]; ++d2) {
+      auto val = input.getHandle().at({d1, d2});
+      auto exp = std::log(val + 1);
+      EXPECT_NEAR(exp, outputH.at({d1, d2}), 1e-3) << "Bad value " << val;
+    }
+  }
+}

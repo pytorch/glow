@@ -4225,8 +4225,10 @@ Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(train == false,
                     "Training is not supported for LSTM in Glow.");
 
-  RETURN_ERR_IF_NOT(batchFirst == false,
-                    "batch_first is not supported for LSTM in Glow.");
+  if (batchFirst) {
+    input = F_.createTranspose("Input_BatchFirst_Transpose", input, {1, 0, 2})
+                ->getResult();
+  }
 
   NodeValue hn, cn;
   std::vector<glow::NodeValue> *params;
@@ -4285,6 +4287,11 @@ Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
              ->getResult();
     F_.createPyTorchLSTM("lstm", input, WxTransposed, WhTransposed, Bx, Bh, hn,
                          cn, output, bidirectional);
+  }
+  if (batchFirst) {
+    output =
+        F_.createTranspose("Output_BatchFirst_Transpose", output, {1, 0, 2})
+            ->getResult();
   }
   RETURN_IF_ERR(addValueMapping(outputs[0], output));
   RETURN_IF_ERR(addValueMapping(outputs[1], hn));
@@ -7251,7 +7258,18 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
       weightID, iValToString(getGlowIValueForValue(
                     inputs[XLEmbeddingBagRowwiseOffsetsInputs::weight_id])));
 
-  std::vector<glow::dim_t> dims{numEmbedding, embeddingDim};
+  // Note that QuantizedXLEBB infers dims directly from embeddingDim, while
+  // QuantizeEBB infers dims from weights. To reuse QuantizeEBB's loading
+  // logic, we scale the embedding dim of the static PH to match the second
+  // dims of the corresponding weight tensor of a QuantizeEBB:
+  // For 4bit: (weightShape[1] - 4) * 2 = embeddingDim
+  //           =>  scaledEmbeddingDim = embeddingDim / 2 + 4
+  // For byte: weightShape[1] - 8 = embeddingDim
+  //           =>  scaledEmbeddingDim = embeddingDim + 8
+  glow::dim_t scaledEmbeddingDim =
+      is4Bit ? embeddingDim / 2 + 4 : embeddingDim + 8;
+
+  std::vector<glow::dim_t> dims{numEmbedding, scaledEmbeddingDim};
   TypeRef fusedTy = F_.getParent()->uniqueType(
       (is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy), dims,
       0.0, 0);

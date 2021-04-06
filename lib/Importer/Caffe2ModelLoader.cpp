@@ -68,7 +68,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::TensorProto &in) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
-      return MAKE_ERR("0 dimemsion is not supported");
+      return MAKE_ERR("0 dimension is not supported");
     }
     dim.push_back(d);
   }
@@ -104,7 +104,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::QTensorProto &in) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
-      return MAKE_ERR("0 dimemsion qtensor is not supported");
+      return MAKE_ERR("0 dimension qtensor is not supported");
     }
     dim.push_back(d);
   }
@@ -2005,6 +2005,18 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       nodeValueByName_[op.output(2 * numLabels)] =
           node->getNthResult(SparseLabelSplitNode::GradientOffsetMapIdx);
     }
+    return Error::success();
+  }
+
+  if (typeName == "Log1p") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    Node *ones = G_->createSplat(opName + ".ones", in.getType(), 1.0f);
+    Node *add = G_->createAdd(opName + ".add", in, ones);
+    Node *node = G_->createLog(opName + ".log", add);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
 

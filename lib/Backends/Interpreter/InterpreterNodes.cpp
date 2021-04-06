@@ -1253,6 +1253,63 @@ void BoundInterpreterFunction::fwdBatchNormalizationInst(
 }
 
 //===----------------------------------------------------------------------===//
+//               LayerNormalization
+//===----------------------------------------------------------------------===//
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdLayerNormalizationInstFloatImpl(
+    const glow::LayerNormalizationInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  // input
+  auto inH = getWeightHandle<ElemTy>(I->getSrc());
+  auto scaleH = getWeightHandle<ElemTy>(I->getScale());
+  auto biasH = getWeightHandle<ElemTy>(I->getBias());
+  float epsilon = I->getEpsilon();
+
+  // output
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  auto N = I->getSrc()->dims()[0];
+  auto K = I->getSrc()->dims()[1];
+
+  std::vector<float> val(K);
+  for (dim_t n = 0; n < N; n++) {
+    // 1. mean = x.mean(dim=-1, keepdim=True)
+    float sum = 0.0f;
+    for (dim_t k = 0; k < K; k++) {
+      val[k] = inH.at({n, k});
+      sum += val[k];
+    }
+    float mean = sum / K;
+
+    // 2. var = ((x - mean) ** 2).mean(dim=-1, keepdim=True)
+    float diff_sqr_sum = 0.0f;
+    for (dim_t k = 0; k < K; k++) {
+      float diff = val[k] - mean;
+      diff_sqr_sum += diff * diff;
+    }
+    float var = diff_sqr_sum / K;
+
+    // 3. std = (var + epsilon).sqrt()
+    float std = std::sqrt(var + epsilon);
+
+    for (dim_t k = 0; k < K; k++) {
+      // 4. y = ((x - mean) / std) * scale + bias
+      float scale = scaleH.at({k});
+      float bias = biasH.at({k});
+      outW.at({n, k}) = ElemTy((((val[k] - mean) / std) * scale) + bias);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdLayerNormalizationInst(
+    const LayerNormalizationInst *I) {
+  dispatchFloatingPointImpl(fwdLayerNormalizationInstFloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
+//===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//
 template <class T>

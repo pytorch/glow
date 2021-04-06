@@ -599,42 +599,21 @@ TEST(RuntimeBundle, ContiguousPlaceholder) {
 }
 
 TEST_P(BackendExecTest, simpleInference) {
-  Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
   PlaceholderBindings bindings;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
-  F->setName("interpret");
   auto *input =
-      mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", false);
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
+  auto *conv = F->createConv(bindings, "conv", input, 10, 5, 1, 0, 1);
+  auto *res = F->createSave("save", conv);
 
-  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {input, res->getPlaceholder()});
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.allocate(res->getPlaceholder());
 
-  auto *CV0 = F->createConv(bindings, "conv1", input, 16, 5, 1, 2, 1);
-  auto *RL0 = F->createRELU("relu1", CV0);
-  auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
-
-  auto *CV1 =
-      F->createConv(bindings, "conv2", MP0->getResult(), 20, 5, 1, 2, 1);
-  auto *RL1 = F->createRELU("relu2", CV1);
-  auto *MP1 = F->createMaxPool("pool2", RL1, 2, 2, 0);
-
-  auto *CV2 =
-      F->createConv(bindings, "conv3", MP1->getResult(), 20, 5, 1, 2, 1);
-  auto *RL2 = F->createRELU("relu3", CV2);
-  auto *MP2 = F->createMaxPool("pool3", RL2, 2, 2, 0);
-
-  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP2->getResult(), 10);
-  auto *RL3 = F->createRELU("relu4", FCL1);
-  auto *SM = F->createSoftMax("sm", RL3, ex);
-  auto *S = F->createSave("ret", SM);
-
-  bindings.allocate(input);
-  bindings.allocate(ex);
-  bindings.allocate(S->getPlaceholder());
   EE_.compile(CompilationMode::Infer);
-
-  updateInputPlaceholders(bindings, {input}, {&inputs});
   EE_.run(bindings);
 }
 
@@ -1118,12 +1097,9 @@ TEST_P(BackendExecTest, compileThenAddNetwork) {
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
 
-  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
-
   auto *FC = F->createFullyConnected(bindings1, "FC", input, 30);
   auto *RL = F->createRELU("RL2", FC);
-  auto *SM = F->createSoftMax("sm", RL, ex);
-  auto *S = F->createSave("ret", SM);
+  auto *S = F->createSave("ret", RL);
 
   Placeholder *FC_weights =
       llvm::dyn_cast<Placeholder>(FC->getWeights().getNode());
@@ -1133,7 +1109,6 @@ TEST_P(BackendExecTest, compileThenAddNetwork) {
   auto *input2 =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
 
-  auto *ex2 = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
   auto *FC2 = F2->createFullyConnected(bindings2, "FC", input2, 30);
 
   // FC2 now has random weights we replace with FC1's weights so the output is
@@ -1143,9 +1118,10 @@ TEST_P(BackendExecTest, compileThenAddNetwork) {
   bindings2.get(FC2_weights)->assign(bindings1.get(FC_weights));
 
   auto *RL2 = F2->createRELU("RL2", FC2);
-  auto *SM2 = F2->createSoftMax("sm", RL2, ex2);
-  auto *S2 = F2->createSave("ret", SM2);
+  auto *S2 = F2->createSave("ret", RL2);
 
+  convertPlaceholdersToConstants(F, bindings1, {input, S->getPlaceholder()});
+  convertPlaceholdersToConstants(F2, bindings2, {input2, S2->getPlaceholder()});
   EE_.compile(CompilationMode::Infer);
 
   // Allocate all placeholders.
@@ -1231,5 +1207,5 @@ TEST(BackendExecTest, dumpType) {
   EXPECT_EQ(mesA, os.str());
 }
 
-INSTANTIATE_BACKEND_TEST(BackendTest);
+INSTANTIATE_BACKEND_TEST(BackendExecTest);
 INSTANTIATE_BACKEND_TEST(BackendExecStatelessTest);
