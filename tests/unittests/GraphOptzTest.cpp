@@ -2876,6 +2876,29 @@ TEST_F(GraphFold, optimizeSmallConv) {
   checkNumericalEquivalence();
 }
 
+TEST_F(GraphOptz, GatherToSliceOpt) {
+  auto *LHS = mod_.createPlaceholder(ElemKind::Int32ITy, {16, 3}, "LHS", false);
+  auto *RHS = mod_.createConstant(ElemKind::Int32ITy, {}, "RHS");
+  RHS->getPayloadMutable().getHandle<int32_t>() = {1};
+
+  auto *gather = F_->createGather("gather", LHS, RHS, 1);
+  auto *save = F_->createSave("save", gather);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  auto *saveOpt =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
+  ASSERT_TRUE(saveOpt);
+  auto *reshapeN = llvm::dyn_cast<ReshapeNode>(saveOpt->getInput());
+  ASSERT_TRUE(reshapeN);
+  EXPECT_EQ(reshapeN->getResult().dims().size(), 1);
+  EXPECT_EQ(reshapeN->getResult().dims()[0], 16);
+
+  bindings_.allocate(LHS)->getHandle<int32_t>().randomize(-128, 127,
+                                                          mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Fold a Convolution dilated manually using Transpose, SpaceToDepth and
 /// DepthToSpace nodes into a single Convolution node. Pattern:
 /// NHWC2CHWN -> S2D -> CHWN2NHWC -> Conv -> NHWC2CHWN -> D2S -> CHWN2NHWC

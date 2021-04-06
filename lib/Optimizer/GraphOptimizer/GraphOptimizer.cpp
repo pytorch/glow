@@ -3351,6 +3351,57 @@ bool OptimizeSplat::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+
+  for (auto &node : F->getNodes()) {
+    auto *GN = dyn_cast<GatherNode>(&node);
+    if (!GN) {
+      continue;
+    }
+
+    auto data = GN->getData();
+    auto *indices = dyn_cast<Constant>(GN->getIndices());
+
+    // Only handling scalar constant index value
+    if (!indices || indices->getPayload().size() != 1) {
+      continue;
+    }
+
+    dim_t index = 0;
+    size_t bd = GN->getBatchDims();
+    auto elementKind = indices->getElementType();
+    if (elementKind == ElemKind::Int64ITy) {
+      index = (size_t)indices->getHandle<int64_t>().raw(0);
+    } else if (elementKind == ElemKind::Int32ITy) {
+      index = (size_t)indices->getHandle<int32_t>().raw(0);
+    } else {
+      llvm_unreachable("GatherToSlice: Unsupported indices type");
+    }
+
+    std::vector<dim_t> start;
+    std::vector<dim_t> end;
+    for (size_t i = 0; i < data.dims().size(); ++i) {
+      if (i == bd) {
+        start.push_back(index);
+        end.push_back(index + 1);
+      } else {
+        start.push_back(0);
+        end.push_back(data.dims()[i]);
+      }
+    }
+
+    auto name = GN->getName();
+    auto *SN = F->createSlice(name, data, start, end);
+    auto *RN = F->createReshape(name, SN, GN->getResult().dims());
+
+    GN->getResult().replaceAllUsesOfWith(RN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// Optimize TransposeNode into ReshapeNode when it actually moves no data.
 bool OptimizeTransposeIntoReshape::run(Function *F,
                                        const CompilationContext &cctx) {

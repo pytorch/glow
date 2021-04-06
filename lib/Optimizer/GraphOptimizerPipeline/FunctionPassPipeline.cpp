@@ -161,6 +161,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Run a round of constant folding.
       {FunctionPassID::ConstantFold},
 
+      // Optimize Gather with const scalar index to Slice.
+      {FunctionPassID::GatherToSlice},
+
       // Optimize combinations of Quantized Nodes and Clips.
       {FunctionPassID::OptimizeQuantizeClip},
 
