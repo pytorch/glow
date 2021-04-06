@@ -295,9 +295,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
         case ElemKind::UInt8QTy:
-        case ElemKind::Int32ITy:
         case ElemKind::BoolTy:
           return true;
+        case ElemKind::Int32ITy:
+          return glow::nnpi::flags::EnablePrivateTransforms;
         default:
           return false;
         }
@@ -308,9 +309,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::Float16Ty:
         case ElemKind::Int8QTy:
         case ElemKind::UInt8QTy:
-        case ElemKind::Int32ITy:
         case ElemKind::BoolTy:
           return true;
+        case ElemKind::Int32ITy:
+          return glow::nnpi::flags::EnablePrivateTransforms;
         default:
           return false;
         }
@@ -331,10 +333,11 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         switch (kindTo) {
         case ElemKind::Int64ITy:
         case ElemKind::FloatTy:
-        case ElemKind::Float16Ty:
-        case ElemKind::BoolTy:
         case ElemKind::Int8QTy:
           return true;
+        case ElemKind::Float16Ty:
+        case ElemKind::BoolTy:
+          return glow::nnpi::flags::EnablePrivateTransforms;
         default:
           return false;
         }
@@ -1991,7 +1994,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
   changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
-  if (glow::nnpi::flags::DisablePrivateTransforms) {
+  if (!glow::nnpi::flags::EnablePrivateTransforms) {
     return changed;
   }
   changed |= transformPrivate(F, cctx);
