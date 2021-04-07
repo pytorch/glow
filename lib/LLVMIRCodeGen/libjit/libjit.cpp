@@ -158,13 +158,41 @@ static void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, dim_t *offset,
                                  dim_t numDimsTensor, dim_t numDimsSlice,
                                  dim_t offsetDim, dim_t count, dim_t axis) {
   // Destination coordinates.
-  dim_t C[5];
+  dim_t C[6];
 
   // A local copy of the offsets buffer. We copy the buffer to make it clear
   // to the optimizer that the inputs don't alias. This loop is optimized away.
-  dim_t offsets_cpy[5];
+  dim_t offsets_cpy[6];
   for (dim_t i = 0; i < numDimsSlice; i++) {
     offsets_cpy[i] = offset[i];
+  }
+
+  if (numDimsSlice == 6) {
+    for (dim_t c = 0; c < count; c++)
+      for (dim_t x = 0; x < sliceDim[0]; x++)
+        for (dim_t y = 0; y < sliceDim[1]; y++)
+          for (dim_t z = 0; z < sliceDim[2]; z++)
+            for (dim_t w = 0; w < sliceDim[3]; w++)
+              for (dim_t q = 0; q < sliceDim[4]; q++)
+                for (dim_t r = 0; r < sliceDim[5]; r++) {
+                  const dim_t countAxisOffset = c * sliceDim[axis];
+                  C[0] =
+                      x + offsets_cpy[0] + ((axis == 0) ? countAxisOffset : 0);
+                  C[1] =
+                      y + offsets_cpy[1] + ((axis == 1) ? countAxisOffset : 0);
+                  C[2] =
+                      z + offsets_cpy[2] + ((axis == 2) ? countAxisOffset : 0);
+                  C[3] =
+                      w + offsets_cpy[3] + ((axis == 3) ? countAxisOffset : 0);
+                  C[4] =
+                      q + offsets_cpy[4] + ((axis == 4) ? countAxisOffset : 0);
+                  C[5] =
+                      r + offsets_cpy[5] + ((axis == 5) ? countAxisOffset : 0);
+                  tensor[libjit_getXYZWQR(tensorDim, C[0], C[1], C[2], C[3],
+                                          C[4], C[5])] =
+                      slice[libjit_getXYZWQR(sliceDim, x, y, z, w, q, r)];
+                }
+    return;
   }
 
   if (numDimsSlice == 5) {

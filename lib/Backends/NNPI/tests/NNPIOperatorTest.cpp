@@ -68,6 +68,7 @@ struct BlacklistInitializer {
       {"FullyConnected_Int16_BiasInt32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"insertTensorTest/0", TestBlacklist::AnyDeviceAnyEngine},
       {"insertTensorTest3D/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"insertTensorTest6D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"insertTensorCrossDimensions/0", TestBlacklist::AnyDeviceAnyEngine},
       {"insertTensorPartialSliceInnerDim/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Int16ConvolutionDepth10/0", TestBlacklist::AnyDeviceAnyEngine},
