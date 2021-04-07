@@ -20,7 +20,6 @@
 #include "boost/variant.hpp"
 #include <string>
 #include <unordered_set>
-
 #include <vector>
 
 #include "glow/Support/Error.h"
@@ -137,24 +136,25 @@ private:
   Error shapeOnNode(const torch::jit::Node *node);
 
   struct ShapeInference {
-    using InferenceFn1 = Expected<TensorOutput> (*)(const MetaStack &);
-    using InferenceFn2 = Expected<TensorOutput> (*)(const torch::jit::Node *);
-    using InferenceFn3 = Expected<TensorOutput> (*)(const MetaStack &,
+    using InferenceFn0 = Expected<TensorOutput> (*)(const MetaStack &);
+    using InferenceFn1 = Expected<TensorOutput> (*)(const torch::jit::Node *);
+    using InferenceFn2 = Expected<TensorOutput> (*)(const MetaStack &,
                                                     const torch::jit::Node *);
-    using InferenceFn4 = Expected<TensorListOutput> (*)(const MetaStack &);
-    using InferenceFn5 =
+    using InferenceFn3 = Expected<TensorListOutput> (*)(const MetaStack &);
+    using InferenceFn4 =
         Expected<TensorListOutput> (*)(const torch::jit::Node *);
-    using InferenceFn6 = Expected<TensorListOutput> (*)(
+    using InferenceFn5 = Expected<TensorListOutput> (*)(
         const MetaStack &, const torch::jit::Node *);
 
-    using AddShapeFn1 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
+    using AddShapeFn0 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
                                                        TensorOutput &);
-    using AddShapeFn2 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
+    using AddShapeFn1 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
                                                        TensorListOutput &);
 
-    using InferenceFn = std::variant<InferenceFn1, InferenceFn2, InferenceFn3,
-                                     InferenceFn4, InferenceFn5, InferenceFn6>;
-    using AddShapeFn = std::variant<AddShapeFn1, AddShapeFn2>;
+    using InferenceFn =
+        boost::variant<InferenceFn0, InferenceFn1, InferenceFn2, InferenceFn3,
+                       InferenceFn4, InferenceFn5>;
+    using AddShapeFn = boost::variant<AddShapeFn0, AddShapeFn1>;
 
     ShapeInference(InferenceFn inferenceFn, AddShapeFn addShapeFn)
         : inferenceFn(inferenceFn), addShapeFn(addShapeFn) {}
