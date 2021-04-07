@@ -160,7 +160,8 @@ Error checkForFatalError(Error err) {
 
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
   static auto cls = torch::jit::backend<TorchGlowBackend>("glow");
-  static auto pre_reg = torch::jit::backend_preprocess_register("glow", preprocess);
+  static auto pre_reg =
+      torch::jit::backend_preprocess_register("glow", preprocess);
   return cls;
 }
 
