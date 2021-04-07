@@ -17,6 +17,7 @@
 #include "glow/Backend/Backend.h"
 #include "glow/Backends/DummyDeviceManager.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/TensorLayout.h"
@@ -25,6 +26,18 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 
 using namespace glow;
+
+namespace {
+/// Structure for tracking individual compilation thread's state
+struct PerCompilationThreadState {
+  // Functions to compile
+  std::vector<Function *> functions;
+  // Results of compilation
+  llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions;
+  // Any error that occurred
+  Error err = Error::empty();
+};
+} // namespace
 
 runtime::DeviceManager *
 Backend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
@@ -174,6 +187,78 @@ bool Backend::checkAllNodesSupported(const Function &F, bool verbose) const {
   return allSupported;
 }
 
+Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
+Backend::compileFunctions(std::vector<Function *> &functions,
+                          llvm::StringMap<BackendOptions> &optsMap) const {
+  const size_t numThreads = runtime::flags::NumCompilationThreads;
+
+  // Split functions up into threads
+  size_t functionsPerThread = (functions.size() + numThreads - 1) / numThreads;
+  std::vector<PerCompilationThreadState> threadStates;
+  for (size_t i = 0; i < numThreads; ++i) {
+    PerCompilationThreadState state;
+    // Mark the state's Error as checked to begin with in case we discard this
+    // state
+    EXIT_ON_ERR(std::move(state.err));
+    for (size_t j = 0; j < functionsPerThread; ++j) {
+      size_t idx = i * functionsPerThread + j;
+      if (idx >= functions.size()) {
+        break;
+      }
+      state.functions.push_back(functions[idx]);
+    }
+    if (!state.functions.empty()) {
+      threadStates.emplace_back(std::move(state));
+    }
+  }
+
+  auto compileFn = [&](PerCompilationThreadState *threadState) {
+    auto wrapped = [&]() -> Error {
+      for (auto *function : threadState->functions) {
+        auto functionName = function->getName();
+        RETURN_ERR_IF_NOT(optsMap.count(functionName),
+                          strFormat("Can't find corresponding option for "
+                                    "compiling function with name %s",
+                                    functionName.str().c_str()));
+        auto backendOpts = optsMap.find(functionName)->second;
+        auto resOrErr = compile(function, backendOpts);
+        if (resOrErr) {
+          threadState->compiledFunctions.insert(
+              {functionName, std::move(*resOrErr)});
+        } else {
+          RETURN_ERR(resOrErr.takeError());
+        }
+      }
+      return Error::success();
+    };
+    // Should be no errors here but it enforces we check anyways
+    EXIT_ON_ERR(std::move(threadState->err));
+    threadState->err = wrapped();
+  };
+
+  // Launch threads
+  std::vector<std::thread> threads;
+  for (auto &threadState : threadStates) {
+    threads.emplace_back(compileFn, &threadState);
+  }
+
+  // Join threads and aggregate compiledFunctions
+  llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions;
+  for (size_t i = 0; i < threads.size(); ++i) {
+    threads[i].join();
+    auto &threadState = threadStates[i];
+    if (threadState.err) {
+      RETURN_ERR(std::move(threadState.err));
+    }
+    for (auto &kv : threadState.compiledFunctions) {
+      compiledFunctions.insert({kv.first(), std::move(kv.second)});
+    }
+  }
+
+  return Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>(
+      std::move(compiledFunctions));
+}
+
 bool Backend::verify(const Function &F, bool verbose) const {
   return F.verify(this) && checkAllNodesSupported(F, verbose);
 }
@@ -190,8 +275,8 @@ TensorLayoutCommon &Backend::getTensorLayoutRequirements() const {
 std::unique_ptr<FunctionPassPipeline> Backend::getOptimizationPipeline() const {
   auto pipeline = createDefaultGraphOptimizationPassPipeline();
   // Fold Tile followed by Add into BatchedAdd. Currently this is not part of
-  // the default pipeline to avoid issues with some backends. If backends do not
-  // want this opt then they should override getOptimizationPipeline().
+  // the default pipeline to avoid issues with some backends. If backends do
+  // not want this opt then they should override getOptimizationPipeline().
   pipeline->pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
   return pipeline;
 }

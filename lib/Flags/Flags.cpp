@@ -152,6 +152,7 @@ bool EnableDRT = false;
 unsigned DeviceInitTimeoutMs = 5000;
 unsigned SanitizeInputsPercent = 0;
 uint64_t BigTableThresholdBytes = 104857600; // 100MB
+unsigned NumCompilationThreads = 30;
 } // namespace flags
 } // namespace runtime
 } // namespace glow
@@ -588,6 +589,14 @@ DEFINE_int32(glow_habana_memory, glow::runtime::flags::HabanaMemory,
              "Amount of DRAM to allocate per Habana device in KiB");
 DEFINE_validator(glow_habana_memory, [](const char *, int32_t val) {
   glow::runtime::flags::HabanaMemory = val;
+  return true;
+});
+
+DEFINE_int32(
+    glow_num_compilation_threads, glow::runtime::flags::NumCompilationThreads,
+    "Maximum number of threads to spawn per call to Backend::compileFunctions");
+DEFINE_validator(glow_num_compilation_threads, [](const char *, int32_t val) {
+  glow::runtime::flags::NumCompilationThreads = val;
   return true;
 });
 

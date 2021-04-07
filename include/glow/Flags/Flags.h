@@ -145,6 +145,7 @@ extern bool EnableDRT;
 extern unsigned DeviceInitTimeoutMs;
 extern uint64_t BigTableThresholdBytes;
 extern unsigned SanitizeInputsPercent;
+extern unsigned NumCompilationThreads;
 } // namespace flags
 } // namespace runtime
 } // namespace glow
