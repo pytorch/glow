@@ -1149,6 +1149,61 @@ TEST_F(GraphOptz, SinkTransposeBelowPRelu) {
   checkNumericalEquivalence();
 }
 
+TEST_F(GraphOptz, SinkTransposeBelowTile) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
+  auto *transpose = F_->createTranspose("transpose", in, NHWC2NCHW);
+  auto *tile = F_->createTile("tile", transpose, 4, 1);
+  auto *save = F_->createSave("save", tile);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::SinkCode, getDCEPassConfig()});
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *transposeOpt = llvm::dyn_cast<TransposeNode>(saveOpt->getInput());
+  ASSERT_TRUE(transposeOpt);
+  EXPECT_EQ(transposeOpt->getShuffle(), transpose->getShuffle());
+  auto *tileOpt = llvm::dyn_cast<TileNode>(transposeOpt->getInput());
+  ASSERT_TRUE(tileOpt);
+  EXPECT_EQ(tileOpt->getAxis(), 3);
+  EXPECT_EQ(tileOpt->getCount(), 4);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, HoistTransposeAboveTile) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
+  auto *tile = F_->createTile("tile", in, 4, 3);
+  auto *transpose = F_->createTranspose("transpose", tile, NHWC2NCHW);
+  auto *save = F_->createSave("save", transpose);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *tileOpt = llvm::dyn_cast<TileNode>(saveOpt->getInput());
+  ASSERT_TRUE(tileOpt);
+  EXPECT_EQ(tileOpt->getAxis(), 1);
+  EXPECT_EQ(tileOpt->getCount(), 4);
+  auto *transposeOpt = llvm::dyn_cast<TransposeNode>(tileOpt->getInput());
+  ASSERT_TRUE(transposeOpt);
+  EXPECT_EQ(transposeOpt->getShuffle(), transpose->getShuffle());
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// For example folding Rescale in to Convolution.
 TEST_F(GraphOptz, sinkTransposeBelowRescale) {
   // Inputs.

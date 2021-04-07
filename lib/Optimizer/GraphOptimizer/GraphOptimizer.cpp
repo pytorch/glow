@@ -708,6 +708,25 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
+    // Sink Transpose below Tile nodes.
+    if (auto *TN = dyn_cast<TileNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(TN->getInput());
+
+      if (!TR) {
+        continue;
+      }
+
+      auto *newTN = F->createTile(TN->getName(), TR->getInput(), TN->getCount(),
+                                  TR->getShuffle()[TN->getAxis()]);
+      newTN->setPredicate(node->getPredicate());
+      auto *newTR = F->createTranspose(TR->getName(), newTN, TR->getShuffle(),
+                                       TR->getLayout());
+      newTR->setPredicate(node->getPredicate());
+      TN->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
     // Sink Transpose below Pad nodes.
     if (auto *padNode = dyn_cast<PadNode>(node)) {
       auto *transposeNode = dyn_cast<TransposeNode>(padNode->getInput());
@@ -1095,6 +1114,39 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           BN->getEpsilon(), BN->getMomentum());
       SN->getResult().replaceAllUsesOfWith(newBN);
       changed = true;
+    }
+  }
+
+  return changed;
+}
+
+/// Code Hoisting.
+bool HoistCode::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    auto *node = &N;
+
+    // Hoist Transpose above Tile nodes.
+    if (auto *TR = dyn_cast<TransposeNode>(node)) {
+      auto *TN = dyn_cast<TileNode>(TR->getInput());
+
+      if (!TN) {
+        continue;
+      }
+
+      auto *newTR = F->createTranspose(TR->getName(), TN->getInput(),
+                                       TR->getShuffle(), TR->getLayout());
+      newTR->setPredicate(node->getPredicate());
+      auto *newTN =
+          F->createTile(TN->getName(), newTR, TN->getCount(),
+                        invertShuffle(TR->getShuffle())[TN->getAxis()]);
+      newTN->setPredicate(node->getPredicate());
+      TR->getResult().replaceAllUsesOfWith(newTN);
+      changed = true;
+      continue;
     }
   }
 
