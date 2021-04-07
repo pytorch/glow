@@ -236,6 +236,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"prim::dtype", ShapeInference(&primDtype, &SI::addShapeConstant)},
       {"prim::ListUnpack",
        ShapeInference(&listUnpack, &SI::addShapeDefaultList)},
+      {"fb::Fused8BitRowwiseQuantizedToFloat",
+       ShapeInference(&fused8BitRowwiseQuantizedToFloat, &SI::addShapeDefault)},
   });
   return map;
 }
@@ -2054,6 +2056,27 @@ ShapeInferenceEngine::linear(const MetaStack &variableMetas) {
   TensorOutput output;
   output.shapeOrIntValues = outputShape;
   output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * fb::Fused8BitRowwiseQuantizedToFloat(Tensor input) -> Tensor
+ */
+Expected<TensorOutput> ShapeInferenceEngine::fused8BitRowwiseQuantizedToFloat(
+    const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 1,
+      strFormat("Expected 1 inputs, got %zu.", variableMetas.size()));
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(inputShape.size() > 0,
+                    "Expected input shape size is larger than 0");
+  TensorShape outputShape = inputShape;
+  // Substract zero_point and scale_size which are float number,
+  // Each of them is float number which equals to 4 of int8 number.
+  outputShape.back() -= (2 * 4);
+  TensorOutput output;
+  output.shapeOrIntValues = outputShape;
+  output.dtype = c10::ScalarType::Float;
   return output;
 }
 
