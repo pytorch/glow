@@ -259,6 +259,14 @@ onnxStatus HostManagerBackend::addNetwork(
           glow::flags::BackendSpecificOpts)) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
+  if (glow::runtime::flags::EnableP2P) {
+    LOG(INFO) << "Glow P2P Enabled";
+    cctx.enableP2P = true;
+  }
+  if (glow::runtime::flags::EnableDRT) {
+    LOG(INFO) << "Glow DRT Enabled";
+    cctx.enableDRT = true;
+  }
 
   auto err = hostManager_->addNetwork(std::move(module), cctx);
 
@@ -268,7 +276,14 @@ onnxStatus HostManagerBackend::addNetwork(
     if (reporters) {
       reporters->report(msg);
     }
-    LOG(FATAL) << "Non-recoverable device error when adding network: " << msg;
+    const std::string errMsg =
+        "Non-recoverable device error when adding network: " + msg;
+    if (cctx.skipProvisioning) {
+      LOG(ERROR) << errMsg;
+      throw std::invalid_argument("Error during non-provisioned addNetwork");
+    } else {
+      LOG(FATAL) << errMsg;
+    }
   }
 
   return ONNXIFI_STATUS_SUCCESS;

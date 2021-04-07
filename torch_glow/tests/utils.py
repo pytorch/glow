@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from io import BytesIO
 
+import numpy as np
 import torch
 import torch_glow
 from parameterized import parameterized
@@ -25,7 +26,11 @@ def get_backend_name():
 
 @contextmanager
 def ephemeral_torchglow_settings(
-    fp16=False, backend=DEFAULT_BACKEND, fusion=False, blocklist=None
+    fp16=False,
+    backend=DEFAULT_BACKEND,
+    fusion=False,
+    blocklist=None,
+    accept_all_layouts=False,
 ):
     old_fp16 = torch_glow.get_convert_to_fp16()
     old_clip = torch_glow.get_clip_fp16()
@@ -50,6 +55,10 @@ def ephemeral_torchglow_settings(
             torch_glow.clearFusionBlacklist()
         else:
             torch_glow.setFusionBlacklist(list(blocklist))
+        if accept_all_layouts:
+            torch_glow.enable_accept_all_layout()
+        else:
+            torch_glow.disable_accept_all_layout()
         torch_glow.setGlowBackend(backend)
         yield
     finally:
@@ -113,6 +122,7 @@ def compare_tracing_methods(
     fp16=False,
     scripted=False,
     check_trace=True,
+    accept_all_layouts=False,
     skip_to_glow=False,  # Ugly hack, TODO: Remove
 ):
     if not isinstance(module, torch.nn.Module):
@@ -126,7 +136,10 @@ def compare_tracing_methods(
 
     with torch.no_grad():
         with ephemeral_torchglow_settings(
-            fusion=True, fp16=fp16, blocklist=fusion_blocklist
+            fusion=True,
+            fp16=fp16,
+            blocklist=fusion_blocklist,
+            accept_all_layouts=accept_all_layouts,
         ):
             fusion_inputs = deepcopy(inputs)
             fusion_trace = trace(module, fusion_inputs)
@@ -136,21 +149,25 @@ def compare_tracing_methods(
                 accept_any=fusible_ops is None,
             )
             fusion_result = fusion_trace(*fusion_inputs)
-        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+        with ephemeral_torchglow_settings(
+            fusion=False, fp16=fp16, accept_all_layouts=accept_all_layouts
+        ):
             if scripted:
                 torchscript_result = module(*deepcopy(inputs))
             else:
                 torchscript_inputs = deepcopy(inputs)
                 torchscript_trace = trace(module, torchscript_inputs)
                 torchscript_result = torchscript_trace(*torchscript_inputs)
-        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+        with ephemeral_torchglow_settings(
+            fusion=False, fp16=fp16, accept_all_layouts=accept_all_layouts
+        ):
             if not skip_to_glow:
                 glow_inputs = deepcopy(inputs)
-                glow_spec = torch_glow.generate_glow_compilation_spec(
-                    module, DEFAULT_BACKEND, *glow_inputs
+                traced_module = trace(module, glow_inputs)
+                lowered_module = torch_glow.lower(
+                    traced_module, glow_inputs, DEFAULT_BACKEND
                 )
-                glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
-                glow_result = glow_trace(*glow_inputs)
+                glow_result = lowered_module(*glow_inputs)
         if reference:
             assert_equivalent(
                 "Reference",
@@ -194,6 +211,94 @@ def compare_tracing_methods(
                 atol=atol,
                 rtol=rtol,
             )
+
+
+# Compilation test for glow lowering without executing.
+# This is designed for use cases where the original graph contains placeholder operators.
+def test_lowering(
+    module,
+    *inputs,
+    fusible_ops=None,
+    fusion_blocklist=None,
+    fp16=False,
+    scripted=False,
+    check_trace=True,
+    accept_all_layouts=False,
+):
+    if not isinstance(module, torch.nn.Module):
+        raise AssertionError("to_glow only supports nn.Modules")
+
+    def trace(mod, ins):
+        if scripted:
+            return torch.jit.script(mod)
+        else:
+            return torch.jit.trace(mod, ins, check_trace=check_trace)
+
+    with torch.no_grad():
+        with ephemeral_torchglow_settings(
+            fusion=False, fp16=fp16, accept_all_layouts=accept_all_layouts
+        ):
+            glow_inputs = deepcopy(inputs)
+            traced_module = trace(module, glow_inputs)
+            # If deferred weight loader is not set, it will throw a runtime exception
+            _lowered_module = torch_glow.lower(
+                traced_module, glow_inputs, DEFAULT_BACKEND
+            )  # unused
+
+
+def compare_tracing_methods_error(
+    module,
+    *inputs,
+    fusible_ops=None,
+    fusion_blocklist=None,
+    fp16=False,
+):
+    if not isinstance(module, torch.nn.Module):
+        raise AssertionError("to_glow only supports nn.Modules")
+
+    def trace(mod, ins):
+        return torch.jit.trace(mod, ins)
+
+    with torch.no_grad():
+        with ephemeral_torchglow_settings(
+            fusion=True, fp16=fp16, blocklist=fusion_blocklist
+        ):
+            fusion_inputs = deepcopy(inputs)
+            try:
+                fusion_trace = trace(module, fusion_inputs)
+                assert_fused(
+                    fusion_trace.graph_for(*fusion_inputs),
+                    *(fusible_ops or []),
+                    accept_any=fusible_ops is None,
+                )
+                fusion_trace(*fusion_inputs)
+            except Exception:
+                pass
+            else:
+                raise AssertionError("Error expected (fusion), but none were received")
+        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+            try:
+                torchscript_inputs = deepcopy(inputs)
+                torchscript_trace = trace(module, torchscript_inputs)
+                torchscript_trace(*torchscript_inputs)
+            except Exception:
+                pass
+            else:
+                raise AssertionError(
+                    "Error expected (torchscript), but none were received"
+                )
+        with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
+            try:
+                glow_inputs = deepcopy(inputs)
+                glow_spec = torch_glow.generate_glow_compilation_spec(
+                    module, DEFAULT_BACKEND, *glow_inputs
+                )
+                glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
+                glow_trace(*glow_inputs)
+            except Exception:
+                pass
+            else:
+                raise AssertionError("Error expected (glow), but none were received")
 
 
 def assert_fused(fused_graph, *ops, accept_any=False, strict=False):
@@ -247,6 +352,7 @@ class TorchGlowTestCase(unittest.TestCase):
 
     def setUp(self):
         torch.manual_seed(0)
+        np.random.seed(0)
         print("running the setup for TorchGlowTest")
 
 
@@ -254,4 +360,5 @@ def deterministic_expand(params):
     """Takes params as a list of lambdas where each lambda produces a tuple of
     unique parameters for the test"""
     torch.manual_seed(0)
+    np.random.seed(0)
     return parameterized.expand([p() for p in params])

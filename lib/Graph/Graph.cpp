@@ -15,6 +15,7 @@
  */
 #include "glow/Graph/Graph.h"
 #include "glow/Backend/Backend.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/TensorLayout.h"
@@ -1088,6 +1089,30 @@ GemmNode *Function::createGemm(llvm::StringRef name, TypeRef outTy, NodeValue A,
       new GemmNode(name, OT, A, B, C, alpha, beta, transposeA, transposeB));
 }
 
+DynamicQuantizedFullyConnectedNode *
+Function::createDynamicQuantizedFullyConnected(llvm::StringRef name,
+                                               NodeValue input, NodeValue W,
+                                               NodeValue B, bool isSymmetric,
+                                               bool isPerBatchElement) {
+  TypeRef T = input.getType();
+  TypeRef OT =
+      getParent()->uniqueTypeWithNewShape(T, {input.dims()[0], B.dims()[0]});
+  return addNode(new DynamicQuantizedFullyConnectedNode(
+      name, OT, input, W, B, isSymmetric, isPerBatchElement));
+}
+
+DynamicRowwiseQuantizedFullyConnectedNode *
+Function::createDynamicRowwiseQuantizedFullyConnected(
+    llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
+    NodeValue scales, NodeValue offsets, bool isSymmetric,
+    bool isPerBatchElement) {
+  TypeRef T = input.getType();
+  TypeRef OT =
+      getParent()->uniqueTypeWithNewShape(T, {input.dims()[0], B.dims()[0]});
+  return addNode(new DynamicRowwiseQuantizedFullyConnectedNode(
+      name, OT, input, W, B, scales, offsets, isSymmetric, isPerBatchElement));
+}
+
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
                                                    Storage *B,
@@ -1185,17 +1210,30 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
       name, outTy, input, qWeights, scales, offsets, B));
 }
 
-ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,
-                               TypeRef outTy) {
+ReluNode *Function::createRelu(llvm::StringRef name, TypeRef outTy,
+                               NodeValue input) {
   return addNode(new ReluNode(name, outTy, input));
 }
 
-ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
-  return addNode(new ReluNode(name, input.getType(), input));
+ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy) {
+  return createRelu(name, outTy, input);
 }
 
-Node *Function::createGELU(llvm::StringRef name, NodeValue input) {
+ReluNode *Function::createRelu(llvm::StringRef name, NodeValue input) {
+  return createRelu(name, input.getType(), input);
+}
+
+ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
+  return createRelu(name, input);
+}
+
+GeluNode *Function::createGelu(llvm::StringRef name, NodeValue input) {
   return addNode(new GeluNode(name, input.getType(), input));
+}
+
+GeluNode *Function::createGELU(llvm::StringRef name, NodeValue input) {
+  return createGelu(name, input);
 }
 
 PReluNode *Function::createPRELU(llvm::StringRef name, NodeValue input,
@@ -1217,12 +1255,18 @@ SigmoidNode *Function::createSigmoid(llvm::StringRef name, NodeValue input) {
   return createSigmoid(name, input.getType(), input);
 }
 
+SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input) {
+  return createSwish(name, getParent()->uniqueType(*input.getType()), input);
+}
+
+SwishNode *Function::createSwish(llvm::StringRef name, TypeRef OT,
+                                 NodeValue input) {
+  return addNode(new SwishNode(name, OT, input));
+}
+
 SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input,
                                  TypeRef OT) {
-  if (!OT) {
-    OT = getParent()->uniqueType(*input.getType());
-  }
-  return addNode(new SwishNode(name, OT, input));
+  return createSwish(name, OT, input);
 }
 
 TanhNode *Function::createTanh(llvm::StringRef name, TypeRef outTy,
@@ -1232,6 +1276,14 @@ TanhNode *Function::createTanh(llvm::StringRef name, TypeRef outTy,
 
 TanhNode *Function::createTanh(llvm::StringRef name, NodeValue input) {
   return createTanh(name, input.getType(), input);
+}
+
+SoftPlusNode *Function::createSoftPlus(llvm::StringRef name, NodeValue input,
+                                       TypeRef outTy) {
+  if (!outTy) {
+    outTy = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new SoftPlusNode(name, outTy, input));
 }
 
 SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
@@ -1700,6 +1752,12 @@ NotNode *Function::createNot(llvm::StringRef name, NodeValue input) {
   return addNode(new NotNode(name, OT, input));
 }
 
+BitwiseNotNode *Function::createBitwiseNot(llvm::StringRef name,
+                                           NodeValue input) {
+  TypeRef OT = getParent()->uniqueType(*input.getType());
+  return addNode(new BitwiseNotNode(name, OT, input));
+}
+
 #define UNARY_ARITHMETIC_FUN_DEF(NODE_NAME_)                                   \
   NODE_NAME_##Node *Function::create##NODE_NAME_(llvm::StringRef name,         \
                                                  NodeValue input) {            \
@@ -1749,6 +1807,9 @@ ARITHMETIC_FUN_DEF(Pow);
 ARITHMETIC_FUN_DEF(And);
 ARITHMETIC_FUN_DEF(Or);
 ARITHMETIC_FUN_DEF(Xor);
+ARITHMETIC_FUN_DEF(BitwiseAnd);
+ARITHMETIC_FUN_DEF(BitwiseOr);
+ARITHMETIC_FUN_DEF(BitwiseXor);
 ARITHMETIC_FUN_DEF(Fmod);
 #undef ARITHMETIC_FUN_DEF
 
@@ -1878,9 +1939,18 @@ PowNode *Function::createPow(llvm::StringRef name, NodeValue base, float exp) {
   return createPow(name, base, SP);
 }
 
+LogNode *Function::createLog(llvm::StringRef name, NodeValue input) {
+  return createLog(name, input.getType(), input);
+}
+
+LogNode *Function::createLog(llvm::StringRef name, TypeRef outTy,
+                             NodeValue input) {
+  return addNode(new LogNode(name, outTy, input));
+}
+
 LogNode *Function::createLog(llvm::StringRef name, NodeValue input,
                              TypeRef outTy) {
-  return addNode(new LogNode(name, outTy ? outTy : input.getType(), input));
+  return createLog(name, outTy, input);
 }
 
 ExpNode *Function::createExp(llvm::StringRef name, NodeValue input) {
@@ -2125,9 +2195,9 @@ BatchedMulNode *Function::createBatchedMul(llvm::StringRef name, TypeRef outTy,
 }
 
 CumSumNode *Function::createCumSum(llvm::StringRef name, NodeValue input,
-                                   bool exclusive, bool reverse) {
+                                   int64_t dim, bool exclusive, bool reverse) {
   return addNode(
-      new CumSumNode(name, input.getType(), input, exclusive, reverse));
+      new CumSumNode(name, input.getType(), input, dim, exclusive, reverse));
 }
 
 LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,
@@ -2507,6 +2577,25 @@ SparseToDenseMaskNode *Function::createSparseToDenseMask(
   auto outTy = getParent()->uniqueTypeWithNewShape(values.getType(), outDims);
   return addNode(new SparseToDenseMaskNode(name, outTy, indices, values,
                                            defaultValue, lengths, mask));
+}
+
+SparseLabelSplitNode *Function::createSparseLabelSplit(llvm::StringRef name,
+                                                       NodeValue lengths,
+                                                       NodeValue indices,
+                                                       NodeValue values,
+                                                       dim_t numLabels) {
+  const auto numItems = indices.dims()[0];
+  // The assumption here is that all output tensors (excluding offsetMap)
+  // will have the same number of elements, i.e. numItems / numLabels.
+  auto labelValuesTy = getParent()->uniqueTypeWithNewShape(
+      values.getType(), {numLabels, numItems / numLabels});
+  auto exampleIdsTy = getParent()->uniqueType(
+      ElemKind::Int32ITy, {numLabels, numItems / numLabels});
+  auto gradientOffsetMapTy =
+      getParent()->uniqueType(ElemKind::Int32ITy, {indices.dims()[0]});
+  return addNode(new SparseLabelSplitNode(name, labelValuesTy, exampleIdsTy,
+                                          gradientOffsetMapTy, lengths, indices,
+                                          values, numLabels));
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
@@ -5837,18 +5926,26 @@ insertAndReport(std::unordered_map<std::string, const Node *> &nameToNode,
 
 bool Function::verify(const Backend *backend) const {
   bool isValid = true;
-  if (backend) {
-    if (backend->getTensorLayoutRequirements().isEnabled()) {
+  // Check if the layout verifying is disabled, which will accept all layout for
+  // any ops.
+  LOG_FIRST_N(INFO, 1) << "Layout requirements checking is "
+                       << (glow::flags::DisableLayoutVerifying ? "disabled"
+                                                               : "enabled");
+  if (!glow::flags::DisableLayoutVerifying) {
+    if (backend) {
+      if (backend->getTensorLayoutRequirements().isEnabled()) {
+        isValid &= expectCompareTrue(
+            "Expected correct backend-specific layouts for the graph",
+            verifyLayouts(*this, backend->getTensorLayoutRequirements()), true,
+            this);
+      }
+    } else {
+      // Always run verification pre-lowering / when we don't have backend:
       isValid &= expectCompareTrue(
-          "Expected correct backend-specific layouts for the graph",
-          verifyLayouts(*this, backend->getTensorLayoutRequirements()), true,
+          "Expected correct Glow canonical layouts for the graph",
+          verifyLayouts(*this, CanonicalTensorLayout::getInstance()), true,
           this);
     }
-  } else {
-    // Always run verification pre-lowering / when we don't have backend:
-    isValid &= expectCompareTrue(
-        "Expected correct Glow canonical layouts for the graph",
-        verifyLayouts(*this, CanonicalTensorLayout::getInstance()), true, this);
   }
   std::unordered_map<std::string, const Node *> nameToNode;
 

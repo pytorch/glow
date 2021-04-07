@@ -1005,6 +1005,8 @@ Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
     return ElemKind::Float16Ty;
   case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
     return ElemKind::BFloat16Ty;
+  case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+    return ElemKind::Float64Ty;
   case ONNX_NAMESPACE::TensorProto_DataType_INT32:
     return ElemKind::Int32ITy;
   case ONNX_NAMESPACE::TensorProto_DataType_INT64:
@@ -1428,7 +1430,7 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
     if (op.input_size() > 3) {
       Constant *axesC = getConstantByNameOrNull(op.input(3));
 
-      RETURN_ERR_IF_NOT(startsC, opErrMsg(op, "Axes Tensor is not Constant."));
+      RETURN_ERR_IF_NOT(axesC, opErrMsg(op, "Axes Tensor is not Constant."));
 
       if (axesC->getElementType() == ElemKind::Int64ITy) {
         helperSetter<int64_t>(axesC, axes);
@@ -2720,12 +2722,6 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
   // Input Type.
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
-  ElemKind inputType = input.getType()->getElementType();
-
-  // Only supports float types.
-  RETURN_ERR_IF_NOT(isFloatElemKind(inputType),
-                    opErrMsg(op, "LeakyRelu: Unsupported Type for LeakyRelu "
-                                 "(Supports only Float types)"));
 
   // ONNX spec says default is 0.01, but doesn't explicitly say it's optional.
   // like for others. The default example just omits alpha.
@@ -3316,10 +3312,9 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Input4: sequence_lens (Optional).
-  if (numInputs > 4) {
-    RETURN_ERR_IF_NOT(
-        op.input(4).empty(),
-        opErrMsg(op, "ONNX RNN 'sequence_lens' attribute not supported!"));
+  if (numInputs > 4 && !op.input(4).empty()) {
+    LOG(WARNING) << "sequence_lens ignored, will be inferred from shape of "
+                    "ONNX RNN input.";
   }
 
   // Input5: initial_h (Optional).
@@ -3453,10 +3448,9 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Input4: sequence_lens (Optional).
-  if (numInputs > 4) {
-    RETURN_ERR_IF_NOT(
-        op.input(4).empty(),
-        opErrMsg(op, "ONNX GRU 'sequence_lens' attribute not supported!"));
+  if (numInputs > 4 && !op.input(4).empty()) {
+    LOG(WARNING) << "sequence_lens ignored, will be inferred from shape of "
+                    "ONNX GRU input.";
   }
 
   // Input5: initial_h (Optional).
@@ -3591,10 +3585,9 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Input4: sequence_lens (Optional).
-  if (numInputs > 4) {
-    RETURN_ERR_IF_NOT(
-        op.input(4).empty(),
-        opErrMsg(op, "ONNX LSTM 'sequence_lens' attribute not supported!"));
+  if (numInputs > 4 && !op.input(4).empty()) {
+    LOG(WARNING) << "sequence_lens ignored, will be inferred from shape of "
+                    "ONNX LSTM input.";
   }
 
   // Input5: initial_h (Optional).
@@ -4078,7 +4071,9 @@ Error ONNXModelLoader::loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(reverse, loadInt(dict.at("reverse")));
   }
 
-  Node *N = G_->createCumSum(loadOperatorName(op), input, exclusive, reverse);
+  // TODO: add axis/dim support
+  Node *N =
+      G_->createCumSum(loadOperatorName(op), input, 0, exclusive, reverse);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }
@@ -4639,9 +4634,10 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
       mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
 
   if (opsetVersion_ == 13) {
-    int axis = -1;
+    int axis = in.dims().size() - 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
     }
     RETURN_ERR_IF_NOT(in.dims().size() == 4, "SoftMax 13 input dims must be 4");
     // Compute the shuffle layout  based on axis input.
@@ -4686,7 +4682,8 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
     // softmax function. This is basimilar to a bitcast operation.
     int axis = 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
     }
     auto *FN = G_->createFlatten("reshapeInput", in, axis);
     auto *SM = G_->createSoftMax(opName, FN, selected);
@@ -4696,6 +4693,81 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
     auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
     RETURN_IF_ERR(addNodeAsOutput(op, RN));
   }
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadScatterData(const ONNX_NAMESPACE::NodeProto &op,
+                                       const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+  NodeValue values;
+  ASSIGN_VALUE_OR_RETURN_ERR(values, getNodeValueByName(op.input(2)));
+
+  RETURN_ERR_IF_NOT(indices.dims().size() == 2,
+                    opErrMsg(op, "Indices must be a 2D tensor!"));
+  RETURN_ERR_IF_NOT(indices.dims()[0] == values.dims()[0],
+                    opErrMsg(op, "Indices and values must have same lengths!"));
+
+  bool cumulative = false;
+  if (dict.count("cumulative")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(cumulative, loadInt(dict.at("cumulative")));
+  }
+
+  Node *node = G_->createScatterData(opName, data, indices, values, cumulative);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadTopK(const ONNX_NAMESPACE::NodeProto &op,
+                                ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  RETURN_ERR_IF_NOT(
+      op.input_size() <= 2,
+      opErrMsg(
+          op,
+          strFormat(
+              "TopK: Maximum number of inputs is 2, but found input size %d ",
+              op.input_size())));
+  unsigned_t k = 0;
+  if (op.input_size() > 1) {
+    Constant *kConst = getConstantByNameOrNull(op.input(1));
+    RETURN_ERR_IF_NOT(
+        kConst, opErrMsg(op, "TopK: Non-constant k is not supported by Glow."));
+    RETURN_ERR_IF_NOT(
+        kConst->getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op,
+                 strFormat("TopK: k input must be of type Int64, but found "
+                           "input type '%s' ",
+                           kConst->getType()->getElementName().str().c_str())));
+    auto constH = kConst->getPayload().getHandle<int64_t>();
+    k = constH.at({0});
+  } else {
+    ASSIGN_VALUE_OR_RETURN_ERR(k, loadInt(dict["k"]));
+  }
+
+  int lastDim = in.dims().size() - 1;
+  int axis = lastDim;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                               loadAxis<int>(dict["axis"], in.dims().size()));
+  }
+
+  RETURN_ERR_IF_NOT(
+      axis == lastDim,
+      opErrMsg(
+          op,
+          strFormat(
+              "TopK: Currently only support axis %d being last dimension %d ",
+              axis, lastDim)));
+
+  auto *R = G_->createTopK(opName, in, k);
+  RETURN_IF_ERR(addNodeAsOutput(op, R));
   return Error::success();
 }
 
@@ -5126,11 +5198,13 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadErf(op, dict);
   }
   if (typeName == "Conv") {
-    // If the Conv operator has quantized inputs, use
+    // If the Conv operator has quantized inputs and
+    // dict contains the scale and offset params, use
     // loadTensorwiseQuantizedConvolution.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    return in.getType()->isQuantizedType()
+    return in.getType()->isQuantizedType() && dict.count("out_scale") &&
+                   dict.count("out_offset")
                ? loadTensorwiseQuantizedConvolution(op, dict)
                : loadConv(op, dict);
   }
@@ -5142,7 +5216,8 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // loadTensorwiseQuantizedPool.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    return in.getType()->isQuantizedType()
+    return in.getType()->isQuantizedType() && dict.count("out_scale") &&
+                   dict.count("out_offset")
                ? loadTensorwiseQuantizedPool(op, dict, typeName)
                : loadPool(op, dict, typeName);
   }
@@ -5343,6 +5418,12 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Softmax") {
     return loadSoftmax(op, dict);
+  }
+  if (typeName == "ScatterData") {
+    return loadScatterData(op, dict);
+  }
+  if (typeName == "TopK") {
+    return loadTopK(op, dict);
   }
 
   return MAKE_ERR("Failed to load operator " + typeName + " .",

@@ -85,24 +85,24 @@ Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 
 std::string Constant::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName().str()))
-      .addParam("layout", getLayout())
-      .addParam("output", *getType());
+  db.addParam("Name", separateString(getName(), 100, "\n"))
+      .addParam("Layout", getLayout())
+      .addParam("Output", *getType());
   if (!skipUsers) {
-    db.addParam("users", getNumUsers());
+    db.addParam("Users", getNumUsers());
   }
   return db;
 }
 
 std::string Placeholder::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
-  db.addParam("name", quote(getName().str()))
-      .addParam("layout", getLayout())
-      .addParam("output", *getType())
-      .addParam("trainable", isTraining())
-      .addParam("static", isStatic());
+  db.addParam("Name", separateString(getName(), 100, "\n"))
+      .addParam("Layout", getLayout())
+      .addParam("Output", *getType())
+      .addParam("Trainable", isTraining())
+      .addParam("Static", isStatic());
   if (!skipUsers) {
-    db.addParam("users", getNumUsers());
+    db.addParam("Users", getNumUsers());
   }
   return db;
 }
@@ -1023,6 +1023,10 @@ bool SigmoidGradNode::verify() const {
   return isValid;
 }
 
+bool SoftPlusNode::verify() const {
+  return verifyActivation(getInput(), getResult());
+}
+
 bool SwishNode::verify() const {
   return verifyActivation(getInput(), getResult());
 }
@@ -1406,6 +1410,19 @@ VERIFY_BINARY_LOGICAL(Or)
 VERIFY_BINARY_LOGICAL(Xor)
 #undef VERIFY_BINARY_LOGICAL
 
+#define VERIFY_BINARY(NODE_NAME_)                                              \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    bool isValid = checkSameShape(getLHS(), getResult(), this);                \
+    isValid &= checkSameShape(getRHS(), getResult(), this);                    \
+    isValid &= checkSameType(getLHS(), getResult(), this);                     \
+    isValid &= checkSameType(getRHS(), getResult(), this);                     \
+    return isValid;                                                            \
+  }
+VERIFY_BINARY(BitwiseAnd)
+VERIFY_BINARY(BitwiseOr)
+VERIFY_BINARY(BitwiseXor)
+#undef VERIFY_BINARY
+
 #define VERIFY_UNARY_ARITHMETIC(NODE_NAME_)                                    \
   bool NODE_NAME_##Node::verify() const {                                      \
     return checkSameShape(getInput(), getResult(), this);                      \
@@ -1422,6 +1439,7 @@ VERIFY_UNARY_ARITHMETIC(Sin);
 VERIFY_UNARY_ARITHMETIC(Cos);
 VERIFY_UNARY_ARITHMETIC(Erf);
 VERIFY_UNARY_ARITHMETIC(Truncate);
+VERIFY_UNARY_ARITHMETIC(BitwiseNot);
 #undef VERIFY_UNARY_ARITHMETIC
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
@@ -1813,6 +1831,29 @@ bool SparseToDenseMaskNode::verify() const {
   return isValid;
 }
 
+bool SparseLabelSplitNode::verify() const {
+  bool isValid =
+      checkType("Input and output values must be of the same type",
+                getLabelValues(), getValues().getElementType(), this);
+  isValid &= checkType("Lengths must be of type int32", getLengths(),
+                       ElemKind::Int32ITy, this);
+  isValid &= checkType("Indices must be of type int64", getIndices(),
+                       ElemKind::Int64ITy, this);
+  isValid &= checkType("ExampleIds must be of type int32", getExampleIds(),
+                       ElemKind::Int32ITy, this);
+  isValid &= checkType("GradientOffsetMap must be of type in32",
+                       getGradientOffsetMap(), ElemKind::Int32ITy, this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Values must be a 1D vector",
+                               getValues().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices and values must have the same shape",
+                               getIndices().dims(), getValues().dims(), this);
+  return isValid;
+}
+
 bool SGDNode::verify() const {
   return checkSameType(getGradient(), getWeight(), this);
 }
@@ -1932,6 +1973,88 @@ bool VectorNormNode::verify() const {
   ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, false);
   isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
+
+bool DynamicQuantizedFullyConnectedNode::verify() const {
+  auto src = getInput();
+  auto weights = getWeights();
+  auto bias = getBias();
+  auto dest = getResult();
+  auto isPerBatchElement = getIsPerBatchElement();
+  auto isSymmetric = getIsSymmetric();
+
+  bool isValid = expectCompareTrue("Inputs should be 2D tensor",
+                                   src.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue(
+      "Only per batch quantized input DynQuantizedFC is supported now",
+      isPerBatchElement, true, this);
+  isValid &= expectCompareTrue(
+      "Only symmetric quantized DynQuantizedFC is supported now", isSymmetric,
+      true, this);
+  isValid &= expectCompareTrue("Weights should be 2D tensor",
+                               weights.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Result should be 2D tensor", dest.dims().size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Bias should be 1D tensor", bias.dims().size(),
+                               size_t(1), this);
+
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 0",
+                               src.dims()[0], dest.dims()[0], this);
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 1",
+                               src.dims()[1], weights.dims()[0], this);
+
+  isValid &= expectCompareTrue("Inconsistent bias/weights sizes",
+                               bias.dims()[0], weights.dims()[1], this);
+  isValid &= expectCompareTrue("Inconsistent bias/dest sizes", bias.dims()[0],
+                               dest.dims()[1], this);
+
+  return isValid;
+}
+
+bool DynamicRowwiseQuantizedFullyConnectedNode::verify() const {
+  auto src = getInput();
+  auto weights = getWeights();
+  auto bias = getBias();
+  auto dest = getResult();
+  auto scales = getScales();
+  auto offsets = getOffsets();
+  auto isPerBatchElement = getIsPerBatchElement();
+  auto isSymmetric = getIsSymmetric();
+
+  bool isValid = expectCompareTrue("Inputs should be 2D tensor",
+                                   src.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue(
+      "Only per batch quantized input DynQuantizedFC is supported now",
+      isPerBatchElement, true, this);
+  isValid &= expectCompareTrue(
+      "Only symmetric quantized DynQuantizedFC is supported now", isSymmetric,
+      true, this);
+  isValid &= expectCompareTrue("Weights should be 2D tensor",
+                               weights.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Result should be 2D tensor", dest.dims().size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Bias should be 1D tensor", bias.dims().size(),
+                               size_t(1), this);
+  isValid &= expectCompareTrue("Offsets should be 1D tensor",
+                               offsets.dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Scales should be 1D tensor",
+                               scales.dims().size(), size_t(1), this);
+
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 0",
+                               src.dims()[0], dest.dims()[0], this);
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 1",
+                               src.dims()[1], weights.dims()[0], this);
+
+  isValid &= expectCompareTrue("Inconsistent bias/weights sizes",
+                               bias.dims()[0], weights.dims()[1], this);
+  isValid &= expectCompareTrue("Inconsistent bias/dest sizes", bias.dims()[0],
+                               dest.dims()[1], this);
+  isValid &= expectCompareTrue("Inconsistent scales/offsets sizes",
+                               scales.dims()[0], offsets.dims()[0], this);
+  isValid &= expectCompareTrue("Inconsistent scales/weights sizes",
+                               scales.dims()[0], weights.dims()[1], this);
+
   return isValid;
 }
 
@@ -2450,11 +2573,24 @@ bool GemmNode::verify() const {
   NodeValue Y = getResult();
   bool transA = getTransposeA();
   bool transB = getTransposeB();
+  const Node *parent = Y.getNode();
 
   // Check types.
   bool isValid = checkType(B, A.getElementType(), this);
+  // Check for element kind of bias
   if (C.getNode()) {
-    isValid &= checkType(C, A.getElementType(), this);
+    // Non quantization type check.
+    if (A.getElementType() == ElemKind::FloatTy ||
+        A.getElementType() == ElemKind::Float16Ty) {
+      isValid &= checkType(C, A.getElementType(), parent);
+    }
+    // Quantization type check.
+    if (A.getElementType() == ElemKind::Int8QTy) {
+      isValid &= expectCompareTrue("Bias type should be Int8 or Int32 for Gemm",
+                                   C.getElementType() == ElemKind::Int8QTy ||
+                                       C.getElementType() == ElemKind::Int32QTy,
+                                   true, parent);
+    }
   }
   isValid &= checkType(Y, A.getElementType(), this);
 

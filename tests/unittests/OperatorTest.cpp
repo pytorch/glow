@@ -299,8 +299,8 @@ TEST_P(OperatorTest, less_float16Cases) {
   dim_t yDims[] = {5};
 
   Handle<bool> saveH =
-      lessHelper<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                          xValues, yValues, xDims, yDims);
+      lessHelper<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                            xValues, yValues, xDims, yDims);
 
   bool refResults[] = {true, true, false, false, false};
 
@@ -4582,6 +4582,37 @@ TEST_P(OperatorTest, PReluSimple_BFloat16) {
                               1E-16);
 }
 
+/// Verify that the PRELU operator works correctly for int8 with different
+/// input and output quantization parameters.
+TEST_P(OperatorTest, PRelu_Int8) {
+  CHECK_IF_ENABLED();
+  auto *in = mod_.createPlaceholder(ElemKind::Int8QTy, {7}, 1, 0, "in", false);
+  auto *slope =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {7}, 1, 0, "slope", false);
+
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {7}, 2, 0);
+  auto *prelu = F_->createPRELU("prelu", in, slope, outTy);
+  auto *save = F_->createSave("prelu", prelu);
+  bindings_.allocate(save->getPlaceholder());
+
+  bindings_.allocate(in)->getHandle<int8_t>() = {0, -1, -2, -3, 4, 5, 6};
+  bindings_.allocate(slope)->getHandle<int8_t>().randomize(1, 10,
+                                                           mod_.getPRNG());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto resultH = bindings_.get(save->getPlaceholder())->getHandle<int8_t>();
+  auto inH = bindings_.get(in)->getHandle<int8_t>();
+  auto slopeH = bindings_.get(slope)->getHandle<int8_t>();
+
+  for (size_t i = 0; i < 7; i++) {
+    int8_t expectedResult = slopeH.raw(i) * std::min<int8_t>(0, inH.raw(i)) +
+                            std::max<int8_t>(0, inH.raw(i));
+    EXPECT_NEAR(resultH.at(i), expectedResult / 2, 1);
+  }
+}
+
 /// Helper to test Gelu using \p DTy.
 template <typename DataType>
 static void testGelu(glow::PlaceholderBindings &bindings, glow::Module &mod,
@@ -6340,6 +6371,42 @@ TEST_P(OperatorTest, ScatterData) {
   EXPECT_FLOAT_EQ(H.at({4, 1}), 10.0);
 }
 
+TEST_P(OperatorTest, ScatterDataCumulative) {
+  CHECK_IF_ENABLED();
+
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "indices", false);
+  auto *slices =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 2}, "slices", false);
+
+  bindings_.allocate(data)->getHandle() = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 2, 2, 3};
+  bindings_.allocate(slices)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8};
+
+  auto *R = F_->createScatterData("scatterdata", data, indices, slices,
+                                  true /* cumulative */);
+
+  auto *result = F_->createSave("save", R);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
+
+  EXPECT_FLOAT_EQ(H.at({0, 0}), 0.0);
+  EXPECT_FLOAT_EQ(H.at({0, 1}), 0.0);
+  EXPECT_FLOAT_EQ(H.at({1, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({1, 1}), 2.0);
+  EXPECT_FLOAT_EQ(H.at({2, 0}), 8.0);
+  EXPECT_FLOAT_EQ(H.at({2, 1}), 10.0);
+  EXPECT_FLOAT_EQ(H.at({3, 0}), 7.0);
+  EXPECT_FLOAT_EQ(H.at({3, 1}), 8.0);
+  EXPECT_FLOAT_EQ(H.at({4, 0}), 0.0);
+  EXPECT_FLOAT_EQ(H.at({4, 1}), 0.0);
+}
+
 TEST_P(OperatorTest, ScatterDataQuantized) {
   CHECK_IF_ENABLED();
 
@@ -6935,6 +7002,44 @@ TEST_P(OperatorTest, IntMatMul) {
   EXPECT_NEAR(H.at({2, 2}), 58.8, 1.0);
 }
 
+/// Gemm test for quantized case with Int32QTy bias
+TEST_P(OperatorTest, IntGemm) {
+  CHECK_IF_ENABLED();
+
+  TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2}, 1, 0);
+
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {1, 5}, 1, 0, "inp", false);
+  bindings_.allocate(inp);
+  auto *weight =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {2, 5}, 1, 0, "weight", false);
+  bindings_.allocate(weight);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::Int32QTy, {2}, 1, 0, "bias", false);
+  bindings_.allocate(bias);
+
+  bindings_.get(inp)->getHandle<int8_t>() = {
+      1, 1, 1, 1, 1,
+  };
+
+  bindings_.get(weight)->getHandle<int8_t>() = {2, 2, 2, 2, 2, 3, 3, 3, 3, 3};
+
+  bindings_.get(bias)->getHandle<int32_t>() = {1, 2};
+
+  auto *gemmnode = F_->createGemm("gemm", resTy, inp, weight, bias, 1, 1, 0, 1);
+
+  auto *S = F_->createSave("save", gemmnode);
+  bindings_.allocate(S->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+  Tensor expected(resTy);
+  expected.getHandle<int8_t>() = {11, 17};
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
 TEST_P(OperatorTest, IntBatchedArith) {
   CHECK_IF_ENABLED();
 
@@ -7273,6 +7378,107 @@ TEST_P(OperatorStatelessTest, IntConcat) {
   compareAgainstInterpreter(getBackendName(), createAndInitBasicConcatTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f,
                             parCloneCountOpt);
+}
+
+TEST_P(OperatorTest, DynamicRowwiseQuantizedFullyConnectedBasic) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 3}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {3, 4}, 1000.0, 0.0, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
+  Constant *scales =
+      mod_.createConstant(ElemKind::FloatTy, {4}, "weight_scales");
+  Constant *offsets =
+      mod_.createConstant(ElemKind::Int32ITy, {4}, "weight_offsets");
+  bindings_.allocate(input)->getHandle<float16_t>() = {1.0f, 2.0f, 3.0f,
+                                                       4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4,  7, 10, 2, 5,
+                                                      8, 11, 3, 6,  9, 12};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+  scales->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+  offsets->getPayloadMutable().getHandle<int>() = {0, 0, 0, 0};
+
+  auto *DRQFC = F_->createDynamicRowwiseQuantizedFullyConnected(
+      "drqfc", input, weights, bias, scales, offsets);
+  auto *S = F_->createSave("save", DRQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {15.0f, 66.0f,  153.0f, 276.0f,
+                                       33.0f, 156.0f, 369.0f, 672.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++) {
+    // DynRQFC's largest error in this unittest is around 1.0
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 1.5);
+  }
+}
+
+TEST_P(OperatorTest, DynamicQuantizedFullyConnectedBasic) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 3}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {3, 4}, 1.0, 0.0, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
+  bindings_.allocate(input)->getHandle<float16_t>() = {1.0f, 2.0f, 3.0f,
+                                                       4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4,  7, 10, 2, 5,
+                                                      8, 11, 3, 6,  9, 12};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  auto *DQFC =
+      F_->createDynamicQuantizedFullyConnected("dqfc", input, weights, bias);
+  auto *S = F_->createSave("save", DQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {15.0f, 34.0f, 53.0f,  72.0f,
+                                       33.0f, 79.0f, 125.0f, 171.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++) {
+    // DynQFC's largest error in this unittest is around 2e-1
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 3e-1);
+  }
+}
+
+TEST_P(OperatorTest, DynamicQuantizedFullyConnectedStrongWeights) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {3, 4}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {4, 2}, 0.5, 0, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {2}, "bias");
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 2.0f, 3.0f, 4.0f, 5.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  weights->getPayloadMutable().getHandle<int8_t>() = {1, 4, 2, 3, 3, 2, 4, 1};
+  bias->getPayloadMutable().getHandle<float>() = {1.0f, 2.0f};
+
+  auto *DQFC =
+      F_->createDynamicQuantizedFullyConnected("dqfc", input, weights, bias);
+  auto *S = F_->createSave("save", DQFC);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {3, 2};
+  std::vector<float> expectedValues = {16.0f, 12.0f, 21.0f,
+                                       17.0f, 26.0f, 22.0f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 3 * 2; i++) {
+    // DynQFC's largest error in this unittest is around 2e-1
+    EXPECT_NEAR(result.raw(i), expectedValues[i], 3e-1);
+  }
 }
 
 TEST_P(OperatorTest, FCWithFlatten) {
@@ -8621,6 +8827,22 @@ TEST_P(OperatorTest, Neg_FloatTy) {
   EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
 }
 
+TEST_P(OperatorTest, Neg_Int32ITy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::Int32ITy, {3}, "inp", false);
+  bindings_.allocate(inp)->getHandle<int32_t>() = {1, 0, -1};
+  auto *node = F_->createNeg("neg", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int32_t>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_FLOAT_EQ(outH.raw(0), -1);
+  EXPECT_FLOAT_EQ(outH.raw(1), 0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 1);
+}
+
 TEST_P(OperatorTest, Neg_Int8QTy) {
   CHECK_IF_ENABLED();
   auto *inp =
@@ -9171,6 +9393,92 @@ TEST_P(OperatorTest, CmpGTE_Int32ITy) {
 TEST_P(OperatorTest, CmpGTE_Int64ITy) {
   CHECK_IF_ENABLED();
   testCmpGTE<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Helper to test CmpLT using \p elemKind.
+template <typename ElemType>
+static void testCmpLT(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind elemKind) {
+  auto *LHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {3}, "LHS", false);
+  auto *RHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {3}, "RHS", false);
+  bindings.allocate(LHS)->getHandle<ElemType>() = {1, 1, 2};
+  bindings.allocate(RHS)->getHandle<ElemType>() = {1, 2, 1};
+  auto *node = F->createCmpLT("cmpLT", LHS, RHS);
+  auto *save = F->createSave("save", node);
+  auto *outT = bindings.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto outH = outT->getHandle<bool>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_EQ(outH.raw(0), false);
+  EXPECT_EQ(outH.raw(1), true);
+  EXPECT_EQ(outH.raw(2), false);
+}
+
+TEST_P(OperatorTest, CmpLT_FloatTy) {
+  CHECK_IF_ENABLED();
+  testCmpLT<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, CmpLT_Int8QTy) {
+  CHECK_IF_ENABLED();
+  testCmpLT<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, CmpLT_Int32ITy) {
+  CHECK_IF_ENABLED();
+  testCmpLT<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, CmpLT_Int64ITy) {
+  CHECK_IF_ENABLED();
+  testCmpLT<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Helper to test CmpLTE using \p elemKind.
+template <typename ElemType>
+static void testCmpLTE(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                       glow::Function *F, glow::ExecutionEngine &EE,
+                       ElemKind elemKind) {
+  auto *LHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {3}, "LHS", false);
+  auto *RHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {3}, "RHS", false);
+  bindings.allocate(LHS)->getHandle<ElemType>() = {1, 1, 2};
+  bindings.allocate(RHS)->getHandle<ElemType>() = {1, 2, 1};
+  auto *node = F->createCmpLTE("cmpLTE", LHS, RHS);
+  auto *save = F->createSave("save", node);
+  auto *outT = bindings.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto outH = outT->getHandle<bool>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_EQ(outH.raw(0), true);
+  EXPECT_EQ(outH.raw(1), true);
+  EXPECT_EQ(outH.raw(2), false);
+}
+
+TEST_P(OperatorTest, CmpLTE_FloatTy) {
+  CHECK_IF_ENABLED();
+  testCmpLTE<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, CmpLTE_Int8QTy) {
+  CHECK_IF_ENABLED();
+  testCmpLTE<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, CmpLTE_Int32ITy) {
+  CHECK_IF_ENABLED();
+  testCmpLTE<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, CmpLTE_Int64ITy) {
+  CHECK_IF_ENABLED();
+  testCmpLTE<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, simpleCmpSelectPredication) {
@@ -13766,12 +14074,49 @@ TEST_P(OperatorTest, testQuantizedBatchMul_Int8) {
 template <typename DataType>
 static Tensor *testCumSum(glow::PlaceholderBindings &bindings,
                           glow::Module &mod, glow::Function *F,
-                          glow::ExecutionEngine &EE, ElemKind DTy,
+                          glow::ExecutionEngine &EE, ElemKind DTy, int64_t dim,
                           bool exclusive, bool reverse) {
   auto *data = mod.createPlaceholder(DTy, {4}, "data", false);
   bindings.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4};
 
-  auto *CS = F->createCumSum("CumSum", data, exclusive, reverse);
+  auto *CS = F->createCumSum("CumSum", data, dim, exclusive, reverse);
+  auto *S = F->createSave("save", CS);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  return bindings.get(S->getPlaceholder());
+}
+
+template <typename DataType>
+static Tensor *testCumSum2D(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            int64_t dim, bool exclusive, bool reverse) {
+  auto *data = mod.createPlaceholder(DTy, {3, 4}, "data", false);
+  bindings.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4,  5,  6,
+                                                    7, 8, 9, 10, 11, 12};
+
+  auto *CS = F->createCumSum("CumSum", data, dim, exclusive, reverse);
+  auto *S = F->createSave("save", CS);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  return bindings.get(S->getPlaceholder());
+}
+
+template <typename DataType>
+static Tensor *testCumSum3D(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            int64_t dim, bool exclusive, bool reverse) {
+  auto *data = mod.createPlaceholder(DTy, {2, 3, 4}, "data", false);
+  bindings.allocate(data)->getHandle<DataType>() = {
+      1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+      13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
+
+  auto *CS = F->createCumSum("CumSum", data, dim, exclusive, reverse);
   auto *S = F->createSave("save", CS);
   bindings.allocate(S->getPlaceholder());
 
@@ -13789,7 +14134,7 @@ TEST_P(OperatorTest, CumSum_Float) {
 
   Tensor *result =
       testCumSum<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                        /*exclusive*/ false, /*reverse*/ false);
+                        /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<float>() = {1, 3, 6, 10};
 
@@ -13805,7 +14150,7 @@ TEST_P(OperatorTest, CumSum_Float16) {
 
   Tensor *result =
       testCumSum<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                            /*exclusive*/ false, /*reverse*/ false);
+                            /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<float16_t>() = {1, 3, 6, 10};
 
@@ -13821,7 +14166,7 @@ TEST_P(OperatorTest, CumSum_BFloat16) {
 
   Tensor *result =
       testCumSum<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
-                             /*exclusive*/ false, /*reverse*/ false);
+                             /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<bfloat16_t>() = {1, 3, 6, 10};
 
@@ -13837,7 +14182,7 @@ TEST_P(OperatorTest, CumSum_Int32) {
 
   Tensor *result =
       testCumSum<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
-                          /*exclusive*/ false, /*reverse*/ false);
+                          /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<int32_t>() = {1, 3, 6, 10};
 
@@ -13853,7 +14198,7 @@ TEST_P(OperatorTest, CumSum_Int64) {
 
   Tensor *result =
       testCumSum<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                        /*exclusive*/ false, /*reverse*/ false);
+                        /*dim*/ 0, /*exclusive*/ false, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<float>() = {1, 3, 6, 10};
 
@@ -13869,7 +14214,7 @@ TEST_P(OperatorTest, CumSum_Exclusive) {
 
   Tensor *result =
       testCumSum<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                        /*exclusive*/ true, /*reverse*/ false);
+                        /*dim*/ 0, /*exclusive*/ true, /*reverse*/ false);
   Tensor expected(result->getType());
   expected.getHandle<float>() = {0, 1, 3, 6};
 
@@ -13885,7 +14230,7 @@ TEST_P(OperatorTest, CumSum_Reverse) {
 
   Tensor *result =
       testCumSum<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                            /*exclusive*/ false, /*reverse*/ true);
+                            /*dim*/ 0, /*exclusive*/ false, /*reverse*/ true);
   Tensor expected(result->getType());
   expected.getHandle<float16_t>() = {10, 9, 7, 4};
 
@@ -13901,7 +14246,7 @@ TEST_P(OperatorTest, CumSum_Reverse_BFloat16) {
 
   Tensor *result =
       testCumSum<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
-                             /*exclusive*/ false, /*reverse*/ true);
+                             /*dim*/ 0, /*exclusive*/ false, /*reverse*/ true);
   Tensor expected(result->getType());
   expected.getHandle<bfloat16_t>() = {10, 9, 7, 4};
 
@@ -13917,7 +14262,7 @@ TEST_P(OperatorTest, CumSum_ExclusiveReverse) {
 
   Tensor *result =
       testCumSum<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
-                          /*exclusive*/ true, /*reverse*/ true);
+                          /*dim*/ 0, /*exclusive*/ true, /*reverse*/ true);
   Tensor expected(result->getType());
   expected.getHandle<int32_t>() = {9, 7, 4, 0};
 
@@ -13934,7 +14279,7 @@ TEST_P(OperatorTest, CumSum_WithZeroes) {
   auto *data = mod_.createPlaceholder(ElemKind::Int64ITy, {9}, "data", false);
   bindings_.allocate(data)->getHandle<int64_t>() = {0, 0, 1, 0, 0, 2, 0, 0, 3};
 
-  auto *CS = F_->createCumSum("CumSum", data);
+  auto *CS = F_->createCumSum("CumSum", data, 0);
   auto *S = F_->createSave("save", CS);
   bindings_.allocate(S->getPlaceholder());
 
@@ -13945,6 +14290,655 @@ TEST_P(OperatorTest, CumSum_WithZeroes) {
   expected.getHandle<int64_t>() = {0, 0, 1, 1, 1, 3, 3, 3, 6};
 
   EXPECT_TRUE(expected.isEqual(*result));
+}
+
+/*
+  CumSum tests with 2 and 3 dimensions.
+  Define CUMSUM_ND_SUPPORTED in the implementation to run these tests
+
+  These answers were generated using PyTorch, but hardcoded to prevent
+  writing potentially buggy mock implementations.
+
+  2D:
+    DATA  = [
+      1,  2,  3,  4,
+      5,  6,  7,  8,
+      9, 10, 11, 12
+    ] flat: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+
+
+  dim = 0 (sum ALONG ALL rows in a given column)
+    Regular Output = [
+      1,  2,  3,  4,
+      6,  8, 10, 12,
+     15, 18, 21, 24
+    ] flat: {1, 2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24}
+
+    Reversed output = [
+     15, 18, 21, 24,
+     14, 16, 18, 20,
+      9, 10, 11, 12
+    ] flat: {15, 18, 21, 24, 14, 16, 18, 20, 9, 10, 11, 12}
+
+    Exclusive Output = [
+      0,  0,  0,  0,
+      1,  2,  3,  4,
+      6,  8, 10, 12
+    ] flat: {0, 0, 0, 0, 1, 2, 3, 4, 6, 8, 10, 12}
+
+    Exclusive Reversed output = [
+     14, 16, 18, 20,
+      9, 10, 11, 12,
+      0,  0,  0,  0
+    ] flat: {14, 16, 18, 20, 9, 10, 11, 12, 0, 0, 0, 0}
+
+  dim = 1 (sum ALONG ALL columns for a given row)
+    Regular Output = [
+      1,  3,  6, 10,
+      5, 11, 18, 26,
+      9, 19, 30, 42
+    ] flat: {1, 3, 6, 10, 5, 11, 18, 26, 9, 19, 30, 42}
+
+    Reversed output = [
+     10,  9,  7,  4,
+     26, 21, 15,  8,
+     42, 33, 23, 12
+    ] flat: {10, 9, 7, 4, 26, 21, 15, 8, 42, 33, 23, 12}
+
+    Exclusive Output = [
+      0,  1,  3,  6,
+      0,  5, 11, 18,
+      0,  9, 19, 30
+    ] flat: {0, 1, 3, 6, 0, 5, 11, 18, 0, 9, 19, 30}
+
+    Exclusive Reversed output = [
+      9,  7,  4,  0,
+     21, 15,  8,  0,
+     33, 23, 12,  0
+    ] flat: {9, 7, 4, 0, 21, 15, 8, 0, 33, 23, 12, 0}
+
+  3D: Because there are too many moving parameters here, we try each branch
+      but not each combination of branches
+
+  All examples were computed using pytorch.
+  */
+
+TEST_P(OperatorTest, CumSum2D_float_Dim0_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {14, 16, 18, 20, 9, 10,
+                                        11, 12, 0,  0,  0, 0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim0_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0, 0, 0, 0, 1, 2, 3, 4, 6, 8, 10, 12};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim0_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {15, 18, 21, 24, 14, 16,
+                                        18, 20, 9,  10, 11, 12};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  2,  3,  4,  6,  8,
+                                        10, 12, 15, 18, 21, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim1_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {9, 7, 4,  0,  21, 15,
+                                        8, 0, 33, 23, 12, 0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim1_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0, 1, 3, 6, 0, 5, 11, 18, 0, 9, 19, 30};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim1_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {10, 9, 7,  4,  26, 21,
+                                        15, 8, 42, 33, 23, 12};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  3,  6, 10, 5,  11,
+                                        18, 26, 9, 19, 30, 42};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim0_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {13, 14, 15, 16, 17, 18, 19, 20,
+                                        21, 22, 23, 24, 0,  0,  0,  0,
+                                        0,  0,  0,  0,  0,  0,  0,  0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim0_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0,  0,
+                                        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim0_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {14, 16, 18, 20, 22, 24, 26, 28,
+                                        30, 32, 34, 36, 13, 14, 15, 16,
+                                        17, 18, 19, 20, 21, 22, 23, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 0,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  2,  3,  4,  5,  6,  7,  8,
+                                        9,  10, 11, 12, 14, 16, 18, 20,
+                                        22, 24, 26, 28, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim1_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {14, 16, 18, 20, 9,  10, 11, 12,
+                                        0,  0,  0,  0,  38, 40, 42, 44,
+                                        21, 22, 23, 24, 0,  0,  0,  0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim1_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0,  0,  0,  0,  1,  2,  3,  4,
+                                        6,  8,  10, 12, 0,  0,  0,  0,
+                                        13, 14, 15, 16, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim1_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {15, 18, 21, 24, 14, 16, 18, 20,
+                                        9,  10, 11, 12, 51, 54, 57, 60,
+                                        38, 40, 42, 44, 21, 22, 23, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 1,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  2,  3,  4,  6,  8,  10, 12,
+                                        15, 18, 21, 24, 13, 14, 15, 16,
+                                        30, 32, 34, 36, 51, 54, 57, 60};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim2_Exclusive_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 2,
+                          /*exclusive*/ true, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {9,  7,  4,  0, 21, 15, 8,  0,
+                                        33, 23, 12, 0, 45, 31, 16, 0,
+                                        57, 39, 20, 0, 69, 47, 24, 0};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim2_Exclusive) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 2,
+                          /*exclusive*/ true, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {0, 1,  3,  6,  0, 5,  11, 18,
+                                        0, 9,  19, 30, 0, 13, 27, 42,
+                                        0, 17, 35, 54, 0, 21, 43, 66};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim2_Reverse) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 2,
+                          /*exclusive*/ false, /*reverse*/ true);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {10, 9,  7,  4,  26, 21, 15, 8,
+                                        42, 33, 23, 12, 58, 45, 31, 16,
+                                        74, 57, 39, 20, 90, 69, 47, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float_Dim2) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          /*dim*/ 2,
+                          /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float>() = {1,  3,  6,  10, 5,  11, 18, 26,
+                                        9,  19, 30, 42, 13, 27, 42, 58,
+                                        17, 35, 54, 74, 21, 43, 66, 90};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float16_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 0,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  2,  3,  4,  6,  8,
+                                            10, 12, 15, 18, 21, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_float16_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 1,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  3,  6, 10, 5,  11,
+                                            18, 26, 9, 19, 30, 42};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float16_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 0,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  2,  3,  4,  5,  6,  7,  8,
+                                            9,  10, 11, 12, 14, 16, 18, 20,
+                                            22, 24, 26, 28, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float16_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 1,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  2,  3,  4,  6,  8,  10, 12,
+                                            15, 18, 21, 24, 13, 14, 15, 16,
+                                            30, 32, 34, 36, 51, 54, 57, 60};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_float16_Dim2) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              /*dim*/ 2,
+                              /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<float16_t>() = {1,  3,  6,  10, 5,  11, 18, 26,
+                                            9,  19, 30, 42, 13, 27, 42, 58,
+                                            17, 35, 54, 74, 21, 43, 66, 90};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_bfloat16_t_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 0,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  2,  3,  4,  6,  8,
+                                             10, 12, 15, 18, 21, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_bfloat16_t_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 1,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  3,  6, 10, 5,  11,
+                                             18, 26, 9, 19, 30, 42};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_bfloat16_t_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 0,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  2,  3,  4,  5,  6,  7,  8,
+                                             9,  10, 11, 12, 14, 16, 18, 20,
+                                             22, 24, 26, 28, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_bfloat16_t_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 1,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  2,  3,  4,  6,  8,  10, 12,
+                                             15, 18, 21, 24, 13, 14, 15, 16,
+                                             30, 32, 34, 36, 51, 54, 57, 60};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_bfloat16_t_Dim2) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               /*dim*/ 2,
+                               /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<bfloat16_t>() = {1,  3,  6,  10, 5,  11, 18, 26,
+                                             9,  19, 30, 42, 13, 27, 42, 58,
+                                             17, 35, 54, 74, 21, 43, 66, 90};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_int32_t_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 0,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  2,  3,  4,  6,  8,
+                                          10, 12, 15, 18, 21, 24};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum2D_int32_t_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum2D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 1,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  3,  6, 10, 5,  11,
+                                          18, 26, 9, 19, 30, 42};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_int32_t_Dim0) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 0,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  2,  3,  4,  5,  6,  7,  8,
+                                          9,  10, 11, 12, 14, 16, 18, 20,
+                                          22, 24, 26, 28, 30, 32, 34, 36};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_int32_t_Dim1) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 1,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  2,  3,  4,  6,  8,  10, 12,
+                                          15, 18, 21, 24, 13, 14, 15, 16,
+                                          30, 32, 34, 36, 51, 54, 57, 60};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
+}
+
+TEST_P(OperatorTest, CumSum3D_int32_t_Dim2) {
+  // Data: {1..24} arranged in 2 x 3 x 4
+  // Answer sums ALONG the axis specified
+  CHECK_IF_ENABLED();
+  Tensor *dimSums =
+      testCumSum3D<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                            /*dim*/ 2,
+                            /*exclusive*/ false, /*reverse*/ false);
+
+  Tensor expectedDimSums(dimSums->getType());
+  expectedDimSums.getHandle<int32_t>() = {1,  3,  6,  10, 5,  11, 18, 26,
+                                          9,  19, 30, 42, 13, 27, 42, 58,
+                                          17, 35, 54, 74, 21, 43, 66, 90};
+
+  EXPECT_TRUE(expectedDimSums.isEqual(*dimSums));
 }
 
 TEST_P(OperatorTest, LengthsSum) {
@@ -16314,10 +17308,11 @@ TEST_P(OperatorStatelessTest, SLSAllZeroLengths_Float16) {
                             ElemKind::Float16Ty, ElemKind::Float16Ty);
 }
 
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testSparseToDense(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
-                              glow::ExecutionEngine &EE, ElemKind DTy) {
+                              glow::ExecutionEngine &EE, ElemKind DTy,
+                              ElemKind ITy) {
 
   // Create and initialize inputs. Make input 3D to make sure
   // multidimensional values are handled properly.
@@ -16326,25 +17321,25 @@ static void testSparseToDense(glow::PlaceholderBindings &bindings,
   constexpr dim_t kCols = 5;
   constexpr dim_t kMaxIndex = 10;
 
-  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {kNumIndices},
-                                        "indices", false);
+  auto *indices = mod.createPlaceholder(ITy, {kNumIndices}, "indices", false);
   auto *values =
       mod.createPlaceholder(DTy, {kNumIndices, kRows, kCols}, "data", false);
   auto *dataToInferDim = mod.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
                                                "dataToInferDim", false);
 
-  auto IH = bindings.allocate(indices)->getHandle<int64_t>();
+  auto IH = bindings.allocate(indices)->getHandle<IndexType>();
   auto VH = bindings.allocate(values)->getHandle<DataType>();
 
   // Duplicate one index to test that the corresponding values are added.
   IH = {1, 3, 1, 9};
-  VH.randomize(-3.0, 3.0, mod.getPRNG());
 
   auto *STDN = F->createSparseToDense("STDN", indices, values, dataToInferDim);
   auto *S = F->createSave("save", STDN);
   bindings.allocate(S->getPlaceholder());
 
   EE.compile(CompilationMode::Infer);
+
+  VH.randomize(-3.0, 3.0, mod.getPRNG());
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
@@ -16353,12 +17348,30 @@ static void testSparseToDense(glow::PlaceholderBindings &bindings,
   Tensor expected(DTy, {kMaxIndex, kRows, kCols});
   auto EH = expected.getHandle<DataType>();
 
+  Tensor expectedFP32(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
+  auto EHFP32 = expectedFP32.getHandle<float>();
+  expectedFP32.zero();
+
   expected.zero();
   for (dim_t i = 0; i < kNumIndices; ++i) {
     dim_t idx = IH.at({i});
     for (dim_t j = 0; j < kRows; ++j) {
       for (dim_t k = 0; k < kCols; ++k) {
-        EH.at({idx, j, k}) += VH.at({i, j, k});
+        if (std::is_same<DataType, float16_t>::value) {
+          EHFP32.at({idx, j, k}) += (float)VH.at({i, j, k});
+        } else {
+          EH.at({idx, j, k}) += VH.at({i, j, k});
+        }
+      }
+    }
+  }
+
+  if (std::is_same<DataType, float16_t>::value) {
+    for (dim_t i = 0; i < kMaxIndex; ++i) {
+      for (dim_t j = 0; j < kRows; ++j) {
+        for (dim_t k = 0; k < kCols; ++k) {
+          EH.at({i, j, k}) = (float16_t)EHFP32.at({i, j, k});
+        }
       }
     }
   }
@@ -16368,12 +17381,26 @@ static void testSparseToDense(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorTest, SparseToDense_Float) {
   CHECK_IF_ENABLED();
-  testSparseToDense<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+  testSparseToDense<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                                    ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, SparseToDense_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testSparseToDense<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                                    ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, SparseToDense_Float16_Int32) {
+  CHECK_IF_ENABLED();
+  testSparseToDense<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
 }
 
 TEST_P(OperatorTest, SparseToDense_Int64) {
   CHECK_IF_ENABLED();
-  testSparseToDense<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+  testSparseToDense<int64_t, int64_t>(bindings_, mod_, F_, EE_,
+                                      ElemKind::Int64ITy, ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, SparseToDenseMask1) {
@@ -17096,6 +18123,50 @@ TEST_P(OperatorTest, insertTensorCrossDimensions) {
   }
 }
 
+/// Test that InsertTensor node works correctly for 6D tensors.
+TEST_P(OperatorTest, insertTensorTest6D) {
+  CHECK_IF_ENABLED();
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  auto *SN0 = mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1, 1, 1, 4, 6},
+                                     "SN0", false);
+  bindings_.allocate(SN0)->init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
+
+  // 1 1
+  // 1 1
+  auto *SN1 = mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1, 1, 1, 2, 2},
+                                     "SN1", false);
+  bindings_.allocate(SN1)->init(Tensor::InitKind::Broadcast, 1, mod_.getPRNG());
+
+  // 0 0 0 0 0 0
+  // 0 1 1 1 1 0
+  // 0 1 1 1 1 0
+  // 0 0 0 0 0 0
+  Node *IN =
+      F_->createInsertTensor("insert", SN0, SN1, /* start */ {0, 0, 0, 0, 1, 1},
+                             /* count */ 2, /* axis */ 5);
+  SaveNode *result = F_->createSave("result", IN);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  // Verify the output looks as expected (pictured above).
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
+  for (dim_t i = 0; i < 4; i++) {
+    for (dim_t j = 0; j < 6; j++) {
+      int64_t expected = 1;
+      if (i == 0 || i == 3 || j == 0 || j == 5) {
+        expected = 0;
+      }
+      EXPECT_EQ(resultH.at({0, 0, 0, 0, i, j}), expected);
+    }
+  }
+}
+
 /// Test the InsertTensor operator works correctly when inserting across an
 /// outer dimension where the inner dimensions have different sizes.
 TEST_P(OperatorTest, insertTensorPartialSliceInnerDim) {
@@ -17345,6 +18416,46 @@ TEST_P(OperatorTest, Bucketize) {
   Tensor expected2(ElemKind::Int32ITy, {3, 2});
   expected2.getHandle<int32_t>() = {1, 2, 2, 1, 1, 2};
   EXPECT_TRUE(expected2.isEqual(*result2));
+}
+
+/// Helper to test SoftPlus using \p DTy.
+template <typename DataType>
+static void testSoftPlus(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                         glow::Function *F, glow::ExecutionEngine &EE,
+                         ElemKind DTy) {
+  auto *input = mod.createPlaceholder(DTy, {1, 6}, "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {0., -2., 2., 5., 2.5, 6.};
+  auto *softPlus = F->createSoftPlus("Softplus", input);
+  auto *S = F->createSave("save", softPlus);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = bindings.get(S->getPlaceholder());
+
+  Tensor out(DTy, {1, 6});
+  out.getHandle<DataType>() = {0.693f, 0.127f, 2.127f, 5.007f, 2.579f, 6.002f};
+  EXPECT_TRUE(out.isEqual(*result, 0.001));
+}
+
+/// Verify that the SoftPlus operator works correctly for Float.
+TEST_P(OperatorTest, SoftPlus_Float) {
+  CHECK_IF_ENABLED();
+
+  testSoftPlus<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the SoftPlus operator works correctly for Float16.
+TEST_P(OperatorTest, SoftPlus_Float16) {
+  CHECK_IF_ENABLED();
+  testSoftPlus<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Verify that the SoftPlus operator works correctly for BFloat16.
+TEST_P(OperatorTest, SoftPlus_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSoftPlus<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
 }
 
 /// Check the correctness of the SoftMax operator.
@@ -18622,6 +19733,43 @@ TEST_P(OperatorTest, add_float) {
     }
   }
 }
+static FunctionTensorPair
+createAndInitLayerNormStrongNormShapeTest(glow::PlaceholderBindings &bindings,
+                                          glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 4, 5, 6}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {5, 6});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {5, 6});
+  biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+
+  bindings.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+
+  auto *res = F->createSave("save", LNN);
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {input, res->getPlaceholder()});
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Test LayerNorm with Float16Ty and strong norm_shape(dims > 1 and not
+/// identical)
+TEST_P(OperatorStatelessTest, LayerNorm_Float16_StrongNormShape) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitLayerNormStrongNormShapeTest,
+      ElemKind::FloatTy, ElemKind::Float16Ty, 0.05f, parCloneCountOpt);
+}
 
 static FunctionTensorPair
 createAndInitLayerNormTest(glow::PlaceholderBindings &bindings,
@@ -18666,6 +19814,66 @@ TEST_P(OperatorStatelessTest, LayerNorm_Float16) {
   compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f,
                             parCloneCountOpt);
+}
+
+/// Mock Test LayerNorm with Float32Ty.
+TEST_P(OperatorStatelessTest, LayerNormMock_Float32) {
+  CHECK_IF_ENABLED();
+  /*
+    WEIGHT = [2.4180, 2.2070, 2.3184, 0.7378, 0.7734, 0.7520]
+    BIAS = [0.1567, 0.0308, 0.0166, 0.2944, 0.2759, 0.5649]
+    INPUT = [
+              1.0,
+              2.0,
+              3.0,
+              4.0,
+              5.0,
+              6.0,
+            ]
+    TARGET = [
+              -3.382883310317993,
+              -1.907626986503601,
+              -0.662156879901886,
+              0.5104053020477295,
+              0.9551836252212524,
+              1.6657130718231201,
+             ]
+  */
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
+
+  PlaceholderBindings bindings;
+
+  bindings.allocate(input)->getHandle() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+  };
+  Tensor scaleT(ElemKind::FloatTy, {6});
+  scaleT.getHandle() = {2.4180f, 2.2070f, 2.3184f, 0.7378f, 0.7734f, 0.7520f};
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {6});
+  biasT.getHandle() = {0.1567f, 0.0308f, 0.0166f, 0.2944f, 0.2759f, 0.5649f};
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+
+  auto *res = F->createSave("save", LNN);
+  bindings.allocate(res->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(ElemKind::FloatTy, {1, 6});
+  expected.getHandle() = {
+      -3.382883310317993f, -1.907626986503601f, -0.662156879901886f,
+      0.5104053020477295f, 0.9551836252212524f, 1.6657130718231201f,
+  };
+
+  EXPECT_TRUE(expected.isEqual(*bindings.get(res->getPlaceholder())));
 }
 
 /// Test LayerNorm with BFloat16Ty.
@@ -18762,13 +19970,13 @@ template <typename DataType>
 static void testUpsample3D(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
                            glow::ExecutionEngine &EE, ElemKind DTy) {
-  constexpr std::array<dim_t, 5> size{1, 3, 2, 3, 4};
+  constexpr std::array<dim_t, 5> size{1, 2, 3, 4, 3}; // NTHWC
   auto *input =
       createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
 
-  auto *output = F->createResizeNearest("Upsample", input, {1, 1, 4, 2, 3});
+  auto *output = F->createResizeNearest("Upsample", input, {1, 4, 2, 3, 1});
   auto *save = F->createSave("Save", output);
   bindings.allocate(save->getPlaceholder());
 
@@ -18779,21 +19987,21 @@ static void testUpsample3D(glow::PlaceholderBindings &bindings,
   auto inputH = bindings.get(input)->getHandle<DataType>();
 
   EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
-  EXPECT_EQ(resultH.dims()[1], inputH.dims()[1]);
-  EXPECT_EQ(resultH.dims()[2], 4 * inputH.dims()[2]);
-  EXPECT_EQ(resultH.dims()[3], 2 * inputH.dims()[3]);
-  EXPECT_EQ(resultH.dims()[4], 3 * inputH.dims()[4]);
+  EXPECT_EQ(resultH.dims()[1], 4 * inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
+  EXPECT_EQ(resultH.dims()[3], 3 * inputH.dims()[3]);
+  EXPECT_EQ(resultH.dims()[4], inputH.dims()[4]);
   for (dim_t m = 0; m < size[0]; m++) {
-    for (dim_t n = 0; n < size[1]; n++) {
-      for (dim_t i = 0; i < size[2]; i++) {
-        for (dim_t j = 0; j < size[3]; j++) {
-          for (dim_t k = 0; k < size[4]; k++) {
+    for (dim_t i = 0; i < size[1]; i++) {
+      for (dim_t j = 0; j < size[2]; j++) {
+        for (dim_t k = 0; k < size[3]; k++) {
+          for (dim_t n = 0; n < size[4]; n++) {
             for (dim_t i_delta = 0; i_delta < 4; i_delta++) {
               for (dim_t j_delta = 0; j_delta < 2; j_delta++) {
                 for (dim_t k_delta = 0; k_delta < 3; k_delta++) {
-                  EXPECT_EQ(resultH.at({m, n, 4 * i + i_delta, 2 * j + j_delta,
-                                        3 * k + k_delta}),
-                            static_cast<DataType>(inputH.at({m, n, i, j, k})));
+                  EXPECT_EQ(resultH.at({m, 4 * i + i_delta, 2 * j + j_delta,
+                                        3 * k + k_delta, n}),
+                            static_cast<DataType>(inputH.at({m, i, j, k, n})));
                 }
               }
             }
@@ -18808,13 +20016,13 @@ template <typename DataType>
 static void testUpsample2D(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
                            glow::ExecutionEngine &EE, ElemKind DTy) {
-  constexpr std::array<dim_t, 4> size{1, 2, 3, 4};
+  constexpr std::array<dim_t, 4> size{1, 2, 3, 4}; // NHWC
   auto *input =
       createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
 
-  auto *output = F->createResizeNearest("Upsample", input, {1, 1, 2, 3});
+  auto *output = F->createResizeNearest("Upsample", input, {1, 2, 3, 1});
   auto *save = F->createSave("Save", output);
   bindings.allocate(save->getPlaceholder());
 
@@ -18825,17 +20033,17 @@ static void testUpsample2D(glow::PlaceholderBindings &bindings,
   auto inputH = bindings.get(input)->getHandle<DataType>();
 
   EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
-  EXPECT_EQ(resultH.dims()[1], inputH.dims()[1]);
-  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
-  EXPECT_EQ(resultH.dims()[3], 3 * inputH.dims()[3]);
+  EXPECT_EQ(resultH.dims()[1], 2 * inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], 3 * inputH.dims()[2]);
+  EXPECT_EQ(resultH.dims()[3], inputH.dims()[3]);
   for (dim_t m = 0; m < size[0]; m++) {
-    for (dim_t n = 0; n < size[1]; n++) {
-      for (dim_t i = 0; i < size[2]; i++) {
-        for (dim_t j = 0; j < size[3]; j++) {
+    for (dim_t i = 0; i < size[1]; i++) {
+      for (dim_t j = 0; j < size[2]; j++) {
+        for (dim_t n = 0; n < size[3]; n++) {
           for (dim_t i_delta = 0; i_delta < 2; i_delta++) {
             for (dim_t j_delta = 0; j_delta < 3; j_delta++) {
-              EXPECT_EQ(resultH.at({m, n, 2 * i + i_delta, 3 * j + j_delta}),
-                        static_cast<DataType>(inputH.at({m, n, i, j})));
+              EXPECT_EQ(resultH.at({m, 2 * i + i_delta, 3 * j + j_delta, n}),
+                        static_cast<DataType>(inputH.at({m, i, j, n})));
             }
           }
         }
@@ -18848,13 +20056,13 @@ template <typename DataType>
 static void testUpsample1D(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
                            glow::ExecutionEngine &EE, ElemKind DTy) {
-  constexpr std::array<dim_t, 3> size{2, 3, 4};
+  constexpr std::array<dim_t, 3> size{2, 3, 4}; // NHC
   auto *input =
       createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
 
-  auto *output = F->createResizeNearest("Upsample", input, {1, 1, 2});
+  auto *output = F->createResizeNearest("Upsample", input, {1, 2, 1});
   auto *save = F->createSave("Save", output);
   bindings.allocate(save->getPlaceholder());
 
@@ -18865,15 +20073,15 @@ static void testUpsample1D(glow::PlaceholderBindings &bindings,
   auto inputH = bindings.get(input)->getHandle<DataType>();
 
   EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
-  EXPECT_EQ(resultH.dims()[1], inputH.dims()[1]);
-  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
+  EXPECT_EQ(resultH.dims()[1], 2 * inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], inputH.dims()[2]);
   for (dim_t m = 0; m < size[0]; m++) {
-    for (dim_t n = 0; n < size[1]; n++) {
-      for (dim_t i = 0; i < size[2]; i++) {
-        EXPECT_EQ(resultH.at({m, n, 2 * i + 0}),
-                  static_cast<DataType>(inputH.at({m, n, i})));
-        EXPECT_EQ(resultH.at({m, n, 2 * i + 1}),
-                  static_cast<DataType>(inputH.at({m, n, i})));
+    for (dim_t i = 0; i < size[1]; i++) {
+      for (dim_t n = 0; n < size[2]; n++) {
+        EXPECT_EQ(resultH.at({m, 2 * i + 0, n}),
+                  static_cast<DataType>(inputH.at({m, i, n})));
+        EXPECT_EQ(resultH.at({m, 2 * i + 1, n}),
+                  static_cast<DataType>(inputH.at({m, i, n})));
       }
     }
   }
@@ -18886,7 +20094,7 @@ TEST_P(OperatorTest, Upsample_Nearest3D_Float) {
 
 TEST_P(OperatorTest, Upsample_Nearest3D_Float16) {
   CHECK_IF_ENABLED();
-  testUpsample3D<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testUpsample3D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, Upsample_Nearest3D_Int8) {
@@ -18901,7 +20109,7 @@ TEST_P(OperatorTest, Upsample_Nearest2D_Float) {
 
 TEST_P(OperatorTest, Upsample_Nearest2D_Float16) {
   CHECK_IF_ENABLED();
-  testUpsample2D<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testUpsample2D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, Upsample_Nearest2D_Int8) {
@@ -18916,7 +20124,7 @@ TEST_P(OperatorTest, Upsample_Nearest1D_Float) {
 
 TEST_P(OperatorTest, Upsample_Nearest1D_Float16) {
   CHECK_IF_ENABLED();
-  testUpsample1D<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testUpsample1D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, Upsample_Nearest1D_Int8) {
@@ -18964,6 +20172,68 @@ TEST_P(OperatorTest, RMSNorm) {
   auto hRrms = resultRrms->getHandle<float>();
   for (dim_t i = 0; i < expectedRrmsShape[0]; ++i) {
     EXPECT_NEAR(expectedRrms[i], hRrms.at({i}), 1e-5) << "at pos " << i;
+  }
+}
+
+TEST_P(OperatorTest, SparseLabelSplit) {
+  CHECK_IF_ENABLED();
+
+  constexpr auto numLengths = 4U;
+  constexpr auto numIndices = 8U;
+  auto lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
+                                        "lengths", false);
+  auto indices = mod_.createPlaceholder(ElemKind::Int64ITy, {numIndices},
+                                        "indices", false);
+  auto values =
+      mod_.createPlaceholder(ElemKind::FloatTy, {numIndices}, "values", false);
+  constexpr auto numLabels = 4U;
+
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {1, 3, 2, 2};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {3, 1, 2, 0, 0, 2, 1, 3};
+  bindings_.allocate(values)->getHandle<float>() = {1.2, 2.3, 3.1, 6.7,
+                                                    8.3, 9.0, 3.7, 8.8};
+
+  auto output = F_->createSparseLabelSplit("sparselabelsplit", lengths, indices,
+                                           values, numLabels);
+
+  auto labelValues = F_->createSave("labelValues", output->getLabelValues());
+  auto exampleIds = F_->createSave("exampleIds", output->getExampleIds());
+  auto gradientOffsetMap =
+      F_->createSave("gradientOffsetMap", output->getGradientOffsetMap());
+
+  Tensor *labelValuesT = bindings_.allocate(labelValues->getPlaceholder());
+  Tensor *exampleIdsT = bindings_.allocate(exampleIds->getPlaceholder());
+  Tensor *gradientOffsetMapT =
+      bindings_.allocate(gradientOffsetMap->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  const std::vector<dim_t> expectedOutputShape{numLabels,
+                                               numIndices / numLabels};
+  EXPECT_EQ(expectedOutputShape, labelValuesT->dims().vec());
+  EXPECT_EQ(expectedOutputShape, exampleIdsT->dims().vec());
+
+  const std::vector<dim_t> expectedGradientOffsetMapShape{numIndices};
+  EXPECT_EQ(expectedGradientOffsetMapShape, gradientOffsetMapT->dims().vec());
+
+  const std::vector<std::vector<float>> expectedLabelValues{
+      {6.7, 8.3}, {2.3, 3.7}, {3.1, 9.0}, {1.2, 8.8}};
+  const std::vector<std::vector<int32_t>> expectedExampleIds{
+      {1, 2}, {1, 3}, {1, 2}, {0, 3}};
+  for (dim_t d1 = 0; d1 < numLabels; ++d1) {
+    for (dim_t d2 = 0; d2 < numIndices / numLabels; ++d2) {
+      EXPECT_NEAR(expectedLabelValues[d1][d2],
+                  labelValuesT->getHandle().at({d1, d2}), 1e-3);
+      EXPECT_EQ(expectedExampleIds[d1][d2],
+                exampleIdsT->getHandle<int32_t>().at({d1, d2}));
+    }
+  }
+
+  const std::vector<int32_t> expectedGradientOffsetMap{0, 0, 0, 0, 1, 1, 1, 1};
+  for (dim_t d = 0; d < numIndices; ++d) {
+    EXPECT_EQ(expectedGradientOffsetMap[d],
+              gradientOffsetMapT->getHandle<int32_t>().at(d));
   }
 }
 

@@ -305,7 +305,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
 void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "\nstd::string " << name_ << "Node::getDebugDesc() const {\n"
      << "  DescriptionBuilder db(getKindName());\n"
-     << "  db.addParam(\"name\", getName());\n";
+     << "  db.addParam(\"Name\", separateString(getName(), 100, \"\\n\"));\n";
 
   os << "  if (hasPredicate()) db.addParam(\"Predicate\", \"Yes\");\n";
 
@@ -334,7 +334,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
          << "())\n";
     }
   }
-  os << "    .addParam(\"users\", getNumUsers());\n";
+  os << "    .addParam(\"Users\", getNumUsers());\n";
 
   for (const auto &mem : members_) {
     if ((mem.first).type != MemberType::VectorNodeValue) {
@@ -673,7 +673,7 @@ void NodeBuilder::emitExportMethods(std::ostream &os) const {
   // Add the node. Note that Glow custom ops are prefixed with "Glow_"
   os << "  opProto = graph.add_node();\n";
   os << "  opProto->set_op_type(\"Glow_" << name_ << "\");\n";
-  os << "  opProto->set_name(N__->getName());\n";
+  os << "  opProto->set_name(glow::legalizeName(N__->getName()));\n";
 
   // Add all of the node's inputs.
   for (const auto &op : nodeInputs_) {

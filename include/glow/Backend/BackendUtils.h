@@ -184,6 +184,11 @@ bool isOutput(const Value *W);
 /// other Instructions as OperandKind::InOut or OperandKind::Out.
 bool isOutput(const Placeholder *PH, const IRFunction &F);
 
+/// \returns true if \p PH is an output Placeholder for any function in \p
+/// funcs.
+bool isOutput(const Placeholder *PH,
+              const std::vector<const Function *> &funcs);
+
 /// If \p PH is an input placeholder in the IRFunction \p F,
 /// \returns true.
 /// This is determined by checking if the PH is always used as an @in parameter

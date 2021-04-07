@@ -18,6 +18,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <map>
@@ -48,6 +49,7 @@ bool UseCustomOpsForExport = true;
 std::string BackendSpecificOpts = "";
 bool EnableLoadBalancedPartitioning = true;
 bool SkipProvisioning = false;
+bool DisableLayoutVerifying = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
@@ -99,12 +101,20 @@ bool LowerAllBatchMatMul = false;
 bool AcceptUnarySLS = false;
 bool SpecializeAllOneSLS = false;
 bool DisableTransforms = false;
-bool DisablePrivateTransforms = false;
+bool EnablePrivateTransforms = false;
 bool DumpCompilerData = false;
 bool UsePerPartitionIcetConfig = false;
 
 } // namespace flags
 } // namespace nnpi
+} // namespace glow
+
+namespace glow {
+namespace interpreter {
+namespace flags {
+bool LowerLayerNormalization = true;
+} // namespace flags
+} // namespace interpreter
 } // namespace glow
 
 namespace glow {
@@ -501,12 +511,12 @@ DEFINE_validator(glow_disable_nnpi_transforms, [](const char *, bool val) {
   glow::nnpi::flags::DisableTransforms = val;
   return true;
 });
-DEFINE_bool(glow_disable_nnpi_private_transforms,
-            glow::nnpi::flags::DisablePrivateTransforms,
-            "Disable running NNPIBackend::transformPrivate().");
-DEFINE_validator(glow_disable_nnpi_private_transforms,
+DEFINE_bool(glow_enable_nnpi_private_transforms,
+            glow::nnpi::flags::EnablePrivateTransforms,
+            "Enable running NNPIBackend::transformPrivate().");
+DEFINE_validator(glow_enable_nnpi_private_transforms,
                  [](const char *, bool val) {
-                   glow::nnpi::flags::DisablePrivateTransforms = val;
+                   glow::nnpi::flags::EnablePrivateTransforms = val;
                    return true;
                  });
 DEFINE_bool(glow_nnpi_lower_all_batch_matmul,
@@ -551,6 +561,15 @@ DEFINE_validator(glow_nnpi_timeout_ms, [](const char *, int32_t val) {
   glow::runtime::flags::NNPITimeoutMs = val;
   return true;
 });
+
+DEFINE_bool(glow_interpreter_lower_layer_normalization,
+            glow::interpreter::flags::LowerLayerNormalization,
+            "Lower layer normalization node.");
+DEFINE_validator(glow_interpreter_lower_layer_normalization,
+                 [](const char *, bool val) {
+                   glow::interpreter::flags::LowerLayerNormalization = val;
+                   return true;
+                 });
 
 DEFINE_int32(glow_interpreter_memory, glow::runtime::flags::InterpreterMemory,
              "Amount of DRAM to allocate per Interpreter in KiB");
@@ -668,3 +687,24 @@ bool glow::flags::processBackendSpecificOpts(
   }
   return true;
 }
+
+namespace {
+llvm::cl::OptionCategory flagsLibCat("Glow Flags Lib CmdLine Options");
+/// Allows enabling DRT support.
+llvm::cl::opt<bool, /* ExternalStorage */ true>
+    enableDRT("enable-DRT",
+              llvm::cl::desc(
+                  "Deprecated. Enabled DRT support. Alias to glow_enable_drt."),
+              llvm::cl::Optional,
+              llvm::cl::location(glow::runtime::flags::EnableDRT),
+              llvm::cl::cat(flagsLibCat));
+
+/// Allows enabling P2P support.
+llvm::cl::opt<bool, /* ExternalStorage */ true>
+    enableP2P("enable-P2P",
+              llvm::cl::desc(
+                  "Deprecated. Enabled P2P support. Alias to glow_enable_drt."),
+              llvm::cl::Optional,
+              llvm::cl::location(glow::runtime::flags::EnableP2P),
+              llvm::cl::cat(flagsLibCat));
+} // namespace

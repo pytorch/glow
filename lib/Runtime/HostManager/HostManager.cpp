@@ -76,20 +76,6 @@ llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
     llvm::cl::value_desc("configs.yaml"), llvm::cl::Optional,
     llvm::cl::cat(hostManagerCat));
 
-/// Allows enabling DRT support.
-llvm::cl::opt<bool, /* ExternalStorage */ true>
-    enableDRT("enable-DRT", llvm::cl::desc("Enabled DRT support"),
-              llvm::cl::Optional,
-              llvm::cl::location(glow::runtime::flags::EnableDRT),
-              llvm::cl::cat(hostManagerCat));
-
-/// Allows enabling P2P support.
-llvm::cl::opt<bool, /* ExternalStorage */ true>
-    enableP2P("enable-P2P", llvm::cl::desc("Enabled P2P support"),
-              llvm::cl::Optional,
-              llvm::cl::location(glow::runtime::flags::EnableP2P),
-              llvm::cl::cat(hostManagerCat));
-
 /// The value that should be used for device initialization timeout, default:
 /// 5000 milliseconds.
 llvm::cl::opt<unsigned, /* ExternalStorage */ true> deviceInitTimeout(
@@ -137,6 +123,7 @@ Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
 }
 
 Error HostManager::startDeviceTrace() {
+  LOG(INFO) << "start device tracing" << std::endl;
   for (auto &dev : devices_) {
     Error err = dev.second->startDeviceTrace(hostTraceContext_.get());
     RETURN_IF_ERR(err);
@@ -145,8 +132,17 @@ Error HostManager::startDeviceTrace() {
 }
 
 Error HostManager::stopDeviceTrace() {
+
+  auto *traceContext = hostTraceContext_.get();
+  if (!traceContext) {
+    LOG(INFO) << "No HostManager TraceContext registered, skipping call to "
+                 "stopDeviceTrace";
+    return Error::success();
+  } else {
+    LOG(INFO) << "stop device tracing";
+  }
   for (auto &dev : devices_) {
-    Error err = dev.second->stopDeviceTrace(hostTraceContext_.get());
+    Error err = dev.second->stopDeviceTrace(traceContext);
     RETURN_IF_ERR(err);
   }
   return Error::success();
@@ -587,8 +583,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       // Note: currently getNextNetworkExecutionState assumes that pool size is
       // >= currentInFlight requests, so we set pool size to maxActiveRequests.
       executor_->createPool(node.root.get(), config_.maxActiveRequests,
-                            cctx.enableP2P || flags::EnableP2P,
-                            cctx.enableDRT || flags::EnableDRT);
+                            cctx.enableP2P, cctx.enableDRT);
     }
   }
   // Clear constants contents from the module then put it in a
@@ -727,8 +722,7 @@ Error HostManager::addNetworkFX(
       // Note: currently getNextNetworkExecutionState assumes that pool size is
       // >= currentInFlight requests, so we set pool size to maxActiveRequests.
       executor_->createPool(node.root.get(), config_.maxActiveRequests,
-                            cctx.enableP2P || flags::EnableP2P,
-                            cctx.enableDRT || flags::EnableDRT);
+                            cctx.enableP2P, cctx.enableDRT);
     }
   }
   // Clear constants contents from the module then put it in a

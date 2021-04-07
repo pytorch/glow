@@ -1,0 +1,17 @@
+name: "topk_k2"
+op {
+  input: "input"
+  output: "values"
+  output: "indices"
+  name: ""
+  type: "TopK"
+  arg {
+    name: "k"
+    i: 2
+  }
+}
+external_input: "input"
+external_output: "values"
+external_output: "indices"
+
+

@@ -17,6 +17,7 @@
 #include "glow/Graph/Graph.h"
 #include "BackendTestUtils.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Hook.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -297,6 +298,46 @@ TEST(Graph, float16Conv) {
   EXPECT_EQ(convInst->getSrc()->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(convInst->getFilter()->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(convInst->getBias()->getElementType(), ElemKind::Float16Ty);
+}
+
+/// Check that we can create layernormalization with float16.
+TEST(Graph, float16LayerNorm) {
+  const auto origFlagVal = interpreter::flags::LowerLayerNormalization;
+  interpreter::flags::LowerLayerNormalization = false;
+
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  PlaceholderBindings bindings;
+  auto *input =
+      MD.createPlaceholder(ElemKind::Float16Ty, {1, 4, 5, 5}, "in", false);
+
+  Tensor scaleT(ElemKind::Float16Ty, {5, 5});
+  scaleT.getHandle<float16_t>().randomize(0.0f, 1.0f, MD.getPRNG());
+  Constant *scaleC = MD.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::Float16Ty, {5, 5});
+  biasT.getHandle<float16_t>().randomize(0.0f, 1.0f, MD.getPRNG());
+  Constant *biasC = MD.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+  F->createSave("Save", LNN);
+
+  std::unique_ptr<const Backend> backend(createBackend("Interpreter"));
+
+  CompilationContext cctx;
+  lower(F, cctx, backend.get());
+
+  IRFunction M(F);
+
+  M.generateIR(*backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto lnIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                           [](const Instruction &inst) -> bool {
+                             return llvm::isa<LayerNormalizationInst>(inst);
+                           });
+  ASSERT_TRUE(lnIt != M.getInstrs().end());
+  interpreter::flags::LowerLayerNormalization = origFlagVal;
 }
 
 /// Check that we can create conv3D with float16.
@@ -2124,12 +2165,12 @@ TEST(Graph, testDumpStructure) {
   K->dump(osN1);
   std::string mesN = K->toString();
   std::string expectMes = R"(Placeholder
-name : "input"
-layout : *
-output : float<4 x 320 x 200 x 100 x 3>
-trainable : 1
-static : 0
-users : 0
+Name : input
+Layout : *
+Output : float<4 x 320 x 200 x 100 x 3>
+Trainable : 1
+Static : 0
+Users : 0
 )";
   EXPECT_EQ(mesN, expectMes);
   EXPECT_EQ(mesN, osN1.str());
@@ -2149,19 +2190,19 @@ users : 0
   std::string mesF = F2->toString();
   std::string expectMesF = R"(Graph structure F2:
 TopK
-name : topk
+Name : topk
 Input : float<10 x 10>
 K : 3
-users : 0
+Users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
 Placeholder
-name : "input__1"
-layout : *
-output : float<10 x 10>
-trainable : 1
-static : 1
-users : 1
+Name : input__1
+Layout : *
+Output : float<10 x 10>
+Trainable : 1
+Static : 1
+Users : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());
@@ -2174,18 +2215,18 @@ users : 1
   mesF = F2->toString(/* skipUsersForStorage */ true);
   expectMesF = R"(Graph structure F2:
 TopK
-name : topk
+Name : topk
 Input : float<10 x 10>
 K : 3
-users : 0
+Users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
 Placeholder
-name : "input__1"
-layout : *
-output : float<10 x 10>
-trainable : 1
-static : 1
+Name : input__1
+Layout : *
+Output : float<10 x 10>
+Trainable : 1
+Static : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());
@@ -2197,26 +2238,26 @@ static : 1
   std::string mesM = MD.toString();
   std::string expectMesM = R"(Module structure:
 Constant
-name : "dummy"
-layout : *
-output : float<1 x 1>
-users : 0
+Name : dummy
+Layout : *
+Output : float<1 x 1>
+Users : 0
 
 Placeholder
-name : "input__1"
-layout : *
-output : float<10 x 10>
-trainable : 1
-static : 1
-users : 1
+Name : input__1
+Layout : *
+Output : float<10 x 10>
+Trainable : 1
+Static : 1
+Users : 1
 
 Placeholder
-name : "input"
-layout : *
-output : float<4 x 320 x 200 x 100 x 3>
-trainable : 1
-static : 0
-users : 0
+Name : input
+Layout : *
+Output : float<4 x 320 x 200 x 100 x 3>
+Trainable : 1
+Static : 0
+Users : 0
 
 Function : F2
 Function : F

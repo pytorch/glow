@@ -25,6 +25,7 @@
 #include "glow/Support/Register.h"
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 #if FACEBOOK_INTERNAL
 namespace folly {
@@ -69,21 +70,26 @@ public:
   // \returns backend name.
   virtual std::string getBackendName() const = 0;
 
-  /// Generate code for a vector of functions, \p functions. All compilations
-  /// use the same settings provided by \p opts. This allows the compiler to
+  /// Generate code for a vector of functions, \p functions. Each compilation
+  /// has its own settings in \p opts. This allows the compiler to
   /// support shared constants between functions.
-  virtual Expected<std::vector<std::unique_ptr<CompiledFunction>>>
-  compileFunctions(llvm::ArrayRef<Function *> functions,
-                   BackendOptions &opts) const {
-    std::vector<std::unique_ptr<CompiledFunction>> compiledFunctions;
+  virtual Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
+  compileFunctions(std::vector<Function *> &functions,
+                   llvm::StringMap<BackendOptions> &optsMap) const {
+    llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions;
     for (auto &function : functions) {
-      if (auto resOrErr = compile(function, opts)) {
-        compiledFunctions.push_back(std::move(*resOrErr));
+      auto functionName = function->getName();
+      RETURN_ERR_IF_NOT(optsMap.count(functionName),
+                        "Can't find corresponding option for compiling");
+      auto backendOpts = optsMap.find(functionName)->second;
+
+      if (auto resOrErr = compile(function, backendOpts)) {
+        compiledFunctions.insert({functionName, std::move(*resOrErr)});
       } else {
         RETURN_ERR(resOrErr.takeError());
       }
     }
-    return Expected<std::vector<std::unique_ptr<CompiledFunction>>>(
+    return Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>(
         std::move(compiledFunctions));
   }
 
@@ -275,6 +281,16 @@ public:
                          PrecisionConfiguration &precConfig) const {
     return false;
   };
+
+  /// \returns an array of raw objects which are statically allocated and
+  /// initialized by the backend and which can be used for various purposes,
+  /// for example to store object files (binary code) which are compiled with
+  /// other compilers than clang/LLVM. The raw buffers are encoded as type
+  /// MemoryBufferRef which stores for each buffer a name, a raw pointer
+  /// and a size (in bytes).
+  virtual llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegistry() const {
+    return llvm::ArrayRef<llvm::MemoryBufferRef>();
+  }
 
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found

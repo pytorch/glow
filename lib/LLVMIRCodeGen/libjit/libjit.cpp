@@ -163,6 +163,34 @@ static void libjit_insert_tensor_generic(ElemTy *tensor, ElemTy *slice,
 
   tensor += tensorStart;
 
+  if (numLoops == 7) {
+    for (dim_t idx0 = 0; idx0 < loopCounts[0]; idx0++) {
+      for (dim_t idx1 = 0; idx1 < loopCounts[1]; idx1++) {
+        for (dim_t idx2 = 0; idx2 < loopCounts[2]; idx2++) {
+          for (dim_t idx3 = 0; idx3 < loopCounts[3]; idx3++) {
+            for (dim_t idx4 = 0; idx4 < loopCounts[4]; idx4++) {
+              for (dim_t idx5 = 0; idx5 < loopCounts[5]; idx5++) {
+                for (dim_t idx6 = 0; idx6 < loopCounts[6]; idx6++) {
+                  *tensor = *slice++;
+                  tensor += tensorOffsets[6];
+                }
+                tensor += tensorOffsets[5];
+              }
+              tensor += tensorOffsets[4];
+            }
+            tensor += tensorOffsets[3];
+          }
+          tensor += tensorOffsets[2];
+        }
+        tensor += tensorOffsets[1];
+      }
+      slice -= loopCounts[1] * loopCounts[2] * loopCounts[3] * loopCounts[4] *
+               loopCounts[5] * loopCounts[6];
+      tensor += tensorOffsets[0];
+    }
+    return;
+  }
+
   if (numLoops == 6) {
     for (dim_t idx0 = 0; idx0 < loopCounts[0]; idx0++) {
       for (dim_t idx1 = 0; idx1 < loopCounts[1]; idx1++) {
@@ -1624,6 +1652,11 @@ DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_min_kernel_i8, int8_t,
                                       MIN(lhs, rhs))
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_mul_kernel_i8, lhs *rhs)
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_div_kernel_i8, lhs / rhs)
+
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_add_kernel_u, size_t,
+                            LHS[idx] + RHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_mul_kernel_u, size_t,
+                            LHS[idx] * RHS[idx])
 
 /// This is a variable used by Glow backends to determine the actual type used
 /// for size_t, dim_t and int variables when libjit was compiled.

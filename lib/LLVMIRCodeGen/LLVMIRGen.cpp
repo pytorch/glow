@@ -70,6 +70,15 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
   setMainEntryName(mainEntryName);
 }
 
+LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
+                     std::string mainEntryName, llvm::StringRef libjitBC,
+                     llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry)
+    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
+      objectRegistry_(objectRegistry) {
+  // Legalize main entry name.
+  setMainEntryName(mainEntryName);
+}
+
 /// Mutex to protect LLVM's TargetRegistry.
 static std::mutex initTargetMutex;
 
@@ -118,6 +127,34 @@ std::string LLVMIRGen::getMainEntryName() const { return mainEntryName_; }
 
 void LLVMIRGen::setMainEntryName(std::string name) {
   mainEntryName_ = name.empty() ? "main" : legalizeName(name);
+}
+
+llvm::ArrayRef<llvm::MemoryBufferRef> LLVMIRGen::getObjectRegistry() const {
+  return objectRegistry_;
+}
+
+void LLVMIRGen::setObjectRegistry(
+    llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry) {
+  objectRegistry_ = objectRegistry;
+}
+
+std::vector<std::string> LLVMIRGen::getBundleObjects() const {
+  // Default list of object names.
+  auto bundleObjects = bundleObjects_;
+  // Add object names enforced from command line interface.
+  for (auto bundleObject : bundleObjectsOpt) {
+    bundleObjects.push_back(bundleObject);
+  }
+  return bundleObjects;
+}
+
+void LLVMIRGen::addBundleObject(llvm::StringRef objectName) {
+  // Add bundle object if not already added.
+  auto it =
+      std::find(bundleObjects_.begin(), bundleObjects_.end(), objectName.str());
+  if (it == bundleObjects_.end()) {
+    bundleObjects_.push_back(objectName.str());
+  }
 }
 
 /// Load base addresses of different memory areas so that they can be easily
@@ -205,6 +242,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     llvm_unreachable("Not implemented");
   case ElemKind::BFloat16Ty:
     llvm_unreachable("Not implemented");
+  case ElemKind::Float64Ty:
+    return builder.getDoubleTy();
   case ElemKind::Int8QTy:
     return builder.getInt8Ty();
   case ElemKind::UInt8QTy:
@@ -574,6 +613,10 @@ llvm::Value *LLVMIRGen::emitConstI32(llvm::IRBuilder<> &builder, int32_t val) {
   return builder.getInt32(val);
 }
 
+llvm::Value *LLVMIRGen::emitConstI16(llvm::IRBuilder<> &builder, int32_t val) {
+  return builder.getInt16(val);
+}
+
 llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
   return builder.getInt8(val);
 }
@@ -603,6 +646,9 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     llvm_unreachable("Not implemented");
   case ElemKind::BFloat16Ty:
     llvm_unreachable("Not implemented");
+  case ElemKind::Float64Ty:
+    return llvm::ConstantFP::get(llvm::Type::getDoubleTy(getLLVMContext()),
+                                 val);
   case ElemKind::Int64ITy:
     return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int8QTy:
@@ -639,6 +685,8 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
       *llmodule_, constStrArray->getType(), true,
       llvm::GlobalValue::PrivateLinkage, constStrArray, ".str");
   gvarStr->setAlignment(1);
+  // Add unnamed_addr attribute to enable constmerge pass.
+  gvarStr->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
   return builder.CreateBitCast(gvarStr, builder.getInt8PtrTy());
 }
 
@@ -974,6 +1022,16 @@ static bool isOverlappingWithAnyBundleBufferOperands(
     }
   }
   return false;
+}
+
+template <typename T> bool matchPair(T a, T b) { return a == b; }
+
+template <typename T> bool matchPair(T a) { return false; }
+
+/// Returns true if the input /p a matches with at least one of the inputs in
+/// the variadic list \p b ....
+template <typename T, typename... Args> bool matchPair(T a, T b, Args... args) {
+  return a == b || matchPair(a, args...);
 }
 
 void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
@@ -1440,7 +1498,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     break;
   }
 
-#define ARITHMETIC_BINARY_OP_CASE(INST_NAME_, FUN_NAME_)                       \
+#define ARITHMETIC_BINARY_OP_CASE(INST_NAME_, FUN_NAME_, ...)                  \
   case Kinded::Kind::INST_NAME_##InstKind: {                                   \
     auto *AN = cast<INST_NAME_##Inst>(I);                                      \
     auto *dest = AN->getDest();                                                \
@@ -1454,7 +1512,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *elementTy = getElementType(builder, dest);                           \
     auto *pointerNull =                                                        \
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
-                                                                               \
+    bool typesMatched = matchPair(dest->getElementType(), __VA_ARGS__);        \
     if (lhs->getType()->isQuantizedType()) {                                   \
       auto *destTy = dest->getType();                                          \
       auto *lhsTy = lhs->getType();                                            \
@@ -1485,20 +1543,23 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,         \
                                          loopCount, "buffer.element.addr");    \
       builder.CreateStore(stackedOpCall, destAddr);                            \
-    } else {                                                                   \
+    } else if (typesMatched) {                                                 \
       auto *stackedOpCall = createUncheckedCall(                               \
           builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});               \
       auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
                                          "buffer.element.addr");               \
       builder.CreateStore(stackedOpCall, destAddr);                            \
+    } else {                                                                   \
+      llvm_unreachable("Unsupported Type in " #INST_NAME_);                    \
     }                                                                          \
     break;                                                                     \
   }
-    ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add");
-    ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub");
-    ARITHMETIC_BINARY_OP_CASE(ElementMax, "element_max");
-    ARITHMETIC_BINARY_OP_CASE(ElementMin, "element_min");
-    ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
+    ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add", ElemKind::FloatTy,
+                              ElemKind::Int32ITy, ElemKind::Int64ITy);
+    ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub", ElemKind::FloatTy);
+    ARITHMETIC_BINARY_OP_CASE(ElementMax, "element_max", ElemKind::FloatTy);
+    ARITHMETIC_BINARY_OP_CASE(ElementMin, "element_min", ElemKind::FloatTy);
+    ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow", ElemKind::FloatTy);
 #undef ARITHMETIC_BINARY_OP_CASE
 
   case Kinded::Kind::ElementNotInstKind: {
@@ -1879,6 +1940,67 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     createCall(
         builder, F,
         {inputTensorInfoPtr, tensorSize, compInfoPtr, histPtr, histDims});
+    break;
+  }
+
+  case Kinded::Kind::FullyConnectedInstKind: {
+    auto *FCI = cast<FullyConnectedInst>(I);
+    auto *dest = FCI->getDest();
+    auto *src = FCI->getSrc();
+    auto *weights = FCI->getWeights();
+    auto *bias = FCI->getBias();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *biasPtr = emitValueAddress(builder, bias);
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *weightsDims = emitValueDims(builder, weights);
+    auto *biasDims = emitValueDims(builder, bias);
+
+    if (src->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *srcTy = src->getType();
+      auto *weightsTy = weights->getType();
+      auto *biasTy = bias->getType();
+
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+      auto *weightsOffset = emitConstI32(builder, weightsTy->getOffset());
+      auto *biasOffset = emitConstI32(builder, biasTy->getOffset());
+
+      // Calculate the scale of the values that come out of the matrix
+      // multiplication part of the calculation.
+      float matMulScale = srcTy->getScale() * weightsTy->getScale();
+
+      // Calculate the scaling parameters for the bias and output.
+      auto biasScaleParam = quantization::quantizeScaleOffset32To8(
+          biasTy->getScale() / matMulScale, 0);
+      auto outScaleParam = quantization::quantizeScaleOffset32To8(
+          matMulScale / destTy->getScale(), 0);
+
+      // Pass the pre-shift, post-shift and integer scale parameters for the
+      // bias and output calculation.
+      auto *biasPre = emitConstI32(builder, biasScaleParam.pre);
+      auto *biasPost = emitConstI32(builder, biasScaleParam.post);
+      auto *biasScale = emitConstI32(builder, biasScaleParam.scale);
+      auto *outPre = emitConstI32(builder, outScaleParam.pre);
+      auto *outPost = emitConstI32(builder, outScaleParam.post);
+      auto *outScale = emitConstI32(builder, outScaleParam.scale);
+
+      auto *F =
+          getFunction("fc", {dest->getElementType(), bias->getElementType()});
+      createCall(builder, F,
+                 {destPtr, srcPtr, weightsPtr, biasPtr, destDims, srcDims,
+                  weightsDims, biasDims, destOffset, srcOffset, weightsOffset,
+                  biasOffset, biasPre, biasPost, biasScale, outPre, outPost,
+                  outScale});
+    } else {
+      auto *F = getFunction("fc", dest->getElementType());
+      createCall(builder, F,
+                 {destPtr, srcPtr, weightsPtr, biasPtr, destDims, srcDims,
+                  weightsDims, biasDims});
+    }
     break;
   }
 

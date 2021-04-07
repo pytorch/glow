@@ -25,6 +25,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
 
 namespace glow {
@@ -161,9 +162,17 @@ protected:
   /// specializer not to specialize.
   llvm::DenseSet<llvm::Value *> dontSpecializeArgsSet_;
 
-  /// Bitcode of the libjit. Containts the starting address and the length of
+  /// Bitcode of the libjit. Contains the starting address and the length of
   /// the bitcode.
   llvm::StringRef libjitBC_;
+
+  /// Array with raw objects which can be optionally used by the code generator
+  /// to archive additional object code into the bundle.
+  llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry_;
+
+  /// Array with the names of the additional objects which will be archived
+  /// into the bundle. The objects must be registered in \ref objectRegistry_.
+  std::vector<std::string> bundleObjects_;
 
   /// Whether to print the IR instrumentation callback API.
   bool printInstrumentIR_{false};
@@ -185,6 +194,8 @@ protected:
   llvm::Value *emitConstF32(llvm::IRBuilder<> &builder, float val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstI32(llvm::IRBuilder<> &builder, int32_t val);
+  /// Generates LLVM IR that materializes the constant \p val.
+  llvm::Value *emitConstI16(llvm::IRBuilder<> &builder, int32_t val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstI8(llvm::IRBuilder<> &builder, int8_t val);
   /// Generates LLVM IR that materializes the constant \p val.
@@ -329,6 +340,17 @@ public:
   explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC);
 
+  /// Ctor.
+  /// \param M IRFunction to be converted into LLVM IR.
+  /// \param allocationsInfo information about allocation of weights and
+  /// activations.
+  /// \param mainEntryName Name of the main entry.
+  /// \param libjitBC bitcode of the backend's libjit library.
+  /// \param objectRegistry array with additional objects for code generation.
+  explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
+                     std::string mainEntryName, llvm::StringRef libjitBC,
+                     llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry);
+
   /// Init the TargetMachine using settings provided by \p llvmBackend.
   virtual void initTargetMachine(const LLVMBackendOptions &opts);
 
@@ -458,6 +480,16 @@ public:
   /// \returns a string which is printed at the end of the bundle header file
   /// following the standard content produced by the bundle saver.
   virtual std::string getBundleHeaderExtra() const;
+  /// \returns the object registry for this code generator instance.
+  virtual llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegistry() const;
+  /// Set the object registry for this code generator instance.
+  virtual void
+  setObjectRegistry(llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry);
+  /// \returns the names of the objects which are archived into the bundle.
+  virtual std::vector<std::string> getBundleObjects() const;
+  /// Add a bundle object \p objectName to be archived to the bundle. The object
+  /// must be registered in the \ref objectRegistry_ otherwise error is thrown.
+  virtual void addBundleObject(llvm::StringRef objectName);
 };
 
 template <typename T>

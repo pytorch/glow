@@ -12,6 +12,7 @@
 #include <ATen/native/quantized/cpu/packed_params.h>
 
 #include <torch/csrc/jit/backends/backend.h>
+#include <torch/csrc/jit/backends/backend_preprocess.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/ir/node_hashing.h>
 #include <torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h>
@@ -158,7 +159,9 @@ Error checkForFatalError(Error err) {
 } // namespace
 
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
-  static auto cls = torch::jit::backend<TorchGlowBackend>("glow", preprocess);
+  static auto cls = torch::jit::backend<TorchGlowBackend>("glow");
+  static auto pre_reg =
+      torch::jit::backend_preprocess_register("glow", preprocess);
   return cls;
 }
 
@@ -512,6 +515,9 @@ Error applyCompilationSpecSettingsToPyTorchLoaderSettings(
     const CompilationSpecSettings &newSettings) {
   settings.backendName = newSettings.glow_backend;
   settings.enableDebugFuser = newSettings.enable_fuser;
+  settings.use_dag_optimizer = newSettings.use_dag_optimizer;
+  settings.apl_parallelization_alg = newSettings.apl_parallelization_alg;
+  settings.apl_num_parallel_chunks = newSettings.apl_num_parallel_chunks;
 
   // Ensure override flags are honored
   RETURN_IF_ERR(applySettingsOverrideFlagsToPyTorchLoaderSettings(settings));
@@ -699,7 +705,8 @@ compileImpl(const torch::jit::Module &origModule,
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
               graph, glow::getHostManager(baseSettings), baseSettings,
-              /*useRunOnly*/ true, origGraph, origModule._ivalue());
+              /*useRunOnly*/ !baseSettings.lazyCompile, origGraph,
+              origModule._ivalue());
 
       // Compile each compilation group
       for (const auto &compilationGroup : spec.compilation_groups) {
@@ -707,15 +714,17 @@ compileImpl(const torch::jit::Module &origModule,
         auto compilationGroupSettings = baseSettings;
         RETURN_IF_ERR(applyCompilationGroupSettingsToPyTorchLoaderSettings(
             compilationGroupSettings, *compilationGroup->settings));
-        // Compile each input set
+        // Compile all input sets in the group (if lazy-compile is set, only the
+        // compilation settings will be stored)
+        std::vector<InputMetaStack> metaStacks;
         for (const auto &inputSet : compilationGroup->input_sets) {
-          InputMetaStack metaStack = getInputMetas(inputSet);
-          auto err = runner->warmCache(metaStack, compilationGroupSettings,
-                                       /*loader*/ nullptr,
-                                       /*useMaxSizeCompilation*/ false);
-          err = checkForFatalError(std::move(err));
-          RETURN_IF_ERR(err);
+          metaStacks.push_back(getInputMetas(inputSet));
         }
+        auto err = runner->warmCache(metaStacks, compilationGroupSettings,
+                                     /*loader*/ nullptr,
+                                     /*useMaxSizeCompilation*/ false);
+        err = checkForFatalError(std::move(err));
+        RETURN_IF_ERR(err);
       }
       methodToRunnerMap.emplace(methodName,
                                 std::make_pair(std::move(runner), nullptr));
@@ -724,6 +733,9 @@ compileImpl(const torch::jit::Module &origModule,
 
   return methodToRunnerMap;
 }
+
+// Assumes Glow backend is always available.
+bool TorchGlowBackend::is_available() { return true; }
 
 c10::impl::GenericDict
 TorchGlowBackend::compile(c10::IValue processed,

@@ -103,11 +103,23 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   bool isNodePrecisionSupported = false;
   bool isNodeHasAnySupport = true;
   switch (NI.getKind()) {
-  // General math fp32/fp16/i8.
+  // General math fp32/fp16/i8/int32.
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
+  case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Float16Ty,
+         ElemKind::Int8QTy, ElemKind::Int64ITy});
+    break;
+  case Kinded::Kind::DivNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int64ITy, ElemKind::Int32ITy});
+    break;
+
+  // General math fp32/fp16/i8.
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ReplaceNaNNodeKind:
@@ -122,6 +134,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::NegNodeKind:
   case Kinded::Kind::AbsNodeKind:
+  case Kinded::Kind::ExpNodeKind:
+  case Kinded::Kind::SoftPlusNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
     break;
@@ -130,7 +144,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
-  case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Float16Ty, ElemKind::Int8QTy});
@@ -166,10 +179,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          ElemKind::Int8QTy, ElemKind::UInt8QTy});
     break;
 #endif // NNPI > 1.1
-  case Kinded::Kind::MulNodeKind:
-    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
-    break;
   case Kinded::Kind::LayerNormalizationNodeKind: {
     auto scaleType = NI.getInElemTy(LayerNormalizationNode::ScaleIdx);
     auto biasType = NI.getInElemTy(LayerNormalizationNode::BiasIdx);
@@ -226,11 +235,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     // with the same sign as the divisor instead of the dividend.
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int64ITy, ElemKind::Int32ITy});
-    break;
-  case Kinded::Kind::DivNodeKind:
-    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy});
     break;
   // Data transfer fp32/fp16/i8/i32/i64/bool.
   case Kinded::Kind::SaveNodeKind:
@@ -293,6 +297,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::UInt8QTy:
         case ElemKind::BoolTy:
           return true;
+        case ElemKind::Int32ITy:
+          return glow::nnpi::flags::EnablePrivateTransforms;
         default:
           return false;
         }
@@ -305,6 +311,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::UInt8QTy:
         case ElemKind::BoolTy:
           return true;
+        case ElemKind::Int32ITy:
+          return glow::nnpi::flags::EnablePrivateTransforms;
         default:
           return false;
         }
@@ -327,6 +335,9 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
           return true;
+        case ElemKind::Float16Ty:
+        case ElemKind::BoolTy:
+          return glow::nnpi::flags::EnablePrivateTransforms;
         default:
           return false;
         }
@@ -359,6 +370,34 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
                                  NI.getOutElemTy(ConvertToNode::ResultIdx));
     break;
   }
+
+  case Kinded::Kind::DynamicQuantizedFullyConnectedNodeKind:
+    isNodePrecisionSupported =
+        (NI.getInElemTy(DynamicQuantizedFullyConnectedNode::InputIdx) ==
+             ElemKind::Float16Ty ||
+         NI.getInElemTy(DynamicQuantizedFullyConnectedNode::InputIdx) ==
+             ElemKind::FloatTy) &&
+        NI.getInElemTy(DynamicQuantizedFullyConnectedNode::WeightsIdx) ==
+            ElemKind::Int8QTy &&
+        NI.getInElemTy(DynamicQuantizedFullyConnectedNode::BiasIdx) ==
+            ElemKind::FloatTy;
+    break;
+
+  case Kinded::Kind::DynamicRowwiseQuantizedFullyConnectedNodeKind:
+    isNodePrecisionSupported =
+        (NI.getInElemTy(DynamicRowwiseQuantizedFullyConnectedNode::InputIdx) ==
+             ElemKind::Float16Ty ||
+         NI.getInElemTy(DynamicRowwiseQuantizedFullyConnectedNode::InputIdx) ==
+             ElemKind::FloatTy) &&
+        NI.getInElemTy(DynamicRowwiseQuantizedFullyConnectedNode::WeightsIdx) ==
+            ElemKind::Int8QTy &&
+        NI.getInElemTy(DynamicRowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+            ElemKind::FloatTy &&
+        NI.getInElemTy(DynamicRowwiseQuantizedFullyConnectedNode::ScalesIdx) ==
+            ElemKind::FloatTy &&
+        NI.getInElemTy(DynamicRowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
+            ElemKind::Int32ITy;
+    break;
   case Kinded::Kind::FullyConnectedNodeKind:
     if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
@@ -382,9 +421,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::TopKNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
             {TopKNode::IndicesIdx}) &&
-        (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy);
+        (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy ||
+         NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::GatherNodeKind:
     isNodePrecisionSupported =
@@ -418,15 +458,17 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
 
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy});
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
   case Kinded::Kind::CmpLTENodeKind:
-  case Kinded::Kind::CmpEQNodeKind:
   case Kinded::Kind::CmpLTNodeKind:
+  case Kinded::Kind::CmpEQNodeKind:
+  case Kinded::Kind::CmpNEQNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
-            {CmpEQNode::ResultIdx}) &&
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+             ElemKind::Int32ITy},
+            {}, {CmpEQNode::ResultIdx}) &&
         (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
     break;
   case Kinded::Kind::SelectNodeKind:
@@ -608,7 +650,15 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
             {ElemKind::FloatTy}, {SparseToDenseNode::IndicesIdx}) &&
-        (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
+        (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int32ITy ||
+         NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::ScatterDataNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
+                                               {ScatterDataNode::IndicesIdx}) &&
+        (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy ||
+         NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::SoftMaxNodeKind:
     isNodePrecisionSupported =
@@ -616,6 +666,13 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
             {SoftMaxNode::SelectedIdx}) &&
         (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::LogSoftMaxNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {LogSoftMaxNode::SelectedIdx}) &&
+        (NI.getInElemTy(LogSoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::LengthsRangeFillNodeKind:
     isNodePrecisionSupported =
@@ -647,6 +704,14 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {}, {ArgMaxNode::ResultIdx}) &&
         (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
     break;
+  case Kinded::Kind::ArgMinNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::FloatTy, ElemKind::Int8QTy,
+             ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy},
+            {}, {ArgMinNode::ResultIdx}) &&
+        (NI.getOutElemTy(ArgMinNode::ResultIdx) == ElemKind::Int64ITy);
+    break;
   case Kinded::Kind::LogitNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
@@ -666,7 +731,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   if (isNodeSupported(NI) != NodeSupportLevels::PRECISION_SUPPORTED) {
-    llvm::outs() << "Unsupported op:\n" << NI.getDebugDesc() << "\n";
+    LOG(ERROR) << "Unsupported op:\n" << NI.getDebugDesc();
     return false;
   }
   return true;
@@ -1158,6 +1223,16 @@ static Error setupPerNodeParallelizationConfigs(
       pKind = ParallelTransformKind::Data;
     } else if (pKindStr == "Model") {
       pKind = ParallelTransformKind::Model;
+    } else if (pKindStr == "Model_Axis1") {
+      pKind = ParallelTransformKind::Model_Axis1;
+    } else if (pKindStr == "Model_Axis2") {
+      pKind = ParallelTransformKind::Model_Axis2;
+    } else if (pKindStr == "Model_Axis3") {
+      pKind = ParallelTransformKind::Model_Axis3;
+    } else if (pKindStr == "Model_Axis4") {
+      pKind = ParallelTransformKind::Model_Axis4;
+    } else if (pKindStr == "Model_Axis5") {
+      pKind = ParallelTransformKind::Model_Axis5;
     } else if (pKindStr == "None") {
       pKind = ParallelTransformKind::None;
     } else {
@@ -1408,7 +1483,14 @@ bool NNPIBackend::lowerRequiredNodes(Function *F,
       }
       break;
     }
-
+    case Kinded::Kind::GeluNodeKind: {
+      auto it = cctx.backendOpts.backendSpecificOpts.find(
+          std::string("NNPILowerAllGelu"));
+      if (it != cctx.backendOpts.backendSpecificOpts.end()) {
+        shouldLowerNode |= (it->second == "true");
+      }
+      break;
+    }
     case Kinded::Kind::ReshapeNodeKind: {
       shouldLowerNode = false;
       ReshapeNode *RS = llvm::cast<ReshapeNode>(&N);
@@ -1493,12 +1575,28 @@ bool quantizeLayernormScaleAndBias(Function *F) {
       continue;
     }
 
-    auto gammaTQP = quantization::getTensorQuantizationParams(
-        gammaC->getPayload(), quantization::Schema::Asymmetric,
-        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ gamma.dims()[0]);
-    auto betaTQP = quantization::getTensorQuantizationParams(
-        betaC->getPayload(), quantization::Schema::Asymmetric,
-        ElemKind::Int8QTy, /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    std::vector<TensorQuantizationParams> gammaTQP;
+    std::vector<TensorQuantizationParams> betaTQP;
+    if (gammaC->getElementType() == ElemKind::FloatTy) {
+      gammaTQP = quantization::getTensorQuantizationParams(
+          gammaC->getPayload(), quantization::Schema::Asymmetric,
+          ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ gamma.dims()[0]);
+      betaTQP = quantization::getTensorQuantizationParams(
+          betaC->getPayload(), quantization::Schema::Asymmetric,
+          ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    } else {
+      gammaTQP = quantization::getTensorQuantizationParams(
+          gammaC->getPayload().getCopyConvertedToType(ElemKind::FloatTy),
+          quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ gamma.dims()[0]);
+      betaTQP = quantization::getTensorQuantizationParams(
+          betaC->getPayload().getCopyConvertedToType(ElemKind::FloatTy),
+          quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+          /* qDim */ 0, /* qStep */ beta.dims()[0]);
+    }
+
     auto *gammaQ = F->createQuantize(
         "layernorm_scale_quant", gamma,
         F->getParent()->uniqueType(ElemKind::Int8QTy, gamma.dims(),
@@ -1631,6 +1729,16 @@ static bool padKernelToStride(Function *F) {
           glowChannelwiseQuantizedConv->getStrides()[0],
           glowChannelwiseQuantizedConv->getStrides()[1]};
 
+      bool is1x1s2Case = true;
+      // This is for special case of 1x1 stride 2.
+      for (int i = 0; i < SPATIAL_DIMS2; i++) {
+        is1x1s2Case &= (kernel[i] == 1 && stride[i] == 2);
+      }
+
+      if (is1x1s2Case) {
+        continue;
+      }
+
       for (int i = 0; i < SPATIAL_DIMS2; i++) {
         if (kernel[i] < stride[i]) {
           isKernelPadded = true;
@@ -1757,13 +1865,73 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
+// Replace inefficient Concat Nodes with Reshape->Concat->Transpose.
+// For Concat Nodes concatenating inputs on the innermost dimension, if the
+// innermost dimension size of the inputs is small (e.g., 1), the corresponding
+// memory access is inefficient. Therefore, those Concat Nodes need to be
+// replaced by Reshape->Concat->Transpose.
+// Example:
+//   Original: Inputs[4096x1]->Concat[4096x50]
+//   New:      Inputs[4096x1]->Reshape[1x4096]->Concat[50x4096]
+//                           ->Transpose[4096x50]
+static bool replaceInefficientConcat(Function *F) {
+  bool changed = false;
+  // This optimization is applied conservatively to avoid causing potential
+  // perf regression on other models.
+  const int targetInputNumDims = 2;
+  const int targetInputLastDim = 1;
+  const int targetInputOtherDim = 4096;
+  for (auto &N : F->getNodes()) {
+    auto *CN = llvm::dyn_cast<ConcatNode>(&N);
+    if (!CN) {
+      continue;
+    }
+    bool isTargetConcat = true;
+    auto origInputs = CN->getInputs();
+    // Check whether the Concat Node is a target
+    if ((origInputs[0].dims().size() != targetInputNumDims) ||
+        (CN->getDim() != (targetInputNumDims - 1)) ||
+        (origInputs[0].dims()[0] < targetInputOtherDim)) {
+      isTargetConcat = false;
+    } else {
+      for (auto &input : origInputs) {
+        const auto &origInputDims = input.dims();
+        if (origInputDims[origInputDims.size() - 1] != targetInputLastDim) {
+          isTargetConcat = false;
+          break;
+        }
+      }
+    }
+    if (!isTargetConcat) {
+      continue;
+    }
+    // Insert Reshape Nodes
+    std::vector<NodeValue> reshapes(origInputs.size());
+    for (int idx = 0; idx < origInputs.size(); ++idx) {
+      const std::vector<dim_t> newInputDims = {origInputs[idx].dims()[1],
+                                               origInputs[idx].dims()[0]};
+      DCHECK(idx < reshapes.size()) << "out-of-range idx";
+      reshapes[idx] = F->createReshape(
+          origInputs[idx].getNode()->getName().str() + "_reshaped",
+          origInputs[idx].getNode(), newInputDims);
+    }
+    // Create new Concat Node
+    auto *newCN =
+        F->createConcat(CN->getName().str() + "_for_tranpose", reshapes, 0);
+    // Insert Transpose Node
+    auto *newTN = F->createTranspose(CN->getName().str(), newCN, {1, 0});
+    CN->getResult().replaceAllUsesOfWith(newTN->getResult());
+    changed = true;
+  }
+  return changed;
+}
+
 Expected<bool>
 NNPIBackend::transformPostOptPipeline(Function *F,
                                       CompilationContext &cctx) const {
-  bool parallelized;
-  ASSIGN_VALUE_OR_RETURN_ERR(parallelized,
-                             parallelizeFunction(F, cctx.backendOpts));
-  if (parallelized) {
+  bool changed;
+  ASSIGN_VALUE_OR_RETURN_ERR(changed, parallelizeFunction(F, cctx.backendOpts));
+  if (changed) {
     // Use the normal NNPI-specific optimization pipeline, but without sinking
     // conversions, because we just parallelized and so don't want to undo any
     // parallelization we performed on quantizes/dequantizes.
@@ -1781,7 +1949,13 @@ NNPIBackend::transformPostOptPipeline(Function *F,
 
     cctx.optimizationOpts.skipConcatMerging = restoreMerge;
   }
-  return parallelized;
+
+  // Swap existing nodes for custom NNPI-specific LUT nodes here. This way,
+  // the parallelization can occur on Glow nodes prior to the swap.
+  bool changedFromSwap;
+  ASSIGN_VALUE_OR_RETURN_ERR(changedFromSwap, swapInSpecializedLUT(F, cctx));
+  changed = changed | changedFromSwap;
+  return changed;
 }
 
 Expected<bool> NNPIBackend::transformPostLowering(
@@ -1802,10 +1976,12 @@ Expected<bool> NNPIBackend::transformPostLowering(
     return false;
   }
 
-  bool changed = removeClipsBlockingFusion(F);
+  bool changed = false;
+  changed |= removeClipsBlockingFusion(F);
   changed |= padKernelToStride(F);
   changed |= lowerEmbeddingToGather(F);
   changed |= quantizeLayernormScaleAndBias(F);
+  changed |= replaceInefficientConcat(F);
   auto it =
       cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
   if (it != cctx.backendOpts.backendSpecificOpts.end() && it->second == "1") {
@@ -1818,7 +1994,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
   changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
-  if (glow::nnpi::flags::DisablePrivateTransforms) {
+  if (!glow::nnpi::flags::EnablePrivateTransforms) {
     return changed;
   }
   changed |= transformPrivate(F, cctx);
@@ -1910,9 +2086,7 @@ Error NNPIBackend::bindContexts(
       runtime::NNPIDeviceManager *nnpiDM =
           dynamic_cast<runtime::NNPIDeviceManager *>(devMgr);
       LOG_IF_NOT_RETURN_LLVMERROR(nnpiDM, "Invalid device manager bound");
-      LOG_IF_NOT_RETURN_LLVMERROR(
-          !nnpiDM->bindContext(dagNode->name, ctx, phUsage),
-          "Failed to bind context");
+      RETURN_IF_ERR(nnpiDM->bindContext(dagNode->name, ctx, phUsage));
     }
   }
 

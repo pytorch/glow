@@ -30,6 +30,10 @@ public:
   /// Ctor.
   explicit CPULLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
                         std::string mainEntryName, llvm::StringRef libjitBC);
+  /// Ctor.
+  explicit CPULLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
+                        std::string mainEntryName, llvm::StringRef libjitBC,
+                        llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   virtual void generateLLVMIRForInstr(llvm::IRBuilder<> &builder,

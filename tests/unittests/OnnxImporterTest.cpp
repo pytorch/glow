@@ -2249,19 +2249,21 @@ TEST_F(OnnxImporterTest, importSparseToDense) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
   }
 
-  // Verify structure: Inputs -> SparseToDense -> Save.
+  // Verify structure: Inputs -> Splat + Reshape -> ScatterData -> Save.
   ASSERT_EQ(mod.getPlaceholders().size(), 4);
-  ASSERT_EQ(F->getNodes().size(), 2);
+  ASSERT_EQ(F->getNodes().size(), 4);
 
   auto *save = getSaveNodeFromDest(output);
   auto *out = save->getPlaceholder();
   EXPECT_TRUE(out->dims().vec() == dataToInferDim.dims().vec());
 
-  auto *STD = llvm::dyn_cast<SparseToDenseNode>(save->getInput().getNode());
+  auto *STD = llvm::dyn_cast<ScatterDataNode>(save->getInput().getNode());
   ASSERT_TRUE(STD);
-  auto *idx = llvm::dyn_cast<Placeholder>(STD->getIndices().getNode());
+  auto *reshapeNode = llvm::dyn_cast<ReshapeNode>(STD->getIndices().getNode());
+  ASSERT_TRUE(reshapeNode);
+  auto *idx = llvm::dyn_cast<Placeholder>(reshapeNode->getInput().getNode());
   EXPECT_EQ(idx, mod.getPlaceholderByNameSlow("indices"));
-  auto *vals = llvm::dyn_cast<Placeholder>(STD->getValues().getNode());
+  auto *vals = llvm::dyn_cast<Placeholder>(STD->getSlices().getNode());
   EXPECT_EQ(vals, mod.getPlaceholderByNameSlow("values"));
 }
 
@@ -2641,7 +2643,8 @@ TEST_F(OnnxImporterTest, gatherOpConstantFoldingAndReshape) {
 static void importSliceTest(std::string fileName, const char *inputName,
                             llvm::ArrayRef<dim_t> inputShape,
                             llvm::ArrayRef<dim_t> starts,
-                            llvm::ArrayRef<dim_t> outputShape) {
+                            llvm::ArrayRef<dim_t> outputShape,
+                            bool expectLoadError = false) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -2656,6 +2659,12 @@ static void importSliceTest(std::string fileName, const char *inputName,
   getNCHWData(&data, inputShape[0], inputShape[1], inputShape[2],
               inputShape[3]);
   {
+    if (expectLoadError) {
+      Error err = Error::empty();
+      ONNXModelLoader(NetFilename, {inputName}, {&data.getType()}, *F, &err);
+      EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
+      return;
+    }
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
@@ -2733,6 +2742,12 @@ TEST_F(OnnxImporterTest, importSliceNoAxes) {
   importSliceTest("sliceNoAxes.onnxtxt", "data", {2, 3, 3, 3} /* input */,
                   {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
                   {2, 1, 2, 2} /* output */);
+}
+
+TEST_F(OnnxImporterTest, importSliceInvalidAxes) {
+  importSliceTest("sliceInvalidAxes.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */, true);
 }
 
 static void importCast(llvm::StringRef fileName, llvm::StringRef inputName,

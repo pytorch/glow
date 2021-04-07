@@ -71,6 +71,7 @@ bool CPUBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::LeakyReluNodeKind:
+  case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
@@ -121,8 +122,8 @@ std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(
 std::unique_ptr<LLVMIRGen>
 CPUBackend::createIRGen(const IRFunction *IR,
                         AllocationsInfo &allocationsInfo) const {
-  CPULLVMIRGen *irgen =
-      new CPULLVMIRGen(IR, allocationsInfo, "", getLibjitBitcode());
+  CPULLVMIRGen *irgen = new CPULLVMIRGen(
+      IR, allocationsInfo, "", getLibjitBitcode(), getObjectRegistry());
   return std::unique_ptr<CPULLVMIRGen>(irgen);
 }
 
@@ -147,3 +148,14 @@ bool CPUBackend::canDoIndexTypeDemotion(
       Kinded::Kind::SparseToDenseMaskNodeKind);
   return fromTy == ElemKind::Int64ITy && toTy == ElemKind::Int32ITy;
 }
+
+#if FACEBOOK_INTERNAL
+llvm::ArrayRef<llvm::MemoryBufferRef> CPUBackend::getObjectRegistry() const {
+  return llvm::ArrayRef<llvm::MemoryBufferRef>();
+}
+#else
+#include "cpuObjectRegistry.h"
+llvm::ArrayRef<llvm::MemoryBufferRef> CPUBackend::getObjectRegistry() const {
+  return cpuObjectRegistry;
+}
+#endif

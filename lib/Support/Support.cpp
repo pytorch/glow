@@ -74,6 +74,31 @@ llvm::raw_ostream &errs() { return llvm::errs(); }
 
 llvm::raw_ostream &dbgs() { return llvm::dbgs(); }
 
+std::string separateString(const std::string &str, size_t length,
+                           const std::string &delimiter) {
+  assert(length > 0 && "Separation block length must be greater than 0!");
+  size_t inpSize = str.size();
+  size_t delSize = delimiter.size();
+  size_t numBlocks = (inpSize + length - 1) / length;
+  size_t outSize = inpSize + (numBlocks - 1) * delSize;
+  std::string sepStr;
+  sepStr.reserve(outSize);
+  for (size_t blockIdx = 0; blockIdx < numBlocks; blockIdx++) {
+    // Append substring block.
+    size_t blockStart = blockIdx * length;
+    size_t blockSize =
+        (inpSize - blockStart) >= length ? length : (inpSize - blockStart);
+    blockSize = (blockSize >= length) ? length : blockSize;
+    sepStr.append(str, blockStart, blockSize);
+    // Append delimiter.
+    if (blockIdx < numBlocks - 1) {
+      sepStr.append(delimiter);
+    }
+  }
+  assert(sepStr.size() == outSize && "Inconsistent string separation!");
+  return sepStr;
+}
+
 std::string escapeDottyString(const std::string &str) {
   std::string out;
   out.reserve(str.capacity());
@@ -256,6 +281,17 @@ Expected<int> getIntFromStr(llvm::StringRef input) {
   RETURN_ERR_IF_NOT(!(end == inputStr.data() || *end != '\0'),
                     "Integer was not properly specified: " + inputStr);
   return val;
+}
+
+Expected<float> getFloatFromStr(llvm::StringRef input) {
+  // StringRef not necessarily null terminated, so get a str from it.
+  const std::string inputStr = input.str();
+  char *end;
+  double val = std::strtod(inputStr.data(), &end);
+  RETURN_ERR_IF_NOT(!(end == inputStr.data() || *end != '\0'),
+                    "Floating point number was not properly specified: " +
+                        inputStr);
+  return (float)val;
 }
 
 } // namespace glow

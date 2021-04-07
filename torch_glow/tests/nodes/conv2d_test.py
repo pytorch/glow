@@ -51,6 +51,12 @@ class TestConv2d(utils.TorchGlowTestCase):
                 torch.randn(1, 4, 5, 5),
                 torch.randn(8, 4, 3, 3),
             ),
+            lambda: (
+                "different_padding",
+                SimpleConv2dModule(padding=[1, 0]),
+                torch.randn(1, 4, 5, 5),
+                torch.randn(8, 4, 3, 3),
+            ),
         ]
     )
     def test_conv2d(self, _, module, inputs, filters, bias=None):

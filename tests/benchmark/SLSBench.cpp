@@ -52,7 +52,8 @@ struct SLSParam {
   dim_t numAsyncLaunches;
   std::string backendStr;
   std::string devId;
-  dim_t numIndicesPerBatch;
+  dim_t numIndicesPerBatchMin;
+  dim_t numIndicesPerBatchMax;
   dim_t numIndicesPerBatchPad;
   dim_t numTableEntries;
   dim_t numElementsPerRow;
@@ -74,7 +75,8 @@ std::string getSLSDescription(SLSParam param) {
                                                  : std::string("RWQLSWS");
 
   return strFormat(
-      "%s_%zu_%zu_%zu_%zu", SLSStr.c_str(), (size_t)param.numIndicesPerBatch,
+      "%s__%zu_%zu__%zu__%zu__%zu", SLSStr.c_str(),
+      (size_t)param.numIndicesPerBatchMin, (size_t)param.numIndicesPerBatchMax,
       (size_t)param.numIndicesPerBatchPad, (size_t)param.numTableEntries,
       (size_t)param.numElementsPerRow);
 }
@@ -111,39 +113,41 @@ public:
       scaleSize = 4;
     }
 
+    // This is approximate when numIndicesPerBatchMin != numIndicesPerBatchMax.
+    const double avgIndicesPerBatch =
+        (double)(param.numIndicesPerBatchMin + param.numIndicesPerBatchMax) /
+        2.0;
+
     // Embedding data
     double input_gbytes = 0.0;
     if ((param.slsKind == NONQUANTIZED_WEIGHTED) ||
         (param.slsKind == NONQUANTIZED_UNWEIGHTED)) {
-      input_gbytes +=
-          (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
-           (param.numElementsPerRow * elementSize)) /
-          1e9;
+      input_gbytes += (param.numSLSNodes * batchSize_ * avgIndicesPerBatch *
+                       (param.numElementsPerRow * elementSize)) /
+                      1e9;
     } else { // Quantized
       if (param.fusedDtype == ElemKind::UInt8FusedFP16QTy) {
-        input_gbytes +=
-            (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
-             (param.numElementsPerRow + 2 * scaleSize)) /
-            1e9;
+        input_gbytes += (param.numSLSNodes * batchSize_ * avgIndicesPerBatch *
+                         (param.numElementsPerRow + 2 * scaleSize)) /
+                        1e9;
       } else { // Int4
-        input_gbytes +=
-            (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
-             ((param.numElementsPerRow + 1) / 2 + 2 * scaleSize)) /
-            1e9;
+        input_gbytes += (param.numSLSNodes * batchSize_ * avgIndicesPerBatch *
+                         ((param.numElementsPerRow + 1) / 2 + 2 * scaleSize)) /
+                        1e9;
       }
     }
 
     // + indices
-    input_gbytes += (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
+    input_gbytes += (param.numSLSNodes * batchSize_ * avgIndicesPerBatch *
                      sizeof(int32_t)) /
                     1e9;
 
     // + weights
     if ((param.slsKind == QUANTIZED_WEIGHTED) ||
         (param.slsKind == NONQUANTIZED_WEIGHTED)) {
-      input_gbytes += (param.numSLSNodes * batchSize_ *
-                       param.numIndicesPerBatch * elementSize) /
-                      1e9;
+      input_gbytes +=
+          (param.numSLSNodes * batchSize_ * avgIndicesPerBatch * elementSize) /
+          1e9;
     }
 
     // + lengths
@@ -178,45 +182,69 @@ public:
     Constant *dataConstant = mod->createConstant("SLSData", dataConstantTensor);
 
     // Create placeholders for weights, indices and lengths
-    auto *weights = mod->createPlaceholder(
-        param.dtype, {param.numIndicesPerBatchPad * batchSize_}, "weights",
-        false);
+    const dim_t maxNumIndicesWeights = param.numIndicesPerBatchPad * batchSize_;
+    auto *weights = mod->createPlaceholder(param.dtype, {maxNumIndicesWeights},
+                                           "weights", false);
 
-    auto *indices = mod->createPlaceholder(
-        ElemKind::Int64ITy, {param.numIndicesPerBatchPad * batchSize_},
-        "indices",
-        /* isTrainable */ false);
+    auto *indices = mod->createPlaceholder(ElemKind::Int64ITy,
+                                           {maxNumIndicesWeights}, "indices",
+                                           /* isTrainable */ false);
 
     auto *lengths =
         mod->createPlaceholder(ElemKind::Int32ITy, {batchSize_}, "lengths",
                                /* isTrainable */ false);
 
+    size_t totalLengthsSum = 0;
+    size_t totalNumLengths = 0;
     for (dim_t i = 0; i < asyncLaunchSize_; i++) {
+      auto lengthsHandle = contexts_[i]
+                               ->getPlaceholderBindings()
+                               ->allocate(lengths)
+                               ->getHandle<int32_t>();
+
+      // Generate lengths across a uniform distribution.
+      lengthsHandle.randomize(param.numIndicesPerBatchMin,
+                              param.numIndicesPerBatchMax, mod->getPRNG());
+      dim_t lengthsSum = 0;
+      for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
+        auto &nextLength = lengthsHandle.raw(j);
+        if (lengthsSum == maxNumIndicesWeights) {
+          // If we have maxed out the maximum allowed indices then zero out the
+          // rest of the lengths.
+          nextLength = 0;
+          continue;
+        } else if (lengthsSum + nextLength > maxNumIndicesWeights) {
+          // If the next length will equal or overflow the maximum allowed
+          // indices then fill it up totally.
+          nextLength = maxNumIndicesWeights - lengthsSum;
+        }
+        lengthsSum += nextLength;
+        totalNumLengths += 1;
+      }
+      totalLengthsSum += lengthsSum;
 
       // Create and sort indices
-      Tensor indicesReal(ElemKind::Int64ITy,
-                         {param.numIndicesPerBatch * batchSize_});
+      Tensor indicesReal(ElemKind::Int64ITy, {lengthsSum});
       indicesReal.getHandle<int64_t>().randomize(0, param.numTableEntries,
                                                  mod->getPRNG());
       // Sort each segment
       if (param.isSorted) {
         int64_t *indicesRealPtr = (int64_t *)indicesReal.getUnsafePtr();
-        for (dim_t b = 0; b < batchSize_; b++) {
-          std::sort(indicesRealPtr + b * param.numIndicesPerBatch,
-                    indicesRealPtr + (b + 1) * param.numIndicesPerBatch);
+        for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
+          const size_t curLength = lengthsHandle.raw(j);
+          std::sort(indicesRealPtr, indicesRealPtr + curLength);
+          indicesRealPtr += curLength;
         }
       }
       indicesReal_[i].push_back(std::move(indicesReal));
 
       // Create weights
       if (param.dtype == ElemKind::FloatTy) {
-        Tensor weightsReal(ElemKind::FloatTy,
-                           {param.numIndicesPerBatch * batchSize_});
+        Tensor weightsReal(ElemKind::FloatTy, {lengthsSum});
         weightsReal.getHandle<float>().clear(1.0f);
         weightsReal_[i].push_back(std::move(weightsReal));
       } else if (param.dtype == ElemKind::Float16Ty) {
-        Tensor weightsReal(ElemKind::Float16Ty,
-                           {param.numIndicesPerBatch * batchSize_});
+        Tensor weightsReal(ElemKind::Float16Ty, {lengthsSum});
         weightsReal.getHandle<float16_t>().clear(1.0f);
         weightsReal_[i].push_back(std::move(weightsReal));
       }
@@ -228,12 +256,6 @@ public:
       contexts_[i]->getPlaceholderBindings()->insert(indices,
                                                      std::move(indicesPartial));
 
-      contexts_[i]
-          ->getPlaceholderBindings()
-          ->allocate(lengths)
-          ->getHandle<int32_t>()
-          .clear(param.numIndicesPerBatch);
-
       Tensor weightsPartial(weightsReal_[i].back().getUnsafePtr(),
                             weights->getType(),
                             weightsReal_[i].back().getSizeInBytes());
@@ -241,27 +263,28 @@ public:
                                                      std::move(weightsPartial));
     } // i
 
+    // Calculate the average length based on all of the lengths generated.
+    const double avgLength = (double)totalLengthsSum / (double)totalNumLengths;
+
     // Create SLS node, optional clip node, and save node
-    const LengthsMode LM = param.numIndicesPerBatch == 1
-                               ? LengthsMode::AllOne
-                               : LengthsMode::Variable;
+    const LengthsMode LM =
+        avgLength == 1.f ? LengthsMode::AllOne : LengthsMode::Variable;
     Node *R = nullptr;
     if (param.slsKind == QUANTIZED_UNWEIGHTED) {
       R = fn->createFusedRowwiseQuantizedSparseLengthsSum(
           getSLSDescription(param), dataConstant, indices, lengths,
-          param.useFP16Accumulation, LM, param.numIndicesPerBatch);
+          param.useFP16Accumulation, LM, avgLength);
     } else if (param.slsKind == QUANTIZED_WEIGHTED) {
       R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
           getSLSDescription(param), dataConstant, weights, indices, lengths,
-          param.useFP16Accumulation, LM, param.numIndicesPerBatch);
+          param.useFP16Accumulation, LM, avgLength);
     } else if (param.slsKind == NONQUANTIZED_WEIGHTED) {
-      R = fn->createSparseLengthsWeightedSum(
-          getSLSDescription(param), dataConstant, weights, indices, lengths, LM,
-          param.numIndicesPerBatch);
+      R = fn->createSparseLengthsWeightedSum(getSLSDescription(param),
+                                             dataConstant, weights, indices,
+                                             lengths, LM, avgLength);
     } else { // NonquantizedUnweighted
       R = fn->createSparseLengthsSum(getSLSDescription(param), dataConstant,
-                                     indices, lengths, LM,
-                                     param.numIndicesPerBatch);
+                                     indices, lengths, LM, avgLength);
     }
     SaveNode *S = nullptr;
     if (param.addClip) {
@@ -368,15 +391,28 @@ public:
 SLSParam parseArgs(int argc, char *argv[]) {
   SLSParam param;
   param.batchSize = atoi(argv[1]);
-  param.numIndicesPerBatch = atoi(argv[2]);
-  param.numIndicesPerBatchPad = atoi(argv[3]);
-  param.numTableEntries = atoi(argv[4]);
-  param.numElementsPerRow = atoi(argv[5]);
-  param.numReps = atoi(argv[6]);
-  param.numAsyncLaunches = atoi(argv[7]);
-  param.numSLSNodes = atoi(argv[8]);
+  llvm::StringRef numIndicesPerBatchStr(argv[2]);
+  auto split = numIndicesPerBatchStr.split(':');
+  if (split.second == "") {
+    ASSIGN_VALUE_OR_FATAL(param.numIndicesPerBatchMin, getIntFromStr(argv[2]));
+    param.numIndicesPerBatchMax = param.numIndicesPerBatchMin;
+  } else {
+    ASSIGN_VALUE_OR_FATAL(param.numIndicesPerBatchMin,
+                          getIntFromStr(split.first));
+    ASSIGN_VALUE_OR_FATAL(param.numIndicesPerBatchMax,
+                          getIntFromStr(split.second));
+    CHECK_LE(param.numIndicesPerBatchMin, param.numIndicesPerBatchMax);
+  }
+  ASSIGN_VALUE_OR_FATAL(param.numIndicesPerBatchPad, getIntFromStr(argv[3]));
+  CHECK_LE(param.numIndicesPerBatchMax, param.numIndicesPerBatchPad);
+  ASSIGN_VALUE_OR_FATAL(param.numTableEntries, getIntFromStr(argv[4]));
+  ASSIGN_VALUE_OR_FATAL(param.numElementsPerRow, getIntFromStr(argv[5]));
+  ASSIGN_VALUE_OR_FATAL(param.numReps, getIntFromStr(argv[6]));
+  ASSIGN_VALUE_OR_FATAL(param.numAsyncLaunches, getIntFromStr(argv[7]));
+  ASSIGN_VALUE_OR_FATAL(param.numSLSNodes, getIntFromStr(argv[8]));
   printf("batchSize %zu\n", (size_t)param.batchSize);
-  printf("numIndicesPerBatch %zu\n", (size_t)param.numIndicesPerBatch);
+  printf("numIndicesPerBatchMin %zu\n", (size_t)param.numIndicesPerBatchMin);
+  printf("numIndicesPerBatchMax %zu\n", (size_t)param.numIndicesPerBatchMax);
   printf("numIndicesPerBatchPad %zu\n", (size_t)param.numIndicesPerBatchPad);
   printf("numTableEntries %zu\n", (size_t)param.numTableEntries);
   printf("numElementsPerRow %zu\n", (size_t)param.numElementsPerRow);
@@ -465,7 +501,9 @@ SLSParam parseArgs(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
 
   printf("SLS Microbenchmark\n");
-  printf("Usage: SLSBench batchSize(Int) numIndicesPerBatch(Int) "
+  printf("Usage: SLSBench batchSize(Int) "
+         "[numIndicesPerBatch(Int) | "
+         "numIndicesPerBatchMin(Int):numIndicesPerBatchMax(Int)] "
          "numIndicesPerBatchPad(Int) numTableEntries(Int) "
          "numElementsPerRow(int) numReps(Int) "
          "numAsyncLaunches(Int) numSLSNodes(Int) "
@@ -518,16 +556,14 @@ int main(int argc, char *argv[]) {
     params.push_back(param);
 
     runHeader = std::string(
-        "_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
-        "numTableEntries,"
-        "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,slsKindStr,"
-        "backendStr,dtypeStr,addClipStr,quantizationDtypeStr,"
-        "useFP16AccumulationStr");
+        "_,benchName,_,batchSize,numIndicesPerBatchMin:numIndicesPerBatchMax,"
+        "numIndicesPerBatchPad,numTableEntries,numElementsPerRow,numReps,"
+        "numAsyncLaunches,numSLSNodes,slsKindStr,backendStr,dtypeStr,"
+        "addClipStr,quantizationDtypeStr,useFP16AccumulationStr");
     runPrefix = std::string(strFormat(
-        "SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%"
-        "s,%s,%"
-        "s,%s",
-        (size_t)param.batchSize, (size_t)param.numIndicesPerBatch,
+        "SLSBench,SW,%zu,%zu:%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s,%s,%s,%s",
+        (size_t)param.batchSize, (size_t)param.numIndicesPerBatchMin,
+        (size_t)param.numIndicesPerBatchMax,
         (size_t)param.numIndicesPerBatchPad, (size_t)param.numTableEntries,
         (size_t)param.numElementsPerRow, (size_t)param.numReps,
         (size_t)param.numAsyncLaunches, (size_t)param.numSLSNodes, argv[9],

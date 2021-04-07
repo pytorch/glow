@@ -87,6 +87,17 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().printJITIndex = false;
   });
 
+  /// Enable ignoring rounding arg in aten::div
+  /// TODO: Handle this case with FloorDiv
+  m.def("enable_ignore_div_rounding_args", []() {
+    getGlobalPyTorchLoaderSettingsMutable().ignoreDivRoundingArgs = true;
+  });
+
+  /// Disable ignoring rounding arg in aten::div
+  m.def("disable_ignore_div_rounding_args", []() {
+    getGlobalPyTorchLoaderSettingsMutable().ignoreDivRoundingArgs = false;
+  });
+
   /// Enable converting fp32 ops to fp16.
   m.def("enable_convert_to_fp16",
         []() { getGlobalPyTorchLoaderSettingsMutable().convertToFP16 = true; });
@@ -236,10 +247,18 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().runShapeInference = false;
   });
 
+  /// Defer compilation to runtime.
+  m.def("enable_lazy_compile",
+        []() { getGlobalPyTorchLoaderSettingsMutable().lazyCompile = true; });
+
   /// Set interpreter device memory (in KiB).
   m.def("set_interpreter_memory", [](const unsigned &memorySize) {
     glow::runtime::flags::InterpreterMemory = memorySize;
   });
+
+  /// Enable NNPI private transforms
+  m.def("enable_nnpi_private_transforms",
+        []() { glow::nnpi::flags::EnablePrivateTransforms = true; });
 
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
@@ -290,6 +309,13 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// graph.
   m.def("enable_dump_operator_inventory", []() {
     getGlobalPyTorchLoaderSettingsMutable().dumpOperatorInventory = true;
+  });
+
+  m.def("enable_accept_all_layout", []() {
+    getGlobalPyTorchLoaderSettingsMutable().disableLayoutVerifying = true;
+  });
+  m.def("disable_accept_all_layout", []() {
+    getGlobalPyTorchLoaderSettingsMutable().disableLayoutVerifying = false;
   });
 
   /// Set the active HostManager to one that owns 1 of type \p backendName.
@@ -395,5 +421,15 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// \returns the list of avaialble devices
   m.def("get_available_devices", []() {
     return getGlobalPyTorchLoaderSettingsMutable().availableDevices;
+  });
+
+  /// Enable device tracing from HostManager. Must be set before compilaion.
+  m.def("enable_device_tracing", []() {
+    getGlobalPyTorchLoaderSettingsMutable().enableDeviceTracing = true;
+  });
+
+  /// Disable device tracing from HostManager. Must be set before compilaion.
+  m.def("disable_device_tracing", []() {
+    getGlobalPyTorchLoaderSettingsMutable().enableDeviceTracing = false;
   });
 }

@@ -321,7 +321,7 @@ public:
     ::ONNX_NAMESPACE::TensorProto t;
     t.ParseFromString(largeBuffer_);
 
-    currentBlobName_ = t.name();
+    currentBlobName_ = glow::legalizeName(t.name());
     auto tyIdx = typeInfo_.find(currentBlobName_);
     if (tyIdx == typeInfo_.end()) {
       return ::MAKE_ERR(
@@ -549,6 +549,14 @@ int run() {
   }
   if (glow::flags::DelayAndRecordConstantModification) {
     cctx.optimizationOpts.delayAndRecordConstantModification = true;
+  }
+  if (glow::runtime::flags::EnableP2P) {
+    LOG(INFO) << "Glow P2P Enabled";
+    cctx.enableP2P = true;
+  }
+  if (glow::runtime::flags::EnableDRT) {
+    LOG(INFO) << "Glow DRT Enabled";
+    cctx.enableDRT = true;
   }
 
   // Load deferred weights if applicable

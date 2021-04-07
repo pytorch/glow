@@ -61,6 +61,14 @@ public:
 protected:
   /// Perform memory allocation for a bundle.
   virtual void performBundleMemoryAllocation();
+  /// Create bundle archive by archiving additional object files to the existing
+  /// bundle from \p bundlePath. The object names to be archived are given by
+  /// \p bundleObjects and the object raw content is taken from the object array
+  /// \p bundleObjectRegistry.
+  virtual void createBundleArchive(
+      llvm::StringRef bundlePath,
+      llvm::ArrayRef<llvm::MemoryBufferRef> bundleObjectRegistry,
+      const std::vector<std::string> &bundleObjects);
   /// Save weights for the bundle.
   virtual void saveWeights(llvm::StringRef weightsFileName);
   /// Save header file for the bundle.
@@ -84,6 +92,8 @@ protected:
   /// \returns the weight that the variable \p v is lowered into in one of the
   /// IR functions inside this bundle, or null if the variable is unknown.
   virtual Value *getWeightForNode(const Storage *V) const;
+  /// \returns LLVMIRGen used by the bundle saver.
+  virtual LLVMIRGen *getLLVMIRGen();
   /// Information about allocations.
   AllocationsInfo allocationsInfo_;
   /// The LLVM IR code generator.

@@ -29,6 +29,8 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Object/Archive.h"
+#include "llvm/Object/ArchiveWriter.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
@@ -175,6 +177,7 @@ BundleSaver::BundleSaver(const LLVMBackend &llvmBackend,
                                                    llvmTargetFeatures.end());
   irgen_->setBundleName(bundleName);
   irgen_->setOutputDir(outputDir);
+  irgen_->setObjectRegistry(llvmBackend.getObjectRegistry());
   // Use the bundle code model as a code model for the TargetMachine.
   auto opts = llvmBackend.getOptions();
   opts.setCodeModel(opts.getBundleCodeModel());
@@ -450,6 +453,68 @@ void BundleSaver::emitSymbolTable() {
                            irgen_->getBundleName() + "SymbolTable");
 }
 
+void BundleSaver::createBundleArchive(
+    llvm::StringRef bundlePath,
+    llvm::ArrayRef<llvm::MemoryBufferRef> bundleObjectRegistry,
+    const std::vector<std::string> &bundleObjects) {
+
+  // If we do not have extra object files then return early.
+  if (bundleObjects.empty()) {
+    return;
+  }
+
+  // Read original bundle object file as archive member.
+  std::vector<llvm::NewArchiveMember> newMembers;
+  llvm::Expected<llvm::NewArchiveMember> newMember =
+      llvm::NewArchiveMember::getFile(bundlePath.str(),
+                                      /* Deterministic */ true);
+  newMembers.push_back(std::move(*newMember));
+
+  // Add other object files as archive members.
+  for (const auto &objectName : bundleObjects) {
+    // If this object was already added then we skip it.
+    bool objectAdded = false;
+    for (const auto &member : newMembers) {
+      if (member.MemberName.str() == objectName) {
+        objectAdded = true;
+        break;
+      }
+    }
+    if (objectAdded) {
+      continue;
+    }
+    // Find current object and add it as archive member.
+    bool objectFound = false;
+    for (const auto &memBuffRef : bundleObjectRegistry) {
+      if (memBuffRef.getBufferIdentifier().str() == objectName) {
+        llvm::NewArchiveMember newMember(memBuffRef);
+        newMembers.push_back(std::move(newMember));
+        objectFound = true;
+        break;
+      }
+    }
+    // If object is not found (not registered) then throw error.
+    if (!objectFound) {
+      std::string errMsg;
+      errMsg += "Object '" + objectName + "' is not registered in Glow and ";
+      errMsg += "cannot be archived into the bundle. The following objects ";
+      errMsg += "are available for archiving:\n";
+      for (const auto &memBuffRef : bundleObjectRegistry) {
+        errMsg += "  - " + memBuffRef.getBufferIdentifier().str() + "\n";
+      }
+      CHECK(false) << errMsg;
+    }
+  }
+
+  // Write the new bundle as archive.
+  llvm::Error err =
+      llvm::writeArchive(bundlePath.str(), newMembers, /* WriteSymtab */ true,
+                         llvm::object::Archive::K_GNU,
+                         /* Deterministic */ true, /* Thin */ false,
+                         /* OldArchiveBuf */ std::move(nullptr));
+  CHECK(!err) << "Could not add extra objects to bundle " << bundlePath.str();
+}
+
 void BundleSaver::produceBundle() {
   DCHECK(!isSaved_) << "produceBundle can be invoked only once";
   isSaved_ = true;
@@ -523,6 +588,9 @@ void BundleSaver::produceBundle() {
     PM.run(M);
   }
   outputFile.close();
+  // Create bundle archive with additional object files.
+  createBundleArchive(fileName, irgen_->getObjectRegistry(),
+                      irgen_->getBundleObjects());
   // Output weights.
   saveWeights(bundleWeightsBinOut);
   // Header file.
@@ -651,3 +719,5 @@ void BundleSaver::save(llvm::StringRef mainEntryName, const IRFunction *F) {
   irgen_->performCodeGen();
   savedIRFunctions_.back().llvmF = irgen_->getLLVMFunction();
 }
+
+LLVMIRGen *BundleSaver::getLLVMIRGen() { return irgen_.get(); }

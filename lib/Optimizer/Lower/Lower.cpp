@@ -479,8 +479,9 @@ static void lowerPReluNode(Function *F, CompilationContext &cctx,
       F->createCmpLTE(DECORATE_NODE_NAME(R, "cmplte"), zeroSplat, R.getInput());
   auto *mul =
       F->createMul(DECORATE_NODE_NAME(R, "mul"), R.getSlope(), R.getInput());
-  auto *prelu = F->createSelect(DECORATE_NODE_NAME(R, "select"), cmplgt,
-                                R.getInput(), mul);
+  auto *prelu =
+      F->createSelect(DECORATE_NODE_NAME(R, "select"), R.getResult().getType(),
+                      cmplgt, R.getInput(), mul);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), prelu);
 }
@@ -1793,6 +1794,41 @@ static void lowerBroadcastNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BN.getResult(), currNode);
 }
 
+static void lowerLogSoftMaxNode(Function *F, CompilationContext &cctx,
+                                const LogSoftMaxNode &LSMN) {
+  NodeValue input = LSMN.getInput();
+  auto name = LSMN.getName().str();
+
+  // input is a transposed and flattened shape {d_0, d_1} where logsoftmax is
+  // applied on dim = 1.
+
+  // max(x, dim) where dim = 1
+  NodeValue res1 = F->createBatchedReduceMax(name + ".res1", input, 1);
+
+  // broadcast max along dim = 1
+  NodeValue res2 = F->createBroadcast(name + ".res2", res1, input.dims(), 0);
+
+  // x - max
+  NodeValue res3 = F->createSub(name + ".res3", input, res2);
+
+  // exp(x - max)
+  NodeValue res4 = F->createExp(name + ".res4", res3);
+
+  // sum {exp(x - max)}
+  NodeValue res5 = F->createBatchedReduceAdd(name + ".res5", res4, 1);
+
+  // log (sum {exp(x - max)})
+  NodeValue res6 = F->createLog(name + ".res6", res5);
+
+  // broadcast log (sum {exp(x - max)}) along dim = 1
+  NodeValue res7 = F->createBroadcast(name + ".res7", res6, input.dims(), 0);
+
+  // x - max - exp(x-max)
+  NodeValue result = F->createSub(name + ".result", res3, res7);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, LSMN.getResult(), result);
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
@@ -1844,6 +1880,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchedMul);
     CASE_LOWER(LSTMUnit);
     CASE_LOWER(Broadcast);
+    CASE_LOWER(LogSoftMax);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1) {

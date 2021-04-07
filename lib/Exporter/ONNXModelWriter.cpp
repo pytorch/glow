@@ -1117,6 +1117,8 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::FLOAT16;
   case ElemKind::BFloat16Ty:
     return TensorType::BFLOAT16;
+  case ElemKind::Float64Ty:
+    return TensorType::DOUBLE;
   case ElemKind::Int8QTy:
     return TensorType::INT8;
   case ElemKind::UInt8FusedQTy:
@@ -2067,6 +2069,15 @@ void writeTensorwiseQuantizedPool(const T *node, const std::string &op,
 
   if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
     addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+    addValueAttribute(proto, "out_scale",
+                      APN->getType(AvgPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      APN->getType(AvgPoolNode::ResultIdx)->getOffset());
+  } else if (auto *MPN = llvm::dyn_cast<MaxPoolNode>(node)) {
+    addValueAttribute(proto, "out_scale",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getOffset());
   }
 
   proto->add_input(node->getInput().getNode()->getName());
@@ -2268,6 +2279,9 @@ ARITHMETIC_NODE_WRITER(Less, CmpLT)
 ARITHMETIC_NODE_WRITER(CmpLTE, CmpLTE)
 ARITHMETIC_NODE_WRITER(FloorDiv, FloorDiv);
 ARITHMETIC_NODE_WRITER(Fmod, Fmod)
+ARITHMETIC_NODE_WRITER(BitwiseAnd, BitwiseAnd)
+ARITHMETIC_NODE_WRITER(BitwiseOr, BitwiseOr)
+ARITHMETIC_NODE_WRITER(BitwiseXor, BitwiseXor)
 #undef ARITHMETIC_NODE_WRITER
 
 // Default exporting algorithm.
@@ -2291,6 +2305,8 @@ DEF_ALL_WRITER_NODE(Reciprocal)
 DEF_ALL_WRITER_NODE(Sin)
 DEF_ALL_WRITER_NODE(Cos)
 DEF_ALL_WRITER_NODE(LSTMUnit)
+DEF_ALL_WRITER_NODE(DynamicQuantizedFullyConnected)
+DEF_ALL_WRITER_NODE(DynamicRowwiseQuantizedFullyConnected)
 DEF_ALL_WRITER_NODE(Erf)
 DEF_ALL_WRITER_NODE(Min)
 DEF_ALL_WRITER_NODE(Max)
@@ -2306,6 +2322,7 @@ DEF_ALL_WRITER_NODE(Tanh)
 DEF_ALL_WRITER_NODE(IsNaN)
 DEF_ALL_WRITER_NODE(Sigmoid)
 DEF_ALL_WRITER_NODE(Swish)
+DEF_ALL_WRITER_NODE(SoftPlus)
 DEF_ALL_WRITER_NODE(LengthsSum)
 DEF_ALL_WRITER_NODE(BatchOneHot)
 DEF_ALL_WRITER_NODE(LengthsToRanges)
@@ -2313,6 +2330,7 @@ DEF_ALL_WRITER_NODE(SparseLengthsSum)
 DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(EmbeddingBag)
 DEF_ALL_WRITER_NODE(Embedding)
+DEF_ALL_WRITER_NODE(BitwiseNot)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpNEQ)
@@ -2545,6 +2563,13 @@ Error ONNXModelWriter::writeCumSum(const CumSumNode *node, GraphType &graph) {
   return writeAllWithNode("CumSum", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeScatterData(const ScatterDataNode *node,
+                                        GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  return writeAllWithNode("ScatterData", node, graph, proto);
+}
+
 // Unsupported for export Glow nodes.
 #define DEF_UNSUPPORTED_STORAGE(NAME)                                          \
   Error ONNXModelWriter::write##NAME(const NAME *node, GraphType &) {          \
@@ -2565,11 +2590,10 @@ DEF_UNSUPPORTED_STORAGE(Storage)
 DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProduct)
 DEF_UNSUPPORTED_NODE(Broadcast)
 DEF_UNSUPPORTED_NODE(SGD)
+DEF_UNSUPPORTED_NODE(SparseLabelSplit)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
 DEF_UNSUPPORTED_NODE(ExternalFunctionCall)
-// TODO: Turn to ScatterNd when it is supported in ONNX.
-DEF_UNSUPPORTED_NODE(ScatterData)
 // Gradient nodes.
 DEF_UNSUPPORTED_NODE(AddGrad)
 DEF_UNSUPPORTED_NODE(DivGrad)

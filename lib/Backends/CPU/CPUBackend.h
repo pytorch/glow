@@ -67,6 +67,8 @@ public:
   virtual bool
   canDoIndexTypeDemotion(ElemKind fromTy, ElemKind toTy,
                          PrecisionConfiguration &precConfig) const override;
+
+  llvm::ArrayRef<llvm::MemoryBufferRef> getObjectRegistry() const override;
   /// @}
 
 public:

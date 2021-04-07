@@ -552,11 +552,14 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           continue;
         }
 
-        auto bnOutTy = RS->getInput().getType();
+        auto bnOutTy = BN->getResult().getType();
+        auto rsInputType = RS->getInput().getType();
+        glow::TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
+            bnOutTy, rsInputType->dims());
         auto *newBN = F->createBatchNormalization(
-            BN->getName(), bnOutTy, RS->getInput(), BN->getBias(),
-            BN->getScale(), BN->getMean(), BN->getVar(), newChannelIdx,
-            BN->getEpsilon(), BN->getMomentum());
+            BN->getName(), outTy, RS->getInput(), BN->getBias(), BN->getScale(),
+            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
+            BN->getMomentum());
         RS->setNthInput(ReshapeNode::InputIdx, newBN);
         BN->getResult().replaceAllUsesOfWith(RS);
         changed = true;
@@ -571,10 +574,15 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         unsigned_t idx = BN->getChannelIdx();
         unsigned_t newChannelIdx = TR->getShuffle()[idx];
 
+        auto bnOutTy = BN->getResult().getType();
+        auto trInputType = TR->getInput().getType();
+        glow::TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
+            bnOutTy, trInputType->dims());
+
         auto *NewBN = F->createBatchNormalization(
-            BN->getName(), TR->getInput().getType(), TR->getInput(),
-            BN->getBias(), BN->getScale(), BN->getMean(), BN->getVar(),
-            newChannelIdx, BN->getEpsilon(), BN->getMomentum());
+            BN->getName(), outTy, TR->getInput(), BN->getBias(), BN->getScale(),
+            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
+            BN->getMomentum());
         NewBN->setPredicate(node->getPredicate());
         auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle(),
                                          TR->getLayout());
@@ -696,6 +704,25 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
                                        TR->getLayout());
       newTR->setPredicate(node->getPredicate());
       SI->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
+    // Sink Transpose below Tile nodes.
+    if (auto *TN = dyn_cast<TileNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(TN->getInput());
+
+      if (!TR) {
+        continue;
+      }
+
+      auto *newTN = F->createTile(TN->getName(), TR->getInput(), TN->getCount(),
+                                  TR->getShuffle()[TN->getAxis()]);
+      newTN->setPredicate(node->getPredicate());
+      auto *newTR = F->createTranspose(TR->getName(), newTN, TR->getShuffle(),
+                                       TR->getLayout());
+      newTR->setPredicate(node->getPredicate());
+      TN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
     }
@@ -1082,11 +1109,44 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       auto *newSN = F->createSlice(SN->getName(), BN->getInput(),
                                    SN->getStart(), newSNType);
       auto *newBN = F->createBatchNormalization(
-          BN->getName(), newSNType, newSN, BN->getBias(), BN->getScale(),
-          BN->getMean(), BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
-          BN->getMomentum());
+          BN->getName(), SN->getResult().getType(), newSN, BN->getBias(),
+          BN->getScale(), BN->getMean(), BN->getVar(), BN->getChannelIdx(),
+          BN->getEpsilon(), BN->getMomentum());
       SN->getResult().replaceAllUsesOfWith(newBN);
       changed = true;
+    }
+  }
+
+  return changed;
+}
+
+/// Code Hoisting.
+bool HoistCode::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    auto *node = &N;
+
+    // Hoist Transpose above Tile nodes.
+    if (auto *TR = dyn_cast<TransposeNode>(node)) {
+      auto *TN = dyn_cast<TileNode>(TR->getInput());
+
+      if (!TN) {
+        continue;
+      }
+
+      auto *newTR = F->createTranspose(TR->getName(), TN->getInput(),
+                                       TR->getShuffle(), TR->getLayout());
+      newTR->setPredicate(node->getPredicate());
+      auto *newTN =
+          F->createTile(TN->getName(), newTR, TN->getCount(),
+                        invertShuffle(TR->getShuffle())[TN->getAxis()]);
+      newTN->setPredicate(node->getPredicate());
+      TR->getResult().replaceAllUsesOfWith(newTN);
+      changed = true;
+      continue;
     }
   }
 
@@ -3343,6 +3403,57 @@ bool OptimizeSplat::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+
+  for (auto &node : F->getNodes()) {
+    auto *GN = dyn_cast<GatherNode>(&node);
+    if (!GN) {
+      continue;
+    }
+
+    auto data = GN->getData();
+    auto *indices = dyn_cast<Constant>(GN->getIndices());
+
+    // Only handling scalar constant index value
+    if (!indices || indices->getPayload().size() != 1) {
+      continue;
+    }
+
+    dim_t index = 0;
+    size_t bd = GN->getBatchDims();
+    auto elementKind = indices->getElementType();
+    if (elementKind == ElemKind::Int64ITy) {
+      index = (size_t)indices->getHandle<int64_t>().raw(0);
+    } else if (elementKind == ElemKind::Int32ITy) {
+      index = (size_t)indices->getHandle<int32_t>().raw(0);
+    } else {
+      llvm_unreachable("GatherToSlice: Unsupported indices type");
+    }
+
+    std::vector<dim_t> start;
+    std::vector<dim_t> end;
+    for (size_t i = 0; i < data.dims().size(); ++i) {
+      if (i == bd) {
+        start.push_back(index);
+        end.push_back(index + 1);
+      } else {
+        start.push_back(0);
+        end.push_back(data.dims()[i]);
+      }
+    }
+
+    auto name = GN->getName();
+    auto *SN = F->createSlice(name, data, start, end);
+    auto *RN = F->createReshape(name, SN, GN->getResult().dims());
+
+    GN->getResult().replaceAllUsesOfWith(RN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// Optimize TransposeNode into ReshapeNode when it actually moves no data.
 bool OptimizeTransposeIntoReshape::run(Function *F,
                                        const CompilationContext &cctx) {
@@ -3731,6 +3842,8 @@ static size_t numSignificantBits(ElemKind kind) {
     return std::numeric_limits<int16_t>::digits;
   case ElemKind::FloatTy:
     return std::numeric_limits<float>::digits;
+  case ElemKind::Float64Ty:
+    return std::numeric_limits<double>::digits;
   case ElemKind::Int32QTy:
   case ElemKind::Int32ITy:
     return std::numeric_limits<int32_t>::digits;
@@ -6179,6 +6292,29 @@ parallelizeAndReplaceConcat(Function *F, ConcatNode *CN, dim_t numOfChunks) {
   return finalConcat;
 }
 
+#define SPLIT_ELTWISE_UNARY_OP_HELPER(NodeKind, Axis)                          \
+  if (curNode->getNthInput(NodeKind##Node::InputIdx).dims().size() <= Axis) {  \
+    break;                                                                     \
+  }                                                                            \
+  splitDims[NodeKind##Node::InputIdx] = Axis;                                  \
+  ASSIGN_VALUE_OR_RETURN_ERR(                                                  \
+      CN, parallelizeAndReplaceNode(                                           \
+              F, curNode, curNumOfChunks, NodeKind##Node::InputIdx,            \
+              NodeKind##Node::ResultIdx, splitDims, /*resultDim*/ Axis,        \
+              modelParallelSplitAlignment));
+
+#define SPLIT_ELTWISE_BINARY_OP_HELPER(NodeKind, Axis)                         \
+  if (curNode->getNthInput(NodeKind##Node::LHSIdx).dims().size() <= Axis) {    \
+    break;                                                                     \
+  }                                                                            \
+  splitDims[NodeKind##Node::LHSIdx] = Axis;                                    \
+  splitDims[NodeKind##Node::RHSIdx] = Axis;                                    \
+  ASSIGN_VALUE_OR_RETURN_ERR(                                                  \
+      CN, parallelizeAndReplaceNode(                                           \
+              F, curNode, curNumOfChunks, NodeKind##Node::LHSIdx,              \
+              NodeKind##Node::ResultIdx, splitDims, /*resultDim*/ Axis,        \
+              modelParallelSplitAlignment));
+
 Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
     Function *F, const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
     const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
@@ -6210,6 +6346,25 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
     // Use this vector to communicate what dims to split to
     // parallelizeAndReplaceNode(). -1 represents not splitting at all.
     llvm::SmallVector<int, 3> splitDims(curNode->getNumInputs(), -1);
+
+    // Set model parallelization axis
+    // Default model parallelization is along axis = 1, hence the default value.
+    dim_t modelParAxis = 1;
+    switch (parTransformMode) {
+#define MODEL_AXIS_CASE(_N)                                                    \
+  case ParallelTransformKind::Model_Axis##_N:                                  \
+    modelParAxis = _N;                                                         \
+    parTransformMode = ParallelTransformKind::Model;                           \
+    break;
+      MODEL_AXIS_CASE(1)
+      MODEL_AXIS_CASE(2)
+      MODEL_AXIS_CASE(3)
+      MODEL_AXIS_CASE(4)
+      MODEL_AXIS_CASE(5)
+    default:
+      break;
+    }
+
     switch (parTransformMode) {
     case ParallelTransformKind::Data: {
       switch (curNode->getKind()) {
@@ -6221,12 +6376,56 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     FullyConnectedNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind: {
+        splitDims[RowwiseQuantizedFullyConnectedNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN,
+            parallelizeAndReplaceNode(
+                F, curNode, curNumOfChunks,
+                RowwiseQuantizedFullyConnectedNode::InputIdx,
+                RowwiseQuantizedFullyConnectedNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::MatMulNodeKind: {
         splitDims[MatMulNode::LHSIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           MatMulNode::LHSIdx,
                                           MatMulNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind: {
+        splitDims[ChannelwiseQuantizedConvolutionNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN,
+            parallelizeAndReplaceNode(
+                F, curNode, curNumOfChunks,
+                ChannelwiseQuantizedConvolutionNode::InputIdx,
+                ChannelwiseQuantizedConvolutionNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::AdaptiveAvgPoolNodeKind: {
+        splitDims[AdaptiveAvgPoolNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, AdaptiveAvgPoolNode::InputIdx,
+                    AdaptiveAvgPoolNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ReshapeNodeKind: {
+        splitDims[ReshapeNode::InputIdx] = 0;
+        const dim_t batchSize =
+            curNode->getNthInput(ReshapeNode::InputIdx).dims()[0];
+        // Do nothing if reshape applies to the first batch dimension
+        if (batchSize != curNode->getNthResult(0).dims()[0]) {
+          LOG(INFO) << "Reshape changes batch dimension; Disabling data "
+                       "parallel split";
+          break;
+        }
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ReshapeNode::InputIdx,
+                    ReshapeNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::AddNodeKind: {
@@ -6432,6 +6631,9 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
     case ParallelTransformKind::Model: {
       switch (curNode->getKind()) {
       case Kinded::Kind::FullyConnectedNodeKind: {
+        if (modelParAxis != 1) {
+          break;
+        }
         splitDims[FullyConnectedNode::WeightsIdx] = 1;
         splitDims[FullyConnectedNode::BiasIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -6442,6 +6644,9 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         break;
       }
       case Kinded::Kind::MatMulNodeKind: {
+        if (modelParAxis != 1) {
+          break;
+        }
         splitDims[MatMulNode::RHSIdx] = 1;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
@@ -6451,31 +6656,17 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
-        if (curNode->getNthInput(ReluNode::InputIdx).dims().size() < 2) {
-          break;
-        }
-        splitDims[ReluNode::InputIdx] = 1;
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(
-                    F, curNode, curNumOfChunks, ReluNode::InputIdx,
-                    ReluNode::ResultIdx, splitDims,
-                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        SPLIT_ELTWISE_UNARY_OP_HELPER(Relu, modelParAxis);
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
-        auto *CL = llvm::cast<ClipNode>(curNode);
-        if (CL->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
-          break;
-        }
-        splitDims[ClipNode::InputIdx] = 1;
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(
-                    F, curNode, curNumOfChunks, ClipNode::InputIdx,
-                    ClipNode::ResultIdx, splitDims,
-                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        SPLIT_ELTWISE_UNARY_OP_HELPER(Clip, modelParAxis);
         break;
       }
       case Kinded::Kind::SelectNodeKind: {
+        if (modelParAxis != 1) {
+          break;
+        }
         auto *SL = llvm::cast<SelectNode>(curNode);
         if (SL->getNthInput(SelectNode::LHSIdx).dims().size() < 2) {
           break;
@@ -6490,7 +6681,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
+      case Kinded::Kind::AddNodeKind: {
+        SPLIT_ELTWISE_BINARY_OP_HELPER(Add, modelParAxis);
+        break;
+      }
       case Kinded::Kind::TileNodeKind: {
+        if (modelParAxis != 1) {
+          break;
+        }
         if (curNode->getNthInput(TileNode::InputIdx).dims().size() < 2) {
           break;
         }
@@ -6507,6 +6705,9 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         break;
       }
       case Kinded::Kind::ConcatNodeKind: {
+        if (modelParAxis != 1) {
+          break;
+        }
         ConcatNode *concat = llvm::cast<ConcatNode>(curNode);
         RETURN_ERR_IF_NOT(concat->getDim() == 1,
                           "Expected to Model parallelize for concat on dim 1");
@@ -6515,40 +6716,93 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         break;
       }
       case Kinded::Kind::QuantizeNodeKind: {
-        if (curNode->getNthInput(QuantizeNode::InputIdx).dims().size() < 2) {
-          break;
-        }
-        splitDims[QuantizeNode::InputIdx] = 1;
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(
-                    F, curNode, curNumOfChunks, QuantizeNode::InputIdx,
-                    QuantizeNode::ResultIdx, splitDims,
-                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        SPLIT_ELTWISE_UNARY_OP_HELPER(Quantize, modelParAxis);
         break;
       }
       case Kinded::Kind::DequantizeNodeKind: {
-        if (curNode->getNthInput(DequantizeNode::InputIdx).dims().size() < 2) {
+        SPLIT_ELTWISE_UNARY_OP_HELPER(Dequantize, modelParAxis);
+        break;
+      }
+      case Kinded::Kind::BatchedReduceMeanNodeKind: {
+        if (curNode->getNthInput(BatchedReduceMeanNode::BatchIdx)
+                .dims()
+                .size() <= modelParAxis) {
           break;
         }
-        splitDims[DequantizeNode::InputIdx] = 1;
+        splitDims[BatchedReduceMeanNode::BatchIdx] = modelParAxis;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
-                    F, curNode, curNumOfChunks, DequantizeNode::InputIdx,
-                    DequantizeNode::ResultIdx, splitDims,
-                    /*resultDim*/ 1, modelParallelSplitAlignment));
+                    F, curNode, curNumOfChunks, BatchedReduceMeanNode::BatchIdx,
+                    BatchedReduceMeanNode::ResultIdx, splitDims,
+                    /*resultDim*/ modelParAxis, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::RescaleQuantizedNodeKind: {
-        if (curNode->getNthInput(RescaleQuantizedNode::InputIdx).dims().size() <
-            2) {
+        SPLIT_ELTWISE_UNARY_OP_HELPER(RescaleQuantized, modelParAxis);
+        break;
+      }
+      case Kinded::Kind::BatchNormalizationNodeKind: {
+        auto *BN = llvm::cast<BatchNormalizationNode>(curNode);
+
+        if (modelParAxis != BN->getChannelIdx()) {
           break;
         }
-        splitDims[RescaleQuantizedNode::InputIdx] = 1;
+        if (BN->getInput().dims().size() <= modelParAxis) {
+          break;
+        }
+        splitDims[BatchNormalizationNode::InputIdx] = modelParAxis;
+        splitDims[BatchNormalizationNode::ScaleIdx] = 0;
+        splitDims[BatchNormalizationNode::BiasIdx] = 0;
+        splitDims[BatchNormalizationNode::MeanIdx] = 0;
+        splitDims[BatchNormalizationNode::VarIdx] = 0;
+
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN,
+            parallelizeAndReplaceNode(
+                F, curNode, curNumOfChunks, BatchNormalizationNode::InputIdx,
+                BatchNormalizationNode::ResultIdx, splitDims,
+                /*resultDim*/ modelParAxis, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::ResizeNearestNodeKind: {
+        SPLIT_ELTWISE_UNARY_OP_HELPER(ResizeNearest, modelParAxis);
+        break;
+      }
+      case Kinded::Kind::ConvolutionNodeKind: {
+        if (modelParAxis != 3) {
+          break;
+        }
+        splitDims[ConvolutionNode::FilterIdx] = 0;
+        splitDims[ConvolutionNode::BiasIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
-                    F, curNode, curNumOfChunks, RescaleQuantizedNode::InputIdx,
-                    RescaleQuantizedNode::ResultIdx, splitDims,
-                    /*resultDim*/ 1, modelParallelSplitAlignment));
+                    F, curNode, curNumOfChunks, ConvolutionNode::FilterIdx,
+                    ConvolutionNode::ResultIdx, splitDims,
+                    /*resultDim*/ 3, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::Convolution3DNodeKind: {
+        if (modelParAxis != 4) {
+          break;
+        }
+        splitDims[Convolution3DNode::FilterIdx] = 0;
+        splitDims[Convolution3DNode::BiasIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, Convolution3DNode::FilterIdx,
+                    Convolution3DNode::ResultIdx, splitDims,
+                    /*resultDim*/ 4, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::AvgPoolNodeKind: {
+        auto *APN = llvm::cast<AvgPoolNode>(curNode);
+        if (APN->getLayout() != 2) {
+          break;
+        }
+        if (modelParAxis != 4) {
+          break;
+        }
+        SPLIT_ELTWISE_UNARY_OP_HELPER(AvgPool, 4);
         break;
       }
       default:
@@ -6560,7 +6814,7 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       break;
     }
 
-    case ParallelTransformKind::None:
+    default:
       break;
     }
 

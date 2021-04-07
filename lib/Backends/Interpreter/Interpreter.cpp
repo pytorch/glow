@@ -140,6 +140,35 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::Int32ITy, ElemKind::FloatTy, ElemKind::Float16Ty,
          ElemKind::BFloat16Ty, ElemKind::Int8QTy});
 
+  case Kinded::Kind::DynamicQuantizedFullyConnectedNodeKind:
+    return (NI.getInElemTy(DynamicQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::Float16Ty ||
+            NI.getInElemTy(DynamicQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::FloatTy) &&
+           NI.getInElemTy(DynamicQuantizedFullyConnectedNode::WeightsIdx) ==
+               ElemKind::Int8QTy &&
+           NI.getInElemTy(DynamicQuantizedFullyConnectedNode::BiasIdx) ==
+               ElemKind::FloatTy;
+
+  case Kinded::Kind::DynamicRowwiseQuantizedFullyConnectedNodeKind:
+    return (NI.getInElemTy(
+                DynamicRowwiseQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::Float16Ty ||
+            NI.getInElemTy(
+                DynamicRowwiseQuantizedFullyConnectedNode::InputIdx) ==
+                ElemKind::FloatTy) &&
+           NI.getInElemTy(
+               DynamicRowwiseQuantizedFullyConnectedNode::WeightsIdx) ==
+               ElemKind::Int8QTy &&
+           NI.getInElemTy(DynamicRowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(
+               DynamicRowwiseQuantizedFullyConnectedNode::ScalesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(
+               DynamicRowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
+               ElemKind::Int32ITy;
+
   case Kinded::Kind::MatMulNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -190,10 +219,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy});
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
+  case Kinded::Kind::LayerNormalizationNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::SoftPlusNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
   case Kinded::Kind::SliceNodeKind:
@@ -229,7 +260,6 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::BoolTy});
 
   case Kinded::Kind::AbsNodeKind:
-  case Kinded::Kind::NegNodeKind:
   case Kinded::Kind::SignNodeKind:
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
@@ -241,6 +271,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ErfNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
+
+  case Kinded::Kind::NegNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Int8QTy});
 
   case Kinded::Kind::FloorNodeKind:
   case Kinded::Kind::TruncateNodeKind:
@@ -263,6 +297,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {}, {IsNaNNode::ResultIdx}) &&
            (NI.getOutElemTy(IsNaNNode::ResultIdx) == ElemKind::BoolTy);
 
+  case Kinded::Kind::BitwiseAndNodeKind:
+  case Kinded::Kind::BitwiseOrNodeKind:
+  case Kinded::Kind::BitwiseXorNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::BoolTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
+
+  case Kinded::Kind::BitwiseNotNodeKind:
   case Kinded::Kind::ModuloNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int32ITy, ElemKind::Int64ITy});
@@ -666,6 +707,18 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseToDenseMaskNode::ValuesIdx) ==
             NI.getOutElemTy(SparseToDenseMaskNode::ResultIdx));
 
+  case Kinded::Kind::SparseLabelSplitNodeKind:
+    return (NI.getInElemTy(SparseLabelSplitNode::LengthsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getInElemTy(SparseLabelSplitNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(SparseLabelSplitNode::ValuesIdx) ==
+            NI.getOutElemTy(SparseLabelSplitNode::LabelValuesIdx)) &&
+           (NI.getOutElemTy(SparseLabelSplitNode::ExampleIdsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getOutElemTy(SparseLabelSplitNode::GradientOffsetMapIdx) ==
+            ElemKind::Int32ITy);
+
   case Kinded::Kind::TraceEventNodeKind:
     return NI.getInElemTy(TraceEventNode::DataIdx) == ElemKind::Int64ITy;
 
@@ -744,6 +797,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::BatchedPairwiseDotProductGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
+  case Kinded::Kind::BucketizeNodeKind:
+    return NI.getInElemTy(BucketizeNode::InputIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(BucketizeNode::ResultIdx) == ElemKind::Int32ITy;
 
   default:
     return false;
@@ -841,7 +898,10 @@ bool Interpreter::shouldLower(const Node *N) const {
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
+  case Kinded::Kind::BucketizeNodeKind:
     return false;
+  case Kinded::Kind::LayerNormalizationNodeKind:
+    return interpreter::flags::LowerLayerNormalization;
   default:
     return true;
   }
@@ -1018,3 +1078,8 @@ Expected<bool> Interpreter::transformPostLowering(
 
 void Interpreter::parseBackendSpecificOptions(
     const BackendOptions &opts) const {}
+
+Expected<double> Interpreter::estimateNodeCost(const glow::Node *node) const {
+  // Using default cost from Partitioner which is 1.
+  return 1.0;
+}
