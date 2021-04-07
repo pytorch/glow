@@ -23,6 +23,7 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -16183,11 +16184,16 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16) {
       /* useFP16Accumulation */ true);
 }
 
-TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
-  CHECK_IF_ENABLED();
+template <typename IndexType>
+static void testRepeatedSLSWithPartialTensors(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, std::vector<Tensor> &unownedTensors,
+    llvm::StringRef backendName, ElemKind ITy) {
+  // Turn on input sanitization
+  glow::runtime::flags::SanitizeInputsPercent = 100;
 
   // This test is only meaningful if the backend supports partial tensors.
-  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  ASSERT_TRUE(EE.getBackend(backendName).supportsPartialTensors());
 
   constexpr dim_t embeddingRows = 1275;
   constexpr dim_t numLengths = 20;
@@ -16196,27 +16202,26 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   constexpr dim_t iterations = 33;
 
   auto *data =
-      mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
+      mod.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
   data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
-                                                         mod_.getPRNG());
-  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {maxIndices},
-                                         "indices", false);
-  auto *lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
-                                         "lengths", false);
-  auto *SLS = F_->createSparseLengthsSum("SLS", data, indices, lengths);
-  auto *save = F_->createSave("save", SLS);
+                                                         mod.getPRNG());
+  auto *indices = mod.createPlaceholder(ITy, {maxIndices}, "indices", false);
+  auto *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {numLengths}, "lengths", false);
+  auto *SLS = F->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *save = F->createSave("save", SLS);
   auto *outPH = save->getPlaceholder();
-  EE_.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer);
 
-  Tensor indicesReal(ElemKind::Int64ITy, {numIndices});
-  indicesReal.getHandle<int64_t>().randomize(0, embeddingRows - 1,
-                                             mod_.getPRNG());
+  Tensor indicesReal(ITy, {numIndices});
+  indicesReal.getHandle<IndexType>().randomize(0, embeddingRows - 1,
+                                               mod.getPRNG());
   Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
                         indicesReal.getSizeInBytes());
   Tensor indicesPadded(indices->getType());
   indicesPadded.zero();
   memcpy(indicesPadded.getUnsafePtr(), indicesReal.getUnsafePtr(),
-         numIndices * sizeof(int64_t));
+         numIndices * sizeof(IndexType));
 
   Tensor lengthsReal(ElemKind::Int32ITy, {numLengths});
   lengthsReal.getHandle<int32_t>().clear(1);
@@ -16225,9 +16230,9 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   Tensor lengthsPadded(ElemKind::Int32ITy, {numLengths});
   lengthsPadded.assign(&lengthsReal);
 
-  bindings_.insert(indices, std::move(indicesPartial));
-  bindings_.insert(lengths, std::move(lengthsPartial));
-  bindings_.allocate(outPH);
+  bindings.insert(indices, std::move(indicesPartial));
+  bindings.insert(lengths, std::move(lengthsPartial));
+  bindings.allocate(outPH);
 
   PlaceholderBindings paddedBindings;
   paddedBindings.insert(indices, std::move(indicesPadded));
@@ -16235,16 +16240,34 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   paddedBindings.allocate(outPH);
 
   for (dim_t i = 0; i < iterations; i++) {
-    EE_.run(bindings_);
-    EE_.run(paddedBindings);
-    ASSERT_TRUE(bindings_.get(outPH)->isEqual(*paddedBindings.get(outPH)));
+    EE.run(bindings);
+    EE.run(paddedBindings);
+    ASSERT_TRUE(bindings.get(outPH)->isEqual(*paddedBindings.get(outPH)));
   }
 
   // Keep these around so their memory is not freed at the end of the
   // test/scope. This is so that inside TearDown during import/export testing
   // the data is still around.
-  unownedTensors_.push_back(std::move(indicesReal));
-  unownedTensors_.push_back(std::move(lengthsReal));
+  unownedTensors.push_back(std::move(indicesReal));
+  unownedTensors.push_back(std::move(lengthsReal));
+}
+
+// Checking with int32 indices
+TEST_P(OperatorTest, RepeatedSLSWithPartialTensors_int32) {
+  CHECK_IF_ENABLED();
+
+  testRepeatedSLSWithPartialTensors<int32_t>(bindings_, mod_, F_, EE_,
+                                             unownedTensors_, getBackendName(),
+                                             ElemKind::Int32ITy);
+}
+
+// Checking with int64 indices
+TEST_P(OperatorTest, RepeatedSLSWithPartialTensors_int64) {
+  CHECK_IF_ENABLED();
+
+  testRepeatedSLSWithPartialTensors<int64_t>(bindings_, mod_, F_, EE_,
+                                             unownedTensors_, getBackendName(),
+                                             ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, RepeatedSLWSWithPartialTensors) {
