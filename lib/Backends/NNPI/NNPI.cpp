@@ -753,6 +753,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   } break;
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::BatchedMulNodeKind:
+  case Kinded::Kind::BucketizeNodeKind:
     return false;
   default:
     break;
