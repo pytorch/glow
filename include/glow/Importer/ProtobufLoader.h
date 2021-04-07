@@ -20,6 +20,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Importer/ModelLoaderPrecisionConfiguration.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Support/Error.h"
 
@@ -234,6 +235,11 @@ protected:
   bool zeroScaleFP16Clip_{false};
   /// Whether to the range of any loaded qparams to min/max of FP16.
   bool clipQuantRangeToFP16_{false};
+  /// Model loader precision config info
+  ModelLoaderPrecisionConfiguration modelLoaderPrecisionConfig_;
+  /// A vector of operator input and output names used in updating precision
+  /// if specified via node precision info
+  std::vector<std::string> operatorPrecisionUpdateInputOutputNames_;
 
   // Delete all Constants that have no users. This is useful because some
   // Constants may have been copied and modified during loading instead of used
@@ -255,6 +261,19 @@ protected:
   createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T,
                                bool isStatic = false, bool isTrainable = false,
                                const std::string &layout = ANY_LAYOUT);
+
+  /// \return whether input/output name \p name of an operator requested in
+  /// FP16 present in \ref operatorPrecisionUpdateInputOutputNames_
+  bool isOpRequestedInFP16Precision(llvm::StringRef name) const;
+
+  /// If \p outputName is specified to run in FP16 precision and output type
+  /// is fp16 add convert to fp32 node and update \ref nodeValueByName_ map,
+  /// so that next operator in the model receives appropriate nodeValue.
+  void setNodeOutputMapping(llvm::StringRef outputName, NodeValue NV);
+
+  /// \returns updated NodeValue with correct precision if \p name present in
+  /// \ref operatorPrecisionUpdateInputOutputNames_ by adding ConvertTo node
+  NodeValue updateNodeValuePrecision(llvm::StringRef name, NodeValue NV);
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this

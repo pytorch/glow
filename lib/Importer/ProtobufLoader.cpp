@@ -73,13 +73,51 @@ ProtobufLoader::getStaticPlaceholderByNameOrNull(llvm::StringRef name) const {
   return (res && res->isStatic()) ? res : nullptr;
 }
 
+bool ProtobufLoader::isOpRequestedInFP16Precision(llvm::StringRef name) const {
+  auto opPrecisionUpdateItr =
+      std::find(operatorPrecisionUpdateInputOutputNames_.begin(),
+                operatorPrecisionUpdateInputOutputNames_.end(), name);
+  return opPrecisionUpdateItr != operatorPrecisionUpdateInputOutputNames_.end();
+}
+
+void ProtobufLoader::setNodeOutputMapping(llvm::StringRef outputName,
+                                          NodeValue NV) {
+  // If output name is specified to run in FP16 precision and output type
+  // is fp16 add convert to fp32 node and update nodeValueByName_ map,
+  // so that next operator in the model receives appropriate nodeValue.
+  if (isOpRequestedInFP16Precision(outputName) &&
+      NV.getElementType() == ElemKind::Float16Ty) {
+    std::string opName = outputName.str() + "_convToFP32";
+    auto *CT = G_->createConvertTo(opName, NV, ElemKind::FloatTy);
+    nodeValueByName_[outputName] = CT->getResult();
+  } else {
+    nodeValueByName_[outputName] = NV;
+  }
+}
+
 Constant *ProtobufLoader::getConstantByNameOrNull(llvm::StringRef name) const {
   auto it = nodeValueByName_.find(name);
   if (it == nodeValueByName_.end()) {
     return nullptr;
   }
-  auto *res = llvm::dyn_cast<Constant>(it->second.getNode());
-  return res ? res : nullptr;
+  NodeValue NV = it->second;
+  auto *res = llvm::dyn_cast<Constant>(NV.getNode());
+  // If name is specified to run in FP16 precision and output type
+  // is FP32 add ConvertTo FP16 node to the original nodeValue and return the
+  // updated nodeValue.
+  // For Constant inputs, convertTofp16 nodes cannot be added
+  // because it won't be Constant anymore and cannot access the tensor
+  // payload. So for Constant inputs change tensor datatype and tensor
+  // payload to fp16.
+  if (res != nullptr && isOpRequestedInFP16Precision(name) &&
+      NV.getElementType() == ElemKind::FloatTy) {
+    auto inTy = mod_.uniqueType(ElemKind::Float16Ty, NV.dims());
+    Tensor &payLoadT = res->getPayloadMutable();
+    payLoadT.convertToType(ElemKind::Float16Ty);
+    res->setType(Storage::OutputIdx, inTy);
+    res->setPayloadType(inTy);
+  }
+  return res;
 }
 
 Expected<Constant *>
@@ -126,6 +164,20 @@ ProtobufLoader::getInputByName(llvm::StringRef name) const {
   return it->second;
 }
 
+NodeValue ProtobufLoader::updateNodeValuePrecision(llvm::StringRef name,
+                                                   NodeValue NV) {
+  // If name is specified to run in FP16 precision and output type is FP32
+  // add ConvertTo FP16 node to the original nodeValue and return the
+  // updated nodeValue.
+  if (isOpRequestedInFP16Precision(name) &&
+      NV.getElementType() == ElemKind::FloatTy) {
+    std::string opName = name.str() + "_convToFP16";
+    auto *N = G_->createConvertTo(opName, NV, ElemKind::Float16Ty);
+    return N->getResult();
+  }
+  return NV;
+}
+
 NodeValue
 ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name,
                                                   bool ignoreSrcFun) {
@@ -138,14 +190,14 @@ ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name,
   // and is accessible to any Node.
   NodeValue NV = it->second;
   if (llvm::isa<Storage>(NV)) {
-    return NV;
+    return updateNodeValuePrecision(name, NV);
   }
 
   // Check if the current Function G_ we are loading into is the same as the
   // Function of the NV we found; if so then return it.
   Function *srcF = NV.getNode()->getParent();
   if (srcF == G_ || ignoreSrcFun) {
-    return NV;
+    return updateNodeValuePrecision(name, NV);
   }
 
   // Otherwise we must be looking up a NV from a different Function in the
@@ -166,7 +218,7 @@ ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name,
   } else {
     intermedPH = itPH->second;
   }
-  return intermedPH->getOutput();
+  return updateNodeValuePrecision(name, intermedPH->getOutput());
 }
 
 Expected<NodeValue> ProtobufLoader::getNodeValueByName(llvm::StringRef name,
@@ -191,7 +243,7 @@ Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
   Constant *node = mod_.createConstant(name, std::move(tensor), layout);
-  nodeValueByName_[name] = node->getOutput();
+  setNodeOutputMapping(name, node->getOutput());
   return Error::success();
 }
 
@@ -319,6 +371,12 @@ void ProtobufLoader::setupLoader(llvm::ArrayRef<const char *> tensorNames,
       ASSIGN_VALUE_OR_RETURN_ERR(
           placeholder, createAndRegisterPlaceholder(tensorNames[i], T));
       inputVarsByName_.try_emplace(tensorNames[i], placeholder);
+    }
+    // Set model loader precision config if node precision info is provided
+    if (isModelLoaderPrecisionOptEnabled()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          modelLoaderPrecisionConfig_,
+          deserializeModelLoaderPrecisionInfosFromYaml());
     }
     return Error::success();
   };

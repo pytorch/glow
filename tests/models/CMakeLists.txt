@@ -10,6 +10,11 @@ foreach(filename ${files})
   configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)
 endforeach(filename)
 
+file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} onnxModels/*.yaml)
+foreach(filename ${files})
+  configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)
+endforeach(filename)
+
 file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tfliteModels/*)
 foreach(filename ${files})
   configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)

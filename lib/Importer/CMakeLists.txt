@@ -31,6 +31,7 @@ add_custom_command(
   DEPENDS ${CAFFE_HDRS})
 
 add_library(Importer
+              ModelLoaderPrecisionConfiguration.cpp
               ProtobufLoader.cpp
               Caffe2ModelLoader.cpp
               ONNXModelLoader.cpp
