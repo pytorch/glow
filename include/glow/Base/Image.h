@@ -104,10 +104,22 @@ std::pair<float, float> normModeToRange(ImageNormalizationMode mode);
 
 /// Reads a png image header from png file \p filename and \returns a tuple
 /// containing height, width, and a bool if it is grayscale or not.
-std::tuple<size_t, size_t, bool> getPngInfo(const char *filename);
+std::tuple<dim_t, dim_t, bool> getPngInfo(const char *filename);
+
+/// Reads a PPM image header from PPM file descriptor \p fp and \returns a tuple
+/// containing height, width, and a bool if it is grayscale or not. \p filename
+/// is passed only as a context to provide more detailed error reporting.
+std::tuple<dim_t, dim_t, bool> getPpmInfo(FILE *fp, const char *filename);
+
+/// Reads a PPM image header from PPM file \p filename and \returns a tuple
+/// containing height, width, and a bool if it is grayscale or not.
+std::tuple<dim_t, dim_t, bool> getPpmInfo(const char *filename);
 
 /// Returns whether file \p filename is in png format.
 bool isPngFormat(const std::string &filename);
+
+/// Check if file \p filename is in PPM format.
+bool isPpmFormat(const std::string &filename);
 
 /// Reads a png image. \returns True if an error occurred. The values of the
 /// image are in the range \p range.
@@ -123,48 +135,56 @@ bool writePngImage(Tensor *T, const char *filename,
                    llvm::ArrayRef<float> mean = zeroMean,
                    llvm::ArrayRef<float> stddev = oneStd);
 
-/// Read a png image and preprocess it according to several parameters. Create a
-/// tensor and store the preprocessed image data into this tensor.
-/// \param filename the png file to read.
+/// Reads a PPM image. \returns True if an error occurred. The values of the
+/// image are in the range \p range. Performs pre-processing using \p mean and
+/// \p stddev.
+bool readPpmImage(Tensor *T, const char *filename,
+                  std::pair<float, float> range,
+                  llvm::ArrayRef<float> mean = zeroMean,
+                  llvm::ArrayRef<float> stddev = oneStd);
+
+/// Read a PNG/PPM image and preprocess it according to several parameters.
+/// Create a tensor and store the preprocessed image data into this tensor.
+/// \param filename the PNG/PPM file to read.
 /// \param imageNormMode normalize values to this range.
 /// \param imageChannelOrder the order of color channels.
 /// \param imageLayout the order of dimensions (channel, height, and width).
 /// \param mean use special mean to normalize.
 /// \param stdev use special stddev to normalize.
-Tensor readPngImageAndPreprocess(llvm::StringRef filename,
-                                 ImageNormalizationMode imageNormMode,
-                                 ImageChannelOrder imageChannelOrder,
-                                 ImageLayout imageLayout,
-                                 llvm::ArrayRef<float> mean = zeroMean,
-                                 llvm::ArrayRef<float> stddev = oneStd);
+Tensor readPngPpmImageAndPreprocess(llvm::StringRef filename,
+                                    ImageNormalizationMode imageNormMode,
+                                    ImageChannelOrder imageChannelOrder,
+                                    ImageLayout imageLayout,
+                                    llvm::ArrayRef<float> mean = zeroMean,
+                                    llvm::ArrayRef<float> stddev = oneStd);
 
-/// Read a png image and preprocess it according to several parameters. Take a
-/// tensor as a parameter and store the preprocessed image data into this
+/// Read a PNG/PPM image and preprocess it according to several parameters. Take
+/// a tensor as a parameter and store the preprocessed image data into this
 /// tensor.
 /// \param imageData the tensor into which the preprocessed image data
 ///  will be stored.
-/// \param filename the png file to read.
+/// \param filename the PNG/PPM file to read.
 /// \param imageNormMode normalize values to this range.
 /// \param imageChannelOrder the order of color channels.
 /// \param imageLayout the order of dimensions (channel, height, and width).
 /// \param mean use special mean to normalize.
 /// \param stdev use special stddev to normalize.
-void readPngImageAndPreprocess(Tensor &imageData, llvm::StringRef filename,
-                               ImageNormalizationMode imageNormMode,
-                               ImageChannelOrder imageChannelOrder,
-                               ImageLayout imageLayout,
-                               llvm::ArrayRef<float> mean = zeroMean,
-                               llvm::ArrayRef<float> stddev = oneStd);
+void readPngPpmImageAndPreprocess(Tensor &imageData, llvm::StringRef filename,
+                                  ImageNormalizationMode imageNormMode,
+                                  ImageChannelOrder imageChannelOrder,
+                                  ImageLayout imageLayout,
+                                  llvm::ArrayRef<float> mean = zeroMean,
+                                  llvm::ArrayRef<float> stddev = oneStd);
 
 /// \param mean use special mean to normalize.
 /// \param stdev use special stddev to normalize.
-void readPngImagesAndPreprocess(Tensor &inputImageData,
-                                const llvm::ArrayRef<std::string> &filenames,
-                                ImageNormalizationMode imageNormMode,
-                                ImageChannelOrder imageChannelOrder,
-                                ImageLayout imageLayout,
-                                llvm::ArrayRef<float> mean,
-                                llvm::ArrayRef<float> stddev);
+void readPngPpmImagesAndPreprocess(Tensor &inputImageData,
+                                   const llvm::ArrayRef<std::string> &filenames,
+                                   ImageNormalizationMode imageNormMode,
+                                   ImageChannelOrder imageChannelOrder,
+                                   ImageLayout imageLayout,
+                                   llvm::ArrayRef<float> mean,
+                                   llvm::ArrayRef<float> stddev);
 
 /// Returns whether file \p filename is in Numpy .npy format.
 bool isNumpyNpyFormat(const std::string &filename);
