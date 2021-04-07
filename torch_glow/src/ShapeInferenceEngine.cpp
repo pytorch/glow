@@ -113,34 +113,34 @@ Error ShapeInferenceEngine::ShapeInference::infer(
     const torch::jit::Node *node) {
 
   // TensorOutput or TensorListOutput?
-  if (std::holds_alternative<AddShapeFn1>(addShapeFn)) {
+  if (addShapeFn.which() == 0) {
     TensorOutput output;
-    auto add = std::get<AddShapeFn1>(addShapeFn);
-    if (std::holds_alternative<InferenceFn1>(inferenceFn)) {
+    auto add = boost::get<AddShapeFn0>(addShapeFn);
+    if (inferenceFn.which() == 0) {
       ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 std::get<InferenceFn1>(inferenceFn)(meta));
-    } else if (std::holds_alternative<InferenceFn2>(inferenceFn)) {
+                                 boost::get<InferenceFn0>(inferenceFn)(meta));
+    } else if (inferenceFn.which() == 1) {
       ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 std::get<InferenceFn2>(inferenceFn)(node));
-    } else if (std::holds_alternative<InferenceFn3>(inferenceFn)) {
+                                 boost::get<InferenceFn1>(inferenceFn)(node));
+    } else if (inferenceFn.which() == 2) {
       ASSIGN_VALUE_OR_RETURN_ERR(
-          output, std::get<InferenceFn3>(inferenceFn)(meta, node));
+          output, boost::get<InferenceFn2>(inferenceFn)(meta, node));
     } else {
       return MAKE_ERR("Shape inference misconfiguration");
     }
     (engine->*(add))(node, output);
   } else {
     TensorListOutput output;
-    auto add = std::get<AddShapeFn2>(addShapeFn);
-    if (std::holds_alternative<InferenceFn4>(inferenceFn)) {
+    auto add = boost::get<AddShapeFn1>(addShapeFn);
+    if (inferenceFn.which() == 3) {
       ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 std::get<InferenceFn4>(inferenceFn)(meta));
-    } else if (std::holds_alternative<InferenceFn5>(inferenceFn)) {
+                                 boost::get<InferenceFn3>(inferenceFn)(meta));
+    } else if (inferenceFn.which() == 4) {
       ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 std::get<InferenceFn5>(inferenceFn)(node));
-    } else if (std::holds_alternative<InferenceFn6>(inferenceFn)) {
+                                 boost::get<InferenceFn4>(inferenceFn)(node));
+    } else if (inferenceFn.which() == 5) {
       ASSIGN_VALUE_OR_RETURN_ERR(
-          output, std::get<InferenceFn6>(inferenceFn)(meta, node));
+          output, boost::get<InferenceFn5>(inferenceFn)(meta, node));
     } else {
       return MAKE_ERR("Shape inference misconfiguration");
     }
