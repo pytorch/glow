@@ -4123,8 +4123,10 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
 
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();
+  } else {
+    return MAKE_ERR(strFormat("Lookup table type '%s' not supported!",
+                              in.getType()->getElementName().str().c_str()));
   }
-  return MAKE_ERR("Invalid option");
 }
 
 Error ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
