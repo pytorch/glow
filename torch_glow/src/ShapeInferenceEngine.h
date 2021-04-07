@@ -270,6 +270,9 @@ private:
   // Shape inference for fb::lengths_to_offsets
   static Expected<TensorOutput>
   lengthsToOffsets(const MetaStack &variableMetas);
+  // Shape inference for fb::Fused8BitRowwiseQuantizedToFloat
+  static Expected<TensorOutput>
+  fused8BitRowwiseQuantizedToFloat(const MetaStack &variableMetas);
   // Shape inference for prim::dtype
   static Expected<TensorOutput> primDtype(const MetaStack &variableMetas);
   // Shape inference for fb::fast_gather
