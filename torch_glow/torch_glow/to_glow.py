@@ -104,9 +104,10 @@ def lower(
     if replication_count is not None:
         compilation_group.get_settings().set_replication_count(replication_count)
     if backend_specific_options is not None:
-        compilation_group.get_settings().set_backend_specific_opts(
-            backend_specific_options
-        )
+        for opt_key in backend_specific_options:
+            compilation_group.get_settings().backend_specific_opts_insert(
+                opt_key, backend_specific_options[opt_key]
+            )
     compilation_group.input_sets_append(input_specs_from_tensors(example_inputs))
     spec.compilation_groups_append(compilation_group)
     return to_glow(model, {"forward": spec})
