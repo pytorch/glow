@@ -390,10 +390,11 @@ struct CompilationContext {
                       "Cannot currently perform elem kind merging into PHs "
                       "when also preventing constant modification.");
 
-    RETURN_ERR_IF_NOT(!(serializeCompiledDAG &&
-                        !optimizationOpts.delayAndRecordConstantModification),
-                      "When serializing the compiled DAG, must also enable "
-                      "delayAndRecordConstantModification.");
+    RETURN_ERR_IF_NOT(
+        !(serializeCompiledDAG && skipProvisioning &&
+          !optimizationOpts.delayAndRecordConstantModification),
+        "When serializing the compiled DAG while skipping provisioning, must "
+        "also enable delayAndRecordConstantModification.");
 
     RETURN_ERR_IF_NOT(
         !precisionConfig.loadUniquedDummyQParams ||
