@@ -152,7 +152,7 @@ bool EnableDRT = false;
 unsigned DeviceInitTimeoutMs = 5000;
 unsigned SanitizeInputsPercent = 0;
 uint64_t BigTableThresholdBytes = 104857600; // 100MB
-unsigned NumCompilationThreads = 30;
+unsigned NumCompilationThreads = 1;
 } // namespace flags
 } // namespace runtime
 } // namespace glow
