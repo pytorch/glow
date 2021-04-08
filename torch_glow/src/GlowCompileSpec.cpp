@@ -85,6 +85,8 @@ void registerPyTorchGlowCustomClasses() {
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, num_devices_to_use);
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings, available_devices);
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, replication_count);
   ADD_MAP_FIELD_DEFS(CompilationGroupSettings_registry,
                      CompilationGroupSettings, backend_specific_opts);

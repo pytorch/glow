@@ -492,15 +492,31 @@ Error applySettingsOverrideFlagsToPyTorchLoaderSettings(
   return Error::success();
 }
 
+Error setAvailableDevicesIfRequired(
+    const CompilationGroupSettings &newSettings,
+    std::shared_ptr<runtime::HostManager> hostManagerPtr,
+    bool &availableDevicesModified) {
+  if (!newSettings.available_devices.empty()) {
+    RETURN_ERR_IF_NOT(newSettings.num_devices_to_use <=
+                          newSettings.available_devices.size(),
+                      "Number of devices to use must be less or equal to the "
+                      "number of available physical devices.");
+
+    std::vector<size_t> availableDevices(newSettings.available_devices.begin(),
+                                         newSettings.available_devices.end());
+    hostManagerPtr->setAvailableDevices(availableDevices);
+    availableDevicesModified = true;
+  }
+  return Error::success();
+}
+
 Error applyCompilationGroupSettingsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings,
     const CompilationGroupSettings &newSettings) {
-  if (newSettings.num_devices_to_use == -1) {
-    settings.saturateHost = true;
-  } else {
-    return MAKE_ERR("Only num_devices_to_use=-1 supported currently");
+  settings.saturateHost = true;
+  if (newSettings.num_devices_to_use > 0) {
+    settings.saturateKDevices = newSettings.num_devices_to_use;
   }
-
   settings.replicationCount = newSettings.replication_count;
   settings.backendSpecificOpts = newSettings.backend_specific_opts;
   settings.convertToFP16 = newSettings.convert_to_fp16;
@@ -701,10 +717,16 @@ compileImpl(const torch::jit::Module &origModule,
                         "self must have no uses in order to lower to Glow.");
       graph->block()->eraseInput(0);
 
+      auto hostManagerPtr = glow::getHostManager(baseSettings);
+      // Different compilation groups settings may cause to modify the available
+      // devices in HostManager. We store the current state of available devices
+      // to be able to restore to this state after each compilation.
+      auto currAvailableDevices = hostManagerPtr->availableDevices();
+      bool availableDevicesModified = false;
       // Create a corresponding runner and store {handle, runner} pair.
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
-              graph, glow::getHostManager(baseSettings), baseSettings,
+              graph, hostManagerPtr, baseSettings,
               /*useRunOnly*/ !baseSettings.lazyCompile, origGraph,
               origModule._ivalue());
 
@@ -714,6 +736,9 @@ compileImpl(const torch::jit::Module &origModule,
         auto compilationGroupSettings = baseSettings;
         RETURN_IF_ERR(applyCompilationGroupSettingsToPyTorchLoaderSettings(
             compilationGroupSettings, *compilationGroup->settings));
+        RETURN_IF_ERR(setAvailableDevicesIfRequired(*compilationGroup->settings,
+                                                    hostManagerPtr,
+                                                    availableDevicesModified));
         // Compile all input sets in the group (if lazy-compile is set, only the
         // compilation settings will be stored)
         std::vector<InputMetaStack> metaStacks;
@@ -723,6 +748,11 @@ compileImpl(const torch::jit::Module &origModule,
         auto err = runner->warmCache(metaStacks, compilationGroupSettings,
                                      /*loader*/ nullptr,
                                      /*useMaxSizeCompilation*/ false);
+        // If available devices were modified, restore the previous state.
+        if (availableDevicesModified) {
+          hostManagerPtr->setAvailableDevices(currAvailableDevices);
+          availableDevicesModified = false;
+        }
         err = checkForFatalError(std::move(err));
         RETURN_IF_ERR(err);
       }

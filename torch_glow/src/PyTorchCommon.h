@@ -149,6 +149,10 @@ public:
   /// adding networks to HostManager.
   bool saturateHost = false;
 
+  /// If saturateHost is enabled and saturateKDevices is greater than zero,
+  /// this is the number of devices that will be saturated.
+  unsigned saturateKDevices{0};
+
   /// If true then randomize the Constants in the Function loaded by
   /// PyTorchModelLoader.
   bool randomizeConstants = false;

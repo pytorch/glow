@@ -382,6 +382,7 @@ struct CompilationGroupSettings : public JsonSerializableCustomClass {
   ADD_BOOL_FIELD(convert_to_fp16, false)
   // -1 indicates use all available devices
   ADD_INT_FIELD(num_devices_to_use, -1)
+  ADD_VECTOR_FIELD(available_devices, int64_t)
   ADD_INT_FIELD(replication_count, 1)
   ADD_MAP_FIELD(backend_specific_opts, std::string, std::string)
 
@@ -389,6 +390,7 @@ struct CompilationGroupSettings : public JsonSerializableCustomClass {
     folly::dynamic obj = folly::dynamic::object();
     obj["convert_to_fp16"] = convert_to_fp16;
     obj["num_devices_to_use"] = num_devices_to_use;
+    obj["available_devices"] = dynArrayFromVec(available_devices);
     obj["replication_count"] = replication_count;
     obj["backend_specific_opts"] = dynArrayFromMap(backend_specific_opts);
     return obj;
@@ -409,6 +411,13 @@ struct CompilationGroupSettings : public JsonSerializableCustomClass {
     if (dyn.count("num_devices_to_use")) {
       ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, num_devices_to_use,
                                               "num_devices_to_use");
+    }
+
+    if (dyn.count("available_devices")) {
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "available_devices");
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          available_devices,
+          (dynArrayToVec<int64_t>(dyn.at("available_devices"))));
     }
 
     if (dyn.count("replication_count")) {

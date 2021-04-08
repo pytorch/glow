@@ -303,6 +303,9 @@ public:
   /// \returns the number of devices the HostManager owns.
   size_t numDevices() const { return devices_.size(); }
 
+  /// \returns current available devices.
+  std::vector<DeviceIDTy> availableDevices() const { return availableDevices_; }
+
   ~HostManager();
 
   /// String const for logging current queue size in glow

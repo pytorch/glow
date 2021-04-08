@@ -2085,3 +2085,34 @@ TEST_F(PartitionerTest, resourceCountValidationTest) {
   auto dagList = partitioner.partition(cctx);
   EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
 }
+
+/// Tests that the given net is assigned and duplicated on the given logical
+/// devices.
+TEST_F(PartitionerTest, saturateKDevicesTest) {
+  createSimpleModule(mod_);
+  std::vector<DeviceInfo> devices = {{2048, "Interpreter", {}},
+                                     {2048, "Interpreter", {}},
+                                     {2048, "Interpreter", {}}};
+  auto partitioner = Partitioner(&mod_, devices, false);
+  // Partitioner should create DAG without partitioning, duplicate it and
+  // assign to the given logical devices.
+  DAGListTy dagList;
+  CompilationContext cctx;
+  cctx.saturateHost = true;
+  cctx.saturateKDevices = 2;
+  ASSIGN_VALUE_OR_FAIL_TEST(dagList, partitioner.partition(cctx));
+  EXPECT_EQ(dagList.size(), 1);
+
+  int numOfInterpreterBackends = 0;
+  for (auto &dag : dagList) {
+    for (auto &node : dag.nodes) {
+      // Verify the node is assigned to K devices.
+      EXPECT_EQ(node->logicalDevices.size(), cctx.saturateKDevices);
+
+      if (node->backendName == "Interpreter") {
+        numOfInterpreterBackends++;
+      }
+    }
+  }
+  EXPECT_EQ(numOfInterpreterBackends, 1);
+}
