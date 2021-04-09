@@ -3559,7 +3559,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *scalePtr = emitConstFloatArray(builder, RNI->getScale());
     auto *destDims = emitValueDims(builder, result);
     auto *srcDims = emitValueDims(builder, input);
-    auto *F = getFunction("resizenearest", input->getElementType());
+    auto *F = getFunction("resize_nearest", input->getElementType());
     createCall(builder, F, {resultPtr, inputPtr, scalePtr, srcDims, destDims});
     break;
   }
@@ -3577,7 +3577,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *scalePtr = emitConstFloatArray(builder, RBI->getScale());
     auto *destDims = emitValueDims(builder, result);
     auto *srcDims = emitValueDims(builder, input);
-    auto *F = getFunction("resizebilinear", input->getElementType());
+    auto *F = getFunction("resize_bilinear", input->getElementType());
     createCall(builder, F, {resultPtr, inputPtr, scalePtr, srcDims, destDims});
     break;
   }
