@@ -42,6 +42,7 @@ struct TensorOutput {
 struct TensorListOutput {
   TensorListShape shape;
   c10::ScalarType dtype;
+  std::vector<c10::ScalarType> dtypeList;
 };
 
 struct VariableMeta {
@@ -292,6 +293,9 @@ private:
   static Expected<TensorOutput> layerNorm(const MetaStack &variableMetas);
   // Shape inference for aten::linear
   static Expected<TensorOutput> linear(const MetaStack &variableMetas);
+  // Shape inference for fb::compressed_indices_remap
+  static Expected<TensorListOutput>
+  compressedIndicesRemap(const MetaStack &variableMetas);
 };
 
 } // namespace glow

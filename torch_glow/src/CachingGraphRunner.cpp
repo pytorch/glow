@@ -271,7 +271,8 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
   InputMetaStack metaStack;
   {
     RECORD_USER_SCOPE("computeShapeInputMetaStack");
-    ASSIGN_VALUE_OR_RETURN_ERR(metaStack, inputMetaStackFromStack(inputs));
+    ASSIGN_VALUE_OR_RETURN_ERR(metaStack,
+                               inputMetaStackFromStack(inputs, true));
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
                   "computeShapeInputMetaStack");

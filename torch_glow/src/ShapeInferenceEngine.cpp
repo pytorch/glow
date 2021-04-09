@@ -238,6 +238,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&listUnpack, &SI::addShapeDefaultList)},
       {"fb::Fused8BitRowwiseQuantizedToFloat",
        ShapeInference(&fused8BitRowwiseQuantizedToFloat, &SI::addShapeDefault)},
+      {"fb::compressed_indices_remap",
+       ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
   });
   return map;
 }
@@ -315,7 +317,11 @@ void ShapeInferenceEngine::addShapeDefaultList(const torch::jit::Node *node,
   for (int i = 0; i < node->outputs().size(); i++) {
     shapeMap_[node->output(i)].listOfShape.emplace_back(
         std::move(output.shape[i]));
-    shapeMap_[node->output(i)].dtype = output.dtype;
+    if (output.dtypeList.size() > 0) {
+      shapeMap_[node->output(i)].dtype = output.dtypeList[i];
+    } else {
+      shapeMap_[node->output(i)].dtype = output.dtype;
+    }
   }
 }
 
@@ -486,6 +492,8 @@ Error ShapeInferenceEngine::getGraphInputShapeType(
       intValue = input.toIntVector();
       shape = {static_cast<long>(intValue.size()), 1};
       dtype = c10::ScalarType::Int;
+    } else if (input.isNone()) {
+      dtype = c10::ScalarType::Undefined;
     } else {
       return MAKE_ERR("Input type doesn't support yet.");
     }
@@ -2077,6 +2085,35 @@ Expected<TensorOutput> ShapeInferenceEngine::fused8BitRowwiseQuantizedToFloat(
   TensorOutput output;
   output.shapeOrIntValues = outputShape;
   output.dtype = c10::ScalarType::Float;
+  return output;
+}
+
+Expected<TensorListOutput>
+ShapeInferenceEngine::compressedIndicesRemap(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 4,
+      strFormat("Expected 4 inputs, got %zu.", variableMetas.size()));
+  const auto &indicesShape = variableMetas[0].shape<TensorShape>();
+  const auto &offsetShape = variableMetas[2].shape<TensorShape>();
+  const auto &weightShape = variableMetas[3].shape<TensorShape>();
+
+  RETURN_ERR_IF_NOT(indicesShape.size() > 0,
+                    "Expected indices shape size is larger than 0");
+  RETURN_ERR_IF_NOT(offsetShape.size() > 0,
+                    "Expected offset shape size is larger than 0");
+
+  TensorListShape resShapes;
+
+  resShapes.emplace_back(indicesShape);
+  resShapes.emplace_back(offsetShape);
+  resShapes.emplace_back(weightShape);
+
+  TensorListOutput output;
+  output.dtypeList.emplace_back(variableMetas[0].dtype);
+  output.dtypeList.emplace_back(variableMetas[2].dtype);
+  output.dtypeList.emplace_back(variableMetas[3].dtype);
+
+  output.shape = resShapes;
   return output;
 }
 

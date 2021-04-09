@@ -7782,6 +7782,10 @@ PyTorchModelLoader::PyTorchModelLoader(
         glow::Type t;
         if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
           inputScalarType = metaStack.inputMetas[i].type;
+          if (inputScalarType == c10::ScalarType::Undefined) {
+            // Handle None input;
+            continue;
+          }
           // TODO: Change Glow Type to use sdim_t to be consistent
           // with other places.
           std::vector<glow::dim_t> dims;
