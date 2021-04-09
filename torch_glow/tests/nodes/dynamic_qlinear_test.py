@@ -44,8 +44,8 @@ class TestLinear(utils.TorchGlowTestCase):
             fusible_ops={"quantized::linear_dynamic"},
             fp16=True,
             skip_to_glow=True,
-            rtol=7e-2,
-            atol=7e-2,
+            rtol=1e-1,
+            atol=1e-1,
         )
 
     def test_linear_per_channel(self):
@@ -67,6 +67,6 @@ class TestLinear(utils.TorchGlowTestCase):
             fusible_ops={"quantized::linear_dynamic"},
             fp16=True,
             skip_to_glow=True,
-            rtol=7e-2,
-            atol=7e-2,
+            rtol=1e-1,
+            atol=1e-1,
         )
