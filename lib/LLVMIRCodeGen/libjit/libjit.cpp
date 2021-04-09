@@ -955,16 +955,16 @@ libjit_resizebilinear_generic(T *dst, const T *src, const float *scale,
         dim_t iw0idx = iw0 * inWdims[3];
         dim_t iw1idx = iw1 * inWdims[3];
 
-        float *v00Ptr = src + ih0idx + iw0idx;
-        float *v01Ptr = src + ih0idx + iw1idx;
-        float *v10Ptr = src + ih1idx + iw0idx;
-        float *v11Ptr = src + ih1idx + iw1idx;
+        const T *p00 = src + ih0idx + iw0idx;
+        const T *p01 = src + ih0idx + iw1idx;
+        const T *p10 = src + ih1idx + iw0idx;
+        const T *p11 = src + ih1idx + iw1idx;
 
         for (dim_t oc = 0; oc < outWdims[3]; ++oc) {
-          float v00 = *v00Ptr++;
-          float v01 = *v01Ptr++;
-          float v10 = *v10Ptr++;
-          float v11 = *v11Ptr++;
+          float v00 = *p00++;
+          float v01 = *p01++;
+          float v10 = *p10++;
+          float v11 = *p11++;
 
           float hd = v00 + (v10 - v00) * (ihf - ih);
           float hw = v01 + (v11 - v01) * (ihf - ih);
