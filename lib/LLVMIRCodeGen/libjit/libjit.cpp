@@ -937,16 +937,16 @@ libjit_resizebilinear_generic(T *dst, const T *src, const float *scale,
                               const dim_t *inWdims, const dim_t *outWdims) {
   for (dim_t ob = 0; ob < outWdims[0]; ++ob) {
     for (dim_t oh = 0; oh < outWdims[1]; ++oh) {
-      for (dim_t ow = 0; ow < outWdims[2]; ++ow) {
-        float ihf = oh / scale[1];
-        float iwf = ow / scale[2];
-        dim_t ih = dim_t(ihf);
-        dim_t iw = dim_t(iwf);
+      float ihf = oh / scale[1];
+      dim_t ih = dim_t(ihf);
+      dim_t ih0 = std::min(ih, inWdims[1] - 1);
+      dim_t ih1 = std::min(ih + 1, inWdims[1] - 1);
 
-        auto ih0 = std::min(ih, inWdims[1] - 1);
-        auto ih1 = std::min(ih + 1, inWdims[1] - 1);
-        auto iw0 = std::min(iw, inWdims[2] - 1);
-        auto iw1 = std::min(iw + 1, inWdims[2] - 1);
+      for (dim_t ow = 0; ow < outWdims[2]; ++ow) {
+        float iwf = ow / scale[2];
+        dim_t iw = dim_t(iwf);
+        dim_t iw0 = std::min(iw, inWdims[2] - 1);
+        dim_t iw1 = std::min(iw + 1, inWdims[2] - 1);
 
         for (dim_t oc = 0; oc < outWdims[3]; ++oc) {
           float v00 = src[libjit_getXYZW(inWdims, ob, ih0, iw0, oc)];
@@ -2897,25 +2897,27 @@ int8_t libjit_element_rescale_kernel_i8(dim_t idx, const int8_t *inW,
 void libjit_softmax_f(const float *inW, float *outW, const dim_t *idim,
                       const dim_t *odim) {
   for (dim_t n = 0; n < idim[0]; n++) {
-    float max = inW[libjit_getXY(idim, n, 0)];
 
     // Find Max.
+    float max = *inW++;
     for (dim_t i = 1; i < idim[1]; i++) {
-      max = MAX(max, inW[libjit_getXY(idim, n, i)]);
+      max = MAX(max, *inW++);
     }
-
-    float sum = 0;
+    inW -= idim[1];
 
     // Compute exp.
+    float sum = 0;
     for (dim_t i = 0; i < idim[1]; i++) {
-      float e = expf(inW[libjit_getXY(idim, n, i)] - max);
+      float e = expf(*inW++ - max);
       sum += e;
-      outW[libjit_getXY(odim, n, i)] = e;
+      *outW++ = e;
     }
+    outW -= idim[1];
 
     // Normalize the output.
+    float norm = 1.0f / sum;
     for (dim_t i = 0; i < idim[1]; i++) {
-      outW[libjit_getXY(odim, n, i)] = outW[libjit_getXY(odim, n, i)] / sum;
+      *outW++ *= norm;
     }
   } // N
 }
