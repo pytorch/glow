@@ -472,14 +472,6 @@ inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
 std::pair<float, float> getQuantizedValueRange(float scale, int32_t offset,
                                                ElemKind elementType);
 
-/// \returns the number of values associated to a quantized type given
-/// \p elementType (e.g. 256 for Int8QTy).
-size_t getQuantizedValueCount(ElemKind elementType);
-
-/// \returns the floating point value step associated to a quantized type given
-/// \p scale, \p offset, and \p elementType.
-float getQuantizedValueStep(float scale, int32_t offset, ElemKind elementType);
-
 /// A class that represents a type of a tensor.
 struct Type final {
   /// Contains the dimensions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
@@ -599,14 +591,21 @@ struct Type final {
     return ::glow::getQuantizedValueRange(scale_, offset_, elementType_);
   }
 
-  /// \returns the number of values associated to the quantized type.
+  /// \returns the number of values associated to the quantized type (e.g. 256
+  /// for Int8QTy).
   size_t getQuantizedValueCount() const {
-    return ::glow::getQuantizedValueCount(elementType_);
+    assert(getElementSize() < sizeof(size_t) &&
+           "Cannot retrieve quantized value count with size_t!");
+    double numBits = getElementSize() * 8;
+    return static_cast<size_t>(std::exp2(numBits));
   }
 
   /// \returns the floating point value step associated to the quantized type.
+  /// The quantization step is actually equal to the quantization scale.
   float getQuantizedValueStep() const {
-    return ::glow::getQuantizedValueStep(scale_, offset_, elementType_);
+    assert(isQuantizedType() &&
+           "Can't get the quantized value step of a non-quantized type");
+    return scale_;
   }
 
   /// \returns true if \p other is the same type. If \p allowDifferentShape then

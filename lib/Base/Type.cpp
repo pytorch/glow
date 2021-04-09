@@ -167,19 +167,4 @@ std::pair<float, float> getQuantizedValueRange(float scale, int32_t offset,
   return std::make_pair(lowFloat, highFloat);
 }
 
-size_t getQuantizedValueCount(ElemKind elementType) {
-  assert(Type::getElementSize(elementType) < sizeof(size_t) &&
-         "Cannot retrieve quantized value count with size_t!");
-  double numBits = Type::getElementSize(elementType) * 8;
-  return static_cast<size_t>(std::exp2(numBits));
-}
-
-float getQuantizedValueStep(float scale, int32_t offset, ElemKind elementType) {
-  assert(isQuantizedElemKind(elementType) &&
-         "Can't get the quantized value step of a non-quantized type");
-  auto valueRange = getQuantizedValueRange(scale, offset, elementType);
-  float numValues = std::exp2(Type::getElementSize(elementType) * 8);
-  return (valueRange.second - valueRange.first) / (numValues - 1.0f);
-}
-
 } // namespace glow
