@@ -945,7 +945,8 @@ libjit_max_pool_argmax_generic(const T *inW, T *outW, T2 *argmax,
 
 template <typename T>
 void libjit_resize_nearest_generic(T *dst, const T *src, const float *scale,
-                                   const dim_t *inWdims, const dim_t *outWdims) {
+                                   const dim_t *inWdims,
+                                   const dim_t *outWdims) {
   for (dim_t ob = 0; ob < outWdims[0]; ++ob) {
     dim_t ib = std::min(dim_t(ob / (scale[0])), inWdims[0] - 1);
     dim_t ibidx = ib * inWdims[1] * inWdims[2] * inWdims[3];
@@ -2616,8 +2617,9 @@ void libjit_resize_nearest_f(float *dst, const float *src, const float *scale,
   libjit_resize_nearest_generic(dst, src, scale, inWdims, outWdims);
 }
 
-void libjit_resize_nearest_i8(int8_t *dst, const int8_t *src, const float *scale,
-                              const dim_t *inWdims, const dim_t *outWdims) {
+void libjit_resize_nearest_i8(int8_t *dst, const int8_t *src,
+                              const float *scale, const dim_t *inWdims,
+                              const dim_t *outWdims) {
   libjit_resize_nearest_generic(dst, src, scale, inWdims, outWdims);
 }
 
