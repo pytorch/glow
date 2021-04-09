@@ -432,4 +432,7 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_device_tracing", []() {
     getGlobalPyTorchLoaderSettingsMutable().enableDeviceTracing = false;
   });
+
+  /// Checks whether the node is supported by Glow.
+  m.def("is_node_supported", glow::PyTorchModelLoader::isNodeSupported);
 }
