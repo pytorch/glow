@@ -2894,29 +2894,29 @@ int8_t libjit_element_rescale_kernel_i8(dim_t idx, const int8_t *inW,
   return libjit_clip(s);
 }
 
-void libjit_softmax_f(const float *inW, float *outW, const dim_t *idim,
-                      const dim_t *odim) {
-  for (dim_t n = 0; n < idim[0]; n++) {
+void libjit_softmax_f(const float *inW, float *outW, const dim_t *dims) {
+  for (dim_t n = 0; n < dims[0]; n++) {
 
     // Find Max.
     float max = *inW++;
-    for (dim_t i = 1; i < idim[1]; i++) {
-      max = MAX(max, *inW++);
+    for (dim_t i = 1; i < dims[1]; i++) {
+      max = MAX(max, *inW);
+      inW++;
     }
-    inW -= idim[1];
+    inW -= dims[1];
 
     // Compute exp.
     float sum = 0;
-    for (dim_t i = 0; i < idim[1]; i++) {
+    for (dim_t i = 0; i < dims[1]; i++) {
       float e = expf(*inW++ - max);
       sum += e;
       *outW++ = e;
     }
-    outW -= idim[1];
+    outW -= dims[1];
 
     // Normalize the output.
     float norm = 1.0f / sum;
-    for (dim_t i = 0; i < idim[1]; i++) {
+    for (dim_t i = 0; i < dims[1]; i++) {
       *outW++ *= norm;
     }
   } // N

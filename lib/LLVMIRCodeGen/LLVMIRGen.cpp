@@ -2875,11 +2875,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
 
-    auto *destDims = emitValueDims(builder, dest);
-    auto *srcDims = emitValueDims(builder, src);
+    auto *dims = emitValueDims(builder, src);
 
     auto *F = getFunction("softmax", dest->getElementType());
-    createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+    createCall(builder, F, {srcPtr, destPtr, dims});
     break;
   }
 
