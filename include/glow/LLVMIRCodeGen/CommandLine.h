@@ -61,6 +61,10 @@ extern llvm::cl::alias llvmMAttr;
 /// machine code.
 extern llvm::cl::opt<std::string> llvmCompiler;
 
+/// External LLVM opt tool to optimize LLVM IR.
+/// Default is taken as the same directory as llvmCompiler
+extern llvm::cl::opt<std::string> llvmOpt;
+
 /// Set of options to pass to the external LLVM compiler.
 extern llvm::cl::list<std::string> llvmCompilerOptions;
 
