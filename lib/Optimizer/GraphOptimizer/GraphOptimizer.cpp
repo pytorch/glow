@@ -5158,6 +5158,18 @@ bool RaiseClipsAboveShapeNodes::run(Function *F,
       changed = true;
       continue;
     }
+
+    // Sink Tile below Clip.
+    if (TileNode *TN = dyn_cast<TileNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), TN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      TileNode *newTN = F->createTile(TN->getName(), newCN->getResult(),
+                                      TN->getCount(), TN->getAxis());
+      CN->getResult().replaceAllUsesOfWith(newTN->getResult());
+      oneLessUser.insert(TN->getInput().getNode());
+      changed = true;
+      continue;
+    }
   } // For all nodes in the graph.
 
   return changed;

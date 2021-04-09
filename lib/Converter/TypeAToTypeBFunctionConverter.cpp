@@ -121,6 +121,7 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
     case Kinded::Kind::GatherNodeKind:
     case Kinded::Kind::ReshapeNodeKind:
     case Kinded::Kind::SliceNodeKind:
+    case Kinded::Kind::TileNodeKind:
     case Kinded::Kind::TransposeNodeKind:
       needClip = false;
       break;
