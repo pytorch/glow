@@ -170,6 +170,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&embeddingBag4BitRowwiseOffsets, &SI::addShapeDefault)},
       {"glow::unpacked_quantized_linear",
        ShapeInference(&glowUnpackedQuantizedLinear, &SI::addShapeDefault)},
+      {"fb::quantized_linear_unpacked_weight",
+       ShapeInference(&glowUnpackedQuantizedLinear, &SI::addShapeDefault)},
       {"fb::lengths_to_offsets",
        ShapeInference(&lengthsToOffsets, &SI::addShapeDefault)},
       {"fb::simple_embedding_bag_sum",
@@ -1699,6 +1701,8 @@ ShapeInferenceEngine::chunk(const MetaStack &variableMetas) {
 /*
  * glow::unpacked_quantized_linear(Tensor a_quant, Tensor w_quant, Tensor "
       "b, float r_scale, int r_zero_point) -> Tensor";
+ * fb::quantized_linear_unpacked_weight(Tensor a_quant, Tensor w_quant, "
+      "Tensor b, float r_scale, int r_zero_point) -> Tensor";
 
 Input: (N, *, in_features) where * means any number of
 additional dimensions

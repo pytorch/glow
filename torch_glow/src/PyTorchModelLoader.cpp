@@ -349,6 +349,8 @@ bool isQParamWeightNode(const torch::jit::Node *node) {
       torch::jit::Symbol::fromQualString("quantized::conv3d"),
       torch::jit::Symbol::fromQualString("quantized::conv3d_relu"),
       torch::jit::Symbol::fromQualString("glow::unpacked_quantized_linear"),
+      torch::jit::Symbol::fromQualString(
+          "fb::quantized_linear_unpacked_weight"),
       torch::jit::Symbol::fromQualString("glow::unpacked_quantized_conv2d"),
       torch::jit::Symbol::fromQualString(
           "glow::unpacked_quantized_conv2d_relu"),
@@ -704,6 +706,7 @@ struct QuantizedMulInputs {
 };
 
 /// Indexes of glow::unpacked_quantized_linear inputs.
+/// Also used for fb::quantized_linear_unpacked_weight
 struct QuantizedUnpackedLinearInputs {
   enum {
     input = 0,
@@ -1284,7 +1287,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
       {{"glow::unpacked_quantized_conv2d_relu"},
        &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
-      {{"glow::unpacked_quantized_linear"},
+      {{"glow::unpacked_quantized_linear",
+        "fb::quantized_linear_unpacked_weight"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked},
       {{"glow::fused_split"}, &PyTorchModelLoader::loadFusedSplit},
       {{"aten::linear"}, &PyTorchModelLoader::loadLinear},
