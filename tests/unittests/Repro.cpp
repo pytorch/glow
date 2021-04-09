@@ -558,6 +558,10 @@ int run() {
     LOG(INFO) << "Glow DRT Enabled";
     cctx.enableDRT = true;
   }
+  if (glow::onnxifi::flags::SaveDAG) {
+    LOG(INFO) << "Serializing DAG after optimization and partitioning.";
+    cctx.serializeCompiledDAG = true;
+  }
 
   // Load deferred weights if applicable
   const auto &placeholderList = mod->getPlaceholders();
