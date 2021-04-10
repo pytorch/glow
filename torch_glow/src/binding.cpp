@@ -435,4 +435,55 @@ PYBIND11_MODULE(_torch_glow, m) {
 
   /// Checks whether the node is supported by Glow.
   m.def("is_node_supported", glow::PyTorchModelLoader::isNodeSupported);
+
+  m.def("glow_shape_inference", [](std::shared_ptr<torch::jit::Graph> graph,
+                                   const py::tuple &args) {
+    std::vector<c10::IValue> inputs;
+    for (const auto &arg : args) {
+      inputs.emplace_back(torch::jit::toIValue(arg, c10::TensorType::get()));
+    }
+    const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
+
+    // The base symbol of all.
+    std::string baseSymbol = glow::getGlowSymbol(nullptr).toQualString();
+
+    // There could be multiple glow fusion nodes created.
+    glowCustomFuse(graph, getGlobalPyTorchLoaderSettingsMutable());
+
+    ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
+    auto e = shapeInf.run();
+    if (e) {
+      auto error_message = ERR_TO_STRING(std::move(e));
+      LOG(ERROR) << error_message;
+      throw std::runtime_error("shape inference failed with error: " +
+                               error_message);
+    } else {
+      return true;
+    }
+  });
+
+  m.def(
+      "glow_shape_inference_find_unsupported_symbols",
+      [](std::shared_ptr<torch::jit::Graph> graph,
+         std::vector<std::string> &blocklist) {
+        // There could be multiple glow fusion nodes created.
+        glowCustomFuse(graph, getGlobalPyTorchLoaderSettingsMutable());
+
+        auto unsupported =
+            ShapeInferenceEngine::findUnsupportedGraphSymbols(*graph);
+
+        std::unordered_set<std::string> blockset;
+        std::copy(blocklist.begin(), blocklist.end(),
+                  std::inserter(blockset, blockset.end()));
+
+        std::vector<std::string> result;
+        std::copy_if(unsupported.begin(), unsupported.end(),
+                     std::back_inserter(result),
+                     [&blockset](std::string symbol) {
+                       return blockset.find(symbol) == blockset.end();
+                     });
+
+        return result;
+      },
+      py::arg("graph"), py::arg("blocklist") = py::list());
 }
