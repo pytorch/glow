@@ -80,6 +80,11 @@ public:
   /// \returns error of failure.
   Error run();
 
+  /// Collects the list of unsupported symbols present in a \p graph
+  /// \returns a set of symbols
+  static std::unordered_set<std::string>
+  findUnsupportedGraphSymbols(const torch::jit::Graph &graph);
+
 private:
   /// Graph that needs to be run shape inference.
   const torch::jit::Graph &graph_;
@@ -115,6 +120,13 @@ private:
   /// Run shape inference on a sub graph
   Error runSubGraph(const torch::jit::Graph &,
                     const at::ArrayRef<torch::jit::IValue> &);
+
+  /// Collects the list of unsupported symbols present in a \p graph
+  static void findUnsupportedGraphSymbols(const torch::jit::Graph &graph,
+                                          std::unordered_set<std::string> &);
+
+  /// \return true if the node's symbol is supported for shape inference
+  static bool isSupportedNodeSymbol(const torch::jit::Node *);
 
   /// Print shapeMap_ as format:
   /// %5: [2 4]
@@ -161,7 +173,7 @@ private:
         : inferenceFn(inferenceFn), addShapeFn(addShapeFn) {}
 
     Error infer(ShapeInferenceEngine *engine, const MetaStack &meta,
-                const torch::jit::Node *node);
+                const torch::jit::Node *node) const;
 
     InferenceFn inferenceFn;
     AddShapeFn addShapeFn;
@@ -169,7 +181,11 @@ private:
 
   using SymbolToFunctionMap = std::unordered_map<std::string, ShapeInference>;
 
+  /// Build mapping from jit symbols to inference functions
   static SymbolToFunctionMap buildShapeSymbolMapping();
+
+  /// Retrieve the static copy of the jit symbols to shape inference functions
+  static const SymbolToFunctionMap &getShapeSymbolMapping();
 
   void addShapeConstant(const torch::jit::Node *node, TensorOutput &output);
 
