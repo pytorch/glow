@@ -714,39 +714,14 @@ public:
       //                              |
       //                       [DequantizeNode]
       // ----------------------------------------------------------------------
-      bool foundFC = false;
-      NodeValue input, weights, bias, result;
       if (auto *fcN = llvm::dyn_cast<FullyConnectedNode>(Q->getInput())) {
-        foundFC = true;
-        input = fcN->getInput();
-        weights = fcN->getWeights();
-        bias = fcN->getBias();
-        result = fcN->getResult();
-      } else if (const auto *baN =
-                     llvm::dyn_cast<BatchedAddNode>(Q->getInput())) {
-        if (isBAFromLoweredFC(baN, loweredMap_)) {
-          foundFC = true;
-          NodeValue batch = baN->getBatch();
 
-          // All quantization has occurred at this point, but optimizations
-          // haven't eliminated extra quantize/dequantize nodes. Look
-          // backwards through them to find the MatMul of the FC.
-          assert(llvm::isa<QuantizeNode>(batch));
-          QuantizeNode *QN = llvm::cast<QuantizeNode>(batch);
-          assert(llvm::isa<DequantizeNode>(QN->getInput()));
-          DequantizeNode *DQN = llvm::cast<DequantizeNode>(QN->getInput());
-          assert(llvm::isa<MatMulNode>(DQN->getInput()));
-          MatMulNode *MM = llvm::cast<MatMulNode>(DQN->getInput());
+        auto input = fcN->getInput();
+        auto weights = fcN->getWeights();
+        auto bias = fcN->getBias();
+        auto result = fcN->getResult();
 
-          input = MM->getLHS();
-          weights = MM->getRHS();
-          bias = baN->getSlice();
-          result = baN->getResult();
-        }
-      }
-      if (foundFC) {
-        // Only convert quantized FullyConnected Node (or its equivalent lowered
-        // representation in MatMul + BatchedAdd form).
+        // Only convert quantized FullyConnected Node
         if (input.getType()->isQuantizedType() &&
             llvm::isa<QuantizeNode>(weights.getNode()) &&
             result.getType()->isQuantizedType()) {
@@ -755,10 +730,10 @@ public:
           // constant.
           if (Constant *wc = llvm::dyn_cast<Constant>(wq->getInput())) {
             auto *fcq = function_.createRowwiseQuantizedFullyConnected(
-                "rowwiseqfc", input, wc, bias, result.getType(), schema_,
+                fcN->getName(), input, wc, bias, result.getType(), schema_,
                 /* transposeWeight */ true);
-            // Replace usages of quantized FC node (or its equivalent lowered
-            // representation MM + BA) to RowwiseQuantizedFullyConnectedNode.
+            // Replace usages of quantized FC node to
+            // RowwiseQuantizedFullyConnectedNode.
             result.replaceAllUsesOfWith(fcq->getResult());
           }
         }
@@ -878,7 +853,7 @@ public:
 
           if (filterC && biasC) {
             auto *convNodeCWQ = function_.createChannelwiseQuantizedConv(
-                "ChannelwiseQuantizedConv", input, filterC, biasC,
+                convNode->getName(), input, filterC, biasC,
                 /* filterScales */ nullptr, /* filterOffsets */ nullptr,
                 /* biasScales */ nullptr, /* biasOffsets */ nullptr,
                 result.getType(), convNode->getKernels(),
