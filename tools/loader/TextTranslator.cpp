@@ -152,9 +152,9 @@ Dictionary srcVocab, dstVocab;
 /// that the model expects sentences to be in reverse order.
 static void encodeString(const llvm::StringRef sentence,
                          Tensor *encoderInputs) {
-  auto IH = encoderInputs->getHandle<int64_t>();
+  auto IH = encoderInputs->getHandle<int32_t>();
 
-  std::vector<int64_t> encodedWords;
+  std::vector<int32_t> encodedWords;
   encodedWords.reserve(maxInputLenOpt);
 
   // Get each word from the sentence and encode it.
@@ -212,9 +212,9 @@ static std::vector<dim_t> getBestTranslation(Tensor *outputTokenBeamList,
                                              Tensor *outputScoreBeamList,
                                              Tensor *outputPrevIndexBeamList) {
   // Get handles to all the outputs from the model run.
-  auto tokenBeamListH = outputTokenBeamList->getHandle<int64_t>();
+  auto tokenBeamListH = outputTokenBeamList->getHandle<int32_t>();
   auto scoreBeamListH = outputScoreBeamList->getHandle<float>();
-  auto prevIndexBeamListH = outputPrevIndexBeamList->getHandle<int64_t>();
+  auto prevIndexBeamListH = outputPrevIndexBeamList->getHandle<int32_t>();
 
   // This pair represents the ending position of a translation in the beam
   // search grid. The first index corresponds to the length (column index), the
@@ -347,16 +347,16 @@ int main(int argc, char **argv) {
   dstVocab.loadDictionaryFromFile(modelDir.str() + "/dst_dictionary.txt");
 
   // Encoded input sentence. Note that the batch size is 1 for inference models.
-  Tensor encoderInputs(ElemKind::Int64ITy, {maxInputLenOpt, /* batchSize */ 1});
+  Tensor encoderInputs(ElemKind::Int32ITy, {maxInputLenOpt, /* batchSize */ 1});
 
   // Inputs other than tokenized input. These should all be initialized to zero.
   // Note, the init_net already defines these tensors solely as placeholders
   // (with incorrect shapes/elementtypes/data). Glow uses these tensors in their
   // place.
   Tensor attnWeights(ElemKind::FloatTy, {maxInputLenOpt});
-  Tensor prevHyposIndices(ElemKind::Int64ITy, {beamSizeOpt});
+  Tensor prevHyposIndices(ElemKind::Int32ITy, {beamSizeOpt});
   Tensor prevScores(ElemKind::FloatTy, {1});
-  Tensor prevToken(ElemKind::Int64ITy, {1});
+  Tensor prevToken(ElemKind::Int32ITy, {1});
 
   DCHECK(!loader.getCaffe2NetDescFilename().empty())
       << "Only supporting Caffe2 currently.";

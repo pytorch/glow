@@ -719,3 +719,5 @@ void BundleSaver::save(llvm::StringRef mainEntryName, const IRFunction *F) {
   irgen_->performCodeGen();
   savedIRFunctions_.back().llvmF = irgen_->getLLVMFunction();
 }
+
+LLVMIRGen *BundleSaver::getLLVMIRGen() { return irgen_.get(); }

@@ -644,6 +644,33 @@ public:
                        float beta = 1.0, bool transposeA = false,
                        bool transposeB = false);
 
+  /// Create and \returns a DynamicQuantizedFullyConnectedNode with \p name,
+  /// \p input, weights \p W, bias \p B, flag to indicate mode \p isSymmetric.
+  /// By default it is a dynamic quantized FC node, which takes fp16 inputs,
+  /// symmetrically quantized them, run FC on them, dequantize them and produces
+  /// fp16 output. If \p isSymmetric is set to false, then inputs are
+  /// asymmetrically quantized. if \p isPerBatchElement is set to false, then
+  /// inputs are per tensor quantized.
+  DynamicQuantizedFullyConnectedNode *createDynamicQuantizedFullyConnected(
+      llvm::StringRef name, NodeValue input, NodeValue W, NodeValue B,
+      bool isSymmetric = true, bool isPerBatchElement = true);
+
+  /// Create and \returns a DynamicRowwiseQuantizedFullyConnectedNode with \p
+  /// name, \p input, weights \p W, bias \p B, rowwise weight qparams \p wScale
+  /// and \p wOffset, flag to indicate mode \p isSymmetric. By default it is a
+  /// dynamic quantized FC node, which takes fp16 inputs, symmetrically
+  /// quantized them, run FC on them, dequantize them and produces fp16 output.
+  /// If \p isSymmetric is set to false, then inputs are asymmetrically
+  /// quantized. if \p isPerBatchElement is set to false, then inputs are per
+  /// tensor quantized.
+  DynamicRowwiseQuantizedFullyConnectedNode *
+  createDynamicRowwiseQuantizedFullyConnected(llvm::StringRef name,
+                                              NodeValue input, NodeValue W,
+                                              NodeValue B, NodeValue wScale,
+                                              NodeValue wOffset,
+                                              bool isSymmetric = true,
+                                              bool isPerBatchElement = true);
+
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
   /// along \p axis. Note, output type and outputDepth are inferred based on
@@ -779,6 +806,11 @@ public:
 
   /// \returns a LogitNode with \p name given \p input and \p eps.
   LogitNode *createLogit(llvm::StringRef name, NodeValue input, float eps);
+
+  /// Create a SoftPlus node with the given \p name, \p input and
+  /// output type \p outTy.
+  SoftPlusNode *createSoftPlus(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy = nullptr);
 
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
                              NodeValue selected, TypeRef outTy = nullptr,
@@ -1487,6 +1519,11 @@ public:
   createSparseToDenseMask(llvm::StringRef name, NodeValue indices,
                           NodeValue values, NodeValue defaultValue,
                           NodeValue lengths, llvm::ArrayRef<dim_t> mask);
+
+  // TODO: add description
+  SparseLabelSplitNode *
+  createSparseLabelSplit(llvm::StringRef name, NodeValue lengths,
+                         NodeValue indices, NodeValue values, dim_t numLabels);
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
 
@@ -2388,6 +2425,8 @@ bool isOutput(const Placeholder *PH, const Function &F);
 bool isInput(const Placeholder *PH, const Function &F);
 
 /// Helper vectors for common transpose shuffles.
+#define NCH2NHC                                                                \
+  { 0u, 2u, 1u }
 #define NCHW2NHWC                                                              \
   { 0u, 2u, 3u, 1u }
 #define NCTHW2NTHWC                                                            \

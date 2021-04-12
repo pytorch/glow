@@ -154,6 +154,7 @@ public:
     }
 
     CompilationContext ctx;
+    ctx.dumpFinalGraph = true;
     EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
 

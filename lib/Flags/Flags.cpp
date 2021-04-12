@@ -110,6 +110,14 @@ bool UsePerPartitionIcetConfig = false;
 } // namespace glow
 
 namespace glow {
+namespace interpreter {
+namespace flags {
+bool LowerLayerNormalization = true;
+} // namespace flags
+} // namespace interpreter
+} // namespace glow
+
+namespace glow {
 namespace torch_glow {
 namespace flags {
 bool ImaginaryFlag = false; // Placeholder flag
@@ -553,6 +561,15 @@ DEFINE_validator(glow_nnpi_timeout_ms, [](const char *, int32_t val) {
   glow::runtime::flags::NNPITimeoutMs = val;
   return true;
 });
+
+DEFINE_bool(glow_interpreter_lower_layer_normalization,
+            glow::interpreter::flags::LowerLayerNormalization,
+            "Lower layer normalization node.");
+DEFINE_validator(glow_interpreter_lower_layer_normalization,
+                 [](const char *, bool val) {
+                   glow::interpreter::flags::LowerLayerNormalization = val;
+                   return true;
+                 });
 
 DEFINE_int32(glow_interpreter_memory, glow::runtime::flags::InterpreterMemory,
              "Amount of DRAM to allocate per Interpreter in KiB");

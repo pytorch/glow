@@ -309,6 +309,10 @@ void PyTorchLoaderSettings::initSettings() {
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
   nominalBatchIdx = FLAGS_nominalBatchIdx;
   lazyCompile = FLAGS_lazyCompile;
+  use_dag_optimizer = glow::flags::UseDAGOptimizer;
+  apl_parallelization_alg =
+      glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
+  apl_num_parallel_chunks = glow::flags::DAGOptimizerNumParallelChunks;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -519,7 +523,23 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
     }
     auto glowType =
         ptTypeToGlowType(*c10::TensorType::create(ptTensor), scale, offset);
-    return glow::Tensor(ptTensor.data_ptr(), &glowType);
+    glow::Tensor glowTensor(ptTensor.data_ptr(), &glowType);
+
+    // If tensor is of UInt8QTy kind, convert it to Int8QTy.
+    if (glowTensor.getElementType() == ElemKind::UInt8QTy) {
+      auto handle = glowTensor.getHandle<uint8_t>();
+      glow::Tensor newTensor(glow::ElemKind::Int8QTy, glowTensor.dims(),
+                             glowTensor.getType().getScale(),
+                             glowTensor.getType().getOffset() -
+                                 UINT8_TO_INT8_SHIFT);
+      auto newHandle = newTensor.getHandle<int8_t>();
+      for (size_t i = 0; i < handle.size(); i++) {
+        newHandle.raw(i) =
+            static_cast<int8_t>((int32_t)handle.raw(i) - UINT8_TO_INT8_SHIFT);
+      }
+      return newTensor;
+    }
+    return glowTensor;
   } else if (ptTensor.scalar_type() == at::kDouble) {
     at::Tensor atTensor = ptTensor.to(at::kFloat);
     auto glowType = ptTypeToGlowType(*c10::TensorType::create(atTensor));
@@ -575,7 +595,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
   // There could be multiple glow fusion nodes created.
   glow::glowCustomFuse(graph, settings);
 
-  ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol);
+  ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
   auto e = shapeInf.run();
   if (e) {
     LOG(ERROR) << ERR_TO_STRING(std::move(e));

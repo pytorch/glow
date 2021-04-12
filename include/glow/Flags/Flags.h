@@ -102,6 +102,14 @@ extern bool UsePerPartitionIcetConfig;
 } // namespace glow
 
 namespace glow {
+namespace interpreter {
+namespace flags {
+extern bool LowerLayerNormalization;
+} // namespace flags
+} // namespace interpreter
+} // namespace glow
+
+namespace glow {
 namespace torch_glow {
 namespace flags {
 extern bool ImaginaryFlag; // Placeholder Flag

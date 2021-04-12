@@ -92,6 +92,8 @@ protected:
   /// \returns the weight that the variable \p v is lowered into in one of the
   /// IR functions inside this bundle, or null if the variable is unknown.
   virtual Value *getWeightForNode(const Storage *V) const;
+  /// \returns LLVMIRGen used by the bundle saver.
+  virtual LLVMIRGen *getLLVMIRGen();
   /// Information about allocations.
   AllocationsInfo allocationsInfo_;
   /// The LLVM IR code generator.
