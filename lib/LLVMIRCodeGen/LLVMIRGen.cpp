@@ -990,14 +990,20 @@ void LLVMIRGen::emitDataParallelKernel(
 ///
 /// \param allocationsInfo information about allocations
 /// \param bundle current bundle of stacked instructions
-/// \param buf the buffer operand to be checked for overlaps with the \p bundle.
+/// \param op the operand to be checked for overlaps with the \p bundle.
 static bool isOverlappingWithAnyBundleBufferOperands(
     AllocationsInfo &allocationsInfo,
-    llvm::SmallVectorImpl<const Instruction *> &bundle, Value *buf) {
+    llvm::SmallVectorImpl<const Instruction *> &bundle,
+    const Instruction::Operand &op) {
+  auto *buf = op.first;
   auto addr1 = allocationsInfo.allocatedAddress_[buf];
   auto size1 = buf->getSizeInBytes();
   for (auto bi : bundle) {
     for (auto bop : bi->getOperands()) {
+      // Only input operands never interfere.
+      if (bop.second == OperandKind::In && op.second == OperandKind::In) {
+        continue;
+      }
       auto buf2 = bop.first;
       auto addr2 = allocationsInfo.allocatedAddress_[buf2];
       auto size2 = buf2->getSizeInBytes();
@@ -1068,14 +1074,11 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
     // bundled instructions. In case this condition does not hold, the current
     // instruction cannot be included into the data-parallel bundle, because
     // overlapping operand buffers are not data parallel.
-    for (auto op : I.getOperands()) {
-      // Skip non-mutated operands.
-      if (op.second == OperandKind::In)
-        continue;
+    for (auto &op : I.getOperands()) {
       // If the mutated operand buffer overlaps with any buffer already used by
       // the bundle, the current instruction cannot become a part of the bundle.
       if (isOverlappingWithAnyBundleBufferOperands(allocationsInfo_, bundle,
-                                                   op.first)) {
+                                                   op)) {
         isBundleCompatible = false;
         break;
       }
