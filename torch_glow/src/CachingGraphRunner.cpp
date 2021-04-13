@@ -73,6 +73,10 @@ void initializeCompiliationContextFromSettings(
     cctx.saturateHost = settings.saturateHost;
   }
 
+  if (settings.saturateKDevices > 0) {
+    cctx.saturateKDevices = settings.saturateKDevices;
+  }
+
   if (settings.use_dag_optimizer) {
     cctx.callDAGOptimizer = true;
     cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =

@@ -269,6 +269,12 @@ struct CompilationContext {
   /// If true the HostManager will try to use all available devices on the host.
   bool saturateHost{false};
 
+  /// If greater than zero, this is the number of available devices that are
+  /// used when saturateHost is enabled.
+  /// If saturateKDevices is zero and saturateHost is enabled, all available
+  /// devices will be saturated.
+  unsigned saturateKDevices{0};
+
   /// Number of max active requests per instance of this network.
   unsigned maxActiveRequestsPerInstance{48};
 

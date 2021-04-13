@@ -495,12 +495,10 @@ Error applySettingsOverrideFlagsToPyTorchLoaderSettings(
 Error applyCompilationGroupSettingsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings,
     const CompilationGroupSettings &newSettings) {
-  if (newSettings.num_devices_to_use == -1) {
-    settings.saturateHost = true;
-  } else {
-    return MAKE_ERR("Only num_devices_to_use=-1 supported currently");
+  settings.saturateHost = true;
+  if (newSettings.num_devices_to_use > 0) {
+    settings.saturateKDevices = newSettings.num_devices_to_use;
   }
-
   settings.replicationCount = newSettings.replication_count;
   settings.backendSpecificOpts = newSettings.backend_specific_opts;
   settings.convertToFP16 = newSettings.convert_to_fp16;
