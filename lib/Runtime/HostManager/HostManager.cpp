@@ -504,12 +504,16 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
         extraMetadataProps[clipQuantRangeToFP16Key] = "1";
       }
       Error writeErr = Error::empty();
+      // Note: If cctx.skipProvisioning then we want to serialize all meta info
+      // as we are likely doing AOT optimization. Otherwise do not provide the
+      // meta info as the model does not need to be reloaded.
       ONNXModelWriter onnxWR(
           loc, nodeList, 7, 9, &writeErr,
           /* textMode */ true, /* zipMode */ false,
           /* includeConstantData */ false, extraMetadataProps, record,
-          cctx.backendOpts.backendSpecificNodeInfo, &cctx.loadedPHNames,
-          &cctx.staticPlaceholderTypesForAOT);
+          cctx.backendOpts.backendSpecificNodeInfo,
+          cctx.skipProvisioning ? &cctx.loadedPHNames : nullptr,
+          cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr);
       RETURN_IF_ERR(writeErr);
     }
 
