@@ -1291,6 +1291,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
         "fb::quantized_linear_unpacked_weight"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked},
       {{"glow::fused_split"}, &PyTorchModelLoader::loadFusedSplit},
+      {{"aten::split"}, &PyTorchModelLoader::loadSplit},
+      {{"aten::split_with_sizes"}, &PyTorchModelLoader::loadSplitWithSizes},
       {{"aten::linear"}, &PyTorchModelLoader::loadLinear},
       {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
       {{"quantized::linear_dynamic"},
@@ -1303,6 +1305,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize},
       {{"aten::size"}, &PyTorchModelLoader::loadSize},
       {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct},
+      {{"prim::ListUnpack"}, &PyTorchModelLoader::loadListUnpack},
       {{"aten::reciprocal", "aten::reciprocal_"},
        &PyTorchModelLoader::loadReciprocal},
       {{"aten::adaptive_avg_pool2d"},
@@ -3169,6 +3172,20 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
     return MAKE_ERR("Encountered unknown JIT Value mapping");
   }
   RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+}
+
+Error PyTorchModelLoader::loadListUnpack(const torch::jit::Node *ptNode) {
+  RETURN_ERR_IF_NOT(ptNode->inputs().size() == 1,
+                    "ListUnpack only supports a single input");
+  std::vector<glow::NodeValue> *inputs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      inputs, iValToNodeValueList(getGlowIValueForValue(ptNode->input(0))));
+  RETURN_ERR_IF_NOT(ptNode->outputs().size() == inputs->size(),
+                    "ListUnpack inputs and outputs must be of same size.");
+  for (int idx = 0; idx < inputs->size(); idx++) {
+    RETURN_IF_ERR(addValueMapping(ptNode->output(idx), inputs->at(idx)));
+  }
+  return Error::success();
 }
 
 /// Mirroring the implementation in
@@ -7419,6 +7436,96 @@ Error PyTorchModelLoader::loadXLEmbeddingBagByteRowwiseOffsets(
 Error PyTorchModelLoader::loadXLEmbeddingBag4bitRowwiseOffsets(
     const torch::jit::Node *ptNode) {
   return loadRowwiseQuantizedXLEmbeddingBagHelper(ptNode, true);
+}
+
+Error PyTorchModelLoader::loadSplit(const torch::jit::Node *ptNode) {
+  RETURN_IF_ERR(
+      checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
+
+  glow::NodeValue input;
+  unsigned int dimension;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+
+  uint64_t chunkSize;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      chunkSize, iValToInt(getGlowIValueForValue(ptNode->input(1))));
+  std::vector<glow::NodeValue> chunks;
+  ASSIGN_VALUE_OR_RETURN_ERR(chunks,
+                             loadSplitImpl(input, dimension, chunkSize));
+  glow::GlowIValue output;
+  output.fromNodeValueList(chunks);
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, ptNode->input(0)));
+  RETURN_ERR(addValueMapping(ptNode->output(0), std::move(output), dtype));
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadSplitWithSizes(const torch::jit::Node *ptNode) {
+  RETURN_IF_ERR(
+      checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
+
+  glow::NodeValue input;
+  unsigned int dimension;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+  std::vector<int64_t> *signedSizes;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      signedSizes, iValToIntList(getGlowIValueForValue(ptNode->input(1))));
+  std::vector<uint64_t> sizes;
+  for (uint64_t size : *signedSizes) {
+    sizes.push_back(size);
+  }
+  std::vector<glow::NodeValue> chunks;
+  ASSIGN_VALUE_OR_RETURN_ERR(chunks, loadSplitImpl(input, dimension, sizes));
+  glow::GlowIValue output;
+  output.fromNodeValueList(chunks);
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, ptNode->input(0)));
+  RETURN_ERR(addValueMapping(ptNode->output(0), std::move(output), dtype));
+  return Error::success();
+}
+
+Expected<std::vector<glow::NodeValue>>
+PyTorchModelLoader::loadSplitImpl(const glow::NodeValue &glowInput,
+                                  const uint64_t dimension,
+                                  const uint64_t size) {
+  uint64_t chunkCount = glowInput.dims()[dimension] / size;
+  std::vector<uint64_t> sizes(chunkCount, size);
+  if (chunkCount * size < glowInput.dims()[dimension]) {
+    sizes.push_back(glowInput.dims()[dimension] - chunkCount * size);
+  }
+  return loadSplitImpl(glowInput, dimension, sizes);
+}
+
+Expected<std::vector<glow::NodeValue>>
+PyTorchModelLoader::loadSplitImpl(const glow::NodeValue &glowInput,
+                                  const uint64_t dimension,
+                                  const std::vector<uint64_t> &sizes) {
+  uint64_t currentStartIndex = 0;
+  uint64_t chunkNumber = 0;
+  std::vector<glow::NodeValue> chunks;
+  std::vector<glow::dim_t> startIndices(glowInput.dims().size(), 0);
+  std::vector<glow::dim_t> endIndices = glowInput.dims();
+  RETURN_ERR_IF_NOT(!startIndices.empty(), "Input tensor is empty!");
+  for (auto chunkSize : sizes) {
+    startIndices[dimension] = currentStartIndex;
+    endIndices[dimension] = currentStartIndex + chunkSize;
+    RETURN_ERR_IF_NOT(
+        endIndices[dimension] <= glowInput.dims()[dimension],
+        strFormat("Given split sections sum to %lu which is greater than the "
+                  "length of the tensor (%lu) in the given dimension (%lu)!",
+                  endIndices[dimension], glowInput.dims()[dimension],
+                  dimension));
+    chunks.push_back(F_.createSlice(strFormat("split_%lu", chunkNumber),
+                                    glowInput, startIndices, endIndices)
+                         ->getResult());
+    currentStartIndex += chunkSize;
+    chunkNumber++;
+  }
+  return chunks;
 }
 
 Error PyTorchModelLoader::loadFusedSplit(const torch::jit::Node *ptNode) {
