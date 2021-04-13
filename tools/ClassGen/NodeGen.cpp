@@ -294,6 +294,17 @@ int main(int argc, char **argv) {
                     "Momentum. Similar to Caffe2 SpatialBN, and ONNX "
                     "BatchNormalization operator.");
 
+  BB.newNode("InstanceNormalization")
+      .addInput("Input")
+      .addInput("Scale")
+      .addInput("Bias")
+      .addMember(MemberType::Unsigned, "ChannelIdx")
+      .addMember(MemberType::Float, "Epsilon")
+      .addResult("Input.getType()")
+      .setDocstring("Performs instance normalization on the Input tensor with "
+                    "the provided Scale, Bias, Epsilon. Similar to ONNX "
+                    "InstanceNormalization operator.");
+
   BB.newNode("MeanVarNormalization")
       .addInput("Input")
       .addInput("Mean")

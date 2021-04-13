@@ -263,6 +263,10 @@ class ONNXModelLoader
   Error loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
                                ArgumentDictionaryTy &dict);
 
+  /// Load InstanceNormalization ONNX operator.
+  Error loadInstanceNormalization(const ONNX_NAMESPACE::NodeProto &op,
+                                  ArgumentDictionaryTy &dict);
+
   /// Load Concat ONNX operator.
   Error loadConcat(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);

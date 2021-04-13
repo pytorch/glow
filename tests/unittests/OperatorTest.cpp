@@ -20720,6 +20720,48 @@ TEST_P(OperatorTest, RMSNorm) {
   }
 }
 
+TEST_P(OperatorTest, InstanceNormalization_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2, 2}, "inp", false);
+  // Initiliaze inp
+  auto inpH = bindings_.allocate(inp)->getHandle<float>();
+  inpH = {0.0,  1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
+          8.0,  9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+          16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0};
+  // Setting scale and bias
+  auto *scale = mod_.createConstant(ElemKind::FloatTy, {3}, "scale");
+  scale->getHandle() = {1.0, 1.5, 2.0};
+  auto *bias = mod_.createConstant(ElemKind::FloatTy, {3}, "bias");
+  bias->getHandle() = {0.0, 1.0, 2.0};
+
+  auto *node =
+      F_->createInstanceNormalization("instNorm", inp, bias, scale, 1, 1e-5);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  std::vector<float> mergedScale = {0.89442361, 1.34163542, 1.78884723,
+                                    0.89442361, 1.34163542, 1.78884723};
+  std::vector<float> mergedBias = {-1.34163542,  -6.37899481,  -14.99404865,
+                                   -12.07471878, -22.47861985, -36.46021537};
+
+  EXPECT_EQ(outH.size(), 24);
+  for (dim_t i = 0; i < 2; i++) {
+    for (dim_t j = 0; j < 3; j++) {
+      for (dim_t k = 0; k < 2; k++) {
+        for (dim_t l = 0; l < 2; l++) {
+          EXPECT_NEAR(outH.at({i, j, k, l}),
+                      inpH.at({i, j, k, l}) * mergedScale.at(i * 3 + j) +
+                          mergedBias.at(i * 3 + j),
+                      1e-5);
+        }
+      }
+    }
+  }
+}
+
 TEST_P(OperatorTest, SparseLabelSplit) {
   CHECK_IF_ENABLED();
 

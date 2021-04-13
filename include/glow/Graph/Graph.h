@@ -958,6 +958,16 @@ public:
       NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx = 0,
       float epsilon = 1e-5, float momentum = 0.9);
 
+  /// Create and \returns an InstanceNormalizationNode with result type of \p
+  /// outTy that computes the instance normalization of \p input based on the \p
+  /// scale and \p bias combined with the computed mean and stddev of each
+  /// batch. \p epsilon is a small perterbation used to avoid division by 0
+  /// during normalization.
+  InstanceNormalizationNode *
+  createInstanceNormalization(llvm::StringRef name, NodeValue input,
+                              NodeValue beta, NodeValue scale,
+                              unsigned_t channelIdx = 0, float epsilon = 1e-5);
+
   /// Creates and \returns a LayerNormalizationNode with result type of \p outTy
   /// that computes the layer normalization of the inner most layers of \p input
   /// based on the shape of \p scale and \p bias. \p epsilon is a small

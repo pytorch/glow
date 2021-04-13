@@ -1733,6 +1733,14 @@ BatchNormalizationNode *Function::createBatchNormalization(
                                             momentum));
 }
 
+InstanceNormalizationNode *
+Function::createInstanceNormalization(llvm::StringRef name, NodeValue input,
+                                      NodeValue beta, NodeValue scale,
+                                      unsigned_t channelIdx, float epsilon) {
+  return addNode(new InstanceNormalizationNode(name, input, scale, beta,
+                                               channelIdx, epsilon));
+}
+
 LayerNormalizationNode *
 Function::createLayerNormalization(llvm::StringRef name, TypeRef outTy,
                                    NodeValue input, NodeValue scale,
