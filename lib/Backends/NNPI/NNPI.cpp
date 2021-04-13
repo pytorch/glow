@@ -298,8 +298,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::BoolTy:
           return true;
         case ElemKind::Int32ITy:
-          return glow::nnpi::flags::EnableCustomDSPKernels ||
-                 glow::nnpi::flags::EnableCustomIAKernels;
+          return glow::nnpi::flags::EnableCustomIAKernels;
         default:
           return false;
         }
@@ -313,8 +312,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::BoolTy:
           return true;
         case ElemKind::Int32ITy:
-          return glow::nnpi::flags::EnableCustomDSPKernels ||
-                 glow::nnpi::flags::EnableCustomIAKernels;
+          return glow::nnpi::flags::EnableCustomIAKernels;
         default:
           return false;
         }
@@ -339,8 +337,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
           return true;
         case ElemKind::Float16Ty:
         case ElemKind::BoolTy:
-          return glow::nnpi::flags::EnableCustomDSPKernels ||
-                 glow::nnpi::flags::EnableCustomIAKernels;
+          return glow::nnpi::flags::EnableCustomIAKernels;
         default:
           return false;
         }
