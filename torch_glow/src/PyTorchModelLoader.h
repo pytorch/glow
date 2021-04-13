@@ -361,6 +361,15 @@ private:
   // \returns error on failure.
   Error loadEmbeddingBag4BitRowwiseOffsets(const torch::jit::Node *ptNode);
 
+  Expected<std::vector<glow::NodeValue>>
+  loadSplitImpl(const glow::NodeValue &glowInput, const uint64_t dimension,
+                const uint64_t size);
+  Expected<std::vector<glow::NodeValue>>
+  loadSplitImpl(const glow::NodeValue &glowInput, const uint64_t dimension,
+                const std::vector<uint64_t> &sizes);
+  Error loadSplit(const torch::jit::Node *ptNode);
+  Error loadSplitWithSizes(const torch::jit::Node *ptNode);
+
   // Load a PyTorch fb::equally_split.
   // \returns error on failure.
   Error loadFusedSplit(const torch::jit::Node *ptNode);
@@ -426,8 +435,8 @@ private:
   /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr
   /// nodes. If the output type of a prim::GetAttr is a tensor, this will load
   /// it as a Glow constant, if it's an ivalue::Object it is ignored, and if
-  /// it's any other kind of IValue, it is loaded as a GlowIvalue for use during
-  /// the rest of model loading. \returns error on failure.
+  /// it's any other kind of IValue, it is loaded as a GlowIvalue for use
+  /// during the rest of model loading. \returns error on failure.
   Error loadAttributes(const torch::jit::Graph &graph,
                        const at::ArrayRef<torch::jit::IValue> inputs);
 
@@ -443,9 +452,8 @@ private:
   /// \returns error on failure.
   Error loadConstant(const torch::jit::Node *ptNode);
 
-  /// Load a custom PyTorch op using a statically register CustomPyTorchOpLoader
-  /// for that op.
-  /// \returns error on failure.
+  /// Load a custom PyTorch op using a statically register
+  /// CustomPyTorchOpLoader for that op. \returns error on failure.
   Error loadCustomOp(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch type_as node.
@@ -454,11 +462,11 @@ private:
 
   /// Helper function for loading arithmetic nodes. \p name is of the name of
   /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the
-  /// arithetic node and template parameter \p GlowNode is the type of the node
-  /// that should be created in the Glow graph. \p convertToDefaultType
-  /// indicates if we want to convert the input types to default pytorch dtypes
-  /// if both inputs are of integer types. \returns the output of the loaded
-  /// arithmetic node or an Error if any occurred.
+  /// arithetic node and template parameter \p GlowNode is the type of the
+  /// node that should be created in the Glow graph. \p convertToDefaultType
+  /// indicates if we want to convert the input types to default pytorch
+  /// dtypes if both inputs are of integer types. \returns the output of the
+  /// loaded arithmetic node or an Error if any occurred.
   template <typename GlowNode>
   Expected<NodeValue> loadArithmeticNode(llvm::StringRef name,
                                          const torch::jit::Value *lhs,
@@ -513,8 +521,8 @@ private:
   /// \returns error on failure.
   Error loadFullLike(const torch::jit::Node *ptNode);
 
-  /// Shared implementation for loadZerosLike, loadOnesLike, loadEmptyLike, and
-  /// loadFullLike. \returns error on failure.
+  /// Shared implementation for loadZerosLike, loadOnesLike, loadEmptyLike,
+  /// and loadFullLike. \returns error on failure.
   Error loadFullLikeImpl(llvm::StringRef name,
                          const torch::jit::Value *inputTensorValue,
                          const torch::jit::Value *dtypeValue,
@@ -814,6 +822,8 @@ private:
   /// \returns error on failure.
   Error loadListConstruct(const torch::jit::Node *ptNode);
 
+  Error loadListUnpack(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::Int node.
   /// \returns error on failure.
   Error loadInt(const torch::jit::Node *ptNode);
@@ -848,8 +858,8 @@ private:
             Node *(glow::Function::*CreateFn)(llvm::StringRef, glow::NodeValue)>
   Error loadUnaryNode(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch aten::upsample_nearest3d or aten::upsample_nearest2d node.
-  /// \returns error on failure.
+  /// Load a PyTorch aten::upsample_nearest3d or aten::upsample_nearest2d
+  /// node. \returns error on failure.
   Error loadUpsampleNearest(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::view node.
