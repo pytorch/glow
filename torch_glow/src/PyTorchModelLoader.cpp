@@ -2066,6 +2066,10 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       rhs, getGlowNodeValueForValue(inputs[QuantizedAddInputs::rhs]));
 
+  auto broadcasted = F_.broadcastInputs(/* axis */ -1, {lhs, rhs});
+  lhs = broadcasted[0];
+  rhs = broadcasted[1];
+
   // scale
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
@@ -2240,7 +2244,9 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
     glow::NodeValue rhs;
     ASSIGN_VALUE_OR_RETURN_ERR(
         rhs, getGlowNodeValueForValue(inputs[QuantizedMulInputs::rhs]));
-
+    auto broadcasted = F_.broadcastInputs(/* axis */ -1, {lhs, rhs});
+    lhs = broadcasted[0];
+    rhs = broadcasted[1];
     // scale
     float outScale;
     ASSIGN_VALUE_OR_RETURN_ERR(
@@ -2257,16 +2263,7 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
     auto outDims = inputType->dims();
     auto outTy = F_.getParent()->uniqueType(
         ElemKind::Int8QTy, outDims, outScale, outOffset - UINT8_TO_INT8_SHIFT);
-
-    RETURN_ERR_IF_NOT(
-        lhs.dims().size() == rhs.dims().size(),
-        glow::strFormat(
-            "LHS and RHS must have number of dimensions, but LHS got "
-            "%lu , RHS got %lu .",
-            lhs.dims().size(), rhs.dims().size()));
-    auto *bcast =
-        F_.createBroadcast("broadcasted_rhs_quant_mul", rhs, lhs.dims(), 0);
-    glow::MulNode *qmul = F_.createMul("quantized_mul", outTy, lhs, bcast);
+    glow::MulNode *qmul = F_.createMul("quantized_mul", outTy, lhs, rhs);
     auto output = qmul->getResult();
 
     c10::ScalarType dtype;
