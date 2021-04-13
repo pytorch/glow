@@ -439,23 +439,36 @@ bool ShapeInferenceEngine::isSupportedNodeSymbol(const torch::jit::Node *node) {
 }
 
 std::unordered_set<std::string>
-ShapeInferenceEngine::findUnsupportedGraphSymbols(
-    const torch::jit::Graph &graph) {
-
+ShapeInferenceEngine::findUnsupportedGraphSymbols(bool skipLastFusionNode) {
   std::unordered_set<std::string> unsupportedSymbols;
-  findUnsupportedGraphSymbols(graph, unsupportedSymbols);
+  findUnsupportedGraphSymbols(graph_, unsupportedSymbols, skipLastFusionNode);
   return unsupportedSymbols;
 }
 
 void ShapeInferenceEngine::findUnsupportedGraphSymbols(
     const torch::jit::Graph &graph,
-    std::unordered_set<std::string> &unsupportedSymbols) {
+    std::unordered_set<std::string> &unsupportedSymbols,
+    bool skipLastFusionNode) {
+
+  int totalFusionNodes = 0;
+  for (auto *node : graph.nodes()) {
+    if (node->kind().toQualString() == fusionNodeSymbol_) {
+      totalFusionNodes += 1;
+    }
+  }
+  int fusionNodeIndex = 0;
   for (auto *node : graph.nodes()) {
     if (node->hasAttribute(torch::jit::attr::Subgraph)) {
       auto subgraph = node->g(torch::jit::attr::Subgraph);
-      findUnsupportedGraphSymbols(*subgraph, unsupportedSymbols);
+      findUnsupportedGraphSymbols(*subgraph, unsupportedSymbols, false);
+      fusionNodeIndex += 1;
     } else {
-      if (!isSupportedNodeSymbol(node)) {
+      if (fusionNodeIndex == totalFusionNodes && skipLastFusionNode) {
+        LOG(INFO)
+            << "Skip shape inference for node after fusion groups with kind: "
+            << node->kind().toQualString();
+        continue;
+      } else if (!isSupportedNodeSymbol(node)) {
         unsupportedSymbols.insert(node->kind().toQualString());
       }
     }

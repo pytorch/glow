@@ -82,8 +82,8 @@ public:
 
   /// Collects the list of unsupported symbols present in a \p graph
   /// \returns a set of symbols
-  static std::unordered_set<std::string>
-  findUnsupportedGraphSymbols(const torch::jit::Graph &graph);
+  std::unordered_set<std::string>
+  findUnsupportedGraphSymbols(bool skipLastFusionNode = false);
 
 private:
   /// Graph that needs to be run shape inference.
@@ -122,8 +122,10 @@ private:
                     const at::ArrayRef<torch::jit::IValue> &);
 
   /// Collects the list of unsupported symbols present in a \p graph
-  static void findUnsupportedGraphSymbols(const torch::jit::Graph &graph,
-                                          std::unordered_set<std::string> &);
+  /// populates the provided set of symbol names
+  void findUnsupportedGraphSymbols(const torch::jit::Graph &,
+                                   std::unordered_set<std::string> &,
+                                   bool skipLastFusionNode = false);
 
   /// \return true if the node's symbol is supported for shape inference
   static bool isSupportedNodeSymbol(const torch::jit::Node *);

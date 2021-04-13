@@ -468,14 +468,24 @@ PYBIND11_MODULE(_torch_glow, m) {
 
   m.def(
       "glow_shape_inference_find_unsupported_symbols",
-      [](std::shared_ptr<torch::jit::Graph> graph,
-         std::vector<std::string> &blocklist) {
+      [](std::shared_ptr<torch::jit::Graph> graph, const py::tuple &args,
+         std::vector<std::string> &blocklist, bool skip_last_fusion_node) {
+        std::vector<c10::IValue> inputs;
+        for (const auto &arg : args) {
+          inputs.emplace_back(
+              torch::jit::toIValue(arg, c10::TensorType::get()));
+        }
+        const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
+
+        // The base symbol of all.
+        std::string baseSymbol = glow::getGlowSymbol(nullptr).toQualString();
+
         // There could be multiple glow fusion nodes created.
         glowCustomFuse(graph, getGlobalPyTorchLoaderSettingsMutable());
 
+        ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
         auto unsupported =
-            ShapeInferenceEngine::findUnsupportedGraphSymbols(*graph);
-
+            shapeInf.findUnsupportedGraphSymbols(skip_last_fusion_node);
         std::unordered_set<std::string> blockset;
         std::copy(blocklist.begin(), blocklist.end(),
                   std::inserter(blockset, blockset.end()));
@@ -489,5 +499,6 @@ PYBIND11_MODULE(_torch_glow, m) {
 
         return result;
       },
-      py::arg("graph"), py::arg("blocklist") = py::list());
+      py::arg("graph"), py::arg("args"), py::arg("blocklist") = py::list(),
+      py::arg("skip_last_fusion_node") = false);
 }
