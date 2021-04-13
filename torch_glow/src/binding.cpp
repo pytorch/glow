@@ -256,9 +256,13 @@ PYBIND11_MODULE(_torch_glow, m) {
     glow::runtime::flags::InterpreterMemory = memorySize;
   });
 
-  /// Enable NNPI private transforms
-  m.def("enable_nnpi_private_transforms",
-        []() { glow::nnpi::flags::EnablePrivateTransforms = true; });
+  /// Enable NNPI custom IA Kernels
+  m.def("enable_nnpi_custom_ia_kernels",
+        []() { glow::nnpi::flags::EnableCustomIAKernels = true; });
+
+  /// Enable NNPI custom DSP Kernels
+  m.def("enable_nnpi_custom_dsp_kernels",
+        []() { glow::nnpi::flags::EnableCustomDSPKernels = true; });
 
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.

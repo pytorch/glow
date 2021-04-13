@@ -94,7 +94,8 @@ extern bool LowerAllBatchMatMul;
 extern bool AcceptUnarySLS;
 extern bool SpecializeAllOneSLS;
 extern bool DisableTransforms;
-extern bool EnablePrivateTransforms;
+extern bool EnableCustomIAKernels;
+extern bool EnableCustomDSPKernels;
 extern bool DumpCompilerData;
 extern bool UsePerPartitionIcetConfig;
 } // namespace flags

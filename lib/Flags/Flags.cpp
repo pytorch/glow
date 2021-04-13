@@ -101,7 +101,8 @@ bool LowerAllBatchMatMul = false;
 bool AcceptUnarySLS = false;
 bool SpecializeAllOneSLS = false;
 bool DisableTransforms = false;
-bool EnablePrivateTransforms = false;
+bool EnableCustomIAKernels = false;
+bool EnableCustomDSPKernels = false;
 bool DumpCompilerData = false;
 bool UsePerPartitionIcetConfig = false;
 
@@ -512,12 +513,20 @@ DEFINE_validator(glow_disable_nnpi_transforms, [](const char *, bool val) {
   glow::nnpi::flags::DisableTransforms = val;
   return true;
 });
-DEFINE_bool(glow_enable_nnpi_private_transforms,
-            glow::nnpi::flags::EnablePrivateTransforms,
+DEFINE_bool(glow_enable_nnpi_custom_ia_kernels,
+            glow::nnpi::flags::EnableCustomIAKernels,
             "Enable running NNPIBackend::transformPrivate().");
-DEFINE_validator(glow_enable_nnpi_private_transforms,
+DEFINE_validator(glow_enable_nnpi_custom_ia_kernels,
                  [](const char *, bool val) {
-                   glow::nnpi::flags::EnablePrivateTransforms = val;
+                   glow::nnpi::flags::EnableCustomIAKernels = val;
+                   return true;
+                 });
+DEFINE_bool(glow_enable_nnpi_custom_dsp_kernels,
+            glow::nnpi::flags::EnableCustomDSPKernels,
+            "Enable running NNPIBackend::transformPrivate().");
+DEFINE_validator(glow_enable_nnpi_custom_dsp_kernels,
+                 [](const char *, bool val) {
+                   glow::nnpi::flags::EnableCustomDSPKernels = val;
                    return true;
                  });
 DEFINE_bool(glow_nnpi_lower_all_batch_matmul,
