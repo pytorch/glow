@@ -95,6 +95,9 @@ private:
   /// function that will run inputs matching that hash.
   std::unordered_map<size_t, MetaStack> perGlowGraphShapeMap_;
 
+  /// Mutex that protects perGlowGraphShapeMap_.
+  std::mutex glowGraphShapeMapMutex_;
+
   /// In AOT flow, compile a single Glow function and use it for all input
   /// sizes. The PyTorch tensor inputs in this case should be smaller that the
   /// compiled inputs, and they'll be padded with zeros by Glow.

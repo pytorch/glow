@@ -284,9 +284,12 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
   // If we already have a shape info for this graph output with and the
   // given inputs then use that.
   size_t hash = getGraphMapKeyFromInputStack(metaStack);
-  auto it = perGlowGraphShapeMap_.find(hash);
-  if (it != perGlowGraphShapeMap_.end()) {
-    return &(it->second);
+  {
+    std::lock_guard<std::mutex> graphShapeLock(glowGraphShapeMapMutex_);
+    auto it = perGlowGraphShapeMap_.find(hash);
+    if (it != perGlowGraphShapeMap_.end()) {
+      return &(it->second);
+    }
   }
 
   LOG(INFO) << "Compiling graph with tensor shape:\n" << metaStack.print();
@@ -304,11 +307,11 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runShapeInference");
 
-  auto ret = perGlowGraphShapeMap_.emplace(hash, outputShape);
-  RETURN_ERR_IF_NOT(ret.second,
-                    strFormat("Duplcate value in perGlowGraphShapeMap_ for %s",
-                              metaStack.print().c_str()));
-  return &(ret.first->second);
+  {
+    std::lock_guard<std::mutex> graphShapeLock(glowGraphShapeMapMutex_);
+    auto ret = perGlowGraphShapeMap_.emplace(hash, outputShape);
+    return &(ret.first->second);
+  }
 }
 
 int64_t CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
