@@ -9271,6 +9271,29 @@ TEST_P(OperatorTest, Erf_Int8QTy) {
   EXPECT_EQ(outH.raw(3), static_cast<int8_t>(std::round(std::erf(2) * 127)));
 }
 
+TEST_P(OperatorTest, HardSwish_FloatTy) {
+  CHECK_IF_ENABLED();
+
+  auto hardSwish = [](float x) {
+    return x * std::min(std::max(x + (float)3, (float)0.), (float)6.) *
+           (float)0.166666667;
+  };
+
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-1.0, 0.0, 1.0, 2.0};
+  auto *node = F_->createHardSwish("hardSwish", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_FLOAT_EQ(outH.raw(0), hardSwish(-1.0));
+  EXPECT_FLOAT_EQ(outH.raw(1), hardSwish(0.0));
+  EXPECT_FLOAT_EQ(outH.raw(2), hardSwish(1.0));
+  EXPECT_FLOAT_EQ(outH.raw(3), hardSwish(2.0));
+}
+
 /// Helper to test CmpNEQ using \p elemKind.
 template <typename ElemType>
 static void testCmpNEQ(glow::PlaceholderBindings &bindings, glow::Module &mod,

@@ -616,6 +616,10 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
   return isValid;
 }
 
+bool HardSwishNode::verify() const {
+  return checkSameType(getInput(), getResult(), this);
+}
+
 bool PadNode::verify() const {
   // Pad is currently only supported for constant padding.
   return expectCompareTrue("only the 'constant' mode is currrently supported",
