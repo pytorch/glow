@@ -143,7 +143,7 @@ private:
   Error generateGraphOutputShape();
 
   /// Extract shape info of node inputs from \p shapeMap_.
-  void getNodeInputShape(const torch::jit::Node *node, MetaStack &inputMetas);
+  bool getNodeInputShape(const torch::jit::Node *node, MetaStack &inputMetas);
 
   /// Infer shapes of node outputs
   Error shapeOnNode(const torch::jit::Node *node);
