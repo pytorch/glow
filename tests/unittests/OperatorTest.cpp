@@ -51,6 +51,9 @@ protected:
   /// be stack local and so they cannot be read in TearDown.
   std::vector<Tensor> unownedTensors_;
   virtual void SetUp() override {
+    glow::nnpi::flags::EnableCustomIAKernels = true;
+    glow::nnpi::flags::EnableCustomDSPKernels = true;
+
     // Skip stripping the module so that we can inspect Constants after
     // compilation.
     EE_.setSkipModuleStrip(true);
