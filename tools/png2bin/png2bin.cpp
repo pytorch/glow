@@ -53,9 +53,9 @@ int main(int argc, char **argv) {
     std = imagenetNormStd;
   }
 
-  Tensor png = readPngImageAndPreprocess(filename, imageNormMode[0],
-                                         imageChannelOrderOpt[0],
-                                         imageLayoutOpt[0], mean, std);
+  Tensor png = readPngPpmImageAndPreprocess(filename, imageNormMode[0],
+                                            imageChannelOrderOpt[0],
+                                            imageLayoutOpt[0], mean, std);
   if (!std::isnan(static_cast<float>(QuantizationScale))) {
     TensorQuantizationParams TQP{QuantizationScale, QuantizationOffset};
     png = quantization::quantizeTensor(png, TQP);
