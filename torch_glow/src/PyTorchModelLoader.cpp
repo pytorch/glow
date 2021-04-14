@@ -7844,9 +7844,10 @@ Error PyTorchModelLoader::loadJITGraph(
     const at::ArrayRef<torch::jit::IValue> inputs,
     const InputMetaStack &metaStack) {
   Error error = Error::empty();
+  bool loadGraph = false;
   PyTorchModelLoader loader(F, graph, inputPlaceholders, outputPlaceholders,
                             outputCorrectType, error, settings, inputs,
-                            metaStack);
+                            metaStack, loadGraph);
   return error;
 }
 
@@ -7857,9 +7858,11 @@ PyTorchModelLoader::PyTorchModelLoader(
     std::vector<c10::ScalarType> &outputCorrectType, Error &error,
     const PyTorchLoaderSettings &settings,
     const at::ArrayRef<torch::jit::IValue> inputs,
-    const InputMetaStack &metaStack)
+    const InputMetaStack &metaStack, bool loadGraph)
     : F_(F), settings_(settings), inputs_(inputs) {
-  std::cerr << "loading PyTorch graph\n" << graph << std::endl;
+  if (loadGraph) {
+    std::cerr << "loading PyTorch graph\n" << graph << std::endl;
+  }
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 

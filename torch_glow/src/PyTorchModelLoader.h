@@ -197,7 +197,8 @@ private:
                      std::vector<c10::ScalarType> &outputCorrectType,
                      Error &error, const PyTorchLoaderSettings &settings,
                      const at::ArrayRef<torch::jit::IValue> inputs,
-                     const InputMetaStack &metaStack = InputMetaStack());
+                     const InputMetaStack &metaStack = InputMetaStack(),
+                     bool loadGraph = false);
 
   /// Build mapping from jit symbols to function that loads nodes of that kind.
   static const MappingOfMemberFunctions buildSymbolsMapping();
