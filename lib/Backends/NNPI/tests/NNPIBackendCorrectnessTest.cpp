@@ -23,7 +23,6 @@ struct BlacklistInitializer {
   BlacklistInitializer() {
     const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
     { {"AvgPoolGradTest/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"intLookupTableInt16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"basicFCNet/0", TestBlacklist::AnyDeviceAnyEngine},
       {"basicFCNetQuantized/0", TestBlacklist::AnyDeviceAnyEngine},
       {"complexNet1/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -47,9 +46,11 @@ struct BlacklistInitializer {
       {"AsymmetricQuantizedConvReluFusionTest/0",
        TestBlacklist::AnyDeviceAnyEngine},
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
-      {"intLookupTable/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"intLookupTableInt8/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"intLookupTableInt16/0", TestBlacklist::AnyDeviceAnyEngine},
 #else
-      {"intLookupTable/0", TestBlacklist::AnyDeviceSWEngine},
+      {"intLookupTableInt8/0", TestBlacklist::AnyDeviceSWEngine},
+      {"intLookupTableInt16/0", TestBlacklist::AnyDeviceSWEngine},
 #endif
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
