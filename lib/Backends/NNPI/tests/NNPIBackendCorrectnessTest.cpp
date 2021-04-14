@@ -23,6 +23,7 @@ struct BlacklistInitializer {
   BlacklistInitializer() {
     const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
     { {"AvgPoolGradTest/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"intLookupTableInt16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"basicFCNet/0", TestBlacklist::AnyDeviceAnyEngine},
       {"basicFCNetQuantized/0", TestBlacklist::AnyDeviceAnyEngine},
       {"complexNet1/0", TestBlacklist::AnyDeviceAnyEngine},
