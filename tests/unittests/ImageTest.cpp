@@ -252,7 +252,7 @@ TEST_F(ImageTest, readBadImages) {
 }
 
 TEST_F(ImageTest, readPngImageAndPreprocessWithAndWithoutInputTensor) {
-  auto image1 = readPngImageAndPreprocess(
+  auto image1 = readPngPpmImageAndPreprocess(
       "tests/images/imagenet/cat_285.png", ImageNormalizationMode::k0to1,
       ImageChannelOrder::RGB, ImageLayout::NHWC, imagenetNormMean,
       imagenetNormStd);
@@ -262,10 +262,10 @@ TEST_F(ImageTest, readPngImageAndPreprocessWithAndWithoutInputTensor) {
   std::vector<float> stddevBGR(llvm::makeArrayRef(imagenetNormStd));
   std::reverse(meanBGR.begin(), meanBGR.end());
   std::reverse(stddevBGR.begin(), stddevBGR.end());
-  readPngImageAndPreprocess(image2, "tests/images/imagenet/cat_285.png",
-                            ImageNormalizationMode::k0to1,
-                            ImageChannelOrder::BGR, ImageLayout::NCHW, meanBGR,
-                            stddevBGR);
+  readPngPpmImageAndPreprocess(image2, "tests/images/imagenet/cat_285.png",
+                               ImageNormalizationMode::k0to1,
+                               ImageChannelOrder::BGR, ImageLayout::NCHW,
+                               meanBGR, stddevBGR);
 
   // Test if the preprocess actually happened.
   dim_t imgHeight = image1.dims()[0];
@@ -288,6 +288,26 @@ TEST_F(ImageTest, readPngImageAndPreprocessWithAndWithoutInputTensor) {
   }
   image1 = std::move(swizzled);
   EXPECT_TRUE(image1.isEqual(image2, 0.01));
+}
+
+TEST_F(ImageTest, readPpmImageAndPreprocess) {
+  std::vector<float> imagenetNormMeanBGR(imagenetNormMean,
+                                         imagenetNormMean + 3);
+  std::vector<float> imagenetNormStdBGR(imagenetNormStd, imagenetNormStd + 3);
+  std::reverse(imagenetNormMeanBGR.begin(), imagenetNormMeanBGR.end());
+  std::reverse(imagenetNormStdBGR.begin(), imagenetNormStdBGR.end());
+
+  // Use PNG image as reference.
+  auto pngRef = readPngPpmImageAndPreprocess(
+      "tests/images/imagenet/cat_285.png", ImageNormalizationMode::k0to1,
+      ImageChannelOrder::RGB, ImageLayout::NHWC, imagenetNormMean,
+      imagenetNormStd);
+  auto ppmExp = readPngPpmImageAndPreprocess(
+      "tests/images/ppm/cat_285.ppm", ImageNormalizationMode::k0to1,
+      ImageChannelOrder::RGB, ImageLayout::NHWC, imagenetNormMean,
+      imagenetNormStd);
+
+  EXPECT_TRUE(ppmExp.isEqual(pngRef, 0.01));
 }
 
 TEST_F(ImageTest, writePngImage) {
@@ -392,7 +412,7 @@ TEST_F(ImageTest, writePngImageWithImagenetNormalization) {
 /// Test PNG w/ order and layout transposes, and different mean/stddev per
 /// channel.
 TEST_F(ImageTest, readNonSquarePngBGRNCHWTest) {
-  auto image = readPngImageAndPreprocess(
+  auto image = readPngPpmImageAndPreprocess(
       "tests/images/other/tensor_2x4x3.png", ImageNormalizationMode::k0to255,
       ImageChannelOrder::BGR, ImageLayout::NCHW, {0, 1, 2}, {3, 4, 5});
 
