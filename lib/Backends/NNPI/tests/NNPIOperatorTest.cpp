@@ -76,7 +76,7 @@ struct BlacklistInitializer {
       {"IntGemm/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"CumSum_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"CumSum_Int32/0", TestBlacklist::AnyDeviceSWEngine},
       {"CumSum_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Exclusive/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Reverse/0", TestBlacklist::AnyDeviceAnyEngine},
