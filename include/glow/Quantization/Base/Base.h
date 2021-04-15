@@ -118,6 +118,25 @@ struct NodeQuantizationInfo {
   int32_t offset() const { return tensorQuantizationParams_.offset; }
 };
 
+struct FixedPointInt8 {
+  uint32_t point;
+  uint32_t conversion;
+
+  uint32_t convert(float elem, uint32_t fractionalPart) {
+
+    double result = (double)elem * (double)std::exp2((double) fractionalPart);
+
+    if (result < (double)std::numeric_limits<uint32_t>::min() ||
+        result > (double)std::numeric_limits<uint32_t>::max()) {
+
+      printf("Float to fix point conversion overflow\n");
+      exit(-1);
+    } 
+
+    return round(result);
+  }
+};
+
 namespace quantization {
 
 /// Type definition for a float min/max range.
@@ -230,27 +249,6 @@ template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
   auto mx = std::numeric_limits<DestTy>::max();
   auto mn = std::numeric_limits<DestTy>::min();
   return std::max<SrcTy>(mn, std::min<SrcTy>(mx, in));
-}
-
-inline uint32_t convert(float elem, uint32_t fractionalPart) {
-  double b = (double)elem * (double)std::exp2((double) fractionalPart);
-
-  if (b < (double)std::numeric_limits<uint32_t>::min() || b > (double)std::numeric_limits<uint32_t>::max()) {
-    printf("Float %f to fix point %f conversion overflow\n", b, (double)std::numeric_limits<uint32_t>::max());
-    exit(-1);
-  } 
-
-  return round(b);
-}
-
-inline int32_t determine_integer_part(float number) {
-  int32_t aux = (int32_t)number;
-  int32_t integer_part = 0;
-  while (aux / 2 != 0) {
-    integer_part += 1;
-    aux /= 2;
-  }
-   return integer_part + 1;
 }
 
 /// Converts floating point value to DestTy (quantized type) based on the

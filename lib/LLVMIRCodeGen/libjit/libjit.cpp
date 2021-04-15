@@ -2930,10 +2930,12 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims, const
      * align point for both operands
      */
     if ((32 - integerPart) >= (32 - invScalePoint)) {
-      division = div_fixed_point(invScale, sum >> (invScalePoint - integerPart), (32 - invScalePoint));
+      division = div_fixed_point(invScale, sum >> (invScalePoint - integerPart),
+                                  (32 - invScalePoint));
       size = (32 - invScalePoint);
     } else {
-      division = div_fixed_point(invScale >> (integerPart - invScalePoint), sum, (32 - integerPart));
+      division = div_fixed_point(invScale >> (integerPart - invScalePoint),
+                                  sum, (32 - integerPart));
       size = (32 - integerPart);
     }
 

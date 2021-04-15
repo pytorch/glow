@@ -2861,8 +2861,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     if (src->getType()->isQuantizedType()) {
       std::vector<int32_t> lut;
 
+      struct FixedPointInt8 fixedPointRepres;
+
       for (int32_t i = 0; i < 256; i++) {
-        lut.push_back(quantization::convert(exp(src->getType()->getScale() * (i - 255)), 31));
+        lut.push_back(fixedPointRepres.convert(exp(src->getType()->getScale()
+                      * (i - 255)), 31));
       }
 
       auto *lutPtr = emitConstI32Array(builder, lut);
@@ -2876,10 +2879,20 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         sumIntegerPart = emitConstI32(builder, ceil(log2(size)) + 1);
       }
 
-      auto *invScale = emitConstI32(builder, quantization::convert(1.f / dest->getType()->getScale(), 31));
-      auto *invScalePoint = emitConstI32(builder, quantization::determine_integer_part(1.f / dest->getType()->getScale()));
+      float invScaleNumber = 1.f / dest->getType()->getScale();
 
-      createCall(builder, F, {srcPtr, destPtr, srcDims, lutPtr, outOffset, invScale, sumIntegerPart, invScalePoint});
+      int32_t integerPart = 0;
+      while (invScaleNumber / 2 != 0) {
+        integerPart += 1;
+        invScaleNumber /= 2;
+      }
+
+      auto *invScale = emitConstI32(builder, fixedPointRepres.convert(1.f
+                          / dest->getType()->getScale(), 31));
+      auto *invScalePoint = emitConstI32(builder, integerPart);
+
+      createCall(builder, F, {srcPtr, destPtr, srcDims, lutPtr, outOffset,
+                              invScale, sumIntegerPart, invScalePoint});
     } else {
       createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
     }
