@@ -92,12 +92,16 @@ class Partitioner final : public PartitionerBase {
   NodeToFunctionMap selectPartitions(Function *F, uint64_t availableMemory,
                                      llvm::StringRef backendName);
 
-  /// Duplicates \p partitions in the module order to saturate the Host. \p
-  /// logicalDeviceCount is the number of logical devices used by the current
-  /// partitions. For example: If a network is partitioned into two parts (\p
-  /// logicalDeviceCount) and there are six devices this would duplicate the
-  /// network three times.
-  void saturateHost(unsigned logicalDeviceCount, const DAGListTy &partitions);
+  /// Duplicates \p partitions in the module order to saturate the Host.
+  /// \p logicalDeviceCount is the number of logical devices used by the
+  /// current partitions. \p availableLogicalDevices is the total number of
+  /// devices to saturate (if zero than the number of found devices is used).
+  /// For example: If a network is partitioned into two parts (\p
+  /// logicalDeviceCount) and there are six devices this would duplicate
+  /// the network three times. If \p availableLogicalDevices is set to four,
+  /// the network would be duplicated only twice.
+  void saturateHost(unsigned logicalDeviceCount, const DAGListTy &partitions,
+                    size_t availableLogicalDevices);
 
   /// Partition a function \p F based on backends \p backends. \returns the
   /// final partition result(or an err) and a map between partitions and backend

@@ -242,6 +242,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     llvm_unreachable("Not implemented");
   case ElemKind::BFloat16Ty:
     llvm_unreachable("Not implemented");
+  case ElemKind::Float64Ty:
+    return builder.getDoubleTy();
   case ElemKind::Int8QTy:
     return builder.getInt8Ty();
   case ElemKind::UInt8QTy:
@@ -640,6 +642,9 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     llvm_unreachable("Not implemented");
   case ElemKind::BFloat16Ty:
     llvm_unreachable("Not implemented");
+  case ElemKind::Float64Ty:
+    return llvm::ConstantFP::get(llvm::Type::getDoubleTy(getLLVMContext()),
+                                 val);
   case ElemKind::Int64ITy:
     return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int8QTy:
@@ -985,14 +990,20 @@ void LLVMIRGen::emitDataParallelKernel(
 ///
 /// \param allocationsInfo information about allocations
 /// \param bundle current bundle of stacked instructions
-/// \param buf the buffer operand to be checked for overlaps with the \p bundle.
+/// \param op the operand to be checked for overlaps with the \p bundle.
 static bool isOverlappingWithAnyBundleBufferOperands(
     AllocationsInfo &allocationsInfo,
-    llvm::SmallVectorImpl<const Instruction *> &bundle, Value *buf) {
+    llvm::SmallVectorImpl<const Instruction *> &bundle,
+    const Instruction::Operand &op) {
+  auto *buf = op.first;
   auto addr1 = allocationsInfo.allocatedAddress_[buf];
   auto size1 = buf->getSizeInBytes();
   for (auto bi : bundle) {
     for (auto bop : bi->getOperands()) {
+      // Only input operands never interfere.
+      if (bop.second == OperandKind::In && op.second == OperandKind::In) {
+        continue;
+      }
       auto buf2 = bop.first;
       auto addr2 = allocationsInfo.allocatedAddress_[buf2];
       auto size2 = buf2->getSizeInBytes();
@@ -1013,6 +1024,16 @@ static bool isOverlappingWithAnyBundleBufferOperands(
     }
   }
   return false;
+}
+
+template <typename T> bool matchPair(T a, T b) { return a == b; }
+
+template <typename T> bool matchPair(T a) { return false; }
+
+/// Returns true if the input /p a matches with at least one of the inputs in
+/// the variadic list \p b ....
+template <typename T, typename... Args> bool matchPair(T a, T b, Args... args) {
+  return a == b || matchPair(a, args...);
 }
 
 void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
@@ -1053,14 +1074,11 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
     // bundled instructions. In case this condition does not hold, the current
     // instruction cannot be included into the data-parallel bundle, because
     // overlapping operand buffers are not data parallel.
-    for (auto op : I.getOperands()) {
-      // Skip non-mutated operands.
-      if (op.second == OperandKind::In)
-        continue;
+    for (auto &op : I.getOperands()) {
       // If the mutated operand buffer overlaps with any buffer already used by
       // the bundle, the current instruction cannot become a part of the bundle.
       if (isOverlappingWithAnyBundleBufferOperands(allocationsInfo_, bundle,
-                                                   op.first)) {
+                                                   op)) {
         isBundleCompatible = false;
         break;
       }
@@ -1479,7 +1497,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     break;
   }
 
-#define ARITHMETIC_BINARY_OP_CASE(INST_NAME_, FUN_NAME_)                       \
+#define ARITHMETIC_BINARY_OP_CASE(INST_NAME_, FUN_NAME_, ...)                  \
   case Kinded::Kind::INST_NAME_##InstKind: {                                   \
     auto *AN = cast<INST_NAME_##Inst>(I);                                      \
     auto *dest = AN->getDest();                                                \
@@ -1493,7 +1511,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *elementTy = getElementType(builder, dest);                           \
     auto *pointerNull =                                                        \
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
-                                                                               \
+    bool typesMatched = matchPair(dest->getElementType(), __VA_ARGS__);        \
     if (lhs->getType()->isQuantizedType()) {                                   \
       auto *destTy = dest->getType();                                          \
       auto *lhsTy = lhs->getType();                                            \
@@ -1524,20 +1542,23 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,         \
                                          loopCount, "buffer.element.addr");    \
       builder.CreateStore(stackedOpCall, destAddr);                            \
-    } else {                                                                   \
+    } else if (typesMatched) {                                                 \
       auto *stackedOpCall = createUncheckedCall(                               \
           builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});               \
       auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
                                          "buffer.element.addr");               \
       builder.CreateStore(stackedOpCall, destAddr);                            \
+    } else {                                                                   \
+      llvm_unreachable("Unsupported Type in " #INST_NAME_);                    \
     }                                                                          \
     break;                                                                     \
   }
-    ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add");
-    ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub");
-    ARITHMETIC_BINARY_OP_CASE(ElementMax, "element_max");
-    ARITHMETIC_BINARY_OP_CASE(ElementMin, "element_min");
-    ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
+    ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add", ElemKind::FloatTy,
+                              ElemKind::Int32ITy, ElemKind::Int64ITy);
+    ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub", ElemKind::FloatTy);
+    ARITHMETIC_BINARY_OP_CASE(ElementMax, "element_max", ElemKind::FloatTy);
+    ARITHMETIC_BINARY_OP_CASE(ElementMin, "element_min", ElemKind::FloatTy);
+    ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow", ElemKind::FloatTy);
 #undef ARITHMETIC_BINARY_OP_CASE
 
   case Kinded::Kind::ElementNotInstKind: {

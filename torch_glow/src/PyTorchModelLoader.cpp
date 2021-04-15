@@ -349,6 +349,8 @@ bool isQParamWeightNode(const torch::jit::Node *node) {
       torch::jit::Symbol::fromQualString("quantized::conv3d"),
       torch::jit::Symbol::fromQualString("quantized::conv3d_relu"),
       torch::jit::Symbol::fromQualString("glow::unpacked_quantized_linear"),
+      torch::jit::Symbol::fromQualString(
+          "fb::quantized_linear_unpacked_weight"),
       torch::jit::Symbol::fromQualString("glow::unpacked_quantized_conv2d"),
       torch::jit::Symbol::fromQualString(
           "glow::unpacked_quantized_conv2d_relu"),
@@ -704,6 +706,7 @@ struct QuantizedMulInputs {
 };
 
 /// Indexes of glow::unpacked_quantized_linear inputs.
+/// Also used for fb::quantized_linear_unpacked_weight
 struct QuantizedUnpackedLinearInputs {
   enum {
     input = 0,
@@ -1273,6 +1276,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"quantized::add"}, &PyTorchModelLoader::loadQuantizedAdd},
       {{"quantized::add_relu"}, &PyTorchModelLoader::loadQuantizedAddRelu},
       {{"quantized::mul"}, &PyTorchModelLoader::loadQuantizedMul},
+      {{"quantized::cat"}, &PyTorchModelLoader::loadQuantizedCat},
       {{"quantized::mul_scalar"}, &PyTorchModelLoader::loadQuantizedMul},
       {{"glow::fused_linear"}, &PyTorchModelLoader::loadGlowFusedLinear},
       {{"glow::unpacked_quantized_conv2d"},
@@ -1283,9 +1287,12 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
       {{"glow::unpacked_quantized_conv2d_relu"},
        &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
-      {{"glow::unpacked_quantized_linear"},
+      {{"glow::unpacked_quantized_linear",
+        "fb::quantized_linear_unpacked_weight"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked},
       {{"glow::fused_split"}, &PyTorchModelLoader::loadFusedSplit},
+      {{"aten::split"}, &PyTorchModelLoader::loadSplit},
+      {{"aten::split_with_sizes"}, &PyTorchModelLoader::loadSplitWithSizes},
       {{"aten::linear"}, &PyTorchModelLoader::loadLinear},
       {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
       {{"quantized::linear_dynamic"},
@@ -1298,6 +1305,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize},
       {{"aten::size"}, &PyTorchModelLoader::loadSize},
       {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct},
+      {{"prim::ListUnpack"}, &PyTorchModelLoader::loadListUnpack},
       {{"aten::reciprocal", "aten::reciprocal_"},
        &PyTorchModelLoader::loadReciprocal},
       {{"aten::adaptive_avg_pool2d"},
@@ -2058,6 +2066,10 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       rhs, getGlowNodeValueForValue(inputs[QuantizedAddInputs::rhs]));
 
+  auto broadcasted = F_.broadcastInputs(/* axis */ -1, {lhs, rhs});
+  lhs = broadcasted[0];
+  rhs = broadcasted[1];
+
   // scale
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
@@ -2232,7 +2244,9 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
     glow::NodeValue rhs;
     ASSIGN_VALUE_OR_RETURN_ERR(
         rhs, getGlowNodeValueForValue(inputs[QuantizedMulInputs::rhs]));
-
+    auto broadcasted = F_.broadcastInputs(/* axis */ -1, {lhs, rhs});
+    lhs = broadcasted[0];
+    rhs = broadcasted[1];
     // scale
     float outScale;
     ASSIGN_VALUE_OR_RETURN_ERR(
@@ -2249,16 +2263,7 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
     auto outDims = inputType->dims();
     auto outTy = F_.getParent()->uniqueType(
         ElemKind::Int8QTy, outDims, outScale, outOffset - UINT8_TO_INT8_SHIFT);
-
-    RETURN_ERR_IF_NOT(
-        lhs.dims().size() == rhs.dims().size(),
-        glow::strFormat(
-            "LHS and RHS must have number of dimensions, but LHS got "
-            "%lu , RHS got %lu .",
-            lhs.dims().size(), rhs.dims().size()));
-    auto *bcast =
-        F_.createBroadcast("broadcasted_rhs_quant_mul", rhs, lhs.dims(), 0);
-    glow::MulNode *qmul = F_.createMul("quantized_mul", outTy, lhs, bcast);
+    glow::MulNode *qmul = F_.createMul("quantized_mul", outTy, lhs, rhs);
     auto output = qmul->getResult();
 
     c10::ScalarType dtype;
@@ -2266,6 +2271,54 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
         getCorrectTypeMapping(dtype, inputs[QuantizedMulInputs::lhs]));
     RETURN_ERR(addValueMapping(outputs[0], output, dtype));
   }
+}
+Error PyTorchModelLoader::loadQuantizedCat(const torch::jit::Node *ptNode) {
+  // Current strategy for quantized::cat is dequantize->cat->requantize.
+  // TODO: Remove the quantization step to potentially improve performance.
+
+  RETURN_IF_ERR(
+      checkInputAndOutputSizes(ptNode->inputs(), -2, ptNode->outputs(), 1));
+
+  std::vector<glow::NodeValue> *inputTensors;
+  float quantizationScale;
+  int32_t quantizationOffset;
+  int64_t concatDimension;
+
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      inputTensors,
+      iValToNodeValueList(getGlowIValueForValue(ptNode->input(0))));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      quantizationScale, iValToDouble(getGlowIValueForValue(ptNode->input(2))));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      quantizationOffset, iValToInt(getGlowIValueForValue(ptNode->input(3))));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      concatDimension, iValToInt(getGlowIValueForValue(ptNode->input(1))));
+
+  std::vector<glow::NodeValue> dequantizedInputs;
+  for (glow::NodeValue input : *inputTensors) {
+    // Legacy behavior suggests supporting concat of empty tensors, but only
+    // for this specific shape. See the legacy_cat_wrap_dim function in
+    // caffe2/aten/src/ATen/WrapDimUtils.h for more info.
+    if (input.dims() == llvm::ArrayRef<dim_t>({0})) {
+      continue;
+    }
+    dequantizedInputs.emplace_back(F_.createDequantize(
+        "quantized_cat_dequantize", input, ElemKind::FloatTy));
+  }
+
+  glow::NodeValue concatResult =
+      F_.createConcat("quantized_cat_nested_cat", dequantizedInputs,
+                      concatDimension)
+          ->getResult();
+
+  auto *outputTy = F_.getParent()->uniqueType(
+      ElemKind::Int8QTy, concatResult.dims(), quantizationScale,
+      quantizationOffset - UINT8_TO_INT8_SHIFT);
+
+  auto quantizedResult =
+      F_.createQuantize("quantized_cat_requantize", concatResult, outputTy);
+
+  RETURN_ERR(addValueMapping(ptNode->output(0), quantizedResult));
 }
 
 Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
@@ -2732,8 +2785,8 @@ Expected<NodeValue> PyTorchModelLoader::loadArithmeticNode(
 
   // For aten::div, it will promote the output to default scalar type if both
   // inputs are of integer type. However, Glow requires inputs and output have
-  // the same type. In order to achieve same behavior as Pytorch div, we convert
-  // the inputs to default scalar type if they are both integer.
+  // the same type. In order to achieve same behavior as Pytorch div, we
+  // convert the inputs to default scalar type if they are both integer.
   if (convertToDefaultType) {
     if (isNonQuantizedIntElemKind(rhsInput.getElementType()) &&
         isNonQuantizedIntElemKind(lhsInput.getElementType())) {
@@ -2998,8 +3051,8 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
   if (!keepDim) {
     return addValueMapping(outputs[0], batchedReduceAddNode);
   } else {
-    // If keepDim is true we need to insert the removed dimension(s) manually by
-    // reshaping
+    // If keepDim is true we need to insert the removed dimension(s) manually
+    // by reshaping
     std::vector<dim_t> shape =
         batchedReduceAddNode->getResult().getType()->dims();
     std::sort(glowAxes.begin(), glowAxes.end());
@@ -3116,6 +3169,20 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
     return MAKE_ERR("Encountered unknown JIT Value mapping");
   }
   RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+}
+
+Error PyTorchModelLoader::loadListUnpack(const torch::jit::Node *ptNode) {
+  RETURN_ERR_IF_NOT(ptNode->inputs().size() == 1,
+                    "ListUnpack only supports a single input");
+  std::vector<glow::NodeValue> *inputs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      inputs, iValToNodeValueList(getGlowIValueForValue(ptNode->input(0))));
+  RETURN_ERR_IF_NOT(ptNode->outputs().size() == inputs->size(),
+                    "ListUnpack inputs and outputs must be of same size.");
+  for (int idx = 0; idx < inputs->size(); idx++) {
+    RETURN_IF_ERR(addValueMapping(ptNode->output(idx), inputs->at(idx)));
+  }
+  return Error::success();
 }
 
 /// Mirroring the implementation in
@@ -3797,7 +3864,8 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
     }
   }
 
-  // If there was a negative index, replace it with the remaining dims in input.
+  // If there was a negative index, replace it with the remaining dims in
+  // input.
   if (negOneIndex >= 0) {
     shape[negOneIndex] = inputTotalDims / shapeTotalDims;
   }
@@ -7367,6 +7435,96 @@ Error PyTorchModelLoader::loadXLEmbeddingBag4bitRowwiseOffsets(
   return loadRowwiseQuantizedXLEmbeddingBagHelper(ptNode, true);
 }
 
+Error PyTorchModelLoader::loadSplit(const torch::jit::Node *ptNode) {
+  RETURN_IF_ERR(
+      checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
+
+  glow::NodeValue input;
+  unsigned int dimension;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+
+  uint64_t chunkSize;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      chunkSize, iValToInt(getGlowIValueForValue(ptNode->input(1))));
+  std::vector<glow::NodeValue> chunks;
+  ASSIGN_VALUE_OR_RETURN_ERR(chunks,
+                             loadSplitImpl(input, dimension, chunkSize));
+  glow::GlowIValue output;
+  output.fromNodeValueList(chunks);
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, ptNode->input(0)));
+  RETURN_ERR(addValueMapping(ptNode->output(0), std::move(output), dtype));
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadSplitWithSizes(const torch::jit::Node *ptNode) {
+  RETURN_IF_ERR(
+      checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
+
+  glow::NodeValue input;
+  unsigned int dimension;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+  std::vector<int64_t> *signedSizes;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      signedSizes, iValToIntList(getGlowIValueForValue(ptNode->input(1))));
+  std::vector<uint64_t> sizes;
+  for (uint64_t size : *signedSizes) {
+    sizes.push_back(size);
+  }
+  std::vector<glow::NodeValue> chunks;
+  ASSIGN_VALUE_OR_RETURN_ERR(chunks, loadSplitImpl(input, dimension, sizes));
+  glow::GlowIValue output;
+  output.fromNodeValueList(chunks);
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, ptNode->input(0)));
+  RETURN_ERR(addValueMapping(ptNode->output(0), std::move(output), dtype));
+  return Error::success();
+}
+
+Expected<std::vector<glow::NodeValue>>
+PyTorchModelLoader::loadSplitImpl(const glow::NodeValue &glowInput,
+                                  const uint64_t dimension,
+                                  const uint64_t size) {
+  uint64_t chunkCount = glowInput.dims()[dimension] / size;
+  std::vector<uint64_t> sizes(chunkCount, size);
+  if (chunkCount * size < glowInput.dims()[dimension]) {
+    sizes.push_back(glowInput.dims()[dimension] - chunkCount * size);
+  }
+  return loadSplitImpl(glowInput, dimension, sizes);
+}
+
+Expected<std::vector<glow::NodeValue>>
+PyTorchModelLoader::loadSplitImpl(const glow::NodeValue &glowInput,
+                                  const uint64_t dimension,
+                                  const std::vector<uint64_t> &sizes) {
+  uint64_t currentStartIndex = 0;
+  uint64_t chunkNumber = 0;
+  std::vector<glow::NodeValue> chunks;
+  std::vector<glow::dim_t> startIndices(glowInput.dims().size(), 0);
+  std::vector<glow::dim_t> endIndices = glowInput.dims();
+  RETURN_ERR_IF_NOT(!startIndices.empty(), "Input tensor is empty!");
+  for (auto chunkSize : sizes) {
+    startIndices[dimension] = currentStartIndex;
+    endIndices[dimension] = currentStartIndex + chunkSize;
+    RETURN_ERR_IF_NOT(
+        endIndices[dimension] <= glowInput.dims()[dimension],
+        strFormat("Given split sections sum to %lu which is greater than the "
+                  "length of the tensor (%lu) in the given dimension (%lu)!",
+                  endIndices[dimension], glowInput.dims()[dimension],
+                  dimension));
+    chunks.push_back(F_.createSlice(strFormat("split_%lu", chunkNumber),
+                                    glowInput, startIndices, endIndices)
+                         ->getResult());
+    currentStartIndex += chunkSize;
+    chunkNumber++;
+  }
+  return chunks;
+}
+
 Error PyTorchModelLoader::loadFusedSplit(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -7686,9 +7844,10 @@ Error PyTorchModelLoader::loadJITGraph(
     const at::ArrayRef<torch::jit::IValue> inputs,
     const InputMetaStack &metaStack) {
   Error error = Error::empty();
+  bool loadGraph = false;
   PyTorchModelLoader loader(F, graph, inputPlaceholders, outputPlaceholders,
                             outputCorrectType, error, settings, inputs,
-                            metaStack);
+                            metaStack, loadGraph);
   return error;
 }
 
@@ -7699,9 +7858,11 @@ PyTorchModelLoader::PyTorchModelLoader(
     std::vector<c10::ScalarType> &outputCorrectType, Error &error,
     const PyTorchLoaderSettings &settings,
     const at::ArrayRef<torch::jit::IValue> inputs,
-    const InputMetaStack &metaStack)
+    const InputMetaStack &metaStack, bool loadGraph)
     : F_(F), settings_(settings), inputs_(inputs) {
-  std::cerr << "loading PyTorch graph\n" << graph << std::endl;
+  if (loadGraph) {
+    std::cerr << "loading PyTorch graph\n" << graph << std::endl;
+  }
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 
@@ -7732,6 +7893,10 @@ PyTorchModelLoader::PyTorchModelLoader(
         glow::Type t;
         if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
           inputScalarType = metaStack.inputMetas[i].type;
+          if (inputScalarType == c10::ScalarType::Undefined) {
+            // Handle None input;
+            continue;
+          }
           // TODO: Change Glow Type to use sdim_t to be consistent
           // with other places.
           std::vector<glow::dim_t> dims;

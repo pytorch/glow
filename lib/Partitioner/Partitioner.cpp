@@ -224,8 +224,17 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
 }
 
 void Partitioner::saturateHost(unsigned logicalDeviceCount,
-                               const DAGListTy &partitions) {
-  unsigned duplications = deviceInfo_.size() / logicalDeviceCount;
+                               const DAGListTy &partitions,
+                               size_t availableLogicalDevices) {
+  DCHECK(availableLogicalDevices <= deviceInfo_.size())
+      << "Requested number of logical devices must be less than or euqal "
+         "the number of found devices.";
+  // If not specified, use number of available physical devices.
+  if (availableLogicalDevices == 0 ||
+      availableLogicalDevices > deviceInfo_.size()) {
+    availableLogicalDevices = deviceInfo_.size();
+  }
+  unsigned duplications = availableLogicalDevices / logicalDeviceCount;
   if (duplications < 2) {
     return;
   }
@@ -443,7 +452,7 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
   }
   if (cctx.saturateHost) {
     // Saturate the Host.
-    saturateHost(1, partitions);
+    saturateHost(1, partitions, cctx.saturateKDevices);
   }
 
   NodeToFunctionMap mapping;
@@ -640,7 +649,7 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
 
   if (cctx.saturateHost &&
       partitionMap.getPartitions().size() < deviceInfo_.size()) {
-    saturateHost(logicalDeviceID_, partitions);
+    saturateHost(logicalDeviceID_, partitions, cctx.saturateKDevices);
   }
 
   RETURN_IF_ERR(finalize(partitions, partitionMap));
@@ -791,7 +800,7 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
     // Attempt to saturate the host when there is only one type of backend.
     // Passing in the count of logical devices. Since logicalId starts at 0 we
     // add one.
-    saturateHost(logicalDeviceID_, partitions);
+    saturateHost(logicalDeviceID_, partitions, cctx.saturateKDevices);
   }
 
   // Step 6 : clean up and verify the generated new functions.
@@ -1030,7 +1039,7 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
         allLogicalIDs.insert(id);
       }
     }
-    saturateHost(allLogicalIDs.size(), partitions);
+    saturateHost(allLogicalIDs.size(), partitions, cctx.saturateKDevices);
   }
 
   return std::move(partitions);
@@ -1459,7 +1468,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   ASSIGN_VALUE_OR_RETURN_ERR(partitions,
                              partitionFromConfig(partitionConfig, cctx));
   if (cctx.saturateHost) {
-    saturateHost(snnNumCards, partitions);
+    saturateHost(snnNumCards, partitions, cctx.saturateKDevices);
   }
   return std::move(partitions);
 }

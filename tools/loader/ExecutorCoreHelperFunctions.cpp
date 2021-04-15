@@ -319,10 +319,7 @@ std::pair<llvm::StringMap<Placeholder *>, llvm::StringMap<Placeholder *>>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
                                   llvm::ArrayRef<TypeRef> inputImageType) {
   // Load model.
-  loader.loadModel(inputImageType);
-
-  // Post model loader transformation.
-  loader.postModelLoad(bindings, inputImageType);
+  loader.loadModel(&bindings, inputImageType);
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());

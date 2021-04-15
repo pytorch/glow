@@ -708,6 +708,25 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
+    // Sink Transpose below Tile nodes.
+    if (auto *TN = dyn_cast<TileNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(TN->getInput());
+
+      if (!TR) {
+        continue;
+      }
+
+      auto *newTN = F->createTile(TN->getName(), TR->getInput(), TN->getCount(),
+                                  TR->getShuffle()[TN->getAxis()]);
+      newTN->setPredicate(node->getPredicate());
+      auto *newTR = F->createTranspose(TR->getName(), newTN, TR->getShuffle(),
+                                       TR->getLayout());
+      newTR->setPredicate(node->getPredicate());
+      TN->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
     // Sink Transpose below Pad nodes.
     if (auto *padNode = dyn_cast<PadNode>(node)) {
       auto *transposeNode = dyn_cast<TransposeNode>(padNode->getInput());
@@ -1095,6 +1114,39 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           BN->getEpsilon(), BN->getMomentum());
       SN->getResult().replaceAllUsesOfWith(newBN);
       changed = true;
+    }
+  }
+
+  return changed;
+}
+
+/// Code Hoisting.
+bool HoistCode::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    auto *node = &N;
+
+    // Hoist Transpose above Tile nodes.
+    if (auto *TR = dyn_cast<TransposeNode>(node)) {
+      auto *TN = dyn_cast<TileNode>(TR->getInput());
+
+      if (!TN) {
+        continue;
+      }
+
+      auto *newTR = F->createTranspose(TR->getName(), TN->getInput(),
+                                       TR->getShuffle(), TR->getLayout());
+      newTR->setPredicate(node->getPredicate());
+      auto *newTN =
+          F->createTile(TN->getName(), newTR, TN->getCount(),
+                        invertShuffle(TR->getShuffle())[TN->getAxis()]);
+      newTN->setPredicate(node->getPredicate());
+      TR->getResult().replaceAllUsesOfWith(newTN);
+      changed = true;
+      continue;
     }
   }
 
@@ -3351,6 +3403,57 @@ bool OptimizeSplat::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+
+  for (auto &node : F->getNodes()) {
+    auto *GN = dyn_cast<GatherNode>(&node);
+    if (!GN) {
+      continue;
+    }
+
+    auto data = GN->getData();
+    auto *indices = dyn_cast<Constant>(GN->getIndices());
+
+    // Only handling scalar constant index value
+    if (!indices || indices->getPayload().size() != 1) {
+      continue;
+    }
+
+    dim_t index = 0;
+    size_t bd = GN->getBatchDims();
+    auto elementKind = indices->getElementType();
+    if (elementKind == ElemKind::Int64ITy) {
+      index = (size_t)indices->getHandle<int64_t>().raw(0);
+    } else if (elementKind == ElemKind::Int32ITy) {
+      index = (size_t)indices->getHandle<int32_t>().raw(0);
+    } else {
+      llvm_unreachable("GatherToSlice: Unsupported indices type");
+    }
+
+    std::vector<dim_t> start;
+    std::vector<dim_t> end;
+    for (size_t i = 0; i < data.dims().size(); ++i) {
+      if (i == bd) {
+        start.push_back(index);
+        end.push_back(index + 1);
+      } else {
+        start.push_back(0);
+        end.push_back(data.dims()[i]);
+      }
+    }
+
+    auto name = GN->getName();
+    auto *SN = F->createSlice(name, data, start, end);
+    auto *RN = F->createReshape(name, SN, GN->getResult().dims());
+
+    GN->getResult().replaceAllUsesOfWith(RN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// Optimize TransposeNode into ReshapeNode when it actually moves no data.
 bool OptimizeTransposeIntoReshape::run(Function *F,
                                        const CompilationContext &cctx) {
@@ -3739,6 +3842,8 @@ static size_t numSignificantBits(ElemKind kind) {
     return std::numeric_limits<int16_t>::digits;
   case ElemKind::FloatTy:
     return std::numeric_limits<float>::digits;
+  case ElemKind::Float64Ty:
+    return std::numeric_limits<double>::digits;
   case ElemKind::Int32QTy:
   case ElemKind::Int32ITy:
     return std::numeric_limits<int32_t>::digits;
@@ -5050,6 +5155,18 @@ bool RaiseClipsAboveShapeNodes::run(Function *F,
                          SN->getResult().getType());
       CN->getResult().replaceAllUsesOfWith(newSN->getResult());
       oneLessUser.insert(SN->getInput().getNode());
+      changed = true;
+      continue;
+    }
+
+    // Sink Tile below Clip.
+    if (TileNode *TN = dyn_cast<TileNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), TN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      TileNode *newTN = F->createTile(TN->getName(), newCN->getResult(),
+                                      TN->getCount(), TN->getAxis());
+      CN->getResult().replaceAllUsesOfWith(newTN->getResult());
+      oneLessUser.insert(TN->getInput().getNode());
       changed = true;
       continue;
     }
