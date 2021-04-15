@@ -333,13 +333,23 @@ void setIncludeLastOffsets(std::shared_ptr<torch::jit::Graph> graph) {
         node->kind() == at::Symbol::fromQualString(
                             "quantized::embedding_bag_4bit_rowwise_offsets")) {
 
-      const auto val = node->namedInput("include_last_offset");
+      // Find include_last_offset arg by name; default to the last arg.
+      int positionIndex = node->inputs().size() - 1;
+      for (size_t i = 0; i < node->schema().arguments().size(); ++i) {
+        const auto arg = node->schema().arguments()[i];
+        if (arg.name() == "include_last_offset") {
+          positionIndex = i;
+          break;
+        }
+      }
+
+      const auto val = node->input(positionIndex);
       assert(torch::jit::toIValue(val).has_value());
       const auto ivalIncludeLastOffset = *torch::jit::toIValue(val);
 
       assert(ivalIncludeLastOffset.isBool());
       if (!ivalIncludeLastOffset.toBool()) {
-        node->replaceInputWith(val, constantTrue);
+        node->replaceInput(positionIndex, constantTrue);
         LOG_FIRST_N(WARNING, 1)
             << "Set include_last_offset to True for "
             << node->kind().toQualString() << " and all other occurrences";
