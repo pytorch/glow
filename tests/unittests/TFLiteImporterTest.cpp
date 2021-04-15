@@ -226,6 +226,9 @@ TFLITE_UNIT_TEST(Tile, "tile.tflite")
 
 TFLITE_UNIT_TEST_MAX_ERR(ResizeBilinear, "resize_bilinear.tflite", 2e-6)
 
+TFLITE_UNIT_TEST(SpaceToBatchNd, "spaceToBatchNd.tflite")
+TFLITE_UNIT_TEST(BatchToSpaceNd, "batchToSpaceNd.tflite")
+
 TFLITE_UNIT_TEST(Equal, "equal.tflite")
 
 TFLITE_UNIT_TEST(NotEqual, "not_equal.tflite")
