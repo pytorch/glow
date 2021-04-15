@@ -2121,8 +2121,10 @@ TEST_F(Caffe2ImporterTest, Swish) {
   EE.run(bindings);
 }
 
-// Test loading a SparseToDense operator.
-TEST_F(Caffe2ImporterTest, sparseToDense) {
+void testSparseToDense(llvm::ArrayRef<dim_t> indicesShape,
+                       llvm::ArrayRef<dim_t> valuesShape,
+                       llvm::ArrayRef<dim_t> dataToInferDimShape,
+                       int expectedNumberOfNodes) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -2136,15 +2138,12 @@ TEST_F(Caffe2ImporterTest, sparseToDense) {
   PlaceholderBindings bindings;
 
   // Create inputs.
-  constexpr dim_t kNumIndices = 40;
-  constexpr dim_t kMaxIndex = 20;
-  constexpr dim_t kRows = 10;
-  constexpr dim_t kCols = 5;
-  Tensor indices(ElemKind::Int64ITy, {kNumIndices});
-  Tensor values(ElemKind::FloatTy, {kNumIndices, kRows, kCols});
-  Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex});
+  Tensor indices(ElemKind::Int64ITy, indicesShape);
+  Tensor values(ElemKind::FloatTy, valuesShape);
+  Tensor dataToInferDim(ElemKind::FloatTy, dataToInferDimShape);
 
-  indices.getHandle<int64_t>().randomize(0, kMaxIndex - 1, mod.getPRNG());
+  indices.getHandle<int64_t>().randomize(0, dataToInferDimShape[0] - 1,
+                                         mod.getPRNG());
   values.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anything from the loader.
@@ -2160,13 +2159,14 @@ TEST_F(Caffe2ImporterTest, sparseToDense) {
   }
 
   // Check that the shape of the output matches that of the expected output.
-  const std::vector<dim_t> expectedOutputShape{kMaxIndex, kRows, kCols};
+  const std::vector<dim_t> expectedOutputShape{dataToInferDimShape[0],
+                                               valuesShape[1], valuesShape[2]};
   EXPECT_EQ(expectedOutputShape, outputPH->dims().vec());
 
   // High level checks on the content of the graph.
-  // We should have 1 Splat, 1 Reshape, 1 ScatterData and 1 Output node,
-  // i.e. 4 nodes in total.
-  EXPECT_EQ(F->getNodes().size(), 4);
+  // We should have 1 Splat, 1 optional Reshape, 1 ScatterData and 1 Output
+  // node, i.e. 4 nodes in total.
+  EXPECT_EQ(F->getNodes().size(), expectedNumberOfNodes);
 
   // Check that the graph has the expected shape (SparseToDense -> Save),
   // starting from the output.
@@ -2186,24 +2186,46 @@ TEST_F(Caffe2ImporterTest, sparseToDense) {
 
   // Initialize with zeroes
   std::vector<std::vector<std::vector<float>>> expected(
-      kMaxIndex,
-      std::vector<std::vector<float>>(kRows, std::vector<float>(kCols, 0)));
-  for (dim_t d1 = 0; d1 < kNumIndices; ++d1) {
+      expectedOutputShape[0],
+      std::vector<std::vector<float>>(
+          expectedOutputShape[1],
+          std::vector<float>(expectedOutputShape[2], 0)));
+  for (dim_t d1 = 0; d1 < valuesShape[0]; ++d1) {
     dim_t dest_d1 = indices.getHandle<int64_t>().at(d1);
-    for (dim_t d2 = 0; d2 < kRows; ++d2) {
-      for (dim_t d3 = 0; d3 < kCols; ++d3) {
+    for (dim_t d2 = 0; d2 < valuesShape[1]; ++d2) {
+      for (dim_t d3 = 0; d3 < valuesShape[2]; ++d3) {
         expected[dest_d1][d2][d3] += values.getHandle().at({d1, d2, d3});
       }
     }
   }
 
-  for (dim_t d1 = 0; d1 < kMaxIndex; ++d1) {
-    for (dim_t d2 = 0; d2 < kRows; ++d2) {
-      for (dim_t d3 = 0; d3 < kCols; ++d3) {
+  for (dim_t d1 = 0; d1 < expectedOutputShape[0]; ++d1) {
+    for (dim_t d2 = 0; d2 < expectedOutputShape[1]; ++d2) {
+      for (dim_t d3 = 0; d3 < expectedOutputShape[2]; ++d3) {
         EXPECT_NEAR(expected[d1][d2][d3], outputH.at({d1, d2, d3}), 1e-3);
       }
     }
   }
+}
+
+// Test loading a SparseToDense operator.
+TEST_F(Caffe2ImporterTest, sparseToDense_indices1D) {
+  constexpr dim_t kNumIndices = 40;
+  constexpr dim_t kMaxIndex = 20;
+  constexpr dim_t kRows = 10;
+  constexpr dim_t kCols = 5;
+
+  testSparseToDense({kNumIndices}, {kNumIndices, kRows, kCols}, {kMaxIndex}, 4);
+}
+
+TEST_F(Caffe2ImporterTest, sparseToDense_indices2D) {
+  constexpr dim_t kNumIndices = 40;
+  constexpr dim_t kMaxIndex = 20;
+  constexpr dim_t kRows = 10;
+  constexpr dim_t kCols = 5;
+
+  testSparseToDense({kNumIndices, 1}, {kNumIndices, kRows, kCols}, {kMaxIndex},
+                    3);
 }
 
 TEST_F(Caffe2ImporterTest, SparseToDenseMask) {
