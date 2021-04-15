@@ -23,6 +23,7 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -50,6 +51,9 @@ protected:
   /// be stack local and so they cannot be read in TearDown.
   std::vector<Tensor> unownedTensors_;
   virtual void SetUp() override {
+    glow::nnpi::flags::EnableCustomIAKernels = true;
+    glow::nnpi::flags::EnableCustomDSPKernels = true;
+
     // Skip stripping the module so that we can inspect Constants after
     // compilation.
     EE_.setSkipModuleStrip(true);
@@ -16183,11 +16187,16 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16) {
       /* useFP16Accumulation */ true);
 }
 
-TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
-  CHECK_IF_ENABLED();
+template <typename IndexType>
+static void testRepeatedSLSWithPartialTensors(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, std::vector<Tensor> &unownedTensors,
+    llvm::StringRef backendName, ElemKind ITy) {
+  // Turn on input sanitization
+  glow::runtime::flags::SanitizeInputsPercent = 100;
 
   // This test is only meaningful if the backend supports partial tensors.
-  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  ASSERT_TRUE(EE.getBackend(backendName).supportsPartialTensors());
 
   constexpr dim_t embeddingRows = 1275;
   constexpr dim_t numLengths = 20;
@@ -16196,27 +16205,26 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   constexpr dim_t iterations = 33;
 
   auto *data =
-      mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
+      mod.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
   data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
-                                                         mod_.getPRNG());
-  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {maxIndices},
-                                         "indices", false);
-  auto *lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
-                                         "lengths", false);
-  auto *SLS = F_->createSparseLengthsSum("SLS", data, indices, lengths);
-  auto *save = F_->createSave("save", SLS);
+                                                         mod.getPRNG());
+  auto *indices = mod.createPlaceholder(ITy, {maxIndices}, "indices", false);
+  auto *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {numLengths}, "lengths", false);
+  auto *SLS = F->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *save = F->createSave("save", SLS);
   auto *outPH = save->getPlaceholder();
-  EE_.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer);
 
-  Tensor indicesReal(ElemKind::Int64ITy, {numIndices});
-  indicesReal.getHandle<int64_t>().randomize(0, embeddingRows - 1,
-                                             mod_.getPRNG());
+  Tensor indicesReal(ITy, {numIndices});
+  indicesReal.getHandle<IndexType>().randomize(0, embeddingRows - 1,
+                                               mod.getPRNG());
   Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
                         indicesReal.getSizeInBytes());
   Tensor indicesPadded(indices->getType());
   indicesPadded.zero();
   memcpy(indicesPadded.getUnsafePtr(), indicesReal.getUnsafePtr(),
-         numIndices * sizeof(int64_t));
+         numIndices * sizeof(IndexType));
 
   Tensor lengthsReal(ElemKind::Int32ITy, {numLengths});
   lengthsReal.getHandle<int32_t>().clear(1);
@@ -16225,9 +16233,9 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   Tensor lengthsPadded(ElemKind::Int32ITy, {numLengths});
   lengthsPadded.assign(&lengthsReal);
 
-  bindings_.insert(indices, std::move(indicesPartial));
-  bindings_.insert(lengths, std::move(lengthsPartial));
-  bindings_.allocate(outPH);
+  bindings.insert(indices, std::move(indicesPartial));
+  bindings.insert(lengths, std::move(lengthsPartial));
+  bindings.allocate(outPH);
 
   PlaceholderBindings paddedBindings;
   paddedBindings.insert(indices, std::move(indicesPadded));
@@ -16235,16 +16243,34 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   paddedBindings.allocate(outPH);
 
   for (dim_t i = 0; i < iterations; i++) {
-    EE_.run(bindings_);
-    EE_.run(paddedBindings);
-    ASSERT_TRUE(bindings_.get(outPH)->isEqual(*paddedBindings.get(outPH)));
+    EE.run(bindings);
+    EE.run(paddedBindings);
+    ASSERT_TRUE(bindings.get(outPH)->isEqual(*paddedBindings.get(outPH)));
   }
 
   // Keep these around so their memory is not freed at the end of the
   // test/scope. This is so that inside TearDown during import/export testing
   // the data is still around.
-  unownedTensors_.push_back(std::move(indicesReal));
-  unownedTensors_.push_back(std::move(lengthsReal));
+  unownedTensors.push_back(std::move(indicesReal));
+  unownedTensors.push_back(std::move(lengthsReal));
+}
+
+// Checking with int32 indices
+TEST_P(OperatorTest, RepeatedSLSWithPartialTensors_int32) {
+  CHECK_IF_ENABLED();
+
+  testRepeatedSLSWithPartialTensors<int32_t>(bindings_, mod_, F_, EE_,
+                                             unownedTensors_, getBackendName(),
+                                             ElemKind::Int32ITy);
+}
+
+// Checking with int64 indices
+TEST_P(OperatorTest, RepeatedSLSWithPartialTensors_int64) {
+  CHECK_IF_ENABLED();
+
+  testRepeatedSLSWithPartialTensors<int64_t>(bindings_, mod_, F_, EE_,
+                                             unownedTensors_, getBackendName(),
+                                             ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, RepeatedSLWSWithPartialTensors) {
@@ -18119,6 +18145,50 @@ TEST_P(OperatorTest, insertTensorCrossDimensions) {
           expected = 2;
         EXPECT_EQ(resultH.at({i, j, k}), expected);
       }
+    }
+  }
+}
+
+/// Test that InsertTensor node works correctly for 6D tensors.
+TEST_P(OperatorTest, insertTensorTest6D) {
+  CHECK_IF_ENABLED();
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  auto *SN0 = mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1, 1, 1, 4, 6},
+                                     "SN0", false);
+  bindings_.allocate(SN0)->init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
+
+  // 1 1
+  // 1 1
+  auto *SN1 = mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1, 1, 1, 2, 2},
+                                     "SN1", false);
+  bindings_.allocate(SN1)->init(Tensor::InitKind::Broadcast, 1, mod_.getPRNG());
+
+  // 0 0 0 0 0 0
+  // 0 1 1 1 1 0
+  // 0 1 1 1 1 0
+  // 0 0 0 0 0 0
+  Node *IN =
+      F_->createInsertTensor("insert", SN0, SN1, /* start */ {0, 0, 0, 0, 1, 1},
+                             /* count */ 2, /* axis */ 5);
+  SaveNode *result = F_->createSave("result", IN);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  // Verify the output looks as expected (pictured above).
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
+  for (dim_t i = 0; i < 4; i++) {
+    for (dim_t j = 0; j < 6; j++) {
+      int64_t expected = 1;
+      if (i == 0 || i == 3 || j == 0 || j == 5) {
+        expected = 0;
+      }
+      EXPECT_EQ(resultH.at({0, 0, 0, 0, i, j}), expected);
     }
   }
 }
@@ -20134,15 +20204,15 @@ TEST_P(OperatorTest, RMSNorm) {
 TEST_P(OperatorTest, SparseLabelSplit) {
   CHECK_IF_ENABLED();
 
-  const auto numLengths = 4;
-  const auto numIndices = 8;
+  constexpr auto numLengths = 4U;
+  constexpr auto numIndices = 8U;
   auto lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
                                         "lengths", false);
   auto indices = mod_.createPlaceholder(ElemKind::Int64ITy, {numIndices},
                                         "indices", false);
   auto values =
       mod_.createPlaceholder(ElemKind::FloatTy, {numIndices}, "values", false);
-  const auto numLabels = 4;
+  constexpr auto numLabels = 4U;
 
   bindings_.allocate(lengths)->getHandle<int32_t>() = {1, 3, 2, 2};
   bindings_.allocate(indices)->getHandle<int64_t>() = {3, 1, 2, 0, 0, 2, 1, 3};

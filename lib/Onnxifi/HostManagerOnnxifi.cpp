@@ -176,6 +176,11 @@ onnxStatus HostManagerBackend::addNetwork(
     precConfig.convertToFP16 = glow::flags::ConvertToFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
   }
+  if (glow::flags::SkipBiasFp32tofp16Convert) {
+    precConfig.skipBiasFp32tofp16Convert =
+        glow::flags::SkipBiasFp32tofp16Convert;
+    LOG(INFO) << "Skip fp16 convert for bias";
+  }
   if (glow::flags::ConvertPlaceholdersToFP16) {
     precConfig.convertPlaceholdersToFP16 =
         glow::flags::ConvertPlaceholdersToFP16;

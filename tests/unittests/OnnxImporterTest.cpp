@@ -2750,6 +2750,19 @@ TEST_F(OnnxImporterTest, importSliceInvalidAxes) {
                   {2, 1, 2, 2} /* output */, true);
 }
 
+TEST_F(OnnxImporterTest, importSliceWithStep) {
+  importSliceTest("sliceWithStep.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */);
+}
+
+TEST_F(OnnxImporterTest, importSliceWithUnsupportedStep) {
+  importSliceTest("sliceWithUnsupportedStep.onnxtxt", "data",
+                  {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */, true);
+}
+
 static void importCast(llvm::StringRef fileName, llvm::StringRef inputName,
                        llvm::ArrayRef<dim_t> inputShape, ElemKind outputKind) {
   ExecutionEngine EE{};

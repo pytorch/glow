@@ -16,6 +16,7 @@
 #ifndef FX_NNPI_IMPORTER_H
 #define FX_NNPI_IMPORTER_H
 
+#include "folly/dynamic.h"
 #include "glow/fb/fx/nnpi_importer/Utils.h"
 #include "glow/lib/Backends/NNPI/NNPIOptions.h"
 #include "nnpi_network_builder.h"
@@ -51,9 +52,14 @@ public:
   NNPIErrorCode addTensor(const std::string &name, const string &dtypeStr,
                           const llvm::ArrayRef<glow::dim_t> dims,
                           bool input = false, bool output = false,
+                          const float &scale = 1.f, const int32_t &offset = 0,
                           const std::string &scaleTensor = {},
                           const std::string &offsetTensor = {},
                           bool forceSymlowp = false);
+
+  /// Add Tensor to the network by node.
+  NNPIErrorCode addTensor(const folly::dynamic &node, bool input = false,
+                          bool output = false, bool forceSymlowp = false);
 
   /// Set given tensor names as inputs/outputs.
   void
@@ -75,6 +81,8 @@ public:
 
   /// Update the NNPITensorDesc \p desc quantization params by \p dtype.
   void updateDescQuantFromFX(const utils::DTYPE &dtype, NNPITensorDesc &desc,
+                             const float &scale = 1.f,
+                             const int32_t &offset = 0,
                              const std::string &scaleTensor = {},
                              const std::string &offsetTensor = {},
                              bool forceSymlowp = false);

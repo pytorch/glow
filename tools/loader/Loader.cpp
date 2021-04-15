@@ -439,7 +439,8 @@ static void getModelInputs(std::vector<std::string> &inputNames,
   }
 }
 
-void Loader::loadModel(llvm::ArrayRef<TypeRef> inputType) {
+void Loader::loadModel(PlaceholderBindings *bindings,
+                       llvm::ArrayRef<TypeRef> inputType) {
 
   // Get model input names and types.
   std::vector<std::string> inputNames;
@@ -468,17 +469,25 @@ void Loader::loadModel(llvm::ArrayRef<TypeRef> inputType) {
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
     outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
+    if (bindings) {
+      postModelLoad(*bindings, *protoLoader.get(), outputPlaceholderByName_,
+                    inputType);
+    }
   } else if (!getTFLiteModelFilename().empty()) {
     // For TensorFlowLite format the input placeholder names/types are not
     // provided since are used directly from the model.
-    auto tfliteLoader =
-        TFLiteModelLoader(getTFLiteModelFilename(), getFunction());
+    auto tfliteLoader = glow::make_unique<TFLiteModelLoader>(
+        getTFLiteModelFilename(), getFunction());
     // Load the maps between original model names and the placeholders.
-    inputPlaceholderByName_ = tfliteLoader.getInputPlaceholderMap();
-    outputPlaceholderByName_ = tfliteLoader.getOutputPlaceholderMap();
+    inputPlaceholderByName_ = tfliteLoader->getInputPlaceholderMap();
+    outputPlaceholderByName_ = tfliteLoader->getOutputPlaceholderMap();
     // Since TensorFlowLite loader currently does not have the capability to
     // enforce the input type (for batching) we must validate that when the
     // input type is explicitly given it actually matches the model input type.
+    if (bindings) {
+      postModelLoad(*bindings, *tfliteLoader, outputPlaceholderByName_,
+                    inputType);
+    }
     if (inputType.size()) {
       CHECK(inputPlaceholderByName_.size() == 1)
           << "Model is expected to have only 1 input!";
@@ -504,6 +513,10 @@ void Loader::loadModel(llvm::ArrayRef<TypeRef> inputType) {
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
     outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
+    if (bindings) {
+      postModelLoad(*bindings, *protoLoader.get(), outputPlaceholderByName_,
+                    inputType);
+    }
   }
 }
 
@@ -821,9 +834,22 @@ Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
 }
 
 void Loader::postModelLoad(PlaceholderBindings &bindings,
+                           ProtobufLoader &protoLoader,
+                           llvm::StringMap<Placeholder *> &placeholderMap,
                            llvm::ArrayRef<TypeRef> inputImageType) {
   for (auto &&ext : loaderExtensionList_) {
-    ext->postModelLoad(*this, bindings, inputImageType);
+    ext->postModelLoad(*this, bindings, protoLoader, placeholderMap,
+                       inputImageType);
+  }
+}
+
+void Loader::postModelLoad(PlaceholderBindings &bindings,
+                           TFLiteModelLoader &tfloader,
+                           llvm::StringMap<Placeholder *> &placeholderMap,
+                           llvm::ArrayRef<TypeRef> inputImageType) {
+  for (auto &&ext : loaderExtensionList_) {
+    ext->postModelLoad(*this, bindings, tfloader, placeholderMap,
+                       inputImageType);
   }
 }
 

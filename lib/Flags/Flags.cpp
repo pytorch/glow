@@ -53,6 +53,7 @@ bool DisableLayoutVerifying = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
+bool SkipBiasFp32tofp16Convert = false;
 bool ConvertPlaceholdersToFP16 = false;
 bool ConvertConstantsToFP16 = true;
 bool ConvertFusedScaleOffsetToFP16 = false;
@@ -101,7 +102,8 @@ bool LowerAllBatchMatMul = false;
 bool AcceptUnarySLS = false;
 bool SpecializeAllOneSLS = false;
 bool DisableTransforms = false;
-bool DisablePrivateTransforms = false;
+bool EnableCustomIAKernels = false;
+bool EnableCustomDSPKernels = false;
 bool DumpCompilerData = false;
 bool UsePerPartitionIcetConfig = false;
 
@@ -152,6 +154,7 @@ bool EnableDRT = false;
 unsigned DeviceInitTimeoutMs = 5000;
 unsigned SanitizeInputsPercent = 0;
 uint64_t BigTableThresholdBytes = 104857600; // 100MB
+unsigned NumCompilationThreads = 1;
 } // namespace flags
 } // namespace runtime
 } // namespace glow
@@ -232,6 +235,13 @@ DEFINE_bool(glow_global_fp16, glow::flags::ConvertToFP16,
             "Enable fp16 lowering for all ops on the net");
 DEFINE_validator(glow_global_fp16, [](const char *, bool val) {
   glow::flags::ConvertToFP16 = val;
+  return true;
+});
+DEFINE_bool(glow_skip_bias_fp32tofp16_convert,
+            glow::flags::SkipBiasFp32tofp16Convert,
+            "Skip fp32 -> fp16 convertion for Bias in FC");
+DEFINE_validator(glow_skip_bias_fp32tofp16_convert, [](const char *, bool val) {
+  glow::flags::SkipBiasFp32tofp16Convert = val;
   return true;
 });
 DEFINE_bool(torch_glow_imaginary_flag, glow::torch_glow::flags::ImaginaryFlag,
@@ -511,12 +521,20 @@ DEFINE_validator(glow_disable_nnpi_transforms, [](const char *, bool val) {
   glow::nnpi::flags::DisableTransforms = val;
   return true;
 });
-DEFINE_bool(glow_disable_nnpi_private_transforms,
-            glow::nnpi::flags::DisablePrivateTransforms,
-            "Disable running NNPIBackend::transformPrivate().");
-DEFINE_validator(glow_disable_nnpi_private_transforms,
+DEFINE_bool(glow_enable_nnpi_custom_ia_kernels,
+            glow::nnpi::flags::EnableCustomIAKernels,
+            "Enable running NNPIBackend::transformPrivate().");
+DEFINE_validator(glow_enable_nnpi_custom_ia_kernels,
                  [](const char *, bool val) {
-                   glow::nnpi::flags::DisablePrivateTransforms = val;
+                   glow::nnpi::flags::EnableCustomIAKernels = val;
+                   return true;
+                 });
+DEFINE_bool(glow_enable_nnpi_custom_dsp_kernels,
+            glow::nnpi::flags::EnableCustomDSPKernels,
+            "Enable running NNPIBackend::transformPrivate().");
+DEFINE_validator(glow_enable_nnpi_custom_dsp_kernels,
+                 [](const char *, bool val) {
+                   glow::nnpi::flags::EnableCustomDSPKernels = val;
                    return true;
                  });
 DEFINE_bool(glow_nnpi_lower_all_batch_matmul,
@@ -588,6 +606,14 @@ DEFINE_int32(glow_habana_memory, glow::runtime::flags::HabanaMemory,
              "Amount of DRAM to allocate per Habana device in KiB");
 DEFINE_validator(glow_habana_memory, [](const char *, int32_t val) {
   glow::runtime::flags::HabanaMemory = val;
+  return true;
+});
+
+DEFINE_int32(
+    glow_num_compilation_threads, glow::runtime::flags::NumCompilationThreads,
+    "Maximum number of threads to spawn per call to Backend::compileFunctions");
+DEFINE_validator(glow_num_compilation_threads, [](const char *, int32_t val) {
+  glow::runtime::flags::NumCompilationThreads = val;
   return true;
 });
 

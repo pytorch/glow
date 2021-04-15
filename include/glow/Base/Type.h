@@ -405,6 +405,8 @@ enum class ElemKind : unsigned char {
   Float16Ty,
   // 16-bit float type (bfloat16)
   BFloat16Ty,
+  // 64-bit float type (double)
+  Float64Ty,
   // 8-bit quantized type (int8_t)
   Int8QTy,
   // unsigned 8-bit quantized type (uint8_t)
@@ -444,7 +446,7 @@ inline bool isQuantizedElemKind(ElemKind e) {
 /// \returns whether \p e is a float ElemKind.
 inline bool isFloatElemKind(ElemKind e) {
   return e == ElemKind::FloatTy || e == ElemKind::Float16Ty ||
-         e == ElemKind::BFloat16Ty;
+         e == ElemKind::BFloat16Ty || e == ElemKind::Float64Ty;
 }
 
 /// \returns whether \p e is a non-quantized integer ElemKind.
@@ -707,6 +709,8 @@ struct Type final {
       return std::is_same<ElemTy, float16_t>::value;
     case ElemKind::BFloat16Ty:
       return std::is_same<ElemTy, bfloat16_t>::value;
+    case ElemKind::Float64Ty:
+      return std::is_same<ElemTy, double>::value;
     case ElemKind::Int8QTy:
       return std::is_same<ElemTy, int8_t>::value;
     case ElemKind::UInt8QTy:
@@ -780,6 +784,8 @@ struct Type final {
       return sizeof(float16_t);
     case ElemKind::BFloat16Ty:
       return sizeof(bfloat16_t);
+    case ElemKind::Float64Ty:
+      return sizeof(double);
     case ElemKind::Int8QTy:
       return sizeof(int8_t);
     case ElemKind::UInt8QTy:
@@ -816,9 +822,10 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float",    "float16",      "bfloat16",     "i8",       "ui8",
-        "i16",      "i32",          "uindex8",      "index32",  "index64",
-        "ui8fused", "ui8fusedfp16", "ui4fusedfp16", "ui4fused", "bool",
+        "float",        "float16",      "bfloat16", "float64",
+        "i8",           "ui8",          "i16",      "i32",
+        "uindex8",      "index32",      "index64",  "ui8fused",
+        "ui8fusedfp16", "ui4fusedfp16", "ui4fused", "bool",
     };
     return names[(int)Ty];
   }
@@ -831,6 +838,8 @@ struct Type final {
       return ElemKind::FloatTy;
     } else if (str == Type::getElementName(ElemKind::Float16Ty)) {
       return ElemKind::Float16Ty;
+    } else if (str == Type::getElementName(ElemKind::Float64Ty)) {
+      return ElemKind::Float64Ty;
     } else if (str == Type::getElementName(ElemKind::BFloat16Ty)) {
       return ElemKind::BFloat16Ty;
     } else if (str == Type::getElementName(ElemKind::Int8QTy)) {
