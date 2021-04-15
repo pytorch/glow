@@ -62,7 +62,7 @@ llvm::cl::opt<bool> tfliteFloatSoftmaxOpt(
     "tflite-float-softmax",
     llvm::cl::desc("TensorFlowLite loader option to replace a quantized Softmax"
                    "with a floating point Softmax."),
-    llvm::cl::init(true), llvm::cl::Optional,
+    llvm::cl::init(false), llvm::cl::Optional,
     llvm::cl::cat(tfliteModelLoaderCat));
 
 llvm::cl::opt<float> tfliteBiasScaleCheckMaxErrorOpt(

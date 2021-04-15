@@ -2857,7 +2857,33 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDims = emitValueDims(builder, src);
 
     auto *F = getFunction("softmax", dest->getElementType());
-    createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+
+    if (src->getType()->isQuantizedType()) {
+      std::vector<int32_t> lut;
+
+      for (int32_t i = 0; i < 256; i++) {
+        lut.push_back(quantization::convert(exp(src->getType()->getScale() * (i - 255)), 31));
+      }
+
+      auto *lutPtr = emitConstI32Array(builder, lut);
+      auto *outOffset = emitConstI32(builder, dest->getType()->getOffset());
+
+      float size = src->getType()->dims()[1];
+
+      auto *sumIntegerPart = emitConstI32(builder, ceil(log2(size)));
+
+      if (ceil(log2(size)) == floor(log2(size))) {
+        sumIntegerPart = emitConstI32(builder, ceil(log2(size)) + 1);
+      }
+
+      auto *invScale = emitConstI32(builder, quantization::convert(1.f / dest->getType()->getScale(), 31));
+      auto *invScalePoint = emitConstI32(builder, quantization::determine_integer_part(1.f / dest->getType()->getScale()));
+
+      createCall(builder, F, {srcPtr, destPtr, srcDims, lutPtr, outOffset, invScale, sumIntegerPart, invScalePoint});
+    } else {
+      createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+    }
+
     break;
   }
 

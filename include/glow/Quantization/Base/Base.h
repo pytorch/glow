@@ -232,6 +232,27 @@ template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
   return std::max<SrcTy>(mn, std::min<SrcTy>(mx, in));
 }
 
+inline uint32_t convert(float elem, uint32_t fractionalPart) {
+  double b = (double)elem * (double)std::exp2((double) fractionalPart);
+
+  if (b < (double)std::numeric_limits<uint32_t>::min() || b > (double)std::numeric_limits<uint32_t>::max()) {
+    printf("Float %f to fix point %f conversion overflow\n", b, (double)std::numeric_limits<uint32_t>::max());
+    exit(-1);
+  } 
+
+  return round(b);
+}
+
+inline int32_t determine_integer_part(float number) {
+  int32_t aux = (int32_t)number;
+  int32_t integer_part = 0;
+  while (aux / 2 != 0) {
+    integer_part += 1;
+    aux /= 2;
+  }
+   return integer_part + 1;
+}
+
 /// Converts floating point value to DestTy (quantized type) based on the
 /// quantization parameters \p TQP.
 template <class DestTy = int8_t>
