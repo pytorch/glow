@@ -285,7 +285,9 @@ onnxStatus HostManagerBackend::addNetwork(
         "Non-recoverable device error when adding network: " + msg;
     if (cctx.skipProvisioning) {
       LOG(ERROR) << errMsg;
-      throw std::invalid_argument("Error during non-provisioned addNetwork");
+      throw std::invalid_argument(strFormat(
+          "Error during AOT optimization (non-provisioned addNetwork):\n%s\n",
+          errMsg.c_str()));
     } else {
       LOG(FATAL) << errMsg;
     }
