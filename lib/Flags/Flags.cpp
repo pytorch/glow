@@ -53,6 +53,7 @@ bool DisableLayoutVerifying = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
+bool SkipBiasFp32tofp16Convert = false;
 bool ConvertPlaceholdersToFP16 = false;
 bool ConvertConstantsToFP16 = true;
 bool ConvertFusedScaleOffsetToFP16 = false;
@@ -234,6 +235,13 @@ DEFINE_bool(glow_global_fp16, glow::flags::ConvertToFP16,
             "Enable fp16 lowering for all ops on the net");
 DEFINE_validator(glow_global_fp16, [](const char *, bool val) {
   glow::flags::ConvertToFP16 = val;
+  return true;
+});
+DEFINE_bool(glow_skip_bias_fp32tofp16_convert,
+            glow::flags::SkipBiasFp32tofp16Convert,
+            "Skip fp32 -> fp16 convertion for Bias in FC");
+DEFINE_validator(glow_skip_bias_fp32tofp16_convert, [](const char *, bool val) {
+  glow::flags::SkipBiasFp32tofp16Convert = val;
   return true;
 });
 DEFINE_bool(torch_glow_imaginary_flag, glow::torch_glow::flags::ImaginaryFlag,

@@ -86,6 +86,9 @@ struct PrecisionConfiguration {
   /// If convertToFP16, whether to convert Constants.
   bool convertConstantsToFP16{false};
 
+  /// If convertToFp16, whether to skip convert bias from fp32 to fp16 in FC
+  bool skipBiasFp32tofp16Convert{false};
+
   /// If convertToFP16, whether to clip out-of-range FP values to the min/max of
   /// fp16.
   bool clipFP16{false};

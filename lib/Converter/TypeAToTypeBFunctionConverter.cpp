@@ -111,10 +111,14 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
           (destTy->getElementType() == srcKind_ &&
            val.getType()->getElementType() == dstKind_)) &&
          "Unexpected conversion type");
-
   bool needClip =
       ((dstKind_ == ElemKind::Float16Ty || dstKind_ == ElemKind::BFloat16Ty) &&
        precConfig_.clipFP16 && !(isInput && precConfig_.clipFP16SkipInputs));
+
+  if (precConfig_.skipBiasFp32tofp16Convert &&
+      isBiasInput<FullyConnectedNode>(val, &node)) {
+    return val;
+  }
   if (needClip) {
     switch (node.getKind()) {
     case Kinded::Kind::ConcatNodeKind:
@@ -234,9 +238,21 @@ void TypeAToTypeBFunctionConverter::convertAndClipStorage() {
   }
   if (precConfig_.convertConstantsToFP16) {
     for (Constant *C : function_.findConstants()) {
+      if (precConfig_.skipBiasFp32tofp16Convert && C->hasOneUse() &&
+          isBiasInput<FullyConnectedNode>(C->getOutput(),
+                                          C->getUsers().front().getUser())) {
+        continue;
+      }
       convertAndClipStorageHelper(*C, function_, precConfig_.clipFP16,
                                   precConfig_.float16Format, srcKind_,
                                   dstKind_);
     }
   }
+}
+
+template <class T>
+bool TypeAToTypeBFunctionConverter::isBiasInput(NodeValue input,
+                                                const Node *N) {
+  auto *castedN = llvm::dyn_cast<T>(N);
+  return castedN && castedN->getBias() == input;
 }
