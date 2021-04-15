@@ -178,7 +178,6 @@ struct BlacklistInitializer {
       {"ScatterDataNDimensionalSimple/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ScatterDataQuantized/0", TestBlacklist::AnyDeviceAnyEngine},
       {"sliceReshape_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"sliceVectors_Int32I/0", TestBlacklist::AnyDeviceAnyEngine},
       {"sliceVectors_Int32Q/0", TestBlacklist::AnyDeviceAnyEngine},
       {"spaceToDepth_block2_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"spaceToDepth_block2_int8/0", TestBlacklist::AnyDeviceAnyEngine},
