@@ -359,6 +359,74 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   checkNumericalEquivalence();
 }
 
+void optimizeRedundantBatchNormTest(
+    glow::Module &mod_, glow::Function *F_, glow::Function *&optimizedF_,
+    glow::PlaceholderBindings &bindings_, llvm::ArrayRef<float> varV,
+    llvm::ArrayRef<float> meanV, llvm::ArrayRef<float> gammaV,
+    llvm::ArrayRef<float> betaV, const float eps) {
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+
+  auto *var = mod_.createConstant(ElemKind::FloatTy, {3}, "var");
+  auto *mean = mod_.createConstant(ElemKind::FloatTy, {3}, "mean");
+  auto *beta = mod_.createConstant(ElemKind::FloatTy, {3}, "beta");
+  auto *gamma = mod_.createConstant(ElemKind::FloatTy, {3}, "gamma");
+
+  // (X - mean) * (1.0 / sqrt(var + eps)) * gamma + beta
+  var->getPayloadMutable().getHandle<float>() = varV;
+  mean->getPayloadMutable().getHandle<float>() = meanV;
+  beta->getPayloadMutable().getHandle<float>() = betaV;
+  gamma->getPayloadMutable().getHandle<float>() = gammaV;
+  Node *BN = F_->createBatchNormalization("batch", A->getType(), A, beta, gamma,
+                                          mean, var, 3, eps);
+  Node *LRN = F_->createLocalResponseNormalization("LRN", BN);
+  F_->createSave("ret", LRN);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *LRN1 = std::find_if_not(A->getUsers().begin(), A->getUsers().end(),
+                                [BN](auto &it) { return it.getUser() == BN; })
+                   ->getUser();
+  ASSERT_TRUE(llvm::isa<LocalResponseNormalizationNode>(LRN1));
+  ASSERT_EQ(LRN1->getNumUsers(), 1);
+  Node *save = LRN1->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<SaveNode>(save));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+}
+
+TEST_F(GraphOptz, optimizeRedundantBatchNorm1) {
+  optimizeRedundantBatchNormTest(mod_, F_, optimizedF_, bindings_, {1., 1., 1.},
+                                 {0., 0., 0.}, {1., 1., 1.}, {0., 0., 0.}, 0.0);
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, optimizeRedundantBatchNorm2) {
+  optimizeRedundantBatchNormTest(mod_, F_, optimizedF_, bindings_, {1., 1., 1.},
+                                 {33., 33., 33.}, {1., 1., 1.}, {33., 33., 33.},
+                                 0.0);
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, optimizeRedundantBatchNorm3) {
+  const float eps = 0.000001;
+  optimizeRedundantBatchNormTest(
+      mod_, F_, optimizedF_, bindings_, {1.0f - eps, 1.0f - eps, 1.0f - eps},
+      {33., 33., 33.}, {1., 1., 1.}, {33., 33., 33.}, eps);
+  checkNumericalEquivalence();
+}
+TEST_F(GraphOptz, optimizeRedundantBatchNorm4) {
+  optimizeRedundantBatchNormTest(mod_, F_, optimizedF_, bindings_,
+                                 {225., 225., 225.}, {-3., -3., -3.},
+                                 {15., 15., 15.}, {-3., -3., -3.}, 0.0);
+  checkNumericalEquivalence();
+}
+
 /// Verify that the Conv-BatchNorm merging optimization is not impacted by
 /// multiple users on the filter/bias.
 TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
