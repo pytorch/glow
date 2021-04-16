@@ -3043,9 +3043,8 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
 
   auto batchedReduceAddNode = F_.createBatchedReduceAdd(
       "sum",
-      needsFlatten     ? static_cast<NodeValue>(flattenNode)
-      : needsConvertTo ? static_cast<NodeValue>(toNode)
-                       : input,
+      needsFlatten ? static_cast<NodeValue>(flattenNode)
+                   : needsConvertTo ? static_cast<NodeValue>(toNode) : input,
       glowAxes);
 
   if (!keepDim) {

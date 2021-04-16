@@ -118,20 +118,17 @@ struct NodeQuantizationInfo {
   int32_t offset() const { return tensorQuantizationParams_.offset; }
 };
 
-struct FixedPointInt8 {
+struct FixedPointUint32 {
   uint32_t point;
   uint32_t conversion;
 
   uint32_t convert(float elem, uint32_t fractionalPart) {
 
-    double result = (double)elem * (double)std::exp2((double) fractionalPart);
+    double result = (double)elem * (double)std::exp2((double)fractionalPart);
 
-    if (result < (double)std::numeric_limits<uint32_t>::min() ||
-        result > (double)std::numeric_limits<uint32_t>::max()) {
-
-      printf("Float to fix point conversion overflow\n");
-      exit(-1);
-    } 
+    assert(result >= (double)std::numeric_limits<uint32_t>::min() &&
+          result <= (double)std::numeric_limits<uint32_t>::max() &&
+          "Float to fix point conversion overflow\n");
 
     return round(result);
   }

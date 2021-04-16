@@ -2882,17 +2882,17 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     if (src->getType()->isQuantizedType()) {
       std::vector<int32_t> lut;
 
-      struct FixedPointInt8 fixedPointRepres;
+      struct FixedPointUint32 fixedPointRepres;
 
       for (int32_t i = 0; i < 256; i++) {
-        lut.push_back(fixedPointRepres.convert(exp(src->getType()->getScale()
-                      * (i - 255)), 31));
+        lut.push_back(fixedPointRepres.convert(
+            exp(src->getType()->getScale() * (i - 255)), 31));
       }
 
       auto *lutPtr = emitConstI32Array(builder, lut);
       auto *outOffset = emitConstI32(builder, dest->getType()->getOffset());
 
-      float size = src->getType()->dims()[1];
+      float size = static_cast<float>(src->getType()->dims()[1]);
 
       auto *sumIntegerPart = emitConstI32(builder, ceil(log2(size)));
 
@@ -2900,20 +2900,26 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         sumIntegerPart = emitConstI32(builder, ceil(log2(size)) + 1);
       }
 
-      float invScaleNumber = 1.f / dest->getType()->getScale();
+      uint32_t invScaleNumber = (uint32_t) 1.f / dest->getType()->getScale();
 
       int32_t integerPart = 0;
+
       while (invScaleNumber / 2 != 0) {
         integerPart += 1;
-        invScaleNumber /= 2;
+        invScaleNumber = invScaleNumber / 2;
       }
 
-      auto *invScale = emitConstI32(builder, fixedPointRepres.convert(1.f
-                          / dest->getType()->getScale(), 31));
-      auto *invScalePoint = emitConstI32(builder, integerPart);
+      assert(integerPart >= 0 &&
+           "integer part for sum must be greater than 1");
 
-      createCall(builder, F, {srcPtr, destPtr, srcDims, lutPtr, outOffset,
-                              invScale, sumIntegerPart, invScalePoint});
+      auto *invScale = emitConstI32(
+          builder,
+          fixedPointRepres.convert(1.f / dest->getType()->getScale(), 32 - integerPart - 1));
+      auto *invScalePoint = emitConstI32(builder, integerPart + 1);
+
+      createCall(builder, F,
+                 {srcPtr, destPtr, srcDims, lutPtr, outOffset, invScale,
+                  sumIntegerPart, invScalePoint});
     } else {
       createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
     }
