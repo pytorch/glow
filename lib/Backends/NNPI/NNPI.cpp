@@ -126,7 +126,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
-  case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::BatchedMulNodeKind:
   case Kinded::Kind::TanhNodeKind:
@@ -138,6 +137,12 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::SoftPlusNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+    break;
+  case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::BatchedReduceMaxNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int32ITy});
     break;
   case Kinded::Kind::SplatNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
