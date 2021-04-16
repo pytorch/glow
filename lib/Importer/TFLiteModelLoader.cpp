@@ -1153,6 +1153,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_RESIZE_BILINEAR) {
     return loadResizeBilinear(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR) {
+    return loadResizeNearest(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_SIN) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -1973,12 +1976,11 @@ Error TFLiteModelLoader::loadSlice(const tflite::Operator *op,
 
 Error TFLiteModelLoader::loadResizeBilinear(const tflite::Operator *op,
                                             const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_ResizeBilinearOptions();
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
-
-  const auto *opts = op->builtin_options_as_ResizeBilinearOptions();
 
   bool align_corners = opts->align_corners();
   if (align_corners) {
@@ -1991,6 +1993,28 @@ Error TFLiteModelLoader::loadResizeBilinear(const tflite::Operator *op,
   }
 
   NodeValue output = F_->createResizeBilinear(opInfo.name, input, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadResizeNearest(const tflite::Operator *op,
+                                           const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_ResizeNearestNeighborOptions();
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  bool align_corners = opts->align_corners();
+  if (align_corners) {
+    LOG(WARNING) << opErrMsg(opInfo, "Align Corners option is ignored!");
+  }
+
+  bool half_pixel_centers = opts->half_pixel_centers();
+  if (half_pixel_centers) {
+    LOG(WARNING) << opErrMsg(opInfo, "Half Pixel Centers option is ignored!");
+  }
+
+  NodeValue output = F_->createResizeNearest(opInfo.name, input, outTy);
   return setOutputNodeValue(op, output);
 }
 

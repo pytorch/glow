@@ -270,6 +270,10 @@ class TFLiteModelLoader {
   Error loadResizeBilinear(const tflite::Operator *op,
                            const OperatorInfo &opInfo);
 
+  /// Load Resize Nearest operator.
+  Error loadResizeNearest(const tflite::Operator *op,
+                          const OperatorInfo &opInfo);
+
   /// Load Tile operator.
   Error loadTile(const tflite::Operator *op, const OperatorInfo &opInfo);
 
