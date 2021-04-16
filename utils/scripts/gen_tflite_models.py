@@ -116,6 +116,7 @@ def save_model(model, filename):
         output_arrays=model_outputs_array,
     )
     converter.dump_graphviz_video = False
+    converter.allow_custom_ops = True
     tflite_model = converter.convert()
     model_filename = os.path.join(OUT_DIR, filename)
     if not model_filename.endswith(".tflite"):
@@ -951,3 +952,101 @@ def gen_tile_test(name, input_shape, tiles):
 
 
 gen_tile_test(name="tile", input_shape=(1, 2, 3), tiles=[1, 3, 2])
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                     RESIZE NEAREST
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_resize_nearest_test(name, input_shape, output_shape):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.compat.v1.image.resize_nearest_neighbor(inp, size=output_shape)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_resize_nearest_test(name="resize_nearest", input_shape=(1, 3, 4, 2), output_shape=(5, 7))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                     RESIZE BILINEAR
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_resize_bilinear_test(name, input_shape, output_shape):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.compat.v1.image.resize_bilinear(inp, size=output_shape)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_resize_bilinear_test(name="resize_bilinear", input_shape=(1, 3, 4, 2), output_shape=(5, 7))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                    SPACE TO DEPTH
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_space_to_depth_test(name, input_shape, block_size):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.compat.v1.space_to_depth(inp, block_size=block_size)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_space_to_depth_test(name="space_to_depth", input_shape=(1, 2, 4, 3), block_size=2)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                     DEPTH TO SPACE
+# ----------------------------------------------------------------------------------------------------------------------
+# Note: Older version of TensorFlow handles this operator as custom. This test is generated separately by manually
+# editing the 'space_to_depth' test.
+def gen_depth_to_space_test(name, input_shape, block_size):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.nn.depth_to_space(inp, block_size=block_size)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_depth_to_space_test(name="depth_to_space", input_shape=(1, 1, 2, 12), block_size=2)

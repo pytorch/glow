@@ -274,6 +274,14 @@ class TFLiteModelLoader {
   Error loadResizeNearest(const tflite::Operator *op,
                           const OperatorInfo &opInfo);
 
+  /// Load SpaceToDepth operator.
+  Error loadSpaceToDepth(const tflite::Operator *op,
+                         const OperatorInfo &opInfo);
+
+  /// Load DepthToSpace operator.
+  Error loadDepthToSpace(const tflite::Operator *op,
+                         const OperatorInfo &opInfo);
+
   /// Load Tile operator.
   Error loadTile(const tflite::Operator *op, const OperatorInfo &opInfo);
 

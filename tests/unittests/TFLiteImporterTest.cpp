@@ -134,9 +134,6 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
 #define TFLITE_UNIT_TEST(name, model)                                          \
   TEST(TFLiteImporterTest, name) { loadAndRunModel(model); }
 
-#define TFLITE_UNIT_TEST_MAX_ERR(name, model, maxErr)                          \
-  TEST(TFLiteImporterTest, name) { loadAndRunModel(model, maxErr); }
-
 TFLITE_UNIT_TEST(Add, "add.tflite")
 
 TFLITE_UNIT_TEST(AvgPool2D_PaddingSame, "avgpool2d_same.tflite")
@@ -261,5 +258,9 @@ TFLITE_UNIT_TEST(Ceil, "ceil.tflite")
 TFLITE_UNIT_TEST(Cos, "cos.tflite")
 
 TFLITE_UNIT_TEST(Round, "round.tflite")
+
+TFLITE_UNIT_TEST(SpaceToDepth, "space_to_depth.tflite")
+
+TFLITE_UNIT_TEST(DepthToSpace, "depth_to_space.tflite")
 
 #undef TFLITE_UNIT_TEST

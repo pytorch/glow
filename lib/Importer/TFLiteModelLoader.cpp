@@ -1156,6 +1156,12 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR) {
     return loadResizeNearest(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_SPACE_TO_DEPTH) {
+    return loadSpaceToDepth(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_DEPTH_TO_SPACE) {
+    return loadDepthToSpace(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_SIN) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -1982,14 +1988,14 @@ Error TFLiteModelLoader::loadResizeBilinear(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
-  bool align_corners = opts->align_corners();
-  if (align_corners) {
-    LOG(WARNING) << opErrMsg(opInfo, "Align Corners option is ignored!");
+  bool alignCorners = opts->align_corners();
+  if (alignCorners) {
+    LOG(WARNING) << opErrMsg(opInfo, "Option 'align_corners' is ignored!");
   }
 
-  bool half_pixel_centers = opts->half_pixel_centers();
-  if (half_pixel_centers) {
-    LOG(WARNING) << opErrMsg(opInfo, "Half Pixel Centers option is ignored!");
+  bool halfPixelCenters = opts->half_pixel_centers();
+  if (halfPixelCenters) {
+    LOG(WARNING) << opErrMsg(opInfo, "Option 'half_pixel_centers' is ignored!");
   }
 
   NodeValue output = F_->createResizeBilinear(opInfo.name, input, outTy);
@@ -2004,17 +2010,49 @@ Error TFLiteModelLoader::loadResizeNearest(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
-  bool align_corners = opts->align_corners();
-  if (align_corners) {
-    LOG(WARNING) << opErrMsg(opInfo, "Align Corners option is ignored!");
+  bool alignCorners = opts->align_corners();
+  if (alignCorners) {
+    LOG(WARNING) << opErrMsg(opInfo, "Option 'align_corners' is ignored!");
   }
 
-  bool half_pixel_centers = opts->half_pixel_centers();
-  if (half_pixel_centers) {
-    LOG(WARNING) << opErrMsg(opInfo, "Half Pixel Centers option is ignored!");
+  bool halfPixelCenters = opts->half_pixel_centers();
+  if (halfPixelCenters) {
+    LOG(WARNING) << opErrMsg(opInfo, "Option 'half_pixel_centers' is ignored!");
   }
 
   NodeValue output = F_->createResizeNearest(opInfo.name, input, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadSpaceToDepth(const tflite::Operator *op,
+                                          const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_SpaceToDepthOptions();
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  int32_t blockSize = opts->block_size();
+
+  NodeValue output = F_->createSpaceToDepth(opInfo.name, input, blockSize);
+  RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
+                    opErrMsg(opInfo, "Expected output type incorrect!"));
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadDepthToSpace(const tflite::Operator *op,
+                                          const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_DepthToSpaceOptions();
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  int32_t blockSize = opts->block_size();
+
+  NodeValue output = F_->createDepthToSpace(opInfo.name, input, blockSize, /* isCRD */ false);
+  RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
+                    opErrMsg(opInfo, "Expected output type incorrect!"));
   return setOutputNodeValue(op, output);
 }
 
