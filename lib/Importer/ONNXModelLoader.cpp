@@ -4121,16 +4121,34 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  std::vector<int8_t> values;
-  ASSIGN_VALUE_OR_RETURN_ERR(values, getShape<int8_t>(dict["values"]));
-  std::vector<dim_t> shape;
-  ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
+  if (in.getType()->getElementType() == ElemKind::Int8QTy) {
+    std::vector<int8_t> values;
+    ASSIGN_VALUE_OR_RETURN_ERR(values, getShape<int8_t>(dict["values"]));
+    std::vector<dim_t> shape;
+    ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
-  auto outTy = mod_.uniqueType(in.getElementType(), shape);
-  Node *N = G_->createIntLookupTable(loadOperatorName(op), in, values, outTy);
+    auto outTy = mod_.uniqueType(in.getElementType(), shape);
+    Node *N = G_->createIntLookupTable<int8_t>(loadOperatorName(op), in, values,
+                                               outTy);
 
-  RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return Error::success();
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  } else if (in.getType()->getElementType() == ElemKind::Int16QTy) {
+    std::vector<int16_t> values;
+    ASSIGN_VALUE_OR_RETURN_ERR(values, getShape<int16_t>(dict["values"]));
+    std::vector<dim_t> shape;
+    ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
+
+    auto outTy = mod_.uniqueType(in.getElementType(), shape);
+    Node *N = G_->createIntLookupTable<int16_t>(loadOperatorName(op), in,
+                                                values, outTy);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  } else {
+    return MAKE_ERR(strFormat("Lookup table type '%s' not supported!",
+                              in.getType()->getElementName().str().c_str()));
+  }
 }
 
 Error ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,

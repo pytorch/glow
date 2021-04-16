@@ -607,7 +607,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32QTy});
 
   case Kinded::Kind::IntLookupTableNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int8QTy, ElemKind::Int16QTy});
 
   case Kinded::Kind::ConvertToNodeKind: {
     auto isConversionSupportedFor = [](ElemKind kind) {

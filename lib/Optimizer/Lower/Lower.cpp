@@ -1623,9 +1623,12 @@ static void lowerSwishNode(Function *F, CompilationContext &cctx,
   TypeRef sigOT = nullptr;
   if (S.getInput().getType()->isQuantizedType()) {
     // Make sure output is clipped in [0.0, 1.0] floating point range.
-    auto sigQP = glow::quantization::chooseQuantizationParams({0.0, 1.0});
-    sigOT = F->getParent()->uniqueType(ElemKind::Int8QTy, S.getResult().dims(),
+    ElemKind elementTy = S.getInput().getType()->getElementType();
+    auto sigQP = glow::quantization::chooseQuantizationParams(
+        {0.0, 1.0}, cctx.precisionConfig.quantConfig.schema, elementTy);
+    sigOT = F->getParent()->uniqueType(elementTy, S.getResult().dims(),
                                        sigQP.scale, sigQP.offset);
+
   } else {
     sigOT = S.getInput().getType();
   }

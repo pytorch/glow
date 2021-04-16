@@ -30,77 +30,6 @@ namespace {
 using namespace glow;
 using namespace glow::quantization;
 
-/// Support quantized Log \p LN inside \p F by replacing it with an
-/// IntLookupTable with a new mapping given the input and output quantization
-/// parameters. \returns the new IntLookupTable created.
-static Node *replaceQuantizedLogWithLookupTable(Function &F,
-                                                const LogNode &LN) {
-  TypeRef outTy = LN.getResult().getType();
-  TypeRef inTy = LN.getInput().getType();
-
-  auto inputRange = inTy->getQuantizedValueRange();
-  (void)inputRange;
-  assert(inputRange.first >= 0 &&
-         "Input range must not be negative since this is input to log().");
-
-  // Pass a function returning log here to create the mapping. Note that the
-  // interval is always extended to include zero, so we check if the input is
-  // zero and if so use log(float min), i.e. closest positive value to zero,
-  // as -inf is unsupported to convert to int.
-  auto logFun = [](float a) {
-    return (a == 0.0) ? log(std::numeric_limits<float>::min()) : log(a);
-  };
-  std::vector<int8_t> mapping =
-      glow::quantization::createMapping(inTy, outTy, logFun);
-
-  // Create a new int lookup table with this newly calculated mapping to
-  // implement this quantized log.
-  IntLookupTableNode *ILT = F.createIntLookupTable(
-      LN.getName().str() + ".log", LN.getInput(), mapping, outTy);
-
-  LN.getResult().replaceAllUsesOfWith(ILT);
-  return ILT;
-}
-
-/// Support quantized Tanh \p TN inside \p F by replacing it with an
-/// IntLookupTable. \returns final node in the chain implementing the quantized
-/// Tanh via the IntLookupTable.
-static Node *replaceQuantizedTanhWithLookupTable(Function &F,
-                                                 const TanhNode &TN) {
-  // Quantized tanh operator expects input to be in a certain floating point
-  // range. This operator works based on the precomputed table and has to
-  // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
-  // +/-1.0 and is already +/-.995 at +/-3.0.
-  // The output quantization parameters are chosen to represent the floating
-  // point range of [-1.0, 1.0].
-  auto inputQuantizationParams =
-      glow::quantization::chooseQuantizationParams({-3.0, 3.0});
-  auto tanhInTy = F.getParent()->uniqueType(
-      ElemKind::Int8QTy, TN.getResult().dims(), inputQuantizationParams.scale,
-      inputQuantizationParams.offset);
-
-  // Make sure input is clipped in [-3.0, 3.0] floating point range.
-  auto *rescaleInputNode =
-      F.createRescaleQuantized(TN.getName(), TN.getInput(), tanhInTy);
-
-  // Make sure output is clipped in [-1.0, 1.0] floating point range.
-  auto outputQuantizationParams =
-      glow::quantization::chooseQuantizationParams({-1.0, 1.0});
-  auto resultOutTy = F.getParent()->uniqueType(
-      ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
-      outputQuantizationParams.scale, outputQuantizationParams.offset);
-
-  // Note: The actual lookup table is created inside this call.
-  auto *quantizedNode =
-      F.createIntTanh(TN.getName(), rescaleInputNode, resultOutTy);
-
-  auto *rescaleOutputNode = F.createRescaleQuantized(
-      TN.getName(), quantizedNode, TN.getResult().getType());
-
-  TN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
-  return rescaleOutputNode;
-}
-
 /// \returns whether BatchedAddNode \p baN was originally lowered from a
 /// FullyConnectedNode based on the given \p loweredMap.
 static bool isBAFromLoweredFC(const BatchedAddNode *baN,
@@ -402,7 +331,10 @@ protected:
   CASE_SINGLE_MATCHING_INOUT_TYPE(Transpose, Input, Result):                   \
   CASE_SINGLE_MATCHING_INOUT_TYPE(TopK, Input, Values):                        \
   CASE_SINGLE_MATCHING_INOUT_TYPE(Gather, Data, Result):                       \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(MaxPool, Input, Result)
+  CASE_SINGLE_MATCHING_INOUT_TYPE(MaxPool, Input, Result):                     \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(ResizeNearest, Input, Result):               \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(ResizeBilinear, Input, Result):              \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(SpaceToDepth, Input, Result)
   // clang-format on
 
   /// \see FunctionConverter::morphNode.
@@ -557,15 +489,19 @@ protected:
       switch (node.getKind()) {
       case Kinded::Kind::LogNodeKind:
         quantizedNode = replaceQuantizedLogWithLookupTable(
-            function_, llvm::cast<LogNode>(node));
+            function_, llvm::cast<LogNode>(node), schema_);
+        break;
+      case Kinded::Kind::ExpNodeKind:
+        quantizedNode = replaceQuantizedExpWithLookupTable(
+            function_, llvm::cast<ExpNode>(node), schema_);
         break;
       case Kinded::Kind::TanhNodeKind:
         quantizedNode = replaceQuantizedTanhWithLookupTable(
-            function_, llvm::cast<TanhNode>(node));
+            function_, llvm::cast<TanhNode>(node), schema_);
         break;
       case Kinded::Kind::SigmoidNodeKind:
         quantizedNode = replaceQuantizedSigmoidWithLookupTable(
-            function_, llvm::cast<SigmoidNode>(node));
+            function_, llvm::cast<SigmoidNode>(node), schema_);
         break;
       default:
         llvm_unreachable("Unsupported case for converting to lookup table.");
@@ -904,29 +840,85 @@ public:
 namespace glow {
 namespace quantization {
 
-NodeValue replaceQuantizedSigmoidWithLookupTable(Function &F,
-                                                 const SigmoidNode &SN) {
+Node *replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN,
+                                         Schema schema) {
+  IntLookupTableNode *ILT = F.createIntLog(
+      LN.getName().str() + ".log", LN.getInput(), LN.getResult().getType());
+  LN.getResult().replaceAllUsesOfWith(ILT);
+  return ILT;
+}
+
+Node *replaceQuantizedExpWithLookupTable(Function &F, const ExpNode &EN,
+                                         Schema schema) {
+  IntLookupTableNode *ELT = F.createIntExp(
+      EN.getName().str() + ".exp", EN.getInput(), EN.getResult().getType());
+  EN.getResult().replaceAllUsesOfWith(ELT);
+  return ELT;
+}
+
+Node *replaceQuantizedTanhWithLookupTable(Function &F, const TanhNode &TN,
+                                          Schema schema) {
+  // Quantized tanh operator expects input to be in a certain floating point
+  // range. This operator works based on the precomputed table and has to
+  // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
+  // +/-1.0 and is already +/-.995 at +/-3.0.
+  // The output quantization parameters are chosen to represent the floating
+  // point range of [-1.0, 1.0].
+  TypeRef inpTy = TN.getInput().getType();
+  TypeRef outTy = TN.getResult().getType();
+  auto inputQuantizationParams = glow::quantization::chooseQuantizationParams(
+      {-3.0, 3.0}, schema, inpTy->getElementType());
+  auto tanhInTy = F.getParent()->uniqueType(
+      inpTy->getElementType(), TN.getResult().dims(),
+      inputQuantizationParams.scale, inputQuantizationParams.offset);
+
+  // Make sure input is clipped in [-3.0, 3.0] floating point range.
+  auto *rescaleInputNode =
+      F.createRescaleQuantized(TN.getName(), TN.getInput(), tanhInTy);
+
+  // Make sure output is clipped in [-1.0, 1.0] floating point range.
+  auto outputQuantizationParams = glow::quantization::chooseQuantizationParams(
+      {-1.0, 1.0}, schema, outTy->getElementType());
+  auto resultOutTy = F.getParent()->uniqueType(
+      outTy->getElementType(), rescaleInputNode->getResult().dims(),
+      outputQuantizationParams.scale, outputQuantizationParams.offset);
+
+  // Note: The actual lookup table is created inside this call.
+  auto *quantizedNode =
+      F.createIntTanh(TN.getName(), rescaleInputNode, resultOutTy);
+
+  auto *rescaleOutputNode = F.createRescaleQuantized(
+      TN.getName(), quantizedNode, TN.getResult().getType());
+
+  TN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+  return rescaleOutputNode;
+}
+
+Node *replaceQuantizedSigmoidWithLookupTable(Function &F, const SigmoidNode &SN,
+                                             Schema schema) {
   // Quantized sigmoid operator expects input to be in a certain floating
   // point range. This operator works based on the precomputed table and has
   // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
   // approaches 0 at -inf and 1 at +inf. It has values of 0.00247262 and
   // 0.997527 at -6.0 and 6.0 correspondingly. The output quantization
   // parameters are chosen to represent the floating point range of [0, 1.0].
-  auto inputQuantizationParams =
-      glow::quantization::chooseQuantizationParams({-6.0, 6.0});
+  TypeRef inpTy = SN.getInput().getType();
+  TypeRef outTy = SN.getResult().getType();
+  auto inputQuantizationParams = glow::quantization::chooseQuantizationParams(
+      {-6.0, 6.0}, schema, inpTy->getElementType());
   auto sigmoidInTy = F.getParent()->uniqueType(
-      ElemKind::Int8QTy, SN.getResult().dims(), inputQuantizationParams.scale,
-      inputQuantizationParams.offset);
+      inpTy->getElementType(), SN.getResult().dims(),
+      inputQuantizationParams.scale, inputQuantizationParams.offset);
 
   // Make sure input is clipped in [-6.0, 6.0] floating point range.
   auto *rescaleInputNode =
       F.createRescaleQuantized(SN.getName(), SN.getInput(), sigmoidInTy);
 
   // Make sure output is clipped in [0.0, 1.0] floating point range.
-  auto outputQuantizationParams =
-      glow::quantization::chooseQuantizationParams({0.0, 1.0});
+  auto outputQuantizationParams = glow::quantization::chooseQuantizationParams(
+      {0.0, 1.0}, schema, outTy->getElementType());
   auto resultOutTy = F.getParent()->uniqueType(
-      ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
+      outTy->getElementType(), rescaleInputNode->getResult().dims(),
       outputQuantizationParams.scale, outputQuantizationParams.offset);
 
   // Note: The actual lookup table is created inside this call.
@@ -937,6 +929,7 @@ NodeValue replaceQuantizedSigmoidWithLookupTable(Function &F,
       SN.getName(), quantizedNode, SN.getResult().getType());
 
   SN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+
   return rescaleOutputNode->getResult();
 }
 

@@ -1212,7 +1212,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Mapping", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::TypeCheck, {"Src", "isQuantizedType()"})
       .autoVerify(VerifyKind::TypeCheck, {"Dest", "isQuantizedType()"})
       .dataParallel()
       .autoIRGen();

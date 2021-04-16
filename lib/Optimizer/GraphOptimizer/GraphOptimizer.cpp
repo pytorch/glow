@@ -4034,8 +4034,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
   bool changed = false;
 
   // Change a quantized result type qResult to account for the range from clip.
-  auto updateQuantizeNodeType = [](Function *F, NodeValue qResult,
-                                   ClipNode *clip, bool skipIfQuantParamChange,
+  auto updateQuantizeNodeType = [](Function *F, const CompilationContext &cctx,
+                                   NodeValue qResult, ClipNode *clip,
+                                   bool skipIfQuantParamChange,
                                    bool allowQParamChange) {
     const auto qMinMax = qResult.getType()->getQuantizedValueRange();
     const float newMin = std::max(clip->getMin(), qMinMax.first);
@@ -4060,8 +4061,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     // Replace the old quantized type with the new type with different
     // min/max.
     const TypeRef oldTy = qResult.getType();
-    const auto qParams =
-        quantization::chooseQuantizationParams({newMin, newMax});
+    const auto qParams = quantization::chooseQuantizationParams(
+        {newMin, newMax}, cctx.precisionConfig.quantConfig.schema,
+        oldTy->getElementType());
     const TypeRef newTy = F->getParent()->uniqueType(
         oldTy->getElementType(), oldTy->dims(), qParams.scale, qParams.offset);
     qResult.getNode()->setType(qResult.getResNo(), newTy);
@@ -4084,7 +4086,7 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
 
       // Try to update the quantize's type, otherwise skip this one.
       if (!updateQuantizeNodeType(
-              F, qResult, clip, skipIfQuantParamChange,
+              F, cctx, qResult, clip, skipIfQuantParamChange,
               cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
@@ -4109,7 +4111,7 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
 
       // Try to update the quantize's type, otherwise skip this one.
       if (!updateQuantizeNodeType(
-              F, QN->getResult(), clip, skipIfQuantParamChange,
+              F, cctx, QN->getResult(), clip, skipIfQuantParamChange,
               cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
@@ -4311,7 +4313,8 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
       } else {
         // Use the same type as the FC for the Relu but with 0 as min.
         const auto qParams = quantization::chooseQuantizationParams(
-            {0, FCTy->getQuantizedValueRange().second});
+            {0, FCTy->getQuantizedValueRange().second},
+            cctx.precisionConfig.quantConfig.schema, FCTy->getElementType());
         qReluTy =
             F->getParent()->uniqueType(FCTy->getElementType(), FCTy->dims(),
                                        qParams.scale, qParams.offset);
@@ -6899,8 +6902,8 @@ void glow::updateQuantReluTypes(Function *F) {
     if (qRange.first >= 0) {
       continue;
     }
-    const auto qParams =
-        quantization::chooseQuantizationParams({0, qRange.second});
+    const auto qParams = quantization::chooseQuantizationParams(
+        {0, qRange.second}, quantization::Asymmetric, RNTy->getElementType());
     const TypeRef qReluTy = F->getParent()->uniqueType(
         RNTy->getElementType(), RNTy->dims(), qParams.scale, qParams.offset);
     RN->setType(ReluNode::ResultIdx, qReluTy);
@@ -6953,8 +6956,8 @@ void glow::updateQuantReluTypes(Function *F) {
     if (qRange.first >= 0) {
       continue;
     }
-    const auto qParams =
-        quantization::chooseQuantizationParams({0, qRange.second});
+    const auto qParams = quantization::chooseQuantizationParams(
+        {0, qRange.second}, quantization::Asymmetric, T->getElementType());
     const TypeRef qReluTy = F->getParent()->uniqueType(
         T->getElementType(), T->dims(), qParams.scale, qParams.offset);
     N->setType(resultIdx, qReluTy);

@@ -600,6 +600,23 @@ struct Type final {
     return ::glow::getQuantizedValueRange(scale_, offset_, elementType_);
   }
 
+  /// \returns the number of values associated to the quantized type (e.g. 256
+  /// for Int8QTy).
+  size_t getQuantizedValueCount() const {
+    assert(getElementSize() < sizeof(size_t) &&
+           "Cannot retrieve quantized value count with size_t!");
+    double numBits = getElementSize() * 8;
+    return static_cast<size_t>(std::exp2(numBits));
+  }
+
+  /// \returns the floating point value step associated to the quantized type.
+  /// The quantization step is actually equal to the quantization scale.
+  float getQuantizedValueStep() const {
+    assert(isQuantizedType() &&
+           "Can't get the quantized value step of a non-quantized type");
+    return scale_;
+  }
+
   /// \returns true if \p other is the same type. If \p allowDifferentShape then
   /// shapes will not be considered as part of the equal comparison. If \p
   /// allowDifferentScaleOffset is true, scale and offset will not be considered

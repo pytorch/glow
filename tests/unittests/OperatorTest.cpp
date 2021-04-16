@@ -13930,7 +13930,7 @@ TEST_P(OperatorTest, IntLookupTable) {
   }
 
   auto *lookupTable =
-      F_->createIntLookupTable("lookupTable", input, initValues, outTy);
+      F_->createIntLookupTable<int8_t>("lookupTable", input, initValues, outTy);
   auto *save = F_->createSave("save", lookupTable);
   bindings_.allocate(save->getPlaceholder());
 
