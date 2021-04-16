@@ -282,6 +282,9 @@ class TFLiteModelLoader {
   Error loadDepthToSpace(const tflite::Operator *op,
                          const OperatorInfo &opInfo);
 
+  /// Load Cast operator.
+  Error loadCast(const tflite::Operator *op, const OperatorInfo &opInfo);
+
   /// Load Tile operator.
   Error loadTile(const tflite::Operator *op, const OperatorInfo &opInfo);
 

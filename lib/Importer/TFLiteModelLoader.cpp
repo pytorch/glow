@@ -1162,6 +1162,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_DEPTH_TO_SPACE) {
     return loadDepthToSpace(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_CAST) {
+    return loadCast(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_SIN) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -2053,6 +2056,18 @@ Error TFLiteModelLoader::loadDepthToSpace(const tflite::Operator *op,
   NodeValue output = F_->createDepthToSpace(opInfo.name, input, blockSize, /* isCRD */ false);
   RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
                     opErrMsg(opInfo, "Expected output type incorrect!"));
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadCast(const tflite::Operator *op,
+                                  const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+  // The Cast operator has two attributes "in_data_type" and "out_data_type" but
+  // are not used because the input and output types are already available.
+  NodeValue output = F_->createConvertTo(opInfo.name, input, outTy);
   return setOutputNodeValue(op, output);
 }
 

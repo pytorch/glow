@@ -223,6 +223,12 @@ TFLITE_UNIT_TEST(ResizeBilinear, "resize_bilinear.tflite")
 
 TFLITE_UNIT_TEST(ResizeNearest, "resize_nearest.tflite")
 
+TFLITE_UNIT_TEST(SpaceToDepth, "space_to_depth.tflite")
+
+TFLITE_UNIT_TEST(DepthToSpace, "depth_to_space.tflite")
+
+TFLITE_UNIT_TEST(CastF32ToInt32, "cast_f32_to_int32.tflite")
+
 TFLITE_UNIT_TEST(Equal, "equal.tflite")
 
 TFLITE_UNIT_TEST(NotEqual, "not_equal.tflite")
@@ -258,9 +264,5 @@ TFLITE_UNIT_TEST(Ceil, "ceil.tflite")
 TFLITE_UNIT_TEST(Cos, "cos.tflite")
 
 TFLITE_UNIT_TEST(Round, "round.tflite")
-
-TFLITE_UNIT_TEST(SpaceToDepth, "space_to_depth.tflite")
-
-TFLITE_UNIT_TEST(DepthToSpace, "depth_to_space.tflite")
 
 #undef TFLITE_UNIT_TEST

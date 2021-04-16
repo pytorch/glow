@@ -141,6 +141,30 @@ clean_dir(OUT_DIR)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+#                                                          CAST
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_cast_test(name, input_shape, dtype):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.cast(inp, dtype=dtype)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_cast_test(name="cast_f32_to_int32", input_shape=(1, 1, 2, 12), dtype=tf.int32)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 #                                                    Logical operators
 # ----------------------------------------------------------------------------------------------------------------------
 def gen_unary_logical_operator_test(name, type):
