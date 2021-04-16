@@ -89,7 +89,7 @@ int main() {
   Tester cpu{"CPU"};
 
   // Read an example PNG and add it to an input batch.
-  auto image = readPngPpmImageAndPreprocess(
+  auto image = readPngImageAndPreprocess(
       "tests/images/imagenet/cat_285.png", ImageNormalizationMode::k0to1,
       ImageChannelOrder::BGR, ImageLayout::NCHW, imagenetNormMean,
       imagenetNormStd);
