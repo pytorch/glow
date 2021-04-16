@@ -4685,7 +4685,7 @@ DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
 #undef DEFINE_REDUCEMINMAX_INST_IMPL
 
 /// Macro to define ReduceMin/Max instruction.
-#define DEFINE_REDUCEMINMAX_INST(func, init)                                   \
+#define DEFINE_REDUCEMINMAX_INST(func, init_func)                              \
   void BoundInterpreterFunction::fwdBatched##func##Inst(                       \
       const glow::Batched##func##Inst *I) {                                    \
                                                                                \
@@ -4703,16 +4703,22 @@ DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
       eDestDims[axes[i]] = 1;                                                  \
     }                                                                          \
                                                                                \
-    dispatchArithmeticImpl(fwdBatched##func##InstImpl,                         \
-                           batch->getElementType(), batch, dest, eBatchDims,   \
-                           eDestDims, init);                                   \
+    if (batch->getElementType() == ElemKind::Int8QTy) {                        \
+      dispatchQuantizedImpl(                                                   \
+          fwdBatched##func##InstImpl, batch->getElementType(), batch, dest,    \
+          eBatchDims, eDestDims, std::numeric_limits<int8_t>::init_func());    \
+    } else {                                                                   \
+      dispatchArithmeticImpl(                                                  \
+          fwdBatched##func##InstImpl, batch->getElementType(), batch, dest,    \
+          eBatchDims, eDestDims, std::numeric_limits<int32_t>::init_func());   \
+    }                                                                          \
   }
 
 // Define fwdBatchedMinInst
-DEFINE_REDUCEMINMAX_INST(ReduceMin, std::numeric_limits<int32_t>::max())
+DEFINE_REDUCEMINMAX_INST(ReduceMin, max)
 
 // Define fwdBatchedMaxInst
-DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
+DEFINE_REDUCEMINMAX_INST(ReduceMax, min)
 
 #undef DEFINE_REDUCEMINMAX_INST
 
