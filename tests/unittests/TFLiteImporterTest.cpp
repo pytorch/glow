@@ -222,7 +222,9 @@ TFLITE_UNIT_TEST(Sin, "sin.tflite")
 
 TFLITE_UNIT_TEST(Tile, "tile.tflite")
 
-TFLITE_UNIT_TEST_MAX_ERR(ResizeBilinear, "resize_bilinear.tflite", 2e-6)
+TFLITE_UNIT_TEST(ResizeBilinear, "resize_bilinear.tflite")
+
+TFLITE_UNIT_TEST(ResizeNearest, "resize_nearest.tflite")
 
 TFLITE_UNIT_TEST(Equal, "equal.tflite")
 
