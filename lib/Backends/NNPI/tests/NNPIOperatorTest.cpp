@@ -26,7 +26,6 @@ struct BlacklistInitializer {
       {"batchedPairwiseDotProduct/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMaxMultiAxis_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMaxMultiAxis_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"batchedReduceMax_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMaxMultiAxis_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMinMultiAxis_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMinMultiAxis_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -231,10 +230,12 @@ struct BlacklistInitializer {
       {"ArithFmod_bfloat16_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BasicFmodNetFloatVsFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BasicFmodNetFloatVsBFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"batchedReduceMin_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMin_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"batchedReduceMax_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMax_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"batchedReduceMin_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
+      // batchedReduceMax Int32 is not supported on NNPI device.
+      // Will be supported at version 1.7
+      {"batchedReduceMax_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceProd_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceProd_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceProd_BFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
