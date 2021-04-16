@@ -3245,14 +3245,24 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
                  const torch::jit::Node *ptNode, bool isStack,
                  bool doBroadcast) noexcept {
 
-  auto inputs = ptNode->inputs();
+  std::vector<glow::NodeValue> inputs;
+  for (auto *ptInput : ptNode->inputs()) {
+    glow::NodeValue nodeVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(nodeVal,
+                               loader->getGlowNodeValueForValue(ptInput));
+    // Legacy behavior suggests supporting concat of empty tensors, but only
+    // for this specific shape. See the legacy_cat_wrap_dim function in
+    // caffe2/aten/src/ATen/WrapDimUtils.h for more info.
+    if (nodeVal.dims() == llvm::ArrayRef<dim_t>({0})) {
+      continue;
+    }
+    inputs.push_back(nodeVal);
+  }
+
+  RETURN_ERR_IF_NOT(inputs.size() > 0, "No non-empty inputs were provided!");
 
   // Get number of input dimensions
-  glow::NodeValue glowInput0;
-  ASSIGN_VALUE_OR_RETURN_ERR(glowInput0,
-                             loader->getGlowNodeValueForValue(inputs[0]));
-  int64_t numInputDims = glowInput0.dims().size();
-
+  int64_t numInputDims = inputs[0].dims().size();
   int64_t dim = ptNode->i(at::attr::dim);
 
   // Convert negative dimension index into corresponding positive index if the
@@ -3270,7 +3280,8 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
 
   c10::ScalarType higherType;
   glow::ElemKind higherKind;
-  ASSIGN_VALUE_OR_RETURN_ERR(higherType, getHigherType(loader, inputs));
+  ASSIGN_VALUE_OR_RETURN_ERR(higherType,
+                             getHigherType(loader, ptNode->inputs()));
   if (higherType != c10::ScalarType::Undefined) {
     higherKind = scalarTypeToElemKind(higherType);
   }
@@ -3282,42 +3293,39 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
 
   // Use mulitple vectors for hierarchical concats, the first vector is the
   // final concat
-  std::vector<glow::NodeValue> glowInputs;
   for (size_t i = 0; i < inputs.size(); ++i) {
-    glow::NodeValue glowInput;
-    ASSIGN_VALUE_OR_RETURN_ERR(glowInput,
-                               loader->getGlowNodeValueForValue(inputs[i]));
-
-    RETURN_ERR_IF_NOT(numInputDims == glowInput.dims().size(),
+    auto input = inputs[i];
+    RETURN_ERR_IF_NOT(numInputDims == input.dims().size(),
                       "All inputs must have the same number of dimensions.");
 
     // Record broadcast shapes to perform broadcasting
-    for (int d = 0; d < glowInput.dims().size(); ++d) {
+    for (int d = 0; d < input.dims().size(); ++d) {
       // For stack we can broadcast every dim
       if (d != dim || isStack) {
-        if (bcastShape[d] < 0 && glowInput.dims()[d] != 1) {
+        if (bcastShape[d] < 0 && input.dims()[d] != 1) {
           // record first non-singleton size for dim_i as broadcast shape
-          bcastShape[d] = glowInput.dims()[d];
-        } else if (glowInput.dims()[d] == 1) {
+          bcastShape[d] = input.dims()[d];
+        } else if (input.dims()[d] == 1) {
           needBroadcast[i] = true;
           noBroadcastNeeded = false;
         }
       }
     }
 
-    if (higherType != c10::ScalarType::Undefined &&
-        !isQuantizedElemKind(higherKind) &&
-        glowInput.getElementType() != higherKind) {
-      glow::ConvertToNode *toNode =
-          F.createConvertTo("upcastForConcat", glowInput, higherKind);
-      glowInputs.emplace_back(toNode->getResult());
+    if (higherType == c10::ScalarType::Undefined) {
+      continue;
+    } else if (isQuantizedElemKind(higherKind)) {
+      continue;
+    } else if (input.getElementType() == higherKind) {
+      continue;
     } else {
-      glowInputs.emplace_back(std::move(glowInput));
+      inputs.at(i) =
+          F.createConvertTo("upcastForConcat", input, higherKind)->getResult();
     }
   }
 
   if (!doBroadcast || noBroadcastNeeded) {
-    return F.createConcat(isStack ? "stack_concat" : "cat", glowInputs,
+    return F.createConcat(isStack ? "stack_concat" : "cat", inputs,
                           std::min(dim, numInputDims - 1));
   }
   // For concat, we perform opportunistic concat before broadcast if
@@ -3353,15 +3361,15 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
         return output;
       };
 
-  for (size_t i = 0; i < glowInputs.size(); ++i) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
     // Use dimensions as key so we can concat those of the same dimensions
     // For example, for [1, 32, 1] when we concat dim=1, the key is '1_1',
     // and for [1, 32, 4] the key is '1_4'.
     // We use '_' as delimiter to conveniently reuse the key for node name.
     std::stringstream ss;
-    for (int d = 0; d < glowInputs[i].dims().size(); ++d) {
+    for (int d = 0; d < inputs[i].dims().size(); ++d) {
       if (d != dim || isStack) {
-        ss << glowInputs[i].dims()[d] << "_";
+        ss << inputs[i].dims()[d] << "_";
       }
     }
     auto key = ss.str();
@@ -3376,10 +3384,10 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
       if (!isStack) {
         prevConcatKey = key;
       }
-      partialConcatInputs.emplace_back(glowInputs[i]);
+      partialConcatInputs.emplace_back(inputs[i]);
     } else {
       prevConcatKey = "";
-      finalConcatInputs.emplace_back(glowInputs[i]);
+      finalConcatInputs.emplace_back(inputs[i]);
     }
   }
   // In cast the last nodes (1 or more) need concat and broadcast
