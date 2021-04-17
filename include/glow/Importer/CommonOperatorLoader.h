@@ -1336,7 +1336,8 @@ protected:
 
     if (dict.count("axis")) {
       ASSIGN_VALUE_OR_RETURN_ERR(
-          axis, loadAxis<size_t>(dict.find("axis")->second, data.dims().size()));
+          axis,
+          loadAxis<size_t>(dict.find("axis")->second, data.dims().size()));
     }
 
     if (indices.getElementType() != ElemKind::Int64ITy &&
