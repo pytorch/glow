@@ -2863,7 +2863,8 @@ ReshapeNode *Function::createDepthToSpace(llvm::StringRef name, NodeValue input,
   dim_t H = inputDim[1];
   dim_t W = inputDim[2];
   dim_t C = inputDim[3];
-  assert(C % (blockSize * blockSize) == 0 && "Depth should be divisible by block size squared.");
+  assert(C % (blockSize * blockSize) == 0 &&
+         "Depth should be divisible by block size squared.");
 
   llvm::SmallVector<unsigned_t, 6> shuffle;
   llvm::SmallVector<dim_t, 6> tmpShape;

@@ -1093,6 +1093,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_SOFTMAX) {
     return loadSoftmax(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_LOG_SOFTMAX) {
+    return loadLogSoftmax(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_TANH) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -1167,6 +1170,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   }
   if (opCode == tflite::BuiltinOperator_GATHER) {
     return loadGather(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_GATHER_ND) {
+    return loadGatherND(op, opInfo);
   }
   if (opCode == tflite::BuiltinOperator_SIN) {
     return loadUnaryArithmetic(op, opInfo);
@@ -1788,6 +1794,21 @@ Error TFLiteModelLoader::loadSoftmax(const tflite::Operator *op,
   return setOutputNodeValue(op, output);
 }
 
+Error TFLiteModelLoader::loadLogSoftmax(const tflite::Operator *op,
+                                        const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  // Create a constant to store labels to be used in SoftMaxGradNode.
+  auto selected =
+      mod_.createConstant(ElemKind::Int64ITy, {input.dims()[0], 1}, "selected");
+
+  NodeValue output = F_->createLogSoftMax(opInfo.name, input, selected, outTy);
+  return setOutputNodeValue(op, output);
+}
+
 Error TFLiteModelLoader::loadPad(const tflite::Operator *op,
                                  const OperatorInfo &opInfo) {
   NodeValue input;
@@ -2089,6 +2110,23 @@ Error TFLiteModelLoader::loadGather(const tflite::Operator *op,
       axis, getPositiveAxis<unsigned_t>(opts->axis(), data.dims().size()));
 
   NodeValue output = F_->createGather(opInfo.name, data, indices, axis);
+  RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
+                    opErrMsg(opInfo, "Expected output type incorrect!"));
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadGatherND(const tflite::Operator *op,
+                                      const OperatorInfo &opInfo) {
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getInputNodeValue(op, 0));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getInputNodeValue(op, 1));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  NodeValue output = F_->createGatherND(opInfo.name, data, indices);
+  RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
+                    opErrMsg(opInfo, "Expected output type incorrect!"));
   return setOutputNodeValue(op, output);
 }
 

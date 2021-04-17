@@ -248,6 +248,9 @@ class TFLiteModelLoader {
   /// Load Softmax operator.
   Error loadSoftmax(const tflite::Operator *op, const OperatorInfo &opInfo);
 
+  /// Load LogSoftmax operator.
+  Error loadLogSoftmax(const tflite::Operator *op, const OperatorInfo &opInfo);
+
   /// Load Pad operator.
   Error loadPad(const tflite::Operator *op, const OperatorInfo &opInfo);
 
@@ -287,6 +290,9 @@ class TFLiteModelLoader {
 
   /// Load Gather operator.
   Error loadGather(const tflite::Operator *op, const OperatorInfo &opInfo);
+
+  /// Load Gather ND operator.
+  Error loadGatherND(const tflite::Operator *op, const OperatorInfo &opInfo);
 
   /// Load Tile operator.
   Error loadTile(const tflite::Operator *op, const OperatorInfo &opInfo);

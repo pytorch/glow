@@ -141,7 +141,58 @@ clean_dir(OUT_DIR)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-#                                                         GATHER
+#                                                        LogSoftmax
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_log_softmax_test(name, input_shape, axis):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.nn.log_softmax(inp, axis=axis)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_log_softmax_test(name="log_softmax", input_shape=(1, 3), axis=-1)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                      GATHER ND
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_gather_nd_test(name, data_shape, indices_shape):
+    # Create model.
+    data = layers.Input(name="data", batch_size=data_shape[0], shape=data_shape[1:], dtype=tf.float32)
+    indices = layers.Input(name="indices", batch_size=indices_shape[0], shape=indices_shape[1:], dtype=tf.int32)
+    out = tf.gather_nd(data, indices, batch_dims=0)
+    model = Model(inputs=[data, indices], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    data_tensor = np.random.rand(*data_shape).astype(np.float32)
+    indices_tensor = np.random.randint(low=0, high=data_shape, size=indices_shape).astype(np.int32)
+    out_tensor = model.predict([data_tensor, indices_tensor])
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(data_tensor, name + ".inp0")
+    save_tensor(indices_tensor, name + ".inp1")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_gather_nd_test(name="gather_nd", data_shape=(2, 3, 4), indices_shape=(2, 3))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                      GATHER
 # ----------------------------------------------------------------------------------------------------------------------
 def gen_gather_test(name, data_shape, indices_shape, axis):
     # Create model.
