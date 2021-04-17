@@ -3047,7 +3047,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dest = GI->getDest();
     auto *data = GI->getData();
     auto *indices = GI->getIndices();
-    unsigned batchDims = GI->getBatchDims();
+    unsigned axis = GI->getAxis();
 
     auto *destPtr = emitValueAddress(builder, dest);
     auto *dataPtr = emitValueAddress(builder, data);
@@ -3058,9 +3058,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataType = data->getType();
 
     // The size of the sample in the batch.
-    size_t sampleSize = dataType->getSliceSize(batchDims);
+    size_t sampleSize = dataType->getSliceSize(axis);
     // The size of the slices that we gather.
-    size_t sliceSize = dataType->getSliceSize(batchDims + 1);
+    size_t sliceSize = dataType->getSliceSize(axis + 1);
     // The size of each sample in the batch.
     size_t numSamples = dataType->size() / sampleSize;
 
@@ -3068,7 +3068,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numSamplesVal = emitConstDimT(builder, numSamples);
     auto *sampleSizeVal = emitConstDimT(builder, sampleSize);
 
-    // Dispatching function depeending on the input type of Indices.
+    // Dispatching function depending on the input type of Indices.
     llvm::Function *F = nullptr;
     if (indices->getElementType() == ElemKind::Int64ITy) {
       F = getFunction("gather64", dest->getElementType());

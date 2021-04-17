@@ -3463,7 +3463,7 @@ bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
     }
 
     dim_t index = 0;
-    size_t bd = GN->getBatchDims();
+    size_t axis = GN->getAxis();
     auto elementKind = indices->getElementType();
     if (elementKind == ElemKind::Int64ITy) {
       index = (size_t)indices->getHandle<int64_t>().raw(0);
@@ -3476,7 +3476,7 @@ bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
     std::vector<dim_t> start;
     std::vector<dim_t> end;
     for (size_t i = 0; i < data.dims().size(); ++i) {
-      if (i == bd) {
+      if (i == axis) {
         start.push_back(index);
         end.push_back(index + 1);
       } else {

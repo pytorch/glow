@@ -2368,20 +2368,20 @@ void BoundInterpreterFunction::fwdGatherInstImpl(const glow::GatherInst *I) {
   auto &dataTy = dataT->getType();
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
-  unsigned_t batchDims = I->getBatchDims();
+  unsigned_t axis = I->getAxis();
 
   size_t out_p = 0;
   dim_t elementSize = dataTy.getElementSize();
   // The size of the sample in the batch.
-  dim_t dataSampleSize = dataTy.getSliceSize(batchDims) * elementSize;
+  dim_t dataSampleSize = dataTy.getSliceSize(axis) * elementSize;
   // The size of the slices that we gather.
-  dim_t dataSliceSize = dataTy.getSliceSize(batchDims + 1) * elementSize;
+  dim_t dataSliceSize = dataTy.getSliceSize(axis + 1) * elementSize;
 
   // Calculate the size of each sample in the batch.
   dim_t numSamples = (dataT->size() * elementSize) / dataSampleSize;
 
   // Calculate number of samples in the batch.
-  dim_t batchSize = dataTy.dims()[batchDims];
+  dim_t batchSize = dataTy.dims()[axis];
   (void)batchSize;
 
   // For each sample in the batch:
