@@ -2771,17 +2771,17 @@ VectorNormNode *Function::createVectorNorm(llvm::StringRef name,
 }
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
-                                   NodeValue indices, unsigned_t batchDims) {
+                                   NodeValue indices, unsigned_t axis) {
   auto dDims = data.dims();
   auto iDims = indices.dims();
-  assert(dDims.size() > batchDims);
+  assert(dDims.size() > axis);
   ShapeVector outDims;
-  outDims.insert(outDims.end(), dDims.begin(), dDims.begin() + batchDims);
+  outDims.insert(outDims.end(), dDims.begin(), dDims.begin() + axis);
   outDims.insert(outDims.end(), iDims.begin(), iDims.end());
-  outDims.insert(outDims.end(), dDims.begin() + batchDims + 1, dDims.end());
+  outDims.insert(outDims.end(), dDims.begin() + axis + 1, dDims.end());
   return addNode(new GatherNode(
       name, getParent()->uniqueTypeWithNewShape(data.getType(), outDims), data,
-      indices, batchDims));
+      indices, axis));
 }
 
 GatherNDNode *Function::createGatherND(llvm::StringRef name, NodeValue data,

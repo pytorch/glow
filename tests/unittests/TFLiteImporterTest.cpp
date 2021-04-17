@@ -229,6 +229,9 @@ TFLITE_UNIT_TEST(DepthToSpace, "depth_to_space.tflite")
 
 TFLITE_UNIT_TEST(CastF32ToInt32, "cast_f32_to_int32.tflite")
 
+TFLITE_UNIT_TEST(GatherAxis0, "gather_axis0.tflite")
+TFLITE_UNIT_TEST(GatherAxis1, "gather_axis1.tflite")
+
 TFLITE_UNIT_TEST(Equal, "equal.tflite")
 
 TFLITE_UNIT_TEST(NotEqual, "not_equal.tflite")

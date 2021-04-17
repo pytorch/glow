@@ -1580,12 +1580,12 @@ public:
   TopKNode *createTopK(llvm::StringRef name, NodeValue input, unsigned_t k,
                        ElemKind outIndicesTyKind);
 
-  /// Gathers entries of the outer-most dimension of \p data indexed by
-  /// \p indices, and concatenates them. A non-zero \p batchDims specifies the
-  /// batch, and the result is the concatenation of the operation on each sample
-  /// in the batch.
+  /// Given \p data tensor of rank r >= 1, and \p indices tensor of rank q,
+  /// gather entries of the \p axis dimension of data (default outer-most for
+  /// axis = 0) indexed by indices and concatenate them in the output tensor of
+  /// rank q + (r - 1).
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
-                           NodeValue indices, unsigned_t batchDims = 0);
+                           NodeValue indices, unsigned_t axis = 0);
 
   /// Given \p data tensor of rank r >= 1, \p indices tensor of rank q >= 1,
   /// and batch_dims integer b, this operator gathers slices of data

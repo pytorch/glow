@@ -141,6 +141,34 @@ clean_dir(OUT_DIR)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+#                                                         GATHER
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_gather_test(name, data_shape, indices_shape, axis):
+    # Create model.
+    data = layers.Input(name="data", batch_size=data_shape[0], shape=data_shape[1:], dtype=tf.float32)
+    indices = layers.Input(name="indices", batch_size=indices_shape[0], shape=indices_shape[1:], dtype=tf.int32)
+    out = tf.gather(data, indices, axis=axis, batch_dims=0)
+    model = Model(inputs=[data, indices], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    data_tensor = np.random.rand(*data_shape).astype(np.float32)
+    indices_tensor = np.random.randint(data_shape[axis], size=indices_shape).astype(np.int32)
+    out_tensor = model.predict([data_tensor, indices_tensor])
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(data_tensor, name + ".inp0")
+    save_tensor(indices_tensor, name + ".inp1")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_gather_test(name="gather_axis0", data_shape=(1, 2, 3, 4), indices_shape=(1, 5), axis=0)
+gen_gather_test(name="gather_axis1", data_shape=(1, 2, 3, 4), indices_shape=(1, 5), axis=1)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 #                                                          CAST
 # ----------------------------------------------------------------------------------------------------------------------
 def gen_cast_test(name, input_shape, dtype):

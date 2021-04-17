@@ -1165,6 +1165,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_CAST) {
     return loadCast(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_GATHER) {
+    return loadGather(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_SIN) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -2053,7 +2056,7 @@ Error TFLiteModelLoader::loadDepthToSpace(const tflite::Operator *op,
 
   int32_t blockSize = opts->block_size();
 
-  NodeValue output = F_->createDepthToSpace(opInfo.name, input, blockSize, /* isCRD */ false);
+  NodeValue output = F_->createDepthToSpace(opInfo.name, input, blockSize);
   RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
                     opErrMsg(opInfo, "Expected output type incorrect!"));
   return setOutputNodeValue(op, output);
@@ -2068,6 +2071,24 @@ Error TFLiteModelLoader::loadCast(const tflite::Operator *op,
   // The Cast operator has two attributes "in_data_type" and "out_data_type" but
   // are not used because the input and output types are already available.
   NodeValue output = F_->createConvertTo(opInfo.name, input, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadGather(const tflite::Operator *op,
+                                    const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_GatherOptions();
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getInputNodeValue(op, 0));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getInputNodeValue(op, 1));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  unsigned_t axis;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      axis, getPositiveAxis<unsigned_t>(opts->axis(), data.dims().size()));
+
+  NodeValue output = F_->createGather(opInfo.name, data, indices, axis);
   return setOutputNodeValue(op, output);
 }
 
