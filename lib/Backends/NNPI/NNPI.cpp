@@ -202,6 +202,25 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32QTy,
          ElemKind::Int8QTy, ElemKind::UInt8QTy});
     break;
+  case Kinded::Kind::SparseLabelSplitNodeKind: {
+    auto valuesIdxDataType = NI.getInElemTy(SparseLabelSplitNode::ValuesIdx);
+    isNodePrecisionSupported =
+        (NI.getInElemTy(SparseLabelSplitNode::LengthsIdx) ==
+         ElemKind::Int32ITy) &&
+        (NI.getInElemTy(SparseLabelSplitNode::IndicesIdx) ==
+         ElemKind::Int64ITy) &&
+        (NI.getInElemTy(SparseLabelSplitNode::ValuesIdx) ==
+         NI.getOutElemTy(SparseLabelSplitNode::LabelValuesIdx)) &&
+        (NI.getOutElemTy(SparseLabelSplitNode::ExampleIdsIdx) ==
+         ElemKind::Int32ITy) &&
+        (NI.getOutElemTy(SparseLabelSplitNode::GradientOffsetMapIdx) ==
+         ElemKind::Int32ITy) &&
+        (valuesIdxDataType == ElemKind::FloatTy ||
+         valuesIdxDataType == ElemKind::Float16Ty ||
+         valuesIdxDataType == ElemKind::Int8QTy ||
+         valuesIdxDataType == ElemKind::UInt8QTy);
+    break;
+  }
 #endif // NNPI > 1.1
   case Kinded::Kind::LayerNormalizationNodeKind: {
     auto scaleType = NI.getInElemTy(LayerNormalizationNode::ScaleIdx);
@@ -696,10 +715,18 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::ScatterDataNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+             ElemKind::UInt8QTy},
             {ScatterDataNode::IndicesIdx}) &&
         (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy ||
          NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::BucketizeNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy}, {},
+            {BucketizeNode::ResultIdx}) &&
+        (NI.getOutElemTy(BucketizeNode::ResultIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::SoftMaxNodeKind:
     isNodePrecisionSupported =
