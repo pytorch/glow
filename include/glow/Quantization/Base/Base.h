@@ -118,19 +118,93 @@ struct NodeQuantizationInfo {
   int32_t offset() const { return tensorQuantizationParams_.offset; }
 };
 
-struct FixedPointUint32 {
-  uint32_t point;
-  uint32_t conversion;
+/// Primitive to encode an integer in 32-bit unsigned fixed-point format.
+class FixedPointUInt32 {
+private:
+  /// Encoded fixed-point value.
+  uint32_t val_;
+  /// Number of integer bits.
+  unsigned intBits_;
+  /// Number of fractional bits.
+  unsigned fracBits_;
 
-  uint32_t convert(float elem, uint32_t fractionalPart) {
+public:
 
-    double result = (double)elem * (double)std::exp2((double)fractionalPart);
+  /// Default constructor.
+  FixedPointUInt32() = default;
+
+  /// Construct a fixed-point representation of the floating-point value
+  /// \p floatVal using the fixed-point configuration with minimum approximation
+  /// error by using the least amount of integer bits and the highest amount
+  /// of fractional bits.
+  FixedPointUInt32(float floatVal) {
+    assert(floatVal >= 0 && "Floating point value must be positive!");
+    val_ = floatingToFixedPoint(floatVal, 32 - minBitsIntegerPart(floatVal));
+    intBits_ = minBitsIntegerPart(floatVal);
+    fracBits_ = 32 - intBits_;
+  };
+
+  /// Construct a fixed-point representation of the floating-point value
+  /// \p floatVal using the given number of integer bits \p intBits.
+  FixedPointUInt32(float floatVal, unsigned intBits) {
+    assert(floatVal >= 0 && "Floating point value must be positive!");
+    assert(intBits > 0 && intBits < 32 && "Integer bits must be between 0 and 32");
+
+    val_ = floatingToFixedPoint(floatVal ,32 - intBits);
+    intBits_ = intBits;
+    fracBits_ = 32 - intBits_;
+  }
+
+  /// \returns the encoded fixed-point value as integer.
+  uint32_t getFixedVal() const { return val_; }
+
+  /// \returns the encoded fixed-point value as float.
+  float getFloatVal() const { 
+    return (float)(val_) / std::exp2(fracBits_);
+  }
+
+  /// \returns the number of integer bits.
+  unsigned getIntBits() const { return intBits_; }
+
+  /// \returns the number of fractional bits.
+  unsigned getFracBits() const { return fracBits_; }
+
+private:
+  // \p number to convert
+  // \returns the minimum number of bits for integer part of the
+  // fixed point representation
+  uint32_t minBitsIntegerPart(float number) {
+
+    uint32_t aux = (uint32_t)number;
+    uint32_t integerPart = 0;
+
+    while (aux / 2 != 0) {
+      integerPart += 1;
+      aux /= 2;
+    }
+    
+    assert(integerPart >= 0 && integerPart < 32 &&
+          "Overflow caused by input number\n");
+    return integerPart + 1;
+  }
+
+  // \returns the fixed point representation of the input floating point number
+  // using the format Q(32- fracPart).fracPart
+  uint32_t floatingToFixedPoint(float elem, uint32_t fracPart) {
+
+    double result = (double)elem * (double)std::exp2((double)fracPart);
 
     assert(result >= (double)std::numeric_limits<uint32_t>::min() &&
           result <= (double)std::numeric_limits<uint32_t>::max() &&
           "Float to fix point conversion overflow\n");
 
     return round(result);
+  }
+
+public:
+  /// \returns a string representation of the fixed-point value (e.g. "0.13").
+  std::string toString() const {
+    return std::to_string(getFloatVal());
   }
 };
 
