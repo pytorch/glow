@@ -880,25 +880,42 @@ public:
 class ScatterDataNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
-    LOG(ERROR) << "ScatterND is not fully supported";
-    return NNPI_NOT_IMPLEMENTED;
+    auto *glowSD = llvm::dyn_cast<ScatterDataNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowSD, "Bad node type", NNPI_INVALID_PARAM);
 
-    // TODO: uncomment when there is full support for ScatterND op.
-    // auto *glowSD = llvm::dyn_cast<ScatterDataNode>(n);
-    // LOG_AND_RETURN_IF_NOT(ERROR, glowSD, "Bad node type",
-    // NNPI_INVALID_PARAM);
+    importer.setUsedTensors({nodeValueName(glowSD->getData()),
+                             nodeValueName(glowSD->getIndices()),
+                             nodeValueName(glowSD->getSlices())},
+                            {nodeValueName(glowSD->getResult())});
 
-    // importer.setUsedTensors({nodeValueName(glowSD->getData()),
-    //                          nodeValueName(glowSD->getIndices()),
-    //                          nodeValueName(glowSD->getSlices())},
-    //                         {nodeValueName(glowSD->getResult())});
+    return nnpiNetworkAddScatterNDOp(
+        importer.getNetwork(), glowSD->getName().begin(),
+        nodeValueName(glowSD->getData()).c_str(),
+        nodeValueName(glowSD->getIndices()).c_str(),
+        nodeValueName(glowSD->getSlices()).c_str(),
+        nodeValueName(glowSD->getResult()).c_str(), glowSD->getCumulative());
+  }
+};
 
-    // return nnpiNetworkAddScatterNDOp(
-    //     importer.getNetwork(), glowSD->getName().begin(),
-    //     nodeValueName(glowSD->getData()).c_str(),
-    //     nodeValueName(glowSD->getIndices()).c_str(),
-    //     nodeValueName(glowSD->getSlices()).c_str(),
-    //     nodeValueName(glowSD->getResult()).c_str(), glowSD->getCumulative());
+class BucketizeNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBucketize = llvm::dyn_cast<BucketizeNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBucketize, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowBucketize->getInput())},
+                            {nodeValueName(glowBucketize->getResult())});
+
+    std::vector<float> bucketizeBoundaries(
+        glowBucketize->getBoundaries().begin(),
+        glowBucketize->getBoundaries().end());
+
+    return nnpiNetworkAddBucketizeOp(
+        importer.getNetwork(), glowBucketize->getName().begin(),
+        nodeValueName(glowBucketize->getInput()).c_str(),
+        nodeValueName(glowBucketize->getResult()).c_str(),
+        bucketizeBoundaries.data(), bucketizeBoundaries.size());
   }
 };
 
@@ -2285,6 +2302,27 @@ public:
   }
 };
 
+class VectorNormNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowVN = llvm::dyn_cast<VectorNormNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowVN, "Bad node type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowVN->getP() == 2,
+                          "Only support Frobenius, p should be 2",
+                          NNPI_INVALID_PARAM);
+    importer.setUsedTensors({nodeValueName(glowVN->getInput())},
+                            {nodeValueName(glowVN->getResult())});
+
+    uint32_t axis = glowVN->getAxis();
+
+    return nnpiNetworkAddReduceOp(importer.getNetwork(),
+                                  glowVN->getName().begin(),
+                                  nodeValueName(glowVN->getInput()).c_str(),
+                                  nodeValueName(glowVN->getResult()).c_str(),
+                                  NNPI_REDUCE_L2, &axis, 1, 0);
+  }
+};
+
 class LogitNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2543,6 +2581,33 @@ public:
         /* alignCorners */ false, /* halfPixelCenters */ false);
   }
 };
+
+class SparseLabelSplitNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowSpLabSplitNode = llvm::dyn_cast<SparseLabelSplitNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowSpLabSplitNode, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {nodeValueName(glowSpLabSplitNode->getLengths()),
+         nodeValueName(glowSpLabSplitNode->getIndices()),
+         nodeValueName(glowSpLabSplitNode->getValues())},
+        {nodeValueName(glowSpLabSplitNode->getLabelValues()),
+         nodeValueName(glowSpLabSplitNode->getExampleIds()),
+         nodeValueName(glowSpLabSplitNode->getGradientOffsetMap())});
+
+    return nnpiNetworkSparseLabelSplitOp(
+        importer.getNetwork(), glowSpLabSplitNode->getName().begin(),
+        nodeValueName(glowSpLabSplitNode->getLengths()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getIndices()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getValues()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getLabelValues()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getExampleIds()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getGradientOffsetMap()).c_str(),
+        glowSpLabSplitNode->getNumLabels(), /* keepGradientOffsetMap */ true);
+  }
+};
 #endif // NNPI >= 1.1
 
 //////////////////////////////////////////////////////////////////////////
@@ -2567,6 +2632,7 @@ std::unordered_map<
     {"SoftPlus", glow::make_unique<SoftPlusNodeImporter>()},
     {"SoftMax", glow::make_unique<SoftMaxNodeImporter>()},
     {"ScatterData", glow::make_unique<ScatterDataNodeImporter>()},
+    {"Bucketize", glow::make_unique<BucketizeNodeImporter>()},
     {"Save", glow::make_unique<SaveNodeImporter>()},
     {"Relu", glow::make_unique<ReluNodeImporter>()},
     {"PRelu", glow::make_unique<PReluNodeImporter>()},
@@ -2655,6 +2721,7 @@ std::unordered_map<
     {"Clip", glow::make_unique<ClipNodeImporter>()},
     {"BatchNormalization", glow::make_unique<BatchNormalizationNodeImporter>()},
     {"LayerNormalization", glow::make_unique<LayerNormalizationNodeImporter>()},
+    {"VectorNorm", glow::make_unique<VectorNormNodeImporter>()},
     {"ChannelwiseQuantizedConvolution",
      glow::make_unique<ChannelwiseQuantizedConvolutionNodeImporter>()},
     {"Embedding", glow::make_unique<EmbeddingNodeImporter>()},
@@ -2677,6 +2744,7 @@ std::unordered_map<
      glow::make_unique<DynamicQuantizedFullyConnectedNodeImporter>()},
     {"DynamicRowwiseQuantizedFullyConnected",
      glow::make_unique<DynamicRowwiseQuantizedFullyConnectedNodeImporter>()},
+    {"SparseLabelSplit", glow::make_unique<SparseLabelSplitNodeImporter>()},
 #endif // NNPI >= 1.1
 };
 } // namespace

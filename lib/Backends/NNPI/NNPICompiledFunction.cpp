@@ -589,6 +589,10 @@ bool NNPICompiledFunction::updateCompilationInfo() {
       compiledTensor.name = std::string(tensorInfo.name);
       compiledTensor.type = std::string(tensorInfo.type);
       compiledTensor.allocType = tensorInfo.allocation;
+      for (uint32_t d = 0; d < tensorInfo.numAllocations; d++) {
+        compiledTensor.possibleAlloc.push_back(
+            tensorInfo.possibleAllocation[d]);
+      }
       for (uint32_t d = 0; d < tensorInfo.numDims; d++) {
         compiledTensor.shape.push_back(tensorInfo.dims[d]);
       }
@@ -723,6 +727,16 @@ static const std::string tensorToJSON(const NNPICompiledTensor &tensor) {
   fs << "\"type\" : \"" << tensor.type << "\"," << std::endl;
   fs << "\"alloc\" : \"" << dumpAllocType(tensor.allocType) << "\","
      << std::endl;
+  fs << "\"possible_alloc\" :";
+  fs << "[";
+  for (auto it = tensor.possibleAlloc.begin(); it != tensor.possibleAlloc.end();
+       it++) {
+    if (it != tensor.possibleAlloc.begin()) {
+      fs << "," << std::endl;
+    }
+    fs << "\"" << dumpAllocType(*it) << "\" ";
+  }
+  fs << "]," << std::endl;
   fs << "\"size\" : " << std::endl;
   fs << "[" << std::endl;
   for (auto it = tensor.shape.begin(); it != tensor.shape.end(); it++) {
