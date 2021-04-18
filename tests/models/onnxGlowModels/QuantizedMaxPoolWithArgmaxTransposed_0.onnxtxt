@@ -1,0 +1,431 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "input"
+    output: "transposeInput"
+    name: "transposeInput"
+    op_type: "Glow_Transpose"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 3
+      ints: 4
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      ints: 4
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Shuffle"
+      ints: 0
+      ints: 2
+      ints: 3
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "NHWC"
+      type: STRING
+    }
+  }
+  node {
+    input: "transposeInput"
+    output: "pool"
+    output: "pool:1"
+    name: "pool"
+    op_type: "Glow_MaxPool"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      ints: 4
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Kernels"
+      ints: 4
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Strides"
+      ints: 4
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Pads"
+      ints: 0
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "pool:1"
+    output: "transposeArgmax__1"
+    name: "transposeArgmax__1"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 3
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 3
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "NCHW"
+      type: STRING
+    }
+  }
+  node {
+    input: "transposeArgmax__1"
+    output: "save_argmax"
+    name: "save_argmax_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 3
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 3
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    input: "pool"
+    output: "transposeRes__1"
+    name: "transposeRes__1"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 3
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 3
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "NCHW"
+      type: STRING
+    }
+  }
+  node {
+    input: "transposeRes__1"
+    output: "save_result"
+    name: "save_result_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 3
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 3
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  name: "glow"
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:NCHW$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0"
+  }
+  output {
+    name: "save_result"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0$saveName:save_result_save"
+  }
+  output {
+    name: "save_argmax"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index64$saveName:save_argmax_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

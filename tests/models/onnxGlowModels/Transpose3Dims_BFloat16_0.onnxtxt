@@ -1,0 +1,542 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "A"
+    output: "tr__5"
+    name: "tr__5"
+    op_type: "Glow_Transpose"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 20
+      ints: 13
+      ints: 7
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 7
+      ints: 13
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "Shuffle"
+      ints: 2
+      ints: 1
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "tr__5"
+    output: "saveTranspose__5"
+    name: "saveTranspose_save__5"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 7
+      ints: 13
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 7
+      ints: 13
+      ints: 20
+      type: INTS
+    }
+  }
+  node {
+    input: "A"
+    output: "tr__4"
+    name: "tr__4"
+    op_type: "Glow_Transpose"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 20
+      ints: 13
+      ints: 7
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 7
+      ints: 20
+      ints: 13
+      type: INTS
+    }
+    attribute {
+      name: "Shuffle"
+      ints: 2
+      ints: 0
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "tr__4"
+    output: "saveTranspose__4"
+    name: "saveTranspose_save__4"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 7
+      ints: 20
+      ints: 13
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 7
+      ints: 20
+      ints: 13
+      type: INTS
+    }
+  }
+  node {
+    input: "A"
+    output: "tr__3"
+    name: "tr__3"
+    op_type: "Glow_Transpose"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 20
+      ints: 13
+      ints: 7
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 13
+      ints: 7
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "Shuffle"
+      ints: 1
+      ints: 2
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "tr__3"
+    output: "saveTranspose__3"
+    name: "saveTranspose_save__3"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 13
+      ints: 7
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 13
+      ints: 7
+      ints: 20
+      type: INTS
+    }
+  }
+  node {
+    input: "A"
+    output: "tr__2"
+    name: "tr__2"
+    op_type: "Glow_Transpose"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 20
+      ints: 13
+      ints: 7
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 13
+      ints: 20
+      ints: 7
+      type: INTS
+    }
+    attribute {
+      name: "Shuffle"
+      ints: 1
+      ints: 0
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "tr__2"
+    output: "saveTranspose__2"
+    name: "saveTranspose_save__2"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 13
+      ints: 20
+      ints: 7
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 13
+      ints: 20
+      ints: 7
+      type: INTS
+    }
+  }
+  node {
+    input: "A"
+    output: "tr__1"
+    name: "tr__1"
+    op_type: "Glow_Transpose"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 20
+      ints: 13
+      ints: 7
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 20
+      ints: 7
+      ints: 13
+      type: INTS
+    }
+    attribute {
+      name: "Shuffle"
+      ints: 0
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "tr__1"
+    output: "saveTranspose__1"
+    name: "saveTranspose_save__1"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 20
+      ints: 7
+      ints: 13
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 20
+      ints: 7
+      ints: 13
+      type: INTS
+    }
+  }
+  node {
+    input: "A"
+    output: "saveTranspose"
+    name: "saveTranspose_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 20
+      ints: 13
+      ints: 7
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 20
+      ints: 13
+      ints: 7
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "A"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 13
+          }
+          dim {
+            dim_value: 7
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16"
+  }
+  output {
+    name: "saveTranspose"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 13
+          }
+          dim {
+            dim_value: 7
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:saveTranspose_save"
+  }
+  output {
+    name: "saveTranspose__1"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 13
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:saveTranspose_save__1"
+  }
+  output {
+    name: "saveTranspose__2"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 13
+          }
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 7
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:saveTranspose_save__2"
+  }
+  output {
+    name: "saveTranspose__3"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 13
+          }
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 20
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:saveTranspose_save__3"
+  }
+  output {
+    name: "saveTranspose__4"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 13
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:saveTranspose_save__4"
+  }
+  output {
+    name: "saveTranspose__5"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 13
+          }
+          dim {
+            dim_value: 20
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:saveTranspose_save__5"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

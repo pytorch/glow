@@ -1,0 +1,581 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    output: "zero__1"
+    name: "zero__1"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    output: "zero"
+    name: "zero"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    input: "BW"
+    output: "ws_bcastWeight1_reshape"
+    name: "ws_bcastWeight1_reshape"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "zero"
+    input: "ws_bcastWeight1_reshape"
+    output: "ws_bcastWeight1_tile0__1"
+    name: "ws_bcastWeight1_tile0__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "zero__1"
+    input: "ws_bcastWeight1_tile0__1"
+    output: "ws_bcastWeight1_tile1__1"
+    name: "ws_bcastWeight1_tile1__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "ws_bcastWeight1_tile1__1"
+    input: "B"
+    output: "ws_mul1"
+    name: "ws_mul1"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "AW"
+    output: "ws_bcastWeight0_reshape"
+    name: "ws_bcastWeight0_reshape"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "zero"
+    input: "ws_bcastWeight0_reshape"
+    output: "ws_bcastWeight0_tile0__1"
+    name: "ws_bcastWeight0_tile0__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "zero__1"
+    input: "ws_bcastWeight0_tile0__1"
+    output: "ws_bcastWeight0_tile1__1"
+    name: "ws_bcastWeight0_tile1__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "ws_bcastWeight0_tile1__1"
+    input: "A"
+    output: "ws_mul0"
+    name: "ws_mul0"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "ws_mul1"
+    input: "ws_mul0"
+    output: "ws_add1"
+    name: "ws_add1"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "ws_add1"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "A"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "AW"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "B"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "BW"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

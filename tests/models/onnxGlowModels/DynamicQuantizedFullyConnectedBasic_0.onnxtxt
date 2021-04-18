@@ -1,0 +1,158 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "input"
+    input: "weights"
+    input: "bias"
+    output: "dqfc"
+    name: "dqfc"
+    op_type: "Glow_DynamicQuantizedFullyConnected"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "IsSymmetric"
+      i: 1
+      type: INT
+    }
+    attribute {
+      name: "IsPerBatchElement"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "dqfc"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  name: "glow"
+  initializer {
+    dims: 3
+    dims: 4
+    data_type: 3
+    name: "weights"
+    doc_string: "$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0$layout:*"
+  }
+  initializer {
+    dims: 4
+    data_type: 1
+    name: "bias"
+    doc_string: "$elemKind:float$layout:*"
+  }
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

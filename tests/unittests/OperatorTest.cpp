@@ -36,11 +36,23 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <numeric>
 
 using namespace glow;
+
+namespace {
+llvm::cl::OptionCategory operatorTestCat("OperatorTest category");
+llvm::cl::opt<bool> saveGlowOnnxForTest(
+    "operator-test-save-glow-onnx-for-test",
+    llvm::cl::desc(
+        "If set, after a test is run then it will save the Glow "
+        "ONNX model to a tmp location and print that location out. Should be "
+        "used when adding a new file to `tests/models/onnxGlowModels/`"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(operatorTestCat));
+} // namespace
 
 class OperatorStatelessTest : public BackendStatelessTest {};
 
@@ -72,8 +84,11 @@ protected:
 
     // Now export the model to later import it back in.
     llvm::SmallString<64> path;
+    std::string testName =
+        ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    std::replace(testName.begin(), testName.end(), '/', '_');
     auto tempFileRes =
-        llvm::sys::fs::createTemporaryFile("exporter", "output.onnxtxt", path);
+        llvm::sys::fs::createTemporaryFile(testName, "onnxtxt", path);
     ASSERT_EQ(tempFileRes.value(), 0)
         << "Failed to create temp file to write into.";
     std::string pathToModel(path.c_str());
@@ -81,8 +96,13 @@ protected:
     Error err = Error::empty();
     ONNXModelWriter onnxWR(pathToModel, *F_, 7, 9, &err,
                            /* textMode */ true, /* zipMode */ false,
-                           /* useGlowCustomOps */ true);
+                           /* useGlowCustomOps */ true,
+                           /* includeConstantData */ !saveGlowOnnxForTest);
     ASSERT_FALSE(ERR_TO_BOOL(std::move(err))) << "Error exporting model";
+    if (saveGlowOnnxForTest) {
+      LOG(INFO) << "Saved Glow ONNX model to: " << pathToModel;
+      return;
+    }
 
     // Now that we've exported, load it back into a new module/function, run it,
     // and compare results from the original run.

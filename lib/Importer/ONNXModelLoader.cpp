@@ -810,7 +810,7 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
 
 Error ONNXModelLoader::getInputsNamesAndTypes(
     std::vector<std::string> &inTensorNames, std::vector<Type> &inTypes,
-    const std::string &filename) {
+    const std::string &filename, bool useGlowCustomOps) {
   // Creating GraphProto from modelfile
   ONNX_NAMESPACE::ModelProto modelDef;
 
@@ -846,12 +846,43 @@ Error ONNXModelLoader::getInputsNamesAndTypes(
       ASSIGN_VALUE_OR_RETURN_ERR(dim,
                                  getProtoShape(type.tensor_type().shape()));
 
-      ElemKind kind = ElemKind::FloatTy;
-      RETURN_IF_ERR(
-          onnxTensorDataTypeToElemKind(type.tensor_type().elem_type(), &kind));
+      if (useGlowCustomOps && in.has_doc_string()) {
+        Type ty;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
+        inTypes.emplace_back(ty);
+      } else {
+        ElemKind kind = ElemKind::FloatTy;
+        RETURN_IF_ERR(onnxTensorDataTypeToElemKind(
+            type.tensor_type().elem_type(), &kind));
 
-      inTypes.emplace_back(kind, dim);
+        inTypes.emplace_back(kind, dim);
+      }
     }
+  }
+
+  return Error::success();
+}
+
+Error ONNXModelLoader::createDummyConstants(const std::string &filename,
+                                            Module &mod) {
+  ONNX_NAMESPACE::ModelProto modelDef;
+  ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(filename, false, nullptr));
+  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+
+  for (const auto &in : graphDef.initializer()) {
+    std::vector<dim_t> dim;
+    for (auto d : in.dims()) {
+      dim.push_back(d);
+    }
+    std::string layout = ANY_LAYOUT;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        layout, getAttrFromDocString(layoutSignifier, in.doc_string()));
+    Type ty;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        ty, parseTypeFromDocString(in.doc_string(), dim,
+                                   /* useGlowCustomOps */ true));
+    mod.createConstant(in.name(), Tensor(ty), layout);
   }
 
   return Error::success();

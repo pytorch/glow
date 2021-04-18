@@ -1,0 +1,266 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "V"
+    output: "slice3"
+    name: "slice3"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 30
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 2
+      ints: 10
+      type: INTS
+    }
+  }
+  node {
+    input: "slice3"
+    output: "ret3"
+    name: "ret3_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "V"
+    output: "slice2"
+    name: "slice2"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 30
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 30
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 1
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "slice2"
+    output: "ret2"
+    name: "ret2_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 30
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 30
+      type: INTS
+    }
+  }
+  node {
+    input: "V"
+    output: "slice1"
+    name: "slice1"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 30
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 10
+      type: INTS
+    }
+  }
+  node {
+    input: "slice1"
+    output: "ret1"
+    name: "ret1_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 3
+      ints: 3
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "V"
+    type {
+      tensor_type {
+        elem_type: 6
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 30
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index32"
+  }
+  output {
+    name: "ret1"
+    type {
+      tensor_type {
+        elem_type: 6
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index32$saveName:ret1_save"
+  }
+  output {
+    name: "ret2"
+    type {
+      tensor_type {
+        elem_type: 6
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 30
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index32$saveName:ret2_save"
+  }
+  output {
+    name: "ret3"
+    type {
+      tensor_type {
+        elem_type: 6
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index32$saveName:ret3_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

@@ -1,0 +1,242 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "SN0"
+    input: "SN1"
+    output: "insert"
+    name: "insert"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 3
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 3
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 1
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 2
+      type: INT
+    }
+  }
+  node {
+    input: "insert"
+    input: "SN2"
+    output: "insert__1"
+    name: "insert__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 3
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 1
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 3
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 1
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 2
+      type: INT
+    }
+  }
+  node {
+    input: "insert__1"
+    output: "result"
+    name: "result_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 3
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 3
+      ints: 3
+      ints: 5
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "SN2"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "SN1"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "SN0"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "result"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:result_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

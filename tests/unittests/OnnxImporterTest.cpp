@@ -5583,3 +5583,45 @@ TEST_F(OnnxImporterTest, softmax13) {
                0.11920292, 0.880797, 0.880797, 0.11920292, 0.11920292, 0.880797,
                0.880797, 0.11920292, 0.11920292, 0.880797, 0.880797});
 }
+
+TEST_F(OnnxImporterTest, TestImportGlowOnnxModels) {
+  std::string inputDirectory(GLOW_DATA_PATH "tests/models/onnxGlowModels");
+  std::cout << "inputDirectory: " << inputDirectory << std::endl;
+  std::error_code code;
+  for (llvm::sys::fs::directory_iterator dirIt(inputDirectory, code);
+       !code && dirIt != llvm::sys::fs::directory_iterator();
+       dirIt.increment(code)) {
+    ExecutionEngine EE{};
+    auto &mod = EE.getModule();
+    Function *F = mod.createFunction("main");
+
+    const std::string &netFilename = dirIt->path();
+
+    // Get input names/types and create placeholders for them to provide.
+    std::vector<std::string> names;
+    std::vector<Type> types;
+    FAIL_TEST_IF_ERR(ONNXModelLoader::getInputsNamesAndTypes(
+        names, types, netFilename, /* useGlowCustomOps */ true));
+    std::vector<const char *> namePtrs;
+    namePtrs.reserve(names.size());
+    for (const auto &name : names) {
+      namePtrs.emplace_back(name.c_str());
+    }
+    std::vector<TypeRef> typeRefs;
+    typeRefs.reserve(types.size());
+    for (const auto &type : types) {
+      typeRefs.emplace_back(&type);
+    }
+
+    FAIL_TEST_IF_ERR(ONNXModelLoader::createDummyConstants(netFilename, mod));
+
+    Error err = Error::empty();
+    ONNXModelLoader onnxLD(netFilename, namePtrs, typeRefs, *F, &err,
+                           /* zipMode */ false,
+                           /* perNodeOpts */ nullptr,
+                           /* disableConstFoldInLoader */ true,
+                           /* loadIntoExistingModule */ true);
+    EXPECT_FALSE(ERR_TO_BOOL(std::move(err)))
+        << "Failed loading Glow custom ONNX model " << netFilename;
+  }
+}

@@ -1,0 +1,151 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    output: "concat"
+    name: "concat"
+    op_type: "Glow_Concat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 60
+      type: INTS
+    }
+    attribute {
+      name: "Inputs"
+      strings: "V1"
+      strings: "V2"
+      strings: "V3"
+      type: STRINGS
+    }
+    attribute {
+      name: "Inputs_i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i0_shape"
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i1_shape"
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i2_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i2_shape"
+      ints: 30
+      type: INTS
+    }
+    attribute {
+      name: "Dim"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "concat"
+    output: "ret"
+    name: "ret_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 60
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 60
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "V3"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 30
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  input {
+    name: "V2"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 20
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  input {
+    name: "V1"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  output {
+    name: "ret"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 60
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16$saveName:ret_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

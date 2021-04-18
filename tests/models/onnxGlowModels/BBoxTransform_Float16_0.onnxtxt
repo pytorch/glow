@@ -1,0 +1,254 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "rois"
+    input: "deltas"
+    input: "imInfo"
+    output: "bboxTransform"
+    output: "bboxTransform:1"
+    name: "bboxTransform"
+    op_type: "Glow_BBoxTransform"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 5
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 4
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Weights"
+      floats: 10
+      floats: 10
+      floats: 5
+      floats: 5
+      type: FLOATS
+    }
+    attribute {
+      name: "ApplyScale"
+      i: 1
+      type: INT
+    }
+    attribute {
+      name: "Rotated"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "AngleBoundOn"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "AngleBoundLo"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "AngleBoundHi"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "ClipAngleThresh"
+      f: 0
+      type: FLOAT
+    }
+    attribute {
+      name: "LegacyPlusOne"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "bboxTransform:1"
+    output: "save_splits"
+    name: "save_splits_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "bboxTransform"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 5
+      ints: 8
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "imInfo"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  input {
+    name: "deltas"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  input {
+    name: "rois"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16$saveName:save_save"
+  }
+  output {
+    name: "save_splits"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16$saveName:save_splits_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

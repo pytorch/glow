@@ -1,0 +1,2295 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "H"
+    input: "Wh"
+    input: "Bh"
+    output: "lstm_lstm_fc_1_0"
+    name: "lstm_lstm_fc_1_0"
+    op_type: "Glow_FullyConnected"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 4
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+  }
+  node {
+    input: "Input"
+    output: "lstm_slice_0"
+    name: "lstm_slice_0"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_slice_0"
+    output: "lstm_reshape_0"
+    name: "lstm_reshape_0"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "lstm_reshape_0"
+    input: "Wx"
+    input: "Bx"
+    output: "lstm_lstm_fc_2_0"
+    name: "lstm_lstm_fc_2_0"
+    op_type: "Glow_FullyConnected"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_fc_1_0"
+    input: "lstm_lstm_fc_2_0"
+    output: "lstm_lstm_add_0"
+    name: "lstm_lstm_add_0"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_0"
+    output: "lstm_lstm_lstm_unit_0_sliceI"
+    name: "lstm_lstm_lstm_unit_0_sliceI"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_sliceI"
+    output: "lstm_lstm_lstm_unit_0_sigmoid2"
+    name: "lstm_lstm_lstm_unit_0_sigmoid2"
+    op_type: "Glow_Sigmoid"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_0"
+    output: "lstm_lstm_lstm_unit_0_sliceF"
+    name: "lstm_lstm_lstm_unit_0_sliceF"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_sliceF"
+    output: "lstm_lstm_lstm_unit_0_sigmoid1"
+    name: "lstm_lstm_lstm_unit_0_sigmoid1"
+    op_type: "Glow_Sigmoid"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_sigmoid1"
+    input: "C"
+    output: "lstm_lstm_lstm_unit_0_mul1"
+    name: "lstm_lstm_lstm_unit_0_mul1"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_0"
+    output: "lstm_lstm_lstm_unit_0_sliceO"
+    name: "lstm_lstm_lstm_unit_0_sliceO"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 12
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_sliceO"
+    output: "lstm_lstm_lstm_unit_0_sigmoid3"
+    name: "lstm_lstm_lstm_unit_0_sigmoid3"
+    op_type: "Glow_Sigmoid"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_0"
+    output: "lstm_lstm_lstm_unit_0_sliceG"
+    name: "lstm_lstm_lstm_unit_0_sliceG"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 8
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_sliceG"
+    output: "lstm_lstm_lstm_unit_0_tanh1"
+    name: "lstm_lstm_lstm_unit_0_tanh1"
+    op_type: "Glow_Tanh"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_sigmoid2"
+    input: "lstm_lstm_lstm_unit_0_tanh1"
+    output: "lstm_lstm_lstm_unit_0_mul2"
+    name: "lstm_lstm_lstm_unit_0_mul2"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_mul1"
+    input: "lstm_lstm_lstm_unit_0_mul2"
+    output: "lstm_lstm_lstm_unit_0_addC"
+    name: "lstm_lstm_lstm_unit_0_addC"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_addC"
+    output: "lstm_lstm_lstm_unit_0_tanh2"
+    name: "lstm_lstm_lstm_unit_0_tanh2"
+    op_type: "Glow_Tanh"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_sigmoid3"
+    input: "lstm_lstm_lstm_unit_0_tanh2"
+    output: "lstm_lstm_lstm_unit_0_mulH"
+    name: "lstm_lstm_lstm_unit_0_mulH"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_mulH"
+    output: "lstm_lstm_H_reshape_0"
+    name: "lstm_lstm_H_reshape_0"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_0_mulH"
+    input: "Wh"
+    input: "Bh"
+    output: "lstm_lstm_fc_1_1"
+    name: "lstm_lstm_fc_1_1"
+    op_type: "Glow_FullyConnected"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 4
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+  }
+  node {
+    input: "Input"
+    output: "lstm_slice_1"
+    name: "lstm_slice_1"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 1
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_slice_1"
+    output: "lstm_reshape_1"
+    name: "lstm_reshape_1"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "lstm_reshape_1"
+    input: "Wx"
+    input: "Bx"
+    output: "lstm_lstm_fc_2_1"
+    name: "lstm_lstm_fc_2_1"
+    op_type: "Glow_FullyConnected"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_fc_1_1"
+    input: "lstm_lstm_fc_2_1"
+    output: "lstm_lstm_add_1"
+    name: "lstm_lstm_add_1"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_1"
+    output: "lstm_lstm_lstm_unit_1_sliceI"
+    name: "lstm_lstm_lstm_unit_1_sliceI"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_sliceI"
+    output: "lstm_lstm_lstm_unit_1_sigmoid2"
+    name: "lstm_lstm_lstm_unit_1_sigmoid2"
+    op_type: "Glow_Sigmoid"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_1"
+    output: "lstm_lstm_lstm_unit_1_sliceF"
+    name: "lstm_lstm_lstm_unit_1_sliceF"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_sliceF"
+    output: "lstm_lstm_lstm_unit_1_sigmoid1"
+    name: "lstm_lstm_lstm_unit_1_sigmoid1"
+    op_type: "Glow_Sigmoid"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_sigmoid1"
+    input: "lstm_lstm_lstm_unit_0_addC"
+    output: "lstm_lstm_lstm_unit_1_mul1"
+    name: "lstm_lstm_lstm_unit_1_mul1"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_1"
+    output: "lstm_lstm_lstm_unit_1_sliceO"
+    name: "lstm_lstm_lstm_unit_1_sliceO"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 12
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_sliceO"
+    output: "lstm_lstm_lstm_unit_1_sigmoid3"
+    name: "lstm_lstm_lstm_unit_1_sigmoid3"
+    op_type: "Glow_Sigmoid"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_1"
+    output: "lstm_lstm_lstm_unit_1_sliceG"
+    name: "lstm_lstm_lstm_unit_1_sliceG"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 8
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_sliceG"
+    output: "lstm_lstm_lstm_unit_1_tanh1"
+    name: "lstm_lstm_lstm_unit_1_tanh1"
+    op_type: "Glow_Tanh"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_sigmoid2"
+    input: "lstm_lstm_lstm_unit_1_tanh1"
+    output: "lstm_lstm_lstm_unit_1_mul2"
+    name: "lstm_lstm_lstm_unit_1_mul2"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_mul1"
+    input: "lstm_lstm_lstm_unit_1_mul2"
+    output: "lstm_lstm_lstm_unit_1_addC"
+    name: "lstm_lstm_lstm_unit_1_addC"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_addC"
+    output: "lstm_lstm_lstm_unit_1_tanh2"
+    name: "lstm_lstm_lstm_unit_1_tanh2"
+    op_type: "Glow_Tanh"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_sigmoid3"
+    input: "lstm_lstm_lstm_unit_1_tanh2"
+    output: "lstm_lstm_lstm_unit_1_mulH"
+    name: "lstm_lstm_lstm_unit_1_mulH"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_mulH"
+    output: "lstm_lstm_H_reshape_1"
+    name: "lstm_lstm_H_reshape_1"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_1_mulH"
+    input: "Wh"
+    input: "Bh"
+    output: "lstm_lstm_fc_1_2"
+    name: "lstm_lstm_fc_1_2"
+    op_type: "Glow_FullyConnected"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 4
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+  }
+  node {
+    input: "Input"
+    output: "lstm_slice_2"
+    name: "lstm_slice_2"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 2
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_slice_2"
+    output: "lstm_reshape_2"
+    name: "lstm_reshape_2"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "lstm_reshape_2"
+    input: "Wx"
+    input: "Bx"
+    output: "lstm_lstm_fc_2_2"
+    name: "lstm_lstm_fc_2_2"
+    op_type: "Glow_FullyConnected"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_fc_1_2"
+    input: "lstm_lstm_fc_2_2"
+    output: "lstm_lstm_add_2"
+    name: "lstm_lstm_add_2"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_2"
+    output: "lstm_lstm_lstm_unit_2_sliceI"
+    name: "lstm_lstm_lstm_unit_2_sliceI"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_sliceI"
+    output: "lstm_lstm_lstm_unit_2_sigmoid2"
+    name: "lstm_lstm_lstm_unit_2_sigmoid2"
+    op_type: "Glow_Sigmoid"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_2"
+    output: "lstm_lstm_lstm_unit_2_sliceF"
+    name: "lstm_lstm_lstm_unit_2_sliceF"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_sliceF"
+    output: "lstm_lstm_lstm_unit_2_sigmoid1"
+    name: "lstm_lstm_lstm_unit_2_sigmoid1"
+    op_type: "Glow_Sigmoid"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_sigmoid1"
+    input: "lstm_lstm_lstm_unit_1_addC"
+    output: "lstm_lstm_lstm_unit_2_mul1"
+    name: "lstm_lstm_lstm_unit_2_mul1"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_2"
+    output: "lstm_lstm_lstm_unit_2_sliceO"
+    name: "lstm_lstm_lstm_unit_2_sliceO"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 12
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_sliceO"
+    output: "lstm_lstm_lstm_unit_2_sigmoid3"
+    name: "lstm_lstm_lstm_unit_2_sigmoid3"
+    op_type: "Glow_Sigmoid"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_add_2"
+    output: "lstm_lstm_lstm_unit_2_sliceG"
+    name: "lstm_lstm_lstm_unit_2_sliceG"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 16
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 8
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_sliceG"
+    output: "lstm_lstm_lstm_unit_2_tanh1"
+    name: "lstm_lstm_lstm_unit_2_tanh1"
+    op_type: "Glow_Tanh"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_sigmoid2"
+    input: "lstm_lstm_lstm_unit_2_tanh1"
+    output: "lstm_lstm_lstm_unit_2_mul2"
+    name: "lstm_lstm_lstm_unit_2_mul2"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_mul1"
+    input: "lstm_lstm_lstm_unit_2_mul2"
+    output: "lstm_lstm_lstm_unit_2_addC"
+    name: "lstm_lstm_lstm_unit_2_addC"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_addC"
+    output: "lstm_lstm_lstm_unit_2_tanh2"
+    name: "lstm_lstm_lstm_unit_2_tanh2"
+    op_type: "Glow_Tanh"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_sigmoid3"
+    input: "lstm_lstm_lstm_unit_2_tanh2"
+    output: "lstm_lstm_lstm_unit_2_mulH"
+    name: "lstm_lstm_lstm_unit_2_mulH"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "lstm_lstm_lstm_unit_2_mulH"
+    output: "lstm_lstm_H_reshape_2"
+    name: "lstm_lstm_H_reshape_2"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    output: "lstm_lstm_output_concat"
+    name: "lstm_lstm_output_concat"
+    op_type: "Glow_Concat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Inputs"
+      strings: "lstm_lstm_H_reshape_0"
+      strings: "lstm_lstm_H_reshape_1"
+      strings: "lstm_lstm_H_reshape_2"
+      type: STRINGS
+    }
+    attribute {
+      name: "Inputs_i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i0_shape"
+      ints: 1
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i1_shape"
+      ints: 1
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i2_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i2_shape"
+      ints: 1
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Dim"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "lstm_lstm_output_concat"
+    output: "save_output"
+    name: "save_output_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 3
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+  }
+  name: "glow"
+  initializer {
+    dims: 3
+    dims: 16
+    data_type: 10
+    name: "Wx"
+    doc_string: "$elemKind:float16$layout:*"
+  }
+  initializer {
+    dims: 4
+    dims: 16
+    data_type: 10
+    name: "Wh"
+    doc_string: "$elemKind:float16$layout:*"
+  }
+  initializer {
+    dims: 16
+    data_type: 10
+    name: "Bx"
+    doc_string: "$elemKind:float16$layout:*"
+  }
+  initializer {
+    dims: 16
+    data_type: 10
+    name: "Bh"
+    doc_string: "$elemKind:float16$layout:*"
+  }
+  input {
+    name: "Input"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  input {
+    name: "C"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  input {
+    name: "H"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16"
+  }
+  output {
+    name: "save_output"
+    type {
+      tensor_type {
+        elem_type: 10
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float16$saveName:save_output_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

@@ -1,0 +1,418 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    output: "mergeLHS"
+    name: "mergeLHS"
+    op_type: "Glow_Concat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Inputs"
+      strings: "input0"
+      strings: "input1"
+      strings: "input2"
+      type: STRINGS
+    }
+    attribute {
+      name: "Inputs_i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i0_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i1_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i2_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i2_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Dim"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "mergeLHS"
+    input: "rot"
+    output: "bigMatMul"
+    name: "bigMatMul"
+    op_type: "Glow_MatMul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "bigMatMul"
+    output: "extract__1"
+    name: "extract__1"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 1
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "extract__1"
+    output: "save_values__1"
+    name: "save_values_save__1"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "bigMatMul"
+    output: "extract__2"
+    name: "extract__2"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 2
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "extract__2"
+    output: "save_values__2"
+    name: "save_values_save__2"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "bigMatMul"
+    output: "extract"
+    name: "extract"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "extract"
+    output: "save_values"
+    name: "save_values_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "rot"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "input2"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "input1"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "input0"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "save_values"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:save_values_save"
+  }
+  output {
+    name: "save_values__2"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:save_values_save__2"
+  }
+  output {
+    name: "save_values__1"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:save_values_save__1"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

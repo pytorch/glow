@@ -1,0 +1,348 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    output: "zero"
+    name: "zero"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    input: "zero"
+    input: "inp"
+    output: "leaky_relu_prelu_cmplte"
+    name: "leaky_relu_prelu_cmplte"
+    op_type: "Glow_CmpLTE"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bool"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      type: INTS
+    }
+  }
+  node {
+    output: "leaky_relu_alpha"
+    name: "leaky_relu_alpha"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Value"
+      f: 0.5
+      type: FLOAT
+    }
+  }
+  node {
+    input: "inp"
+    input: "leaky_relu_alpha"
+    output: "leaky_relu_prelu_mul__1"
+    name: "leaky_relu_prelu_mul__1"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "leaky_relu_prelu_cmplte"
+    input: "inp"
+    input: "leaky_relu_prelu_mul__1"
+    output: "leaky_relu_prelu_select"
+    name: "leaky_relu_prelu_select"
+    op_type: "Glow_Select"
+    attribute {
+      name: "i0_elemKind"
+      s: "bool"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i2_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "i2_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "leaky_relu_prelu_select"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 0.5
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  name: "glow"
+  input {
+    name: "inp"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:0.500000000000000000000000000000$qOffset:0"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:0.500000000000000000000000000000$qOffset:0$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

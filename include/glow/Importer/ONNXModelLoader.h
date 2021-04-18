@@ -651,7 +651,11 @@ public:
   /// filename
   static Error getInputsNamesAndTypes(std::vector<std::string> &inTensorNames,
                                       std::vector<Type> &inTypes,
-                                      const std::string &filename);
+                                      const std::string &filename,
+                                      bool useGlowCustomOps = false);
+
+  /// Create dummy Constants in \p mod based on initializers in \p filename.
+  static Error createDummyConstants(const std::string &filename, Module &mod);
 
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p F.

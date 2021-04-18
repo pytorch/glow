@@ -1,0 +1,1966 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "input"
+    output: "qinput"
+    name: "qinput"
+    op_type: "Glow_Quantize"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__2"
+    name: "slice__2"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 3
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__3"
+    name: "slice__3"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 6
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__4"
+    name: "slice__4"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 9
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__5"
+    name: "slice__5"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 12
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__6"
+    name: "slice__6"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 15
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__7"
+    name: "slice__7"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 18
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__8"
+    name: "slice__8"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 21
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__9"
+    name: "slice__9"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 24
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__10"
+    name: "slice__10"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 27
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "qinput"
+    output: "slice__1"
+    name: "slice__1"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    output: "zero"
+    name: "zero"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    input: "slice"
+    output: "qslice"
+    name: "qslice"
+    op_type: "Glow_Quantize"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "qslice"
+    output: "slice_tiled"
+    name: "slice_tiled"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "zero"
+    input: "slice_tiled"
+    output: "slice_tiled__20"
+    name: "slice_tiled__20"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 3
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__1"
+    input: "slice_tiled__20"
+    output: "batched_mul"
+    name: "batched_mul"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__2"
+    input: "slice_tiled__20"
+    output: "batched_mul__1"
+    name: "batched_mul__1"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__3"
+    input: "slice_tiled__20"
+    output: "batched_mul__2"
+    name: "batched_mul__2"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__4"
+    input: "slice_tiled__20"
+    output: "batched_mul__3"
+    name: "batched_mul__3"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__5"
+    input: "slice_tiled__20"
+    output: "batched_mul__4"
+    name: "batched_mul__4"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__6"
+    input: "slice_tiled__20"
+    output: "batched_mul__5"
+    name: "batched_mul__5"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__7"
+    input: "slice_tiled__20"
+    output: "batched_mul__6"
+    name: "batched_mul__6"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__8"
+    input: "slice_tiled__20"
+    output: "batched_mul__7"
+    name: "batched_mul__7"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__9"
+    input: "slice_tiled__20"
+    output: "batched_mul__8"
+    name: "batched_mul__8"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "slice__10"
+    input: "slice_tiled__20"
+    output: "batched_mul__9"
+    name: "batched_mul__9"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    output: "concat"
+    name: "concat"
+    op_type: "Glow_Concat"
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs"
+      strings: "batched_mul"
+      strings: "batched_mul__1"
+      strings: "batched_mul__2"
+      strings: "batched_mul__3"
+      strings: "batched_mul__4"
+      strings: "batched_mul__5"
+      strings: "batched_mul__6"
+      strings: "batched_mul__7"
+      strings: "batched_mul__8"
+      strings: "batched_mul__9"
+      type: STRINGS
+    }
+    attribute {
+      name: "Inputs_i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i0_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i1_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i2_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i2_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i2_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i2_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i3_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i3_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i3_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i3_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i4_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i4_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i4_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i4_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i5_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i5_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i5_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i5_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i6_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i6_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i6_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i6_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i7_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i7_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i7_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i7_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i8_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i8_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i8_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i8_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i9_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i9_shape"
+      ints: 3
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i9_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i9_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Dim"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "concat"
+    output: "dq"
+    name: "dq"
+    op_type: "Glow_Dequantize"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+  }
+  node {
+    input: "dq"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 30
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "slice"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 30
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 30
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

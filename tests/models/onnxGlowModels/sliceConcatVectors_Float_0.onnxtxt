@@ -1,0 +1,400 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "V"
+    output: "slice5"
+    name: "slice5"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "V"
+    output: "slice0"
+    name: "slice0"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 4
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 1
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "slice0"
+    output: "slice2"
+    name: "slice2"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 2
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "slice0"
+    output: "slice3"
+    name: "slice3"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    input: "slice0"
+    output: "slice4"
+    name: "slice4"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    output: "concat1"
+    name: "concat1"
+    op_type: "Glow_Concat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Inputs"
+      strings: "slice3"
+      strings: "slice4"
+      type: STRINGS
+    }
+    attribute {
+      name: "Inputs_i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i1_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Dim"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "slice0"
+    output: "slice1"
+    name: "slice1"
+    op_type: "Glow_Slice"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+  }
+  node {
+    output: "concat2__1"
+    name: "concat2__1"
+    op_type: "Glow_Concat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 7
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Inputs"
+      strings: "slice2"
+      strings: "concat1"
+      strings: "slice5"
+      strings: "slice1"
+      type: STRINGS
+    }
+    attribute {
+      name: "Inputs_i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i0_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i1_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i2_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i2_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i3_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i3_shape"
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Dim"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "concat2__1"
+    output: "ret"
+    name: "ret_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 7
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 7
+      ints: 4
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "V"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "ret"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:ret_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

@@ -1,0 +1,701 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    output: "oneSplat__1"
+    name: "oneSplat__1"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 2.71828175
+      type: FLOAT
+    }
+  }
+  node {
+    output: "zeroSplat"
+    name: "zeroSplat"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    input: "zeroSplat"
+    input: "logits"
+    output: "cmp_0_lgt"
+    name: "cmp_0_lgt"
+    op_type: "Glow_CmpLTE"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bool"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "zeroSplat"
+    input: "logits"
+    output: "neg_lgt"
+    name: "neg_lgt"
+    op_type: "Glow_Sub"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "cmp_0_lgt"
+    input: "neg_lgt"
+    input: "logits"
+    output: "exp_arg"
+    name: "exp_arg"
+    op_type: "Glow_Select"
+    attribute {
+      name: "i0_elemKind"
+      s: "bool"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "oneSplat__1"
+    input: "exp_arg"
+    output: "exp"
+    name: "exp"
+    op_type: "Glow_Pow"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    output: "oneSplat"
+    name: "oneSplat"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 1
+      type: FLOAT
+    }
+  }
+  node {
+    input: "exp"
+    input: "oneSplat"
+    output: "log_arg__1"
+    name: "log_arg__1"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "log_arg__1"
+    output: "log"
+    name: "log"
+    op_type: "Glow_Log"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "targets"
+    input: "oneSplat"
+    output: "tgt_m1"
+    name: "tgt_m1"
+    op_type: "Glow_Sub"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "cmp_0_lgt"
+    input: "tgt_m1"
+    input: "targets"
+    output: "select"
+    name: "select"
+    op_type: "Glow_Select"
+    attribute {
+      name: "i0_elemKind"
+      s: "bool"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "logits"
+    input: "select"
+    output: "lhs"
+    name: "lhs"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "log"
+    input: "lhs"
+    output: "sigmoid_xent_pointwise"
+    name: "sigmoid_xent_pointwise"
+    op_type: "Glow_Sub"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "sigmoid_xent_pointwise"
+    output: "sigmoid_xent_lowered_reduceAdd"
+    name: "sigmoid_xent_lowered_reduceAdd"
+    op_type: "Glow_BatchedReduceAdd"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Axis"
+      i: 2
+      type: INT
+    }
+  }
+  node {
+    output: "sigmoid_xent_lowered_splat"
+    name: "sigmoid_xent_lowered_splat"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 3
+      type: FLOAT
+    }
+  }
+  node {
+    input: "sigmoid_xent_lowered_reduceAdd"
+    input: "sigmoid_xent_lowered_splat"
+    output: "sigmoid_xent_lowered_div"
+    name: "sigmoid_xent_lowered_div"
+    op_type: "Glow_Div"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "sigmoid_xent_lowered_div"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "targets"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "logits"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

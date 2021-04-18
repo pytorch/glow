@@ -1,0 +1,352 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "input"
+    output: "TopK1"
+    output: "TopK1:1"
+    name: "TopK1"
+    op_type: "Glow_TopK"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 1
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "K"
+      i: 2
+      type: INT
+    }
+  }
+  node {
+    input: "input__1"
+    output: "TopK2"
+    output: "TopK2:1"
+    name: "TopK2"
+    op_type: "Glow_TopK"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 1
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "K"
+      i: 2
+      type: INT
+    }
+  }
+  node {
+    output: "Concat_Indices"
+    name: "Concat_Indices"
+    op_type: "Glow_Concat"
+    attribute {
+      name: "o0_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 4
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Inputs"
+      strings: "TopK1:1"
+      strings: "TopK2:1"
+      type: STRINGS
+    }
+    attribute {
+      name: "Inputs_i0_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i0_shape"
+      ints: 2
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i1_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i1_shape"
+      ints: 2
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Dim"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "Concat_Indices"
+    output: "indices"
+    name: "Save_Indices_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 4
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    output: "Concat_Values"
+    name: "Concat_Values"
+    op_type: "Glow_Concat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 4
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Inputs"
+      strings: "TopK1"
+      strings: "TopK2"
+      type: STRINGS
+    }
+    attribute {
+      name: "Inputs_i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i0_shape"
+      ints: 2
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i1_shape"
+      ints: 2
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Dim"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "Concat_Values"
+    output: "Save_Values"
+    name: "Save_Values_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 4
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "input__1"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "Save_Values"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:Save_Values_save"
+  }
+  output {
+    name: "indices"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index64$saveName:Save_Indices_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

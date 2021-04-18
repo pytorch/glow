@@ -1,0 +1,566 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "inputF"
+    input: "filterF"
+    input: "biasF"
+    output: "Conv"
+    name: "Conv"
+    op_type: "Glow_Convolution"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 10
+      ints: 10
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 8
+      ints: 3
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      ints: 6
+      ints: 6
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "Kernels"
+      ints: 3
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Strides"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Pads"
+      ints: 0
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Group"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "Dilation"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "NHWC"
+      type: STRING
+    }
+    attribute {
+      name: "FusedActivation"
+      s: "NONE"
+      type: STRING
+    }
+    attribute {
+      name: "FusedActivationArgs"
+      type: FLOATS
+    }
+  }
+  node {
+    input: "Conv"
+    output: "saveRef"
+    name: "saveRef_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 6
+      ints: 6
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 5
+      ints: 6
+      ints: 6
+      ints: 8
+      type: INTS
+    }
+  }
+  node {
+    input: "inputF"
+    output: "inputQ"
+    name: "inputQ"
+    op_type: "Glow_Quantize"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 10
+      ints: 10
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      ints: 10
+      ints: 10
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.00784313772
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "inputQ"
+    input: "filterQ"
+    input: "bias"
+    input: "filterScales"
+    input: "filterOffsets"
+    input: "biasScales"
+    input: "biasOffsets"
+    output: "CWQConv"
+    name: "CWQConv"
+    op_type: "Glow_ChannelwiseQuantizedConvolution"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 10
+      ints: 10
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.00784313772
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 8
+      ints: 3
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "i2_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i2_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "i3_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i3_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "i4_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i4_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "i5_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i5_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "i6_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i6_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      ints: 6
+      ints: 6
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.0470588244
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Kernels"
+      ints: 3
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Strides"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Pads"
+      ints: 0
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Group"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "Dilation"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "FusedActivation"
+      s: "NONE"
+      type: STRING
+    }
+    attribute {
+      name: "FusedActivationArgs"
+      type: FLOATS
+    }
+  }
+  node {
+    input: "CWQConv"
+    output: "dequantize"
+    name: "dequantize"
+    op_type: "Glow_Dequantize"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 6
+      ints: 6
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.0470588244
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 5
+      ints: 6
+      ints: 6
+      ints: 8
+      type: INTS
+    }
+  }
+  node {
+    input: "dequantize"
+    output: "saveOut"
+    name: "saveOut_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      ints: 6
+      ints: 6
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 5
+      ints: 6
+      ints: 6
+      ints: 8
+      type: INTS
+    }
+  }
+  name: "glow"
+  initializer {
+    dims: 8
+    dims: 3
+    dims: 3
+    dims: 2
+    data_type: 1
+    name: "filterF"
+    doc_string: "$elemKind:float$layout:*"
+  }
+  initializer {
+    dims: 8
+    data_type: 1
+    name: "biasF"
+    doc_string: "$elemKind:float$layout:*"
+  }
+  initializer {
+    dims: 8
+    dims: 3
+    dims: 3
+    dims: 2
+    data_type: 3
+    name: "filterQ"
+    doc_string: "$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0$layout:*"
+  }
+  initializer {
+    dims: 8
+    data_type: 1
+    name: "filterScales"
+    doc_string: "$elemKind:float$layout:*"
+  }
+  initializer {
+    dims: 8
+    data_type: 6
+    name: "filterOffsets"
+    doc_string: "$elemKind:index32$layout:*"
+  }
+  initializer {
+    dims: 8
+    data_type: 1
+    name: "biasScales"
+    doc_string: "$elemKind:float$layout:*"
+  }
+  initializer {
+    dims: 8
+    data_type: 6
+    name: "biasOffsets"
+    doc_string: "$elemKind:index32$layout:*"
+  }
+  initializer {
+    dims: 8
+    data_type: 3
+    name: "bias"
+    doc_string: "$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0$layout:*"
+  }
+  input {
+    name: "inputF"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "saveOut"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 6
+          }
+          dim {
+            dim_value: 6
+          }
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:saveOut_save"
+  }
+  output {
+    name: "saveRef"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 6
+          }
+          dim {
+            dim_value: 6
+          }
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:saveRef_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

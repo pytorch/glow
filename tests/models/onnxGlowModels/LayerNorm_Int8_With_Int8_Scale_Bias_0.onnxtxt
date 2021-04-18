@@ -1,0 +1,1271 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    output: "zero__1"
+    name: "zero__1"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    output: "one"
+    name: "one"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 1
+      type: FLOAT
+    }
+  }
+  node {
+    input: "in"
+    output: "layernorm_input_dequant"
+    name: "layernorm_input_dequant"
+    op_type: "Glow_Dequantize"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.3
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "layernorm_input_dequant"
+    output: "LN_reshape"
+    name: "LN_reshape"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "LN_reshape"
+    output: "LN_mean_add"
+    name: "LN_mean_add"
+    op_type: "Glow_BatchedReduceAdd"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Axis"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "LN_reshape"
+    input: "LN_reshape"
+    output: "LN_squared"
+    name: "LN_squared"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_squared"
+    output: "LN_stddev_add"
+    name: "LN_stddev_add"
+    op_type: "Glow_BatchedReduceAdd"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Axis"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    output: "LN_n"
+    name: "LN_n"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 4
+      type: FLOAT
+    }
+  }
+  node {
+    input: "LN_stddev_add"
+    input: "LN_n"
+    output: "LN_stddev_div"
+    name: "LN_stddev_div"
+    op_type: "Glow_Div"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_mean_add"
+    input: "LN_n"
+    output: "LN_mean_div"
+    name: "LN_mean_div"
+    op_type: "Glow_Div"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_mean_div"
+    input: "LN_mean_div"
+    output: "LN_mean_squared"
+    name: "LN_mean_squared"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_stddev_div"
+    input: "LN_mean_squared"
+    output: "LN_stddev_sub"
+    name: "LN_stddev_sub"
+    op_type: "Glow_Sub"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    output: "zero"
+    name: "zero"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    input: "LN_stddev_sub"
+    input: "zero"
+    output: "LN_stddev_relu_max__1"
+    name: "LN_stddev_relu_max__1"
+    op_type: "Glow_Max"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    output: "LN_epsilon"
+    name: "LN_epsilon"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 1e-05
+      type: FLOAT
+    }
+  }
+  node {
+    input: "LN_stddev_relu_max__1"
+    input: "LN_epsilon"
+    output: "LN_stddev_add__1"
+    name: "LN_stddev_add__1"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    output: "LN_stddev_pow"
+    name: "LN_stddev_pow"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: 0.5
+      type: FLOAT
+    }
+  }
+  node {
+    input: "LN_stddev_add__1"
+    input: "LN_stddev_pow"
+    output: "LN_stddev_pow__1"
+    name: "LN_stddev_pow__1"
+    op_type: "Glow_Pow"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    input: "one"
+    input: "LN_stddev_pow__1"
+    output: "LN_stddev_reciprocal"
+    name: "LN_stddev_reciprocal"
+    op_type: "Glow_Div"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    output: "minusOne"
+    name: "minusOne"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Value"
+      f: -1
+      type: FLOAT
+    }
+  }
+  node {
+    input: "LN_stddev_reciprocal"
+    input: "minusOne"
+    output: "LN_bias_mul"
+    name: "LN_bias_mul"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_stddev_reciprocal"
+    output: "LN_scale_reshape"
+    name: "LN_scale_reshape"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "zero__1"
+    input: "LN_scale_reshape"
+    output: "LN_scale_tile__1"
+    name: "LN_scale_tile__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 4
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "LN_reshape"
+    input: "LN_scale_tile__1"
+    output: "LN_output_scale"
+    name: "LN_output_scale"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_bias_mul"
+    input: "LN_mean_div"
+    output: "LN_bias_mul__1"
+    name: "LN_bias_mul__1"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_bias_mul__1"
+    output: "LN_bias_reshape"
+    name: "LN_bias_reshape"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "zero__1"
+    input: "LN_bias_reshape"
+    output: "LN_bias_tile__1"
+    name: "LN_bias_tile__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 4
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "LN_output_scale"
+    input: "LN_bias_tile__1"
+    output: "LN_output_bias"
+    name: "LN_output_bias"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_output_bias"
+    input: "LN_gamma_tile__1_constfold"
+    output: "LN_output_gamma"
+    name: "LN_output_gamma"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_output_gamma"
+    input: "LN_beta_tile__1_constfold"
+    output: "LN_output_beta"
+    name: "LN_output_beta"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+  }
+  node {
+    input: "LN_output_beta"
+    output: "layernorm_output_quant__1"
+    name: "layernorm_output_quant__1"
+    op_type: "Glow_Quantize"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "layernorm_output_quant__1"
+    output: "LN__2"
+    name: "LN__2"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "LN__2"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 0.1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  name: "glow"
+  initializer {
+    dims: 1
+    dims: 4
+    data_type: 1
+    name: "LN_gamma_tile__1_constfold"
+    doc_string: "$elemKind:float$layout:*"
+  }
+  initializer {
+    dims: 1
+    dims: 4
+    data_type: 1
+    name: "LN_beta_tile__1_constfold"
+    doc_string: "$elemKind:float$layout:*"
+  }
+  input {
+    name: "in"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:0.300000011920928955078125000000$qOffset:0"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:0.100000001490116119384765625000$qOffset:0$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}
