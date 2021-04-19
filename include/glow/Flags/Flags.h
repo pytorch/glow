@@ -72,6 +72,7 @@ extern bool UseSparseNNPartitioningScheme;
 extern bool SparseNNPartitioningAddSLSConcats;
 extern bool SparseNNPartitioningBalancePerfModel;
 extern bool SparseNNPartitioningPairLNWithSLS;
+extern bool SparseNNPartitioningPairTileWithSLS;
 
 // Dag Optimizer Constants
 extern bool UseDAGOptimizer;
