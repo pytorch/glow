@@ -815,6 +815,10 @@ private:
   /// \returns error on failure.
   Error loadTopK(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch argsort node.
+  /// \returns error on failure.
+  Error loadArgSort(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::size node.
   /// \returns error on failure.
   Error loadSize(const torch::jit::Node *ptNode);
