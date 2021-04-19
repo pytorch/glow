@@ -18644,6 +18644,65 @@ TEST_P(OperatorTest, BFloat16SoftMax) {
   EXPECT_TRUE(out.isEqual(*result, 0.001));
 }
 
+template <typename DataType, ElemKind DTy>
+static void testLogSoftMax(glow::PlaceholderBindings &bindings,
+                           glow::Module &mod, glow::Function *F,
+                           glow::ExecutionEngine &EE, double permittedError) {
+  auto *input = mod.createPlaceholder(DTy, {1, 6}, "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {1., 3., 2.5, 5., 4., 2.};
+  auto *selected =
+      mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
+  auto *Pool = F->createLogSoftMax("pool", input, selected);
+  auto *S = F->createSave("save", Pool);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = bindings.get(S->getPlaceholder());
+  Tensor out(DTy, {1, 6});
+  // Expected results are:
+  // sum = exp(input_0) + ... + exp(input_N) = ~245.387
+  // res_0 = ln(exp(1) / sum) = ln(~0.011) = -4.503
+  // res_1 = ln(exp(3) / sum) = ln(~0.082) = -2.503
+  // And so on.
+  out.getHandle<DataType>() = {-4.503, -2.503, -3.003, -0.503, -1.503, -3.503};
+
+  EXPECT_TRUE(out.isEqual(*result, permittedError));
+}
+
+/// Check the correctness of the LogSoftMax operator.
+/// The semantic of LogSoftMax is
+/// res_i = log(exp(input_i) / (exp(input_0) + ... + exp(input_N))).
+TEST_P(OperatorTest, LogSoftMax_Float16) {
+  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS("Interpreter", "NNPI"); // CPU does not support fp16
+
+  testLogSoftMax<float16_t, ElemKind::Float16Ty>(bindings_, mod_, F_, EE_,
+                                                 0.01);
+}
+
+/// Check the correctness of the LogSoftMax operator.
+/// The semantic of LogSoftMax is
+/// res_i = log(exp(input_i) / (exp(input_0) + ... + exp(input_N))).
+TEST_P(OperatorTest, LogSoftMax_BFloat16) {
+  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS("Interpreter"); // CPU & NNPI do not support bfloat16
+
+  testLogSoftMax<bfloat16_t, ElemKind::BFloat16Ty>(bindings_, mod_, F_, EE_,
+                                                   0.1); // even worse precision
+}
+
+/// Check the correctness of the LogSoftMax operator.
+/// The semantic of LogSoftMax is
+/// res_i = log(exp(input_i) / (exp(input_0) + ... + exp(input_N))).
+TEST_P(OperatorTest, LogSoftMax_Float32) {
+  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS("Interpreter", "CPU"); // NNPI does not support fp32 for exp
+
+  testLogSoftMax<float, ElemKind::FloatTy>(bindings_, mod_, F_, EE_, 0.001);
+}
+
 /// Verify that Quantize, Rescale, Dequantize work correctly together.
 static void quantizeSimpleTest(glow::PlaceholderBindings &bindings_,
                                glow::Module &mod_, glow::Function *F_,
