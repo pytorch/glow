@@ -834,7 +834,7 @@ T exitOnError(const char *fileName, size_t lineNumber,
 /// NOTE: this should not be used directly, use macros defined at the top of
 /// Error.h instead.
 template <typename... Args>
-GlowError makeError(const char *fileName, size_t lineNumber, Args &&... args) {
+GlowError makeError(const char *fileName, size_t lineNumber, Args &&...args) {
   auto errorValue = std::unique_ptr<GlowErrorValue>(
       new GlowErrorValue(std::forward<Args>(args)...));
   errorValue->addToStack(fileName, lineNumber);

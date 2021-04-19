@@ -198,11 +198,10 @@ Error NNPICompiledFunction::setupCompilationHints(
         hint.type = NNPI_HINT_TENSOR_PLACEMENT;
         strncpy(hint.tensorPlacement.tensorName, tensorName.c_str(),
                 sizeof(NNPIObjectName));
-        hint.tensorPlacement.allocationType = (memoryLevel == "SRAM")
-                                                  ? NNPI_ALLOCATION_SRAM
-                                                  : (memoryLevel == "LLC")
-                                                        ? NNPI_ALLOCATION_LLC
-                                                        : NNPI_ALLOCATION_DRAM;
+        hint.tensorPlacement.allocationType =
+            (memoryLevel == "SRAM")  ? NNPI_ALLOCATION_SRAM
+            : (memoryLevel == "LLC") ? NNPI_ALLOCATION_LLC
+                                     : NNPI_ALLOCATION_DRAM;
         hint.tensorPlacement.priority = 0.0f;
         hints.emplace_back(hint);
       }

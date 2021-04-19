@@ -50,7 +50,7 @@ template <class F> struct shared_function {
   shared_function(shared_function &&) = default;
   shared_function &operator=(shared_function const &) = default;
   shared_function &operator=(shared_function &&) = default;
-  template <class... As> auto operator()(As &&... as) const {
+  template <class... As> auto operator()(As &&...as) const {
     return (*f)(std::forward<As>(as)...);
   }
 };

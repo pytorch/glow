@@ -2943,10 +2943,11 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
   for (int j = 0; j < dims[0]; j++) {
     uint32_t sum = 0;
     int8_t max = std::numeric_limits<int8_t>::min();
+    uint32_t division;
+    int point, size;
 
     // find max value
     for (uint32_t i = 0; i < dims[1]; i++) {
-      printf("%d\n", inW[libjit_getXY(dims, j, i)]);
       max = MAX(max, inW[libjit_getXY(dims, j, i)]);
     }
 
@@ -2955,9 +2956,6 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
       sum += (expData[inW[libjit_getXY(dims, j, i)] + 255 - max] >>
               (integerPart - 1));
     }
-
-    uint32_t division;
-    int point, size;
 
     /*
      * compute 1/outputScale * 1 / sum, where sum is computed above
@@ -2974,7 +2972,6 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
     }
 
     point = size + 31;
-    printf("out\n");
     // multiply with exp and bring the result into the right range
     for (int i = 0; i < dims[1]; i++) {
       uint32_t index = inW[libjit_getXY(dims, j, i)] + 255 - max;
@@ -2984,7 +2981,6 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
       int32_t res = (int32_t)(mul >> point) + outputOffset;
 
       outW[libjit_getXY(dims, j, i)] = MAX(MIN(res, 127), -128);
-      printf("%d\n", outW[libjit_getXY(dims, j, i)]);
     }
   }
 }
