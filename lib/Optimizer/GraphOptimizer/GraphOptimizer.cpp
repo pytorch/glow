@@ -708,6 +708,25 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
+    // Sink Transpose below Tile nodes.
+    if (auto *TN = dyn_cast<TileNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(TN->getInput());
+
+      if (!TR) {
+        continue;
+      }
+
+      auto *newTN = F->createTile(TN->getName(), TR->getInput(), TN->getCount(),
+                                  TR->getShuffle()[TN->getAxis()]);
+      newTN->setPredicate(node->getPredicate());
+      auto *newTR = F->createTranspose(TR->getName(), newTN, TR->getShuffle(),
+                                       TR->getLayout());
+      newTR->setPredicate(node->getPredicate());
+      TN->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
     // Sink Transpose below Pad nodes.
     if (auto *padNode = dyn_cast<PadNode>(node)) {
       auto *transposeNode = dyn_cast<TransposeNode>(padNode->getInput());
@@ -1095,6 +1114,39 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           BN->getEpsilon(), BN->getMomentum());
       SN->getResult().replaceAllUsesOfWith(newBN);
       changed = true;
+    }
+  }
+
+  return changed;
+}
+
+/// Code Hoisting.
+bool HoistCode::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    auto *node = &N;
+
+    // Hoist Transpose above Tile nodes.
+    if (auto *TR = dyn_cast<TransposeNode>(node)) {
+      auto *TN = dyn_cast<TileNode>(TR->getInput());
+
+      if (!TN) {
+        continue;
+      }
+
+      auto *newTR = F->createTranspose(TR->getName(), TN->getInput(),
+                                       TR->getShuffle(), TR->getLayout());
+      newTR->setPredicate(node->getPredicate());
+      auto *newTN =
+          F->createTile(TN->getName(), newTR, TN->getCount(),
+                        invertShuffle(TR->getShuffle())[TN->getAxis()]);
+      newTN->setPredicate(node->getPredicate());
+      TR->getResult().replaceAllUsesOfWith(newTN);
+      changed = true;
+      continue;
     }
   }
 
@@ -1915,6 +1967,11 @@ bool OptimizeReduceMean::run(Function *F, const CompilationContext &cctx) {
           RM->getName().str() + ".transposeNCHW2NHWC", in, NCHW2NHWC, "NHWC");
       auto *AP = F->createAvgPool(RM->getName().str() + ".avgPool", TR1,
                                   kernels, strides, pads);
+      if (AP->getResult().getType()->isQuantizedType()) {
+        auto TypeAP = F->getParent()->uniqueTypeWithNewQuantParams(
+            AP->getResult().getType(), RM->getResult().getType());
+        AP->getResult().setType(TypeAP);
+      }
       auto *TR2 = F->createTranspose(
           RM->getName().str() + ".transposeNHWC2NCHW", AP, NHWC2NCHW, "NCHW");
 
@@ -2077,6 +2134,16 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   return true;
 }
 
+/// Gets Constant or returns nullptr if input is not Constant.
+/// Skips QuantizeNode if present.
+static Constant *getConstant(const NodeValue &NV) {
+  Node *N = NV.getNode();
+  if (isa<QuantizeNode>(N)) {
+    N = N->getNthInput(QuantizeNode::InputIdx);
+  }
+  return dyn_cast<Constant>(N);
+}
+
 bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
@@ -2085,44 +2152,71 @@ bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
 
   // For each node:
   for (auto &node : nodes) {
-    // Merge the Batch Normalization operation into the convolution that comes
-    // before it by updating the weights of the filter and bias.
-    if (auto *BN = dyn_cast<BatchNormalizationNode>(&node)) {
-      auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
-      if (!CV) {
-        continue;
-      }
-
-      // We can't modify conv operators that have multiple users.
-      if (!CV->hasOneUse()) {
-        continue;
-      }
-
-      bool normalizationHappened = false;
-      switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
-      case ElemKind::FloatTy:
-        normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
-        break;
-      case ElemKind::Float16Ty:
-        normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
-        break;
-      case ElemKind::BFloat16Ty:
-        normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
-        break;
-      default:
-        llvm_unreachable("Type not supported");
-      }
-
-      if (!normalizationHappened) {
-        continue;
-      }
-
-      // Take the predicate of what was expected for the output.
-      CV->setPredicate(BN->getPredicate());
-      BN->getResult().replaceAllUsesOfWith(CV);
-      changed = true;
+    auto *BN = dyn_cast<BatchNormalizationNode>(&node);
+    if (!BN) {
       continue;
     }
+
+    // Remove BN if mean,var,eps,scale,beta values make it redundant as per
+    // expression (X - mean) * (1.0 / sqrt(var + eps)) * scale + bias.
+    float scale, bias, mean, var;
+    auto *scaleC = getConstant(BN->getScale());
+    auto *biasC = getConstant(BN->getBias());
+    auto *meanC = getConstant(BN->getMean());
+    auto *varC = getConstant(BN->getVar());
+    if (scaleC && biasC && meanC && varC &&
+        isUniformConstant<float>(*scaleC, scale) &&
+        isUniformConstant<float>(*biasC, bias) &&
+        isUniformConstant<float>(*meanC, mean) &&
+        isUniformConstant<float>(*varC, var)) {
+      float eps = BN->getEpsilon();
+      // Relaxed redundancy check based on reduced BN expression so that A
+      // is 1.0 and B is 0.0  in Y = A*X + B where,
+      // A = scale * (1.0 / (sqrt(var + eps))
+      // B = (bias - mean * (1.0 / sqrt(var + eps)) * scale)
+      if (bias == mean && (std::sqrt(var + eps) == scale)) {
+        BN->getResult().replaceAllUsesOfWith(BN->getInput());
+        changed = true;
+        continue;
+      }
+    }
+
+    // Merge the Batch Normalization operation into the convolution that comes
+    // before it by updating the weights of the filter and bias.
+    auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
+    if (!CV) {
+      continue;
+    }
+
+    // We can't modify conv operators that have multiple users.
+    if (!CV->hasOneUse()) {
+      continue;
+    }
+
+    bool normalizationHappened = false;
+    switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
+    case ElemKind::FloatTy:
+      normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
+      break;
+    case ElemKind::Float16Ty:
+      normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
+      break;
+    case ElemKind::BFloat16Ty:
+      normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
+      break;
+    default:
+      llvm_unreachable("Type not supported");
+    }
+
+    if (!normalizationHappened) {
+      continue;
+    }
+
+    // Take the predicate of what was expected for the output.
+    CV->setPredicate(BN->getPredicate());
+    BN->getResult().replaceAllUsesOfWith(CV);
+    changed = true;
+    continue;
   } // For all nodes in the graph.
   return changed;
 }
@@ -3351,6 +3445,57 @@ bool OptimizeSplat::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+
+  for (auto &node : F->getNodes()) {
+    auto *GN = dyn_cast<GatherNode>(&node);
+    if (!GN) {
+      continue;
+    }
+
+    auto data = GN->getData();
+    auto *indices = dyn_cast<Constant>(GN->getIndices());
+
+    // Only handling scalar constant index value
+    if (!indices || indices->getPayload().size() != 1) {
+      continue;
+    }
+
+    dim_t index = 0;
+    size_t bd = GN->getBatchDims();
+    auto elementKind = indices->getElementType();
+    if (elementKind == ElemKind::Int64ITy) {
+      index = (size_t)indices->getHandle<int64_t>().raw(0);
+    } else if (elementKind == ElemKind::Int32ITy) {
+      index = (size_t)indices->getHandle<int32_t>().raw(0);
+    } else {
+      llvm_unreachable("GatherToSlice: Unsupported indices type");
+    }
+
+    std::vector<dim_t> start;
+    std::vector<dim_t> end;
+    for (size_t i = 0; i < data.dims().size(); ++i) {
+      if (i == bd) {
+        start.push_back(index);
+        end.push_back(index + 1);
+      } else {
+        start.push_back(0);
+        end.push_back(data.dims()[i]);
+      }
+    }
+
+    auto name = GN->getName();
+    auto *SN = F->createSlice(name, data, start, end);
+    auto *RN = F->createReshape(name, SN, GN->getResult().dims());
+
+    GN->getResult().replaceAllUsesOfWith(RN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// Optimize TransposeNode into ReshapeNode when it actually moves no data.
 bool OptimizeTransposeIntoReshape::run(Function *F,
                                        const CompilationContext &cctx) {
@@ -3400,16 +3545,6 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
   }
 
   return changed;
-}
-
-/// Gets Constant or returns nullptr if input is not Constant.
-/// Skips QuantizeNode if present.
-static Constant *getConstant(const NodeValue &NV) {
-  Node *N = NV.getNode();
-  if (isa<QuantizeNode>(N)) {
-    N = N->getNthInput(QuantizeNode::InputIdx);
-  }
-  return dyn_cast<Constant>(N);
 }
 
 /// Eliminate nodes which don't do anything useful.
@@ -3739,6 +3874,8 @@ static size_t numSignificantBits(ElemKind kind) {
     return std::numeric_limits<int16_t>::digits;
   case ElemKind::FloatTy:
     return std::numeric_limits<float>::digits;
+  case ElemKind::Float64Ty:
+    return std::numeric_limits<double>::digits;
   case ElemKind::Int32QTy:
   case ElemKind::Int32ITy:
     return std::numeric_limits<int32_t>::digits;
@@ -3897,8 +4034,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
   bool changed = false;
 
   // Change a quantized result type qResult to account for the range from clip.
-  auto updateQuantizeNodeType = [](Function *F, NodeValue qResult,
-                                   ClipNode *clip, bool skipIfQuantParamChange,
+  auto updateQuantizeNodeType = [](Function *F, const CompilationContext &cctx,
+                                   NodeValue qResult, ClipNode *clip,
+                                   bool skipIfQuantParamChange,
                                    bool allowQParamChange) {
     const auto qMinMax = qResult.getType()->getQuantizedValueRange();
     const float newMin = std::max(clip->getMin(), qMinMax.first);
@@ -3923,8 +4061,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     // Replace the old quantized type with the new type with different
     // min/max.
     const TypeRef oldTy = qResult.getType();
-    const auto qParams =
-        quantization::chooseQuantizationParams({newMin, newMax});
+    const auto qParams = quantization::chooseQuantizationParams(
+        {newMin, newMax}, cctx.precisionConfig.quantConfig.schema,
+        oldTy->getElementType());
     const TypeRef newTy = F->getParent()->uniqueType(
         oldTy->getElementType(), oldTy->dims(), qParams.scale, qParams.offset);
     qResult.getNode()->setType(qResult.getResNo(), newTy);
@@ -3947,7 +4086,7 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
 
       // Try to update the quantize's type, otherwise skip this one.
       if (!updateQuantizeNodeType(
-              F, qResult, clip, skipIfQuantParamChange,
+              F, cctx, qResult, clip, skipIfQuantParamChange,
               cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
@@ -3972,7 +4111,7 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
 
       // Try to update the quantize's type, otherwise skip this one.
       if (!updateQuantizeNodeType(
-              F, QN->getResult(), clip, skipIfQuantParamChange,
+              F, cctx, QN->getResult(), clip, skipIfQuantParamChange,
               cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
@@ -4174,7 +4313,8 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
       } else {
         // Use the same type as the FC for the Relu but with 0 as min.
         const auto qParams = quantization::chooseQuantizationParams(
-            {0, FCTy->getQuantizedValueRange().second});
+            {0, FCTy->getQuantizedValueRange().second},
+            cctx.precisionConfig.quantConfig.schema, FCTy->getElementType());
         qReluTy =
             F->getParent()->uniqueType(FCTy->getElementType(), FCTy->dims(),
                                        qParams.scale, qParams.offset);
@@ -5050,6 +5190,18 @@ bool RaiseClipsAboveShapeNodes::run(Function *F,
                          SN->getResult().getType());
       CN->getResult().replaceAllUsesOfWith(newSN->getResult());
       oneLessUser.insert(SN->getInput().getNode());
+      changed = true;
+      continue;
+    }
+
+    // Sink Tile below Clip.
+    if (TileNode *TN = dyn_cast<TileNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), TN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      TileNode *newTN = F->createTile(TN->getName(), newCN->getResult(),
+                                      TN->getCount(), TN->getAxis());
+      CN->getResult().replaceAllUsesOfWith(newTN->getResult());
+      oneLessUser.insert(TN->getInput().getNode());
       changed = true;
       continue;
     }
@@ -6750,8 +6902,8 @@ void glow::updateQuantReluTypes(Function *F) {
     if (qRange.first >= 0) {
       continue;
     }
-    const auto qParams =
-        quantization::chooseQuantizationParams({0, qRange.second});
+    const auto qParams = quantization::chooseQuantizationParams(
+        {0, qRange.second}, quantization::Asymmetric, RNTy->getElementType());
     const TypeRef qReluTy = F->getParent()->uniqueType(
         RNTy->getElementType(), RNTy->dims(), qParams.scale, qParams.offset);
     RN->setType(ReluNode::ResultIdx, qReluTy);
@@ -6804,8 +6956,8 @@ void glow::updateQuantReluTypes(Function *F) {
     if (qRange.first >= 0) {
       continue;
     }
-    const auto qParams =
-        quantization::chooseQuantizationParams({0, qRange.second});
+    const auto qParams = quantization::chooseQuantizationParams(
+        {0, qRange.second}, quantization::Asymmetric, T->getElementType());
     const TypeRef qReluTy = F->getParent()->uniqueType(
         T->getElementType(), T->dims(), qParams.scale, qParams.offset);
     N->setType(resultIdx, qReluTy);

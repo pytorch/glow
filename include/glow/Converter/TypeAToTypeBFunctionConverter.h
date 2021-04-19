@@ -64,6 +64,8 @@ protected:
 
   void convertTensor(Tensor &tensor, TypeRef destTy) override;
 
+  template <class T> static bool isBiasInput(NodeValue input, const Node *N);
+
 public:
   /// Create a type converter from \p fromKind to \p toKind for \p F given
   /// \p precConfig.

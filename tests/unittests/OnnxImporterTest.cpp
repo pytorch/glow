@@ -2750,6 +2750,19 @@ TEST_F(OnnxImporterTest, importSliceInvalidAxes) {
                   {2, 1, 2, 2} /* output */, true);
 }
 
+TEST_F(OnnxImporterTest, importSliceWithStep) {
+  importSliceTest("sliceWithStep.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */);
+}
+
+TEST_F(OnnxImporterTest, importSliceWithUnsupportedStep) {
+  importSliceTest("sliceWithUnsupportedStep.onnxtxt", "data",
+                  {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */, true);
+}
+
 static void importCast(llvm::StringRef fileName, llvm::StringRef inputName,
                        llvm::ArrayRef<dim_t> inputShape, ElemKind outputKind) {
   ExecutionEngine EE{};
@@ -3855,6 +3868,41 @@ TEST_F(OnnxImporterTest, importNMSInitializer) {
   ASSERT_TRUE(NMS);
   EXPECT_EQ(NMS->dims(0)[0], 3);
   EXPECT_EQ(NMS->getCenterPointBox(), 0);
+}
+
+/// Test loading NMS using optional parameters from an ONNX model.
+TEST_F(OnnxImporterTest, importNMSInitOptionalParams) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/NonMaxSuppressionOptionalParams.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor boxes(ElemKind::FloatTy, {8, 4});
+    boxes.zero();
+
+    Tensor scores(ElemKind::FloatTy, {8});
+    scores.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"boxes", "scores"},
+                           {&boxes.getType(), &scores.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("indices"));
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  NonMaxSuppressionNode *NMS =
+      llvm::dyn_cast<NonMaxSuppressionNode>(save->getInput().getNode());
+  ASSERT_TRUE(NMS);
+  EXPECT_EQ(NMS->dims(0)[0], 3);
+  EXPECT_EQ(NMS->getCenterPointBox(), 0);
+  EXPECT_EQ(NMS->getMaxOutputBoxesPerClass(), 3);
+  EXPECT_EQ(NMS->getIouThreshold(), 0);
+  EXPECT_EQ(NMS->getScoreThreshold(), 0);
 }
 
 /// Test loading NMS using Constant Tensors op from an ONNX model.

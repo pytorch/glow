@@ -1,6 +1,7 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Support/Support.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "nnpi_transformer_types.h"
@@ -134,9 +135,10 @@ public:
 
 class BatchNormalizationNodeImporter : public INNPIFXNodeImporter {
 public:
-  NNPIErrorCode importNode(const folly::dynamic &node,
-                           const std::function<string(string)> &getQualName,
-                           FXNNPIImporter &importer) override {
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
     const auto &name = node["name"].getString();
     const auto &kwargs = node["kwargs"];
     const auto &inputName = importer.getInputNodeName(kwargs["input"]);
@@ -154,6 +156,43 @@ public:
         importer.getNetwork(), finalize(name), finalize(inputName),
         finalize(name), finalize(meanName), finalize(varName),
         finalize(weightName), finalize(biasName), eps);
+  }
+};
+
+class EmbeddingBagNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode importNode(const folly::dynamic &node,
+                           const std::function<string(string)> &getQualName,
+                           FXNNPIImporter &importer) override {
+    const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &per_sample_weights =
+        importer.getInputNodeName(kwargs["per_sample_weights"]);
+    const auto &offsetsName = importer.getInputNodeName(kwargs["offsets"]);
+
+    const auto &hasEndOffset = kwargs["include_last_offset"].asBool();
+    LOG_AND_RETURN_IF_NOT(ERROR, hasEndOffset,
+                          "[EmbeddingBag] hasEndOffset must be true",
+                          NNPI_INVALID_PARAM);
+
+    // We will assume that all embedding bags have been legalized to include per
+    // index weights.
+    importer.setUsedTensors(
+        {
+            weightName,
+            per_sample_weights,
+            inputName,
+            offsetsName,
+        },
+        {name});
+
+    return nnpiNetworkAddSparseLengthsWeightedSumOp(
+        importer.getNetwork(), name.c_str(), weightName.c_str(), name.c_str(),
+        per_sample_weights.c_str(), inputName.c_str(), offsetsName.c_str(),
+        /* useFP32Accumulation */ 0, /* useLengthsAsOffsets */ 1,
+        /*avg length*/ NAN, NNPI_LENGTH_VARIABLE);
   }
 };
 
@@ -263,27 +302,52 @@ public:
   }
 };
 
-static std::unordered_map<std::string,
-                          std::unique_ptr<INNPIFXNodeImporter>>::value_type
-    FXImporterInit[] = {
-        {"acc_ops.add",
-         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_ADD>>()},
-        {"acc_ops.sub",
-         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
-        {"acc_ops.mul",
-         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
-        {"acc_ops.div",
-         std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
-        {"torch.flatten", std::make_unique<ReshapeNodeImporter>()},
-        {"acc_ops.linear", std::make_unique<LinearNodeImporter>()},
-        {"acc_ops.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
-        {"acc_ops.batch_norm",
-         std::make_unique<BatchNormalizationNodeImporter>()},
-        {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
-        {"acc_ops.adaptive_avg_pool2d",
-         std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
-        {"acc_ops.max_pool2d",
-         std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
+class ConvertNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+    const auto &args = node["args"];
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+
+    const auto &inputName = kwargs.count("input")
+                                ? importer.getInputNodeName(kwargs["input"])
+                                : importer.getInputNodeName(args[0]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddConvertOp(importer.getNetwork(), finalize(name),
+                                   finalize(inputName), finalize(name));
+  }
+};
+
+static std::unordered_map<
+    std::string,
+    std::unique_ptr<INNPIFXNodeImporter>>::value_type FXImporterInit[] = {
+    {"acc_ops.add",
+     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_ADD>>()},
+    {"acc_ops.quantized_add",
+     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_ADD>>()},
+    {"acc_ops.sub",
+     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
+    {"acc_ops.mul",
+     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
+    {"acc_ops.div",
+     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
+    {"acc_ops.reshape", std::make_unique<ReshapeNodeImporter>()},
+    {"acc_ops.linear", std::make_unique<LinearNodeImporter>()},
+    {"acc_ops.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
+    {"acc_ops.batch_norm", std::make_unique<BatchNormalizationNodeImporter>()},
+    {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
+    {"acc_ops.adaptive_avg_pool2d",
+     std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
+    {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},
+    {"acc_ops.max_pool2d",
+     std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
+    {"acc_ops.quantize_per_tensor", std::make_unique<ConvertNodeImporter>()},
+    {"acc_ops.dequantize", std::make_unique<ConvertNodeImporter>()},
 };
 
 static const std::unordered_map<std::string,
@@ -361,13 +425,13 @@ const std::string &FXNNPIImporter::getInputNodeName(const folly::dynamic &node,
   return it != getattrs_.end() ? it->second : name;
 }
 
-void FXNNPIImporter::updateDescQuantFromFX(const DTYPE &dtype,
-                                           NNPITensorDesc &desc,
-                                           const std::string &scaleTensor,
-                                           const std::string &offsetTensor,
-                                           bool forceSymlowp) {
-  desc.quantParams.params.gemlowp.scale = 1.f;
-  desc.quantParams.params.gemlowp.offset = 0;
+void FXNNPIImporter::updateDescQuantFromFX(
+    const DTYPE &dtype, NNPITensorDesc &desc, const float &scale,
+    const int32_t &offset, const std::string &scaleTensor,
+    const std::string &offsetTensor, bool forceSymlowp) {
+  desc.quantParams.params.gemlowp.scale = scale;
+  desc.quantParams.params.gemlowp.offset = offset;
+
   switch (dtype) {
   case DTYPE::FLOAT32:
     LOG_ERROR_IF_NOT((scaleTensor.empty() && offsetTensor.empty()))
@@ -386,6 +450,25 @@ void FXNNPIImporter::updateDescQuantFromFX(const DTYPE &dtype,
         << "Scales and offsets provided for Int64";
     desc.quantParams.precision = NNPI_PRECISION_INT32;
     desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case DTYPE::QINT8:
+    LOG_ERROR_IF_NOT((scaleTensor.empty() && offsetTensor.empty()))
+        << "Don't support PCQ yet";
+    desc.quantParams.precision = NNPI_PRECISION_INT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
+    if (forceSymlowp) {
+      LOG_ERROR_IF_NOT(offset == 0) << "Offset is not 0 when forcing symlowp";
+      desc.quantParams.type = NNPI_QUANTIZATION_SYMLOWP;
+      desc.quantParams.params.symlowp.scale = scale;
+    }
+    break;
+  case DTYPE::QUINT8:
+    LOG_ERROR_IF_NOT((scaleTensor.empty() && offsetTensor.empty()))
+        << "Don't support PCQ yet";
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
+    desc.quantParams.params.gemlowp.scale = scale;
+    desc.quantParams.params.gemlowp.offset = offset;
     break;
   default:
     LOG(FATAL) << "Unhandled tensor data type";
@@ -422,7 +505,8 @@ void FXNNPIImporter::updateDescDimsFromFX(
 NNPIErrorCode
 FXNNPIImporter::addTensor(const std::string &name, const string &dtypeStr,
                           const llvm::ArrayRef<glow::dim_t> dims, bool input,
-                          bool output, const std::string &scaleTensor,
+                          bool output, const float &scale,
+                          const int32_t &offset, const std::string &scaleTensor,
                           const std::string &offsetTensor, bool forceSymlowp) {
   const auto &dtypeElt = stringToDTYPE.find(dtypeStr);
   LOG_ERROR_IF_NOT(dtypeElt != stringToDTYPE.end())
@@ -441,7 +525,7 @@ FXNNPIImporter::addTensor(const std::string &name, const string &dtypeStr,
   desc.attributes.value = 0;
   desc.attributes.input = input;
   desc.attributes.output = output;
-  updateDescQuantFromFX(dtype, desc, scaleTensor, offsetTensor,
+  updateDescQuantFromFX(dtype, desc, scale, offset, scaleTensor, offsetTensor,
                         forceSymlowp || compileOptions_.useSymlowp);
   updateDescDimsFromFX(dims, desc);
 
@@ -477,6 +561,29 @@ FXNNPIImporter::addTensor(const std::string &name, const string &dtypeStr,
   return nnpiNetworkAddTensor(network_, finalize(name), &desc, pRawData);
 }
 
+NNPIErrorCode FXNNPIImporter::addTensor(const folly::dynamic &node, bool input,
+                                        bool output, bool forceSymlowp) {
+  float scale = 1.0f;
+  int32_t zero_point = 0;
+
+  if (node["is_quantized"].getBool()) {
+    CHECK(node.count("q_scale")) << "Missing key q_scale for node " +
+                                        node["name"].getString() +
+                                        ", this probably due to node having "
+                                        "per channel quantized output.";
+
+    scale = node["q_scale"].getDouble();
+    zero_point = node["q_zero_point"].getInt();
+  }
+
+  return addTensor(node["name"].getString(), node["dtype"].getString(),
+                   toIntegerArray<glow::dim_t>(node["shape"].getString()),
+                   /* input */ input, /* output */ output,
+                   /* scale */ scale,
+                   /* offset */ zero_point, /* scaleTensor */ {},
+                   /* offsetTensor */ {}, /* forceSymlowp */ forceSymlowp);
+}
+
 NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
                                            const std::string &submodule) {
   const auto &mod = submodule.empty() ? FXIR : FXIR["modules"][submodule];
@@ -494,11 +601,26 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
     const auto &name = key.getString();
     DBG("Importing Constant: " << name);
     CHECK(constants_.count(name)) << "Constant not found for weight " << name;
-    LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
-        addTensor(
-            name, weights[name]["dtype"].getString(),
-            toIntegerArray<glow::dim_t>(weights[name]["shape"].getString())),
-        "Failed to add constant");
+
+    if (weights[name]["is_quantized"].getBool()) {
+      // TODO: Add support of PCQ.
+      CHECK(weights[name].count("q_scale"))
+          << "We only support PTQ now, weight " + name + " is PCQ.";
+      LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
+          addTensor(
+              name, weights[name]["dtype"].getString(),
+              toIntegerArray<glow::dim_t>(weights[name]["shape"].getString()),
+              /* input */ false, /* output */ false,
+              /* scale */ weights[name]["q_scale"].getDouble(),
+              /* offset */ weights[name]["q_zero_point"].getInt()),
+          "Failed to add intermediate");
+    } else {
+      LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
+          addTensor(
+              name, weights[name]["dtype"].getString(),
+              toIntegerArray<glow::dim_t>(weights[name]["shape"].getString())),
+          "Failed to add intermediate");
+    }
   }
 
   // Add ops node.
@@ -511,11 +633,10 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
       continue;
     }
     DBG("Importing Node: " << nodeName);
+
     // Add node outputs.
-    LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
-        addTensor(nodeName, node["dtype"].getString(),
-                  toIntegerArray<glow::dim_t>(node["shape"].getString())),
-        "Failed to add intermediate");
+    LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(addTensor(node),
+                                            "Failed to add intermediate");
 
     // Track what Constant each get_attr points to.
     if (opCode == "get_attr") {
@@ -549,7 +670,7 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
         "Failed to import node");
   }
 
-  // Add placeholder.
+  // Add placeholder and output node
   for (const auto &node : mod["nodes"]) {
     const auto &opCode = node["op_code"].getString();
 
@@ -560,11 +681,10 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
       CHECK(!writeTensors_.count(name)) << "Placeholder can't be written";
 
       if (readTensors_.count(name)) {
-        LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
-            addTensor(name, node["dtype"].getString(),
-                      toIntegerArray<glow::dim_t>(node["shape"].getString()),
-                      /* input */ true, /* output */ false),
-            "Failed to add placeholder");
+        LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(addTensor(node,
+                                                          /* input */ true,
+                                                          /* output */ false),
+                                                "Failed to add placeholder");
       } else {
         DBG("[--IO--] Unused Placeholder: " << name);
       }
@@ -578,11 +698,10 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
         CHECK(writeTensors_.count(outputName))
             << "output must be in writeTensors_";
 
-        LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
-            addTensor(outputName, arg["dtype"].getString(),
-                      toIntegerArray<glow::dim_t>(arg["shape"].getString()),
-                      /* input */ false, /* output */ true),
-            "Failed to add output");
+        LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(addTensor(arg,
+                                                          /* input */ false,
+                                                          /* output */ true),
+                                                "Failed to add output");
       }
     }
   }

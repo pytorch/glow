@@ -23,6 +23,7 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -50,6 +51,9 @@ protected:
   /// be stack local and so they cannot be read in TearDown.
   std::vector<Tensor> unownedTensors_;
   virtual void SetUp() override {
+    glow::nnpi::flags::EnableCustomIAKernels = true;
+    glow::nnpi::flags::EnableCustomDSPKernels = true;
+
     // Skip stripping the module so that we can inspect Constants after
     // compilation.
     EE_.setSkipModuleStrip(true);
@@ -3880,11 +3884,18 @@ template <typename DataType>
 static void testBatchedReduceMax(glow::PlaceholderBindings &bindings,
                                  glow::Module &mod, glow::Function *F,
                                  glow::ExecutionEngine &EE, ElemKind DTy) {
+  const bool isQuantized = isQuantizedElemKind(DTy);
+  const std::vector<dim_t> dims = {2, 4};
+  const std::vector<dim_t> expectedDims = {4};
+  auto BT = isQuantized ? mod.uniqueType(DTy, dims, 0.5, 3)
+                        : mod.uniqueType(DTy, dims);
+  auto OT = isQuantized ? mod.uniqueType(DTy, expectedDims, 2.0, -1)
+                        : mod.uniqueType(DTy, expectedDims);
 
-  auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
+  auto *batch = mod.createPlaceholder(BT, "batch", false);
   bindings.allocate(batch)->getHandle<DataType>() = {-10, 20, 30, 40,
                                                      -1,  2,  3,  4};
-  auto *R = F->createBatchedReduceMax("reduce.Max", batch, /* axis */ 0);
+  auto *R = F->createBatchedReduceMax("reduce.Max", OT, batch, /* axis */ 0);
 
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
@@ -3892,7 +3903,7 @@ static void testBatchedReduceMax(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(DTy, {4});
+  Tensor expected(OT);
   expected.getHandle<DataType>() = {-1, 20, 30, 40};
 
   EXPECT_TRUE(result->isEqual(expected));
@@ -3904,17 +3915,26 @@ static void testBatchedReduceMaxMultiAxis(glow::PlaceholderBindings &bindings,
                                           glow::Module &mod, glow::Function *F,
                                           glow::ExecutionEngine &EE,
                                           ElemKind DTy) {
-  auto *batch = mod.createPlaceholder(DTy, {2, 2, 2, 2}, "batch", false);
+  const bool isQuantized = isQuantizedElemKind(DTy);
+  const std::vector<dim_t> dims = {2, 2, 2, 2};
+  const std::vector<dim_t> expectedDims = {2, 2};
+  auto BT = isQuantized ? mod.uniqueType(DTy, dims, 0.5, 3)
+                        : mod.uniqueType(DTy, dims);
+  auto OT = isQuantized ? mod.uniqueType(DTy, expectedDims, 2.0, -1)
+                        : mod.uniqueType(DTy, expectedDims);
+
+  auto *batch = mod.createPlaceholder(BT, "batch", false);
   bindings.allocate(batch)->getHandle<DataType>() = {
       1, -2, 3, -4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-  auto *R = F->createBatchedReduceMax("reduce.Max", batch, /* axis */ {1, 3});
+  auto *R =
+      F->createBatchedReduceMax("reduce.Max", OT, batch, /* axis */ {1, 3});
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
 
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(DTy, {2, 2});
+  Tensor expected(OT);
   expected.getHandle<DataType>() = {6, 8, 14, 16};
   EXPECT_TRUE(result->isEqual(expected));
 }
@@ -3935,6 +3955,12 @@ TEST_P(OperatorTest, batchedReduceMax_Int32) {
 TEST_P(OperatorTest, batchedReduceMax_Int64) {
   CHECK_IF_ENABLED();
   testBatchedReduceMax<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test that BatchedReduceMax is correctly supported in Int8QTy.
+TEST_P(OperatorTest, batchedReduceMax_Int8) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceMax<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Test that BatchedReduceMax is correctly supported in FloatTy.
@@ -3958,16 +3984,31 @@ TEST_P(OperatorTest, batchedReduceMaxMultiAxis_Int64) {
                                          ElemKind::Int64ITy);
 }
 
+/// Test that BatchedReduceMax is correctly supported in Int64Ty.
+TEST_P(OperatorTest, batchedReduceMaxMultiAxis_Int8) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceMaxMultiAxis<int8_t>(bindings_, mod_, F_, EE_,
+                                        ElemKind::Int8QTy);
+}
+
 /// Helper to test BatchedReduceMin using \p DTy.
 template <typename DataType>
 static void testBatchedReduceMin(glow::PlaceholderBindings &bindings,
                                  glow::Module &mod, glow::Function *F,
                                  glow::ExecutionEngine &EE, ElemKind DTy) {
+  const bool isQuantized = isQuantizedElemKind(DTy);
+  const std::vector<dim_t> dims = {2, 4};
+  const std::vector<dim_t> expectedDims = {4};
+  auto BT = isQuantized ? mod.uniqueType(DTy, dims, 0.5, 3)
+                        : mod.uniqueType(DTy, dims);
+  auto OT = isQuantized ? mod.uniqueType(DTy, expectedDims, 2.0, -1)
+                        : mod.uniqueType(DTy, expectedDims);
 
-  auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
+  auto *batch = mod.createPlaceholder(BT, "batch", false);
+
   bindings.allocate(batch)->getHandle<DataType>() = {10, 20, 30, 40,
                                                      1,  2,  3,  4};
-  auto *R = F->createBatchedReduceMin("reduce.min", batch, /* axis */ 0);
+  auto *R = F->createBatchedReduceMin("reduce.min", OT, batch, /* axis */ 0);
 
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
@@ -3975,7 +4016,7 @@ static void testBatchedReduceMin(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(DTy, {4});
+  auto expected = Tensor(OT);
   expected.getHandle<DataType>() = {1, 2, 3, 4};
 
   EXPECT_TRUE(result->isEqual(expected));
@@ -3987,17 +4028,28 @@ static void testBatchedReduceMinMultiAxis(glow::PlaceholderBindings &bindings,
                                           glow::Module &mod, glow::Function *F,
                                           glow::ExecutionEngine &EE,
                                           ElemKind DTy) {
-  auto *batch = mod.createPlaceholder(DTy, {2, 2, 2, 2}, "batch", false);
+  const bool isQuantized = isQuantizedElemKind(DTy);
+  std::vector<dim_t> dims = {2, 2, 2, 2};
+  std::vector<dim_t> expectedDims = {4};
+
+  auto BT = isQuantized ? mod.uniqueType(DTy, dims, 0.5, 3)
+                        : mod.uniqueType(DTy, dims);
+  auto OT = isQuantized ? mod.uniqueType(DTy, expectedDims, 2.0, -1)
+                        : mod.uniqueType(DTy, expectedDims);
+
+  auto *batch = mod.createPlaceholder(BT, "batch", false);
+
   bindings.allocate(batch)->getHandle<DataType>() = {
       1, -2, 3, -4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-  auto *R = F->createBatchedReduceMin("reduce.min", batch, /* axis */ {1, 3});
+  auto *R =
+      F->createBatchedReduceMin("reduce.min", OT, batch, /* axis */ {1, 3});
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
 
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  Tensor expected(DTy, {2, 2});
+  Tensor expected(OT);
   expected.getHandle<DataType>() = {-2, -4, 9, 11};
   EXPECT_TRUE(result->isEqual(expected));
 }
@@ -4020,6 +4072,12 @@ TEST_P(OperatorTest, batchedReduceMin_Int64) {
   testBatchedReduceMin<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
+/// Test that BatchedReduceMin is correctly supported in Int8QTy.
+TEST_P(OperatorTest, batchedReduceMin_Int8) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceMin<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
 /// Test that BatchedReduceMin is correctly supported in FloatTy.
 TEST_P(OperatorTest, batchedReduceMinMultiAxis_Float) {
   CHECK_IF_ENABLED();
@@ -4039,6 +4097,13 @@ TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int64) {
   CHECK_IF_ENABLED();
   testBatchedReduceMinMultiAxis<int64_t>(bindings_, mod_, F_, EE_,
                                          ElemKind::Int64ITy);
+}
+
+/// Test that BatchedReduceMin is correctly supported in Int64Ty.
+TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int8) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceMinMultiAxis<int8_t>(bindings_, mod_, F_, EE_,
+                                        ElemKind::Int8QTy);
 }
 
 /// Helper to test BatchedReduceZeroDimResult using \p DTy.
@@ -4400,7 +4465,7 @@ TEST_P(OperatorTest, batchedReduceMeanUsingAvgPoolQuantized) {
   std::vector<dim_t> dims = {2, 3, 3, 4};
 
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, dims, 1, 0);
-  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {dims[0], dims[1]}, 1, 0);
+  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {dims[0], dims[1]}, 3, 0);
   auto *batch = mod_.createPlaceholder(ElemKind::Int8QTy, dims, BT->getScale(),
                                        BT->getOffset(), "batch", false);
 
@@ -7597,7 +7662,7 @@ TEST_P(OperatorTest, DynamicQuantizedFullyConnectedStrongWeights) {
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {3, 4}, "input", false);
   Constant *weights =
-      mod_.createConstant(ElemKind::Int8QTy, {4, 2}, 0.5, 1, "weights");
+      mod_.createConstant(ElemKind::Int8QTy, {4, 2}, 0.5, 0, "weights");
   Constant *bias = mod_.createConstant(ElemKind::FloatTy, {2}, "bias");
   bindings_.allocate(input)->getHandle<float16_t>() = {
       1.0f, 2.0f, 3.0f, 4.0f, 2.0f, 3.0f, 4.0f, 5.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -7614,7 +7679,8 @@ TEST_P(OperatorTest, DynamicQuantizedFullyConnectedStrongWeights) {
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
   std::vector<dim_t> expectedDimensions = {3, 2};
-  std::vector<float> expectedValues = {11.0f, 7.0f, 14.0f, 10.0f, 17.0f, 13.0f};
+  std::vector<float> expectedValues = {16.0f, 12.0f, 21.0f,
+                                       17.0f, 26.0f, 22.0f};
   EXPECT_TRUE(result.dims().vec() == expectedDimensions);
   for (size_t i = 0; i < 3 * 2; i++) {
     // DynQFC's largest error in this unittest is around 2e-1
@@ -9406,6 +9472,29 @@ TEST_P(OperatorTest, Erf_Int8QTy) {
   EXPECT_EQ(outH.raw(1), static_cast<int8_t>(std::round(std::erf(0) * 127)));
   EXPECT_EQ(outH.raw(2), static_cast<int8_t>(std::round(std::erf(1) * 127)));
   EXPECT_EQ(outH.raw(3), static_cast<int8_t>(std::round(std::erf(2) * 127)));
+}
+
+TEST_P(OperatorTest, HardSwish_FloatTy) {
+  CHECK_IF_ENABLED();
+
+  auto hardSwish = [](float x) {
+    return x * std::min(std::max(x + (float)3, (float)0.), (float)6.) *
+           (float)0.166666667;
+  };
+
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-1.0, 0.0, 1.0, 2.0};
+  auto *node = F_->createHardSwish("hardSwish", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_FLOAT_EQ(outH.raw(0), hardSwish(-1.0));
+  EXPECT_FLOAT_EQ(outH.raw(1), hardSwish(0.0));
+  EXPECT_FLOAT_EQ(outH.raw(2), hardSwish(1.0));
+  EXPECT_FLOAT_EQ(outH.raw(3), hardSwish(2.0));
 }
 
 /// Helper to test CmpNEQ using \p elemKind.
@@ -14006,7 +14095,7 @@ TEST_P(OperatorTest, IntLookupTable) {
   }
 
   auto *lookupTable =
-      F_->createIntLookupTable("lookupTable", input, initValues, outTy);
+      F_->createIntLookupTable<int8_t>("lookupTable", input, initValues, outTy);
   auto *save = F_->createSave("save", lookupTable);
   bindings_.allocate(save->getPlaceholder());
 
@@ -16324,11 +16413,16 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16) {
       /* useFP16Accumulation */ true);
 }
 
-TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
-  CHECK_IF_ENABLED();
+template <typename IndexType>
+static void testRepeatedSLSWithPartialTensors(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, std::vector<Tensor> &unownedTensors,
+    llvm::StringRef backendName, ElemKind ITy) {
+  // Turn on input sanitization
+  glow::runtime::flags::SanitizeInputsPercent = 100;
 
   // This test is only meaningful if the backend supports partial tensors.
-  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  ASSERT_TRUE(EE.getBackend(backendName).supportsPartialTensors());
 
   constexpr dim_t embeddingRows = 1275;
   constexpr dim_t numLengths = 20;
@@ -16337,27 +16431,26 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   constexpr dim_t iterations = 33;
 
   auto *data =
-      mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
+      mod.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
   data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
-                                                         mod_.getPRNG());
-  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {maxIndices},
-                                         "indices", false);
-  auto *lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
-                                         "lengths", false);
-  auto *SLS = F_->createSparseLengthsSum("SLS", data, indices, lengths);
-  auto *save = F_->createSave("save", SLS);
+                                                         mod.getPRNG());
+  auto *indices = mod.createPlaceholder(ITy, {maxIndices}, "indices", false);
+  auto *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {numLengths}, "lengths", false);
+  auto *SLS = F->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *save = F->createSave("save", SLS);
   auto *outPH = save->getPlaceholder();
-  EE_.compile(CompilationMode::Infer);
+  EE.compile(CompilationMode::Infer);
 
-  Tensor indicesReal(ElemKind::Int64ITy, {numIndices});
-  indicesReal.getHandle<int64_t>().randomize(0, embeddingRows - 1,
-                                             mod_.getPRNG());
+  Tensor indicesReal(ITy, {numIndices});
+  indicesReal.getHandle<IndexType>().randomize(0, embeddingRows - 1,
+                                               mod.getPRNG());
   Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
                         indicesReal.getSizeInBytes());
   Tensor indicesPadded(indices->getType());
   indicesPadded.zero();
   memcpy(indicesPadded.getUnsafePtr(), indicesReal.getUnsafePtr(),
-         numIndices * sizeof(int64_t));
+         numIndices * sizeof(IndexType));
 
   Tensor lengthsReal(ElemKind::Int32ITy, {numLengths});
   lengthsReal.getHandle<int32_t>().clear(1);
@@ -16366,9 +16459,9 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   Tensor lengthsPadded(ElemKind::Int32ITy, {numLengths});
   lengthsPadded.assign(&lengthsReal);
 
-  bindings_.insert(indices, std::move(indicesPartial));
-  bindings_.insert(lengths, std::move(lengthsPartial));
-  bindings_.allocate(outPH);
+  bindings.insert(indices, std::move(indicesPartial));
+  bindings.insert(lengths, std::move(lengthsPartial));
+  bindings.allocate(outPH);
 
   PlaceholderBindings paddedBindings;
   paddedBindings.insert(indices, std::move(indicesPadded));
@@ -16376,16 +16469,34 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   paddedBindings.allocate(outPH);
 
   for (dim_t i = 0; i < iterations; i++) {
-    EE_.run(bindings_);
-    EE_.run(paddedBindings);
-    ASSERT_TRUE(bindings_.get(outPH)->isEqual(*paddedBindings.get(outPH)));
+    EE.run(bindings);
+    EE.run(paddedBindings);
+    ASSERT_TRUE(bindings.get(outPH)->isEqual(*paddedBindings.get(outPH)));
   }
 
   // Keep these around so their memory is not freed at the end of the
   // test/scope. This is so that inside TearDown during import/export testing
   // the data is still around.
-  unownedTensors_.push_back(std::move(indicesReal));
-  unownedTensors_.push_back(std::move(lengthsReal));
+  unownedTensors.push_back(std::move(indicesReal));
+  unownedTensors.push_back(std::move(lengthsReal));
+}
+
+// Checking with int32 indices
+TEST_P(OperatorTest, RepeatedSLSWithPartialTensors_int32) {
+  CHECK_IF_ENABLED();
+
+  testRepeatedSLSWithPartialTensors<int32_t>(bindings_, mod_, F_, EE_,
+                                             unownedTensors_, getBackendName(),
+                                             ElemKind::Int32ITy);
+}
+
+// Checking with int64 indices
+TEST_P(OperatorTest, RepeatedSLSWithPartialTensors_int64) {
+  CHECK_IF_ENABLED();
+
+  testRepeatedSLSWithPartialTensors<int64_t>(bindings_, mod_, F_, EE_,
+                                             unownedTensors_, getBackendName(),
+                                             ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, RepeatedSLWSWithPartialTensors) {
@@ -18264,6 +18375,50 @@ TEST_P(OperatorTest, insertTensorCrossDimensions) {
   }
 }
 
+/// Test that InsertTensor node works correctly for 6D tensors.
+TEST_P(OperatorTest, insertTensorTest6D) {
+  CHECK_IF_ENABLED();
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  auto *SN0 = mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1, 1, 1, 4, 6},
+                                     "SN0", false);
+  bindings_.allocate(SN0)->init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
+
+  // 1 1
+  // 1 1
+  auto *SN1 = mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1, 1, 1, 2, 2},
+                                     "SN1", false);
+  bindings_.allocate(SN1)->init(Tensor::InitKind::Broadcast, 1, mod_.getPRNG());
+
+  // 0 0 0 0 0 0
+  // 0 1 1 1 1 0
+  // 0 1 1 1 1 0
+  // 0 0 0 0 0 0
+  Node *IN =
+      F_->createInsertTensor("insert", SN0, SN1, /* start */ {0, 0, 0, 0, 1, 1},
+                             /* count */ 2, /* axis */ 5);
+  SaveNode *result = F_->createSave("result", IN);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  // Verify the output looks as expected (pictured above).
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
+  for (dim_t i = 0; i < 4; i++) {
+    for (dim_t j = 0; j < 6; j++) {
+      int64_t expected = 1;
+      if (i == 0 || i == 3 || j == 0 || j == 5) {
+        expected = 0;
+      }
+      EXPECT_EQ(resultH.at({0, 0, 0, 0, i, j}), expected);
+    }
+  }
+}
+
 /// Test the InsertTensor operator works correctly when inserting across an
 /// outer dimension where the inner dimensions have different sizes.
 TEST_P(OperatorTest, insertTensorPartialSliceInnerDim) {
@@ -19830,6 +19985,43 @@ TEST_P(OperatorTest, add_float) {
     }
   }
 }
+static FunctionTensorPair
+createAndInitLayerNormStrongNormShapeTest(glow::PlaceholderBindings &bindings,
+                                          glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 4, 5, 6}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {5, 6});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {5, 6});
+  biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+
+  bindings.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+
+  auto *res = F->createSave("save", LNN);
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {input, res->getPlaceholder()});
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Test LayerNorm with Float16Ty and strong norm_shape(dims > 1 and not
+/// identical)
+TEST_P(OperatorStatelessTest, LayerNorm_Float16_StrongNormShape) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitLayerNormStrongNormShapeTest,
+      ElemKind::FloatTy, ElemKind::Float16Ty, 0.05f, parCloneCountOpt);
+}
 
 static FunctionTensorPair
 createAndInitLayerNormTest(glow::PlaceholderBindings &bindings,
@@ -20238,15 +20430,15 @@ TEST_P(OperatorTest, RMSNorm) {
 TEST_P(OperatorTest, SparseLabelSplit) {
   CHECK_IF_ENABLED();
 
-  const auto numLengths = 4;
-  const auto numIndices = 8;
+  constexpr auto numLengths = 4U;
+  constexpr auto numIndices = 8U;
   auto lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
                                         "lengths", false);
   auto indices = mod_.createPlaceholder(ElemKind::Int64ITy, {numIndices},
                                         "indices", false);
   auto values =
       mod_.createPlaceholder(ElemKind::FloatTy, {numIndices}, "values", false);
-  const auto numLabels = 4;
+  constexpr auto numLabels = 4U;
 
   bindings_.allocate(lengths)->getHandle<int32_t>() = {1, 3, 2, 2};
   bindings_.allocate(indices)->getHandle<int64_t>() = {3, 1, 2, 0, 0, 2, 1, 3};

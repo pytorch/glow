@@ -359,6 +359,74 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   checkNumericalEquivalence();
 }
 
+void optimizeRedundantBatchNormTest(
+    glow::Module &mod_, glow::Function *F_, glow::Function *&optimizedF_,
+    glow::PlaceholderBindings &bindings_, llvm::ArrayRef<float> varV,
+    llvm::ArrayRef<float> meanV, llvm::ArrayRef<float> gammaV,
+    llvm::ArrayRef<float> betaV, const float eps) {
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+
+  auto *var = mod_.createConstant(ElemKind::FloatTy, {3}, "var");
+  auto *mean = mod_.createConstant(ElemKind::FloatTy, {3}, "mean");
+  auto *beta = mod_.createConstant(ElemKind::FloatTy, {3}, "beta");
+  auto *gamma = mod_.createConstant(ElemKind::FloatTy, {3}, "gamma");
+
+  // (X - mean) * (1.0 / sqrt(var + eps)) * gamma + beta
+  var->getPayloadMutable().getHandle<float>() = varV;
+  mean->getPayloadMutable().getHandle<float>() = meanV;
+  beta->getPayloadMutable().getHandle<float>() = betaV;
+  gamma->getPayloadMutable().getHandle<float>() = gammaV;
+  Node *BN = F_->createBatchNormalization("batch", A->getType(), A, beta, gamma,
+                                          mean, var, 3, eps);
+  Node *LRN = F_->createLocalResponseNormalization("LRN", BN);
+  F_->createSave("ret", LRN);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *LRN1 = std::find_if_not(A->getUsers().begin(), A->getUsers().end(),
+                                [BN](auto &it) { return it.getUser() == BN; })
+                   ->getUser();
+  ASSERT_TRUE(llvm::isa<LocalResponseNormalizationNode>(LRN1));
+  ASSERT_EQ(LRN1->getNumUsers(), 1);
+  Node *save = LRN1->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<SaveNode>(save));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+}
+
+TEST_F(GraphOptz, optimizeRedundantBatchNorm1) {
+  optimizeRedundantBatchNormTest(mod_, F_, optimizedF_, bindings_, {1., 1., 1.},
+                                 {0., 0., 0.}, {1., 1., 1.}, {0., 0., 0.}, 0.0);
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, optimizeRedundantBatchNorm2) {
+  optimizeRedundantBatchNormTest(mod_, F_, optimizedF_, bindings_, {1., 1., 1.},
+                                 {33., 33., 33.}, {1., 1., 1.}, {33., 33., 33.},
+                                 0.0);
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, optimizeRedundantBatchNorm3) {
+  const float eps = 0.000001;
+  optimizeRedundantBatchNormTest(
+      mod_, F_, optimizedF_, bindings_, {1.0f - eps, 1.0f - eps, 1.0f - eps},
+      {33., 33., 33.}, {1., 1., 1.}, {33., 33., 33.}, eps);
+  checkNumericalEquivalence();
+}
+TEST_F(GraphOptz, optimizeRedundantBatchNorm4) {
+  optimizeRedundantBatchNormTest(mod_, F_, optimizedF_, bindings_,
+                                 {225., 225., 225.}, {-3., -3., -3.},
+                                 {15., 15., 15.}, {-3., -3., -3.}, 0.0);
+  checkNumericalEquivalence();
+}
+
 /// Verify that the Conv-BatchNorm merging optimization is not impacted by
 /// multiple users on the filter/bias.
 TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
@@ -1146,6 +1214,61 @@ TEST_F(GraphOptz, SinkTransposeBelowPRelu) {
   bindings_.allocate(mod_.getPlaceholders());
   bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   bindings_.get(slope)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, SinkTransposeBelowTile) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
+  auto *transpose = F_->createTranspose("transpose", in, NHWC2NCHW);
+  auto *tile = F_->createTile("tile", transpose, 4, 1);
+  auto *save = F_->createSave("save", tile);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::SinkCode, getDCEPassConfig()});
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *transposeOpt = llvm::dyn_cast<TransposeNode>(saveOpt->getInput());
+  ASSERT_TRUE(transposeOpt);
+  EXPECT_EQ(transposeOpt->getShuffle(), transpose->getShuffle());
+  auto *tileOpt = llvm::dyn_cast<TileNode>(transposeOpt->getInput());
+  ASSERT_TRUE(tileOpt);
+  EXPECT_EQ(tileOpt->getAxis(), 3);
+  EXPECT_EQ(tileOpt->getCount(), 4);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, HoistTransposeAboveTile) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
+  auto *tile = F_->createTile("tile", in, 4, 3);
+  auto *transpose = F_->createTranspose("transpose", tile, NHWC2NCHW);
+  auto *save = F_->createSave("save", transpose);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *tileOpt = llvm::dyn_cast<TileNode>(saveOpt->getInput());
+  ASSERT_TRUE(tileOpt);
+  EXPECT_EQ(tileOpt->getAxis(), 1);
+  EXPECT_EQ(tileOpt->getCount(), 4);
+  auto *transposeOpt = llvm::dyn_cast<TransposeNode>(tileOpt->getInput());
+  ASSERT_TRUE(transposeOpt);
+  EXPECT_EQ(transposeOpt->getShuffle(), transpose->getShuffle());
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   checkNumericalEquivalence();
 }
 
@@ -2873,6 +2996,29 @@ TEST_F(GraphFold, optimizeSmallConv) {
 
   bindings_.allocate(mod_.getPlaceholders());
   bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, GatherToSliceOpt) {
+  auto *LHS = mod_.createPlaceholder(ElemKind::Int32ITy, {16, 3}, "LHS", false);
+  auto *RHS = mod_.createConstant(ElemKind::Int32ITy, {}, "RHS");
+  RHS->getPayloadMutable().getHandle<int32_t>() = {1};
+
+  auto *gather = F_->createGather("gather", LHS, RHS, 1);
+  auto *save = F_->createSave("save", gather);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  auto *saveOpt =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
+  ASSERT_TRUE(saveOpt);
+  auto *reshapeN = llvm::dyn_cast<ReshapeNode>(saveOpt->getInput());
+  ASSERT_TRUE(reshapeN);
+  EXPECT_EQ(reshapeN->getResult().dims().size(), 1);
+  EXPECT_EQ(reshapeN->getResult().dims()[0], 16);
+
+  bindings_.allocate(LHS)->getHandle<int32_t>().randomize(-128, 127,
+                                                          mod_.getPRNG());
   checkNumericalEquivalence();
 }
 
@@ -5963,29 +6109,33 @@ TEST_F(GraphOptz, RaiseClipsAboveShapeNodesTest) {
   ReshapeNode *RN2 = F_->createReshape("reshape2", RN1, {64, 256});
   TransposeNode *TN = F_->createTranspose("transpose", RN2, {1, 0});
   SliceNode *SN = F_->createSlice("slice", TN, {64, 0}, {256, 64});
-  ClipNode *CN = F_->createClip("clip", SN, -0.1, 0.1);
+  TileNode *TiN = F_->createTile("tile", SN, 2, 0);
+  ClipNode *CN = F_->createClip("clip", TiN, -0.1, 0.1);
   SaveNode *save1 = F_->createSave("save1", RN1);
   SaveNode *save2 = F_->createSave("save2", CN);
 
   optimizedF_ =
       optimizeFunctionForTest(F_, {FunctionPassID::RaiseClipsAboveShapeNodes});
 
-  SaveNode *optSave1 =
+  auto *optSave1 =
       llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save1->getName()));
   ASSERT_TRUE(optSave1);
-  SaveNode *optSave2 =
+  auto *optSave2 =
       llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save2->getName()));
   ASSERT_TRUE(optSave2);
 
   // save1 should only have a single untouched Reshape RN1 input which has input
   // input into it, because RN1 has multiple users.
-  ReshapeNode *optRN1 =
-      llvm::dyn_cast<ReshapeNode>(optSave1->getInput().getNode());
+  auto *optRN1 = llvm::dyn_cast<ReshapeNode>(optSave1->getInput().getNode());
   ASSERT_TRUE(optRN1);
   EXPECT_EQ(input, optRN1->getInput().getNode());
 
-  // save2 should have CN it originally saved pushed up above SN, TN, and RN2.
-  SliceNode *newSN = llvm::dyn_cast<SliceNode>(optSave2->getInput());
+  // save2 should have CN it originally saved pushed up above SN, TiN, TN, and
+  // RN2.
+  TileNode *newTiN = llvm::dyn_cast<TileNode>(optSave2->getInput());
+  ASSERT_TRUE(newTiN);
+  EXPECT_EQ(newTiN->getCount(), TiN->getCount());
+  SliceNode *newSN = llvm::dyn_cast<SliceNode>(newTiN->getInput());
   ASSERT_TRUE(newSN);
   EXPECT_EQ(newSN->getStart(), SN->getStart());
   TransposeNode *newTN = llvm::dyn_cast<TransposeNode>(newSN->getInput());

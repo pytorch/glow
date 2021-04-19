@@ -64,13 +64,13 @@ llvm::cl::opt<bool>
 llvm::cl::opt<unsigned>
     topKCount("topk",
               llvm::cl::desc("Number of highest likelihood labels to print and "
-                             "match the correspondent expected-lables"),
+                             "match the correspondent expected-labels"),
               llvm::cl::Optional, llvm::cl::init(1),
               llvm::cl::cat(imageClassifierCat));
 
 llvm::cl::list<unsigned> expectedMatchingLabels(
     "expected-labels",
-    llvm::cl::desc("The comma delimited list of the matching lables"),
+    llvm::cl::desc("The comma delimited list of the matching labels"),
     llvm::cl::value_desc("int"), llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
     llvm::cl::cat(imageClassifierCat));
 } // unnamed namespace

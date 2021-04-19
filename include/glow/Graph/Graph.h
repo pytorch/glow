@@ -159,6 +159,11 @@ public:
   /// the type \p shapeType.
   TypeRef uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType);
 
+  /// Return a pointer to a uniqued type \p T.
+  /// The new type is identical to \p T, with new scale and offset taken from
+  /// the type \p quantParamType.
+  TypeRef uniqueTypeWithNewQuantParams(TypeRef T, TypeRef quantParamType);
+
   /// Return the void type.
   TypeRef getVoidTy();
 
@@ -1000,6 +1005,7 @@ public:
   UNARY_ARITHMETIC_FUN_DECL(Cos)
   UNARY_ARITHMETIC_FUN_DECL(Erf)
   UNARY_ARITHMETIC_FUN_DECL(Truncate)
+  UNARY_ARITHMETIC_FUN_DECL(HardSwish)
 #undef UNARY_ARITHMETIC_FUN_DECL
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -1246,11 +1252,23 @@ public:
                                NodeValue batch,
                                llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceMin operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceMinNode *createBatchedReduceMin(llvm::StringRef name,
+                                               TypeRef outTy, NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
   /// Create a node, performing BatchedReduceMin operation. Output type is
   /// based on the input \p batch type with dimensions specified with \p axes
   /// removed.
   BatchedReduceMinNode *createBatchedReduceMin(llvm::StringRef name,
                                                NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
+  /// Create a node, performing BatchedReduceMax operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceMaxNode *createBatchedReduceMax(llvm::StringRef name,
+                                               TypeRef outTy, NodeValue batch,
                                                llvm::ArrayRef<unsigned_t> axes);
 
   /// Create a node, performing BatchedReduceMax operation. Output type is
@@ -1540,15 +1558,31 @@ public:
   createQuantizationProfile(PlaceholderBindings &bindings, llvm::StringRef name,
                             NodeValue input, dim_t numHistogramBins = 10);
 
-  /// Create lookup table for mapping between quantized numbers.
-  /// \p input and \p outTy must have quantized type.
-  /// Table contains all numbers from the quantized range, e.g.,
-  /// 256 entries for int8. Position 0 in the \p initValues
-  /// corresponds to the -128 input number, position 255 to 127.
+  /// Create lookup table for mapping between quantized operands. \p input and
+  /// \p outTy must be quantized types. The table contains all numbers from the
+  /// quantized range, e.g. 256 entries for int8 input. First position in the
+  /// \p initValues corresponds to the minimum input number and the last
+  /// position corresponds to the maximum input number.
+  template <typename T = int8_t>
+  IntLookupTableNode *
+  createIntLookupTable(llvm::StringRef name, NodeValue input,
+                       llvm::ArrayRef<T> initValues, TypeRef outTy);
+
+  /// Create lookup table for mapping between quantized operands based on the
+  /// floating point function \p func. \p input and \p outTy must be quantized
+  /// types.
   IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
                                            NodeValue input,
-                                           llvm::ArrayRef<int8_t> initValues,
+                                           std::function<float(float)> func,
                                            TypeRef outTy);
+
+  /// Create quantized log.
+  IntLookupTableNode *createIntLog(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
+
+  /// Create quantized exp.
+  IntLookupTableNode *createIntExp(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
 
   /// Create quantized tanh.
   IntLookupTableNode *createIntTanh(llvm::StringRef name, NodeValue input,

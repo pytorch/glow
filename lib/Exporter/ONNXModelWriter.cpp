@@ -1117,6 +1117,8 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::FLOAT16;
   case ElemKind::BFloat16Ty:
     return TensorType::BFLOAT16;
+  case ElemKind::Float64Ty:
+    return TensorType::DOUBLE;
   case ElemKind::Int8QTy:
     return TensorType::INT8;
   case ElemKind::UInt8FusedQTy:
@@ -2357,6 +2359,7 @@ DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
 DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(NonMaxSuppression)
+DEF_ALL_WRITER_NODE(HardSwish)
 DEF_ALL_WRITER_NODE(ConvTranspose)
 DEF_ALL_WRITER_NODE(Logit)
 DEF_ALL_WRITER_NODE(Truncate)

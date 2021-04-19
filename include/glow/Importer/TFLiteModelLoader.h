@@ -266,6 +266,10 @@ class TFLiteModelLoader {
   /// Load Slice operator.
   Error loadSlice(const tflite::Operator *op, const OperatorInfo &opInfo);
 
+  /// Load Resize Bilinear operator.
+  Error loadResizeBilinear(const tflite::Operator *op,
+                           const OperatorInfo &opInfo);
+
   /// Load Tile operator.
   Error loadTile(const tflite::Operator *op, const OperatorInfo &opInfo);
 

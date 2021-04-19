@@ -282,6 +282,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int32ITy"});
 
+  BB.newInstr("LayerNormalization")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Scale", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember(MemberType::Float, "Epsilon")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .setType("Dest->getType()");
+
   //===--------------------------------------------------------------------===//
   //                      Loss functions
   //===--------------------------------------------------------------------===//
@@ -1201,7 +1212,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Mapping", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::TypeCheck, {"Src", "isQuantizedType()"})
       .autoVerify(VerifyKind::TypeCheck, {"Dest", "isQuantizedType()"})
       .dataParallel()
       .autoIRGen();

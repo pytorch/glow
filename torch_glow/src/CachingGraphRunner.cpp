@@ -73,8 +73,16 @@ void initializeCompiliationContextFromSettings(
     cctx.saturateHost = settings.saturateHost;
   }
 
-  if (glow::flags::UseDAGOptimizer) {
+  if (settings.saturateKDevices > 0) {
+    cctx.saturateKDevices = settings.saturateKDevices;
+  }
+
+  if (settings.use_dag_optimizer) {
     cctx.callDAGOptimizer = true;
+    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+        settings.apl_parallelization_alg;
+    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+        settings.apl_num_parallel_chunks;
   }
 
   if (!settings.backendSpecificOpts.empty()) {
@@ -267,7 +275,8 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
   InputMetaStack metaStack;
   {
     RECORD_USER_SCOPE("computeShapeInputMetaStack");
-    ASSIGN_VALUE_OR_RETURN_ERR(metaStack, inputMetaStackFromStack(inputs));
+    ASSIGN_VALUE_OR_RETURN_ERR(metaStack,
+                               inputMetaStackFromStack(inputs, true));
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
                   "computeShapeInputMetaStack");
@@ -275,9 +284,12 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
   // If we already have a shape info for this graph output with and the
   // given inputs then use that.
   size_t hash = getGraphMapKeyFromInputStack(metaStack);
-  auto it = perGlowGraphShapeMap_.find(hash);
-  if (it != perGlowGraphShapeMap_.end()) {
-    return &(it->second);
+  {
+    std::lock_guard<std::mutex> graphShapeLock(glowGraphShapeMapMutex_);
+    auto it = perGlowGraphShapeMap_.find(hash);
+    if (it != perGlowGraphShapeMap_.end()) {
+      return &(it->second);
+    }
   }
 
   LOG(INFO) << "Compiling graph with tensor shape:\n" << metaStack.print();
@@ -295,11 +307,11 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runShapeInference");
 
-  auto ret = perGlowGraphShapeMap_.emplace(hash, outputShape);
-  RETURN_ERR_IF_NOT(ret.second,
-                    strFormat("Duplcate value in perGlowGraphShapeMap_ for %s",
-                              metaStack.print().c_str()));
-  return &(ret.first->second);
+  {
+    std::lock_guard<std::mutex> graphShapeLock(glowGraphShapeMapMutex_);
+    auto ret = perGlowGraphShapeMap_.emplace(hash, outputShape);
+    return &(ret.first->second);
+  }
 }
 
 int64_t CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {

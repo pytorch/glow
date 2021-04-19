@@ -1163,7 +1163,7 @@ static void inferAndCompareGelu(size_t lutSize, float minLookupTableValue,
                                 float maxInputValue, float allowedThreshold,
                                 Module &mod_, PlaceholderBindings &bindings_,
                                 Function *F_, ExecutionEngine &EE_, bool lower,
-                                bool sweep = false) {
+                                bool sweep = false, bool clip = false) {
   auto *in =
       mod_.createPlaceholder(ElemKind::Float16Ty, {inputSize}, "in", false);
   auto *gelu = F_->createGELU("gelu", in);
@@ -1191,6 +1191,9 @@ static void inferAndCompareGelu(size_t lutSize, float minLookupTableValue,
     cctx.backendOpts.backendSpecificOpts["NNPIGeluLUTMaxInput"] =
         std::to_string(maxLookupTableValue);
     cctx.backendOpts.backendSpecificOpts["NNPIGeluLUTFormula"] = "tanh";
+    if (clip) {
+      cctx.backendOpts.backendSpecificOpts["NNPIGeluLUTEnableClip"] = "true";
+    }
   }
   EE_.compile(cctx);
   EE_.run(bindings_);
@@ -1206,6 +1209,10 @@ static void inferAndCompareGelu(size_t lutSize, float minLookupTableValue,
         0.5f * inHf *
         (1.0f + std::tanh(M_2_SQRTPI * M_SQRT1_2 *
                           (inHf + geluConst * std::pow(inHf, 3))));
+    if (clip) {
+      expectedResult = (expectedResult < -5.0) ? -5.0 : expectedResult;
+      expectedResult = (expectedResult > 5.0) ? 5.0 : expectedResult;
+    }
     accumulated_error +=
         std::abs((double)resultH.at(i) - (double)expectedResult);
     EXPECT_NEAR(resultH.at(i), expectedResult, allowedThreshold);
@@ -1233,6 +1240,12 @@ TEST_F(NNPIOptPipelineTest, LUTGelu_FP16_sweep) {
   inferAndCompareGelu<1000>(1024, -8.0f, 8.0f, -4.0f, 4.0f, 5e-3, mod_,
                             bindings_, F_, EE_, /* lower */ false,
                             /* sweep */ true);
+}
+
+TEST_F(NNPIOptPipelineTest, LUTGelu_FP16_sweep_clip) {
+  inferAndCompareGelu<1000>(1024, -8.0f, 8.0f, -4.0f, 4.0f, 5e-3, mod_,
+                            bindings_, F_, EE_, /* lower */ false,
+                            /* sweep */ true, /* clip */ true);
 }
 
 TEST_F(NNPIOptPipelineTest, LowerGelu_FP16) {

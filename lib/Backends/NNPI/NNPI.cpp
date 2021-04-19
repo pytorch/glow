@@ -126,7 +126,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
-  case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::BatchedMulNodeKind:
   case Kinded::Kind::TanhNodeKind:
@@ -138,6 +137,12 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::SoftPlusNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+    break;
+  case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::BatchedReduceMaxNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int32ITy});
     break;
   case Kinded::Kind::SplatNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
@@ -295,9 +300,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
         case ElemKind::UInt8QTy:
-        case ElemKind::Int32ITy:
         case ElemKind::BoolTy:
           return true;
+        case ElemKind::Int32ITy:
+          return glow::nnpi::flags::EnableCustomIAKernels;
         default:
           return false;
         }
@@ -308,9 +314,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::Float16Ty:
         case ElemKind::Int8QTy:
         case ElemKind::UInt8QTy:
-        case ElemKind::Int32ITy:
         case ElemKind::BoolTy:
           return true;
+        case ElemKind::Int32ITy:
+          return glow::nnpi::flags::EnableCustomIAKernels;
         default:
           return false;
         }
@@ -331,10 +338,11 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         switch (kindTo) {
         case ElemKind::Int64ITy:
         case ElemKind::FloatTy:
-        case ElemKind::Float16Ty:
-        case ElemKind::BoolTy:
         case ElemKind::Int8QTy:
           return true;
+        case ElemKind::Float16Ty:
+        case ElemKind::BoolTy:
+          return glow::nnpi::flags::EnableCustomIAKernels;
         default:
           return false;
         }
@@ -449,7 +457,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::SliceNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy, ElemKind::BoolTy});
+         ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy});
     break;
   case Kinded::Kind::ReshapeNodeKind:
 
@@ -750,6 +758,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   } break;
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::BatchedMulNodeKind:
+  case Kinded::Kind::BucketizeNodeKind:
     return false;
   default:
     break;
@@ -1991,7 +2000,8 @@ Expected<bool> NNPIBackend::transformPostLowering(
   changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
-  if (glow::nnpi::flags::DisablePrivateTransforms) {
+  if (!(glow::nnpi::flags::EnableCustomDSPKernels ||
+        glow::nnpi::flags::EnableCustomIAKernels)) {
     return changed;
   }
   changed |= transformPrivate(F, cctx);

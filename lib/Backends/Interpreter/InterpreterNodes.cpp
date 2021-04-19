@@ -1253,6 +1253,63 @@ void BoundInterpreterFunction::fwdBatchNormalizationInst(
 }
 
 //===----------------------------------------------------------------------===//
+//               LayerNormalization
+//===----------------------------------------------------------------------===//
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdLayerNormalizationInstFloatImpl(
+    const glow::LayerNormalizationInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  // input
+  auto inH = getWeightHandle<ElemTy>(I->getSrc());
+  auto scaleH = getWeightHandle<ElemTy>(I->getScale());
+  auto biasH = getWeightHandle<ElemTy>(I->getBias());
+  float epsilon = I->getEpsilon();
+
+  // output
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  auto N = I->getSrc()->dims()[0];
+  auto K = I->getSrc()->dims()[1];
+
+  std::vector<float> val(K);
+  for (dim_t n = 0; n < N; n++) {
+    // 1. mean = x.mean(dim=-1, keepdim=True)
+    float sum = 0.0f;
+    for (dim_t k = 0; k < K; k++) {
+      val[k] = inH.at({n, k});
+      sum += val[k];
+    }
+    float mean = sum / K;
+
+    // 2. var = ((x - mean) ** 2).mean(dim=-1, keepdim=True)
+    float diff_sqr_sum = 0.0f;
+    for (dim_t k = 0; k < K; k++) {
+      float diff = val[k] - mean;
+      diff_sqr_sum += diff * diff;
+    }
+    float var = diff_sqr_sum / K;
+
+    // 3. std = (var + epsilon).sqrt()
+    float std = std::sqrt(var + epsilon);
+
+    for (dim_t k = 0; k < K; k++) {
+      // 4. y = ((x - mean) / std) * scale + bias
+      float scale = scaleH.at({k});
+      float bias = biasH.at({k});
+      outW.at({n, k}) = ElemTy((((val[k] - mean) / std) * scale) + bias);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdLayerNormalizationInst(
+    const LayerNormalizationInst *I) {
+  dispatchFloatingPointImpl(fwdLayerNormalizationInstFloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
+//===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//
 template <class T>
@@ -4628,7 +4685,7 @@ DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
 #undef DEFINE_REDUCEMINMAX_INST_IMPL
 
 /// Macro to define ReduceMin/Max instruction.
-#define DEFINE_REDUCEMINMAX_INST(func, init)                                   \
+#define DEFINE_REDUCEMINMAX_INST(func, init_func)                              \
   void BoundInterpreterFunction::fwdBatched##func##Inst(                       \
       const glow::Batched##func##Inst *I) {                                    \
                                                                                \
@@ -4646,16 +4703,22 @@ DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
       eDestDims[axes[i]] = 1;                                                  \
     }                                                                          \
                                                                                \
-    dispatchArithmeticImpl(fwdBatched##func##InstImpl,                         \
-                           batch->getElementType(), batch, dest, eBatchDims,   \
-                           eDestDims, init);                                   \
+    if (batch->getElementType() == ElemKind::Int8QTy) {                        \
+      dispatchQuantizedImpl(                                                   \
+          fwdBatched##func##InstImpl, batch->getElementType(), batch, dest,    \
+          eBatchDims, eDestDims, std::numeric_limits<int8_t>::init_func());    \
+    } else {                                                                   \
+      dispatchArithmeticImpl(                                                  \
+          fwdBatched##func##InstImpl, batch->getElementType(), batch, dest,    \
+          eBatchDims, eDestDims, std::numeric_limits<int32_t>::init_func());   \
+    }                                                                          \
   }
 
 // Define fwdBatchedMinInst
-DEFINE_REDUCEMINMAX_INST(ReduceMin, std::numeric_limits<int32_t>::max())
+DEFINE_REDUCEMINMAX_INST(ReduceMin, max)
 
 // Define fwdBatchedMaxInst
-DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
+DEFINE_REDUCEMINMAX_INST(ReduceMax, min)
 
 #undef DEFINE_REDUCEMINMAX_INST
 
@@ -5999,12 +6062,22 @@ void BoundInterpreterFunction::fwdRescaleQuantizedInst(
 
 void BoundInterpreterFunction::fwdIntLookupTableInst(
     const IntLookupTableInst *I) {
-  auto srcH = getWeightHandle<int8_t>(I->getSrc());
-  auto destH = getWeightHandle<int8_t>(I->getDest());
-  auto mappingH = getWeightHandle<int8_t>(I->getMapping());
-
-  for (size_t i = 0, e = destH.size(); i < e; i++) {
-    destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 128);
+  if (I->getSrc()->getElementType() == ElemKind::Int8QTy) {
+    auto srcH = getWeightHandle<int8_t>(I->getSrc());
+    auto destH = getWeightHandle<int8_t>(I->getDest());
+    auto mappingH = getWeightHandle<int8_t>(I->getMapping());
+    for (size_t i = 0, e = destH.size(); i < e; i++) {
+      destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 128);
+    }
+  } else if (I->getSrc()->getElementType() == ElemKind::Int16QTy) {
+    auto srcH = getWeightHandle<int16_t>(I->getSrc());
+    auto destH = getWeightHandle<int16_t>(I->getDest());
+    auto mappingH = getWeightHandle<int16_t>(I->getMapping());
+    for (size_t i = 0, e = destH.size(); i < e; i++) {
+      destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 32768);
+    }
+  } else {
+    llvm_unreachable("Type not supported for IntLookupTable!");
   }
 }
 

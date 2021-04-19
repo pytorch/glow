@@ -192,6 +192,7 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
     return at::kBool;
   case ElemKind::Int8QTy:
     return at::kQInt8;
+  case ElemKind::Float64Ty:
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
   case ElemKind::UInt4FusedFP16QTy:
@@ -309,6 +310,10 @@ void PyTorchLoaderSettings::initSettings() {
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
   nominalBatchIdx = FLAGS_nominalBatchIdx;
   lazyCompile = FLAGS_lazyCompile;
+  use_dag_optimizer = glow::flags::UseDAGOptimizer;
+  apl_parallelization_alg =
+      glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
+  apl_num_parallel_chunks = glow::flags::DAGOptimizerNumParallelChunks;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -591,7 +596,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
   // There could be multiple glow fusion nodes created.
   glow::glowCustomFuse(graph, settings);
 
-  ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol);
+  ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
   auto e = shapeInf.run();
   if (e) {
     LOG(ERROR) << ERR_TO_STRING(std::move(e));

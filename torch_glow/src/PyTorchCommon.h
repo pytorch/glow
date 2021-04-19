@@ -149,6 +149,12 @@ public:
   /// adding networks to HostManager.
   bool saturateHost = false;
 
+  /// If saturateHost is enabled and saturateKDevices is greater than zero,
+  /// this is the number of devices that will be saturated.
+  /// If saturateKDevices is zero and saturateHost is enabled, all available
+  /// devices will be saturated.
+  unsigned saturateKDevices{0};
+
   /// If true then randomize the Constants in the Function loaded by
   /// PyTorchModelLoader.
   bool randomizeConstants = false;
@@ -198,6 +204,12 @@ public:
   /// Whether to enable device tracing from HostManger. NOTE: this must be set
   /// before network compilation.
   bool enableDeviceTracing = false;
+
+  /// Whethere to enable DAG optimizer
+  bool use_dag_optimizer = false;
+  /// Additional parameters to DAG optimizer
+  std::string apl_parallelization_alg = "ParallelizeCVHeuristicData";
+  int32_t apl_num_parallel_chunks = 2;
 };
 
 /// Represents different possible output types from to_glow modules.
