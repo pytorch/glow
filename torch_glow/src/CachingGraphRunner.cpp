@@ -99,6 +99,8 @@ void initializeCompiliationContextFromSettings(
         glow::flags::SparseNNPartitioningBalancePerfModel;
     cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
         glow::flags::SparseNNPartitioningPairLNWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
+        glow::flags::SparseNNPartitioningPairTileWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =

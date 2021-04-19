@@ -1050,21 +1050,25 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
 static void expandFrontier(Node *node, const NodeValue &value,
                            std::unordered_set<NodeValue> &frontier,
                            std::unordered_set<Node *> &traversedNodes,
-                           bool includeLN) {
+                           bool includeLN, bool includeTile) {
   traversedNodes.insert(node);
   bool covered = true;
   auto users = node->getUsers();
   for (auto j = users.begin(), f = users.end(); j != f; ++j) {
     Node *user = (*j).getUser();
     if (ClipNode *CN = llvm::dyn_cast<ClipNode>(user)) {
-      expandFrontier(user, CN->getResult(), frontier, traversedNodes,
-                     includeLN);
+      expandFrontier(user, CN->getResult(), frontier, traversedNodes, includeLN,
+                     includeTile);
     } else if ((includeLN) &&
                (user->getKind() ==
                 glow::Kinded::Kind::LayerNormalizationNodeKind)) {
       expandFrontier(user,
                      user->getNthResult(LayerNormalizationNode::ResultIdx),
-                     frontier, traversedNodes, includeLN);
+                     frontier, traversedNodes, includeLN, includeTile);
+    } else if ((includeTile) &&
+               (user->getKind() == glow::Kinded::Kind::TileNodeKind)) {
+      expandFrontier(user, user->getNthResult(TileNode::ResultIdx), frontier,
+                     traversedNodes, includeLN, includeTile);
     } else {
       covered = false;
     }
@@ -1079,7 +1083,7 @@ static void expandFrontier(Node *node, const NodeValue &value,
 template <typename SLSType>
 static Error appendSLSTable(SLSType *SLS, std::vector<SLSTableInfo> &slsTables,
                             bool doPerfModelBalance, Backend *backend,
-                            bool addLN) {
+                            bool addLN, bool addTile) {
   uint64_t cost = 1;
   uint64_t numBytesInTable =
       (uint64_t)SLS->getData().getType()->getSizeInBytes();
@@ -1091,10 +1095,10 @@ static Error appendSLSTable(SLSType *SLS, std::vector<SLSTableInfo> &slsTables,
     cost = (uint64_t)cost_d;
   }
   auto slsResult = SLS->getResult();
-
+  auto insertTile = addTile && (slsResult.dims()[0] == 1);
   std::unordered_set<NodeValue> frontier;
   std::unordered_set<Node *> neighbors;
-  expandFrontier(SLS, slsResult, frontier, neighbors, addLN);
+  expandFrontier(SLS, slsResult, frontier, neighbors, addLN, insertTile);
 
   // neighbors contains only successors; add all predecessors too.
   std::queue<Node *> preds;
@@ -1283,6 +1287,8 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   std::vector<SLSTableInfo> slsTables;
   partitionConfig.funcName = std::string(F->getName());
   VLOG(1) << "Function: " << std::string(F->getName()) << std::endl;
+  const bool addTile =
+      cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS;
   const bool addLN = cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS;
   const bool doPerfModelBalance =
       cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel;
@@ -1294,7 +1300,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   case Kinded::Kind::NODE_NAME_##Kind:                                         \
     RETURN_IF_ERR(appendSLSTable<NODE_NAME_>(llvm::cast<NODE_NAME_>(&node),    \
                                              slsTables, doPerfModelBalance,    \
-                                             backends[0], addLN));             \
+                                             backends[0], addLN, addTile));    \
     totalSLSTableSizes += slsTables.back().numBytesInTable;                    \
     continue;
 
