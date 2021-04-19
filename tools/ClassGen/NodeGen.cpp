@@ -1160,6 +1160,7 @@ int main(int argc, char **argv) {
   BB.newNode("GatherND")
       .addInput("Data")
       .addInput("Indices")
+      .addMember(MemberType::Unsigned, "BatchDims")
       .addResultFromCtorArg()
       .setDocstring(
           "Given Data tensor of rank r >= 1, Indices tensor of rank q >= 1 "

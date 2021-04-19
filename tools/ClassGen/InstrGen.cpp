@@ -1097,6 +1097,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
+      .addMember(MemberType::Unsigned, "BatchDims")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
       .autoIRGen();
 

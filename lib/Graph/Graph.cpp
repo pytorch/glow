@@ -2785,28 +2785,36 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
 }
 
 GatherNDNode *Function::createGatherND(llvm::StringRef name, NodeValue data,
-                                       NodeValue indices) {
+                                       NodeValue indices, unsigned_t batchDims) {
   auto dDims = data.dims();
   auto iDims = indices.dims();
-  int64_t lastIndicesDimension = iDims[iDims.size() - 1];
-  assert(dDims.size() > 0 && "data/input rank must be >= 1.");
-  assert(iDims.size() > 0 && "indices rank must be >= 1.");
-  assert(iDims[iDims.size() - 1] <= dDims.size() &&
-         "last dimension of indices can be at most rank of data/input");
+  size_t iDimLast = iDims.back();
 
-  int64_t outRank = dDims.size() + iDims.size() - lastIndicesDimension - 1;
-  std::vector<dim_t> outDimsGatherND(outRank);
-  size_t i = 0;
-  for (; i < iDims.size() - 1; i++) {
-    outDimsGatherND[i] = iDims[i];
+  // Validate the input dimensions.
+  assert(dDims.size() >= 1 && "Input data rank must be >= 1.");
+  assert(iDims.size() >= 1 && "Input indices rank must be >= 1.");
+  for (size_t idx = 0; idx < batchDims; ++idx) {
+    assert(dDims[idx] == iDims[idx] && "Batch dimensions of data and indices must be the same!");
   }
-  for (size_t j = lastIndicesDimension; j < dDims.size(); i++, j++) {
-    outDimsGatherND[i] = dDims[j];
-  }
+  assert(batchDims < std::min(dDims.size(), iDims.size()) && "The number of batch dimensions must be smaller than both the input data and indices rank!");
+  assert(iDimLast >= 1 && "Last dimension of indices must be at least 1!");
+  assert(iDimLast <= (dDims.size() - batchDims) && "Last dimension of indices must be at most rank of data without batch dimensions!");
 
-  auto outTy =
-      getParent()->uniqueTypeWithNewShape(data.getType(), outDimsGatherND);
-  return addNode(new GatherNDNode(name, outTy, data, indices));
+  // Compute the output dimensions.
+  size_t outRank = dDims.size() + iDims.size() - iDimLast - 1 - batchDims;
+  std::vector<dim_t> outDims(outRank);
+  size_t outIdx = 0;
+  for (size_t idx = 0; idx < batchDims; ++idx) {
+    outDims[outIdx++] = dDims[idx];
+  }
+  for (size_t idx = batchDims; idx < iDims.size() - 1; ++idx) {
+    outDims[outIdx++] = iDims[idx];
+  }
+  for (size_t idx = batchDims + iDimLast; idx < dDims.size(); idx++) {
+    outDims[outIdx++] = dDims[idx];
+  }
+  auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
+  return addNode(new GatherNDNode(name, outTy, data, indices, batchDims));
 }
 
 GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
