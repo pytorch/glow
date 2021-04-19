@@ -1219,6 +1219,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::sigmoid", "aten::sigmoid_"}, UNARY_NODE_LOADER(Sigmoid)},
       {{"aten::silu"}, UNARY_NODE_LOADER(Swish)},
       {{"aten::relu", "aten::relu_"}, UNARY_NODE_LOADER(Relu)},
+      {{"aten::leaky_relu", "aten::leaky_relu_"},
+       &PyTorchModelLoader::loadLeakyRelu},
       {{"aten::gelu"}, UNARY_NODE_LOADER(Gelu)},
       {{"aten::tanh", "aten::tanh_"}, UNARY_NODE_LOADER(Tanh)},
       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT},
@@ -4067,6 +4069,29 @@ Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {
   // loadView is just like Reshape, except reshape should call contiguous
   // for non-contiguous data and view should fail
   return PyTorchModelLoader::loadReshape(ptNode);
+}
+
+Error PyTorchModelLoader::loadLeakyRelu(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+
+  RETURN_ERR_IF_NOT(inputs.size() <= 3,
+                    "Expected at most 3 inputs to aten::leaky_relu");
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  float negativeSlope;
+  ASSIGN_VALUE_OR_RETURN_ERR(negativeSlope,
+                             to32Bit(iValToDouble(getGlowIValueForValue(
+                                 ptNode->namedInput("negative_slope")))));
+
+  auto *output = F_.createLeakyRELU("leaky_relu", input, negativeSlope);
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  RETURN_ERR(addValueMapping(outputs[0], output->getResult(), dtype));
 }
 
 Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {

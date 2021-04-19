@@ -538,6 +538,10 @@ private:
   /// \returns error on failure.
   Error loadRsub(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch leaky relu node.
+  /// \returns error on failure.
+  Error loadLeakyRelu(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch sum node.
   /// \returns error on failure.
   Error loadSum(const torch::jit::Node *ptNode);
