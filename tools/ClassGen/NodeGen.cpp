@@ -1035,6 +1035,12 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
 
+  BB.newNode("HardSwish")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Applies HardSwish to each element in the Input tensor.");
+
   BB.newNode("Gelu")
       .addInput("Input")
       .addResultFromCtorArg()
