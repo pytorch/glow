@@ -1195,6 +1195,47 @@ void BoundInterpreterFunction::fwdBatchNormalizationI8Impl(
     isCMinor = (channelIdx == 2);
   }
 
+  /*
+  auto str_arrayref = [](auto handle) {
+    std::ostringstream ss;
+    for (dim_t i=0; i<handle.size(); i++) {
+      ss << handle[i] << " ";
+    }
+    return ss.str();
+  };
+
+  auto str_raw = [](auto handle) {
+    std::ostringstream ss;
+    int sz = (handle.size() < 16)? handle.size() : 16;
+    for (dim_t i=0; i<sz; i++) {
+      ss << int(handle.raw(i)) << " ";
+    }
+    return ss.str();
+  };
+
+  auto str_1d = [](auto handle) {
+    std::ostringstream ss;
+    for (dim_t i=0; i<handle.size(); i++) {
+      ss << handle.at({i}) << " ";
+    }
+    return ss.str();
+  };
+
+  llvm::outs() << "----------------\n";
+  llvm::outs() << "name: " << I->getName() << "\n";
+  llvm::outs() << "idim: " << str_arrayref(inH.dims()) << "\n";
+  llvm::outs() << "inScale: " << inScale << "\n";
+  llvm::outs() << "inZero: " << inZero << "\n";
+  llvm::outs() << "outScale: " << outScale << "\n";
+  llvm::outs() << "outZero: " << outZero << "\n";
+  llvm::outs() << "weights: " << str_1d(scaleH) << "\n";
+  llvm::outs() << "bias: " << str_1d(biasH) << "\n";
+  llvm::outs() << "mean: " << str_1d(meanH) << "\n";
+  llvm::outs() << "var: " << str_1d(varH) << "\n";
+  llvm::outs() << "epsilon: " << epsilon << "\n";
+  llvm::outs() << "input: " << str_raw(inH) << "\n";
+  */
+
   // See qbatch_norm.cpp/compute_fused_params() for FBGEMM implementation
   std::vector<ParamTy> alpha(C), beta(C);
   for (dim_t c = 0; c < C; c++) {

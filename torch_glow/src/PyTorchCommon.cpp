@@ -86,7 +86,7 @@ DEFINE_string(backendSpecificOpts, "",
               "Comma separated list of key=value for building the "
               "BackendSpecificOptions map in BackendOptions in "
               "CompilationContext.");
-DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
+DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, true,
             "See PyTorchLoaderSettings");
 DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
 DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");

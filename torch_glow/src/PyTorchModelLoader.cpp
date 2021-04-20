@@ -2226,7 +2226,7 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
               ->getOutput();
 
       auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, lhs.dims(),
-                                              outScale, outOffset);
+                                              outScale, outOffset - UINT8_TO_INT8_SHIFT);
 
       glow::MulNode *qmul =
           F_.createMul("quantized_mul_scalar", outTy, lhs, rhs);
@@ -4872,13 +4872,60 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
     opName = "bn2d_quant";
   }
 
+  llvm::outs() << "BN name: " << ptNode->scopeName() << " outOffset: " << outOffset << " bias size: " << bias.dims() << "\n";
+
+  auto inDims = input.dims();
+  std::vector<dim_t> outDims(input.dims().size());
+  /*
+  if (numDims == 3) {
+    input = F_.createTranspose(opName + "_input_transposed", input, NCTHW2NTHWC);
+    outDims = {inDims[0], inDims[2], inDims[3], inDims[4], inDims[1]};
+    channelIdx = 4;
+  } else { // Handle 1D case
+    input = F_.createTranspose(opName + "_input_transposed", input, NCHW2NHWC);
+    outDims = {inDims[0], inDims[2], inDims[3], inDims[1]};
+    channelIdx = 3;
+  }
+
+  if (input.getType()->getElementType() == ElemKind::UInt8QTy) {
+    outOffset = outOffset - UINT8_TO_INT8_SHIFT;
+  }
+
   glow::TypeRef outTy =
-      F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, input.dims(),
-                                 outScale, outOffset - UINT8_TO_INT8_SHIFT);
+    F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims,
+                                outScale, outOffset);
+
+  glow::BatchNormalizationNode *bn =
+      F_.createBatchNormalization(opName, outTy, input, biasC, weightsC, meanC,
+                                  varC, channelIdx, epsilon, momentum);
+  glow::NodeValue output = bn->getResult();
+
+  if (numDims == 3) {
+    output =
+        F_.createTranspose(opName + "_output_transposed", bn, NTHWC2NCTHW)
+            ->getResult();
+  } else {
+    output =
+        F_.createTranspose(opName + "_output_transposed", bn, NHWC2NCHW)
+            ->getResult();
+  }
+  return Expected<NodeValue>(output);
+  */
+
+  glow::TypeRef outTy =
+    F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, inDims,
+                                outScale, outOffset - UINT8_TO_INT8_SHIFT);
   glow::BatchNormalizationNode *bn =
       F_.createBatchNormalization(opName, outTy, input, biasC, weightsC, meanC,
                                   varC, channelIdx, epsilon, momentum);
   return Expected<NodeValue>(bn->getResult());
+
+  /*
+  glow::BatchNormalizationNode *bn =
+      F_.createBatchNormalization(opName, outTy, input, biasC, weightsC, meanC,
+                                  varC, channelIdx, epsilon, momentum);
+  return Expected<NodeValue>(bn->getResult());
+  */
 }
 
 Error PyTorchModelLoader::loadQuantizedBatchNorm2d(
