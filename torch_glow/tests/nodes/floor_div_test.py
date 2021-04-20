@@ -84,6 +84,9 @@ class TestFloorDiv(utils.TorchGlowTestCase):
         ]
     )
     def test_floor_div(self, _, module, left, right):
-        utils.compare_tracing_methods(
-            module, left, right, fusible_ops={"aten::floor_divide"}
+        utils.run_comparison_tests(
+            module,
+            (left, right),
+            fusible_ops={"aten::floor_divide"},
+            skip_for_backends="NNPI",
         )

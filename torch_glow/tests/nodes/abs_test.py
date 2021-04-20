@@ -17,7 +17,7 @@ class TestAbs(utils.TorchGlowTestCase):
         """Basic test of the PyTorch Abs Node on Glow."""
 
         x = torch.randn(10)
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAbsModule(),
             x,
             fusible_ops={"aten::abs"},
@@ -27,7 +27,7 @@ class TestAbs(utils.TorchGlowTestCase):
         """Test multidimensional tensor for the PyTorch Abs Node on Glow."""
 
         x = torch.randn(2, 3, 5)
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAbsModule(),
             x,
             fusible_ops={"aten::abs"},

@@ -14,17 +14,20 @@ class SimpleAvgPool2dModule(torch.nn.Module):
 
     def forward(self, inputs):
         return F.avg_pool2d(
-            inputs, self.kernel_size, padding=self.padding, stride=self.stride
+            inputs + inputs, self.kernel_size, padding=self.padding, stride=self.stride
         )
 
 
 class TestAvgPool2d(utils.TorchGlowTestCase):
     def test_avg_pool2d_basic(self):
         """Basic test of the PyTorch avg_pool2d Node on Glow."""
+
         inputs = torch.randn(1, 4, 5, 5)
 
-        utils.compare_tracing_methods(
-            SimpleAvgPool2dModule(3), inputs, fusible_ops={"aten::avg_pool2d"}
+        utils.run_comparison_tests(
+            SimpleAvgPool2dModule(2),
+            inputs,
+            fusible_ops={"aten::avg_pool2d"},
         )
 
     def test_avg_pool2d_with_args(self):
@@ -32,6 +35,9 @@ class TestAvgPool2d(utils.TorchGlowTestCase):
 
         inputs = torch.randn(1, 4, 10, 10)
 
-        utils.compare_tracing_methods(
-            SimpleAvgPool2dModule(3, stride=7), inputs, fusible_ops={"aten::avg_pool2d"}
+        utils.run_comparison_tests(
+            SimpleAvgPool2dModule(3, stride=7),
+            inputs,
+            fusible_ops={"aten::avg_pool2d"},
+            fp16vfp16_atol=1e-3,
         )
