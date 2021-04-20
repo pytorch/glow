@@ -147,9 +147,8 @@ public:
   /// \p floatVal using the given number of integer bits \p intBits.
   FixedPointUInt32(float floatVal, unsigned intBits) {
     assert(floatVal >= 0 && "Floating point value must be positive!");
-    assert(intBits > 0 && intBits < 32 &&
+    assert(intBits >= 0 && intBits <= 32 &&
            "Integer bits must be between 0 and 32");
-
     val_ = floatingToFixedPoint(floatVal, 32 - intBits);
     intBits_ = intBits;
     fracBits_ = 32 - intBits_;
@@ -168,34 +167,35 @@ public:
   unsigned getFracBits() const { return fracBits_; }
 
 private:
-  // \p number to convert
-  // \returns the minimum number of bits for integer part of the
-  // fixed point representation
+  // \p number.
+  // \returns the minimum number of bits representing the 
+  // integer part of the fixed point representation of a 
+  // floating point number.
   uint32_t minBitsIntegerPart(float number) {
-
+    assert(number >= 0 && "Floating point value must be positive!");
     uint32_t aux = (uint32_t)number;
     uint32_t integerPart = 0;
 
-    while (aux / 2 != 0) {
+    while (aux / 2 != 0 || aux % 2 != 0) {
       integerPart += 1;
       aux /= 2;
     }
 
-    assert(integerPart >= 0 && integerPart < 32 &&
+    assert(integerPart >= 0 && integerPart <= 32 &&
            "Overflow caused by input number\n");
-    return integerPart + 1;
+    return integerPart;
   }
 
+  // \p elem.
+  // \p fracPart representing number of bits for fixed point representation.
   // \returns the fixed point representation of the input floating point number
-  // using the format Q(32- fracPart).fracPart
+  // using the format Q(32- fracPart).fracPart.
   uint32_t floatingToFixedPoint(float elem, uint32_t fracPart) {
-
+    assert(elem >= 0 && "Floating point value must be positive!");
     double result = (double)elem * (double)std::exp2((double)fracPart);
-
     assert(result >= (double)std::numeric_limits<uint32_t>::min() &&
            result <= (double)std::numeric_limits<uint32_t>::max() &&
            "Float to fix point conversion overflow\n");
-
     return round(result);
   }
 

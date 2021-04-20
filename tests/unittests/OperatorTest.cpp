@@ -18520,15 +18520,11 @@ TEST_P(OperatorTest, SoftMaxI8QTy) {
 
   auto *inputTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.129249, 3);
   auto *outputTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.003922, -128);
-
   auto *input = mod_.createPlaceholder(inputTy, "input", false);
-
   bindings_.allocate(input)->getHandle<int8_t>() = {68, -128, 99,  -101, 127,
                                                     -5, 104,  -83, -111, 44};
-
   auto *selected =
       mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
-
   auto *Pool = F_->createSoftMax("pool", input, selected, outputTy);
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
@@ -18538,10 +18534,8 @@ TEST_P(OperatorTest, SoftMaxI8QTy) {
 
   auto result = bindings_.get(S->getPlaceholder());
   Tensor out(ElemKind::Int8QTy, {1, 10}, 0.003922, -128);
-
   out.getHandle<int8_t>() = {-128, -128, -122, -128, 108,
                              -128, -116, -128, -128, -128};
-
   EXPECT_TRUE(out.isEqual(*result, 0));
 }
 

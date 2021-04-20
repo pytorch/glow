@@ -2923,64 +2923,50 @@ void libjit_softmax_f(const float *inW, float *outW, const dim_t *idim,
   } // N
 }
 
-// multiply two fixed point number
-uint64_t multiply_fix_point(uint32_t a, uint32_t b) {
-  uint64_t res = (uint64_t)a * (uint64_t)b;
-  return res;
-}
-
-// divide 2 fixed point number, indicating the fixed point format of the result
-uint32_t div_fixed_point(uint32_t x, uint32_t y,
-                         uint32_t fixed_point_position) {
-  return ((uint64_t)x * (1 << fixed_point_position)) / y;
-}
-
 void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
                        const uint32_t *expData, int32_t outputOffset,
                        uint32_t invScale, uint32_t integerPart,
                        uint32_t invScalePoint) {
-
   for (int j = 0; j < dims[0]; j++) {
     uint32_t sum = 0;
     int8_t max = std::numeric_limits<int8_t>::min();
     uint32_t division;
     int point, size;
 
-    // find max value
+    // Find max value.
     for (uint32_t i = 0; i < dims[1]; i++) {
-      max = MAX(max, inW[libjit_getXY(dims, j, i)]);
+      max = MAX(max, *inW);
+      inW++;
     }
+    inW -= dims[1];
 
-    // compute the sum of exponentials
+    // Compute the sum of exponentials.
     for (int i = 0; i < dims[1]; i++) {
-      sum += (expData[inW[libjit_getXY(dims, j, i)] + 255 - max] >>
-              (integerPart - 1));
+      sum += (expData[*inW++ + 255 - max] >> (integerPart - 1));
     }
+    inW -= dims[1];
 
     /*
-     * compute 1/outputScale * 1 / sum, where sum is computed above
-     * align point for both operands
+     * Compute 1 / outputScale * 1 / sum, where sum is computed above
+     * align point for both operands.
      */
     if ((32 - integerPart) >= (32 - invScalePoint)) {
-      division = div_fixed_point(invScale, sum >> (invScalePoint - integerPart),
-                                 (32 - invScalePoint));
+      division = (uint64_t)invScale * (1 << (32 - invScalePoint)) / sum >>
+                 (invScalePoint - integerPart);
       size = (32 - invScalePoint);
     } else {
-      division = div_fixed_point(invScale >> (integerPart - invScalePoint), sum,
-                                 (32 - integerPart));
+      division = (uint64_t)(invScale >> (integerPart - invScalePoint)) *
+                 (1 << (32 - integerPart)) / sum;
       size = (32 - integerPart);
     }
 
     point = size + 31;
-    // multiply with exp and bring the result into the right range
+    // Multiply with exp and bring the result into the right range.
     for (int i = 0; i < dims[1]; i++) {
-      uint32_t index = inW[libjit_getXY(dims, j, i)] + 255 - max;
-
-      uint64_t mul = multiply_fix_point(division, expData[index]);
-
+      uint32_t index = *inW++ + 255 - max;
+      uint64_t mul = (uint64_t)division * (uint64_t)expData[index];
       int32_t res = (int32_t)(mul >> point) + outputOffset;
-
-      outW[libjit_getXY(dims, j, i)] = MAX(MIN(res, 127), -128);
+      *outW++ = MAX(MIN(res, 127), -128);
     }
   }
 }
