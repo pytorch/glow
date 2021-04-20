@@ -2329,7 +2329,6 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
 
   bool validWeight = false;
   bool useLengthAsOffset = false;
-  glow::TypeRef tr(nullptr);
   switch (NI.getKind()) {
 
   case Kinded::Kind::SparseLengthsSumNodeKind:
@@ -2534,4 +2533,17 @@ Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
                     strFormat("Estimate not supported for Node kind %s",
                               Kinded::getKindName(node->getKind())));
   return returnCost;
+}
+
+Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
+NNPIBackend::compileFunctions(std::vector<Function *> &functions,
+  llvm::StringMap<BackendOptions> &optsMap) const {
+  if (functions.size() > 1) {
+    std::pair<std::string, std::string> wtsPoolOption(
+        "NNPI_disableWeightsInPool", "1");
+    for (auto it = functions.begin(), end = functions.end(); it != end; ++it) {
+      optsMap[(*it)->getName()].backendSpecificOpts.insert(wtsPoolOption);
+    }
+  }
+  return (Backend::compileFunctions(functions, optsMap));
 }

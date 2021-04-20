@@ -348,6 +348,13 @@ public:
                       "NNPI_ENABLE_CONV_SPATIAL_SPLITTER", "0");
 #endif
 
+  /// Disable weigths from memory pool.
+  /// When this flag is true, weights will not be part of memory pool.
+  /// This helps runtime to reuse weights based on SHA.
+  DECLARE_NNPI_OPTION(disableWeightsInPool, bool, "disableWeightsInPool",
+                      "Don't include weights in memory pool.",
+                      "NNPI_WEIGHTS_OFF_MEM_POOL", "0");
+
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
@@ -384,6 +391,7 @@ public:
     INIT_NNPI_OPTIONS(enableLayerSplitter, parameters);
     INIT_NNPI_OPTIONS(enableConvSpatialSplitter, parameters);
 #endif
+    INIT_NNPI_OPTIONS(disableWeightsInPool, parameters);
   }
 
   virtual llvm::StringRef getOptionsName() const override {
