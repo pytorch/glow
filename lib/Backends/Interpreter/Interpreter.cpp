@@ -738,6 +738,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     // These work regardless of the underlying type.
     return true;
 
+  case Kinded::Kind::GaussianFillNodeKind:
+    return NI.getOutElemTy(GaussianFillNode::ResultIdx) == ElemKind::Float16Ty;
+
   case Kinded::Kind::NonMaxSuppressionNodeKind:
     return NI.getInElemTy(NonMaxSuppressionNode::BoxesIdx) ==
                ElemKind::FloatTy &&

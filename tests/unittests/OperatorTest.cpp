@@ -18798,6 +18798,36 @@ TEST_P(OperatorTest, LengthsRangeFill) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+/// Test GaussianFill
+TEST_P(OperatorTest, GaussianFill) {
+  CHECK_IF_ENABLED();
+  auto mean = 0.;
+  auto scale = 1.;
+  auto seed = 5.;
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 4, 5}, "input", false);
+  auto inputH = bindings_.allocate(input)->getHandle<int64_t>();
+  inputH.randomize(-10, 10, mod_.getPRNG());
+
+  auto *GF = F_->createGaussianFill("GF", input, mean, scale, seed);
+  auto *S = F_->createSave("save", GF);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+  EXPECT_EQ(result.dims(), inputH.dims());
+  auto resultH = result.getHandle<float16_t>();
+  float16_t resultMean = 0;
+  auto n = resultH.actualSize();
+  for (size_t i = 0; i < n; i++) {
+    resultMean += resultH.raw(i);
+  }
+  resultMean /= n;
+  EXPECT_NEAR(mean, resultMean, scale);
+}
+
 /// Helper for testing BatchOneHot with different \p DTy.
 template <typename DataType>
 void batchOneHotTest(glow::PlaceholderBindings &bindings, glow::Module &mod,

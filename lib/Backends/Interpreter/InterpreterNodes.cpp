@@ -28,6 +28,7 @@
 #include <chrono>
 #include <cmath>
 #include <numeric>
+#include <random>
 
 #ifdef WIN32
 #include <corecrt_math_defines.h>
@@ -5576,6 +5577,16 @@ void BoundInterpreterFunction::fwdLengthsRangeFillInst(
     for (int32_t j = 0, f = lengthsH.at({i}); j < f; j++) {
       resultH.at({curIdx++}) = j;
     }
+  }
+}
+
+void BoundInterpreterFunction::fwdGaussianFillInst(const GaussianFillInst *I) {
+  std::mt19937 rnd(I->getSeed());
+  std::normal_distribution<float> dist(I->getMean(), I->getScale());
+  auto outT = getTensor(I->getDest());
+  auto outH = outT->getHandle<float16_t>();
+  for (auto &elem : outH) {
+    elem = dist(rnd);
   }
 }
 

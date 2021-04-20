@@ -976,6 +976,19 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//
+  //                Fillers
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("GaussianFill")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::Float, "Mean")
+      .addMember(MemberType::Float, "Scale")
+      .addMember(MemberType::Float, "Seed")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Float16Ty"});
+
+  //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
   BB.newInstr("Relu")

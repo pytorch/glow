@@ -2574,6 +2574,14 @@ Function::createLengthsRangeFill(llvm::StringRef name, NodeValue lengths,
   return addNode(new LengthsRangeFillNode(name, outTy, lengths));
 }
 
+GaussianFillNode *Function::createGaussianFill(llvm::StringRef name,
+                                               NodeValue input, float mean,
+                                               float scale, float seed) {
+  auto outTy = getParent()->uniqueType(ElemKind::Float16Ty, input.dims());
+
+  return addNode(new GaussianFillNode(name, outTy, input, mean, scale, seed));
+}
+
 SparseToDenseNode *Function::createSparseToDense(llvm::StringRef name,
                                                  NodeValue indices,
                                                  NodeValue values,
