@@ -37,6 +37,11 @@ class TestCumSum(utils.TorchGlowTestCase):
             lambda: ("6x5x4x3_-2", torch.randn(6, 5, 4, 3), -2),
             lambda: ("6x5x4x3_-3", torch.randn(6, 5, 4, 3), -3),
             lambda: ("6x5x4x3_-4", torch.randn(6, 5, 4, 3), -4),
+            lambda: (
+                "3x4_0,int64",
+                torch.torch.randint(-10, 10, (3, 4), dtype=torch.int64),
+                0,
+            ),
         ]
     )
     def test_cumsum(self, _, tensor, dim):

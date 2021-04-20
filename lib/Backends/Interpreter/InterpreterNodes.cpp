@@ -2559,7 +2559,7 @@ void BoundInterpreterFunction::fwdGatherRangesInst(
   }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename IndicesElemTy>
 void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
     const glow::ScatterDataInst *I) {
   Tensor *dataT = getTensor(I->getData());
@@ -2571,7 +2571,7 @@ void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
   const dim_t dataSliceSize = slicesT->size() / slicesT->dims()[0] *
                               slicesT->getType().getElementSize();
 
-  auto IH = indicesT->getHandle<int64_t>();
+  auto IH = indicesT->getHandle<IndicesElemTy>();
   // For each index, copy from the slice at that index into the location in
   // data given the offset from the indices tensor.
   for (dim_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
@@ -2586,7 +2586,7 @@ void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
   }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename IndicesElemTy>
 void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
     const glow::ScatterDataInst *I) {
   Tensor *dataT = getTensor(I->getData());
@@ -2598,7 +2598,7 @@ void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
 
   const size_t numSlices = slicesT->size() / slicesT->dims()[0];
 
-  auto IH = indicesT->getHandle<int64_t>();
+  auto IH = indicesT->getHandle<IndicesElemTy>();
   // For each index, copy from the slice at that index into the location in
   // data given the offset from the indices tensor.
   assert(indicesT->dims().size() == 2 &&
@@ -2616,7 +2616,7 @@ void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
   }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename IndicesElemTy>
 void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
     const glow::ScatterDataInst *I) {
   Tensor *dataT = getTensor(I->getData());
@@ -2633,7 +2633,7 @@ void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
   TensorQuantizationParams sliceQ{slicesT->getType().getScale(),
                                   slicesT->getType().getOffset()};
 
-  auto IH = indicesT->getHandle<int64_t>();
+  auto IH = indicesT->getHandle<IndicesElemTy>();
   // For each index, copy from the slice at that index into the location in
   // data given the offset from the indices tensor.
   assert(indicesT->dims().size() == 2 &&
@@ -2657,13 +2657,25 @@ void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
 
 void BoundInterpreterFunction::fwdScatterDataInst(
     const glow::ScatterDataInst *I) {
+  const auto indicesAreInt64 =
+      I->getIndices()->getElementType() == ElemKind::Int64ITy;
+
   if (I->getCumulative()) {
     switch (I->getData()->getElementType()) {
     case ElemKind::FloatTy:
-      fwdScatterDataInstAddFloatImpl<float>(I);
+      if (indicesAreInt64) {
+        fwdScatterDataInstAddFloatImpl<float, int64_t>(I);
+      } else {
+        fwdScatterDataInstAddFloatImpl<float, int32_t>(I);
+      }
+
       break;
     case ElemKind::Int8QTy:
-      fwdScatterDataInstAddQuantizedImpl<int8_t>(I);
+      if (indicesAreInt64) {
+        fwdScatterDataInstAddQuantizedImpl<int8_t, int64_t>(I);
+      } else {
+        fwdScatterDataInstAddQuantizedImpl<int8_t, int32_t>(I);
+      }
       break;
     default:
       llvm_unreachable("Unsupported type for ScatterData.");
@@ -2671,10 +2683,18 @@ void BoundInterpreterFunction::fwdScatterDataInst(
   } else {
     switch (I->getData()->getElementType()) {
     case ElemKind::FloatTy:
-      fwdScatterDataInstCopyImpl<float>(I);
+      if (indicesAreInt64) {
+        fwdScatterDataInstCopyImpl<float, int64_t>(I);
+      } else {
+        fwdScatterDataInstCopyImpl<float, int32_t>(I);
+      }
       break;
     case ElemKind::Int8QTy:
-      fwdScatterDataInstCopyImpl<int8_t>(I);
+      if (indicesAreInt64) {
+        fwdScatterDataInstCopyImpl<int8_t, int64_t>(I);
+      } else {
+        fwdScatterDataInstCopyImpl<int8_t, int32_t>(I);
+      }
       break;
     default:
       llvm_unreachable("Unsupported type for ScatterData.");
@@ -5114,8 +5134,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
-  auto OFFH = offsets->getHandle<int64_t>();
+  auto IH = indices->getHandle<int32_t>();
+  auto OFFH = offsets->getHandle<int32_t>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments
@@ -5190,7 +5210,7 @@ void BoundInterpreterFunction::fwdEmbeddingInstImpl(Tensor *wtT, Tensor *indT,
 
   auto WH = wtT->getHandle<ElemTy>();
   auto OH = fOutT.getHandle<ElemTy>();
-  auto IH = fIndT.getHandle<int64_t>();
+  auto IH = fIndT.getHandle<int32_t>();
 
   for (dim_t i = 0; i < indLen; i++) {
     dim_t index = IH.at(i);
@@ -5451,8 +5471,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
-  auto OFFH = offsets->getHandle<int64_t>();
+  auto IH = indices->getHandle<int32_t>();
+  auto OFFH = offsets->getHandle<int32_t>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments

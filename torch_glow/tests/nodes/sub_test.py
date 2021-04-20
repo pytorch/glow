@@ -46,6 +46,12 @@ class TestSub(utils.TorchGlowTestCase):
                 torch.tensor(20),
                 True,
             ),
+            lambda: (
+                "int64",
+                SimpleSubtractModel(),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+            ),
         ]
     )
     def test_subtract(self, _, module, tensor, other, skip_to_glow=False):

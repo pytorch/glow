@@ -1273,7 +1273,7 @@ static void testRoiAlign(
     ExecutionEngine &EE, ElemKind ElemTy, llvm::ArrayRef<dim_t> featureMapDims,
     llvm::ArrayRef<DataType> featureMap, llvm::ArrayRef<dim_t> boxesDims,
     llvm::ArrayRef<DataType> boxes, llvm::ArrayRef<dim_t> batchIndicesDims,
-    llvm::ArrayRef<int64_t> batchIndices, PoolingMode mode, dim_t outputHeight,
+    llvm::ArrayRef<int32_t> batchIndices, PoolingMode mode, dim_t outputHeight,
     dim_t outputWidth, uint32_t samplingRatio, float spatialScale, bool aligned,
     llvm::ArrayRef<DataType> expectedValues, float comparisonThreshold,
     bool rotated) {
@@ -1285,8 +1285,8 @@ static void testRoiAlign(
   bindings.allocate(boxesT)->getHandle<DataType>() = boxes;
 
   auto *batchIndicesT = mod.createPlaceholder(
-      ElemKind::Int64ITy, batchIndicesDims, "batchIndices", false);
-  bindings.allocate(batchIndicesT)->getHandle<int64_t>() = batchIndices;
+      ElemKind::Int32ITy, batchIndicesDims, "batchIndices", false);
+  bindings.allocate(batchIndicesT)->getHandle<int32_t>() = batchIndices;
 
   auto *LN = F.createROIAlign("ROIAlign", featureMapT, boxesT, batchIndicesT,
                               outputHeight, outputWidth, samplingRatio,
@@ -1324,7 +1324,7 @@ static void roiAlignBasicTest(PlaceholderBindings &bindings, Module &mod,
   llvm::SmallVector<DataType, 8> boxes = {1., 1., 3., 3., 1., 1., 3., 3.};
 
   llvm::SmallVector<dim_t, 1> batchIndicesDims = {2};
-  llvm::SmallVector<int64_t, 2> batchIndices = {1, 0};
+  llvm::SmallVector<int32_t, 2> batchIndices = {1, 0};
 
   llvm::SmallVector<DataType, 12> expectedValues = {
       9, 1, 10, 1, 14, 1, 15, 1, 1, 9, 1, 10, 1, 14, 1, 15.};
@@ -1360,7 +1360,7 @@ roiAlignWithAlignedCoordinatesTest(PlaceholderBindings &bindings, Module &mod,
   llvm::SmallVector<DataType, 5> boxes = {0.0, 0.4, 4.3, 2.9};
 
   llvm::SmallVector<dim_t, 1> batchIndicesDims = {1};
-  llvm::SmallVector<int64_t, 1> batchIndices = {0};
+  llvm::SmallVector<int32_t, 1> batchIndices = {0};
 
   llvm::SmallVector<DataType, 9> expectedValues = {
       0.1287, 0.2650, 0.4083, 0.1288, 0.2650, 0.4083, 0.1287, 0.2650, 0.4083};
@@ -1405,7 +1405,7 @@ static void roiAlignBatchIndexInBoxesTensorTest(PlaceholderBindings &bindings,
       0., 1.4748696, 2.4069107,  4.1870456, 4.6166725};
 
   llvm::SmallVector<dim_t, 1> batchIndicesDims = {1};
-  llvm::SmallVector<int64_t, 1> batchIndices = {1};
+  llvm::SmallVector<int32_t, 1> batchIndices = {1};
 
   llvm::SmallVector<DataType, 18> expectedValues = {
       -1.1747, -0.3246, 0.0591,  -0.3049, 0.1516,  0.1917,
@@ -1487,10 +1487,10 @@ TEST_P(OperatorStatelessTest,
                         mod);
 
         llvm::SmallVector<dim_t, 1> batchIndicesDims = {1};
-        llvm::SmallVector<int64_t, 1> batchIndices = {1};
+        llvm::SmallVector<int32_t, 1> batchIndices = {1};
         auto *batchIndicesT = mod.createPlaceholder(
-            ElemKind::Int64ITy, batchIndicesDims, "batch_indices", false);
-        bindings.allocate(batchIndicesT)->getHandle<int64_t>() = batchIndices;
+            ElemKind::Int32ITy, batchIndicesDims, "batch_indices", false);
+        bindings.allocate(batchIndicesT)->getHandle<int32_t>() = batchIndices;
 
         auto *R = F->createROIAlign(
             "roi_align", featureMapT, boxesT, batchIndicesT, pooled_H, pooled_W,
@@ -1620,7 +1620,7 @@ static void roiAlignC2BatchedTest(PlaceholderBindings &bindings, Module &mod,
       1.2294500e+00, 1.8630254e+00, 2.9256778e+00, 3.1924551e+00};
 
   llvm::SmallVector<dim_t, 1> batchIndicesDims = {4};
-  llvm::SmallVector<int64_t, 4> batchIndices = {2, 1, 0, 1};
+  llvm::SmallVector<int32_t, 4> batchIndices = {2, 1, 0, 1};
 
   llvm::SmallVector<DataType, 12> expectedValues = {
       -6.5894896e-01, 5.6539643e-01,  1.0041733e+00,
@@ -1734,7 +1734,7 @@ static void roiAlignRotatedBatchIndexInBoxesTensorTest(
 
   // Unused
   llvm::SmallVector<dim_t, 1> batchIndicesDims = {4};
-  llvm::SmallVector<int64_t, 1> batchIndices = {42, 42, 42, 42};
+  llvm::SmallVector<int32_t, 1> batchIndices = {42, 42, 42, 42};
 
   llvm::SmallVector<DataType, 18> expectedValues = {
       -1.2753072977e+00, 1.1022174835e+01,  2.8559112549e+00,
@@ -6406,12 +6406,12 @@ TEST_P(OperatorTest, ScatterData) {
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 1}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
   bindings_.allocate(data)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
   auto *R = F_->createScatterData("scatterdata", data, indices, slices);
@@ -6441,12 +6441,12 @@ TEST_P(OperatorTest, ScatterDataCumulative) {
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4, 1}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {4, 2}, "slices", false);
 
   bindings_.allocate(data)->getHandle() = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 2, 2, 3};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {1, 2, 2, 3};
   bindings_.allocate(slices)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8};
 
   auto *R = F_->createScatterData("scatterdata", data, indices, slices,
@@ -6477,12 +6477,12 @@ TEST_P(OperatorTest, ScatterDataQuantized) {
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 1}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
   bindings_.allocate(data)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
   auto qParams = glow::quantization::chooseQuantizationParams({-11, 11});
@@ -6525,7 +6525,7 @@ TEST_P(OperatorTest, ScatterDataNDimensionalSimple) {
   // Result = {{1,2},{-3,-4},{5,6}}
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 2}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2}, "slices", false);
 
@@ -6533,7 +6533,7 @@ TEST_P(OperatorTest, ScatterDataNDimensionalSimple) {
   std::vector<float> init(6);
   std::iota(init.begin(), init.end(), 1);
   bindings_.allocate(data)->getHandle() = init;
-  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 0, 1, 1};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {1, 0, 1, 1};
   bindings_.allocate(slices)->getHandle() = {-3., -4.};
   auto *R = F_->createScatterData("scatterdata", data, indices, slices);
 
@@ -6570,7 +6570,7 @@ TEST_P(OperatorTest, ScatterDataNDimensional) {
   auto *data =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 4, 4, 3}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 2}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 4, 3}, "slices", false);
 
@@ -6578,7 +6578,7 @@ TEST_P(OperatorTest, ScatterDataNDimensional) {
   std::vector<float> init(2 * 4 * 4 * 3);
   std::iota(init.begin(), init.end(), 0);
   bindings_.allocate(data)->getHandle() = init;
-  bindings_.allocate(indices)->getHandle<int64_t>() = {0, 3, 1, 1};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {0, 3, 1, 1};
   std::vector<float> initUpdates;
   for (int32_t i = -1; i > -25; i--) {
     initUpdates.push_back(static_cast<float>(i));
@@ -6630,12 +6630,12 @@ TEST_P(OperatorTest, ScatterAddQuantized) {
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 1}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
   bindings_.allocate(data)->getHandle() = {1, 2, -3, -8, 5, 6, 7, 8, 9, 10};
-  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {3, -8, -7, 8};
 
   auto qParams = glow::quantization::chooseQuantizationParams({-11, 11});
@@ -6679,7 +6679,7 @@ TEST_P(OperatorTest, ScatterAddNDimensionalSimple) {
   // Result = {{1,2},{0,0},{5,6}}
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 2}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2}, "slices", false);
 
@@ -6689,7 +6689,7 @@ TEST_P(OperatorTest, ScatterAddNDimensionalSimple) {
     init.push_back(static_cast<float>(i));
   }
   bindings_.allocate(data)->getHandle() = init;
-  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 0, 1, 1};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {1, 0, 1, 1};
   bindings_.allocate(slices)->getHandle() = {-3., -4.};
   auto *R = F_->createScatterData("scatteradd", data, indices, slices,
                                   /*Cumulative*/ true);
@@ -6718,7 +6718,7 @@ TEST_P(OperatorTest, ScatterAddNDimensionalDuplicatingIndices) {
   // Result = {{1,2},{-3,-4},{5,6}}
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4, 2}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {4}, "slices", false);
 
@@ -6728,7 +6728,7 @@ TEST_P(OperatorTest, ScatterAddNDimensionalDuplicatingIndices) {
     init.push_back(static_cast<float>(i));
   }
   bindings_.allocate(data)->getHandle() = init;
-  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 0, 1, 1, 1, 0, 1, 1};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {1, 0, 1, 1, 1, 0, 1, 1};
   bindings_.allocate(slices)->getHandle() = {-3., -4., -3., -4.};
   auto *R = F_->createScatterData("scatteradd", data, indices, slices,
                                   /*Cumulative*/ true);
@@ -15388,16 +15388,16 @@ static void addEmbeddingBagPartialInputs(
 
   if (hasEndOffset) {
     Tensor weightsTensorReal(DTy, {8});
-    Tensor indicesTensorReal(ElemKind::Int64ITy, {8});
-    Tensor offsetsTensorReal(ElemKind::Int64ITy, {5});
+    Tensor indicesTensorReal(ElemKind::Int32ITy, {8});
+    Tensor offsetsTensorReal(ElemKind::Int32ITy, {5});
 
     weightsTensorReal.getHandle<DataType>() = {
         3, 1, 0, 0, 0, 0, 2, -0.5,
     };
-    indicesTensorReal.getHandle<int64_t>() = {
+    indicesTensorReal.getHandle<int32_t>() = {
         1, 0, 2, 0, 1, 2, 2, 0,
     };
-    offsetsTensorReal.getHandle<int64_t>() = {
+    offsetsTensorReal.getHandle<int32_t>() = {
         0, 3, 3, 6,
         8, // extra end offset
     };
@@ -15405,9 +15405,9 @@ static void addEmbeddingBagPartialInputs(
     if (partialInput) {
       weights = mod.createPlaceholder(DTy, {20}, "weights", false);
       indices =
-          mod.createPlaceholder(ElemKind::Int64ITy, {20}, "indices", false);
+          mod.createPlaceholder(ElemKind::Int32ITy, {20}, "indices", false);
       offsets =
-          mod.createPlaceholder(ElemKind::Int64ITy, {6}, "offsets", false);
+          mod.createPlaceholder(ElemKind::Int32ITy, {6}, "offsets", false);
 
       // If we use partial weights, it will cause problems when it added as a
       // Constant. So here we pad it with zeros.
@@ -15433,9 +15433,9 @@ static void addEmbeddingBagPartialInputs(
     } else {
       weights = mod.createPlaceholder(DTy, {8}, "weights", false);
       indices =
-          mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+          mod.createPlaceholder(ElemKind::Int32ITy, {8}, "indices", false);
       offsets =
-          mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets", false);
+          mod.createPlaceholder(ElemKind::Int32ITy, {5}, "offsets", false);
 
       bindings.insert(weights, std::move(weightsTensorReal));
       bindings.insert(indices, std::move(indicesTensorReal));
@@ -15444,20 +15444,20 @@ static void addEmbeddingBagPartialInputs(
   } else {
     // We assume no partial inputs will be used if hasEndOffset is false
     Tensor weightsTensorReal(DTy, {8});
-    Tensor indicesTensorReal(ElemKind::Int64ITy, {8});
-    Tensor offsetsTensorReal(ElemKind::Int64ITy, {4});
+    Tensor indicesTensorReal(ElemKind::Int32ITy, {8});
+    Tensor offsetsTensorReal(ElemKind::Int32ITy, {4});
 
     weightsTensorReal.getHandle<DataType>() = {
         3, 1, 0, 0, 0, 0, 2, -0.5,
     };
-    indicesTensorReal.getHandle<int64_t>() = {
+    indicesTensorReal.getHandle<int32_t>() = {
         1, 0, 2, 0, 1, 2, 2, 0,
     };
-    offsetsTensorReal.getHandle<int64_t>() = {0, 3, 3, 6};
+    offsetsTensorReal.getHandle<int32_t>() = {0, 3, 3, 6};
 
     weights = mod.createPlaceholder(DTy, {8}, "weights", false);
-    indices = mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
-    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {4}, "offsets", false);
+    indices = mod.createPlaceholder(ElemKind::Int32ITy, {8}, "indices", false);
+    offsets = mod.createPlaceholder(ElemKind::Int32ITy, {4}, "offsets", false);
 
     bindings.insert(weights, std::move(weightsTensorReal));
     bindings.insert(indices, std::move(indicesTensorReal));
@@ -15470,7 +15470,7 @@ template <typename DataType>
 static void testEmbedding(glow::PlaceholderBindings &bindings,
                           glow::Module &mod, glow::Function *F,
                           glow::ExecutionEngine &EE, ElemKind DTy,
-                          float allowedError, int64_t padIdx = -1) {
+                          float allowedError, int32_t padIdx = -1) {
   /*
     WEIGHTS  = [[2.0, -0.5], [4, 5.1], [1, 2.3]]
     INDICES = [1, 0, 2]
@@ -15481,14 +15481,14 @@ static void testEmbedding(glow::PlaceholderBindings &bindings,
   // weights and an extra offset to offsets.
 
   auto *weights = mod.createConstant(DTy, {3, 2}, "weights");
-  auto *indices = mod.createConstant(ElemKind::Int64ITy, {3}, "indices");
+  auto *indices = mod.createConstant(ElemKind::Int32ITy, {3}, "indices");
   bool scale = false;
   bool sparse = false;
-  int64_t indexValues[] = {1, 0, 2};
+  int32_t indexValues[] = {1, 0, 2};
 
   weights->getPayloadMutable().getHandle<DataType>() = {2.0, -0.5, 4,
                                                         5.1, 1,    2.3};
-  indices->getPayloadMutable().getHandle<int64_t>() = indexValues;
+  indices->getPayloadMutable().getHandle<int32_t>() = indexValues;
 
   auto *R =
       F->createEmbedding("Embedding", weights, indices, padIdx, scale, sparse);
@@ -15916,12 +15916,12 @@ static void testEmbeddingBag4BitRowwiseOffsets(
         42.0 /* A dummy weight for end offset. */,
     };
 
-    indices = mod.createPlaceholder(ElemKind::Int64ITy, {9}, "indices",
+    indices = mod.createPlaceholder(ElemKind::Int32ITy, {9}, "indices",
                                     /* isTrainable */ false);
-    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets",
+    offsets = mod.createPlaceholder(ElemKind::Int32ITy, {5}, "offsets",
                                     /* isTrainable */ false);
 
-    bindings.allocate(indices)->getHandle<int64_t>() = {
+    bindings.allocate(indices)->getHandle<int32_t>() = {
         0,
         1,
         2,
@@ -15933,7 +15933,7 @@ static void testEmbeddingBag4BitRowwiseOffsets(
         200 /* A dummy indice for end offset. */,
     };
 
-    bindings.allocate(offsets)->getHandle<int64_t>() = {
+    bindings.allocate(offsets)->getHandle<int32_t>() = {
         0, // This slice contains numbers >= 0.
         3, // This slice contains numbers <= 0.
         5, // This slice contains numbers which are all the same.
@@ -15947,15 +15947,15 @@ static void testEmbeddingBag4BitRowwiseOffsets(
         1., 2., 3., 2, 0.5, -0.5, 2,
     };
 
-    indices = mod.createPlaceholder(ElemKind::Int64ITy, {7}, "indices",
+    indices = mod.createPlaceholder(ElemKind::Int32ITy, {7}, "indices",
                                     /* isTrainable */ false);
-    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {4}, "offsets",
+    offsets = mod.createPlaceholder(ElemKind::Int32ITy, {4}, "offsets",
                                     /* isTrainable */ false);
 
-    bindings.allocate(indices)->getHandle<int64_t>() = {
+    bindings.allocate(indices)->getHandle<int32_t>() = {
         0, 1, 2, 4, 3, 5, 6,
     };
-    bindings.allocate(offsets)->getHandle<int64_t>() = {
+    bindings.allocate(offsets)->getHandle<int32_t>() = {
         0, // This slice contains numbers >= 0.
         3, // This slice contains numbers <= 0.
         5, // This slice contains numbers which are all the same.

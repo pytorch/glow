@@ -1361,7 +1361,7 @@ public:
   /// sparse, if true, gradinet w.r.t. weight matrix will be a sparse tensor
   /// (currently not supported, default=false)
   EmbeddingNode *createEmbedding(llvm::StringRef name, NodeValue weights,
-                                 NodeValue indices, int64_t padIdx, bool scale,
+                                 NodeValue indices, int32_t padIdx, bool scale,
                                  bool sparse);
 
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node

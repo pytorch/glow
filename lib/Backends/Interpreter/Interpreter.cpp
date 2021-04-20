@@ -433,8 +433,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
                {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
            (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
-           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
+            ElemKind::Int32ITy) &&
+           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to
@@ -472,9 +472,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
     if (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) !=
-            ElemKind::Int64ITy ||
+            ElemKind::Int32ITy ||
         NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) !=
-            ElemKind::Int64ITy) {
+            ElemKind::Int32ITy) {
       return false;
     }
 
@@ -642,8 +642,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int32ITy));
 
   case Kinded::Kind::ScatterDataNodeKind:
-    return (NI.getInElemTy(ScatterDataNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
+    return ((NI.getInElemTy(ScatterDataNode::IndicesIdx) ==
+             ElemKind::Int32ITy) ||
+            (NI.getInElemTy(ScatterDataNode::IndicesIdx) ==
+             ElemKind::Int64ITy)) &&
            (NI.getOutElemTy(ScatterDataNode::ResultIdx) ==
             NI.getInElemTy(ScatterDataNode::DataIdx)) &&
            (NI.getOutElemTy(ScatterDataNode::ResultIdx) ==
