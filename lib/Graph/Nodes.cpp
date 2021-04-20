@@ -1984,6 +1984,13 @@ bool VectorNormNode::verify() const {
   return isValid;
 }
 
+bool GaussianFillNode::verify() const {
+  auto dest = getResult();
+  bool isValid = dest.getElementType() == ElemKind::Float16Ty;
+  isValid &= checkSameShape(getInput(), dest, this);
+  return isValid;
+}
+
 bool DynamicQuantizedFullyConnectedNode::verify() const {
   auto src = getInput();
   auto weights = getWeights();

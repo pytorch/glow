@@ -1543,6 +1543,13 @@ public:
   createSparseLabelSplit(llvm::StringRef name, NodeValue lengths,
                          NodeValue indices, NodeValue values, dim_t numLabels);
 
+  /// Given floats a input node \p input, floats \p mean and \p scale, and \p
+  /// seed \returns a GaussianFillNode. The output shape is the same as that of
+  /// \p input, filled with values drawn from a normal distribution with mean
+  /// and std dev \p mean and \scale, respectively, seeded with seed \p seed
+  GaussianFillNode *createGaussianFill(llvm::StringRef name, NodeValue input,
+                                       float mean, float scale, float seed);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
 
   /// Creates and \returns a SaveNode of \p input to \p output. If \p skipSuffix

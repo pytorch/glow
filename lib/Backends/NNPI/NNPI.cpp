@@ -483,6 +483,14 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {SelectNode::CondIdx}) &&
         (NI.getInElemTy(SelectNode::CondIdx) == ElemKind::BoolTy);
     break;
+  case Kinded::Kind::GaussianFillNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+             ElemKind::Int32ITy, ElemKind::Int64ITy},
+            {}, {GaussianFillNode::ResultIdx}) &&
+        (NI.getOutElemTy(GaussianFillNode::ResultIdx)) == ElemKind::Float16Ty;
+    break;
   case Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind:
     isNodePrecisionSupported =
         (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::InputIdx) ==
