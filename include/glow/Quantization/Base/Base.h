@@ -168,8 +168,8 @@ public:
 
 private:
   // \p number.
-  // \returns the minimum number of bits representing the 
-  // integer part of the fixed point representation of a 
+  // \returns the minimum number of bits representing the
+  // integer part of the fixed point representation of a
   // floating point number.
   uint32_t minBitsIntegerPart(float number) {
     assert(number >= 0 && "Floating point value must be positive!");

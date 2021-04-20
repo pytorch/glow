@@ -2946,10 +2946,8 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
     }
     inW -= dims[1];
 
-    /*
-     * Compute 1 / outputScale * 1 / sum, where sum is computed above
-     * align point for both operands.
-     */
+    // Compute 1 / outputScale * 1 / sum, where sum is computed above
+    // align point for both operands.
     if ((32 - integerPart) >= (32 - invScalePoint)) {
       division = (uint64_t)invScale * (1 << (32 - invScalePoint)) / sum >>
                  (invScalePoint - integerPart);

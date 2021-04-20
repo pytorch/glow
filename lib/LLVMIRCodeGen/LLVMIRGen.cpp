@@ -2880,11 +2880,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     if (src->getType()->isQuantizedType()) {
       std::vector<int32_t> lut;
 
-      /*
-       * Compute lookup table containing all the exponentials based on the 
-       * formula e^(scale * value), where scale is the input scale of
-       * the quantized input data and value is a value from [-255, 0].
-       */
+       // Compute lookup table containing all the exponentials based on the
+       // formula e^(scale * value), where scale is the input scale of
+       // the quantized input data and value is a value from [-255, 0].
       for (int32_t i = 0; i < 256; i++) {
         auto exponent =
             FixedPointUInt32(exp(src->getType()->getScale() * (i - 255)), 1)
@@ -2905,7 +2903,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
           FixedPointUInt32(1.f / dest->getType()->getScale());
       auto *invScale = emitConstI32(builder, invScaleFixedPoint.getFixedVal());
       auto *invScalePoint =
-                      emitConstI32(builder, invScaleFixedPoint.getIntBits());
+          emitConstI32(builder, invScaleFixedPoint.getIntBits());
       createCall(builder, F,
                  {srcPtr, destPtr, srcDims, lutPtr, outOffset, invScale,
                   sumIntegerPart, invScalePoint});
