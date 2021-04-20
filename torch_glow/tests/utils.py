@@ -83,13 +83,15 @@ def check_skip(case):
 
 
 def assert_equivalent(
-    result1_name, result1, result2_name, result2, atol=5e-4, rtol=1e-3
+    result1_name, result1, result2_name, result2, atol=5e-4, rtol=1e-3, use_eq=False
 ):
     if isinstance(result1, tuple) or isinstance(result2, tuple):
         assert isinstance(result1, tuple) and isinstance(result2, tuple)
         assert len(result1) == len(result2)
         return all(
-            assert_equivalent(result1_name, a, result2_name, b, atol=atol, rtol=rtol)
+            assert_equivalent(
+                result1_name, a, result2_name, b, atol=atol, rtol=rtol, use_eq=use_eq
+            )
             for a, b in zip(result1, result2)
         )
     elif result2.dtype == torch.bool:
@@ -100,7 +102,12 @@ def assert_equivalent(
             error = f"Diff:{diff}\n"
             raise AssertionError(error)
     else:
-        if torch.allclose(result1, result2, atol, rtol):
+        matches = (
+            torch.equal(result1, result2)
+            if use_eq
+            else torch.allclose(result1, result2, atol, rtol)
+        )
+        if matches:
             return True
         else:
             diff = torch.abs(result1 - result2)
@@ -109,6 +116,178 @@ def assert_equivalent(
             error += f"Diff:\n{diff}\n"
             error += f"Max diff:\n{torch.max(diff)}"
             raise AssertionError(error)
+
+
+# To avoid linter complaining about allocating default value
+DEFAULT_SKIP_BACKENDS_SET = {}
+
+
+def run_comparison_tests(
+    module,
+    inputs,
+    fusible_ops,
+    fp32vfp32_atol=5e-4,
+    fp32vfp32_rtol=1e-3,
+    fp32vfp16_atol=1e-2,
+    fp32vfp16_rtol=1e-2,
+    fp16vfp16_atol=5e-4,
+    fp16vfp16_rtol=1e-3,
+    fusion_blocklist=None,
+    scripted=False,
+    check_trace=True,
+    skip_for_backends=DEFAULT_SKIP_BACKENDS_SET,
+    skip_fp32_vs_fp16=False,
+    skip_to_glow=False,  # Ugly hack, TODO: Remove
+):
+    # tuplify inputs
+    if not isinstance(inputs, tuple):
+        inputs = (inputs,)
+
+    # Check that test is setup properly
+    if not isinstance(module, torch.nn.Module):
+        raise AssertionError("to_glow only supports nn.Modules")
+
+    if "Interpreter" in skip_for_backends:
+        raise AssertionError(
+            "Interpreter backend can't be skipped, skip entire test until Interpreter is supported"
+        )
+
+    # If other_backend isn't supported then skip the test
+    other_backend = torch_glow.getGlowBackendName()
+    if other_backend in skip_for_backends:
+        raise unittest.SkipTest(f"backend {other_backend} not supported for this test")
+
+    # Get other Glow backend besides Interpreter to test if applicable
+    if other_backend == "Interpreter":
+        other_backend = None
+
+    if skip_to_glow and other_backend:
+        raise AssertionError(
+            f"to_glow must be used for non-interpreter backends, skip this test for {other_backend} backend until the test supports to_glow"
+        )
+
+    def prepare(m, inputs, fp16, backend, fusion):
+        """"Helper to prepare a JIT module to run either on PyTorch or Glow"""
+
+        inputs = deepcopy(inputs)
+
+        def getJITModule():
+            m_jit = None
+            if scripted:
+                m_jit = torch.jit.script(m)
+            else:
+                m_jit = torch.jit.trace(m, inputs, check_trace=check_trace)
+            if scripted or not check_trace:
+                # run it once to activate the fuser if not run yet
+                m_jit(*inputs)
+            return m_jit
+
+        with torch.no_grad():
+            m_jit = None
+            if fusion:
+                with ephemeral_torchglow_settings(
+                    fusion=True, fp16=fp16, backend=backend, blocklist=fusion_blocklist
+                ):
+                    m_jit = getJITModule()
+                    assert_fused(
+                        m_jit.graph_for(*(deepcopy(inputs))),
+                        fusible_ops,
+                    )
+            else:
+                m_jit = getJITModule()
+
+            if backend != "PyTorch":  # to_glow
+                m_jit = torch_glow.lower(
+                    model=m_jit,
+                    example_inputs=inputs,
+                    backend=backend,
+                    convert_to_fp16=fp16,
+                )
+
+            return m_jit
+
+    def compare(a_name, a, b_name, b, atol, rtol, use_eq=False):
+        """"Helper to compare two JIT modules, skip comparison if either is None"""
+
+        if not a:
+            print(f"Skipping {a_name} vs {b_name} because {a_name} not computed")
+            return
+        if not b:
+            print(f"Skipping {a_name} vs {b_name} because {b_name} not computed")
+            return
+        a_ouputs = a(*deepcopy(inputs))
+        b_ouputs = b(*deepcopy(inputs))
+        assert_equivalent(a_name, a_ouputs, b_name, b_ouputs, atol, rtol, use_eq)
+
+    # Prepare modules for testing
+    m_pytorch_fp32 = prepare(
+        module, inputs, fp16=False, backend="PyTorch", fusion=False
+    )
+
+    m_interpreter_fuser_fp32 = prepare(
+        module, inputs, fp16=False, backend="Interpreter", fusion=True
+    )
+
+    m_interpreter_fp32 = None
+    m_interpreter_fp16 = None
+    m_other_fp16 = None
+
+    if not skip_to_glow:
+        m_interpreter_fp32 = prepare(
+            module, inputs, fp16=False, backend="Interpreter", fusion=True
+        )
+
+        m_interpreter_fp16 = prepare(
+            module, inputs, fp16=True, backend="Interpreter", fusion=True
+        )
+
+        m_other_fp16 = None
+        if other_backend:
+            m_other_fp16 = prepare(
+                module, inputs, fp16=True, backend=other_backend, fusion=False
+            )
+
+    # JIT vs Interpreter, via to_glow, fp32-fp32
+    compare(
+        "m_pytorch_fp32",
+        m_pytorch_fp32,
+        "m_interpreter_fp32",
+        m_interpreter_fp32,
+        fp32vfp32_atol,
+        fp32vfp32_rtol,
+    )
+
+    # Interpreter vs Interpreter, via to_glow and fuser, fp32-fp32
+    compare(
+        "m_interpreter_fp32",
+        m_interpreter_fp32,
+        "m_interpreter_fuser_fp32",
+        m_interpreter_fuser_fp32,
+        fp32vfp32_atol,
+        fp32vfp32_rtol,
+        use_eq=True,  # fuser and to_glow should match exactly
+    )
+
+    # Interpreter vs Other, via to_glow, fp16-fp16
+    compare(
+        "m_interpreter_fp16",
+        m_interpreter_fp16,
+        "m_other_fp16",
+        m_other_fp16,
+        fp16vfp16_atol,
+        fp16vfp16_rtol,
+    )
+
+    if not skip_fp32_vs_fp16:
+        # JIT vs Interpreter, via to_glow, fp32-fp16
+        compare(
+            "m_pytorch_fp32",
+            m_pytorch_fp32,
+            "m_interpreter_fp16",
+            m_interpreter_fp16,
+            fp32vfp16_atol,
+            fp32vfp16_rtol,
+        )
 
 
 def compare_tracing_methods(
@@ -145,7 +324,7 @@ def compare_tracing_methods(
             fusion_trace = trace(module, fusion_inputs)
             assert_fused(
                 fusion_trace.graph_for(*fusion_inputs),
-                *(fusible_ops or []),
+                (fusible_ops or []),
                 accept_any=fusible_ops is None,
             )
             fusion_result = fusion_trace(*fusion_inputs)
@@ -290,8 +469,10 @@ def compare_tracing_methods_error(
         with ephemeral_torchglow_settings(fusion=False, fp16=fp16):
             try:
                 glow_inputs = deepcopy(inputs)
-                glow_spec = torch_glow.generate_glow_compilation_spec(
-                    module, DEFAULT_BACKEND, *glow_inputs
+                glow_spec = torch_glow.lower(
+                    model=module,
+                    example_inputs=glow_inputs,
+                    backend=DEFAULT_BACKEND,
                 )
                 glow_trace = torch_glow.to_glow(trace(module, glow_inputs), glow_spec)
                 glow_trace(*glow_inputs)
@@ -301,7 +482,7 @@ def compare_tracing_methods_error(
                 raise AssertionError("Error expected (glow), but none were received")
 
 
-def assert_fused(fused_graph, *ops, accept_any=False, strict=False):
+def assert_fused(fused_graph, ops, accept_any=False, strict=False):
     expected = set(ops)
     fused = set()
     with torch.no_grad():
@@ -310,11 +491,17 @@ def assert_fused(fused_graph, *ops, accept_any=False, strict=False):
             if kind == GLOW_FUSION_GROUP:
                 fused.update(map(lambda n: n.kind(), node.g(SUBGRAPH_ATTR).nodes()))
             else:
-                assert kind not in expected, f"Expected {kind} to be fused"
+                assert (
+                    kind not in expected
+                ), f"Expected {kind} to be fused in graph\n{fused_graph}"
     missing = set() if (accept_any and fused) else expected - fused
     unexpected = set() if (accept_any or not strict) else fused - expected
-    assert not unexpected, f"Expected fusion of {expected}, but {fused} was fused."
-    assert not missing, f"Expected fusion of {expected}, but only {fused} was fused."
+    assert (
+        not unexpected
+    ), f"Expected fusion of {expected}, but {fused} was fused in graph\n{fused_graph}"
+    assert (
+        not missing
+    ), f"Expected fusion of {expected}, but only {fused} was fused in graph\n{fused_graph}"
 
 
 def graph_contains_str(graph, substr):

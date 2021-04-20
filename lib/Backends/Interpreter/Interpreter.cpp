@@ -212,7 +212,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::AsinNodeKind:
   case Kinded::Kind::AtanNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy});
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::PowNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -259,18 +259,24 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::XorNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::BoolTy});
 
-  case Kinded::Kind::AbsNodeKind:
   case Kinded::Kind::SignNodeKind:
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
   case Kinded::Kind::SqrtNodeKind:
   case Kinded::Kind::RsqrtNodeKind:
   case Kinded::Kind::ReciprocalNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy});
+
   case Kinded::Kind::SinNodeKind:
   case Kinded::Kind::CosNodeKind:
   case Kinded::Kind::ErfNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy});
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+
+  case Kinded::Kind::AbsNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::NegNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

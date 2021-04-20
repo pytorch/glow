@@ -66,10 +66,8 @@ class TestAdd(utils.TorchGlowTestCase):
         ]
     )
     def test_add(self, _, module, a, b, skip_to_glow=False):
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             module,
-            a,
-            b,
-            skip_to_glow=skip_to_glow,
+            (a, b),
             fusible_ops={"aten::add_"} if module.inplace else {"aten::add"},
         )
