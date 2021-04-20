@@ -2883,8 +2883,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       std::vector<int32_t> lut;
 
       for (int32_t i = 0; i < 256; i++) {
-        lut.push_back((new FixedPointUInt32(exp(src->getType()->getScale() * (i - 255)), 1))
-          ->getFixedVal());
+        lut.push_back((new FixedPointUInt32(
+                           exp(src->getType()->getScale() * (i - 255)), 1))
+                          ->getFixedVal());
       }
 
       auto *lutPtr = emitConstI32Array(builder, lut);
@@ -2898,11 +2899,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         sumIntegerPart = emitConstI32(builder, ceil(log2(size)) + 1);
       }
 
-      FixedPointUInt32 *invScaleFixedPoint = new FixedPointUInt32(1.f / dest->getType()->getScale());
+      FixedPointUInt32 *invScaleFixedPoint =
+          new FixedPointUInt32(1.f / dest->getType()->getScale());
 
-      auto *invScale = emitConstI32(
-          builder, invScaleFixedPoint->getFixedVal());
-      auto *invScalePoint = emitConstI32(builder, invScaleFixedPoint->getIntBits());
+      auto *invScale = emitConstI32(builder, invScaleFixedPoint->getFixedVal());
+      auto *invScalePoint =
+          emitConstI32(builder, invScaleFixedPoint->getIntBits());
 
       createCall(builder, F,
                  {srcPtr, destPtr, srcDims, lutPtr, outOffset, invScale,

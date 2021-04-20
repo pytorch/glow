@@ -129,7 +129,6 @@ private:
   unsigned fracBits_;
 
 public:
-
   /// Default constructor.
   FixedPointUInt32() = default;
 
@@ -148,9 +147,10 @@ public:
   /// \p floatVal using the given number of integer bits \p intBits.
   FixedPointUInt32(float floatVal, unsigned intBits) {
     assert(floatVal >= 0 && "Floating point value must be positive!");
-    assert(intBits > 0 && intBits < 32 && "Integer bits must be between 0 and 32");
+    assert(intBits > 0 && intBits < 32 &&
+           "Integer bits must be between 0 and 32");
 
-    val_ = floatingToFixedPoint(floatVal ,32 - intBits);
+    val_ = floatingToFixedPoint(floatVal, 32 - intBits);
     intBits_ = intBits;
     fracBits_ = 32 - intBits_;
   }
@@ -159,9 +159,7 @@ public:
   uint32_t getFixedVal() const { return val_; }
 
   /// \returns the encoded fixed-point value as float.
-  float getFloatVal() const { 
-    return (float)(val_) / std::exp2(fracBits_);
-  }
+  float getFloatVal() const { return (float)(val_) / std::exp2(fracBits_); }
 
   /// \returns the number of integer bits.
   unsigned getIntBits() const { return intBits_; }
@@ -182,9 +180,9 @@ private:
       integerPart += 1;
       aux /= 2;
     }
-    
+
     assert(integerPart >= 0 && integerPart < 32 &&
-          "Overflow caused by input number\n");
+           "Overflow caused by input number\n");
     return integerPart + 1;
   }
 
@@ -195,17 +193,15 @@ private:
     double result = (double)elem * (double)std::exp2((double)fracPart);
 
     assert(result >= (double)std::numeric_limits<uint32_t>::min() &&
-          result <= (double)std::numeric_limits<uint32_t>::max() &&
-          "Float to fix point conversion overflow\n");
+           result <= (double)std::numeric_limits<uint32_t>::max() &&
+           "Float to fix point conversion overflow\n");
 
     return round(result);
   }
 
 public:
   /// \returns a string representation of the fixed-point value (e.g. "0.13").
-  std::string toString() const {
-    return std::to_string(getFloatVal());
-  }
+  std::string toString() const { return std::to_string(getFloatVal()); }
 };
 
 namespace quantization {

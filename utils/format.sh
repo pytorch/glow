@@ -19,7 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR/.."
 
-CLANG_COMMAND=${CLANG_COMMAND:-clang-format-9}
+CLANG_COMMAND=${CLANG_COMMAND:-clang-format}
 
 print_usage() {
   echo "Missing format option:"

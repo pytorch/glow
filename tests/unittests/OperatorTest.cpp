@@ -18513,21 +18513,18 @@ TEST_P(OperatorTest, SoftMax) {
   EXPECT_TRUE(out.isEqual(*result, 0.001));
 }
 
-/// Check that the softmax operator works properly with quantized input (int8_t).
-/// See the test that check the SoftMax operator for more details.
+/// Check that the softmax operator works properly with quantized input
+/// (int8_t). See the test that check the SoftMax operator for more details.
 TEST_P(OperatorTest, SoftMaxI8QTy) {
   CHECK_IF_ENABLED();
 
-    auto *inputTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.129249, 3);
-  auto *outputTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.003922, -128);
+  auto *inputTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.129249, 3);
+  auto *outputTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.003922, -128);
 
-  auto *input =
-      mod_.createPlaceholder(inputTy, "input", false);
+  auto *input = mod_.createPlaceholder(inputTy, "input", false);
 
-  bindings_.allocate(input)->getHandle<int8_t>() = {68, -128, 99, -101,
-                                          127, -5, 104, -83, -111, 44};
+  bindings_.allocate(input)->getHandle<int8_t>() = {68, -128, 99,  -101, 127,
+                                                    -5, 104,  -83, -111, 44};
 
   auto *selected =
       mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
@@ -18543,11 +18540,10 @@ TEST_P(OperatorTest, SoftMaxI8QTy) {
   Tensor out(ElemKind::Int8QTy, {1, 10}, 0.003922, -128);
 
   out.getHandle<int8_t>() = {-128, -128, -122, -128, 108,
-                              -128, -116, -128, -128, -128};
+                             -128, -116, -128, -128, -128};
 
   EXPECT_TRUE(out.isEqual(*result, 0));
 }
-
 
 /// Check that the softmax operator works properly with FP16.
 /// See the test that check the SoftMax operator for more details.
