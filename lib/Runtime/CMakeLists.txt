@@ -6,7 +6,10 @@ add_library(Runtime
   ErrorReporter.cpp
   DeviceHealthMonitor.cpp
   DeferredWeightLoader.cpp
+  TraceExporter.cpp
   StatsExporter.cpp)
 target_link_libraries(Runtime
+  PUBLIC
+    ExecutionContext
   PRIVATE
-  Support)
+    Support)
