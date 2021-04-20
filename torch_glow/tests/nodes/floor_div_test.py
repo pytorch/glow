@@ -75,6 +75,12 @@ class TestFloorDiv(utils.TorchGlowTestCase):
                 torch.tensor([-5]),
                 torch.tensor([4]),
             ),
+            lambda: (
+                "int64",
+                SimpleFloorDivideModule(),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+            ),
         ]
     )
     def test_floor_div(self, _, module, left, right):

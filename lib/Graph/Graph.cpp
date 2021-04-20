@@ -2499,7 +2499,7 @@ Function::createFusedRowwiseQuantizedSparseLengthsSum(
 
 EmbeddingNode *Function::createEmbedding(llvm::StringRef name,
                                          NodeValue weights, NodeValue indices,
-                                         int64_t padIdx, bool scale,
+                                         int32_t padIdx, bool scale,
                                          bool sparse) {
   auto indDims = indices.dims();
   auto wtDims = weights.dims();

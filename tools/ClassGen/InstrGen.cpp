@@ -455,7 +455,7 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Weights"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::Int64ITy"});
+                  {"Indices", "ElemKind::Int32ITy"});
 
   BB.newInstr("EmbeddingBag")
       .addOperand("Dest", OperandKind::Out)
@@ -469,9 +469,9 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::Int64ITy"})
+                  {"Indices", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Offsets", "ElemKind::Int64ITy"})
+                  {"Offsets", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("RowwiseQuantizedSparseLengthsWeightedSum")
@@ -517,9 +517,9 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "AvgLength")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::Int64ITy"})
+                  {"Indices", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Offsets", "ElemKind::Int64ITy"})
+                  {"Offsets", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("LengthsToRanges")

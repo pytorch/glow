@@ -2238,7 +2238,7 @@ void libjit_embedding_f(float *dest, float *weights, int64_t *indices,
 }
 
 void libjit_embedding_bag_f(float *dest, float *data, float *weights,
-                            size_t *indices, size_t *offsets, dim_t segments,
+                            int32_t *indices, int32_t *offsets, dim_t segments,
                             dim_t lineSize, dim_t totalLength,
                             bool hasEndOffset) {
   if (hasEndOffset) {
@@ -2247,10 +2247,10 @@ void libjit_embedding_bag_f(float *dest, float *data, float *weights,
   memset(dest, 0, segments * lineSize * sizeof(float));
   dim_t curIndex = 0;
   for (dim_t i = 0; i < segments; i++) {
-    int64_t start = offsets[i];
-    int64_t end =
+    int32_t start = offsets[i];
+    int32_t end =
         !hasEndOffset && i == segments - 1 ? totalLength : offsets[i + 1];
-    for (int64_t j = start; j < end; j++) {
+    for (int32_t j = start; j < end; j++) {
       float weight = weights[curIndex];
       dim_t line = indices[curIndex];
       for (dim_t k = 0; k < lineSize; k++) {
@@ -2336,9 +2336,9 @@ void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_f(
 }
 
 void libjit_embedding_bag_byte_rowwise_offsets_f(
-    float *dest, int8_t *data, float *weights, size_t *indices, size_t *offsets,
-    dim_t segments, dim_t numIndices, dim_t inLineSize, dim_t outLineSize,
-    bool hasEndOffset) {
+    float *dest, int8_t *data, float *weights, int32_t *indices,
+    int32_t *offsets, dim_t segments, dim_t numIndices, dim_t inLineSize,
+    dim_t outLineSize, bool hasEndOffset) {
   if (hasEndOffset) {
     --segments;
   }

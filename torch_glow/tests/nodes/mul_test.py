@@ -22,6 +22,11 @@ class TestMul(utils.TorchGlowTestCase):
             lambda: ("broadcast", torch.randn(4, 2), torch.randn(8, 3, 4, 2)),
             lambda: ("float", torch.randn(4, 2), torch.tensor(3.2)),
             lambda: ("int", torch.randn(4, 2), torch.tensor(22), True),
+            lambda: (
+                "int64",
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+            ),
         ]
     )
     def test_mul(self, _, left, right, skip_to_glow=False):

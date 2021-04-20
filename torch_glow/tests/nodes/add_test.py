@@ -44,7 +44,25 @@ class TestAdd(utils.TorchGlowTestCase):
                 torch.randn(8, 3, 4, 2),
             ),
             lambda: ("float", SimpleAddModule(), torch.randn(4), torch.tensor(1.2345)),
-            lambda: ("int", SimpleAddModule(), torch.randn(4), torch.tensor(42), True),
+            lambda: (
+                "float_and_int",
+                SimpleAddModule(),
+                torch.randn(4),
+                torch.tensor(42),
+                True,
+            ),
+            lambda: (
+                "int32",
+                SimpleAddModule(),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int32),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int32),
+            ),
+            lambda: (
+                "int64",
+                SimpleAddModule(),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+            ),
         ]
     )
     def test_add(self, _, module, a, b, skip_to_glow=False):

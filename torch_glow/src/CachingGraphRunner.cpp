@@ -228,7 +228,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
     RECORD_USER_SCOPE("loadJITGraph");
     RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
         *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-        outputCorrectType_, loadSettings, inputs, {}));
+        outputCorrectTypes_, loadSettings, inputs, {}));
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
 
@@ -519,6 +519,13 @@ CachingGraphRunner::convertPyTorchInputToGlowInput(
     ptTensor = convertQuantizedToDtype(ptTensor, at::kQInt8);
   }
 
+  // If the tensor is an int64 tensor but should be an int32 tensor in Glow,
+  // convert it.
+  if (ptTensor.scalar_type() == at::kLong &&
+      ty->getElementType() == ElemKind::Int32ITy) {
+    ptTensor = ptTensor.to(at::kInt);
+  }
+
   // Make sure the runtime pytorch tensor type matches the placeholder.
   // Note this needs to be placed after convertQuantizedToDtype to
   // correctly handle quantized types.
@@ -766,15 +773,21 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
         // Convert the output to the correct dtype if necessary.
         if (ptTensor.is_quantized()) {
-          c10::ScalarType dtype = outputCorrectType_[i];
-          if (dtype == c10::ScalarType::QUInt8 ||
-              dtype == c10::ScalarType::QInt8) {
+          at::ScalarType dtype = outputCorrectTypes_[i];
+          if (dtype == at::ScalarType::QUInt8 ||
+              dtype == at::ScalarType::QInt8) {
             ptTensor = convertQuantizedToDtype(ptTensor, dtype);
           } else {
             return MAKE_ERR(
                 strFormat("Fail to propagate quantized dtype to output"));
           }
         }
+
+        if (ptTensor.dtype() == at::kInt &&
+            outputCorrectTypes_[i] == at::kLong) {
+          ptTensor = ptTensor.to(at::kLong);
+        }
+
         // Write the output from Glow to ONNX if necessary.
         if (settings.writeToOnnx) {
           glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
@@ -1006,7 +1019,7 @@ Error CachingGraphRunner::warmCache(
         RECORD_USER_SCOPE("loadJITGraph");
         RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
             *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-            outputCorrectType_, info->settings, {}, metaStack));
+            outputCorrectTypes_, info->settings, {}, metaStack));
         TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
                         "loadJITGraph");
       }

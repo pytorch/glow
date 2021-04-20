@@ -172,7 +172,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
             {ElemKind::Float16Ty}, {ROIAlignNode::BatchIndicesIdx}) &&
-        (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int64ITy);
+        (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::LSTMUnitNodeKind:
     isNodePrecisionSupported =
@@ -670,7 +670,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         NI.allInputsAndOutputsHaveSameElemKind(
             {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
             {SoftMaxNode::SelectedIdx}) &&
-        (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
+        (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy ||
+         NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::LengthsRangeFillNodeKind:
     isNodePrecisionSupported =
@@ -700,7 +701,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::Int32ITy,
              ElemKind::Int64ITy, ElemKind::BoolTy},
             {}, {ArgMaxNode::ResultIdx}) &&
-        (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
+        (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy ||
+         NI.getOutElemTy(ArgMinNode::ResultIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::ArgMinNodeKind:
     isNodePrecisionSupported =
@@ -708,7 +710,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {ElemKind::Float16Ty, ElemKind::FloatTy, ElemKind::Int8QTy,
              ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy},
             {}, {ArgMinNode::ResultIdx}) &&
-        (NI.getOutElemTy(ArgMinNode::ResultIdx) == ElemKind::Int64ITy);
+        (NI.getOutElemTy(ArgMinNode::ResultIdx) == ElemKind::Int64ITy ||
+         NI.getOutElemTy(ArgMinNode::ResultIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::LogitNodeKind:
     isNodePrecisionSupported =
@@ -1616,7 +1619,7 @@ bool quantizeLayernormScaleAndBias(Function *F) {
 }
 
 template <typename T>
-void zeroOutEmbeddingTable(Tensor &tensor, const int64_t &padIdx) {
+void zeroOutEmbeddingTable(Tensor &tensor, const int32_t &padIdx) {
   auto handle = tensor.getHandle<T>();
   size_t base = handle.getElementPtr({static_cast<unsigned long>(padIdx)});
   for (unsigned i = 0; i < tensor.dims()[1]; i++) {

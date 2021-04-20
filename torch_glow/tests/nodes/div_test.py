@@ -104,6 +104,12 @@ class TestDiv(utils.TorchGlowTestCase):
                 torch.tensor([4]),
                 torch.tensor(10),
             ),
+            lambda: (
+                "int64",
+                SimpleDivModule(),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+            ),
         ]
     )
     def test_div(self, _, module, a, b):
