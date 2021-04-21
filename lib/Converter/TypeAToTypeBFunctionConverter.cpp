@@ -48,8 +48,12 @@ bool TypeAToTypeBFunctionConverter::canConvert(const Node &node) const {
     if (N->getBias().getType()->getElementType() == ElemKind::FloatTy &&       \
         (N->getInput().getType()->isQuantizedType() ||                         \
          N->getInput().getType()->getElementType() == ElemKind::Float16Ty)) {  \
+         llvm::outs() << "BN: " << node.getName() << ": disable fp16 conversion\n"; \
       return false;                                                            \
     }                                                                          \
+    else {\
+         llvm::outs() << "BN: " << node.getName() << ": enable fp16 conversion\n"; \
+    }\
     break;                                                                     \
   }
 
