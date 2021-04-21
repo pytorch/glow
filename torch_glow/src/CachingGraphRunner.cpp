@@ -21,6 +21,7 @@
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Flags/Flags.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/TraceExporter.h"
 #include "glow/Support/Support.h"
 
 #include <mutex>
@@ -867,7 +868,8 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
-  if (defaultSettings_.enableGlowTracing) {
+  if (defaultSettings_.enableGlowTracing ||
+      TraceExporterRegistry::getInstance()->shouldTrace()) {
     ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("torch_glow");
@@ -876,6 +878,8 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
   detail::GlowError err = detail::GlowError::empty();
   {
+    // XXX remove these once we integrate with pytorch profiler using
+    // Kineto
     RECORD_USER_SCOPE("torch_glow::run");
 
     std::shared_ptr<PerGlowGraphInfo> info;
@@ -888,7 +892,10 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
 
-  aggregateAndDumpTraces(traceContext);
+  TraceExporterRegistry::getInstance()->exportTrace(traceContext);
+  if (defaultSettings_.enableGlowTracing) {
+    aggregateAndDumpTraces(traceContext);
+  }
 
   return err;
 }
@@ -935,7 +942,8 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
   TraceContext *traceContext = nullptr;
-  if (settings.enableGlowTracing) {
+  if (settings.enableGlowTracing ||
+      TraceExporterRegistry::getInstance()->shouldTrace()) {
     ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("torch_glow");
@@ -951,7 +959,10 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::runOnly");
 
-  aggregateAndDumpTraces(traceContext);
+  TraceExporterRegistry::getInstance()->exportTrace(traceContext);
+  if (settings.enableGlowTracing) {
+    aggregateAndDumpTraces(traceContext);
+  }
   return err;
 }
 
@@ -1071,7 +1082,9 @@ Error CachingGraphRunner::warmCache(
     TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
                     "torch_glow::warmCache");
   }
-  aggregateAndDumpTraces(traceContext.get());
+  if (settings.enableGlowTracing) {
+    aggregateAndDumpTraces(traceContext.get());
+  }
   return Error::success();
 }
 
