@@ -2419,47 +2419,72 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
     const glow::GatherNDInst *I) {
 
   Tensor *dataT = getTensor(I->getData());
-  auto &dataTy = dataT->getType();
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
-  auto &indicesTy = indicesT->getType();
+  auto batchDims = I->getBatchDims();
 
-  // Get the last dimension of indices Tensor
-  const dim_t lastIndicesDimension =
-      indicesTy.dims()[indicesTy.dims().size() - 1];
+  auto dataDims = I->getData()->dims();
+  auto indicesDims = I->getIndices()->dims();
+  size_t indicesDimLast = indicesDims.back();
 
-  size_t outP = 0;
-  dim_t elementSize = dataTy.getElementSize();
-
-  // The size of the each slice that we gather
-  dim_t dataSliceSize = 1;
-  for (size_t i = lastIndicesDimension; i < dataTy.dims().size(); i++) {
-    dataSliceSize *= dataTy.dims()[i];
-  }
-  // Calculate number of such slices that we gather
-  dim_t numOfSlices = 1;
-  for (size_t i = 0; i < indicesTy.dims().size() - 1; i++) {
-    numOfSlices *= indicesTy.dims()[i];
+  // Compute batch count.
+  size_t batchCount = 1;
+  for (size_t idx = 0; idx < batchDims; ++idx) {
+    batchCount *= dataDims[idx];
   }
 
-  dim_t dataSliceSizeInBytes = dataSliceSize * elementSize;
+  // Compute input slice count.
+  size_t inpSliceCount = 1;
+  for (size_t idx = batchDims; idx < batchDims + indicesDimLast; ++idx) {
+    inpSliceCount *= dataDims[idx];
+  }
 
-  for (dim_t i = 0, end = numOfSlices; i < end; i++) {
-    dim_t x = indicesT->getHandle<ElemTy>().raw(i * dataSliceSize);
+  // Compute output slice count.
+  size_t outSliceCount = 1;
+  for (size_t idx = batchDims; idx < indicesDims.size() - 1; ++idx) {
+    outSliceCount *= indicesDims[idx];
+  }
 
-    for (dim_t j = 1; j < lastIndicesDimension; j++) {
-      x = (x * dataTy.dims()[j]) +
-          indicesT->getHandle<ElemTy>().raw(i * dataSliceSize + j);
+  // Compute slice size (in bytes).
+  size_t sliceSize = dataT->getType().getElementSize();
+  for (size_t idx = batchDims + indicesDimLast; idx < dataDims.size(); idx++) {
+    sliceSize *= dataDims[idx];
+  }
+
+  // Get indices dimension products.
+  std::vector<size_t> indicesDimProd(indicesDimLast);
+  indicesDimProd[indicesDimLast - 1] = 1;
+  for (ssize_t idx = indicesDimLast - 2; idx >= 0; idx--) {
+    indicesDimProd[idx] = indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
+  }
+
+  // We will view the tensors as equivalent 3D tensors with the dimensions:
+  // data    - batchCount x inpSliceCount x sliceSize
+  // indices - batchCount x outSliceCount x indicesDimLast
+  // output  - batchCount x outSliceCount x sliceSize
+
+  char *dataPtr = dataT->getUnsafePtr();
+  ElemTy *indicesPtr = (ElemTy *)indicesT->getUnsafePtr();
+  char *outPtr = outT->getUnsafePtr();
+
+  for (size_t batchIdx = 0; batchIdx < batchCount; ++batchIdx) {
+    for (size_t outSliceIdx = 0; outSliceIdx < outSliceCount; ++outSliceIdx) {
+
+      // Compute input slice index.
+      size_t inpSliceIdx = 0;
+      for (size_t idx = 0; idx < indicesDimLast; ++idx) {
+        inpSliceIdx += *indicesPtr++ * indicesDimProd[idx];
+      }
+
+      // Copy data.
+      std::copy(dataPtr + (inpSliceIdx + 0) * sliceSize,
+                dataPtr + (inpSliceIdx + 1) * sliceSize,
+                outPtr);
+      outPtr += sliceSize;
     }
 
-    if (lastIndicesDimension < dataTy.dims().size()) {
-      x = x * dataTy.dims()[lastIndicesDimension];
-    }
-
-    std::copy(&dataT->getUnsafePtr()[x * elementSize],
-              &dataT->getUnsafePtr()[x * elementSize + dataSliceSizeInBytes],
-              &outT->getUnsafePtr()[outP]);
-    outP += dataSliceSizeInBytes;
+    // Increment input pointer for next batch.
+    dataPtr += inpSliceCount * sliceSize;
   }
 }
 
