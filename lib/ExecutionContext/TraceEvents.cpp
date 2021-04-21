@@ -210,6 +210,15 @@ void TraceContext::merge(TraceContext *other) {
   names.clear();
 }
 
+void TraceContext::copy(TraceContext *other) {
+  std::lock_guard<std::mutex> l(lock_);
+  auto &newEvents = other->getTraceEvents();
+  std::copy(newEvents.begin(), newEvents.end(),
+            std::back_inserter(getTraceEvents()));
+  auto &names = other->getThreadNames();
+  threadNames_.insert(names.begin(), names.end());
+}
+
 ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, TraceLevel level,
                                    llvm::StringRef name)
     : context_(context), level_(level), name_(name) {
