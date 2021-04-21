@@ -42,6 +42,8 @@
 DEFINE_string(torch_glow_backend, "Interpreter",
               "Glow backend used for torchifi");
 DEFINE_int32(torch_glow_num_devices, -1, "Number of devices for Glow backend");
+DEFINE_bool(torch_glow_scan_devices, false,
+            "Control if scanning available devices in torch glow backend");
 
 DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
 
@@ -136,14 +138,20 @@ getHostManager(const PyTorchLoaderSettings &settings) {
              "Backend but with a different number of devices";
     }
   } else {
-    // If number of devices isn't specified then just use 1 device.
     std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
-    for (int32_t i = 0, e = settings.numDevices < 0 ? 1 : settings.numDevices;
-         i < e; i++) {
-      auto config =
-          std::make_unique<runtime::DeviceConfig>(settings.backendName);
-      config->deviceID = i;
-      deviceConfigs.push_back(std::move(config));
+    // If scan devices flag is set, we should scan devices that's available
+    if (settings.scanDevices) {
+      deviceConfigs = runtime::DeviceManager::generateDeviceConfigs(
+          settings.backendName, true /*scanDevices*/);
+    } else {
+      // If number of devices isn't specified then just use 1 device.
+      for (int32_t i = 0, e = settings.numDevices < 0 ? 1 : settings.numDevices;
+           i < e; i++) {
+        auto config =
+            std::make_unique<runtime::DeviceConfig>(settings.backendName);
+        config->deviceID = i;
+        deviceConfigs.push_back(std::move(config));
+      }
     }
 
     glow::runtime::HostConfig hostConfig;
@@ -301,6 +309,7 @@ void PyTorchLoaderSettings::initSettings() {
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
   numDevices = FLAGS_torch_glow_num_devices;
+  scanDevices = FLAGS_torch_glow_scan_devices;
   runShapeInference = FLAGS_runShapeInference;
   fusionStartIndex = FLAGS_fusionStartIndex;
   fusionEndIndex = FLAGS_fusionEndIndex;
@@ -372,6 +381,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(writeWithoutRandomize, s);
   INSERT_VALUE_TO_STREAM(backendName, s);
   INSERT_VALUE_TO_STREAM(numDevices, s);
+  INSERT_BOOL_TO_STREAM(scanDevices, s);
   INSERT_BOOL_TO_STREAM(runShapeInference, s);
   INSERT_BOOL_TO_STREAM(setIncludeLastOffsets, s);
   INSERT_BOOL_TO_STREAM(enableDebugFuser, s);
