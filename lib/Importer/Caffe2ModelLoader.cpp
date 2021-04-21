@@ -1711,6 +1711,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  // TODO: add checks for number of inputs and argument values
   if (typeName == "ReduceBackSum") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -2023,6 +2024,29 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Node *add = G_->createAdd(opName + ".add", in, ones);
     Node *node = G_->createLog(opName + ".log", add);
 
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "ReduceBackMean") {
+    const unsigned numInputs = op.input_size();
+    RETURN_ERR_IF_NOT(numInputs == 1,
+                      opErrMsg(op, "Only single input is supported."));
+
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    RETURN_ERR_IF_NOT(in.dims().size() >= 2,
+                      opErrMsg(op, "Input should be at least 2D."));
+
+    int numReduceDim = 1;
+    if (dict.count("num_reduce_dim")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(numReduceDim, loadInt(dict["num_reduce_dim"]));
+    }
+    // TODO: check maybe we can support more dimensions to be reduced
+    RETURN_ERR_IF_NOT(numReduceDim == 1,
+                      opErrMsg(op, "Supporting reducing only one dimension."));
+
+    Node *node = G_->createBatchedReduceMean(opName, in, in.dims().size() - 1);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
