@@ -5510,7 +5510,7 @@ static void gatherNDFloatInputTest(glow::PlaceholderBindings &bindings,
                                    glow::ExecutionEngine &EE, ElemKind DTy,
                                    ElemKind ITy,
                                    std::vector<dim_t> dataDims, std::vector<DataType> dataVals,
-                                   std::vector<dim_t> indicesDims, std::vector<IndexTy> indicesVals,
+                                   std::vector<dim_t> indicesDims, std::vector<IndexType> indicesVals,
                                    std::vector<dim_t> outputDims, std::vector<DataType> outputVals,
                                    unsigned_t batchDims) {
 
