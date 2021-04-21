@@ -123,12 +123,26 @@ std::set<std::string> glow::backendTestBlacklist = {
     "GatherDataFloat16IdxInt64/0",
     "GatherDataInt8IdxInt32/0",
     "GatherDataInt8IdxInt64/0",
-    "GatherDataNDFloat16IdxInt32/0",
-    "GatherNDDataFloatIdxInt32/0",
-    "GatherNDDataFloat16IdxInt32/0",
-    "GatherNDDataFloat16IdxInt64/0",
-    "GatherNDDataInt8IdxInt32/0",
-    "GatherNDDataInt8IdxInt64/0",
+    "GatherND_FloatTy_Int32ITy_Test1/0"
+    "GatherND_FloatTy_Int32ITy_Test2/0"
+    "GatherND_FloatTy_Int32ITy_Test3/0"
+    "GatherND_FloatTy_Int32ITy_Test4/0"
+    "GatherND_FloatTy_Int32ITy_Test5/0"
+    "GatherND_FloatTy_Int64ITy_Test1/0"
+    "GatherND_FloatTy_Int64ITy_Test2/0"
+    "GatherND_FloatTy_Int64ITy_Test3/0"
+    "GatherND_FloatTy_Int64ITy_Test4/0"
+    "GatherND_FloatTy_Int64ITy_Test5/0"
+    "GatherND_Float16Ty_Int32ITy_Test1/0"
+    "GatherND_Float16Ty_Int32ITy_Test2/0"
+    "GatherND_Float16Ty_Int32ITy_Test3/0"
+    "GatherND_Float16Ty_Int32ITy_Test4/0"
+    "GatherND_Float16Ty_Int32ITy_Test5/0"
+    "GatherND_Float16Ty_Int64ITy_Test1/0"
+    "GatherND_Float16Ty_Int64ITy_Test2/0"
+    "GatherND_Float16Ty_Int64ITy_Test3/0"
+    "GatherND_Float16Ty_Int64ITy_Test4/0"
+    "GatherND_Float16Ty_Int64ITy_Test5/0"
     "GatherRangesDataInt64IdxInt32/0",
     "GatherRangesDataInt64IdxInt64/0",
     "GatherRangesDataFloatIdxInt32/0",

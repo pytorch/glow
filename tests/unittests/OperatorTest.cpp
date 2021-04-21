@@ -5505,7 +5505,7 @@ TEST_P(OperatorTest, GatherDataInt8IdxInt64) {
 
 /// Helper for testing GatherND with different \p ITy / \p IndexType.
 template <typename DataType, typename IndexType>
-static void gatherNDFloatInputTest(glow::PlaceholderBindings &bindings,
+static void gatherNDFloatTest(glow::PlaceholderBindings &bindings,
                                    glow::Module &mod, glow::Function *F,
                                    glow::ExecutionEngine &EE, ElemKind DTy,
                                    ElemKind ITy,
@@ -5532,7 +5532,7 @@ static void gatherNDFloatInputTest(glow::PlaceholderBindings &bindings,
 }
 
 template <typename DataType, typename IndexType>
-static void gatherNDFloatInputTest1(glow::PlaceholderBindings &bindings,
+static void gatherNDFloatTest1(glow::PlaceholderBindings &bindings,
                                     glow::Module &mod, glow::Function *F,
                                     glow::ExecutionEngine &EE, ElemKind DTy,
                                     ElemKind ITy) {
@@ -5541,11 +5541,11 @@ static void gatherNDFloatInputTest1(glow::PlaceholderBindings &bindings,
   // data    = [[0,1],[2,3]]   # data_shape = [2, 2]
   // indices = [[0,0],[1,1]]   # indices_shape = [2, 2]
   // output  = [0,3]           # output_shape = [2]
-  gatherNDFloatInputTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2}, {0.0, 1.0, 2.0, 3.0}, {2, 2}, {0, 0, 1, 1}, {2}, {0.0, 3.0}, 0);
+  gatherNDFloatTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2}, {0.0, 1.0, 2.0, 3.0}, {2, 2}, {0, 0, 1, 1}, {2}, {0.0, 3.0}, 0);
 }
 
 template <typename DataType, typename IndexType>
-static void gatherNDFloatInputTest2(glow::PlaceholderBindings &bindings,
+static void gatherNDFloatTest2(glow::PlaceholderBindings &bindings,
                                     glow::Module &mod, glow::Function *F,
                                     glow::ExecutionEngine &EE, ElemKind DTy,
                                     ElemKind ITy) {
@@ -5554,11 +5554,11 @@ static void gatherNDFloatInputTest2(glow::PlaceholderBindings &bindings,
   // data    = [[0,1],[2,3]]  # data_shape = [2, 2]
   // indices = [[1],[0]]      # indices_shape = [2, 1]
   // output  = [[2,3],[0,1]]  # output_shape = [2, 2]
-  gatherNDFloatInputTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2}, {0.0, 1.0, 2.0, 3.0}, {2, 1}, {1, 0}, {2, 2}, {2.0, 3.0, 0.0, 1.0}, 0);
+  gatherNDFloatTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2}, {0.0, 1.0, 2.0, 3.0}, {2, 1}, {1, 0}, {2, 2}, {2.0, 3.0, 0.0, 1.0}, 0);
 }
 
 template <typename DataType, typename IndexType>
-static void gatherNDFloatInputTest3(glow::PlaceholderBindings &bindings,
+static void gatherNDFloatTest3(glow::PlaceholderBindings &bindings,
                                     glow::Module &mod, glow::Function *F,
                                     glow::ExecutionEngine &EE, ElemKind DTy,
                                     ElemKind ITy) {
@@ -5567,11 +5567,11 @@ static void gatherNDFloatInputTest3(glow::PlaceholderBindings &bindings,
   // data    = [[[0,1],[2,3]],[[4,5],[6,7]]] # data_shape = [2, 2, 2]
   // indices = [[0,1],[1,0]]                 # indices_shape = [2, 2]
   // output  = [[2,3],[4,5]]                 # output_shape = [2, 2]
-  gatherNDFloatInputTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2, 2}, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 2}, {0, 1, 1, 0}, {2, 2}, {2.0, 3.0, 4.0, 5.0}, 0);
+  gatherNDFloatTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2, 2}, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 2}, {0, 1, 1, 0}, {2, 2}, {2.0, 3.0, 4.0, 5.0}, 0);
 }
 
 template <typename DataType, typename IndexType>
-static void gatherNDFloatInputTest4(glow::PlaceholderBindings &bindings,
+static void gatherNDFloatTest4(glow::PlaceholderBindings &bindings,
                                     glow::Module &mod, glow::Function *F,
                                     glow::ExecutionEngine &EE, ElemKind DTy,
                                     ElemKind ITy) {
@@ -5580,11 +5580,11 @@ static void gatherNDFloatInputTest4(glow::PlaceholderBindings &bindings,
   // data    = [[[0,1],[2,3]],[[4,5],[6,7]]] # data_shape = [2, 2, 2]
   // indices = [[[0,1]],[[1,0]]]             # indices_shape = [2, 1, 2]
   // output  = [[[2,3]],[[4,5]]]             # output_shape = [2, 1, 2]
-  gatherNDFloatInputTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2, 2}, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 1, 2}, {0, 1, 1, 0}, {2, 1, 2}, {2.0, 3.0, 4.0, 5.0}, 0);
+  gatherNDFloatTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2, 2}, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 1, 2}, {0, 1, 1, 0}, {2, 1, 2}, {2.0, 3.0, 4.0, 5.0}, 0);
 }
 
 template <typename DataType, typename IndexType>
-static void gatherNDFloatInputTest5(glow::PlaceholderBindings &bindings,
+static void gatherNDFloatTest5(glow::PlaceholderBindings &bindings,
                                     glow::Module &mod, glow::Function *F,
                                     glow::ExecutionEngine &EE, ElemKind DTy,
                                     ElemKind ITy) {
@@ -5593,14 +5593,13 @@ static void gatherNDFloatInputTest5(glow::PlaceholderBindings &bindings,
   // data    = [[[0,1],[2,3]],[[4,5],[6,7]]] # data_shape = [2, 2, 2]
   // indices = [[1],[0]]                     # indices_shape = [2, 1]
   // output  = [[2,3],[4,5]]                 # output_shape = [2, 2]
-  gatherNDFloatInputTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2, 2}, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 1}, {1, 0}, {2, 2}, {2.0, 3.0, 4.0, 5.0}, 1);
+  gatherNDFloatTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2, 2}, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 1}, {1, 0}, {2, 2}, {2.0, 3.0, 4.0, 5.0}, 1);
 }
-
 
 #define TEST_GATHER_ND(N, DATA_KIND, INDEX_KIND, DATA_TYPE, INDEX_TYPE)        \
   TEST_P(OperatorTest, GatherND_##DATA_KIND##_##INDEX_KIND##_Test##N) {        \
     CHECK_IF_ENABLED();                                                        \
-    gatherNDFloatInputTest##N<DATA_TYPE, INDEX_TYPE>(bindings_, mod_, F_, EE_, \
+    gatherNDFloatTest##N<DATA_TYPE, INDEX_TYPE>(bindings_, mod_, F_, EE_,      \
         ElemKind::DATA_KIND, ElemKind::INDEX_KIND);                            \
   }
 
@@ -5618,17 +5617,17 @@ TEST_GATHER_ND(4, FloatTy, Int64ITy, float, int64_t)
 TEST_GATHER_ND(5, FloatTy, Int64ITy, float, int64_t)
 #endif
 
-TEST_GATHER_ND(1, Float16Ty, Int32ITy, float, int32_t)
-TEST_GATHER_ND(2, Float16Ty, Int32ITy, float, int32_t)
-TEST_GATHER_ND(3, Float16Ty, Int32ITy, float, int32_t)
-TEST_GATHER_ND(4, Float16Ty, Int32ITy, float, int32_t)
-TEST_GATHER_ND(5, Float16Ty, Int32ITy, float, int32_t)
+TEST_GATHER_ND(1, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(2, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(3, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(4, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(5, Float16Ty, Int32ITy, float16_t, int32_t)
 
-TEST_GATHER_ND(1, Float16Ty, Int64ITy, float, int64_t)
-TEST_GATHER_ND(2, Float16Ty, Int64ITy, float, int64_t)
-TEST_GATHER_ND(3, Float16Ty, Int64ITy, float, int64_t)
-TEST_GATHER_ND(4, Float16Ty, Int64ITy, float, int64_t)
-TEST_GATHER_ND(5, Float16Ty, Int64ITy, float, int64_t)
+TEST_GATHER_ND(1, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(2, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(3, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(4, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(5, Float16Ty, Int64ITy, float16_t, int64_t)
 
 #undef TEST_GATHER_ND
 
