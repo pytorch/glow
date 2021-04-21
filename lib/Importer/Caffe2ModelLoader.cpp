@@ -1559,6 +1559,21 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "Scale") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    float scale = 1.0;
+    if (dict.count("scale")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["scale"]));
+    }
+    auto scaleType = mod_.uniqueType(ElemKind::FloatTy, {in.dims()});
+    auto scales = G_->createSplat(opName + ".scales", scaleType, scale);
+    Node *node = G_->createMul(opName, in, scales);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   if (typeName == "SparseLengthsWeightedSum8BitsRowwise" ||
       typeName == "SparseLengthsSum8BitsRowwise" ||
       typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
