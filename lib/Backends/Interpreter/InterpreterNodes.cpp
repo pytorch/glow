@@ -2425,34 +2425,34 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
 
   auto dataDims = I->getData()->dims();
   auto indicesDims = I->getIndices()->dims();
-  size_t indicesDimLast = indicesDims.back();
+  dim_t indicesDimLast = indicesDims.back();
 
   // Compute batch count.
-  size_t batchCount = 1;
+  dim_t batchCount = 1;
   for (size_t idx = 0; idx < batchDims; ++idx) {
     batchCount *= dataDims[idx];
   }
 
   // Compute input slice count.
-  size_t inpSliceCount = 1;
+  dim_t inpSliceCount = 1;
   for (size_t idx = batchDims; idx < batchDims + indicesDimLast; ++idx) {
     inpSliceCount *= dataDims[idx];
   }
 
   // Compute output slice count.
-  size_t outSliceCount = 1;
+  dim_t outSliceCount = 1;
   for (size_t idx = batchDims; idx < indicesDims.size() - 1; ++idx) {
     outSliceCount *= indicesDims[idx];
   }
 
   // Compute slice size (in bytes).
-  size_t sliceSize = dataT->getType().getElementSize();
+  dim_t sliceSize = dataT->getType().getElementSize();
   for (size_t idx = batchDims + indicesDimLast; idx < dataDims.size(); idx++) {
     sliceSize *= dataDims[idx];
   }
 
   // Get indices dimension products.
-  std::vector<size_t> indicesDimProd(indicesDimLast);
+  std::vector<dim_t> indicesDimProd(indicesDimLast);
   indicesDimProd[indicesDimLast - 1] = 1;
   for (ssize_t idx = indicesDimLast - 2; idx >= 0; idx--) {
     indicesDimProd[idx] = indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
@@ -2471,9 +2471,9 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
     for (size_t outSliceIdx = 0; outSliceIdx < outSliceCount; ++outSliceIdx) {
 
       // Compute input slice index.
-      size_t inpSliceIdx = 0;
+      dim_t inpSliceIdx = 0;
       for (size_t idx = 0; idx < indicesDimLast; ++idx) {
-        inpSliceIdx += *indicesPtr++ * indicesDimProd[idx];
+        inpSliceIdx += (*indicesPtr++) * indicesDimProd[idx];
       }
 
       // Copy data.

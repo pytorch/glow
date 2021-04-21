@@ -5596,47 +5596,41 @@ static void gatherNDFloatInputTest5(glow::PlaceholderBindings &bindings,
   gatherNDFloatInputTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2, 2}, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 1}, {1, 0}, {2, 2}, {2.0, 3.0, 4.0, 5.0}, 1);
 }
 
-/// Test that Gather works with Float data and Int32 indices.
-TEST_P(OperatorTest, GatherNDDataFloatIdxInt32) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest1<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy);
-  gatherNDFloatInputTest2<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy);
-  gatherNDFloatInputTest3<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy);
-  gatherNDFloatInputTest4<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy);
-  gatherNDFloatInputTest5<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy);
-}
+
+#define TEST_GATHER_ND(N, DATA_KIND, INDEX_KIND, DATA_TYPE, INDEX_TYPE)        \
+  TEST_P(OperatorTest, GatherND_##DATA_KIND##_##INDEX_KIND##_Test##N) {        \
+    CHECK_IF_ENABLED();                                                        \
+    gatherNDFloatInputTest##N<DATA_TYPE, INDEX_TYPE>(bindings_, mod_, F_, EE_, \
+        ElemKind::DATA_KIND, ElemKind::INDEX_KIND);                            \
+  }
+
+TEST_GATHER_ND(1, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(2, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(3, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(4, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(5, FloatTy, Int32ITy, float, int32_t)
 
 #if DIM_T_BITWIDTH >= 64
-/// Test that Gather works with Float data and Int64 indices.
-TEST_P(OperatorTest, GatherNDDataFloatIdxInt64) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest1<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy);
-  gatherNDFloatInputTest2<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy);
-  gatherNDFloatInputTest3<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy);
-  gatherNDFloatInputTest4<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy);
-  gatherNDFloatInputTest5<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy);
-}
+TEST_GATHER_ND(1, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(2, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(3, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(4, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(5, FloatTy, Int64ITy, float, int64_t)
 #endif
 
-/// Test that Gather works with Float16 data and Int32 indices.
-TEST_P(OperatorTest, GatherDataNDFloat16IdxInt32) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest1<float16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
-  gatherNDFloatInputTest2<float16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
-  gatherNDFloatInputTest3<float16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
-  gatherNDFloatInputTest4<float16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
-  gatherNDFloatInputTest5<float16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
-}
+TEST_GATHER_ND(1, Float16Ty, Int32ITy, float, int32_t)
+TEST_GATHER_ND(2, Float16Ty, Int32ITy, float, int32_t)
+TEST_GATHER_ND(3, Float16Ty, Int32ITy, float, int32_t)
+TEST_GATHER_ND(4, Float16Ty, Int32ITy, float, int32_t)
+TEST_GATHER_ND(5, Float16Ty, Int32ITy, float, int32_t)
 
-/// Test that Gather works with Float16 data and Int64 indices.
-TEST_P(OperatorTest, GatherNDDataFloat16IdxInt64) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest1<float16_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
-  gatherNDFloatInputTest2<float16_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
-  gatherNDFloatInputTest3<float16_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
-  gatherNDFloatInputTest4<float16_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
-  gatherNDFloatInputTest5<float16_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
-}
+TEST_GATHER_ND(1, Float16Ty, Int64ITy, float, int64_t)
+TEST_GATHER_ND(2, Float16Ty, Int64ITy, float, int64_t)
+TEST_GATHER_ND(3, Float16Ty, Int64ITy, float, int64_t)
+TEST_GATHER_ND(4, Float16Ty, Int64ITy, float, int64_t)
+TEST_GATHER_ND(5, Float16Ty, Int64ITy, float, int64_t)
+
+#undef TEST_GATHER_ND
 
 /// Helper for testing GatherND with different \p ITy / \p IndexType.
 template <typename IndexType>
