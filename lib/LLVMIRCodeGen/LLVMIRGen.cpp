@@ -3085,6 +3085,74 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::GatherNDInstKind: {
+    auto *GI = llvm::cast<GatherNDInst>(I);
+    auto *dest = GI->getDest();
+    auto *data = GI->getData();
+    auto *indices = GI->getIndices();
+    unsigned batchDims = GI->getBatchDims();
+
+    auto dataDims = data->dims();
+    auto indicesDims = indices->dims();
+    dim_t indicesDimLast = indicesDims.back();
+
+    // Compute batch count.
+    dim_t batchCount = 1;
+    for (size_t idx = 0; idx < batchDims; ++idx) {
+      batchCount *= dataDims[idx];
+    }
+
+    // Compute input slice count.
+    dim_t inpSliceCount = 1;
+    for (size_t idx = batchDims; idx < batchDims + indicesDimLast; ++idx) {
+      inpSliceCount *= dataDims[idx];
+    }
+
+    // Compute output slice count.
+    dim_t outSliceCount = 1;
+    for (size_t idx = batchDims; idx < indicesDims.size() - 1; ++idx) {
+      outSliceCount *= indicesDims[idx];
+    }
+
+    // Compute slice size (in bytes).
+    dim_t sliceSize = data->getType().getElementSize();
+    for (size_t idx = batchDims + indicesDimLast; idx < dataDims.size(); idx++) {
+      sliceSize *= dataDims[idx];
+    }
+
+    // Get indices dimension products.
+    std::vector<dim_t> indicesDimProd(indicesDimLast);
+    indicesDimProd[indicesDimLast - 1] = 1;
+    for (ssize_t idx = indicesDimLast - 2; idx >= 0; idx--) {
+      indicesDimProd[idx] = indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
+    }
+
+    // Emit pointers.
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+
+    // Emit parameters.
+    auto *batchCountArg = emitConstDimT(builder, batchCount);
+    auto *inpSliceCountArg = emitConstDimT(builder, inpSliceCount);
+    auto *outSliceCountArg = emitConstDimT(builder, outSliceCount);
+    auto *sliceSizeArg = emitConstDimT(builder, sliceSize);
+    auto *indicesDimLastArg = emitConstDimT(builder, indicesDimLast);
+    auto *indicesDimProdArg = emitConstDimTArray(builder, indicesDimProd);
+
+    llvm::Function *F = getFunction("gather_nd", {data->getElementType(), indices->getElementType()});
+    createCall(builder, F,
+               {destPtr, dataPtr, indicesPtr,
+                batchCountArg,
+                inpSliceCountArg,
+                outSliceCountArg,
+                sliceSizeArg,
+                indicesDimLastArg,
+                indicesDimProdArg
+               });
+    break;
+  }
+
   case Kinded::Kind::GatherRangesInstKind: {
     auto *GRI = llvm::cast<GatherRangesInst>(I);
     auto *output = GRI->getOutput();
