@@ -207,6 +207,10 @@ struct OptimizationOptions {
   /// nodes immediately following SLS into SLS partitions
   bool sparseNNPartitioningPairLNWithSLS{false};
 
+  /// If true, SparseNN partiitoning scheme will move Tile
+  /// nodes immediately following SLS for user embeddings into SLS partitions
+  bool sparseNNPartitioningPairTileWithSLS{false};
+
   /// The number of cards over which to split SLS tables when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCards{1};

@@ -448,6 +448,28 @@ static void lowerReluNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), relu);
 }
 
+static void lowerHardSwishNode(Function *F, CompilationContext &cctx,
+                               const HardSwishNode &R) {
+  LOG_SCOPE(F->getLogContext(), "lowerHardSwishNode")
+
+  auto ty = R.getResult().getType();
+  CHECK(ty->isFPType()) << "HardSwish: quantized type not supported: " << ty;
+
+  // x*relu6(x+3)*0.166666667
+  auto *C_3 = F->createSplat(DECORATE_NODE_NAME(R, "C3"), ty, 3.0);
+  auto *C_0167 =
+      F->createSplat(DECORATE_NODE_NAME(R, "C0.1667"), ty, 0.166666667);
+  auto *zero = F->createSplat(DECORATE_NODE_NAME(R, "zero"), ty, 0);
+  auto *C_6 = F->createSplat(DECORATE_NODE_NAME(R, "C6"), ty, 6);
+
+  auto *add = F->createAdd(DECORATE_NODE_NAME(R, "add"), R.getInput(), C_3);
+  auto *max = F->createMax(DECORATE_NODE_NAME(R, "max"), add, zero);
+  auto *min = F->createMin(DECORATE_NODE_NAME(R, "min"), max, C_6);
+  auto *mul1 = F->createMul(DECORATE_NODE_NAME(R, "mul1"), R.getInput(), min);
+  auto *mul2 = F->createMul(DECORATE_NODE_NAME(R, "mul2"), mul1, C_0167);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), mul2);
+}
+
 static void lowerLeakyReluNode(Function *F, CompilationContext &cctx,
                                const LeakyReluNode &LR) {
 
@@ -1884,6 +1906,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(LSTMUnit);
     CASE_LOWER(Broadcast);
     CASE_LOWER(LogSoftMax);
+    CASE_LOWER(HardSwish);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1) {

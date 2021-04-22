@@ -1024,6 +1024,21 @@ int main(int argc, char **argv) {
           "Performs the gradient operation for BatchedPairwiseDotProduct");
 
   //===--------------------------------------------------------------------===//
+  //                Fillers
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("GaussianFill")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Mean")
+      .addMember(MemberType::Float, "Scale")
+      .addMember(MemberType::Float, "Seed")
+      .addResultFromCtorArg()
+      .setDocstring("Fills an output tensor with samples drawn from a normal "
+                    "distribution specified by the mean and standard deviation "
+                    "arguments. The output tensor shape is determined by the "
+                    "input shape if provided, and shape otherwise");
+
+  //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
 
@@ -1034,6 +1049,12 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
+
+  BB.newNode("HardSwish")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Applies HardSwish to each element in the Input tensor.");
 
   BB.newNode("Gelu")
       .addInput("Input")

@@ -4337,6 +4337,162 @@ TEST_F(Caffe2ImporterTest, ClipLargeQRangeToFP16) {
 }
 
 // Here we use a shape that is provided as an argument
+TEST_F(Caffe2ImporterTest, gaussianFillUseProvidedShape) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/gaussian_fill_use_provided_shape.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  PlaceholderBindings bindings;
+
+  Placeholder *output;
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {}, {}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {}, {});
+  }
+
+  // Shape is defined in .pbtxt file
+  const std::vector<dim_t> expectedShape{4, 5, 6, 7};
+  EXPECT_EQ(expectedShape, output->dims().vec());
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+  EXPECT_NEAR(0, result.calculateMeanVariance().first, 3);
+}
+
+// Here we use expect input to be 1D tensor and act like shape
+TEST_F(Caffe2ImporterTest, gaussianFillInputAsShape) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/gaussian_fill_input_as_shape.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/gaussian_fill_input_as_shape_init.pbtxt");
+
+  PlaceholderBindings bindings;
+
+  Placeholder *output;
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {}, {}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {}, {});
+  }
+
+  // Shape is defined in .pbtxt file
+  const std::vector<dim_t> expectedShape{4, 5, 6, 7};
+  EXPECT_EQ(expectedShape, output->dims().vec());
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+  EXPECT_NEAR(0, result.calculateMeanVariance().first, 3);
+}
+
+// Here we use input's shape for the result
+TEST_F(Caffe2ImporterTest, gaussianFillUseInputShape) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/gaussian_fill_use_input_shape.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  PlaceholderBindings bindings;
+
+  Placeholder *output;
+  const std::vector<dim_t> inputShape{4, 5, 6, 7};
+  Tensor inputs_0(ElemKind::Int64ITy, inputShape);
+  inputs_0.getHandle<int64_t>().randomize(-10, 10, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
+                               {&inputs_0.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
+  }
+
+  // Check that the shape of the output matches what Caffe2 expects.
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+  EXPECT_NEAR(0, result.calculateMeanVariance().first, 3);
+}
+
+// Set the extra_shape argument with input provided
+TEST_F(Caffe2ImporterTest, gaussianFillExtraShape) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/"
+                     "gaussian_fill_use_input_shape_with_extra_shape.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  PlaceholderBindings bindings;
+
+  Placeholder *output;
+  const std::vector<dim_t> inputShape{4, 5, 6, 7};
+  Tensor inputs_0(ElemKind::Int64ITy, inputShape);
+  inputs_0.getHandle<int64_t>().randomize(-10, 10, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
+                               {&inputs_0.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
+  }
+
+  // Check that the shape of the output matches what Caffe2 expects.
+  const std::vector<dim_t> expectedShape{4, 5, 6, 7, 2, 3};
+  EXPECT_EQ(expectedShape, output->dims().vec());
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+  EXPECT_NEAR(0, result.calculateMeanVariance().first, 3);
+}
+
+// Here we use a shape that is provided as an argument
 TEST_F(Caffe2ImporterTest, constantFillUseProvidedShape) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -5174,6 +5330,51 @@ TEST_F(Caffe2ImporterTest, Log1p) {
       auto val = input.getHandle().at({d1, d2});
       auto exp = std::log(val + 1);
       EXPECT_NEAR(exp, outputH.at({d1, d2}), 1e-3) << "Bad value " << val;
+    }
+  }
+}
+
+TEST_F(Caffe2ImporterTest, CastInt32ToInt64) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/cast_int32_to_int64.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  std::vector<dim_t> inputShape{3, 4};
+
+  Tensor input{ElemKind::Int32ITy, {inputShape}};
+  input.getHandle<int32_t>() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle<int64_t>();
+
+  for (dim_t d1 = 1; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 1; d2 < inputShape[1]; ++d2) {
+      auto val = input.getHandle<int32_t>().at({d1, d2});
+      auto exp = static_cast<int64_t>(val);
+      EXPECT_EQ(exp, outputH.at({d1, d2}));
     }
   }
 }

@@ -108,7 +108,7 @@ private:
   /// in the corresponding JIT node for each output
   /// placeholder from Glow graph.
   /// Use for quantization int8/uint8 rescale.
-  std::vector<c10::ScalarType> outputCorrectType_;
+  std::vector<at::ScalarType> outputCorrectTypes_;
 
   /// Mutex that protects numTraces_ and mergedTraceContext_.
   std::mutex tracesMutex_;

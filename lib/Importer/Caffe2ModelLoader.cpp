@@ -1445,8 +1445,15 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       break;
     }
     case caffe2::TensorProto_DataType_INT64: {
-      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int64ITy,
-                        opErrMsg(op, "Can only cast int64 to int64."));
+      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int32ITy ||
+                            in.getElementType() == ElemKind::Int64ITy,
+                        opErrMsg(op, "Can only cast int32 or int64 to int64."));
+      if (in.getElementType() == ElemKind::Int32ITy) {
+        auto outTy = mod_.uniqueType(ElemKind::Int64ITy, in.getType()->dims());
+        Node *node = G_->createConvertTo(opName + ".i32toi64", in, outTy);
+        RETURN_IF_ERR(addNodeAsOutput(op, node));
+        return Error::success();
+      }
       break;
     }
     default:
@@ -1484,7 +1491,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "ConstantFill" || typeName == "GivenTensorIntFill" ||
-      typeName == "GivenTensorInt64Fill") {
+      typeName == "GivenTensorInt64Fill" || typeName == "GaussianFill") {
     RETURN_IF_ERR(loadWeight(op));
     return Error::success();
   }
@@ -2214,7 +2221,7 @@ static Error fillTensor(Tensor &T, ElemKind kind, llvm::ArrayRef<dim_t> dim,
 Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
-
+  const std::string &opName = loadOperatorName(op);
   // Load tensors with values:
   if (typeName == "GivenTensorFill" || typeName == "GivenTensorFp16Fill" ||
       typeName == "GivenTensorIntFill" || typeName == "GivenTensorInt64Fill") {
@@ -2562,6 +2569,92 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     }
 
     RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
+
+    return Error::success();
+  }
+
+  // Load tensors with constant fill:
+  if (typeName == "GaussianFill") {
+    /*
+     output: "data"
+     name: ""
+     type: "GaussianFill"
+     arg {
+       name: "mean"
+       f: 0.0
+     }
+     arg {
+       name: "std"
+       f: 1.0
+     }
+     arg {
+       name: "shape"
+       ints: 1
+       ints: 16
+     }
+     */
+
+    const auto &name = op.output(0);
+    if (getConstantByNameOrNull(name)) {
+      return Error::success();
+    }
+
+    // The shape of the output is set by shape, if provided. Otherwise, it is
+    // set by the shape of the input or the shape indicated by input if
+    // input_as_shape is true
+    NodeValue input;
+    std::vector<dim_t> dims;
+    if (dict.count("shape")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(dims, getShape<dim_t>(dict["shape"]));
+    } else {
+      RETURN_ERR_IF_NOT(op.input_size() > 0,
+                        "If no shape provided, must have input shape.");
+
+      bool inputAsShape = false;
+      if (dict.count("input_as_shape")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(inputAsShape,
+                                   loadInt(dict["input_as_shape"]));
+      }
+
+      if (inputAsShape) {
+        Constant *in;
+        ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
+        RETURN_ERR_IF_NOT(in->dims().size() == 1,
+                          opErrMsg(op, "Input must be 1D tensor."));
+        RETURN_ERR_IF_NOT(in->getElementType() == ElemKind::Int64ITy,
+                          opErrMsg(op, "Input must be of int64 type."));
+        const auto handle = in->getHandle<int64_t>();
+        dims.reserve(in->dims().size());
+        for (auto dim : handle) {
+          dims.push_back(dim);
+        }
+      } else {
+        ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+        dims = input.dims();
+      }
+
+      if (dict.count("extra_shape")) {
+        std::vector<dim_t> extra_shape;
+        ASSIGN_VALUE_OR_RETURN_ERR(extra_shape,
+                                   getShape<dim_t>(dict["extra_shape"]));
+        dims.insert(dims.end(), extra_shape.begin(), extra_shape.end());
+      }
+    }
+    if ((!input && !dims.empty()) || input.dims().vec() != dims) {
+      input =
+          G_->createSplat("in", mod_.uniqueType(ElemKind::FloatTy, dims), 0.);
+    }
+    float mean;
+    ASSIGN_VALUE_OR_RETURN_ERR(mean, loadFloat(dict["mean"]));
+    float scale;
+    ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["std"]));
+
+    auto GF = G_->createGaussianFill(opName, input, mean, scale,
+                                     std::random_device{}());
+    auto outputType =
+        mod_.uniqueType(ElemKind::FloatTy, GF->getResult().dims());
+    auto node = G_->createConvertTo(opName + ".ConvertOutput", GF, outputType);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
 
     return Error::success();
   }

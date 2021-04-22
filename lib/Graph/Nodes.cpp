@@ -616,6 +616,10 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
   return isValid;
 }
 
+bool HardSwishNode::verify() const {
+  return checkSameType(getInput(), getResult(), this);
+}
+
 bool PadNode::verify() const {
   // Pad is currently only supported for constant padding.
   return expectCompareTrue("only the 'constant' mode is currrently supported",
@@ -1977,6 +1981,13 @@ bool VectorNormNode::verify() const {
   ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, false);
   isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
+
+bool GaussianFillNode::verify() const {
+  auto dest = getResult();
+  bool isValid = dest.getElementType() == ElemKind::Float16Ty;
+  isValid &= checkSameShape(getInput(), dest, this);
   return isValid;
 }
 

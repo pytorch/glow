@@ -379,11 +379,11 @@ private:
   template <typename ElemTy> void fwdGatherNDInstImpl(const GatherNDInst *I);
   template <typename ElemTy>
   void fwdGatherRangesInstImpl(const GatherRangesInst *I);
-  template <typename ElemTy>
+  template <typename ElemTy, typename IndicesElemTy>
   void fwdScatterDataInstCopyImpl(const ScatterDataInst *I);
-  template <typename ElemTy>
+  template <typename ElemTy, typename IndicesElemTy>
   void fwdScatterDataInstAddFloatImpl(const ScatterDataInst *I);
-  template <typename ElemTy>
+  template <typename ElemTy, typename IndicesElemTy>
   void fwdScatterDataInstAddQuantizedImpl(const ScatterDataInst *I);
 
   template <typename ElemTy>

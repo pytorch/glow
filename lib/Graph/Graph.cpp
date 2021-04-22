@@ -1787,6 +1787,7 @@ UNARY_ARITHMETIC_FUN_DEF(Sin)
 UNARY_ARITHMETIC_FUN_DEF(Cos)
 UNARY_ARITHMETIC_FUN_DEF(Erf)
 UNARY_ARITHMETIC_FUN_DEF(Truncate)
+UNARY_ARITHMETIC_FUN_DEF(HardSwish)
 #undef UNARY_ARITHMETIC_FUN_DEF
 
 #define ARITHMETIC_FUN_DEF(NODE_NAME_)                                         \
@@ -2498,7 +2499,7 @@ Function::createFusedRowwiseQuantizedSparseLengthsSum(
 
 EmbeddingNode *Function::createEmbedding(llvm::StringRef name,
                                          NodeValue weights, NodeValue indices,
-                                         int64_t padIdx, bool scale,
+                                         int32_t padIdx, bool scale,
                                          bool sparse) {
   auto indDims = indices.dims();
   auto wtDims = weights.dims();
@@ -2571,6 +2572,14 @@ Function::createLengthsRangeFill(llvm::StringRef name, NodeValue lengths,
   auto outTy =
       getParent()->uniqueTypeWithNewShape(lengths.getType(), {maxOutputSize});
   return addNode(new LengthsRangeFillNode(name, outTy, lengths));
+}
+
+GaussianFillNode *Function::createGaussianFill(llvm::StringRef name,
+                                               NodeValue input, float mean,
+                                               float scale, float seed) {
+  auto outTy = getParent()->uniqueType(ElemKind::Float16Ty, input.dims());
+
+  return addNode(new GaussianFillNode(name, outTy, input, mean, scale, seed));
 }
 
 SparseToDenseNode *Function::createSparseToDense(llvm::StringRef name,

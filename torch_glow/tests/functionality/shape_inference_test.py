@@ -111,7 +111,7 @@ class TestGlowShapeInference(utils.TorchGlowTestCase):
             x8 = x7 * b
             return x8 * torch.chain_matmul(x8, x8)
 
-        torch_glow.enableFusionPass()
+        torch_glow.enableFusionPass_DO_NOT_USE_THIS()
         torch_glow.setFusionStartIndex(3)
         torch_glow.setFusionEndIndex(6)
 

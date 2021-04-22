@@ -83,6 +83,7 @@ bool UseSparseNNPartitioningScheme = false;
 bool SparseNNPartitioningAddSLSConcats = false;
 bool SparseNNPartitioningBalancePerfModel = false;
 bool SparseNNPartitioningPairLNWithSLS = false;
+bool SparseNNPartitioningPairTileWithSLS = false;
 
 // Dag Optimizer Constants
 bool UseDAGOptimizer = false;
@@ -317,6 +318,16 @@ DEFINE_bool(glow_sparsenn_partitioning_pair_ln_with_sls,
 DEFINE_validator(glow_sparsenn_partitioning_pair_ln_with_sls,
                  [](const char *, bool val) {
                    glow::flags::SparseNNPartitioningPairLNWithSLS = val;
+                   return true;
+                 });
+DEFINE_bool(
+    glow_sparsenn_partitioning_pair_tile_with_sls,
+    glow::flags::SparseNNPartitioningPairTileWithSLS,
+    "Put tile nodes immediately following SLS for user embeddings into SLS "
+    "Partitions");
+DEFINE_validator(glow_sparsenn_partitioning_pair_tile_with_sls,
+                 [](const char *, bool val) {
+                   glow::flags::SparseNNPartitioningPairTileWithSLS = val;
                    return true;
                  });
 DEFINE_bool(glow_clip_fp16, glow::flags::ClipToFP16,

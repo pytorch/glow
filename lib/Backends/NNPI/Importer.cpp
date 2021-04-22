@@ -1677,6 +1677,24 @@ public:
   }
 };
 
+class GaussianFillNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowGaussianFill = llvm::dyn_cast<GaussianFillNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowGaussianFill, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowGaussianFill->getInput())},
+                            {nodeValueName(glowGaussianFill->getResult())});
+    return nnpiNetworkAddRandomNormalOp(
+        importer.getNetwork(), glowGaussianFill->getName().begin(),
+        nodeValueName(glowGaussianFill->getInput()).c_str(),
+        nodeValueName(glowGaussianFill->getResult()).c_str(), nullptr,
+        glowGaussianFill->getMean(), glowGaussianFill->getScale(),
+        glowGaussianFill->getSeed());
+  }
+};
+
 class LRNNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2703,6 +2721,7 @@ std::unordered_map<
     {"FusedRowwiseQuantizedSparseLengthsSum",
      glow::make_unique<FRQSLSNodeImporter>()},
     {"Select", glow::make_unique<SelectNodeImporter>()},
+    {"GaussianFill", glow::make_unique<GaussianFillNodeImporter>()},
     {"LocalResponseNormalization", glow::make_unique<LRNNodeImporter>()},
     {"RowwiseQuantizedFullyConnected", glow::make_unique<RQFCNodeImporter>()},
     {"ReplaceNaN", glow::make_unique<ReplaceNaNNodeImporter>()},

@@ -17,24 +17,26 @@ class SimpleAddMmModule(torch.nn.Module):
 class TestAddMM(utils.TorchGlowTestCase):
     def test_addmm_basic(self):
         """Basic test of the PyTorch addmm Node on Glow."""
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAddMmModule(),
-            torch.randn(6, 4),
-            torch.randn(6, 10),
-            torch.randn(10, 4),
+            (torch.randn(6, 4), torch.randn(6, 10), torch.randn(10, 4)),
+            fusible_ops={"aten::add", "aten::mm"},
+            fp16vfp16_atol=1e-3,
+            fp16vfp16_rtol=1e-3,
         )
 
     def test_addmm_broadcast(self):
         """Test of the PyTorch addmm with broadcasting add on Glow."""
-        utils.compare_tracing_methods(
-            SimpleAddMmModule(), torch.randn(4), torch.randn(6, 10), torch.randn(10, 4)
+        utils.run_comparison_tests(
+            SimpleAddMmModule(),
+            (torch.randn(4), torch.randn(6, 10), torch.randn(10, 4)),
+            fusible_ops={"aten::add", "aten::mm"},
         )
 
     def test_addmm_broadcast_with_alpha_and_beta(self):
         """Test of the PyTorch addmm with broadcasting add on Glow."""
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAddMmModule(2.0, 3.0),
-            torch.randn(4),
-            torch.randn(6, 10),
-            torch.randn(10, 4),
+            (torch.randn(4), torch.randn(6, 10), torch.randn(10, 4)),
+            fusible_ops={"aten::add", "aten::mm"},
         )
