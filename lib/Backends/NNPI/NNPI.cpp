@@ -30,9 +30,11 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include <cstdio>
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 using namespace glow;
 
@@ -56,6 +58,21 @@ unsigned NNPIBackend::numDevices() {
   LOG_NNPI_INF_IF_ERROR(nnpiAdapterDestroy(adapter),
                         "Failed to destroy NNPI Adapter");
   return adapterInfo.numDevices;
+}
+
+std::vector<unsigned> NNPIBackend::scanDeviceIDs() {
+  std::vector<unsigned> devices;
+  for (int i = 0; i < NNPIBackend::numDevices(); ++i) {
+    std::string devPath = "/dev/nnpi" + std::to_string(i);
+    if (FILE *devFile = fopen(devPath.c_str(), "r")) {
+      fclose(devFile);
+      LOG(INFO) << "Scan NNPI device found: " << i;
+      devices.push_back(i);
+    } else {
+      continue;
+    }
+  }
+  return devices;
 }
 
 /// \returns whether \p type is 2 dimensional and unary. Usually the data input

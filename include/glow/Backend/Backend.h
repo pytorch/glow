@@ -312,6 +312,9 @@ public:
     unsigned numDevices() const override {                                     \
       return BackendClass::numDevices();                                       \
     }                                                                          \
+    std::vector<unsigned> scanDeviceIDs() const override {                     \
+      return BackendClass::scanDeviceIDs();                                    \
+    }                                                                          \
   };                                                                           \
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
@@ -330,6 +333,9 @@ public:
     }                                                                          \
     unsigned numDevices() const override {                                     \
       return BackendClass::numDevices();                                       \
+    }                                                                          \
+    std::vector<unsigned> scanDeviceIDs() const override {                     \
+      return BackendClass::scanDeviceIDs();                                    \
     }                                                                          \
                                                                                \
   private:                                                                     \

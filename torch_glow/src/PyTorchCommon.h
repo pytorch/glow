@@ -175,6 +175,9 @@ public:
   /// Number of Glow devices to use.
   int32_t numDevices = -1;
 
+  /// Whether to scan devices to get available ones in torch backend
+  bool scanDevices = false;
+
   // Whether to run shape inference of meta input
   bool runShapeInference = false;
 
