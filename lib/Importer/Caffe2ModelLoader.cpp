@@ -604,10 +604,9 @@ Error Caffe2ModelLoader::loadLayerNorm(const caffe2::OperatorDef &op,
   unsigned_t axis = 1; // Caffe2 default.
   if (dict.count("axis")) {
     ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+    ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                               getPositiveAxis<int>(axis, in.dims().size()));
   }
-
-  RETURN_ERR_IF_NOT(axis < in.dims().size(),
-                    opErrMsg(op, "axis must fit inside input dims"));
 
   // Feature shape is based on the input dims, from the axis to the end.
   ShapeVector featDims;
