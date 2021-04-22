@@ -145,9 +145,15 @@ clean_dir(OUT_DIR)
 # ----------------------------------------------------------------------------------------------------------------------
 def gen_select_test(name, input_shape):
     # Create model.
-    cond = layers.Input(name="cond", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.bool)
-    lhs = layers.Input(name="lhs", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32)
-    rhs = layers.Input(name="rhs", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32)
+    cond = layers.Input(
+        name="cond", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.bool
+    )
+    lhs = layers.Input(
+        name="lhs", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32
+    )
+    rhs = layers.Input(
+        name="rhs", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32
+    )
     out = tf.where(cond, x=lhs, y=rhs)
     model = Model(inputs=[cond, lhs, rhs], outputs=[out])
     # Create data.
@@ -199,14 +205,23 @@ gen_log_softmax_test(name="log_softmax", input_shape=(1, 3), axis=-1)
 # ----------------------------------------------------------------------------------------------------------------------
 def gen_gather_nd_test(name, data_shape, indices_shape):
     # Create model.
-    data = layers.Input(name="data", batch_size=data_shape[0], shape=data_shape[1:], dtype=tf.float32)
-    indices = layers.Input(name="indices", batch_size=indices_shape[0], shape=indices_shape[1:], dtype=tf.int32)
+    data = layers.Input(
+        name="data", batch_size=data_shape[0], shape=data_shape[1:], dtype=tf.float32
+    )
+    indices = layers.Input(
+        name="indices",
+        batch_size=indices_shape[0],
+        shape=indices_shape[1:],
+        dtype=tf.int32,
+    )
     out = tf.gather_nd(data, indices, batch_dims=0)
     model = Model(inputs=[data, indices], outputs=[out])
     # Create data.
     np.random.seed(0)
     data_tensor = np.random.rand(*data_shape).astype(np.float32)
-    indices_tensor = np.random.randint(low=0, high=data_shape, size=indices_shape).astype(np.int32)
+    indices_tensor = np.random.randint(
+        low=0, high=data_shape, size=indices_shape
+    ).astype(np.int32)
     out_tensor = model.predict([data_tensor, indices_tensor])
     # Save model.
     save_model(model, name)
@@ -226,14 +241,23 @@ gen_gather_nd_test(name="gather_nd", data_shape=(2, 3, 4), indices_shape=(2, 3))
 # ----------------------------------------------------------------------------------------------------------------------
 def gen_gather_test(name, data_shape, indices_shape, axis):
     # Create model.
-    data = layers.Input(name="data", batch_size=data_shape[0], shape=data_shape[1:], dtype=tf.float32)
-    indices = layers.Input(name="indices", batch_size=indices_shape[0], shape=indices_shape[1:], dtype=tf.int32)
+    data = layers.Input(
+        name="data", batch_size=data_shape[0], shape=data_shape[1:], dtype=tf.float32
+    )
+    indices = layers.Input(
+        name="indices",
+        batch_size=indices_shape[0],
+        shape=indices_shape[1:],
+        dtype=tf.int32,
+    )
     out = tf.gather(data, indices, axis=axis, batch_dims=0)
     model = Model(inputs=[data, indices], outputs=[out])
     # Create data.
     np.random.seed(0)
     data_tensor = np.random.rand(*data_shape).astype(np.float32)
-    indices_tensor = np.random.randint(data_shape[axis], size=indices_shape).astype(np.int32)
+    indices_tensor = np.random.randint(data_shape[axis], size=indices_shape).astype(
+        np.int32
+    )
     out_tensor = model.predict([data_tensor, indices_tensor])
     # Save model.
     save_model(model, name)
@@ -245,8 +269,12 @@ def gen_gather_test(name, data_shape, indices_shape, axis):
     keras_backend.clear_session()
 
 
-gen_gather_test(name="gather_axis0", data_shape=(1, 2, 3, 4), indices_shape=(1, 5), axis=0)
-gen_gather_test(name="gather_axis1", data_shape=(1, 2, 3, 4), indices_shape=(1, 5), axis=1)
+gen_gather_test(
+    name="gather_axis0", data_shape=(1, 2, 3, 4), indices_shape=(1, 5), axis=0
+)
+gen_gather_test(
+    name="gather_axis1", data_shape=(1, 2, 3, 4), indices_shape=(1, 5), axis=1
+)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1108,7 +1136,9 @@ def gen_resize_nearest_test(name, input_shape, output_shape):
     keras_backend.clear_session()
 
 
-gen_resize_nearest_test(name="resize_nearest", input_shape=(1, 3, 4, 2), output_shape=(5, 7))
+gen_resize_nearest_test(
+    name="resize_nearest", input_shape=(1, 3, 4, 2), output_shape=(5, 7)
+)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1132,7 +1162,9 @@ def gen_resize_bilinear_test(name, input_shape, output_shape):
     keras_backend.clear_session()
 
 
-gen_resize_bilinear_test(name="resize_bilinear", input_shape=(1, 3, 4, 2), output_shape=(5, 7))
+gen_resize_bilinear_test(
+    name="resize_bilinear", input_shape=(1, 3, 4, 2), output_shape=(5, 7)
+)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
