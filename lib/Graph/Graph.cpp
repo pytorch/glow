@@ -2818,7 +2818,7 @@ GatherNDNode *Function::createGatherND(llvm::StringRef name, NodeValue data,
   for (size_t idx = batchDims; idx < indicesDims.size() - 1; ++idx) {
     outDims[outIdx++] = indicesDims[idx];
   }
-  for (size_t idx = batchDims + indicesDimLast; idx < dataDims.size(); idx++) {
+  for (size_t idx = batchDims + indicesDimLast; idx < dataDims.size(); ++idx) {
     outDims[outIdx++] = dataDims[idx];
   }
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
