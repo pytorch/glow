@@ -354,6 +354,7 @@ template <typename Ty> void testAssignment(const Type &ty) {
 TEST(Tensor, assignment) {
   dim_t dim[] = {320, 200, 64};
   testAssignment<float>(Type{ElemKind::FloatTy, dim});
+  testAssignment<double>(Type{ElemKind::Float64Ty, dim});
   testAssignment<int8_t>(Type{ElemKind::Int8QTy, dim, 1., 0});
   testAssignment<uint8_t>(Type{ElemKind::UInt8QTy, dim, 1., 0});
   testAssignment<int16_t>(Type{ElemKind::Int16QTy, dim, 1., 0});
@@ -1338,6 +1339,7 @@ TEST(Tensor, typeSerialization) {
   };
   testType(Type(ElemKind::FloatTy, {1}));
   testType(Type(ElemKind::Float16Ty, {1, 2}));
+  testType(Type(ElemKind::Float64Ty, {1}));
   testType(Type(ElemKind::Int8QTy, {1, 2, 3}, 1.1, 1));
   testType(Type(ElemKind::UInt8QTy, {1, 2, 3}, 1.2, 2));
   testType(Type(ElemKind::Int16QTy, {1, 2, 3}, 1.3, 3));

@@ -34,10 +34,9 @@ class TestAnd(utils.TorchGlowTestCase):
         ]
     )
     def test_and(self, _, a, b, skip_to_glow=False):
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAndModule(),
-            a,
-            b,
+            (a, b),
             fusible_ops={"aten::__and__"},
             skip_to_glow=skip_to_glow,
         )

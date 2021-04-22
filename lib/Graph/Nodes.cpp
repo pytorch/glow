@@ -616,6 +616,10 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
   return isValid;
 }
 
+bool HardSwishNode::verify() const {
+  return checkSameType(getInput(), getResult(), this);
+}
+
 bool PadNode::verify() const {
   // Pad is currently only supported for constant padding.
   return expectCompareTrue("only the 'constant' mode is currrently supported",
@@ -1021,6 +1025,10 @@ bool SigmoidGradNode::verify() const {
   isValid &= verifyActivation(getGradOfInputNamedInput(),
                               getGradOfOriginalOutputNamedResult());
   return isValid;
+}
+
+bool SoftPlusNode::verify() const {
+  return verifyActivation(getInput(), getResult());
 }
 
 bool SwishNode::verify() const {
@@ -1827,6 +1835,29 @@ bool SparseToDenseMaskNode::verify() const {
   return isValid;
 }
 
+bool SparseLabelSplitNode::verify() const {
+  bool isValid =
+      checkType("Input and output values must be of the same type",
+                getLabelValues(), getValues().getElementType(), this);
+  isValid &= checkType("Lengths must be of type int32", getLengths(),
+                       ElemKind::Int32ITy, this);
+  isValid &= checkType("Indices must be of type int64", getIndices(),
+                       ElemKind::Int64ITy, this);
+  isValid &= checkType("ExampleIds must be of type int32", getExampleIds(),
+                       ElemKind::Int32ITy, this);
+  isValid &= checkType("GradientOffsetMap must be of type in32",
+                       getGradientOffsetMap(), ElemKind::Int32ITy, this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Values must be a 1D vector",
+                               getValues().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices and values must have the same shape",
+                               getIndices().dims(), getValues().dims(), this);
+  return isValid;
+}
+
 bool SGDNode::verify() const {
   return checkSameType(getGradient(), getWeight(), this);
 }
@@ -1855,8 +1886,12 @@ bool IntLookupTableNode::verify() const {
   isValid &= expectCompareTrue("Mapping should be 1 dimensional",
                                getMapping().dims().size(), size_t(1), this);
   isValid &= expectCompareTrue(
-      "Mapping should cover whole quantized range", getMapping().dims()[0],
-      (dim_t)(256 * getResult().getType()->getElementSize()), this);
+      "Mapping should cover the whole input quantized range",
+      getMapping().dims()[0],
+      (dim_t)(getInput().getType()->getQuantizedValueCount()), this);
+  isValid &= expectCompareTrue("Mapping and result type must be the same",
+                               getMapping().getType()->getElementType(),
+                               getResult().getType()->getElementType(), this);
   return isValid;
 }
 
@@ -1986,6 +2021,13 @@ bool VectorNormNode::verify() const {
   ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, false);
   isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
+
+bool GaussianFillNode::verify() const {
+  auto dest = getResult();
+  bool isValid = dest.getElementType() == ElemKind::Float16Ty;
+  isValid &= checkSameShape(getInput(), dest, this);
   return isValid;
 }
 
@@ -2586,11 +2628,24 @@ bool GemmNode::verify() const {
   NodeValue Y = getResult();
   bool transA = getTransposeA();
   bool transB = getTransposeB();
+  const Node *parent = Y.getNode();
 
   // Check types.
   bool isValid = checkType(B, A.getElementType(), this);
+  // Check for element kind of bias
   if (C.getNode()) {
-    isValid &= checkType(C, A.getElementType(), this);
+    // Non quantization type check.
+    if (A.getElementType() == ElemKind::FloatTy ||
+        A.getElementType() == ElemKind::Float16Ty) {
+      isValid &= checkType(C, A.getElementType(), parent);
+    }
+    // Quantization type check.
+    if (A.getElementType() == ElemKind::Int8QTy) {
+      isValid &= expectCompareTrue("Bias type should be Int8 or Int32 for Gemm",
+                                   C.getElementType() == ElemKind::Int8QTy ||
+                                       C.getElementType() == ElemKind::Int32QTy,
+                                   true, parent);
+    }
   }
   isValid &= checkType(Y, A.getElementType(), this);
 

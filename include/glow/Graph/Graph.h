@@ -159,6 +159,11 @@ public:
   /// the type \p shapeType.
   TypeRef uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType);
 
+  /// Return a pointer to a uniqued type \p T.
+  /// The new type is identical to \p T, with new scale and offset taken from
+  /// the type \p quantParamType.
+  TypeRef uniqueTypeWithNewQuantParams(TypeRef T, TypeRef quantParamType);
+
   /// Return the void type.
   TypeRef getVoidTy();
 
@@ -807,6 +812,11 @@ public:
   /// \returns a LogitNode with \p name given \p input and \p eps.
   LogitNode *createLogit(llvm::StringRef name, NodeValue input, float eps);
 
+  /// Create a SoftPlus node with the given \p name, \p input and
+  /// output type \p outTy.
+  SoftPlusNode *createSoftPlus(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy = nullptr);
+
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
                              NodeValue selected, TypeRef outTy = nullptr,
                              float beta = 1.0);
@@ -995,6 +1005,7 @@ public:
   UNARY_ARITHMETIC_FUN_DECL(Cos)
   UNARY_ARITHMETIC_FUN_DECL(Erf)
   UNARY_ARITHMETIC_FUN_DECL(Truncate)
+  UNARY_ARITHMETIC_FUN_DECL(HardSwish)
 #undef UNARY_ARITHMETIC_FUN_DECL
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -1241,11 +1252,23 @@ public:
                                NodeValue batch,
                                llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceMin operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceMinNode *createBatchedReduceMin(llvm::StringRef name,
+                                               TypeRef outTy, NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
   /// Create a node, performing BatchedReduceMin operation. Output type is
   /// based on the input \p batch type with dimensions specified with \p axes
   /// removed.
   BatchedReduceMinNode *createBatchedReduceMin(llvm::StringRef name,
                                                NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
+  /// Create a node, performing BatchedReduceMax operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceMaxNode *createBatchedReduceMax(llvm::StringRef name,
+                                               TypeRef outTy, NodeValue batch,
                                                llvm::ArrayRef<unsigned_t> axes);
 
   /// Create a node, performing BatchedReduceMax operation. Output type is
@@ -1338,7 +1361,7 @@ public:
   /// sparse, if true, gradinet w.r.t. weight matrix will be a sparse tensor
   /// (currently not supported, default=false)
   EmbeddingNode *createEmbedding(llvm::StringRef name, NodeValue weights,
-                                 NodeValue indices, int64_t padIdx, bool scale,
+                                 NodeValue indices, int32_t padIdx, bool scale,
                                  bool sparse);
 
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
@@ -1515,6 +1538,18 @@ public:
                           NodeValue values, NodeValue defaultValue,
                           NodeValue lengths, llvm::ArrayRef<dim_t> mask);
 
+  // TODO: add description
+  SparseLabelSplitNode *
+  createSparseLabelSplit(llvm::StringRef name, NodeValue lengths,
+                         NodeValue indices, NodeValue values, dim_t numLabels);
+
+  /// Given floats a input node \p input, floats \p mean and \p scale, and \p
+  /// seed \returns a GaussianFillNode. The output shape is the same as that of
+  /// \p input, filled with values drawn from a normal distribution with mean
+  /// and std dev \p mean and \scale, respectively, seeded with seed \p seed
+  GaussianFillNode *createGaussianFill(llvm::StringRef name, NodeValue input,
+                                       float mean, float scale, float seed);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
 
   /// Creates and \returns a SaveNode of \p input to \p output. If \p skipSuffix
@@ -1530,15 +1565,31 @@ public:
   createQuantizationProfile(PlaceholderBindings &bindings, llvm::StringRef name,
                             NodeValue input, dim_t numHistogramBins = 10);
 
-  /// Create lookup table for mapping between quantized numbers.
-  /// \p input and \p outTy must have quantized type.
-  /// Table contains all numbers from the quantized range, e.g.,
-  /// 256 entries for int8. Position 0 in the \p initValues
-  /// corresponds to the -128 input number, position 255 to 127.
+  /// Create lookup table for mapping between quantized operands. \p input and
+  /// \p outTy must be quantized types. The table contains all numbers from the
+  /// quantized range, e.g. 256 entries for int8 input. First position in the
+  /// \p initValues corresponds to the minimum input number and the last
+  /// position corresponds to the maximum input number.
+  template <typename T = int8_t>
+  IntLookupTableNode *
+  createIntLookupTable(llvm::StringRef name, NodeValue input,
+                       llvm::ArrayRef<T> initValues, TypeRef outTy);
+
+  /// Create lookup table for mapping between quantized operands based on the
+  /// floating point function \p func. \p input and \p outTy must be quantized
+  /// types.
   IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
                                            NodeValue input,
-                                           llvm::ArrayRef<int8_t> initValues,
+                                           std::function<float(float)> func,
                                            TypeRef outTy);
+
+  /// Create quantized log.
+  IntLookupTableNode *createIntLog(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
+
+  /// Create quantized exp.
+  IntLookupTableNode *createIntExp(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
 
   /// Create quantized tanh.
   IntLookupTableNode *createIntTanh(llvm::StringRef name, NodeValue input,
@@ -2427,6 +2478,8 @@ bool isOutput(const Placeholder *PH, const Function &F);
 bool isInput(const Placeholder *PH, const Function &F);
 
 /// Helper vectors for common transpose shuffles.
+#define NCH2NHC                                                                \
+  { 0u, 2u, 1u }
 #define NCHW2NHWC                                                              \
   { 0u, 2u, 3u, 1u }
 #define NCTHW2NTHWC                                                            \

@@ -21,14 +21,19 @@
 #include "glow/Base/Type.h"
 #include "glow/Importer/CommonOperatorLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
+#include "glow/glow/torch_glow/src/ShapeInferenceEngine.h"
 
 #include <torch/csrc/jit/ir/ir.h>
+#include <unordered_map>
 
 DECLARE_bool(dumpFinalGlowGraph);
 
 namespace glow {
 
 struct InputMetaStack;
+
+using BatchShapesMapType = std::unordered_map<
+    int, std::unordered_map<const torch::jit::Value *, VariableMeta>>;
 
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
@@ -149,6 +154,12 @@ public:
   /// adding networks to HostManager.
   bool saturateHost = false;
 
+  /// If saturateHost is enabled and saturateKDevices is greater than zero,
+  /// this is the number of devices that will be saturated.
+  /// If saturateKDevices is zero and saturateHost is enabled, all available
+  /// devices will be saturated.
+  unsigned saturateKDevices{0};
+
   /// If true then randomize the Constants in the Function loaded by
   /// PyTorchModelLoader.
   bool randomizeConstants = false;
@@ -163,6 +174,9 @@ public:
 
   /// Number of Glow devices to use.
   int32_t numDevices = -1;
+
+  /// Whether to scan devices to get available ones in torch backend
+  bool scanDevices = false;
 
   // Whether to run shape inference of meta input
   bool runShapeInference = false;
@@ -198,6 +212,12 @@ public:
   /// Whether to enable device tracing from HostManger. NOTE: this must be set
   /// before network compilation.
   bool enableDeviceTracing = false;
+
+  /// Whethere to enable DAG optimizer
+  bool use_dag_optimizer = false;
+  /// Additional parameters to DAG optimizer
+  std::string apl_parallelization_alg = "ParallelizeCVHeuristicData";
+  int32_t apl_num_parallel_chunks = 2;
 };
 
 /// Represents different possible output types from to_glow modules.
@@ -256,18 +276,21 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
 /// raw string containing the meta data of the glow fuser node input.
-void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
-                   runtime::DeferredWeightLoader *loader,
-                   const PyTorchLoaderSettings &settings,
-                   const std::string method_name = "forward");
+void glowAOTFusion(
+    torch::jit::Module &module, const std::string &inputMetaStr,
+    runtime::DeferredWeightLoader *loader,
+    const PyTorchLoaderSettings &settings,
+    const std::string method_name = "forward",
+    const std::unordered_map<int, std::string> &batchShapes = {});
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
-void glowAOTFusionWithShapeInference(torch::jit::Module &module,
-                                     const glow::InputMetaStack &metaStack,
-                                     runtime::DeferredWeightLoader *loader,
-                                     const PyTorchLoaderSettings &settings,
-                                     const std::string method_name = "forward");
+void glowAOTFusionWithShapeInference(
+    torch::jit::Module &module, const glow::InputMetaStack &metaStack,
+    runtime::DeferredWeightLoader *loader,
+    const PyTorchLoaderSettings &settings,
+    const std::string method_name = "forward",
+    const std::unordered_map<int, std::string> &batchShapes = {});
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in
@@ -281,6 +304,10 @@ bool signalHandlerOverridesEnabled();
 Expected<std::string> getTempFileLoc(const std::string &name,
                                      const std::string &suffix);
 
-} // namespace glow
+BatchShapesMapType parseBatchShapeMapFromInputMeta(
+    const std::shared_ptr<struct torch::jit::Graph> &graph,
+    const std::unordered_map<int, std::string> &batchShapes,
+    const std::string &baseSymbol);
 
+} // namespace glow
 #endif // GLOW_TORCH_GLOW_SRC_COMMON_H

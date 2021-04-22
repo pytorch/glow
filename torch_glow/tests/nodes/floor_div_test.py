@@ -75,9 +75,18 @@ class TestFloorDiv(utils.TorchGlowTestCase):
                 torch.tensor([-5]),
                 torch.tensor([4]),
             ),
+            lambda: (
+                "int64",
+                SimpleFloorDivideModule(),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+            ),
         ]
     )
     def test_floor_div(self, _, module, left, right):
-        utils.compare_tracing_methods(
-            module, left, right, fusible_ops={"aten::floor_divide"}
+        utils.run_comparison_tests(
+            module,
+            (left, right),
+            fusible_ops={"aten::floor_divide"},
+            skip_for_backends="NNPI",
         )

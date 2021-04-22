@@ -1005,6 +1005,8 @@ Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
     return ElemKind::Float16Ty;
   case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
     return ElemKind::BFloat16Ty;
+  case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+    return ElemKind::Float64Ty;
   case ONNX_NAMESPACE::TensorProto_DataType_INT32:
     return ElemKind::Int32ITy;
   case ONNX_NAMESPACE::TensorProto_DataType_INT64:
@@ -1428,7 +1430,7 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
     if (op.input_size() > 3) {
       Constant *axesC = getConstantByNameOrNull(op.input(3));
 
-      RETURN_ERR_IF_NOT(startsC, opErrMsg(op, "Axes Tensor is not Constant."));
+      RETURN_ERR_IF_NOT(axesC, opErrMsg(op, "Axes Tensor is not Constant."));
 
       if (axesC->getElementType() == ElemKind::Int64ITy) {
         helperSetter<int64_t>(axesC, axes);
@@ -1443,8 +1445,31 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                           axesC->getType()->getElementName().str().c_str())));
       }
 
-      RETURN_ERR_IF_NOT(op.input_size() == 4,
-                        opErrMsg(op, "Steps is not currently supported!"));
+      if (op.input_size() > 4) {
+        std::vector<ssize_t> step;
+        Constant *stepC = getConstantByNameOrNull(op.input(4));
+
+        RETURN_ERR_IF_NOT(stepC, opErrMsg(op, "Step tensor is not Constant."));
+
+        if (stepC->getElementType() == ElemKind::Int64ITy) {
+          helperSetter<int64_t>(stepC, step);
+        } else if (stepC->getElementType() == ElemKind::Int32ITy) {
+          helperSetter<int32_t>(stepC, step);
+        } else {
+          RETURN_ERR_IF_NOT(
+              false,
+              opErrMsg(
+                  op,
+                  strFormat("Step Tensor has unsupported type '%s'",
+                            stepC->getType()->getElementName().str().c_str())));
+        }
+
+        // Step is interpreted 1 as default.
+        for (size_t i = 0; i < step.size(); i++) {
+          RETURN_ERR_IF_NOT(step[i] == 1,
+                            opErrMsg(op, "step!=1 is currently not supported"));
+        }
+      }
     }
   } else {
     // Attributes 'starts' and 'ends' are mandatory and must be consistent.
@@ -1618,20 +1643,20 @@ Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
   dim_t depth = filterTransposedValue.dims()[0];
 
   // Construct the Bias field.
-  Constant *bias = nullptr;
-
+  NodeValue B;
   // Check if we have a serialized bias vector.
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
-    // Load the serialized bias vector.
-    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(biasTensorName));
+    // Load the serialized bias vector as NodeValue.
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(biasTensorName));
   }
 
   // If a serialized bias wasn't found then create a zero bias.
-  if (!bias) {
-    Tensor biasTensor(ElemKind::FloatTy, {depth});
+  if (op.input_size() == 2) {
+    auto biasTy = mod_.uniqueTypeWithNewShape(in.getType(), {depth});
+    Tensor biasTensor(biasTy);
     biasTensor.zero();
-    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
+    B = mod_.createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
@@ -1653,8 +1678,8 @@ Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
                                            pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
-  auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
+  auto outTy = mod_.uniqueTypeWithNewShape(in.getType(), outDims);
+  auto *node = G_->createConv(opName, tr, filterTransposeNode, B, outTy,
                               kernelShape, strides, pads, group, dilations);
 
   auto *N = G_->createSqueeze(opName, node, 1 /*axes*/);
@@ -1730,20 +1755,20 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Construct the Bias field.
-  Constant *bias = nullptr;
-
+  NodeValue B;
   // Check if we have a serialized bias vector.
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
-    // Load the serialized bias vector.
-    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(biasTensorName));
+    // Load the serialized bias vector as NodeValue.
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(biasTensorName));
   }
 
   // If a serialized bias wasn't found then create a zero bias.
-  if (!bias) {
-    Tensor biasTensor(ElemKind::FloatTy, {depth});
+  if (op.input_size() == 2) {
+    auto biasTy = mod_.uniqueTypeWithNewShape(in.getType(), {depth});
+    Tensor biasTensor(biasTy);
     biasTensor.zero();
-    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
+    B = mod_.createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
@@ -1763,9 +1788,9 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
                                            pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = mod_.uniqueTypeWithNewShape(in.getType(), outDims);
 
-  auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
+  auto *node = G_->createConv(opName, tr, filterTransposeNode, B, outTy,
                               kernelShape, strides, pads, group, dilations);
 
   // Transpose the output back.
@@ -1930,20 +1955,20 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Construct the Bias field.
-  Constant *bias = nullptr;
-
+  NodeValue B;
   // Check if we have a serialized bias vector.
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
-    // Load the serialized bias vector.
-    bias = getConstantByNameOrNull(biasTensorName);
+    // Load the serialized bias vector as constant or NodeValue.
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(biasTensorName));
   }
 
   // If a serialized bias wasn't found then create a zero bias.
-  if (!bias) {
-    Tensor biasTensor(ElemKind::FloatTy, {depth});
+  if (op.input_size() == 2) {
+    auto biasTy = mod_.uniqueTypeWithNewShape(in.getType(), {depth});
+    Tensor biasTensor(biasTy);
     biasTensor.zero();
-    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
+    B = mod_.createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
@@ -2000,10 +2025,10 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
                                              pads, dilations);
   }
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = mod_.uniqueTypeWithNewShape(in.getType(), outDims);
 
   auto *node =
-      G_->createConvTranspose(opName, tr, filterTransposeNode, bias, outTy,
+      G_->createConvTranspose(opName, tr, filterTransposeNode, B, outTy,
                               kernels, strides, pads, group, dilations);
 
   // Transpose the output back.
@@ -2553,14 +2578,14 @@ Error ONNXModelLoader::loadBatchNormalization(
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  Constant *scale;
-  ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
-  Constant *bias;
-  ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(op.input(2)));
-  Constant *mean;
-  ASSIGN_VALUE_OR_RETURN_ERR(mean, getConstantByName(op.input(3)));
-  Constant *var;
-  ASSIGN_VALUE_OR_RETURN_ERR(var, getConstantByName(op.input(4)));
+  NodeValue scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(scale, getNodeValueByName(op.input(1)));
+  NodeValue bias;
+  ASSIGN_VALUE_OR_RETURN_ERR(bias, getNodeValueByName(op.input(2)));
+  NodeValue mean;
+  ASSIGN_VALUE_OR_RETURN_ERR(mean, getNodeValueByName(op.input(3)));
+  NodeValue var;
+  ASSIGN_VALUE_OR_RETURN_ERR(var, getNodeValueByName(op.input(4)));
   float epsilon = 1e-5f; // default
   auto epsilonIt = dict.find("epsilon");
   if (epsilonIt != dict.end()) {
@@ -2720,12 +2745,6 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
   // Input Type.
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
-  ElemKind inputType = input.getType()->getElementType();
-
-  // Only supports float types.
-  RETURN_ERR_IF_NOT(isFloatElemKind(inputType),
-                    opErrMsg(op, "LeakyRelu: Unsupported Type for LeakyRelu "
-                                 "(Supports only Float types)"));
 
   // ONNX spec says default is 0.01, but doesn't explicitly say it's optional.
   // like for others. The default example just omits alpha.
@@ -3316,10 +3335,9 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Input4: sequence_lens (Optional).
-  if (numInputs > 4) {
-    RETURN_ERR_IF_NOT(
-        op.input(4).empty(),
-        opErrMsg(op, "ONNX RNN 'sequence_lens' attribute not supported!"));
+  if (numInputs > 4 && !op.input(4).empty()) {
+    LOG(WARNING) << "sequence_lens ignored, will be inferred from shape of "
+                    "ONNX RNN input.";
   }
 
   // Input5: initial_h (Optional).
@@ -3453,10 +3471,9 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Input4: sequence_lens (Optional).
-  if (numInputs > 4) {
-    RETURN_ERR_IF_NOT(
-        op.input(4).empty(),
-        opErrMsg(op, "ONNX GRU 'sequence_lens' attribute not supported!"));
+  if (numInputs > 4 && !op.input(4).empty()) {
+    LOG(WARNING) << "sequence_lens ignored, will be inferred from shape of "
+                    "ONNX GRU input.";
   }
 
   // Input5: initial_h (Optional).
@@ -3591,10 +3608,9 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Input4: sequence_lens (Optional).
-  if (numInputs > 4) {
-    RETURN_ERR_IF_NOT(
-        op.input(4).empty(),
-        opErrMsg(op, "ONNX LSTM 'sequence_lens' attribute not supported!"));
+  if (numInputs > 4 && !op.input(4).empty()) {
+    LOG(WARNING) << "sequence_lens ignored, will be inferred from shape of "
+                    "ONNX LSTM input.";
   }
 
   // Input5: initial_h (Optional).
@@ -4105,16 +4121,34 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  std::vector<int8_t> values;
-  ASSIGN_VALUE_OR_RETURN_ERR(values, getShape<int8_t>(dict["values"]));
-  std::vector<dim_t> shape;
-  ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
+  if (in.getType()->getElementType() == ElemKind::Int8QTy) {
+    std::vector<int8_t> values;
+    ASSIGN_VALUE_OR_RETURN_ERR(values, getShape<int8_t>(dict["values"]));
+    std::vector<dim_t> shape;
+    ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
-  auto outTy = mod_.uniqueType(in.getElementType(), shape);
-  Node *N = G_->createIntLookupTable(loadOperatorName(op), in, values, outTy);
+    auto outTy = mod_.uniqueType(in.getElementType(), shape);
+    Node *N = G_->createIntLookupTable<int8_t>(loadOperatorName(op), in, values,
+                                               outTy);
 
-  RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return Error::success();
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  } else if (in.getType()->getElementType() == ElemKind::Int16QTy) {
+    std::vector<int16_t> values;
+    ASSIGN_VALUE_OR_RETURN_ERR(values, getShape<int16_t>(dict["values"]));
+    std::vector<dim_t> shape;
+    ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
+
+    auto outTy = mod_.uniqueType(in.getElementType(), shape);
+    Node *N = G_->createIntLookupTable<int16_t>(loadOperatorName(op), in,
+                                                values, outTy);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  } else {
+    return MAKE_ERR(strFormat("Lookup table type '%s' not supported!",
+                              in.getType()->getElementName().str().c_str()));
+  }
 }
 
 Error ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
@@ -4220,13 +4254,10 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
                                           ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  Constant *W;
-  ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
-  Constant *B = getConstantByNameOrNull(op.input(2));
+  NodeValue w;
+  ASSIGN_VALUE_OR_RETURN_ERR(w, getNodeValueByName(op.input(1)));
   NodeValue b;
-  if (!B) {
-    ASSIGN_VALUE_OR_RETURN_ERR(b, getNodeValueByName(op.input(2)));
-  }
+  ASSIGN_VALUE_OR_RETURN_ERR(b, getNodeValueByName(op.input(2)));
 
   unsigned_t axis = 1;
   if (dict.count("axis")) {
@@ -4234,8 +4265,7 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
         axis, loadAxis<unsigned_t>(dict.at("axis"), in.dims().size()));
   }
 
-  Node *N =
-      G_->createFullyConnected(loadOperatorName(op), in, W, B ? B : b, axis);
+  Node *N = G_->createFullyConnected(loadOperatorName(op), in, w, b, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -4285,9 +4315,40 @@ Error ONNXModelLoader::loadNonMaxSuppression(
   ASSIGN_VALUE_OR_RETURN_ERR(boxesNV, getNodeValueByName(op.input(0)));
   NodeValue scoresNV;
   ASSIGN_VALUE_OR_RETURN_ERR(scoresNV, getNodeValueByName(op.input(1)));
-  Constant *maxOutputBoxesPerClassC = getConstantByNameOrNull(op.input(2));
-  Constant *iouThresholdC = getConstantByNameOrNull(op.input(3));
-  Constant *scoreThresholdC = getConstantByNameOrNull(op.input(4));
+  unsigned maxOutputBoxesPerClass = 0;
+  Constant *maxOutputBoxesPerClassC = nullptr;
+  if (op.input_size() > 2 && !op.input(2).empty()) {
+    maxOutputBoxesPerClassC = getConstantByNameOrNull(op.input(2));
+    RETURN_ERR_IF_NOT(maxOutputBoxesPerClassC,
+                      "NMS: maxOutputBoxesPerClass is not a contant tensor.");
+    if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
+        ElemKind::Int64ITy) {
+      maxOutputBoxesPerClass =
+          maxOutputBoxesPerClassC->getPayload().getHandle<int64_t>().raw(0);
+    } else if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
+               ElemKind::Int32ITy) {
+      maxOutputBoxesPerClass =
+          maxOutputBoxesPerClassC->getPayload().getHandle<int32_t>().raw(0);
+    } else {
+      return MAKE_ERR("NMS: Unsupported type for maxoutputboxesperclass.");
+    }
+  }
+  float iouThreshold = 0.0f;
+  Constant *iouThresholdC = nullptr;
+  if (op.input_size() > 3 && !op.input(3).empty()) {
+    iouThresholdC = getConstantByNameOrNull(op.input(3));
+    RETURN_ERR_IF_NOT(iouThresholdC,
+                      "NMS: iouThreshold is not a contant tensor.");
+    iouThreshold = iouThresholdC->getPayload().getHandle<float>().raw(0);
+  }
+  float scoreThreshold = 0.0f;
+  Constant *scoreThresholdC = nullptr;
+  if (op.input_size() > 4 && !op.input(4).empty()) {
+    scoreThresholdC = getConstantByNameOrNull(op.input(4));
+    RETURN_ERR_IF_NOT(scoreThresholdC,
+                      "NMS: scoreThrehold is not a contant tensor.");
+    scoreThreshold = scoreThresholdC->getPayload().getHandle<float>().raw(0);
+  }
 
   // Defaults to 0 which is the same representation as TF.
   unsigned centerPointBox = 0;
@@ -4308,40 +4369,6 @@ Error ONNXModelLoader::loadNonMaxSuppression(
     RETURN_ERR_IF_NOT(
         padToMaxOutputSize == 1,
         opErrMsg(op, "NonMaxSuppressionV4 does not support non-padding mode."));
-  }
-
-  unsigned maxOutputBoxesPerClass = 0;
-  float iouThreshold = 0.0f;
-  float scoreThreshold = 0.0f;
-
-  if (maxOutputBoxesPerClassC) {
-    if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
-        ElemKind::Int64ITy) {
-      maxOutputBoxesPerClass =
-          maxOutputBoxesPerClassC->getPayload().getHandle<int64_t>().raw(0);
-    } else if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
-               ElemKind::Int32ITy) {
-      maxOutputBoxesPerClass =
-          maxOutputBoxesPerClassC->getPayload().getHandle<int32_t>().raw(0);
-    } else {
-      return MAKE_ERR(
-          opErrMsg(op, "NMS Unsupported type for maxoutputboxesperclass."));
-    }
-  } else {
-    return MAKE_ERR(
-        opErrMsg(op, "NMS maxOutputBoxesPerClass is not a contant tensor."));
-  }
-
-  if (iouThresholdC) {
-    iouThreshold = iouThresholdC->getPayload().getHandle<float>().raw(0);
-  } else {
-    return MAKE_ERR(opErrMsg(op, "NMS iouThreshold is not a contant tensor."));
-  }
-
-  if (scoreThresholdC) {
-    scoreThreshold = scoreThresholdC->getPayload().getHandle<float>().raw(0);
-  } else {
-    return MAKE_ERR(opErrMsg(op, "NMS scoreThrehold is not a contant tensor."));
   }
 
   // Create Node.
@@ -4726,6 +4753,55 @@ Error ONNXModelLoader::loadScatterData(const ONNX_NAMESPACE::NodeProto &op,
 
   Node *node = G_->createScatterData(opName, data, indices, values, cumulative);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadTopK(const ONNX_NAMESPACE::NodeProto &op,
+                                ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  RETURN_ERR_IF_NOT(
+      op.input_size() <= 2,
+      opErrMsg(
+          op,
+          strFormat(
+              "TopK: Maximum number of inputs is 2, but found input size %d ",
+              op.input_size())));
+  unsigned_t k = 0;
+  if (op.input_size() > 1) {
+    Constant *kConst = getConstantByNameOrNull(op.input(1));
+    RETURN_ERR_IF_NOT(
+        kConst, opErrMsg(op, "TopK: Non-constant k is not supported by Glow."));
+    RETURN_ERR_IF_NOT(
+        kConst->getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op,
+                 strFormat("TopK: k input must be of type Int64, but found "
+                           "input type '%s' ",
+                           kConst->getType()->getElementName().str().c_str())));
+    auto constH = kConst->getPayload().getHandle<int64_t>();
+    k = constH.at({0});
+  } else {
+    ASSIGN_VALUE_OR_RETURN_ERR(k, loadInt(dict["k"]));
+  }
+
+  int lastDim = in.dims().size() - 1;
+  int axis = lastDim;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                               loadAxis<int>(dict["axis"], in.dims().size()));
+  }
+
+  RETURN_ERR_IF_NOT(
+      axis == lastDim,
+      opErrMsg(
+          op,
+          strFormat(
+              "TopK: Currently only support axis %d being last dimension %d ",
+              axis, lastDim)));
+
+  auto *R = G_->createTopK(opName, in, k);
+  RETURN_IF_ERR(addNodeAsOutput(op, R));
   return Error::success();
 }
 
@@ -5156,11 +5232,13 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadErf(op, dict);
   }
   if (typeName == "Conv") {
-    // If the Conv operator has quantized inputs, use
+    // If the Conv operator has quantized inputs and
+    // dict contains the scale and offset params, use
     // loadTensorwiseQuantizedConvolution.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    return in.getType()->isQuantizedType()
+    return in.getType()->isQuantizedType() && dict.count("out_scale") &&
+                   dict.count("out_offset")
                ? loadTensorwiseQuantizedConvolution(op, dict)
                : loadConv(op, dict);
   }
@@ -5172,7 +5250,8 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // loadTensorwiseQuantizedPool.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    return in.getType()->isQuantizedType()
+    return in.getType()->isQuantizedType() && dict.count("out_scale") &&
+                   dict.count("out_offset")
                ? loadTensorwiseQuantizedPool(op, dict, typeName)
                : loadPool(op, dict, typeName);
   }
@@ -5376,6 +5455,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "ScatterData") {
     return loadScatterData(op, dict);
+  }
+  if (typeName == "TopK") {
+    return loadTopK(op, dict);
   }
 
   return MAKE_ERR("Failed to load operator " + typeName + " .",

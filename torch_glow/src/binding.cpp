@@ -56,7 +56,9 @@ PYBIND11_MODULE(_torch_glow, m) {
   enableSignalHandlerOverrides();
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
-  m.def("enableFusionPass", []() {
+  /// NOTE: The fuser is deprecated, please use to_glow instead to lower your
+  /// model to Glow.
+  m.def("enableFusionPass_DO_NOT_USE_THIS", []() {
     getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled = true;
   });
 
@@ -256,6 +258,14 @@ PYBIND11_MODULE(_torch_glow, m) {
     glow::runtime::flags::InterpreterMemory = memorySize;
   });
 
+  /// Enable NNPI custom IA Kernels
+  m.def("enable_nnpi_custom_ia_kernels",
+        []() { glow::nnpi::flags::EnableCustomIAKernels = true; });
+
+  /// Enable NNPI custom DSP Kernels
+  m.def("enable_nnpi_custom_dsp_kernels",
+        []() { glow::nnpi::flags::EnableCustomDSPKernels = true; });
+
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
   m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {
@@ -428,4 +438,69 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_device_tracing", []() {
     getGlobalPyTorchLoaderSettingsMutable().enableDeviceTracing = false;
   });
+
+  /// Checks whether the node is supported by Glow.
+  m.def("is_node_supported", glow::PyTorchModelLoader::isNodeSupported);
+
+  m.def("glow_shape_inference", [](std::shared_ptr<torch::jit::Graph> graph,
+                                   const py::tuple &args) {
+    std::vector<c10::IValue> inputs;
+    for (const auto &arg : args) {
+      inputs.emplace_back(torch::jit::toIValue(arg, c10::TensorType::get()));
+    }
+    const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
+
+    // The base symbol of all.
+    std::string baseSymbol = glow::getGlowSymbol(nullptr).toQualString();
+
+    // There could be multiple glow fusion nodes created.
+    glowCustomFuse(graph, getGlobalPyTorchLoaderSettingsMutable());
+
+    ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
+    auto e = shapeInf.run();
+    if (e) {
+      auto error_message = ERR_TO_STRING(std::move(e));
+      LOG(ERROR) << error_message;
+      throw std::runtime_error("shape inference failed with error: " +
+                               error_message);
+    } else {
+      return true;
+    }
+  });
+
+  m.def(
+      "glow_shape_inference_find_unsupported_symbols",
+      [](std::shared_ptr<torch::jit::Graph> graph, const py::tuple &args,
+         std::vector<std::string> &blocklist, bool skip_last_fusion_node) {
+        std::vector<c10::IValue> inputs;
+        for (const auto &arg : args) {
+          inputs.emplace_back(
+              torch::jit::toIValue(arg, c10::TensorType::get()));
+        }
+        const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
+
+        // The base symbol of all.
+        std::string baseSymbol = glow::getGlowSymbol(nullptr).toQualString();
+
+        // There could be multiple glow fusion nodes created.
+        glowCustomFuse(graph, getGlobalPyTorchLoaderSettingsMutable());
+
+        ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
+        auto unsupported =
+            shapeInf.findUnsupportedGraphSymbols(skip_last_fusion_node);
+        std::unordered_set<std::string> blockset;
+        std::copy(blocklist.begin(), blocklist.end(),
+                  std::inserter(blockset, blockset.end()));
+
+        std::vector<std::string> result;
+        std::copy_if(unsupported.begin(), unsupported.end(),
+                     std::back_inserter(result),
+                     [&blockset](std::string symbol) {
+                       return blockset.find(symbol) == blockset.end();
+                     });
+
+        return result;
+      },
+      py::arg("graph"), py::arg("args"), py::arg("blocklist") = py::list(),
+      py::arg("skip_last_fusion_node") = false);
 }

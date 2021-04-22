@@ -90,6 +90,11 @@ static llvm::cl::opt<bool, true> GlowSparseNNPartitioningPairLNWithSLSOpt(
     llvm::cl::desc("Place layer normalization nodes immediately following SLS "
                    "into SLS partition"),
     llvm::cl::location(glow::flags::SparseNNPartitioningPairLNWithSLS));
+static llvm::cl::opt<bool, true> GlowSparseNNPartitioningPairTileWithSLSOpt(
+    "glow_sparsenn_partitioning_pair_tile_with_sls",
+    llvm::cl::desc("Place Tile nodes immediately following SLS "
+                   "for user embeddings into SLS partition"),
+    llvm::cl::location(glow::flags::SparseNNPartitioningPairTileWithSLS));
 
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
@@ -103,7 +108,8 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
       configs.push_back(std::move(config));
     }
   } else {
-    configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
+    configs = runtime::DeviceManager::generateDeviceConfigs(
+        backendName, glow::flags::ScanDevices);
   }
 
   runtime::HostConfig hostConfig;
@@ -176,6 +182,11 @@ onnxStatus HostManagerBackend::addNetwork(
     precConfig.convertToFP16 = glow::flags::ConvertToFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
   }
+  if (glow::flags::SkipBiasFp32tofp16Convert) {
+    precConfig.skipBiasFp32tofp16Convert =
+        glow::flags::SkipBiasFp32tofp16Convert;
+    LOG(INFO) << "Skip fp16 convert for bias";
+  }
   if (glow::flags::ConvertPlaceholdersToFP16) {
     precConfig.convertPlaceholdersToFP16 =
         glow::flags::ConvertPlaceholdersToFP16;
@@ -216,6 +227,8 @@ onnxStatus HostManagerBackend::addNetwork(
         glow::flags::SparseNNPartitioningBalancePerfModel;
     cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
         glow::flags::SparseNNPartitioningPairLNWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
+        glow::flags::SparseNNPartitioningPairTileWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
@@ -280,7 +293,9 @@ onnxStatus HostManagerBackend::addNetwork(
         "Non-recoverable device error when adding network: " + msg;
     if (cctx.skipProvisioning) {
       LOG(ERROR) << errMsg;
-      throw std::invalid_argument("Error during non-provisioned addNetwork");
+      throw std::invalid_argument(strFormat(
+          "Error during AOT optimization (non-provisioned addNetwork):\n%s\n",
+          errMsg.c_str()));
     } else {
       LOG(FATAL) << errMsg;
     }

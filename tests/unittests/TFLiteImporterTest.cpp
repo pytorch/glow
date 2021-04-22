@@ -21,7 +21,21 @@
 #include "glow/Importer/TFLiteModelLoader.h"
 #include "gtest/gtest.h"
 
+#include "llvm/Support/CommandLine.h"
+
 #include <fstream>
+
+namespace {
+
+llvm::cl::OptionCategory tfliteModelTestCat("TFLITE Test Options");
+
+llvm::cl::opt<bool> tflitePrintTestTensorsOpt(
+    "tflite-dump-test-tensors", llvm::cl::init(false), llvm::cl::Optional,
+    llvm::cl::desc(
+        "Print input/expected tensors from test files. Default is false."),
+    llvm::cl::cat(tfliteModelTestCat));
+
+} // namespace
 
 using namespace glow;
 
@@ -84,6 +98,10 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
     std::string inpFilename = dataBasename + ".inp" + std::to_string(inpIdx++);
     Tensor *inpT = bindings.get(inpPH);
     loadTensor(inpT, inpFilename);
+    if (tflitePrintTestTensorsOpt) {
+      llvm::outs() << "Input Placeholder: " << inpPH->getName() << "\n";
+      inpT->dump();
+    }
   }
 
   // Run model.
@@ -101,6 +119,12 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
     // Load reference tensor.
     Tensor refT(outT->getType());
     loadTensor(&refT, refFilename);
+    if (tflitePrintTestTensorsOpt) {
+      llvm::outs() << "Reference Tensor:\n";
+      refT.dump();
+      llvm::outs() << "Output Placeholder: " << outPH->getName() << "\n";
+      outT->dump();
+    }
 
     // Compare.
     ASSERT_TRUE(outT->isEqual(refT, maxError, /* verbose */ true));
@@ -109,6 +133,9 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
 
 #define TFLITE_UNIT_TEST(name, model)                                          \
   TEST(TFLiteImporterTest, name) { loadAndRunModel(model); }
+
+#define TFLITE_UNIT_TEST_MAX_ERR(name, model, maxErr)                          \
+  TEST(TFLiteImporterTest, name) { loadAndRunModel(model, maxErr); }
 
 TFLITE_UNIT_TEST(Add, "add.tflite")
 
@@ -126,6 +153,8 @@ TFLITE_UNIT_TEST(DepthwiseConv2D_Ch1Mult1, "depthwise_conv2d_c1_m1.tflite")
 TFLITE_UNIT_TEST(DepthwiseConv2D_Ch1Mult2, "depthwise_conv2d_c1_m2.tflite")
 TFLITE_UNIT_TEST(DepthwiseConv2D_Ch2Mult1, "depthwise_conv2d_c2_m1.tflite")
 TFLITE_UNIT_TEST(DepthwiseConv2D_Ch2Mult2, "depthwise_conv2d_c2_m2.tflite")
+
+TFLITE_UNIT_TEST(HardSwish, "hardSwish.tflite")
 
 TFLITE_UNIT_TEST(Floor, "floor.tflite")
 
@@ -194,6 +223,8 @@ TFLITE_UNIT_TEST(SliceNegSize, "slice_neg_size.tflite")
 TFLITE_UNIT_TEST(Sin, "sin.tflite")
 
 TFLITE_UNIT_TEST(Tile, "tile.tflite")
+
+TFLITE_UNIT_TEST_MAX_ERR(ResizeBilinear, "resize_bilinear.tflite", 2e-6)
 
 TFLITE_UNIT_TEST(Equal, "equal.tflite")
 

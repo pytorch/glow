@@ -95,6 +95,9 @@ private:
   /// function that will run inputs matching that hash.
   std::unordered_map<size_t, MetaStack> perGlowGraphShapeMap_;
 
+  /// Mutex that protects perGlowGraphShapeMap_.
+  std::mutex glowGraphShapeMapMutex_;
+
   /// In AOT flow, compile a single Glow function and use it for all input
   /// sizes. The PyTorch tensor inputs in this case should be smaller that the
   /// compiled inputs, and they'll be padded with zeros by Glow.
@@ -105,7 +108,7 @@ private:
   /// in the corresponding JIT node for each output
   /// placeholder from Glow graph.
   /// Use for quantization int8/uint8 rescale.
-  std::vector<c10::ScalarType> outputCorrectType_;
+  std::vector<at::ScalarType> outputCorrectTypes_;
 
   /// Mutex that protects numTraces_ and mergedTraceContext_.
   std::mutex tracesMutex_;
@@ -230,6 +233,12 @@ public:
                   const PyTorchLoaderSettings &settings,
                   runtime::DeferredWeightLoader *loader,
                   bool useMaxSizeCompilation = true);
+
+  /// Warmup Graphoutput shape Map by getting output value shapes for each
+  /// batch size.
+  Error warmupGraphOutputShapeMap(
+      const c10::ArrayRef<torch::jit::Value *> &graphOutputValues,
+      const BatchShapesMapType &graphShapeMetaMap);
 
   /// Writes PyTorch tensor inputs on the \p stack to file \p inputFilePrefix,
   /// then runs the JIT GraphExecutor to get the outputs and writes those to \p

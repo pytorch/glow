@@ -12,6 +12,7 @@
 #include <ATen/native/quantized/cpu/packed_params.h>
 
 #include <torch/csrc/jit/backends/backend.h>
+#include <torch/csrc/jit/backends/backend_preprocess.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/ir/node_hashing.h>
 #include <torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h>
@@ -158,7 +159,9 @@ Error checkForFatalError(Error err) {
 } // namespace
 
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
-  static auto cls = torch::jit::backend<TorchGlowBackend>("glow", preprocess);
+  static auto cls = torch::jit::backend<TorchGlowBackend>("glow");
+  static auto pre_reg =
+      torch::jit::backend_preprocess_register("glow", preprocess);
   return cls;
 }
 
@@ -492,12 +495,10 @@ Error applySettingsOverrideFlagsToPyTorchLoaderSettings(
 Error applyCompilationGroupSettingsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings,
     const CompilationGroupSettings &newSettings) {
-  if (newSettings.num_devices_to_use == -1) {
-    settings.saturateHost = true;
-  } else {
-    return MAKE_ERR("Only num_devices_to_use=-1 supported currently");
+  settings.saturateHost = true;
+  if (newSettings.num_devices_to_use > 0) {
+    settings.saturateKDevices = newSettings.num_devices_to_use;
   }
-
   settings.replicationCount = newSettings.replication_count;
   settings.backendSpecificOpts = newSettings.backend_specific_opts;
   settings.convertToFP16 = newSettings.convert_to_fp16;
@@ -512,6 +513,9 @@ Error applyCompilationSpecSettingsToPyTorchLoaderSettings(
     const CompilationSpecSettings &newSettings) {
   settings.backendName = newSettings.glow_backend;
   settings.enableDebugFuser = newSettings.enable_fuser;
+  settings.use_dag_optimizer = newSettings.use_dag_optimizer;
+  settings.apl_parallelization_alg = newSettings.apl_parallelization_alg;
+  settings.apl_num_parallel_chunks = newSettings.apl_num_parallel_chunks;
 
   // Ensure override flags are honored
   RETURN_IF_ERR(applySettingsOverrideFlagsToPyTorchLoaderSettings(settings));

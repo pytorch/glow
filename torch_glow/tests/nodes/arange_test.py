@@ -56,4 +56,4 @@ class TestArange(utils.TorchGlowTestCase):
     )
     def test_arange(self, _, module, dummy):
         """Testing arange with minimum parameters"""
-        utils.compare_tracing_methods(module, dummy, fusible_ops={"aten::arange"})
+        utils.run_comparison_tests(module, dummy, fusible_ops={"aten::arange"})

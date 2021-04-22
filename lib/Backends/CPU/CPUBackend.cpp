@@ -29,6 +29,8 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 
+#include <numeric>
+
 using namespace glow;
 
 CPUBackend::CPUBackend() {
@@ -71,6 +73,7 @@ bool CPUBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::LeakyReluNodeKind:
+  case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
@@ -109,6 +112,12 @@ bool CPUBackend::supportsFusedActivation(Node *parent, Node *activation) const {
 
 unsigned CPUBackend::numDevices() {
   return std::thread::hardware_concurrency();
+}
+
+std::vector<unsigned> CPUBackend::scanDeviceIDs() {
+  std::vector<unsigned> deviceIDs(CPUBackend::numDevices());
+  std::iota(std::begin(deviceIDs), std::end(deviceIDs), 0);
+  return deviceIDs;
 }
 
 std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(

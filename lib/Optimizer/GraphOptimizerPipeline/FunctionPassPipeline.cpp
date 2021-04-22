@@ -161,6 +161,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Run a round of constant folding.
       {FunctionPassID::ConstantFold},
 
+      // Optimize Gather with const scalar index to Slice.
+      {FunctionPassID::GatherToSlice},
+
       // Optimize combinations of Quantized Nodes and Clips.
       {FunctionPassID::OptimizeQuantizeClip},
 
@@ -193,6 +196,11 @@ createDefaultGraphOptimizationPassPipeline() {
 
       // Perform Common Subexpression Elimination.
       {FunctionPassID::CSE},
+
+      // Some sinking transformations are harmful for performance if a sunken
+      // node does not get optimized out (e.g. sinking of Transpose below Tile).
+      // Run code hoisting pass to undo such unsuccessful sinking.
+      {FunctionPassID::HoistCode, ConvergenceMode::UntilFixedPoint},
 
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),

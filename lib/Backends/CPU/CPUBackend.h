@@ -25,6 +25,8 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/IRBuilder.h"
 
+#include <vector>
+
 namespace glow {
 
 class NodeInfo;
@@ -43,6 +45,7 @@ public:
   }
   static std::string getName() { return "CPU"; }
   static unsigned numDevices();
+  static std::vector<unsigned> scanDeviceIDs();
 
   Expected<bool> transformPostLowering(
       Function *F, CompilationContext &cctx,
