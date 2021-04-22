@@ -446,8 +446,7 @@ static void libjit_gather_nd(DataT *out, const DataT *data, const IndexT *indice
                              dim_t outSliceCount,
                              dim_t sliceSize,
                              dim_t indicesDimLast,
-                             dim_t *indicesDimProd,
-                             ) {
+                             dim_t *indicesDimProd) {
   const char *dataPtr = (const char *)data;
   char *outPtr = (char *)out;
 
