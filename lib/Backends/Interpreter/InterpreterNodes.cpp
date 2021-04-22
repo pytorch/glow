@@ -2454,7 +2454,8 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
   // Get indices dimension products.
   std::vector<dim_t> indicesDimProd(indicesDimLast);
   indicesDimProd[indicesDimLast - 1] = 1;
-  for (ssize_t idx = indicesDimLast - 2; idx >= 0; idx--) {
+  for (ssize_t idx = static_cast<ssize_t>(indicesDimLast) - 2; idx >= 0;
+       idx--) {
     indicesDimProd[idx] =
         indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
   }
