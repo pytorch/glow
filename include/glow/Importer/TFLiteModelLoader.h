@@ -294,6 +294,9 @@ class TFLiteModelLoader {
   /// Load Gather ND operator.
   Error loadGatherND(const tflite::Operator *op, const OperatorInfo &opInfo);
 
+  /// Load Select operator.
+  Error loadSelect(const tflite::Operator *op, const OperatorInfo &opInfo);
+
   /// Load Tile operator.
   Error loadTile(const tflite::Operator *op, const OperatorInfo &opInfo);
 

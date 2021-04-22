@@ -1174,6 +1174,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_GATHER_ND) {
     return loadGatherND(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_SELECT) {
+    return loadSelect(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_SIN) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -2127,6 +2130,21 @@ Error TFLiteModelLoader::loadGatherND(const tflite::Operator *op,
   NodeValue output = F_->createGatherND(opInfo.name, data, indices);
   RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
                     opErrMsg(opInfo, "Expected output type incorrect!"));
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadSelect(const tflite::Operator *op,
+                                    const OperatorInfo &opInfo) {
+  NodeValue cond;
+  ASSIGN_VALUE_OR_RETURN_ERR(cond, getInputNodeValue(op, 0));
+  NodeValue LHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(LHS, getInputNodeValue(op, 1));
+  NodeValue RHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(RHS, getInputNodeValue(op, 2));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  NodeValue output = F_->createSelect(opInfo.name, outTy, cond, LHS, RHS);
   return setOutputNodeValue(op, output);
 }
 

@@ -236,6 +236,8 @@ TFLITE_UNIT_TEST(GatherND, "gather_nd.tflite")
 
 TFLITE_UNIT_TEST(LogSoftmax, "log_softmax.tflite")
 
+TFLITE_UNIT_TEST(Select, "select.tflite")
+
 TFLITE_UNIT_TEST(Equal, "equal.tflite")
 
 TFLITE_UNIT_TEST(NotEqual, "not_equal.tflite")
