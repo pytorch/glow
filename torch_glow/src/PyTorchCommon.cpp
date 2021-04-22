@@ -559,6 +559,7 @@ void modelPreprocessing(torch::jit::Module &model,
 
   torch::jit::CanonicalizeOps(graph);
   detail::rewriteQuantizedLinear(graph);
+
   model = torch::jit::freeze_module(model);
 }
 
@@ -566,11 +567,11 @@ void modelPreprocessing(torch::jit::Module &model,
 // runners. We'd still need both since in some cases we may not be able to infer
 // the entire model and would leverage glowAOTFusion() to run the partially
 // lowered model.
-void glowAOTFusionWithShapeInference(torch::jit::Module &model,
-                                     const InputMetaStack &metaStack,
-                                     runtime::DeferredWeightLoader *loader,
-                                     const PyTorchLoaderSettings &settings,
-                                     const std::string method_name) {
+void glowAOTFusionWithShapeInference(
+    torch::jit::Module &model, const InputMetaStack &metaStack,
+    runtime::DeferredWeightLoader *loader,
+    const PyTorchLoaderSettings &settings, const std::string method_name,
+    const std::unordered_map<int, std::string> &batchShapes) {
   auto graph = model.get_method(method_name).function().graph();
 
   // create some fake inputs to run shape inference.
@@ -604,9 +605,16 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
 
   const auto &shapeMap = shapeInf.getVariableMap();
 
+  BatchShapesMapType batchShapesMap;
+  if (batchShapes.size() > 0) {
+    batchShapesMap =
+        parseBatchShapeMapFromInputMeta(graph, batchShapes, baseSymbol);
+    LOG(INFO) << "Finish populating batch shape map with batch size: "
+              << batchShapes.size();
+  }
+
   // this is a fuser subgraph to lower
   std::shared_ptr<torch::jit::Graph> subgraph;
-
   // Create one cachingGraphRunner for each fused graph.
   for (auto *node : graph->nodes()) {
     std::string kind = node->kind().toQualString();
@@ -655,6 +663,17 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
         // error only.
         LOG(ERROR) << ERR_TO_STRING(std::move(e));
       }
+
+      if (batchShapesMap.size() > 0) {
+        auto graphOutputValues = subgraph->outputs();
+        e = runner->warmupGraphOutputShapeMap(graphOutputValues,
+                                              batchShapesMap);
+        if (e) {
+          LOG(ERROR) << ERR_TO_STRING(std::move(e));
+        } else {
+          LOG(INFO) << "Finish warming up shape map: " << batchShapesMap.size();
+        }
+      }
     }
   }
   if (!subgraph) {
@@ -666,14 +685,15 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
 void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    runtime::DeferredWeightLoader *loader,
                    const PyTorchLoaderSettings &settings,
-                   const std::string method_name) {
+                   const std::string method_name,
+                   const std::unordered_map<int, std::string> &batchShapes) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   modelPreprocessing(model, method_name);
 
   if (FLAGS_inferShapeForCompilation) {
     return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
-                                           method_name);
+                                           method_name, batchShapes);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
@@ -737,6 +757,27 @@ Expected<std::string> getTempFileLoc(const std::string &name,
   RETURN_ERR_IF_NOT(tempFileRes.value() == 0,
                     "Failed to create temp file to write into.");
   return std::string(path.c_str());
+}
+
+BatchShapesMapType parseBatchShapeMapFromInputMeta(
+    const std::shared_ptr<struct torch::jit::Graph> &graph,
+    const std::unordered_map<int, std::string> &batchShapes,
+    const std::string &baseSymbol) {
+  BatchShapesMapType batchShapesMap;
+  for (auto &it : batchShapes) {
+    InputMetaStack inputMetaStack = glow::loadInputMeta(it.second);
+    std::vector<torch::jit::IValue> inputs;
+    for (const auto &i : inputMetaStack.inputMetas) {
+      inputs.emplace_back(
+          torch::empty(i.dims, torch::TensorOptions().dtype(i.type)));
+    }
+    const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
+    ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
+    auto e = shapeInf.run();
+    const auto &shapeMap = shapeInf.getVariableMap();
+    batchShapesMap[it.first] = shapeMap;
+  }
+  return batchShapesMap;
 }
 
 } // namespace glow

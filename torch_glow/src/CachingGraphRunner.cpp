@@ -1117,6 +1117,28 @@ CachingGraphRunner::~CachingGraphRunner() {
   }
 }
 
+Error CachingGraphRunner::warmupGraphOutputShapeMap(
+    const c10::ArrayRef<torch::jit::Value *> &graphOutputValues,
+    const BatchShapesMapType &graphShapeMetaMap) {
+  for (auto &it : graphShapeMetaMap) {
+    auto &shapeMap = it.second;
+    auto batchSize = it.first;
+    MetaStack outputShape;
+    for (auto outputValue : graphOutputValues) {
+      auto itr = shapeMap.find(outputValue);
+      if (itr == shapeMap.end()) {
+        std::ostringstream ss;
+        ss << "Node output " << outputValue->debugName()
+           << " Not found in the shape map!";
+        return MAKE_ERR(ss.str());
+      }
+      outputShape.emplace_back(itr->second);
+    }
+    perGlowGraphShapeMap_.emplace(batchSize, outputShape);
+  }
+  return Error::success();
+}
+
 size_t CachingGraphRunner::getGraphMapKeyFromInputStack(
     const InputMetaStack &metaStack) {
   size_t hash;

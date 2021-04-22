@@ -234,6 +234,12 @@ public:
                   runtime::DeferredWeightLoader *loader,
                   bool useMaxSizeCompilation = true);
 
+  /// Warmup Graphoutput shape Map by getting output value shapes for each
+  /// batch size.
+  Error warmupGraphOutputShapeMap(
+      const c10::ArrayRef<torch::jit::Value *> &graphOutputValues,
+      const BatchShapesMapType &graphShapeMetaMap);
+
   /// Writes PyTorch tensor inputs on the \p stack to file \p inputFilePrefix,
   /// then runs the JIT GraphExecutor to get the outputs and writes those to \p
   /// outputFilePrefix.
