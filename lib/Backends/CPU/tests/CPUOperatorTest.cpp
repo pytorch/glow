@@ -288,6 +288,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "SoftPlus_Float/0",
     "SoftPlus_BFloat16/0",
     "SoftPlus_Float16/0",
+    "GaussianFill/0",
     "BFloat16SoftMax/0",
     "FP16SoftMax/0",
     "BatchOneHotDataBFloat16/0",

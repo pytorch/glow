@@ -37,7 +37,7 @@ class TestQuantizedCut(utils.TorchGlowTestCase):
             c = torch.randn([5, 5])
             d = torch.randn([5, 5])
             res_torch = fun(a, b, c, d)
-            torch_glow.enableFusionPass()
+            torch_glow.enableFusionPass_DO_NOT_USE_THIS()
             # Cut using blacklist functionality
             blacklist = ["quantized::add_relu"]
             torch_glow.setFusionBlacklist(blacklist)

@@ -56,7 +56,9 @@ PYBIND11_MODULE(_torch_glow, m) {
   enableSignalHandlerOverrides();
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
-  m.def("enableFusionPass", []() {
+  /// NOTE: The fuser is deprecated, please use to_glow instead to lower your
+  /// model to Glow.
+  m.def("enableFusionPass_DO_NOT_USE_THIS", []() {
     getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled = true;
   });
 

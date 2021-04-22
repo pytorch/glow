@@ -418,8 +418,8 @@ TEST_P(GradCheck, gradientCheckGatherVec) {
     Function *F = Mod.createFunction("main");
 
     A = Mod.createPlaceholder(ElemKind::FloatTy, {3, 4}, "A", false);
-    auto *Indices = Mod.createPlaceholder(ElemKind::Int64ITy, {2}, "I", false);
-    Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2};
+    auto *Indices = Mod.createPlaceholder(ElemKind::Int32ITy, {2}, "I", false);
+    Bindings.allocate(Indices)->getHandle<int32_t>() = {0, 2};
     Exp = Mod.createPlaceholder(ElemKind::FloatTy, {2, 4}, "exp", false);
 
     Node *G = F->createGather("gather", A, Indices, 0 /*batchDims*/);
@@ -452,8 +452,8 @@ TEST_P(GradCheck, gradientCheckGatherDim) {
 
     A = Mod.createPlaceholder(ElemKind::FloatTy, {8, 4}, "A", false);
     auto *Indices =
-        Mod.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "I", false);
-    Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2, 3, 1};
+        Mod.createPlaceholder(ElemKind::Int32ITy, {2, 2}, "I", false);
+    Bindings.allocate(Indices)->getHandle<int32_t>() = {0, 2, 3, 1};
     Exp = Mod.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "exp", false);
 
     Node *G = F->createGather("gather", A, Indices, 0 /*batchDims*/);

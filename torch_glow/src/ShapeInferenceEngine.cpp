@@ -254,6 +254,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&fused8BitRowwiseQuantizedToFloat, &SI::addShapeDefault)},
       {"fb::compressed_indices_remap",
        ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
+      {"quantized::embedding_bag_byte_unpack",
+       ShapeInference(&embeddingBagByteUnpack, &SI::addShapeDefault)},
   });
   return map;
 }
@@ -2175,6 +2177,28 @@ ShapeInferenceEngine::compressedIndicesRemap(const MetaStack &variableMetas) {
   output.dtypeList.emplace_back(variableMetas[3].dtype);
 
   output.shape = resShapes;
+  return output;
+}
+
+/*
+ * quantized::embedding_bag_byte_unpack(Tensor weight) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::embeddingBagByteUnpack(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 1,
+      strFormat("Expected 1 inputs, got %zu.", variableMetas.size()));
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(inputShape.size() > 0,
+                    "Expected input shape size is larger than 0");
+  TensorShape outputShape = inputShape;
+  // Quantized tensor contains zero_point and scale_size which are float number,
+  // Each of them is float number which equals to 4 of int8 number. Unpacking
+  // will remove these two numbers.
+  outputShape.back() -= (2 * 4);
+  TensorOutput output;
+  output.shapeOrIntValues = outputShape;
+  output.dtype = c10::ScalarType::Float;
   return output;
 }
 

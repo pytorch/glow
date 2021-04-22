@@ -38,7 +38,7 @@ class TestArgMin(utils.TorchGlowTestCase):
     )
     def test_argmin_node(self, _, module, tensor):
         """Test of the PyTorch ArgMin node on Glow."""
-        utils.compare_tracing_methods(module, tensor, fusible_ops={"aten::argmin"})
+        utils.run_comparison_tests(module, tensor, fusible_ops={"aten::argmin"})
 
 
 class TestArgMax(utils.TorchGlowTestCase):
@@ -51,4 +51,4 @@ class TestArgMax(utils.TorchGlowTestCase):
     )
     def test_argmax_node(self, _, module, tensor):
         """Test of the PyTorch ArgMax node on Glow."""
-        utils.compare_tracing_methods(module, tensor, fusible_ops={"aten::argmax"})
+        utils.run_comparison_tests(module, tensor, fusible_ops={"aten::argmax"})
