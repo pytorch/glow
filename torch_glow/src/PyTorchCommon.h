@@ -17,11 +17,11 @@
 #ifndef GLOW_TORCH_GLOW_SRC_COMMON_H
 #define GLOW_TORCH_GLOW_SRC_COMMON_H
 
+#include "ShapeInferenceEngine.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Type.h"
 #include "glow/Importer/CommonOperatorLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
-#include "glow/glow/torch_glow/src/ShapeInferenceEngine.h"
 
 #include <torch/csrc/jit/ir/ir.h>
 #include <unordered_map>
