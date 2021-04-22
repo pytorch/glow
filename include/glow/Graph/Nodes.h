@@ -83,6 +83,9 @@ private:
 class Constant : public Storage {
   /// The tensor payload that the constant holds.
   Tensor payload_;
+  /// Does this constant has "side effects" and thus cannot be eliminated and
+  /// should be included into the low-level IR during IRGen?
+  bool hasSideEffects_{false};
 
 public:
   /// Create a new constant and initialize its payload.
@@ -136,6 +139,13 @@ public:
   }
 
   void setPayloadType(TypeRef ty) { payload_.setType(ty); }
+
+  /// Mark this constant as having side-effects.
+  void setSideEffects();
+
+  /// \returns true if this constant has "side effects" and thus cannot be
+  /// eliminated and should be included into the low-level IR during IRGen?
+  bool hasSideEffects() const;
 
   bool isDataParallel() const { return false; }
 
