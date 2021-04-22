@@ -15,6 +15,7 @@
  */
 
 #include "glow/Support/Support.h"
+#include "glow/Flags/Flags.h"
 #include "llvm/Support/Debug.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -191,6 +192,11 @@ const std::string &staticStrFormat(const char *format, ...) {
 
 std::string legalizeName(llvm::StringRef name, size_t maxLength) {
   std::string legalName;
+
+  // If command line option --glow_legal_name_max_length is set, take it.
+  if (flags::LegalNameMaxLength > 0) {
+    maxLength = flags::LegalNameMaxLength;
+  }
 
   // Legalize the name.
   for (const char c : name) {

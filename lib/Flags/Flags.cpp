@@ -50,6 +50,7 @@ std::string BackendSpecificOpts = "";
 bool EnableLoadBalancedPartitioning = true;
 bool SkipProvisioning = false;
 bool DisableLayoutVerifying = false;
+int32_t LegalNameMaxLength = 0;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
@@ -426,6 +427,12 @@ DEFINE_bool(glow_skip_provisioning, glow::flags::SkipProvisioning,
             "Skip provisioning. Used for AOT opts or debugging.");
 DEFINE_validator(glow_skip_provisioning, [](const char *, bool val) {
   glow::flags::SkipProvisioning = val;
+  return true;
+});
+DEFINE_int32(glow_legal_name_max_length, glow::flags::LegalNameMaxLength,
+             "Maximum length for legal name.");
+DEFINE_validator(glow_legal_name_max_length, [](const char *, int32_t val) {
+  glow::flags::LegalNameMaxLength = val;
   return true;
 });
 DEFINE_bool(glow_save_onnxifi_model, glow::onnxifi::flags::SaveModel,

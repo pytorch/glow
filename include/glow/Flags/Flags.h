@@ -39,6 +39,7 @@ extern std::string BackendSpecificOpts;
 extern bool EnableLoadBalancedPartitioning;
 extern bool SkipProvisioning;
 extern bool DisableLayoutVerifying;
+extern int32_t LegalNameMaxLength;
 
 // FP16 Constants
 extern bool ConvertToFP16;
