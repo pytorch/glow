@@ -2116,7 +2116,8 @@ bool GatherNDNode::verify() const {
       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
   isValid &= expectCompareTrue(
       "Mismatching number of dimensions", getResult().dims().size(),
-      getData().dims().size() + getIndices().dims().size() - getIndices().dims().back() - 1 - getBatchDims(),
+      getData().dims().size() + getIndices().dims().size() -
+          getIndices().dims().back() - 1 - getBatchDims(),
       this);
   isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
                                            getData().getType(), this);

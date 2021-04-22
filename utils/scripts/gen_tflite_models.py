@@ -141,6 +141,36 @@ clean_dir(OUT_DIR)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+#                                                        Select
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_select_test(name, input_shape):
+    # Create model.
+    cond = layers.Input(name="cond", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.bool)
+    lhs = layers.Input(name="lhs", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32)
+    rhs = layers.Input(name="rhs", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32)
+    out = tf.where(cond, x=lhs, y=rhs)
+    model = Model(inputs=[cond, lhs, rhs], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    cond_tensor = np.random.randint(low=0, high=2, size=input_shape).astype(np.bool)
+    lhs_tensor = np.random.rand(*input_shape).astype(np.float32)
+    rhs_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict([cond_tensor, lhs_tensor, rhs_tensor])
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(cond_tensor, name + ".inp0")
+    save_tensor(lhs_tensor, name + ".inp1")
+    save_tensor(rhs_tensor, name + ".inp2")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_select_test(name="select", input_shape=(1, 2, 3))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 #                                                        LogSoftmax
 # ----------------------------------------------------------------------------------------------------------------------
 def gen_log_softmax_test(name, input_shape, axis):

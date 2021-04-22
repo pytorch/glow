@@ -2455,7 +2455,8 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
   std::vector<dim_t> indicesDimProd(indicesDimLast);
   indicesDimProd[indicesDimLast - 1] = 1;
   for (ssize_t idx = indicesDimLast - 2; idx >= 0; idx--) {
-    indicesDimProd[idx] = indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
+    indicesDimProd[idx] =
+        indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
   }
 
   // We will view the tensors as equivalent 3D tensors with the dimensions:
@@ -2478,8 +2479,7 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
 
       // Copy data.
       std::copy(dataPtr + (inpSliceIdx + 0) * sliceSize,
-                dataPtr + (inpSliceIdx + 1) * sliceSize,
-                outPtr);
+                dataPtr + (inpSliceIdx + 1) * sliceSize, outPtr);
       outPtr += sliceSize;
     }
 

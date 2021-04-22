@@ -3116,7 +3116,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     // Compute slice size (in bytes).
     dim_t sliceSize = data->getType()->getElementSize();
-    for (size_t idx = batchDims + indicesDimLast; idx < dataDims.size(); idx++) {
+    for (size_t idx = batchDims + indicesDimLast; idx < dataDims.size();
+         idx++) {
       sliceSize *= dataDims[idx];
     }
 
@@ -3124,7 +3125,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     std::vector<dim_t> indicesDimProd(indicesDimLast);
     indicesDimProd[indicesDimLast - 1] = 1;
     for (ssize_t idx = indicesDimLast - 2; idx >= 0; idx--) {
-      indicesDimProd[idx] = indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
+      indicesDimProd[idx] =
+          indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
     }
 
     // Emit pointers.
@@ -3138,18 +3140,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *outSliceCountArg = emitConstDimT(builder, outSliceCount);
     auto *sliceSizeArg = emitConstDimT(builder, sliceSize);
     auto *indicesDimLastArg = emitConstDimT(builder, indicesDimLast);
-    auto *indicesDimProdArg = emitConstDimTArray(builder, llvm::makeArrayRef(indicesDimProd));
+    auto *indicesDimProdArg =
+        emitConstDimTArray(builder, llvm::makeArrayRef(indicesDimProd));
 
-    llvm::Function *F = getFunction("gather_nd", {data->getElementType(), indices->getElementType()});
+    llvm::Function *F = getFunction(
+        "gather_nd", {data->getElementType(), indices->getElementType()});
     createCall(builder, F,
-               {destPtr, dataPtr, indicesPtr,
-                batchCountArg,
-                inpSliceCountArg,
-                outSliceCountArg,
-                sliceSizeArg,
-                indicesDimLastArg,
-                indicesDimProdArg
-               });
+               {destPtr, dataPtr, indicesPtr, batchCountArg, inpSliceCountArg,
+                outSliceCountArg, sliceSizeArg, indicesDimLastArg,
+                indicesDimProdArg});
     break;
   }
 

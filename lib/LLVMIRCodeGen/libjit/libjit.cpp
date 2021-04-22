@@ -440,13 +440,10 @@ static void libjit_gather(T *dest, const T *data, const IDX *indices,
 }
 
 template <typename DataT, typename IndexT>
-static void libjit_gather_nd(DataT *out, const DataT *data, const IndexT *indicesPtr,
-                             dim_t batchCount,
-                             dim_t inpSliceCount,
-                             dim_t outSliceCount,
-                             dim_t sliceSize,
-                             dim_t indicesDimLast,
-                             dim_t *indicesDimProd) {
+static void
+libjit_gather_nd(DataT *out, const DataT *data, const IndexT *indicesPtr,
+                 dim_t batchCount, dim_t inpSliceCount, dim_t outSliceCount,
+                 dim_t sliceSize, dim_t indicesDimLast, dim_t *indicesDimProd) {
   const char *dataPtr = (const char *)data;
   char *outPtr = (char *)out;
 
@@ -2065,7 +2062,6 @@ void libjit_cross_entropy_loss_f_i32(float *CE, float *P, int32_t *labels,
   libjit_cross_entropy_loss_generic(CE, P, labels, dims);
 }
 
-
 //===----------------------------------------------------------------------===//
 //                                    Gather
 //===----------------------------------------------------------------------===//
@@ -2121,84 +2117,76 @@ void libjit_gather32_i32(int32_t *dest, const int32_t *data,
 //===----------------------------------------------------------------------===//
 //                                  Gather ND
 //===----------------------------------------------------------------------===//
-void libjit_gather_nd_f_u(float *dest, const float *data, const int64_t *indices,
-                          dim_t batchCount,
-                          dim_t inpSliceCount,
-                          dim_t outSliceCount,
-                          dim_t sliceSize,
-                          dim_t indicesDimLast,
+void libjit_gather_nd_f_u(float *dest, const float *data,
+                          const int64_t *indices, dim_t batchCount,
+                          dim_t inpSliceCount, dim_t outSliceCount,
+                          dim_t sliceSize, dim_t indicesDimLast,
                           dim_t *indicesDimProd) {
-  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount, outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
+  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount,
+                   outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
 }
 
-void libjit_gather_nd_i8_u(int8_t *dest, const int8_t *data, const int64_t *indices,
-                          dim_t batchCount,
-                          dim_t inpSliceCount,
-                          dim_t outSliceCount,
-                          dim_t sliceSize,
-                          dim_t indicesDimLast,
-                          dim_t *indicesDimProd) {
-  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount, outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
+void libjit_gather_nd_i8_u(int8_t *dest, const int8_t *data,
+                           const int64_t *indices, dim_t batchCount,
+                           dim_t inpSliceCount, dim_t outSliceCount,
+                           dim_t sliceSize, dim_t indicesDimLast,
+                           dim_t *indicesDimProd) {
+  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount,
+                   outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
 }
 
-void libjit_gather_nd_i32_u(int32_t *dest, const int32_t *data, const int64_t *indices,
-                          dim_t batchCount,
-                          dim_t inpSliceCount,
-                          dim_t outSliceCount,
-                          dim_t sliceSize,
-                          dim_t indicesDimLast,
-                          dim_t *indicesDimProd) {
-  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount, outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
-}
-
-void libjit_gather_nd_u_u(int64_t *dest, const int64_t *data, const int64_t *indices,
-                          dim_t batchCount,
-                          dim_t inpSliceCount,
-                          dim_t outSliceCount,
-                          dim_t sliceSize,
-                          dim_t indicesDimLast,
-                          dim_t *indicesDimProd) {
-  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount, outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
-}
-
-void libjit_gather_nd_f_i32(float *dest, const float *data, const int32_t *indices,
-                            dim_t batchCount,
-                            dim_t inpSliceCount,
-                            dim_t outSliceCount,
-                            dim_t sliceSize,
-                            dim_t indicesDimLast,
+void libjit_gather_nd_i32_u(int32_t *dest, const int32_t *data,
+                            const int64_t *indices, dim_t batchCount,
+                            dim_t inpSliceCount, dim_t outSliceCount,
+                            dim_t sliceSize, dim_t indicesDimLast,
                             dim_t *indicesDimProd) {
-  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount, outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
+  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount,
+                   outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
 }
 
-void libjit_gather_nd_i8_i32(int8_t *dest, const int8_t *data, const int32_t *indices,
-                          dim_t batchCount,
-                          dim_t inpSliceCount,
-                          dim_t outSliceCount,
-                          dim_t sliceSize,
-                          dim_t indicesDimLast,
+void libjit_gather_nd_u_u(int64_t *dest, const int64_t *data,
+                          const int64_t *indices, dim_t batchCount,
+                          dim_t inpSliceCount, dim_t outSliceCount,
+                          dim_t sliceSize, dim_t indicesDimLast,
                           dim_t *indicesDimProd) {
-  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount, outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
+  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount,
+                   outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
 }
 
-void libjit_gather_nd_i32_i32(int32_t *dest, const int32_t *data, const int32_t *indices,
-                          dim_t batchCount,
-                          dim_t inpSliceCount,
-                          dim_t outSliceCount,
-                          dim_t sliceSize,
-                          dim_t indicesDimLast,
-                          dim_t *indicesDimProd) {
-  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount, outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
+void libjit_gather_nd_f_i32(float *dest, const float *data,
+                            const int32_t *indices, dim_t batchCount,
+                            dim_t inpSliceCount, dim_t outSliceCount,
+                            dim_t sliceSize, dim_t indicesDimLast,
+                            dim_t *indicesDimProd) {
+  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount,
+                   outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
 }
 
-void libjit_gather_nd_u_i32(int64_t *dest, const int64_t *data, const int32_t *indices,
-                          dim_t batchCount,
-                          dim_t inpSliceCount,
-                          dim_t outSliceCount,
-                          dim_t sliceSize,
-                          dim_t indicesDimLast,
-                          dim_t *indicesDimProd) {
-  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount, outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
+void libjit_gather_nd_i8_i32(int8_t *dest, const int8_t *data,
+                             const int32_t *indices, dim_t batchCount,
+                             dim_t inpSliceCount, dim_t outSliceCount,
+                             dim_t sliceSize, dim_t indicesDimLast,
+                             dim_t *indicesDimProd) {
+  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount,
+                   outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
+}
+
+void libjit_gather_nd_i32_i32(int32_t *dest, const int32_t *data,
+                              const int32_t *indices, dim_t batchCount,
+                              dim_t inpSliceCount, dim_t outSliceCount,
+                              dim_t sliceSize, dim_t indicesDimLast,
+                              dim_t *indicesDimProd) {
+  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount,
+                   outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
+}
+
+void libjit_gather_nd_u_i32(int64_t *dest, const int64_t *data,
+                            const int32_t *indices, dim_t batchCount,
+                            dim_t inpSliceCount, dim_t outSliceCount,
+                            dim_t sliceSize, dim_t indicesDimLast,
+                            dim_t *indicesDimProd) {
+  libjit_gather_nd(dest, data, indices, batchCount, inpSliceCount,
+                   outSliceCount, sliceSize, indicesDimLast, indicesDimProd);
 }
 
 //===----------------------------------------------------------------------===//
