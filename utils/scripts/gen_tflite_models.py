@@ -47,6 +47,25 @@ TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
 OUT_DIR = os.path.join(os.path.dirname(__file__), "tflite_models")
 
 
+# Generate quantization data based on the input tensor
+class DatasetGenerator:
+    def __init__(self, list):
+        self.list = []
+        for l in list:
+            self.list.append(l.astype(np.float32))
+        self.n = 0
+
+    def __iter__(self):
+        self.n = 0
+        return self
+
+    def __next__(self):
+        if self.n is 1:
+            raise StopIteration
+        self.n = self.n + 1
+        return self.list
+
+
 # Clean temporary directory.
 def clean_dir(dir_path):
     if os.path.exists(dir_path):
@@ -61,7 +80,7 @@ def rm_dir(dir_path):
 
 
 # Function to save a model in TensorFlowLite format.
-def save_model(model, filename):
+def save_model(model, filename, quant=False, representative_dataset_gen=None):
     # Print status.
     print('Saving model "%s" ...' % filename)
 
@@ -116,6 +135,14 @@ def save_model(model, filename):
         output_arrays=model_outputs_array,
     )
     converter.dump_graphviz_video = False
+
+    if quant:
+        converter.optimizations = [tf.lite.Optimize.DEFAULT]
+        converter.representative_dataset = representative_dataset_gen
+        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+        converter.inference_input_type = tf.int8
+        converter.inference_output_type = tf.int8
+
     tflite_model = converter.convert()
     model_filename = os.path.join(OUT_DIR, filename)
     if not model_filename.endswith(".tflite"):
@@ -241,10 +268,12 @@ gen_cmp_operator_test(name="greater_equal", type="greater_equal")
 # ----------------------------------------------------------------------------------------------------------------------
 #                                                    Unary operators
 # ----------------------------------------------------------------------------------------------------------------------
-def gen_unary_operator_test(name, type, input_shape):
+def gen_unary_operator_test(name, type, input_shape, quant=False):
     # Create model.
     inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
-    if type == "relu":
+    if type == "hardSwish":
+        out = inp * tf.nn.relu6(inp + 3) * 0.16666667
+    elif type == "relu":
         out = tf.nn.relu(inp)
     elif type == "relu_n1to1":
         out = tf.clip_by_value(inp, -1.0, 1.0)
@@ -288,12 +317,17 @@ def gen_unary_operator_test(name, type, input_shape):
     model = Model(inputs=[inp], outputs=[out])
     # Create data.
     np.random.seed(0)
-    inp_tensor = np.random.randn(*input_shape).astype(np.float32)
+
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    global representative_images
+    representative_images = inp_tensor
+
     if type in ["log", "sqrt", "rsqrt"]:
         inp_tensor = np.abs(inp_tensor) + 1
     out_tensor = model.predict(inp_tensor)
+    dataset_gen = DatasetGenerator([inp_tensor])
     # Save model.
-    save_model(model, name)
+    save_model(model, name, quant, dataset_gen)
     # Save data.
     save_tensor(inp_tensor, name + ".inp0")
     save_tensor(out_tensor, name + ".out0")
@@ -301,6 +335,7 @@ def gen_unary_operator_test(name, type, input_shape):
     keras_backend.clear_session()
 
 
+gen_unary_operator_test(name="hardSwish", type="hardSwish", input_shape=(1, 10))
 gen_unary_operator_test(name="relu", type="relu", input_shape=(1, 10))
 gen_unary_operator_test(name="relu_n1to1", type="relu_n1to1", input_shape=(1, 10))
 gen_unary_operator_test(name="relu6", type="relu6", input_shape=(1, 10))
@@ -320,12 +355,17 @@ gen_unary_operator_test(name="cos", type="cos", input_shape=(1, 10))
 gen_unary_operator_test(name="ceil", type="ceil", input_shape=(1, 10))
 gen_unary_operator_test(name="round", type="round", input_shape=(1, 10))
 gen_unary_operator_test(name="floor", type="floor", input_shape=(1, 10))
+# QUANTIZED MODELS
+gen_unary_operator_test(
+    name="hardSwish_int8", type="hardSwish", input_shape=(1, 10), quant=True
+)
+gen_unary_operator_test(name="tanh_int8", type="tanh", input_shape=(1, 10), quant=True)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 #                                                    Binary operators
 # ----------------------------------------------------------------------------------------------------------------------
-def gen_binary_operator_test(name, type, input_shape):
+def gen_binary_operator_test(name, type, input_shape, quant=False):
     # Create model.
     inp1 = layers.Input(name="input1", batch_size=input_shape[0], shape=input_shape[1:])
     inp2 = layers.Input(name="input2", batch_size=input_shape[0], shape=input_shape[1:])
@@ -355,7 +395,8 @@ def gen_binary_operator_test(name, type, input_shape):
         inp1_tensor = np.abs(inp1_tensor) + 1
     out_tensor = model.predict([inp1_tensor, inp2_tensor])
     # Save model.
-    save_model(model, name)
+    dataset_gen = DatasetGenerator([inp1_tensor, inp2_tensor])
+    save_model(model, name, quant, dataset_gen)
     # Save data.
     save_tensor(inp1_tensor, name + ".inp0")
     save_tensor(inp2_tensor, name + ".inp1")
@@ -371,7 +412,8 @@ gen_binary_operator_test(name="div", type="div", input_shape=(1, 10))
 gen_binary_operator_test(name="pow", type="pow", input_shape=(1, 10))
 gen_binary_operator_test(name="max", type="max", input_shape=(1, 10))
 gen_binary_operator_test(name="min", type="min", input_shape=(1, 10))
-
+# Quantized models
+gen_binary_operator_test(name="add_int8", type="add", input_shape=(1, 10), quant=True)
 
 # ----------------------------------------------------------------------------------------------------------------------
 #                                                        Conv2D

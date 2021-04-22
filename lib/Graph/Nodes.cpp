@@ -617,7 +617,14 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
 }
 
 bool HardSwishNode::verify() const {
-  return checkSameType(getInput(), getResult(), this);
+  auto result = getResult();
+  auto input = getInput();
+  const Node *parent = result.getNode();
+  if (input.getType()->isQuantizedType()) {
+    return checkSameIsQuantized(input.getType(), result.getType(), parent) &&
+           checkSameShape(result, input, parent);
+  }
+  return checkSameType(result, input, parent);
 }
 
 bool PadNode::verify() const {

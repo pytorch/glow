@@ -41,7 +41,7 @@ using llvm::cast;
 using llvm::dyn_cast;
 
 #define DECORATE_NODE_NAME(Node, ...)                                          \
-  llvm::join_items("_", Node.getName(), __VA_ARGS__)
+  llvm::join_items("_", (Node).getName(), __VA_ARGS__)
 
 /// Helper which replaces all uses of \p oldNV with \p newNV, and also
 /// optionally maps from \p newNV to \p oldNV in \p loweredMap. This map can be
@@ -453,7 +453,9 @@ static void lowerHardSwishNode(Function *F, CompilationContext &cctx,
   LOG_SCOPE(F->getLogContext(), "lowerHardSwishNode")
 
   auto ty = R.getResult().getType();
-  CHECK(ty->isFPType()) << "HardSwish: quantized type not supported: " << ty;
+
+  CHECK(ty->isFPType()) << "HardSwish: quantized type not supported: "
+                        << (int)ty->getElementType();
 
   // x*relu6(x+3)*0.166666667
   auto *C_3 = F->createSplat(DECORATE_NODE_NAME(R, "C3"), ty, 3.0);
@@ -1854,9 +1856,56 @@ static void lowerLogSoftMaxNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, LSMN.getResult(), result);
 }
 
+/// Lower a quantized node to Dequantize-> node(float)->Quantize.
+static Node *lowerQuantNode(Function *F, Node *node, CompilationContext &cctx,
+                            ElemKind floatElemKind) {
+  Node *copy = nullptr;
+  for (unsigned_t i = 0; i < node->getNumInputs(); i++) {
+    auto nv = node->getNthInput(i);
+    if (nv.getType()->isQuantizedType()) {
+      auto *in = F->createDequantize(DECORATE_NODE_NAME(*node, "dequant"), nv,
+                                     floatElemKind);
+      node->setNthInput(i, in);
+      if (!copy) {
+        copy = F->addNode(node->clone());
+      }
+    }
+  }
+
+  for (unsigned_t i = 0; i < node->getNumResults(); i++) {
+    auto nv = node->getNthResult(i);
+    auto ty = nv.getType();
+    if (ty->isQuantizedType()) {
+      if (!copy) {
+        copy = F->addNode(node->clone());
+      }
+      auto nnv = copy->getNthResult(i);
+      auto floatTy = F->getParent()->uniqueType(floatElemKind, ty->dims());
+      nnv.setType(floatTy);
+      auto *Q = F->createQuantize(DECORATE_NODE_NAME(*node, "quant"), nnv, ty);
+      replaceAllUsesOfWith(cctx.loweredInfoMap, nv, Q);
+    }
+  }
+  return copy ? copy : node;
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
+// lower by dequantizing, to execute in CPU float.
+#define CASE_DEQUANT(NODE_NAME_, floatElemKind)                                \
+  case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
+    node = lowerQuantNode(F, node, cctx, floatElemKind);                       \
+    return true;
+
+// lower by executing lowering function.
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
+    lower##NODE_NAME_##Node(F, cctx, *cast<NODE_NAME_##Node>(node));           \
+    return true;
+
+// lower by dequantizing and executing lowering function.
+#define CASE_LOWER_QUANT(NODE_NAME_, floatElemKind)                            \
+  case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
+    node = lowerQuantNode(F, node, cctx, floatElemKind);                       \
     lower##NODE_NAME_##Node(F, cctx, *cast<NODE_NAME_##Node>(node));           \
     return true;
 
@@ -1906,7 +1955,8 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(LSTMUnit);
     CASE_LOWER(Broadcast);
     CASE_LOWER(LogSoftMax);
-    CASE_LOWER(HardSwish);
+    CASE_DEQUANT(Tanh, ElemKind::FloatTy);
+    CASE_LOWER_QUANT(HardSwish, ElemKind::FloatTy);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1) {
