@@ -4721,6 +4721,143 @@ TEST_P(OperatorTest, Gelu_Float16) {
   testGelu<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 1.5E-2);
 }
 
+TEST_P(OperatorTest, CollectRpnProposals) {
+  CHECK_IF_ENABLED();
+
+  int64_t rpnMaxLevels = 6;
+  int64_t rpnMinLevels = 2;
+  uint32_t rpnPostNmsTopN = 14;
+
+  auto *inp0 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9, 5}, "roisIn0", false);
+  auto *inp1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9, 5}, "roisIn1", false);
+  auto *inp2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9, 5}, "roisIn2", false);
+  auto *inp3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9, 5}, "roisIn3", false);
+  auto *inp4 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9, 5}, "roisIn4", false);
+  auto *inp5 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9}, "scoresIn0", false);
+  auto *inp6 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9}, "scoresIn1", false);
+  auto *inp7 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9}, "scoresIn2", false);
+  auto *inp8 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9}, "scoresIn3", false);
+  auto *inp9 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {9}, "scoresIn4", false);
+
+  bindings_.allocate(inp0)->getHandle() = {
+      0.0000,   115.2341, 148.2082, 163.9516, 175.6832, 0.0000,   104.2961,
+      215.3492, 242.5623, 262.1163, 0.0000,   19.3218,  23.6992,  154.5081,
+      251.7623, 0.0000,   226.4726, 211.6586, 236.6433, 266.1842, 1.0000,
+      17.3863,  94.0684,  67.8375,  114.7378, 1.0000,   60.9553,  38.8897,
+      138.8663, 76.7117,  1.0000,   2.7621,   83.5598,  67.0541,  90.7924,
+      1.0000,   90.6893,  52.8477,  100.2276, 138.7310, 1.0000,   98.0147,
+      8.8531,   102.5518, 98.5838,
+  };
+  bindings_.allocate(inp1)->getHandle() = {
+      0.0000,   35.0680,  85.7965, 98.9293,  155.0935, 0.0000,   56.8145,
+      27.7562,  268.8377, 43.8762, 0.0000,   66.4838,  43.2397,  68.8953,
+      126.8365, 0.0000,   53.4704, 37.5858,  178.5217, 100.2932, 1.0000,
+      14.1265,  123.1779, 14.2739, 143.5395, 1.0000,   108.6717, 5.7606,
+      143.5839, 88.9123,  1.0000,  17.4530,  43.5326,  17.6689,  46.7435,
+      1.0000,   9.4297,   39.0123, 83.2904,  101.7934, 1.0000,   13.8093,
+      46.8296,  136.6065, 84.6641,
+  };
+  bindings_.allocate(inp2)->getHandle() = {
+      0.0000,   35.8490,  49.8280,  78.7185, 194.8410, 0.0000,   1.2772,
+      184.3661, 5.4693,   225.4717, 0.0000,  67.6609,  156.7148, 199.9728,
+      261.7153, 0.0000,   155.6525, 60.6782, 259.1477, 121.6181, 1.0000,
+      102.8235, 43.7232,  119.6283, 58.2863, 1.0000,   85.4471,  106.6124,
+      101.8021, 129.6151, 1.0000,   62.3067, 89.1398,  140.5443, 94.6666,
+      1.0000,   42.6414,  90.8483,  44.3315, 97.0455,  1.0000,   19.9147,
+      43.8475,  83.7848,  86.8583};
+  bindings_.allocate(inp3)->getHandle() = {
+      0.0000,   117.3458, 177.3721, 177.6706, 243.8607, 0.0000,   118.5553,
+      191.4577, 219.2848, 242.6031, 0.0000,   250.0993, 40.6499,  271.6864,
+      194.2736, 0.0000,   33.6790,  167.4322, 44.1981,  230.6582, 1.0000,
+      10.1675,  59.8559,  83.6578,  102.5220, 1.0000,   106.1422, 125.8031,
+      143.4017, 127.3582, 1.0000,   25.2296,  76.5924,  52.9168,  107.3086,
+      1.0000,   29.3995,  2.7227,   116.6736, 32.9169,  1.0000,   4.6803,
+      24.2100,  136.4279, 103.5489,
+  };
+  bindings_.allocate(inp4)->getHandle() = {
+      0.0000,   157.0062, 64.7068,  254.1062, 166.9987, 0.0000,   84.8490,
+      108.3161, 160.4555, 198.5932, 0.0000,   50.6445,  133.4048, 201.1578,
+      256.8693, 0.0000,   69.1850,  15.7839,  118.1613, 84.8085,  1.0000,
+      3.6278,   9.8857,   55.5295,  26.4017,  1.0000,   66.6934,  78.8771,
+      131.8107, 145.5798, 1.0000,   3.0357,   38.7084,  97.4725,  111.4817,
+      1.0000,   56.3692,  86.4826,  122.1641, 92.4603,  1.0000,   27.2885,
+      117.3129, 40.2107,  140.0604,
+  };
+  bindings_.allocate(inp5)->getHandle() = {
+      0.6030, 0.0229, 0.6746, 0.7330, 0.3460, 0.2078, 0.1711, 0.4475, 0.0838,
+  };
+  bindings_.allocate(inp6)->getHandle() = {
+      0.0042, 0.9355, 0.3390, 0.5551, 0.7210, 0.5162, 0.5879, 0.9776, 0.0361,
+  };
+  bindings_.allocate(inp7)->getHandle() = {
+      0.7225, 0.6125, 0.3317, 0.2408, 0.1214, 0.2090, 0.4792, 0.7840, 0.6932,
+  };
+  bindings_.allocate(inp8)->getHandle() = {
+      0.1799, 0.8250, 0.3095, 0.0022, 0.5814, 0.2361, 0.8224, 0.0236, 0.6101,
+  };
+  bindings_.allocate(inp9)->getHandle() = {
+      0.8860, 0.2196, 0.4328, 0.2911, 0.4263, 0.6079, 0.2881, 0.7497, 0.4761,
+  };
+
+  auto *roisOut = mod_.createPlaceholder(ElemKind::FloatTy, {rpnPostNmsTopN, 5},
+                                         "roisOut", false);
+
+  bindings_.allocate(roisOut);
+
+  std::vector<NodeValue> rois = {
+      inp0, inp1, inp2, inp3, inp4,
+  };
+
+  std::vector<NodeValue> roisProbs = {
+      inp5, inp6, inp7, inp8, inp9,
+  };
+
+  auto *CRPN =
+      F_->createCollectRpnProposals("CollectRpnProposal", rois, roisProbs,
+                                    rpnMaxLevels, rpnMinLevels, rpnPostNmsTopN);
+
+  F_->createSave("save.rois", {CRPN, 0}, roisOut);
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto V = bindings_.get(roisOut)->getHandle<float>();
+
+  std::vector<std::vector<float>> refRois = {
+      {1.0000, 9.4297, 39.0123, 83.2904, 101.7934},
+      {0.0000, 56.8145, 27.7562, 268.8377, 43.8762},
+      {0.0000, 157.0062, 64.7068, 254.1062, 166.9987},
+      {0.0000, 118.5553, 191.4577, 219.2848, 242.6031},
+      {1.0000, 25.2296, 76.5924, 52.9168, 107.3086},
+      {1.0000, 42.6414, 90.8483, 44.3315, 97.0455},
+      {1.0000, 56.3692, 86.4826, 122.1641, 92.4603},
+      {0.0000, 226.4726, 211.6586, 236.6433, 266.1842},
+      {0.0000, 35.8490, 49.8280, 78.7185, 194.8410},
+      {1.0000, 14.1265, 123.1779, 14.2739, 143.5395},
+      {1.0000, 19.9147, 43.8475, 83.7848, 86.8583},
+      {0.0000, 19.3218, 23.6992, 154.5081, 251.7623},
+      {0.0000, 1.2772, 184.3661, 5.4693, 225.4717},
+      {1.0000, 4.6803, 24.2100, 136.4279, 103.5489},
+  };
+
+  for (uint32_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (uint32_t j = 0; j < 5; j++) {
+      EXPECT_NEAR(V.at({i, j}), refRois[i][j], 1E-4);
+    }
+  }
+}
+
 TEST_P(OperatorTest, TopK) {
   CHECK_IF_ENABLED();
 

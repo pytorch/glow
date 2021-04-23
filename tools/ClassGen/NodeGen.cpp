@@ -1599,6 +1599,23 @@ int main(int argc, char **argv) {
           "If proposals from multiple images in a batch are present, they "
           "should be grouped sequentially and in incremental order.");
 
+  BB.newNode("CollectRpnProposals")
+      .addMember(MemberType::VectorNodeValue, "RoisIn")
+      .addMember(MemberType::VectorNodeValue, "RoisProbsIn")
+      .addMember(MemberType::Int64, "RpnMaxLevel")
+      .addMember(MemberType::Int64, "RpnMinLevel")
+      .addMember(MemberType::Unsigned, "RpnPostNmsTopN")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Given RpnMinLevel, RpnMaxLevel and RpnPostNmsTopN "
+          "CollectRpnProposals merges RoisIn based on "
+          "RoisProbsIn and returns top proposals limited to "
+          "RpnPostNmsTopN total, size (n x B), where B is "
+          "box dimensions and based on dimension of input rois. "
+          "Format for upright boxes is (image_index, x1, y1, x2, y2)."
+          "Format for rotated boxes (image_index, ctr_x, ctr_y, w, h, angle)"
+          "RpnPostNmsTopN should be greater than zero");
+
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//

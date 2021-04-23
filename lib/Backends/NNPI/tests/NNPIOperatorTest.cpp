@@ -614,6 +614,7 @@ struct BlacklistInitializer {
       {"Erf_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Erf_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceAdd_Int32ITy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"CollectRpnProposals/0", TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);
