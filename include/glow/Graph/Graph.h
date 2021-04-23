@@ -1005,6 +1005,7 @@ public:
   UNARY_ARITHMETIC_FUN_DECL(Cos)
   UNARY_ARITHMETIC_FUN_DECL(Erf)
   UNARY_ARITHMETIC_FUN_DECL(Truncate)
+  UNARY_ARITHMETIC_FUN_DECL(HardSwish)
 #undef UNARY_ARITHMETIC_FUN_DECL
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -1360,7 +1361,7 @@ public:
   /// sparse, if true, gradinet w.r.t. weight matrix will be a sparse tensor
   /// (currently not supported, default=false)
   EmbeddingNode *createEmbedding(llvm::StringRef name, NodeValue weights,
-                                 NodeValue indices, int64_t padIdx, bool scale,
+                                 NodeValue indices, int32_t padIdx, bool scale,
                                  bool sparse);
 
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
@@ -1542,6 +1543,13 @@ public:
   createSparseLabelSplit(llvm::StringRef name, NodeValue lengths,
                          NodeValue indices, NodeValue values, dim_t numLabels);
 
+  /// Given floats a input node \p input, floats \p mean and \p scale, and \p
+  /// seed \returns a GaussianFillNode. The output shape is the same as that of
+  /// \p input, filled with values drawn from a normal distribution with mean
+  /// and std dev \p mean and \scale, respectively, seeded with seed \p seed
+  GaussianFillNode *createGaussianFill(llvm::StringRef name, NodeValue input,
+                                       float mean, float scale, float seed);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
 
   /// Creates and \returns a SaveNode of \p input to \p output. If \p skipSuffix
@@ -1557,15 +1565,31 @@ public:
   createQuantizationProfile(PlaceholderBindings &bindings, llvm::StringRef name,
                             NodeValue input, dim_t numHistogramBins = 10);
 
-  /// Create lookup table for mapping between quantized numbers.
-  /// \p input and \p outTy must have quantized type.
-  /// Table contains all numbers from the quantized range, e.g.,
-  /// 256 entries for int8. Position 0 in the \p initValues
-  /// corresponds to the -128 input number, position 255 to 127.
+  /// Create lookup table for mapping between quantized operands. \p input and
+  /// \p outTy must be quantized types. The table contains all numbers from the
+  /// quantized range, e.g. 256 entries for int8 input. First position in the
+  /// \p initValues corresponds to the minimum input number and the last
+  /// position corresponds to the maximum input number.
+  template <typename T = int8_t>
+  IntLookupTableNode *
+  createIntLookupTable(llvm::StringRef name, NodeValue input,
+                       llvm::ArrayRef<T> initValues, TypeRef outTy);
+
+  /// Create lookup table for mapping between quantized operands based on the
+  /// floating point function \p func. \p input and \p outTy must be quantized
+  /// types.
   IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
                                            NodeValue input,
-                                           llvm::ArrayRef<int8_t> initValues,
+                                           std::function<float(float)> func,
                                            TypeRef outTy);
+
+  /// Create quantized log.
+  IntLookupTableNode *createIntLog(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
+
+  /// Create quantized exp.
+  IntLookupTableNode *createIntExp(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
 
   /// Create quantized tanh.
   IntLookupTableNode *createIntTanh(llvm::StringRef name, NodeValue input,
@@ -1579,6 +1603,18 @@ public:
 
   TopKNode *createTopK(llvm::StringRef name, NodeValue input, unsigned_t k,
                        ElemKind outIndicesTyKind);
+
+  /// Given \p rpnMaxLevel , \p rpnMinLevel and \p rpnPostNmsTopN
+  /// CollectRpnProposals merges rois in the \p roisIN based on \p roisProbIn
+  /// and returns top proposals limited to rpnPostNmsTopN total, size (n x B),
+  /// where B is box dimensions and based on dimension of input rois
+  /// Format for upright boxes is (image_index, x1, y1, x2, y2).
+  /// Format for rotated boxes (image_index, ctr_x, ctr_y, w, h, angle)
+  /// rpnPostNmsTopN should be greater than zero.
+  CollectRpnProposalsNode *createCollectRpnProposals(
+      llvm::StringRef name, std::vector<NodeValue> &roisIn,
+      std::vector<NodeValue> &roiProbsIn, int64_t rpnMaxLevel,
+      int64_t rpnMinLevel, unsigned_t rpnPostNmsTopN);
 
   /// Given \p data tensor of rank r >= 1, and \p indices tensor of rank q,
   /// gather entries of the \p axis dimension of data (default outer-most for

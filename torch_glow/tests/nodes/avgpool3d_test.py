@@ -21,7 +21,7 @@ class TestAvgPool3d(utils.TorchGlowTestCase):
 
         inputs = torch.randn(1, 4, 5, 5, 5)
 
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAvgPool3dModule(3), inputs, fusible_ops={"aten::avg_pool3d"}
         )
 
@@ -29,7 +29,7 @@ class TestAvgPool3d(utils.TorchGlowTestCase):
         """Test of the PyTorch avg_pool3d Node with arguments on Glow."""
         inputs = torch.randn(1, 4, 10, 10, 10)
 
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAvgPool3dModule(3, (4, 7, 7)),
             inputs,
             fusible_ops={"aten::avg_pool3d"},

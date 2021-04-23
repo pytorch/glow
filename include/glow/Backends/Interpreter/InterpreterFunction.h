@@ -379,11 +379,11 @@ private:
   template <typename ElemTy> void fwdGatherNDInstImpl(const GatherNDInst *I);
   template <typename ElemTy>
   void fwdGatherRangesInstImpl(const GatherRangesInst *I);
-  template <typename ElemTy>
+  template <typename ElemTy, typename IndicesElemTy>
   void fwdScatterDataInstCopyImpl(const ScatterDataInst *I);
-  template <typename ElemTy>
+  template <typename ElemTy, typename IndicesElemTy>
   void fwdScatterDataInstAddFloatImpl(const ScatterDataInst *I);
-  template <typename ElemTy>
+  template <typename ElemTy, typename IndicesElemTy>
   void fwdScatterDataInstAddQuantizedImpl(const ScatterDataInst *I);
 
   template <typename ElemTy>
@@ -415,6 +415,9 @@ private:
                                    TensorQuantizationParams &destQ);
 
   template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
+
+  template <typename ElemTy>
+  void fwdCollectRpnProposalsInstImpl(const CollectRpnProposalsInst *I);
 
   template <typename T, typename AccumT, typename TI>
   void fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(

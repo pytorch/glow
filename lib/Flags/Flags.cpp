@@ -36,6 +36,7 @@ namespace flags {
 
 // Generic Constants
 int32_t NumDevices = 1;
+bool ScanDevices = false;
 bool SaturateHost = false;
 bool EnableQuantParamChanges = true;
 size_t MaxActiveRequests = 48;
@@ -83,6 +84,7 @@ bool UseSparseNNPartitioningScheme = false;
 bool SparseNNPartitioningAddSLSConcats = false;
 bool SparseNNPartitioningBalancePerfModel = false;
 bool SparseNNPartitioningPairLNWithSLS = false;
+bool SparseNNPartitioningPairTileWithSLS = false;
 
 // Dag Optimizer Constants
 bool UseDAGOptimizer = false;
@@ -169,6 +171,8 @@ DEFINE_validator(glow_num_devices, [](const char *, int32_t val) {
   glow::flags::NumDevices = val;
   return true;
 });
+DEFINE_bool(glow_scan_devices, glow::flags::ScanDevices,
+            "Scan available devices for Glow backend");
 DEFINE_int32(glow_snn_partitioning_num_cards,
              glow::flags::SparseNNPartitioningSchemeNumCards,
              "Number of devices to distribute tables across in SparseNN "
@@ -317,6 +321,16 @@ DEFINE_bool(glow_sparsenn_partitioning_pair_ln_with_sls,
 DEFINE_validator(glow_sparsenn_partitioning_pair_ln_with_sls,
                  [](const char *, bool val) {
                    glow::flags::SparseNNPartitioningPairLNWithSLS = val;
+                   return true;
+                 });
+DEFINE_bool(
+    glow_sparsenn_partitioning_pair_tile_with_sls,
+    glow::flags::SparseNNPartitioningPairTileWithSLS,
+    "Put tile nodes immediately following SLS for user embeddings into SLS "
+    "Partitions");
+DEFINE_validator(glow_sparsenn_partitioning_pair_tile_with_sls,
+                 [](const char *, bool val) {
+                   glow::flags::SparseNNPartitioningPairTileWithSLS = val;
                    return true;
                  });
 DEFINE_bool(glow_clip_fp16, glow::flags::ClipToFP16,

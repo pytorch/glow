@@ -3870,6 +3870,41 @@ TEST_F(OnnxImporterTest, importNMSInitializer) {
   EXPECT_EQ(NMS->getCenterPointBox(), 0);
 }
 
+/// Test loading NMS using optional parameters from an ONNX model.
+TEST_F(OnnxImporterTest, importNMSInitOptionalParams) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/NonMaxSuppressionOptionalParams.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor boxes(ElemKind::FloatTy, {8, 4});
+    boxes.zero();
+
+    Tensor scores(ElemKind::FloatTy, {8});
+    scores.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"boxes", "scores"},
+                           {&boxes.getType(), &scores.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("indices"));
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  NonMaxSuppressionNode *NMS =
+      llvm::dyn_cast<NonMaxSuppressionNode>(save->getInput().getNode());
+  ASSERT_TRUE(NMS);
+  EXPECT_EQ(NMS->dims(0)[0], 3);
+  EXPECT_EQ(NMS->getCenterPointBox(), 0);
+  EXPECT_EQ(NMS->getMaxOutputBoxesPerClass(), 3);
+  EXPECT_EQ(NMS->getIouThreshold(), 0);
+  EXPECT_EQ(NMS->getScoreThreshold(), 0);
+}
+
 /// Test loading NMS using Constant Tensors op from an ONNX model.
 TEST_F(OnnxImporterTest, importNMSConstTensor) {
   ExecutionEngine EE{};

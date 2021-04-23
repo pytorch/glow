@@ -14,7 +14,7 @@ class TestBlackList(utils.TorchGlowTestCase):
         def f(a, b):
             return (a + b) * (a - b)
 
-        torch_glow.enableFusionPass()
+        torch_glow.enableFusionPass_DO_NOT_USE_THIS()
         torch_glow.setFusionBlacklist(["aten::add"])
 
         a = torch.randn(5, 5)
@@ -54,7 +54,7 @@ class TestBlackList(utils.TorchGlowTestCase):
             x8 = x7 * b
             return x8
 
-        torch_glow.enableFusionPass()
+        torch_glow.enableFusionPass_DO_NOT_USE_THIS()
         torch_glow.setFusionStartIndex(3)
         torch_glow.setFusionEndIndex(6)
 

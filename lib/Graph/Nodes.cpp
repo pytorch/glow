@@ -616,6 +616,10 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
   return isValid;
 }
 
+bool HardSwishNode::verify() const {
+  return checkSameType(getInput(), getResult(), this);
+}
+
 bool PadNode::verify() const {
   // Pad is currently only supported for constant padding.
   return expectCompareTrue("only the 'constant' mode is currrently supported",
@@ -1882,8 +1886,12 @@ bool IntLookupTableNode::verify() const {
   isValid &= expectCompareTrue("Mapping should be 1 dimensional",
                                getMapping().dims().size(), size_t(1), this);
   isValid &= expectCompareTrue(
-      "Mapping should cover whole quantized range", getMapping().dims()[0],
-      (dim_t)(256 * getResult().getType()->getElementSize()), this);
+      "Mapping should cover the whole input quantized range",
+      getMapping().dims()[0],
+      (dim_t)(getInput().getType()->getQuantizedValueCount()), this);
+  isValid &= expectCompareTrue("Mapping and result type must be the same",
+                               getMapping().getType()->getElementType(),
+                               getResult().getType()->getElementType(), this);
   return isValid;
 }
 
@@ -1922,6 +1930,46 @@ bool RescaleQuantizedNode::verify() const {
   isValid &=
       checkType(getResult(), getInput().getType()->getElementType(), this);
   isValid &= checkSameShape(getResult(), getInput(), this);
+  return isValid;
+}
+
+bool CollectRpnProposalsNode::verify() const {
+  auto result = getResult();
+  auto rois = getRoisIn();
+  auto probs = getRoisProbsIn();
+  bool isValid = true;
+
+  isValid &= expectCompareTrue("rpnPostNmsTopN should be greater than zero",
+                               getRpnPostNmsTopN() > 0, true, this);
+
+  isValid &= expectCompareTrue(
+      "RPN min level should be less than or equal to RPN max level",
+      getRpnMinLevel() <= getRpnMaxLevel(), true, this);
+
+  dim_t rpnLevels = getRpnMaxLevel() - getRpnMinLevel() + 1;
+
+  isValid &= expectCompareTrue("Invalid number of inputs",
+                               rpnLevels == rois.size(), true, this);
+  isValid &= expectCompareTrue("Invalid number of inputs",
+                               rpnLevels == probs.size(), true, this);
+
+  for (dim_t i = 0; i < rpnLevels; i++) {
+    auto roi = rois[i];
+    auto prob = probs[i];
+    isValid &= checkType(result, roi.getElementType(), this);
+    isValid &= checkType(result, prob.getElementType(), this);
+    isValid &=
+        expectCompareTrue("Rois and result must have same second dimension",
+                          roi.dims()[1], result.dims()[1], this);
+    isValid &= expectCompareTrue(
+        "Rois and respective probability scores must have same first dimension",
+        roi.dims()[0], prob.dims()[0], this);
+  }
+
+  isValid &=
+      expectCompareTrue("Result is capped to rpnPostNmsTopN",
+                        result.dims()[0] == getRpnPostNmsTopN(), true, this);
+
   return isValid;
 }
 
@@ -1973,6 +2021,13 @@ bool VectorNormNode::verify() const {
   ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, false);
   isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
+
+bool GaussianFillNode::verify() const {
+  auto dest = getResult();
+  bool isValid = dest.getElementType() == ElemKind::Float16Ty;
+  isValid &= checkSameShape(getInput(), dest, this);
   return isValid;
 }
 

@@ -195,7 +195,7 @@ protected:
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstI32(llvm::IRBuilder<> &builder, int32_t val);
   /// Generates LLVM IR that materializes the constant \p val.
-  llvm::Value *emitConstI16(llvm::IRBuilder<> &builder, int32_t val);
+  llvm::Value *emitConstI16(llvm::IRBuilder<> &builder, int16_t val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstI8(llvm::IRBuilder<> &builder, int8_t val);
   /// Generates LLVM IR that materializes the constant \p val.

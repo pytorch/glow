@@ -1063,6 +1063,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_DEQUANTIZE) {
     return loadUnaryArithmetic(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_HARD_SWISH) {
+    return loadUnaryArithmetic(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_FLOOR) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -1260,6 +1263,8 @@ Error TFLiteModelLoader::loadUnaryArithmetic(const tflite::Operator *op,
   NodeValue output;
   if (opCode == tflite::BuiltinOperator_LOGISTIC) {
     output = F_->createSigmoid(opInfo.name, outTy, input);
+  } else if (opCode == tflite::BuiltinOperator_HARD_SWISH) {
+    output = F_->createHardSwish(opInfo.name, outTy, input);
   } else if (opCode == tflite::BuiltinOperator_RELU) {
     output = F_->createRELU(opInfo.name, input, outTy);
   } else if (opCode == tflite::BuiltinOperator_RELU_N1_TO_1) {

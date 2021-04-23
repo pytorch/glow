@@ -27,7 +27,9 @@
 
 #include "llvm/ADT/ArrayRef.h"
 
+#include <numeric>
 #include <unordered_map>
+#include <vector>
 
 #if defined(__APPLE__) || defined(__MACOSX)
 #include "OpenCL/opencl.h"
@@ -224,6 +226,11 @@ public:
   }
   static std::string getName() { return "OpenCL"; }
   static unsigned numDevices() { return 1; }
+  static std::vector<unsigned> scanDeviceIDs() {
+    std::vector<unsigned> deviceIDs(numDevices());
+    std::iota(std::begin(deviceIDs), std::end(deviceIDs), 0);
+    return deviceIDs;
+  }
 
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;

@@ -151,6 +151,8 @@ TFLITE_UNIT_TEST(DepthwiseConv2D_Ch1Mult2, "depthwise_conv2d_c1_m2.tflite")
 TFLITE_UNIT_TEST(DepthwiseConv2D_Ch2Mult1, "depthwise_conv2d_c2_m1.tflite")
 TFLITE_UNIT_TEST(DepthwiseConv2D_Ch2Mult2, "depthwise_conv2d_c2_m2.tflite")
 
+TFLITE_UNIT_TEST(HardSwish, "hardSwish.tflite")
+
 TFLITE_UNIT_TEST(Floor, "floor.tflite")
 
 TFLITE_UNIT_TEST(FullyConnected, "fully_connected.tflite")

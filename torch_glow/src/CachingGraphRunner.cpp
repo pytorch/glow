@@ -21,6 +21,7 @@
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Flags/Flags.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/TraceExporter.h"
 #include "glow/Support/Support.h"
 
 #include <mutex>
@@ -99,6 +100,8 @@ void initializeCompiliationContextFromSettings(
         glow::flags::SparseNNPartitioningBalancePerfModel;
     cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
         glow::flags::SparseNNPartitioningPairLNWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
+        glow::flags::SparseNNPartitioningPairTileWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
@@ -226,7 +229,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
     RECORD_USER_SCOPE("loadJITGraph");
     RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
         *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-        outputCorrectType_, loadSettings, inputs, {}));
+        outputCorrectTypes_, loadSettings, inputs, {}));
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
 
@@ -517,6 +520,13 @@ CachingGraphRunner::convertPyTorchInputToGlowInput(
     ptTensor = convertQuantizedToDtype(ptTensor, at::kQInt8);
   }
 
+  // If the tensor is an int64 tensor but should be an int32 tensor in Glow,
+  // convert it.
+  if (ptTensor.scalar_type() == at::kLong &&
+      ty->getElementType() == ElemKind::Int32ITy) {
+    ptTensor = ptTensor.to(at::kInt);
+  }
+
   // Make sure the runtime pytorch tensor type matches the placeholder.
   // Note this needs to be placed after convertQuantizedToDtype to
   // correctly handle quantized types.
@@ -764,15 +774,21 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
         // Convert the output to the correct dtype if necessary.
         if (ptTensor.is_quantized()) {
-          c10::ScalarType dtype = outputCorrectType_[i];
-          if (dtype == c10::ScalarType::QUInt8 ||
-              dtype == c10::ScalarType::QInt8) {
+          at::ScalarType dtype = outputCorrectTypes_[i];
+          if (dtype == at::ScalarType::QUInt8 ||
+              dtype == at::ScalarType::QInt8) {
             ptTensor = convertQuantizedToDtype(ptTensor, dtype);
           } else {
             return MAKE_ERR(
                 strFormat("Fail to propagate quantized dtype to output"));
           }
         }
+
+        if (ptTensor.dtype() == at::kInt &&
+            outputCorrectTypes_[i] == at::kLong) {
+          ptTensor = ptTensor.to(at::kLong);
+        }
+
         // Write the output from Glow to ONNX if necessary.
         if (settings.writeToOnnx) {
           glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
@@ -852,7 +868,8 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
-  if (defaultSettings_.enableGlowTracing) {
+  if (defaultSettings_.enableGlowTracing ||
+      TraceExporterRegistry::getInstance()->shouldTrace()) {
     ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("torch_glow");
@@ -861,6 +878,8 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
   detail::GlowError err = detail::GlowError::empty();
   {
+    // XXX remove these once we integrate with pytorch profiler using
+    // Kineto
     RECORD_USER_SCOPE("torch_glow::run");
 
     std::shared_ptr<PerGlowGraphInfo> info;
@@ -873,7 +892,10 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
 
-  aggregateAndDumpTraces(traceContext);
+  TraceExporterRegistry::getInstance()->exportTrace(traceContext);
+  if (defaultSettings_.enableGlowTracing) {
+    aggregateAndDumpTraces(traceContext);
+  }
 
   return err;
 }
@@ -920,7 +942,8 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
   TraceContext *traceContext = nullptr;
-  if (settings.enableGlowTracing) {
+  if (settings.enableGlowTracing ||
+      TraceExporterRegistry::getInstance()->shouldTrace()) {
     ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("torch_glow");
@@ -936,7 +959,10 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::runOnly");
 
-  aggregateAndDumpTraces(traceContext);
+  TraceExporterRegistry::getInstance()->exportTrace(traceContext);
+  if (settings.enableGlowTracing) {
+    aggregateAndDumpTraces(traceContext);
+  }
   return err;
 }
 
@@ -1004,7 +1030,7 @@ Error CachingGraphRunner::warmCache(
         RECORD_USER_SCOPE("loadJITGraph");
         RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
             *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-            outputCorrectType_, info->settings, {}, metaStack));
+            outputCorrectTypes_, info->settings, {}, metaStack));
         TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
                         "loadJITGraph");
       }
@@ -1056,7 +1082,9 @@ Error CachingGraphRunner::warmCache(
     TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
                     "torch_glow::warmCache");
   }
-  aggregateAndDumpTraces(traceContext.get());
+  if (settings.enableGlowTracing) {
+    aggregateAndDumpTraces(traceContext.get());
+  }
   return Error::success();
 }
 
@@ -1087,6 +1115,28 @@ CachingGraphRunner::~CachingGraphRunner() {
   for (auto &kv : perGlowGraphInfoMap_) {
     ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));
   }
+}
+
+Error CachingGraphRunner::warmupGraphOutputShapeMap(
+    const c10::ArrayRef<torch::jit::Value *> &graphOutputValues,
+    const BatchShapesMapType &graphShapeMetaMap) {
+  for (auto &it : graphShapeMetaMap) {
+    auto &shapeMap = it.second;
+    auto batchSize = it.first;
+    MetaStack outputShape;
+    for (auto outputValue : graphOutputValues) {
+      auto itr = shapeMap.find(outputValue);
+      if (itr == shapeMap.end()) {
+        std::ostringstream ss;
+        ss << "Node output " << outputValue->debugName()
+           << " Not found in the shape map!";
+        return MAKE_ERR(ss.str());
+      }
+      outputShape.emplace_back(itr->second);
+    }
+    perGlowGraphShapeMap_.emplace(batchSize, outputShape);
+  }
+  return Error::success();
 }
 
 size_t CachingGraphRunner::getGraphMapKeyFromInputStack(

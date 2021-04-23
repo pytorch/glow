@@ -16,7 +16,7 @@ class TestPrintJitNodeIndices(utils.TorchGlowTestCase):
         x = torch.randn(4)
         y = torch.randn(4)
 
-        torch_glow.enableFusionPass()
+        torch_glow.enableFusionPass_DO_NOT_USE_THIS()
         torch_glow.enable_printing_jit_node_indices()
 
         graph = torch.jit.trace(test_f, (x, y), check_trace=False)

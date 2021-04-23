@@ -19,7 +19,7 @@ class TestAdaptiveAvgPool2d(utils.TorchGlowTestCase):
         """Basic test of PyTorch adaptive_avg_pool2d Node."""
         inputs = torch.randn(3, 6, 14, 14)
 
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAdapativeAvgPool2dModule((5, 5)),
             inputs,
             fusible_ops={"aten::adaptive_avg_pool2d"},
@@ -30,7 +30,7 @@ class TestAdaptiveAvgPool2d(utils.TorchGlowTestCase):
 
         inputs = torch.randn(3, 6, 13, 14)
 
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAdapativeAvgPool2dModule((3, 3)),
             inputs,
             fusible_ops={"aten::adaptive_avg_pool2d"},
@@ -41,7 +41,7 @@ class TestAdaptiveAvgPool2d(utils.TorchGlowTestCase):
 
         inputs = torch.randn(3, 6, 14, 14)
 
-        utils.compare_tracing_methods(
+        utils.run_comparison_tests(
             SimpleAdapativeAvgPool2dModule((5, 3)),
             inputs,
             fusible_ops={"aten::adaptive_avg_pool2d"},

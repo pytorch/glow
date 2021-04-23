@@ -314,6 +314,9 @@ private:
   // Shape inference for fb::compressed_indices_remap
   static Expected<TensorListOutput>
   compressedIndicesRemap(const MetaStack &variableMetas);
+  // Shape inference for quantized::embedding_bag_byte_unpack
+  static Expected<TensorOutput>
+  embeddingBagByteUnpack(const MetaStack &variableMetas);
 };
 
 } // namespace glow

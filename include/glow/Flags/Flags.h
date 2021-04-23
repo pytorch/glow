@@ -25,6 +25,7 @@ namespace flags {
 
 // Generic Constants
 extern int32_t NumDevices;
+extern bool ScanDevices;
 extern bool SaturateHost;
 extern bool EnableQuantParamChanges;
 extern size_t MaxActiveRequests;
@@ -72,6 +73,7 @@ extern bool UseSparseNNPartitioningScheme;
 extern bool SparseNNPartitioningAddSLSConcats;
 extern bool SparseNNPartitioningBalancePerfModel;
 extern bool SparseNNPartitioningPairLNWithSLS;
+extern bool SparseNNPartitioningPairTileWithSLS;
 
 // Dag Optimizer Constants
 extern bool UseDAGOptimizer;

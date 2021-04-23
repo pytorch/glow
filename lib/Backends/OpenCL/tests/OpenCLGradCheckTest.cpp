@@ -24,4 +24,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "gradientCheckCrossEntropyLoss/0",
     "gradientCheckTile/0",
     "gradientCheckBatchedPairwiseDotProduct/0",
+    "gradientCheckGatherVec/0",
+    "gradientCheckGatherDim/0",
 };

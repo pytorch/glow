@@ -22,7 +22,7 @@ class TestGetAttr(utils.TorchGlowTestCase):
 
             x = torch.tensor([2.0, 3.0])
 
-            torch_glow.enableFusionPass()
+            torch_glow.enableFusionPass_DO_NOT_USE_THIS()
 
             m = Model()
             jit_m = torch.jit.trace(m, x)

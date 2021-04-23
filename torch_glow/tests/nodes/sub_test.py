@@ -44,9 +44,14 @@ class TestSub(utils.TorchGlowTestCase):
                 SimpleSubtractModel(),
                 torch.randn(4),
                 torch.tensor(20),
-                True,
+            ),
+            lambda: (
+                "int64",
+                SimpleSubtractModel(),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
             ),
         ]
     )
-    def test_subtract(self, _, module, tensor, other, skip_to_glow=False):
-        utils.compare_tracing_methods(module, tensor, other, skip_to_glow=skip_to_glow)
+    def test_subtract(self, _, module, tensor, other):
+        utils.run_comparison_tests(module, (tensor, other), fusible_ops={"aten::sub"})

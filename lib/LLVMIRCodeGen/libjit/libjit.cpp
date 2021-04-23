@@ -555,7 +555,7 @@ static void libjit_scatterdataaddquantized(T *data, const dim_t *dataDims,
     for (size_t j = 0; j < sliceSize; j++) {
       float lhs = (data[destDataIdx * sliceSize + j] - dataOffset) * dataScale;
       float rhs = (slices[i * sliceSize + j] - sliceOffset) * sliceScale;
-      T result = libjit_clip((lhs + rhs) / dataScale + dataOffset);
+      T result = libjit_clip_i8((lhs + rhs) / dataScale + dataOffset);
       data[destDataIdx * sliceSize + j] = result;
     }
   }
@@ -1007,9 +1007,9 @@ libjit_batchedadd_quantized(int8_t *dest, const int8_t *batch, const T *slice,
     for (dim_t i = 0; i < sliceSize; i++) {
       int32_t b = batch[base + i] - batchOffset;
       int32_t s = slice[i] - sliceOffset;
-      int32_t x = libjit_scale_i32i8(b, batchPre, batchPost, batchScale, 0);
-      int32_t y = libjit_scale_i32i8(s, slicePre, slicePost, sliceScale, 0);
-      dest[base + i] = libjit_clip(x + y + destOffset);
+      int32_t x = libjit_scale<int32_t>(b, batchPre, batchPost, batchScale, 0);
+      int32_t y = libjit_scale<int32_t>(s, slicePre, slicePost, sliceScale, 0);
+      dest[base + i] = libjit_clip_i8(x + y + destOffset);
     }
   }
 }
@@ -1595,11 +1595,11 @@ extern "C" {
             int32_t lhsOffset, int32_t rhsOffset, int32_t lhsPre,              \
             int32_t lhsPost, int32_t lhsScale, int32_t rhsPre,                 \
             int32_t rhsPost, int32_t rhsScale) {                               \
-    int32_t lhs = libjit_scale_i32i8(LHS[idx] - lhsOffset, lhsPre, lhsPost,    \
-                                     lhsScale, 0);                             \
-    int32_t rhs = libjit_scale_i32i8(RHS[idx] - rhsOffset, rhsPre, rhsPost,    \
-                                     rhsScale, 0);                             \
-    return libjit_clip((body) + destOffset);                                   \
+    int32_t lhs = libjit_scale<int32_t>(LHS[idx] - lhsOffset, lhsPre, lhsPost, \
+                                        lhsScale, 0);                          \
+    int32_t rhs = libjit_scale<int32_t>(RHS[idx] - rhsOffset, rhsPre, rhsPost, \
+                                        rhsScale, 0);                          \
+    return libjit_clip_i8((body) + destOffset);                                \
   }
 
 /// Macro to define a mini-kernel for data-parallel multiplicative quantized
@@ -1613,8 +1613,8 @@ extern "C" {
               int32_t pre, int32_t post, int32_t scale) {                      \
     int32_t lhs = LHS[idx] - lhsOffset;                                        \
     int32_t rhs = RHS[idx] - rhsOffset;                                        \
-    return libjit_clip(                                                        \
-        libjit_scale_i32i8((body), pre, post, scale, destOffset));             \
+    return libjit_clip_i8(                                                     \
+        libjit_scale<int32_t>((body), pre, post, scale, destOffset));          \
   }
 
 /// Define mini-kernels for all data parallel operations. They are invoked from
@@ -1755,7 +1755,7 @@ int8_t libjit_element_xor_kernel_b(dim_t idx, const bool *LHS,
               int32_t rhsOffset, int32_t pre, int32_t post, int32_t scale) {   \
     int32_t lhs = LHS[idx] - lhsOffset;                                        \
     int32_t rhs = RHS[idx] - rhsOffset;                                        \
-    return (libjit_scale_i32i8(lhs, pre, post, scale, 0) cmp rhs) ? 1 : 0;     \
+    return (libjit_scale<int32_t>(lhs, pre, post, scale, 0) cmp rhs) ? 1 : 0;  \
   }
 DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_eq_kernel_i8, int8_t, ==)
 DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_neq_kernel_i8, int8_t, !=)
@@ -1816,6 +1816,11 @@ int8_t libjit_intlookuptable_kernel_i8(dim_t idx, const int8_t *src,
   return mapping[src[idx] + 128];
 }
 
+int16_t libjit_intlookuptable_kernel_i16(dim_t idx, const int16_t *src,
+                                         const int16_t *mapping) {
+  return mapping[src[idx] + 32768];
+}
+
 float libjit_elementselect_kernel_f(dim_t idx, const int8_t *cond,
                                     const float *LHS, const float *RHS) {
   return (cond[idx] != 0) ? LHS[idx] : RHS[idx];
@@ -1829,10 +1834,11 @@ int8_t libjit_elementselect_kernel_i8(dim_t idx, const int8_t *cond,
                                       int32_t rhsPre, int32_t rhsPost,
                                       int32_t rhsScale) {
   return (cond[idx] != 0)
-             ? libjit_clip(libjit_scale_i32i8(LHS[idx] - lhsOffset, lhsPre,
-                                              lhsPost, lhsScale, destOffset))
-             : libjit_clip(libjit_scale_i32i8(RHS[idx] - rhsOffset, rhsPre,
-                                              rhsPost, rhsScale, destOffset));
+             ? libjit_clip_i8(libjit_scale<int32_t>(
+                   LHS[idx] - lhsOffset, lhsPre, lhsPost, lhsScale, destOffset))
+             : libjit_clip_i8(libjit_scale<int32_t>(RHS[idx] - rhsOffset,
+                                                    rhsPre, rhsPost, rhsScale,
+                                                    destOffset));
 }
 
 float libjit_element_relu_f(dim_t idx, const float *src) {
@@ -1844,9 +1850,9 @@ int8_t libjit_element_relu_i8(dim_t idx, const int8_t *src, int8_t srcOffset,
                               int8_t destOffset, int32_t destPre,
                               int32_t destPost, int32_t destScale) {
   int32_t reluVal = MAX(src[idx], srcOffset);
-  int32_t scaledVal = libjit_scale_i32i8(reluVal - srcOffset, destPre, destPost,
-                                         destScale, destOffset);
-  return libjit_clip(scaledVal);
+  int32_t scaledVal = libjit_scale<int32_t>(reluVal - srcOffset, destPre,
+                                            destPost, destScale, destOffset);
+  return libjit_clip_i8(scaledVal);
 }
 
 float libjit_element_clip_f(dim_t idx, const float *src, float min, float max) {
@@ -1859,9 +1865,9 @@ int8_t libjit_element_clip_i8(dim_t idx, const int8_t *src, int8_t clipMin,
                               int8_t destOffset, int32_t destPre,
                               int32_t destPost, int32_t destScale) {
   int32_t clipVal = MIN(MAX(src[idx], clipMin), clipMax);
-  int32_t scaledVal = libjit_scale_i32i8(clipVal - srcOffset, destPre, destPost,
-                                         destScale, destOffset);
-  return libjit_clip(scaledVal);
+  int32_t scaledVal = libjit_scale<int32_t>(clipVal - srcOffset, destPre,
+                                            destPost, destScale, destOffset);
+  return libjit_clip_i8(scaledVal);
 }
 
 float libjit_element_leaky_relu_f(dim_t idx, const float *src, float alpha) {
@@ -1875,12 +1881,13 @@ int8_t libjit_element_leaky_relu_i8(dim_t idx, const int8_t *src,
                                     int32_t posScale, int32_t negPre,
                                     int32_t negPost, int32_t negScale) {
   int32_t srcVal = src[idx];
-  int32_t scaledVal = (srcVal >= srcOffset)
-                          ? libjit_scale_i32i8(srcVal - srcOffset, posPre,
-                                               posPost, posScale, destOffset)
-                          : libjit_scale_i32i8(srcVal - srcOffset, negPre,
-                                               negPost, negScale, destOffset);
-  return libjit_clip(scaledVal);
+  int32_t scaledVal =
+      (srcVal >= srcOffset)
+          ? libjit_scale<int32_t>(srcVal - srcOffset, posPre, posPost, posScale,
+                                  destOffset)
+          : libjit_scale<int32_t>(srcVal - srcOffset, negPre, negPost, negScale,
+                                  destOffset);
+  return libjit_clip_i8(scaledVal);
 }
 
 // When the LIBJIT compile option "-ffast-math" is enabled the intermediate
@@ -2034,10 +2041,10 @@ void libjit_batchedreduceadd_i8(int8_t *dest, const int8_t *batch,
                        batchOffset;                                            \
               }                                                                \
               dim_t i##_D5_AXIS = 0;                                           \
-              int32_t res = libjit_scale_i32i8(sum, batchPre, batchPost,       \
-                                               batchScale, destOffset);        \
+              int32_t res = libjit_scale<int32_t>(sum, batchPre, batchPost,    \
+                                                  batchScale, destOffset);     \
               dest[libjit_getXYZWQR(destDims, i0, i1, i2, i3, i4, i5)] =       \
-                  libjit_clip(res);                                            \
+                  libjit_clip_i8(res);                                         \
             }                                                                  \
     return;
 
@@ -2339,7 +2346,7 @@ void libjit_embedding_f(float *dest, float *weights, int64_t *indices,
 }
 
 void libjit_embedding_bag_f(float *dest, float *data, float *weights,
-                            size_t *indices, size_t *offsets, dim_t segments,
+                            int32_t *indices, int32_t *offsets, dim_t segments,
                             dim_t lineSize, dim_t totalLength,
                             bool hasEndOffset) {
   if (hasEndOffset) {
@@ -2348,10 +2355,10 @@ void libjit_embedding_bag_f(float *dest, float *data, float *weights,
   memset(dest, 0, segments * lineSize * sizeof(float));
   dim_t curIndex = 0;
   for (dim_t i = 0; i < segments; i++) {
-    int64_t start = offsets[i];
-    int64_t end =
+    int32_t start = offsets[i];
+    int32_t end =
         !hasEndOffset && i == segments - 1 ? totalLength : offsets[i + 1];
-    for (int64_t j = start; j < end; j++) {
+    for (int32_t j = start; j < end; j++) {
       float weight = weights[curIndex];
       dim_t line = indices[curIndex];
       for (dim_t k = 0; k < lineSize; k++) {
@@ -2437,9 +2444,9 @@ void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_f(
 }
 
 void libjit_embedding_bag_byte_rowwise_offsets_f(
-    float *dest, int8_t *data, float *weights, size_t *indices, size_t *offsets,
-    dim_t segments, dim_t numIndices, dim_t inLineSize, dim_t outLineSize,
-    bool hasEndOffset) {
+    float *dest, int8_t *data, float *weights, int32_t *indices,
+    int32_t *offsets, dim_t segments, dim_t numIndices, dim_t inLineSize,
+    dim_t outLineSize, bool hasEndOffset) {
   if (hasEndOffset) {
     --segments;
   }
@@ -2856,16 +2863,17 @@ void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
 
           // Normalize and store.
           if (countIncludePads) {
-            sum = libjit_scale_i32i8(sum, outPre, outPost, outScale, outOffset);
-            *outW++ = libjit_clip(sum);
+            sum = libjit_scale<int32_t>(sum, outPre, outPost, outScale,
+                                        outOffset);
+            *outW++ = libjit_clip_i8(sum);
           } else {
             int32_t area = f_h_len * f_w_len;
             if (area == 0) {
               *outW++ = outOffset;
             } else {
-              sum = libjit_scale_i32i8(sum, outPre, outPost, outScale, 0);
+              sum = libjit_scale<int32_t>(sum, outPre, outPost, outScale, 0);
               sum = libjit_div_round_i32(sum, area) + outOffset;
-              *outW++ = libjit_clip(sum);
+              *outW++ = libjit_clip_i8(sum);
             }
           }
 
@@ -2982,7 +2990,13 @@ void libjit_avg_pool_grad_f(float *inG, const float *outG, const dim_t *inGdims,
 int8_t libjit_element_quantize_kernel_i8(dim_t idx, const float *inW,
                                          float scale, int32_t offset) {
   int32_t result = (int32_t)nearbyintf(inW[idx] / scale + offset);
-  return (int8_t)MAX(INT8_MIN, MIN(INT8_MAX, result));
+  return libjit_clip_i8(result);
+}
+
+int16_t libjit_element_quantize_kernel_i16(dim_t idx, const float *inW,
+                                           float scale, int32_t offset) {
+  int32_t result = (int32_t)nearbyintf(inW[idx] / scale + offset);
+  return libjit_clip_i16(result);
 }
 
 int32_t libjit_element_quantize_kernel_i32(dim_t idx, const float *inW,
@@ -2991,8 +3005,18 @@ int32_t libjit_element_quantize_kernel_i32(dim_t idx, const float *inW,
   return result;
 }
 
-float libjit_element_dequantize_kernel_f(dim_t idx, const int8_t *inW,
-                                         float scale, int32_t offset) {
+float libjit_element_dequantize_kernel_i8(dim_t idx, const int8_t *inW,
+                                          float scale, int32_t offset) {
+  return scale * (inW[idx] - offset);
+}
+
+float libjit_element_dequantize_kernel_i16(dim_t idx, const int16_t *inW,
+                                           float scale, int32_t offset) {
+  return scale * (inW[idx] - offset);
+}
+
+float libjit_element_dequantize_kernel_i32(dim_t idx, const int32_t *inW,
+                                           float scale, int32_t offset) {
   return scale * (inW[idx] - offset);
 }
 
@@ -3001,8 +3025,26 @@ int8_t libjit_element_rescale_kernel_i8(dim_t idx, const int8_t *inW,
                                         int32_t pre, int32_t post,
                                         int32_t scale) {
   int32_t s =
-      libjit_scale_i32i8(inW[idx] - inOffset, pre, post, scale, outOffset);
-  return libjit_clip(s);
+      libjit_scale<int32_t>(inW[idx] - inOffset, pre, post, scale, outOffset);
+  return libjit_clip_i8(s);
+}
+
+int16_t libjit_element_rescale_kernel_i16(dim_t idx, const int16_t *inW,
+                                          int32_t outOffset, int32_t inOffset,
+                                          int32_t pre, int32_t post,
+                                          int32_t scale) {
+  int32_t s =
+      libjit_scale<int64_t>(inW[idx] - inOffset, pre, post, scale, outOffset);
+  return libjit_clip_i16(s);
+}
+
+int32_t libjit_element_rescale_kernel_i32(dim_t idx, const int32_t *inW,
+                                          int32_t outOffset, int32_t inOffset,
+                                          int32_t pre, int32_t post,
+                                          int32_t scale) {
+  int32_t s =
+      libjit_scale<int64_t>(inW[idx] - inOffset, pre, post, scale, outOffset);
+  return s;
 }
 
 void libjit_softmax_f(const float *inW, float *outW, const dim_t *idim,

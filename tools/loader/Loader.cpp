@@ -123,6 +123,7 @@ llvm::cl::opt<ElemKind> quantizationPrecisionBias(
     llvm::cl::Optional,
     llvm::cl::values(
         clEnumValN(ElemKind::Int8QTy, "Int8", "Use Int8 bias quantization"),
+        clEnumValN(ElemKind::Int16QTy, "Int16", "Use Int16 bias quantization"),
         clEnumValN(ElemKind::Int32QTy, "Int32", "Use Int32 bias quantization")),
     llvm::cl::init(ElemKind::Int32QTy), llvm::cl::cat(loaderCat));
 

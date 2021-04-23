@@ -1,0 +1,22 @@
+name: "gaussian_fill_use_input_shape_with_extra_shape"
+op {
+  input: "inputs_0"
+  output: "result"
+  name: ""
+  type: "GaussianFill"
+  arg {
+    name: "mean"
+    f: 0.0
+  }
+  arg {
+    name: "std"
+    f: 1.0
+  }
+  arg {
+    name: "extra_shape"
+    ints: 2
+    ints: 3
+  }
+}
+external_input: "inputs_0"
+external_output: "result"

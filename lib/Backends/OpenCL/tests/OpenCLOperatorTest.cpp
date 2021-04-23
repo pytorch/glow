@@ -392,6 +392,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FP16SoftMax/0",
     "LengthsToRanges/0",
     "LengthsRangeFill/0",
+    "GaussianFill/0",
     "BatchOneHotDataFloat/0",
     "BatchOneHotDataFloat16/0",
     "BatchOneHotDataInt64/0",
@@ -739,6 +740,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Upsample_Nearest1D_Float16/0",
     "Upsample_Nearest1D_Int8/0",
     "batchedReduceAdd_Int32ITy/0",
+    "CollectRpnProposals/0",
     "ArithFmod_int32_t/0",
     "ArithFmod_bfloat16_t/0",
     "ArithFmod_float16_t/0",
@@ -746,4 +748,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ArithFmod_float/0",
     "BasicFmodNetFloatVsFloat16/0",
     "BasicFmodNetFloatVsBFloat16/0",
+    "ScatterData/0",
+    "ScatterDataCumulative/0",
 };

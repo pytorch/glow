@@ -28,6 +28,7 @@
 #include <chrono>
 #include <cmath>
 #include <numeric>
+#include <random>
 
 #ifdef WIN32
 #include <corecrt_math_defines.h>
@@ -2585,7 +2586,7 @@ void BoundInterpreterFunction::fwdGatherRangesInst(
   }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename IndicesElemTy>
 void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
     const glow::ScatterDataInst *I) {
   Tensor *dataT = getTensor(I->getData());
@@ -2597,7 +2598,7 @@ void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
   const dim_t dataSliceSize = slicesT->size() / slicesT->dims()[0] *
                               slicesT->getType().getElementSize();
 
-  auto IH = indicesT->getHandle<int64_t>();
+  auto IH = indicesT->getHandle<IndicesElemTy>();
   // For each index, copy from the slice at that index into the location in
   // data given the offset from the indices tensor.
   for (dim_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
@@ -2612,7 +2613,7 @@ void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
   }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename IndicesElemTy>
 void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
     const glow::ScatterDataInst *I) {
   Tensor *dataT = getTensor(I->getData());
@@ -2624,7 +2625,7 @@ void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
 
   const size_t numSlices = slicesT->size() / slicesT->dims()[0];
 
-  auto IH = indicesT->getHandle<int64_t>();
+  auto IH = indicesT->getHandle<IndicesElemTy>();
   // For each index, copy from the slice at that index into the location in
   // data given the offset from the indices tensor.
   assert(indicesT->dims().size() == 2 &&
@@ -2642,7 +2643,7 @@ void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
   }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename IndicesElemTy>
 void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
     const glow::ScatterDataInst *I) {
   Tensor *dataT = getTensor(I->getData());
@@ -2659,7 +2660,7 @@ void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
   TensorQuantizationParams sliceQ{slicesT->getType().getScale(),
                                   slicesT->getType().getOffset()};
 
-  auto IH = indicesT->getHandle<int64_t>();
+  auto IH = indicesT->getHandle<IndicesElemTy>();
   // For each index, copy from the slice at that index into the location in
   // data given the offset from the indices tensor.
   assert(indicesT->dims().size() == 2 &&
@@ -2683,13 +2684,25 @@ void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
 
 void BoundInterpreterFunction::fwdScatterDataInst(
     const glow::ScatterDataInst *I) {
+  const auto indicesAreInt64 =
+      I->getIndices()->getElementType() == ElemKind::Int64ITy;
+
   if (I->getCumulative()) {
     switch (I->getData()->getElementType()) {
     case ElemKind::FloatTy:
-      fwdScatterDataInstAddFloatImpl<float>(I);
+      if (indicesAreInt64) {
+        fwdScatterDataInstAddFloatImpl<float, int64_t>(I);
+      } else {
+        fwdScatterDataInstAddFloatImpl<float, int32_t>(I);
+      }
+
       break;
     case ElemKind::Int8QTy:
-      fwdScatterDataInstAddQuantizedImpl<int8_t>(I);
+      if (indicesAreInt64) {
+        fwdScatterDataInstAddQuantizedImpl<int8_t, int64_t>(I);
+      } else {
+        fwdScatterDataInstAddQuantizedImpl<int8_t, int32_t>(I);
+      }
       break;
     default:
       llvm_unreachable("Unsupported type for ScatterData.");
@@ -2697,10 +2710,18 @@ void BoundInterpreterFunction::fwdScatterDataInst(
   } else {
     switch (I->getData()->getElementType()) {
     case ElemKind::FloatTy:
-      fwdScatterDataInstCopyImpl<float>(I);
+      if (indicesAreInt64) {
+        fwdScatterDataInstCopyImpl<float, int64_t>(I);
+      } else {
+        fwdScatterDataInstCopyImpl<float, int32_t>(I);
+      }
       break;
     case ElemKind::Int8QTy:
-      fwdScatterDataInstCopyImpl<int8_t>(I);
+      if (indicesAreInt64) {
+        fwdScatterDataInstCopyImpl<int8_t, int64_t>(I);
+      } else {
+        fwdScatterDataInstCopyImpl<int8_t, int32_t>(I);
+      }
       break;
     default:
       llvm_unreachable("Unsupported type for ScatterData.");
@@ -5140,8 +5161,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
-  auto OFFH = offsets->getHandle<int64_t>();
+  auto IH = indices->getHandle<int32_t>();
+  auto OFFH = offsets->getHandle<int32_t>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments
@@ -5216,7 +5237,7 @@ void BoundInterpreterFunction::fwdEmbeddingInstImpl(Tensor *wtT, Tensor *indT,
 
   auto WH = wtT->getHandle<ElemTy>();
   auto OH = fOutT.getHandle<ElemTy>();
-  auto IH = fIndT.getHandle<int64_t>();
+  auto IH = fIndT.getHandle<int32_t>();
 
   for (dim_t i = 0; i < indLen; i++) {
     dim_t index = IH.at(i);
@@ -5477,8 +5498,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
-  auto OFFH = offsets->getHandle<int64_t>();
+  auto IH = indices->getHandle<int32_t>();
+  auto OFFH = offsets->getHandle<int32_t>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments
@@ -5582,6 +5603,16 @@ void BoundInterpreterFunction::fwdLengthsRangeFillInst(
     for (int32_t j = 0, f = lengthsH.at({i}); j < f; j++) {
       resultH.at({curIdx++}) = j;
     }
+  }
+}
+
+void BoundInterpreterFunction::fwdGaussianFillInst(const GaussianFillInst *I) {
+  std::mt19937 rnd(I->getSeed());
+  std::normal_distribution<float> dist(I->getMean(), I->getScale());
+  auto outT = getTensor(I->getDest());
+  auto outH = outT->getHandle<float16_t>();
+  for (auto &elem : outH) {
+    elem = dist(rnd);
   }
 }
 
@@ -5880,6 +5911,112 @@ static void fwdArgMin(Tensor *inpT, Tensor *outT, size_t axis) {
 //===----------------------------------------------------------------------===//
 //                       Sorting operators
 //===----------------------------------------------------------------------===//
+template <typename ElemTy>
+static void
+CollectRpnProposalsHelper(const std::vector<std::vector<ElemTy>> &roisIn,
+                          const std::vector<ElemTy> &scores,
+                          std::vector<std::vector<ElemTy>> &rois,
+                          dim_t rpnPostNmsTopN) {
+  // N + KlogK implementation, K is rpnPostNmsTopN
+  dim_t roisSecondDim = roisIn[0].size();
+
+  std::vector<dim_t> idx(scores.size());
+  std::iota(idx.begin(), idx.end(), 0);
+
+  auto comp = [&](dim_t leftIdx, dim_t rightIdx) -> bool {
+    if (scores[leftIdx] > scores[rightIdx]) {
+      return true;
+    }
+    if (scores[leftIdx] < scores[rightIdx]) {
+      return false;
+    }
+    // Sort on indices if two scores are equal
+    return leftIdx < rightIdx;
+  };
+
+  dim_t k = rpnPostNmsTopN;
+  // Getting the indices in order according to scores
+  // Arrange Kth element at its proper location of sorted array, O(N)
+  if (k < roisIn.size()) {
+    std::nth_element(idx.begin(), idx.begin() + k, idx.end(), comp);
+  } else {
+    k = roisIn.size();
+  }
+
+  rois.resize(k, std::vector<ElemTy>(roisSecondDim));
+
+  // KlogK, K is rpnPostNmsTopN
+  std::sort(idx.begin(), idx.begin() + k, comp);
+
+  // Output rois according to new order of indices
+  for (dim_t i = 0; i < k; i++) {
+    rois[i] = roisIn[idx[i]];
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdCollectRpnProposalsInstImpl(
+    const glow::CollectRpnProposalsInst *I) {
+
+  // Get params
+  dim_t rpnPostNmsTopN = I->getRpnPostNmsTopN();
+  int64_t rpnMaxLevel = I->getRpnMaxLevel();
+  int64_t rpnMinLevel = I->getRpnMinLevel();
+  int64_t rpnLevels = rpnMaxLevel - rpnMinLevel + 1;
+
+  std::vector<std::vector<ElemTy>> roisIn;
+  std::vector<ElemTy> scores;
+  std::vector<std::vector<ElemTy>> roisOut;
+
+  auto getRoisAndScores = [&](Tensor *input, bool isroi) {
+    auto inputHndl = input->getHandle<ElemTy>();
+
+    if (isroi) {
+      for (dim_t i = 0; i < input->dims()[0]; i++) {
+        std::vector<ElemTy> roi;
+
+        for (dim_t j = 0; j < input->dims()[1]; j++) {
+          roi.push_back(inputHndl.at({i, j}));
+        }
+
+        roisIn.push_back(roi);
+      }
+    } else {
+      for (dim_t i = 0; i < input->dims()[0]; i++) {
+        scores.push_back(inputHndl.at({i}));
+      }
+    }
+  };
+
+  // Input starts from index 1
+  for (dim_t idx = 1; idx <= rpnLevels; idx++) {
+    getRoisAndScores(getTensor(I->getOperand(idx).first), true);
+    getRoisAndScores(getTensor(I->getOperand(idx + rpnLevels).first), false);
+  }
+
+  // Sorting the roisIn according to scores limited by rpnPostNmsTopN
+  CollectRpnProposalsHelper<ElemTy>(roisIn, scores, roisOut, rpnPostNmsTopN);
+
+  // Storing roisOut in result tensor
+  dim_t roisSecondDim = roisIn[0].size();
+  Tensor *result = getTensor(I->getResult());
+
+  for (dim_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (dim_t j = 0; j < roisSecondDim; j++) {
+      result->getHandle<ElemTy>().at({i, j}) = roisOut[i][j];
+      // Invalid rois are set to 0
+      if (i > roisOut.size()) {
+        result->getHandle<ElemTy>().at({i, j}) = ElemTy(0);
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdCollectRpnProposalsInst(
+    const glow::CollectRpnProposalsInst *I) {
+  dispatchFloatingPointImpl(fwdCollectRpnProposalsInstImpl,
+                            I->getOperand(1).first->getElementType(), I);
+}
 
 void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
   auto outW = getTensor(I->getValues());
@@ -6088,12 +6225,22 @@ void BoundInterpreterFunction::fwdRescaleQuantizedInst(
 
 void BoundInterpreterFunction::fwdIntLookupTableInst(
     const IntLookupTableInst *I) {
-  auto srcH = getWeightHandle<int8_t>(I->getSrc());
-  auto destH = getWeightHandle<int8_t>(I->getDest());
-  auto mappingH = getWeightHandle<int8_t>(I->getMapping());
-
-  for (size_t i = 0, e = destH.size(); i < e; i++) {
-    destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 128);
+  if (I->getSrc()->getElementType() == ElemKind::Int8QTy) {
+    auto srcH = getWeightHandle<int8_t>(I->getSrc());
+    auto destH = getWeightHandle<int8_t>(I->getDest());
+    auto mappingH = getWeightHandle<int8_t>(I->getMapping());
+    for (size_t i = 0, e = destH.size(); i < e; i++) {
+      destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 128);
+    }
+  } else if (I->getSrc()->getElementType() == ElemKind::Int16QTy) {
+    auto srcH = getWeightHandle<int16_t>(I->getSrc());
+    auto destH = getWeightHandle<int16_t>(I->getDest());
+    auto mappingH = getWeightHandle<int16_t>(I->getMapping());
+    for (size_t i = 0, e = destH.size(); i < e; i++) {
+      destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 32768);
+    }
+  } else {
+    llvm_unreachable("Type not supported for IntLookupTable!");
   }
 }
 
