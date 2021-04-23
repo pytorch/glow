@@ -394,6 +394,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
 
       functionsToCompile.push_back(function);
       optsMap.insert({function->getName(), options});
+      std::lock_guard<std::mutex> functionsLock(functionsLock_);
       functionReplicaCount_.emplace(node->name, node->replicationCount);
       remainingDeviceCount.insert(
           {node->name, node->logicalDevices.size() - 1});
