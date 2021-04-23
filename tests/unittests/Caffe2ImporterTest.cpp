@@ -1185,9 +1185,10 @@ TEST_F(Caffe2ImporterTest, FCWithFlatten) {
     updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
-  // High level check on the content of the graph. We have a reshape, Transpose
-  // for FC weights, an FC, another reshape, and a save.
-  EXPECT_EQ(F->getNodes().size(), 5);
+  // High level check on the content of the graph. We have two Splats for
+  // weights and bias, a reshape, Transpose for FC weights, an FC, another
+  // reshape, and a save.
+  EXPECT_EQ(F->getNodes().size(), 7);
 
   auto finalShape = output->getType()->dims();
   std::vector<dim_t> expectedOutput{1, 1, 1, 9190};
@@ -1310,9 +1311,9 @@ TEST_F(Caffe2ImporterTest, FCTransposedWithFlatten) {
     updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
-  // High level check on the content of the graph. We have a reshape, an FC,
-  // another reshape, and a save.
-  EXPECT_EQ(F->getNodes().size(), 4);
+  // High level check on the content of the graph. We have two Splats for
+  // weights and bias, a reshape, an FC, another reshape, and a save.
+  EXPECT_EQ(F->getNodes().size(), 6);
 
   auto finalShape = output->getType()->dims();
   std::vector<dim_t> expectedOutput{1, 1, 1, 9190};
