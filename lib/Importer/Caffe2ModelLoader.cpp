@@ -1153,7 +1153,11 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     NodeValue W;
-    ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
+    if (hasConstantByName(op.input(1))) {
+      ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(W, getNodeValueByName(op.input(1)));
+    }
 
     // Caffe2 stores the transposed W matrix. In here we first coerce W to a
     // 2D matrix size if necessary and then transpose it back.
@@ -1167,9 +1171,12 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       W = G_->createTranspose(W.getNode()->getName(), W, {1, 0});
     }
 
-    Constant *B;
-
-    ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
+    NodeValue B;
+    if (hasConstantByName(op.input(2))) {
+      ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(op.input(2)));
+    }
 
     Node *node = nullptr;
     if (typeName == "Int8FC") {
@@ -1177,9 +1184,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       auto outputDims = flattenCdr(in.dims(), axis);
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy,
-          loadQuantTy(opName, ElemKind::Int8QTy,
-                      {outputDims.first, B->getType()->dims()[0]}, dict));
+          outTy, loadQuantTy(opName, ElemKind::Int8QTy,
+                             {outputDims.first, B.dims()[0]}, dict));
       node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
     } else if (typeName == "FbFCPacked") {
       RETURN_ERR_IF_NOT(W.getElementType() == ElemKind::Float16Ty,
@@ -1188,22 +1194,21 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           mod_.uniqueType(ElemKind::Float16Ty, in.getType()->dims());
       in = G_->createConvertTo(opName + ".ConvertInput", in, fp16InputType);
 
-      auto fp16BiasType =
-          mod_.uniqueType(ElemKind::Float16Ty, B->getType()->dims());
+      auto fp16BiasType = mod_.uniqueType(ElemKind::Float16Ty, B.dims());
       auto *fp16Bias =
           G_->createConvertTo(opName + ".ConvertBias", B, fp16BiasType);
 
       auto outputDims = flattenCdr(in.dims(), axis);
-      TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
-                                   {outputDims.first, B->getType()->dims()[0]});
+      TypeRef OT =
+          mod_.uniqueType(ElemKind::Float16Ty, {outputDims.first, B.dims()[0]});
       auto fc = G_->createFullyConnected(opName, in, W, fp16Bias, OT, axis);
       auto outputType =
           mod_.uniqueType(ElemKind::FloatTy, fc->getResult().dims());
       node = G_->createConvertTo(opName + ".ConvertOutput", fc, outputType);
     } else {
       auto outputDims = flattenCdr(in.dims(), axis);
-      TypeRef outputType = mod_.uniqueType(
-          ElemKind::FloatTy, {outputDims.first, B->getType()->dims()[0]});
+      TypeRef outputType =
+          mod_.uniqueType(ElemKind::FloatTy, {outputDims.first, B.dims()[0]});
       node = G_->createFullyConnected(opName, in, W, B, outputType, axis);
     }
 
@@ -2459,8 +2464,6 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       return Error::success();
     }
 
-    Tensor T;
-
     // The shape is set either the shape argument, or from another input
     // tensor. Shape takes priority over input.
     std::vector<dim_t> dims;
@@ -2502,43 +2505,42 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(to, loadInt(dict["dtype"]));
     }
 
+    SplatNode *splatNode{nullptr};
+
     switch (to) {
     case caffe2::TensorProto_DataType_FLOAT: {
-      T.reset(ElemKind::FloatTy, dims);
-      auto TH = T.getHandle<float>();
       float f = 0.0f;
       if ((dict.count("value") && dict["value"]->has_f())) {
         ASSIGN_VALUE_OR_RETURN_ERR(f, loadFloat(dict["value"]));
       }
-      TH.clear(f);
+      splatNode =
+          G_->createSplat(opName, mod_.uniqueType(ElemKind::FloatTy, dims), f);
       break;
     }
     case caffe2::TensorProto_DataType_INT32: {
-      T.reset(ElemKind::Int32ITy, dims);
-      auto TH = T.getHandle<int32_t>();
       int i = 0;
       if ((dict.count("value") && dict["value"]->has_i())) {
         ASSIGN_VALUE_OR_RETURN_ERR(i, loadInt(dict["value"]));
       }
-      TH.clear(i);
+      splatNode =
+          G_->createSplat(opName, mod_.uniqueType(ElemKind::Int32ITy, dims), i);
       break;
     }
     case caffe2::TensorProto_DataType_INT64:
     case caffe2::TensorProto_DataType_BOOL: {
-      T.reset(ElemKind::Int64ITy, dims);
-      auto TH = T.getHandle<int64_t>();
       int i = 0;
       if ((dict.count("value") && dict["value"]->has_i())) {
         ASSIGN_VALUE_OR_RETURN_ERR(i, loadInt(dict["value"]));
       }
-      TH.clear(i);
+      splatNode =
+          G_->createSplat(opName, mod_.uniqueType(ElemKind::Int64ITy, dims), i);
       break;
     }
     default:
       return MAKE_ERR("Unsupported datatype for ConstantFill.");
     }
 
-    RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
+    RETURN_IF_ERR(addNodeAsOutput(op, splatNode));
 
     return Error::success();
   }
