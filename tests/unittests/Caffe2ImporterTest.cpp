@@ -5473,11 +5473,58 @@ TEST_F(Caffe2ImporterTest, CastInt32ToInt64) {
 
   auto outputH = output->getHandle<int64_t>();
 
-  for (dim_t d1 = 1; d1 < inputShape[0]; ++d1) {
-    for (dim_t d2 = 1; d2 < inputShape[1]; ++d2) {
+  for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
       auto val = input.getHandle<int32_t>().at({d1, d2});
       auto exp = static_cast<int64_t>(val);
       EXPECT_EQ(exp, outputH.at({d1, d2}));
     }
+  }
+}
+
+TEST_F(Caffe2ImporterTest, ReduceBackMean) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/reducebackmean.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  std::vector<dim_t> inputShape{3, 4};
+
+  Tensor input{ElemKind::FloatTy, {inputShape}};
+  input.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  const std::vector<dim_t> expectedShape{3};
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(expectedShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+    float expected = 0;
+    for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
+      expected += input.getHandle().at({d1, d2});
+    }
+    expected /= inputShape[1];
+    EXPECT_NEAR(expected, outputH.at(d1), 1e-3);
   }
 }
