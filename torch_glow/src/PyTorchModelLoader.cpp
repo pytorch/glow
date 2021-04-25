@@ -832,6 +832,14 @@ struct UnsqueezeInputs {
   };
 };
 
+/// Indexes of fb::unsqueeze_n_times inputs.
+struct UnsqueezeNTimesInputs {
+  enum {
+    input = 0,
+    n = 1,
+  };
+};
+
 /// Indexes of aten::masked_fill inputs.
 struct MaskedFillInputs {
   enum {
@@ -1606,6 +1614,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::unsqueeze", "aten::unsqueeze_"},
        &PyTorchModelLoader::loadUnsqueeze,
        &PyTorchModelLoader::getCorrectTypeFromInput<UnsqueezeInputs::input>},
+      {{"fb::unsqueeze_n_times"},
+       &PyTorchModelLoader::loadUnsqueezeNTimes,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           UnsqueezeNTimesInputs::input>},
       {{"aten::masked_fill", "aten::masked_fill_"},
        &PyTorchModelLoader::loadMaskedFill,
        &PyTorchModelLoader::getCorrectTypeFromInput<MaskedFillInputs::input>},
@@ -7157,6 +7169,33 @@ Error PyTorchModelLoader::loadUnsqueeze(const torch::jit::Node *ptNode) {
 
   auto res = F_.createReshape("unsqueeze", in, outDims)->getResult();
 
+  RETURN_ERR(addValueMapping(outputs[0], res));
+}
+
+Error PyTorchModelLoader::loadUnsqueezeNTimes(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      in, getGlowNodeValueForValue(inputs[UnsqueezeNTimesInputs::input]));
+  auto inDims = in.dims();
+
+  int64_t n = 0;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      n, iValToInt(getGlowIValueForValue(inputs[UnsqueezeNTimesInputs::n])));
+
+  std::vector<dim_t> outDims(inDims.begin(), inDims.end());
+  for (int i = 0; i < n; i++) {
+    // according to unsqueeze_n_times definition:
+    // for i in range(0, n):
+    //   x = torch::unsqueeze(x, -1)
+    // we should always insert a dimension of size one at the end
+    outDims.push_back(1);
+  }
+  auto res =
+      F_.createReshape("reshape_unsqueeze_n_times", in, outDims)->getResult();
   RETURN_ERR(addValueMapping(outputs[0], res));
 }
 

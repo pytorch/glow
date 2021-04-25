@@ -887,6 +887,10 @@ private:
   /// \returns error on failure.
   Error loadUnsqueeze(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch fb::unsqueeze_n_times node.
+  /// \returns error on failure.
+  Error loadUnsqueezeNTimes(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::masked_fill node.
   /// \returns error on failure.
   Error loadMaskedFill(const torch::jit::Node *ptNode);
