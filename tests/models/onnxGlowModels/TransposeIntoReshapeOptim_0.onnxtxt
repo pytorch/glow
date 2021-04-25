@@ -1,0 +1,273 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "batch"
+    output: "transpose__1"
+    name: "transpose__1"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 3
+      ints: 2
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 2
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 3
+      ints: 2
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "HWNC"
+      type: STRING
+    }
+  }
+  node {
+    input: "transpose__1"
+    output: "reduce_mean_transposeNCHW2NHWC"
+    name: "reduce_mean_transposeNCHW2NHWC"
+    op_type: "Glow_Transpose"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 1
+      ints: 4
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Shuffle"
+      ints: 0
+      ints: 2
+      ints: 3
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "NHWC"
+      type: STRING
+    }
+  }
+  node {
+    input: "reduce_mean_transposeNCHW2NHWC"
+    output: "reduce_mean_avgPool"
+    name: "reduce_mean_avgPool"
+    op_type: "Glow_AvgPool"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 1
+      ints: 4
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 1
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Kernels"
+      ints: 1
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "Strides"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Pads"
+      ints: 0
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "CountIncludePads"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "reduce_mean_avgPool"
+    output: "reduce_mean_reshape__1"
+    name: "reduce_mean_reshape__1"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 1
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "reduce_mean_reshape__1"
+    output: "ret"
+    name: "ret_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "batch"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:NHWC$elemKind:float"
+  }
+  output {
+    name: "ret"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:ret_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

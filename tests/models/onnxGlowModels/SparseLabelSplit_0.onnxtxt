@@ -1,0 +1,261 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "lengths"
+    input: "indices"
+    input: "values"
+    output: "sparselabelsplit"
+    output: "sparselabelsplit:1"
+    output: "sparselabelsplit:2"
+    name: "sparselabelsplit"
+    op_type: "Glow_SparseLabelSplit"
+    attribute {
+      name: "i0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 4
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 4
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o2_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o2_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "NumLabels"
+      i: 4
+      type: INT
+    }
+  }
+  node {
+    input: "sparselabelsplit:1"
+    output: "exampleIds"
+    name: "exampleIds_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 4
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "sparselabelsplit:2"
+    output: "gradientOffsetMap"
+    name: "gradientOffsetMap_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 8
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index32"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 8
+      type: INTS
+    }
+  }
+  node {
+    input: "sparselabelsplit"
+    output: "labelValues"
+    name: "labelValues_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 4
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 4
+      ints: 2
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "values"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "indices"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index64"
+  }
+  input {
+    name: "lengths"
+    type {
+      tensor_type {
+        elem_type: 6
+        shape {
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index32"
+  }
+  output {
+    name: "labelValues"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:labelValues_save"
+  }
+  output {
+    name: "gradientOffsetMap"
+    type {
+      tensor_type {
+        elem_type: 6
+        shape {
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index32$saveName:gradientOffsetMap_save"
+  }
+  output {
+    name: "exampleIds"
+    type {
+      tensor_type {
+        elem_type: 6
+        shape {
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index32$saveName:exampleIds_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

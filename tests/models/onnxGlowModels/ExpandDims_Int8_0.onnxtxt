@@ -1,0 +1,181 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "inputs"
+    output: "expand_expanddims"
+    name: "expand_expanddims"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 1
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 1
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "expand_expanddims"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 1
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 1
+      ints: 2
+      ints: 1
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  name: "glow"
+  input {
+    name: "inputs"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

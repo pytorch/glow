@@ -1,0 +1,263 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "QA"
+    input: "QB"
+    output: "cmpLTE"
+    name: "cmpLTE"
+    op_type: "Glow_CmpLTE"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1000
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1.1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -3
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1000
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.9
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 5
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bool"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1000
+      type: INTS
+    }
+  }
+  node {
+    input: "cmpLTE"
+    input: "QC"
+    input: "QD"
+    output: "select"
+    name: "select"
+    op_type: "Glow_Select"
+    attribute {
+      name: "i0_elemKind"
+      s: "bool"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1000
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1000
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 0.8
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: 3
+      type: INT
+    }
+    attribute {
+      name: "i2_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i2_shape"
+      ints: 1000
+      type: INTS
+    }
+    attribute {
+      name: "i2_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i2_qOffset"
+      i: -4
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1000
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.5
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "select"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1000
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1.5
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -2
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1000
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1.5
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  name: "glow"
+  input {
+    name: "QD"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1000
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.200000047683715820312500000000$qOffset:-4"
+  }
+  input {
+    name: "QC"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1000
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:0.800000011920928955078125000000$qOffset:3"
+  }
+  input {
+    name: "QB"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1000
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:0.899999976158142089843750000000$qOffset:5"
+  }
+  input {
+    name: "QA"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1000
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.100000023841857910156250000000$qOffset:-3"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 1000
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.500000000000000000000000000000$qOffset:-2$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

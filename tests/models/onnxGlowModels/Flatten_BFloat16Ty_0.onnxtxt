@@ -1,0 +1,476 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "A4D"
+    output: "flat4Dto2Da4"
+    name: "flat4Dto2Da4"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      ints: 4
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 72
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 72
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "flat4Dto2Da4"
+    output: "save4Dto2Da4"
+    name: "save4Dto2Da4_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 72
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 72
+      ints: 1
+      type: INTS
+    }
+  }
+  node {
+    input: "A4D"
+    output: "flat4Dto2Da3"
+    name: "flat4Dto2Da3"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      ints: 4
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 24
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 24
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "flat4Dto2Da3"
+    output: "save4Dto2Da3"
+    name: "save4Dto2Da3_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 24
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 24
+      ints: 3
+      type: INTS
+    }
+  }
+  node {
+    input: "A4D"
+    output: "flat4Dto2Da2"
+    name: "flat4Dto2Da2"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      ints: 4
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 6
+      ints: 12
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 6
+      ints: 12
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "flat4Dto2Da2"
+    output: "save4Dto2Da2"
+    name: "save4Dto2Da2_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 6
+      ints: 12
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 6
+      ints: 12
+      type: INTS
+    }
+  }
+  node {
+    input: "A4D"
+    output: "flat4Dto2Da1"
+    name: "flat4Dto2Da1"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      ints: 4
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 24
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 3
+      ints: 24
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "flat4Dto2Da1"
+    output: "save4Dto2Da1"
+    name: "save4Dto2Da1_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 24
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 3
+      ints: 24
+      type: INTS
+    }
+  }
+  node {
+    input: "A1D"
+    output: "flat1Dto2D"
+    name: "flat1Dto2D"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 15
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 15
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Dims"
+      ints: 15
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "flat1Dto2D"
+    output: "save1Dto2D"
+    name: "save1Dto2D_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 15
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 15
+      ints: 1
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "A1D"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 15
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:N$elemKind:bfloat16"
+  }
+  input {
+    name: "A4D"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:NHWC$elemKind:bfloat16"
+  }
+  output {
+    name: "save1Dto2D"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 15
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:save1Dto2D_save"
+  }
+  output {
+    name: "save4Dto2Da1"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 24
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:save4Dto2Da1_save"
+  }
+  output {
+    name: "save4Dto2Da2"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 6
+          }
+          dim {
+            dim_value: 12
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:save4Dto2Da2_save"
+  }
+  output {
+    name: "save4Dto2Da3"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 24
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:save4Dto2Da3_save"
+  }
+  output {
+    name: "save4Dto2Da4"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 72
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:save4Dto2Da4_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

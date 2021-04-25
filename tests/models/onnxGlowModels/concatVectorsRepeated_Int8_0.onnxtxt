@@ -1,0 +1,323 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    output: "concat"
+    name: "concat"
+    op_type: "Glow_Concat"
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 130
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs"
+      strings: "V2"
+      strings: "V1"
+      strings: "V1"
+      strings: "V1"
+      strings: "V2"
+      strings: "V2"
+      strings: "V1"
+      strings: "V1"
+      strings: "V2"
+      type: STRINGS
+    }
+    attribute {
+      name: "Inputs_i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i0_shape"
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i1_shape"
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i1_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i2_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i2_shape"
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i2_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i2_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i3_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i3_shape"
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i3_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i3_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i4_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i4_shape"
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i4_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i4_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i5_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i5_shape"
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i5_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i5_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i6_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i6_shape"
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i6_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i6_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i7_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i7_shape"
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i7_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i7_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Inputs_i8_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "Inputs_i8_shape"
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "Inputs_i8_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "Inputs_i8_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "Dim"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "concat"
+    output: "ret"
+    name: "ret_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 130
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 0
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 130
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: 0
+      type: INT
+    }
+  }
+  name: "glow"
+  input {
+    name: "V2"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 20
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0"
+  }
+  input {
+    name: "V1"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0"
+  }
+  output {
+    name: "ret"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 130
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:0$saveName:ret_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

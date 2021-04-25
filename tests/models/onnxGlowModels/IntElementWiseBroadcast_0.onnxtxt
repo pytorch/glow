@@ -1,0 +1,1398 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    output: "zero__2"
+    name: "zero__2"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    output: "zero__1"
+    name: "zero__1"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    output: "zero"
+    name: "zero"
+    op_type: "Glow_Splat"
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 1
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "Value"
+      f: 0
+      type: FLOAT
+    }
+  }
+  node {
+    input: "in2"
+    output: "broadcast_in2_reshape"
+    name: "broadcast_in2_reshape"
+    op_type: "Glow_Reshape"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "Dims"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      s: "*"
+      type: STRING
+    }
+  }
+  node {
+    input: "zero"
+    input: "broadcast_in2_reshape"
+    output: "broadcast_in2_tile0__1"
+    name: "broadcast_in2_tile0__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 1
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 1
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "zero__1"
+    input: "broadcast_in2_tile0__1"
+    output: "broadcast_in2_tile1__1"
+    name: "broadcast_in2_tile1__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 1
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 3
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 1
+      type: INT
+    }
+  }
+  node {
+    input: "zero__2"
+    input: "broadcast_in2_tile1__1"
+    output: "broadcast_in2_tile2__1"
+    name: "broadcast_in2_tile2__1"
+    op_type: "Glow_InsertTensor"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 3
+      ints: 1
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "Start"
+      ints: 0
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Count"
+      i: 4
+      type: INT
+    }
+    attribute {
+      name: "Axis"
+      i: 2
+      type: INT
+    }
+  }
+  node {
+    input: "in1"
+    input: "broadcast_in2_tile2__1"
+    output: "subBroadcast"
+    name: "subBroadcast"
+    op_type: "Glow_Sub"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.9
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "subBroadcast"
+    output: "saveSub"
+    name: "saveSub_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -2
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "in1"
+    input: "broadcast_in2_tile2__1"
+    output: "mulBroadcast"
+    name: "mulBroadcast"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.9
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "mulBroadcast"
+    output: "saveMul"
+    name: "saveMul_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -2
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "in1"
+    input: "broadcast_in2_tile2__1"
+    output: "divBroadcast"
+    name: "divBroadcast"
+    op_type: "Glow_Div"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.9
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "divBroadcast"
+    output: "saveDiv"
+    name: "saveDiv_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -2
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "in1"
+    input: "broadcast_in2_tile2__1"
+    output: "minBroadcast"
+    name: "minBroadcast"
+    op_type: "Glow_Min"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.9
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "minBroadcast"
+    output: "saveMin"
+    name: "saveMin_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -2
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "in1"
+    input: "broadcast_in2_tile2__1"
+    output: "maxBroadcast"
+    name: "maxBroadcast"
+    op_type: "Glow_Max"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.9
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "maxBroadcast"
+    output: "saveMax"
+    name: "saveMax_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -2
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "in1"
+    input: "broadcast_in2_tile2__1"
+    output: "addBroadcast"
+    name: "addBroadcast"
+    op_type: "Glow_Add"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 0.9
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: 2
+      type: INT
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i1_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "i1_qOffset"
+      i: -11
+      type: INT
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  node {
+    input: "addBroadcast"
+    output: "saveAdd"
+    name: "saveAdd_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "i0_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "i0_qOffset"
+      i: -2
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 2
+      ints: 3
+      ints: 4
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "o1_qScale"
+      f: 1
+      type: FLOAT
+    }
+    attribute {
+      name: "o1_qOffset"
+      i: -2
+      type: INT
+    }
+  }
+  name: "glow"
+  input {
+    name: "in2"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.200000047683715820312500000000$qOffset:-11"
+  }
+  input {
+    name: "in1"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:0.899999976158142089843750000000$qOffset:2"
+  }
+  output {
+    name: "saveAdd"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:-2$saveName:saveAdd_save"
+  }
+  output {
+    name: "saveMax"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:-2$saveName:saveMax_save"
+  }
+  output {
+    name: "saveMin"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:-2$saveName:saveMin_save"
+  }
+  output {
+    name: "saveDiv"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:-2$saveName:saveDiv_save"
+  }
+  output {
+    name: "saveMul"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:-2$saveName:saveMul_save"
+  }
+  output {
+    name: "saveSub"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.000000000000000000000000000000$qOffset:-2$saveName:saveSub_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

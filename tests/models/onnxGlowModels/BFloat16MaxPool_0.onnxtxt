@@ -1,0 +1,161 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "input"
+    output: "pool"
+    output: "pool:1"
+    name: "pool"
+    op_type: "Glow_MaxPool"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 3
+      ints: 3
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 1
+      ints: 2
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 2
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Kernels"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "Strides"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "Pads"
+      ints: 0
+      ints: 0
+      ints: 0
+      ints: 0
+      type: INTS
+    }
+    attribute {
+      name: "Layout"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "pool"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+    attribute {
+      name: "i0_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 1
+      ints: 2
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "bfloat16"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 1
+      ints: 2
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+  }
+  name: "glow"
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 16
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:bfloat16$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "GlowRevisionHash"
+  value: "89723734922965ce36f05a24cbec87c6d8ba3f46"
+}

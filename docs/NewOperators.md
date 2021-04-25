@@ -20,6 +20,7 @@ Specifically see the notes section under `Canonical Tensor Layout`.
 
 ### Testing
 * Test the operator implementation by writing unit tests in `unittests/OperatorTest.cpp`.
+  * Save the newly added OperatorTest via the `--operator-test-save-glow-onnx-for-test` flag which will print out the location of the ONNX file, and then move it into `glow/tests/models/onnxGlowModels` to ensure it has backwards compatibility coverage for Glow ONNX custom format.
 * Test the operator importing logic by creating a new model in `tests/models/caffe2Models` or `tests/models/onnx2Models` directory then write unit tests in `unittests/Caffe2ImporterTest.cpp` or `tests/unittests/OnnxImporterTest.cpp` using that model.
 
 ### PR
