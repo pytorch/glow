@@ -683,6 +683,12 @@ void glowAOTFusionWithShapeInference(
         } else {
           LOG(INFO) << "Finish warming up shape map: " << batchShapesMap.size();
         }
+        e = runner->setNominalInputIndex(graphInputValues, batchShapesMap);
+        if (e) {
+          LOG(ERROR) << ERR_TO_STRING(std::move(e));
+        } else {
+          LOG(INFO) << "Finish Setting up the nomialInputIndex";
+        }
       }
     }
   }

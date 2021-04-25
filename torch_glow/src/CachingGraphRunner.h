@@ -145,6 +145,8 @@ private:
   /// If true will call runOnly which skips input hashing and other costs.
   bool useRunOnly_ = false;
 
+  int nominalInputIndex_ = -1;
+
   /// Given a PyTorch input stack \p stack, this generates a hash from the
   /// values on the stack and checks to see if a matching function was loaded
   /// previously. If a matching function was loaded previously then its cached
@@ -239,6 +241,14 @@ public:
   Error warmupGraphOutputShapeMap(
       const c10::ArrayRef<torch::jit::Value *> &graphOutputValues,
       const BatchShapesMapType &graphShapeMetaMap);
+
+  /// Set nominalInputIndex from graphInputs.
+  Error setNominalInputIndex(
+      const c10::ArrayRef<torch::jit::Value *> &graphInputValues,
+      const BatchShapesMapType &graphShapeMetaMap);
+
+  /// Get nominalInputIndex.
+  int getNominalInputIndex();
 
   /// Writes PyTorch tensor inputs on the \p stack to file \p inputFilePrefix,
   /// then runs the JIT GraphExecutor to get the outputs and writes those to \p
