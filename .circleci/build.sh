@@ -45,7 +45,7 @@ install_pocl() {
 }
 
 install_fmt() {
-    git clone https://github.com/fmtlib/fmt
+    git clone https://github.com/fmtlib/fmt --branch 7.1.3
     pushd fmt
     mkdir build
     cd build
