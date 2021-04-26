@@ -317,6 +317,8 @@ private:
   // Shape inference for quantized::embedding_bag_byte_unpack
   static Expected<TensorOutput>
   embeddingBagByteUnpack(const MetaStack &variableMetas);
+  // Shape inference for fb::unsqueeze_n_times
+  static Expected<TensorOutput> unsqueezeNTimes(const MetaStack &variableMetas);
 };
 
 } // namespace glow

@@ -256,6 +256,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
       {"quantized::embedding_bag_byte_unpack",
        ShapeInference(&embeddingBagByteUnpack, &SI::addShapeDefault)},
+      {"fb::unsqueeze_n_times",
+       ShapeInference(&unsqueezeNTimes, &SI::addShapeDefault)},
   });
   return map;
 }
@@ -2199,6 +2201,33 @@ ShapeInferenceEngine::embeddingBagByteUnpack(const MetaStack &variableMetas) {
   TensorOutput output;
   output.shapeOrIntValues = outputShape;
   output.dtype = c10::ScalarType::Float;
+  return output;
+}
+
+/*
+ * fb::unsqueeze_n_times(Tensor input, int n) -> Tensor
+ * implementation logic:
+ * for i in range(0, n):
+ *   x = torch::unsqueeze(x, -1)
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::unsqueezeNTimes(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 input, got %zu.", variableMetas.size()));
+
+  const auto &t = variableMetas[0].shape<TensorShape>();
+  int64_t n = variableMetas[1].intValue[0];
+
+  TensorShape shape = t;
+  for (int i = 0; i < n; i++) {
+    // according to unsqueeze_n_times definition, we always insert
+    // a dimension of size one at the end
+    shape.push_back(1);
+  }
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
   return output;
 }
 

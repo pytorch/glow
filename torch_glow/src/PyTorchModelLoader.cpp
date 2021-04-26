@@ -832,6 +832,14 @@ struct UnsqueezeInputs {
   };
 };
 
+/// Indexes of fb::unsqueeze_n_times inputs.
+struct UnsqueezeNTimesInputs {
+  enum {
+    input = 0,
+    n = 1,
+  };
+};
+
 /// Indexes of aten::masked_fill inputs.
 struct MaskedFillInputs {
   enum {
@@ -1606,6 +1614,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::unsqueeze", "aten::unsqueeze_"},
        &PyTorchModelLoader::loadUnsqueeze,
        &PyTorchModelLoader::getCorrectTypeFromInput<UnsqueezeInputs::input>},
+      {{"fb::unsqueeze_n_times"},
+       &PyTorchModelLoader::loadUnsqueezeNTimes,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           UnsqueezeNTimesInputs::input>},
       {{"aten::masked_fill", "aten::masked_fill_"},
        &PyTorchModelLoader::loadMaskedFill,
        &PyTorchModelLoader::getCorrectTypeFromInput<MaskedFillInputs::input>},
@@ -7160,6 +7172,33 @@ Error PyTorchModelLoader::loadUnsqueeze(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
+Error PyTorchModelLoader::loadUnsqueezeNTimes(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      in, getGlowNodeValueForValue(inputs[UnsqueezeNTimesInputs::input]));
+  auto inDims = in.dims();
+
+  int64_t n = 0;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      n, iValToInt(getGlowIValueForValue(inputs[UnsqueezeNTimesInputs::n])));
+
+  std::vector<dim_t> outDims(inDims.begin(), inDims.end());
+  for (int i = 0; i < n; i++) {
+    // according to unsqueeze_n_times definition:
+    // for i in range(0, n):
+    //   x = torch::unsqueeze(x, -1)
+    // we should always insert a dimension of size one at the end
+    outDims.push_back(1);
+  }
+  auto res =
+      F_.createReshape("reshape_unsqueeze_n_times", in, outDims)->getResult();
+  RETURN_ERR(addValueMapping(outputs[0], res));
+}
+
 Error PyTorchModelLoader::loadBatchPermutation(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -7292,6 +7331,16 @@ Error PyTorchModelLoader::loadConstantChunk(const torch::jit::Node *ptNode) {
   return Error::success();
 }
 
+static NodeValue convertInt64ConstantToInt32(NodeValue constant,
+                                             glow::Function &F) {
+  LOG(WARNING) << "Loading PyTorch int64 Tensor Constant as int32 "
+                  "because int64 isn't supported";
+  // For int64 constants, convert them to int32 since many accelerators
+  // don't support int64
+  return F.createConvertTo("int64_to_int32", constant, ElemKind::Int32ITy)
+      ->getResult();
+}
+
 Expected<GlowIValue>
 PyTorchModelLoader::getGenerictList(const torch::jit::IValue &iVal) {
   auto iValList = iVal.toListRef();
@@ -7310,6 +7359,10 @@ PyTorchModelLoader::getGenerictList(const torch::jit::IValue &iVal) {
               ->createConstant("GenericList_created_constant",
                                std::move(glowTensor))
               ->getOutput();
+      if (glowConstantNodeValue.getElementType() == ElemKind::Int64ITy) {
+        glowConstantNodeValue =
+            convertInt64ConstantToInt32(glowConstantNodeValue, F_);
+      }
       constantNodeValueList.push_back(glowConstantNodeValue);
     }
     glowIVal.fromNodeValueList(constantNodeValueList);
@@ -7404,18 +7457,29 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
         elemKindToScalarType(glowConstant->getElementType());
     NodeValue out = glowConstant->getOutput();
     if (glowConstant->getElementType() == ElemKind::Int64ITy) {
-      LOG(WARNING) << "Loading PyTorch int64 Tensor Constant as int32 "
-                      "because int64 isn't supported";
-      // For int64 constants, convert them to int32 since many accelerators
-      // don't support int64
-      out = F_.createConvertTo("int64_to_int32", out, ElemKind::Int32ITy)
-                ->getResult();
+      out = convertInt64ConstantToInt32(out, F_);
       correctType = at::kLong;
     }
 
     RETURN_IF_ERR(addValueMapping(outputs[0], out));
     RETURN_IF_ERR(setCorrectTypeMapping(outputs[0], correctType));
-
+  } else if (glowIVal.isNodeValueList()) {
+    std::vector<glow::NodeValue> *nodeValues;
+    ASSIGN_VALUE_OR_RETURN_ERR(nodeValues, glowIVal.toNodeValueList());
+    std::vector<at::ScalarType> correctTypes;
+    for (const auto &nodeValue : *nodeValues) {
+      // If it's not a constant node then it must be a convert node which
+      // convert the constant from int64 to int32. In this case, the correct
+      // type is at::kLong.
+      if (nodeValue.getNode()->getKind() == Kinded::Kind::ConstantKind) {
+        correctTypes.push_back(
+            elemKindToScalarType(nodeValue.getElementType()));
+      } else {
+        correctTypes.push_back(at::kLong);
+      }
+    }
+    RETURN_IF_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+    RETURN_IF_ERR(setCorrectTypesMapping(outputs[0], correctTypes));
   } else {
     RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
   }
@@ -8560,8 +8624,8 @@ Error PyTorchModelLoader::loadAttributes(
             elemKindToScalarType(glowConstant->getElementType());
         NodeValue out = glowConstant->getOutput();
         if (glowConstant->getElementType() == ElemKind::Int64ITy) {
-          // For int64 constants, convert them to int32 since many accelerators
-          // don't support int64
+          // For int64 constants, convert them to int32 since many
+          // accelerators don't support int64
           LOG(WARNING) << "Loading PyTorch int64 Tensor Attribute as int32 "
                           "because int64 isn't supported";
           out = F_.createConvertTo("int64_to_int32", out, ElemKind::Int32ITy)
@@ -8894,7 +8958,8 @@ Error ValueMapping::verifyCorrectTypes() {
   DCHECK(glowIValue_ != nullptr);
 
   if (glowIValue_->isNodeValueList()) {
-    // For list of NodeValues, check each NodeValue has a sensible correct type
+    // For list of NodeValues, check each NodeValue has a sensible correct
+    // type
     std::vector<glow::NodeValue> *nodeValues;
     ASSIGN_VALUE_OR_RETURN_ERR(nodeValues, glowIValue_->toNodeValueList());
 
