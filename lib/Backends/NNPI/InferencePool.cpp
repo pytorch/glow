@@ -203,6 +203,10 @@ Error InferencePoolEnv::init(NNPIAdapterContainer *adapter,
                     functionName.c_str()));
       memset(&desc.hostAttrib, 0, sizeof(desc.hostAttrib));
       memset(&desc.deviceAttrib, 0, sizeof(desc.deviceAttrib));
+      if (std::string(name) == "my_fake_data" && desc.dims[0] != 4812966264) {
+        LOG(FATAL) << "Reproed int32 overflow issue, fake data has first dim "
+                   << desc.dims[0];
+      }
       inputDesc_.push_back({name, desc});
     }
     for (uint32_t i = 0; i < numOutputs; i++) {

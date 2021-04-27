@@ -206,6 +206,15 @@ NNPIErrorCode glow::NNPIImporter::addValue(
     }
   }
 
+  // Adding some fake placeholder to repro int32 overflow issue
+  // 9327454 * 516 = 4812966264, after overflow it becomes
+  // 4812966264 - "max uint32_t"(4294967296) = 517998968
+  if (input && desc.numDims == 2) {
+    NNPITensorDesc newDesc = desc;
+    newDesc.dims[0] = 9327454;
+    newDesc.dims[1] = 516;
+    nnpiNetworkAddTensor(network_, "my_fake_data", &newDesc, nullptr);
+  }
   return nnpiNetworkAddTensor(network_, name.c_str(), &desc, pRawData);
 }
 
