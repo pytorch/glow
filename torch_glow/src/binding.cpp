@@ -468,39 +468,38 @@ PYBIND11_MODULE(_torch_glow, m) {
     }
   });
 
-  m.def(
-      "glow_shape_inference_find_unsupported_symbols",
-      [](std::shared_ptr<torch::jit::Graph> graph, const py::tuple &args,
-         std::vector<std::string> &blocklist, bool skip_last_fusion_node) {
-        std::vector<c10::IValue> inputs;
-        for (const auto &arg : args) {
-          inputs.emplace_back(
-              torch::jit::toIValue(arg, c10::TensorType::get()));
-        }
-        const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
+  m.def("glow_shape_inference_find_unsupported_symbols",
+        [](std::shared_ptr<torch::jit::Graph> graph, const py::tuple &args,
+           std::vector<std::string> &blocklist, bool skip_last_fusion_node) {
+          std::vector<c10::IValue> inputs;
+          for (const auto &arg : args) {
+            inputs.emplace_back(
+                torch::jit::toIValue(arg, c10::TensorType::get()));
+          }
+          const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
 
-        // The base symbol of all.
-        std::string baseSymbol = glow::getGlowSymbol(nullptr).toQualString();
+          // The base symbol of all.
+          std::string baseSymbol = glow::getGlowSymbol(nullptr).toQualString();
 
-        // There could be multiple glow fusion nodes created.
-        glowCustomFuse(graph, getGlobalPyTorchLoaderSettingsMutable());
+          // There could be multiple glow fusion nodes created.
+          glowCustomFuse(graph, getGlobalPyTorchLoaderSettingsMutable());
 
-        ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
-        auto unsupported =
-            shapeInf.findUnsupportedGraphSymbols(skip_last_fusion_node);
-        std::unordered_set<std::string> blockset;
-        std::copy(blocklist.begin(), blocklist.end(),
-                  std::inserter(blockset, blockset.end()));
+          ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
+          auto unsupported =
+              shapeInf.findUnsupportedGraphSymbols(skip_last_fusion_node);
+          std::unordered_set<std::string> blockset;
+          std::copy(blocklist.begin(), blocklist.end(),
+                    std::inserter(blockset, blockset.end()));
 
-        std::vector<std::string> result;
-        std::copy_if(unsupported.begin(), unsupported.end(),
-                     std::back_inserter(result),
-                     [&blockset](std::string symbol) {
-                       return blockset.find(symbol) == blockset.end();
-                     });
+          std::vector<std::string> result;
+          std::copy_if(unsupported.begin(), unsupported.end(),
+                       std::back_inserter(result),
+                       [&blockset](std::string symbol) {
+                         return blockset.find(symbol) == blockset.end();
+                       });
 
-        return result;
-      },
-      py::arg("graph"), py::arg("args"), py::arg("blocklist") = py::list(),
-      py::arg("skip_last_fusion_node") = false);
+          return result;
+        },
+        py::arg("graph"), py::arg("args"), py::arg("blocklist") = py::list(),
+        py::arg("skip_last_fusion_node") = false);
 }

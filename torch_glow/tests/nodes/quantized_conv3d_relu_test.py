@@ -69,7 +69,7 @@ class TestQuantizedConv3dRelu(utils.TorchGlowTestCase):
         self._test_quantized_conv3d_relu_packed(groups=1)
 
     def test_quantized_conv3d_relu_packed_cut_q_dq(self):
-        """Basic test of PyTorch quantized::conv3d_relu Node with packed weights on Glow, with quantize and dequantize excluded. """
+        """Basic test of PyTorch quantized::conv3d_relu Node with packed weights on Glow, with quantize and dequantize excluded."""
         with torch.no_grad():
             x = torch.tensor(range(5), dtype=torch.float)
             x = torch.cat((x, x, x, x, x))

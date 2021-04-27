@@ -1058,7 +1058,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
-                          Args &&...inputArgs) {                               \
+                          Args &&... inputArgs) {                              \
     BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, inputs[0].getType(), inputs[0], inputs[1]); \
   }
@@ -1084,7 +1084,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcastOutTy(const std::string &name, int axis,              \
-                               TypeRef OUTTYPEREF, Args &&...inputArgs) {      \
+                               TypeRef OUTTYPEREF, Args &&... inputArgs) {     \
     BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, OUTTYPEREF, inputs[0], inputs[1]);          \
   }
@@ -1101,7 +1101,7 @@ public:
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
-                          Args &&...inputArgs) {                               \
+                          Args &&... inputArgs) {                              \
     BROADCAST_FUNC_COMMON_CODE(2)                                              \
     return create##NODE_NAME(name, inputs[0], inputs[1]);                      \
   }
@@ -1122,7 +1122,7 @@ public:
   template <class T, class... Args>
   typename enable_if_same_t<T, SelectNode>::type *
   createNodeWithBroadcast(const std::string &name, int axis,
-                          Args &&...inputArgs) {
+                          Args &&... inputArgs) {
     BROADCAST_FUNC_COMMON_CODE(3)
     return createSelect(name, inputs[1].getType(), inputs[0], inputs[1],
                         inputs[2]);

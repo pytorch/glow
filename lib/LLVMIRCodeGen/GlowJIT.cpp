@@ -351,21 +351,19 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
 #if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
-      objectLayer_(
-          ES_,
-          [this](llvm::orc::VModuleKey) {
-            return RTDyldObjectLinkingLayer::Resources{
-                std::make_shared<SectionMemoryManager>(), resolver_};
-          },
-          NotifyLoadedFunctor(this)),
+      objectLayer_(ES_,
+                   [this](llvm::orc::VModuleKey) {
+                     return RTDyldObjectLinkingLayer::Resources{
+                         std::make_shared<SectionMemoryManager>(), resolver_};
+                   },
+                   NotifyLoadedFunctor(this)),
 #else
-      objectLayer_(
-          ES_,
-          [this](llvm::orc::VModuleKey) {
-            return LegacyRTDyldObjectLinkingLayer::Resources{
-                std::make_shared<SectionMemoryManager>(), resolver_};
-          },
-          NotifyLoadedFunctor(this)),
+      objectLayer_(ES_,
+                   [this](llvm::orc::VModuleKey) {
+                     return LegacyRTDyldObjectLinkingLayer::Resources{
+                         std::make_shared<SectionMemoryManager>(), resolver_};
+                   },
+                   NotifyLoadedFunctor(this)),
 #endif
 #endif
       compileLayer_(objectLayer_, SimpleCompiler(TM_)) {
