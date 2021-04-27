@@ -29,8 +29,96 @@
 namespace glow {
 
 namespace {
+
+/// Initialize the Glow compilation context \p cctx from glow::flags
+/// This is backward compatible with existing PyTorchLoaderSettings, who
+/// will overwrite any overlapping settings in this function.
+Error initializeCompilationContextFromGlowFlags(
+    glow::CompilationContext &cctx) {
+  auto &precConfig = cctx.precisionConfig;
+  if (glow::flags::ConvertToFP16) {
+    precConfig.convertToFP16 = glow::flags::ConvertToFP16;
+    LOG(INFO) << "Conversion to fp16 enabled";
+  }
+  if (glow::flags::SkipBiasFp32tofp16Convert) {
+    precConfig.skipBiasFp32tofp16Convert =
+        glow::flags::SkipBiasFp32tofp16Convert;
+    LOG(INFO) << "Skip fp16 convert for bias";
+  }
+  if (glow::flags::ConvertPlaceholdersToFP16) {
+    precConfig.convertPlaceholdersToFP16 =
+        glow::flags::ConvertPlaceholdersToFP16;
+    LOG(INFO) << "Conversion of Placeholders to fp16 enabled";
+  }
+  if (glow::flags::ConvertConstantsToFP16) {
+    precConfig.convertConstantsToFP16 = glow::flags::ConvertConstantsToFP16;
+    LOG(INFO) << "Conversion of Constants to fp16 enabled";
+  }
+  if (glow::flags::ConvertFusedScaleOffsetToFP16) {
+    precConfig.convertFusedToFP16 = glow::flags::ConvertFusedScaleOffsetToFP16;
+    LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
+  }
+  if (glow::flags::ClipToFP16) {
+    precConfig.clipFP16 = glow::flags::ClipToFP16;
+    LOG(INFO) << "Clipping to fp16 enabled";
+  }
+  if (glow::flags::SkipInputsOnClipToFP16) {
+    precConfig.clipFP16SkipInputs = glow::flags::SkipInputsOnClipToFP16;
+    LOG(INFO) << "Skipping clipping for fp16 Node inputs fp16";
+  }
+  if (glow::flags::ForceSLSToFP16Accum) {
+    precConfig.forceFP16AccumSLS = glow::flags::ForceSLSToFP16Accum;
+    LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
+  }
+  if (!glow::flags::EnableQuantParamChanges) {
+    cctx.optimizationOpts.enableQuantParamChanges = false;
+    LOG(INFO) << "Disabling quantization param changes during optimizations";
+  }
+  if (glow::flags::DumpCompilationLog) {
+    cctx.compilationLogPrefix = "torch-glow";
+  }
+  if (glow::flags::UseSparseNNPartitioningScheme) {
+
+    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+    cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
+        glow::flags::SparseNNPartitioningAddSLSConcats;
+    cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
+        glow::flags::SparseNNPartitioningBalancePerfModel;
+    cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
+        glow::flags::SparseNNPartitioningPairLNWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
+        glow::flags::SparseNNPartitioningPairTileWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
+        glow::flags::SparseNNPartitioningSchemeNumCards;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+        glow::flags::SparseNNPartitioningSchemeSLSTableKBytesPerCard;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
+        glow::flags::SparseNNPartitioningSchemeNumCoresSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
+        glow::flags::SparseNNPartitioningSchemeNumCoresOther;
+    LOG(INFO) << "Using SLS partitioning scheme";
+  }
+  cctx.saturateHost = glow::flags::SaturateHost;
+
+  if (!glow::flags::processBackendSpecificOpts(
+          cctx.backendOpts.backendSpecificOpts,
+          glow::flags::BackendSpecificOpts)) {
+    MAKE_ERR("Failed glow::flags::processBackendSpecificOpts");
+  }
+
+  if (glow::runtime::flags::EnableP2P) {
+    LOG(INFO) << "Glow P2P Enabled";
+    cctx.enableP2P = true;
+  }
+  if (glow::runtime::flags::EnableDRT) {
+    LOG(INFO) << "Glow DRT Enabled";
+    cctx.enableDRT = true;
+  }
+  return Error::success();
+}
+
 /// Initialize the Glow compilation context \p cctx with \p settings
-void initializeCompiliationContextFromSettings(
+void initializeCompilationContextFromSettings(
     glow::CompilationContext &cctx, const PyTorchLoaderSettings &settings) {
   if (settings.convertToFP16) {
     cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
@@ -91,27 +179,6 @@ void initializeCompiliationContextFromSettings(
   }
 
   cctx.replicationCount = settings.replicationCount;
-
-  if (glow::flags::UseSparseNNPartitioningScheme) {
-    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
-    cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
-        glow::flags::SparseNNPartitioningAddSLSConcats;
-    cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
-        glow::flags::SparseNNPartitioningBalancePerfModel;
-    cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
-        glow::flags::SparseNNPartitioningPairLNWithSLS;
-    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
-        glow::flags::SparseNNPartitioningPairTileWithSLS;
-    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
-        glow::flags::SparseNNPartitioningSchemeNumCards;
-    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
-        glow::flags::SparseNNPartitioningSchemeSLSTableKBytesPerCard;
-    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
-        glow::flags::SparseNNPartitioningSchemeNumCoresSLS;
-    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
-        glow::flags::SparseNNPartitioningSchemeNumCoresOther;
-    LOG(INFO) << "Using SLS partitioning scheme";
-  }
 }
 
 /// This function slice the input Tensor according to the expected shape in the
@@ -222,7 +289,8 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   Function *f = module->createFunction(info->functionName);
 
   glow::CompilationContext cctx;
-  initializeCompiliationContextFromSettings(cctx, loadSettings);
+  RETURN_IF_ERR(initializeCompilationContextFromGlowFlags(cctx));
+  initializeCompilationContextFromSettings(cctx, loadSettings);
 
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
   {
@@ -988,7 +1056,8 @@ Error CachingGraphRunner::warmCache(
   std::unique_ptr<Module> glowModule = std::make_unique<Module>();
 
   glow::CompilationContext cctx;
-  initializeCompiliationContextFromSettings(cctx, settings);
+  RETURN_IF_ERR(initializeCompilationContextFromGlowFlags(cctx));
+  initializeCompilationContextFromSettings(cctx, settings);
 
   {
     if (settings.lazyCompile) {
