@@ -779,6 +779,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Float16Ty},
                /*ignoreIn*/ {ROIAlignNode::BatchIndicesIdx});
 
+  case Kinded::Kind::CollectRpnProposalsNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
+
   case Kinded::Kind::BBoxTransformNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty});

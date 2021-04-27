@@ -1364,6 +1364,11 @@ Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
   return writeAllWithNode("Transpose", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeCollectRpnProposals(
+    const CollectRpnProposalsNode *node, GraphType &graph) {
+  return writeAllWithNode("CollectRpnProposals", node, graph, graph.add_node());
+}
+
 Error ONNXModelWriter::writeFlip(const FlipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.

@@ -1933,6 +1933,46 @@ bool RescaleQuantizedNode::verify() const {
   return isValid;
 }
 
+bool CollectRpnProposalsNode::verify() const {
+  auto result = getResult();
+  auto rois = getRoisIn();
+  auto probs = getRoisProbsIn();
+  bool isValid = true;
+
+  isValid &= expectCompareTrue("rpnPostNmsTopN should be greater than zero",
+                               getRpnPostNmsTopN() > 0, true, this);
+
+  isValid &= expectCompareTrue(
+      "RPN min level should be less than or equal to RPN max level",
+      getRpnMinLevel() <= getRpnMaxLevel(), true, this);
+
+  dim_t rpnLevels = getRpnMaxLevel() - getRpnMinLevel() + 1;
+
+  isValid &= expectCompareTrue("Invalid number of inputs",
+                               rpnLevels == rois.size(), true, this);
+  isValid &= expectCompareTrue("Invalid number of inputs",
+                               rpnLevels == probs.size(), true, this);
+
+  for (dim_t i = 0; i < rpnLevels; i++) {
+    auto roi = rois[i];
+    auto prob = probs[i];
+    isValid &= checkType(result, roi.getElementType(), this);
+    isValid &= checkType(result, prob.getElementType(), this);
+    isValid &=
+        expectCompareTrue("Rois and result must have same second dimension",
+                          roi.dims()[1], result.dims()[1], this);
+    isValid &= expectCompareTrue(
+        "Rois and respective probability scores must have same first dimension",
+        roi.dims()[0], prob.dims()[0], this);
+  }
+
+  isValid &=
+      expectCompareTrue("Result is capped to rpnPostNmsTopN",
+                        result.dims()[0] == getRpnPostNmsTopN(), true, this);
+
+  return isValid;
+}
+
 bool TopKNode::verify() const {
   bool isValid = checkSameShape(getValues(), getIndices(), this);
   isValid &= checkNotQuantizedOrSameParams(getInput().getType(),

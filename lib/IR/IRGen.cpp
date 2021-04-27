@@ -302,6 +302,29 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(N, dest);
     break;
   }
+  case glow::Kinded::Kind::CollectRpnProposalsNodeKind: {
+    auto *CRPN = llvm::cast<CollectRpnProposalsNode>(N);
+
+    std::string allocName = std::string(CRPN->getName()) + ".res";
+    auto *dest = builder_.createAllocActivationInst(
+        allocName, CRPN->getResult().getType());
+
+    auto *inst = builder_.createCollectRpnProposalsInst(
+        CRPN->getName(), dest, CRPN->getRpnMaxLevel(), CRPN->getRpnMinLevel(),
+        CRPN->getRpnPostNmsTopN());
+
+    // Adding inputs to instruction
+    for (auto &in : CRPN->getRoisIn()) {
+      inst->pushOperand({valueForNode(in), OperandKind::In});
+    }
+
+    for (auto &in : CRPN->getRoisProbsIn()) {
+      inst->pushOperand({valueForNode(in), OperandKind::In});
+    }
+
+    registerIR(CRPN->getResult(), dest);
+    break;
+  }
   case glow::Kinded::Kind::SliceNodeKind: {
     auto *SL = cast<SliceNode>(N);
     auto start = SL->getStart();

@@ -111,7 +111,7 @@ public:
   /// Device discovery for a given backend kind. Returns a vector of configs for
   /// all found devices.
   static std::vector<std::unique_ptr<runtime::DeviceConfig>>
-  generateDeviceConfigs(llvm::StringRef backendName);
+  generateDeviceConfigs(llvm::StringRef backendName, bool scanDevices = false);
 
   /// Initialize the device.
   virtual Error init() { return Error::success(); }

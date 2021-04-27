@@ -1,0 +1,10 @@
+name: "reducebackmean"
+op {
+  input: "input"
+  output: "output"
+  name: ""
+  type: "ReduceBackMean"
+}
+external_input: "input"
+external_output: "output"
+

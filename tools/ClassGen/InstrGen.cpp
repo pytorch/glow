@@ -1386,6 +1386,13 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Rois", "ImInfo"})
       .autoIRGen();
 
+  BB.newInstr("CollectRpnProposals")
+      .addOperand("Result", OperandKind::Out)
+      .addMember(MemberType::Int64, "RpnMaxLevel")
+      .addMember(MemberType::Int64, "RpnMinLevel")
+      .addMember(MemberType::Unsigned, "RpnPostNmsTopN")
+      .autoVerify(VerifyKind::NoVerify);
+
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//
