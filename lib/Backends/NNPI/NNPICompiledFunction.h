@@ -198,8 +198,9 @@ private:
   std::vector<std::string> iaExtensionPaths_;
   NNPICompilationInfo compilationInfo_;
 
-  Error updateCompilationConfigFromOptions(
-      NNPICompilationOptions &compilationOptions);
+  Error
+  updateCompilationConfigFromOptions(NNPICompilationOptions &compilationOptions,
+                                     bool requiresDSPKernels);
 
   /// Setup compilation hints for \p F given \p backendSpecificNodeInfo.
   /// \returns an error if some validation issue is found given expected format.

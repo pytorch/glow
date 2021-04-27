@@ -71,7 +71,11 @@ Error NNPICompiledFunction::compileFX(
   LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiGetDefaultCompilationConfig(&config_),
                                      "Failed NNPI API Read Config");
 
-  RETURN_IF_ERR(updateCompilationConfigFromOptions(compilationOptions_));
+  // TODO: look through the nodes in FXIR to determine if a custom DSP op is
+  // need in order to set requiresDSPKernels correctly
+  RETURN_IF_ERR(
+      updateCompilationConfigFromOptions(compilationOptions_,
+                                         /*requiresDSPKernels*/ false));
   // Collect input/output names.
   {
     size_t numInputs, numOutputs;
