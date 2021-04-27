@@ -39,11 +39,13 @@ static bool isBatchNormUsingAlternativeLayout(const glow::Node *node,
   LOG_AND_RETURN_IF_NOT(ERROR, glowBN, "Bad BN node type", NNPI_INVALID_PARAM);
   auto channelIdx = glowBN->getChannelIdx();
   // Handle NNPI_LAYOUT_NDHWC and NNPI_LAYOUT_NHWC layout.
-  if ((numDims == 4 || numDims == 5) && (channelIdx == numDims - 1))
+  if ((numDims == 4 || numDims == 5) && (channelIdx == numDims - 1)) {
     return true;
+  }
   // Handle NNPI_LAYOUT_CN layout.
-  if (numDims == 2 && channelIdx == 0)
+  if (numDims == 2 && channelIdx == 0) {
     return true;
+  }
 
   return false;
 }
