@@ -416,6 +416,9 @@ private:
 
   template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
 
+  template <typename ElemTy>
+  void fwdCollectRpnProposalsInstImpl(const CollectRpnProposalsInst *I);
+
   template <typename T, typename AccumT, typename TI>
   void fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const RowwiseQuantizedSparseLengthsWeightedSumInst *I);

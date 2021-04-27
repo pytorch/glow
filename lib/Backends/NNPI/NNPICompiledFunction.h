@@ -41,6 +41,7 @@ struct NNPICompiledTensor {
   std::vector<uint32_t> shape;
   NNPI_ALLOCATION_TYPE allocType;
   std::string dump() const;
+  std::vector<NNPI_ALLOCATION_TYPE> possibleAlloc;
 };
 
 /// Struct containing details exported for a compiled operator.

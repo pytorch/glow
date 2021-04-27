@@ -5885,6 +5885,112 @@ static void fwdArgMin(Tensor *inpT, Tensor *outT, size_t axis) {
 //===----------------------------------------------------------------------===//
 //                       Sorting operators
 //===----------------------------------------------------------------------===//
+template <typename ElemTy>
+static void
+CollectRpnProposalsHelper(const std::vector<std::vector<ElemTy>> &roisIn,
+                          const std::vector<ElemTy> &scores,
+                          std::vector<std::vector<ElemTy>> &rois,
+                          dim_t rpnPostNmsTopN) {
+  // N + KlogK implementation, K is rpnPostNmsTopN
+  dim_t roisSecondDim = roisIn[0].size();
+
+  std::vector<dim_t> idx(scores.size());
+  std::iota(idx.begin(), idx.end(), 0);
+
+  auto comp = [&](dim_t leftIdx, dim_t rightIdx) -> bool {
+    if (scores[leftIdx] > scores[rightIdx]) {
+      return true;
+    }
+    if (scores[leftIdx] < scores[rightIdx]) {
+      return false;
+    }
+    // Sort on indices if two scores are equal
+    return leftIdx < rightIdx;
+  };
+
+  dim_t k = rpnPostNmsTopN;
+  // Getting the indices in order according to scores
+  // Arrange Kth element at its proper location of sorted array, O(N)
+  if (k < roisIn.size()) {
+    std::nth_element(idx.begin(), idx.begin() + k, idx.end(), comp);
+  } else {
+    k = roisIn.size();
+  }
+
+  rois.resize(k, std::vector<ElemTy>(roisSecondDim));
+
+  // KlogK, K is rpnPostNmsTopN
+  std::sort(idx.begin(), idx.begin() + k, comp);
+
+  // Output rois according to new order of indices
+  for (dim_t i = 0; i < k; i++) {
+    rois[i] = roisIn[idx[i]];
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdCollectRpnProposalsInstImpl(
+    const glow::CollectRpnProposalsInst *I) {
+
+  // Get params
+  dim_t rpnPostNmsTopN = I->getRpnPostNmsTopN();
+  int64_t rpnMaxLevel = I->getRpnMaxLevel();
+  int64_t rpnMinLevel = I->getRpnMinLevel();
+  int64_t rpnLevels = rpnMaxLevel - rpnMinLevel + 1;
+
+  std::vector<std::vector<ElemTy>> roisIn;
+  std::vector<ElemTy> scores;
+  std::vector<std::vector<ElemTy>> roisOut;
+
+  auto getRoisAndScores = [&](Tensor *input, bool isroi) {
+    auto inputHndl = input->getHandle<ElemTy>();
+
+    if (isroi) {
+      for (dim_t i = 0; i < input->dims()[0]; i++) {
+        std::vector<ElemTy> roi;
+
+        for (dim_t j = 0; j < input->dims()[1]; j++) {
+          roi.push_back(inputHndl.at({i, j}));
+        }
+
+        roisIn.push_back(roi);
+      }
+    } else {
+      for (dim_t i = 0; i < input->dims()[0]; i++) {
+        scores.push_back(inputHndl.at({i}));
+      }
+    }
+  };
+
+  // Input starts from index 1
+  for (dim_t idx = 1; idx <= rpnLevels; idx++) {
+    getRoisAndScores(getTensor(I->getOperand(idx).first), true);
+    getRoisAndScores(getTensor(I->getOperand(idx + rpnLevels).first), false);
+  }
+
+  // Sorting the roisIn according to scores limited by rpnPostNmsTopN
+  CollectRpnProposalsHelper<ElemTy>(roisIn, scores, roisOut, rpnPostNmsTopN);
+
+  // Storing roisOut in result tensor
+  dim_t roisSecondDim = roisIn[0].size();
+  Tensor *result = getTensor(I->getResult());
+
+  for (dim_t i = 0; i < rpnPostNmsTopN; i++) {
+    for (dim_t j = 0; j < roisSecondDim; j++) {
+      result->getHandle<ElemTy>().at({i, j}) = roisOut[i][j];
+      // Invalid rois are set to 0
+      if (i > roisOut.size()) {
+        result->getHandle<ElemTy>().at({i, j}) = ElemTy(0);
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdCollectRpnProposalsInst(
+    const glow::CollectRpnProposalsInst *I) {
+  dispatchFloatingPointImpl(fwdCollectRpnProposalsInstImpl,
+                            I->getOperand(1).first->getElementType(), I);
+}
 
 void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
   auto outW = getTensor(I->getValues());

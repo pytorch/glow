@@ -108,7 +108,8 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
       configs.push_back(std::move(config));
     }
   } else {
-    configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
+    configs = runtime::DeviceManager::generateDeviceConfigs(
+        backendName, glow::flags::ScanDevices);
   }
 
   runtime::HostConfig hostConfig;

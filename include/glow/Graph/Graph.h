@@ -1604,6 +1604,18 @@ public:
   TopKNode *createTopK(llvm::StringRef name, NodeValue input, unsigned_t k,
                        ElemKind outIndicesTyKind);
 
+  /// Given \p rpnMaxLevel , \p rpnMinLevel and \p rpnPostNmsTopN
+  /// CollectRpnProposals merges rois in the \p roisIN based on \p roisProbIn
+  /// and returns top proposals limited to rpnPostNmsTopN total, size (n x B),
+  /// where B is box dimensions and based on dimension of input rois
+  /// Format for upright boxes is (image_index, x1, y1, x2, y2).
+  /// Format for rotated boxes (image_index, ctr_x, ctr_y, w, h, angle)
+  /// rpnPostNmsTopN should be greater than zero.
+  CollectRpnProposalsNode *createCollectRpnProposals(
+      llvm::StringRef name, std::vector<NodeValue> &roisIn,
+      std::vector<NodeValue> &roiProbsIn, int64_t rpnMaxLevel,
+      int64_t rpnMinLevel, unsigned_t rpnPostNmsTopN);
+
   /// Gathers entries of the outer-most dimension of \p data indexed by
   /// \p indices, and concatenates them. A non-zero \p batchDims specifies the
   /// batch, and the result is the concatenation of the operation on each sample

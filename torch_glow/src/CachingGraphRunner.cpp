@@ -1117,11 +1117,81 @@ CachingGraphRunner::~CachingGraphRunner() {
   }
 }
 
+Error CachingGraphRunner::warmupGraphOutputShapeMap(
+    const c10::ArrayRef<torch::jit::Value *> &graphOutputValues,
+    const BatchShapesMapType &graphShapeMetaMap) {
+  for (auto &it : graphShapeMetaMap) {
+    auto &shapeMap = it.second;
+    auto batchSize = it.first;
+    MetaStack outputShape;
+    for (auto outputValue : graphOutputValues) {
+      auto itr = shapeMap.find(outputValue);
+      if (itr == shapeMap.end()) {
+        std::ostringstream ss;
+        ss << "Node output " << outputValue->debugName()
+           << " Not found in the shape map!";
+        return MAKE_ERR(ss.str());
+      }
+      outputShape.emplace_back(itr->second);
+    }
+    perGlowGraphShapeMap_.emplace(batchSize, outputShape);
+  }
+  return Error::success();
+}
+
+Error CachingGraphRunner::setNominalInputIndex(
+    const c10::ArrayRef<torch::jit::Value *> &graphInputValues,
+    const BatchShapesMapType &graphShapeMetaMap) {
+  int nominalInputIndex = -1;
+  if (graphShapeMetaMap.size() == 0) {
+    std::ostringstream ss;
+    ss << "Input graph shap meta map is empty.";
+    return MAKE_ERR(ss.str());
+  }
+  for (size_t i = 0; i < graphInputValues.size(); ++i) {
+    const torch::jit::Value *inputValue = graphInputValues[i];
+    bool matchIndex = true;
+    for (auto &itz : graphShapeMetaMap) {
+      auto &shapeMap = itz.second;
+      auto batchSize = itz.first;
+      auto itr = shapeMap.find(inputValue);
+      if (itr == shapeMap.end()) {
+        std::ostringstream ss;
+        ss << "Node input " << inputValue->debugName()
+           << " not found in the shape map!";
+        return MAKE_ERR(ss.str());
+      }
+      auto &tensorShape = itr->second.shape<TensorShape>();
+      if (tensorShape.size() < 2 || tensorShape[0] != batchSize) {
+        matchIndex = false;
+        break;
+      }
+    }
+    if (matchIndex) {
+      nominalInputIndex = i;
+      break;
+    }
+  }
+  if (nominalInputIndex != -1) {
+    nominalInputIndex_ = nominalInputIndex;
+    LOG(INFO) << "Finish Setting nomnial input index: " << nominalInputIndex;
+    return Error::success();
+  } else {
+    std::ostringstream ss;
+    ss << "No valid nominalInputIndex is found.";
+    return MAKE_ERR(ss.str());
+  }
+}
+
+int CachingGraphRunner::getNominalInputIndex() { return nominalInputIndex_; }
+
 size_t CachingGraphRunner::getGraphMapKeyFromInputStack(
     const InputMetaStack &metaStack) {
   size_t hash;
   if (defaultSettings_.nominalBatchIdx >= 0) {
     hash = metaStack.optimizedHash(defaultSettings_.nominalBatchIdx);
+  } else if (nominalInputIndex_ >= 0) {
+    hash = metaStack.optimizedHash(nominalInputIndex_);
   } else {
     hash = metaStack.hash();
   }

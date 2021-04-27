@@ -18,6 +18,7 @@
 
 #include <cassert>
 #include <map>
+#include <vector>
 
 namespace glow {
 
@@ -35,6 +36,8 @@ public:
   virtual Key getRegistrationKey() const = 0;
   /// Number of devices available for the registered factory.
   virtual unsigned numDevices() const = 0;
+  /// Scan devices available and return their ids.
+  virtual std::vector<unsigned> scanDeviceIDs() const = 0;
 };
 
 /// General registry for implementation factories.
