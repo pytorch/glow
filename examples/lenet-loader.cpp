@@ -42,7 +42,7 @@ int main() {
   auto *output = EXIT_ON_ERR(loader.getSingleOutput());
 
   // Read an example PNG and add it to an input batch.
-  auto image = glow::readPngImageAndPreprocess(
+  auto image = glow::readPngPpmImageAndPreprocess(
       "tests/images/mnist/5_1087.png", glow::ImageNormalizationMode::k0to1,
       glow::ImageChannelOrder::BGR, glow::ImageLayout::NCHW);
   glow::Tensor batch(inputType);
