@@ -113,6 +113,12 @@ public:
   Expected<double> estimateNodeCost(const glow::Node *node) const override;
   /// @}
 
+#if FACEBOOK_INTERNAL
+  /// Returns a file containing the custom DSP kernels or the empty string if
+  /// there isn't such a file.
+  static const std::string &getDSPKernelsPrivate();
+#endif /* FACEBOOK_INTERNAL */
+
 private:
 #if FACEBOOK_INTERNAL
   /// Performs FB-private transformations on \p F given \p cctx.

@@ -45,14 +45,42 @@ NNPIDeviceNetworkConfig glow::parseDeviceNetworkConfig(
 }
 
 Error NNPICompiledFunction::updateCompilationConfigFromOptions(
-    NNPICompilationOptions &compilationOptions) {
+    NNPICompilationOptions &compilationOptions, bool requiresDSPKernels) {
   if (compilationOptions.showVars) {
     LOG(INFO) << compilationOptions.dumpStatus();
   }
-  if (!compilationOptions.customDspKernelsFile.get().empty()) {
-    std::strncpy(config_.customDspKernelsFile,
-                 compilationOptions.customDspKernelsFile.get().c_str(),
-                 sizeof(config_.customDspKernelsFile));
+
+  std::string dspKernelsFile;
+
+  if (dspKernelsFile.empty() &&
+      !compilationOptions.customDspKernelsFile.get().empty()) {
+    dspKernelsFile = compilationOptions.customDspKernelsFile.get();
+    if (!dspKernelsFile.empty()) {
+      LOG(INFO) << "Found DSP library from "
+                   "NNPICompilationOptions: "
+                << dspKernelsFile;
+    }
+  }
+
+#if FACEBOOK_INTERNAL
+  // If a kernels file was already provided then use that instead of fetching
+  // custom kernels so that the explicitly specified kernels file is honored.
+  if (dspKernelsFile.empty() && requiresDSPKernels) {
+    dspKernelsFile = NNPIBackend::getDSPKernelsPrivate();
+    if (!dspKernelsFile.empty()) {
+      LOG(INFO) << "Found DSP library from "
+                   "NNPIBackend::getDSPKernelsPrivate: "
+                << dspKernelsFile;
+    }
+  }
+#endif
+
+  if (dspKernelsFile.empty() && requiresDSPKernels) {
+    return MAKE_ERR("DSP kernels file not found, needed to run Function "
+                    "containing DSP kernels");
+  } else {
+    std::strncpy(config_.customDspKernelsFile, dspKernelsFile.c_str(),
+                 dspKernelsFile.size());
   }
 
   // Handle device version.
@@ -339,10 +367,17 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiGetDefaultCompilationConfig(&config_),
                                      "Failed NNPI API Read Config");
 
-  auto error = updateCompilationConfigFromOptions(compilationOptions_);
-  if (error) {
-    return error;
+  // If Function contains any DSP nodes then we require DSP kernels.
+  bool requiresDSPKernels = false;
+  for (const auto &node : F->getNodes()) {
+    if (node.getKind() == Kinded::Kind::NNPICustomDSPNodeKind) {
+      requiresDSPKernels = true;
+      break;
+    }
   }
+
+  RETURN_IF_ERR(updateCompilationConfigFromOptions(compilationOptions_,
+                                                   requiresDSPKernels));
 
   RETURN_IF_ERR(setupCompilationHints(F, newOpts.backendSpecificNodeInfo));
 
