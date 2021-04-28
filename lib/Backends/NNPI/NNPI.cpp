@@ -497,6 +497,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
             {}, {CmpEQNode::ResultIdx}) &&
         (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
     break;
+  case Kinded::Kind::NonZeroNodeKind:
+    isNodePrecisionSupported =
+        (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::Int32ITy);
+    break;
   case Kinded::Kind::SelectNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(

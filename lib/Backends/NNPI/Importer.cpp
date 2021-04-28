@@ -882,7 +882,6 @@ public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
     auto *glowSD = llvm::dyn_cast<ScatterDataNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowSD, "Bad node type", NNPI_INVALID_PARAM);
-
     importer.setUsedTensors({nodeValueName(glowSD->getData()),
                              nodeValueName(glowSD->getIndices()),
                              nodeValueName(glowSD->getSlices())},
@@ -1629,6 +1628,25 @@ public:
         nodeValueName(glowEBBRO->getIndices()).c_str(),
         nodeValueName(glowEBBRO->getOffsets()).c_str(), usFp32Accum, 1,
         glowEBBRO->getAvgLength(), lengthType);
+  }
+};
+
+class NonZeroNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowNonZero = llvm::dyn_cast<NonZeroNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowNonZero, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {
+            nodeValueName(glowNonZero->getCond()),
+        },
+        {nodeValueName(glowNonZero->getResult())});
+    return nnpiNetworkAddSelectOp(
+        importer.getNetwork(), glowNonZero->getName().begin(), nullptr, nullptr,
+        nodeValueName(glowNonZero->getCond()).c_str(),
+        nodeValueName(glowNonZero->getResult()).c_str());
   }
 };
 
@@ -2670,6 +2688,7 @@ std::unordered_map<
     {"SparseLengthsSum", glow::make_unique<SLSNodeImporter>()},
     {"FusedRowwiseQuantizedSparseLengthsSum",
      glow::make_unique<FRQSLSNodeImporter>()},
+    {"NonZero", glow::make_unique<NonZeroNodeImporter>()},
     {"Select", glow::make_unique<SelectNodeImporter>()},
     {"GaussianFill", glow::make_unique<GaussianFillNodeImporter>()},
     {"LocalResponseNormalization", glow::make_unique<LRNNodeImporter>()},

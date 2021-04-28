@@ -1199,6 +1199,8 @@ public:
 
   PowNode *createPow(llvm::StringRef name, NodeValue base, float exp);
 
+  NonZeroNode *createNonZero(llvm::StringRef name, NodeValue Cond);
+
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);
 

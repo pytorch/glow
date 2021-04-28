@@ -2259,6 +2259,76 @@ TEST_F(Caffe2ImporterTest, SparseToDenseMask) {
   EXPECT_TRUE(N->getMask().equals({42, 100, 300, 1, 0, 312}));
 }
 
+// Test loading a BatchSparseToDense operator w/ second dimension = 1.
+TEST_F(Caffe2ImporterTest, BatchSparseToDense) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/batch_sparse_to_dense.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *outputPH;
+  PlaceholderBindings bindings;
+  // Create inputs.
+  constexpr dim_t numBatches = 100;
+  Tensor lengths(ElemKind::Int32ITy, {numBatches});
+  auto lengthsH = lengths.getHandle<int32_t>();
+  lengthsH.randomize(0, 1, mod.getPRNG());
+
+  // Calculate number of nonzero indices.
+  dim_t numIndices = 0;
+  for (size_t i = 0, n = lengthsH.actualSize(); i < n; i++) {
+    numIndices += lengthsH.at(i);
+  }
+  Tensor indices(ElemKind::Int64ITy, {numIndices});
+  Tensor values(ElemKind::FloatTy, {numIndices});
+  indices.zero();
+  values.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"lengths", "indices", "values"},
+        {&lengths.getType(), &indices.getType(), &values.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod,
+                                  {"lengths", "indices", "values"},
+                                  {&lengths, &indices, &values});
+  }
+
+  // Check that the shape of the output matches that of the expected output.
+  const std::vector<dim_t> expectedOutputShape{numBatches, 1};
+  EXPECT_EQ(expectedOutputShape, outputPH->dims().vec());
+  EXPECT_EQ(F->getNodes().size(), 8);
+
+  // Graph has three inputs and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 4);
+
+  auto output = bindings.get(outputPH);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  // Initialize with zeroes
+  std::vector<std::vector<float>> expected(numBatches, std::vector<float>(1));
+  for (dim_t d = 0, v = 0; d < numBatches; ++d) {
+    if (lengthsH.at(d) == 1) {
+      expected[d][0] = values.getHandle().at({v});
+      v++;
+    }
+  }
+
+  for (dim_t d = 0; d < numBatches; ++d) {
+    EXPECT_NEAR(expected[d][0], outputH.at({d, 0}), 1e-3);
+  }
+}
+
 /// Test loading NCHW2NHWC op.
 TEST_F(Caffe2ImporterTest, testNCHW2NHWC) {
   ExecutionEngine EE{};

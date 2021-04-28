@@ -3935,11 +3935,22 @@ void BoundInterpreterFunction::fwdElementExpInst(const ElementExpInst *I) {
                             I->getSrc()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdNonZeroInst(const NonZeroInst *I) {
+  auto outW = getWeightHandle<int32_t>(I->getDest());
+  auto condW = getWeightHandle<bool>(I->getCond());
+  for (size_t condIdx = 0, outIdx = 0, n = condW.size(); condIdx < n;
+       condIdx++) {
+    if (condW.raw(condIdx)) {
+      outW.raw(outIdx) = condIdx;
+      outIdx++;
+    }
+  }
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdElementSelectInstFloatImpl(
     const glow::ElementSelectInst *I) {
   staticAssertFloatingPointType(ElemTy);
-
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto condW = getWeightHandle<bool>(I->getCond());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());

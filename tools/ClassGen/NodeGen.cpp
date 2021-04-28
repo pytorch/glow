@@ -682,6 +682,12 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Computes elementwise: result = log(input / (1 - input)).");
 
+  BB.newNode("NonZero")
+      .addInput("Cond")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Selects indices of the true elements in Cond");
+
   BB.newNode("Select")
       .addInput("Cond")
       .addInput("LHS")
