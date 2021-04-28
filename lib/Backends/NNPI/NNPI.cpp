@@ -27,6 +27,8 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/Lower/Lower.h"
+#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectors.h"
+#include "glow/lib/Backends/NNPI/CustomKernels/IAInjectors/IAInjectors.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -1990,6 +1992,73 @@ NNPIBackend::transformPostOptPipeline(Function *F,
   return changed;
 }
 
+/// Replaces any operators in the Function \p F with custom DSP NNPI kernel
+/// operators by calling each CustomKernelInjector on each node in sequence.
+/// \returns true iff any custom NNPI node was injected into the Function.
+static bool injectCustomDSPOps(Function *F) {
+  if (!glow::nnpi::flags::EnableCustomDSPKernels) {
+    LOG(INFO) << "Skipping custom DSP kernels because they are disabled";
+    return false;
+  }
+
+  static const auto dspInjectors = buildDSPInjectors();
+
+  LOG(INFO) << "Custom DSP ops enabled";
+
+  bool modified = false;
+
+  auto &nodes = F->getNodes();
+  for (auto &node : nodes) {
+    for (auto &injector : dspInjectors) {
+      if (injector->tryInject(F, &node)) {
+        LOG(INFO) << "Using a custom DSP op for " << node.getName().str();
+        modified = true;
+        break;
+      }
+    }
+  }
+
+  return modified;
+}
+
+/// Replaces any operators in the Function \p F with custom IA NNPI kernel
+/// operators by calling each CustomKernelInjector on each node in sequence.
+/// \returns true iff any custom NNPI node was injected into the Function.
+static bool injectCustomIAOps(Function *F) {
+  if (!glow::nnpi::flags::EnableCustomIAKernels) {
+    LOG(INFO) << "Skipping custom IA kernels because they are disabled";
+    return false;
+  }
+
+  // For now only inject IA ops when running on device since custom IA
+  // kernels aren't currently supported by iceref.
+  const char *useInfApi = std::getenv("USE_INF_API");
+  if (!useInfApi || std::string(useInfApi) != "1") {
+    LOG(INFO) << "Skipping custom IA kernels because hardware inference isn't "
+                 "enabled";
+    return false;
+  }
+
+  static const auto iaInjectors = buildIAInjectors();
+
+  LOG(INFO) << "Custom IA ops enabled";
+
+  bool modified = false;
+
+  auto &nodes = F->getNodes();
+  for (auto &node : nodes) {
+    for (auto &injector : iaInjectors) {
+      if (injector->tryInject(F, &node)) {
+        LOG(INFO) << "Using a custom IA op for " << node.getName().str();
+        modified = true;
+        break;
+      }
+    }
+  }
+
+  return modified;
+}
+
 Expected<bool> NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
@@ -2024,6 +2093,12 @@ Expected<bool> NNPIBackend::transformPostLowering(
     changed |= FPM.run(F, cctx);
   }
   changed |= lowerRequiredNodes(F, cctx);
+
+  // NOTE: DSP kernels are generally faster and preferred relative to IA kernels
+  // so always call injectCustomDSPOps first to choose them over IA kernels
+  // where possible.
+  changed |= injectCustomDSPOps(F);
+  changed |= injectCustomIAOps(F);
 
 #if FACEBOOK_INTERNAL
   if (!(glow::nnpi::flags::EnableCustomDSPKernels ||

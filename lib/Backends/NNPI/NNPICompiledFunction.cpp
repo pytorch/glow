@@ -23,6 +23,8 @@
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Flags/Flags.h"
 
+#include "glow/lib/Backends/NNPI/CustomKernels/GetNNPIKernels.h"
+
 #include <sstream>
 
 #include "llvm/ADT/StringSet.h"
@@ -62,18 +64,16 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
     }
   }
 
-#if FACEBOOK_INTERNAL
   // If a kernels file was already provided then use that instead of fetching
   // custom kernels so that the explicitly specified kernels file is honored.
   if (dspKernelsFile.empty() && requiresDSPKernels) {
-    dspKernelsFile = NNPIBackend::getDSPKernelsPrivate();
+    dspKernelsFile = GetNNPIKernels::getCompiledDSPKernelsFilePath();
     if (!dspKernelsFile.empty()) {
       LOG(INFO) << "Found DSP library from "
                    "NNPIBackend::getDSPKernelsPrivate: "
                 << dspKernelsFile;
     }
   }
-#endif
 
   if (dspKernelsFile.empty() && requiresDSPKernels) {
     return MAKE_ERR("DSP kernels file not found, needed to run Function "
