@@ -123,6 +123,9 @@ include_directories(
     ${NNPI_INFERENCE_API}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${NNPI_MG_API}
+    ${CMAKE_CURRENT_SOURCE_DIR}/CustomKernels
+    ${CMAKE_CURRENT_SOURCE_DIR}/CustomKernels/DSPInjectors
+    ${CMAKE_CURRENT_SOURCE_DIR}/CustomKernels/IAInjectors
 )
 
 add_definitions(-DNNPI_MAJOR_VERSION=${NNPI_MAJOR_VERSION})
@@ -147,6 +150,11 @@ add_library(NNPI
     NNPIAdapterContainer.cpp
     NNPIUtils.cpp
     SpecializedLookupTables.cpp
+    CustomKernels/GetNNPIKernels.cpp
+    CustomKernels/IAInjectors/IAInjectors.cpp
+    CustomKernels/DSPInjectors/DSPInjectors.cpp
+    CustomKernels/DSPInjectors/DSPInjectorUtils.cpp
+    CustomKernels/DSPInjectors/ReluInjector.cpp
 )
 
 target_link_libraries(NNPI
