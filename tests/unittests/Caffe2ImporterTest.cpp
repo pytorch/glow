@@ -5528,3 +5528,51 @@ TEST_F(Caffe2ImporterTest, ReduceBackMean) {
     EXPECT_NEAR(expected, outputH.at(d1), 1e-3);
   }
 }
+
+// Test that dropout is a no-op
+TEST_F(Caffe2ImporterTest, Dropout) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/dropout.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  std::vector<dim_t> inputShape{20, 50};
+  Tensor input{ElemKind::FloatTy, {inputShape}};
+  input.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  // Expect graph to have one node (1 save node)
+  EXPECT_EQ(F->getNodes().size(), 1);
+  auto *save = getSaveNodeFromDest(outputPH);
+  ASSERT_TRUE(save);
+
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto inputH = input.getHandle();
+  auto outputH = output->getHandle();
+  for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
+      EXPECT_EQ(inputH.at(d1), outputH.at(d1));
+    }
+  }
+}

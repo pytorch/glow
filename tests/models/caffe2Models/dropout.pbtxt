@@ -1,0 +1,9 @@
+name: "dropout"
+op {
+  input: "input"
+  output: "output"
+  name: ""
+  type: "Dropout"
+}
+external_input: "input"
+external_output: "output"
