@@ -2012,7 +2012,12 @@ Expected<bool> NNPIBackend::transformPostLowering(
   changed |= removeClipsBlockingFusion(F);
   changed |= padKernelToStride(F);
   changed |= lowerEmbeddingToGather(F);
+
+// NNPI support fp16 scale and bias after 1.5
+#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION < 5
   changed |= quantizeLayernormScaleAndBias(F);
+#endif
+
   changed |= replaceInefficientConcat(F);
   auto it =
       cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");

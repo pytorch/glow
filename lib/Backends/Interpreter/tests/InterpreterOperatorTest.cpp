@@ -21,6 +21,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "GatherWithInt32PartialTensors/0",
     "GatherWithInt64PartialTensors/0",
     "LayerNorm_Int8/0",
+    "LayerNorm_Int8_With_Float16_Scale_Bias/0",
     "RepeatedSLSWithPartialTensors_int32/0",
     "RepeatedSLSWithPartialTensors_int64/0",
     "RepeatedSLWSWithPartialTensors/0",

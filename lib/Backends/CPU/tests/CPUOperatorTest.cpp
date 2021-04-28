@@ -410,6 +410,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Int8BatchNorm3D/0",
     "LayerNorm_Float16/0",
     "LayerNorm_Float16_StrongNormShape/0",
+    "LayerNorm_Int8_With_Float16_Scale_Bias/0",
     "LayerNorm_Int8_With_Float_Scale_Bias/0",
     "DynamicQuantizedFullyConnectedBasic/0",
     "DynamicQuantizedFullyConnectedStrongWeights/0",
