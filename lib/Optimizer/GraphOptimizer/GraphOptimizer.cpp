@@ -5649,7 +5649,6 @@ bool FoldExpSumDivIntoSoftmax::run(Function *F,
     DivNode *DN = nullptr;
     BatchedReduceAddNode *RSN = nullptr;
 
-
     auto *user1 = EN->getUsers().front().getUser();
     auto *user2 = EN->getUsers().back().getUser();
 
