@@ -20261,6 +20261,13 @@ TEST_P(OperatorTest, LayerNorm_Int8_With_Int8_Scale_Bias) {
   QuantizedLayerNormTest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
+TEST_P(OperatorTest, LayerNorm_Int8_With_Float16_Scale_Bias) {
+  CHECK_IF_ENABLED();
+
+  QuantizedLayerNormTest<float16_t>(bindings_, mod_, F_, EE_,
+                                    ElemKind::Float16Ty);
+}
+
 TEST_P(OperatorTest, LayerNorm_Int8_With_Float_Scale_Bias) {
   CHECK_IF_ENABLED();
 
