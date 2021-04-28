@@ -332,6 +332,30 @@ template <> struct AttributeRetriever<false, FusedActivation> {
   }
 };
 
+/// Specialization for FusedActivation.
+template <> struct AttributeRetriever<false, LUTOperator> {
+  static Expected<LUTOperator> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                                   const ProtobufLoader & /* unused */) {
+    std::string str;
+    ASSIGN_VALUE_OR_RETURN_ERR(str, loadStr(attr));
+    if (str == "NONE") {
+      return LUTOperator::NONE;
+    } else if (str == "RELU") {
+      return LUTOperator::RELU;
+    } else if (str == "CLIP") {
+      return LUTOperator::CLIP;
+    } else if (str == "TANH") {
+      return LUTOperator::TANH;
+    } else if (str == "SIGMOID") {
+      return LUTOperator::SIGMOID;
+    } else if (str == "LEAKY_RELU") {
+      return LUTOperator::LEAKY_RELU;
+    } else {
+      return MAKE_ERR("Invalid LUTOperator");
+    }
+  }
+};
+
 /// Specialization for ConvolutionLayout.
 template <> struct AttributeRetriever<false, ConvolutionLayout> {
   static Expected<ConvolutionLayout>

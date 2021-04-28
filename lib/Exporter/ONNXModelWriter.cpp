@@ -2430,6 +2430,25 @@ Error ONNXModelWriter::writeIntLookupTable(const IntLookupTableNode *node,
   return writeAllWithNode("IntLookupTable", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeLookupTable(const LookupTableNode *node,
+                                        GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "shape", node->getResult().dims());
+  NodeValue table = node->getTable();
+  if (Constant *c = llvm::dyn_cast<Constant>(table.getNode())) {
+    auto handle = c->getHandle<int8_t>();
+    auto begin = &handle.raw(0);
+    addValueAttribute(
+        proto, "values",
+        llvm::ArrayRef<int8_t>(begin, begin + handle.actualSize()));
+  } else {
+    return MAKE_ERR("Mapping must be a constant type.");
+  }
+
+  return writeAllWithNode("LookupTable", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeLengthsRangeFill(const LengthsRangeFillNode *node,
                                              GraphType &graph) {
   auto *proto = graph.add_node();
