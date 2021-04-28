@@ -358,10 +358,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
       case ElemKind::Int32ITy:
         switch (kindTo) {
         case ElemKind::Int64ITy:
+        case ElemKind::Float16Ty:
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
           return true;
-        case ElemKind::Float16Ty:
         case ElemKind::BoolTy:
           return glow::nnpi::flags::EnableCustomIAKernels;
         default:
