@@ -77,6 +77,10 @@ llvm::StringRef Storage::getOutputName(unsigned idx) const {
 
 bool Storage::hasSideEffects() const { return false; }
 
+void Constant::setSideEffects() { hasSideEffects_ = true; }
+
+bool Constant::hasSideEffects() const { return hasSideEffects_; }
+
 Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 
 //===----------------------------------------------------------------------===//

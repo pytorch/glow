@@ -5787,6 +5787,10 @@ PlaceholderList Function::findPlaceholders() const {
 ConstList Function::findConstants() {
   ConstList list;
   for (auto &constant : parent_->getConstants()) {
+    if (constant->hasSideEffects()) {
+      list.push_back(constant);
+      continue;
+    }
     for (auto &user : constant->getUsers()) {
       if (user.getUser()->getParent() == this) {
         list.push_back(constant);
@@ -5800,6 +5804,10 @@ ConstList Function::findConstants() {
 ConstList Function::findConstants() const {
   ConstList list;
   for (auto &constant : parent_->getConstants()) {
+    if (constant->hasSideEffects()) {
+      list.push_back(constant);
+      continue;
+    }
     for (auto &user : constant->getUsers()) {
       if (user.getUser()->getParent() == this) {
         list.push_back(constant);
