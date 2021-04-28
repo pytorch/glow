@@ -1935,6 +1935,58 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
+
+  if (typeName == "FillExamplesWithIndicator") {
+    // Support FillExamplesWithIndicator
+    NodeValue data;
+    ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
+    NodeValue indicator;
+    ASSIGN_VALUE_OR_RETURN_ERR(indicator, getNodeValueByName(op.input(1)));
+    // Validating input types and shapes
+    RETURN_ERR_IF_NOT(
+        indicator.getElementType() == ElemKind::Int32ITy ||
+            indicator.getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op, "Indicator should be of int32 or int64 type."));
+    RETURN_ERR_IF_NOT(indicator.dims().size() == 1,
+                      opErrMsg(op, "Indicator should be 1D tensor."));
+    dim_t dataReshapeDim = 1;
+    ShapeVector outDims{indicator.dims()[0]};
+    for (dim_t i = 1, e = data.dims().size(); i < e; ++i) {
+      outDims.push_back(data.dims()[i]);
+      dataReshapeDim *= data.dims()[i];
+    }
+    auto outTy2D = mod_.uniqueTypeWithNewShape(
+        data.getType(), {indicator.dims()[0], dataReshapeDim});
+
+    auto data2D = G_->createReshape(opName + ".data2D", data,
+                                    {data.dims()[0], dataReshapeDim});
+    if (indicator.getElementType() == ElemKind::Int64ITy) {
+      indicator = G_->createConvertTo(opName + ".int64ToInt32", indicator,
+                                      ElemKind::Int32ITy);
+    }
+    // Select only takes boolean indicators, and converting from int to bool
+    // must go from int -> float -> bool. Due to fp16 clipping, since only
+    // int32 -> fp16 conversions are available, there is an initial conversion
+    // from int64 to int32 if necessary.
+    auto indicatorIntToFloat = G_->createConvertTo(
+        opName + ".intToFloat", indicator, ElemKind::FloatTy);
+    auto indicatorFloatToBool = G_->createConvertTo(
+        opName + ".floatToBool", indicatorIntToFloat, ElemKind::BoolTy);
+    auto nonZeroIndices =
+        G_->createNonZero(opName + ".nonzero", indicatorFloatToBool);
+    auto nonZeroCount = data.dims()[0];
+    auto indices = G_->createSlice(opName + ".indices", nonZeroIndices, {0, 0},
+                                   {nonZeroCount, 1});
+
+    auto zeros = G_->createSplat(opName + ".zeros", outTy2D, 0);
+
+    auto res2D = G_->createScatterData(opName + ".scatterData", zeros, indices,
+                                       data2D, false);
+    auto node = G_->createReshape(opName + ".result", res2D, outDims);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   if (typeName == "BatchSparseToDense") {
     // Support BatchSparseToDense for output second dim = 1 only
     NodeValue lengths;
