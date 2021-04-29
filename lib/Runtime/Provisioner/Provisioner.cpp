@@ -28,6 +28,7 @@
 #include <folly/dynamic.h>
 #include <future>
 #include <map>
+#include <mutex>
 #include <queue>
 #include <set>
 #include <vector>
@@ -390,6 +391,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       for (auto &it : node->backendSpecificOpts) {
         options.backendSpecificOpts[it.first] = it.second;
       }
+      std::lock_guard<std::mutex> functionsLock(functionsLock_);
       Function *function = module.getFunction(node->name);
 
       functionsToCompile.push_back(function);
@@ -400,9 +402,13 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     }
 
     // Compile all the functions in the logical device together.
+    // We add a lock here because some backends are not threadsafe (CPU
+    // backend).
+    std::unique_lock<std::mutex> compileLock(functionsLock_);
     auto compiledOrErr = backends_[deviceBackendName]->compileFunctions(
         functionsToCompile, optsMap);
     VLOG(1) << "After compile";
+    compileLock.unlock();
 
     // Dump graph and logs
     for (auto *function : functionsToCompile) {
@@ -945,7 +951,8 @@ Error Provisioner::removeFunction(llvm::StringRef name) {
   return Error::success();
 }
 
-Error Provisioner::evictFunction(llvm::StringRef name, DeviceManager *device) {
+Error Provisioner::evictFunction(llvm::StringRef name, DeviceManager *device,
+                                 unsigned replicaCount) {
   std::promise<void> evictPromise;
   OneErrOnly evictErr;
   auto done = evictPromise.get_future();
@@ -957,9 +964,8 @@ Error Provisioner::evictFunction(llvm::StringRef name, DeviceManager *device) {
   done.get();
 
   // If we are evict a main function, evict its replications as well.
-  auto replicaCount = functionReplicaCount_.find(name.str());
-  if (replicaCount != functionReplicaCount_.end()) {
-    for (unsigned i = 1; i < replicaCount->second; i++) {
+  if (replicaCount) {
+    for (unsigned i = 1; i < replicaCount; i++) {
       auto replicaName = getReplicatedName(name.str(), i);
       std::promise<void> evictReplicaPromise;
       auto done = evictReplicaPromise.get_future();
@@ -997,7 +1003,13 @@ void Provisioner::cleanupProvision(
         LOG(INFO) << "Removing network " << network << " from device "
                   << device.first;
 #endif
-        Error evictErr = evictFunction(network, devices_[device.first]);
+        auto replicaCountIdx = functionReplicaCount_.find(network);
+        unsigned replicaCount = 0;
+        if (replicaCountIdx != functionReplicaCount_.end()) {
+          replicaCount = replicaCountIdx->second;
+        }
+        Error evictErr =
+            evictFunction(network, devices_[device.first], replicaCount);
         if (evictErr) {
           LOG(ERROR) << "Unable to evict network: " << network << "\n";
         }

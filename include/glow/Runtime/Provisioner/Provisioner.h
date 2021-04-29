@@ -93,7 +93,8 @@ public:
   Error removeFunction(llvm::StringRef name);
 
   /// Evict function from device.
-  Error evictFunction(llvm::StringRef name, DeviceManager *device);
+  Error evictFunction(llvm::StringRef name, DeviceManager *device,
+                      unsigned replicaCount);
 
   /// \returns a reference to the backend with name \p backendName.
   Backend &getBackend(llvm::StringRef backendName) const;
