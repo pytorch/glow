@@ -6560,7 +6560,6 @@ TEST_P(OperatorTest, ScatterData) {
   EE_.run(bindings_);
 
   auto H = bindings_.get(result->getPlaceholder())->getHandle();
-
   EXPECT_FLOAT_EQ(H.at({0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 1}), 2.0);
   EXPECT_FLOAT_EQ(H.at({1, 0}), -3.0);
@@ -17860,6 +17859,29 @@ TEST_P(OperatorTest, ReshapeInt) {
   // Check values are still in the same order.
   for (size_t idx = 0, end = inputHandle.size(); idx != end; ++idx) {
     EXPECT_EQ(inputHandle.raw(idx), outputHandle.raw(idx));
+  }
+}
+
+/// Verify that the NonZero operator works correctly.
+TEST_P(OperatorTest, NonZero) {
+  CHECK_IF_ENABLED();
+
+  auto *Cond = mod_.createPlaceholder(ElemKind::BoolTy, {8}, "Cond", false);
+  bindings_.allocate(Cond)->getHandle<bool>() = {false, true, true,  false,
+                                                 false, true, false, true};
+
+  auto *N = F_->createNonZero("nonZero", Cond);
+  auto *result = F_->createSave("saveNonZero", N);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  std::array<int, 4> expected{1, 2, 5, 7};
+  auto resH = bindings_.get(result->getPlaceholder())->getHandle<int32_t>();
+
+  for (dim_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(resH.raw(i), expected[i]);
   }
 }
 

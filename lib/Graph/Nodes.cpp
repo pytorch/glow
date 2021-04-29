@@ -2564,6 +2564,11 @@ bool ReplaceNaNNode::verify() const {
   return checkSameType(getResult(), getInput(), this);
 }
 
+bool NonZeroNode::verify() const {
+  return checkType(getCond(), ElemKind::BoolTy, this) &&
+         checkType(getResult(), ElemKind::Int32ITy, this);
+}
+
 bool SelectNode::verify() const {
   bool isValid = checkSameShape(getResult(), getLHS(), this);
   isValid &= checkSameShape(getResult(), getRHS(), this);

@@ -1935,6 +1935,77 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
+  if (typeName == "BatchSparseToDense") {
+    // Support BatchSparseToDense for output second dim = 1 only
+    NodeValue lengths;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(0)));
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+    NodeValue values;
+    ASSIGN_VALUE_OR_RETURN_ERR(values, getNodeValueByName(op.input(2)));
+
+    dim_t denseLastDim = 1;
+    if (dict.count("dense_last_dim")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(denseLastDim,
+                                 loadInt(dict.at("dense_last_dim")));
+    }
+
+    RETURN_ERR_IF_NOT(
+        denseLastDim == 1,
+        opErrMsg(op, "Only output second dimension = 1 supported"));
+    // Validating input types and shapes
+    RETURN_ERR_IF_NOT(
+        lengths.getElementType() == ElemKind::Int32ITy ||
+            lengths.getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op, "Lengths should be of int32 or int64 type."));
+    RETURN_ERR_IF_NOT(lengths.dims().size() == 1,
+                      opErrMsg(op, "Lengths should be 1D tensor."));
+    RETURN_ERR_IF_NOT(
+        indices.getElementType() == ElemKind::Int32ITy ||
+            indices.getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op, "Indices should be of int32 or int64 type."));
+    RETURN_ERR_IF_NOT(indices.dims().size() == 1,
+                      opErrMsg(op, "Indices should be 1D tensor."));
+    RETURN_ERR_IF_NOT(values.getElementType() == ElemKind::FloatTy,
+                      opErrMsg(op, "Values should be of float type."));
+    RETURN_ERR_IF_NOT(
+        indices.dims()[0] == values.dims()[0],
+        opErrMsg(op, "There should be the same number of values as indices."));
+
+    float defaultValue = 0.0;
+    if (dict.count("default_value")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(defaultValue,
+                                 loadFloat(dict.at("default_value")));
+    }
+    // Select only takes boolean indicators, and converting from int to bool
+    // must go from int -> float -> bool. Due to fp16 clipping, since only
+    // int32 -> fp16 conversions are available, there is an initial conversion
+    // from int64 to int32 if necessary.
+    if (lengths.getElementType() == ElemKind::Int64ITy) {
+      lengths = G_->createConvertTo(opName + ".int64ToInt32", lengths,
+                                    ElemKind::Int32ITy);
+    }
+    auto lengthsIntToFloat =
+        G_->createConvertTo(opName + ".intToFloat", lengths, ElemKind::FloatTy);
+    auto lengthsFloatToBool = G_->createConvertTo(
+        opName + ".floatToBool", lengthsIntToFloat, ElemKind::BoolTy);
+    auto nonZeroIndices =
+        G_->createNonZero(opName + ".nonzero", lengthsFloatToBool);
+    auto numIndices = indices.dims()[0];
+    auto indicesSliced = G_->createSlice(
+        opName + ".indicesSlice", nonZeroIndices, {0, 0}, {numIndices, 1});
+
+    ShapeVector outDims{lengths.dims()[0], 1};
+    auto dataTy = mod_.uniqueTypeWithNewShape(values.getType(), outDims);
+    auto data = G_->createSplat(opName + ".data", dataTy, defaultValue);
+    auto values2D =
+        G_->createReshape(opName + ".reshape", values, {numIndices, 1});
+    auto scatterData = G_->createScatterData(opName + ".scatterData", data,
+                                             indicesSliced, values2D, false);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, scatterData));
+    return Error::success();
+  }
 
   if (typeName == "SparseLabelSplit") {
     NodeValue lengths;

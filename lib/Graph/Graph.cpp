@@ -1974,6 +1974,11 @@ LogitNode *Function::createLogit(llvm::StringRef name, NodeValue input,
   return addNode(new LogitNode(name, input.getType(), input, eps));
 }
 
+NonZeroNode *Function::createNonZero(llvm::StringRef name, NodeValue Cond) {
+  auto outTy = getParent()->uniqueType(ElemKind::Int32ITy, {Cond.dims()[0], 1});
+  return addNode(new NonZeroNode(name, outTy, Cond));
+}
+
 SelectNode *Function::createSelect(llvm::StringRef name, TypeRef outTy,
                                    NodeValue Cond, NodeValue LHS,
                                    NodeValue RHS) {
