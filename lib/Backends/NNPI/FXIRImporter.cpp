@@ -302,6 +302,32 @@ public:
   }
 };
 
+class ConcatNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+    const auto &kwargs = node["kwargs"];
+    const auto &tensors = kwargs["tensors"];
+    const auto &name = node["name"].getString();
+    const size_t numInputs = tensors.size();
+
+    NNPIObjectName inputs[numInputs];
+    std::unordered_set<std::string> inputTensors;
+    for (size_t i = 0; i < numInputs; i++) {
+      auto nvName = tensors[i]["name"].getString();
+      strncpy(inputs[i], nvName.c_str(), sizeof(NNPIObjectName));
+      inputTensors.insert(nvName);
+    }
+
+    importer.setUsedTensors(inputTensors, {name});
+    return nnpiNetworkAddConcatOp(importer.getNetwork(), name.c_str(), inputs,
+                                  numInputs, name.c_str(),
+                                  kwargs["dim"].getInt());
+  }
+};
+
 class ConvertNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -344,6 +370,7 @@ static std::unordered_map<
     {"acc_ops.adaptive_avg_pool2d",
      std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
     {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},
+    {"acc_ops.cat", glow::make_unique<ConcatNodeImporter>()},
     {"acc_ops.max_pool2d",
      std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
     {"acc_ops.quantize_per_tensor", std::make_unique<ConvertNodeImporter>()},
