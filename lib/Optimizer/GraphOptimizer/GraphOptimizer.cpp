@@ -1067,24 +1067,6 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         continue;
       }
     }
-
-    // Sink Clip below Reshape nodes.
-    if (auto *RN = dyn_cast<ReshapeNode>(node)) {
-      auto *CN = dyn_cast<ClipNode>(RN->getInput());
-      if (!CN) {
-        continue;
-      }
-
-      ReshapeNode *newRN = F->createReshape(RN->getName(), CN->getInput(),
-                                            RN->getDims(), RN->getLayout());
-      ClipNode *newCN = F->createClip(CN->getName(), newRN->getResult(),
-                                      CN->getMin(), CN->getMax());
-      RN->getResult().replaceAllUsesOfWith(newCN->getResult());
-      newRN->setPredicate(RN->getPredicate());
-      newCN->setPredicate(CN->getPredicate());
-      changed = true;
-      continue;
-    }
   } // For all nodes in the graph.
 
   // Transformations to sink nodes below Slice. Outlined into a separate loop to
