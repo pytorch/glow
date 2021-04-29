@@ -102,6 +102,7 @@ extern bool EnableCustomDSPKernels;
 extern bool DumpCompilerData;
 extern bool UsePerPartitionIcetConfig;
 extern std::string InjectedIAOpKernelPath;
+extern bool DumpCustomKernelFiles;
 } // namespace flags
 } // namespace nnpi
 } // namespace glow
