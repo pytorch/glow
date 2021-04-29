@@ -1153,6 +1153,48 @@ bool HoistCode::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Reshape Sinking.
+bool SinkReshapes::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    auto *node = &N;
+
+    // Sink Reshape below eltwise nodes.
+    if (node->isDataParallel() && !node->hasSideEffects()) {
+      // Unary eltwise nodes.
+      if (node->getNumInputs() == 1 && node->getNumResults() == 1) {
+        auto *RS = dyn_cast<ReshapeNode>(node->getNthInput(0));
+        if (!RS) {
+          continue;
+        }
+
+        // Create new eltwise node.
+        auto in = RS->getInput();
+        auto out = node->getNthResult(0);
+        auto newTy =
+            F->getParent()->uniqueTypeWithNewShape(out.getType(), in.dims());
+        auto *newN = F->addNode(node->clone());
+        newN->setNthInput(0, in);
+        newN->setTypeUnsafe(0, newTy);
+        newN->setPredicate(node->getPredicate());
+
+        // Create new Reshape.
+        auto *newRS = F->createReshape(RS->getName(), newN,
+                                       RS->getResult().getType()->dims());
+        newRS->setPredicate(node->getPredicate());
+        out.replaceAllUsesOfWith(newRS->getResult());
+
+        changed = true;
+        continue;
+      }
+    }
+  }
+  return changed;
+}
+
 /// Remove unnecessary padding and reduce filters for Convolution nodes with
 /// small input tensors.
 bool OptimizeSmallConv::run(Function *F, const CompilationContext &cctx) {

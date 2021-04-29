@@ -7977,6 +7977,46 @@ TEST_F(GraphOptz, SinkReshapeBelowConvertTo) {
   checkNumericalEquivalence(0.f);
 }
 
+TEST_F(GraphOptz, SinkReshapeBelowUnaryEltwiseOps) {
+  const dim_t dimsIn[] = {10, 10};
+  const dim_t dimsOut[] = {5, 5, 4};
+
+  auto *in = mod_.createPlaceholder(ElemKind::FloatTy, dimsIn, "in", false);
+  auto *RN = F_->createReshape("reshape", in, dimsOut);
+  auto *AN = F_->createAbs("abs", RN);
+  auto *SN = F_->createSin("sin", AN);
+  auto *CN = F_->createClip("clip", SN, -4.f, 5.f);
+  auto *TN = F_->createTanh("tanh", CN);
+  auto *save = F_->createSave("ret", TN);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  auto *optSave =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
+  ASSERT_TRUE(optSave);
+  auto *optRN = llvm::dyn_cast<ReshapeNode>(optSave->getInput());
+  ASSERT_TRUE(optRN);
+  EXPECT_EQ(optRN->getResult().dims(), llvm::makeArrayRef(dimsOut));
+  auto *optTN = llvm::dyn_cast<TanhNode>(optRN->getInput());
+  ASSERT_TRUE(optTN);
+  EXPECT_EQ(optTN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optCN = llvm::dyn_cast<ClipNode>(optTN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_FLOAT_EQ(optCN->getMin(), CN->getMin());
+  EXPECT_FLOAT_EQ(optCN->getMax(), CN->getMax());
+  EXPECT_EQ(optCN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optSN = llvm::dyn_cast<SinNode>(optCN->getInput());
+  ASSERT_TRUE(optSN);
+  EXPECT_EQ(optSN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optAN = llvm::dyn_cast<AbsNode>(optSN->getInput());
+  ASSERT_TRUE(optAN);
+  EXPECT_EQ(optAN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+
+  bindings_.allocate(in)->getHandle<float>().randomize(-30.f, 30.f,
+                                                       mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
 TEST_F(GraphOptz, OptConvertToDequantize) {
   auto *I =
       mod_.createPlaceholder(ElemKind::Int8QTy, {32, 64}, 0.2f, 1, "A", false);
