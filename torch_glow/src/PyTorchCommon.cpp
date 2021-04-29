@@ -155,6 +155,12 @@ getHostManager(const PyTorchLoaderSettings &settings) {
     }
 
     glow::runtime::HostConfig hostConfig;
+
+    hostConfig.maxActiveRequests = glow::flags::MaxActiveRequests;
+    hostConfig.maxQueueSize = glow::flags::MaxQueueSize;
+    hostConfig.executorThreads = glow::flags::ExecutorThreads;
+
+    // now overwrite existing config if torch_glow gflag is present
     hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
 
     // Pass these hostmanager flags
