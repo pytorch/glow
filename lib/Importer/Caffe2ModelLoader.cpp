@@ -1351,7 +1351,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU" ||
       typeName == "Copy" || typeName == "EnsureCPUOutput" ||
-      typeName == "EnsureDense") {
+      typeName == "EnsureDense" || typeName == "Dropout") {
     // Glow does not support any of these ops now, so implement them as
     // no-ops. Note: Implement this as a no-op reshape because these ops may
     // have partition information, and we need a node to maintain the parent
