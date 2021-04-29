@@ -6459,6 +6459,15 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     AdaptiveAvgPoolNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::ROIAlignNodeKind: {
+        splitDims[ROIAlignNode::BoxesIdx] = 0;
+        splitDims[ROIAlignNode::BatchIndicesIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ROIAlignNode::BoxesIdx,
+                    ROIAlignNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::ReshapeNodeKind: {
         splitDims[ReshapeNode::InputIdx] = 0;
         const dim_t batchSize =

@@ -5676,6 +5676,54 @@ TEST_F(GraphOptz, ParallelizeData_AdaptiveAvgPool) {
   checkNumericalEquivalence();
 }
 
+/// Test Splitting RoIAlign into multiple RoIAligns.
+TEST_F(GraphOptz, ParallelizeData_RoIAlign) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 5, 5, 8}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *boxes = mod_.createPlaceholder(ElemKind::FloatTy, {6, 4}, "roi", false);
+  bindings_.allocate(boxes)->getHandle<float>() = {
+      0, 0, 3, 3, 0, 0, 3, 3, 0, 0, 3, 3, 0, 0, 3, 3, 0, 0, 3, 3, 0, 0, 3, 3};
+  auto *batchIndices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {6}, "roi", false);
+  bindings_.allocate(batchIndices)
+      ->getHandle<int64_t>()
+      .randomize(0, 3, mod_.getPRNG());
+
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {6, 1, 1, 8}, "output", false);
+  bindings_.allocate(output);
+
+  auto *aap = F_->createROIAlign("ROIAlign", input1, boxes, batchIndices, 1, 1,
+                                 0, 1, false);
+  F_->createSave("save", aap, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[aap] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(), parOpts, 3));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 3 RoIAligns
+  EXPECT_EQ(3, countNodeKind(F_, Kinded::Kind::ROIAlignNodeKind));
+
+  // One concat to bring all of the parallelized sliced RoIAligns
+  // together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
 /// Test Splitting ChannelwiseQuantizedConvolution into multiple
 /// ChannelwiseQuantizedConvolutions.
 TEST_F(GraphOptz, ParallelizeData_ChannelwiseQuantizedConvolution) {
