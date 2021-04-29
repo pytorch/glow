@@ -938,6 +938,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen("Erf");
 
+  BB.newInstr("NonZero")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Cond", OperandKind::In)
+      .inplaceOperand({"Dest", "Cond"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameElementType, {"Cond", "ElemKind::BoolTy"})
+      .autoIRGen("NonZero");
+
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Cond", OperandKind::In)

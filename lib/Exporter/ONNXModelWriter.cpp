@@ -2349,6 +2349,7 @@ DEF_ALL_WRITER_NODE(EmbeddingBag)
 DEF_ALL_WRITER_NODE(Embedding)
 DEF_ALL_WRITER_NODE(BitwiseNot)
 DEF_ALL_WRITER_NODE(GaussianFill)
+DEF_ALL_WRITER_NODE(NonZero)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpNEQ)
