@@ -514,6 +514,8 @@ int run() {
         glow::flags::SparseNNPartitioningBalancePerfModel;
     cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
         glow::flags::SparseNNPartitioningPairLNWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
+        glow::flags::SparseNNPartitioningPairTileWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
@@ -557,6 +559,10 @@ int run() {
   if (glow::runtime::flags::EnableDRT) {
     LOG(INFO) << "Glow DRT Enabled";
     cctx.enableDRT = true;
+  }
+  if (glow::onnxifi::flags::SaveDAG) {
+    LOG(INFO) << "Serializing DAG after optimization and partitioning.";
+    cctx.serializeCompiledDAG = true;
   }
 
   // Load deferred weights if applicable

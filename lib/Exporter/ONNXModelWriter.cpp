@@ -836,13 +836,19 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
   // in inputValueInfos_ and outputValueInfos_. Now we write it all out in order
   // according to indices provided in loadedPHNames_.
   if (loadedPHNames_) {
-    RETURN_ERR_IF_NOT(
-        inputValueInfos_.size() + outputValueInfos_.size() ==
-            loadedPHNames_->size(),
-        strFormat("Number of buffered inputs and outputs %lu didn't match the "
-                  "number of loadedPHNames %lu",
-                  inputValueInfos_.size() + outputValueInfos_.size(),
-                  loadedPHNames_->size()));
+    const bool ioNumMismatch =
+        (inputValueInfos_.size() + outputValueInfos_.size() !=
+         loadedPHNames_->size());
+
+    // If total number of inputs and outputs doesn't match the number of
+    // placeholders, then log an error message and let the next for-loop find
+    // the culprits.
+    if (ioNumMismatch) {
+      LOG(ERROR) << "Number of buffered inputs and outputs "
+                 << (inputValueInfos_.size() + outputValueInfos_.size())
+                 << " didn't match the number of loadedPHNames "
+                 << loadedPHNames_->size();
+    }
 
     // If we have the loaded PH names map, then we need to reorder the inputs
     // and outputs to follow the same order as provided in the loadedPHNames_.
@@ -859,6 +865,12 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
         return MAKE_ERR("PH must either be in inputs or outputs: " +
                         PH->getName().str());
       }
+    }
+
+    // If didn't find bad placeholders, then it must be some bad inputs/outputs.
+    if (ioNumMismatch) {
+      return MAKE_ERR("Found some inputs/outputs that don't have corresponding "
+                      "placeholders");
     }
 
     // Now have IO in order matching loadedPHNames_, so finally write them out.
@@ -1117,6 +1129,8 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::FLOAT16;
   case ElemKind::BFloat16Ty:
     return TensorType::BFLOAT16;
+  case ElemKind::Float64Ty:
+    return TensorType::DOUBLE;
   case ElemKind::Int8QTy:
     return TensorType::INT8;
   case ElemKind::UInt8FusedQTy:
@@ -1348,6 +1362,11 @@ Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
   addValueAttribute(proto, "perm", node->getShuffle());
 
   return writeAllWithNode("Transpose", node, graph, proto);
+}
+
+Error ONNXModelWriter::writeCollectRpnProposals(
+    const CollectRpnProposalsNode *node, GraphType &graph) {
+  return writeAllWithNode("CollectRpnProposals", node, graph, graph.add_node());
 }
 
 Error ONNXModelWriter::writeFlip(const FlipNode *node, GraphType &graph) {
@@ -2067,6 +2086,15 @@ void writeTensorwiseQuantizedPool(const T *node, const std::string &op,
 
   if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
     addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+    addValueAttribute(proto, "out_scale",
+                      APN->getType(AvgPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      APN->getType(AvgPoolNode::ResultIdx)->getOffset());
+  } else if (auto *MPN = llvm::dyn_cast<MaxPoolNode>(node)) {
+    addValueAttribute(proto, "out_scale",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getScale());
+    addValueAttribute(proto, "out_offset",
+                      MPN->getType(MaxPoolNode::ResultIdx)->getOffset());
   }
 
   proto->add_input(node->getInput().getNode()->getName());
@@ -2311,6 +2339,7 @@ DEF_ALL_WRITER_NODE(Tanh)
 DEF_ALL_WRITER_NODE(IsNaN)
 DEF_ALL_WRITER_NODE(Sigmoid)
 DEF_ALL_WRITER_NODE(Swish)
+DEF_ALL_WRITER_NODE(SoftPlus)
 DEF_ALL_WRITER_NODE(LengthsSum)
 DEF_ALL_WRITER_NODE(BatchOneHot)
 DEF_ALL_WRITER_NODE(LengthsToRanges)
@@ -2319,6 +2348,7 @@ DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(EmbeddingBag)
 DEF_ALL_WRITER_NODE(Embedding)
 DEF_ALL_WRITER_NODE(BitwiseNot)
+DEF_ALL_WRITER_NODE(GaussianFill)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpNEQ)
@@ -2332,6 +2362,7 @@ DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(NonMaxSuppression)
 DEF_ALL_WRITER_NODE(TFLiteDetectionPostProcess)
+DEF_ALL_WRITER_NODE(HardSwish)
 DEF_ALL_WRITER_NODE(ConvTranspose)
 DEF_ALL_WRITER_NODE(Logit)
 DEF_ALL_WRITER_NODE(Truncate)
@@ -2579,6 +2610,7 @@ DEF_UNSUPPORTED_STORAGE(Storage)
 DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProduct)
 DEF_UNSUPPORTED_NODE(Broadcast)
 DEF_UNSUPPORTED_NODE(SGD)
+DEF_UNSUPPORTED_NODE(SparseLabelSplit)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
 DEF_UNSUPPORTED_NODE(ExternalFunctionCall)

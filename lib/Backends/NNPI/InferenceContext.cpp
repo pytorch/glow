@@ -30,6 +30,68 @@
 namespace glow {
 namespace runtime {
 
+namespace {
+
+template <class T>
+static bool sanitizeIndices(const Tensor *indicesTensor, size_t tableHeight) {
+  auto indices = indicesTensor->getHandle<T>();
+  size_t indicesLen = indices.getRealNumElements();
+  // indices in [0, n)
+  for (auto i = 0; i < indicesLen; i++) {
+    LOG_AND_RETURN_IF(
+        ERROR, indices.raw(i) < 0 || indices.raw(i) >= tableHeight,
+        "index out of range " + to_string(indices.raw(i)) + " at idx " +
+            to_string(i) + " tableHeight " + to_string(tableHeight),
+        false);
+  }
+
+  return true;
+}
+
+template <class T>
+static bool sanitizeLengths(const Tensor *lengthsTensor,
+                            const size_t indicesLen) {
+  auto lengths = lengthsTensor->getHandle<T>();
+
+  // sum(lens) = len(indices)
+  size_t totalLensSum = std::accumulate(lengths.begin(), lengths.end(), 0U);
+
+  LOG_AND_RETURN_IF(
+      ERROR, indicesLen != totalLensSum,
+      "sanitization failed, indices length " + to_string(indicesLen) +
+          " different from sum of lengths " + to_string(totalLensSum),
+      false);
+
+  return true;
+}
+
+template <class T>
+static bool sanitizeOffsets(const Tensor *offsetsTensor,
+                            const size_t indicesLen) {
+  auto offsets = offsetsTensor->getHandle<T>();
+
+  size_t offsetsLen = offsets.getRealNumElements();
+  for (auto i = 0; i < offsetsLen - 1; i++) {
+    LOG_AND_RETURN_IF(ERROR, offsets.raw(i) >= offsets.raw(i + 1),
+                      "offset should be monotonically increasing " +
+                          to_string(offsets.raw(i)) + " " +
+                          to_string(offsets.raw(i + 1)),
+                      false);
+  }
+  // last offset = len(indices)
+  size_t lastOffset = offsets.raw(offsetsLen - 1);
+
+  LOG_AND_RETURN_IF(
+      ERROR, indicesLen != lastOffset,
+      "sanitization failed, indices length " + std::to_string(indicesLen) +
+          " different from the last offset " + std::to_string(lastOffset),
+      false);
+
+  return true;
+}
+
+} // namespace
+
 InferenceContext::InferenceContext()
     : nnpiNetwork_(NNPI_INVALID_NNPIHANDLE), device_(NNPI_INVALID_NNPIHANDLE),
       inferCmd_(NNPI_INVALID_NNPIHANDLE), commandList_(NNPI_INVALID_NNPIHANDLE),
@@ -651,45 +713,6 @@ void InferenceContext::dumpRuntime() const {
   }
 }
 
-template <class T>
-static bool sanitizeSLS(Handle<int64_t> &indices, Handle<T> &lenOrOffset,
-                        size_t tableHeight, bool isOffset) {
-  size_t totalLensSum;
-  size_t indicesLen = indices.getRealNumElements();
-  size_t lenOrOffsetLen = lenOrOffset.getRealNumElements();
-  // indices in [0, n)
-  for (auto i = 0; i < indicesLen; i++) {
-    LOG_AND_RETURN_IF(ERROR,
-                      indices.raw(i) < 0 || indices.raw(i) >= tableHeight,
-                      "index out of range " + to_string(indices.raw(i)) +
-                              " at idx " + to_string(i) + " tableHeight "
-                          << to_string(tableHeight),
-                      false);
-  }
-  // last offset = len(indices)
-  if (isOffset) {
-    for (auto i = 0; i < lenOrOffsetLen - 1; i++) {
-      LOG_AND_RETURN_IF(ERROR, lenOrOffset.raw(i) >= lenOrOffset.raw(i + 1),
-                        "offset should be monotonically increasing " +
-                            to_string(lenOrOffset.raw(i)) + " " +
-                            to_string(lenOrOffset.raw(i + 1)),
-                        false);
-    }
-    totalLensSum = lenOrOffset.raw(lenOrOffsetLen - 1);
-  } else {
-    // sum(lens) = len(indices)
-    totalLensSum = std::accumulate(lenOrOffset.begin(), lenOrOffset.end(), 0U);
-  }
-
-  LOG_AND_RETURN_IF(
-      ERROR, indicesLen != totalLensSum,
-      "santize failed, indices length " + std::to_string(indicesLen) +
-          " different from sum of lengths " + std::to_string(totalLensSum),
-      false);
-
-  return true;
-}
-
 bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
   if (flags::SanitizeInputsPercent == 0 ||
       folly::Random::rand32() % 100 > flags::SanitizeInputsPercent) {
@@ -726,8 +749,19 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
             false);
       }
     }
-    auto I = indices->getHandle<int64_t>();
+
     bool ret;
+
+    // Sanitize indices
+    if (indices->getElementType() == ElemKind::Int64ITy) {
+      ret = sanitizeIndices<int64_t>(indices, sls.tableHeight);
+    } else if (indices->getElementType() == ElemKind::Int32ITy) {
+      ret = sanitizeIndices<int32_t>(indices, sls.tableHeight);
+    } else {
+      LOG_AND_RETURN_IF(ERROR, true, "unsupported element type for indices",
+                        false);
+    }
+
     if (sls.isEmbeddingBag) {
       // EmbeddingBag case
       auto *offsets = bindings.get(sls.offsets);
@@ -737,15 +771,12 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
       }
 
       if (offsets->getElementType() == ElemKind::Int32ITy) {
-        auto O = offsets->getHandle<int32_t>();
-        ret = sanitizeSLS<int32_t>(I, O, sls.tableHeight, sls.isEmbeddingBag);
+        ret = sanitizeOffsets<int32_t>(offsets, indicesLen);
       } else if (offsets->getElementType() == ElemKind::Int64ITy) {
-        auto O = offsets->getHandle<int64_t>();
-        ret = sanitizeSLS<int64_t>(I, O, sls.tableHeight,
-
-                                   sls.isEmbeddingBag);
+        ret = sanitizeOffsets<int64_t>(offsets, indicesLen);
       } else {
-        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type", false);
+        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type for offsets",
+                          false);
       }
     } else {
       // SLS case
@@ -756,17 +787,12 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
       }
 
       if (lengths->getElementType() == ElemKind::Int32ITy) {
-        auto L = lengths->getHandle<int32_t>();
-        ret = sanitizeSLS<int32_t>(I, L, sls.tableHeight,
-
-                                   sls.isEmbeddingBag);
+        ret = sanitizeLengths<int32_t>(lengths, indicesLen);
       } else if (lengths->getElementType() == ElemKind::Int64ITy) {
-        auto L = lengths->getHandle<int64_t>();
-        ret = sanitizeSLS<int64_t>(I, L, sls.tableHeight,
-
-                                   sls.isEmbeddingBag);
+        ret = sanitizeLengths<int64_t>(lengths, indicesLen);
       } else {
-        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type", false);
+        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type for lengths",
+                          false);
       }
     }
     LOG_AND_RETURN_IF(ERROR, !ret, "failed SLS sanitization", false);

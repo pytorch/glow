@@ -31,7 +31,7 @@ def transform_image(image):
 
 def run_model(model, image, use_glow, backend, print_graph):
     if use_glow:
-        torch_glow.enableFusionPass()
+        torch_glow.enableFusionPass_DO_NOT_USE_THIS()
         if backend:
             torch_glow.setGlowBackend(backend)
 

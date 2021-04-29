@@ -146,7 +146,8 @@ following command should install the required dependencies:
       libprotobuf-dev llvm-8 llvm-8-dev ninja-build protobuf-compiler wget \
       opencl-headers libgoogle-glog-dev libboost-all-dev \
       libdouble-conversion-dev libevent-dev libssl-dev libgflags-dev \
-      libjemalloc-dev libpthread-stubs0-dev
+      libjemalloc-dev libpthread-stubs0-dev liblz4-dev libzstd-dev libbz2-dev \
+      libsodium-dev libfmt-dev
   ```
 
 [Note: Ubuntu 16.04 and 18.04 ship with llvm-6 and need to be upgraded before building Glow. Building Glow on Ubuntu 16.04 with llvm-7 fails because llvm-7 xenial distribution uses an older c++ ABI, however building Glow on Ubuntu 18.04 with llvm-7 has been tested and is successful]

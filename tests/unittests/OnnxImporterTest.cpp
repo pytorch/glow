@@ -2643,7 +2643,8 @@ TEST_F(OnnxImporterTest, gatherOpConstantFoldingAndReshape) {
 static void importSliceTest(std::string fileName, const char *inputName,
                             llvm::ArrayRef<dim_t> inputShape,
                             llvm::ArrayRef<dim_t> starts,
-                            llvm::ArrayRef<dim_t> outputShape) {
+                            llvm::ArrayRef<dim_t> outputShape,
+                            bool expectLoadError = false) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -2658,6 +2659,12 @@ static void importSliceTest(std::string fileName, const char *inputName,
   getNCHWData(&data, inputShape[0], inputShape[1], inputShape[2],
               inputShape[3]);
   {
+    if (expectLoadError) {
+      Error err = Error::empty();
+      ONNXModelLoader(NetFilename, {inputName}, {&data.getType()}, *F, &err);
+      EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
+      return;
+    }
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
@@ -2735,6 +2742,25 @@ TEST_F(OnnxImporterTest, importSliceNoAxes) {
   importSliceTest("sliceNoAxes.onnxtxt", "data", {2, 3, 3, 3} /* input */,
                   {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
                   {2, 1, 2, 2} /* output */);
+}
+
+TEST_F(OnnxImporterTest, importSliceInvalidAxes) {
+  importSliceTest("sliceInvalidAxes.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */, true);
+}
+
+TEST_F(OnnxImporterTest, importSliceWithStep) {
+  importSliceTest("sliceWithStep.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */);
+}
+
+TEST_F(OnnxImporterTest, importSliceWithUnsupportedStep) {
+  importSliceTest("sliceWithUnsupportedStep.onnxtxt", "data",
+                  {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */, true);
 }
 
 static void importCast(llvm::StringRef fileName, llvm::StringRef inputName,
@@ -3842,6 +3868,41 @@ TEST_F(OnnxImporterTest, importNMSInitializer) {
   ASSERT_TRUE(NMS);
   EXPECT_EQ(NMS->dims(0)[0], 3);
   EXPECT_EQ(NMS->getCenterPointBox(), 0);
+}
+
+/// Test loading NMS using optional parameters from an ONNX model.
+TEST_F(OnnxImporterTest, importNMSInitOptionalParams) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/NonMaxSuppressionOptionalParams.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor boxes(ElemKind::FloatTy, {8, 4});
+    boxes.zero();
+
+    Tensor scores(ElemKind::FloatTy, {8});
+    scores.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"boxes", "scores"},
+                           {&boxes.getType(), &scores.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("indices"));
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  NonMaxSuppressionNode *NMS =
+      llvm::dyn_cast<NonMaxSuppressionNode>(save->getInput().getNode());
+  ASSERT_TRUE(NMS);
+  EXPECT_EQ(NMS->dims(0)[0], 3);
+  EXPECT_EQ(NMS->getCenterPointBox(), 0);
+  EXPECT_EQ(NMS->getMaxOutputBoxesPerClass(), 3);
+  EXPECT_EQ(NMS->getIouThreshold(), 0);
+  EXPECT_EQ(NMS->getScoreThreshold(), 0);
 }
 
 /// Test loading NMS using Constant Tensors op from an ONNX model.
@@ -5434,6 +5495,40 @@ TEST(onnx, importNames) {
     // Make sure original names are retained in the legalized names.
     EXPECT_EQ(prevNode->getName().find(origNames[i]), 0);
     currNode = prevNode;
+  }
+}
+
+TEST(onnx, importClipDefaultMin) {
+  // Test loading Clip in opset v11 format where min(default) and max(2) are
+  // passed as inputs.
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/clip_default.onnxtxt");
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *output_0;
+
+  Tensor X(ElemKind::FloatTy, {1, 2, 2, 2});
+  X.getHandle() = {-3, -2, -1, 0, 1, 2, 3, 4};
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"X"}, {&X.getType()}, *F);
+    output_0 = EXIT_ON_ERR(onnxLD.getOutputByName("output0"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"X"}, {&X});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  std::vector<dim_t> expectedDims = {1, 2, 2, 2};
+  std::vector<float> expectedValues = {-3, -2, -1, 0, 1, 2, 2, 2};
+  auto result = bindings.get(output_0)->getHandle();
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+
+  for (size_t i = 0; i < 8; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
 }
 

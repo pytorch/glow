@@ -59,6 +59,34 @@ class TestLSTM(utils.TorchGlowTestCase):
             model, inputs, h, c, fusible_ops={"aten::lstm"}, skip_to_glow=True
         )
 
+    def test_lstm_batch_first(self):
+        """Basic test of the PyTorch lstm Node with batch first."""
+
+        class SimpleBatchFirstLSTM(nn.Module):
+            def __init__(self):
+                super(SimpleBatchFirstLSTM, self).__init__()
+                self.rnn = torch.nn.LSTM(12, 10, 1, batch_first=True)
+                w2 = torch.randn(40, 10)
+                w1 = torch.randn(40, 12)
+                b1 = torch.randn(40)
+                b2 = torch.randn(40)
+                self.rnn.training = False
+                self.rnn.weight_ih_l0 = torch.nn.Parameter(w1)
+                self.rnn.weight_hh_l0 = torch.nn.Parameter(w2)
+                self.rnn.bias_ih_l0 = torch.nn.Parameter(b1)
+                self.rnn.bias_hh_l0 = torch.nn.Parameter(b2)
+
+            def forward(self, inputs, h, c):
+                return self.rnn(inputs, (h, c))
+
+        inputs = torch.randn(3, 10, 12)
+        h = torch.randn(1, 3, 10)
+        c = torch.randn(1, 3, 10)
+        model = SimpleBatchFirstLSTM()
+        utils.compare_tracing_methods(
+            model, inputs, h, c, fusible_ops={"aten::lstm"}, skip_to_glow=True
+        )
+
     def test_lstm_bidirectional(self):
         """Bidirectional test of the PyTorch lstm Node on Glow."""
 

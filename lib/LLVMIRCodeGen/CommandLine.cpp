@@ -77,6 +77,11 @@ llvm::cl::opt<std::string>
                  llvm::cl::desc("External LLVM compiler (e.g. llc) to use for "
                                 "compiling LLVM bitcode into machine code"));
 
+llvm::cl::opt<std::string>
+    llvmOpt("llvm-opt",
+            llvm::cl::desc("External LLVM-Opt compiler (opt) to use for "
+                           "optimizing LLVM bitcode."));
+
 llvm::cl::list<std::string> llvmCompilerOptions(
     "llvm-compiler-opt",
     llvm::cl::desc("Options to pass to the external LLVM compiler"),

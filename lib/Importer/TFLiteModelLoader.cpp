@@ -1097,6 +1097,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_DEQUANTIZE) {
     return loadUnaryArithmetic(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_HARD_SWISH) {
+    return loadUnaryArithmetic(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_FLOOR) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -1183,6 +1186,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   }
   if (opCode == tflite::BuiltinOperator_SLICE) {
     return loadSlice(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_RESIZE_BILINEAR) {
+    return loadResizeBilinear(op, opInfo);
   }
   if (opCode == tflite::BuiltinOperator_SIN) {
     return loadUnaryArithmetic(op, opInfo);
@@ -1279,6 +1285,8 @@ Error TFLiteModelLoader::loadUnaryArithmetic(const tflite::Operator *op,
   NodeValue output;
   if (opCode == tflite::BuiltinOperator_LOGISTIC) {
     output = F_->createSigmoid(opInfo.name, outTy, input);
+  } else if (opCode == tflite::BuiltinOperator_HARD_SWISH) {
+    output = F_->createHardSwish(opInfo.name, outTy, input);
   } else if (opCode == tflite::BuiltinOperator_RELU) {
     output = F_->createRELU(opInfo.name, input, outTy);
   } else if (opCode == tflite::BuiltinOperator_RELU_N1_TO_1) {
@@ -2011,6 +2019,29 @@ Error TFLiteModelLoader::loadSlice(const tflite::Operator *op,
   }
 
   NodeValue output = F_->createSlice(opInfo.name, input, start, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadResizeBilinear(const tflite::Operator *op,
+                                            const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  const auto *opts = op->builtin_options_as_ResizeBilinearOptions();
+
+  bool align_corners = opts->align_corners();
+  if (align_corners) {
+    LOG(WARNING) << opErrMsg(opInfo, "Align Corners option is ignored!");
+  }
+
+  bool half_pixel_centers = opts->half_pixel_centers();
+  if (half_pixel_centers) {
+    LOG(WARNING) << opErrMsg(opInfo, "Half Pixel Centers option is ignored!");
+  }
+
+  NodeValue output = F_->createResizeBilinear(opInfo.name, input, outTy);
   return setOutputNodeValue(op, output);
 }
 

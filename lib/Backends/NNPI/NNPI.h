@@ -20,6 +20,7 @@
 #include "NNPIOptions.h"
 #include "glow/Backend/Backend.h"
 #include <folly/dynamic.h>
+#include <vector>
 
 namespace glow {
 
@@ -37,6 +38,7 @@ public:
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "NNPI"; }
   static unsigned numDevices();
+  static std::vector<unsigned> scanDeviceIDs();
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;

@@ -1024,6 +1024,21 @@ int main(int argc, char **argv) {
           "Performs the gradient operation for BatchedPairwiseDotProduct");
 
   //===--------------------------------------------------------------------===//
+  //                Fillers
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("GaussianFill")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Mean")
+      .addMember(MemberType::Float, "Scale")
+      .addMember(MemberType::Float, "Seed")
+      .addResultFromCtorArg()
+      .setDocstring("Fills an output tensor with samples drawn from a normal "
+                    "distribution specified by the mean and standard deviation "
+                    "arguments. The output tensor shape is determined by the "
+                    "input shape if provided, and shape otherwise");
+
+  //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
 
@@ -1034,6 +1049,12 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
+
+  BB.newNode("HardSwish")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Applies HardSwish to each element in the Input tensor.");
 
   BB.newNode("Gelu")
       .addInput("Input")
@@ -1088,6 +1109,13 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Applies LeakyReLU = x for positive x and alpha * x for negative x "
           "to each element in the Input tensor.");
+
+  BB.newNode("SoftPlus")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs SoftPlus, ln(exp(x) + 1), to each element in the "
+                    "Input tensor.");
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations
@@ -1248,6 +1276,16 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Broadcast the Input tensor to TargetDim using Axis to indicate the "
           "offset between Input dimension and TargetDim");
+
+  BB.newNode("SparseLabelSplit")
+      .addInput("Lengths")
+      .addInput("Indices")
+      .addInput("Values")
+      .addMember(MemberType::Unsigned, "NumLabels")
+      .addResultFromCtorArg("LabelValues")
+      .addResultFromCtorArg("ExampleIds")
+      .addResultFromCtorArg("GradientOffsetMap")
+      .setDocstring("TODO");
 
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
@@ -1581,6 +1619,23 @@ int main(int argc, char **argv) {
           "img_width, img_scale>."
           "If proposals from multiple images in a batch are present, they "
           "should be grouped sequentially and in incremental order.");
+
+  BB.newNode("CollectRpnProposals")
+      .addMember(MemberType::VectorNodeValue, "RoisIn")
+      .addMember(MemberType::VectorNodeValue, "RoisProbsIn")
+      .addMember(MemberType::Int64, "RpnMaxLevel")
+      .addMember(MemberType::Int64, "RpnMinLevel")
+      .addMember(MemberType::Unsigned, "RpnPostNmsTopN")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Given RpnMinLevel, RpnMaxLevel and RpnPostNmsTopN "
+          "CollectRpnProposals merges RoisIn based on "
+          "RoisProbsIn and returns top proposals limited to "
+          "RpnPostNmsTopN total, size (n x B), where B is "
+          "box dimensions and based on dimension of input rois. "
+          "Format for upright boxes is (image_index, x1, y1, x2, y2)."
+          "Format for rotated boxes (image_index, ctr_x, ctr_y, w, h, angle)"
+          "RpnPostNmsTopN should be greater than zero");
 
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes

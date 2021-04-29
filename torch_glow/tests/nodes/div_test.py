@@ -96,6 +96,7 @@ class TestDiv(utils.TorchGlowTestCase):
                 SimpleDivModule(),
                 torch.tensor([4]),
                 torch.tensor([10]),
+                {"NNPI"},  # skip_for_backends
             ),
             # This one will go through (a * a) / b.item() and b.item() is an integer.
             lambda: (
@@ -103,8 +104,21 @@ class TestDiv(utils.TorchGlowTestCase):
                 SimpleDivModule(),
                 torch.tensor([4]),
                 torch.tensor(10),
+                {"NNPI"},  # skip_for_backends
+            ),
+            lambda: (
+                "int64",
+                SimpleDivModule(),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+                torch.torch.randint(-10, 10, (2, 4), dtype=torch.int64),
+                {"NNPI"},  # skip_for_backends
             ),
         ]
     )
-    def test_div(self, _, module, a, b):
-        utils.compare_tracing_methods(module, a, b, fusible_ops={"aten::div"})
+    def test_div(self, _, module, a, b, skip_for_backends={}):
+        utils.run_comparison_tests(
+            module,
+            (a, b),
+            fusible_ops={"aten::div"},
+            skip_for_backends=skip_for_backends,
+        )

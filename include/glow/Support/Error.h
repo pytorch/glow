@@ -515,9 +515,9 @@ public:
   GlowError(const GlowError &) = delete;
   GlowError &operator=(const GlowError &) = delete;
 
-  /// Overload of operator bool() that \returns true if no ErrorValue is
-  /// contained contained.
-  /// NOTE: This marks the Error as checked only if an ErrorValue is contained.
+  /// Overload of operator bool() that \returns true if an ErrorValue is
+  /// contained.
+  /// NOTE: This marks the Error as checked only if no ErrorValue is contained.
   /// If an ErrorValue is contained then that ErrorValue must be handled in
   /// order to mark as checked.
   explicit operator bool() {

@@ -86,6 +86,9 @@ struct PrecisionConfiguration {
   /// If convertToFP16, whether to convert Constants.
   bool convertConstantsToFP16{false};
 
+  /// If convertToFp16, whether to skip convert bias from fp32 to fp16 in FC
+  bool skipBiasFp32tofp16Convert{false};
+
   /// If convertToFP16, whether to clip out-of-range FP values to the min/max of
   /// fp16.
   bool clipFP16{false};
@@ -204,6 +207,10 @@ struct OptimizationOptions {
   /// nodes immediately following SLS into SLS partitions
   bool sparseNNPartitioningPairLNWithSLS{false};
 
+  /// If true, SparseNN partiitoning scheme will move Tile
+  /// nodes immediately following SLS for user embeddings into SLS partitions
+  bool sparseNNPartitioningPairTileWithSLS{false};
+
   /// The number of cards over which to split SLS tables when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCards{1};
@@ -268,6 +275,12 @@ struct CompilationContext {
 
   /// If true the HostManager will try to use all available devices on the host.
   bool saturateHost{false};
+
+  /// If greater than zero, this is the number of available devices that are
+  /// used when saturateHost is enabled.
+  /// If saturateKDevices is zero and saturateHost is enabled, all available
+  /// devices will be saturated.
+  unsigned saturateKDevices{0};
 
   /// Number of max active requests per instance of this network.
   unsigned maxActiveRequestsPerInstance{48};
@@ -390,10 +403,11 @@ struct CompilationContext {
                       "Cannot currently perform elem kind merging into PHs "
                       "when also preventing constant modification.");
 
-    RETURN_ERR_IF_NOT(!(serializeCompiledDAG &&
-                        !optimizationOpts.delayAndRecordConstantModification),
-                      "When serializing the compiled DAG, must also enable "
-                      "delayAndRecordConstantModification.");
+    RETURN_ERR_IF_NOT(
+        !(serializeCompiledDAG && skipProvisioning &&
+          !optimizationOpts.delayAndRecordConstantModification),
+        "When serializing the compiled DAG while skipping provisioning, must "
+        "also enable delayAndRecordConstantModification.");
 
     RETURN_ERR_IF_NOT(
         !precisionConfig.loadUniquedDummyQParams ||

@@ -236,6 +236,9 @@ public:
   /// Moves all TraceEvents and thread names in \p other into this context.
   /// This will clear in the input TraceContext.
   void merge(std::unique_ptr<TraceContext> other) { merge(other.get()); }
+
+  /// Copies all TraceEvents and thread names in \p other into this context.
+  void copy(TraceContext *other);
 };
 
 /// These macros predicate the logging of a TraceEvent on a validity of the

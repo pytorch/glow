@@ -29,6 +29,7 @@
 #include <chrono>
 #include <fstream>
 #include <glog/logging.h>
+#include <numeric>
 #include <unordered_map>
 
 using namespace glow;
@@ -1524,4 +1525,10 @@ unsigned HabanaBackend::numDevices() {
     }
   }
   return count;
+}
+
+std::vector<unsigned> HabanaBackend::scanDeviceIDs() {
+  std::vector<unsigned> deviceIDs(HabanaBackend::numDevices());
+  std::iota(std::begin(deviceIDs), std::end(deviceIDs), 0);
+  return deviceIDs;
 }

@@ -1,5 +1,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import unittest
+
 import torch
 from tests import utils
 
@@ -29,6 +31,9 @@ class SimpleDynQLinearPerChannelModule(torch.nn.Module):
 
 
 class TestLinear(utils.TorchGlowTestCase):
+    @unittest.skip(
+        reason="By default it is asymmetric in PyTorch but symmetric in Glow. Will re-enable it once Glow side diff is landed."
+    )
     def test_linear_basic(self):
         """Basic test of the PyTorch aten::linear op on Glow."""
 
@@ -44,10 +49,13 @@ class TestLinear(utils.TorchGlowTestCase):
             fusible_ops={"quantized::linear_dynamic"},
             fp16=True,
             skip_to_glow=True,
-            rtol=7e-2,
-            atol=7e-2,
+            rtol=1e-1,
+            atol=1e-1,
         )
 
+    @unittest.skip(
+        reason="By default it is asymmetric in PyTorch but symmetric in Glow. Will re-enable it once Glow side diff is landed."
+    )
     def test_linear_per_channel(self):
         """Basic test of the PyTorch channel wise aten::linear op on Glow."""
 
@@ -67,6 +75,6 @@ class TestLinear(utils.TorchGlowTestCase):
             fusible_ops={"quantized::linear_dynamic"},
             fp16=True,
             skip_to_glow=True,
-            rtol=7e-2,
-            atol=7e-2,
+            rtol=1e-1,
+            atol=1e-1,
         )

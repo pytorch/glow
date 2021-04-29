@@ -1,0 +1,37 @@
+name: "SparseLabelSplit"
+op {
+  input: "lengths"
+  input: "indices"
+  input: "values"
+  output: "label_values_0"
+  output: "label_values_1"
+  output: "label_values_2"
+  output: "label_values_3"
+  output: "example_ids_0"
+  output: "example_ids_1"
+  output: "example_ids_2"
+  output: "example_ids_3"
+  output: "gradient_offset_map"
+  name: ""
+  type: "SparseLabelSplit"
+  arg {
+    name: "num_labels"
+    i: 4
+  }
+  arg {
+    name: "keep_gradient_offset_map"
+    i: 1
+  }
+}
+external_input: "lengths"
+external_input: "indices"
+external_input: "values"
+external_output: "label_values_0"
+external_output: "label_values_1"
+external_output: "label_values_2"
+external_output: "label_values_3"
+external_output: "example_ids_0"
+external_output: "example_ids_1"
+external_output: "example_ids_2"
+external_output: "example_ids_3"
+external_output: "gradient_offset_map"

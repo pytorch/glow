@@ -17,6 +17,7 @@
 #include "glow/Graph/Graph.h"
 #include "BackendTestUtils.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Hook.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -297,6 +298,46 @@ TEST(Graph, float16Conv) {
   EXPECT_EQ(convInst->getSrc()->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(convInst->getFilter()->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(convInst->getBias()->getElementType(), ElemKind::Float16Ty);
+}
+
+/// Check that we can create layernormalization with float16.
+TEST(Graph, float16LayerNorm) {
+  const auto origFlagVal = interpreter::flags::LowerLayerNormalization;
+  interpreter::flags::LowerLayerNormalization = false;
+
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  PlaceholderBindings bindings;
+  auto *input =
+      MD.createPlaceholder(ElemKind::Float16Ty, {1, 4, 5, 5}, "in", false);
+
+  Tensor scaleT(ElemKind::Float16Ty, {5, 5});
+  scaleT.getHandle<float16_t>().randomize(0.0f, 1.0f, MD.getPRNG());
+  Constant *scaleC = MD.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::Float16Ty, {5, 5});
+  biasT.getHandle<float16_t>().randomize(0.0f, 1.0f, MD.getPRNG());
+  Constant *biasC = MD.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN = F->createLayerNormalization(
+      "LN", input->getType(), input, scaleC, biasC, 1e-5);
+  F->createSave("Save", LNN);
+
+  std::unique_ptr<const Backend> backend(createBackend("Interpreter"));
+
+  CompilationContext cctx;
+  lower(F, cctx, backend.get());
+
+  IRFunction M(F);
+
+  M.generateIR(*backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto lnIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                           [](const Instruction &inst) -> bool {
+                             return llvm::isa<LayerNormalizationInst>(inst);
+                           });
+  ASSERT_TRUE(lnIt != M.getInstrs().end());
+  interpreter::flags::LowerLayerNormalization = origFlagVal;
 }
 
 /// Check that we can create conv3D with float16.
