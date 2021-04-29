@@ -5772,11 +5772,13 @@ TEST_GATHER_ND(3, Float16Ty, Int32ITy, float16_t, int32_t)
 TEST_GATHER_ND(4, Float16Ty, Int32ITy, float16_t, int32_t)
 TEST_GATHER_ND(5, Float16Ty, Int32ITy, float16_t, int32_t)
 
+#if DIM_T_BITWIDTH >= 64
 TEST_GATHER_ND(1, Float16Ty, Int64ITy, float16_t, int64_t)
 TEST_GATHER_ND(2, Float16Ty, Int64ITy, float16_t, int64_t)
 TEST_GATHER_ND(3, Float16Ty, Int64ITy, float16_t, int64_t)
 TEST_GATHER_ND(4, Float16Ty, Int64ITy, float16_t, int64_t)
 TEST_GATHER_ND(5, Float16Ty, Int64ITy, float16_t, int64_t)
+#endif
 
 #undef TEST_GATHER_ND
 
