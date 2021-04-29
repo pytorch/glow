@@ -120,8 +120,8 @@ void serializeProfilingInfosToYaml(
   llvm::yaml::Output yout(outputStream);
 
   // Write Glow tools version.
-#ifdef GLOW_BUILD_DATE
-  YAMLGlowToolsVersion yamlVersion = YAMLGlowToolsVersion(GLOW_BUILD_DATE);
+#ifdef GLOW_VERSION
+  YAMLGlowToolsVersion yamlVersion = YAMLGlowToolsVersion(GLOW_VERSION);
 #else
   YAMLGlowToolsVersion yamlVersion = YAMLGlowToolsVersion("");
 #endif
@@ -155,10 +155,10 @@ bool deserializeProfilingInfosFromYaml(
   // Error message in case of incorrect profile format.
   std::string profileErrMsg =
       strFormat("Error reading YAML file '%s'!", fileName.data());
-#ifdef GLOW_BUILD_DATE
+#ifdef GLOW_VERSION
   profileErrMsg += strFormat(" Verify that the YAML file was generated with "
                              "the current version (%s) of the Glow tools!",
-                             GLOW_BUILD_DATE);
+                             GLOW_VERSION);
 #endif
 
   // Read Glow tools version.
