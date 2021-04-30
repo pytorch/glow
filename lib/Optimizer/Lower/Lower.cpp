@@ -1350,7 +1350,7 @@ static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
          "Incorrect number of elements in the output type.");
 
   // pow(x, 2)
-  NodeValue pow = F->createPow(VN.getName().str() + ".pow_2", input, 2.0f);
+  NodeValue pow = F->createMul(VN.getName().str() + ".pow_2", input, input);
 
   // Create a batched add to sum up the values in the provided axis.
   auto outTyBRA =
@@ -1359,10 +1359,8 @@ static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
   auto *BRA = F->createBatchedReduceAdd(VN.getName().str() + ".reduceAdd",
                                         outTyBRA, pow, axis);
 
-  auto *exp = F->createSplat(VN.getName().str() + ".exp", outTy, 0.5f);
-
   // Create a sqrt by leveraging pow(x, 0.5)
-  auto *SQ = F->createPow(VN.getName().str() + ".sqrt", outTy, BRA, exp);
+  auto *SQ = F->createSqrt(VN.getName().str() + ".sqrt", outTy, BRA);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, VN.getResult(), SQ);
 }

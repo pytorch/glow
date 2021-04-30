@@ -140,6 +140,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
 
   // General math fp32/fp16/i8.
   case Kinded::Kind::PowNodeKind:
+  case Kinded::Kind::SqrtNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ReplaceNaNNodeKind:
   case Kinded::Kind::MatMulNodeKind:

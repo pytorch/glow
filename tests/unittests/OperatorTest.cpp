@@ -9270,6 +9270,23 @@ TEST_P(OperatorTest, Sqrt_FloatTy) {
   EXPECT_FLOAT_EQ(outH.raw(3), 3.0);
 }
 
+TEST_P(OperatorTest, Sqrt_Float16Ty) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::Float16Ty, {4}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float16_t>() = {0.0, 1.0, 4.0, 9.0};
+  auto *node = F_->createSqrt("sqrt", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float16_t>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_FLOAT_EQ(outH.raw(0), 0.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 2.0);
+  EXPECT_FLOAT_EQ(outH.raw(3), 3.0);
+}
+
 TEST_P(OperatorTest, Sqrt_Int8QTy) {
   CHECK_IF_ENABLED();
   auto *inp =

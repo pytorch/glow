@@ -436,6 +436,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Ceil_Int8QTy/0",
     "Round_Int8QTy/0",
     "Sqrt_Int8QTy/0",
+    "Sqrt_Float16Ty/0",
     "Rsqrt_Int8QTy/0",
     "Reciprocal_Int8QTy/0",
     "Sin_Int8QTy/0",

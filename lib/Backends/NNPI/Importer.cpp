@@ -2659,6 +2659,9 @@ std::unordered_map<
                 UnaryEltwiseNodeImporter<glow::ExpNode, NNPI_ELTWISE_EXP>>()},
     {"Neg", glow::make_unique<
                 UnaryEltwiseNodeImporter<glow::NegNode, NNPI_ELTWISE_NEG>>()},
+    {"Sqrt",
+     glow::make_unique<
+         UnaryEltwiseNodeImporter<glow::SqrtNode, NNPI_ELTWISE_SQRT>>()},
     {"Max", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::MaxNode, NNPI_ELTWISE_MAX>>()},
     {"Min", glow::make_unique<

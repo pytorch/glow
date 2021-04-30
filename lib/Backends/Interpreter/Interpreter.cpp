@@ -264,8 +264,6 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SignNodeKind:
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
-  case Kinded::Kind::SqrtNodeKind:
-  case Kinded::Kind::RsqrtNodeKind:
   case Kinded::Kind::ReciprocalNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
@@ -286,8 +284,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::FloorNodeKind:
   case Kinded::Kind::TruncateNodeKind:
+  case Kinded::Kind::SqrtNodeKind:
+  case Kinded::Kind::RsqrtNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
+         ElemKind::Int8QTy});
 
   case Kinded::Kind::CmpEQNodeKind:
   case Kinded::Kind::CmpNEQNodeKind:
