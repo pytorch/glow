@@ -77,6 +77,18 @@ Error initializeCompilationContextFromGlowFlags(
   if (glow::flags::DumpCompilationLog) {
     cctx.compilationLogPrefix = "torch-glow";
   }
+
+  if (glow::flags::UseDAGOptimizer) {
+    LOG(INFO) << "Enabling DAG optimizer and related options (server AOT)";
+    cctx.callDAGOptimizer = true;
+    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+        glow::flags::DAGOptimizerNumParallelChunks;
+    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+        glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
+    cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
+        glow::flags::DAGOptimizerPlacementTaggingAlgorithm;
+  }
+
   if (glow::flags::UseSparseNNPartitioningScheme) {
 
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;

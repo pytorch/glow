@@ -163,10 +163,6 @@ getHostManager(const PyTorchLoaderSettings &settings) {
     // now overwrite existing config if torch_glow gflag is present
     hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
 
-    // Pass these hostmanager flags
-    hostConfig.maxQueueSize = glow::flags::MaxQueueSize;
-    hostConfig.executorThreads = glow::flags::ExecutorThreads;
-
     hostManager = std::make_shared<runtime::HostManager>(
         std::move(deviceConfigs), hostConfig);
 
