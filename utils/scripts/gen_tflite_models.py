@@ -374,6 +374,66 @@ gen_binary_operator_test(name="min", type="min", input_shape=(1, 10))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+#                                            Binary broadcasted operators
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_binary_broadcast_operator_test(name, type, shape_1, shape_2):
+    # Create model.
+    inp1 = layers.Input(name="input1", batch_size=shape_1[0], shape=shape_1[1:])
+    inp2 = layers.Input(name="input2", batch_size=shape_2[0], shape=shape_2[1:])
+    if type == "add":
+        out = tf.math.add(inp1, inp2)
+    elif type == "mul":
+        out = tf.math.multiply(inp1, inp2)
+    elif type == "sub":
+        out = tf.math.subtract(inp1, inp2)
+    elif type == "div":
+        out = tf.math.divide(inp1, inp2)
+    elif type == "max":
+        out = tf.math.maximum(inp1, inp2)
+    elif type == "min":
+        out = tf.math.minimum(inp1, inp2)
+    else:
+        print('Binary operator "%s" not supported!' % type)
+        exit(1)
+    model = Model(inputs=[inp1, inp2], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp1_tensor = np.random.rand(*shape_1).astype(np.float32)
+    inp2_tensor = np.random.rand(*shape_2).astype(np.float32)
+    if type == "pow":
+        inp1_tensor = np.abs(inp1_tensor) + 1
+    out_tensor = model.predict([inp1_tensor, inp2_tensor])
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp1_tensor, name + ".inp0")
+    save_tensor(inp2_tensor, name + ".inp1")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_binary_broadcast_operator_test(
+    name="add_broadcast", type="add", shape_1=(1, 5, 5, 3), shape_2=(1, 1, 1, 3)
+)
+gen_binary_broadcast_operator_test(
+    name="mul_broadcast", type="mul", shape_1=(1, 5, 5, 3), shape_2=(1, 1, 1, 3)
+)
+gen_binary_broadcast_operator_test(
+    name="sub_broadcast", type="sub", shape_1=(1, 5, 5, 3), shape_2=(1, 1, 1, 3)
+)
+gen_binary_broadcast_operator_test(
+    name="div_broadcast", type="div", shape_1=(1, 5, 5, 3), shape_2=(1, 1, 1, 3)
+)
+gen_binary_broadcast_operator_test(
+    name="max_broadcast", type="max", shape_1=(1, 5, 5, 3), shape_2=(1, 1, 1, 3)
+)
+gen_binary_broadcast_operator_test(
+    name="min_broadcast", type="min", shape_1=(1, 5, 5, 3), shape_2=(1, 1, 1, 3)
+)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 #                                                        Conv2D
 # ----------------------------------------------------------------------------------------------------------------------
 def gen_conv2d_test(
