@@ -1197,8 +1197,8 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
         return Pads({0, 0, 0, 0});
       }
     }
-    return MAKE_ERR(
-        "Only auto_pad==VALID, SAME_UPPER, SAME_LOWER and NOTSET are supported");
+    return MAKE_ERR("Only auto_pad==VALID, SAME_UPPER, SAME_LOWER and NOTSET "
+                    "are supported");
   }
   // Return default value 0 for pads.
   return Pads({0, 0, 0, 0});

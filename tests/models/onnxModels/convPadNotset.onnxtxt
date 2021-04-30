@@ -1,0 +1,249 @@
+ir_version: 7
+graph {
+  node {
+    input: "input"
+    output: "input_transpose"
+    name: "input_transpose"
+    op_type: "Transpose"
+    attribute {
+      name: "perm"
+      ints: 0
+      ints: 3
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "input_transpose"
+    input: "filter1"
+    output: "output1"
+    name: "conv1"
+    op_type: "Conv"
+    attribute {
+      name: "auto_pad"
+      s: "NOTSET"
+      type: STRING
+    }
+    attribute {
+      name: "dilations"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "group"
+      i: 8
+      type: INT
+    }
+    attribute {
+      name: "kernel_shape"
+      ints: 3
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "pads"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "strides"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+  }
+
+  node {
+    input: "output1"
+    input: "filter2"
+    output: "output2"
+    name: "conv2"
+    op_type: "Conv"
+    attribute {
+      name: "auto_pad"
+      s: "NOTSET"
+      type: STRING
+    }
+    attribute {
+      name: "dilations"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "group"
+      i: 1
+      type: INT
+    }
+    attribute {
+      name: "kernel_shape"
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "strides"
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  node {
+    input: "output2"
+    output: "output"
+    name: "output_transpose"
+    op_type: "Transpose"
+    attribute {
+      name: "perm"
+      ints: 0
+      ints: 2
+      ints: 3
+      ints: 1
+      type: INTS
+    }
+  }
+
+  name: "conv_auto_pad_notset"
+
+  initializer {
+    dims: 8
+    dims: 1
+    dims: 3
+    dims: 3
+    data_type: 1
+    float_data: -0.473503321
+    float_data: -0.475131512
+    float_data: 0.0091728894
+    float_data: 0.610426903
+    float_data: 0.381865621
+    float_data: -0.0208681449
+    float_data: -0.00401817728
+    float_data: 0.164593294
+    float_data: -0.359804511
+    float_data: 0.331594437
+    float_data: 0.275695384
+    float_data: 0.0589824617
+    float_data: 0.203730673
+    float_data: -0.333488047
+    float_data: -0.338679045
+    float_data: -0.387341142
+    float_data: -0.201615244
+    float_data: 0.166484535
+    float_data: 0.0615900569
+    float_data: 0.33090806
+    float_data: -0.511463404
+    float_data: 0.536754549
+    float_data: -0.0188229084
+    float_data: -0.318387836
+    float_data: -0.0795916319
+    float_data: 0.167157769
+    float_data: -0.116960682
+    float_data: 0.0593092181
+    float_data: -0.122566424
+    float_data: 0.102488458
+    float_data: 0.467897981
+    float_data: -1.00866091
+    float_data: 0.439514518
+    float_data: 0.055225689
+    float_data: -0.397013664
+    float_data: 0.334516972
+    float_data: -0.403764039
+    float_data: -0.251637042
+    float_data: -0.246858597
+    float_data: 0.692274451
+    float_data: 0.643801451
+    float_data: -0.247299865
+    float_data: -0.310369521
+    float_data: 0.0701912716
+    float_data: 0.156563073
+    float_data: -0.242560849
+    float_data: -0.370272845
+    float_data: -0.0330774896
+    float_data: -0.282316059
+    float_data: 0.0816124454
+    float_data: 0.157024607
+    float_data: -0.753866196
+    float_data: -0.122174546
+    float_data: 0.371462375
+    float_data: 0.381661534
+    float_data: 0.565966606
+    float_data: 0.0902379379
+    float_data: 0.0048353821
+    float_data: -0.329400867
+    float_data: 0.177375749
+    float_data: -0.477506846
+    float_data: -0.487319142
+    float_data: 0.0635463223
+    float_data: -0.567902446
+    float_data: 0.0601110235
+    float_data: 0.418607265
+    float_data: -0.290155
+    float_data: -0.341634303
+    float_data: 0.434118032
+    float_data: 0.141094282
+    float_data: -0.0660536513
+    float_data: 0.0860829353
+    name: "filter1"
+  }
+  initializer {
+    dims: 16
+    dims: 8
+    dims: 1
+    dims: 1
+    data_type: 1
+    name: "filter2"
+    raw_data: "p#~=\022\263\013\276Z\363\300\275\235> =\331da\275:\363\007\275.9\216\274N\t\210>\363\237.\276\032\341\r?\363\300\264\276\351K\366\275hoH>=\n\303=(\361\342>j\305\377\276\001\250\267=\261\354\033\277b\034J\277g\371%\275\265\360?\276\252\325\311\276\374<\361=\335\021k?\224,\233>\354\031\211>,\306\247>\207\345\243\276\017.Y>\216\357\237\276\376\313\262?K\221\223\276C\347\356=w\365\035>\177\360\265>\262\371p\275d\220\341>Qr\001\276\367\010!\276Q9{\276P\346:\275\002+\230\275\317i\375\276\035\341\026>\256n\324\276M\337\020>\243i1>\367\327\240=\315\334\001\277V\023\257\275fr\017\277\355\343\254<\022\302p>\371\312(>D;c\276\351Q\211\276\235\313i>oA;>R\271\003?`\226\313=L\235\356>|\247\026\276\243\352\213\274[p%>\227y\375<\372\224\330>\203\233\224>\037\277\033<\177..?|u\217>\252\304\367=\021\244V\276BW~>\315\013F\277\316C\021\277\366~\023\276t\334\235\277V\331\223>\375w\020>\r\377\000\277\'\370\376\273\246\303\337\276&\344\227?\235\225\244\275Sh\030\277\266\220\367>\225\350 =\344}\350>\366\216\265\276\344\234\307>y\367\240\276\227\235!>\321z\234\276(\250\334\276\205\321\256>\177\260\021\277\006\315\334>J=\006\277_\204$?W\311a>8\347\236\275\"\370\005\277\204.\032\276\266G\342>\014\327\223>W;\354>I\226q=\225[#>S\260\033\275\036\023\272>\\\217q<\251#\225==\200C\276\013\212P?\273\025\001\277\377K\217<\356\274\024\2765\376\346>\203T&?I\017\234\276\372k\313=\245[[\274\323F,?O\210\322<M\226\323=w\017\215\275\215\326\350\276\276\202\255>"
+  }
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 60
+          }
+          dim {
+            dim_value: 60
+          }
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "output"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 60
+          }
+          dim {
+            dim_value: 60
+          }
+          dim {
+            dim_value: 16
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 12
+}

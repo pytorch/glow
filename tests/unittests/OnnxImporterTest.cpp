@@ -5617,3 +5617,27 @@ TEST_F(OnnxImporterTest, softmax13) {
                0.11920292, 0.880797, 0.880797, 0.11920292, 0.11920292, 0.880797,
                0.880797, 0.11920292, 0.11920292, 0.880797, 0.880797});
 }
+
+/// Test loading Conv model with auto_pad=NOTSET from an ONNX model.
+TEST_F(OnnxImporterTest, importConvPadNotset) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/convPadNotset.onnxtxt");
+  Placeholder *output;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+  ASSERT_EQ(mod.getPlaceholders().size(), 2);
+  ASSERT_EQ(F->getNodes().size(), 3);
+  auto *save = getSaveNodeFromDest(output);
+  ASSERT_TRUE(save);
+  auto *conv1 = llvm::dyn_cast<ConvolutionNode>(save->getInput().getNode());
+  ASSERT_TRUE(conv1);
+  auto *conv2 = llvm::dyn_cast<ConvolutionNode>(conv1->getInput().getNode());
+  ASSERT_TRUE(conv2);
+  EXPECT_EQ(conv1->getPads().vec(), std::vector<unsigned_t>({1, 1, 1, 1}));
+  EXPECT_EQ(conv2->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
+}
