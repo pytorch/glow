@@ -28,6 +28,7 @@
 #include "llvm/Support/Casting.h"
 
 #include "gtest/gtest.h"
+#include <initializer_list>
 
 namespace glow {
 
@@ -305,6 +306,27 @@ using FunctionTensorPair = std::pair<Function *, Tensor *>;
 /// the Function created and the Placeholder of the output of the Function.
 using CreateAndInitFunction =
     std::function<FunctionTensorPair(PlaceholderBindings &, ExecutionEngine &)>;
+
+Placeholder *createPlaceholder(Module &mod, PlaceholderBindings &bindings,
+                               Tensor *tensor, llvm::StringRef name,
+                               const std::string &layout = ANY_LAYOUT);
+
+// Comparison for tensors that can't be expected to be bitwise identical
+template <typename DataType>
+void compare(Tensor &expected, Tensor &result, float absoluteTolerance,
+             float maxRMSE) {
+  float sumOfSquareOfErrors = 0;
+  auto expectedHandle = expected.getHandle<DataType>();
+  auto resultHandle = result.getHandle<DataType>();
+
+  for (unsigned index = 0; index < expected.size(); index++) {
+    auto expectedValue = float(expectedHandle.raw(index));
+    auto resultValue = float(resultHandle.raw(index));
+    EXPECT_NEAR(resultValue, expectedValue, absoluteTolerance);
+    sumOfSquareOfErrors += pow(resultValue - expectedValue, 2);
+  }
+  EXPECT_LE(std::sqrt(sumOfSquareOfErrors) / expected.size(), maxRMSE);
+}
 
 /// Given a method \p createAndInitFunction that creates and initializes a
 /// FloatTy Function with a single output Tensor, \returns a bool representing

@@ -33,6 +33,21 @@ using namespace glow;
 
 const std::string NNPIImporter::internalName_("_NNPI_");
 
+static bool isBatchNormUsingAlternativeLayout(const glow::Node *node,
+                                              const size_t numDims) {
+  auto *glowBN = llvm::dyn_cast<BatchNormalizationNode>(node);
+  auto channelIdx = glowBN->getChannelIdx();
+  // Handle NNPI_LAYOUT_NDHWC and NNPI_LAYOUT_NHWC layout.
+  if ((numDims == 4 || numDims == 5) && (channelIdx == numDims - 1)) {
+    return true;
+  }
+  // Handle NNPI_LAYOUT_CN layout.
+  else if (numDims == 2 && channelIdx == 0) {
+    return true;
+  }
+  return false;
+}
+
 static std::string nodeValueName(const glow::NodeValue &nv) {
   if (nv.getNode()->getKind() == glow::Kinded::Kind::PlaceholderKind) {
     return nv.getNode()->getName();
@@ -408,7 +423,6 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::Convolution3DNodeKind:
     case Kinded::Kind::AvgPoolNodeKind:
     case Kinded::Kind::MaxPoolNodeKind:
-    case Kinded::Kind::BatchNormalizationNodeKind:
     case Kinded::Kind::ResizeNearestNodeKind:
       return true;
     case Kinded::Kind::FullyConnectedNodeKind:
@@ -416,6 +430,9 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::ROIAlignNodeKind:
 #endif
       return (v->getType()->dims().size() == 4);
+    case Kinded::Kind::BatchNormalizationNodeKind:
+      return isBatchNormUsingAlternativeLayout(user.getUser(),
+                                               v->getType()->dims().size());
     default: // Do nothing.
       break;
     }
@@ -2277,10 +2294,23 @@ public:
     auto *glowBN = llvm::dyn_cast<BatchNormalizationNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowBN, "Bad node type", NNPI_INVALID_PARAM);
 
+    auto inputDims = glowBN->getInput().getType()->dims().size();
+    auto alterativeLayout = isBatchNormUsingAlternativeLayout(n, inputDims);
+    // Overwrite input/output values for layout.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowBN->getInput()),
+                          glowBN->getInput().getType(), alterativeLayout),
+        "Failed to add tensor to NNPI");
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowBN->getResult()),
+                          glowBN->getResult().getType(), alterativeLayout),
+        "Failed to add tensor to NNPI");
+
     importer.setUsedTensors(
-        {nodeValueName(glowBN->getInput()), nodeValueName(glowBN->getScale())},
-        {nodeValueName(glowBN->getBias()), nodeValueName(glowBN->getMean()),
-         nodeValueName(glowBN->getVar()), nodeValueName(glowBN->getResult())});
+        {nodeValueName(glowBN->getInput()), nodeValueName(glowBN->getScale()),
+         nodeValueName(glowBN->getBias()), nodeValueName(glowBN->getMean()),
+         nodeValueName(glowBN->getVar())},
+        {nodeValueName(glowBN->getResult())});
 
     return nnpiNetworkAddBatchNormOp(
         importer.getNetwork(), glowBN->getName().begin(),

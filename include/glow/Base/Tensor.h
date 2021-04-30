@@ -306,6 +306,23 @@ public:
   /// unmanaged.
   TensorPool *getOwningPool() { return tensorPool_; }
 
+  template <typename DataType>
+  static Tensor fromData(ElemKind elemKind, llvm::ArrayRef<dim_t> dims,
+                         const std::initializer_list<DataType> &data) {
+    Tensor tensor(elemKind, dims);
+    tensor.getHandle<DataType>() = data;
+    return tensor;
+  }
+
+  template <typename DataType>
+  static Tensor fromData(ElemKind elemKind, float scale, int32_t offset,
+                         llvm::ArrayRef<dim_t> dims,
+                         const std::initializer_list<DataType> &data) {
+    Tensor tensor(elemKind, dims, scale, offset);
+    tensor.getHandle<DataType>() = data;
+    return tensor;
+  }
+
   /// Initialize an empty tensor.
   Tensor() = default;
 
