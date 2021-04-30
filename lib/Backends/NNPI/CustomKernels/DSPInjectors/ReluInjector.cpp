@@ -1,7 +1,7 @@
 // (c) Facebook, Inc. and its affiliates. Confidential and proprietary.
 
-#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectorUtils.h"
-#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectors.h"
+#include "DSPInjectorUtils.h"
+#include "DSPInjectors.h"
 
 namespace glow {
 namespace {

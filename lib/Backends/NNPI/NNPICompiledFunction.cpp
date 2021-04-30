@@ -23,7 +23,7 @@
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Flags/Flags.h"
 
-#include "glow/lib/Backends/NNPI/CustomKernels/GetNNPIKernels.h"
+#include "GetNNPIKernels.h"
 
 #include <sstream>
 
