@@ -60,6 +60,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ResizeBilinear_Int16_outTy/0",
     "ResizeBilinear_Int32_outTy/0",
     "BoolReshape/0",
+    "NonZero/0",
     "replaceNaN_Float/0",
     "replaceNaN_Float16/0",
     "log/0",
