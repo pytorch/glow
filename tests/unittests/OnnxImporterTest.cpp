@@ -5648,6 +5648,6 @@ TEST_F(OnnxImporterTest, importConvPadNotset) {
   ASSERT_TRUE(trans4);
   auto *conv2 = llvm::dyn_cast<ConvolutionNode>(trans4->getInput().getNode());
   ASSERT_TRUE(conv2);
-  EXPECT_EQ(conv1->getPads().vec(), std::vector<unsigned_t>({1, 1, 1, 1}));
-  EXPECT_EQ(conv2->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
+  EXPECT_EQ(conv2->getPads().vec(), std::vector<unsigned_t>({1, 1, 1, 1}));
+  EXPECT_EQ(conv1->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
 }
