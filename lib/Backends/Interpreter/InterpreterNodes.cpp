@@ -6229,6 +6229,10 @@ void BoundInterpreterFunction::fwdIntLookupTableInst(
   }
 }
 
+void BoundInterpreterFunction::fwdLookupTableInst(const LookupTableInst *I) {
+  llvm_unreachable("LookupTable instruction is not supported yet");
+}
+
 void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   Tensor *source = getTensor(I->getInput());
   Tensor *dest = getTensor(I->getResult());

@@ -2722,6 +2722,14 @@ Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
   }
 }
 
+LookupTableNode *Function::createLookupTable(
+    llvm::StringRef name, NodeValue input, LUTOperator lutOperator,
+    std::vector<float> &lutOperatorArgs, NodeValue table, NodeValue idxTable,
+    TypeRef outTy) {
+  return addNode(new LookupTableNode(name, outTy, input, table, idxTable,
+                                     lutOperator, lutOperatorArgs));
+}
+
 IntLookupTableNode *Function::createIntLog(llvm::StringRef name,
                                            NodeValue input, TypeRef outTy) {
   auto inputRange = input.getType()->getQuantizedValueRange();

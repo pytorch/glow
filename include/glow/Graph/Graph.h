@@ -1585,6 +1585,14 @@ public:
                                            std::function<float(float)> func,
                                            TypeRef outTy);
 
+  /// Create lookup table for operator \p lutOperator using the provided lookup
+  /// \p table.
+  LookupTableNode *createLookupTable(llvm::StringRef name, NodeValue input,
+                                     LUTOperator lutOperator,
+                                     std::vector<float> &lutOperatorArgs,
+                                     NodeValue table, NodeValue idxTable,
+                                     TypeRef outTy);
+
   /// Create quantized log.
   IntLookupTableNode *createIntLog(llvm::StringRef name, NodeValue input,
                                    TypeRef outTy);
