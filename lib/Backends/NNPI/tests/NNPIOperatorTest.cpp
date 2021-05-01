@@ -554,7 +554,7 @@ struct BlacklistInitializer {
       {"DynamicQuantizedFullyConnectedStrongWeights/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"DynamicRowwiseQuantizedFullyConnectedBasic/0",
-       TestBlacklist::AnyDeviceAnyEngine},
+       TestBlacklist::AnyDeviceHWEngine},
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
       {"BBoxTransform_Rotated_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"IntLookupTable/0", TestBlacklist::AnyDeviceAnyEngine},
