@@ -193,6 +193,11 @@ void initializeCompilationContextFromSettings(
   }
 
   cctx.replicationCount = settings.replicationCount;
+
+  if (settings.skipProvisioning) {
+    LOG(INFO) << "Will skip provisioning (likely due to AOT opt).";
+    cctx.skipProvisioning = true;
+  }
 }
 
 /// This function slice the input Tensor according to the expected shape in the
@@ -201,6 +206,106 @@ void initializeCompilationContextFromSettings(
 at::Tensor sliceTensor(at::Tensor &t, const TensorShape &shape) {
   CHECK_GT(shape.size(), 0);
   return at::native::slice(t, 0, 0, shape[0]);
+}
+
+/// This function is the preparation of Glow serialization. It sets \p
+/// GlowDeserializationSpec for AOT model loading and sets cctx to let
+/// HostManager serialize lowerred Glow IR into onnx file
+Error setupGlowDeserializationSpecAndCctx(
+    const PyTorchLoaderSettings &settings,
+    const std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo> &info,
+    CompilationContext &cctx, Function *f, GlowDeserializationSpec &spec) {
+  spec.pytorchLoaderSettings = settings.toString();
+  spec.functionName = info->functionName;
+  auto &inputPHNames = spec.inputPHNames;
+  auto &inputPHTypes = spec.inputPHTypes;
+  auto &staticPHNames = spec.staticPHNames;
+  auto &staticPHTypes = spec.staticPHTypes;
+  auto &outputPHNames = spec.outputPHNames;
+  size_t inputIdx = 0;
+  for (const auto &ph : info->inputPlaceholders) {
+    inputPHNames.emplace_back(ph->getName().data());
+    inputPHTypes.emplace_back(ph->getType()->toString());
+    cctx.loadedPHNames.emplace(ph,
+                               std::make_pair(ph->getName().data(), inputIdx));
+    ++inputIdx;
+  }
+  std::map<std::string, glow::Type> staticPlaceholderTypes;
+  for (const auto &ph : f->findPlaceholders()) {
+    if (ph->isStatic()) {
+      auto type = *ph->getType();
+      /// Account for the auto FP32->FP16 conversion in Glow
+      /// for placeholder \p type match
+      auto elementType = type.getElementType();
+      auto dims = type.dims();
+      auto dimVec = dims.vec();
+      RETURN_ERR_IF_NOT(
+          dimVec.size() == 2,
+          strFormat("static ph must have 2 dims, got %zu", dimVec.size()));
+      if (cctx.precisionConfig.convertToFP16 &&
+          elementType == ElemKind::FloatTy) {
+        elementType = ElemKind::Float16Ty;
+      } else if (cctx.precisionConfig.convertFusedToFP16 &&
+                 elementType == ElemKind::UInt8FusedQTy) {
+        elementType = ElemKind::UInt8FusedFP16QTy;
+        /// Subtracting 4 because we have FP16 scale/bias (2 + 2 = 4bytes)
+        /// instead of FP32 (4 + 4 = 8bytes), so 4 fewer bytes
+        dimVec[1] = dimVec[1] - 4;
+      }
+      auto newDims = llvm::ArrayRef<unsigned long>(dimVec);
+      auto newType =
+          type.isQuantizedType()
+              ? f->getParent()->uniqueType(elementType, newDims,
+                                           type.getScale(), type.getOffset())
+              : f->getParent()->uniqueType(elementType, newDims);
+      staticPlaceholderTypes[std::string(ph->getName())] = *newType;
+      staticPHNames.emplace_back(ph->getName().data());
+      staticPHTypes.emplace_back(newType->toString());
+    }
+  }
+  size_t outputIdx = 0;
+  for (const auto &ph : info->outputPlaceholders) {
+    outputPHNames.emplace_back(ph->getName().data());
+    cctx.loadedPHNames.emplace(ph,
+                               std::make_pair(ph->getName().data(), outputIdx));
+    ++outputIdx;
+  }
+  cctx.serializeCompiledDAG = true;
+  cctx.saveConstantInSerializeCompiledDAG = true;
+  cctx.staticPlaceholderTypesForAOT = staticPlaceholderTypes;
+  // We currently save all the non-embedding weights in the ONNX file
+  // and thus do not delay/record constant modification. Since AOT
+  // compilation is performed for every training snapshot, we do not
+  // need to support updating quantization params for AOT.
+  RETURN_ERR_IF_NOT(
+      !cctx.optimizationOpts.delayAndRecordConstantModification,
+      "delayAndRecordConstantModification should be false when loading "
+      "PyTorch models in Glow");
+
+  return Error::success();
+}
+
+/// This function serialize Glow deserialization spec into a JSON file
+/// The JSON file contains
+///     1. PyTorchLoaderSettings;
+///     2. Glow function name;
+///     3. Input placeholder names & types;
+///     4. Static placeholder names & types;
+///     5. Output placeholder names;
+/// Remarks: (1) ONNXModelLoader initialization requires both input and
+///          static PHs and types as the inputTensors and inputTypes;
+///          (2) Glow deserialization will reset PH static status in
+///           GlowIR, we need to set them static manually during
+///           deserialization
+///          (3) Input&Output PH names are used for reconstructing
+///           PerGlowGraphInfo
+Error saveGlowDeserializationSpec(GlowDeserializationSpec &spec,
+                                  std::string fileName) {
+  std::string serializedSpec;
+  ASSIGN_VALUE_OR_RETURN_ERR(serializedSpec, spec.toJson());
+  std::ofstream file(fileName);
+  file << serializedSpec;
+  return Error::success();
 }
 
 glow::Expected<std::string> getOnnxFilePath(const std::string &filePrefix,
@@ -1116,6 +1221,15 @@ Error CachingGraphRunner::warmCache(
             outputCorrectTypes_, info->settings, {}, metaStack));
         TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
                         "loadJITGraph");
+
+        // Prepare GlowDeserializationSpec and cctx for serializing Glow IR
+        if (settings.saveGlowIRIntoONNX) {
+          GlowDeserializationSpec spec;
+          RETURN_IF_ERR(setupGlowDeserializationSpecAndCctx(settings, info,
+                                                            cctx, f, spec));
+          RETURN_IF_ERR(saveGlowDeserializationSpec(
+              spec, settings.serializationSpecFileName));
+        }
       }
 
       // Obtain maxSeqLength from metaStack

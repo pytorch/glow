@@ -767,6 +767,76 @@ struct CompilationSpec : public JsonSerializableCustomClass {
   }
 };
 
+// This class is used as the spec of Glow deserialiation
+struct GlowDeserializationSpec : public JsonSerializableCustomClass {
+  ADD_VECTOR_FIELD(inputPHNames, std::string)
+  ADD_VECTOR_FIELD(inputPHTypes, std::string)
+  ADD_VECTOR_FIELD(staticPHNames, std::string)
+  ADD_VECTOR_FIELD(staticPHTypes, std::string)
+  ADD_VECTOR_FIELD(outputPHNames, std::string)
+  ADD_STRING_FIELD(pytorchLoaderSettings, "")
+  ADD_STRING_FIELD(functionName, "")
+
+  Expected<folly::dynamic> toDynamicImpl() const override {
+    folly::dynamic obj = folly::dynamic::object();
+    obj["inputPHNames"] = dynArrayFromVec(inputPHNames);
+    obj["inputPHTypes"] = dynArrayFromVec(inputPHTypes);
+    obj["staticPHNames"] = dynArrayFromVec(staticPHNames);
+    obj["staticPHTypes"] = dynArrayFromVec(staticPHTypes);
+    obj["outputPHNames"] = dynArrayFromVec(outputPHNames);
+    obj["pytorchLoaderSettings"] = pytorchLoaderSettings;
+    obj["functionName"] = functionName;
+    return obj;
+  }
+
+  Error fromDynamicImpl(const folly::dynamic &dyn,
+                        int64_t bc_version_when_serialized) override {
+    RETURN_ERR_IF_NOT(
+        bc_version_when_serialized == 0,
+        strFormat("Only bc_version 0 is supported, got bc_version %d",
+                  int(bc_version_when_serialized)));
+
+    if (dyn.count("inputPHNames")) {
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "inputPHNames");
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          inputPHNames, dynArrayToVec<std::string>(dyn.at("inputPHNames")));
+    }
+    if (dyn.count("inputPHTypes")) {
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "inputPHTypes");
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          inputPHTypes, dynArrayToVec<std::string>(dyn.at("inputPHTypes")));
+    }
+    if (dyn.count("staticPHNames")) {
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "staticPHNames");
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          staticPHNames, dynArrayToVec<std::string>(dyn.at("staticPHNames")));
+    }
+    if (dyn.count("staticPHTypes")) {
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "staticPHTypes");
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          staticPHTypes, dynArrayToVec<std::string>(dyn.at("staticPHTypes")));
+    }
+    if (dyn.count("outputPHNames")) {
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "outputPHNames");
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          outputPHNames, dynArrayToVec<std::string>(dyn.at("outputPHNames")));
+    }
+    if (dyn.count("pytorchLoaderSettings")) {
+      ASSIGN_STRING_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, pytorchLoaderSettings,
+                                                 "pytorchLoaderSettings");
+    }
+    if (dyn.count("functionName")) {
+      ASSIGN_STRING_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, functionName,
+                                                 "functionName");
+    }
+    return Error::success();
+  }
+
+  int64_t getCurrentBCVersion() const override { return 0; }
+
+  Error validate() const override { return Error::success(); }
+};
+
 } // namespace glow
 
 #undef CHECK_DYN_IS_STRING
