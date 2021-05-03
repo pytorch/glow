@@ -291,6 +291,7 @@ struct BlacklistInitializer {
       {"nms_two_classes_float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"nms_two_boxes_float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"SoftMax/0", TestBlacklist::AnyDeviceHWEngine},
+      {"SoftMaxI8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"SoftPlus_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"SoftPlus_BFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"TopK/0", TestBlacklist::AnyDeviceAnyEngine},
