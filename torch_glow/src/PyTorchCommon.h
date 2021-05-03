@@ -141,6 +141,9 @@ public:
   /// Must be true in twshared hosts.
   bool writeOnnxToTmp = false;
 
+  /// The JSON file name that stores Glow deserialization specs
+  std::string serializationSpecFileName = "serializationSpec.json";
+
   /// Optional prefix for naming of onnx files (otherwise an internal id)
   std::string onnxFileNamePrefix = "";
 
@@ -218,6 +221,19 @@ public:
   /// Additional parameters to DAG optimizer
   std::string apl_parallelization_alg = "ParallelizeCVHeuristicData";
   int32_t apl_num_parallel_chunks = 2;
+
+  // Serialize GlowIR into ONNX txt file during warmCache, this file can be
+  // use for future model loading, which a part of AOT compilation
+  bool saveGlowIRIntoONNX = false;
+
+  // Load GlowIR by deserializing ONNX txt file during warmCache
+  bool loadGlowIRFromONNX = false;
+
+  // Skip provisioning (currently only happens in Glow serialization, in which
+  // we do model partition, DAG optimization, and then serialize the optimized
+  // and partitioned model into ONNX model file. During this process, we do not
+  // need to do provisioning)
+  bool skipProvisioning = false;
 };
 
 /// Represents different possible output types from to_glow modules.

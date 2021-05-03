@@ -510,8 +510,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       ONNXModelWriter onnxWR(
           loc, nodeList, 7, 9, &writeErr,
           /* textMode */ true, /* zipMode */ false,
-          /* includeConstantData */ false, extraMetadataProps, record,
-          cctx.backendOpts.backendSpecificNodeInfo,
+          /* includeConstantData */ cctx.saveConstantInSerializeCompiledDAG,
+          extraMetadataProps, record, cctx.backendOpts.backendSpecificNodeInfo,
           cctx.skipProvisioning ? &cctx.loadedPHNames : nullptr,
           cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr);
       RETURN_IF_ERR(writeErr);
