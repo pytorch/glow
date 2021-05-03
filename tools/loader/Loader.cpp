@@ -585,8 +585,8 @@ void glow::parseCommandLine(int argc, char **argv) {
   initCmdArgVars();
 
   llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
-#ifdef GLOW_BUILD_DATE
-    os << "Glow Tools version: " << GLOW_BUILD_DATE << "\n";
+#ifdef GLOW_VERSION
+    os << "Glow Tools version: " << GLOW_VERSION << "\n";
 #endif
   });
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
