@@ -330,6 +330,26 @@ public:
   }
 };
 
+class MatMulNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &otherName = importer.getInputNodeName(kwargs["other"]);
+
+    importer.setUsedTensors({inputName, otherName}, {name});
+
+    return nnpiNetworkAddMatMulOp(importer.getNetwork(), name.c_str(),
+                                  inputName.c_str(), otherName.c_str(),
+                                  name.c_str());
+  }
+};
+
 class ConcatNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -400,6 +420,7 @@ static std::unordered_map<
     {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},
     {"acc_ops.cat", glow::make_unique<ConcatNodeImporter>()},
     {"acc_ops.transpose", glow::make_unique<TransposeNodeImporter>()},
+    {"acc_ops.matmul", glow::make_unique<MatMulNodeImporter>()},
     {"acc_ops.max_pool2d",
      std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
     {"acc_ops.quantize_per_tensor", std::make_unique<ConvertNodeImporter>()},
