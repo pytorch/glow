@@ -17,4 +17,5 @@
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {};
+std::set<std::string> glow::backendTestBlacklist = {
+    "foldClipIntoStaticPlaceholders/0"};
