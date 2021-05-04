@@ -1,0 +1,115 @@
+ir_version: 6
+producer_name: "test4onnx"
+graph {
+  node {
+    input: "in"
+    input: "roi"
+    input: "scales"
+    output: "Y"
+    op_type: "Resize"
+    attribute {
+      name: "coordinate_transformation_mode"
+      s: "align_corners"
+      type: STRING
+    }
+    attribute {
+      name: "mode"
+      s: "linear"
+      type: STRING
+    }
+  }
+  name: "resizeBilinearAlignCorner"
+  initializer {
+    dims: 0
+    data_type: 7
+    name: "roi"
+  }
+  initializer {
+    dims: 4
+    data_type: 1
+    float_data: 1.0
+    float_data: 1.0
+    float_data: 2.0
+    float_data: 2.0
+    name: "scales"
+  }
+  input {
+    name: "in"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "roi"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+        }
+      }
+    }
+  }
+  input {
+    name: "scales"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "Y"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 11
+}

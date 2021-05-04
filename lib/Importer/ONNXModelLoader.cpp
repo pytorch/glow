@@ -2728,6 +2728,8 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
                 scalesC->getType()->getElementName().str().c_str())));
   }
 
+  ResizeCoorTransMode coordTransformMode = ResizeCoorTransMode::ASYMMETRIC;
+
   // For ONNX Resize v11, support attributes that are compatible with v10:
   // exclude_outside = 0
   // extrapolation_value = 0.0
@@ -2767,11 +2769,18 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
                                  modeStr.c_str())));
     }
     // attribute: coordinate_transformation_mode.
-    std::string coordTransformMode = "half_pixel";
     if (dict.count("coordinate_transformation_mode")) {
+      std::string coordModeStr;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          coordTransformMode,
-          loadStr(dict.at("coordinate_transformation_mode")));
+          coordModeStr, loadStr(dict.at("coordinate_transformation_mode")));
+      if (coordModeStr == "align_corners") {
+        coordTransformMode = ResizeCoorTransMode::ALIGN_CORNERS;
+      } else {
+        RETURN_ERR_IF_NOT(
+            coordModeStr == "asymmetric",
+            opErrMsg(op,
+                     "Resize coordinate transformation mode not supported."));
+      }
     }
     RETURN_ERR_IF_NOT(
         coordTransformMode == "asymmetric",
@@ -2854,7 +2863,8 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
     } else if (modeStr == "bilinear" || modeStr == "linear") {
       vectorReorder(scales, {NHWC2NCHW});
       auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
-      auto RN = G_->createResizeBilinear(opName, intr, scales);
+      auto RN =
+          G_->createResizeBilinear(opName, intr, scales, coordTransformMode);
       outtr = G_->createTranspose(opName, RN, NHWC2NCHW);
     } else {
       return MAKE_ERR(
@@ -2873,7 +2883,8 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
       auto outTy = G_->getParent()->uniqueTypeWithNewShape(
           in.getType(), llvm::ArrayRef<dim_t>(outDims));
       auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
-      auto RN = G_->createResizeBilinear(opName, intr, outTy);
+      auto RN =
+          G_->createResizeBilinear(opName, intr, outTy, coordTransformMode);
       outtr = G_->createTranspose(opName, RN, NHWC2NCHW);
     } else {
       return MAKE_ERR(

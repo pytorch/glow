@@ -5215,7 +5215,8 @@ TEST(onnx, importResizeNearestV11compat_sizes) {
   importResizeNearest(netFilename);
 }
 
-static void importResizeBilinear(std::string filename) {
+static void importResizeBilinear(std::string filename,
+                                 llvm::ArrayRef<float> expectedValues) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -5247,9 +5248,6 @@ static void importResizeBilinear(std::string filename) {
   auto result = res->getHandle();
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   EXPECT_EQ(result.dims().vec(), expectedDims);
-
-  std::vector<float> expectedValues = {1.0, 1.5, 2.0, 2.0, 2.0, 2.5, 3.0, 3.0,
-                                       3.0, 3.5, 4.0, 4.0, 3.0, 3.5, 4.0, 4.0};
 
   for (dim_t i = 0; i < 16; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
@@ -5288,14 +5286,18 @@ TEST_F(OnnxImporterTest, importBoolFromInt) {
 TEST(onnx, importResizeBilinear) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/resizeBilinear.onnxtxt");
-  importResizeBilinear(netFilename);
+  std::vector<float> expectedValues = {1.0, 1.5, 2.0, 2.0, 2.0, 2.5, 3.0, 3.0,
+                                       3.0, 3.5, 4.0, 4.0, 3.0, 3.5, 4.0, 4.0};
+  importResizeBilinear(netFilename, expectedValues);
 }
 
 /// Test ONNX Resize V11 mode=nearest that is compatible with V10 spec
 TEST(onnx, importResizeBilinearV11compat) {
   std::string netFilename(
       GLOW_DATA_PATH "tests/models/onnxModels/resizeBilinearV11compat.onnxtxt");
-  importResizeBilinear(netFilename);
+  std::vector<float> expectedValues = {1.0, 1.5, 2.0, 2.0, 2.0, 2.5, 3.0, 3.0,
+                                       3.0, 3.5, 4.0, 4.0, 3.0, 3.5, 4.0, 4.0};
+  importResizeBilinear(netFilename, expectedValues);
 }
 
 /// Test ONNX Resize V11 mode=bilinear that is compatible with V10 spec
@@ -5304,7 +5306,20 @@ TEST(onnx, importResizeBilinearV11compat_sizes) {
   std::string netFilename(
       GLOW_DATA_PATH
       "tests/models/onnxModels/resizeBilinearV11compat_sizes.onnxtxt");
-  importResizeBilinear(netFilename);
+  std::vector<float> expectedValues = {1.0, 1.5, 2.0, 2.0, 2.0, 2.5, 3.0, 3.0,
+                                       3.0, 3.5, 4.0, 4.0, 3.0, 3.5, 4.0, 4.0};
+  importResizeBilinear(netFilename, expectedValues);
+}
+
+TEST(onnx, importResizeBilinearAlignCorner) {
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/resizeBilinearAlignCorner.onnxtxt");
+  std::vector<float> expectedValues = {
+      1.0,        1.33333333, 1.66666667, 2.0,        1.66666667, 2,
+      2.33333333, 2.66666667, 2.33333333, 2.66666667, 3.0,        3.33333333,
+      3.0,        3.33333333, 3.66666667, 4.0};
+  importResizeBilinear(netFilename, expectedValues);
 }
 
 /// Test loading a custom ONNX Glow net with NodeOpts.

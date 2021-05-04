@@ -1355,6 +1355,7 @@ int main(int argc, char **argv) {
   BB.newNode("ResizeBilinear")
       .addInput("Input")
       .addMember(MemberType::VectorFloat, "Scale")
+      .addMember(MemberType::Enum, "CoorTransMode")
       .addResultFromCtorArg()
       .setDocstring(
           "Given Input tensor of [N,H,W,C], where N is the batch, C is the "

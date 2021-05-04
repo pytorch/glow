@@ -272,6 +272,13 @@ inline bool is3DData(ConvolutionLayout layout) {
 /// Modes of pooling for RoiAlign operation.
 enum PoolingMode { AVG = 0, MAX };
 
+/// Coordinate tranformation modes for resizeBilinear based on ONNX resize
+/// Operator.
+enum ResizeCoorTransMode {
+  ASYMMETRIC = 0,
+  ALIGN_CORNERS,
+};
+
 /// Activations fused into ConvolutionNode (not supported on all backends).
 enum FusedActivation {
   NONE = 0,

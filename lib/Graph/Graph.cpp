@@ -3087,13 +3087,15 @@ ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
 
 ResizeBilinearNode *
 Function::createResizeBilinear(llvm::StringRef name, NodeValue input,
-                               llvm::ArrayRef<float> scale) {
+                               llvm::ArrayRef<float> scale,
+                               ResizeCoorTransMode coordTransformMode) {
   auto inputDim = input.dims();
   DCHECK_EQ(inputDim.size(), scale.size())
       << "Input Dimension size: " << inputDim.size()
       << " Scale size: " << scale.size() << " should be same.";
 
   std::vector<dim_t> newDim;
+  std::vector<float> newScale(scale.begin(), scale.end());
 
   for (size_t i = 0; i < scale.size(); i++) {
     auto newD = dim_t(std::floor(inputDim[i] * scale[i]));
@@ -3102,13 +3104,25 @@ Function::createResizeBilinear(llvm::StringRef name, NodeValue input,
     newDim.push_back(newD);
   }
 
+  // input layout NHWC
+  if (coordTransformMode == ResizeCoorTransMode::ALIGN_CORNERS) {
+    DCHECK_EQ(newScale.size(), 4)
+        << "Scale size: " << newScale.size() << "Scale size must be 4";
+    newScale[1] =
+        inputDim[1] == 1 ? 1 : (newDim[1] - 1.0f) / (inputDim[1] - 1.0f);
+    newScale[2] =
+        inputDim[2] == 1 ? 1 : (newDim[2] - 1.0f) / (inputDim[2] - 1.0f);
+  }
+
   auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
-  return addNode(new ResizeBilinearNode(name, outTy, input, scale));
+  return addNode(
+      new ResizeBilinearNode(name, outTy, input, newScale, coordTransformMode));
 }
 
-ResizeBilinearNode *Function::createResizeBilinear(llvm::StringRef name,
-                                                   NodeValue input,
-                                                   TypeRef outTy) {
+ResizeBilinearNode *
+Function::createResizeBilinear(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy,
+                               ResizeCoorTransMode coordTransformMode) {
   auto inputDim = input.dims();
   auto outputDim = outTy->dims();
   DCHECK_EQ(inputDim.size(), outputDim.size())
@@ -3122,8 +3136,18 @@ ResizeBilinearNode *Function::createResizeBilinear(llvm::StringRef name,
                           << ", Scale larger than 0 is expected.";
     scales.push_back(scale);
   }
+  // input layout NHWC
+  if (coordTransformMode == ResizeCoorTransMode::ALIGN_CORNERS) {
+    DCHECK_EQ(scales.size(), 4)
+        << "Scale size: " << scales.size() << "Scale size must be 4";
+    scales[1] =
+        inputDim[1] == 1 ? 1 : (outputDim[1] - 1.0f) / (inputDim[1] - 1.0f);
+    scales[2] =
+        inputDim[2] == 1 ? 1 : (outputDim[2] - 1.0f) / (inputDim[2] - 1.0f);
+  }
 
-  return addNode(new ResizeBilinearNode(name, outTy, input, scales));
+  return addNode(
+      new ResizeBilinearNode(name, outTy, input, scales, coordTransformMode));
 }
 
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,

@@ -2389,6 +2389,7 @@ bool ResizeBilinearNode::verify() const {
   auto result = getResult();
   auto inputDims = input.dims();
   auto outputDims = result.dims();
+  auto coorTransMode = ResizeCoorTransMode(getCoorTransMode());
 
   bool isValid = checkTypeIgnoreShape(input, result, this);
   isValid &= expectCompareTrue("Input must be a 4D tensor", inputDims.size(),
@@ -2397,9 +2398,11 @@ bool ResizeBilinearNode::verify() const {
                                size_t(4), this);
 
   for (size_t i = 0, e = scale.size(); i < e; i++) {
-    isValid &= expectCompareTrue("Unexpected output",
-                                 dim_t(std::floor(inputDims[i] * scale[i])),
-                                 outputDims[i], this);
+    if (coorTransMode == ResizeCoorTransMode::ASYMMETRIC) {
+      isValid &= expectCompareTrue("Unexpected output",
+                                   dim_t(std::floor(inputDims[i] * scale[i])),
+                                   outputDims[i], this);
+    }
     isValid &= expectCompareTrue("Invalid scale", scale[i], float(0.0), this,
                                  CompareOperatorGreaterThan<float>());
   }
