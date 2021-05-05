@@ -2566,8 +2566,10 @@ Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
 NNPIBackend::compileFunctions(std::vector<Function *> &functions,
                               llvm::StringMap<BackendOptions> &optsMap) const {
   if (functions.size() > 1) {
+    // This is experimental, so it is disabled by default.
+    // Use NNPI_WEIGHTS_OFF_MEM_POOL=1 to override this.
     std::pair<std::string, std::string> wtsPoolOption(
-        "NNPI_disableWeightsInPool", "1");
+        "NNPI_disableWeightsInPool", "0");
     for (auto it = functions.begin(), end = functions.end(); it != end; ++it) {
       optsMap[(*it)->getName()].backendSpecificOpts.insert(wtsPoolOption);
     }
