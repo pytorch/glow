@@ -6021,11 +6021,11 @@ TEST_F(GraphOptz, ParallelizeData_ChannelwiseQuantizedConvolution) {
 /// Test Splitting Convolution into multiple Convolutions.
 TEST_F(GraphOptz, ParallelizeData_Convolution) {
   auto *input1 =
-      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5, 5, 8}, "input1", false);
-  bindings_.allocate(input1)->getHandle<float>().randomize(-4, 4,
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5, 5, 4}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1, 1,
                                                            mod_.getPRNG());
   auto *filter =
-      mod_.createConstant(ElemKind::FloatTy, {6, 1, 1, 8}, "weights");
+      mod_.createConstant(ElemKind::FloatTy, {6, 1, 1, 2}, "weights");
   auto *bias = mod_.createConstant(ElemKind::FloatTy, {6}, "bias");
   auto *output =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 5, 5, 6}, "output", false);
@@ -6033,7 +6033,7 @@ TEST_F(GraphOptz, ParallelizeData_Convolution) {
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {3, 5, 5, 6});
 
   auto *conv =
-      F_->createConv("Convolution1", input1, filter, bias, outTy, 1, 1, 0, 1);
+      F_->createConv("Convolution1", input1, filter, bias, outTy, 1, 1, 0, 2);
   F_->createSave("save", conv, output);
 
   ::glow::optimize(F_, CompilationMode::Infer);
