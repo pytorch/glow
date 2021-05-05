@@ -1,8 +1,8 @@
 // (c) Facebook, Inc. and its affiliates. Confidential and proprietary.
 
-#include "glow/lib/Backends/NNPI/CustomKernels/IAInjectors/IAInjectors.h"
+#include "IAInjectors.h"
+#include "GetNNPIKernels.h"
 #include "glow/Graph/Graph.h"
-#include "glow/lib/Backends/NNPI/CustomKernels/GetNNPIKernels.h"
 
 namespace glow {
 

@@ -23,7 +23,7 @@
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Flags/Flags.h"
 
-#include "glow/lib/Backends/NNPI/CustomKernels/GetNNPIKernels.h"
+#include "GetNNPIKernels.h"
 
 #include <sstream>
 
@@ -113,7 +113,7 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.enableConvSpatialSplitter =
       compilationOptions.enableConvSpatialSplitter;
 #endif
-
+  config_.disableWeightsInPool = compilationOptions.disableWeightsInPool;
   return Error::success();
 }
 
