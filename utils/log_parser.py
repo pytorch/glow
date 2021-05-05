@@ -66,31 +66,31 @@ class Node:
         return self.name_
 
     def get_kind_name(self) -> str:
-        """Gets the kind name. """
+        """Gets the kind name."""
 
         return self.kindName_
 
     def get_name(self) -> str:
-        """Gets the node name. """
+        """Gets the node name."""
 
         return self.name_
 
     def getNodeNameAndKind(self) -> NodeNameAndKind:
-        """Gets the Name+Kind tuple. """
+        """Gets the Name+Kind tuple."""
         return (self.name_, self.kindName_)
 
     def get_inputs(self) -> List[NodeValue]:
-        """Gets the input node. """
+        """Gets the input node."""
 
         return self.inputs_
 
     def get_users(self) -> Dict["Node", int]:
-        """Gets the user of this node. """
+        """Gets the user of this node."""
 
         return self.users_
 
     def add_user(self, u: "Node") -> None:
-        """Adds one user of this node. Increment the number of uses of the user by 1. """
+        """Adds one user of this node. Increment the number of uses of the user by 1."""
 
         if u not in self.users_:
             self.users_[u] = 0
@@ -175,7 +175,7 @@ class DottyPrinter:
         ]
 
     def get_unique_vertex_name(self, node: Node) -> str:
-        """Get the unique vertex name given a Node object. """
+        """Get the unique vertex name given a Node object."""
 
         if node not in self.uniqueVertexMap_:
             self.uniqueVertexMap_[node] = self.uniqueVertexNo_
@@ -184,7 +184,7 @@ class DottyPrinter:
         return f"v{self.uniqueVertexMap_[node]}"
 
     def dump_label(self, node: Node) -> str:
-        """Returns the string for the label of the given node. """
+        """Returns the string for the label of the given node."""
 
         labelStr = f"""{{ {{<Inputs>Inputs}}|
                     {{ {node.get_kind_name()}\lname: {node.get_name()} }}|
@@ -192,13 +192,13 @@ class DottyPrinter:
         return labelStr
 
     def get_color(self, node: Node) -> str:
-        """Returns the color for the given node. """
+        """Returns the color for the given node."""
 
         idx = hash(node.get_kind_name()) % len(self.colors_)
         return self.colors_[idx]
 
     def dump_node(self, node: Node) -> None:
-        """Generates the dotty information for the given node. """
+        """Generates the dotty information for the given node."""
 
         if not node:
             return
@@ -212,13 +212,13 @@ class DottyPrinter:
         self.vertices_.append(nodeStr)
 
     def visitNodes(self) -> None:
-        """Visits all nodes in nodesMap_ and dump the dotty information for each node. """
+        """Visits all nodes in nodesMap_ and dump the dotty information for each node."""
 
         for node in self.nodesMap_.values():
             self.dump_node(node)
 
     def visitEdges(self) -> None:
-        """Visits all edges and dump the dotty information for each edge. """
+        """Visits all edges and dump the dotty information for each edge."""
 
         for node in self.nodesMap_.values():
             for nodeInput in node.get_inputs():
@@ -230,7 +230,7 @@ class DottyPrinter:
                 self.edges_.append(edgeStr)
 
     def dump_graph(self, dagName: str) -> None:
-        """Visits the node graph and generates the dotty information. """
+        """Visits the node graph and generates the dotty information."""
 
         self.visitNodes()
         self.visitEdges()
@@ -244,7 +244,7 @@ class DottyPrinter:
 
 
 def parse_args() -> Tuple[str, str, List[str]]:
-    """Parse the arguments of this script. """
+    """Parse the arguments of this script."""
 
     parser = argparse.ArgumentParser(description="Parse compilation log")
     parser.add_argument("-f", "--log-file")

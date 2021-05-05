@@ -76,7 +76,7 @@ class DottyPrinter:
         self.edges_ = []
 
     def get_color(self, isDirectTrans: bool) -> str:
-        """Returns the color for the given node. """
+        """Returns the color for the given node."""
 
         if isDirectTrans:
             return "Yellow2"
@@ -84,7 +84,7 @@ class DottyPrinter:
             return "AliceBlue"
 
     def dump_label(self, tran: Transformation) -> str:
-        """Returns the string for the label of the given transformation. """
+        """Returns the string for the label of the given transformation."""
 
         labelStr = (
             rf"""{{ {{SCOPE:\l{tran.scopeName_} }}|{{ORIGINAL OPERAND CHAIN:\l\l"""
@@ -98,7 +98,7 @@ class DottyPrinter:
         return labelStr
 
     def dump_node(self, tran: Transformation) -> None:
-        """Generates the dotty information for the given transformation. """
+        """Generates the dotty information for the given transformation."""
 
         if not tran:
             return
@@ -112,13 +112,13 @@ class DottyPrinter:
         self.vertices_.append(tranStr)
 
     def visit_nodes(self) -> None:
-        """Visits all transformation and dump the dotty information for each transformation. """
+        """Visits all transformation and dump the dotty information for each transformation."""
 
         for tran in self.transList_:
             self.dump_node(tran)
 
     def visit_edges(self) -> None:
-        """Visits all edges and dump the dotty information for each edge. """
+        """Visits all edges and dump the dotty information for each edge."""
 
         for tran in self.transList_:
             for anc in tran.ancestors_:
@@ -126,7 +126,7 @@ class DottyPrinter:
                 self.edges_.append(edgeStr)
 
     def dump_graph(self, dottyFile: str) -> None:
-        """Visits the graph and generates the dotty information. """
+        """Visits the graph and generates the dotty information."""
 
         self.visit_nodes()
         self.visit_edges()
@@ -383,7 +383,7 @@ def stat_phase(conn: sqlite3.Connection, phaseId: int):
 
 
 def process():
-    """Parse args and process this script. """
+    """Parse args and process this script."""
 
     parser = argparse.ArgumentParser(description="Filter compilation and optimiztion.")
     parser.add_argument("--db-file")

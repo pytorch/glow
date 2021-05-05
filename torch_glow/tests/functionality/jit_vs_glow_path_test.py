@@ -32,7 +32,7 @@ class TestJITVsGlowPath(utils.TorchGlowTestCase):
         )
 
     def test_jit_vs_glow_int_path(self):
-        """Test JIT vs. Glow logging with int type """
+        """Test JIT vs. Glow logging with int type"""
 
         torch_glow.enable_jit_vs_glow_compare()
 

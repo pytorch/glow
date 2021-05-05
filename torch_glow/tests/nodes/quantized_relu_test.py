@@ -31,7 +31,7 @@ class TestQuantizedRelu(utils.TorchGlowTestCase):
         )
 
     def test_quantized_relu_cut_dq(self):
-        """Basic test of the PyTorch quantized::relu Node on Glow, with quantize and dequantize excluded. """
+        """Basic test of the PyTorch quantized::relu Node on Glow, with quantize and dequantize excluded."""
 
         utils.compare_tracing_methods(
             SimpleQuantizedReluModel(1.0 / 128, 3, torch.quint8),
