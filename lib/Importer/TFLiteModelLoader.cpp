@@ -149,6 +149,15 @@ std::pair<unsigned_t, unsigned_t> getSamePads(dim_t inputSize, dim_t outputSize,
   return std::pair<unsigned_t, unsigned_t>(padBefore, padAfter);
 }
 
+/// Retrieves data from a constant Tensor and stores it in a vector.
+template <typename T, typename datatype = ssize_t>
+static void helperSetter(Constant *constT, std::vector<datatype> &vec) {
+  auto constH = constT->getPayload().getHandle<T>();
+  for (dim_t i = 0; i < constH.size(); ++i) {
+    vec.push_back(constH.at({i}));
+  }
+}
+
 /// Function to verify the quantization parameters of the bias operand. The
 /// TensorFlowLite format mandates that the bias scale must be equal to the
 /// product inputScale * weightsScale and the bias offset must be 0. This
@@ -841,7 +850,7 @@ const std::string TFLiteModelLoader::opErrMsg(const OperatorInfo &opInfo,
 template <typename T>
 Expected<T> TFLiteModelLoader::loadAxis(const OperatorInfo &opInfo,
                                         NodeValue axis, NodeValue value) {
-  Constant *axisC = llvm::dyn_cast<Constant>(axis.getNode());
+  auto *axisC = llvm::dyn_cast<Constant>(axis.getNode());
   RETURN_ERR_IF_NOT(axisC,
                     opErrMsg(opInfo, "Non constant axis not supported!"));
   RETURN_ERR_IF_NOT(axisC->getType()->size() == 1,
@@ -1155,6 +1164,12 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   }
   if (opCode == tflite::BuiltinOperator_RESIZE_BILINEAR) {
     return loadResizeBilinear(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_SPACE_TO_BATCH_ND) {
+    return loadSpaceToBatchNd(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_BATCH_TO_SPACE_ND) {
+    return loadBatchToSpaceNd(op, opInfo);
   }
   if (opCode == tflite::BuiltinOperator_SIN) {
     return loadUnaryArithmetic(op, opInfo);
@@ -2013,6 +2028,171 @@ Error TFLiteModelLoader::loadResizeBilinear(const tflite::Operator *op,
   }
 
   NodeValue output = F_->createResizeBilinear(opInfo.name, input, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadSpaceToBatchNd(const tflite::Operator *op,
+                                            const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  NodeValue block;
+  ASSIGN_VALUE_OR_RETURN_ERR(block, getInputNodeValue(op, 1));
+  NodeValue pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getInputNodeValue(op, 2));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  // Implemented as Pad -> Transpose N-D -> SpaceToDepth -> Transpose N-D
+
+  // Get Block Size dimensionality. Should be 2 but pretend it's arbitrary like
+  // in tensorflow.
+  int32_t blockSize = block.dims()[0];
+
+  // Validate block size input.
+  RETURN_ERR_IF_NOT(block.dims().size() == 1,
+                    opErrMsg(opInfo, "Block Size should be 1D"));
+  auto *blockC = llvm::dyn_cast<Constant>(block.getNode());
+  RETURN_ERR_IF_NOT(
+      blockC, opErrMsg(opInfo, "Non constant 'Block Size' not supported"));
+  RETURN_ERR_IF_NOT(blockC->getType()->getElementType() == ElemKind::Int32ITy,
+                    opErrMsg(opInfo, "Block Size should have INT32 type"));
+
+  // Validate paddings.
+  auto *padsC = llvm::dyn_cast<Constant>(pads.getNode());
+  RETURN_ERR_IF_NOT(padsC,
+                    opErrMsg(opInfo, "Non constant 'paddings' not supported"));
+  RETURN_ERR_IF_NOT(padsC->getType()->getElementType() == ElemKind::Int32ITy,
+                    opErrMsg(opInfo, "Paddings should have INT32 type"));
+  RETURN_ERR_IF_NOT(pads.dims().size() == 2,
+                    opErrMsg(opInfo, "Paddings should be 2D"));
+  for (dim_t i = 0; i < pads.dims().size(); i++) {
+    RETURN_ERR_IF_NOT(
+        pads.dims()[i] == (dim_t)blockSize,
+        opErrMsg(opInfo,
+                 "Each Padding should have Block Size number of values"));
+  }
+
+  // Get Block Size values.
+  std::vector<int32_t> blockV;
+  helperSetter<int32_t>(blockC, blockV);
+  auto elemEqual = std::equal(blockV.begin() + 1, blockV.end(), blockV.begin());
+  RETURN_ERR_IF_NOT(
+      elemEqual,
+      opErrMsg(opInfo, "Different Block Size values not supported yet."));
+
+  auto inDims = input.getType()->dims();
+
+  // Create Padding Node.
+  auto padsH = padsC->getPayload().getHandle<int32_t>();
+  std::vector<int> padsVec(2 * inDims.size());
+  for (int32_t i = 0; i < blockSize; i++) {
+    // @lint-ignore CLANGTIDY LocalUncheckedArrayBounds
+    padsVec[i + 1] = padsH.raw(2 * i + 0);
+    padsVec[i + 1 + inDims.size()] = padsH.raw(2 * i + 1);
+  }
+  ShapeVector padDims(inDims.begin(), inDims.end());
+  for (dim_t i = 0; i < padDims.size(); i++) {
+    // @lint-ignore CLANGTIDY LocalUncheckedArrayBounds
+    padDims[i] += (padsVec[i] + padsVec[i + inDims.size()]);
+  }
+  auto OT = mod_.uniqueTypeWithNewShape(input.getType(), padDims);
+  NodeValue pad = F_->createPad(opInfo.name, input, OT, PaddingMode::CONSTANT,
+                                padsVec, 0.f);
+
+  // Check expected dimensions.
+  auto padInDims = pad.getType()->dims();
+  auto outDims = outTy->dims();
+  int32_t calcblockSize = 0;
+  for (int32_t i = 0; i < blockSize; i++) {
+    RETURN_ERR_IF_NOT(
+        padInDims[i + 1] % outDims[i + 1] == 0,
+        opErrMsg(opInfo, strFormat("Input value %d must be a multiple of "
+                                   "output value %d for space dim %d",
+                                   (int)padInDims[1], (int)outDims[1], i)));
+    int32_t newBlockSize = padInDims[i + 1] / outDims[i + 1];
+    if (i > 1) {
+      RETURN_ERR_IF_NOT(
+          calcblockSize == newBlockSize,
+          opErrMsg(opInfo, "Block Size for H & W must be the same."));
+      calcblockSize = newBlockSize;
+    }
+  }
+
+  // Transpose N and D and perform SpaceToDepth.
+  auto *trIn =
+      F_->createTranspose(opInfo.name + ".trIn", pad, {3, 1, 2, 0}, "NHWC");
+  // @lint-ignore CLANGTIDY LocalUncheckedArrayBounds
+  auto *S2D = F_->createSpaceToDepth(opInfo.name + ".S2D", trIn, blockV[0]);
+  auto *output = F_->createTranspose(opInfo.name + ".trOut", S2D, {3, 1, 2, 0});
+
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadBatchToSpaceNd(const tflite::Operator *op,
+                                            const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  NodeValue block;
+  ASSIGN_VALUE_OR_RETURN_ERR(block, getInputNodeValue(op, 1));
+  NodeValue crop;
+  ASSIGN_VALUE_OR_RETURN_ERR(crop, getInputNodeValue(op, 2));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  // Implemented as Transpose N-D -> DepthToSpace -> Transpose N-D -> Crop
+
+  // Get Block Size dimensionality. Should be 2 but pretend it's arbitrary like
+  // in tensorflow.
+  int32_t blockSize = block.dims()[0];
+
+  // Validate block input.
+  RETURN_ERR_IF_NOT(block.dims().size() == 1,
+                    opErrMsg(opInfo, "Block Size should be 1D"));
+  auto *blockC = llvm::dyn_cast<Constant>(block.getNode());
+  RETURN_ERR_IF_NOT(
+      blockC, opErrMsg(opInfo, "Non constant 'Block Size' not supported"));
+  RETURN_ERR_IF_NOT(blockC->getType()->getElementType() == ElemKind::Int32ITy,
+                    opErrMsg(opInfo, "Block Size should have INT32 type"));
+
+  // Validate crop input.
+  auto *cropC = llvm::dyn_cast<Constant>(crop.getNode());
+  RETURN_ERR_IF_NOT(cropC,
+                    opErrMsg(opInfo, "Non constant 'crops' not supported"));
+  RETURN_ERR_IF_NOT(cropC->getType()->getElementType() == ElemKind::Int32ITy,
+                    opErrMsg(opInfo, "Paddings should have INT32 type"));
+  RETURN_ERR_IF_NOT(crop.dims().size() == 2,
+                    opErrMsg(opInfo, "Crops should be 2D"));
+  for (dim_t i = 0; i < crop.dims().size(); i++) {
+    RETURN_ERR_IF_NOT(
+        crop.dims()[i] == (dim_t)blockSize,
+        opErrMsg(opInfo, "Each crop should have Block Size number of values"));
+  }
+
+  // Get Block Size values.
+  std::vector<int32_t> blockV;
+  helperSetter<int32_t>(blockC, blockV);
+  auto elemEqual = std::equal(blockV.begin() + 1, blockV.end(), blockV.begin());
+  RETURN_ERR_IF_NOT(
+      elemEqual,
+      opErrMsg(opInfo, "Different Block Size values not supported yet."));
+
+  // Transpose N and D and perform DepthToSpace.
+  auto *tr1 =
+      F_->createTranspose(opInfo.name + ".trPre", input, {3, 1, 2, 0}, "NHWC");
+  // @lint-ignore CLANGTIDY LocalUncheckedArrayBounds
+  auto *D2S = F_->createDepthToSpace(opInfo.name + ".D2S", tr1, blockV[0]);
+  auto *tr2 = F_->createTranspose(opInfo.name + ".trPost", D2S, {3, 1, 2, 0});
+
+  // Create Crop Node.
+  RETURN_ERR_IF_NOT(cropC->getType()->getElementType() == ElemKind::Int32ITy,
+                    opErrMsg(opInfo, "Paddings should have INT32 type"));
+  auto cropH = cropC->getPayload().getHandle<int32_t>();
+  std::vector<dim_t> cropVec(input.getType()->dims().size());
+  for (int32_t i = 0; i < blockSize; i++) {
+    // @lint-ignore CLANGTIDY LocalUncheckedArrayBounds
+    cropVec[i + 1] = cropH.raw(2 * i + 0);
+  }
+  NodeValue output = F_->createSlice(opInfo.name, tr2, cropVec, outTy);
   return setOutputNodeValue(op, output);
 }
 
