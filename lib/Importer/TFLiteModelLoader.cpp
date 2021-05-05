@@ -1298,37 +1298,52 @@ Error TFLiteModelLoader::loadBinaryArithmetic(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
-  // LHS operand broadcasting.
-  if (LHS.dims().size() < RHS.dims().size()) {
-    unsigned_t axis = RHS.dims().size() - LHS.dims().size();
-    LHS =
-        F_->createBroadcast(opInfo.name + ".Broadcast", LHS, RHS.dims(), axis);
-  }
-
-  // RHS operand broadcasting.
-  if (RHS.dims().size() < LHS.dims().size()) {
-    unsigned_t axis = LHS.dims().size() - RHS.dims().size();
-    RHS =
-        F_->createBroadcast(opInfo.name + ".Broadcast", RHS, LHS.dims(), axis);
-  }
-
   auto opCode = opInfo.code;
+
+  // skip operators with proper broadcast (no TFLite and Operator Tests for
+  // others yet).
+  if (opCode != tflite::BuiltinOperator_ADD &&
+      opCode != tflite::BuiltinOperator_SUB &&
+      opCode != tflite::BuiltinOperator_MUL &&
+      opCode != tflite::BuiltinOperator_DIV &&
+      opCode != tflite::BuiltinOperator_MIN &&
+      opCode != tflite::BuiltinOperator_MAX) {
+
+    // LHS operand broadcasting.
+    if (LHS.dims().size() < RHS.dims().size()) {
+      unsigned_t axis = RHS.dims().size() - LHS.dims().size();
+      LHS = F_->createBroadcast(opInfo.name + ".Broadcast", LHS, RHS.dims(),
+                                axis);
+    }
+
+    // RHS operand broadcasting.
+    if (RHS.dims().size() < LHS.dims().size()) {
+      unsigned_t axis = LHS.dims().size() - RHS.dims().size();
+      RHS = F_->createBroadcast(opInfo.name + ".Broadcast", RHS, LHS.dims(),
+                                axis);
+    }
+  }
+
   NodeValue output;
   if (opCode == tflite::BuiltinOperator_ADD) {
     const auto *opts = op->builtin_options_as_AddOptions();
-    output = F_->createAdd(opInfo.name, outTy, LHS, RHS);
+    output = F_->createNodeWithBroadcastOutTy<AddNode>(opInfo.name, -1, outTy,
+                                                       LHS, RHS);
     RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
   } else if (opCode == tflite::BuiltinOperator_MUL) {
     const auto *opts = op->builtin_options_as_MulOptions();
-    output = F_->createMul(opInfo.name, outTy, LHS, RHS);
+    output = F_->createNodeWithBroadcastOutTy<MulNode>(opInfo.name, -1, outTy,
+                                                       LHS, RHS);
     RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
   } else if (opCode == tflite::BuiltinOperator_SUB) {
     const auto *opts = op->builtin_options_as_SubOptions();
-    output = F_->createSub(opInfo.name, outTy, LHS, RHS);
+    output = F_->createNodeWithBroadcastOutTy<SubNode>(opInfo.name, -1, outTy,
+                                                       LHS, RHS);
     RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
   } else if (opCode == tflite::BuiltinOperator_DIV) {
     const auto *opts = op->builtin_options_as_DivOptions();
-    output = F_->createDiv(opInfo.name, outTy, LHS, RHS);
+    output = F_->createNodeWithBroadcastOutTy<DivNode>(opInfo.name, -1, outTy,
+                                                       LHS, RHS);
     RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
   } else if (opCode == tflite::BuiltinOperator_POW) {
     output = F_->createPow(opInfo.name, outTy, LHS, RHS);
@@ -1337,9 +1352,11 @@ Error TFLiteModelLoader::loadBinaryArithmetic(const tflite::Operator *op,
         F_->createReshape(opInfo.name + ".reshape", RHS, outTy->dims());
     output = F_->createPRELU(opInfo.name, LHS, slope, outTy);
   } else if (opCode == tflite::BuiltinOperator_MAXIMUM) {
-    output = F_->createMax(opInfo.name, outTy, LHS, RHS);
+    output = F_->createNodeWithBroadcastOutTy<MaxNode>(opInfo.name, -1, outTy,
+                                                       LHS, RHS);
   } else if (opCode == tflite::BuiltinOperator_MINIMUM) {
-    output = F_->createMin(opInfo.name, outTy, LHS, RHS);
+    output = F_->createNodeWithBroadcastOutTy<MinNode>(opInfo.name, -1, outTy,
+                                                       LHS, RHS);
   } else if (opCode == tflite::BuiltinOperator_EQUAL) {
     output = F_->createCmpEQ(opInfo.name, LHS, RHS);
   } else if (opCode == tflite::BuiltinOperator_NOT_EQUAL) {
