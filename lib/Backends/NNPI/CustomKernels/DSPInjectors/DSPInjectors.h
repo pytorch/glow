@@ -13,6 +13,11 @@ struct CustomReluNodeDSPKernelInjector : public CustomKernelInjector {
   bool tryInject(Function *F, Node *node) const override;
 };
 
+/// Injector for custom CmpNEQ node.
+struct CustomCmpNEQNodeDSPKernelInjector : public CustomKernelInjector {
+  bool tryInject(Function *F, Node *node) const override;
+};
+
 /// \returns the list of all CustomKernelInjectors for DSP nodes.
 std::vector<std::unique_ptr<CustomKernelInjector>> buildDSPInjectors();
 
