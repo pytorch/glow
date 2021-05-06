@@ -369,7 +369,6 @@ struct BlacklistInitializer {
       {"CmpLT_Int32ITy/0", TestBlacklist::AnyDeviceSWEngine},
       {"CmpLT_Int64ITy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CmpNEQ_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
-      {"CmpNEQ_Int32ITy/0", TestBlacklist::AnyDeviceSWEngine},
       {"CmpNEQ_Int64ITy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CmpNEQ_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Cos_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},

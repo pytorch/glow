@@ -155,6 +155,7 @@ add_library(NNPI
     CustomKernels/DSPInjectors/DSPInjectors.cpp
     CustomKernels/DSPInjectors/DSPInjectorUtils.cpp
     CustomKernels/DSPInjectors/ReluInjector.cpp
+    CustomKernels/DSPInjectors/CmpNEQInjector.cpp
 )
 
 target_link_libraries(NNPI

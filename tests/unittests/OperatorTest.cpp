@@ -70,6 +70,21 @@ protected:
     ASSERT_TRUE(F_->verify(&EE_.getBackend()))
         << "Function must pass verification.";
 
+    // If the function contains custom kernels then skip the serialization
+#ifdef GLOW_WITH_NNPI
+    bool hasCustomKernels = false;
+    for (auto &node : F_->getNodes()) {
+      if (node.getKind() == Kinded::Kind::NNPICustomDSPNodeKind ||
+          node.getKind() == Kinded::Kind::NNPICustomIANodeKind) {
+        hasCustomKernels = true;
+        break;
+      }
+    }
+    if (hasCustomKernels) {
+      return;
+    }
+#endif
+
     // Now export the model to later import it back in.
     llvm::SmallString<64> path;
     auto tempFileRes =
