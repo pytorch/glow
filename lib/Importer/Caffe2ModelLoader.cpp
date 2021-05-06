@@ -1449,15 +1449,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       break;
     }
     case caffe2::TensorProto_DataType_INT64: {
-      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int32ITy ||
-                            in.getElementType() == ElemKind::Int64ITy,
-                        opErrMsg(op, "Can only cast int32 or int64 to int64."));
-      if (in.getElementType() == ElemKind::Int32ITy) {
-        auto outTy = mod_.uniqueType(ElemKind::Int64ITy, in.getType()->dims());
-        Node *node = G_->createConvertTo(opName + ".i32toi64", in, outTy);
-        RETURN_IF_ERR(addNodeAsOutput(op, node));
-        return Error::success();
-      }
+      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int32ITy,
+                        opErrMsg(op, "Can only cast int64 to int64."));
       break;
     }
     default:
