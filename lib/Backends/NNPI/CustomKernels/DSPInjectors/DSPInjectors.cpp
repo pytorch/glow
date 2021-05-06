@@ -9,6 +9,9 @@ std::vector<std::unique_ptr<CustomKernelInjector>> buildDSPInjectors() {
   // Custom relu, used as a sample, disabled by default.
   // injectors.emplace_back(std::make_unique<CustomReluNodeDSPKernelInjector>());
   injectors.emplace_back(std::make_unique<CustomCmpNEQNodeDSPKernelInjector>());
+  injectors.emplace_back(std::make_unique<CustomCmpEQNodeDSPKernelInjector>());
+  injectors.emplace_back(std::make_unique<CustomCmpLTNodeDSPKernelInjector>());
+  injectors.emplace_back(std::make_unique<CustomCmpLTENodeDSPKernelInjector>());
   return injectors;
 }
 } // namespace glow
