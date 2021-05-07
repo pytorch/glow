@@ -1,6 +1,6 @@
 // (c) Facebook, Inc. and its affiliates. Confidential and proprietary.
 
-#include "glow/lib/Backends/NNPI/CustomKernels/GetNNPIKernels.h"
+#include "GetNNPIKernels.h"
 #include "glow/Flags/Flags.h"
 
 namespace glow {
