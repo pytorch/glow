@@ -81,103 +81,130 @@ void ChildMemSizeBasedScheduler::computeNodeComputationMaxMemorySize() {
 /// Order children by (maxSize - resultSize). It gives more
 /// priority to the nodes that free more memory after
 /// their computation.
-void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *N) {
-  // Each child should be scheduled just once.
-  if (isScheduled(N))
-    return;
-  // Do not explicitly schedule storage nodes.
-  if (isa<Storage>(N))
-    return;
-  // A set of node's sorted children.
-  llvm::SmallVector<Node *, 8> orderedChildren;
-  for (int idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
-    orderedChildren.push_back(N->getNthInput(idx));
-  }
+void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *node) {
+  // Use `worklist` as a stack-like container to hold nodes for processing. Each
+  // node is going to appear in the container at least twice:
+  // 1) To put its children (and sometimes parents) in the worklist
+  // 2) To schedule the node itself (i.e. append it to `scheduled_` list)
+  // At the end of stage #1, the node is added in `readyNodes` set. By checking
+  // this set the algorithm figures out if it should perform stage #1 or #2 with
+  // the node it pulls out of the worklist.
+  // Since the algorithm does some special handling of node's parents, a node
+  // can get into the worklist more than twice. To ensure that stage #2 happens
+  // only after all children of the node are scheduled, `readyNodes` keeps
+  // node's worklist index instead of just node's pointer.
+  std::vector<Node *> worklist;
+  std::unordered_set<size_t> readyNodes;
+  worklist.push_back(node);
 
-  if (N->hasPredicate()) {
-    orderedChildren.push_back(N->getPredicate());
-  }
+  while (worklist.size()) {
+    auto *N = worklist.back();
+    worklist.pop_back();
+    size_t idx = worklist.size();
 
-  // We don't model memory dependencies, but we still need to honor them.
-  // Make sure the a node mutating any of its inputs happens after the last
-  // non-mutating use of the operand being mutated. Some examples of such nodes
-  // would be SaveNode and QuantizationProfileNode.
-  for (unsigned idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
-    // We don't care about inputs that are not mutated by the node.
-    if (!N->isOverwrittenNthInput(idx)) {
+    // Do not explicitly schedule storage nodes.
+    if (isa<Storage>(N)) {
       continue;
     }
-    auto mutatedInput = N->getNthInput(idx);
-    auto *destination = mutatedInput.getNode();
-    for (NodeUse &use : destination->getUsers()) {
+    // Each child should be scheduled just once.
+    if (isScheduled(N)) {
+      readyNodes.erase(idx);
+      continue;
+    }
+
+    // If node is marked as ready, all its children have been scheduled, so it
+    // can be scheduled now too.
+    if (readyNodes.count(idx)) {
+      readyNodes.erase(idx);
+      scheduled_.push_back(N);
+      continue;
+    }
+
+    // If this node has a user which does not have any users and which does not
+    // require any additional memory, schedule it here, because we don't want to
+    // extend the lifetime of this value for no reason. We want to execute and
+    // get rid of this node as soon as possible to reduce the memory pressure.
+    for (NodeUse &use : N->getUsers()) {
       Node *user = use.getUser();
-      if (user == N) {
-        continue;
-      }
-      // Nodes may have users scattered across different functions.
+      // Users may be scattered across different functions.
       // Only accounts for the ones in that function.
       if (&G_ != user->getParent()) {
         continue;
       }
-      orderedChildren.push_back(user);
-    }
-  }
-
-  // Order children by (maxSize - resultSize). It gives more
-  // priority to the nodes that free more memory after
-  // their computation.
-  for (size_t j = 0, e = orderedChildren.size(); j < e; ++j) {
-    for (size_t i = j; i > 0; --i) {
-      auto &currentChild = orderedChildren[i];
-      auto &prevChild = orderedChildren[i - 1];
-      if (maxMemSize_[currentChild] - resultMemSize_[currentChild] >
-          maxMemSize_[prevChild] - resultMemSize_[prevChild]) {
-        std::swap(currentChild, prevChild);
+      // Bail if a nodes has users, because nodes that have users can't be
+      // scheduled safely without violating dependencies.
+      if (user->getNumUsers()) {
+        continue;
+      }
+      // Schedule a node if it does not require any additional memory.
+      if (resultMemSize_[user] == 0) {
+        worklist.push_back(user);
       }
     }
-  }
 
-  DEBUG_GLOW(llvm::dbgs() << "\nAbout to schedule children of " << N->getName()
-                          << "\n";
-             llvm::dbgs() << "Children are:\n");
-  DEBUG_GLOW(for (auto child
-                  : orderedChildren) {
-    llvm::dbgs() << "Child " << child->getName() << ": "
-                 << maxMemSize_[child] - resultMemSize_[child] << "\n";
-  });
+    // Push the node again in the stack. By the time it's going to pop up again,
+    // all children are going to be scheduled, so mark it as ready.
+    readyNodes.insert(worklist.size());
+    worklist.push_back(N);
 
-  // Process the children according to the computed ordering.
-  for (auto child : orderedChildren) {
-    orderChildNodesAndSchedule(child);
-  }
+    // Take care about node's children.
+    size_t childrenStartIdx = worklist.size();
+    for (int i = 0, e = N->getNumInputs(); i < e; ++i) {
+      worklist.push_back(N->getNthInput(i));
+    }
 
-  // Schedule the node after all its children are scheduled. We need to perform
-  // an extra isScheduled check here, because the code below may have scheduled
-  // the current node while scheduling its children.
-  if (isScheduled(N)) {
-    return;
-  }
-  scheduled_.push_back(N);
-  // If this node has a user which does not have any users and which does not
-  // require any additional memory, schedule it here, because we don't want to
-  // extend the lifetime of this value for no reason. We want to execute and get
-  // rid of this node as soon as possible to reduce the memory pressure.
-  for (NodeUse &use : N->getUsers()) {
-    Node *user = use.getUser();
-    // Users may be scattered across different functions.
-    // Only accounts for the ones in that function.
-    if (&G_ != user->getParent()) {
-      continue;
+    if (N->hasPredicate()) {
+      worklist.push_back(N->getPredicate());
     }
-    // Bail if a nodes has users, because nodes that have users can't be
-    // scheduled safely without violating dependencies.
-    if (user->getNumUsers()) {
-      continue;
+
+    // We don't model memory dependencies, but we still need to honor them.
+    // Make sure the a node mutating any of its inputs happens after the last
+    // non-mutating use of the operand being mutated. Some examples of such
+    // nodes would be SaveNode and QuantizationProfileNode.
+    for (unsigned i = 0, e = N->getNumInputs(); i < e; ++i) {
+      // We don't care about inputs that are not mutated by the node.
+      if (!N->isOverwrittenNthInput(i)) {
+        continue;
+      }
+      auto mutatedInput = N->getNthInput(i);
+      auto *destination = mutatedInput.getNode();
+      for (NodeUse &use : destination->getUsers()) {
+        Node *user = use.getUser();
+        if (user == N) {
+          continue;
+        }
+        // Nodes may have users scattered across different functions.
+        // Only accounts for the ones in that function.
+        if (&G_ != user->getParent()) {
+          continue;
+        }
+        worklist.push_back(user);
+      }
     }
-    // Schedule a node if it does not require any additional memory.
-    if (resultMemSize_[user] == 0) {
-      orderChildNodesAndSchedule(user);
+
+    // Order children by (maxSize - resultSize). It gives more
+    // priority to the nodes that free more memory after
+    // their computation.
+    for (size_t j = childrenStartIdx, e = worklist.size(); j < e; ++j) {
+      for (size_t i = j; i > childrenStartIdx; --i) {
+        auto &currentChild = worklist[i];
+        auto &prevChild = worklist[i - 1];
+        if (maxMemSize_[currentChild] - resultMemSize_[currentChild] <=
+            maxMemSize_[prevChild] - resultMemSize_[prevChild]) {
+          std::swap(currentChild, prevChild);
+        }
+      }
     }
+
+    DEBUG_GLOW(llvm::dbgs() << "\nAbout to schedule children of "
+                            << N->getName() << "\n";
+               llvm::dbgs() << "Children are:\n");
+    DEBUG_GLOW(
+        for (size_t i = childrenStartIdx, e = worklist.size(); i < e; ++i) {
+          auto &child = worklist[i];
+          llvm::dbgs() << "Child " << child->getName() << ": "
+                       << maxMemSize_[child] - resultMemSize_[child] << "\n";
+        });
   }
 }
 

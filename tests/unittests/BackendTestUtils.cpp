@@ -55,18 +55,6 @@ llvm::cl::opt<bool, /* ExternalStorage */ true> runDisabledTestsI(
 using llvm::cast;
 
 namespace {
-// Helpers for creating and intializing placeholders from tensors.
-static Placeholder *createPlaceholder(Module &mod,
-                                      PlaceholderBindings &bindings,
-                                      Tensor *tensor, llvm::StringRef name,
-                                      const std::string layout = ANY_LAYOUT) {
-  auto *P = mod.createPlaceholder(tensor->getElementType(), tensor->dims(),
-                                  name, false, layout);
-  auto *PTensor = bindings.allocate(P);
-  PTensor->assign(tensor);
-
-  return P;
-}
 
 static Placeholder *createQuantizedPlaceholder(Module &mod,
                                                PlaceholderBindings &bindings,
@@ -1485,4 +1473,15 @@ Placeholder *createFusedRowwiseQuantizedPlaceholder(Module &mod,
 
   return ph;
 }
+
+// Helper for creating and intializing placeholders from tensors.
+Placeholder *createPlaceholder(Module &mod, PlaceholderBindings &bindings,
+                               Tensor *tensor, llvm::StringRef name,
+                               const std::string &layout) {
+  auto *P = mod.createPlaceholder(&tensor->getType(), name, false, layout);
+  auto *PTensor = bindings.allocate(P);
+  PTensor->assign(tensor);
+  return P;
+}
+
 } // namespace glow

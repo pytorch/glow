@@ -97,7 +97,7 @@ class TestQuantizedAdd(utils.TorchGlowTestCase):
         )
 
     def test_quantized_add_cut_q_dq(self):
-        """Basic test of the PyTorch quantized::add Node on Glow, with quantize and dequantize excluded. """
+        """Basic test of the PyTorch quantized::add Node on Glow, with quantize and dequantize excluded."""
 
         utils.compare_tracing_methods(
             SimpleQuantizedAddModule(

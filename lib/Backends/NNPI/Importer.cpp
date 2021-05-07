@@ -33,6 +33,21 @@ using namespace glow;
 
 const std::string NNPIImporter::internalName_("_NNPI_");
 
+static bool isBatchNormUsingAlternativeLayout(const glow::Node *node,
+                                              const size_t numDims) {
+  auto *glowBN = llvm::dyn_cast<BatchNormalizationNode>(node);
+  auto channelIdx = glowBN->getChannelIdx();
+  // Handle NNPI_LAYOUT_NDHWC and NNPI_LAYOUT_NHWC layout.
+  if ((numDims == 4 || numDims == 5) && (channelIdx == numDims - 1)) {
+    return true;
+  }
+  // Handle NNPI_LAYOUT_CN layout.
+  else if (numDims == 2 && channelIdx == 0) {
+    return true;
+  }
+  return false;
+}
+
 static std::string nodeValueName(const glow::NodeValue &nv) {
   if (nv.getNode()->getKind() == glow::Kinded::Kind::PlaceholderKind) {
     return nv.getNode()->getName();
@@ -408,7 +423,6 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::Convolution3DNodeKind:
     case Kinded::Kind::AvgPoolNodeKind:
     case Kinded::Kind::MaxPoolNodeKind:
-    case Kinded::Kind::BatchNormalizationNodeKind:
     case Kinded::Kind::ResizeNearestNodeKind:
       return true;
     case Kinded::Kind::FullyConnectedNodeKind:
@@ -416,6 +430,9 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::ROIAlignNodeKind:
 #endif
       return (v->getType()->dims().size() == 4);
+    case Kinded::Kind::BatchNormalizationNodeKind:
+      return isBatchNormUsingAlternativeLayout(user.getUser(),
+                                               v->getType()->dims().size());
     default: // Do nothing.
       break;
     }
@@ -785,13 +802,14 @@ public:
                              nodeValueName(glowDQFC->getBias())},
                             {nodeValueName(glowDQFC->getResult())});
 
-    return nnpiNetworkAddFullyConnectedOp(
+    return nnpiNetworkAddDynamicQuantizedFullyConnectedOp(
         importer.getNetwork(), glowDQFC->getName().begin(),
         nodeValueName(glowDQFC->getInput()).c_str(),
         nodeValueName(glowDQFC->getResult()).c_str(),
         nodeValueName(glowDQFC->getWeights()).c_str(),
         glowDQFC->getBias() ? nodeValueName(glowDQFC->getBias()).c_str()
-                            : nullptr);
+                            : nullptr,
+        !glowDQFC->getIsSymmetric());
   }
 };
 
@@ -815,9 +833,6 @@ public:
         "supported.",
         NNPI_INVALID_PARAM);
 
-    // Create the weights with no offset tensor.
-    // Assert weights & biases have no offset or all zeroes.
-
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addTensor(nodeValueName(glowDRQFC->getWeights()),
                            /* alternativeLayout */ true,
@@ -825,19 +840,20 @@ public:
                            nodeValueName(glowDRQFC->getOffsets()),
                            /* forceSymlowp */ true),
         "Failed to add tensor to NNPI");
-    // Quantize bias if needed
+
     importer.setUsedTensors({nodeValueName(glowDRQFC->getInput()),
                              nodeValueName(glowDRQFC->getWeights()),
                              nodeValueName(glowDRQFC->getBias())},
                             {nodeValueName(glowDRQFC->getResult())});
 
-    return nnpiNetworkAddFullyConnectedOp(
+    return nnpiNetworkAddDynamicQuantizedFullyConnectedOp(
         importer.getNetwork(), glowDRQFC->getName().begin(),
         nodeValueName(glowDRQFC->getInput()).c_str(),
         nodeValueName(glowDRQFC->getResult()).c_str(),
         nodeValueName(glowDRQFC->getWeights()).c_str(),
         glowDRQFC->getBias() ? nodeValueName(glowDRQFC->getBias()).c_str()
-                             : nullptr);
+                             : nullptr,
+        !glowDRQFC->getIsSymmetric());
   }
 };
 
@@ -880,25 +896,19 @@ public:
 class ScatterDataNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
-    LOG(ERROR) << "ScatterND is not fully supported";
-    return NNPI_NOT_IMPLEMENTED;
+    auto *glowSD = llvm::dyn_cast<ScatterDataNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowSD, "Bad node type", NNPI_INVALID_PARAM);
+    importer.setUsedTensors({nodeValueName(glowSD->getData()),
+                             nodeValueName(glowSD->getIndices()),
+                             nodeValueName(glowSD->getSlices())},
+                            {nodeValueName(glowSD->getResult())});
 
-    // TODO: uncomment when there is full support for ScatterND op.
-    // auto *glowSD = llvm::dyn_cast<ScatterDataNode>(n);
-    // LOG_AND_RETURN_IF_NOT(ERROR, glowSD, "Bad node type",
-    // NNPI_INVALID_PARAM);
-
-    // importer.setUsedTensors({nodeValueName(glowSD->getData()),
-    //                          nodeValueName(glowSD->getIndices()),
-    //                          nodeValueName(glowSD->getSlices())},
-    //                         {nodeValueName(glowSD->getResult())});
-
-    // return nnpiNetworkAddScatterNDOp(
-    //     importer.getNetwork(), glowSD->getName().begin(),
-    //     nodeValueName(glowSD->getData()).c_str(),
-    //     nodeValueName(glowSD->getIndices()).c_str(),
-    //     nodeValueName(glowSD->getSlices()).c_str(),
-    //     nodeValueName(glowSD->getResult()).c_str(), glowSD->getCumulative());
+    return nnpiNetworkAddScatterNDOp(
+        importer.getNetwork(), glowSD->getName().begin(),
+        nodeValueName(glowSD->getData()).c_str(),
+        nodeValueName(glowSD->getIndices()).c_str(),
+        nodeValueName(glowSD->getSlices()).c_str(),
+        nodeValueName(glowSD->getResult()).c_str(), glowSD->getCumulative());
   }
 };
 
@@ -1637,6 +1647,25 @@ public:
   }
 };
 
+class NonZeroNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowNonZero = llvm::dyn_cast<NonZeroNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowNonZero, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {
+            nodeValueName(glowNonZero->getCond()),
+        },
+        {nodeValueName(glowNonZero->getResult())});
+    return nnpiNetworkAddSelectOp(
+        importer.getNetwork(), glowNonZero->getName().begin(), nullptr, nullptr,
+        nodeValueName(glowNonZero->getCond()).c_str(),
+        nodeValueName(glowNonZero->getResult()).c_str());
+  }
+};
+
 class SelectNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2264,10 +2293,23 @@ public:
     auto *glowBN = llvm::dyn_cast<BatchNormalizationNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowBN, "Bad node type", NNPI_INVALID_PARAM);
 
+    auto inputDims = glowBN->getInput().getType()->dims().size();
+    auto alterativeLayout = isBatchNormUsingAlternativeLayout(n, inputDims);
+    // Overwrite input/output values for layout.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowBN->getInput()),
+                          glowBN->getInput().getType(), alterativeLayout),
+        "Failed to add tensor to NNPI");
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowBN->getResult()),
+                          glowBN->getResult().getType(), alterativeLayout),
+        "Failed to add tensor to NNPI");
+
     importer.setUsedTensors(
-        {nodeValueName(glowBN->getInput()), nodeValueName(glowBN->getScale())},
-        {nodeValueName(glowBN->getBias()), nodeValueName(glowBN->getMean()),
-         nodeValueName(glowBN->getVar()), nodeValueName(glowBN->getResult())});
+        {nodeValueName(glowBN->getInput()), nodeValueName(glowBN->getScale()),
+         nodeValueName(glowBN->getBias()), nodeValueName(glowBN->getMean()),
+         nodeValueName(glowBN->getVar())},
+        {nodeValueName(glowBN->getResult())});
 
     return nnpiNetworkAddBatchNormOp(
         importer.getNetwork(), glowBN->getName().begin(),
@@ -2300,6 +2342,27 @@ public:
         nodeValueName(glowLN->getScale()).c_str(),
         nodeValueName(glowLN->getBias()).c_str(), normShape.data(),
         normShape.size(), glowLN->getEpsilon());
+  }
+};
+
+class VectorNormNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowVN = llvm::dyn_cast<VectorNormNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowVN, "Bad node type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowVN->getP() == 2,
+                          "Only support Frobenius, p should be 2",
+                          NNPI_INVALID_PARAM);
+    importer.setUsedTensors({nodeValueName(glowVN->getInput())},
+                            {nodeValueName(glowVN->getResult())});
+
+    uint32_t axis = glowVN->getAxis();
+
+    return nnpiNetworkAddReduceOp(importer.getNetwork(),
+                                  glowVN->getName().begin(),
+                                  nodeValueName(glowVN->getInput()).c_str(),
+                                  nodeValueName(glowVN->getResult()).c_str(),
+                                  NNPI_REDUCE_L2, &axis, 1, 0);
   }
 };
 
@@ -2654,6 +2717,7 @@ std::unordered_map<
     {"SparseLengthsSum", glow::make_unique<SLSNodeImporter>()},
     {"FusedRowwiseQuantizedSparseLengthsSum",
      glow::make_unique<FRQSLSNodeImporter>()},
+    {"NonZero", glow::make_unique<NonZeroNodeImporter>()},
     {"Select", glow::make_unique<SelectNodeImporter>()},
     {"GaussianFill", glow::make_unique<GaussianFillNodeImporter>()},
     {"LocalResponseNormalization", glow::make_unique<LRNNodeImporter>()},
@@ -2674,6 +2738,7 @@ std::unordered_map<
     {"Clip", glow::make_unique<ClipNodeImporter>()},
     {"BatchNormalization", glow::make_unique<BatchNormalizationNodeImporter>()},
     {"LayerNormalization", glow::make_unique<LayerNormalizationNodeImporter>()},
+    {"VectorNorm", glow::make_unique<VectorNormNodeImporter>()},
     {"ChannelwiseQuantizedConvolution",
      glow::make_unique<ChannelwiseQuantizedConvolutionNodeImporter>()},
     {"Embedding", glow::make_unique<EmbeddingNodeImporter>()},

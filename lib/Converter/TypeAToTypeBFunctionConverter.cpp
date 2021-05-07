@@ -231,9 +231,10 @@ void TypeAToTypeBFunctionConverter::convertAndClipStorage() {
       if (!isInput(PH, function_)) {
         continue;
       }
-      convertAndClipStorageHelper(*PH, function_, precConfig_.clipFP16,
-                                  precConfig_.float16Format, srcKind_,
-                                  dstKind_);
+      convertAndClipStorageHelper(
+          *PH, function_,
+          precConfig_.clipFP16 && !precConfig_.clipFP16SkipInputs,
+          precConfig_.float16Format, srcKind_, dstKind_);
     }
   }
   if (precConfig_.convertConstantsToFP16) {

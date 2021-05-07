@@ -167,7 +167,7 @@ def run_comparison_tests(
         )
 
     def prepare(m, inputs, fp16, backend, fusion):
-        """"Helper to prepare a JIT module to run either on PyTorch or Glow"""
+        """ "Helper to prepare a JIT module to run either on PyTorch or Glow"""
 
         inputs = deepcopy(inputs)
 
@@ -207,7 +207,7 @@ def run_comparison_tests(
             return m_jit
 
     def compare(a_name, a, b_name, b, atol, rtol, use_eq=False):
-        """"Helper to compare two JIT modules, skip comparison if either is None"""
+        """ "Helper to compare two JIT modules, skip comparison if either is None"""
 
         if not a:
             print(f"Skipping {a_name} vs {b_name} because {a_name} not computed")

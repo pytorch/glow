@@ -6293,7 +6293,7 @@ parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
                          currInput, sliceDimsStart, sliceDimsEnd);
       clone->setNthInput(j, inputSlice);
 
-      newNodes[i] = clone;
+      newNodes[i] = NodeValue(clone, resultIdx);
     }
   }
 
@@ -6451,12 +6451,37 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                 ChannelwiseQuantizedConvolutionNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::ConvolutionNodeKind: {
+        splitDims[ConvolutionNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ConvolutionNode::InputIdx,
+                    ConvolutionNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::AdaptiveAvgPoolNodeKind: {
         splitDims[AdaptiveAvgPoolNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, AdaptiveAvgPoolNode::InputIdx,
                     AdaptiveAvgPoolNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ROIAlignNodeKind: {
+        splitDims[ROIAlignNode::BoxesIdx] = 0;
+        splitDims[ROIAlignNode::BatchIndicesIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ROIAlignNode::BoxesIdx,
+                    ROIAlignNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MaxPoolNodeKind: {
+        splitDims[MaxPoolNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, MaxPoolNode::InputIdx,
+                    MaxPoolNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ReshapeNodeKind: {
@@ -6511,6 +6536,15 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           splitDims, 0));
         break;
       }
+      case Kinded::Kind::PowNodeKind: {
+        splitDims[PowNode::LHSIdx] = 0;
+        splitDims[PowNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          PowNode::LHSIdx, PowNode::ResultIdx,
+                                          splitDims, 0));
+        break;
+      }
       case Kinded::Kind::SelectNodeKind: {
         splitDims[SelectNode::LHSIdx] = 0;
         splitDims[SelectNode::RHSIdx] = 0;
@@ -6519,6 +6553,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           SelectNode::LHSIdx,
                                           SelectNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ExpNodeKind: {
+        splitDims[ExpNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ExpNode::InputIdx, ExpNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::SigmoidNodeKind: {
@@ -6559,6 +6601,24 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           SwishNode::InputIdx,
                                           SwishNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MaxNodeKind: {
+        splitDims[MaxNode::LHSIdx] = 0;
+        splitDims[MaxNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MaxNode::LHSIdx, MaxNode::ResultIdx,
+                                          splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MinNodeKind: {
+        splitDims[MinNode::LHSIdx] = 0;
+        splitDims[MinNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MinNode::LHSIdx, MinNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::TransposeNodeKind: {
@@ -6615,6 +6675,23 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
                     BatchedReduceAddNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::BatchedReduceMeanNodeKind: {
+        auto *BR = llvm::cast<BatchedReduceMeanNode>(curNode);
+        const auto &BRaxes = BR->getAxes();
+        if (std::find(BRaxes.begin(), BRaxes.end(), 0) != BRaxes.end()) {
+          LOG(INFO) << "BatchedReduceMean along the first dimension not "
+                       "parallelized. Current node: "
+                    << BR->getDebugDesc();
+        } else {
+          splitDims[BatchedReduceMeanNode::BatchIdx] = 0;
+          ASSIGN_VALUE_OR_RETURN_ERR(
+              CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                            BatchedReduceMeanNode::BatchIdx,
+                                            BatchedReduceMeanNode::ResultIdx,
+                                            splitDims, 0));
+        }
         break;
       }
       case Kinded::Kind::ConcatNodeKind: {

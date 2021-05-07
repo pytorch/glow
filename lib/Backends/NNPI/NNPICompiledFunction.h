@@ -41,6 +41,7 @@ struct NNPICompiledTensor {
   std::vector<uint32_t> shape;
   NNPI_ALLOCATION_TYPE allocType;
   std::string dump() const;
+  std::vector<NNPI_ALLOCATION_TYPE> possibleAlloc;
 };
 
 /// Struct containing details exported for a compiled operator.
@@ -197,8 +198,9 @@ private:
   std::vector<std::string> iaExtensionPaths_;
   NNPICompilationInfo compilationInfo_;
 
-  Error updateCompilationConfigFromOptions(
-      NNPICompilationOptions &compilationOptions);
+  Error
+  updateCompilationConfigFromOptions(NNPICompilationOptions &compilationOptions,
+                                     bool requiresDSPKernels);
 
   /// Setup compilation hints for \p F given \p backendSpecificNodeInfo.
   /// \returns an error if some validation issue is found given expected format.

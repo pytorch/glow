@@ -332,6 +332,30 @@ template <> struct AttributeRetriever<false, FusedActivation> {
   }
 };
 
+/// Specialization for FusedActivation.
+template <> struct AttributeRetriever<false, LUTOperator> {
+  static Expected<LUTOperator> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                                   const ProtobufLoader & /* unused */) {
+    std::string str;
+    ASSIGN_VALUE_OR_RETURN_ERR(str, loadStr(attr));
+    if (str == "NONE") {
+      return LUTOperator::NONE;
+    } else if (str == "RELU") {
+      return LUTOperator::RELU;
+    } else if (str == "CLIP") {
+      return LUTOperator::CLIP;
+    } else if (str == "TANH") {
+      return LUTOperator::TANH;
+    } else if (str == "SIGMOID") {
+      return LUTOperator::SIGMOID;
+    } else if (str == "LEAKY_RELU") {
+      return LUTOperator::LEAKY_RELU;
+    } else {
+      return MAKE_ERR("Invalid LUTOperator");
+    }
+  }
+};
+
 /// Specialization for ConvolutionLayout.
 template <> struct AttributeRetriever<false, ConvolutionLayout> {
   static Expected<ConvolutionLayout>
@@ -2289,9 +2313,9 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   /// Scales tensor format is NHWC for supported modes other than nearest.
-  /// For nearest mode scale can be 3D, 4D, 5D, or 6D.
+  /// For nearest mode scale can be 4D or 5D.
   RETURN_ERR_IF_NOT(
-      (scales.size() >= 3 && scales.size() <= 6 && mode == "nearest") ||
+      (scales.size() >= 4 && scales.size() <= 5 && mode == "nearest") ||
           scales.size() == 4,
       opErrMsg(
           op, strFormat(
@@ -2306,9 +2330,28 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
                                int(val))));
   }
 
-  auto *node = G_->createResizeNearest(opName, in, scales);
-  RETURN_IF_ERR(addNodeAsOutput(op, node));
-  return Error::success();
+  switch (scales.size()) {
+  case 4: {
+    vectorReorder(scales, {NHWC2NCHW});
+    auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
+    auto *node = G_->createResizeNearest(opName, intr, scales);
+    auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+  case 5: {
+    vectorReorder(scales, {NTHWC2NCTHW});
+
+    auto *intr = G_->createTranspose(opName, in, NCTHW2NTHWC);
+    auto *node = G_->createResizeNearest(opName, intr, scales);
+    auto *N = G_->createTranspose(opName, node, NTHWC2NCTHW);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+  default:
+    RETURN_ERR_IF_NOT(
+        false, opErrMsg(op, strFormat("UpSample Scales dimension invalid")));
+  }
 }
 
 Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
@@ -3708,7 +3751,8 @@ Error ONNXModelLoader::loadClip(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
   float cmin = std::numeric_limits<float>::lowest();
-  if (opsetVersion_ > 10 && op.input_size() > 1) {
+  if (opsetVersion_ > 10 && op.input_size() > 1 && !op.input(1).empty()) {
+    // min value is optional and might not be supplied.
     Constant *minC = getConstantByNameOrNull(op.input(1));
     RETURN_ERR_IF_NOT(minC, "Expect constant for min value in Clip operator.");
     cmin = minC->getPayload().getHandle().raw(0);
@@ -3719,7 +3763,8 @@ Error ONNXModelLoader::loadClip(const ONNX_NAMESPACE::NodeProto &op,
   // Windows headers define `max` macro, so have to wrap the function name in
   // parenthesis to avoid compilation error.
   float cmax = (std::numeric_limits<float>::max)();
-  if (opsetVersion_ > 10 && op.input_size() > 2) {
+  if (opsetVersion_ > 10 && op.input_size() > 2 && !op.input(2).empty()) {
+    // max value is optional and might not be supplied.
     Constant *maxC = getConstantByNameOrNull(op.input(2));
     RETURN_ERR_IF_NOT(maxC, "Expect constant for max value in Clip operator.");
     cmax = maxC->getPayload().getHandle().raw(0);

@@ -27,6 +27,8 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/Lower/Lower.h"
+#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectors.h"
+#include "glow/lib/Backends/NNPI/CustomKernels/IAInjectors/IAInjectors.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -241,6 +243,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
              BatchNormalizationNode::MeanIdx, BatchNormalizationNode::VarIdx});
     break;
   }
+  case Kinded::Kind::VectorNormNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy});
+    break;
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
@@ -354,10 +360,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
       case ElemKind::Int32ITy:
         switch (kindTo) {
         case ElemKind::Int64ITy:
+        case ElemKind::Float16Ty:
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
           return true;
-        case ElemKind::Float16Ty:
         case ElemKind::BoolTy:
           return glow::nnpi::flags::EnableCustomIAKernels;
         default:
@@ -492,6 +498,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
              ElemKind::Int32ITy},
             {}, {CmpEQNode::ResultIdx}) &&
         (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
+    break;
+  case Kinded::Kind::NonZeroNodeKind:
+    isNodePrecisionSupported =
+        (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::SelectNodeKind:
     isNodePrecisionSupported =
@@ -685,8 +695,9 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     break;
   case Kinded::Kind::ScatterDataNodeKind:
     isNodePrecisionSupported =
-        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
-                                               {ScatterDataNode::IndicesIdx}) &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {ScatterDataNode::IndicesIdx}) &&
         (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy ||
          NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
     break;
@@ -1985,6 +1996,73 @@ NNPIBackend::transformPostOptPipeline(Function *F,
   return changed;
 }
 
+/// Replaces any operators in the Function \p F with custom DSP NNPI kernel
+/// operators by calling each CustomKernelInjector on each node in sequence.
+/// \returns true iff any custom NNPI node was injected into the Function.
+static bool injectCustomDSPOps(Function *F) {
+  if (!glow::nnpi::flags::EnableCustomDSPKernels) {
+    LOG(INFO) << "Skipping custom DSP kernels because they are disabled";
+    return false;
+  }
+
+  static const auto dspInjectors = buildDSPInjectors();
+
+  LOG(INFO) << "Custom DSP ops enabled";
+
+  bool modified = false;
+
+  auto &nodes = F->getNodes();
+  for (auto &node : nodes) {
+    for (auto &injector : dspInjectors) {
+      if (injector->tryInject(F, &node)) {
+        LOG(INFO) << "Using a custom DSP op for " << node.getName().str();
+        modified = true;
+        break;
+      }
+    }
+  }
+
+  return modified;
+}
+
+/// Replaces any operators in the Function \p F with custom IA NNPI kernel
+/// operators by calling each CustomKernelInjector on each node in sequence.
+/// \returns true iff any custom NNPI node was injected into the Function.
+static bool injectCustomIAOps(Function *F) {
+  if (!glow::nnpi::flags::EnableCustomIAKernels) {
+    LOG(INFO) << "Skipping custom IA kernels because they are disabled";
+    return false;
+  }
+
+  // For now only inject IA ops when running on device since custom IA
+  // kernels aren't currently supported by iceref.
+  const char *useInfApi = std::getenv("USE_INF_API");
+  if (!useInfApi || std::string(useInfApi) != "1") {
+    LOG(INFO) << "Skipping custom IA kernels because hardware inference isn't "
+                 "enabled";
+    return false;
+  }
+
+  static const auto iaInjectors = buildIAInjectors();
+
+  LOG(INFO) << "Custom IA ops enabled";
+
+  bool modified = false;
+
+  auto &nodes = F->getNodes();
+  for (auto &node : nodes) {
+    for (auto &injector : iaInjectors) {
+      if (injector->tryInject(F, &node)) {
+        LOG(INFO) << "Using a custom IA op for " << node.getName().str();
+        modified = true;
+        break;
+      }
+    }
+  }
+
+  return modified;
+}
+
 Expected<bool> NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
@@ -2007,7 +2085,12 @@ Expected<bool> NNPIBackend::transformPostLowering(
   changed |= removeClipsBlockingFusion(F);
   changed |= padKernelToStride(F);
   changed |= lowerEmbeddingToGather(F);
+
+// NNPI support fp16 scale and bias after 1.5
+#if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION < 5
   changed |= quantizeLayernormScaleAndBias(F);
+#endif
+
   changed |= replaceInefficientConcat(F);
   auto it =
       cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
@@ -2019,6 +2102,12 @@ Expected<bool> NNPIBackend::transformPostLowering(
     changed |= FPM.run(F, cctx);
   }
   changed |= lowerRequiredNodes(F, cctx);
+
+  // NOTE: DSP kernels are generally faster and preferred relative to IA kernels
+  // so always call injectCustomDSPOps first to choose them over IA kernels
+  // where possible.
+  changed |= injectCustomDSPOps(F);
+  changed |= injectCustomIAOps(F);
 
 #if FACEBOOK_INTERNAL
   if (!(glow::nnpi::flags::EnableCustomDSPKernels ||

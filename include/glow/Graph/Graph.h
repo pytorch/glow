@@ -1199,6 +1199,8 @@ public:
 
   PowNode *createPow(llvm::StringRef name, NodeValue base, float exp);
 
+  NonZeroNode *createNonZero(llvm::StringRef name, NodeValue Cond);
+
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);
 
@@ -1582,6 +1584,14 @@ public:
                                            NodeValue input,
                                            std::function<float(float)> func,
                                            TypeRef outTy);
+
+  /// Create lookup table for operator \p lutOperator using the provided lookup
+  /// \p table.
+  LookupTableNode *createLookupTable(llvm::StringRef name, NodeValue input,
+                                     LUTOperator lutOperator,
+                                     std::vector<float> &lutOperatorArgs,
+                                     NodeValue table, NodeValue idxTable,
+                                     TypeRef outTy);
 
   /// Create quantized log.
   IntLookupTableNode *createIntLog(llvm::StringRef name, NodeValue input,

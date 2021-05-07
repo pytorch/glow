@@ -510,8 +510,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       ONNXModelWriter onnxWR(
           loc, nodeList, 7, 9, &writeErr,
           /* textMode */ true, /* zipMode */ false,
-          /* includeConstantData */ false, extraMetadataProps, record,
-          cctx.backendOpts.backendSpecificNodeInfo,
+          /* includeConstantData */ cctx.saveConstantInSerializeCompiledDAG,
+          extraMetadataProps, record, cctx.backendOpts.backendSpecificNodeInfo,
           cctx.skipProvisioning ? &cctx.loadedPHNames : nullptr,
           cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr);
       RETURN_IF_ERR(writeErr);
@@ -802,8 +802,8 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
   executor_->freePool(networkIterator->second.dag.root.get());
   for (auto &node : nodes) {
     for (auto device : node->deviceRuntimeInfos) {
-      Error evictErr =
-          provisioner_->evictFunction(node->name, devices_[device.first].get());
+      Error evictErr = provisioner_->evictFunction(
+          node->name, devices_[device.first].get(), node->replicationCount);
       err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.

@@ -2878,12 +2878,44 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *src = SM->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
-
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
-
     auto *F = getFunction("softmax", dest->getElementType());
-    createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+
+    if (src->getType()->isQuantizedType()) {
+      std::vector<int32_t> lut;
+
+      // Compute lookup table containing all the exponentials based on the
+      // formula e^(scale * value), where scale is the input scale of
+      // the quantized input data and value is a value from [-255, 0].
+      for (int32_t i = 0; i < 256; i++) {
+        auto exponent =
+            FixedPointUInt32(exp(src->getType()->getScale() * (i - 255)), 1)
+                .getFixedVal();
+        lut.push_back(exponent);
+      }
+
+      auto *lutPtr = emitConstI32Array(builder, lut);
+      auto *outOffset = emitConstI32(builder, dest->getType()->getOffset());
+      float size = static_cast<float>(src->getType()->dims()[1]);
+      auto *sumIntegerPart = emitConstI32(builder, ceil(log2(size)));
+
+      if (ceil(log2(size)) == floor(log2(size))) {
+        sumIntegerPart = emitConstI32(builder, ceil(log2(size)) + 1);
+      }
+
+      FixedPointUInt32 invScaleFixedPoint =
+          FixedPointUInt32(1.f / dest->getType()->getScale());
+      auto *invScale = emitConstI32(builder, invScaleFixedPoint.getFixedVal());
+      auto *invScalePoint =
+          emitConstI32(builder, invScaleFixedPoint.getIntBits());
+      createCall(builder, F,
+                 {srcPtr, destPtr, srcDims, lutPtr, outOffset, invScale,
+                  sumIntegerPart, invScalePoint});
+    } else {
+      createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+    }
+
     break;
   }
 

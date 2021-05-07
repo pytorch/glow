@@ -3961,11 +3961,24 @@ void BoundInterpreterFunction::fwdElementExpInst(const ElementExpInst *I) {
                             I->getSrc()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdNonZeroInst(const NonZeroInst *I) {
+  auto *T = getTensor(I->getDest());
+  T->zero();
+  auto outW = T->getHandle<int32_t>();
+  auto condW = getWeightHandle<bool>(I->getCond());
+  for (size_t condIdx = 0, outIdx = 0, n = condW.size(); condIdx < n;
+       condIdx++) {
+    if (condW.raw(condIdx)) {
+      outW.raw(outIdx) = condIdx;
+      outIdx++;
+    }
+  }
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdElementSelectInstFloatImpl(
     const glow::ElementSelectInst *I) {
   staticAssertFloatingPointType(ElemTy);
-
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto condW = getWeightHandle<bool>(I->getCond());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -6242,6 +6255,10 @@ void BoundInterpreterFunction::fwdIntLookupTableInst(
   } else {
     llvm_unreachable("Type not supported for IntLookupTable!");
   }
+}
+
+void BoundInterpreterFunction::fwdLookupTableInst(const LookupTableInst *I) {
+  llvm_unreachable("LookupTable instruction is not supported yet");
 }
 
 void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {

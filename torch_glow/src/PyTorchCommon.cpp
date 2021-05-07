@@ -95,6 +95,9 @@ DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
 DEFINE_bool(lazyCompile, false, "see PyTorchLoaderSettings");
 DEFINE_bool(enableDeviceTracing, false, "See PyTorchLoaderSettings");
 
+DEFINE_bool(saveGlowIRIntoONNX, false, "See PyTorchLoaderSettings");
+DEFINE_bool(loadGlowIRFromONNX, false, "See PyTorchLoaderSettings");
+
 namespace glow {
 namespace {
 
@@ -155,6 +158,12 @@ getHostManager(const PyTorchLoaderSettings &settings) {
     }
 
     glow::runtime::HostConfig hostConfig;
+
+    hostConfig.maxActiveRequests = glow::flags::MaxActiveRequests;
+    hostConfig.maxQueueSize = glow::flags::MaxQueueSize;
+    hostConfig.executorThreads = glow::flags::ExecutorThreads;
+
+    // now overwrite existing config if torch_glow gflag is present
     hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
 
     hostManager = std::make_shared<runtime::HostManager>(
@@ -323,6 +332,9 @@ void PyTorchLoaderSettings::initSettings() {
   apl_parallelization_alg =
       glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
   apl_num_parallel_chunks = glow::flags::DAGOptimizerNumParallelChunks;
+  saveGlowIRIntoONNX = FLAGS_saveGlowIRIntoONNX;
+  loadGlowIRFromONNX = FLAGS_loadGlowIRFromONNX;
+  skipProvisioning = glow::flags::SkipProvisioning || saveGlowIRIntoONNX;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -682,6 +694,12 @@ void glowAOTFusionWithShapeInference(
           LOG(ERROR) << ERR_TO_STRING(std::move(e));
         } else {
           LOG(INFO) << "Finish warming up shape map: " << batchShapesMap.size();
+        }
+        e = runner->setNominalInputIndex(graphInputValues, batchShapesMap);
+        if (e) {
+          LOG(ERROR) << ERR_TO_STRING(std::move(e));
+        } else {
+          LOG(INFO) << "Finish Setting up the nomialInputIndex";
         }
       }
     }

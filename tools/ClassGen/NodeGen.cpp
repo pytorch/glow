@@ -682,6 +682,12 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Computes elementwise: result = log(input / (1 - input)).");
 
+  BB.newNode("NonZero")
+      .addInput("Cond")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Selects indices of the true elements in Cond");
+
   BB.newNode("Select")
       .addInput("Cond")
       .addInput("LHS")
@@ -1616,6 +1622,27 @@ int main(int argc, char **argv) {
           "Format for upright boxes is (image_index, x1, y1, x2, y2)."
           "Format for rotated boxes (image_index, ctr_x, ctr_y, w, h, angle)"
           "RpnPostNmsTopN should be greater than zero");
+
+  //===--------------------------------------------------------------------===//
+  //                Lookup Table Operators
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("LookupTable")
+      // Input to the function.
+      .addInput("Input")
+      // Table containing the coefficients for interpolation.
+      .addInput("Table")
+      // Table containing the index mapping to find the right entry in the main
+      // table.
+      .addInput("TableIdx")
+      .addMember(MEMBER_TYPE_INFO(glow::LUTOperator), "Operator")
+      .addMember(MemberType::VectorFloat, "OperatorArgs")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring(
+          "LookupTable based data-parallel operation."
+          "Given an interpolation table and and index table, "
+          "return interpolated approximations for arbitrary functions.");
 
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes

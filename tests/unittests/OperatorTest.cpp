@@ -70,6 +70,21 @@ protected:
     ASSERT_TRUE(F_->verify(&EE_.getBackend()))
         << "Function must pass verification.";
 
+    // If the function contains custom kernels then skip the serialization
+#ifdef GLOW_WITH_NNPI
+    bool hasCustomKernels = false;
+    for (auto &node : F_->getNodes()) {
+      if (node.getKind() == Kinded::Kind::NNPICustomDSPNodeKind ||
+          node.getKind() == Kinded::Kind::NNPICustomIANodeKind) {
+        hasCustomKernels = true;
+        break;
+      }
+    }
+    if (hasCustomKernels) {
+      return;
+    }
+#endif
+
     // Now export the model to later import it back in.
     llvm::SmallString<64> path;
     auto tempFileRes =
@@ -6616,7 +6631,6 @@ TEST_P(OperatorTest, ScatterData) {
   EE_.run(bindings_);
 
   auto H = bindings_.get(result->getPlaceholder())->getHandle();
-
   EXPECT_FLOAT_EQ(H.at({0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 1}), 2.0);
   EXPECT_FLOAT_EQ(H.at({1, 0}), -3.0);
@@ -11850,381 +11864,242 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
   EXPECT_TRUE(result.isEqual(result1));
 }
 
-TEST_P(OperatorTest, FP16BatchNorm0D) {
-  CHECK_IF_ENABLED();
-
-  auto constFunc = [=](std::string name, std::vector<float> vals) {
-    dim_t sz = vals.size();
-    auto t = Tensor(ElemKind::Float16Ty, {sz});
-    for (dim_t i = 0; i < sz; i++) {
-      t.getHandle<float16_t>().raw(i) = vals[i];
-    }
-    auto *c = mod_.createConstant(name, std::move(t));
-    return c;
-  };
-
-  // input
-  dim_t N = 2, C = 2;
-  std::vector<dim_t> dims = {N, C};
-  auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
-  bindings_.allocate(input)->getHandle<float16_t>() = {-0.0892, 0.6268, 1.3740,
-                                                       2.4480};
-  auto *bias = constFunc("batchnorm_bias", {0.7451, 0.7946});
-  auto *scale = constFunc("batchnorm_weights", {0.6815, 0.0039});
-  auto *mean = constFunc("running_mean", {1.0730, -7.3854});
-  auto *variance = constFunc("running_var", {1.8200, 4.6300});
-  unsigned_t channelIdx = 1;
-  float epsilon = 1e-5;
-  float momentum = 0.1;
-
-  auto *op = F_->createBatchNormalization("fp16_batch_norm1d", input->getType(),
-                                          input, bias, scale, mean, variance,
-                                          channelIdx, epsilon, momentum);
-  auto *S = F_->createSave("save", op);
-  bindings_.allocate(S->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
-
-  Tensor outTensor(ElemKind::Float16Ty, dims);
-  outTensor.getHandle<float16_t>() = {0.1580, 0.8091, 0.8972, 0.8124};
-
-  int numElements = N * C;
-  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
-  for (size_t i = 0; i < numElements; i++) {
-    auto resVal = float(result.raw(i));
-    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
-    EXPECT_NEAR(resVal, expectedVal, 0.005);
-  }
+template <typename DataType>
+void testBatchnorm(Module &module, Function *function,
+                   PlaceholderBindings &bindings, ExecutionEngine &engine,
+                   std::string &testName, unsigned channelIndex, Tensor &&bias,
+                   Tensor &&weights, Tensor &&mean, Tensor &&variance,
+                   float epsilon, float momentum, Tensor &&input,
+                   Tensor &&expectedOutput, float maxAbsoluteDifference = 0.05,
+                   float maxRMSE = 0.01) {
+  auto *inputPlaceholder =
+      createPlaceholder(module, bindings, &input, testName + "_input");
+  TypeRef outputType = module.uniqueType(expectedOutput.getType());
+  auto *batchnorm = function->createBatchNormalization(
+      testName, outputType, inputPlaceholder,
+      module.createConstant("bias", bias),
+      module.createConstant("weights", weights),
+      module.createConstant("mean", mean),
+      module.createConstant("var", variance), channelIndex, epsilon, momentum);
+  auto *save = function->createSave(testName + "output", batchnorm);
+  bindings.allocate(save->getPlaceholder());
+  engine.compile(CompilationMode::Infer);
+  engine.run(bindings);
+  Tensor *result = bindings.get(save->getPlaceholder());
+  compare<DataType>(expectedOutput, *result, maxAbsoluteDifference, maxRMSE);
 }
 
-TEST_P(OperatorTest, FP16BatchNorm1D) {
+TEST_P(OperatorTest, BatchNorm0D_FP16_NC) {
   CHECK_IF_ENABLED();
-
-  auto constFunc = [=](std::string name, std::vector<float> vals) {
-    dim_t sz = vals.size();
-    auto t = Tensor(ElemKind::Float16Ty, {sz});
-    for (dim_t i = 0; i < sz; i++) {
-      t.getHandle<float16_t>().raw(i) = vals[i];
-    }
-    auto *c = mod_.createConstant(name, std::move(t));
-    return c;
-  };
-
-  // input
-  dim_t N = 2, C = 2, W = 3;
-  std::vector<dim_t> dims = {N, C, W};
-  auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
-  bindings_.allocate(input)->getHandle<float16_t>() = {
-      -0.0892, 0.6268, 1.3740,  2.4480, -1.4285, 0.0565,
-      -0.0266, 0.4494, -0.3858, 1.0044, 0.8844,  0.5071};
-  auto *bias = constFunc("batchnorm_bias", {0.7451, 0.7946});
-  auto *scale = constFunc("batchnorm_weights", {0.6815, 0.0039});
-  auto *mean = constFunc("running_mean", {1.0730, -7.3854});
-  auto *variance = constFunc("running_var", {1.8200, 4.6300});
-  unsigned_t channelIdx = 1;
-  float epsilon = 1e-5;
-  float momentum = 0.1;
-
-  auto *op = F_->createBatchNormalization("fp16_batch_norm1d", input->getType(),
-                                          input, bias, scale, mean, variance,
-                                          channelIdx, epsilon, momentum);
-  auto *S = F_->createSave("save", op);
-  bindings_.allocate(S->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
-
-  Tensor outTensor(ElemKind::Float16Ty, dims);
-  outTensor.getHandle<float16_t>() = {0.1580, 0.5197, 0.8972, 0.8124,
-                                      0.8054, 0.8081, 0.1896, 0.4301,
-                                      0.0082, 0.8098, 0.8096, 0.8089};
-
-  int numElements = N * C * W;
-  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
-  for (size_t i = 0; i < numElements; i++) {
-    auto resVal = float(result.raw(i));
-    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
-    EXPECT_NEAR(resVal, expectedVal, 0.005);
-  }
+  std::string name = "BatchNorm0D_FP16_NC";
+  testBatchnorm<float16_t>(
+      mod_, F_, bindings_, EE_, name, 1,
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {0.7451, 0.7946}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {0.6815, 0.0039}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {1.0730, -7.3854}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {1.8200, 4.6300}),
+      1e-5, 0.1,
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2, 2},
+                                  {-0.0892, 0.6268, 1.3740, 2.4480}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2, 2},
+                                  {0.1580, 0.8091, 0.8972, 0.8124}));
 }
 
-/// 2D Batch Normalization in Float16
-TEST_P(OperatorTest, FP16BatchNorm2D) {
+TEST_P(OperatorTest, BatchNorm1D_FP16_NCW) {
   CHECK_IF_ENABLED();
-
-  auto constFunc = [=](std::string name, std::vector<float> vals) {
-    dim_t sz = vals.size();
-    auto t = Tensor(ElemKind::Float16Ty, {sz});
-    for (dim_t i = 0; i < sz; i++) {
-      t.getHandle<float16_t>().raw(i) = vals[i];
-    }
-    auto *c = mod_.createConstant(name, std::move(t));
-    return c;
-  };
-
-  // input
-  dim_t N = 2, C = 2, H = 3, W = 3;
-  std::vector<dim_t> dims = {N, H, W, C};
-  auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
-  bindings_.allocate(input)->getHandle<float16_t>() = {
-      -0.0892, 0.6268, 1.3740,  2.4480,  -1.4285, 0.0565,  -0.0266, 0.4494,
-      -0.3858, 1.0044, 0.8844,  0.5071,  -1.3639, -0.8796, -1.8868, 0.1380,
-      -1.3744, 1.9176, 1.4044,  -1.0725, 0.1614,  0.7809,  0.3824,  -0.3220,
-      0.5881,  0.4939, -0.5724, -0.3471, -2.1089, -0.2114, 0.5069,  -0.7874,
-      0.8189,  0.2189, -0.3894, 1.8009};
-  auto *bias = constFunc("batchnorm_bias", {0.7451, 0.7946});
-  auto *scale = constFunc("batchnorm_weights", {0.6815, 0.0039});
-  auto *mean = constFunc("running_mean", {1.0730, -7.3854});
-  auto *variance = constFunc("running_var", {1.8200, 4.6300});
-  unsigned_t channelIdx = 3;
-  float epsilon = 9.999999747378752e-06;
-  float momentum = 0.8999999761581421;
-
-  auto *op = F_->createBatchNormalization("fp16_batch_norm2d", input->getType(),
-                                          input, bias, scale, mean, variance,
-                                          channelIdx, epsilon, momentum);
-  auto *S = F_->createSave("save", op);
-  bindings_.allocate(S->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
-
-  Tensor outTensor(ElemKind::Float16Ty, dims);
-  outTensor.getHandle<float16_t>() = {
-      0.1580,  0.8093, 0.8972,  0.8126, -0.5186, 0.8082, 0.1896,  0.8089,
-      0.0082,  0.8100, 0.6498,  0.8091, -0.4859, 0.8065, -0.7501, 0.8084,
-      -0.4913, 0.8116, 0.9125,  0.8062, 0.2846,  0.8096, 0.3962,  0.8075,
-      0.5001,  0.8090, -0.0861, 0.8075, -0.8623, 0.8077, 0.4591,  0.8067,
-      0.6167,  0.8085, 0.0064,  0.8114};
-
-  float errSum = 0;
-  int numElements = N * H * W * C;
-  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
-  for (size_t i = 0; i < numElements; i++) {
-    auto resVal = float(result.raw(i));
-    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
-    EXPECT_NEAR(resVal, expectedVal, 0.005);
-    float err = resVal - expectedVal;
-    errSum += err * err;
-  }
-  float rmse = std::sqrt(errSum) / numElements;
-  EXPECT_LE(rmse, 0.01);
+  std::string name = "BatchNorm1D_FP16_NCW";
+  testBatchnorm<float16_t>(
+      mod_, F_, bindings_, EE_, name, 1,
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {0.7451, 0.7946}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {0.6815, 0.0039}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {1.0730, -7.3854}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {1.8200, 4.6300}),
+      1e-5, 0.1,
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2, 2, 3},
+                                  {-0.0892, 0.6268, 1.3740, 2.4480, -1.4285,
+                                   0.0565, -0.0266, 0.4494, -0.3858, 1.0044,
+                                   0.8844, 0.5071}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2, 2, 3},
+                                  {0.1580, 0.5197, 0.8972, 0.8124, 0.8054,
+                                   0.8081, 0.1896, 0.4301, 0.0082, 0.8098,
+                                   0.8096, 0.8089}));
 }
 
-/// 2D Batch Normalization in Int8
-TEST_P(OperatorTest, Int8BatchNorm2D) {
+TEST_P(OperatorTest, BatchNorm2D_FP16_NCHW) {
   CHECK_IF_ENABLED();
+  std::string name = "BatchNorm2D_FP16_NCHW";
+  testBatchnorm<float16_t>(
+      mod_, F_, bindings_, EE_, name, 1,
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {0.7451, 0.7946}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {0.6815, 0.0039}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {1.0730, -7.3854}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {1.8200, 4.6300}),
+      9.999999747378752e-06, 0.8999999761581421,
+      Tensor::fromData<float16_t>(
+          ElemKind::Float16Ty, {2, 2, 3, 3},
+          {-0.0892, 1.3740,  -1.4285, -0.0266, -0.3858, 0.8844,
+           -1.3639, -1.8868, -1.3744, 0.6268,  2.4480,  0.0565,
+           0.4494,  1.0044,  0.5071,  -0.8796, 0.1380,  1.9176,
+           1.4044,  0.1614,  0.3824,  0.5881,  -0.5724, -2.1089,
+           0.5069,  0.8189,  -0.3894, -1.0725, 0.7809,  -0.3220,
+           0.4939,  -0.3471, -0.2114, -0.7874, 0.2189,  1.8009}),
+      Tensor::fromData<float16_t>(
+          ElemKind::Float16Ty, {2, 2, 3, 3},
+          {0.1580,  0.8972, -0.5186, 0.1896, 0.0082, 0.6498, -0.4859, -0.7501,
+           -0.4913, 0.8093, 0.8126,  0.8082, 0.8089, 0.8100, 0.8091,  0.8065,
+           0.8084,  0.8116, 0.9125,  0.2846, 0.3962, 0.5001, -0.0861, -0.8623,
+           0.4591,  0.6167, 0.0064,  0.8062, 0.8096, 0.8075, 0.8090,  0.8075,
+           0.8077,  0.8067, 0.8085,  0.8114}));
+}
 
-  auto constFunc = [=](std::string name, std::vector<float> vals) {
-    dim_t sz = vals.size();
-    auto t = Tensor(ElemKind::FloatTy, {sz});
-    for (dim_t i = 0; i < sz; i++) {
-      t.getHandle().raw(i) = vals[i];
-    }
-    auto *c = mod_.createConstant(name, std::move(t));
-    return c;
-  };
+TEST_P(OperatorTest, BatchNorm2D_FP16_NHWC) {
+  CHECK_IF_ENABLED();
+  std::string name = "BatchNorm2D_FP16_NHWC";
+  testBatchnorm<float16_t>(
+      mod_, F_, bindings_, EE_, name, 3,
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {0.7451, 0.7946}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {0.6815, 0.0039}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {1.0730, -7.3854}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {1.8200, 4.6300}),
+      0.0008742152713239193, 0.030418938025832176,
+      Tensor::fromData<float16_t>(
+          ElemKind::Float16Ty, {2, 3, 3, 2},
+          {-0.0892, 0.6268,  1.3740,  2.4480,  -1.4285, 0.0565,
+           -0.0266, 0.4494,  -0.3858, 1.0044,  0.8844,  0.5071,
+           -1.3639, -0.8796, -1.8868, 0.1380,  -1.3744, 1.9176,
+           1.4044,  -1.0725, 0.1614,  0.7809,  0.3824,  -0.3220,
+           0.5881,  0.4939,  -0.5724, -0.3471, -2.1089, -0.2114,
+           0.5069,  -0.7874, 0.8189,  0.2189,  -0.3894, 1.8009}),
+      Tensor::fromData<float16_t>(
+          ElemKind::Float16Ty, {2, 3, 3, 2},
+          {0.1580,  0.8093, 0.8972,  0.8126, -0.5186, 0.8082, 0.1896,  0.8089,
+           0.0082,  0.8100, 0.6498,  0.8091, -0.4859, 0.8065, -0.7501, 0.8084,
+           -0.4913, 0.8116, 0.9125,  0.8062, 0.2846,  0.8096, 0.3962,  0.8075,
+           0.5001,  0.8090, -0.0861, 0.8075, -0.8623, 0.8077, 0.4591,  0.8067,
+           0.6167,  0.8085, 0.0064,  0.8114}));
+}
 
-  // input
-  dim_t N = 2, C = 2, H = 3, W = 3;
-  float inScale = 0.01;
-  int inBias = -5;
-  std::vector<dim_t> dims = {N, H, W, C};
-  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, dims, inScale, inBias,
-                                       "input", false);
-  bindings_.allocate(input)->getHandle<int8_t>() = {
-      30,  127,  61,  45,   -27,  22,  -43, 38,   42,  -128, 70,   54,
-      -69, -128, -86, 127,  13,   125, 123, 123,  -25, -39,  91,   -73,
-      20,  -104, -53, -128, -128, -80, -87, -118, -47, 36,   -101, 24};
-  auto *bias = constFunc("batchnorm_bias", {2.5167e-05, 6.8856e-05});
-  auto *scale = constFunc("batchnorm_weights", {1.0003, 1.0005});
-  auto *mean = constFunc("running_mean", {0.073, 0.043});
-  auto *variance = constFunc("running_var", {2.5, 1.27});
-  unsigned_t channelIdx = 3;
-  float epsilon = 9.999999747378752e-06;
-  float momentum = 0.8999999761581421;
-  float outScale = 0.023;
-  int outBias = 15;
-
-  TypeRef outTy = mod_.uniqueType(ElemKind::Int8QTy, dims, outScale, outBias);
-  auto *op = F_->createBatchNormalization("int8_batch_norm2d", outTy, input,
-                                          bias, scale, mean, variance,
-                                          channelIdx, epsilon, momentum);
-  auto *S = F_->createSave("save", op);
-  bindings_.allocate(S->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
-  auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
-
-  Tensor outTensor(ElemKind::Int8QTy, dims, outScale, outBias);
-  outTensor.getHandle<int8_t>() = {23,  64,  31,  33,  7,   24,  3,  30,  26,
-                                   -34, 34,  36,  -5,  -34, -9,  64, 18,  64,
-                                   48,  63,  7,   0,   39,  -13, 20, -25, 0,
-                                   -34, -21, -16, -10, -30, 1,   29, -13, 25};
-
-  float errSum = 0;
-  int numElements = N * C * H * W;
-  for (size_t i = 0; i < numElements; i++) {
-    EXPECT_NEAR(int(result.raw(i)), int(outTensor.getHandle<int8_t>().raw(i)),
-                1);
-    float err = result.raw(i) - outTensor.getHandle<int8_t>().raw(i);
-    errSum += err * err;
-  }
-  float rmse = std::sqrt(errSum) / numElements;
-  EXPECT_LE(rmse, 0.063);
+TEST_P(OperatorTest, BatchNorm2D_INT8_NCHW) {
+  CHECK_IF_ENABLED();
+  std::string name = "BatchNorm2D_INT8_NCHW";
+  testBatchnorm<int8_t>(
+      mod_, F_, bindings_, EE_, name, 1,
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {0.0393, 0.7099}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {3.2329, 0.7463}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {0.2697, 0.2668}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {0.0011, 0.5580}),
+      0.00035455477237701416, 0.1,
+      Tensor::fromData<int8_t>(
+          ElemKind::Int8QTy, 0.039, 44, {2, 2, 2, 2},
+          {16, 70, 55, 53, 49, 94, 26, 62, 19, 78, 50, 31, 28, 69, 32, 59}),
+      Tensor::fromData<int8_t>(ElemKind::Int8QTy, 1.42822, -57, {2, 2, 2, 2},
+                               {-128, -13, -48, -52, -57, -55, -57, -56, -128,
+                                6, -59, -103, -57, -56, -57, -56}),
+      1, 0.1);
 }
 
 /// 3D Batch Normalization in Float16
-TEST_P(OperatorTest, FP16BatchNorm3D) {
+TEST_P(OperatorTest, BatchNorm3D_FP16_NCTHW) {
   CHECK_IF_ENABLED();
-
-  auto constFunc = [=](std::string name, std::vector<float> vals) {
-    dim_t sz = vals.size();
-    auto t = Tensor(ElemKind::Float16Ty, {sz});
-    for (dim_t i = 0; i < sz; i++) {
-      t.getHandle<float16_t>().raw(i) = vals[i];
-    }
-    auto *c = mod_.createConstant(name, std::move(t));
-    return c;
-  };
-
-  // input
-  dim_t N = 2, C = 2, T = 2, H = 3, W = 3;
-  std::vector<dim_t> dims = {N, T, H, W, C};
-  auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, dims, "input", false);
-  bindings_.allocate(input)->getHandle<float16_t>() = {
-      2.6644e-01,  7.5647e-01,  2.0084e+00,  7.1074e-01,  2.7844e-01,
-      -4.4109e-01, -5.0361e-01, -2.4615e-03, -5.3708e-01, 1.1399e+00,
-      -4.6145e-01, 2.0012e+00,  -8.4976e-01, -1.0712e+00, 1.2360e+00,
-      5.2344e-02,  3.2554e-01,  4.2554e-01,  -1.0869e+00, -7.2295e-01,
-      -3.8954e-01, 4.1311e-02,  -3.6682e-01, 3.5057e-01,  -7.2516e-01,
-      1.0337e+00,  2.3490e-01,  6.1786e-02,  -1.2862e+00, 1.2847e+00,
-      -4.6827e-01, -5.3149e-01, -1.7977e+00, -5.8155e-01, -2.3509e-01,
-      2.6274e-01,  1.0505e+00,  9.3994e-01,  2.0246e-03,  1.0960e-01,
-      -4.8851e-01, 1.0446e+00,  8.3674e-01,  1.1398e+00,  7.9635e-01,
-      4.2565e-01,  1.7938e+00,  2.8720e-01,  -2.7000e-02, 5.8977e-01,
-      2.9283e-01,  6.0023e-01,  -1.5297e+00, -1.3739e-01, 3.5704e-01,
-      8.6997e-01,  -4.5933e-01, 8.1092e-01,  9.1418e-01,  -2.0624e+00,
-      -2.2534e-01, -1.7819e-01, 4.8831e-01,  -4.8554e-01, 1.1836e+00,
-      2.1036e-01,  -5.6864e-01, -6.5900e-02, 1.3451e+00,  -8.4747e-01,
-      -8.7747e-01, -3.4126e-01};
-  auto *bias = constFunc("batchnorm_bias", {0.5705, 0.4574});
-  auto *scale = constFunc("batchnorm_weights", {0.4510, 0.7735});
-  auto *mean = constFunc("running_mean", {2.8673, -9.9860});
-  auto *variance = constFunc("running_var", {2.8200, 1.9340});
-  unsigned_t channelIdx = 4;
-  float epsilon = 9.999999747378752e-06;
-  float momentum = 0.8999999761581421;
-
-  auto *op = F_->createBatchNormalization("fp16_batch_norm2d", input->getType(),
-                                          input, bias, scale, mean, variance,
-                                          channelIdx, epsilon, momentum);
-  auto *S = F_->createSave("save", op);
-  bindings_.allocate(S->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
-
-  Tensor outTensor(ElemKind::Float16Ty, dims);
-  outTensor.getHandle<float16_t>() = {
-      -0.1280, 6.4321, 0.3398,  6.4067, -0.1248, 5.7661, -0.3348, 6.0100,
-      -0.3438, 6.6454, -0.3235, 7.1244, -0.4278, 5.4156, 0.1324,  6.0405,
-      -0.1121, 6.2481, -0.4915, 5.6093, -0.3042, 6.0344, -0.2981, 6.2064,
-      -0.3943, 6.5863, -0.1365, 6.0458, -0.5450, 6.7259, -0.3253, 5.7158,
-      -0.6823, 5.6879, -0.2627, 6.1575, 0.0826,  6.5342, -0.1990, 6.0723,
-      -0.3308, 6.5924, 0.0252,  6.6453, 0.0143,  6.2481, 0.2822,  6.1711,
-      -0.2068, 6.3394, -0.1209, 6.3452, -0.6104, 5.9350, -0.1037, 6.4952,
-      -0.3229, 6.4624, 0.0459,  4.8643, -0.2601, 5.9123, -0.0684, 5.7413,
-      0.1183,  6.1284, -0.3523, 5.9747, 0.1617,  5.5401, -0.4352, 5.8216};
-
-  float errSum = 0;
-  int numElements = N * T * H * W * C;
-  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
-  for (size_t i = 0; i < numElements; i++) {
-    auto resVal = float(result.raw(i));
-    auto expectedVal = float(outTensor.getHandle<float16_t>().raw(i));
-    EXPECT_NEAR(resVal, expectedVal, 0.005);
-    float err = resVal - expectedVal;
-    errSum += err * err;
-  }
-  float rmse = std::sqrt(errSum) / numElements;
-  EXPECT_LE(rmse, 0.01);
+  std::string name = "BatchNorm3D_FP16_NCTHW";
+  testBatchnorm<float16_t>(
+      mod_, F_, bindings_, EE_, name, 1,
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {2.9304, 2.9185}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {5.0408, 7.0274}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {2.5450, 0.0290}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {3.1328, 5.8897}),
+      0.0008742152713239193, 0.030418938025832176,
+      Tensor::fromData<float16_t>(
+          ElemKind::Float16Ty, {2, 2, 2, 2, 2},
+          {1.5744,  -0.2288, 0.1272,  -0.6514, -0.4279, 0.3006,  -0.9304,
+           1.0815,  0.1611,  0.6101,  1.5194,  -0.5881, -0.4864, -0.3633,
+           -1.5608, -0.4172, -1.2346, -0.6261, -1.5411, 0.0569,  1.2166,
+           -1.1330, -0.0745, 0.6357,  1.0074,  1.0130,  -0.9973, -0.7630,
+           0.7943,  0.3071,  0.3458,  0.6359}),
+      Tensor::fromData<float16_t>(
+          ElemKind::Float16Ty, {2, 2, 2, 2, 2},
+          {0.1665,  -4.9684, -3.9544, -6.1716, -5.5352, -3.4608, -6.9660,
+           -1.2371, 3.3009,  4.6010,  7.2340,  1.1318,  1.4262,  1.7827,
+           -1.6845, 1.6266,  -7.8322, -6.0997, -8.7051, -4.1546, -0.8525,
+           -7.5429, -4.5288, -2.5064, 5.7513,  5.7677,  -0.0532, 0.6254,
+           5.1343,  3.7236,  3.8359,  4.6758}));
 }
 
-/// 3D Batch Normalization in Int8
-TEST_P(OperatorTest, Int8BatchNorm3D) {
+/// Temporary copy-paste of channel-last test until we get glow side testing
+/// for this particular case
+TEST_P(OperatorTest, BatchNorm3D_FP16_NTHWC) {
   CHECK_IF_ENABLED();
+  std::string name = "BatchNorm3D_FP16_NTHWC";
+  testBatchnorm<float16_t>(
+      mod_, F_, bindings_, EE_, name, 4,
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {2.9304, 2.9185}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {5.0408, 7.0274}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {2.5450, 0.0290}),
+      Tensor::fromData<float16_t>(ElemKind::Float16Ty, {2}, {3.1328, 5.8897}),
+      0.0008742152713239193, 0.030418938025832176,
+      Tensor::fromData<float16_t>(
+          ElemKind::Float16Ty, {2, 2, 2, 2, 2},
+          {1.5305,  -0.2205, -0.7900, -0.1350, -0.7486, -0.0381, 0.9090,
+           -0.6790, 0.3621,  -0.5873, -2.4898, 0.9877,  0.4998,  0.2285,
+           -0.1048, -0.5791, -0.7407, -1.2809, 2.2225,  1.1126,  0.0190,
+           0.9498,  -0.6292, -0.6234, -1.4386, 2.1991,  1.6403,  -1.5266,
+           -0.0793, -0.6487, 0.8279,  0.7702}),
+      Tensor::fromData<float16_t>(
+          ElemKind::Float16Ty, {2, 2, 2, 2, 2},
+          {0.0414,  2.1962,  -6.5665, 2.4435,   -6.4484, 2.7244,  -1.7283,
+           0.8687,  -3.2857, 1.1340,  -11.4066, 5.6943,  -2.8935, 3.4961,
+           -4.6153, 1.1577,  -6.4260, -0.8744,  2.0120,  6.0559,  -4.2627,
+           5.5847,  -6.1085, 1.0296,  -8.4133,  9.2018,  0.3542,  -1.5855,
+           -4.5427, 0.9562,  -1.9592, 5.0646}));
+}
 
-  auto constFunc = [=](std::string name, const std::vector<float> &vals) {
-    dim_t sz = vals.size();
-    auto t = Tensor(ElemKind::FloatTy, {sz});
-    for (dim_t i = 0; i < sz; i++) {
-      t.getHandle().raw(i) = vals[i];
-    }
-    auto *c = mod_.createConstant(name, std::move(t));
-    return c;
-  };
+TEST_P(OperatorTest, BatchNorm3D_INT8_NTHWC) {
+  CHECK_IF_ENABLED();
+  std::string name = "BatchNorm3D_INT8_NTHWC";
+  testBatchnorm<int8_t>(
+      mod_, F_, bindings_, EE_, name, 4,
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {2.5167e-05, 6.8856e-05}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {1.0003, 1.0005}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {0.073, 0.043}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {2.5, 1.27}),
+      9.999999747378752e-06, 0.8999999761581421,
+      Tensor::fromData<int8_t>(
+          ElemKind::Int8QTy, 0.01, -5, {2, 2, 3, 3, 2},
+          {-8,  36,   120,  40,  27,  -29,  -49,  102, -74,  -105, -84,  -35,
+           49,  18,   -122, 33,  16,  -128, -72,  83,  -128, 74,   58,   1,
+           15,  75,   127,  -26, 67,  -110, -128, 102, -128, 127,  -58,  127,
+           55,  127,  117,  84,  20,  -24,  -55,  45,  -64,  54,   -71,  10,
+           -14, -128, -74,  -61, 18,  -57,  -128, -64, -77,  -84,  -4,   -115,
+           -4,  24,   12,   -18, 127, -128, -1,   127, -128, -47,  -128, -56}),
+      Tensor::fromData<int8_t>(
+          ElemKind::Int8QTy, 0.023, 15, {2, 2, 3, 3, 2},
+          {12,  29, 47,  31, 22,  4,   1,  55, -6,  -25, -9,  2,  28,  22, -19,
+           28,  19, -34, -5, 47,  -21, 44, 30, 16,  18,  44,  49, 5,   33, -27,
+           -21, 55, -21, 64, -2,  64,  29, 64, 47,  48,  20,  6,  -1,  33, -3,
+           36,  -5, 19,  11, -34, -6,  -8, 19, -7,  -21, -9,  -7, -17, 13, -29,
+           13,  25, 18,  8,  49,  -34, 14, 64, -21, -3,  -21, -6}),
+      1, 0.025);
+}
 
-  // input
-  dim_t N = 2, C = 2, T = 2, H = 3, W = 3;
-  float inScale = 0.01;
-  int inBias = -5;
-  std::vector<dim_t> dims = {N, T, H, W, C};
-  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, dims, inScale, inBias,
-                                       "input", false);
-  bindings_.allocate(input)->getHandle<int8_t>() = {
-      -8,  36,   120,  40,  27,  -29,  -49,  102, -74,  -105, -84,  -35,
-      49,  18,   -122, 33,  16,  -128, -72,  83,  -128, 74,   58,   1,
-      15,  75,   127,  -26, 67,  -110, -128, 102, -128, 127,  -58,  127,
-      55,  127,  117,  84,  20,  -24,  -55,  45,  -64,  54,   -71,  10,
-      -14, -128, -74,  -61, 18,  -57,  -128, -64, -77,  -84,  -4,   -115,
-      -4,  24,   12,   -18, 127, -128, -1,   127, -128, -47,  -128, -56};
-
-  auto *bias = constFunc("batchnorm_bias", {2.5167e-05, 6.8856e-05});
-  auto *scale = constFunc("batchnorm_weights", {1.0003, 1.0005});
-  auto *mean = constFunc("running_mean", {0.073, 0.043});
-  auto *variance = constFunc("running_var", {2.5, 1.27});
-  unsigned_t channelIdx = 4;
-  float epsilon = 9.999999747378752e-06;
-  float momentum = 0.8999999761581421;
-  float outScale = 0.023;
-  int outBias = 15;
-
-  TypeRef outTy = mod_.uniqueType(ElemKind::Int8QTy, dims, outScale, outBias);
-  auto *op = F_->createBatchNormalization("int8_batch_norm2d", outTy, input,
-                                          bias, scale, mean, variance,
-                                          channelIdx, epsilon, momentum);
-  auto *S = F_->createSave("save", op);
-  bindings_.allocate(S->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
-  auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
-
-  Tensor outTensor(ElemKind::Int8QTy, dims, outScale, outBias);
-  outTensor.getHandle<int8_t>() = {
-      12,  29, 47,  31, 22,  4,   1,  55, -6,  -25, -9,  2,  28,  22, -19,
-      28,  19, -34, -5, 47,  -21, 44, 30, 16,  18,  44,  49, 5,   33, -27,
-      -21, 55, -21, 64, -2,  64,  29, 64, 47,  48,  20,  6,  -1,  33, -3,
-      36,  -5, 19,  11, -34, -6,  -8, 19, -7,  -21, -9,  -7, -17, 13, -29,
-      13,  25, 18,  8,  49,  -34, 14, 64, -21, -3,  -21, -6};
-
-  float errSum = 0;
-  int numElements = N * C * T * H * W;
-  for (size_t i = 0; i < numElements; i++) {
-    EXPECT_NEAR(int(result.raw(i)), int(outTensor.getHandle<int8_t>().raw(i)),
-                1);
-    float err = result.raw(i) - outTensor.getHandle<int8_t>().raw(i);
-    errSum += err * err;
-  }
-  float rmse = std::sqrt(errSum) / numElements;
-  EXPECT_LE(rmse, 0.025);
+TEST_P(OperatorTest, BatchNorm3D_INT8_NCTHW) {
+  CHECK_IF_ENABLED();
+  std::string name = "BatchNorm3D_INT8_NCTHW";
+  testBatchnorm<int8_t>(
+      mod_, F_, bindings_, EE_, name, 1,
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {2.2692, 0.8616}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {0.4543, 6.7262}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {0.6257, 0.9221}),
+      Tensor::fromData<float>(ElemKind::FloatTy, {2}, {0.9841, 0.4234}),
+      0.0009562143087387085, 1.2378009557724,
+      Tensor::fromData<int8_t>(ElemKind::Int8QTy, 0.022, 22, {2, 2, 2, 2, 2},
+                               {10, 5,  28,  37, 16, 66, 5,   31, 16,  -3, 44,
+                                53, 27, -4,  52, 6,  25, 46,  51, -44, 26, 29,
+                                -4, 27, -17, 81, 20, 71, 105, 10, 68,  -37}),
+      Tensor::fromData<int8_t>(ElemKind::Int8QTy, 1.00106, 88, {2, 2, 2, 2, 2},
+                               {90, 90, 90, 90, 90, 90, 90, 90, 78, 74, 84,
+                                86, 80, 73, 86, 76, 90, 90, 90, 89, 90, 90,
+                                90, 90, 70, 93, 79, 90, 98, 77, 90, 66}),
+      1, 0.1);
 }
 
 /// Check non-square padding for AveragePool. The first pool op has non-square
@@ -17919,6 +17794,29 @@ TEST_P(OperatorTest, ReshapeInt) {
   }
 }
 
+/// Verify that the NonZero operator works correctly.
+TEST_P(OperatorTest, NonZero) {
+  CHECK_IF_ENABLED();
+
+  auto *Cond = mod_.createPlaceholder(ElemKind::BoolTy, {8}, "Cond", false);
+  bindings_.allocate(Cond)->getHandle<bool>() = {false, true, true,  false,
+                                                 false, true, false, true};
+
+  auto *N = F_->createNonZero("nonZero", Cond);
+  auto *result = F_->createSave("saveNonZero", N);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  std::array<int, 4> expected{1, 2, 5, 7};
+  auto resH = bindings_.get(result->getPlaceholder())->getHandle<int32_t>();
+
+  for (dim_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(resH.raw(i), expected[i]);
+  }
+}
+
 /// Verify that the Select operator works correctly.
 TEST_P(OperatorTest, Select) {
   CHECK_IF_ENABLED();
@@ -18788,6 +18686,32 @@ TEST_P(OperatorTest, SoftMax) {
   // And so on.
   out.getHandle<float>() = {0.011f, 0.082f, 0.05f, 0.605f, 0.222f, 0.03f};
   EXPECT_TRUE(out.isEqual(*result, 0.001));
+}
+
+/// Check that the softmax operator works properly with quantized input
+/// (int8_t). See the test that check the SoftMax operator for more details.
+TEST_P(OperatorTest, SoftMaxI8QTy) {
+  CHECK_IF_ENABLED();
+
+  auto *inputTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.129249, 3);
+  auto *outputTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.003922, -128);
+  auto *input = mod_.createPlaceholder(inputTy, "input", false);
+  bindings_.allocate(input)->getHandle<int8_t>() = {68, -128, 99,  -101, 127,
+                                                    -5, 104,  -83, -111, 44};
+  auto *selected =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
+  auto *Pool = F_->createSoftMax("pool", input, selected, outputTy);
+  auto *S = F_->createSave("save", Pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Int8QTy, {1, 10}, 0.003922, -128);
+  out.getHandle<int8_t>() = {-128, -128, -122, -128, 108,
+                             -128, -116, -128, -128, -128};
+  EXPECT_TRUE(out.isEqual(*result, 0));
 }
 
 /// Check that the softmax operator works properly with FP16.
@@ -20315,6 +20239,13 @@ TEST_P(OperatorTest, LayerNorm_Int8_With_Int8_Scale_Bias) {
   CHECK_IF_ENABLED();
 
   QuantizedLayerNormTest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, LayerNorm_Int8_With_Float16_Scale_Bias) {
+  CHECK_IF_ENABLED();
+
+  QuantizedLayerNormTest<float16_t>(bindings_, mod_, F_, EE_,
+                                    ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, LayerNorm_Int8_With_Float_Scale_Bias) {

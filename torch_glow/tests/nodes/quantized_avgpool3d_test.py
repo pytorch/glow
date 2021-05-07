@@ -31,7 +31,7 @@ class TestQuantizedAvgPool3D(utils.TorchGlowTestCase):
         )
 
     def test_quantized_avgpool_cut_q_dq(self):
-        """Basic test of the PyTorch quantized::avg_pool2d Node on Glow, with quantize and dequantize excluded. """
+        """Basic test of the PyTorch quantized::avg_pool2d Node on Glow, with quantize and dequantize excluded."""
 
         utils.compare_tracing_methods(
             SimpleQuantizedAvgPool3DModule(1.0 / 128, 3, torch.quint8, 3),

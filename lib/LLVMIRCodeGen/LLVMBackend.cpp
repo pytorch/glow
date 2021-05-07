@@ -412,8 +412,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy);
 
   case Kinded::Kind::SoftMaxNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
-                                                  {SoftMaxNode::SelectedIdx}) &&
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy},
+               {SoftMaxNode::SelectedIdx}) &&
            (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy ||
             NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int32ITy);
 

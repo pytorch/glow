@@ -1974,6 +1974,11 @@ LogitNode *Function::createLogit(llvm::StringRef name, NodeValue input,
   return addNode(new LogitNode(name, input.getType(), input, eps));
 }
 
+NonZeroNode *Function::createNonZero(llvm::StringRef name, NodeValue Cond) {
+  auto outTy = getParent()->uniqueType(ElemKind::Int32ITy, {Cond.dims()[0], 1});
+  return addNode(new NonZeroNode(name, outTy, Cond));
+}
+
 SelectNode *Function::createSelect(llvm::StringRef name, TypeRef outTy,
                                    NodeValue Cond, NodeValue LHS,
                                    NodeValue RHS) {
@@ -2715,6 +2720,14 @@ Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
   } else {
     llvm_unreachable("Lookup table type not supported.");
   }
+}
+
+LookupTableNode *Function::createLookupTable(
+    llvm::StringRef name, NodeValue input, LUTOperator lutOperator,
+    std::vector<float> &lutOperatorArgs, NodeValue table, NodeValue idxTable,
+    TypeRef outTy) {
+  return addNode(new LookupTableNode(name, outTy, input, table, idxTable,
+                                     lutOperator, lutOperatorArgs));
 }
 
 IntLookupTableNode *Function::createIntLog(llvm::StringRef name,
@@ -6004,9 +6017,8 @@ bool Function::verify(const Backend *backend) const {
   bool isValid = true;
   // Check if the layout verifying is disabled, which will accept all layout for
   // any ops.
-  LOG_FIRST_N(INFO, 1) << "Layout requirements checking is "
-                       << (glow::flags::DisableLayoutVerifying ? "disabled"
-                                                               : "enabled");
+  VLOG(1) << "Layout requirements checking is "
+          << (glow::flags::DisableLayoutVerifying ? "disabled" : "enabled");
   if (!glow::flags::DisableLayoutVerifying) {
     if (backend) {
       if (backend->getTensorLayoutRequirements().isEnabled()) {

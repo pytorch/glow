@@ -108,6 +108,8 @@ bool EnableCustomIAKernels = false;
 bool EnableCustomDSPKernels = false;
 bool DumpCompilerData = false;
 bool UsePerPartitionIcetConfig = false;
+std::string InjectedIAOpKernelPath = "";
+bool DumpCustomKernelFiles = false;
 
 } // namespace flags
 } // namespace nnpi
@@ -551,6 +553,24 @@ DEFINE_validator(glow_enable_nnpi_custom_dsp_kernels,
                    glow::nnpi::flags::EnableCustomDSPKernels = val;
                    return true;
                  });
+
+DEFINE_string(glow_injected_ia_op_kernel_path,
+              glow::nnpi::flags::InjectedIAOpKernelPath,
+              "Path to IA kernels library to use");
+DEFINE_validator(glow_injected_ia_op_kernel_path,
+                 [](const char *, const std::string &val) {
+                   glow::nnpi::flags::InjectedIAOpKernelPath = val;
+                   return true;
+                 });
+
+DEFINE_bool(glow_dump_custom_kernel_files,
+            glow::nnpi::flags::DumpCustomKernelFiles,
+            "Enable dumping the compiled custom IA and DSP kernels to file.");
+DEFINE_validator(glow_dump_custom_kernel_files, [](const char *, bool val) {
+  glow::nnpi::flags::DumpCustomKernelFiles = val;
+  return true;
+});
+
 DEFINE_bool(glow_nnpi_lower_all_batch_matmul,
             glow::nnpi::flags::LowerAllBatchMatMul,
             "Whether to override default lowering for NNPI and always lower "

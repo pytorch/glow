@@ -1895,6 +1895,11 @@ bool IntLookupTableNode::verify() const {
   return isValid;
 }
 
+bool LookupTableNode::verify() const {
+  bool isValid = true;
+  return isValid;
+}
+
 bool QuantizeNode::verify() const {
   bool isValid =
       expectCompareTrue("Dest must be quantized",
@@ -2564,6 +2569,11 @@ bool ReplaceNaNNode::verify() const {
   return checkSameType(getResult(), getInput(), this);
 }
 
+bool NonZeroNode::verify() const {
+  return checkType(getCond(), ElemKind::BoolTy, this) &&
+         checkType(getResult(), ElemKind::Int32ITy, this);
+}
+
 bool SelectNode::verify() const {
   bool isValid = checkSameShape(getResult(), getLHS(), this);
   isValid &= checkSameShape(getResult(), getRHS(), this);
@@ -2888,6 +2898,30 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
     os << "TANH";
     break;
   case FusedActivation::LEAKY_RELU:
+    os << "LEAKY_RELU";
+    break;
+  }
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LUTOperator lutOperator) {
+  switch (lutOperator) {
+  case LUTOperator::NONE:
+    os << "NONE";
+    break;
+  case LUTOperator::RELU:
+    os << "RELU";
+    break;
+  case LUTOperator::CLIP:
+    os << "CLIP";
+    break;
+  case LUTOperator::SIGMOID:
+    os << "SIGMOID";
+    break;
+  case LUTOperator::TANH:
+    os << "TANH";
+    break;
+  case LUTOperator::LEAKY_RELU:
     os << "LEAKY_RELU";
     break;
   }

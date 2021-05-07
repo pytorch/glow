@@ -938,6 +938,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen("Erf");
 
+  BB.newInstr("NonZero")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Cond", OperandKind::In)
+      .inplaceOperand({"Dest", "Cond"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameElementType, {"Cond", "ElemKind::BoolTy"})
+      .autoIRGen("NonZero");
+
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Cond", OperandKind::In)
@@ -1392,6 +1400,21 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Int64, "RpnMaxLevel")
       .addMember(MemberType::Int64, "RpnMinLevel")
       .addMember(MemberType::Unsigned, "RpnPostNmsTopN")
+      .autoVerify(VerifyKind::NoVerify);
+
+  //===--------------------------------------------------------------------===//
+  //                Lookup Table Operators
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("LookupTable")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Table", OperandKind::In)
+      .addOperand("TableIdx", OperandKind::In)
+      .addMember(MEMBER_TYPE_INFO(glow::LUTOperator), "Operator")
+      .addMember(MemberType::VectorFloat, "OperatorArgs")
+      .dataParallel()
+      .autoIRGen()
       .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//

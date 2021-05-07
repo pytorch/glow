@@ -1,14 +1,9 @@
-name: "cast_int32_to_int64"
+name: "dropout"
 op {
   input: "input"
   output: "output"
   name: ""
-  type: "Cast"
-  arg {
-    name: "to"
-    i: 10
-  }
+  type: "Dropout"
 }
 external_input: "input"
 external_output: "output"
-
