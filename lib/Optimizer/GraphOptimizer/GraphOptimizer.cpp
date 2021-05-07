@@ -6555,6 +6555,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           SelectNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::ExpNodeKind: {
+        splitDims[ExpNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ExpNode::InputIdx, ExpNode::ResultIdx,
+                                          splitDims, 0));
+        break;
+      }
       case Kinded::Kind::SigmoidNodeKind: {
         splitDims[SigmoidNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -6673,8 +6681,9 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         auto *BR = llvm::cast<BatchedReduceMeanNode>(curNode);
         const auto &BRaxes = BR->getAxes();
         if (std::find(BRaxes.begin(), BRaxes.end(), 0) != BRaxes.end()) {
-          LOG(INFO)
-              << "BatchedReduceMean along the first dimension not parallelized";
+          LOG(INFO) << "BatchedReduceMean along the first dimension not "
+                       "parallelized. Current node: "
+                    << BR->getDebugDesc();
         } else {
           splitDims[BatchedReduceMeanNode::BatchIdx] = 0;
           ASSIGN_VALUE_OR_RETURN_ERR(
