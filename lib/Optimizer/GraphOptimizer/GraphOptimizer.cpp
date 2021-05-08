@@ -5210,7 +5210,7 @@ bool RaiseClipsAboveShapeNodes::run(Function *F,
   return changed;
 }
 
-/// Fold ElemKind conversion nodes (ConvertTo, Quantize) into
+/// Fold ElemKind conversion nodes (ConvertTo, Quantize, Clip) into
 /// single-user Placeholders. Note that this changes the semantics
 /// of the IO of the Function and so must be done carefully, i.e. should always
 /// be opt-in and done alongside conversion of corresponding Tensors in
@@ -5227,10 +5227,18 @@ bool FoldElemKindConversionIntoInputs::run(Function *F,
   for (auto it = nodes.begin(), e = nodes.end(); it != e; it++) {
     Node *N = &*it;
     // Handle conversion of inputs (conversion of Placeholders):
-    ConvertToNode *CTN = llvm::dyn_cast<ConvertToNode>(N);
-    QuantizeNode *QN = llvm::dyn_cast<QuantizeNode>(N);
-    if (CTN || QN) {
-      NodeValue in = CTN ? CTN->getInput() : QN->getInput();
+    auto *CTN = llvm::dyn_cast<ConvertToNode>(N);
+    auto *QN = llvm::dyn_cast<QuantizeNode>(N);
+    auto *CN = llvm::dyn_cast<ClipNode>(N);
+    if (CTN || QN || CN) {
+      NodeValue in;
+      if (CTN) {
+        in = CTN->getInput();
+      } else if (QN) {
+        in = QN->getInput();
+      } else {
+        in = CN->getInput();
+      }
       Placeholder *P = llvm::dyn_cast<Placeholder>(in);
       if (!P || P->getUsers().size() != 1) {
         continue;
@@ -5244,7 +5252,14 @@ bool FoldElemKindConversionIntoInputs::run(Function *F,
 
       // We have a conversion of a single-use placeholder to some other type, so
       // it is safe to do the requested conversion.
-      NodeValue res = CTN ? CTN->getResult() : QN->getResult();
+      NodeValue res;
+      if (CTN) {
+        res = CTN->getResult();
+      } else if (QN) {
+        res = QN->getResult();
+      } else {
+        res = CN->getResult();
+      }
 
       // Convert the type of the Placeholder to the conversion type. If target
       // type is fused call setTypeUnsafe because the shape can change in this
@@ -5254,7 +5269,10 @@ bool FoldElemKindConversionIntoInputs::run(Function *F,
       } else {
         P->setType(Storage::OutputIdx, res.getType());
       }
-
+      if (CN) {
+        F->getParent()->registerClipArgs(P->getName(), CN->getMin(),
+                                         CN->getMax());
+      }
       // Replace all uses of the original ConvertTo to the Placeholder.
       res.replaceAllUsesOfWith(P);
 
@@ -6051,7 +6069,6 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
-
   // If requested fold ElemKind conversion Nodes into static Placeholders,
   // inputs, and outputs (Placeholders and SaveNodes).
   if (cctx.optimizationOpts.foldStaticPlaceholderConversions ||

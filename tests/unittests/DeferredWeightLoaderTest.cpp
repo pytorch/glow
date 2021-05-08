@@ -167,4 +167,55 @@ TEST_P(DeferredWeightLoaderTest, FP16StaticPlaceholderInference) {
   EXPECT_NEAR(resHandle.at({0}), 12.0, 1E-5);
 }
 
+TEST_P(DeferredWeightLoaderTest, foldClipIntoStaticPlaceholders) {
+  CHECK_IF_ENABLED();
+  auto hostmanager = createHostManager(GetParam());
+  ExecutionEngine EE{GetParam()};
+  auto &module = EE.getModule();
+  auto F = module.createFunction("main");
+  auto min = 0.0;
+  auto max = 5.0;
+  auto *input =
+      module.createPlaceholder(ElemKind::Float16Ty, {8, 10}, "input", false);
+  auto *C = F->createClip("clip", input, min, max);
+  auto *output =
+      module.createPlaceholder(ElemKind::Float16Ty, {8, 10}, "output", false);
+  // Set input as static.
+  input->setStatic(true);
+
+  auto *S = F->createSave("save", C, output);
+
+  std::vector<Tensor> staticInputs;
+  auto inputT = Tensor(input->getType());
+  inputT.getHandle<float16_t>().randomize(-10.0, 10.0, module.getPRNG());
+
+  // Expect two nodes: clip, save.
+  EXPECT_EQ(2, F->getNodes().size());
+
+  TestDeferredWeightLoader loader;
+  loader.addWeight(&inputT);
+  loader.addName("input");
+  DeferredLoader()->registerLoader(&loader);
+
+  PlaceholderBindings bindings;
+  CompilationContext cctx;
+  cctx.deferredWeightLoader = &loader;
+  cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
+  EE.compile(cctx);
+
+  // Clip node should be folded in now; We should have one save node
+  EXPECT_EQ(F->getNodes().size(), 1);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SaveNodeKind), 1);
+
+  bindings.allocate(output);
+  EE.run(bindings);
+
+  // Check clip correctness
+  auto resHandle = bindings.get(output)->getHandle<float16_t>();
+  EXPECT_GE(resHandle.raw(resHandle.minMaxArg().first),
+            static_cast<float16_t>(min));
+  EXPECT_LE(resHandle.raw(resHandle.minMaxArg().second),
+            static_cast<float16_t>(max));
+}
+
 INSTANTIATE_BACKEND_TEST(DeferredWeightLoaderTest);

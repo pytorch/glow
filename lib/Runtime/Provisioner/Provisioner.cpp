@@ -557,6 +557,29 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       auto oldKind = weight->getElementType();
       // Ensure we are working with a static PH.
       assert(PH->isStatic());
+
+      auto clipArgs = module.getClipArgs();
+      auto minMax = clipArgs.find(PH->getName());
+      if (minMax != clipArgs.end()) {
+        auto min = minMax->second.first;
+        auto max = minMax->second.second;
+#define TYPED_CLIP(TY, TYPEKIND)                                               \
+  if (newTy->getElementType() == TYPEKIND) {                                   \
+    auto weightH = weight->getHandle<TY>();                                    \
+    for (size_t i = 0; i < weightH.size(); i++) {                              \
+      weightH.raw(i) = std::clamp<float>(weightH.raw(i), min, max);            \
+    }                                                                          \
+  }
+        TYPED_CLIP(float, ElemKind::FloatTy);
+        TYPED_CLIP(float16_t, ElemKind::Float16Ty);
+        TYPED_CLIP(bfloat16_t, ElemKind::BFloat16Ty);
+        TYPED_CLIP(int8_t, ElemKind::Int8QTy);
+        TYPED_CLIP(int16_t, ElemKind::Int16QTy);
+        TYPED_CLIP(int32_t, ElemKind::Int32QTy);
+        TYPED_CLIP(int32_t, ElemKind::Int32ITy);
+        TYPED_CLIP(int64_t, ElemKind::Int64ITy);
+#undef TYPED_CLIP
+      }
       if (!weight->getType().isEqual(newTy)) {
         ElemKind newK = newTy->getElementType();
 

@@ -80,6 +80,8 @@ class Module final {
   PlaceholderList placeholders_;
   /// Deterministic PRNG used to initialize weights in this module.
   PseudoRNG PRNG_;
+  /// A list of clip node min/max args that are folded
+  std::map<llvm::StringRef, std::pair<float, float>> clipArgs_{};
 
   /// Module log context that stores all logs related to this module.
   LogContext moduleLogCtx_{nullptr};
@@ -184,6 +186,14 @@ public:
 
   /// \returns the list of types that the Module owns.
   const TypesList &getTypes() const { return types_; }
+
+  void registerClipArgs(llvm::StringRef name, float min, float max) {
+    clipArgs_.insert(std::make_pair(name, std::make_pair(min, max)));
+  }
+
+  std::map<llvm::StringRef, std::pair<float, float>> getClipArgs() {
+    return clipArgs_;
+  }
 
   /// Erase the constant \p N from the Module.
   void eraseConstant(Constant *N);
