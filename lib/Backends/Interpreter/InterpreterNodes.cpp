@@ -2303,6 +2303,15 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<int8_t>().clear(quantization::quantize(val, destQ));
   }
 
+  if (k == ElemKind::Int16QTy) {
+    // Quantize the requested floating point splat value into the correct
+    // integer representation.
+    auto destTy = I->getDest()->getType();
+    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+    float val = I->getValue();
+    return T->getHandle<int16_t>().clear(quantization::quantize(val, destQ));
+  }
+
   if (k == ElemKind::BoolTy) {
     return T->getHandle<bool>().clear(static_cast<bool>(I->getValue()));
   }
@@ -2332,6 +2341,7 @@ void BoundInterpreterFunction::fwdInsertTensorInst(
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
+  TYPED_INSERT(int16_t, ElemKind::Int16QTy);
   TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
 
@@ -3685,7 +3695,16 @@ void BoundInterpreterFunction::fwdElementCmpLTEInst(
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpLTEInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpLTEInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpLTEInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3723,7 +3742,16 @@ void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpEQInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3762,7 +3790,16 @@ void BoundInterpreterFunction::fwdElementCmpNEQInst(
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpNEQInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3799,7 +3836,16 @@ void BoundInterpreterFunction::fwdElementCmpLTInstImpl(
 void BoundInterpreterFunction::fwdElementCmpLTInst(ElementCmpLTInst const *I) {
   auto *T = getTensor(I->getLHS());
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpLTInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpLTInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpLTInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 

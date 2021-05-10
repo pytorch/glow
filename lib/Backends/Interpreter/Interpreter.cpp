@@ -243,8 +243,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ConcatNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
-         ElemKind::Int8QTy, ElemKind::Int32ITy, ElemKind::Int64ITy,
-         ElemKind::BoolTy});
+         ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32ITy,
+         ElemKind::Int64ITy, ElemKind::BoolTy});
   case Kinded::Kind::NonZeroNodeKind:
     return NI.getInElemTy(NonZeroNode::CondIdx) == ElemKind::BoolTy &&
            NI.getOutElemTy(NonZeroNode::ResultIdx) == ElemKind::Int32ITy;
@@ -295,7 +295,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::CmpLTENodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
-                ElemKind::Int8QTy, ElemKind::Int32ITy, ElemKind::Int64ITy},
+                ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32ITy,
+                ElemKind::Int64ITy},
                {}, {CmpEQNode::ResultIdx}) &&
            (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
 
