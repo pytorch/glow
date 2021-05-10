@@ -1142,6 +1142,16 @@ struct FastGatherInputs {
   };
 };
 
+/// Indexes used for aten::gather inputs.
+struct GatherElementsInputs {
+  enum {
+    input = 0,
+    dim,
+    indices,
+    sparse,
+  };
+};
+
 /// Indexes used for _caffe2::RoIAlign inputs
 struct RoiAlignInputs {
   enum {
@@ -1694,6 +1704,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"fb::fast_gather"},
        &PyTorchModelLoader::loadFastGather,
        &PyTorchModelLoader::getCorrectTypeFromInput<FastGatherInputs::input>},
+      {{"aten::gather"},
+       &PyTorchModelLoader::loadGatherElements,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           GatherElementsInputs::input>},
       {{"_caffe2::RoIAlign"},
        &PyTorchModelLoader::loadRoiAlign,
        &PyTorchModelLoader::getCorrectTypeFromInput<RoiAlignInputs::features>},
@@ -8363,6 +8377,31 @@ Error PyTorchModelLoader::loadFastGather(const torch::jit::Node *ptNode) {
       indices, getGlowNodeValueForValue(inputs[FastGatherInputs::indices]));
 
   auto *g = F_.createGather("FastGather", input, indices);
+
+  RETURN_ERR(addValueMapping(outputs[0], g->getResult()));
+}
+
+Error PyTorchModelLoader::loadGatherElements(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[GatherElementsInputs::input]));
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[GatherElementsInputs::dim])));
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(inputs[GatherElementsInputs::indices]));
+  bool sparse_grad;
+  ASSIGN_VALUE_OR_RETURN_ERR(sparse_grad,
+                             iValToBool(getGlowIValueForValue(inputs[3])));
+  RETURN_ERR_IF_NOT(!sparse_grad, "Currently only supports sparse_grad=false");
+
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getPositiveIndex(dim, input.dims().size()));
+  auto *g = F_.createGatherElements("GatherElements", input, indices, dim);
 
   RETURN_ERR(addValueMapping(outputs[0], g->getResult()));
 }

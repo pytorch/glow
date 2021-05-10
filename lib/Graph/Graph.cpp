@@ -2859,6 +2859,26 @@ GatherNDNode *Function::createGatherND(llvm::StringRef name, NodeValue data,
   return addNode(new GatherNDNode(name, outTy, data, indices));
 }
 
+GatherElementsNode *Function::createGatherElements(llvm::StringRef name,
+                                                   NodeValue data,
+                                                   NodeValue indices,
+                                                   unsigned_t dim = 0) {
+  const auto iDims = indices.dims();
+  const auto dRank = data.dims().size();
+  const auto iRank = iDims.size();
+  (void)dRank;
+  (void)iRank;
+  assert((dim < 0 ? dim >= -dRank : dim < dRank) &&
+         "[GatherElements] dim must in the range [-rank, rank-1].");
+  assert(iRank == dRank &&
+         "[GatherElements] Data and indices rank must be equal.");
+  assert(dRank > 0 && "[GatherElements] Data and indices rank must be >= 1.");
+
+  return addNode(new GatherElementsNode(
+      name, getParent()->uniqueTypeWithNewShape(data.getType(), iDims), data,
+      indices, dim));
+}
+
 GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
                                                NodeValue data, NodeValue ranges,
                                                unsigned_t maxOutputSize) {

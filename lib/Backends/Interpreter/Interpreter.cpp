@@ -565,6 +565,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return ((NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int32ITy) ||
             (NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int64ITy));
 
+  case Kinded::Kind::GatherElementsNodeKind:
+    // Note: Data and Result can be any data type, but must match.
+    return (NI.getInElemTy(GatherNode::DataIdx) ==
+            NI.getOutElemTy(GatherNode::ResultIdx)) &&
+           ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
+            (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
+
   case Kinded::Kind::BatchOneHotNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
