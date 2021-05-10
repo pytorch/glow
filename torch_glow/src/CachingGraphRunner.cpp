@@ -78,6 +78,27 @@ Error initializeCompilationContextFromGlowFlags(
     cctx.compilationLogPrefix = "torch-glow";
   }
 
+  // glow_sparsenn_partitioning_add_sls_concats
+  // (SparseNNPartitioningAddSLSConcats) enables addition of concats to create a
+  // bigger tensor out of many smaller tensors that needs to be communicated
+  // with other partitions so that communication is efficient. This doesn't work
+  // if one of the tensor is [1, x] (coming from user embeddings and it's [1, x]
+  // due to inbatch broadcast, i.e., broadcast happens on accelerator card) and
+  // other (coming from ad embeddings) is [32, y]. However, [1, x] is followed
+  // by tile in glow graph to make it [32, x]. This diff D27781184 (
+  // glow_sparsenn_partitioning_pair_tile_with_sls, i.e.,
+  // SparseNNPartitioningPairTileWithSLS) pulls in the tile operator on user
+  // embeddings to sls partition as well so that sls_concat can now work since
+  // post-tile tensors become [32, x] and [32, y]. Thus,
+  // SparseNNPartitioningPairTileWithSLS is required for
+  // SparseNNPartitioningAddSLSConcats to work.
+  if (glow::flags::SparseNNPartitioningAddSLSConcats) {
+    LOG(INFO)
+        << "Enabling glow_sparsenn_partitioning_pair_tile_with_sls because "
+           "glow_sparsenn_partitioning_add_sls_concats is enabled ";
+    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS = true;
+  }
+
   if (glow::flags::UseDAGOptimizer) {
     LOG(INFO) << "Enabling DAG optimizer and related options (server AOT)";
     cctx.callDAGOptimizer = true;
