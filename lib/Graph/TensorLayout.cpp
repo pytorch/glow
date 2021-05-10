@@ -195,8 +195,7 @@ TensorLayoutDescription::TensorLayoutDescription(
   }
 }
 
-const llvm::StringRef
-TensorLayoutDescription::getNthDimDescription(size_t n) const {
+const llvm::StringRef TensorLayoutDescription::getNthDimDescription(size_t n) const {
   assert(n < numDims_ && "Wrong dimension number");
   return dims_[n];
 }
@@ -261,8 +260,8 @@ llvm::StringRef TensorLayoutDescription::setAttribute(size_t n,
   removeAttribute(name.str(), dimStr);
   // Add new name information to dim:
   dimStr.append("[");
-  dimStr.append(name);
-  dimStr.append(value);
+  dimStr.append(name.str());
+  dimStr.append(value.str());
   dimStr.append("]");
   reconstructSerialized();
   return dimStr;
@@ -271,7 +270,7 @@ llvm::StringRef TensorLayoutDescription::setAttribute(size_t n,
 std::string TensorLayoutDescription::getAttribute(size_t n,
                                                   llvm::StringRef name) const {
   assert(n < numDims_ && "Wrong dimension number");
-  size_t pos = dims_[n].find(name);
+  size_t pos = dims_[n].find(name.str());
   if (pos == std::string::npos) {
     return "";
   }
@@ -567,7 +566,7 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
         input.dims().size());
     auto shuffle = TN->getShuffle();
     for (unsigned idx = 0, e = inputLayoutHelper.getNumDims(); idx < e; ++idx) {
-      dims[shuffle[idx]] = inputLayoutHelper.getNthDimDescription(idx);
+      dims[shuffle[idx]] = inputLayoutHelper.getNthDimDescription(idx).str();
     }
     TensorLayoutDescription tld(dims);
     return tld.getSerializedLayout();

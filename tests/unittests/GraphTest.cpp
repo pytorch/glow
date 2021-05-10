@@ -937,7 +937,7 @@ TEST(Graph, moduleCloneTest) {
     C->getPayloadMutable().getHandle().clear(1.0f);
     auto *SM = F->createAdd("add", concat, C);
     auto *SN = F->createSave("Save", SM);
-    resultName = SN->getPlaceholder()->getName();
+    resultName = SN->getPlaceholder()->getName().str();
 
     // Clone the original module into the cloned module.
     originalM.clone(&clonedM);

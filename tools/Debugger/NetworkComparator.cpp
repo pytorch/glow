@@ -101,13 +101,13 @@ NetworkComparatorBase::InOutTensors RecursiveLayerComparator::hookAndRun(
   InOutTensors inOutTensors;
   for (const auto &P : hook.outputs) {
     Tensor *t = inferBindings.get(P);
-    std::string str = P->getName();
+    std::string str = P->getName().str();
     DCHECK(t) << "Placeholder not " << str << " found in the bindings\n";
     inOutTensors.outputs[str] = t;
   }
   for (const auto &P : hook.inputs) {
     Tensor *t = inferBindings.get(P);
-    std::string str = P->getName();
+    std::string str = P->getName().str();
     DCHECK(t) << "Placeholder " << str << " not found in the bindings\n";
     inOutTensors.inputs[str] = t;
   }
@@ -142,7 +142,7 @@ bool RecursiveLayerComparator::verify(PlaceholderBindings *bindings) {
       LOG(ERROR) << "\tDumping tensors\n";
       dumpTensors(refOuts.outputs, layerName.data(), "ref_output");
       dumpTensors(refOuts.inputs, layerName.data(), "input");
-      brokenLayers_.push_back(layerName);
+      brokenLayers_.push_back(layerName.str());
       allPassed = false;
     }
     inferBindingsCheck_.clear();
@@ -161,9 +161,9 @@ RecursiveLayerComparator::RecursiveLayerComparator(
 void IntermediateLayerComparator::hookSingleNodeInPlace(
     Node &node, std::list<SaveNode *> &saveNodes,
     std::list<Placeholder *> &hookPlaceholders) {
-  std::string layerName = node.getName();
+  std::string layerName = node.getName().str();
   for (unsigned i = 0; i < node.getNumResults(); ++i) {
-    std::string saveName = node.getOutputName(i);
+    std::string saveName = node.getOutputName(i).str();
     saveName += "_" + layerName + "_hook";
     SaveNode *save =
         node.getParent()->createSave(saveName, node.getNthResult(i));
@@ -200,7 +200,7 @@ void IntermediateLayerComparator::getIntermediateResults(
   std::list<SaveNode *> saveNodes;
   std::list<Placeholder *> hookPlaceholders;
   Function *func = networkExecEngine.getSingleFunctionFromModule();
-  std::string newName = func->getName();
+  std::string newName = func->getName().str();
   Function *hookedFunction = func->clone(newName + "_hooked");
   // Instrument all the nodes in hookedFunction by inserts Save nodes.
   hookNodesInPlace(hookedFunction, saveNodes, hookPlaceholders);
@@ -230,7 +230,7 @@ void IntermediateLayerComparator::fillSingleLayerInputs(
   for (size_t idx = 0; idx < originalNode.getNumInputs(); idx++) {
     size_t resNo = originalNode.getNthInput(idx).getResNo();
     Node *inputNode = originalNode.getNthInput(idx).getNode();
-    std::string hookedPlaceholderName = inputNode->getName();
+    std::string hookedPlaceholderName = inputNode->getName().str();
     Node *inputToFeed = nullptr;
     DCHECK(!llvm::isa<SaveNode>(inputNode))
         << "SaveNode as an input was not hooked!";
@@ -251,7 +251,7 @@ void IntermediateLayerComparator::fillSingleLayerInputs(
       if (!llvm::isa<Placeholder>(inputNode)) {
         // If the input is placeholder the name stays the
         // same since these don't get hooked.
-        std::string outputName = inputNode->getOutputName(resNo);
+        std::string outputName = inputNode->getOutputName(resNo).str();
         hookedPlaceholderName =
             outputName + "_" + hookedPlaceholderName + "_hook";
       }
@@ -288,10 +288,10 @@ void IntermediateLayerComparator::runAndGetoutputSingleLayer(
   singleLayerExecEng.compile(CompilationMode::Infer);
   singleLayerExecEng.run(singleLayerBindings);
   for (Placeholder *PH : singleLayerOutputPHs) {
-    singleLayerOutputs[PH->getName()] = singleLayerBindings.get(PH);
+    singleLayerOutputs[PH->getName().str()] = singleLayerBindings.get(PH);
     Placeholder *refPH =
         refHookedBindings_.getPlaceholderByNameSlow(PH->getName());
-    refOutputs[PH->getName()] = refHookedBindings_.get(refPH);
+    refOutputs[PH->getName().str()] = refHookedBindings_.get(refPH);
   }
 }
 
@@ -320,9 +320,9 @@ bool IntermediateLayerComparator::testSingleLayer(const Node *node) {
   if (!checkTensors(refOutputs, singleLayerOutputs)) {
     LOG(ERROR) << "\tResults differ\n";
     LOG(ERROR) << "\tDumping tensors\n";
-    dumpTensors(refOutputs, layerName, "ref_output");
-    dumpTensors(singleLayerInputMap, layerName, "input");
-    brokenLayers_.push_back(layerName);
+    dumpTensors(refOutputs, layerName.str(), "ref_output");
+    dumpTensors(singleLayerInputMap, layerName.str(), "input");
+    brokenLayers_.push_back(layerName.str());
     pass = false;
   }
   LOG(INFO) << "DONE Verifying layer: " << layerName.data() << "\n";

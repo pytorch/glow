@@ -98,7 +98,13 @@ std::string separateString(const std::string &str, size_t length,
   assert(sepStr.size() == outSize && "Inconsistent string separation!");
   return sepStr;
 }
-
+  std::string separateString(llvm::StringRef str, size_t length,
+			     const std::string &delimiter)
+  {
+    std::string str1=str.str();
+    return separateString(str1,length,delimiter);
+    
+  }
 std::string escapeDottyString(const std::string &str) {
   std::string out;
   out.reserve(str.capacity());

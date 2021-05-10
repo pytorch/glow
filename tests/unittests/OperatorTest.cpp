@@ -184,8 +184,8 @@ static Placeholder *createPlaceholderConditionallyQuantized(
     Module &mod, ElemKind T, llvm::ArrayRef<dim_t> dims, llvm::StringRef name,
     bool isTrainable, llvm::StringRef layout = ANY_LAYOUT) {
   return isQuantizedElemKind(T)
-             ? mod.createPlaceholder(T, dims, 1.0, 0, name, isTrainable, layout)
-             : mod.createPlaceholder(T, dims, name, isTrainable, layout);
+    ? mod.createPlaceholder(T, dims, 1.0, 0, name.str(), isTrainable, layout.str())
+    : mod.createPlaceholder(T, dims, name.str(), isTrainable, layout.str());
 }
 
 /// Helper to get a unique Type; if \p T is quantized, then it will include a

@@ -277,7 +277,7 @@ private:
     for (auto &S : Symbols) {
       // Note that we don't use Sym's operator bool() here since that returns
       // false for symbols with no address (which includes weak symbols).
-      JITSymbol Sym = LegacyLookup(*S);
+      JITSymbol Sym = LegacyLookup(std::string(*S));
       if (auto Err = Sym.takeError()) {
         return std::move(Err);
       }
@@ -346,8 +346,8 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
 #endif
       resolver_(createLookupResolver(
           ES_,
-          [this](const std::string &name) -> JITSymbol {
-            return this->resolveSymbol(name);
+          [this](llvm::StringRef name) -> JITSymbol {
+            return this->resolveSymbol(std::string(name));
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
 #if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
@@ -401,9 +401,9 @@ GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<llvm::Module> M) {
   // https://github.com/llvm-mirror/llvm/blob/release_70/lib/ExecutionEngine/Orc/LLJIT.cpp).
   std::vector<std::string> ctorNames, dtorNames;
   for (auto ctor : orc::getConstructors(*M))
-    ctorNames.push_back(mangle(ctor.Func->getName()));
+    ctorNames.push_back(mangle(ctor.Func->getName().str()));
   for (auto dtor : orc::getDestructors(*M))
-    dtorNames.push_back(mangle(dtor.Func->getName()));
+    dtorNames.push_back(mangle(dtor.Func->getName().str()));
 
   cantFail(compileLayer_.addModule(K, std::move(M)));
   vModKeys_.insert(K);

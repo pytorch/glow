@@ -425,7 +425,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
   cctx.backendOpts.collectConstants = true;
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
 
-  std::string name = F->getName();
+  std::string name = F->getName().str();
   auto config =
       glow::make_unique<runtime::DeviceConfig>(backend->getBackendName());
   std::unique_ptr<runtime::DeviceManager> device(

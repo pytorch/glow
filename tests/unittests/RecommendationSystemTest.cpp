@@ -413,7 +413,7 @@ protected:
       const auto &resultTensor = pair.second;
       ONNXModelWriter::writeTensor(resultTensor, t,
                                    /*useGlowCustomOps*/ true);
-      t->set_name(PH->getName());
+      t->set_name(PH->getName().str());
     }
     std::string buffer;
     inputG.SerializeToString(&buffer);
