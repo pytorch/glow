@@ -70,6 +70,21 @@ protected:
     ASSERT_TRUE(F_->verify(&EE_.getBackend()))
         << "Function must pass verification.";
 
+    // If the function contains custom kernels then skip the serialization
+#ifdef GLOW_WITH_NNPI
+    bool hasCustomKernels = false;
+    for (auto &node : F_->getNodes()) {
+      if (node.getKind() == Kinded::Kind::NNPICustomDSPNodeKind ||
+          node.getKind() == Kinded::Kind::NNPICustomIANodeKind) {
+        hasCustomKernels = true;
+        break;
+      }
+    }
+    if (hasCustomKernels) {
+      return;
+    }
+#endif
+
     // Now export the model to later import it back in.
     llvm::SmallString<64> path;
     auto tempFileRes =
@@ -18615,6 +18630,32 @@ TEST_P(OperatorTest, SoftMax) {
   // And so on.
   out.getHandle<float>() = {0.011f, 0.082f, 0.05f, 0.605f, 0.222f, 0.03f};
   EXPECT_TRUE(out.isEqual(*result, 0.001));
+}
+
+/// Check that the softmax operator works properly with quantized input
+/// (int8_t). See the test that check the SoftMax operator for more details.
+TEST_P(OperatorTest, SoftMaxI8QTy) {
+  CHECK_IF_ENABLED();
+
+  auto *inputTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.129249, 3);
+  auto *outputTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10}, 0.003922, -128);
+  auto *input = mod_.createPlaceholder(inputTy, "input", false);
+  bindings_.allocate(input)->getHandle<int8_t>() = {68, -128, 99,  -101, 127,
+                                                    -5, 104,  -83, -111, 44};
+  auto *selected =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
+  auto *Pool = F_->createSoftMax("pool", input, selected, outputTy);
+  auto *S = F_->createSave("save", Pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Int8QTy, {1, 10}, 0.003922, -128);
+  out.getHandle<int8_t>() = {-128, -128, -122, -128, 108,
+                             -128, -116, -128, -128, -128};
+  EXPECT_TRUE(out.isEqual(*result, 0));
 }
 
 /// Check that the softmax operator works properly with FP16.

@@ -1402,6 +1402,21 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//
+  //                Lookup Table Operators
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("LookupTable")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Table", OperandKind::In)
+      .addOperand("TableIdx", OperandKind::In)
+      .addMember(MEMBER_TYPE_INFO(glow::LUTOperator), "Operator")
+      .addMember(MemberType::VectorFloat, "OperatorArgs")
+      .dataParallel()
+      .autoIRGen()
+      .autoVerify(VerifyKind::NoVerify);
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//
 

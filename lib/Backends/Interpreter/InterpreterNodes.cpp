@@ -3936,7 +3936,9 @@ void BoundInterpreterFunction::fwdElementExpInst(const ElementExpInst *I) {
 }
 
 void BoundInterpreterFunction::fwdNonZeroInst(const NonZeroInst *I) {
-  auto outW = getWeightHandle<int32_t>(I->getDest());
+  auto *T = getTensor(I->getDest());
+  T->zero();
+  auto outW = T->getHandle<int32_t>();
   auto condW = getWeightHandle<bool>(I->getCond());
   for (size_t condIdx = 0, outIdx = 0, n = condW.size(); condIdx < n;
        condIdx++) {
@@ -6227,6 +6229,10 @@ void BoundInterpreterFunction::fwdIntLookupTableInst(
   } else {
     llvm_unreachable("Type not supported for IntLookupTable!");
   }
+}
+
+void BoundInterpreterFunction::fwdLookupTableInst(const LookupTableInst *I) {
+  llvm_unreachable("LookupTable instruction is not supported yet");
 }
 
 void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {

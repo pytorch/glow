@@ -346,6 +346,9 @@ struct CompilationContext {
   /// Whether to serialize the DAG that has been optimized and partitioned.
   bool serializeCompiledDAG{false};
 
+  /// Whether to save constant data into the serialized DAG.
+  bool saveConstantInSerializeCompiledDAG{false};
+
   /// Whether to call the DAG optimizer after the DAG is created in HostManager.
   bool callDAGOptimizer{false};
 
@@ -405,9 +408,12 @@ struct CompilationContext {
 
     RETURN_ERR_IF_NOT(
         !(serializeCompiledDAG && skipProvisioning &&
-          !optimizationOpts.delayAndRecordConstantModification),
-        "When serializing the compiled DAG while skipping provisioning, must "
-        "also enable delayAndRecordConstantModification.");
+          !optimizationOpts.delayAndRecordConstantModification &&
+          !saveConstantInSerializeCompiledDAG),
+        "When serializing the compiled DAG while skipping provisioning, C2 "
+        "must also enable delayAndRecordConstantModification. PyTorch does not "
+        "enable delayAndRecordConstantModification in this case, but "
+        "saveConstantInSerializeCompiledDAG should be enabled");
 
     RETURN_ERR_IF_NOT(
         !precisionConfig.loadUniquedDummyQParams ||

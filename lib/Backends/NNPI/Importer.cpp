@@ -802,13 +802,14 @@ public:
                              nodeValueName(glowDQFC->getBias())},
                             {nodeValueName(glowDQFC->getResult())});
 
-    return nnpiNetworkAddFullyConnectedOp(
+    return nnpiNetworkAddDynamicQuantizedFullyConnectedOp(
         importer.getNetwork(), glowDQFC->getName().begin(),
         nodeValueName(glowDQFC->getInput()).c_str(),
         nodeValueName(glowDQFC->getResult()).c_str(),
         nodeValueName(glowDQFC->getWeights()).c_str(),
         glowDQFC->getBias() ? nodeValueName(glowDQFC->getBias()).c_str()
-                            : nullptr);
+                            : nullptr,
+        !glowDQFC->getIsSymmetric());
   }
 };
 
@@ -832,9 +833,6 @@ public:
         "supported.",
         NNPI_INVALID_PARAM);
 
-    // Create the weights with no offset tensor.
-    // Assert weights & biases have no offset or all zeroes.
-
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addTensor(nodeValueName(glowDRQFC->getWeights()),
                            /* alternativeLayout */ true,
@@ -842,19 +840,20 @@ public:
                            nodeValueName(glowDRQFC->getOffsets()),
                            /* forceSymlowp */ true),
         "Failed to add tensor to NNPI");
-    // Quantize bias if needed
+
     importer.setUsedTensors({nodeValueName(glowDRQFC->getInput()),
                              nodeValueName(glowDRQFC->getWeights()),
                              nodeValueName(glowDRQFC->getBias())},
                             {nodeValueName(glowDRQFC->getResult())});
 
-    return nnpiNetworkAddFullyConnectedOp(
+    return nnpiNetworkAddDynamicQuantizedFullyConnectedOp(
         importer.getNetwork(), glowDRQFC->getName().begin(),
         nodeValueName(glowDRQFC->getInput()).c_str(),
         nodeValueName(glowDRQFC->getResult()).c_str(),
         nodeValueName(glowDRQFC->getWeights()).c_str(),
         glowDRQFC->getBias() ? nodeValueName(glowDRQFC->getBias()).c_str()
-                             : nullptr);
+                             : nullptr,
+        !glowDRQFC->getIsSymmetric());
   }
 };
 

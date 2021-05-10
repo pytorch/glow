@@ -14,6 +14,8 @@
  */
 
 #include "NNPI.h"
+#include "CustomKernels/DSPInjectors/DSPInjectors.h"
+#include "CustomKernels/IAInjectors/IAInjectors.h"
 #include "DebugMacros.h"
 #include "Importer.h"
 #include "InferenceContext.h"
@@ -27,8 +29,6 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/Lower/Lower.h"
-#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectors.h"
-#include "glow/lib/Backends/NNPI/CustomKernels/IAInjectors/IAInjectors.h"
 
 #include "llvm/Support/CommandLine.h"
 

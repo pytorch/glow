@@ -226,6 +226,9 @@ TFLITE_UNIT_TEST(Tile, "tile.tflite")
 
 TFLITE_UNIT_TEST_MAX_ERR(ResizeBilinear, "resize_bilinear.tflite", 2e-6)
 
+TFLITE_UNIT_TEST(SpaceToBatchNd, "spaceToBatchNd.tflite")
+TFLITE_UNIT_TEST(BatchToSpaceNd, "batchToSpaceNd.tflite")
+
 TFLITE_UNIT_TEST(Equal, "equal.tflite")
 
 TFLITE_UNIT_TEST(NotEqual, "not_equal.tflite")
@@ -261,5 +264,12 @@ TFLITE_UNIT_TEST(Ceil, "ceil.tflite")
 TFLITE_UNIT_TEST(Cos, "cos.tflite")
 
 TFLITE_UNIT_TEST(Round, "round.tflite")
+
+TFLITE_UNIT_TEST(Add_broadcast, "add_broadcast.tflite")
+TFLITE_UNIT_TEST(Sub_broadcast, "sub_broadcast.tflite")
+TFLITE_UNIT_TEST(Div_broadcast, "div_broadcast.tflite")
+TFLITE_UNIT_TEST(Mul_broadcast, "mul_broadcast.tflite")
+TFLITE_UNIT_TEST(Min_broadcast, "min_broadcast.tflite")
+TFLITE_UNIT_TEST(Max_broadcast, "max_broadcast.tflite")
 
 #undef TFLITE_UNIT_TEST

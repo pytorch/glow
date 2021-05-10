@@ -1623,6 +1623,27 @@ int main(int argc, char **argv) {
           "RpnPostNmsTopN should be greater than zero");
 
   //===--------------------------------------------------------------------===//
+  //                Lookup Table Operators
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("LookupTable")
+      // Input to the function.
+      .addInput("Input")
+      // Table containing the coefficients for interpolation.
+      .addInput("Table")
+      // Table containing the index mapping to find the right entry in the main
+      // table.
+      .addInput("TableIdx")
+      .addMember(MEMBER_TYPE_INFO(glow::LUTOperator), "Operator")
+      .addMember(MemberType::VectorFloat, "OperatorArgs")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring(
+          "LookupTable based data-parallel operation."
+          "Given an interpolation table and and index table, "
+          "return interpolated approximations for arbitrary functions.");
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//
 

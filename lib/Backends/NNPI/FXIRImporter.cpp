@@ -302,6 +302,54 @@ public:
   }
 };
 
+class TransposeNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    auto dimSize = toIntegerArray<glow::dim_t>(node["shape"].getString());
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    uint32_t nnpiOrder[NNPI_MAX_DIMS];
+    for (size_t i = 0, e = dimSize.size(); i < e; i++) {
+      nnpiOrder[i] = i;
+    }
+    auto dim0 = kwargs["dim0"].getInt();
+    auto dim1 = kwargs["dim1"].getInt();
+    nnpiOrder[dim0] = dim1;
+    nnpiOrder[dim1] = dim0;
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddTransposeOp(importer.getNetwork(), name.c_str(),
+                                     inputName.c_str(), name.c_str(), nnpiOrder,
+                                     dimSize.size());
+  }
+};
+
+class MatMulNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &otherName = importer.getInputNodeName(kwargs["other"]);
+
+    importer.setUsedTensors({inputName, otherName}, {name});
+
+    return nnpiNetworkAddMatMulOp(importer.getNetwork(), name.c_str(),
+                                  inputName.c_str(), otherName.c_str(),
+                                  name.c_str());
+  }
+};
+
 class ConcatNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -371,6 +419,8 @@ static std::unordered_map<
      std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
     {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},
     {"acc_ops.cat", glow::make_unique<ConcatNodeImporter>()},
+    {"acc_ops.transpose", glow::make_unique<TransposeNodeImporter>()},
+    {"acc_ops.matmul", glow::make_unique<MatMulNodeImporter>()},
     {"acc_ops.max_pool2d",
      std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
     {"acc_ops.quantize_per_tensor", std::make_unique<ConvertNodeImporter>()},

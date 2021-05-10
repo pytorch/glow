@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include "glow/lib/Backends/NNPI/CustomKernels/CustomKernelInjector.h"
+#include "../CustomKernelInjector.h"
 
 namespace glow {
 
