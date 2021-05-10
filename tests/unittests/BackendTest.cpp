@@ -465,9 +465,9 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   auto table = dag->nodes[0]->runtimeBundle->getSymbolTable();
 
   // Check that placeholders and constants are correctly labelled.
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.symbolCategory,
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.symbolCategory,
             glow::runtime::SymbolCategory::Placeholder);
-  EXPECT_EQ(table.find(ex->getName())->second.symbolCategory,
+  EXPECT_EQ(table.find(ex->getName().str())->second.symbolCategory,
             glow::runtime::SymbolCategory::Constant);
   // Check that activations are labelled correctly.
   EXPECT_EQ(table.find("FC_res")->second.symbolCategory,
@@ -478,15 +478,15 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
             glow::runtime::SymbolCategory::PlaceholderTensorView);
 
   // Check that placeholders and constants input/output flags are correctly set.
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.input, false);
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.output, true);
-  EXPECT_EQ(table.find(ex->getName())->second.input, false);
-  EXPECT_EQ(table.find(ex->getName())->second.output, false);
-  EXPECT_EQ(table.find(input->getName())->second.input, true);
-  EXPECT_EQ(table.find(input->getName())->second.output, false);
-  EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName())->second.input,
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.input, false);
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.output, true);
+  EXPECT_EQ(table.find(ex->getName().str())->second.input, false);
+  EXPECT_EQ(table.find(ex->getName().str())->second.output, false);
+  EXPECT_EQ(table.find(input->getName().str())->second.input, true);
+  EXPECT_EQ(table.find(input->getName().str())->second.output, false);
+  EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName().str())->second.input,
             true);
-  EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName())->second.output,
+  EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName().str())->second.output,
             true);
   // Check that activations are labelled correctly.
   EXPECT_EQ(table.find("FC_res")->second.input, false);
@@ -1009,8 +1009,8 @@ TEST_P(BackendExecTest, BundleSharedConstant) {
   auto table1 = function->getRuntimeBundle().getSymbolTable();
   auto table2 = function2->getRuntimeBundle().getSymbolTable();
   /// Make sure X is in both tables.
-  auto it = table1.find(X->getName());
-  auto it2 = table2.find(X->getName());
+  auto it = table1.find(X->getName().str());
+  auto it2 = table2.find(X->getName().str());
   EXPECT_TRUE(it != table1.end());
   EXPECT_TRUE(it2 != table2.end());
 }

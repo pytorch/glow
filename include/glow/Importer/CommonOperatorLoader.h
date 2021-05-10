@@ -931,7 +931,7 @@ protected:
     // argument name "axes". That's why the name is passed as a parameter.
     std::vector<unsigned_t> perm;
     if (dict.count(permArgName.str()))
-      ASSIGN_VALUE_OR_RETURN_ERR(perm, getShape<unsigned_t>(dict[permArgName]));
+      ASSIGN_VALUE_OR_RETURN_ERR(perm, getShape<unsigned_t>(dict[permArgName.str()]));
 
     if (perm.empty()) {
       // Empty permutation argument means reversing axes order.
@@ -1638,11 +1638,11 @@ protected:
       return true;
     }
     if (typeName == "Gather" || typeName == "BatchGather") {
-      RETURN_IF_ERR(loadGatherOps(typeName, op, dict));
+      RETURN_IF_ERR(loadGatherOps(typeName.str(), op, dict));
       return true;
     }
     if (typeName == "GatherND") {
-      RETURN_IF_ERR(loadGatherND(typeName, op, dict));
+      RETURN_IF_ERR(loadGatherND(typeName.str(), op, dict));
       return true;
     }
     if (typeName == "GatherRanges") {

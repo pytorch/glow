@@ -175,7 +175,7 @@ BundleSaver::BundleSaver(const LLVMBackend &llvmBackend,
       bundleAPI_(llvmBackend.getOptions().getBundleAPI()) {
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
-  irgen_->setBundleName(bundleName);
+  irgen_->setBundleName(bundleName.str());
   irgen_->setOutputDir(outputDir);
   irgen_->setObjectRegistry(llvmBackend.getObjectRegistry());
   // Use the bundle code model as a code model for the TargetMachine.
@@ -189,7 +189,7 @@ void BundleSaver::setIRFunction(llvm::StringRef mainEntryName,
                                 const IRFunction *F) {
   irgen_->setIRFunction(F);
   if (F) {
-    savedIRFunctions_.push_back(SavedIRFunction{mainEntryName, F});
+    savedIRFunctions_.push_back(SavedIRFunction{mainEntryName.str(), F});
   }
 }
 
@@ -746,7 +746,7 @@ void BundleSaver::performBundleMemoryAllocation() {
 
 void BundleSaver::save(llvm::StringRef mainEntryName, const IRFunction *F) {
   // Object files generation works properly only in small mode.
-  irgen_->setMainEntryName(mainEntryName);
+  irgen_->setMainEntryName(mainEntryName.str());
   // Set current IRFunction using the legalized name.
   setIRFunction(irgen_->getMainEntryName(), F);
   // irgen_->initCodeGen();

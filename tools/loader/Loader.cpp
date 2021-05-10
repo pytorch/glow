@@ -356,7 +356,7 @@ static void getModelInputs(std::vector<std::string> &inputNames,
                                 std::string(name).c_str());
       }
     }
-    inputNames.push_back(name);
+    inputNames.push_back(name.str());
 
     if (!inputTypes) {
       continue;
@@ -464,7 +464,7 @@ void Loader::loadModel(PlaceholderBindings *bindings,
     // explicitly (mandatory).
     std::unique_ptr<ProtobufLoader> protoLoader;
     protoLoader.reset(new Caffe2ModelLoader(
-        getCaffe2NetDescFilename(), getCaffe2NetWeightFilename(), inputNameRefs,
+					    getCaffe2NetDescFilename().str(), getCaffe2NetWeightFilename().str(), inputNameRefs,
         inputTypeRefs, *getFunction()));
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
@@ -476,8 +476,7 @@ void Loader::loadModel(PlaceholderBindings *bindings,
   } else if (!getTFLiteModelFilename().empty()) {
     // For TensorFlowLite format the input placeholder names/types are not
     // provided since are used directly from the model.
-    auto tfliteLoader = glow::make_unique<TFLiteModelLoader>(
-        getTFLiteModelFilename(), getFunction());
+    auto tfliteLoader = glow::make_unique<TFLiteModelLoader>(getTFLiteModelFilename().str(), getFunction());
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = tfliteLoader->getInputPlaceholderMap();
     outputPlaceholderByName_ = tfliteLoader->getOutputPlaceholderMap();
@@ -508,7 +507,7 @@ void Loader::loadModel(PlaceholderBindings *bindings,
     // the input placeholder types in order to override the placeholder sizes
     // (one such example is the batch size).
     std::unique_ptr<ProtobufLoader> protoLoader;
-    protoLoader.reset(new ONNXModelLoader(getOnnxModelFilename(), inputNameRefs,
+    protoLoader.reset(new ONNXModelLoader(getOnnxModelFilename().str(), inputNameRefs,
                                           inputTypeRefs, *getFunction()));
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
@@ -546,7 +545,7 @@ static bool commandLineIsInvalid() {
         for (auto it = llvm::sys::path::rbegin(modelPathOpt[0]),
                   end = llvm::sys::path::rend(modelPathOpt[0]);
              it != end; ++it) {
-          networkName = *it;
+          networkName = std::string(*it);
           // Strip extension (if any).
           size_t lastDotPos = networkName.find_last_of(".");
           if (lastDotPos != std::string::npos) {

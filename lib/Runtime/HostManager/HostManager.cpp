@@ -319,10 +319,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     for (auto &device : availableDevices_) {
       DeviceInfo info = devices_[device]->getDeviceInfo();
       info.availableMemory = devices_[device]->getAvailableMemory();
-      info.backendName = devices_[device]->getBackendName();
-      info.nonSupportedNodes =
-          devices_[device]->getParamByName("nonSupportedNodes");
-      info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
+      info.backendName = devices_[device]->getBackendName().str();
+      info.nonSupportedNodes =devices_[device]->getParamByName("nonSupportedNodes").str();
+      info.supportedNodes = devices_[device]->getParamByName("supportedNodes").str();
       // If p2p is enabled update the inputCount limit.
       if (cctx.enableP2P) {
         info.inputCountMax = P2PInputLimit;
@@ -996,7 +995,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     }
     reportCurrentQueueSize(queueSize);
     // Setup the request
-    InferRequest queuedRequest(networkName, std::move(context), callback,
+    InferRequest queuedRequest(networkName.str(), std::move(context), callback,
                                priority, currentRun, requestReceived);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
