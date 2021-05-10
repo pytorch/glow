@@ -221,6 +221,77 @@ TEST_F(ImageTest, readNpyNHWCtoNHWC_multi_image) {
                   {});
 }
 
+template <typename ElemTy>
+static void numpyWriterHelper(llvm::StringRef filename, Tensor &wrData) {
+  Tensor rdData;
+  writeNumpyImage(filename, wrData);
+  loadImagesAndPreprocess({{filename}}, {&rdData});
+  EXPECT_EQ(rdData.dims().size(), wrData.dims().size());
+  EXPECT_EQ(rdData.dims(), wrData.dims());
+  auto rdH = rdData.getHandle<float>();
+  auto wrH = wrData.getHandle<ElemTy>();
+  for (size_t i = 0; i < rdH.size(); i++) {
+    EXPECT_FLOAT_EQ(rdH.raw(i), (float)wrH.raw(i)) << "at index: " << i;
+  }
+}
+
+// Test writing float numpy files.
+TEST_F(ImageTest, writeNumpyFloat) {
+  PseudoRNG prng;
+  Tensor image(ElemKind::FloatTy, {1, 2, 3, 4});
+  llvm::SmallVector<char, 10> resultPath;
+  image.getHandle().randomize(0.1, 1.0, prng);
+  llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
+  std::string outfilename(resultPath.begin(), resultPath.end());
+  numpyWriterHelper<float>(outfilename, image);
+}
+
+// Test writing ui8 numpy files.
+TEST_F(ImageTest, writeNumpyUI8) {
+  PseudoRNG prng;
+  Tensor image(ElemKind::UInt8ITy, {1, 2, 3, 4});
+  llvm::SmallVector<char, 10> resultPath;
+  image.getHandle<uint8_t>().randomize(1, 100, prng);
+  llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
+  std::string outfilename(resultPath.begin(), resultPath.end());
+  numpyWriterHelper<uint8_t>(outfilename, image);
+}
+
+// Test writing i64 numpy files.
+TEST_F(ImageTest, writeNumpyI64) {
+  PseudoRNG prng;
+  Tensor image(ElemKind::Int64ITy, {1, 2, 3, 4});
+  llvm::SmallVector<char, 10> resultPath;
+  image.getHandle<int64_t>().randomize(1, 100, prng);
+  llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
+  std::string outfilename(resultPath.begin(), resultPath.end());
+  numpyWriterHelper<int64_t>(outfilename, image);
+}
+
+static void pngIndexedTestHelper(llvm::StringRef filename) {
+  Tensor rdData1, rdData2;
+
+  bool rdFail = readPngImageIndexed(&rdData1, filename.data());
+  CHECK(!rdFail);
+
+  const char *paletteFile = "tests/images/mitscene/palette";
+
+  llvm::SmallVector<char, 10> resultPath;
+  llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
+  std::string outfilename(resultPath.begin(), resultPath.end());
+  rdFail = writePngImageIndexed(&rdData1, outfilename.c_str(), paletteFile);
+  CHECK(!rdFail);
+
+  rdFail = readPngImageIndexed(&rdData2, outfilename.c_str());
+  CHECK(!rdFail);
+  CHECK(rdData1.isEqual(rdData2));
+}
+
+// Test reading and writing indexed PNG images.
+TEST_F(ImageTest, indexedPNGTest) {
+  pngIndexedTestHelper("tests/images/mitscene/truth/ADE_val_00000750.png");
+}
+
 TEST_F(ImageTest, readNonSquarePngImage) {
   auto range = std::make_pair(0.f, 1.f);
   Tensor vgaTensor;
