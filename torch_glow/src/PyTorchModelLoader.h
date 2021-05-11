@@ -287,6 +287,11 @@ public:
   bool hasGlowIValueForValue(const torch::jit::Value *value,
                              bool ignoreNones = false) const;
 
+  /// Extract the constant value from a node value.
+  template <typename T>
+  Error extractConstantFromNodeValue(const torch::jit::Value *value,
+                                     glow::ElemKind elemKind, T &output);
+
   /// If a NodeValue is mapped to \p value then return it, otherwise look for a
   /// float or integer IValue mapped to \p value, create a Glow Constant by
   /// splatting that value to a tensor of the requested dimensions and element

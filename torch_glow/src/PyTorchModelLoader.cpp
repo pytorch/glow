@@ -372,6 +372,8 @@ bool isQParamWeightNode(const torch::jit::Node *node) {
       torch::jit::Symbol::fromQualString("glow::unpacked_quantized_linear"),
       torch::jit::Symbol::fromQualString(
           "fb::quantized_linear_unpacked_weight"),
+      torch::jit::Symbol::fromQualString(
+          "fb::quantized_linear_unpacked_weight_v2"),
       torch::jit::Symbol::fromQualString("glow::unpacked_quantized_conv2d"),
       torch::jit::Symbol::fromQualString(
           "glow::unpacked_quantized_conv2d_relu"),
@@ -1476,7 +1478,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<
            QuantizedUnpackedConvInputs::input>},
       {{"glow::unpacked_quantized_linear",
-        "fb::quantized_linear_unpacked_weight"},
+        "fb::quantized_linear_unpacked_weight",
+        "fb::quantized_linear_unpacked_weight_v2"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked,
        &PyTorchModelLoader::getCorrectTypeFromInput<
            QuantizedUnpackedLinearInputs::input>},
@@ -1514,7 +1517,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"quantized::conv3d_relu"},
        &PyTorchModelLoader::loadQuantizedConvRelu,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
-      {{"aten::quantize_per_tensor"},
+      {{"aten::quantize_per_tensor", "fb::quantize_per_tensor"},
        &PyTorchModelLoader::loadQuantize,
        &PyTorchModelLoader::correctTypeAlreadySet},
       {{"aten::dequantize"},
@@ -2145,6 +2148,28 @@ bool PyTorchModelLoader::hasGlowIValueForValue(const torch::jit::Value *value,
   }
 
   return true;
+}
+
+template <typename T>
+Error PyTorchModelLoader::extractConstantFromNodeValue(
+    const torch::jit::Value *value, glow::ElemKind elemKind, T &output) {
+  glow::NodeValue nodeValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(nodeValue, getGlowNodeValueForValue(value));
+  auto elementType = nodeValue.getType()->getElementType();
+  size_t size = nodeValue.getType()->size();
+  RETURN_ERR_IF_NOT(nodeValue.getNode()->getKind() ==
+                        Kinded::Kind::ConstantKind,
+                    "Expect scalar or constant value.");
+  RETURN_ERR_IF_NOT(elementType == elemKind,
+                    strFormat("Expected element type is %d, found %d.",
+                              static_cast<int>(elemKind),
+                              static_cast<int>(elementType)));
+  RETURN_ERR_IF_NOT(size == 1, "Expect constant to be a scalar.");
+  glow::Constant *constant =
+      llvm::dyn_cast<glow::Constant>(nodeValue.getNode());
+  RETURN_ERR_IF_NOT(constant != nullptr, "constant is null.");
+  output = constant->getPayload().getHandle<T>().at({0});
+  return Error::success();
 }
 
 Expected<glow::NodeValue>
@@ -2989,14 +3014,32 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
   RETURN_ERR_IF_NOT(weights.dims().size() == 2, "Expected 2d Linear weights");
 
   float outScale;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      outScale, to32Bit(iValToDouble(getGlowIValueForValue(
-                    inputs[QuantizedUnpackedLinearInputs::scale]))));
+  if (hasGlowIValueForValue(inputs[QuantizedUnpackedLinearInputs::scale])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        outScale, to32Bit(iValToDouble(getGlowIValueForValue(
+                      inputs[QuantizedUnpackedLinearInputs::scale]))));
+  } else {
+    float scaleConstant;
+    extractConstantFromNodeValue<float>(
+        inputs[QuantizedUnpackedLinearInputs::scale], glow::ElemKind::FloatTy,
+        scaleConstant);
+    ASSIGN_VALUE_OR_RETURN_ERR(outScale, to32Bit((double)scaleConstant));
+  }
 
   int64_t outZeroPoint;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      outZeroPoint, iValToInt(getGlowIValueForValue(
-                        inputs[QuantizedUnpackedLinearInputs::zero_point])));
+  if (hasGlowIValueForValue(
+          inputs[QuantizedUnpackedLinearInputs::zero_point])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        outZeroPoint, iValToInt(getGlowIValueForValue(
+                          inputs[QuantizedUnpackedLinearInputs::zero_point])));
+  } else {
+    int32_t zeroPointConstant;
+    extractConstantFromNodeValue<int32_t>(
+        inputs[QuantizedUnpackedLinearInputs::zero_point],
+        glow::ElemKind::Int32ITy, zeroPointConstant);
+    ASSIGN_VALUE_OR_RETURN_ERR(outZeroPoint,
+                               Expected<int64_t>((int64_t)zeroPointConstant));
+  }
 
   // Get bias or create a zero bias if no bias is found.
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
@@ -5548,15 +5591,30 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
 
   // scale
   float outScale;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      outScale, to32Bit(iValToDouble(
-                    getGlowIValueForValue(inputs[QuantizeInputs::scale]))));
+  if (hasGlowIValueForValue(inputs[QuantizeInputs::scale])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        outScale, to32Bit(iValToDouble(
+                      getGlowIValueForValue(inputs[QuantizeInputs::scale]))));
+  } else {
+    float scaleConstant;
+    extractConstantFromNodeValue<float>(inputs[QuantizeInputs::scale],
+                                        glow::ElemKind::FloatTy, scaleConstant);
+    ASSIGN_VALUE_OR_RETURN_ERR(outScale, to32Bit((double)scaleConstant));
+  }
 
   // zero_point
   int32_t outOffset;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      outOffset,
-      iValToInt(getGlowIValueForValue(inputs[QuantizeInputs::zero_point])));
+  if (hasGlowIValueForValue(inputs[QuantizeInputs::zero_point])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        outOffset,
+        iValToInt(getGlowIValueForValue(inputs[QuantizeInputs::zero_point])));
+  } else {
+    int32_t offsetConstant;
+    extractConstantFromNodeValue<int32_t>(inputs[QuantizeInputs::zero_point],
+                                          glow::ElemKind::Int32ITy,
+                                          offsetConstant);
+    ASSIGN_VALUE_OR_RETURN_ERR(outOffset, Expected<int32_t>(offsetConstant));
+  }
 
   // dtype, we only support quantize to int8 for now
   int32_t outDtype;

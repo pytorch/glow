@@ -184,6 +184,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&glowUnpackedQuantizedLinear, &SI::addShapeDefault)},
       {"fb::quantized_linear_unpacked_weight",
        ShapeInference(&glowUnpackedQuantizedLinear, &SI::addShapeDefault)},
+      {"fb::quantized_linear_unpacked_weight_v2",
+       ShapeInference(&glowUnpackedQuantizedLinear, &SI::addShapeDefault)},
       {"fb::lengths_to_offsets",
        ShapeInference(&lengthsToOffsets, &SI::addShapeDefault)},
       {"fb::simple_embedding_bag_sum",
@@ -210,6 +212,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       // Current shape inference function can handle both cases.
       {"fb::lengths_range_w_truncation_size",
        ShapeInference(&lengthsRange, &SI::addShapeDefault)},
+      {"fb::quantize_per_tensor",
+       ShapeInference(&quantizePerTensor, &SI::addShapeDefault)},
       {"aten::quantize_per_tensor",
        ShapeInference(&quantizePerTensor, &SI::addShapeDefault)},
       {"aten::dequantize", ShapeInference(&dequantize, &SI::addShapeDefault)},
@@ -1764,7 +1768,8 @@ ShapeInferenceEngine::chunk(const MetaStack &variableMetas) {
       "b, float r_scale, int r_zero_point) -> Tensor";
  * fb::quantized_linear_unpacked_weight(Tensor a_quant, Tensor w_quant, "
       "Tensor b, float r_scale, int r_zero_point) -> Tensor";
-
+ * fb::quantized_linear_unpacked_weight_v2(Tensor a_quant, Tensor w_quant, "
+      "Tensor b, Tensor r_scale, Tensor r_zero_point) -> Tensor";
 Input: (N, *, in_features) where * means any number of
 additional dimensions
 Weight: (out_features, in_features)
@@ -2004,8 +2009,9 @@ ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
 }
 
 /*
- * quantize_per_tensor(Tensor self, float scale, int zero_point, ScalarType
- * dtype) -> Tensor
+ * aten::quantize_per_tensor(Tensor self, float scale, int zero_point,
+ * ScalarType dtype) -> Tensor fb::quantize_per_tensor(Tensor self, Tensor
+ * scale, Tensor zero_point, ScalarType dtype) -> Tensor
  */
 Expected<TensorOutput>
 ShapeInferenceEngine::quantizePerTensor(const MetaStack &variableMetas) {
