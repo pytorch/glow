@@ -456,7 +456,12 @@ void Module::dumpDAG(llvm::StringRef dotFilename) {
 
   std::ofstream myfile;
   myfile.open(dotFilename.str());
-  DP.dumpAll(myfile);
+  if (myfile.fail()) {
+    LOG(ERROR) << "Unable to open " << dotFilename.str()
+               << ", reason: " << strerror(errno);
+  } else {
+    DP.dumpAll(myfile);
+  }
   myfile.close();
 }
 
@@ -5568,7 +5573,12 @@ void Function::dumpDAG(llvm::StringRef dotFilename) {
 
   std::ofstream myfile;
   myfile.open(legalDotFilename.str());
-  DP.dumpAll(myfile);
+  if (myfile.fail()) {
+    LOG(ERROR) << "Unable to open " << legalDotFilename.str()
+               << ", reason: " << strerror(errno);
+  } else {
+    DP.dumpAll(myfile);
+  }
   myfile.close();
 }
 
