@@ -109,12 +109,6 @@ llvm::cl::opt<bool> dumpOutputsOpt("dump_outputs",
                                    llvm::cl::Optional, llvm::cl::init(true),
                                    llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
-    "glow_global_fused_scale_offset_fp32",
-    llvm::cl::desc(
-        "Enable converting scale/offset in sls's input data from fp16 to fp32"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
-
 llvm::cl::opt<bool> indicesInt64Opt(
     "glow_global_indices_fp64",
     llvm::cl::desc("Enable converting scale/offset in frwqslws's data from "
@@ -208,6 +202,7 @@ void parseCommandLine(int argc, char **argv) {
   FLAGS_glow_global_fp16 = true;
   FLAGS_glow_clip_fp16 = true;
   FLAGS_glow_global_fused_scale_offset_fp16 = true;
+  FLAGS_glow_global_fused_scale_offset_fp32 = false;
   FLAGS_glow_snn_partitioning_kbytes_per_card = 5000000;
   FLAGS_glow_snn_partitioning_num_cores_sls = 6;
   FLAGS_glow_snn_partitioning_num_cores_other = 6;
@@ -475,9 +470,9 @@ int run() {
     precConfig.convertFusedToFP16 = true;
     llvm::outs() << "Conversion of fused scales/offsets to fp16 enabled\n";
   }
-  if (fuseScaleOffsetFp32Opt) {
-    precConfig.convert4BitFusedToFP32 = fuseScaleOffsetFp32Opt;
-    precConfig.convert8BitFusedToFP32 = fuseScaleOffsetFp32Opt;
+  if (glow::flags::ConvertFusedScaleOffsetToFP32) {
+    precConfig.convert4BitFusedToFP32 = true;
+    precConfig.convert8BitFusedToFP32 = true;
     llvm::outs()
         << "Conversion of fused scales/offsets to fp32 in frwqslws enabled\n";
   }

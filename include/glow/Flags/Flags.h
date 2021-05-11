@@ -53,6 +53,9 @@ extern bool ForceSLSToFP16Accum;
 extern bool ClipZeroScaleFP16;
 extern bool ClipQuantRangeToFP16;
 
+// FP32 constants
+extern bool ConvertFusedScaleOffsetToFP32;
+
 // Debug Constants
 extern int32_t NumDebugTracesPerDump;
 extern bool DumpDebugTraces;
@@ -161,6 +164,7 @@ DECLARE_bool(glow_global_fp16);
 DECLARE_bool(glow_skip_bias_fp32tofp16_convert);
 DECLARE_bool(glow_clip_fp16);
 DECLARE_bool(glow_global_fused_scale_offset_fp16);
+DECLARE_bool(glow_global_fused_scale_offset_fp32);
 DECLARE_int32(glow_snn_partitioning_kbytes_per_card);
 DECLARE_int32(glow_snn_partitioning_num_cores_sls);
 DECLARE_int32(glow_snn_partitioning_num_cores_other);
