@@ -1449,7 +1449,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       break;
     }
     case caffe2::TensorProto_DataType_INT64: {
-      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int32ITy,
+      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int64ITy,
                         opErrMsg(op, "Can only cast int64 to int64."));
       break;
     }
