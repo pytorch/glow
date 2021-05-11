@@ -64,6 +64,9 @@ bool ForceSLSToFP16Accum = true;
 bool ClipQuantRangeToFP16 = false;
 bool ClipZeroScaleFP16 = false;
 
+// Fp32 constants
+bool ConvertFusedScaleOffsetToFP32 = false;
+
 // Debug Constants
 int32_t NumDebugTracesPerDump = 100;
 bool DumpDebugTraces = false;
@@ -275,6 +278,15 @@ DEFINE_bool(glow_global_fused_scale_offset_fp16,
 DEFINE_validator(glow_global_fused_scale_offset_fp16,
                  [](const char *, bool val) {
                    glow::flags::ConvertFusedScaleOffsetToFP16 = val;
+                   return true;
+                 });
+DEFINE_bool(
+    glow_global_fused_scale_offset_fp32,
+    glow::flags::ConvertFusedScaleOffsetToFP32,
+    "Enable converting scale/offset in sls's input data from fp16 to fp32");
+DEFINE_validator(glow_global_fused_scale_offset_fp32,
+                 [](const char *, bool val) {
+                   glow::flags::ConvertFusedScaleOffsetToFP32 = val;
                    return true;
                  });
 DEFINE_bool(
