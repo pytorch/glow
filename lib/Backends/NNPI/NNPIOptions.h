@@ -346,6 +346,11 @@ public:
                       "enableConvSpatialSplitter",
                       "Enable splits along X-Y Dims of Convolution Nodes.",
                       "NNPI_ENABLE_CONV_SPATIAL_SPLITTER", "0");
+  /// Approximation used in dequantization
+  DECLARE_NNPI_OPTION(enableFCDynamicQuantizationAllSA, bool,
+                      "enableFCDynamicQuantizationAllSA",
+                      "Enable approximation in dequant after dynamic FC.",
+                      "NNPI_ENABLE_FC_DQ_ALL_SA", "1");
 #endif
 
   /// Disable weigths from memory pool.
@@ -387,6 +392,7 @@ public:
     INIT_NNPI_OPTIONS(dumpDotFiles, parameters);
     INIT_NNPI_OPTIONS(dumpCompilationInfo, parameters);
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+    INIT_NNPI_OPTIONS(enableFCDynamicQuantizationAllSA, parameters);
     INIT_NNPI_OPTIONS(enableESUnifyAdditionalPass, parameters);
     INIT_NNPI_OPTIONS(enableLayerSplitter, parameters);
     INIT_NNPI_OPTIONS(enableConvSpatialSplitter, parameters);
