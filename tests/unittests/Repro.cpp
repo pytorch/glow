@@ -559,6 +559,11 @@ int run() {
     LOG(INFO) << "Serializing DAG after optimization and partitioning.";
     cctx.serializeCompiledDAG = true;
   }
+  if (glow::onnxifi::flags::SaveDAGWithConstants) {
+    LOG(INFO) << "Serializing DAG with constants after optimization and "
+                 "partitioning.";
+    cctx.saveConstantInSerializeCompiledDAG = true;
+  }
 
   // Load deferred weights if applicable
   const auto &placeholderList = mod->getPlaceholders();

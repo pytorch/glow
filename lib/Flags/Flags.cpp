@@ -141,6 +141,7 @@ std::string BackendName = "";
 bool SaveModel = false;
 bool SaveIO = false;
 bool SaveDAG = false;
+bool SaveDAGWithConstants = false;
 } // namespace flags
 } // namespace onnxifi
 } // namespace glow
@@ -372,6 +373,15 @@ DEFINE_validator(glow_save_onnxifi_dag, [](const char *, bool val) {
   glow::onnxifi::flags::SaveDAG = val;
   return true;
 });
+DEFINE_bool(glow_save_onnxifi_dag_with_constants,
+            glow::onnxifi::flags::SaveDAGWithConstants,
+            "Whether to serialize constants in the DAG that has been optimized "
+            "and partitioned.");
+DEFINE_validator(glow_save_onnxifi_dag_with_constants,
+                 [](const char *, bool val) {
+                   glow::onnxifi::flags::SaveDAGWithConstants = val;
+                   return true;
+                 });
 DEFINE_bool(
     glow_delay_and_record_constant_modification,
     glow::flags::DelayAndRecordConstantModification,

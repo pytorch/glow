@@ -133,6 +133,7 @@ extern std::string BackendName;
 extern bool SaveModel;
 extern bool SaveIO;
 extern bool SaveDAG;
+extern bool SaveDAGWithConstants;
 } // namespace flags
 } // namespace onnxifi
 } // namespace glow
