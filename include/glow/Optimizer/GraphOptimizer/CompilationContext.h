@@ -346,6 +346,10 @@ struct CompilationContext {
   /// Whether to serialize the DAG that has been optimized and partitioned.
   bool serializeCompiledDAG{false};
 
+  /// Whether to use Zip mode to serialize the DAG that has been optimized and
+  /// partitioned.
+  bool useZipModeForSerializeCompiledDAG{false};
+
   /// Whether to save constant data into the serialized DAG.
   bool saveConstantInSerializeCompiledDAG{false};
 

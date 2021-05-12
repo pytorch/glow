@@ -564,6 +564,11 @@ int run() {
                  "partitioning.";
     cctx.saveConstantInSerializeCompiledDAG = true;
   }
+  if (glow::onnxifi::flags::SaveDAGInZipMode) {
+    LOG(INFO) << "Serializing DAG with constants after optimization and "
+                 "partitioning in Zip mode.";
+    cctx.useZipModeForSerializeCompiledDAG = true;
+  }
 
   // Load deferred weights if applicable
   const auto &placeholderList = mod->getPlaceholders();

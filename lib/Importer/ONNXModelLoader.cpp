@@ -28,6 +28,7 @@
 #include "llvm/Support/CommandLine.h"
 
 #include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/tokenizer.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "google/protobuf/text_format.h"
 
@@ -1084,15 +1085,47 @@ ONNXModelLoader::loadProto(const void *onnxModel, size_t onnxModelSize) {
 Expected<ONNX_NAMESPACE::ModelProto>
 ONNXModelLoader::loadProto(const std::string &filename, bool zipMode,
                            const std::string *inputStringPtr) {
+  /// A helper class to report parsing errors when loading model protos.
+  class OnnxTxtErrCollector : public google::protobuf::io::ErrorCollector {
+  public:
+    OnnxTxtErrCollector() = default;
+    ~OnnxTxtErrCollector() override = default;
+    void AddError(int line, int column, const std::string &message) override {
+      llvm::errs() << strFormat("ONNX parsing error at [%d, %d]: ", line,
+                                column)
+                   << message << "\n";
+    }
+    void AddWarning(int line, int column, const std::string &message) override {
+      llvm::errs() << strFormat("ONNX parsing warning at [%d, %d]: ", line,
+                                column)
+                   << message << "\n";
+    }
+  };
+
+  // Create a parser object and attach an error collector to it.
+  OnnxTxtErrCollector errorCollector;
+  google::protobuf::TextFormat::Parser parser;
+  parser.RecordErrorsTo(&errorCollector);
+  bool parseNet;
+  ONNX_NAMESPACE::ModelProto MP;
+
   if (zipMode) {
     RETURN_ERR_IF_NOT(
         inputStringPtr == nullptr,
         "OnnxModelLoader load from string for zip mode not supported");
-    ONNX_NAMESPACE::ModelProto MP;
     ZipReader zip(filename);
-    std::string buffer;
-    buffer = zip.getRecord("model");
-    MP.ParseFromString(buffer);
+    std::string buffer = zip.getRecord("model");
+    // Try to parse as a protocol buffer first.
+    parseNet = MP.ParseFromString(buffer);
+    // Try to parse a textual representation first.
+    if (!parseNet) {
+      // If it is not a protocol buffer, try to parse as a text format.
+      parseNet = parser.ParseFromString(buffer, &MP);
+    }
+    if (!parseNet) {
+      RETURN_ERR_IF_NOT(false, "Failed to parse ModelProto",
+                        ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+    }
     size_t numWeights = 0;
     auto numWeightsStr = zip.getRecord("weights");
     numWeights = atoi(numWeightsStr.c_str());
@@ -1119,15 +1152,18 @@ ONNXModelLoader::loadProto(const std::string &filename, bool zipMode,
   // bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
   //  google::protobuf::io::ZeroCopyInputStream &iStream)
   if (filename.find(".onnxtxt") != std::string::npos) {
-    ONNX_NAMESPACE::ModelProto MP;
-    bool parseNet;
     if (inputStringPtr == nullptr) {
-      std::string str((std::istreambuf_iterator<char>(ff)),
-                      std::istreambuf_iterator<char>());
-      parseNet = google::protobuf::TextFormat::ParseFromString(str, &MP);
+      // Reserve a reasonably big buffer to make sure that reading of models
+      // with serialized constants is fast enough.
+      const std::streamsize bufferSize = 1024 * 1024 * 16;
+      std::vector<char> buffer(bufferSize);
+      ff.rdbuf()->pubsetbuf(buffer.data(), bufferSize);
+      std::stringstream ss;
+      ss << ff.rdbuf();
+      std::string str = ss.str();
+      parseNet = parser.ParseFromString(str, &MP);
     } else {
-      parseNet =
-          google::protobuf::TextFormat::ParseFromString(*inputStringPtr, &MP);
+      parseNet = parser.ParseFromString(*inputStringPtr, &MP);
     }
 
     RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto",

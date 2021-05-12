@@ -509,7 +509,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       // meta info as the model does not need to be reloaded.
       ONNXModelWriter onnxWR(
           loc, nodeList, 7, 9, &writeErr,
-          /* textMode */ true, /* zipMode */ false,
+          /* textMode */ true,
+          /* zipMode */ cctx.useZipModeForSerializeCompiledDAG,
           /* includeConstantData */ cctx.saveConstantInSerializeCompiledDAG,
           extraMetadataProps, record, cctx.backendOpts.backendSpecificNodeInfo,
           cctx.skipProvisioning ? &cctx.loadedPHNames : nullptr,
