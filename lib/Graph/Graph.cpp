@@ -6101,6 +6101,35 @@ bool Function::verify(const Backend *backend) const {
     }
   }
 
+  // Check that there are no zero volume tensors
+  for (const auto &N : nodes_) {
+    // Check inputs
+    for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
+      auto dims = N.getNthInput(idx).dims();
+      for (auto dim : dims) {
+        if (dim == 0) {
+          LOG(ERROR) << "Found 0 volume input in the " << idx
+                     << " input to node " << N.toString() << " with dims "
+                     << dims;
+          return false;
+        }
+      }
+    }
+
+    // Check results
+    for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+      auto dims = N.getNthResult(idx).dims();
+      for (auto dim : dims) {
+        if (dim == 0) {
+          LOG(ERROR) << "Found 0 volume result in the " << idx
+                     << " result from node " << N.toString() << " with dims "
+                     << dims;
+          return false;
+        }
+      }
+    }
+  }
+
   std::unordered_map<const Placeholder *, const Node *> placeholderWrittenTo;
   for (const auto &N : nodes_) {
     isValid &=
