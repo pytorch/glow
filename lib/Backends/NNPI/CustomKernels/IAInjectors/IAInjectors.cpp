@@ -9,14 +9,14 @@ namespace glow {
 namespace {
 template <typename GlowNode, ElemKind InputKind>
 struct UnaryNodeIAKernelInjector : public CustomKernelInjector {
-  bool tryInject(Function *F, Node *node) const override {
+  Node *tryInject(Function *F, Node *node) const override {
     GlowNode *castedNode = llvm::dyn_cast<GlowNode>(node);
     if (!castedNode) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getInput().getElementType() != InputKind) {
-      return false;
+      return nullptr;
     }
 
     auto kernelName = strFormat("%s_%s_IAKernel", getNodeName<GlowNode>(),
@@ -27,26 +27,25 @@ struct UnaryNodeIAKernelInjector : public CustomKernelInjector {
                   kernelName.c_str()),
         castedNode->getResult().getType(), {castedNode->getInput()}, kernelName,
         GetNNPIKernels::getCompiledIAKernelsFilePath()));
-    castedNode->getResult().replaceAllUsesOfWith(iaNode);
 
-    return true;
+    return iaNode;
   }
 };
 
 template <typename GlowNode, ElemKind Input1Kind, ElemKind Input2Kind>
 struct BinaryNodeIAKernelInjector : public CustomKernelInjector {
-  bool tryInject(Function *F, Node *node) const override {
+  Node *tryInject(Function *F, Node *node) const override {
     GlowNode *castedNode = llvm::dyn_cast<GlowNode>(node);
     if (!castedNode) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getNthInput(0).getElementType() != Input1Kind) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getNthInput(1).getElementType() != Input2Kind) {
-      return false;
+      return nullptr;
     }
 
     auto kernelName = strFormat("%s_%s_%s_IAKernel", getNodeName<GlowNode>(),
@@ -59,9 +58,8 @@ struct BinaryNodeIAKernelInjector : public CustomKernelInjector {
         castedNode->getResult().getType(),
         {castedNode->getNthInput(0), castedNode->getNthInput(1)}, kernelName,
         GetNNPIKernels::getCompiledIAKernelsFilePath()));
-    castedNode->getResult().replaceAllUsesOfWith(iaNode);
 
-    return true;
+    return iaNode;
   }
 };
 
@@ -69,14 +67,14 @@ struct BinaryNodeIAKernelInjector : public CustomKernelInjector {
 // tensor input.
 template <typename GlowNode, ElemKind Input1Kind>
 struct DimensionedIAKernelInjector : public CustomKernelInjector {
-  bool tryInject(Function *F, Node *node) const override {
+  Node *tryInject(Function *F, Node *node) const override {
     GlowNode *castedNode = llvm::dyn_cast<GlowNode>(node);
     if (!castedNode) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getNthInput(0).getElementType() != Input1Kind) {
-      return false;
+      return nullptr;
     }
 
     auto kernelName = strFormat("%s_%s_Dim_IAKernel", getNodeName<GlowNode>(),
@@ -94,26 +92,24 @@ struct DimensionedIAKernelInjector : public CustomKernelInjector {
         castedNode->getResult().getType(),
         {castedNode->getNthInput(0), constNode}, kernelName,
         GetNNPIKernels::getCompiledIAKernelsFilePath()));
-    castedNode->getResult().replaceAllUsesOfWith(iaNode);
-
-    return true;
+    return iaNode;
   }
 };
 
 template <typename GlowNode, ElemKind ToKind, ElemKind FromKind>
 struct ConversionNodeIAKernelInjector : public CustomKernelInjector {
-  bool tryInject(Function *F, Node *node) const override {
+  Node *tryInject(Function *F, Node *node) const override {
     GlowNode *castedNode = llvm::dyn_cast<GlowNode>(node);
     if (!castedNode) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getResult().getElementType() != ToKind) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getInput().getElementType() != FromKind) {
-      return false;
+      return nullptr;
     }
 
     auto kernelName = strFormat("%s_%s_%s_IAKernel", getNodeName<GlowNode>(),
@@ -125,9 +121,8 @@ struct ConversionNodeIAKernelInjector : public CustomKernelInjector {
                   kernelName.c_str()),
         castedNode->getResult().getType(), {castedNode->getInput()}, kernelName,
         GetNNPIKernels::getCompiledIAKernelsFilePath()));
-    castedNode->getResult().replaceAllUsesOfWith(iaNode);
 
-    return true;
+    return iaNode;
   }
 };
 } // namespace
