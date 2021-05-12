@@ -1738,6 +1738,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::cumsum"},
        &PyTorchModelLoader::loadCumSum,
        &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"fb::equally_split"},
+       &PyTorchModelLoader::loadEquallySplit,
+       &PyTorchModelLoader::correctTypeAlreadySet},
   });
 #undef UNARY_NODE_LOADER
 
@@ -8009,6 +8012,46 @@ Error PyTorchModelLoader::loadCumSum(const torch::jit::Node *ptNode) {
   } else {
     RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
   }
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadEquallySplit(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[FusedSplitInputs::input]));
+
+  int num_split;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      num_split,
+      iValToInt(getGlowIValueForValue(inputs[FusedSplitInputs::num_split])));
+
+  int dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[FusedSplitInputs::dim])));
+
+  std::vector<glow::SliceNode *> splitOutputs;
+  F_.createSplit("EquallySplit", input, num_split, dim, {}, splitOutputs);
+
+  std::vector<glow::NodeValue> outputNodeValues;
+  for (auto o : splitOutputs) {
+    outputNodeValues.emplace_back(o);
+  }
+  GlowIValue glowIVal;
+  glowIVal.fromNodeValueList(std::move(outputNodeValues));
+  RETURN_IF_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+
+  // Each output tensor in the vector should have the same correct type as the
+  // input.
+  at::ScalarType inputCorrectType;
+  ASSIGN_VALUE_OR_RETURN_ERR(inputCorrectType,
+                             getCorrectTypeMapping(inputs[0]));
+  std::vector<at::ScalarType> outputCorrectTypes(num_split, inputCorrectType);
+  RETURN_IF_ERR(setCorrectTypesMapping(outputs[0], outputCorrectTypes));
 
   return Error::success();
 }

@@ -262,6 +262,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&embeddingBagByteUnpack, &SI::addShapeDefault)},
       {"fb::unsqueeze_n_times",
        ShapeInference(&unsqueezeNTimes, &SI::addShapeDefault)},
+      {"fb::equally_split",
+       ShapeInference(&equallySplit, &SI::addShapeDefaultList)},
   });
   return map;
 }
@@ -2233,6 +2235,39 @@ ShapeInferenceEngine::unsqueezeNTimes(const MetaStack &variableMetas) {
   }
   TensorOutput output;
   output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * fb::equally_split(Tensor input, int num_split, int dim) -> Tensor
+ */
+Expected<TensorListOutput>
+ShapeInferenceEngine::equallySplit(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected 3 input, got %zu", variableMetas.size()));
+  int64_t numSplit = variableMetas[1].intValue[0];
+  int64_t dim = variableMetas[2].intValue[0];
+
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(inputShape.size() > 0,
+                    "Expected input shape size is larger than 0");
+
+  // Convert dim to positive
+  dim = at::maybe_wrap_dim(dim, inputShape.size());
+  RETURN_ERR_IF_NOT(
+      inputShape[dim] % numSplit == 0,
+      strFormat("Expected dimension size could be evenly divided by numSplit, "
+                "got dimSize %long and numSplit %long",
+                inputShape[dim], numSplit));
+
+  TensorShape sliceShape = inputShape;
+  sliceShape[dim] = inputShape[dim] / numSplit;
+  TensorListShape outputShape(numSplit, sliceShape);
+
+  TensorListOutput output;
+  output.shape = outputShape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }

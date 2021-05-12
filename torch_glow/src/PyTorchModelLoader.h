@@ -1019,6 +1019,10 @@ private:
   /// Load an CumSum node.
   /// \returns error on failure.
   Error loadCumSum(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::equally_split.
+  // \returns error on failure.
+  Error loadEquallySplit(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
