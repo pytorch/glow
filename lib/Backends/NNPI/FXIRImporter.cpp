@@ -661,6 +661,27 @@ NNPIErrorCode FXNNPIImporter::addTensor(const folly::dynamic &node, bool input,
                    /* offsetTensor */ {}, /* forceSymlowp */ forceSymlowp);
 }
 
+void FXNNPIImporter::logUnsupportedNodes(const folly::dynamic &mod) {
+  for (const auto &node : mod["nodes"]) {
+    const auto &opCode = node["op_code"].getString();
+    if (!isOps(opCode)) {
+      continue;
+    }
+
+    if (opCode == "get_attr") {
+      continue;
+    }
+    const auto &targetName = node["target"].getString();
+    const auto &functionName = opCode != "call_module"
+                                   ? targetName
+                                   : node["parameters"]["name"].getString();
+    // Log unsupported node.
+    if (FXNodeImporters.find(functionName) == FXNodeImporters.end()) {
+      LOG(INFO) << "No support for node: " << functionName;
+    }
+  }
+}
+
 NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
                                            const std::string &submodule) {
   const auto &mod = submodule.empty() ? FXIR : FXIR["modules"][submodule];
@@ -729,6 +750,8 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
                                    : node["parameters"]["name"].getString();
     // Import node.
     if (FXNodeImporters.find(functionName) == FXNodeImporters.end()) {
+      // Before returning walk the graph and log all unsupported nodes.
+      logUnsupportedNodes(mod);
       LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
           NNPIErrorCode::NNPI_INVALID_NETWORK,
           glow::strFormat(
