@@ -203,6 +203,25 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32QTy,
          ElemKind::Int8QTy, ElemKind::UInt8QTy});
     break;
+  case Kinded::Kind::SparseLabelSplitNodeKind: {
+    auto valuesIdxDataType = NI.getInElemTy(SparseLabelSplitNode::ValuesIdx);
+    isNodePrecisionSupported =
+        (NI.getInElemTy(SparseLabelSplitNode::LengthsIdx) ==
+         ElemKind::Int32ITy) &&
+        (NI.getInElemTy(SparseLabelSplitNode::IndicesIdx) ==
+         ElemKind::Int64ITy) &&
+        (NI.getInElemTy(SparseLabelSplitNode::ValuesIdx) ==
+         NI.getOutElemTy(SparseLabelSplitNode::LabelValuesIdx)) &&
+        (NI.getOutElemTy(SparseLabelSplitNode::ExampleIdsIdx) ==
+         ElemKind::Int32ITy) &&
+        (NI.getOutElemTy(SparseLabelSplitNode::GradientOffsetMapIdx) ==
+         ElemKind::Int32ITy) &&
+        (valuesIdxDataType == ElemKind::FloatTy ||
+         valuesIdxDataType == ElemKind::Float16Ty ||
+         valuesIdxDataType == ElemKind::Int8QTy ||
+         valuesIdxDataType == ElemKind::UInt8QTy);
+    break;
+  }
 #endif // NNPI > 1.1
   case Kinded::Kind::LayerNormalizationNodeKind: {
     auto scaleType = NI.getInElemTy(LayerNormalizationNode::ScaleIdx);
@@ -697,10 +716,18 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::ScatterDataNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+             ElemKind::UInt8QTy},
             {ScatterDataNode::IndicesIdx}) &&
         (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy ||
          NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::BucketizeNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy}, {},
+            {BucketizeNode::ResultIdx}) &&
+        (NI.getOutElemTy(BucketizeNode::ResultIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::SoftMaxNodeKind:
     isNodePrecisionSupported =
@@ -2261,7 +2288,6 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
 
   bool validWeight = false;
   bool useLengthAsOffset = false;
-  glow::TypeRef tr(nullptr);
   switch (NI.getKind()) {
 
   case Kinded::Kind::SparseLengthsSumNodeKind:
@@ -2466,4 +2492,19 @@ Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
                     strFormat("Estimate not supported for Node kind %s",
                               Kinded::getKindName(node->getKind())));
   return returnCost;
+}
+
+Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
+NNPIBackend::compileFunctions(std::vector<Function *> &functions,
+                              llvm::StringMap<BackendOptions> &optsMap) const {
+  if (functions.size() > 1) {
+    // This is experimental, so it is disabled by default.
+    // Use NNPI_WEIGHTS_OFF_MEM_POOL=1 to override this.
+    std::pair<std::string, std::string> wtsPoolOption(
+        "NNPI_disableWeightsInPool", "0");
+    for (auto it = functions.begin(), end = functions.end(); it != end; ++it) {
+      optsMap[(*it)->getName()].backendSpecificOpts.insert(wtsPoolOption);
+    }
+  }
+  return (Backend::compileFunctions(functions, optsMap));
 }

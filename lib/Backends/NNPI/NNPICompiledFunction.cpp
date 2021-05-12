@@ -113,7 +113,7 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.enableConvSpatialSplitter =
       compilationOptions.enableConvSpatialSplitter;
 #endif
-
+  config_.disableWeightsInPool = compilationOptions.disableWeightsInPool;
   return Error::success();
 }
 
