@@ -103,6 +103,8 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.dumpDotFiles = compilationOptions.dumpDotFiles;
 
   config_.forceWeightsOutOfLLC = compilationOptions.forceWeightsOutOfLLC;
+  config_.enableFCDynamicQuantizationAllSA =
+      compilationOptions.enableFCDynamicQuantizationAllSA;
   config_.disableSlsAllLenOneCalcAtRunTime =
       compilationOptions.disableSlsAllLenOneCalcAtRunTime;
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
