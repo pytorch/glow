@@ -142,6 +142,7 @@ bool SaveModel = false;
 bool SaveIO = false;
 bool SaveDAG = false;
 bool SaveDAGWithConstants = false;
+bool SaveDAGInZipMode = false;
 } // namespace flags
 } // namespace onnxifi
 } // namespace glow
@@ -382,6 +383,14 @@ DEFINE_validator(glow_save_onnxifi_dag_with_constants,
                    glow::onnxifi::flags::SaveDAGWithConstants = val;
                    return true;
                  });
+DEFINE_bool(glow_save_onnxifi_dag_in_zip_mode,
+            glow::onnxifi::flags::SaveDAGWithConstants,
+            "Whether to serialize the DAG that has been optimized and "
+            "partitioned in ZIP mode.");
+DEFINE_validator(glow_save_onnxifi_dag_in_zip_mode, [](const char *, bool val) {
+  glow::onnxifi::flags::SaveDAGInZipMode = val;
+  return true;
+});
 DEFINE_bool(
     glow_delay_and_record_constant_modification,
     glow::flags::DelayAndRecordConstantModification,

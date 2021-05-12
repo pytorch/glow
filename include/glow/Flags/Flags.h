@@ -134,6 +134,7 @@ extern bool SaveModel;
 extern bool SaveIO;
 extern bool SaveDAG;
 extern bool SaveDAGWithConstants;
+extern bool SaveDAGInZipMode;
 } // namespace flags
 } // namespace onnxifi
 } // namespace glow
