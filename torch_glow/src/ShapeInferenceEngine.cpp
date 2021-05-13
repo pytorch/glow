@@ -222,6 +222,9 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"aten::tanh", ShapeInference(&unaryOp, &SI::addShapeDefault)},
       {"aten::relu", ShapeInference(&unaryOp, &SI::addShapeDefault)},
       {"aten::sigmoid", ShapeInference(&unaryOp, &SI::addShapeDefault)},
+      {"aten::sign", ShapeInference(&unaryOp, &SI::addShapeDefault)},
+      {"aten::abs", ShapeInference(&unaryOp, &SI::addShapeDefault)},
+      {"aten::log1p", ShapeInference(&unaryOp, &SI::addShapeDefault)},
       {"aten::sub", ShapeInference(&binaryOp, &SI::addShapeDefault)},
       {"aten::pow", ShapeInference(&binaryOp, &SI::addShapeDefault)},
       {"aten::mul", ShapeInference(&binaryOp, &SI::addShapeDefault)},
@@ -643,7 +646,8 @@ ShapeInferenceEngine::primConstant(const torch::jit::Node *node) {
   return output;
 }
 
-// Shape inference for aten::tanh, aten::relu, aten::sigmoid
+// Shape inference for aten::tanh, aten::relu, aten::sigmoid, aten::abs,
+// aten::sign, aten::log1p
 Expected<TensorOutput>
 ShapeInferenceEngine::unaryOp(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(variableMetas.size() == 1,
