@@ -377,6 +377,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(replicationCount, s);
   INSERT_BOOL_TO_STREAM(fusionPassEnabled, s);
   INSERT_BOOL_TO_STREAM(dumpGlowDag, s);
+  INSERT_BOOL_TO_STREAM(dumpOperatorInventory, s);
   INSERT_VALUE_TO_STREAM(minFusionGroupSize, s);
   INSERT_VALUE_TO_STREAM(maxFusionMergeSize, s);
   INSERT_VALUE_TO_STREAM(fusionStartIndex, s);
