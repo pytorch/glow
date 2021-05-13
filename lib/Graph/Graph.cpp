@@ -1307,7 +1307,7 @@ SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
                                      float beta) {
   // Create input multiplier with beta.
   if (beta != 1.0) {
-    auto *splat = createSplat(name, input.getType(), 1);
+    auto *splat = createSplat(name, input.getType(), beta);
     input = createMul(name, input, splat);
   }
   // By default, pick the input type.
@@ -1322,7 +1322,7 @@ LogSoftMaxNode *Function::createLogSoftMax(llvm::StringRef name,
                                            TypeRef outTy, float beta) {
   // Create input multiplier with beta.
   if (beta != 1.0) {
-    auto *splat = createSplat(name, input.getType(), 1);
+    auto *splat = createSplat(name, input.getType(), beta);
     input = createMul(name, input, splat);
   }
   // By default, pick the input type.

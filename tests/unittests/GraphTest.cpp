@@ -2386,3 +2386,59 @@ TEST(Graph, testRandomizeConstants) {
   EXPECT_FALSE(uint4FusedFP16QT.isEqual(uint4FusedFP16QC->getPayload()));
   EXPECT_FALSE(boolT.isEqual(boolC->getPayload()));
 }
+
+TEST(Graph, testSoftmaxMultiplier) {
+  glow::ExecutionEngine EE;
+  Module &M = EE.getModule();
+  Function *F = M.createFunction("F");
+
+  float beta = 2.0;
+
+  // Create a graph with single softmax.
+  auto *inputPH =
+      M.createPlaceholder(ElemKind::FloatTy, {1, 2}, "input", false);
+  auto *select =
+      M.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "select", true);
+  Node *softmaxNode =
+      F->createSoftMax("softmax", inputPH, select, inputPH->getType(), beta);
+  auto *saveNode = F->createSave("output", softmaxNode);
+
+  PlaceholderBindings bindings;
+  auto *inputT = bindings.allocate(inputPH);
+  inputT->getHandle() = {1.0, 2.0};
+  Tensor expectedT(inputT->getType());
+  expectedT.getHandle() = {0.11920292, 0.88079703};
+  auto *outputT = bindings.allocate(saveNode->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  EXPECT_TRUE(outputT->isEqual(expectedT));
+}
+
+TEST(Graph, testLogSoftmaxMultiplier) {
+  glow::ExecutionEngine EE;
+  Module &M = EE.getModule();
+  Function *F = M.createFunction("F");
+
+  float beta = 2.0;
+
+  // Create a graph with single softmax.
+  auto *inputPH =
+      M.createPlaceholder(ElemKind::FloatTy, {1, 2}, "input", false);
+  auto *select =
+      M.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "select", true);
+  Node *softmaxNode =
+      F->createLogSoftMax("softmax", inputPH, select, inputPH->getType(), beta);
+  auto *saveNode = F->createSave("output", softmaxNode);
+
+  PlaceholderBindings bindings;
+  auto *inputT = bindings.allocate(inputPH);
+  inputT->getHandle() = {1.0, 2.0};
+  Tensor expectedT(inputT->getType());
+  expectedT.getHandle() = {-2.1269, -0.1269};
+  auto *outputT = bindings.allocate(saveNode->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  EXPECT_TRUE(outputT->isEqual(expectedT));
+}
