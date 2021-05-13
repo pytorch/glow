@@ -548,11 +548,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           continue;
         }
 
-        if (!RS->hasOneUse()) {
-          continue;
-        }
-
-        auto bnOutTy = BN->getResult().getType();
+        auto bnOutTy = F->getParent()->uniqueTypeWithNewShape(
+            BN->getResult().getType(), RS->getInput().getType());
         auto rsInputType = RS->getInput().getType();
         glow::TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
             bnOutTy, rsInputType->dims());
@@ -560,8 +557,9 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
             BN->getName(), outTy, RS->getInput(), BN->getBias(), BN->getScale(),
             BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
             BN->getMomentum());
-        RS->setNthInput(ReshapeNode::InputIdx, newBN);
-        BN->getResult().replaceAllUsesOfWith(RS);
+        auto *newRS = F->createReshape(RS->getName(), newBN,
+                                       RS->getResult().dims(), RS->getLayout());
+        BN->getResult().replaceAllUsesOfWith(newRS);
         changed = true;
         continue;
       }
