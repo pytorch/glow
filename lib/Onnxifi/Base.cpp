@@ -20,6 +20,7 @@
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Runtime/TraceExporter.h"
 
 #include "llvm/Support/Format.h"
 #include <glog/logging.h>
@@ -399,7 +400,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   auto ctx = glow::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
-  if (traceEvents || glow::flags::DumpDebugTraces) {
+  if (traceEvents || glow::flags::DumpDebugTraces ||
+      TraceExporterRegistry::getInstance()->shouldTrace()) {
     ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("Onnxifi");
@@ -554,10 +556,14 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
 void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
                            TraceContext *traceContext) {
+  /// Export trace events to any registered glow trace exporters
+  if (traceContext) {
+    TraceExporterRegistry::getInstance()->exportTrace(traceContext);
+  }
+
   if (!traceEvents || !traceContext) {
     return;
   }
-
   /// Internally we use steady_clock, but our interface is system_clock
   /// timestamps. Do a simple conversion.
   auto steadyTS = TraceEvent::now();

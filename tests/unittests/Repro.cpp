@@ -23,6 +23,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/TraceExporter.h"
 #include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
 
@@ -711,7 +712,10 @@ int run() {
       inputBindings.emplace_back(std::move(bindings));
     }
 
-    if (glow::flags::DumpDebugTraces && glowEnableDeviceTrace) {
+    bool enableGlowTrace = glow::flags::DumpDebugTraces ||
+                           TraceExporterRegistry::getInstance()->shouldTrace();
+
+    if (enableGlowTrace && glowEnableDeviceTrace) {
       // Start device traces.
       hostManager->setTraceContext(
           glow::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -733,12 +737,12 @@ int run() {
       threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
                       &mergedTraceContext, &hostManager, &result, &cv, &mutex,
                       numTotalInferences, &numFinishedInferences,
-                      runAccuracyChecks]() {
+                      runAccuracyChecks, enableGlowTrace]() {
         // Setup the inputs.
         auto ctx = glow::make_unique<ExecutionContext>();
 
         TraceContext *traceContext = nullptr;
-        if (glow::flags::DumpDebugTraces) {
+        if (enableGlowTrace) {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
@@ -779,6 +783,8 @@ int run() {
         future.wait();
         traceContext = result.ctx->getTraceContext();
         if (traceContext) {
+          // export to registered trace exporters
+          TraceExporterRegistry::getInstance()->exportTrace(traceContext);
           // merge() has internal lock and is thread safe.
           mergedTraceContext.merge(traceContext);
         }
