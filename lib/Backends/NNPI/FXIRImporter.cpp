@@ -417,6 +417,8 @@ static std::unordered_map<
     {"acc_ops.quantized_conv2d",
      std::make_unique<ConvolutionNodeImporter<2>>()},
     {"acc_ops.batch_norm", std::make_unique<BatchNormalizationNodeImporter>()},
+    {"acc_ops.quantized_batch_norm2d",
+     std::make_unique<BatchNormalizationNodeImporter>()},
     {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
     {"acc_ops.adaptive_avg_pool2d",
      std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
