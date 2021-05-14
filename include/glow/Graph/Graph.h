@@ -1987,6 +1987,19 @@ public:
       std::string nameBase, T inputItr, const int timeSteps, NodeValue Wx,
       NodeValue Wh, NodeValue Bx, NodeValue Bh, NodeValue &H, NodeValue &C);
 
+  /// Helpfer function to create Pytorch Style Multiple Layer STM for one
+  /// direction
+  std::vector<NodeValue> createMultipleLayerSingleDirectionLSTM(
+      std::string nameBase, NodeValue input, unsigned batchSize,
+      unsigned inputSize, const int timeSteps, std::vector<NodeValue> &Wx,
+      std::vector<NodeValue> &Wh, std::vector<NodeValue> &Bx,
+      std::vector<NodeValue> &Bh, NodeValue &H, NodeValue &C);
+
+  /// Helpfer function to create sliced input for LSTM
+  std::vector<NodeValue>
+  createSlicedInput(NodeValue input, std::string &nameBase, unsigned batchSize,
+                    unsigned inputSize, const int timeSteps);
+
   /// Create PyTorch style LSTM with fixed weights and biases.
   /// The order of \p Wx \p Wh \p Bx and \p Bh is i, f, g, o,
   /// The \p inputs shape should be (numSteps, batchSize, hiddenSize),
@@ -1999,7 +2012,8 @@ public:
   /// For more details, please read:
   /// https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html
   void createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue inputs,
-                         NodeValue Wx, NodeValue Wh, NodeValue Bx, NodeValue Bh,
+                         std::vector<NodeValue> &Wx, std::vector<NodeValue> &Wh,
+                         std::vector<NodeValue> &Bx, std::vector<NodeValue> &Bh,
                          NodeValue &Ht, NodeValue &Ct, NodeValue &outputs,
                          bool isBidirectional = false,
                          NodeValue WxR = NodeValue(),

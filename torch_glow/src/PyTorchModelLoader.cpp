@@ -4972,7 +4972,6 @@ Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
   unsigned numLayers;
   ASSIGN_VALUE_OR_RETURN_ERR(numLayers, iValToInt(getGlowIValueForValue(
                                             inputs[LSTMInputs::num_layers])));
-  RETURN_ERR_IF_NOT(numLayers == 1, "Stacked LSTM is not supported in Glow.");
 
   float dropout;
   ASSIGN_VALUE_OR_RETURN_ERR(dropout, iValToDouble(getGlowIValueForValue(
@@ -4991,6 +4990,9 @@ Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
 
   RETURN_ERR_IF_NOT(train == false,
                     "Training is not supported for LSTM in Glow.");
+  RETURN_ERR_IF_NOT(
+      (numLayers == 1 && bidirectional) || (numLayers >= 1 && !bidirectional),
+      "multiple layer bidirectional LSTM is not supported in Glow");
 
   if (batchFirst) {
     input = F_.createTranspose("Input_BatchFirst_Transpose", input, {1, 0, 2})
@@ -5016,22 +5018,30 @@ Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
     }
     return res;
   };
-  glow::Constant *Wx =
-      llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
-  glow::Constant *Wh =
-      llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
-  glow::Constant *Bx = getBias("Bx_Constant"), *Bh = getBias("Bh_Constant");
+
+  std::vector<NodeValue> WxTransposedVector, WhTransposedVector, BxVector,
+      BhVector;
+  for (int layer = 0; layer < numLayers; layer++) {
+    auto *Wx = llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
+    auto *Wh = llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
+    glow::Constant *Bx = getBias("Bx_Constant"), *Bh = getBias("Bh_Constant");
+
+    // W need to be transposed, in pt it is hiddenSize * inputSize,
+    // in glow it is inputSize * hiddenSize.
+    auto WxTransposed =
+        F_.createTranspose("Wx_Transposed", Wx, {1, 0})->getResult();
+    auto WhTransposed =
+        F_.createTranspose("Wh_Transposed", Wh, {1, 0})->getResult();
+    WxTransposedVector.push_back(WxTransposed);
+    WhTransposedVector.push_back(WhTransposed);
+    BxVector.emplace_back(Bx);
+    BhVector.emplace_back(Bh);
+  }
 
   NodeValue output;
-  // W need to be transposed, in pt it is hiddenSize * inputSize,
-  // in glow it is inputSize * hiddenSize.
-  auto WxTransposed =
-      F_.createTranspose("Wx_Transposed", Wx, {1, 0})->getResult();
-  auto WhTransposed =
-      F_.createTranspose("Wh_Transposed", Wh, {1, 0})->getResult();
+  hn = h03D;
+  cn = c03D;
   if (bidirectional) {
-    hn = h03D;
-    cn = c03D;
     glow::Constant *WxR =
         llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
     glow::Constant *WhR =
@@ -5044,16 +5054,12 @@ Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
         F_.createTranspose("WxR_Transposed", WxR, {1, 0})->getResult();
     auto WhRTransposed =
         F_.createTranspose("WhR_Transposed", WhR, {1, 0})->getResult();
-    F_.createPyTorchLSTM("lstm", input, WxTransposed, WhTransposed, Bx, Bh, hn,
-                         cn, output, bidirectional, WxRTransposed,
-                         WhRTransposed, BxR, BhR);
+    F_.createPyTorchLSTM("lstm", input, WxTransposedVector, WhTransposedVector,
+                         BxVector, BhVector, hn, cn, output, bidirectional,
+                         WxRTransposed, WhRTransposed, BxR, BhR);
   } else {
-    hn = F_.createReshape("reshape_H0", h03D, {h03D.dims()[1], h03D.dims()[2]})
-             ->getResult();
-    cn = F_.createReshape("reshape_C0", c03D, {c03D.dims()[1], c03D.dims()[2]})
-             ->getResult();
-    F_.createPyTorchLSTM("lstm", input, WxTransposed, WhTransposed, Bx, Bh, hn,
-                         cn, output, bidirectional);
+    F_.createPyTorchLSTM("lstm", input, WxTransposedVector, WhTransposedVector,
+                         BxVector, BhVector, hn, cn, output, bidirectional);
   }
   if (batchFirst) {
     output =
