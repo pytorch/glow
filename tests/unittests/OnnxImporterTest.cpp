@@ -5128,6 +5128,29 @@ TEST_F(OnnxImporterTest, CustomGlowWithNodeOpts) {
   EXPECT_EQ(itOpt3->second[1], "5");
 }
 
+/// Test loading a custom ONNX Glow net with serialized strides.
+TEST_F(OnnxImporterTest, CustomGlowWithStrides) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/glow_custom_with_strides.onnxtxt");
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F, /* errPtr */ nullptr,
+                           /* zipMode */ false);
+    EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  // Find MatMul node.
+  auto *MN = llvm::cast<MatMulNode>(F->getNodeByName("MM"));
+
+  // The MatMul node should have a custom stride[0] equal to 96.
+  ASSERT_EQ(MN->getResult().getType()->strides()[0], 96);
+  // LHS should have a custom stride[0] equal to 31.
+  ASSERT_EQ(MN->getLHS().getType()->strides()[0], 31);
+}
+
 static bool vecContainsVal(const std::vector<runtime::DeviceIDTy> &vec,
                            runtime::DeviceIDTy val) {
   return std::find(vec.begin(), vec.end(), val) != vec.end();

@@ -560,6 +560,11 @@ TypeRef Module::uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType) {
   return uniqueType(Type::newShape(*T, shapeType));
 }
 
+TypeRef Module::uniqueTypeWithNewStrides(TypeRef T, llvm::ArrayRef<dim_t> dims,
+                                         llvm::ArrayRef<dim_t> strides) {
+  return uniqueType(Type::newStrides(*T, strides));
+}
+
 TypeRef Module::uniqueTypeWithNewQuantParams(TypeRef T,
                                              TypeRef quantParamType) {
   return uniqueType(Type::newQuantparams(*T, quantParamType->getScale(),

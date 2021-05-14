@@ -150,6 +150,11 @@ public:
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims);
 
   /// The new type is identical to \p T, with a new shape \p dims and new \p
+  /// strides.
+  TypeRef uniqueTypeWithNewStrides(TypeRef T, llvm::ArrayRef<dim_t> dims,
+                                   llvm::ArrayRef<dim_t> strides);
+
+  /// The new type is identical to \p T, with a new shape \p dims and new \p
   /// alignments.
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims,
                                  llvm::ArrayRef<dim_t> alignments);
