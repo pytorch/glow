@@ -130,6 +130,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "GatherNDDataFloat16IdxInt64/0",
     "GatherNDDataInt8IdxInt32/0",
     "GatherNDDataInt8IdxInt64/0",
+    "GatherNDWithDiffLastDim/0",
     "GatherElementsInt64Int64/0",
     "GatherElementsInt64Int32/0",
     "GatherElementsInt32Int64/0",

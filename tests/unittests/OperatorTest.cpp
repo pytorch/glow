@@ -5749,6 +5749,53 @@ TEST_P(OperatorTest, GatherNDDataFloatIdxInt64) {
 }
 #endif
 
+/// Test GatherND with each slice size different from indice's lastDim size.
+TEST_P(OperatorTest, GatherNDWithDiffLastDim) {
+  CHECK_IF_ENABLED();
+  /*
+  Data = [
+       [
+         [0,1],
+         [2,3]
+       ]
+  ]
+
+  INDICES = [
+          [1],
+          [0]
+  ]
+
+  OUTPUT = [
+          [2,3],
+          [0,1]
+  ]
+*/
+  auto *data =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 1}, "indices", false);
+
+  bindings_.allocate(data)->getHandle<int32_t>() = {0, 1, 2, 3};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {
+      1,
+      0,
+  };
+
+  auto *R = F_->createGatherND("gatherND", data, indices);
+
+  auto *result = F_->createSave("save", R);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor *resultT = bindings_.get(result->getPlaceholder());
+  Tensor expectedT(ElemKind::Int32ITy, {2, 2});
+  expectedT.getHandle<int32_t>() = {2, 3, 0, 1};
+
+  EXPECT_TRUE(resultT->isEqual(expectedT));
+}
+
 /// Test that Gather works with Float16 data and Int32 indices.
 TEST_P(OperatorTest, GatherDataNDFloat16IdxInt32) {
   CHECK_IF_ENABLED();

@@ -2529,11 +2529,11 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
   dim_t dataSliceSizeInBytes = dataSliceSize * elementSize;
 
   for (dim_t i = 0, end = numOfSlices; i < end; i++) {
-    dim_t x = indicesT->getHandle<ElemTy>().raw(i * dataSliceSize);
+    dim_t x = indicesT->getHandle<ElemTy>().raw(i * lastIndicesDimension);
 
     for (dim_t j = 1; j < lastIndicesDimension; j++) {
       x = (x * dataTy.dims()[j]) +
-          indicesT->getHandle<ElemTy>().raw(i * dataSliceSize + j);
+          indicesT->getHandle<ElemTy>().raw(i * lastIndicesDimension + j);
     }
 
     if (lastIndicesDimension < dataTy.dims().size()) {
