@@ -1857,6 +1857,13 @@ Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
   }
 }
 
+Error ONNXModelWriter::writeGatherElements(const GatherElementsNode *node,
+                                           GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  return writeAllWithNode("GatherElements", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeGatherND(const GatherNDNode *node,
                                      GraphType &graph) {
   auto *proto = graph.add_node();

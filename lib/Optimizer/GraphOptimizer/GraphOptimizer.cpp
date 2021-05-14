@@ -5625,6 +5625,69 @@ bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Fold Exp + ReduceSum + Div into Softmax
+///    IN
+///     |
+///    Exp                IN
+///   /   \                |
+///  |  ReduceSum  -->  Softmax
+///   \   /                |
+///    Div                OUT
+///     |
+///    OUT
+bool FoldExpSumDivIntoSoftmax::run(Function *F,
+                                   const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *EN = dyn_cast<ExpNode>(&N);
+    if (!EN || EN->getNumUsers() != 2) {
+      continue;
+    }
+
+    DivNode *DN = nullptr;
+    BatchedReduceAddNode *RSN = nullptr;
+
+    auto *user1 = EN->getUsers().front().getUser();
+    auto *user2 = EN->getUsers().back().getUser();
+
+    if (isa<DivNode>(user1) && isa<BatchedReduceAddNode>(user2)) {
+      DN = cast<DivNode>(user1);
+      RSN = cast<BatchedReduceAddNode>(user2);
+    } else if (isa<DivNode>(user2) && isa<BatchedReduceAddNode>(user1)) {
+      DN = cast<DivNode>(user2);
+      RSN = cast<BatchedReduceAddNode>(user1);
+    } else {
+      continue;
+    }
+
+    if (RSN->getNumUsers() != 1) {
+      continue;
+    }
+
+    auto *broadcastNode = getOnlyUser(*RSN);
+    if (broadcastNode == nullptr) {
+      continue;
+    }
+    auto *tempDN = getOnlyUser(*broadcastNode);
+    // Ensure that the inputs to the DivNode are Exp and ReduceSum.
+    if (DN != tempDN) {
+      continue;
+    }
+
+    auto axes = EN->getInput().dims().vec();
+    axes.back() = 1;
+    auto *CN = F->getParent()->createConstant(glow::ElemKind::Int64ITy, axes,
+                                              "selected");
+
+    auto *SM = F->createSoftMax("softmax", EN->getInput(), CN);
+    DN->getResult().replaceAllUsesOfWith(SM);
+    changed = true;
+  }
+  return changed;
+}
+
 /// Convert a FullyConnected node to a 1x1 Convolution.
 bool ConvertFullyConnectedToConvolution::run(Function *F,
                                              const CompilationContext &cctx) {

@@ -23,6 +23,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/TraceExporter.h"
 #include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
 
@@ -108,12 +109,6 @@ llvm::cl::opt<bool> dumpOutputsOpt("dump_outputs",
                                    llvm::cl::desc("Dump output tensors"),
                                    llvm::cl::Optional, llvm::cl::init(true),
                                    llvm::cl::cat(reproTestCat));
-
-llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
-    "glow_global_fused_scale_offset_fp32",
-    llvm::cl::desc(
-        "Enable converting scale/offset in sls's input data from fp16 to fp32"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> indicesInt64Opt(
     "glow_global_indices_fp64",
@@ -208,6 +203,7 @@ void parseCommandLine(int argc, char **argv) {
   FLAGS_glow_global_fp16 = true;
   FLAGS_glow_clip_fp16 = true;
   FLAGS_glow_global_fused_scale_offset_fp16 = true;
+  FLAGS_glow_global_fused_scale_offset_fp32 = false;
   FLAGS_glow_snn_partitioning_kbytes_per_card = 5000000;
   FLAGS_glow_snn_partitioning_num_cores_sls = 6;
   FLAGS_glow_snn_partitioning_num_cores_other = 6;
@@ -475,9 +471,9 @@ int run() {
     precConfig.convertFusedToFP16 = true;
     llvm::outs() << "Conversion of fused scales/offsets to fp16 enabled\n";
   }
-  if (fuseScaleOffsetFp32Opt) {
-    precConfig.convert4BitFusedToFP32 = fuseScaleOffsetFp32Opt;
-    precConfig.convert8BitFusedToFP32 = fuseScaleOffsetFp32Opt;
+  if (glow::flags::ConvertFusedScaleOffsetToFP32) {
+    precConfig.convert4BitFusedToFP32 = true;
+    precConfig.convert8BitFusedToFP32 = true;
     llvm::outs()
         << "Conversion of fused scales/offsets to fp32 in frwqslws enabled\n";
   }
@@ -563,6 +559,16 @@ int run() {
   if (glow::onnxifi::flags::SaveDAG) {
     LOG(INFO) << "Serializing DAG after optimization and partitioning.";
     cctx.serializeCompiledDAG = true;
+  }
+  if (glow::onnxifi::flags::SaveDAGWithConstants) {
+    LOG(INFO) << "Serializing DAG with constants after optimization and "
+                 "partitioning.";
+    cctx.saveConstantInSerializeCompiledDAG = true;
+  }
+  if (glow::onnxifi::flags::SaveDAGInZipMode) {
+    LOG(INFO) << "Serializing DAG with constants after optimization and "
+                 "partitioning in Zip mode.";
+    cctx.useZipModeForSerializeCompiledDAG = true;
   }
 
   // Load deferred weights if applicable
@@ -706,7 +712,10 @@ int run() {
       inputBindings.emplace_back(std::move(bindings));
     }
 
-    if (glow::flags::DumpDebugTraces && glowEnableDeviceTrace) {
+    bool enableGlowTrace = glow::flags::DumpDebugTraces ||
+                           TraceExporterRegistry::getInstance()->shouldTrace();
+
+    if (enableGlowTrace && glowEnableDeviceTrace) {
       // Start device traces.
       hostManager->setTraceContext(
           glow::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -728,12 +737,12 @@ int run() {
       threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
                       &mergedTraceContext, &hostManager, &result, &cv, &mutex,
                       numTotalInferences, &numFinishedInferences,
-                      runAccuracyChecks]() {
+                      runAccuracyChecks, enableGlowTrace]() {
         // Setup the inputs.
         auto ctx = glow::make_unique<ExecutionContext>();
 
         TraceContext *traceContext = nullptr;
-        if (glow::flags::DumpDebugTraces) {
+        if (enableGlowTrace) {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
@@ -774,6 +783,8 @@ int run() {
         future.wait();
         traceContext = result.ctx->getTraceContext();
         if (traceContext) {
+          // export to registered trace exporters
+          TraceExporterRegistry::getInstance()->exportTrace(traceContext);
           // merge() has internal lock and is thread safe.
           mergedTraceContext.merge(traceContext);
         }

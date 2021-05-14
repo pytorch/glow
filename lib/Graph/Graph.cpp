@@ -456,7 +456,12 @@ void Module::dumpDAG(llvm::StringRef dotFilename) {
 
   std::ofstream myfile;
   myfile.open(dotFilename.str());
-  DP.dumpAll(myfile);
+  if (myfile.fail()) {
+    LOG(ERROR) << "Unable to open " << dotFilename.str()
+               << ", reason: " << strerror(errno);
+  } else {
+    DP.dumpAll(myfile);
+  }
   myfile.close();
 }
 
@@ -2873,6 +2878,26 @@ GatherNDNode *Function::createGatherND(llvm::StringRef name, NodeValue data,
   }
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
   return addNode(new GatherNDNode(name, outTy, data, indices, batchDims));
+}
+
+GatherElementsNode *Function::createGatherElements(llvm::StringRef name,
+                                                   NodeValue data,
+                                                   NodeValue indices,
+                                                   unsigned_t dim = 0) {
+  const auto iDims = indices.dims();
+  const auto dRank = data.dims().size();
+  const auto iRank = iDims.size();
+  (void)dRank;
+  (void)iRank;
+  assert((dim < 0 ? dim >= -dRank : dim < dRank) &&
+         "[GatherElements] dim must in the range [-rank, rank-1].");
+  assert(iRank == dRank &&
+         "[GatherElements] Data and indices rank must be equal.");
+  assert(dRank > 0 && "[GatherElements] Data and indices rank must be >= 1.");
+
+  return addNode(new GatherElementsNode(
+      name, getParent()->uniqueTypeWithNewShape(data.getType(), iDims), data,
+      indices, dim));
 }
 
 GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
@@ -5565,7 +5590,12 @@ void Function::dumpDAG(llvm::StringRef dotFilename) {
 
   std::ofstream myfile;
   myfile.open(legalDotFilename.str());
-  DP.dumpAll(myfile);
+  if (myfile.fail()) {
+    LOG(ERROR) << "Unable to open " << legalDotFilename.str()
+               << ", reason: " << strerror(errno);
+  } else {
+    DP.dumpAll(myfile);
+  }
   myfile.close();
 }
 
@@ -6085,6 +6115,35 @@ bool Function::verify(const Backend *backend) const {
           "Every type used by one of the graph nodes should be part of "
           "the graph",
           foundType, true, &N);
+    }
+  }
+
+  // Check that there are no zero volume tensors
+  for (const auto &N : nodes_) {
+    // Check inputs
+    for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
+      auto dims = N.getNthInput(idx).dims();
+      for (auto dim : dims) {
+        if (dim == 0) {
+          LOG(ERROR) << "Found 0 volume input in the " << idx
+                     << " input to node " << N.toString() << " with dims "
+                     << dims;
+          return false;
+        }
+      }
+    }
+
+    // Check results
+    for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+      auto dims = N.getNthResult(idx).dims();
+      for (auto dim : dims) {
+        if (dim == 0) {
+          LOG(ERROR) << "Found 0 volume result in the " << idx
+                     << " result from node " << N.toString() << " with dims "
+                     << dims;
+          return false;
+        }
+      }
     }
   }
 

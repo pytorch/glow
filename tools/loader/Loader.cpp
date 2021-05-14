@@ -589,7 +589,13 @@ void glow::parseCommandLine(int argc, char **argv) {
     os << "Glow Tools version: " << GLOW_VERSION << "\n";
 #endif
   });
-  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
+  // TODO - registered once to avoid error:
+  // "LLVM ERROR: too many signal callbacks already registered."
+  static bool stackTraceRegistered = false;
+  if (!stackTraceRegistered) {
+    stackTraceRegistered = true;
+    llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
+  }
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
       " The Glow compiler\n\n"

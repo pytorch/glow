@@ -39,6 +39,10 @@ public:
   /// Destructor.
   ~FXNNPIImporter();
 
+  /// Helper function which iterates through all nodes and logs any unsupported
+  /// nodes.
+  void logUnsupportedNodes(const folly::dynamic &mod);
+
   /// The main entry point for the importer functionality. Imports a submodule
   /// if \p submodule is specified, otherwise, import the whole \p FXIR.
   /// \returns an NNPI network.

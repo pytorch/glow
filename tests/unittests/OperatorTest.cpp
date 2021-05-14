@@ -373,6 +373,28 @@ TEST_P(OperatorTest, less_int64Cases) {
   }
 }
 
+TEST_P(OperatorTest, less_int16Cases) {
+  CHECK_IF_ENABLED();
+
+  int16_t xValues[] = {1, 2, 3, 4, 5};
+
+  int16_t yValues[] = {5, 4, 3, 2, 1};
+
+  dim_t xDims[] = {5};
+  dim_t yDims[] = {5};
+
+  Handle<bool> saveH =
+      lessHelper<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy, xValues,
+                          yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (dim_t i = 0; i < saveH.dims()[0]; ++i) {
+    EXPECT_TRUE(refResults[counter++] == saveH.at({i}));
+  }
+}
+
 TEST_P(OperatorTest, less_float) {
   CHECK_IF_ENABLED();
 
@@ -9594,6 +9616,11 @@ TEST_P(OperatorTest, CmpNEQ_Int8QTy) {
   testCmpNEQ<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
+TEST_P(OperatorTest, CmpNEQ_Int16QTy) {
+  CHECK_IF_ENABLED();
+  testCmpNEQ<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy);
+}
+
 TEST_P(OperatorTest, CmpNEQ_Int32ITy) {
   CHECK_IF_ENABLED();
   testCmpNEQ<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
@@ -16580,6 +16607,150 @@ TEST_P(OperatorTest, GatherWithInt32PartialTensors) {
   ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
   testPartialGather<int32_t>(bindings_, mod_, F_, EE_, unownedTensors_,
                              ElemKind::Int32ITy);
+}
+
+void testGatherElements(glow::PlaceholderBindings &bindings, glow::Function *F,
+                        glow::ExecutionEngine &EE, Placeholder *data,
+                        Placeholder *indices, unsigned_t axis,
+                        const Tensor &expectedT) {
+  auto *G = F->createGatherElements("GatherElements", data, indices, axis);
+  auto *result = F->createSave("save", G);
+  bindings.allocate(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor *resultT = bindings.get(result->getPlaceholder());
+  EXPECT_TRUE(resultT->isEqual(expectedT));
+}
+
+template <typename DataType, typename IndexType>
+void testGatherElementsIntInt(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE, ElemKind dataKind,
+                              ElemKind indexKind) {
+  auto *data = mod.createPlaceholder(dataKind, {2, 2}, "data", false);
+  auto *indices = mod.createPlaceholder(indexKind, {2, 2}, "indices", false);
+  bindings.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4};
+  bindings.allocate(indices)->getHandle<IndexType>() = {0, 0, 1, 0};
+  unsigned_t axis = 1;
+
+  Tensor expectedT(dataKind, {2, 2});
+  expectedT.getHandle<DataType>() = {1, 1, 4, 3};
+  testGatherElements(bindings, F, EE, data, indices, axis, expectedT);
+}
+
+TEST_P(OperatorTest, GatherElementsInt64Int64) {
+  CHECK_IF_ENABLED();
+  testGatherElementsIntInt<int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Int64ITy, ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, GatherElementsInt64Int32) {
+  CHECK_IF_ENABLED();
+  testGatherElementsIntInt<int64_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Int64ITy, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, GatherElementsInt32Int64) {
+  CHECK_IF_ENABLED();
+  testGatherElementsIntInt<int32_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Int32ITy, ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, GatherElementsInt32Int32) {
+  CHECK_IF_ENABLED();
+  testGatherElementsIntInt<int32_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Int32ITy, ElemKind::Int32ITy);
+}
+
+template <typename DataType, typename IndexType>
+void testGatherElementsFloatInt(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind dataKind,
+                                ElemKind indexKind) {
+  auto *data = mod.createPlaceholder(dataKind, {3, 3}, "data", false);
+  auto *indices = mod.createPlaceholder(indexKind, {2, 3}, "indices", false);
+  bindings.allocate(data)->getHandle<DataType>() = {1.f, 2.f, 3.f, 4.f, 5.f,
+                                                    6.f, 7.f, 8.f, 9.f};
+  bindings.allocate(indices)->getHandle<IndexType>() = {1, 2, 0, 2, 0, 0};
+  unsigned_t dim = 0;
+
+  Tensor expectedT(dataKind, {2, 3});
+  expectedT.getHandle<DataType>() = {4.f, 8.f, 3.f, 7.f, 2.f, 3.f};
+  testGatherElements(bindings, F, EE, data, indices, dim, expectedT);
+}
+
+TEST_P(OperatorTest, GatherElementsFloatInt64) {
+  CHECK_IF_ENABLED();
+  testGatherElementsIntInt<float_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, GatherElementsFloatInt32) {
+  CHECK_IF_ENABLED();
+  testGatherElementsIntInt<float_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, GatherElementsFloat16Int64) {
+  CHECK_IF_ENABLED();
+  testGatherElementsIntInt<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, GatherElementsFloat16Int32) {
+  CHECK_IF_ENABLED();
+  testGatherElementsIntInt<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, GatherElementsFloatInt32NegInd) {
+  CHECK_IF_ENABLED();
+  using ElemType = float;
+  using IndexType = int32_t;
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 3}, "indices", false);
+  bindings_.allocate(data)->getHandle<ElemType>() = {1.f, 2.f, 3.f, 4.f, 5.f,
+                                                     6.f, 7.f, 8.f, 9.f};
+  bindings_.allocate(indices)->getHandle<IndexType>() = {-2, 2, 0, -1, 0, 0};
+  unsigned_t dim = 0;
+
+  Tensor expectedT(ElemKind::FloatTy, {2, 3});
+  expectedT.getHandle<ElemType>() = {4.f, 8.f, 3.f, 7.f, 2.f, 3.f};
+  testGatherElements(bindings_, F_, EE_, data, indices, dim, expectedT);
+}
+
+TEST_P(OperatorTest, GatherElementsQInt8Int32) {
+  CHECK_IF_ENABLED();
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 3}, "indices", false);
+  bindings_.allocate(data)->getHandle<float>() = {1.f, 2.f, 3.f, 4.f, 5.f,
+                                                  6.f, 7.f, 8.f, 9.f};
+  bindings_.allocate(indices)->getHandle<int32_t>() = {1, 2, 0, 2, 0, 0};
+  unsigned_t axis = 0;
+  Tensor expectedT(ElemKind::FloatTy, {2, 3});
+  expectedT.getHandle<float>() = {4.f, 8.f, 3.f, 7.f, 2.f, 3.f};
+
+  auto qParams = glow::quantization::chooseQuantizationParams({-10, 10});
+  auto dataTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, qParams.scale, qParams.offset);
+  auto *dataQ = F_->createQuantize("quantizeQ", data, dataTy);
+  auto *GQ = F_->createGatherElements("GatherElements", dataQ, indices, axis);
+  auto *DQ = F_->createDequantize("dequantize", GQ, ElemKind::FloatTy);
+  auto *result = F_->createSave("save", DQ);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor *resultT = bindings_.get(result->getPlaceholder());
+  for (auto i = 0; i < 6; i++) {
+    EXPECT_NEAR(expectedT.getHandle<float>().raw(i),
+                resultT->getHandle<float>().raw(i), 5e-2);
+  }
 }
 
 /// Helper to test FusedRowwiseQuantizedSparseLengthsWeightedSum using \p DTy.

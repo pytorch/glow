@@ -2303,6 +2303,15 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<int8_t>().clear(quantization::quantize(val, destQ));
   }
 
+  if (k == ElemKind::Int16QTy) {
+    // Quantize the requested floating point splat value into the correct
+    // integer representation.
+    auto destTy = I->getDest()->getType();
+    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+    float val = I->getValue();
+    return T->getHandle<int16_t>().clear(quantization::quantize(val, destQ));
+  }
+
   if (k == ElemKind::BoolTy) {
     return T->getHandle<bool>().clear(static_cast<bool>(I->getValue()));
   }
@@ -2332,6 +2341,7 @@ void BoundInterpreterFunction::fwdInsertTensorInst(
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
+  TYPED_INSERT(int16_t, ElemKind::Int16QTy);
   TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
 
@@ -2412,6 +2422,79 @@ void BoundInterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
     break;
   default:
     llvm_unreachable("Unsupported type for indices input of Gather.");
+  }
+}
+
+//===----------------------------------------------------------------------===//
+//                      Gather Elements
+//===----------------------------------------------------------------------===//
+
+template <typename IndexTy>
+void BoundInterpreterFunction::fwdGatherElementsInstImpl(
+    const glow::GatherElementsInst *I) {
+  Tensor *outT = getTensor(I->getDest());
+  Tensor *dataT = getTensor(I->getData());
+  auto dataDims = dataT->getType().dims();
+  Tensor *indicesT = getTensor(I->getIndices());
+  auto indicesDims = indicesT->getType().dims();
+  const auto dim = I->getDim();
+  const auto numElems = outT->getRealNumElements();
+  auto ndims = indicesDims.size();
+
+  std::vector<dim_t> ind_dim_off(ndims);
+  std::vector<dim_t> data_dim_off(ndims);
+
+  ind_dim_off[0] = 1;
+  data_dim_off[0] = 1;
+  for (dim_t i = 1; i < ndims; i++) {
+    ind_dim_off[i] =
+        std::accumulate(indicesDims.begin() + ndims - i, indicesDims.end(), 1,
+                        std::multiplies<dim_t>());
+    data_dim_off[i] =
+        std::accumulate(dataDims.begin() + ndims - i, dataDims.end(), 1,
+                        std::multiplies<dim_t>());
+  }
+
+  const auto dimPos = ndims - 1 - dim;
+  const auto elemSize = dataT->getType().getElementSize();
+  // Loop over number of elements in indices
+  for (size_t idx = 0; idx < numElems; idx++) {
+    unsigned_t offset = 0;
+    // Loop over number of dimensions to calculate offset
+    for (dim_t i = 0; i < ndims; i++) {
+      // Calculate axis index i.e. (i, j, k)
+      const dim_t dim_idx =
+          static_cast<dim_t>(std::floor(idx / ind_dim_off[i])) %
+          indicesDims[ndims - (i + 1)];
+      offset += (dimPos != i) * dim_idx * data_dim_off[i];
+    }
+    auto indIdx = indicesT->getHandle<IndexTy>().raw(idx);
+    assert(indIdx < 0 ? -indIdx <= dataDims[dim]
+                      : indIdx < dataDims[dim] &&
+                            "[GatherElements] Got out of bounds index");
+    // In case of negative indices
+    if (indIdx < 0) {
+      indIdx += dataDims[dim];
+    }
+    const auto dataRawIdx = indIdx * data_dim_off[dimPos] + offset;
+    std::copy(&dataT->getUnsafePtr()[dataRawIdx * elemSize],
+              &dataT->getUnsafePtr()[(dataRawIdx + 1) * elemSize],
+              &outT->getUnsafePtr()[idx * elemSize]);
+  }
+}
+
+void BoundInterpreterFunction::fwdGatherElementsInst(
+    const glow::GatherElementsInst *I) {
+  switch (I->getIndices()->getElementType()) {
+  case ElemKind::Int64ITy:
+    fwdGatherElementsInstImpl<int64_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdGatherElementsInstImpl<int32_t>(I);
+    break;
+  default:
+    llvm_unreachable("[GatherElements] Unsupported type for indices input of "
+                     "GatherElements.");
   }
 }
 
@@ -3711,7 +3794,16 @@ void BoundInterpreterFunction::fwdElementCmpLTEInst(
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpLTEInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpLTEInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpLTEInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3749,7 +3841,16 @@ void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpEQInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3788,7 +3889,16 @@ void BoundInterpreterFunction::fwdElementCmpNEQInst(
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpNEQInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3825,7 +3935,16 @@ void BoundInterpreterFunction::fwdElementCmpLTInstImpl(
 void BoundInterpreterFunction::fwdElementCmpLTInst(ElementCmpLTInst const *I) {
   auto *T = getTensor(I->getLHS());
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpLTInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpLTInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpLTInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 

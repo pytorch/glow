@@ -2169,6 +2169,17 @@ bool GatherNode::verify() const {
   return isValid;
 }
 
+bool GatherElementsNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(
+      getIndices(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+  isValid &= expectCompareTrue("Mismatching number of dimensions",
+                               getResult().dims().size(),
+                               getIndices().dims().size(), this);
+  return isValid;
+}
+
 bool GatherNDNode::verify() const {
   bool isValid = checkType(getResult(), getData().getElementType(), this);
   isValid &= checkType(

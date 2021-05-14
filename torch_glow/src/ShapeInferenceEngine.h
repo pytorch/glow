@@ -319,6 +319,9 @@ private:
   embeddingBagByteUnpack(const MetaStack &variableMetas);
   // Shape inference for fb::unsqueeze_n_times
   static Expected<TensorOutput> unsqueezeNTimes(const MetaStack &variableMetas);
+  // Shape inference for fb::equally_split
+  static Expected<TensorListOutput>
+  equallySplit(const MetaStack &variableMetas);
 };
 
 } // namespace glow

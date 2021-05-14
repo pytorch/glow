@@ -28,11 +28,22 @@
 namespace glow {
 
 /// Pixel value ranges.
+enum class ImgDataRange {
+  S8,
+  U8,
+  S16,
+  U16,
+};
+
+/// Pixel value ranges.
 enum class ImageNormalizationMode {
+  PassThrough,  // Values are not modified.
   kneg1to1,     // Values are in the range: -1 and 1.
   k0to1,        // Values are in the range: 0 and 1.
   k0to255,      // Values are in the range: 0 and 255.
   kneg128to127, // Values are in the range: -128 .. 127
+  U16,          // Values are in the range: 0 .. 65535
+  S16,          // Values are in the range: -32768 .. 32767
 };
 
 /// Layout of image dimensions (batch, channels, height, width).
@@ -45,6 +56,7 @@ enum class ImageLayout {
 
 /// Order of color channels (red, green, blue).
 enum class ImageChannelOrder {
+  Unspecified, // used by numpy files.
   BGR,
   RGB,
 };
@@ -66,6 +78,9 @@ extern std::vector<ImageNormalizationMode> imageNormMode;
 
 /// -image-channel-order flag.
 extern std::vector<ImageChannelOrder> imageChannelOrderOpt;
+
+/// --input-values-range.
+extern std::vector<ImgDataRange> imageDataRangeOpt;
 
 /// -image-layout flag.
 extern std::vector<ImageLayout> imageLayoutOpt;
@@ -100,7 +115,21 @@ static const std::vector<float> zeroMean(max_tensor_dimensions, 0.f);
 static const std::vector<float> oneStd(max_tensor_dimensions, 1.f);
 
 /// \returns the floating-point range corresponding to enum value \p mode.
-std::pair<float, float> normModeToRange(ImageNormalizationMode mode);
+std::pair<float, float> normModeToRange(ImageNormalizationMode mode,
+                                        ImgDataRange range);
+
+/// \returns floating-point range for input image based on specified options.
+std::pair<float, float> getImageRange(size_t idx = 0);
+
+/// Get min and max values in the input image data range.
+float getPixelValMin(ImgDataRange ImgDataRange);
+float getPixelValMax(ImgDataRange ImgDataRange);
+
+/// \returns mean for input image based on specified options.
+llvm::ArrayRef<float> getImageMean(size_t idx, size_t numChannels = 0);
+
+/// \returns stddev for input image based on specified options.
+llvm::ArrayRef<float> getImageStdDev(size_t idx, size_t numChannels = 0);
 
 /// Reads a png image header from png file \p filename and \returns a tuple
 /// containing height, width, and a bool if it is grayscale or not.
@@ -246,9 +275,11 @@ void loadImagesAndPreprocess(
 /// use special mean to normalize. \param stdev use special stddev to normalize.
 void loadNumpyImagesAndPreprocess(
     const llvm::ArrayRef<std::string> &filenames, Tensor &inputData,
-    ImageNormalizationMode imageNormMode, ImageChannelOrder imageChannelOrder,
+    ImageNormalizationMode imageNormMode, ImageChannelOrder &imageChannelOrder,
     ImageLayout imageLayout, ImageLayout inputLayout,
-    llvm::ArrayRef<float> mean, llvm::ArrayRef<float> stddev);
+    llvm::ArrayRef<float> mean, llvm::ArrayRef<float> stddev,
+    ImgDataRange &range);
+
 } // namespace glow
 
 #endif // GLOW_BASE_IMAGE_H

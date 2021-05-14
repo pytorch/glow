@@ -200,6 +200,13 @@ onnxStatus HostManagerBackend::addNetwork(
     precConfig.convertFusedToFP16 = glow::flags::ConvertFusedScaleOffsetToFP16;
     LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
   }
+  if (glow::flags::ConvertFusedScaleOffsetToFP32) {
+    precConfig.convert4BitFusedToFP32 =
+        glow::flags::ConvertFusedScaleOffsetToFP32;
+    precConfig.convert8BitFusedToFP32 =
+        glow::flags::ConvertFusedScaleOffsetToFP32;
+    LOG(INFO) << "Conversion of fused scales/offsets to fp32 enabled";
+  }
   if (glow::flags::ClipToFP16) {
     precConfig.clipFP16 = glow::flags::ClipToFP16;
     LOG(INFO) << "Clipping to fp16 enabled";
