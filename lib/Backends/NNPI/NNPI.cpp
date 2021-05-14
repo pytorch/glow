@@ -318,7 +318,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::ConvertToNodeKind: {
     auto isConversionSupportedFor = [](ElemKind kindFrom, ElemKind kindTo) {
       switch (kindFrom) {
-
       case ElemKind::Float16Ty:
         switch (kindTo) {
         case ElemKind::FloatTy:
@@ -352,6 +351,16 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::Int32ITy:
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      // NOTE: this is supported by a custom kernel
+      case ElemKind::BoolTy:
+        switch (kindTo) {
+        case ElemKind::Int32ITy:
           return true;
         default:
           return false;

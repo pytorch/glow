@@ -567,6 +567,11 @@ getReplacementMap(Function *F) {
 
   RETURN_IF_ERR(verifyReplacements(replacementMap));
 
+  if (!replacementMap.empty()) {
+    LOG(INFO) << "Found " << replacementMap.size()
+              << " ops to be replaced with custom kernels";
+  }
+
   return replacementMap;
 }
 
