@@ -209,12 +209,14 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
     return at::kBool;
   case ElemKind::Int8QTy:
     return at::kQInt8;
+  case ElemKind::UInt8QTy:
+    LOG(DFATAL) << "UInt8QTy is not supported yet.";
+    return at::kQUInt8;
   case ElemKind::Float64Ty:
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
   case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::UInt4FusedQTy:
-  case ElemKind::UInt8QTy:
   case ElemKind::UInt8ITy:
   case ElemKind::Int16QTy:
   case ElemKind::Int32QTy:
