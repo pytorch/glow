@@ -955,7 +955,7 @@ struct ToPrimOtherInputs {
   };
 };
 
-/// Indexes of aten::to.prim_other inputs.
+/// Indexes of aten::to.prim_dtype inputs.
 struct ToPrimDtypeInputs {
   enum {
     input = 0,
@@ -965,7 +965,7 @@ struct ToPrimDtypeInputs {
   };
 };
 
-/// Indexes of aten::to.prim_other inputs.
+/// Indexes of aten::to.prim_device inputs.
 struct ToPrimDeviceInputs {
   enum {
     input = 0,
@@ -6970,10 +6970,9 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
             return Error::success();
           }
         } else {
-          RETURN_ERR(glowVal.takeError());
+          RETURN_ERR(glowDtypeVal.takeError());
         }
         dtype_arg = ToPrimDeviceInputs::dtype;
-        return MAKE_ERR("aten::to.prim_device is not supported.");
       }
       // - to.dtype(Tensor self, ScalarType dtype, bool non_blocking=False,
       //            bool copy=False, MemoryFormat? memory_format=None)
