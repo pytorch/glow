@@ -16,7 +16,7 @@ class Model(nn.Module):
 
 
 torch._C._jit_set_profiling_mode(True)
-torch_glow.enableFusionPass()
+torch_glow.enableFusionPass_DO_NOT_USE_THIS()
 
 m = Model()
 

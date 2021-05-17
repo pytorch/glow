@@ -504,12 +504,17 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
         extraMetadataProps[clipQuantRangeToFP16Key] = "1";
       }
       Error writeErr = Error::empty();
+      // Note: If cctx.skipProvisioning then we want to serialize all meta info
+      // as we are likely doing AOT optimization. Otherwise do not provide the
+      // meta info as the model does not need to be reloaded.
       ONNXModelWriter onnxWR(
           loc, nodeList, 7, 9, &writeErr,
-          /* textMode */ true, /* zipMode */ false,
-          /* includeConstantData */ false, extraMetadataProps, record,
-          cctx.backendOpts.backendSpecificNodeInfo, &cctx.loadedPHNames,
-          &cctx.staticPlaceholderTypesForAOT);
+          /* textMode */ true,
+          /* zipMode */ cctx.useZipModeForSerializeCompiledDAG,
+          /* includeConstantData */ cctx.saveConstantInSerializeCompiledDAG,
+          extraMetadataProps, record, cctx.backendOpts.backendSpecificNodeInfo,
+          cctx.skipProvisioning ? &cctx.loadedPHNames : nullptr,
+          cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr);
       RETURN_IF_ERR(writeErr);
     }
 
@@ -798,8 +803,8 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
   executor_->freePool(networkIterator->second.dag.root.get());
   for (auto &node : nodes) {
     for (auto device : node->deviceRuntimeInfos) {
-      Error evictErr =
-          provisioner_->evictFunction(node->name, devices_[device.first].get());
+      Error evictErr = provisioner_->evictFunction(
+          node->name, devices_[device.first].get(), node->replicationCount);
       err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.

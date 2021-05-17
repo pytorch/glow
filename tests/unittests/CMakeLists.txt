@@ -349,7 +349,7 @@ target_link_libraries(ImageLoaderTest
 add_glow_test(NAME ImageLoaderTest
                         COMMAND ${GLOW_BINARY_DIR}/tests/ImageLoaderTest
                            --gtest_output=xml:LoaderTest.xml --test_skip_cmd_args
-                        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}) 
+                        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 endif()
 
 if(GLOW_WITH_CPU)
@@ -527,6 +527,7 @@ foreach(backend ${GLOW_BACKENDS})
                    "${backend}"
                    EXPENSIVE
                    PRIVATE
+                   onnxifi-glow-lib
                    Partitioner
                    HostManager)
   add_backend_test(TEST TraceEventsTest BACKEND "${backend}" UNOPT)
@@ -611,6 +612,18 @@ target_link_libraries(StatsExporterTest
 add_glow_test(StatsExporterTest
               ${GLOW_BINARY_DIR}/tests/StatsExporterTest
                   --gtest_output=xml:StatsExporterTest.xml)
+
+add_executable(TraceExporterTest
+               TraceExporterTest.cpp)
+target_link_libraries(TraceExporterTest
+                      PRIVATE
+                        Runtime
+                        gtest
+                        TestMain
+                        glog::glog)
+add_glow_test(TraceExporterTest
+              ${GLOW_BINARY_DIR}/tests/TraceExporterTest
+                  --gtest_output=xml:TraceExporterTest.xml)
 
 add_executable(TensorsTest
                TensorsTest.cpp)

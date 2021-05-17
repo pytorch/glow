@@ -23,6 +23,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <glog/logging.h>
 
 namespace glow {
 
@@ -38,8 +39,8 @@ void TraceEvent::dumpTraceEvents(
     std::list<TraceEvent> &events, llvm::StringRef filename,
     const std::string &processName,
     const std::map<int, std::string> &threadNames) {
-  llvm::errs() << "dumping " << events.size() << " trace events to "
-               << filename.str() << ".\n";
+  LOG(INFO) << "dumping " << events.size() << " trace events to "
+            << filename.str();
 
   auto process = processName.empty() ? "glow" : processName;
   std::error_code EC;
@@ -47,7 +48,7 @@ void TraceEvent::dumpTraceEvents(
 
   // Print an error message if the output stream can't be created.
   if (EC) {
-    llvm::errs() << "Unable to open file " << filename << "\n";
+    LOG(ERROR) << "Unable to open file " << filename.str();
     return;
   }
 
@@ -208,6 +209,15 @@ void TraceContext::merge(TraceContext *other) {
   auto &names = other->getThreadNames();
   threadNames_.insert(names.begin(), names.end());
   names.clear();
+}
+
+void TraceContext::copy(TraceContext *other) {
+  std::lock_guard<std::mutex> l(lock_);
+  auto &newEvents = other->getTraceEvents();
+  std::copy(newEvents.begin(), newEvents.end(),
+            std::back_inserter(getTraceEvents()));
+  auto &names = other->getThreadNames();
+  threadNames_.insert(names.begin(), names.end());
 }
 
 ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, TraceLevel level,

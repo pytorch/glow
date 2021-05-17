@@ -22,7 +22,7 @@ print(foo.graph_for(x, y))
 
 jit_res = foo(x, y)
 
-torch_glow.enableFusionPass()
+torch_glow.enableFusionPass_DO_NOT_USE_THIS()
 
 
 @torch.jit.script

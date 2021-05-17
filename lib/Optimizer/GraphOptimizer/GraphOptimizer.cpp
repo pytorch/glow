@@ -1967,6 +1967,11 @@ bool OptimizeReduceMean::run(Function *F, const CompilationContext &cctx) {
           RM->getName().str() + ".transposeNCHW2NHWC", in, NCHW2NHWC, "NHWC");
       auto *AP = F->createAvgPool(RM->getName().str() + ".avgPool", TR1,
                                   kernels, strides, pads);
+      if (AP->getResult().getType()->isQuantizedType()) {
+        auto TypeAP = F->getParent()->uniqueTypeWithNewQuantParams(
+            AP->getResult().getType(), RM->getResult().getType());
+        AP->getResult().setType(TypeAP);
+      }
       auto *TR2 = F->createTranspose(
           RM->getName().str() + ".transposeNHWC2NCHW", AP, NHWC2NCHW, "NCHW");
 
@@ -2129,6 +2134,16 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   return true;
 }
 
+/// Gets Constant or returns nullptr if input is not Constant.
+/// Skips QuantizeNode if present.
+static Constant *getConstant(const NodeValue &NV) {
+  Node *N = NV.getNode();
+  if (isa<QuantizeNode>(N)) {
+    N = N->getNthInput(QuantizeNode::InputIdx);
+  }
+  return dyn_cast<Constant>(N);
+}
+
 bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
@@ -2137,44 +2152,71 @@ bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
 
   // For each node:
   for (auto &node : nodes) {
-    // Merge the Batch Normalization operation into the convolution that comes
-    // before it by updating the weights of the filter and bias.
-    if (auto *BN = dyn_cast<BatchNormalizationNode>(&node)) {
-      auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
-      if (!CV) {
-        continue;
-      }
-
-      // We can't modify conv operators that have multiple users.
-      if (!CV->hasOneUse()) {
-        continue;
-      }
-
-      bool normalizationHappened = false;
-      switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
-      case ElemKind::FloatTy:
-        normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
-        break;
-      case ElemKind::Float16Ty:
-        normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
-        break;
-      case ElemKind::BFloat16Ty:
-        normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
-        break;
-      default:
-        llvm_unreachable("Type not supported");
-      }
-
-      if (!normalizationHappened) {
-        continue;
-      }
-
-      // Take the predicate of what was expected for the output.
-      CV->setPredicate(BN->getPredicate());
-      BN->getResult().replaceAllUsesOfWith(CV);
-      changed = true;
+    auto *BN = dyn_cast<BatchNormalizationNode>(&node);
+    if (!BN) {
       continue;
     }
+
+    // Remove BN if mean,var,eps,scale,beta values make it redundant as per
+    // expression (X - mean) * (1.0 / sqrt(var + eps)) * scale + bias.
+    float scale, bias, mean, var;
+    auto *scaleC = getConstant(BN->getScale());
+    auto *biasC = getConstant(BN->getBias());
+    auto *meanC = getConstant(BN->getMean());
+    auto *varC = getConstant(BN->getVar());
+    if (scaleC && biasC && meanC && varC &&
+        isUniformConstant<float>(*scaleC, scale) &&
+        isUniformConstant<float>(*biasC, bias) &&
+        isUniformConstant<float>(*meanC, mean) &&
+        isUniformConstant<float>(*varC, var)) {
+      float eps = BN->getEpsilon();
+      // Relaxed redundancy check based on reduced BN expression so that A
+      // is 1.0 and B is 0.0  in Y = A*X + B where,
+      // A = scale * (1.0 / (sqrt(var + eps))
+      // B = (bias - mean * (1.0 / sqrt(var + eps)) * scale)
+      if (bias == mean && (std::sqrt(var + eps) == scale)) {
+        BN->getResult().replaceAllUsesOfWith(BN->getInput());
+        changed = true;
+        continue;
+      }
+    }
+
+    // Merge the Batch Normalization operation into the convolution that comes
+    // before it by updating the weights of the filter and bias.
+    auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
+    if (!CV) {
+      continue;
+    }
+
+    // We can't modify conv operators that have multiple users.
+    if (!CV->hasOneUse()) {
+      continue;
+    }
+
+    bool normalizationHappened = false;
+    switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
+    case ElemKind::FloatTy:
+      normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
+      break;
+    case ElemKind::Float16Ty:
+      normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
+      break;
+    case ElemKind::BFloat16Ty:
+      normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
+      break;
+    default:
+      llvm_unreachable("Type not supported");
+    }
+
+    if (!normalizationHappened) {
+      continue;
+    }
+
+    // Take the predicate of what was expected for the output.
+    CV->setPredicate(BN->getPredicate());
+    BN->getResult().replaceAllUsesOfWith(CV);
+    changed = true;
+    continue;
   } // For all nodes in the graph.
   return changed;
 }
@@ -3505,16 +3547,6 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
   return changed;
 }
 
-/// Gets Constant or returns nullptr if input is not Constant.
-/// Skips QuantizeNode if present.
-static Constant *getConstant(const NodeValue &NV) {
-  Node *N = NV.getNode();
-  if (isa<QuantizeNode>(N)) {
-    N = N->getNthInput(QuantizeNode::InputIdx);
-  }
-  return dyn_cast<Constant>(N);
-}
-
 /// Eliminate nodes which don't do anything useful.
 bool EliminateNoop::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -4002,8 +4034,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
   bool changed = false;
 
   // Change a quantized result type qResult to account for the range from clip.
-  auto updateQuantizeNodeType = [](Function *F, NodeValue qResult,
-                                   ClipNode *clip, bool skipIfQuantParamChange,
+  auto updateQuantizeNodeType = [](Function *F, const CompilationContext &cctx,
+                                   NodeValue qResult, ClipNode *clip,
+                                   bool skipIfQuantParamChange,
                                    bool allowQParamChange) {
     const auto qMinMax = qResult.getType()->getQuantizedValueRange();
     const float newMin = std::max(clip->getMin(), qMinMax.first);
@@ -4028,8 +4061,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     // Replace the old quantized type with the new type with different
     // min/max.
     const TypeRef oldTy = qResult.getType();
-    const auto qParams =
-        quantization::chooseQuantizationParams({newMin, newMax});
+    const auto qParams = quantization::chooseQuantizationParams(
+        {newMin, newMax}, cctx.precisionConfig.quantConfig.schema,
+        oldTy->getElementType());
     const TypeRef newTy = F->getParent()->uniqueType(
         oldTy->getElementType(), oldTy->dims(), qParams.scale, qParams.offset);
     qResult.getNode()->setType(qResult.getResNo(), newTy);
@@ -4052,7 +4086,7 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
 
       // Try to update the quantize's type, otherwise skip this one.
       if (!updateQuantizeNodeType(
-              F, qResult, clip, skipIfQuantParamChange,
+              F, cctx, qResult, clip, skipIfQuantParamChange,
               cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
@@ -4077,7 +4111,7 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
 
       // Try to update the quantize's type, otherwise skip this one.
       if (!updateQuantizeNodeType(
-              F, QN->getResult(), clip, skipIfQuantParamChange,
+              F, cctx, QN->getResult(), clip, skipIfQuantParamChange,
               cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
@@ -4279,7 +4313,8 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
       } else {
         // Use the same type as the FC for the Relu but with 0 as min.
         const auto qParams = quantization::chooseQuantizationParams(
-            {0, FCTy->getQuantizedValueRange().second});
+            {0, FCTy->getQuantizedValueRange().second},
+            cctx.precisionConfig.quantConfig.schema, FCTy->getElementType());
         qReluTy =
             F->getParent()->uniqueType(FCTy->getElementType(), FCTy->dims(),
                                        qParams.scale, qParams.offset);
@@ -5158,6 +5193,18 @@ bool RaiseClipsAboveShapeNodes::run(Function *F,
       changed = true;
       continue;
     }
+
+    // Sink Tile below Clip.
+    if (TileNode *TN = dyn_cast<TileNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), TN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      TileNode *newTN = F->createTile(TN->getName(), newCN->getResult(),
+                                      TN->getCount(), TN->getAxis());
+      CN->getResult().replaceAllUsesOfWith(newTN->getResult());
+      oneLessUser.insert(TN->getInput().getNode());
+      changed = true;
+      continue;
+    }
   } // For all nodes in the graph.
 
   return changed;
@@ -5573,6 +5620,69 @@ bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
         F->createSwish(SN->getName().str() + "_int", DN->getInput(),
                        QN->getResult().getType());
     QN->getResult().replaceAllUsesOfWith(newSN);
+    changed = true;
+  }
+  return changed;
+}
+
+/// Fold Exp + ReduceSum + Div into Softmax
+///    IN
+///     |
+///    Exp                IN
+///   /   \                |
+///  |  ReduceSum  -->  Softmax
+///   \   /                |
+///    Div                OUT
+///     |
+///    OUT
+bool FoldExpSumDivIntoSoftmax::run(Function *F,
+                                   const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *EN = dyn_cast<ExpNode>(&N);
+    if (!EN || EN->getNumUsers() != 2) {
+      continue;
+    }
+
+    DivNode *DN = nullptr;
+    BatchedReduceAddNode *RSN = nullptr;
+
+    auto *user1 = EN->getUsers().front().getUser();
+    auto *user2 = EN->getUsers().back().getUser();
+
+    if (isa<DivNode>(user1) && isa<BatchedReduceAddNode>(user2)) {
+      DN = cast<DivNode>(user1);
+      RSN = cast<BatchedReduceAddNode>(user2);
+    } else if (isa<DivNode>(user2) && isa<BatchedReduceAddNode>(user1)) {
+      DN = cast<DivNode>(user2);
+      RSN = cast<BatchedReduceAddNode>(user1);
+    } else {
+      continue;
+    }
+
+    if (RSN->getNumUsers() != 1) {
+      continue;
+    }
+
+    auto *broadcastNode = getOnlyUser(*RSN);
+    if (broadcastNode == nullptr) {
+      continue;
+    }
+    auto *tempDN = getOnlyUser(*broadcastNode);
+    // Ensure that the inputs to the DivNode are Exp and ReduceSum.
+    if (DN != tempDN) {
+      continue;
+    }
+
+    auto axes = EN->getInput().dims().vec();
+    axes.back() = 1;
+    auto *CN = F->getParent()->createConstant(glow::ElemKind::Int64ITy, axes,
+                                              "selected");
+
+    auto *SM = F->createSoftMax("softmax", EN->getInput(), CN);
+    DN->getResult().replaceAllUsesOfWith(SM);
     changed = true;
   }
   return changed;
@@ -6246,7 +6356,7 @@ parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
                          currInput, sliceDimsStart, sliceDimsEnd);
       clone->setNthInput(j, inputSlice);
 
-      newNodes[i] = clone;
+      newNodes[i] = NodeValue(clone, resultIdx);
     }
   }
 
@@ -6404,12 +6514,37 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                 ChannelwiseQuantizedConvolutionNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::ConvolutionNodeKind: {
+        splitDims[ConvolutionNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ConvolutionNode::InputIdx,
+                    ConvolutionNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::AdaptiveAvgPoolNodeKind: {
         splitDims[AdaptiveAvgPoolNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, AdaptiveAvgPoolNode::InputIdx,
                     AdaptiveAvgPoolNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ROIAlignNodeKind: {
+        splitDims[ROIAlignNode::BoxesIdx] = 0;
+        splitDims[ROIAlignNode::BatchIndicesIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ROIAlignNode::BoxesIdx,
+                    ROIAlignNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MaxPoolNodeKind: {
+        splitDims[MaxPoolNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, MaxPoolNode::InputIdx,
+                    MaxPoolNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ReshapeNodeKind: {
@@ -6464,6 +6599,15 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           splitDims, 0));
         break;
       }
+      case Kinded::Kind::PowNodeKind: {
+        splitDims[PowNode::LHSIdx] = 0;
+        splitDims[PowNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          PowNode::LHSIdx, PowNode::ResultIdx,
+                                          splitDims, 0));
+        break;
+      }
       case Kinded::Kind::SelectNodeKind: {
         splitDims[SelectNode::LHSIdx] = 0;
         splitDims[SelectNode::RHSIdx] = 0;
@@ -6472,6 +6616,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           SelectNode::LHSIdx,
                                           SelectNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ExpNodeKind: {
+        splitDims[ExpNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ExpNode::InputIdx, ExpNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::SigmoidNodeKind: {
@@ -6512,6 +6664,24 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           SwishNode::InputIdx,
                                           SwishNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MaxNodeKind: {
+        splitDims[MaxNode::LHSIdx] = 0;
+        splitDims[MaxNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MaxNode::LHSIdx, MaxNode::ResultIdx,
+                                          splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MinNodeKind: {
+        splitDims[MinNode::LHSIdx] = 0;
+        splitDims[MinNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MinNode::LHSIdx, MinNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::TransposeNodeKind: {
@@ -6568,6 +6738,23 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
                     BatchedReduceAddNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::BatchedReduceMeanNodeKind: {
+        auto *BR = llvm::cast<BatchedReduceMeanNode>(curNode);
+        const auto &BRaxes = BR->getAxes();
+        if (std::find(BRaxes.begin(), BRaxes.end(), 0) != BRaxes.end()) {
+          LOG(INFO) << "BatchedReduceMean along the first dimension not "
+                       "parallelized. Current node: "
+                    << BR->getDebugDesc();
+        } else {
+          splitDims[BatchedReduceMeanNode::BatchIdx] = 0;
+          ASSIGN_VALUE_OR_RETURN_ERR(
+              CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                            BatchedReduceMeanNode::BatchIdx,
+                                            BatchedReduceMeanNode::ResultIdx,
+                                            splitDims, 0));
+        }
         break;
       }
       case Kinded::Kind::ConcatNodeKind: {
@@ -6855,8 +7042,8 @@ void glow::updateQuantReluTypes(Function *F) {
     if (qRange.first >= 0) {
       continue;
     }
-    const auto qParams =
-        quantization::chooseQuantizationParams({0, qRange.second});
+    const auto qParams = quantization::chooseQuantizationParams(
+        {0, qRange.second}, quantization::Asymmetric, RNTy->getElementType());
     const TypeRef qReluTy = F->getParent()->uniqueType(
         RNTy->getElementType(), RNTy->dims(), qParams.scale, qParams.offset);
     RN->setType(ReluNode::ResultIdx, qReluTy);
@@ -6909,8 +7096,8 @@ void glow::updateQuantReluTypes(Function *F) {
     if (qRange.first >= 0) {
       continue;
     }
-    const auto qParams =
-        quantization::chooseQuantizationParams({0, qRange.second});
+    const auto qParams = quantization::chooseQuantizationParams(
+        {0, qRange.second}, quantization::Asymmetric, T->getElementType());
     const TypeRef qReluTy = F->getParent()->uniqueType(
         T->getElementType(), T->dims(), qParams.scale, qParams.offset);
     N->setType(resultIdx, qReluTy);

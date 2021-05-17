@@ -55,18 +55,6 @@ llvm::cl::opt<bool, /* ExternalStorage */ true> runDisabledTestsI(
 using llvm::cast;
 
 namespace {
-// Helpers for creating and intializing placeholders from tensors.
-static Placeholder *createPlaceholder(Module &mod,
-                                      PlaceholderBindings &bindings,
-                                      Tensor *tensor, llvm::StringRef name,
-                                      const std::string layout = ANY_LAYOUT) {
-  auto *P = mod.createPlaceholder(tensor->getElementType(), tensor->dims(),
-                                  name, false, layout);
-  auto *PTensor = bindings.allocate(P);
-  PTensor->assign(tensor);
-
-  return P;
-}
 
 static Placeholder *createQuantizedPlaceholder(Module &mod,
                                                PlaceholderBindings &bindings,
@@ -450,14 +438,37 @@ unsigned countNodeKind(Function *F, Kinded::Kind kind) {
   return count;
 }
 
-void inferIntLookupTableNet(Tensor *input, Tensor *out,
-                            llvm::ArrayRef<int8_t> table,
-                            llvm::StringRef kind) {
+void inferIntLookupTableNetInt8(Tensor *input, Tensor *out,
+                                llvm::ArrayRef<int8_t> table,
+                                llvm::StringRef kind) {
   PlaceholderBindings bindings;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto outTy = mod.uniqueType(ElemKind::Int8QTy, {(dim_t)input->size()}, 3, 3);
+  auto var = createQuantizedPlaceholder(mod, bindings, input,
+                                        input->getType().getScale(),
+                                        input->getType().getOffset(), "var");
+  auto *lookupTable = F->createIntLookupTable("lookuptable", var, table, outTy);
+  auto *result = F->createSave("ret", lookupTable);
+  auto *resultTensor = bindings.allocate(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+
+  updateInputPlaceholders(bindings, {var}, {input});
+  EE.run(bindings);
+  out->assign(resultTensor);
+}
+
+void inferIntLookupTableNetInt16(Tensor *input, Tensor *out,
+                                 llvm::ArrayRef<int16_t> table,
+                                 llvm::StringRef kind) {
+  PlaceholderBindings bindings;
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto outTy = mod.uniqueType(ElemKind::Int16QTy, {(dim_t)input->size()}, 3, 3);
   auto var = createQuantizedPlaceholder(mod, bindings, input,
                                         input->getType().getScale(),
                                         input->getType().getOffset(), "var");
@@ -1462,4 +1473,15 @@ Placeholder *createFusedRowwiseQuantizedPlaceholder(Module &mod,
 
   return ph;
 }
+
+// Helper for creating and intializing placeholders from tensors.
+Placeholder *createPlaceholder(Module &mod, PlaceholderBindings &bindings,
+                               Tensor *tensor, llvm::StringRef name,
+                               const std::string &layout) {
+  auto *P = mod.createPlaceholder(&tensor->getType(), name, false, layout);
+  auto *PTensor = bindings.allocate(P);
+  PTensor->assign(tensor);
+  return P;
+}
+
 } // namespace glow

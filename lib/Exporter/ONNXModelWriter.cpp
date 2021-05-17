@@ -158,6 +158,13 @@ void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, TypeRef ty,
                     getTypeAttrID(ioNum, shapeSignifier, isInput, addPrefix),
                     ty->dims());
 
+  // Non-standard strides need to be serialized.
+  if (!ty->hasStandardStrides()) {
+    addValueAttribute(
+        proto, getTypeAttrID(ioNum, stridesSignifier, isInput, addPrefix),
+        ty->strides());
+  }
+
   // Write out scale/offset if quantized ElemKind.
   if (isQuantizedElemKind(ty->getElementType())) {
     addValueAttribute(proto,
@@ -836,13 +843,19 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
   // in inputValueInfos_ and outputValueInfos_. Now we write it all out in order
   // according to indices provided in loadedPHNames_.
   if (loadedPHNames_) {
-    RETURN_ERR_IF_NOT(
-        inputValueInfos_.size() + outputValueInfos_.size() ==
-            loadedPHNames_->size(),
-        strFormat("Number of buffered inputs and outputs %lu didn't match the "
-                  "number of loadedPHNames %lu",
-                  inputValueInfos_.size() + outputValueInfos_.size(),
-                  loadedPHNames_->size()));
+    const bool ioNumMismatch =
+        (inputValueInfos_.size() + outputValueInfos_.size() !=
+         loadedPHNames_->size());
+
+    // If total number of inputs and outputs doesn't match the number of
+    // placeholders, then log an error message and let the next for-loop find
+    // the culprits.
+    if (ioNumMismatch) {
+      LOG(ERROR) << "Number of buffered inputs and outputs "
+                 << (inputValueInfos_.size() + outputValueInfos_.size())
+                 << " didn't match the number of loadedPHNames "
+                 << loadedPHNames_->size();
+    }
 
     // If we have the loaded PH names map, then we need to reorder the inputs
     // and outputs to follow the same order as provided in the loadedPHNames_.
@@ -859,6 +872,12 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
         return MAKE_ERR("PH must either be in inputs or outputs: " +
                         PH->getName().str());
       }
+    }
+
+    // If didn't find bad placeholders, then it must be some bad inputs/outputs.
+    if (ioNumMismatch) {
+      return MAKE_ERR("Found some inputs/outputs that don't have corresponding "
+                      "placeholders");
     }
 
     // Now have IO in order matching loadedPHNames_, so finally write them out.
@@ -1150,6 +1169,24 @@ static void addQuantParamsToDocString(T *out, const Type &type) {
   addAttrToDocString(out, qOffsetSignifier, std::to_string(type.getOffset()));
 }
 
+/// Add strides to the doc_string in \p out based on \p type.
+template <typename T>
+static void addStridesToDocString(T *out, const Type &type) {
+  // Non-standard strides need to be serialized.
+  if (type.hasStandardStrides()) {
+    return;
+  }
+  const auto &strides = type.strides();
+  std::string stridesStr;
+  std::string delim;
+  for (const auto &stride : strides) {
+    stridesStr.append(delim);
+    stridesStr.append(std::to_string(stride));
+    delim = ",";
+  }
+  addAttrToDocString(out, stridesSignifier, stridesStr);
+}
+
 void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
                                   bool useGlowCustomOps, bool includeData) {
   const auto &type = T.getType();
@@ -1165,6 +1202,7 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
 
   if (useGlowCustomOps) {
     addAttrToDocString(out, elemKindSignifier, type.getElementName());
+    addStridesToDocString(out, type);
   }
 
   if (type.isQuantizedType()) {
@@ -1196,6 +1234,7 @@ ONNXModelWriter::createProtoForIO(const Placeholder *PH, bool isInput) {
 
   if (useGlowCustomOps_) {
     // Write out any meta information we need to for the Placeholder.
+    addStridesToDocString(valueProto, *PH->getType());
     addAttrToDocString(valueProto, staticSignifier,
                        std::to_string(PH->isStatic()));
     addAttrToDocString(valueProto, trainableSignifier,
@@ -1350,6 +1389,11 @@ Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
   addValueAttribute(proto, "perm", node->getShuffle());
 
   return writeAllWithNode("Transpose", node, graph, proto);
+}
+
+Error ONNXModelWriter::writeCollectRpnProposals(
+    const CollectRpnProposalsNode *node, GraphType &graph) {
+  return writeAllWithNode("CollectRpnProposals", node, graph, graph.add_node());
 }
 
 Error ONNXModelWriter::writeFlip(const FlipNode *node, GraphType &graph) {
@@ -1838,6 +1882,13 @@ Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
   } else {
     return writeAllWithNode("Gather", node, graph, proto);
   }
+}
+
+Error ONNXModelWriter::writeGatherElements(const GatherElementsNode *node,
+                                           GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  return writeAllWithNode("GatherElements", node, graph, proto);
 }
 
 Error ONNXModelWriter::writeGatherND(const GatherNDNode *node,
@@ -2331,6 +2382,8 @@ DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(EmbeddingBag)
 DEF_ALL_WRITER_NODE(Embedding)
 DEF_ALL_WRITER_NODE(BitwiseNot)
+DEF_ALL_WRITER_NODE(GaussianFill)
+DEF_ALL_WRITER_NODE(NonZero)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpNEQ)
@@ -2343,6 +2396,7 @@ DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
 DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(NonMaxSuppression)
+DEF_ALL_WRITER_NODE(HardSwish)
 DEF_ALL_WRITER_NODE(ConvTranspose)
 DEF_ALL_WRITER_NODE(Logit)
 DEF_ALL_WRITER_NODE(Truncate)
@@ -2409,6 +2463,25 @@ Error ONNXModelWriter::writeIntLookupTable(const IntLookupTableNode *node,
   }
 
   return writeAllWithNode("IntLookupTable", node, graph, proto);
+}
+
+Error ONNXModelWriter::writeLookupTable(const LookupTableNode *node,
+                                        GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "shape", node->getResult().dims());
+  NodeValue table = node->getTable();
+  if (Constant *c = llvm::dyn_cast<Constant>(table.getNode())) {
+    auto handle = c->getHandle<int8_t>();
+    auto begin = &handle.raw(0);
+    addValueAttribute(
+        proto, "values",
+        llvm::ArrayRef<int8_t>(begin, begin + handle.actualSize()));
+  } else {
+    return MAKE_ERR("Mapping must be a constant type.");
+  }
+
+  return writeAllWithNode("LookupTable", node, graph, proto);
 }
 
 Error ONNXModelWriter::writeLengthsRangeFill(const LengthsRangeFillNode *node,

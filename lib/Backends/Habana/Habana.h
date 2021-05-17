@@ -26,6 +26,7 @@
 #include "synapse.h"
 
 #include <string>
+#include <vector>
 
 namespace glow {
 
@@ -42,6 +43,7 @@ public:
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "Habana"; }
   static unsigned numDevices();
+  static std::vector<unsigned> scanDeviceIDs();
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;

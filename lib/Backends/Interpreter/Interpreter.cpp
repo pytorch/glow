@@ -78,8 +78,6 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
 
 bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
-  case Kinded::Kind::BatchedReduceMinNodeKind:
-  case Kinded::Kind::BatchedReduceMaxNodeKind:
   case Kinded::Kind::BatchedReduceProdNodeKind:
   case Kinded::Kind::FmodNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -93,6 +91,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::ClipNodeKind:
+  case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::BatchedReduceMaxNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
@@ -212,7 +212,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::AsinNodeKind:
   case Kinded::Kind::AtanNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy});
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::PowNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -243,9 +243,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ConcatNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
-         ElemKind::Int8QTy, ElemKind::Int32ITy, ElemKind::Int64ITy,
-         ElemKind::BoolTy});
-
+         ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32ITy,
+         ElemKind::Int64ITy, ElemKind::BoolTy});
+  case Kinded::Kind::NonZeroNodeKind:
+    return NI.getInElemTy(NonZeroNode::CondIdx) == ElemKind::BoolTy &&
+           NI.getOutElemTy(NonZeroNode::ResultIdx) == ElemKind::Int32ITy;
   case Kinded::Kind::SelectNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -259,18 +261,24 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::XorNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::BoolTy});
 
-  case Kinded::Kind::AbsNodeKind:
   case Kinded::Kind::SignNodeKind:
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
   case Kinded::Kind::SqrtNodeKind:
   case Kinded::Kind::RsqrtNodeKind:
   case Kinded::Kind::ReciprocalNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy});
+
   case Kinded::Kind::SinNodeKind:
   case Kinded::Kind::CosNodeKind:
   case Kinded::Kind::ErfNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy});
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+
+  case Kinded::Kind::AbsNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::NegNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -287,7 +295,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::CmpLTENodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
-                ElemKind::Int8QTy, ElemKind::Int32ITy, ElemKind::Int64ITy},
+                ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32ITy,
+                ElemKind::Int64ITy},
                {}, {CmpEQNode::ResultIdx}) &&
            (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
 
@@ -433,8 +442,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
                {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
            (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
-           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
+            ElemKind::Int32ITy) &&
+           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to
@@ -472,9 +481,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
     if (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) !=
-            ElemKind::Int64ITy ||
+            ElemKind::Int32ITy ||
         NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) !=
-            ElemKind::Int64ITy) {
+            ElemKind::Int32ITy) {
       return false;
     }
 
@@ -556,6 +565,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return ((NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int32ITy) ||
             (NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int64ITy));
 
+  case Kinded::Kind::GatherElementsNodeKind:
+    // Note: Data and Result can be any data type, but must match.
+    return (NI.getInElemTy(GatherNode::DataIdx) ==
+            NI.getOutElemTy(GatherNode::ResultIdx)) &&
+           ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
+            (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
+
   case Kinded::Kind::BatchOneHotNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -607,7 +623,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32QTy});
 
   case Kinded::Kind::IntLookupTableNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int8QTy, ElemKind::Int16QTy});
 
   case Kinded::Kind::ConvertToNodeKind: {
     auto isConversionSupportedFor = [](ElemKind kind) {
@@ -641,8 +658,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int32ITy));
 
   case Kinded::Kind::ScatterDataNodeKind:
-    return (NI.getInElemTy(ScatterDataNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
+    return ((NI.getInElemTy(ScatterDataNode::IndicesIdx) ==
+             ElemKind::Int32ITy) ||
+            (NI.getInElemTy(ScatterDataNode::IndicesIdx) ==
+             ElemKind::Int64ITy)) &&
            (NI.getOutElemTy(ScatterDataNode::ResultIdx) ==
             NI.getInElemTy(ScatterDataNode::DataIdx)) &&
            (NI.getOutElemTy(ScatterDataNode::ResultIdx) ==
@@ -729,6 +748,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     // These work regardless of the underlying type.
     return true;
 
+  case Kinded::Kind::GaussianFillNodeKind:
+    return NI.getOutElemTy(GaussianFillNode::ResultIdx) == ElemKind::Float16Ty;
+
   case Kinded::Kind::NonMaxSuppressionNodeKind:
     return NI.getInElemTy(NonMaxSuppressionNode::BoxesIdx) ==
                ElemKind::FloatTy &&
@@ -766,6 +788,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty},
                /*ignoreIn*/ {ROIAlignNode::BatchIndicesIdx});
+
+  case Kinded::Kind::CollectRpnProposalsNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
 
   case Kinded::Kind::BBoxTransformNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

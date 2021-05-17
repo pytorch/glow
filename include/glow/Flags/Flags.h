@@ -25,6 +25,7 @@ namespace flags {
 
 // Generic Constants
 extern int32_t NumDevices;
+extern bool ScanDevices;
 extern bool SaturateHost;
 extern bool EnableQuantParamChanges;
 extern size_t MaxActiveRequests;
@@ -42,6 +43,7 @@ extern bool DisableLayoutVerifying;
 
 // FP16 Constants
 extern bool ConvertToFP16;
+extern bool SkipBiasFp32tofp16Convert;
 extern bool ConvertPlaceholdersToFP16;
 extern bool ConvertConstantsToFP16;
 extern bool ConvertFusedScaleOffsetToFP16;
@@ -50,6 +52,9 @@ extern bool SkipInputsOnClipToFP16;
 extern bool ForceSLSToFP16Accum;
 extern bool ClipZeroScaleFP16;
 extern bool ClipQuantRangeToFP16;
+
+// FP32 constants
+extern bool ConvertFusedScaleOffsetToFP32;
 
 // Debug Constants
 extern int32_t NumDebugTracesPerDump;
@@ -71,6 +76,7 @@ extern bool UseSparseNNPartitioningScheme;
 extern bool SparseNNPartitioningAddSLSConcats;
 extern bool SparseNNPartitioningBalancePerfModel;
 extern bool SparseNNPartitioningPairLNWithSLS;
+extern bool SparseNNPartitioningPairTileWithSLS;
 
 // Dag Optimizer Constants
 extern bool UseDAGOptimizer;
@@ -94,9 +100,12 @@ extern bool LowerAllBatchMatMul;
 extern bool AcceptUnarySLS;
 extern bool SpecializeAllOneSLS;
 extern bool DisableTransforms;
-extern bool EnablePrivateTransforms;
+extern bool EnableCustomIAKernels;
+extern bool EnableCustomDSPKernels;
 extern bool DumpCompilerData;
 extern bool UsePerPartitionIcetConfig;
+extern std::string InjectedIAOpKernelPath;
+extern bool DumpCustomKernelFiles;
 } // namespace flags
 } // namespace nnpi
 } // namespace glow
@@ -124,6 +133,8 @@ extern std::string BackendName;
 extern bool SaveModel;
 extern bool SaveIO;
 extern bool SaveDAG;
+extern bool SaveDAGWithConstants;
+extern bool SaveDAGInZipMode;
 } // namespace flags
 } // namespace onnxifi
 } // namespace glow
@@ -145,14 +156,17 @@ extern bool EnableDRT;
 extern unsigned DeviceInitTimeoutMs;
 extern uint64_t BigTableThresholdBytes;
 extern unsigned SanitizeInputsPercent;
+extern unsigned NumCompilationThreads;
 } // namespace flags
 } // namespace runtime
 } // namespace glow
 
 /// Flags which may have their default values overridden:
 DECLARE_bool(glow_global_fp16);
+DECLARE_bool(glow_skip_bias_fp32tofp16_convert);
 DECLARE_bool(glow_clip_fp16);
 DECLARE_bool(glow_global_fused_scale_offset_fp16);
+DECLARE_bool(glow_global_fused_scale_offset_fp32);
 DECLARE_int32(glow_snn_partitioning_kbytes_per_card);
 DECLARE_int32(glow_snn_partitioning_num_cores_sls);
 DECLARE_int32(glow_snn_partitioning_num_cores_other);

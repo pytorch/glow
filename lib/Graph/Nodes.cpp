@@ -616,6 +616,10 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
   return isValid;
 }
 
+bool HardSwishNode::verify() const {
+  return checkSameType(getInput(), getResult(), this);
+}
+
 bool PadNode::verify() const {
   // Pad is currently only supported for constant padding.
   return expectCompareTrue("only the 'constant' mode is currrently supported",
@@ -1882,8 +1886,17 @@ bool IntLookupTableNode::verify() const {
   isValid &= expectCompareTrue("Mapping should be 1 dimensional",
                                getMapping().dims().size(), size_t(1), this);
   isValid &= expectCompareTrue(
-      "Mapping should cover whole quantized range", getMapping().dims()[0],
-      (dim_t)(256 * getResult().getType()->getElementSize()), this);
+      "Mapping should cover the whole input quantized range",
+      getMapping().dims()[0],
+      (dim_t)(getInput().getType()->getQuantizedValueCount()), this);
+  isValid &= expectCompareTrue("Mapping and result type must be the same",
+                               getMapping().getType()->getElementType(),
+                               getResult().getType()->getElementType(), this);
+  return isValid;
+}
+
+bool LookupTableNode::verify() const {
+  bool isValid = true;
   return isValid;
 }
 
@@ -1922,6 +1935,46 @@ bool RescaleQuantizedNode::verify() const {
   isValid &=
       checkType(getResult(), getInput().getType()->getElementType(), this);
   isValid &= checkSameShape(getResult(), getInput(), this);
+  return isValid;
+}
+
+bool CollectRpnProposalsNode::verify() const {
+  auto result = getResult();
+  auto rois = getRoisIn();
+  auto probs = getRoisProbsIn();
+  bool isValid = true;
+
+  isValid &= expectCompareTrue("rpnPostNmsTopN should be greater than zero",
+                               getRpnPostNmsTopN() > 0, true, this);
+
+  isValid &= expectCompareTrue(
+      "RPN min level should be less than or equal to RPN max level",
+      getRpnMinLevel() <= getRpnMaxLevel(), true, this);
+
+  dim_t rpnLevels = getRpnMaxLevel() - getRpnMinLevel() + 1;
+
+  isValid &= expectCompareTrue("Invalid number of inputs",
+                               rpnLevels == rois.size(), true, this);
+  isValid &= expectCompareTrue("Invalid number of inputs",
+                               rpnLevels == probs.size(), true, this);
+
+  for (dim_t i = 0; i < rpnLevels; i++) {
+    auto roi = rois[i];
+    auto prob = probs[i];
+    isValid &= checkType(result, roi.getElementType(), this);
+    isValid &= checkType(result, prob.getElementType(), this);
+    isValid &=
+        expectCompareTrue("Rois and result must have same second dimension",
+                          roi.dims()[1], result.dims()[1], this);
+    isValid &= expectCompareTrue(
+        "Rois and respective probability scores must have same first dimension",
+        roi.dims()[0], prob.dims()[0], this);
+  }
+
+  isValid &=
+      expectCompareTrue("Result is capped to rpnPostNmsTopN",
+                        result.dims()[0] == getRpnPostNmsTopN(), true, this);
+
   return isValid;
 }
 
@@ -1973,6 +2026,13 @@ bool VectorNormNode::verify() const {
   ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, false);
   isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
+
+bool GaussianFillNode::verify() const {
+  auto dest = getResult();
+  bool isValid = dest.getElementType() == ElemKind::Float16Ty;
+  isValid &= checkSameShape(getInput(), dest, this);
   return isValid;
 }
 
@@ -2106,6 +2166,17 @@ bool GatherNode::verify() const {
       getData().dims().size() + getIndices().dims().size() - 1, this);
   isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
                                            getData().getType(), this);
+  return isValid;
+}
+
+bool GatherElementsNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(
+      getIndices(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+  isValid &= expectCompareTrue("Mismatching number of dimensions",
+                               getResult().dims().size(),
+                               getIndices().dims().size(), this);
   return isValid;
 }
 
@@ -2509,6 +2580,11 @@ bool ReplaceNaNNode::verify() const {
   return checkSameType(getResult(), getInput(), this);
 }
 
+bool NonZeroNode::verify() const {
+  return checkType(getCond(), ElemKind::BoolTy, this) &&
+         checkType(getResult(), ElemKind::Int32ITy, this);
+}
+
 bool SelectNode::verify() const {
   bool isValid = checkSameShape(getResult(), getLHS(), this);
   isValid &= checkSameShape(getResult(), getRHS(), this);
@@ -2833,6 +2909,30 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
     os << "TANH";
     break;
   case FusedActivation::LEAKY_RELU:
+    os << "LEAKY_RELU";
+    break;
+  }
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LUTOperator lutOperator) {
+  switch (lutOperator) {
+  case LUTOperator::NONE:
+    os << "NONE";
+    break;
+  case LUTOperator::RELU:
+    os << "RELU";
+    break;
+  case LUTOperator::CLIP:
+    os << "CLIP";
+    break;
+  case LUTOperator::SIGMOID:
+    os << "SIGMOID";
+    break;
+  case LUTOperator::TANH:
+    os << "TANH";
+    break;
+  case LUTOperator::LEAKY_RELU:
     os << "LEAKY_RELU";
     break;
   }

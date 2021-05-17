@@ -282,11 +282,22 @@ enum FusedActivation {
   LEAKY_RELU,
 };
 
+/// LUT Operators (not supported on all backends).
+enum class LUTOperator {
+  NONE = 0,
+  RELU,
+  CLIP,
+  TANH,
+  SIGMOID,
+  LEAKY_RELU,
+};
+
 /// Define output operators.
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                               FusedActivation fusedActivation);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LUTOperator lutOperator);
 
 /// Support for hashing the Nodes. This is required for using
 /// llvm::hash_combine.
@@ -396,6 +407,7 @@ constexpr char trainableSignifier[] = "trainable";
 constexpr char elemKindSignifier[] = "elemKind";
 constexpr char loaderNameSignifier[] = "loaderName";
 constexpr char saveNameSignifier[] = "saveName";
+constexpr char stridesSignifier[] = "strides";
 constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
 constexpr char shapeSignifier[] = "shape";

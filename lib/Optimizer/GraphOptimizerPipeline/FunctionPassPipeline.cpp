@@ -253,6 +253,9 @@ std::unique_ptr<FunctionPassPipeline> createDefaultFoldPassPipeline() {
       // Fold Min + Max to Clip
       {FunctionPassID::FoldMinMaxToClip},
 
+      // Fold exp + reduce sum + div into softmax
+      {FunctionPassID::FoldExpSumDivIntoSoftmax},
+
       // Perform Dead Code Elimination.
       getDCEPassConfig(),
   };

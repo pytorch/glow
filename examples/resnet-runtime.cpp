@@ -190,7 +190,7 @@ int main(int argc, char **argv) {
 
     std::string path = dirIt->path();
 
-    auto image = readPngImageAndPreprocess(
+    auto image = readPngPpmImageAndPreprocess(
         path, ImageNormalizationMode::k0to1, ImageChannelOrder::BGR,
         ImageLayout::NCHW, imagenetNormMean, imagenetNormStd);
     std::unique_ptr<ExecutionContext> context =

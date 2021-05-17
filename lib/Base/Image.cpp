@@ -32,22 +32,48 @@ namespace glow {
 
 llvm::cl::OptionCategory imageCat("Image Processing Options");
 
+/// Range of the input image pixels. It is set by each image loader.
+/// Note, at the moment PNG/PPM loader are not setting this one as
+/// set the default to be U8.
+/// This is made an user option just so that user can give different range
+/// to their input data. For example, float input tensors need to have
+/// the range applied. Then, the option allows for flexibilty of using
+/// e.g. 16/32/64-bit files that actually represent simple U8 images.
+std::vector<ImgDataRange> imageDataRangeOpt;
+static llvm::cl::list<ImgDataRange, std::vector<ImgDataRange>> ImgDataRangeF(
+    "input-values-range", llvm::cl::CommaSeparated,
+    llvm::cl::desc("Specify the input data values range."),
+    llvm::cl::cat(imageCat), llvm::cl::location(imageDataRangeOpt),
+    llvm::cl::values(
+        clEnumValN(ImgDataRange::U8, "U8", "Values range: 0 and 255"),
+        clEnumValN(ImgDataRange::S8, "S8", "Values range: -128 and 127"),
+        clEnumValN(ImgDataRange::U16, "U16", "Values range: 0 and 65535"),
+        clEnumValN(ImgDataRange::S16, "S16",
+                   "Values range: -32768 and 32767")));
+
+/// Normalization mode for each input. By default, image mode is not assigned
+/// and is in so-called pass-through mode; it takes input image pixels values
+/// range, thus pixels are not modified.
 std::vector<ImageNormalizationMode> imageNormMode;
 static llvm::cl::list<ImageNormalizationMode,
                       std::vector<ImageNormalizationMode>>
-    imageNormModeF(
-        "image-mode", llvm::cl::CommaSeparated,
-        llvm::cl::desc("Specify the image mode:"), llvm::cl::cat(imageCat),
-        llvm::cl::location(imageNormMode),
-        llvm::cl::values(clEnumValN(ImageNormalizationMode::kneg1to1, "neg1to1",
-                                    "Values are in the range: -1 and 1"),
-                         clEnumValN(ImageNormalizationMode::k0to1, "0to1",
-                                    "Values are in the range: 0 and 1"),
-                         clEnumValN(ImageNormalizationMode::k0to255, "0to255",
-                                    "Values are in the range: 0 and 255"),
-                         clEnumValN(ImageNormalizationMode::kneg128to127,
-                                    "neg128to127",
-                                    "Values are in the range: -128 .. 127")));
+    imageNormModeF("image-mode", llvm::cl::CommaSeparated,
+                   llvm::cl::desc("Specify the image mode:"),
+                   llvm::cl::cat(imageCat), llvm::cl::location(imageNormMode),
+                   llvm::cl::values(
+                       clEnumValN(ImageNormalizationMode::kneg1to1, "neg1to1",
+                                  "Values are in the range: -1 and 1"),
+                       clEnumValN(ImageNormalizationMode::k0to1, "0to1",
+                                  "Values are in the range: 0 and 1"),
+                       clEnumValN(ImageNormalizationMode::k0to255, "0to255",
+                                  "Values are in the range: 0 and 255"),
+                       clEnumValN(ImageNormalizationMode::kneg128to127,
+                                  "neg128to127",
+                                  "Values are in the range: -128 .. 127"),
+                       clEnumValN(ImageNormalizationMode::U16, "U16",
+                                  "Values are in the range: 0 and 65535"),
+                       clEnumValN(ImageNormalizationMode::S16, "S16",
+                                  "Values are in the range: -32768 .. 32768")));
 static llvm::cl::alias imageNormModeA("i",
                                       llvm::cl::desc("Alias for -image-mode"),
                                       llvm::cl::aliasopt(imageNormModeF),
@@ -164,6 +190,7 @@ static void processListOfListsCmdOption(size_t numInputs, std::string &cmdStr,
 void glow::initImageCmdArgVars() {
   // clear external storage for all the variables.
   globalOpts.lock();
+  imageDataRangeOpt.clear();
   imageNormMode.clear();
   imageChannelOrderOpt.clear();
   imageLayoutOpt.clear();
@@ -181,10 +208,18 @@ void glow::processImageCmdArgVars(size_t numInputs) {
   processListOfListsCmdOption(numInputs, meanValues_, meanValuesOpt);
   processListOfListsCmdOption(numInputs, stddevValues_, stddevValuesOpt);
 
-  // Default for image range is U8.
+  // Default for pixel values range is U8.
+  if (imageDataRangeOpt.empty()) {
+    for (size_t i = 0, e = numInputs; i < e; i++) {
+      imageDataRangeOpt.push_back(ImgDataRange::U8);
+    }
+  }
+
+  // Default for image normalization is pass-through (keep pixel value the
+  // same).
   if (imageNormMode.empty()) {
     for (size_t i = 0, e = numInputs; i < e; i++) {
-      imageNormMode.push_back(ImageNormalizationMode::k0to255);
+      imageNormMode.push_back(ImageNormalizationMode::PassThrough);
     }
   }
   // Default for image layout is NCHW.
@@ -215,6 +250,8 @@ void glow::processImageCmdArgVars(size_t numInputs) {
     }
   }
 
+  CHECK_EQ(numInputs, imageDataRangeOpt.size())
+      << "Number of -image-range values must match number of inputs";
   CHECK_EQ(numInputs, imageNormMode.size())
       << "Number of -image-mode values must match number of inputs";
   CHECK_EQ(numInputs, imageLayoutOpt.size())
@@ -230,9 +267,38 @@ void glow::processImageCmdArgVars(size_t numInputs) {
   globalOpts.unlock();
 }
 
+float glow::getPixelValMin(ImgDataRange range) {
+  switch (range) {
+  case (ImgDataRange::S8):
+    return -128.;
+  case (ImgDataRange::S16):
+    return -32768.;
+  default:
+    return 0.;
+  }
+}
+
+float glow::getPixelValMax(ImgDataRange range) {
+  switch (range) {
+  case (ImgDataRange::S8):
+    return 127.;
+  case (ImgDataRange::S16):
+    return 32767.;
+  case (ImgDataRange::U8):
+    return 255.;
+  case (ImgDataRange::U16):
+    return 65535.;
+  default:
+    LOG(FATAL) << "Error";
+  }
+}
+
 /// Convert the normalization to numeric floating poing ranges.
-std::pair<float, float> glow::normModeToRange(ImageNormalizationMode mode) {
+std::pair<float, float> glow::normModeToRange(ImageNormalizationMode mode,
+                                              ImgDataRange range) {
   switch (mode) {
+  case ImageNormalizationMode::PassThrough:
+    return {getPixelValMin(range), getPixelValMax(range)};
   case ImageNormalizationMode::kneg1to1:
     return {-1., 1.};
   case ImageNormalizationMode::k0to1:
@@ -241,6 +307,10 @@ std::pair<float, float> glow::normModeToRange(ImageNormalizationMode mode) {
     return {0., 255.0};
   case ImageNormalizationMode::kneg128to127:
     return {-128., 127.};
+  case ImageNormalizationMode::S16:
+    return {-32768., 32767.};
+  case ImageNormalizationMode::U16:
+    return {0., 65535.};
   default:
     LOG(FATAL) << "Image format not defined.";
   }
@@ -265,7 +335,18 @@ bool glow::isPngFormat(const std::string &filename) {
   return isPngHdrSignature(header);
 }
 
-std::tuple<size_t, size_t, bool> glow::getPngInfo(const char *filename) {
+bool glow::isPpmFormat(const std::string &filename) {
+  // Open file and test for it being a PPM.
+  char magic[2];
+  FILE *fp = fopen(filename.c_str(), "rb");
+  CHECK(fp) << "Can't open image file with name: " << filename;
+  CHECK_EQ(fread(magic, sizeof(char), sizeof(magic), fp), sizeof(magic))
+      << "Failed to read magic number from file: " << filename;
+  fclose(fp);
+  return magic[0] == 'P' && (magic[1] == '5' || magic[1] == '6');
+}
+
+std::tuple<dim_t, dim_t, bool> glow::getPngInfo(const char *filename) {
   // open file and test for it being a png.
   FILE *fp = fopen(filename, "rb");
   CHECK(fp) << "Can't open image file with name: " << filename;
@@ -299,6 +380,128 @@ std::tuple<size_t, size_t, bool> glow::getPngInfo(const char *filename) {
   png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
   fclose(fp);
 
+  return std::make_tuple(height, width, isGray);
+}
+
+/// \returns floating-point range for input image based on specified options.
+std::pair<float, float> glow::getImageRange(size_t idx) {
+
+  // Take into account mean and stddev.
+  auto mean = getImageMean(idx);
+  auto stddev = getImageStdDev(idx);
+  const size_t N = mean.size();
+  std::vector<float> minVals(N), maxVals(N);
+  CHECK_EQ(stddev.size(), N) << "Number of mean and stddev values mismatch";
+  for (size_t i = 0; i < N; i++) {
+    minVals[i] = (getPixelValMin(imageDataRangeOpt[i]) - mean[i]) / stddev[i];
+    maxVals[i] = (getPixelValMax(imageDataRangeOpt[i]) - mean[i]) / stddev[i];
+  }
+  float min = *std::min_element(minVals.begin(), minVals.end());
+  float max = *std::max_element(maxVals.begin(), maxVals.end());
+
+  // Take into account normalization mode.
+  auto range = normModeToRange(imageNormMode[idx], imageDataRangeOpt[idx]);
+  float scale =
+      ((range.second - range.first) / getPixelValMax(imageDataRangeOpt[idx]));
+  float bias = range.first;
+  min = min * scale + bias;
+  max = max * scale + bias;
+
+  return {min, max};
+}
+
+/// \returns mean for input image based on specified options.
+llvm::ArrayRef<float> glow::getImageMean(size_t idx, size_t numChannels) {
+  CHECK(!meanValuesOpt.empty()) << "Internal Error: mean values not set.";
+  CHECK_LE(idx, meanValuesOpt.size())
+      << "Request for non-existent mean values.";
+  if (!meanValuesOpt[idx].empty()) {
+    CHECK(!useImagenetNormalization)
+        << "-mean and -use-imagenet-normalization cannot be used together.";
+    if (numChannels) {
+      CHECK_EQ(meanValuesOpt[idx].size(), numChannels)
+          << "Number of mean values != input channels";
+    }
+    return meanValuesOpt[idx];
+  } else if (useImagenetNormalization) {
+    return llvm::ArrayRef<float>(imagenetNormMean, 3);
+  } else {
+    return zeroMean;
+  }
+}
+
+/// \returns stddev for input image based on specified options.
+llvm::ArrayRef<float> glow::getImageStdDev(size_t idx, size_t numChannels) {
+  CHECK(!stddevValuesOpt.empty()) << "Internal Error: mean stddev not set.";
+  CHECK_LE(idx, stddevValuesOpt.size())
+      << "Request for non-existent stddev values.";
+  if (!stddevValuesOpt[idx].empty()) {
+    CHECK(!useImagenetNormalization)
+        << "-stddev and -use-imagenet-normalization cannot be used together.";
+    if (numChannels) {
+      CHECK_EQ(stddevValuesOpt[idx].size(), numChannels)
+          << "Number of stddev values != input channels";
+    }
+    return stddevValuesOpt[idx];
+  } else if (useImagenetNormalization) {
+    return llvm::ArrayRef<float>(imagenetNormStd, 3);
+  } else {
+    return oneStd;
+  }
+}
+
+static void skipSpacePPM(FILE *fp) {
+  int c = getc(fp);
+  while (c != EOF) {
+    if (c == '#') {
+      // Skip comment line.
+      do {
+        c = getc(fp);
+      } while (c != EOF && c != '\n');
+    } else if (!isspace(c)) {
+      ungetc(c, fp);
+      break;
+    }
+    c = getc(fp);
+  }
+}
+
+std::tuple<dim_t, dim_t, bool> glow::getPpmInfo(FILE *fp,
+                                                const char *filename) {
+  // Open file and test for it being a PPM.
+  char magic[2];
+  CHECK_EQ(fread(magic, sizeof(char), sizeof(magic), fp), sizeof(magic))
+      << "Failed to read magic number from file: " << filename;
+  CHECK(magic[0] == 'P' && (magic[1] == '5' || magic[1] == '6'))
+      << filename << " is not a PPM image";
+
+  // Gray-scale or color is determined by magic number.
+  bool isGray = magic[1] == '5';
+
+  // Read dimensions and color depth.
+  int32_t height, width, depth;
+  skipSpacePPM(fp);
+  CHECK_EQ(fscanf(fp, "%d", &width), 1)
+      << "Can't read width from: " << filename;
+  skipSpacePPM(fp);
+  CHECK_EQ(fscanf(fp, "%d", &height), 1)
+      << "Can't read height from: " << filename;
+  skipSpacePPM(fp);
+  CHECK_EQ(fscanf(fp, "%d", &depth), 1)
+      << "Can't read color depth from: " << filename;
+  CHECK_EQ(depth, 255) << "Unsupported color depth " << depth
+                       << " in file: " << filename;
+
+  return std::make_tuple(dim_t(height), dim_t(width), isGray);
+}
+
+std::tuple<dim_t, dim_t, bool> glow::getPpmInfo(const char *filename) {
+  bool isGray;
+  dim_t width, height;
+  FILE *fp = fopen(filename, "rb");
+  CHECK(fp) << "Can't open image file with name: " << filename;
+  std::tie(height, width, isGray) = getPpmInfo(fp, filename);
+  fclose(fp);
   return std::make_tuple(height, width, isGray);
 }
 
@@ -415,6 +618,50 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   return false;
 }
 
+bool glow::readPpmImage(Tensor *T, const char *filename,
+                        std::pair<float, float> range,
+                        llvm::ArrayRef<float> mean,
+                        llvm::ArrayRef<float> stddev) {
+  bool isGray;
+  dim_t height, width;
+  FILE *fp = fopen(filename, "rb");
+  if (!fp) {
+    return true;
+  }
+
+  // Get PPM info.
+  std::tie(height, width, isGray) = getPpmInfo(fp, filename);
+  const dim_t numChannels = isGray ? 1 : 3;
+  T->reset(ElemKind::FloatTy, {height, width, numChannels});
+
+  // Skip a single byte of space.
+  fgetc(fp);
+
+  // Read pixels and do pre-processing.
+  auto H = T->getHandle<>();
+  float scale = ((range.second - range.first) / 255.0);
+  float bias = range.first;
+  unsigned char *buf =
+      (unsigned char *)malloc(width * numChannels * sizeof(unsigned char));
+  for (dim_t h = 0; h < height; h++) {
+    if (fread(buf, width * numChannels, 1, fp) != 1) {
+      free(buf);
+      fclose(fp);
+      return true;
+    }
+    for (dim_t w = 0; w < width; w++) {
+      for (dim_t c = 0; c < numChannels; c++) {
+        float val = float(buf[w * numChannels + c]);
+        H.at({h, w, c}) = ((val - mean[c]) / stddev[c]) * scale + bias;
+      }
+    }
+  }
+
+  free(buf);
+  fclose(fp);
+  return false;
+}
+
 bool glow::writePngImage(Tensor *T, const char *filename,
                          std::pair<float, float> range,
                          llvm::ArrayRef<float> mean,
@@ -509,25 +756,25 @@ bool glow::writePngImage(Tensor *T, const char *filename,
   return false;
 }
 
-Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
-                                       ImageNormalizationMode imageNormMode,
-                                       ImageChannelOrder imageChannelOrder,
-                                       ImageLayout imageLayout,
-                                       llvm::ArrayRef<float> mean,
-                                       llvm::ArrayRef<float> stddev) {
+Tensor glow::readPngPpmImageAndPreprocess(llvm::StringRef filename,
+                                          ImageNormalizationMode imageNormMode,
+                                          ImageChannelOrder imageChannelOrder,
+                                          ImageLayout imageLayout,
+                                          llvm::ArrayRef<float> mean,
+                                          llvm::ArrayRef<float> stddev) {
   Tensor imageData;
-  readPngImageAndPreprocess(imageData, filename, imageNormMode,
-                            imageChannelOrder, imageLayout, mean, stddev);
+  readPngPpmImageAndPreprocess(imageData, filename, imageNormMode,
+                               imageChannelOrder, imageLayout, mean, stddev);
   return imageData;
 }
 
-void glow::readPngImageAndPreprocess(Tensor &imageData,
-                                     llvm::StringRef filename,
-                                     ImageNormalizationMode imageNormMode,
-                                     ImageChannelOrder imageChannelOrder,
-                                     ImageLayout imageLayout,
-                                     llvm::ArrayRef<float> mean,
-                                     llvm::ArrayRef<float> stddev) {
+void glow::readPngPpmImageAndPreprocess(Tensor &imageData,
+                                        llvm::StringRef filename,
+                                        ImageNormalizationMode imageNormMode,
+                                        ImageChannelOrder imageChannelOrder,
+                                        ImageLayout imageLayout,
+                                        llvm::ArrayRef<float> mean,
+                                        llvm::ArrayRef<float> stddev) {
 
   // PNG images are RGB, so shuffle mean and stddev values to be in RGB order
   // as well, prior applying them to input image.
@@ -538,15 +785,20 @@ void glow::readPngImageAndPreprocess(Tensor &imageData,
     std::reverse(stddevRGB.begin(), stddevRGB.end());
   }
 
-  auto range = normModeToRange(imageNormMode);
-  bool loadSuccess =
-      !readPngImage(&imageData, filename.data(), range, meanRGB, stddevRGB);
-  CHECK(loadSuccess) "Error reading input image from file: " << filename.str();
+  bool isPNG = isPngFormat(filename.data());
+  CHECK(isPNG || isPpmFormat(filename.data())) << "Unrecognized image format";
+  auto range = normModeToRange(imageNormMode, ImgDataRange::U8);
+  bool loadSuccess = isPNG ? !readPngImage(&imageData, filename.data(), range,
+                                           meanRGB, stddevRGB)
+                           : !readPpmImage(&imageData, filename.data(), range,
+                                           meanRGB, stddevRGB);
+  CHECK(loadSuccess) << "Error reading input image from file: "
+                     << filename.str();
   dim_t imgHeight = imageData.dims()[0];
   dim_t imgWidth = imageData.dims()[1];
   dim_t numChannels = imageData.dims()[2];
 
-  // PNG images are NHWC and RGB.  Convert if needed.
+  // PNG/PPM images are NHWC and RGB.  Convert if needed.
   // Convert to requested channel ordering.
   if (imageChannelOrder == ImageChannelOrder::BGR) {
     Tensor swizzled(imageData.getType());
@@ -569,8 +821,8 @@ void glow::readPngImageAndPreprocess(Tensor &imageData,
   }
 }
 
-/// Entry point for the PNG images loader.
-void glow::readPngImagesAndPreprocess(
+/// Entry point for the PNG/PPM images loader.
+void glow::readPngPpmImagesAndPreprocess(
     Tensor &inputImageData, const llvm::ArrayRef<std::string> &filenames,
     ImageNormalizationMode imageNormMode, ImageChannelOrder imageChannelOrder,
     ImageLayout imageLayout, llvm::ArrayRef<float> meanRef,
@@ -584,7 +836,11 @@ void glow::readPngImagesAndPreprocess(
   dim_t imgHeight;
   dim_t imgWidth;
   bool isGray;
-  std::tie(imgHeight, imgWidth, isGray) = getPngInfo(filenames[0].c_str());
+  bool isPNG = isPngFormat(filenames[0]);
+  CHECK(isPNG || isPpmFormat(filenames[0])) << "Unrecognized image format";
+  std::tie(imgHeight, imgWidth, isGray) =
+      isPNG ? getPngInfo(filenames[0].c_str())
+            : getPpmInfo(filenames[0].c_str());
   const dim_t numChannels = isGray ? 1 : 3;
 
   // Assign mean and stddev for input normalization.
@@ -632,8 +888,8 @@ void glow::readPngImagesAndPreprocess(
   // Read images into local tensors and add to batch.
   for (size_t n = 0; n < filenames.size(); n++) {
     Tensor localCopy;
-    readPngImageAndPreprocess(localCopy, filenames[n], imageNormMode,
-                              imageChannelOrder, imageLayout, mean, stddev);
+    readPngPpmImageAndPreprocess(localCopy, filenames[n], imageNormMode,
+                                 imageChannelOrder, imageLayout, mean, stddev);
     DCHECK(std::equal(localCopy.dims().begin(), localCopy.dims().end(),
                       inputImageData.dims().begin() + 1))
         << "All images must have the same dimensions";
@@ -688,14 +944,15 @@ void glow::loadImagesAndPreprocess(
     auto inputImageData = inputImageDataList[i];
     // All files for an input must be of the same type, thus will just check
     // the first one.
-    if (isPngFormat(filenames[0])) {
-      readPngImagesAndPreprocess(*inputImageData, filenames, imageNormMode[i],
-                                 imageChannelOrderOpt[i], imageLayoutOpt[i],
-                                 meanValuesOpt[i], stddevValuesOpt[i]);
+    if (isPngFormat(filenames[0]) || isPpmFormat(filenames[0])) {
+      readPngPpmImagesAndPreprocess(
+          *inputImageData, filenames, imageNormMode[i], imageChannelOrderOpt[i],
+          imageLayoutOpt[i], meanValuesOpt[i], stddevValuesOpt[i]);
     } else if (isNumpyNpyFormat(filenames[0])) {
       loadNumpyImagesAndPreprocess(filenames, *inputImageData, imageNormMode[i],
-                                   imageLayoutOpt[i], inputLayoutOpt[i],
-                                   meanValuesOpt[i], stddevValuesOpt[i]);
+                                   imageChannelOrderOpt[i], imageLayoutOpt[i],
+                                   inputLayoutOpt[i], meanValuesOpt[i],
+                                   stddevValuesOpt[i], imageDataRangeOpt[i]);
     } else {
       LOG(FATAL) << "Input file format is not recognized: \n" << filenames[0];
     }

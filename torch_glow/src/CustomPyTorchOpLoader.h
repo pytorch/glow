@@ -33,11 +33,20 @@ public:
   /// of ops that this loader loads (for example "something::my_awesome_op")
   virtual std::vector<const char *> getSymbols() = 0;
 
-  /// Given a PyTorchModelLoader \p and a specific custom op JIT node \p ptNode,
-  /// this implements the logic to load the custom op. \returns an Error on
-  /// failure.
+  /// Given a PyTorchModelLoader \p modelLoader and a specific custom op JIT
+  /// node \p ptNode, this implements the logic to load the custom op. \returns
+  /// an Error on failure.
   virtual Error loadNode(PyTorchModelLoader &modelLoader,
                          const torch::jit::Node *ptNode) = 0;
+
+  /// Given a PyTorchModelLoader \p modelLoader and a specific custom op JIT
+  /// node \p ptNode, this implements the logic to compute the correct type of
+  /// each output. There should be one outer vector element per node output and
+  /// one inner vector element per each NodeValue in that output (usually just 1
+  /// except for lists of tensors).
+  virtual Expected<std::vector<std::vector<at::ScalarType>>>
+  getCorrectType(PyTorchModelLoader &modelLoader,
+                 const torch::jit::Node *ptNode) = 0;
 
   virtual ~CustomPyTorchOpLoader() = default;
 };

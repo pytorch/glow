@@ -1434,7 +1434,7 @@ checkConvertOnlyOutputs(PrecisionConfiguration::Float16Format float16Format) {
   ElemKind convertedElementType =
       PrecisionConfiguration::getElementType(float16Format);
 
-  // PH -> ConvertToFP16 -> Clip -> ConvertToFP32 -> ConvertToFP16 -> Relu ->
+  // PH -> ConvertToFP16 -> ConvertToFP32 -> ConvertToFP16 -> Relu ->
   // Clip -> ConvertToFP32 -> Save
 
   ConvertToNode *convertRN = llvm::dyn_cast<ConvertToNode>(SN->getInput());
@@ -1454,9 +1454,8 @@ checkConvertOnlyOutputs(PrecisionConfiguration::Float16Format float16Format) {
   ASSERT_TRUE(convert16To32);
   EXPECT_EQ(convert16To32->getResult().getType()->getElementType(),
             ElemKind::FloatTy);
-  ClipNode *clipPH = llvm::dyn_cast<ClipNode>(convert16To32->getInput());
-  ASSERT_TRUE(clipPH);
-  ConvertToNode *convertPH = llvm::dyn_cast<ConvertToNode>(clipPH->getInput());
+  ConvertToNode *convertPH =
+      llvm::dyn_cast<ConvertToNode>(convert16To32->getInput());
   ASSERT_TRUE(convertPH);
   EXPECT_EQ(convertPH->getResult().getType()->getElementType(),
             convertedElementType);
@@ -1495,10 +1494,8 @@ checkConvertClipStorage(PrecisionConfiguration::Float16Format float16Format) {
 
   ConvertToNode *convertFP32PH = llvm::dyn_cast<ConvertToNode>(SPH->getInput());
   ASSERT_TRUE(convertFP32PH);
-  ClipNode *clipPH = llvm::dyn_cast<ClipNode>(convertFP32PH->getInput());
-  ASSERT_TRUE(clipPH);
   ConvertToNode *convertFP16PH =
-      llvm::dyn_cast<ConvertToNode>(clipPH->getInput());
+      llvm::dyn_cast<ConvertToNode>(convertFP32PH->getInput());
   ASSERT_TRUE(convertFP16PH);
 
   ConvertToNode *convertFP32C = llvm::dyn_cast<ConvertToNode>(SC->getInput());

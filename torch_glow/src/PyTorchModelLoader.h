@@ -22,6 +22,7 @@
 
 #include "GlowIValue.h"
 
+#include "c10/core/ScalarType.h"
 #include "glow/Graph/Graph.h"
 
 namespace glow {
@@ -48,7 +49,7 @@ class ValueMapping {
 
   // The original data type of this jit value in PyTorch.
   // Useful when we quantize an uint8 PyTorch tensor to int8 in Glow.
-  c10::ScalarType correctType_;
+  std::vector<at::ScalarType> correctTypes_;
 
   /// Members that store either a NodeValue or a pointer to a GlowIValue
   /// depending on what the PyTorch Value being mapped is.
@@ -59,12 +60,25 @@ public:
   /// \returns the ValueMappingType representing the type that is mapped.
   ValueMappingType getMappingType() const;
 
-  /// \return the correctType_ representing the original PyTorch data type.
-  c10::ScalarType getCorrectType() const;
+  /// \return the single type in correctTypes_ representing the original PyTorch
+  /// data type. If more or less than one type is stored then returns an Error.
+  Expected<at::ScalarType> getCorrectType() const;
 
-  /// Set the correctType_ to be \p dtype.
+  /// \return the correctTypes_ representing the original PyTorch data type.
+  std::vector<at::ScalarType> getCorrectTypes() const;
+
+  /// Set the correctTypes_ to be the singleteon vector of \p dtype.
   /// \returns error on failure.
-  void setCorrectType(c10::ScalarType dtype);
+  Error setCorrectType(at::ScalarType dtype);
+
+  /// Set the correctTypes_ to be \p dtypes.
+  /// \returns error on failure.
+  Error setCorrectTypes(const std::vector<at::ScalarType> &dtypes);
+
+  /// This function validates that the correct types are set approrpriatly, that
+  /// there is exactly 1 correct type for each NodeValue, that the correct types
+  /// are compatible with the actual types used, etc.
+  Error verifyCorrectTypes();
 
   /// Create a ValueMapping from a NodeValue \p nodeValue.
   ValueMapping(NodeValue nodeValue);
@@ -120,6 +134,17 @@ private:
     /// The type of functions used to load PyTorch nodes in PyTorchModelLoader.
     using LoadFn = Error (PyTorchModelLoader::*)(const torch::jit::Node *);
 
+    /// The type of functions that are called in order to compute the correct
+    /// type for each output of the node. The outer vector is for each of the
+    /// outputs of the node. The inner vector is for each of the correct types
+    /// for the given node output. All node outputs should have exactly 1
+    /// correct type per Glow NodeValue. If the output of the node is not a
+    /// NodeValue then it will be an empty vector. If the output of the node is
+    /// a list of NodeValues then this will be a vector of correct types with
+    /// one correct type per Tensor list element.
+    using CorrectTypeFn = Expected<std::vector<std::vector<at::ScalarType>>> (
+        PyTorchModelLoader::*)(const torch::jit::Node *);
+
     /// Symbols (as strings) that this mapping value is applicable to.
     const std::vector<const char *> symbols;
 
@@ -127,9 +152,11 @@ private:
     /// PyTorch node.
     LoadFn loadFn;
 
+    CorrectTypeFn correctTypeFn;
+
     MappingOfMemberFunctionsValue(std::vector<const char *> symbolsP,
-                                  LoadFn loadFnP)
-        : symbols(symbolsP), loadFn(loadFnP) {}
+                                  LoadFn loadFnP, CorrectTypeFn correctTypeFnP)
+        : symbols(symbolsP), loadFn(loadFnP), correctTypeFn(correctTypeFnP) {}
   };
 
   /// Defines type for mapping Symbols to PyTorchModelLoader member functions
@@ -181,7 +208,7 @@ public:
   loadJITGraph(glow::Function &F, const torch::jit::Graph &graph,
                std::vector<glow::Placeholder *> &inputPlaceholders,
                std::vector<glow::Placeholder *> &outputPlaceholders,
-               std::vector<c10::ScalarType> &outputCorrectType,
+               std::vector<at::ScalarType> &outputCorrectTypes,
                const PyTorchLoaderSettings &settings,
                const at::ArrayRef<torch::jit::IValue> inputs,
                const InputMetaStack &metaStack);
@@ -194,10 +221,11 @@ private:
   PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
-                     std::vector<c10::ScalarType> &outputCorrectType,
+                     std::vector<at::ScalarType> &outputCorrectTypes,
                      Error &error, const PyTorchLoaderSettings &settings,
                      const at::ArrayRef<torch::jit::IValue> inputs,
-                     const InputMetaStack &metaStack = InputMetaStack());
+                     const InputMetaStack &metaStack = InputMetaStack(),
+                     bool loadGraph = false);
 
   /// Build mapping from jit symbols to function that loads nodes of that kind.
   static const MappingOfMemberFunctions buildSymbolsMapping();
@@ -215,29 +243,35 @@ public:
   Error addValueMapping(const torch::jit::Value *value,
                         glow::NodeValue nodeValue);
 
-  /// Add a new mapping from the PyTorch Value \p value and its original type in
-  /// PyTorch \p correctType to the Glow NodeValue \p nodeValue. \returns error
-  /// on failure.
-  Error addValueMapping(const torch::jit::Value *value,
-                        glow::NodeValue nodeValue, c10::ScalarType correctType);
-
   /// Add a new mapping from the PyTorch Value \p value to the GlowIValue
   /// \p glowIValue.
   /// \returns error on failure.
   Error addValueMapping(const torch::jit::Value *value,
                         glow::GlowIValue glowIValue);
 
-  /// Add a new mapping from the PyTorch Value \p value and its original type in
-  /// PyTorch \p correctType to the Glow IValue \p nodeValue.
-  /// \returns error on failure.
-  Error addValueMapping(const torch::jit::Value *value,
-                        glow::GlowIValue glowIValue,
-                        c10::ScalarType correctType);
-
   /// Get the correctType of \p src from valueMap_, and save it to \p dest.
   /// \returns error on failure.
-  Error getCorrectTypeMapping(c10::ScalarType &dest,
-                              const torch::jit::Value *src);
+  Expected<at::ScalarType> getCorrectTypeMapping(const torch::jit::Value *src);
+
+  /// \returns the ScalarType or ScalarTypes representing the correct type for
+  /// the Value \p src.
+  Expected<std::vector<at::ScalarType>>
+  getCorrectTypesMapping(const torch::jit::Value *src);
+
+  /// Sets the ScalarType representing the correct type for
+  /// the Value \p src to \p correctType. Internally correct types are
+  /// represented as a vector of ScalarTypes because some values like Tensor
+  /// lists have multiple correct types so this function wraps the ScalarType as
+  /// a singleton vector.
+  Error setCorrectTypeMapping(const torch::jit::Value *src,
+                              at::ScalarType correctType);
+
+  /// Sets the ScalarType representing the correct type for
+  /// the Value \p src to \p correctType. A vector of ScalarTypes makes sense
+  /// only for some values like Tensor lists that can have multiple correct, one
+  /// for each tensor in the list.
+  Error setCorrectTypesMapping(const torch::jit::Value *src,
+                               const std::vector<at::ScalarType> &correctTypes);
 
   /// Remove any ValueMapping associated with \p value.
   /// \returns error on failure.
@@ -252,6 +286,11 @@ public:
   /// if a GlowIValue is mapped to this value if that GlowIValue's tag is None.
   bool hasGlowIValueForValue(const torch::jit::Value *value,
                              bool ignoreNones = false) const;
+
+  /// Extract the constant value from a node value.
+  template <typename T>
+  Error extractConstantFromNodeValue(const torch::jit::Value *value,
+                                     glow::ElemKind elemKind, T &output);
 
   /// If a NodeValue is mapped to \p value then return it, otherwise look for a
   /// float or integer IValue mapped to \p value, create a Glow Constant by
@@ -317,6 +356,45 @@ public:
     return Error::success();
   }
 
+  /// Get the correct type from the input with index \p from_input_index of node
+  /// \p ptNode and wrap it in a vector of vectors which is the expected format
+  /// for functions that fetch correct types for a node. This function is for
+  /// nodes that have 1 output with 1 correct type.
+  template <size_t from_input_index>
+  Expected<std::vector<std::vector<at::ScalarType>>>
+  getCorrectTypeFromInput(const torch::jit::Node *ptNode);
+
+  /// Create the correct type \p scalar_type and wrap it in a vector of vectors
+  /// which is the expected format for functions that fetch correct types for a
+  /// node. This function is for nodes that have 1 output with 1 correct type.
+  template <at::ScalarType scalar_type>
+  Expected<std::vector<std::vector<at::ScalarType>>>
+  makeCorrectType(const torch::jit::Node *ptNode);
+
+  /// Same as makeCorrectType but for nodes with 2 outputs, each with 1 correct
+  /// type.
+  template <at::ScalarType scalar_type_one, at::ScalarType scalar_type_two>
+  Expected<std::vector<std::vector<at::ScalarType>>>
+  makeCorrectTypes(const torch::jit::Node *ptNode);
+
+  /// Same as makeCorrectType but for nodes with 3 outputs, each with 1 correct
+  /// type.
+  template <at::ScalarType scalar_type_one, at::ScalarType scalar_type_two,
+            at::ScalarType scalar_type_three>
+  Expected<std::vector<std::vector<at::ScalarType>>>
+  makeCorrectTypes(const torch::jit::Node *ptNode);
+
+  /// This is a noop function that can be used if operator loader function will
+  /// itself set the correct types for each output. If that is the case then use
+  /// this function as a placeholder in MappingOfMemberFunctionsValue.
+  Expected<std::vector<std::vector<at::ScalarType>>>
+  correctTypeAlreadySet(const torch::jit::Node *ptNode);
+
+  /// Sets the correct type for the Value \p src to be the same as the correct
+  /// type that is already mapped for the value \p other
+  Error setCorrectTypeMappingSameAs(const torch::jit::Value *src,
+                                    const torch::jit::Value *other);
+
 private:
   /// Load a quantized conv node from ptNode to qconv.
   /// a wrapper function of loadQuantizedConv and loadQuantizedConvRelu.
@@ -360,6 +438,15 @@ private:
   // Load a PyTorch fb::embedding_bag_4bit_rowwise_offsets.
   // \returns error on failure.
   Error loadEmbeddingBag4BitRowwiseOffsets(const torch::jit::Node *ptNode);
+
+  Expected<std::vector<glow::NodeValue>>
+  loadSplitImpl(const glow::NodeValue &glowInput, const uint64_t dimension,
+                const uint64_t size);
+  Expected<std::vector<glow::NodeValue>>
+  loadSplitImpl(const glow::NodeValue &glowInput, const uint64_t dimension,
+                const std::vector<uint64_t> &sizes);
+  Error loadSplit(const torch::jit::Node *ptNode);
+  Error loadSplitWithSizes(const torch::jit::Node *ptNode);
 
   // Load a PyTorch fb::equally_split.
   // \returns error on failure.
@@ -426,8 +513,8 @@ private:
   /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr
   /// nodes. If the output type of a prim::GetAttr is a tensor, this will load
   /// it as a Glow constant, if it's an ivalue::Object it is ignored, and if
-  /// it's any other kind of IValue, it is loaded as a GlowIvalue for use during
-  /// the rest of model loading. \returns error on failure.
+  /// it's any other kind of IValue, it is loaded as a GlowIvalue for use
+  /// during the rest of model loading. \returns error on failure.
   Error loadAttributes(const torch::jit::Graph &graph,
                        const at::ArrayRef<torch::jit::IValue> inputs);
 
@@ -443,10 +530,13 @@ private:
   /// \returns error on failure.
   Error loadConstant(const torch::jit::Node *ptNode);
 
-  /// Load a custom PyTorch op using a statically register CustomPyTorchOpLoader
-  /// for that op.
-  /// \returns error on failure.
+  /// Load a custom PyTorch op using a statically register
+  /// CustomPyTorchOpLoader for that op. \returns error on failure.
   Error loadCustomOp(const torch::jit::Node *ptNode);
+
+  /// Gets the correct type for the custom node \p ptNode.
+  Expected<std::vector<std::vector<at::ScalarType>>>
+  getCustomOpCorrectType(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch type_as node.
   /// \returns error on failure.
@@ -454,16 +544,17 @@ private:
 
   /// Helper function for loading arithmetic nodes. \p name is of the name of
   /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the
-  /// arithetic node and template parameter \p GlowNode is the type of the node
-  /// that should be created in the Glow graph. \p convertToDefaultType
-  /// indicates if we want to convert the input types to default pytorch dtypes
-  /// if both inputs are of integer types. \returns the output of the loaded
-  /// arithmetic node or an Error if any occurred.
+  /// arithetic node and template parameter \p GlowNode is the type of the
+  /// node that should be created in the Glow graph. \p convertToDefaultType
+  /// indicates if we want to convert the input types to default pytorch
+  /// dtypes if both inputs are of integer types. \returns a pair of the output
+  /// of the loaded arithmetic node and its correct type or an Error if any
+  /// occurred.
   template <typename GlowNode>
-  Expected<NodeValue> loadArithmeticNode(llvm::StringRef name,
-                                         const torch::jit::Value *lhs,
-                                         const torch::jit::Value *rhs,
-                                         bool convertToDefaultType = false);
+  Expected<std::pair<NodeValue, at::ScalarType>>
+  loadArithmeticNode(llvm::StringRef name, const torch::jit::Value *lhs,
+                     const torch::jit::Value *rhs,
+                     bool convertToDefaultType = false);
 
   /// Load a PyTorch mul node.
   /// \returns error on failure.
@@ -513,8 +604,8 @@ private:
   /// \returns error on failure.
   Error loadFullLike(const torch::jit::Node *ptNode);
 
-  /// Shared implementation for loadZerosLike, loadOnesLike, loadEmptyLike, and
-  /// loadFullLike. \returns error on failure.
+  /// Shared implementation for loadZerosLike, loadOnesLike, loadEmptyLike,
+  /// and loadFullLike. \returns error on failure.
   Error loadFullLikeImpl(llvm::StringRef name,
                          const torch::jit::Value *inputTensorValue,
                          const torch::jit::Value *dtypeValue,
@@ -528,6 +619,10 @@ private:
   /// Load a PyTorch rsub node.
   /// \returns error on failure.
   Error loadRsub(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch leaky relu node.
+  /// \returns error on failure.
+  Error loadLeakyRelu(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch sum node.
   /// \returns error on failure.
@@ -640,6 +735,10 @@ private:
   /// \returns error on failure.
   Error loadQuantizedBatchNorm3dRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::gather node.
+  /// \returns error on failure.
+  Error loadGatherElements(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::layer_norm node.
   /// \returns error on failure.
   Error loadLayerNorm(const torch::jit::Node *ptNode);
@@ -699,8 +798,7 @@ private:
                                 NodeValue bias, NodeValue wScales,
                                 NodeValue wOffsets, float outScale,
                                 int64_t outZeroPoint,
-                                const torch::jit::Value *outputValue,
-                                c10::ScalarType outputDtype);
+                                const torch::jit::Value *outputValue);
 
   /// Load a glow::unpacked_quantized_linear node.
   /// \return error on failure.
@@ -798,6 +896,10 @@ private:
   /// \returns error on failure.
   Error loadUnsqueeze(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch fb::unsqueeze_n_times node.
+  /// \returns error on failure.
+  Error loadUnsqueezeNTimes(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::masked_fill node.
   /// \returns error on failure.
   Error loadMaskedFill(const torch::jit::Node *ptNode);
@@ -806,6 +908,10 @@ private:
   /// \returns error on failure.
   Error loadTopK(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch argsort node.
+  /// \returns error on failure.
+  Error loadArgSort(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::size node.
   /// \returns error on failure.
   Error loadSize(const torch::jit::Node *ptNode);
@@ -813,6 +919,8 @@ private:
   /// Load a PyTorch prim::ListConstruct node.
   /// \returns error on failure.
   Error loadListConstruct(const torch::jit::Node *ptNode);
+
+  Error loadListUnpack(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::Int node.
   /// \returns error on failure.
@@ -848,8 +956,8 @@ private:
             Node *(glow::Function::*CreateFn)(llvm::StringRef, glow::NodeValue)>
   Error loadUnaryNode(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch aten::upsample_nearest3d or aten::upsample_nearest2d node.
-  /// \returns error on failure.
+  /// Load a PyTorch aten::upsample_nearest3d or aten::upsample_nearest2d
+  /// node. \returns error on failure.
   Error loadUpsampleNearest(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::view node.
@@ -911,6 +1019,10 @@ private:
   /// Load an CumSum node.
   /// \returns error on failure.
   Error loadCumSum(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::equally_split.
+  // \returns error on failure.
+  Error loadEquallySplit(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

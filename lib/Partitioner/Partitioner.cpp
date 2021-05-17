@@ -224,8 +224,17 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
 }
 
 void Partitioner::saturateHost(unsigned logicalDeviceCount,
-                               const DAGListTy &partitions) {
-  unsigned duplications = deviceInfo_.size() / logicalDeviceCount;
+                               const DAGListTy &partitions,
+                               size_t availableLogicalDevices) {
+  DCHECK(availableLogicalDevices <= deviceInfo_.size())
+      << "Requested number of logical devices must be less than or euqal "
+         "the number of found devices.";
+  // If not specified, use number of available physical devices.
+  if (availableLogicalDevices == 0 ||
+      availableLogicalDevices > deviceInfo_.size()) {
+    availableLogicalDevices = deviceInfo_.size();
+  }
+  unsigned duplications = availableLogicalDevices / logicalDeviceCount;
   if (duplications < 2) {
     return;
   }
@@ -443,7 +452,7 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
   }
   if (cctx.saturateHost) {
     // Saturate the Host.
-    saturateHost(1, partitions);
+    saturateHost(1, partitions, cctx.saturateKDevices);
   }
 
   NodeToFunctionMap mapping;
@@ -640,7 +649,7 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
 
   if (cctx.saturateHost &&
       partitionMap.getPartitions().size() < deviceInfo_.size()) {
-    saturateHost(logicalDeviceID_, partitions);
+    saturateHost(logicalDeviceID_, partitions, cctx.saturateKDevices);
   }
 
   RETURN_IF_ERR(finalize(partitions, partitionMap));
@@ -791,7 +800,7 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
     // Attempt to saturate the host when there is only one type of backend.
     // Passing in the count of logical devices. Since logicalId starts at 0 we
     // add one.
-    saturateHost(logicalDeviceID_, partitions);
+    saturateHost(logicalDeviceID_, partitions, cctx.saturateKDevices);
   }
 
   // Step 6 : clean up and verify the generated new functions.
@@ -1030,7 +1039,7 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
         allLogicalIDs.insert(id);
       }
     }
-    saturateHost(allLogicalIDs.size(), partitions);
+    saturateHost(allLogicalIDs.size(), partitions, cctx.saturateKDevices);
   }
 
   return std::move(partitions);
@@ -1041,21 +1050,25 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
 static void expandFrontier(Node *node, const NodeValue &value,
                            std::unordered_set<NodeValue> &frontier,
                            std::unordered_set<Node *> &traversedNodes,
-                           bool includeLN) {
+                           bool includeLN, bool includeTile) {
   traversedNodes.insert(node);
   bool covered = true;
   auto users = node->getUsers();
   for (auto j = users.begin(), f = users.end(); j != f; ++j) {
     Node *user = (*j).getUser();
     if (ClipNode *CN = llvm::dyn_cast<ClipNode>(user)) {
-      expandFrontier(user, CN->getResult(), frontier, traversedNodes,
-                     includeLN);
+      expandFrontier(user, CN->getResult(), frontier, traversedNodes, includeLN,
+                     includeTile);
     } else if ((includeLN) &&
                (user->getKind() ==
                 glow::Kinded::Kind::LayerNormalizationNodeKind)) {
       expandFrontier(user,
                      user->getNthResult(LayerNormalizationNode::ResultIdx),
-                     frontier, traversedNodes, includeLN);
+                     frontier, traversedNodes, includeLN, includeTile);
+    } else if ((includeTile) &&
+               (user->getKind() == glow::Kinded::Kind::TileNodeKind)) {
+      expandFrontier(user, user->getNthResult(TileNode::ResultIdx), frontier,
+                     traversedNodes, includeLN, includeTile);
     } else {
       covered = false;
     }
@@ -1070,7 +1083,7 @@ static void expandFrontier(Node *node, const NodeValue &value,
 template <typename SLSType>
 static Error appendSLSTable(SLSType *SLS, std::vector<SLSTableInfo> &slsTables,
                             bool doPerfModelBalance, Backend *backend,
-                            bool addLN) {
+                            bool addLN, bool addTile) {
   uint64_t cost = 1;
   uint64_t numBytesInTable =
       (uint64_t)SLS->getData().getType()->getSizeInBytes();
@@ -1082,10 +1095,10 @@ static Error appendSLSTable(SLSType *SLS, std::vector<SLSTableInfo> &slsTables,
     cost = (uint64_t)cost_d;
   }
   auto slsResult = SLS->getResult();
-
+  auto insertTile = addTile && (slsResult.dims()[0] == 1);
   std::unordered_set<NodeValue> frontier;
   std::unordered_set<Node *> neighbors;
-  expandFrontier(SLS, slsResult, frontier, neighbors, addLN);
+  expandFrontier(SLS, slsResult, frontier, neighbors, addLN, insertTile);
 
   // neighbors contains only successors; add all predecessors too.
   std::queue<Node *> preds;
@@ -1274,6 +1287,8 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   std::vector<SLSTableInfo> slsTables;
   partitionConfig.funcName = std::string(F->getName());
   VLOG(1) << "Function: " << std::string(F->getName()) << std::endl;
+  const bool addTile =
+      cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS;
   const bool addLN = cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS;
   const bool doPerfModelBalance =
       cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel;
@@ -1285,7 +1300,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   case Kinded::Kind::NODE_NAME_##Kind:                                         \
     RETURN_IF_ERR(appendSLSTable<NODE_NAME_>(llvm::cast<NODE_NAME_>(&node),    \
                                              slsTables, doPerfModelBalance,    \
-                                             backends[0], addLN));             \
+                                             backends[0], addLN, addTile));    \
     totalSLSTableSizes += slsTables.back().numBytesInTable;                    \
     continue;
 
@@ -1459,7 +1474,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   ASSIGN_VALUE_OR_RETURN_ERR(partitions,
                              partitionFromConfig(partitionConfig, cctx));
   if (cctx.saturateHost) {
-    saturateHost(snnNumCards, partitions);
+    saturateHost(snnNumCards, partitions, cctx.saturateKDevices);
   }
   return std::move(partitions);
 }

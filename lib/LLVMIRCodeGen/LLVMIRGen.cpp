@@ -613,7 +613,7 @@ llvm::Value *LLVMIRGen::emitConstI32(llvm::IRBuilder<> &builder, int32_t val) {
   return builder.getInt32(val);
 }
 
-llvm::Value *LLVMIRGen::emitConstI16(llvm::IRBuilder<> &builder, int32_t val) {
+llvm::Value *LLVMIRGen::emitConstI16(llvm::IRBuilder<> &builder, int16_t val) {
   return builder.getInt16(val);
 }
 
@@ -994,14 +994,20 @@ void LLVMIRGen::emitDataParallelKernel(
 ///
 /// \param allocationsInfo information about allocations
 /// \param bundle current bundle of stacked instructions
-/// \param buf the buffer operand to be checked for overlaps with the \p bundle.
+/// \param op the operand to be checked for overlaps with the \p bundle.
 static bool isOverlappingWithAnyBundleBufferOperands(
     AllocationsInfo &allocationsInfo,
-    llvm::SmallVectorImpl<const Instruction *> &bundle, Value *buf) {
+    llvm::SmallVectorImpl<const Instruction *> &bundle,
+    const Instruction::Operand &op) {
+  auto *buf = op.first;
   auto addr1 = allocationsInfo.allocatedAddress_[buf];
   auto size1 = buf->getSizeInBytes();
   for (auto bi : bundle) {
     for (auto bop : bi->getOperands()) {
+      // Only input operands never interfere.
+      if (bop.second == OperandKind::In && op.second == OperandKind::In) {
+        continue;
+      }
       auto buf2 = bop.first;
       auto addr2 = allocationsInfo.allocatedAddress_[buf2];
       auto size2 = buf2->getSizeInBytes();
@@ -1072,14 +1078,11 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
     // bundled instructions. In case this condition does not hold, the current
     // instruction cannot be included into the data-parallel bundle, because
     // overlapping operand buffers are not data parallel.
-    for (auto op : I.getOperands()) {
-      // Skip non-mutated operands.
-      if (op.second == OperandKind::In)
-        continue;
+    for (auto &op : I.getOperands()) {
       // If the mutated operand buffer overlaps with any buffer already used by
       // the bundle, the current instruction cannot become a part of the bundle.
       if (isOverlappingWithAnyBundleBufferOperands(allocationsInfo_, bundle,
-                                                   op.first)) {
+                                                   op)) {
         isBundleCompatible = false;
         break;
       }
@@ -1123,13 +1126,25 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       /* Perform this early and let jit library to work */                     \
       /* with quantized number. */                                             \
       TensorQuantizationParams TQP{destTy->getScale(), destTy->getOffset()};   \
-      auto quantizedValue = quantization::quantize(value, TQP);                \
-      auto *val = emitConstI8(builder, quantizedValue);                        \
-      auto *stackedOpCall = createUncheckedCall(                               \
-          builder, F, {loopCount, val, pointerNull, pointerNull});             \
-      auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
-                                         "buffer.element.addr");               \
-      builder.CreateStore(stackedOpCall, destAddr);                            \
+      if (destTy->getElementType() == ElemKind::Int8QTy) {                     \
+        auto quantizedValue = quantization::quantize<int8_t>(value, TQP);      \
+        auto *val = emitConstI8(builder, quantizedValue);                      \
+        auto *stackedOpCall = createUncheckedCall(                             \
+            builder, F, {loopCount, val, pointerNull, pointerNull});           \
+        auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,      \
+                                           "buffer.element.addr");             \
+        builder.CreateStore(stackedOpCall, destAddr);                          \
+      } else if (destTy->getElementType() == ElemKind::Int16QTy) {             \
+        auto quantizedValue = quantization::quantize<int16_t>(value, TQP);     \
+        auto *val = emitConstI16(builder, quantizedValue);                     \
+        auto *stackedOpCall = createUncheckedCall(                             \
+            builder, F, {loopCount, val, pointerNull, pointerNull});           \
+        auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,      \
+                                           "buffer.element.addr");             \
+        builder.CreateStore(stackedOpCall, destAddr);                          \
+      } else {                                                                 \
+        llvm_unreachable("Quantization precision not supported.");             \
+      }                                                                        \
     } else {                                                                   \
       auto *val = emitConst(builder, value, dest->getElementType());           \
       auto *stackedOpCall = createUncheckedCall(                               \
@@ -1219,8 +1234,9 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *F = getFunction("intlookuptable_kernel", dest->getElementType());
     auto *stackedOpCall =
         builder.CreateCall(F, {loopCount, srcPtr, mappingPtr});
-    auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
-                                       "buffer.element.addr");
+    auto *destType = getElementType(builder, dest);
+    auto *destAddr =
+        builder.CreateGEP(destType, destPtr, loopCount, "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
 
     break;
@@ -1417,17 +1433,9 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 
     auto *stackedOpCall = createUncheckedCall(
         builder, F, {loopCount, srcPtr, destScale, destOffset});
-    llvm::Value *destAddr = nullptr;
-    if (dest->getElementType() == ElemKind::Int8QTy) {
-      destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
-                                   "buffer.element.addr");
-    } else if (dest->getElementType() == ElemKind::Int32QTy) {
-      destAddr = builder.CreateGEP(builder.getInt32Ty(), destPtr, loopCount,
-                                   "buffer.element.addr");
-    } else {
-      LOG(FATAL) << "Type is not supported";
-    }
-
+    auto *destType = getElementType(builder, dest);
+    auto *destAddr =
+        builder.CreateGEP(destType, destPtr, loopCount, "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
     break;
   }
@@ -1441,7 +1449,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *srcTy = src->getType();
     auto *srcScale = emitConstF32(builder, srcTy->getScale());
     auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-    auto *F = getFunction("element_dequantize_kernel", dest->getElementType());
+    auto *F = getFunction("element_dequantize_kernel", src->getElementType());
 
     auto *stackedOpCall = createUncheckedCall(
         builder, F, {loopCount, srcPtr, srcScale, srcOffset});
@@ -2874,11 +2882,44 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *src = SM->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
-
-    auto *dims = emitValueDims(builder, src);
+    auto *srcDims = emitValueDims(builder, src);
 
     auto *F = getFunction("softmax", dest->getElementType());
-    createCall(builder, F, {srcPtr, destPtr, dims});
+
+    if (src->getType()->isQuantizedType()) {
+      std::vector<int32_t> lut;
+
+      // Compute lookup table containing all the exponentials based on the
+      // formula e^(scale * value), where scale is the input scale of
+      // the quantized input data and value is a value from [-255, 0].
+      for (int32_t i = 0; i < 256; i++) {
+        auto exponent =
+            FixedPointUInt32(exp(src->getType()->getScale() * (i - 255)), 1)
+                .getFixedVal();
+        lut.push_back(exponent);
+      }
+
+      auto *lutPtr = emitConstI32Array(builder, lut);
+      auto *outOffset = emitConstI32(builder, dest->getType()->getOffset());
+      float size = static_cast<float>(src->getType()->dims()[1]);
+      auto *sumIntegerPart = emitConstI32(builder, ceil(log2(size)));
+
+      if (ceil(log2(size)) == floor(log2(size))) {
+        sumIntegerPart = emitConstI32(builder, ceil(log2(size)) + 1);
+      }
+
+      FixedPointUInt32 invScaleFixedPoint =
+          FixedPointUInt32(1.f / dest->getType()->getScale());
+      auto *invScale = emitConstI32(builder, invScaleFixedPoint.getFixedVal());
+      auto *invScalePoint =
+          emitConstI32(builder, invScaleFixedPoint.getIntBits());
+      createCall(builder, F,
+                 {srcPtr, destPtr, srcDims, lutPtr, outOffset, invScale,
+                  sumIntegerPart, invScalePoint});
+    } else {
+      createCall(builder, F, {srcPtr, destPtr, srcDims});
+    }
+
     break;
   }
 

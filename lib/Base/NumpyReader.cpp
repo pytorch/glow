@@ -42,20 +42,32 @@ struct NpyData {
   std::vector<dim_t> shape;
   NpyType type;
   size_t nvals;
+  template <typename T> T *getData() { return (T *)data.data(); }
   size_t elemSize;
 };
 
-/// Convert numpy data from it's original type into float.
-void convertU8S8ToFloat(NpyData &dataNpy, std::vector<float> &data) {
-  char *databuf = dataNpy.data.data();
+template <typename T>
+static void convertNumpyToFloatImpl(NpyData &dataNpy,
+                                    std::vector<float> &data) {
+  T *databuf = dataNpy.getData<T>();
   for (size_t i = 0; i < dataNpy.nvals; i++) {
-    if (dataNpy.type == NpyType::U1) {
-      data[i] = ((uint8_t *)databuf)[i * dataNpy.elemSize];
-    } else if (dataNpy.type == NpyType::I1) {
-      data[i] = ((int8_t *)databuf)[i * dataNpy.elemSize] + 128;
-    } else {
-      LOG(FATAL) << " Datatype not supported: " << (int)dataNpy.type;
-    }
+    data[i] = databuf[i];
+  }
+}
+
+void convertNumpyToFloat(NpyData &dataNpy, std::vector<float> &data) {
+  if (dataNpy.type == NpyType::F4) {
+    convertNumpyToFloatImpl<float>(dataNpy, data);
+  } else if (dataNpy.type == NpyType::U1) {
+    convertNumpyToFloatImpl<uint8_t>(dataNpy, data);
+  } else if (dataNpy.type == NpyType::I1) {
+    convertNumpyToFloatImpl<int8_t>(dataNpy, data);
+  } else if (dataNpy.type == NpyType::I2) {
+    convertNumpyToFloatImpl<int16_t>(dataNpy, data);
+  } else if (dataNpy.type == NpyType::U2) {
+    convertNumpyToFloatImpl<uint16_t>(dataNpy, data);
+  } else {
+    LOG(FATAL) << " Datatype not supported: " << (int)dataNpy.type;
   }
 }
 
@@ -171,11 +183,16 @@ void numpyReader(const std::string &filename, NpyData &npyData) {
 static void normalizeData(ImageLayout imageLayout, llvm::ArrayRef<float> mean,
                           llvm::ArrayRef<float> stddev,
                           ImageNormalizationMode imageNormMode,
-                          std::vector<float> &data, std::vector<dim_t> &shape) {
+                          std::vector<float> &data, std::vector<dim_t> &shape,
+                          ImgDataRange pixelRange) {
+  auto inputRange =
+      glow::getPixelValMax(pixelRange) - glow::getPixelValMin(pixelRange);
+  auto range = normModeToRange(imageNormMode, pixelRange);
 
-  auto range = normModeToRange(imageNormMode);
-  float scale = ((range.second - range.first) / 255.f);
+  float scale = (range.second - range.first) / inputRange;
   float bias = range.first;
+  float offset = glow::getPixelValMin(pixelRange);
+
   dim_t numCh = (imageLayout == ImageLayout::Unspecified) ? 1
                 : (imageLayout == ImageLayout::NHWC)      ? shape[3]
                                                           : shape[1];
@@ -193,17 +210,39 @@ static void normalizeData(ImageLayout imageLayout, llvm::ArrayRef<float> mean,
   size_t chStride = imageLayout == ImageLayout::NCHW ? shape[2] * shape[3] : 1;
   for (size_t i = 0; i < data.size(); i++) {
     size_t chIdx = (i / chStride) % numCh;
-    CHECK(data[i] >= 0. && data[i] <= 255.)
-        << "NPY loader: U8 data expected, got: " << data[i];
     data[i] = (data[i] - meanVal[chIdx]) / stddevVal[chIdx];
-    data[i] = data[i] * scale + bias;
+    data[i] = (data[i] - offset) * scale + bias;
+  }
+}
+
+static void setPixelRange(NpyType type, ImgDataRange &pixelRange) {
+  switch (type) {
+  case (NpyType::I1):
+    pixelRange = ImgDataRange::S8;
+    break;
+  case (NpyType::U1):
+    pixelRange = ImgDataRange::U8;
+    break;
+  case (NpyType::I2):
+    pixelRange = ImgDataRange::S16;
+    break;
+  case (NpyType::U2):
+    pixelRange = ImgDataRange::U16;
+    break;
+  case (NpyType::F4):
+    // accept whathever is already set.
+    break;
+  default:
+    LOG(FATAL) << "Wrong image type: " << int(type);
+    break;
   }
 }
 
 void loadUnspecifiedImageAndPreprocess(
     const llvm::ArrayRef<std::string> &filenames, Tensor &inputData,
     ImageNormalizationMode imageNormMode, llvm::ArrayRef<float> mean,
-    llvm::ArrayRef<float> stddev) {
+    llvm::ArrayRef<float> stddev, ImgDataRange &pixelRange) {
+
   CHECK_EQ(filenames.size(), 1) << "NPY raw image loader: expect single file.";
   CHECK_LE(mean.size(), 1) << "NPY raw image loader: expect single mean value.";
   CHECK_LE(stddev.size(), 1)
@@ -212,14 +251,11 @@ void loadUnspecifiedImageAndPreprocess(
   NpyData dataNpy;
   numpyReader(filenames[0], dataNpy);
   std::vector<float> data(dataNpy.nvals);
-  if (dataNpy.type == NpyType::F4) {
-    memcpy(data.data(), dataNpy.data.data(), dataNpy.nvals * dataNpy.elemSize);
-  } else {
-    convertU8S8ToFloat(dataNpy, data);
-  }
 
+  convertNumpyToFloat(dataNpy, data);
+  setPixelRange(dataNpy.type, pixelRange);
   normalizeData(ImageLayout::Unspecified, mean, stddev, imageNormMode, data,
-                dataNpy.shape);
+                dataNpy.shape, pixelRange);
 
   inputData.reset(ElemKind::FloatTy, dataNpy.shape);
   inputData.getHandle<>() = data;
@@ -227,15 +263,19 @@ void loadUnspecifiedImageAndPreprocess(
 
 void glow::loadNumpyImagesAndPreprocess(
     const llvm::ArrayRef<std::string> &filenames, Tensor &inputData,
-    ImageNormalizationMode imageNormMode, ImageLayout imageLayout,
-    ImageLayout inputLayout, llvm::ArrayRef<float> mean,
-    llvm::ArrayRef<float> stddev) {
+    ImageNormalizationMode imageNormMode, ImageChannelOrder &imageChannelOrder,
+    ImageLayout imageLayout, ImageLayout inputLayout,
+    llvm::ArrayRef<float> mean, llvm::ArrayRef<float> stddev,
+    ImgDataRange &pixelRange) {
+
   DCHECK(!filenames.empty())
       << "NPY loader: There must be at least one filename in filenames.";
 
+  imageChannelOrder = ImageChannelOrder::Unspecified;
+
   if (imageLayout == ImageLayout::Unspecified) {
-    return loadUnspecifiedImageAndPreprocess(filenames, inputData,
-                                             imageNormMode, mean, stddev);
+    return loadUnspecifiedImageAndPreprocess(
+        filenames, inputData, imageNormMode, mean, stddev, pixelRange);
   }
 
   dim_t numImg = filenames.size();
@@ -248,15 +288,15 @@ void glow::loadNumpyImagesAndPreprocess(
     NpyData dataNpy;
     numpyReader(filenames[n], dataNpy);
     std::vector<float> data(dataNpy.nvals);
-    convertU8S8ToFloat(dataNpy, data);
+    convertNumpyToFloat(dataNpy, data);
     // Expand 3D to 4D. Supporting 4D only.
     if (dataNpy.shape.size() == 3) {
       dataNpy.shape.insert(dataNpy.shape.begin(), 1);
     }
     CHECK_EQ(dataNpy.shape.size(), 4)
         << "NPY loader: Supporting only 3 or 4 dimensions.";
-    normalizeData(imageLayout, mean, stddev, imageNormMode, data,
-                  dataNpy.shape);
+    normalizeData(imageLayout, mean, stddev, imageNormMode, data, dataNpy.shape,
+                  pixelRange);
     // Load tensor from the vector obtained from the npy loader.
     tensors[n].reset(glow::ElemKind::FloatTy, dataNpy.shape);
     tensors[n].getHandle<>() = data;

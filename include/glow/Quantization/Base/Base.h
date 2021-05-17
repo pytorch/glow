@@ -118,6 +118,92 @@ struct NodeQuantizationInfo {
   int32_t offset() const { return tensorQuantizationParams_.offset; }
 };
 
+/// Primitive to encode an integer in 32-bit unsigned fixed-point format.
+class FixedPointUInt32 {
+private:
+  /// Encoded fixed-point value.
+  uint32_t val_;
+  /// Number of integer bits.
+  unsigned intBits_;
+  /// Number of fractional bits.
+  unsigned fracBits_;
+
+public:
+  /// Default constructor.
+  FixedPointUInt32() = default;
+
+  /// Construct a fixed-point representation of the floating-point value
+  /// \p floatVal using the fixed-point configuration with minimum approximation
+  /// error by using the least amount of integer bits and the highest amount
+  /// of fractional bits.
+  FixedPointUInt32(float floatVal) {
+    assert(floatVal >= 0 && "Floating point value must be positive!");
+    val_ = floatingToFixedPoint(floatVal, 32 - minBitsIntegerPart(floatVal));
+    intBits_ = minBitsIntegerPart(floatVal);
+    fracBits_ = 32 - intBits_;
+  };
+
+  /// Construct a fixed-point representation of the floating-point value
+  /// \p floatVal using the given number of integer bits \p intBits.
+  FixedPointUInt32(float floatVal, unsigned intBits) {
+    assert(floatVal >= 0 && "Floating point value must be positive!");
+    assert(intBits >= 0 && intBits <= 32 &&
+           "Integer bits must be between 0 and 32");
+    val_ = floatingToFixedPoint(floatVal, 32 - intBits);
+    intBits_ = intBits;
+    fracBits_ = 32 - intBits_;
+  }
+
+  /// \returns the encoded fixed-point value as integer.
+  uint32_t getFixedVal() const { return val_; }
+
+  /// \returns the encoded fixed-point value as float.
+  float getFloatVal() const { return (float)(val_) / std::exp2(fracBits_); }
+
+  /// \returns the number of integer bits.
+  unsigned getIntBits() const { return intBits_; }
+
+  /// \returns the number of fractional bits.
+  unsigned getFracBits() const { return fracBits_; }
+
+private:
+  // \p number.
+  // \returns the minimum number of bits representing the
+  // integer part of the fixed point representation of a
+  // floating point number.
+  uint32_t minBitsIntegerPart(float number) {
+    assert(number >= 0 && "Floating point value must be positive!");
+    uint32_t aux = (uint32_t)number;
+    uint32_t integerPart = 0;
+
+    while (aux / 2 != 0 || aux % 2 != 0) {
+      integerPart += 1;
+      aux /= 2;
+    }
+
+    assert(integerPart >= 0 && integerPart <= 32 &&
+           "Overflow caused by input number\n");
+    return integerPart;
+  }
+
+  // \p elem.
+  // \p fracPart representing number of bits for fixed point representation.
+  // \returns the fixed point representation of the input floating point number
+  // using the format Q(32- fracPart).fracPart.
+  uint32_t floatingToFixedPoint(float elem, uint32_t fracPart) {
+    assert(elem >= 0 && "Floating point value must be positive!");
+    double result = (double)elem * (double)std::exp2((double)fracPart);
+    assert(result >= (double)std::numeric_limits<uint32_t>::min() &&
+           result <= (double)std::numeric_limits<uint32_t>::max() &&
+           "Float to fix point conversion overflow\n");
+    return round(result);
+  }
+
+public:
+  /// \returns a string representation of the fixed-point value (e.g. "0.13").
+  std::string toString() const { return std::to_string(getFloatVal()); }
+};
+
 namespace quantization {
 
 /// Type definition for a float min/max range.
@@ -251,13 +337,17 @@ inline float dequantize(eTy input, const TensorQuantizationParams &TQP) {
 }
 
 /// Converts floating point value to DestTy (quantized type) based on the
-/// quantization parameters \p scale and \p offset. If the dest type is int8_t,
-/// then an offset of 128 is substracted to convert to int8_t.
+/// quantization parameters \p scale and \p offset. If the destination type is
+/// int8_t then an offset of 128 is subtracted to convert to int8_t. If the
+/// destination type is int16_t then an offset of 32768 is subtracted to convert
+/// to int16_t.
 template <class DestTy>
 inline DestTy quantizeWithFloatOffset(float input, float scale, float offset) {
-  uint8_t d = static_cast<uint8_t>(std::round((input - offset) / scale));
+  uint16_t d = static_cast<uint16_t>(std::round((input - offset) / scale));
   if (std::is_same<int8_t, DestTy>::value) {
     d -= 128;
+  } else if (std::is_same<int16_t, DestTy>::value) {
+    d -= 32768;
   }
   return static_cast<DestTy>(d);
 }
@@ -273,12 +363,15 @@ inline uint8_t quantize4BitsWithFloatOffset(float input, float scale,
 
 /// Converts a quantized value (type eTy) to floating point based on the
 /// quantization parameters \p scale and \p offset. If the input type is int8_t,
-/// then an offset of 128 is added to convert to uint8_t.
+/// then an offset of 128 is added to convert to uint8_t. If the input type is
+/// int16_t, then an offset of 32768 is added to convert to uint16_t.
 template <class eTy>
 inline float dequantizeWithFloatOffset(eTy input, float scale, float offset) {
-  uint8_t d = static_cast<uint8_t>(input);
+  uint16_t d = static_cast<uint16_t>(input);
   if (std::is_same<int8_t, eTy>::value) {
     d += 128;
+  } else if (std::is_same<int16_t, eTy>::value) {
+    d += 32768;
   }
   return (d * scale) + offset;
 }
@@ -375,11 +468,31 @@ void specializeBiasWeightsQuantizationParams(
     TensorQuantizationParams &weightsTQP, Schema schema, ElemKind biasQTy,
     bool biasZero = false);
 
-/// \returns an int8 vector mapping from the \p inTy to the \p outTy given the
-/// function \p f.
-/// \pre inTy and outTy should be Int8QTy.
-std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
-                                  std::function<float(float)> f);
+/// \returns an integer mapping from the \p inTy to the \p outTy given the
+/// floating-point function \p func.
+/// \pre inTy and outTy must be quantized types.
+template <typename T = int8_t>
+std::vector<T> createMapping(TypeRef inTy, TypeRef outTy,
+                             std::function<float(float)> func) {
+  assert(inTy->isQuantizedType() && "Input type must be quantized!");
+  assert(outTy->isQuantizedType() && "Output type must be quantized!");
+  assert(outTy->isType<T>() && "Output type must match template type!");
+
+  // Calculate the step which will be added to the currInputVal repeatedly in
+  // order to cover the input range of the input type.
+  auto inputRange = inTy->getQuantizedValueRange();
+  const float step = inTy->getQuantizedValueStep();
+  float currInputVal = inputRange.first;
+
+  // Calculate the output int value for each possible input value.
+  std::vector<T> mapping(inTy->getQuantizedValueCount());
+  TensorQuantizationParams outputTQP{outTy->getScale(), outTy->getOffset()};
+  for (size_t i = 0; i < mapping.size(); i++, currInputVal += step) {
+    float currOutputVal = func(currInputVal);
+    mapping[i] = quantization::quantize<T>(currOutputVal, outputTQP);
+  }
+  return mapping;
+}
 
 /// Row-wise quantize the tensor \p input. \p scales and \p offsets are
 /// generated by each row of \p input, \p output is tensor of the same shape as

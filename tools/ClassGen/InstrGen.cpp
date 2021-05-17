@@ -455,7 +455,7 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Weights"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::Int64ITy"});
+                  {"Indices", "ElemKind::Int32ITy"});
 
   BB.newInstr("EmbeddingBag")
       .addOperand("Dest", OperandKind::Out)
@@ -469,9 +469,9 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::Int64ITy"})
+                  {"Indices", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Offsets", "ElemKind::Int64ITy"})
+                  {"Offsets", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("RowwiseQuantizedSparseLengthsWeightedSum")
@@ -517,9 +517,9 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "AvgLength")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::Int64ITy"})
+                  {"Indices", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Offsets", "ElemKind::Int64ITy"})
+                  {"Offsets", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("LengthsToRanges")
@@ -938,6 +938,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen("Erf");
 
+  BB.newInstr("NonZero")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Cond", OperandKind::In)
+      .inplaceOperand({"Dest", "Cond"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameElementType, {"Cond", "ElemKind::BoolTy"})
+      .autoIRGen("NonZero");
+
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Cond", OperandKind::In)
@@ -974,6 +982,19 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "NumInputs")
       .addMember(MemberType::Unsigned, "VectorSize")
       .autoVerify(VerifyKind::NoVerify);
+
+  //===--------------------------------------------------------------------===//
+  //                Fillers
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("GaussianFill")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::Float, "Mean")
+      .addMember(MemberType::Float, "Scale")
+      .addMember(MemberType::Float, "Seed")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Float16Ty"});
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
@@ -1100,6 +1121,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
       .autoIRGen();
 
+  BB.newInstr("GatherElements")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Dim")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoIRGen();
+
   BB.newInstr("GatherRanges")
       .addOperand("Output", OperandKind::Out)
       .addOperand("Lengths", OperandKind::Out)
@@ -1212,7 +1241,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Mapping", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::TypeCheck, {"Src", "isQuantizedType()"})
       .autoVerify(VerifyKind::TypeCheck, {"Dest", "isQuantizedType()"})
       .dataParallel()
       .autoIRGen();
@@ -1372,6 +1401,28 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Rois", "Deltas"})
       .autoVerify(VerifyKind::SameElementType, {"Rois", "ImInfo"})
       .autoIRGen();
+
+  BB.newInstr("CollectRpnProposals")
+      .addOperand("Result", OperandKind::Out)
+      .addMember(MemberType::Int64, "RpnMaxLevel")
+      .addMember(MemberType::Int64, "RpnMinLevel")
+      .addMember(MemberType::Unsigned, "RpnPostNmsTopN")
+      .autoVerify(VerifyKind::NoVerify);
+
+  //===--------------------------------------------------------------------===//
+  //                Lookup Table Operators
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("LookupTable")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Table", OperandKind::In)
+      .addOperand("TableIdx", OperandKind::In)
+      .addMember(MEMBER_TYPE_INFO(glow::LUTOperator), "Operator")
+      .addMember(MemberType::VectorFloat, "OperatorArgs")
+      .dataParallel()
+      .autoIRGen()
+      .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions

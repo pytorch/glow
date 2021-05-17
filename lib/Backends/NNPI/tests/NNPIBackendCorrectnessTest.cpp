@@ -45,10 +45,11 @@ struct BlacklistInitializer {
        TestBlacklist::AnyDeviceAnyEngine},
       {"AsymmetricQuantizedConvReluFusionTest/0",
        TestBlacklist::AnyDeviceAnyEngine},
+      {"intLookupTableInt16/0", TestBlacklist::AnyDeviceAnyEngine},
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
-      {"intLookupTable/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"intLookupTableInt8/0", TestBlacklist::AnyDeviceAnyEngine},
 #else
-      {"intLookupTable/0", TestBlacklist::AnyDeviceSWEngine},
+      {"intLookupTableInt8/0", TestBlacklist::AnyDeviceSWEngine},
 #endif
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,

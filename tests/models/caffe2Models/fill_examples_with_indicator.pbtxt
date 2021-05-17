@@ -1,0 +1,11 @@
+name: "fill_examples_with_indicator"
+op {
+  input: "data"
+  input: "indicator"
+  output: "output"
+  name: ""
+  type: "FillExamplesWithIndicator"
+}
+external_input: "data"
+external_input: "indicator"
+external_output: "output"

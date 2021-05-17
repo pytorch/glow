@@ -36,6 +36,7 @@ namespace flags {
 
 // Generic Constants
 int32_t NumDevices = 1;
+bool ScanDevices = false;
 bool SaturateHost = false;
 bool EnableQuantParamChanges = true;
 size_t MaxActiveRequests = 48;
@@ -53,6 +54,7 @@ bool DisableLayoutVerifying = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
+bool SkipBiasFp32tofp16Convert = false;
 bool ConvertPlaceholdersToFP16 = false;
 bool ConvertConstantsToFP16 = true;
 bool ConvertFusedScaleOffsetToFP16 = false;
@@ -61,6 +63,9 @@ bool SkipInputsOnClipToFP16 = true;
 bool ForceSLSToFP16Accum = true;
 bool ClipQuantRangeToFP16 = false;
 bool ClipZeroScaleFP16 = false;
+
+// Fp32 constants
+bool ConvertFusedScaleOffsetToFP32 = false;
 
 // Debug Constants
 int32_t NumDebugTracesPerDump = 100;
@@ -82,6 +87,7 @@ bool UseSparseNNPartitioningScheme = false;
 bool SparseNNPartitioningAddSLSConcats = false;
 bool SparseNNPartitioningBalancePerfModel = false;
 bool SparseNNPartitioningPairLNWithSLS = false;
+bool SparseNNPartitioningPairTileWithSLS = false;
 
 // Dag Optimizer Constants
 bool UseDAGOptimizer = false;
@@ -101,9 +107,12 @@ bool LowerAllBatchMatMul = false;
 bool AcceptUnarySLS = false;
 bool SpecializeAllOneSLS = false;
 bool DisableTransforms = false;
-bool EnablePrivateTransforms = false;
+bool EnableCustomIAKernels = false;
+bool EnableCustomDSPKernels = false;
 bool DumpCompilerData = false;
 bool UsePerPartitionIcetConfig = false;
+std::string InjectedIAOpKernelPath = "";
+bool DumpCustomKernelFiles = false;
 
 } // namespace flags
 } // namespace nnpi
@@ -132,6 +141,8 @@ std::string BackendName = "";
 bool SaveModel = false;
 bool SaveIO = false;
 bool SaveDAG = false;
+bool SaveDAGWithConstants = false;
+bool SaveDAGInZipMode = false;
 } // namespace flags
 } // namespace onnxifi
 } // namespace glow
@@ -152,6 +163,7 @@ bool EnableDRT = false;
 unsigned DeviceInitTimeoutMs = 5000;
 unsigned SanitizeInputsPercent = 0;
 uint64_t BigTableThresholdBytes = 104857600; // 100MB
+unsigned NumCompilationThreads = 1;
 } // namespace flags
 } // namespace runtime
 } // namespace glow
@@ -166,6 +178,8 @@ DEFINE_validator(glow_num_devices, [](const char *, int32_t val) {
   glow::flags::NumDevices = val;
   return true;
 });
+DEFINE_bool(glow_scan_devices, glow::flags::ScanDevices,
+            "Scan available devices for Glow backend");
 DEFINE_int32(glow_snn_partitioning_num_cards,
              glow::flags::SparseNNPartitioningSchemeNumCards,
              "Number of devices to distribute tables across in SparseNN "
@@ -234,6 +248,13 @@ DEFINE_validator(glow_global_fp16, [](const char *, bool val) {
   glow::flags::ConvertToFP16 = val;
   return true;
 });
+DEFINE_bool(glow_skip_bias_fp32tofp16_convert,
+            glow::flags::SkipBiasFp32tofp16Convert,
+            "Skip fp32 -> fp16 convertion for Bias in FC");
+DEFINE_validator(glow_skip_bias_fp32tofp16_convert, [](const char *, bool val) {
+  glow::flags::SkipBiasFp32tofp16Convert = val;
+  return true;
+});
 DEFINE_bool(torch_glow_imaginary_flag, glow::torch_glow::flags::ImaginaryFlag,
             "Enable fp16 lowering for all ops on the net");
 DEFINE_validator(torch_glow_imaginary_flag, [](const char *, bool val) {
@@ -259,6 +280,15 @@ DEFINE_bool(glow_global_fused_scale_offset_fp16,
 DEFINE_validator(glow_global_fused_scale_offset_fp16,
                  [](const char *, bool val) {
                    glow::flags::ConvertFusedScaleOffsetToFP16 = val;
+                   return true;
+                 });
+DEFINE_bool(
+    glow_global_fused_scale_offset_fp32,
+    glow::flags::ConvertFusedScaleOffsetToFP32,
+    "Enable converting scale/offset in sls's input data from fp16 to fp32");
+DEFINE_validator(glow_global_fused_scale_offset_fp32,
+                 [](const char *, bool val) {
+                   glow::flags::ConvertFusedScaleOffsetToFP32 = val;
                    return true;
                  });
 DEFINE_bool(
@@ -309,6 +339,16 @@ DEFINE_validator(glow_sparsenn_partitioning_pair_ln_with_sls,
                    glow::flags::SparseNNPartitioningPairLNWithSLS = val;
                    return true;
                  });
+DEFINE_bool(
+    glow_sparsenn_partitioning_pair_tile_with_sls,
+    glow::flags::SparseNNPartitioningPairTileWithSLS,
+    "Put tile nodes immediately following SLS for user embeddings into SLS "
+    "Partitions");
+DEFINE_validator(glow_sparsenn_partitioning_pair_tile_with_sls,
+                 [](const char *, bool val) {
+                   glow::flags::SparseNNPartitioningPairTileWithSLS = val;
+                   return true;
+                 });
 DEFINE_bool(glow_clip_fp16, glow::flags::ClipToFP16,
             "Force glow to clip fp16 values to min/max");
 DEFINE_validator(glow_clip_fp16, [](const char *, bool val) {
@@ -332,6 +372,23 @@ DEFINE_bool(
     "Whether to serialize the DAG that has been optimized and partitioned.");
 DEFINE_validator(glow_save_onnxifi_dag, [](const char *, bool val) {
   glow::onnxifi::flags::SaveDAG = val;
+  return true;
+});
+DEFINE_bool(glow_save_onnxifi_dag_with_constants,
+            glow::onnxifi::flags::SaveDAGWithConstants,
+            "Whether to serialize constants in the DAG that has been optimized "
+            "and partitioned.");
+DEFINE_validator(glow_save_onnxifi_dag_with_constants,
+                 [](const char *, bool val) {
+                   glow::onnxifi::flags::SaveDAGWithConstants = val;
+                   return true;
+                 });
+DEFINE_bool(glow_save_onnxifi_dag_in_zip_mode,
+            glow::onnxifi::flags::SaveDAGWithConstants,
+            "Whether to serialize the DAG that has been optimized and "
+            "partitioned in ZIP mode.");
+DEFINE_validator(glow_save_onnxifi_dag_in_zip_mode, [](const char *, bool val) {
+  glow::onnxifi::flags::SaveDAGInZipMode = val;
   return true;
 });
 DEFINE_bool(
@@ -511,14 +568,40 @@ DEFINE_validator(glow_disable_nnpi_transforms, [](const char *, bool val) {
   glow::nnpi::flags::DisableTransforms = val;
   return true;
 });
-DEFINE_bool(glow_enable_nnpi_private_transforms,
-            glow::nnpi::flags::EnablePrivateTransforms,
+DEFINE_bool(glow_enable_nnpi_custom_ia_kernels,
+            glow::nnpi::flags::EnableCustomIAKernels,
             "Enable running NNPIBackend::transformPrivate().");
-DEFINE_validator(glow_enable_nnpi_private_transforms,
+DEFINE_validator(glow_enable_nnpi_custom_ia_kernels,
                  [](const char *, bool val) {
-                   glow::nnpi::flags::EnablePrivateTransforms = val;
+                   glow::nnpi::flags::EnableCustomIAKernels = val;
                    return true;
                  });
+DEFINE_bool(glow_enable_nnpi_custom_dsp_kernels,
+            glow::nnpi::flags::EnableCustomDSPKernels,
+            "Enable running NNPIBackend::transformPrivate().");
+DEFINE_validator(glow_enable_nnpi_custom_dsp_kernels,
+                 [](const char *, bool val) {
+                   glow::nnpi::flags::EnableCustomDSPKernels = val;
+                   return true;
+                 });
+
+DEFINE_string(glow_injected_ia_op_kernel_path,
+              glow::nnpi::flags::InjectedIAOpKernelPath,
+              "Path to IA kernels library to use");
+DEFINE_validator(glow_injected_ia_op_kernel_path,
+                 [](const char *, const std::string &val) {
+                   glow::nnpi::flags::InjectedIAOpKernelPath = val;
+                   return true;
+                 });
+
+DEFINE_bool(glow_dump_custom_kernel_files,
+            glow::nnpi::flags::DumpCustomKernelFiles,
+            "Enable dumping the compiled custom IA and DSP kernels to file.");
+DEFINE_validator(glow_dump_custom_kernel_files, [](const char *, bool val) {
+  glow::nnpi::flags::DumpCustomKernelFiles = val;
+  return true;
+});
+
 DEFINE_bool(glow_nnpi_lower_all_batch_matmul,
             glow::nnpi::flags::LowerAllBatchMatMul,
             "Whether to override default lowering for NNPI and always lower "
@@ -588,6 +671,14 @@ DEFINE_int32(glow_habana_memory, glow::runtime::flags::HabanaMemory,
              "Amount of DRAM to allocate per Habana device in KiB");
 DEFINE_validator(glow_habana_memory, [](const char *, int32_t val) {
   glow::runtime::flags::HabanaMemory = val;
+  return true;
+});
+
+DEFINE_int32(
+    glow_num_compilation_threads, glow::runtime::flags::NumCompilationThreads,
+    "Maximum number of threads to spawn per call to Backend::compileFunctions");
+DEFINE_validator(glow_num_compilation_threads, [](const char *, int32_t val) {
+  glow::runtime::flags::NumCompilationThreads = val;
   return true;
 });
 

@@ -78,11 +78,10 @@ class TestTo(utils.TorchGlowTestCase):
                 SimplePrimToModel(torch.float),
                 torch.randn(5, 6, 7),
             ),
-            # The following test is not yet supported:
-            # ("to_prim_device", SimplePrimToModel("cpu"), torch.randn(5, 6, 7)),
+            lambda: ("to_prim_device", SimplePrimToModel("cpu"), torch.randn(5, 6, 7)),
             lambda: (
                 "to_prim_device_with_dtype",
-                SimplePrimToModel(torch.float, "cpu"),
+                SimplePrimToModel(torch.float, "cuda"),
                 torch.randn(5, 6, 7),
             ),
         ]
@@ -91,7 +90,6 @@ class TestTo(utils.TorchGlowTestCase):
         utils.compare_tracing_methods(
             module,
             tensor,
-            fusible_ops={"prim::NumToTensor"},
+            fusible_ops={"prim::NumToTensor", "aten::to"},
             scripted=True,
-            skip_to_glow=True,
         )

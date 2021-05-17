@@ -391,6 +391,8 @@ TEST(exporter, onnxModels) {
         name.find("upsampleOpset9.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppressionSSD_ONNX.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppression.onnxtxt") != std::string::npos ||
+        name.find("NonMaxSuppressionOptionalParams.onnxtxt") !=
+            std::string::npos ||
         name.find("NonMaxSuppressionSSD.onnxtxt") != std::string::npos ||
         name.find("ROIAlign_onnx.onnxtxt") != std::string::npos ||
         name.find("MatMul4D.onnxtxt") != std::string::npos ||
@@ -453,7 +455,8 @@ TEST(exporter, onnxModels) {
         name.find("pow_scalar_broadcast.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
             std::string::npos ||
-        name.find("sliceInvalidAxes.onnxtxt") != std::string::npos) {
+        name.find("sliceInvalidAxes.onnxtxt") != std::string::npos ||
+        name.find("sliceWithUnsupportedStep.onnxtxt") != std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.
       llvm::outs() << "Ignore invalid input files: " << name << "\n";
       continue;
@@ -1127,4 +1130,53 @@ TEST(exporter, TestUniqueOffsetMapSerialization) {
                                /* backendSpecificNodeInfo */ {},
                                originNameToTQPMap));
   (void)R;
+}
+
+/// Test that we can serialize tensor strides.
+TEST(exporter, TestStridesSerialization) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  auto ty = mod.uniqueType(ElemKind::Float16Ty, {5, 3});
+  // Create a type with non-standard strides.
+  ty = mod.uniqueTypeWithNewStrides(ty, ty->dims(), {332, 1});
+  Placeholder *I = mod.createPlaceholder(ty, "input", false);
+  SaveNode *save = F->createSave("save_out", I);
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({I, output});
+
+  // Save and reload F in text mode.
+  {
+    Function *R;
+    Module reloadMod;
+    ASSIGN_VALUE_OR_FAIL_TEST(
+        R, saveAndReloadFunction(reloadMod, F, {"input"}, {I->getType()}, 7, 9,
+                                 /* zipMode */ false,
+                                 /* useGlowCustomOps */ true,
+                                 /* useString */ false,
+                                 /* includeConstantData */ true,
+                                 /* record */ nullptr, /* reloadCctx */ nullptr,
+                                 /* backendSpecificNodeInfo */ {}));
+    (void)R;
+  }
+  // Save and reload F in zip mode.
+  {
+    Function *R;
+    Module reloadMod;
+    ASSIGN_VALUE_OR_FAIL_TEST(
+        R, saveAndReloadFunction(reloadMod, F, {"input"}, {I->getType()}, 7, 9,
+                                 /* zipMode */ true,
+                                 /* useGlowCustomOps */ true,
+                                 /* useString */ false,
+                                 /* includeConstantData */ true,
+                                 /* record */ nullptr, /* reloadCctx */ nullptr,
+                                 /* backendSpecificNodeInfo */ {}));
+    (void)R;
+  }
 }

@@ -604,10 +604,9 @@ Error Caffe2ModelLoader::loadLayerNorm(const caffe2::OperatorDef &op,
   unsigned_t axis = 1; // Caffe2 default.
   if (dict.count("axis")) {
     ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+    ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                               getPositiveAxis<int>(axis, in.dims().size()));
   }
-
-  RETURN_ERR_IF_NOT(axis < in.dims().size(),
-                    opErrMsg(op, "axis must fit inside input dims"));
 
   // Feature shape is based on the input dims, from the axis to the end.
   ShapeVector featDims;
@@ -1154,7 +1153,11 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     NodeValue W;
-    ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
+    if (hasConstantByName(op.input(1))) {
+      ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(W, getNodeValueByName(op.input(1)));
+    }
 
     // Caffe2 stores the transposed W matrix. In here we first coerce W to a
     // 2D matrix size if necessary and then transpose it back.
@@ -1168,9 +1171,12 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       W = G_->createTranspose(W.getNode()->getName(), W, {1, 0});
     }
 
-    Constant *B;
-
-    ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
+    NodeValue B;
+    if (hasConstantByName(op.input(2))) {
+      ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(op.input(2)));
+    }
 
     Node *node = nullptr;
     if (typeName == "Int8FC") {
@@ -1178,9 +1184,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       auto outputDims = flattenCdr(in.dims(), axis);
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy,
-          loadQuantTy(opName, ElemKind::Int8QTy,
-                      {outputDims.first, B->getType()->dims()[0]}, dict));
+          outTy, loadQuantTy(opName, ElemKind::Int8QTy,
+                             {outputDims.first, B.dims()[0]}, dict));
       node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
     } else if (typeName == "FbFCPacked") {
       RETURN_ERR_IF_NOT(W.getElementType() == ElemKind::Float16Ty,
@@ -1189,22 +1194,21 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           mod_.uniqueType(ElemKind::Float16Ty, in.getType()->dims());
       in = G_->createConvertTo(opName + ".ConvertInput", in, fp16InputType);
 
-      auto fp16BiasType =
-          mod_.uniqueType(ElemKind::Float16Ty, B->getType()->dims());
+      auto fp16BiasType = mod_.uniqueType(ElemKind::Float16Ty, B.dims());
       auto *fp16Bias =
           G_->createConvertTo(opName + ".ConvertBias", B, fp16BiasType);
 
       auto outputDims = flattenCdr(in.dims(), axis);
-      TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
-                                   {outputDims.first, B->getType()->dims()[0]});
+      TypeRef OT =
+          mod_.uniqueType(ElemKind::Float16Ty, {outputDims.first, B.dims()[0]});
       auto fc = G_->createFullyConnected(opName, in, W, fp16Bias, OT, axis);
       auto outputType =
           mod_.uniqueType(ElemKind::FloatTy, fc->getResult().dims());
       node = G_->createConvertTo(opName + ".ConvertOutput", fc, outputType);
     } else {
       auto outputDims = flattenCdr(in.dims(), axis);
-      TypeRef outputType = mod_.uniqueType(
-          ElemKind::FloatTy, {outputDims.first, B->getType()->dims()[0]});
+      TypeRef outputType =
+          mod_.uniqueType(ElemKind::FloatTy, {outputDims.first, B.dims()[0]});
       node = G_->createFullyConnected(opName, in, W, B, outputType, axis);
     }
 
@@ -1347,7 +1351,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU" ||
       typeName == "Copy" || typeName == "EnsureCPUOutput" ||
-      typeName == "EnsureDense") {
+      typeName == "EnsureDense" || typeName == "Dropout") {
     // Glow does not support any of these ops now, so implement them as
     // no-ops. Note: Implement this as a no-op reshape because these ops may
     // have partition information, and we need a node to maintain the parent
@@ -1484,7 +1488,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "ConstantFill" || typeName == "GivenTensorIntFill" ||
-      typeName == "GivenTensorInt64Fill") {
+      typeName == "GivenTensorInt64Fill" || typeName == "GaussianFill") {
     RETURN_IF_ERR(loadWeight(op));
     return Error::success();
   }
@@ -1549,6 +1553,21 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *node = G_->createModulo(opName, in, divisor, signFollowDivisor);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
 
+    return Error::success();
+  }
+
+  if (typeName == "Scale") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    float scale = 1.0;
+    if (dict.count("scale")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["scale"]));
+    }
+    auto scaleType = mod_.uniqueType(ElemKind::FloatTy, {in.dims()});
+    auto scales = G_->createSplat(opName + ".scales", scaleType, scale);
+    Node *node = G_->createMul(opName, in, scales);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
 
@@ -1704,6 +1723,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  // TODO: add checks for number of inputs and argument values
   if (typeName == "ReduceBackSum") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -1909,6 +1929,126 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "FillExamplesWithIndicator") {
+    // Support FillExamplesWithIndicator
+    NodeValue data;
+    ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
+    NodeValue indicator;
+    ASSIGN_VALUE_OR_RETURN_ERR(indicator, getNodeValueByName(op.input(1)));
+    // Validating input types and shapes
+    RETURN_ERR_IF_NOT(
+        indicator.getElementType() == ElemKind::Int32ITy ||
+            indicator.getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op, "Indicator should be of int32 or int64 type."));
+    RETURN_ERR_IF_NOT(indicator.dims().size() == 1,
+                      opErrMsg(op, "Indicator should be 1D tensor."));
+    dim_t dataReshapeDim = flattenCdr(data.dims()).second;
+    ShapeVector outDims{indicator.dims()[0]};
+    outDims.insert(outDims.end(), data.dims().begin() + 1, data.dims().end());
+    auto outTy2D = mod_.uniqueTypeWithNewShape(
+        data.getType(), {indicator.dims()[0], dataReshapeDim});
+
+    auto data2D = G_->createReshape(opName + ".data2D", data,
+                                    {data.dims()[0], dataReshapeDim});
+    if (indicator.getElementType() == ElemKind::Int64ITy) {
+      indicator = G_->createConvertTo(opName + ".int64ToInt32", indicator,
+                                      ElemKind::Int32ITy);
+    }
+    // Select only takes boolean indicators, and converting from int to bool
+    // must go from int -> float -> bool. Due to fp16 clipping, since only
+    // int32 -> fp16 conversions are available, there is an initial conversion
+    // from int64 to int32 if necessary.
+    auto indicatorIntToFloat = G_->createConvertTo(
+        opName + ".intToFloat", indicator, ElemKind::FloatTy);
+    auto indicatorFloatToBool = G_->createConvertTo(
+        opName + ".floatToBool", indicatorIntToFloat, ElemKind::BoolTy);
+    auto nonZeroIndices =
+        G_->createNonZero(opName + ".nonzero", indicatorFloatToBool);
+    auto nonZeroCount = data.dims()[0];
+    auto indices = G_->createSlice(opName + ".indices", nonZeroIndices, {0, 0},
+                                   {nonZeroCount, 1});
+
+    auto zeros = G_->createSplat(opName + ".zeros", outTy2D, 0);
+
+    auto res2D = G_->createScatterData(opName + ".scatterData", zeros, indices,
+                                       data2D, false);
+    auto node = G_->createReshape(opName + ".result", res2D, outDims);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "BatchSparseToDense") {
+    // Support BatchSparseToDense for output second dim = 1 only
+    NodeValue lengths;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(0)));
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+    NodeValue values;
+    ASSIGN_VALUE_OR_RETURN_ERR(values, getNodeValueByName(op.input(2)));
+
+    dim_t denseLastDim = 1;
+    if (dict.count("dense_last_dim")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(denseLastDim,
+                                 loadInt(dict.at("dense_last_dim")));
+    }
+
+    RETURN_ERR_IF_NOT(
+        denseLastDim == 1,
+        opErrMsg(op, "Only output second dimension = 1 supported"));
+    // Validating input types and shapes
+    RETURN_ERR_IF_NOT(
+        lengths.getElementType() == ElemKind::Int32ITy ||
+            lengths.getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op, "Lengths should be of int32 or int64 type."));
+    RETURN_ERR_IF_NOT(lengths.dims().size() == 1,
+                      opErrMsg(op, "Lengths should be 1D tensor."));
+    RETURN_ERR_IF_NOT(
+        indices.getElementType() == ElemKind::Int32ITy ||
+            indices.getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op, "Indices should be of int32 or int64 type."));
+    RETURN_ERR_IF_NOT(indices.dims().size() == 1,
+                      opErrMsg(op, "Indices should be 1D tensor."));
+    RETURN_ERR_IF_NOT(values.getElementType() == ElemKind::FloatTy,
+                      opErrMsg(op, "Values should be of float type."));
+    RETURN_ERR_IF_NOT(
+        indices.dims()[0] == values.dims()[0],
+        opErrMsg(op, "There should be the same number of values as indices."));
+
+    float defaultValue = 0.0;
+    if (dict.count("default_value")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(defaultValue,
+                                 loadFloat(dict.at("default_value")));
+    }
+    // Select only takes boolean indicators, and converting from int to bool
+    // must go from int -> float -> bool. Due to fp16 clipping, since only
+    // int32 -> fp16 conversions are available, there is an initial conversion
+    // from int64 to int32 if necessary.
+    if (lengths.getElementType() == ElemKind::Int64ITy) {
+      lengths = G_->createConvertTo(opName + ".int64ToInt32", lengths,
+                                    ElemKind::Int32ITy);
+    }
+    auto lengthsIntToFloat =
+        G_->createConvertTo(opName + ".intToFloat", lengths, ElemKind::FloatTy);
+    auto lengthsFloatToBool = G_->createConvertTo(
+        opName + ".floatToBool", lengthsIntToFloat, ElemKind::BoolTy);
+    auto nonZeroIndices =
+        G_->createNonZero(opName + ".nonzero", lengthsFloatToBool);
+    auto numIndices = indices.dims()[0];
+    auto indicesSliced = G_->createSlice(
+        opName + ".indicesSlice", nonZeroIndices, {0, 0}, {numIndices, 1});
+
+    ShapeVector outDims{lengths.dims()[0], 1};
+    auto dataTy = mod_.uniqueTypeWithNewShape(values.getType(), outDims);
+    auto data = G_->createSplat(opName + ".data", dataTy, defaultValue);
+    auto values2D =
+        G_->createReshape(opName + ".reshape", values, {numIndices, 1});
+    auto scatterData = G_->createScatterData(opName + ".scatterData", data,
+                                             indicesSliced, values2D, false);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, scatterData));
+    return Error::success();
+  }
+
   if (typeName == "SparseLabelSplit") {
     NodeValue lengths;
     ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(0)));
@@ -2016,6 +2156,29 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Node *add = G_->createAdd(opName + ".add", in, ones);
     Node *node = G_->createLog(opName + ".log", add);
 
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
+  if (typeName == "ReduceBackMean") {
+    const unsigned numInputs = op.input_size();
+    RETURN_ERR_IF_NOT(numInputs == 1,
+                      opErrMsg(op, "Only single input is supported."));
+
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    RETURN_ERR_IF_NOT(in.dims().size() >= 2,
+                      opErrMsg(op, "Input should be at least 2D."));
+
+    int numReduceDim = 1;
+    if (dict.count("num_reduce_dim")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(numReduceDim, loadInt(dict["num_reduce_dim"]));
+    }
+    // TODO: check maybe we can support more dimensions to be reduced
+    RETURN_ERR_IF_NOT(numReduceDim == 1,
+                      opErrMsg(op, "Supporting reducing only one dimension."));
+
+    Node *node = G_->createBatchedReduceMean(opName, in, in.dims().size() - 1);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -2214,7 +2377,7 @@ static Error fillTensor(Tensor &T, ElemKind kind, llvm::ArrayRef<dim_t> dim,
 Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
-
+  const std::string &opName = loadOperatorName(op);
   // Load tensors with values:
   if (typeName == "GivenTensorFill" || typeName == "GivenTensorFp16Fill" ||
       typeName == "GivenTensorIntFill" || typeName == "GivenTensorInt64Fill") {
@@ -2438,8 +2601,6 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       return Error::success();
     }
 
-    Tensor T;
-
     // The shape is set either the shape argument, or from another input
     // tensor. Shape takes priority over input.
     std::vector<dim_t> dims;
@@ -2481,43 +2642,42 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(to, loadInt(dict["dtype"]));
     }
 
+    SplatNode *splatNode{nullptr};
+
     switch (to) {
     case caffe2::TensorProto_DataType_FLOAT: {
-      T.reset(ElemKind::FloatTy, dims);
-      auto TH = T.getHandle<float>();
       float f = 0.0f;
       if ((dict.count("value") && dict["value"]->has_f())) {
         ASSIGN_VALUE_OR_RETURN_ERR(f, loadFloat(dict["value"]));
       }
-      TH.clear(f);
+      splatNode =
+          G_->createSplat(opName, mod_.uniqueType(ElemKind::FloatTy, dims), f);
       break;
     }
     case caffe2::TensorProto_DataType_INT32: {
-      T.reset(ElemKind::Int32ITy, dims);
-      auto TH = T.getHandle<int32_t>();
       int i = 0;
       if ((dict.count("value") && dict["value"]->has_i())) {
         ASSIGN_VALUE_OR_RETURN_ERR(i, loadInt(dict["value"]));
       }
-      TH.clear(i);
+      splatNode =
+          G_->createSplat(opName, mod_.uniqueType(ElemKind::Int32ITy, dims), i);
       break;
     }
     case caffe2::TensorProto_DataType_INT64:
     case caffe2::TensorProto_DataType_BOOL: {
-      T.reset(ElemKind::Int64ITy, dims);
-      auto TH = T.getHandle<int64_t>();
       int i = 0;
       if ((dict.count("value") && dict["value"]->has_i())) {
         ASSIGN_VALUE_OR_RETURN_ERR(i, loadInt(dict["value"]));
       }
-      TH.clear(i);
+      splatNode =
+          G_->createSplat(opName, mod_.uniqueType(ElemKind::Int64ITy, dims), i);
       break;
     }
     default:
       return MAKE_ERR("Unsupported datatype for ConstantFill.");
     }
 
-    RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
+    RETURN_IF_ERR(addNodeAsOutput(op, splatNode));
 
     return Error::success();
   }
@@ -2562,6 +2722,92 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     }
 
     RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
+
+    return Error::success();
+  }
+
+  // Load tensors with constant fill:
+  if (typeName == "GaussianFill") {
+    /*
+     output: "data"
+     name: ""
+     type: "GaussianFill"
+     arg {
+       name: "mean"
+       f: 0.0
+     }
+     arg {
+       name: "std"
+       f: 1.0
+     }
+     arg {
+       name: "shape"
+       ints: 1
+       ints: 16
+     }
+     */
+
+    const auto &name = op.output(0);
+    if (getConstantByNameOrNull(name)) {
+      return Error::success();
+    }
+
+    // The shape of the output is set by shape, if provided. Otherwise, it is
+    // set by the shape of the input or the shape indicated by input if
+    // input_as_shape is true
+    NodeValue input;
+    std::vector<dim_t> dims;
+    if (dict.count("shape")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(dims, getShape<dim_t>(dict["shape"]));
+    } else {
+      RETURN_ERR_IF_NOT(op.input_size() > 0,
+                        "If no shape provided, must have input shape.");
+
+      bool inputAsShape = false;
+      if (dict.count("input_as_shape")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(inputAsShape,
+                                   loadInt(dict["input_as_shape"]));
+      }
+
+      if (inputAsShape) {
+        Constant *in;
+        ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
+        RETURN_ERR_IF_NOT(in->dims().size() == 1,
+                          opErrMsg(op, "Input must be 1D tensor."));
+        RETURN_ERR_IF_NOT(in->getElementType() == ElemKind::Int64ITy,
+                          opErrMsg(op, "Input must be of int64 type."));
+        const auto handle = in->getHandle<int64_t>();
+        dims.reserve(in->dims().size());
+        for (auto dim : handle) {
+          dims.push_back(dim);
+        }
+      } else {
+        ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+        dims = input.dims();
+      }
+
+      if (dict.count("extra_shape")) {
+        std::vector<dim_t> extra_shape;
+        ASSIGN_VALUE_OR_RETURN_ERR(extra_shape,
+                                   getShape<dim_t>(dict["extra_shape"]));
+        dims.insert(dims.end(), extra_shape.begin(), extra_shape.end());
+      }
+    }
+    if ((!input && !dims.empty()) || input.dims().vec() != dims) {
+      input =
+          G_->createSplat("in", mod_.uniqueType(ElemKind::FloatTy, dims), 0.);
+    }
+    float mean;
+    ASSIGN_VALUE_OR_RETURN_ERR(mean, loadFloat(dict["mean"]));
+    float scale;
+    ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["std"]));
+
+    auto GF = G_->createGaussianFill(opName, input, mean, scale,
+                                     std::random_device{}());
+    auto outputType =
+        mod_.uniqueType(ElemKind::FloatTy, GF->getResult().dims());
+    auto node = G_->createConvertTo(opName + ".ConvertOutput", GF, outputType);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
 
     return Error::success();
   }

@@ -123,6 +123,7 @@ llvm::cl::opt<ElemKind> quantizationPrecisionBias(
     llvm::cl::Optional,
     llvm::cl::values(
         clEnumValN(ElemKind::Int8QTy, "Int8", "Use Int8 bias quantization"),
+        clEnumValN(ElemKind::Int16QTy, "Int16", "Use Int16 bias quantization"),
         clEnumValN(ElemKind::Int32QTy, "Int32", "Use Int32 bias quantization")),
     llvm::cl::init(ElemKind::Int32QTy), llvm::cl::cat(loaderCat));
 
@@ -584,11 +585,17 @@ void glow::parseCommandLine(int argc, char **argv) {
   initCmdArgVars();
 
   llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
-#ifdef GLOW_BUILD_DATE
-    os << "Glow Tools version: " << GLOW_BUILD_DATE << "\n";
+#ifdef GLOW_VERSION
+    os << "Glow Tools version: " << GLOW_VERSION << "\n";
 #endif
   });
-  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
+  // TODO - registered once to avoid error:
+  // "LLVM ERROR: too many signal callbacks already registered."
+  static bool stackTraceRegistered = false;
+  if (!stackTraceRegistered) {
+    stackTraceRegistered = true;
+    llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
+  }
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
       " The Glow compiler\n\n"

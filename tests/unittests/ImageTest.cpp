@@ -84,8 +84,7 @@ TEST_F(ImageTest, readNpyTensor1D_U8Norm) {
 TEST_F(ImageTest, readNpyTensor1D_I8) {
   std::vector<float> vals;
   for (int i = 0; i < 48; i++) {
-    // mean adjusted as loader converts S8 as U8.
-    vals.push_back((i - 5 + 128) / 2.);
+    vals.push_back((i - 5) / 2.);
   }
   numpyTestHelper({"tests/images/npy/tensor48_i8.npy"}, {48}, vals,
                   ImageLayout::Unspecified, {}, {}, {{5.}}, {{2.}});
@@ -134,6 +133,27 @@ TEST_F(ImageTest, readNpyTensor4D_U8) {
   }
   numpyTestHelper({"tests/images/npy/tensor1x2x3x8_u8.npy"}, {1, 2, 3, 8}, vals,
                   {ImageLayout::Unspecified}, {}, {}, {{2.}}, {{3.}});
+}
+
+// Test loading numpy 1D I16 tensors without normalization.
+TEST_F(ImageTest, readNpyTensor1D_I16) {
+  std::vector<float> vals = {497.5, 498., 498.5, 499., 499.5, 500.,
+                             500.5, 501., 501.5, 502., 502.5, 503.,
+                             503.5, 504., 504.5, 505.};
+  numpyTestHelper({"tests/images/npy/tensor16_i16.npy"}, {16}, vals,
+                  {ImageLayout::Unspecified}, {}, ImageNormalizationMode::S16,
+                  {{5.}}, {{2.}});
+}
+
+// Test loading numpy 1D U16 tensors with normalization.
+TEST_F(ImageTest, readNpyTensor1D_U16Norm) {
+  std::vector<float> vals = {-0.969482, -0.969451, -0.969421, -0.969390,
+                             -0.969360, -0.969329, -0.969299, -0.969268,
+                             -0.969238, -0.969207, -0.969177, -0.969146,
+                             -0.969116, -0.969085, -0.969055, -0.969024};
+  numpyTestHelper({"tests/images/npy/tensor16_u16.npy"}, {16}, vals,
+                  {ImageLayout::Unspecified}, {},
+                  ImageNormalizationMode::kneg1to1, {{0.}}, {{1.}});
 }
 
 // Test loading from numpy file w/o changing layout.
@@ -199,7 +219,7 @@ TEST_F(ImageTest, readNpyNHWCtoNCHW_3D_image) {
   tensor.transpose(&transposed, {0u, 3u, 1u, 2u});
   vals.clear();
   for (int i = 0; i < 24; i++) {
-    vals.push_back(transposed.getHandle().raw(i) + 128);
+    vals.push_back(transposed.getHandle().raw(i));
   }
   numpyTestHelper({"tests/images/npy/tensor3x4x2_i8.npy"}, transposed.dims(),
                   vals, {ImageLayout::NCHW}, {ImageLayout::NHWC}, {});
@@ -212,8 +232,7 @@ TEST_F(ImageTest, readNpyNHWCtoNHWC_multi_image) {
     vals.push_back(i);
   }
   for (int i = 0; i < 48; i++) {
-    // S8 tensor - adjust mean.
-    vals.push_back(i + 128);
+    vals.push_back(i);
   }
   numpyTestHelper({"tests/images/npy/tensor3x4x2x2_u8.npy",
                    "tests/images/npy/tensor3x4x2x2_i8.npy"},
@@ -251,8 +270,8 @@ TEST_F(ImageTest, readBadImages) {
   ASSERT_FALSE(loadSuccess);
 }
 
-TEST_F(ImageTest, readPngImageAndPreprocessWithAndWithoutInputTensor) {
-  auto image1 = readPngImageAndPreprocess(
+TEST_F(ImageTest, readPngPpmImageAndPreprocessWithAndWithoutInputTensor) {
+  auto image1 = readPngPpmImageAndPreprocess(
       "tests/images/imagenet/cat_285.png", ImageNormalizationMode::k0to1,
       ImageChannelOrder::RGB, ImageLayout::NHWC, imagenetNormMean,
       imagenetNormStd);
@@ -262,10 +281,10 @@ TEST_F(ImageTest, readPngImageAndPreprocessWithAndWithoutInputTensor) {
   std::vector<float> stddevBGR(llvm::makeArrayRef(imagenetNormStd));
   std::reverse(meanBGR.begin(), meanBGR.end());
   std::reverse(stddevBGR.begin(), stddevBGR.end());
-  readPngImageAndPreprocess(image2, "tests/images/imagenet/cat_285.png",
-                            ImageNormalizationMode::k0to1,
-                            ImageChannelOrder::BGR, ImageLayout::NCHW, meanBGR,
-                            stddevBGR);
+  readPngPpmImageAndPreprocess(image2, "tests/images/imagenet/cat_285.png",
+                               ImageNormalizationMode::k0to1,
+                               ImageChannelOrder::BGR, ImageLayout::NCHW,
+                               meanBGR, stddevBGR);
 
   // Test if the preprocess actually happened.
   dim_t imgHeight = image1.dims()[0];
@@ -288,6 +307,26 @@ TEST_F(ImageTest, readPngImageAndPreprocessWithAndWithoutInputTensor) {
   }
   image1 = std::move(swizzled);
   EXPECT_TRUE(image1.isEqual(image2, 0.01));
+}
+
+TEST_F(ImageTest, readPpmImageAndPreprocess) {
+  std::vector<float> imagenetNormMeanBGR(imagenetNormMean,
+                                         imagenetNormMean + 3);
+  std::vector<float> imagenetNormStdBGR(imagenetNormStd, imagenetNormStd + 3);
+  std::reverse(imagenetNormMeanBGR.begin(), imagenetNormMeanBGR.end());
+  std::reverse(imagenetNormStdBGR.begin(), imagenetNormStdBGR.end());
+
+  // Use PNG image as reference.
+  auto pngRef = readPngPpmImageAndPreprocess(
+      "tests/images/imagenet/cat_285.png", ImageNormalizationMode::k0to1,
+      ImageChannelOrder::RGB, ImageLayout::NHWC, imagenetNormMean,
+      imagenetNormStd);
+  auto ppmExp = readPngPpmImageAndPreprocess(
+      "tests/images/ppm/cat_285.ppm", ImageNormalizationMode::k0to1,
+      ImageChannelOrder::RGB, ImageLayout::NHWC, imagenetNormMean,
+      imagenetNormStd);
+
+  EXPECT_TRUE(ppmExp.isEqual(pngRef, 0.01));
 }
 
 TEST_F(ImageTest, writePngImage) {
@@ -392,7 +431,7 @@ TEST_F(ImageTest, writePngImageWithImagenetNormalization) {
 /// Test PNG w/ order and layout transposes, and different mean/stddev per
 /// channel.
 TEST_F(ImageTest, readNonSquarePngBGRNCHWTest) {
-  auto image = readPngImageAndPreprocess(
+  auto image = readPngPpmImageAndPreprocess(
       "tests/images/other/tensor_2x4x3.png", ImageNormalizationMode::k0to255,
       ImageChannelOrder::BGR, ImageLayout::NCHW, {0, 1, 2}, {3, 4, 5});
 

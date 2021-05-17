@@ -1,0 +1,13 @@
+name: "scale"
+op {
+  input: "input"
+  arg {
+    name: "scale"
+    f: 2
+  }
+  output: "output"
+  name: ""
+  type: "Scale"
+}
+external_input: "input"
+external_output: "output"

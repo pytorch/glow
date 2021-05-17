@@ -107,8 +107,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ReshapeNodeKind:
     // These are implemented via a Copy Instruction.
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32QTy,
-         ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy});
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int16QTy,
+         ElemKind::Int32QTy, ElemKind::Int32ITy, ElemKind::Int64ITy,
+         ElemKind::BoolTy});
 
     // InsertTensor ==> Copy + InsertTensor. Copy supports everything
     // ReshapeNode above supports, so InsertTensor is the limiting factor.
@@ -170,15 +171,15 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::EmbeddingNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {EmbeddingNode::IndicesIdx}) &&
-           (NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int64ITy);
+           (NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::EmbeddingBagNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy},
                {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
            (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
-           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
+            ElemKind::Int32ITy) &&
+           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to
@@ -191,7 +192,7 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
                 SparseLengthsWeightedSumGradNode::
                     GradOfInputNamedLengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsWeightedSumGradNode::IndicesIdx) ==
-                ElemKind::Int64ITy ||
+                ElemKind::Int32ITy ||
             NI.getInElemTy(SparseLengthsWeightedSumGradNode::IndicesIdx) ==
                 ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumGradNode::LengthsIdx) ==
@@ -228,8 +229,12 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
 
   case Kinded::Kind::IntLookupTableNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int8QTy, ElemKind::Int16QTy});
+
   case Kinded::Kind::RescaleQuantizedNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32QTy});
 
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::AvgPoolGradNodeKind:
@@ -389,15 +394,19 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::QuantizeNodeKind:
     return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy) &&
            ((NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int8QTy) ||
+            (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int16QTy) ||
             (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int32QTy));
 
   case Kinded::Kind::DequantizeNodeKind:
-    return (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) &&
+    return ((NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) ||
+            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int16QTy) ||
+            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int32QTy)) &&
            (NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy);
 
   case Kinded::Kind::SoftMaxNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
-                                                  {SoftMaxNode::SelectedIdx}) &&
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy},
+               {SoftMaxNode::SelectedIdx}) &&
            (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy ||
             NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int32ITy);
 
@@ -420,9 +429,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
             ElemKind::FloatTy) &&
            (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
+            ElemKind::Int32ITy) &&
            (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) ==
-            ElemKind::Int64ITy) &&
+            ElemKind::Int32ITy) &&
            (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
             ElemKind::FloatTy);
 
@@ -540,6 +549,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
              ElemKind::Int64ITy)) ||
            ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::FloatTy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::BoolTy)) ||
+           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::FloatTy) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
+             ElemKind::Int32ITy)) ||
            ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::BoolTy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::Int32ITy));
 

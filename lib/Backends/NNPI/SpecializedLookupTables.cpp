@@ -160,8 +160,21 @@ NNPIBackend::swapInSpecializedLUT(Function *F, CompilationContext &cctx) const {
       NNPILookupTableNode *newGN;
       ASSIGN_VALUE_OR_RETURN_ERR(newGN, getGeluLUT(GN, numEntries, minLUTInput,
                                                    maxLUTInput, formulaType));
+
+      bool clipGeluVal = false;
+      auto clipGeluValIt = cctx.backendOpts.backendSpecificOpts.find(
+          std::string("NNPIGeluLUTEnableClip"));
+      if (clipGeluValIt != cctx.backendOpts.backendSpecificOpts.end()) {
+        clipGeluVal = (clipGeluValIt->second == "true");
+      }
+
       if (newGN) {
-        GN->getResult().replaceAllUsesOfWith(newGN->getResult());
+        if (clipGeluVal) {
+          auto *clp = F->createClip("gelu_clip", newGN, -5.0, 5.0);
+          GN->getResult().replaceAllUsesOfWith(clp->getResult());
+        } else {
+          GN->getResult().replaceAllUsesOfWith(newGN->getResult());
+        }
         changed = true;
       }
       continue;

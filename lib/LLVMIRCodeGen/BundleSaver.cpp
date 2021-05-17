@@ -93,8 +93,8 @@ static void printHeader(llvm::StringRef headerFileName,
   CHECK(!EC) << "Could not open header file!";
   std::string header;
   header += "// Bundle API auto-generated header file. Do not edit!\n";
-#ifdef GLOW_BUILD_DATE
-  header += "// Glow Tools version: " + std::string(GLOW_BUILD_DATE) + "\n";
+#ifdef GLOW_VERSION
+  header += "// Glow Tools version: " + std::string(GLOW_VERSION) + "\n";
 #endif
   headerFile << strFormat(headerFileTemplate, header.c_str(),
                           bundleName.upper().data(), bundleName.upper().data(),
@@ -558,16 +558,46 @@ void BundleSaver::produceBundle() {
     outputFile.flush();
     if (!llvmCompiler.empty()) {
       // Compile bitcode using an external LLVM compiler.
+      // The code is optimized twice with the external opt tool.
       std::string cmd = llvmCompiler;
       for (auto option : llvmCompilerOptions) {
         cmd += " " + option + " ";
       }
       cmd += " " + bundleCodeOutput;
-      std::string bundleObjectCodeOutputOpt =
-          " -o " + (outputDir + "/" + bundleName + ".o").str();
+      std::string bundleObjectCodeOutputOpt;
+      if (!llvmOpt.empty()) {
+        bundleObjectCodeOutputOpt =
+            " -emit-llvm -o " +
+            (outputDir + "/" + bundleName + ".beforeopt.bc").str();
+      } else {
+        bundleObjectCodeOutputOpt =
+            " -o " + (outputDir + "/" + bundleName + ".o").str();
+      }
+
       cmd += bundleObjectCodeOutputOpt;
       CHECK(!system(cmd.c_str()))
           << "Error running external LLVM compiler: " << cmd;
+
+      // Running opt tool to optimize a second time.
+      // TODO: Only run the appropriate passes as needed.
+      if (!llvmOpt.empty()) {
+        cmd.clear();
+        cmd = llvmOpt;
+        cmd += " " + (outputDir + "/" + bundleName + ".beforeopt.bc").str();
+        cmd += " -O3 -o " + (outputDir + "/" + bundleName + ".opt.bc").str();
+        CHECK(!system(cmd.c_str()))
+            << "Error running external opt compiler: " << cmd;
+
+        cmd.clear();
+        cmd = llvmCompiler;
+        for (auto option : llvmCompilerOptions) {
+          cmd += " " + option + " ";
+        }
+        cmd += " " + (outputDir + "/" + bundleName + ".opt.bc").str();
+        cmd += " -o " + (outputDir + "/" + bundleName + ".o").str();
+        CHECK(!system(cmd.c_str()))
+            << "Error running external LLVM compiler: " << cmd;
+      }
     }
   } else if (fileName.endswith(".o")) {
     // Emit the object file.
@@ -700,8 +730,8 @@ void BundleSaver::performBundleMemoryAllocation() {
   // Perform memory allocation for the current function.
   auto *F = savedIRFunctions_.back().savedF;
   allocationsInfo_.numberValues(F);
-  // Tell the allocateWeightVars to not reuse any existing addresses for weights
-  // and to assign new ones.
+  // Tell the allocateWeightVars to not reuse any existing addresses for
+  // weights and to assign new ones.
   allocationsInfo_.allocateWeightVars(F);
   allocationsInfo_.allocateActivations(F);
   allocationsInfo_.allocateTensorViews(F);

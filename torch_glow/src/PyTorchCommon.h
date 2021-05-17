@@ -17,18 +17,23 @@
 #ifndef GLOW_TORCH_GLOW_SRC_COMMON_H
 #define GLOW_TORCH_GLOW_SRC_COMMON_H
 
+#include "ShapeInferenceEngine.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Type.h"
 #include "glow/Importer/CommonOperatorLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include <torch/csrc/jit/ir/ir.h>
+#include <unordered_map>
 
 DECLARE_bool(dumpFinalGlowGraph);
 
 namespace glow {
 
 struct InputMetaStack;
+
+using BatchShapesMapType = std::unordered_map<
+    int, std::unordered_map<const torch::jit::Value *, VariableMeta>>;
 
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
@@ -136,6 +141,9 @@ public:
   /// Must be true in twshared hosts.
   bool writeOnnxToTmp = false;
 
+  /// The JSON file name that stores Glow deserialization specs
+  std::string serializationSpecFileName = "serializationSpec.json";
+
   /// Optional prefix for naming of onnx files (otherwise an internal id)
   std::string onnxFileNamePrefix = "";
 
@@ -148,6 +156,12 @@ public:
   /// Whether not to set the saturateHost flag (use all available device) when
   /// adding networks to HostManager.
   bool saturateHost = false;
+
+  /// If saturateHost is enabled and saturateKDevices is greater than zero,
+  /// this is the number of devices that will be saturated.
+  /// If saturateKDevices is zero and saturateHost is enabled, all available
+  /// devices will be saturated.
+  unsigned saturateKDevices{0};
 
   /// If true then randomize the Constants in the Function loaded by
   /// PyTorchModelLoader.
@@ -163,6 +177,9 @@ public:
 
   /// Number of Glow devices to use.
   int32_t numDevices = -1;
+
+  /// Whether to scan devices to get available ones in torch backend
+  bool scanDevices = false;
 
   // Whether to run shape inference of meta input
   bool runShapeInference = false;
@@ -204,6 +221,19 @@ public:
   /// Additional parameters to DAG optimizer
   std::string apl_parallelization_alg = "ParallelizeCVHeuristicData";
   int32_t apl_num_parallel_chunks = 2;
+
+  // Serialize GlowIR into ONNX txt file during warmCache, this file can be
+  // use for future model loading, which a part of AOT compilation
+  bool saveGlowIRIntoONNX = false;
+
+  // Load GlowIR by deserializing ONNX txt file during warmCache
+  bool loadGlowIRFromONNX = false;
+
+  // Skip provisioning (currently only happens in Glow serialization, in which
+  // we do model partition, DAG optimization, and then serialize the optimized
+  // and partitioned model into ONNX model file. During this process, we do not
+  // need to do provisioning)
+  bool skipProvisioning = false;
 };
 
 /// Represents different possible output types from to_glow modules.
@@ -262,18 +292,21 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
 /// raw string containing the meta data of the glow fuser node input.
-void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
-                   runtime::DeferredWeightLoader *loader,
-                   const PyTorchLoaderSettings &settings,
-                   const std::string method_name = "forward");
+void glowAOTFusion(
+    torch::jit::Module &module, const std::string &inputMetaStr,
+    runtime::DeferredWeightLoader *loader,
+    const PyTorchLoaderSettings &settings,
+    const std::string method_name = "forward",
+    const std::unordered_map<int, std::string> &batchShapes = {});
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
-void glowAOTFusionWithShapeInference(torch::jit::Module &module,
-                                     const glow::InputMetaStack &metaStack,
-                                     runtime::DeferredWeightLoader *loader,
-                                     const PyTorchLoaderSettings &settings,
-                                     const std::string method_name = "forward");
+void glowAOTFusionWithShapeInference(
+    torch::jit::Module &module, const glow::InputMetaStack &metaStack,
+    runtime::DeferredWeightLoader *loader,
+    const PyTorchLoaderSettings &settings,
+    const std::string method_name = "forward",
+    const std::unordered_map<int, std::string> &batchShapes = {});
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in
@@ -287,6 +320,10 @@ bool signalHandlerOverridesEnabled();
 Expected<std::string> getTempFileLoc(const std::string &name,
                                      const std::string &suffix);
 
-} // namespace glow
+BatchShapesMapType parseBatchShapeMapFromInputMeta(
+    const std::shared_ptr<struct torch::jit::Graph> &graph,
+    const std::unordered_map<int, std::string> &batchShapes,
+    const std::string &baseSymbol);
 
+} // namespace glow
 #endif // GLOW_TORCH_GLOW_SRC_COMMON_H

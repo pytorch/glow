@@ -9,7 +9,7 @@ from tests import utils
 
 
 def create_model(x, relu, bias=True):
-    """ x is an example input, relu is whether or not to include a fused relu"""
+    """x is an example input, relu is whether or not to include a fused relu."""
 
     with torch.no_grad():
         x_size = len(x.size())

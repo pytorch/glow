@@ -23,6 +23,8 @@
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Flags/Flags.h"
 
+#include "CustomKernels/GetNNPIKernels.h"
+
 #include <sstream>
 
 #include "llvm/ADT/StringSet.h"
@@ -45,14 +47,40 @@ NNPIDeviceNetworkConfig glow::parseDeviceNetworkConfig(
 }
 
 Error NNPICompiledFunction::updateCompilationConfigFromOptions(
-    NNPICompilationOptions &compilationOptions) {
+    NNPICompilationOptions &compilationOptions, bool requiresDSPKernels) {
   if (compilationOptions.showVars) {
     LOG(INFO) << compilationOptions.dumpStatus();
   }
-  if (!compilationOptions.customDspKernelsFile.get().empty()) {
-    std::strncpy(config_.customDspKernelsFile,
-                 compilationOptions.customDspKernelsFile.get().c_str(),
-                 sizeof(config_.customDspKernelsFile));
+
+  std::string dspKernelsFile;
+
+  if (dspKernelsFile.empty() &&
+      !compilationOptions.customDspKernelsFile.get().empty()) {
+    dspKernelsFile = compilationOptions.customDspKernelsFile.get();
+    if (!dspKernelsFile.empty()) {
+      LOG(INFO) << "Found DSP library from "
+                   "NNPICompilationOptions: "
+                << dspKernelsFile;
+    }
+  }
+
+  // If a kernels file was already provided then use that instead of fetching
+  // custom kernels so that the explicitly specified kernels file is honored.
+  if (dspKernelsFile.empty() && requiresDSPKernels) {
+    dspKernelsFile = GetNNPIKernels::getCompiledDSPKernelsFilePath();
+    if (!dspKernelsFile.empty()) {
+      LOG(INFO) << "Found DSP library from "
+                   "NNPIBackend::getDSPKernelsPrivate: "
+                << dspKernelsFile;
+    }
+  }
+
+  if (dspKernelsFile.empty() && requiresDSPKernels) {
+    return MAKE_ERR("DSP kernels file not found, needed to run Function "
+                    "containing DSP kernels");
+  } else {
+    std::strncpy(config_.customDspKernelsFile, dspKernelsFile.c_str(),
+                 dspKernelsFile.size());
   }
 
   // Handle device version.
@@ -75,6 +103,8 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.dumpDotFiles = compilationOptions.dumpDotFiles;
 
   config_.forceWeightsOutOfLLC = compilationOptions.forceWeightsOutOfLLC;
+  config_.enableFCDynamicQuantizationAllSA =
+      compilationOptions.enableFCDynamicQuantizationAllSA;
   config_.disableSlsAllLenOneCalcAtRunTime =
       compilationOptions.disableSlsAllLenOneCalcAtRunTime;
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
@@ -311,7 +341,9 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
       compilationFileName_.length() < NNPI_MAX_STRING_LEN, "Bad filename");
 
   NNPIImporter importer(compilationOptions_);
-  network_ = importer.importFunction(F, newOpts);
+  // requiresDSPKernels set by importFunction.
+  bool requiresDSPKernels;
+  network_ = importer.importFunction(F, newOpts, requiresDSPKernels);
   iaExtensionPaths_ = importer.getIAExtensionPaths();
 
   LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
@@ -339,10 +371,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiGetDefaultCompilationConfig(&config_),
                                      "Failed NNPI API Read Config");
 
-  auto error = updateCompilationConfigFromOptions(compilationOptions_);
-  if (error) {
-    return error;
-  }
+  RETURN_IF_ERR(updateCompilationConfigFromOptions(compilationOptions_,
+                                                   requiresDSPKernels));
 
   RETURN_IF_ERR(setupCompilationHints(F, newOpts.backendSpecificNodeInfo));
 
@@ -589,6 +619,10 @@ bool NNPICompiledFunction::updateCompilationInfo() {
       compiledTensor.name = std::string(tensorInfo.name);
       compiledTensor.type = std::string(tensorInfo.type);
       compiledTensor.allocType = tensorInfo.allocation;
+      for (uint32_t d = 0; d < tensorInfo.numAllocations; d++) {
+        compiledTensor.possibleAlloc.push_back(
+            tensorInfo.possibleAllocation[d]);
+      }
       for (uint32_t d = 0; d < tensorInfo.numDims; d++) {
         compiledTensor.shape.push_back(tensorInfo.dims[d]);
       }
@@ -723,6 +757,17 @@ static const std::string tensorToJSON(const NNPICompiledTensor &tensor) {
   fs << "\"type\" : \"" << tensor.type << "\"," << std::endl;
   fs << "\"alloc\" : \"" << dumpAllocType(tensor.allocType) << "\","
      << std::endl;
+  fs << "\"possible_alloc\" : ";
+  fs << "[" << std::endl;
+  for (auto it = tensor.possibleAlloc.begin(); it != tensor.possibleAlloc.end();
+       it++) {
+    if (it != tensor.possibleAlloc.begin()) {
+      fs << "," << std::endl;
+    }
+    fs << "\"" << dumpAllocType(*it) << "\" ";
+  }
+  fs << "]," << std::endl;
+  fs << std::endl;
   fs << "\"size\" : " << std::endl;
   fs << "[" << std::endl;
   for (auto it = tensor.shape.begin(); it != tensor.shape.end(); it++) {

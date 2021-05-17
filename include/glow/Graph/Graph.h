@@ -150,6 +150,11 @@ public:
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims);
 
   /// The new type is identical to \p T, with a new shape \p dims and new \p
+  /// strides.
+  TypeRef uniqueTypeWithNewStrides(TypeRef T, llvm::ArrayRef<dim_t> dims,
+                                   llvm::ArrayRef<dim_t> strides);
+
+  /// The new type is identical to \p T, with a new shape \p dims and new \p
   /// alignments.
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims,
                                  llvm::ArrayRef<dim_t> alignments);
@@ -158,6 +163,11 @@ public:
   /// The new type is identical to \p T, with a new shape and strides taken from
   /// the type \p shapeType.
   TypeRef uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType);
+
+  /// Return a pointer to a uniqued type \p T.
+  /// The new type is identical to \p T, with new scale and offset taken from
+  /// the type \p quantParamType.
+  TypeRef uniqueTypeWithNewQuantParams(TypeRef T, TypeRef quantParamType);
 
   /// Return the void type.
   TypeRef getVoidTy();
@@ -1000,6 +1010,7 @@ public:
   UNARY_ARITHMETIC_FUN_DECL(Cos)
   UNARY_ARITHMETIC_FUN_DECL(Erf)
   UNARY_ARITHMETIC_FUN_DECL(Truncate)
+  UNARY_ARITHMETIC_FUN_DECL(HardSwish)
 #undef UNARY_ARITHMETIC_FUN_DECL
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -1193,6 +1204,8 @@ public:
 
   PowNode *createPow(llvm::StringRef name, NodeValue base, float exp);
 
+  NonZeroNode *createNonZero(llvm::StringRef name, NodeValue Cond);
+
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);
 
@@ -1246,11 +1259,23 @@ public:
                                NodeValue batch,
                                llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceMin operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceMinNode *createBatchedReduceMin(llvm::StringRef name,
+                                               TypeRef outTy, NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
   /// Create a node, performing BatchedReduceMin operation. Output type is
   /// based on the input \p batch type with dimensions specified with \p axes
   /// removed.
   BatchedReduceMinNode *createBatchedReduceMin(llvm::StringRef name,
                                                NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
+  /// Create a node, performing BatchedReduceMax operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceMaxNode *createBatchedReduceMax(llvm::StringRef name,
+                                               TypeRef outTy, NodeValue batch,
                                                llvm::ArrayRef<unsigned_t> axes);
 
   /// Create a node, performing BatchedReduceMax operation. Output type is
@@ -1343,7 +1368,7 @@ public:
   /// sparse, if true, gradinet w.r.t. weight matrix will be a sparse tensor
   /// (currently not supported, default=false)
   EmbeddingNode *createEmbedding(llvm::StringRef name, NodeValue weights,
-                                 NodeValue indices, int64_t padIdx, bool scale,
+                                 NodeValue indices, int32_t padIdx, bool scale,
                                  bool sparse);
 
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
@@ -1525,6 +1550,13 @@ public:
   createSparseLabelSplit(llvm::StringRef name, NodeValue lengths,
                          NodeValue indices, NodeValue values, dim_t numLabels);
 
+  /// Given floats a input node \p input, floats \p mean and \p scale, and \p
+  /// seed \returns a GaussianFillNode. The output shape is the same as that of
+  /// \p input, filled with values drawn from a normal distribution with mean
+  /// and std dev \p mean and \scale, respectively, seeded with seed \p seed
+  GaussianFillNode *createGaussianFill(llvm::StringRef name, NodeValue input,
+                                       float mean, float scale, float seed);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
 
   /// Creates and \returns a SaveNode of \p input to \p output. If \p skipSuffix
@@ -1540,15 +1572,39 @@ public:
   createQuantizationProfile(PlaceholderBindings &bindings, llvm::StringRef name,
                             NodeValue input, dim_t numHistogramBins = 10);
 
-  /// Create lookup table for mapping between quantized numbers.
-  /// \p input and \p outTy must have quantized type.
-  /// Table contains all numbers from the quantized range, e.g.,
-  /// 256 entries for int8. Position 0 in the \p initValues
-  /// corresponds to the -128 input number, position 255 to 127.
+  /// Create lookup table for mapping between quantized operands. \p input and
+  /// \p outTy must be quantized types. The table contains all numbers from the
+  /// quantized range, e.g. 256 entries for int8 input. First position in the
+  /// \p initValues corresponds to the minimum input number and the last
+  /// position corresponds to the maximum input number.
+  template <typename T = int8_t>
+  IntLookupTableNode *
+  createIntLookupTable(llvm::StringRef name, NodeValue input,
+                       llvm::ArrayRef<T> initValues, TypeRef outTy);
+
+  /// Create lookup table for mapping between quantized operands based on the
+  /// floating point function \p func. \p input and \p outTy must be quantized
+  /// types.
   IntLookupTableNode *createIntLookupTable(llvm::StringRef name,
                                            NodeValue input,
-                                           llvm::ArrayRef<int8_t> initValues,
+                                           std::function<float(float)> func,
                                            TypeRef outTy);
+
+  /// Create lookup table for operator \p lutOperator using the provided lookup
+  /// \p table.
+  LookupTableNode *createLookupTable(llvm::StringRef name, NodeValue input,
+                                     LUTOperator lutOperator,
+                                     std::vector<float> &lutOperatorArgs,
+                                     NodeValue table, NodeValue idxTable,
+                                     TypeRef outTy);
+
+  /// Create quantized log.
+  IntLookupTableNode *createIntLog(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
+
+  /// Create quantized exp.
+  IntLookupTableNode *createIntExp(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
 
   /// Create quantized tanh.
   IntLookupTableNode *createIntTanh(llvm::StringRef name, NodeValue input,
@@ -1563,6 +1619,18 @@ public:
   TopKNode *createTopK(llvm::StringRef name, NodeValue input, unsigned_t k,
                        ElemKind outIndicesTyKind);
 
+  /// Given \p rpnMaxLevel , \p rpnMinLevel and \p rpnPostNmsTopN
+  /// CollectRpnProposals merges rois in the \p roisIN based on \p roisProbIn
+  /// and returns top proposals limited to rpnPostNmsTopN total, size (n x B),
+  /// where B is box dimensions and based on dimension of input rois
+  /// Format for upright boxes is (image_index, x1, y1, x2, y2).
+  /// Format for rotated boxes (image_index, ctr_x, ctr_y, w, h, angle)
+  /// rpnPostNmsTopN should be greater than zero.
+  CollectRpnProposalsNode *createCollectRpnProposals(
+      llvm::StringRef name, std::vector<NodeValue> &roisIn,
+      std::vector<NodeValue> &roiProbsIn, int64_t rpnMaxLevel,
+      int64_t rpnMinLevel, unsigned_t rpnPostNmsTopN);
+
   /// Gathers entries of the outer-most dimension of \p data indexed by
   /// \p indices, and concatenates them. A non-zero \p batchDims specifies the
   /// batch, and the result is the concatenation of the operation on each sample
@@ -1575,6 +1643,16 @@ public:
   /// into an output tensor of rank q + r - indices_shape[-1] - 1 - b.
   GatherNDNode *createGatherND(llvm::StringRef name, NodeValue data,
                                NodeValue indices);
+
+  /// Create a node, performing GatherElements operation:
+  /// GatherElements takes inputs \p data and indices of the same rank r >=
+  /// 1 and a \p dim attribute that identifies an axis of data. It is an
+  /// indexing operation that produces its output by indexing into the input
+  /// data tensor at by elements of the indices tensor. Its output shape is
+  /// the same as the shape of indices and consists of one value (gathered
+  /// from the data) for each element in indices.
+  GatherElementsNode *createGatherElements(llvm::StringRef name, NodeValue data,
+                                           NodeValue indices, unsigned_t dim);
 
   /// Create a node, performing GatherRanges operation:
   /// Gathers entries of \p data in groups specified by the "examples" in
@@ -1909,6 +1987,19 @@ public:
       std::string nameBase, T inputItr, const int timeSteps, NodeValue Wx,
       NodeValue Wh, NodeValue Bx, NodeValue Bh, NodeValue &H, NodeValue &C);
 
+  /// Helpfer function to create Pytorch Style Multiple Layer STM for one
+  /// direction
+  std::vector<NodeValue> createMultipleLayerSingleDirectionLSTM(
+      std::string nameBase, NodeValue input, unsigned batchSize,
+      unsigned inputSize, const int timeSteps, std::vector<NodeValue> &Wx,
+      std::vector<NodeValue> &Wh, std::vector<NodeValue> &Bx,
+      std::vector<NodeValue> &Bh, NodeValue &H, NodeValue &C);
+
+  /// Helpfer function to create sliced input for LSTM
+  std::vector<NodeValue>
+  createSlicedInput(NodeValue input, std::string &nameBase, unsigned batchSize,
+                    unsigned inputSize, const int timeSteps);
+
   /// Create PyTorch style LSTM with fixed weights and biases.
   /// The order of \p Wx \p Wh \p Bx and \p Bh is i, f, g, o,
   /// The \p inputs shape should be (numSteps, batchSize, hiddenSize),
@@ -1921,7 +2012,8 @@ public:
   /// For more details, please read:
   /// https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html
   void createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue inputs,
-                         NodeValue Wx, NodeValue Wh, NodeValue Bx, NodeValue Bh,
+                         std::vector<NodeValue> &Wx, std::vector<NodeValue> &Wh,
+                         std::vector<NodeValue> &Bx, std::vector<NodeValue> &Bh,
                          NodeValue &Ht, NodeValue &Ct, NodeValue &outputs,
                          bool isBidirectional = false,
                          NodeValue WxR = NodeValue(),
