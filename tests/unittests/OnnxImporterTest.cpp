@@ -5640,3 +5640,37 @@ TEST_F(OnnxImporterTest, softmax13) {
                0.11920292, 0.880797, 0.880797, 0.11920292, 0.11920292, 0.880797,
                0.880797, 0.11920292, 0.11920292, 0.880797, 0.880797});
 }
+
+/// Test loading Conv model with auto_pad=NOTSET from an ONNX model.
+TEST_F(OnnxImporterTest, importConvPadNotset) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/convPadNotset.onnxtxt");
+  Placeholder *output;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+  ASSERT_EQ(mod.getPlaceholders().size(), 2);
+  // Each Conv2D is loaded as 4 operations: input Transpose, filter Transpose,
+  // Conv2D node and output Transpose.
+  ASSERT_EQ(F->getNodes().size(), 11);
+  auto *save = getSaveNodeFromDest(output);
+  ASSERT_TRUE(save);
+  auto *trans1 = llvm::dyn_cast<TransposeNode>(save->getInput().getNode());
+  ASSERT_TRUE(trans1);
+  auto *trans2 = llvm::dyn_cast<TransposeNode>(trans1->getInput().getNode());
+  ASSERT_TRUE(trans2);
+  auto *conv1 = llvm::dyn_cast<ConvolutionNode>(trans2->getInput().getNode());
+  ASSERT_TRUE(conv1);
+  auto *trans3 = llvm::dyn_cast<TransposeNode>(conv1->getInput().getNode());
+  ASSERT_TRUE(trans3);
+  auto *trans4 = llvm::dyn_cast<TransposeNode>(trans3->getInput().getNode());
+  ASSERT_TRUE(trans4);
+  auto *conv2 = llvm::dyn_cast<ConvolutionNode>(trans4->getInput().getNode());
+  ASSERT_TRUE(conv2);
+  EXPECT_EQ(conv2->getPads().vec(), std::vector<unsigned_t>({1, 1, 1, 1}));
+  EXPECT_EQ(conv1->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
+}

@@ -1304,9 +1304,20 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
         left = right + (pdim[1] & 0x1);
       }
       return Pads({top, left, bottom, right});
+    } else if (padStr == "NOTSET") {
+      // We use explicit pads (if not given we assume its all zeros).
+      if (dict.count("pads")) {
+        if (dict.at("pads")->ints_size() == 2) { // For maxPool1D
+          return Pads({0, (unsigned_t)dict.at("pads")->ints(0), 0,
+                       (unsigned_t)dict.at("pads")->ints(1)});
+        }
+        return getShape<unsigned_t>(dict["pads"]);
+      } else {
+        return Pads({0, 0, 0, 0});
+      }
     }
-    return MAKE_ERR(
-        "only auto_pad==VALID, SAME_UPPER and SAME_LOWER are supported");
+    return MAKE_ERR("Only auto_pad==VALID, SAME_UPPER, SAME_LOWER and NOTSET "
+                    "are supported");
   }
   // Return default value 0 for pads.
   return Pads({0, 0, 0, 0});
