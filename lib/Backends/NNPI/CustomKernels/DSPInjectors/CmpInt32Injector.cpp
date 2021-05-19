@@ -53,53 +53,51 @@ NNPICustomDSPNode *createCustomCmp_int32(Function *F_, llvm::StringRef name,
 }
 
 template <class CmpOp, typename GlowNode>
-bool tryInject_Cmp_int32(Function *F, Node *node, std::string kernelName) {
+Node *tryInject_Cmp_int32(Function *F, Node *node, std::string kernelName) {
 
   auto *castedNode = llvm::dyn_cast<GlowNode>(node);
 
   if (!castedNode) {
-    return false;
+    return nullptr;
   }
 
   if (castedNode->getLHS().getElementType() != ElemKind::Int32ITy) {
-    return false;
+    return nullptr;
   }
 
   if (castedNode->getRHS().getElementType() != ElemKind::Int32ITy) {
-    return false;
+    return nullptr;
   }
 
   NNPICustomDSPNode *dspNode =
       createCustomCmp_int32<CmpOp>(F, "custom_cmpneq", castedNode->getLHS(),
                                    castedNode->getRHS(), kernelName);
 
-  castedNode->getResult().replaceAllUsesOfWith(dspNode);
-
-  return true;
+  return dspNode;
 }
 
 } // namespace
 
-bool CustomCmpNEQNodeDSPKernelInjector::tryInject(Function *F,
-                                                  Node *node) const {
+Node *CustomCmpNEQNodeDSPKernelInjector::tryInject(Function *F,
+                                                   Node *node) const {
   return tryInject_Cmp_int32<CmpNEQ_int32_func, CmpNEQNode>(F, node,
                                                             "CmpNEQ_int32");
 }
 
-bool CustomCmpEQNodeDSPKernelInjector::tryInject(Function *F,
-                                                 Node *node) const {
+Node *CustomCmpEQNodeDSPKernelInjector::tryInject(Function *F,
+                                                  Node *node) const {
   return tryInject_Cmp_int32<CmpEQ_int32_func, CmpEQNode>(F, node,
                                                           "CmpEQ_int32");
 }
 
-bool CustomCmpLTNodeDSPKernelInjector::tryInject(Function *F,
-                                                 Node *node) const {
+Node *CustomCmpLTNodeDSPKernelInjector::tryInject(Function *F,
+                                                  Node *node) const {
   return tryInject_Cmp_int32<CmpLT_int32_func, CmpLTNode>(F, node,
                                                           "CmpLT_int32");
 }
 
-bool CustomCmpLTENodeDSPKernelInjector::tryInject(Function *F,
-                                                  Node *node) const {
+Node *CustomCmpLTENodeDSPKernelInjector::tryInject(Function *F,
+                                                   Node *node) const {
   return tryInject_Cmp_int32<CmpLTE_int32_func, CmpLTENode>(F, node,
                                                             "CmpLTE_int32");
 }

@@ -103,6 +103,8 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.dumpDotFiles = compilationOptions.dumpDotFiles;
 
   config_.forceWeightsOutOfLLC = compilationOptions.forceWeightsOutOfLLC;
+  config_.enableFCDynamicQuantizationAllSA =
+      compilationOptions.enableFCDynamicQuantizationAllSA;
   config_.disableSlsAllLenOneCalcAtRunTime =
       compilationOptions.disableSlsAllLenOneCalcAtRunTime;
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
@@ -113,7 +115,7 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.enableConvSpatialSplitter =
       compilationOptions.enableConvSpatialSplitter;
 #endif
-
+  config_.disableWeightsInPool = compilationOptions.disableWeightsInPool;
   return Error::success();
 }
 
@@ -339,7 +341,9 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
       compilationFileName_.length() < NNPI_MAX_STRING_LEN, "Bad filename");
 
   NNPIImporter importer(compilationOptions_);
-  network_ = importer.importFunction(F, newOpts);
+  // requiresDSPKernels set by importFunction.
+  bool requiresDSPKernels;
+  network_ = importer.importFunction(F, newOpts, requiresDSPKernels);
   iaExtensionPaths_ = importer.getIAExtensionPaths();
 
   LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
@@ -366,15 +370,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   DBG_MEM_USAGE("NNPICompiledFunction call get compilation config <<");
   LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiGetDefaultCompilationConfig(&config_),
                                      "Failed NNPI API Read Config");
-
-  // If Function contains any DSP nodes then we require DSP kernels.
-  bool requiresDSPKernels = false;
-  for (const auto &node : F->getNodes()) {
-    if (node.getKind() == Kinded::Kind::NNPICustomDSPNodeKind) {
-      requiresDSPKernels = true;
-      break;
-    }
-  }
 
   RETURN_IF_ERR(updateCompilationConfigFromOptions(compilationOptions_,
                                                    requiresDSPKernels));

@@ -569,11 +569,40 @@ struct Type final {
     return ty;
   }
 
+  /// Reshape existing type \p T by taking shapes and using the provided \p
+  /// strides.
+  static Type newStrides(const Type &T, llvm::ArrayRef<dim_t> strides) {
+    assert(strides.size() == T.strides().size());
+    Type ty = T;
+    // Copy the stride information.
+    std::copy(&strides[0], &strides[0] + ty.numSizes_, ty.strides_);
+    return ty;
+  }
+
   /// Reshape existing type. This method takes care of quantized types.
   static Type newQuantparams(const Type &T, float scale, int32_t offset) {
     assert(T.isQuantizedType() &&
            "Can't modify scale and offset of non quantized types");
     return Type(T.getElementType(), T.dims(), scale, offset);
+  }
+
+  /// \returns true if a type has standard strides and no special alignment
+  /// requirements.
+  bool hasStandardStrides() const {
+    if (numSizes_ > 0) {
+      // Stride of the last dimension is always 1.
+      assert(strides_[numSizes_ - 1] == 1 &&
+             "Last dimension must always be aligned.");
+    }
+    for (int i = numSizes_ - 2; i >= 0; i--) {
+      // All the strides (except for last one) depend on the previous dimension.
+      // For standard strides the following should be true:
+      // strides_[i] == sizes_[i + 1] * strides_[i + 1]
+      if (strides_[i] != sizes_[i + 1] * strides_[i + 1]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// An empty type.

@@ -158,6 +158,13 @@ void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, TypeRef ty,
                     getTypeAttrID(ioNum, shapeSignifier, isInput, addPrefix),
                     ty->dims());
 
+  // Non-standard strides need to be serialized.
+  if (!ty->hasStandardStrides()) {
+    addValueAttribute(
+        proto, getTypeAttrID(ioNum, stridesSignifier, isInput, addPrefix),
+        ty->strides());
+  }
+
   // Write out scale/offset if quantized ElemKind.
   if (isQuantizedElemKind(ty->getElementType())) {
     addValueAttribute(proto,
@@ -1162,6 +1169,24 @@ static void addQuantParamsToDocString(T *out, const Type &type) {
   addAttrToDocString(out, qOffsetSignifier, std::to_string(type.getOffset()));
 }
 
+/// Add strides to the doc_string in \p out based on \p type.
+template <typename T>
+static void addStridesToDocString(T *out, const Type &type) {
+  // Non-standard strides need to be serialized.
+  if (type.hasStandardStrides()) {
+    return;
+  }
+  const auto &strides = type.strides();
+  std::string stridesStr;
+  std::string delim;
+  for (const auto &stride : strides) {
+    stridesStr.append(delim);
+    stridesStr.append(std::to_string(stride));
+    delim = ",";
+  }
+  addAttrToDocString(out, stridesSignifier, stridesStr);
+}
+
 void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
                                   bool useGlowCustomOps, bool includeData) {
   const auto &type = T.getType();
@@ -1177,6 +1202,7 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
 
   if (useGlowCustomOps) {
     addAttrToDocString(out, elemKindSignifier, type.getElementName());
+    addStridesToDocString(out, type);
   }
 
   if (type.isQuantizedType()) {
@@ -1208,6 +1234,7 @@ ONNXModelWriter::createProtoForIO(const Placeholder *PH, bool isInput) {
 
   if (useGlowCustomOps_) {
     // Write out any meta information we need to for the Placeholder.
+    addStridesToDocString(valueProto, *PH->getType());
     addAttrToDocString(valueProto, staticSignifier,
                        std::to_string(PH->isStatic()));
     addAttrToDocString(valueProto, trainableSignifier,
@@ -1855,6 +1882,13 @@ Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
   } else {
     return writeAllWithNode("Gather", node, graph, proto);
   }
+}
+
+Error ONNXModelWriter::writeGatherElements(const GatherElementsNode *node,
+                                           GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  return writeAllWithNode("GatherElements", node, graph, proto);
 }
 
 Error ONNXModelWriter::writeGatherND(const GatherNDNode *node,

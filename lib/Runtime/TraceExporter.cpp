@@ -21,16 +21,21 @@
 namespace glow {
 
 void TraceExporterRegistry::registerTraceExporter(TraceExporter *exporter) {
+  /// This function can be called in static init, hence do not use
+  /// glog here as it may not have been initialized yet.
+  std::lock_guard<std::mutex> g(mutex_);
   exporters_.push_back(exporter);
 }
 
 void TraceExporterRegistry::revokeTraceExporter(TraceExporter *exporter) {
+  std::lock_guard<std::mutex> g(mutex_);
   exporters_.erase(std::remove(exporters_.begin(), exporters_.end(), exporter),
                    exporters_.end());
 }
 
 bool TraceExporterRegistry::shouldTrace() {
   bool should = false;
+  DLOG(INFO) << "shouldTrace(): total exporter count = " << exporters_.size();
   for (auto const &exporter : exporters_) {
     should |= exporter->shouldTrace();
   }
@@ -38,6 +43,7 @@ bool TraceExporterRegistry::shouldTrace() {
 }
 
 void TraceExporterRegistry::exportTrace(TraceContext *tcontext) {
+  DLOG(INFO) << "exportTrace(): total exporter count = " << exporters_.size();
   if (!tcontext) {
     return;
   }

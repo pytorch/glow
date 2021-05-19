@@ -1449,7 +1449,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       break;
     }
     case caffe2::TensorProto_DataType_INT64: {
-      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int32ITy,
+      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int64ITy,
                         opErrMsg(op, "Can only cast int64 to int64."));
       break;
     }
@@ -2043,7 +2043,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto values2D =
         G_->createReshape(opName + ".reshape", values, {numIndices, 1});
     auto scatterData = G_->createScatterData(opName + ".scatterData", data,
-                                             indicesSliced, values2D, false);
+                                             indicesSliced, values2D, true);
 
     RETURN_IF_ERR(addNodeAsOutput(op, scatterData));
     return Error::success();

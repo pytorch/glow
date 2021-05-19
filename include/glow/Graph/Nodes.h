@@ -407,6 +407,7 @@ constexpr char trainableSignifier[] = "trainable";
 constexpr char elemKindSignifier[] = "elemKind";
 constexpr char loaderNameSignifier[] = "loaderName";
 constexpr char saveNameSignifier[] = "saveName";
+constexpr char stridesSignifier[] = "strides";
 constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
 constexpr char shapeSignifier[] = "shape";

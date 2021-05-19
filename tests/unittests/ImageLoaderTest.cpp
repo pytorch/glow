@@ -148,8 +148,8 @@ TEST_P(ImageLoaderTest, Numpy2InputsMeanStddevTest) {
   argv[idx++] =
       "-input-image-list-file=" GLOW_DATA_PATH
       "tests/images/npy/input1List_4D.txt,tests/images/npy/input2List_4D.txt";
-  argv[idx++] = "-model-input-name=X";
-  argv[idx++] = "-model-input-name=Y";
+  argv[idx++] = "-model-input=X";
+  argv[idx++] = "-model-input=Y";
   argv[idx++] = "-mean=0,1:2,3";
   argv[idx++] = "-stddev=4,5:6,7";
 
@@ -208,8 +208,8 @@ TEST_P(ImageLoaderTest, Numpy2InputsMeanStddev4D3DTest) {
   argv[idx++] =
       "-input-image-list-file=" GLOW_DATA_PATH
       "tests/images/npy/input1List_4D.txt,tests/images/npy/input2List_3D_2.txt";
-  argv[idx++] = "-model-input-name=X";
-  argv[idx++] = "-model-input-name=Y";
+  argv[idx++] = "-model-input=X";
+  argv[idx++] = "-model-input=Y";
   argv[idx++] = "-mean=0,1:2,3";
   argv[idx++] = "-stddev=4,5:6,7";
 
@@ -304,6 +304,337 @@ TEST_P(ImageLoaderTest, Numpy2InputsMeanStddev3DNoLayoutTest) {
         float expected = exp[i];
         float value = H.raw(i);
         EXPECT_NEAR(expected, value, 0.001);
+      }
+    }
+  };
+
+  registerPP<PP>(core);
+  core.executeNetwork();
+}
+
+/// Test loading Float NUMPY tensors - converted to U8.
+TEST_P(ImageLoaderTest, Numpy2TestFloatToDefault) {
+  const char *argv[8];
+  size_t idx = 0;
+  argv[idx++] = "test";
+  argv[idx++] =
+      "-m=" GLOW_DATA_PATH "tests/models/onnxModels/add_2inputs_3D.onnx";
+  argv[idx++] = "-input-image-list-file=" GLOW_DATA_PATH
+                "tests/images/npy/input1List_3D_f32_2.txt,tests/images/npy/"
+                "input2List_3D_f32_2.txt";
+  argv[idx++] = "-model-input=X";
+  argv[idx++] = "-model-input=Y";
+  argv[idx++] = "-image-layout=NonImage,NonImage";
+
+  glow::Executor core("test", idx, (char **)argv);
+
+  class PP : public PostProcessOutputDataExtension {
+  public:
+    int processOutputs(const llvm::StringMap<glow::Placeholder *> &PHM,
+                       PlaceholderBindings &b,
+                       VecVecRef<std::string> inputImageBatchFilenames) {
+      doChecks(PHM, b, inputImageBatchFilenames);
+      return 0;
+    }
+
+    void doChecks(const llvm::StringMap<glow::Placeholder *> &PHM,
+                  PlaceholderBindings &b,
+                  VecVecRef<std::string> inputImageBatchFilenames) {
+      Placeholder *outPH = getOutputForPostProcessing(PHM);
+      CHECK(outPH) << "Missing placeholder";
+
+      auto *S = getSaveNodeFromDest(outPH);
+      ASSERT_TRUE(S);
+      auto *add = llvm::dyn_cast<AddNode>(S->getInput().getNode());
+      ASSERT_TRUE(add);
+
+      std::vector<float> exp = {20, 22, 24, 26, 28, 30, 32, 34};
+
+      Tensor *outT = b.get(outPH);
+      CHECK(outT) << "Missing output tensor";
+      auto H = outT->getHandle();
+      for (size_t i = 0; i < H.size(); i++) {
+        float expected = exp[i];
+        float value = H.raw(i);
+        EXPECT_NEAR(expected, value, 0.01);
+      }
+    }
+  };
+
+  registerPP<PP>(core);
+  core.executeNetwork();
+}
+
+/// Load an ONNX model w/ two inputs. Provide two input lists, each
+/// with a single 3D numpy file with I16 and U16 data w/ no layout.
+/// No normalization.
+TEST_P(ImageLoaderTest, Numpy2TestS16U16PassThrough) {
+  const char *argv[8];
+  size_t idx = 0;
+  argv[idx++] = "test";
+  argv[idx++] =
+      "-m=" GLOW_DATA_PATH "tests/models/onnxModels/add_2inputs_3D.onnx";
+  argv[idx++] = "-input-image-list-file=" GLOW_DATA_PATH
+                "tests/images/npy/input1List_3D_i16.txt,tests/images/npy/"
+                "input2List_3D_u16.txt";
+  argv[idx++] = "-model-input=X";
+  argv[idx++] = "-model-input=Y";
+  argv[idx++] = "-image-layout=NonImage,NonImage";
+  glow::Executor core("test", idx, (char **)argv);
+
+  class PP : public PostProcessOutputDataExtension {
+  public:
+    int processOutputs(const llvm::StringMap<glow::Placeholder *> &PHM,
+                       PlaceholderBindings &b,
+                       VecVecRef<std::string> inputImageBatchFilenames) {
+      doChecks(PHM, b, inputImageBatchFilenames);
+      return 0;
+    }
+
+    void doChecks(const llvm::StringMap<glow::Placeholder *> &PHM,
+                  PlaceholderBindings &b,
+                  VecVecRef<std::string> inputImageBatchFilenames) {
+      Placeholder *outPH = getOutputForPostProcessing(PHM);
+      CHECK(outPH) << "Missing placeholder";
+
+      auto *S = getSaveNodeFromDest(outPH);
+      ASSERT_TRUE(S);
+      auto *add = llvm::dyn_cast<AddNode>(S->getInput().getNode());
+      ASSERT_TRUE(add);
+
+      std::vector<float> exp = {2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014};
+
+      Tensor *outT = b.get(outPH);
+      CHECK(outT) << "Missing output tensor";
+      auto H = outT->getHandle();
+      for (size_t i = 0; i < H.size(); i++) {
+        float expected = exp[i];
+        float value = H.raw(i);
+        EXPECT_NEAR(expected, value, 0.1);
+      }
+    }
+  };
+
+  registerPP<PP>(core);
+  core.executeNetwork();
+}
+
+/// Load an ONNX model w/ two inputs. Provide two input lists, each
+/// with a single 3D numpy file with I16 and U16 data w/ no layout.
+/// With mean/stddev.
+TEST_P(ImageLoaderTest, Numpy2TestS16U16MeanStddev) {
+  const char *argv[8];
+  size_t idx = 0;
+  argv[idx++] = "test";
+  argv[idx++] =
+      "-m=" GLOW_DATA_PATH "tests/models/onnxModels/add_2inputs_3D.onnx";
+  argv[idx++] = "-input-image-list-file=" GLOW_DATA_PATH
+                "tests/images/npy/input1List_3D_i16.txt,tests/images/npy/"
+                "input2List_3D_u16.txt";
+  argv[idx++] = "-model-input=X";
+  argv[idx++] = "-model-input=Y";
+  argv[idx++] = "-mean=100:200";
+  argv[idx++] = "-stddev=4:5";
+  argv[idx++] = "-image-layout=NonImage,NonImage";
+  glow::Executor core("test", idx, (char **)argv);
+
+  class PP : public PostProcessOutputDataExtension {
+  public:
+    int processOutputs(const llvm::StringMap<glow::Placeholder *> &PHM,
+                       PlaceholderBindings &b,
+                       VecVecRef<std::string> inputImageBatchFilenames) {
+      doChecks(PHM, b, inputImageBatchFilenames);
+      return 0;
+    }
+
+    void doChecks(const llvm::StringMap<glow::Placeholder *> &PHM,
+                  PlaceholderBindings &b,
+                  VecVecRef<std::string> inputImageBatchFilenames) {
+      Placeholder *outPH = getOutputForPostProcessing(PHM);
+      CHECK(outPH) << "Missing placeholder";
+
+      auto *S = getSaveNodeFromDest(outPH);
+      ASSERT_TRUE(S);
+      auto *add = llvm::dyn_cast<AddNode>(S->getInput().getNode());
+      ASSERT_TRUE(add);
+
+      std::vector<float> exp = {385,    385.45, 385.90, 386.35,
+                                386.80, 387.25, 387.70, 388.15};
+
+      Tensor *outT = b.get(outPH);
+      CHECK(outT) << "Missing output tensor";
+      auto H = outT->getHandle();
+      for (size_t i = 0; i < H.size(); i++) {
+        float expected = exp[i];
+        float value = H.raw(i);
+        EXPECT_NEAR(expected, value, 0.001);
+      }
+    }
+  };
+
+  registerPP<PP>(core);
+  core.executeNetwork();
+}
+
+/// Load an ONNX model w/ two inputs. Provide two input lists, each
+/// with a single 3D numpy file with I16 and U16 data w/ no layout.
+/// With normalization.
+TEST_P(ImageLoaderTest, Numpy2TestU16S16NormalizeS1U1) {
+  const char *argv[8];
+  size_t idx = 0;
+  argv[idx++] = "test";
+  argv[idx++] =
+      "-m=" GLOW_DATA_PATH "tests/models/onnxModels/add_2inputs_3D.onnx";
+  argv[idx++] = "-input-image-list-file=" GLOW_DATA_PATH
+                "tests/images/npy/input1List_3D_u16.txt,tests/images/npy/"
+                "input2List_3D_i16.txt";
+  argv[idx++] = "-model-input=X";
+  argv[idx++] = "-model-input=Y";
+  argv[idx++] = "-image-mode=neg1to1,0to1";
+  argv[idx++] = "-image-layout=NonImage,NonImage";
+
+  glow::Executor core("test", idx, (char **)argv);
+
+  class PP : public PostProcessOutputDataExtension {
+  public:
+    int processOutputs(const llvm::StringMap<glow::Placeholder *> &PHM,
+                       PlaceholderBindings &b,
+                       VecVecRef<std::string> inputImageBatchFilenames) {
+      doChecks(PHM, b, inputImageBatchFilenames);
+      return 0;
+    }
+
+    void doChecks(const llvm::StringMap<glow::Placeholder *> &PHM,
+                  PlaceholderBindings &b,
+                  VecVecRef<std::string> inputImageBatchFilenames) {
+      Placeholder *outPH = getOutputForPostProcessing(PHM);
+      CHECK(outPH) << "Missing placeholder";
+
+      auto *S = getSaveNodeFromDest(outPH);
+      ASSERT_TRUE(S);
+      auto *add = llvm::dyn_cast<AddNode>(S->getInput().getNode());
+      ASSERT_TRUE(add);
+
+      std::vector<float> exp = {-0.469627,  -0.469749,  -0.469871,
+                                -0.469993,  -0.470115,  -0.47023726,
+                                -0.4703596, -0.47048143};
+
+      Tensor *outT = b.get(outPH);
+      CHECK(outT) << "Missing output tensor";
+      auto H = outT->getHandle();
+      for (size_t i = 0; i < H.size(); i++) {
+        float expected = exp[i];
+        float value = H.raw(i);
+        EXPECT_NEAR(expected, value, 0.000001);
+      }
+    }
+  };
+
+  registerPP<PP>(core);
+  core.executeNetwork();
+}
+
+TEST_P(ImageLoaderTest, Numpy2TestFloatToU16) {
+  const char *argv[8];
+  size_t idx = 0;
+  argv[idx++] = "test";
+  argv[idx++] =
+      "-m=" GLOW_DATA_PATH "tests/models/onnxModels/add_2inputs_3D.onnx";
+  argv[idx++] = "-input-image-list-file=" GLOW_DATA_PATH
+                "tests/images/npy/input1List_3D_f32.txt,tests/images/npy/"
+                "input2List_3D_f32.txt";
+  argv[idx++] = "-model-input=X";
+  argv[idx++] = "-model-input=Y";
+  argv[idx++] = "-image-layout=NonImage,NonImage";
+  argv[idx++] = "-input-values-range=U16,S16";
+
+  glow::Executor core("test", idx, (char **)argv);
+
+  class PP : public PostProcessOutputDataExtension {
+  public:
+    int processOutputs(const llvm::StringMap<glow::Placeholder *> &PHM,
+                       PlaceholderBindings &b,
+                       VecVecRef<std::string> inputImageBatchFilenames) {
+      doChecks(PHM, b, inputImageBatchFilenames);
+      return 0;
+    }
+
+    void doChecks(const llvm::StringMap<glow::Placeholder *> &PHM,
+                  PlaceholderBindings &b,
+                  VecVecRef<std::string> inputImageBatchFilenames) {
+      Placeholder *outPH = getOutputForPostProcessing(PHM);
+      CHECK(outPH) << "Missing placeholder";
+
+      auto *S = getSaveNodeFromDest(outPH);
+      ASSERT_TRUE(S);
+      auto *add = llvm::dyn_cast<AddNode>(S->getInput().getNode());
+      ASSERT_TRUE(add);
+
+      std::vector<float> exp = {2000, 2002, 2004, 2006, 2008, 2010, 2012, 2014};
+
+      Tensor *outT = b.get(outPH);
+      CHECK(outT) << "Missing output tensor";
+      auto H = outT->getHandle();
+      for (size_t i = 0; i < H.size(); i++) {
+        float expected = exp[i];
+        float value = H.raw(i);
+        EXPECT_NEAR(expected, value, 0.1);
+      }
+    }
+  };
+
+  registerPP<PP>(core);
+  core.executeNetwork();
+}
+
+TEST_P(ImageLoaderTest, Numpy2TestFloatToU16Norm) {
+  const char *argv[8];
+  size_t idx = 0;
+  argv[idx++] = "test";
+  argv[idx++] =
+      "-m=" GLOW_DATA_PATH "tests/models/onnxModels/add_2inputs_3D.onnx";
+  argv[idx++] = "-input-image-list-file=" GLOW_DATA_PATH
+                "tests/images/npy/input1List_3D_f32.txt,tests/images/npy/"
+                "input2List_3D_f32.txt";
+  argv[idx++] = "-model-input=X";
+  argv[idx++] = "-model-input=Y";
+  argv[idx++] = "-image-mode=neg1to1,0to1";
+  argv[idx++] = "-image-layout=NonImage,NonImage";
+  argv[idx++] = "-input-values-range=U16,S16";
+
+  glow::Executor core("test", idx, (char **)argv);
+
+  class PP : public PostProcessOutputDataExtension {
+  public:
+    int processOutputs(const llvm::StringMap<glow::Placeholder *> &PHM,
+                       PlaceholderBindings &b,
+                       VecVecRef<std::string> inputImageBatchFilenames) {
+      doChecks(PHM, b, inputImageBatchFilenames);
+      return 0;
+    }
+
+    void doChecks(const llvm::StringMap<glow::Placeholder *> &PHM,
+                  PlaceholderBindings &b,
+                  VecVecRef<std::string> inputImageBatchFilenames) {
+      Placeholder *outPH = getOutputForPostProcessing(PHM);
+      CHECK(outPH) << "Missing placeholder";
+
+      auto *S = getSaveNodeFromDest(outPH);
+      ASSERT_TRUE(S);
+      auto *add = llvm::dyn_cast<AddNode>(S->getInput().getNode());
+      ASSERT_TRUE(add);
+
+      std::vector<float> exp = {-0.4542152,  -0.4541695, -0.4541237,
+                                -0.45407796, -0.4540322, -0.45398641,
+                                -0.45394063, -0.4538949};
+
+      Tensor *outT = b.get(outPH);
+      CHECK(outT) << "Missing output tensor";
+      auto H = outT->getHandle();
+      for (size_t i = 0; i < H.size(); i++) {
+        float expected = exp[i];
+        float value = H.raw(i);
+        EXPECT_NEAR(expected, value, 0.000001);
       }
     }
   };

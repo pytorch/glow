@@ -50,7 +50,8 @@ public:
   /// The main entry point for the importer functionality
   /// Imports a Function \p F using options taken from \p opts
   /// \return true iff the import succeeded.
-  NNPINetwork importFunction(Function *F, const BackendOptions &opts);
+  NNPINetwork importFunction(Function *F, const BackendOptions &opts,
+                             bool &requiresDSPKernels);
 
   /// Get a new name for an internal object.
   std::string getInternalName() {
@@ -154,6 +155,20 @@ private:
 
   /// A list of IA extensions that need to be loaded by the device.
   std::vector<std::string> iaExtensionPaths_;
+
+  /// Instead of importing \p origNode directly, import a NNPICustomDSPNodeKind
+  /// \p glowDSPReplacementNode representation of it created by a custom
+  /// injector.
+  NNPIErrorCode
+  importNodeAsCustomDSPNode(const Node *origNode,
+                            const NNPICustomDSPNode *glowDSPReplacementNode);
+
+  /// Instead of importing \p origNode directly, import a NNPICustomIANodeKind
+  /// \p glowIAReplacementNode representation of it created by a custom
+  /// injector.
+  NNPIErrorCode
+  importNodeAsCustomIANode(const Node *origNode,
+                           const NNPICustomIANode *glowIAReplacementNode);
 };
 
 /// Interface class for all node specific importers.

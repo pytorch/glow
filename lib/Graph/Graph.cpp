@@ -456,7 +456,12 @@ void Module::dumpDAG(llvm::StringRef dotFilename) {
 
   std::ofstream myfile;
   myfile.open(dotFilename.str());
-  DP.dumpAll(myfile);
+  if (myfile.fail()) {
+    LOG(ERROR) << "Unable to open " << dotFilename.str()
+               << ", reason: " << strerror(errno);
+  } else {
+    DP.dumpAll(myfile);
+  }
   myfile.close();
 }
 
@@ -553,6 +558,11 @@ TypeRef Module::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims,
 
 TypeRef Module::uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType) {
   return uniqueType(Type::newShape(*T, shapeType));
+}
+
+TypeRef Module::uniqueTypeWithNewStrides(TypeRef T, llvm::ArrayRef<dim_t> dims,
+                                         llvm::ArrayRef<dim_t> strides) {
+  return uniqueType(Type::newStrides(*T, strides));
 }
 
 TypeRef Module::uniqueTypeWithNewQuantParams(TypeRef T,
@@ -2859,6 +2869,26 @@ GatherNDNode *Function::createGatherND(llvm::StringRef name, NodeValue data,
   return addNode(new GatherNDNode(name, outTy, data, indices));
 }
 
+GatherElementsNode *Function::createGatherElements(llvm::StringRef name,
+                                                   NodeValue data,
+                                                   NodeValue indices,
+                                                   unsigned_t dim = 0) {
+  const auto iDims = indices.dims();
+  const auto dRank = data.dims().size();
+  const auto iRank = iDims.size();
+  (void)dRank;
+  (void)iRank;
+  assert((dim < 0 ? dim >= -dRank : dim < dRank) &&
+         "[GatherElements] dim must in the range [-rank, rank-1].");
+  assert(iRank == dRank &&
+         "[GatherElements] Data and indices rank must be equal.");
+  assert(dRank > 0 && "[GatherElements] Data and indices rank must be >= 1.");
+
+  return addNode(new GatherElementsNode(
+      name, getParent()->uniqueTypeWithNewShape(data.getType(), iDims), data,
+      indices, dim));
+}
+
 GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
                                                NodeValue data, NodeValue ranges,
                                                unsigned_t maxOutputSize) {
@@ -3889,23 +3919,103 @@ std::vector<NodeValue> Function::createSingleDirectionLSTM(
   return Hs;
 }
 
+std::vector<NodeValue> Function::createMultipleLayerSingleDirectionLSTM(
+    std::string nameBase, NodeValue input, unsigned batchSize,
+    unsigned inputSize, const int timeSteps, std::vector<NodeValue> &Wx,
+    std::vector<NodeValue> &Wh, std::vector<NodeValue> &Bx,
+    std::vector<NodeValue> &Bh, NodeValue &H, NodeValue &C) {
+
+  assert(Wx.size() > 0 && Wh.size() > 0 && Bx.size() > 0 && Bh.size() > 0 &&
+         "Wx, Wh, Bx and Bh should be non empty vectors");
+
+  auto numLayers = Wx.size();
+  NodeValue temp_input = input;
+  std::vector<NodeValue> Hs;
+  auto name = [&nameBase](const char *s, int t) {
+    return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
+  };
+  std::vector<NodeValue> Hv, Cv;
+  auto reshape2dto3d = [=](NodeValue n, std::string nameStr) {
+    return createReshape(nameStr, n, {1, n.dims()[0], n.dims()[1]});
+  };
+  for (unsigned layer = 0; layer < numLayers; layer++) {
+    auto slidedInputs = createSlicedInput(temp_input, nameBase, batchSize,
+                                          inputSize, timeSteps);
+    auto Hn =
+        createReshape(name("reshape_hn", layer),
+                      createSlice(name("slice_hn", layer), H, {layer, 0, 0},
+                                  {layer + 1, H.dims()[1], H.dims()[2]})
+                          ->getResult(),
+                      {H.dims()[1], H.dims()[2]})
+            ->getResult();
+    auto Cn =
+        createReshape(name("reshape_cn", layer),
+                      createSlice(name("slice_cn", layer), C, {layer, 0, 0},
+                                  {layer + 1, C.dims()[1], C.dims()[2]})
+                          ->getResult(),
+                      {C.dims()[1], C.dims()[2]})
+            ->getResult();
+    Hs = createSingleDirectionLSTM(nameBase, slidedInputs.begin(), timeSteps,
+                                   Wx[layer], Wh[layer], Bx[layer], Bh[layer],
+                                   Hn, Cn);
+    temp_input = createConcat(nameBase + "_lstm_temp_input", Hs, 0);
+    Hv.emplace_back(reshape2dto3d(Hn, "_lstm_hv"));
+    Cv.emplace_back(reshape2dto3d(Cn, "_lstm_cv"));
+    inputSize = temp_input.dims()[2];
+  }
+  H = createConcat(nameBase + "_lstm_h_output", Hv, 0);
+  C = createConcat(nameBase + "_lstm_c_output", Cv, 0);
+  return Hs;
+}
+
+std::vector<NodeValue> Function::createSlicedInput(NodeValue input,
+                                                   std::string &nameBase,
+                                                   unsigned batchSize,
+                                                   unsigned inputSize,
+                                                   const int timeSteps) {
+  std::vector<NodeValue> inputs;
+  auto name = [&nameBase](const char *s, int t) {
+    return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
+  };
+  for (unsigned t = 0; t < timeSteps; t++) {
+    auto inputSliced = createSlice(name("slice", t), input, {t, 0, 0},
+                                   {t + 1, batchSize, inputSize})
+                           ->getResult();
+    inputSliced =
+        createReshape(name("reshape", t), inputSliced, {batchSize, inputSize})
+            ->getResult();
+    inputs.push_back(inputSliced);
+  }
+  return inputs;
+}
+
 void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
-                                 NodeValue Wx, NodeValue Wh, NodeValue Bx,
-                                 NodeValue Bh, NodeValue &Ht, NodeValue &Ct,
-                                 NodeValue &output, bool isBidirectional,
-                                 NodeValue WxR, NodeValue WhR, NodeValue BxR,
-                                 NodeValue BhR) {
+                                 std::vector<NodeValue> &Wx,
+                                 std::vector<NodeValue> &Wh,
+                                 std::vector<NodeValue> &Bx,
+                                 std::vector<NodeValue> &Bh, NodeValue &Ht,
+                                 NodeValue &Ct, NodeValue &output,
+                                 bool isBidirectional, NodeValue WxR,
+                                 NodeValue WhR, NodeValue BxR, NodeValue BhR) {
   std::string nameBase = namePrefix.str();
   assert(input.dims().back() > 0 && "input dimensionality is zero");
   assert((!isBidirectional || WxR != nullptr) &&
          "Bidirectional LSTM must provide reverse weights & biases");
+  assert(Wx.size() > 0 && Wh.size() > 0 && Bx.size() > 0 && Bh.size() > 0 &&
+         "Wx, Wh, Bx and Bh should be non empty vectors");
 
   std::vector<NodeValue> inputs, outputs;
   unsigned batchSize, inputSize, timeSteps, hiddenSize;
   batchSize = input.dims()[1];
   inputSize = input.dims()[2];
-  hiddenSize = Wh.dims()[0];
+  if (Wh.size() == 1) {
+    hiddenSize = Wh[0].dims()[0];
+  } else {
+    hiddenSize = Wh[0].dims()[1];
+  }
+
   timeSteps = input.dims()[0];
+
   // Input gate:
   //    I <- sigmoid(Wxi * x + Bxi + Whi * h + Bhi)
   // Forget gate:
@@ -3919,18 +4029,6 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
   // Hidden state:
   //    h <- O . tanh(C)
 
-  auto name = [&nameBase](const char *s, int t) {
-    return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
-  };
-  for (unsigned t = 0; t < timeSteps; t++) {
-    auto inputSliced = createSlice(name("slice", t), input, {t, 0, 0},
-                                   {t + 1, batchSize, inputSize})
-                           ->getResult();
-    inputSliced =
-        createReshape(name("reshape", t), inputSliced, {batchSize, inputSize})
-            ->getResult();
-    inputs.push_back(inputSliced);
-  }
   if (isBidirectional) {
     // For bidirectional LSTM, we split H and C to two part, each direction a
     // part. For each part we calculate them separately.
@@ -3956,14 +4054,16 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
                               {batchSize, hiddenSize})
                     ->getResult();
 
+    auto slicedInputs =
+        createSlicedInput(input, nameBase, batchSize, inputSize, timeSteps);
     auto outputForwards =
         createSingleDirectionLSTM<std::vector<NodeValue>::iterator>(
-            nameBase + "_lstm_forward", inputs.begin(), timeSteps, Wx, Wh, Bx,
-            Bh, Hforward, Cforward);
+            nameBase + "_lstm_forward", slicedInputs.begin(), timeSteps, Wx[0],
+            Wh[0], Bx[0], Bh[0], Hforward, Cforward);
     auto outputBackwards =
         createSingleDirectionLSTM<std::vector<NodeValue>::reverse_iterator>(
-            nameBase + "_lstm_backward", inputs.rbegin(), timeSteps, WxR, WhR,
-            BxR, BhR, Hbackward, Cbackward);
+            nameBase + "_lstm_backward", slicedInputs.rbegin(), timeSteps, WxR,
+            WhR, BxR, BhR, Hbackward, Cbackward);
     std::reverse(outputBackwards.begin(), outputBackwards.end());
     NodeValue outputForward = createConcat(
         nameBase + "_lstm_forward_output_concat", outputForwards, 0);
@@ -3988,8 +4088,17 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
              ->getResult();
 
   } else {
-    auto outputs = createSingleDirectionLSTM<std::vector<NodeValue>::iterator>(
-        nameBase + "_lstm", inputs.begin(), timeSteps, Wx, Wh, Bx, Bh, Ht, Ct);
+    if (Ht.dims().size() == 2) {
+      auto slicedInputs =
+          createSlicedInput(input, nameBase, batchSize, inputSize, timeSteps);
+      outputs = createSingleDirectionLSTM<std::vector<NodeValue>::iterator>(
+          nameBase + "_lstm", slicedInputs.begin(), timeSteps, Wx[0], Wh[0],
+          Bx[0], Bh[0], Ht, Ct);
+    } else {
+      outputs = createMultipleLayerSingleDirectionLSTM(
+          nameBase + "_lstm", input, batchSize, inputSize, timeSteps, Wx, Wh,
+          Bx, Bh, Ht, Ct);
+    }
     output = createConcat(nameBase + "_lstm_output_concat", outputs, 0);
   }
 };
@@ -5548,7 +5657,12 @@ void Function::dumpDAG(llvm::StringRef dotFilename) {
 
   std::ofstream myfile;
   myfile.open(legalDotFilename.str());
-  DP.dumpAll(myfile);
+  if (myfile.fail()) {
+    LOG(ERROR) << "Unable to open " << legalDotFilename.str()
+               << ", reason: " << strerror(errno);
+  } else {
+    DP.dumpAll(myfile);
+  }
   myfile.close();
 }
 
@@ -6068,6 +6182,35 @@ bool Function::verify(const Backend *backend) const {
           "Every type used by one of the graph nodes should be part of "
           "the graph",
           foundType, true, &N);
+    }
+  }
+
+  // Check that there are no zero volume tensors
+  for (const auto &N : nodes_) {
+    // Check inputs
+    for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
+      auto dims = N.getNthInput(idx).dims();
+      for (auto dim : dims) {
+        if (dim == 0) {
+          LOG(ERROR) << "Found 0 volume input in the " << idx
+                     << " input to node " << N.toString() << " with dims "
+                     << dims;
+          return false;
+        }
+      }
+    }
+
+    // Check results
+    for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+      auto dims = N.getNthResult(idx).dims();
+      for (auto dim : dims) {
+        if (dim == 0) {
+          LOG(ERROR) << "Found 0 volume result in the " << idx
+                     << " result from node " << N.toString() << " with dims "
+                     << dims;
+          return false;
+        }
+      }
     }
   }
 

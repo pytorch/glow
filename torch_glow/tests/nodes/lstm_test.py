@@ -107,3 +107,24 @@ class TestLSTM(utils.TorchGlowTestCase):
         utils.compare_tracing_methods(
             model, inputs, h, c, fusible_ops={"aten::lstm"}, skip_to_glow=True
         )
+
+    def test_lstm_two_layers(self):
+        """2 layer test of the PyTorch lstm Node on Glow."""
+
+        class MultipleLayersLSTM(nn.Module):
+            def __init__(self):
+                super(MultipleLayersLSTM, self).__init__()
+                self.rnn = torch.nn.LSTM(10, 20, 2, bidirectional=False)
+                self.rnn.training = False
+
+            def forward(self, inputs, h, c):
+                return self.rnn(inputs, (h, c))
+
+        inputs = torch.randn(5, 3, 10)
+        h = torch.randn(2, 3, 20)
+        c = torch.randn(2, 3, 20)
+        model = MultipleLayersLSTM()
+
+        utils.compare_tracing_methods(
+            model, inputs, h, c, fusible_ops={"aten::lstm"}, skip_to_glow=True
+        )

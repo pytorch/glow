@@ -39,6 +39,10 @@ public:
   /// Destructor.
   ~FXNNPIImporter();
 
+  /// Helper function which iterates through all nodes and logs any unsupported
+  /// nodes.
+  void logUnsupportedNodes(const folly::dynamic &mod);
+
   /// The main entry point for the importer functionality. Imports a submodule
   /// if \p submodule is specified, otherwise, import the whole \p FXIR.
   /// \returns an NNPI network.
@@ -50,16 +54,16 @@ public:
 
   /// Add Tensor to the network by parameters.
   NNPIErrorCode addTensor(const std::string &name, const string &dtypeStr,
-                          const llvm::ArrayRef<glow::dim_t> dims,
-                          bool input = false, bool output = false,
-                          const float &scale = 1.f, const int32_t &offset = 0,
+                          llvm::ArrayRef<glow::dim_t> dims, bool input = false,
+                          bool output = false, const float &scale = 1.f,
+                          const int32_t &offset = 0,
                           const std::string &scaleTensor = {},
                           const std::string &offsetTensor = {},
-                          bool forceSymlowp = false);
+                          bool forceSymlowp = false, bool zeroOffset = false);
 
   /// Add Tensor to the network by node.
-  NNPIErrorCode addTensor(const folly::dynamic &node, bool input = false,
-                          bool output = false, bool forceSymlowp = false);
+  NNPIErrorCode addTensor(const std::string &name, const folly::dynamic &node,
+                          bool input = false, bool output = false);
 
   /// Set given tensor names as inputs/outputs.
   void
@@ -76,7 +80,7 @@ public:
   }
 
   /// Update the NNPITensorDesc \p desc by the dimensions array \p dims.
-  static void updateDescDimsFromFX(const llvm::ArrayRef<glow::dim_t> &dims,
+  static void updateDescDimsFromFX(llvm::ArrayRef<glow::dim_t> dims,
                                    NNPITensorDesc &desc);
 
   /// Update the NNPITensorDesc \p desc quantization params by \p dtype.
@@ -85,7 +89,8 @@ public:
                              const int32_t &offset = 0,
                              const std::string &scaleTensor = {},
                              const std::string &offsetTensor = {},
-                             bool forceSymlowp = false);
+                             bool forceSymlowp = false,
+                             bool zeroOffset = false);
 
   /// \returns whether there is a Constant known by \p name. Does not look
   /// through getattr aliases.
@@ -111,6 +116,12 @@ public:
   /// node is null.
   const std::string &getInputNodeName(const folly::dynamic &node,
                                       bool optional = false) const;
+
+  /// \returns whether the constant with the given \p name contains only zero.
+  /// \p dtype is the type of this constant and \p size is the total size of the
+  /// constant;
+  bool isZeroes(const std::string &name, const utils::DTYPE &dtype,
+                const size_t &size) const;
 
 private:
   /// NNPI network handle.
