@@ -437,7 +437,7 @@ class GlowError : protected detail::CheckState<detail::enableCheckingErrors> {
              "Trying to skip state check on an Error that "
              "contains an ErrorValue is a bug because this should only happen "
              "in a constructor and then no ErrorValue should be contained.");
-    } else {
+    } else if (hasErrorValue()) {
       ensureChecked();
     }
 
