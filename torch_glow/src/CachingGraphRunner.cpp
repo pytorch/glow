@@ -1204,7 +1204,7 @@ Error CachingGraphRunner::warmCache(
       for (const auto &metaStack : metaStacks) {
         size_t hash = getGraphMapKeyFromInputStack(metaStack);
 
-        LOG(INFO) << "Caching compilation setting for hash:" << hash;
+        LOG(INFO) << "Caching compilation setting for hash: " << hash;
         pyTorchLoaderSettingsMap_.emplace(hash, settings);
       }
 

@@ -27,6 +27,7 @@
 #include "ShapeInferenceEngine.h"
 
 #include "glow/Flags/Flags.h"
+#include "glow/Runtime/ErrorReporter.h"
 #include "llvm/Support/FileSystem.h"
 
 #include "torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h"
@@ -695,14 +696,10 @@ void glowAOTFusionWithShapeInference(
             itr->second.dtype, itr->second.shape<TensorShape>());
       }
 
-      e = runner->warmCache({metaStackForCompilation}, settings, loader,
-                            /*useMaxSizeCompilation*/ true);
-      if (e) {
-        // If the graph is already compiled previously, warmCache() will report
-        // an error but it is fine with our execution. So here we extract the
-        // error only.
-        LOG(ERROR) << ERR_TO_STRING(std::move(e));
-      }
+      // Fault at any error during the cache warmup.
+      REPORT_AND_EXIT_ON_ERR(runner->warmCache({metaStackForCompilation},
+                                               settings, loader,
+                                               /*useMaxSizeCompilation*/ true));
 
       if (batchShapesMap.size() > 0) {
         auto graphOutputValues = subgraph->outputs();

@@ -103,14 +103,8 @@ HostManager::HostManager(
     : config_(hostConfig),
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
-  auto reporters = ErrorReporterRegistry::ErrorReporters();
 
-  auto err = init(std::move(deviceConfigs));
-  if (reporters && err) {
-    std::string msg = err.peekErrorValue()->logToString();
-    reporters->report(msg);
-  }
-  EXIT_ON_ERR(std::move(err));
+  REPORT_AND_EXIT_ON_ERR(init(std::move(deviceConfigs)));
   statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
 }
 
