@@ -503,7 +503,7 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
     }
   }
 
-  LOG(INFO) << "Compiling graph with tensor shape:\n" << metaStack.print();
+  VLOG(1) << "Compiling graph with tensor shape:\n" << metaStack.print();
 
   // If we don't have a shape info for this graph output with and the
   // given inputs then run shape inference, then push into the map.
