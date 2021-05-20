@@ -1649,10 +1649,10 @@ static void tensorInputWriterLoader(ImageLayout outImageLayout,
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpInputTensorToFileWithType({std::string(path)}, tensorRef, outImageLayout);
+  dumpInputTensorToFileWithType({path.str().str()}, tensorRef, outImageLayout);
   //
   Tensor tensorTest;
-  loadInputImageFromFileWithType({std::string(path)}, &tensorTest, inImageLayout);
+  loadInputImageFromFileWithType({path.str().str()}, &tensorTest, inImageLayout);
 
   if (outImageLayout == ImageLayout::NHWC) {
     Tensor transposed;
