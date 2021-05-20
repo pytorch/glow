@@ -8832,6 +8832,7 @@ PyTorchModelLoader::PyTorchModelLoader(
       out.open(fname);
       graph.print(out);
       out.close();
+      glow::dumpOperatorStats(graph);
     }
 
     RETURN_ERR_IF_NOT(

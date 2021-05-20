@@ -17,6 +17,7 @@
 #include <fstream>
 #include <string>
 
+#include "ATen/core/interned_strings.h"
 #include "PyTorchCommon.h"
 
 #include "FuseKnownPatterns.h"
@@ -116,6 +117,20 @@ PyTorchLoaderSettings &getPyTorchLoaderSettingsInternalOnly() {
 }
 
 } // namespace
+
+void dumpOperatorStats(const torch::jit::Graph &graph) {
+  std::map<torch::jit::NodeKind, int> opCounter;
+  for (const auto *node : graph.nodes()) {
+    opCounter[node->kind()]++;
+  }
+  std::ostringstream ss;
+  ss << "Dump of operator/node stats for graph:\n";
+  ss << folly::stringPrintf("%30s %13s \n", "Node Kind", "Count");
+  for (const auto &[kind, count] : opCounter) {
+    ss << folly::stringPrintf("%30s %13d \n", kind.toQualString(), count);
+  }
+  LOG(INFO) << ss.str();
+}
 
 std::shared_ptr<runtime::HostManager>
 getHostManager(const PyTorchLoaderSettings &settings) {

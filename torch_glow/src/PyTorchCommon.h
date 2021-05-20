@@ -35,6 +35,8 @@ struct InputMetaStack;
 using BatchShapesMapType = std::unordered_map<
     int, std::unordered_map<const torch::jit::Value *, VariableMeta>>;
 
+void dumpOperatorStats(const torch::jit::Graph &graph);
+
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
