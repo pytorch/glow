@@ -292,6 +292,59 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvAndReshapeNHWCneg) {
   checkNumericalEquivalence();
 }
 
+// Sink Reshape below BatchNorm: multi-user testcase.
+TEST_F(GraphOptz, sinkReshapeBelowBatchNormMultiUser) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 40, 8}, "input", false);
+  auto *RS = F_->createReshape("reshape", in, {1, 20, 20, 8});
+  auto *BN =
+      F_->createBatchNormalization(bindings_, "batch", RS, 3, 0.0001, 0.9);
+  auto *save = F_->createSave("ret", BN);
+  F_->createSave("extra_user", RS);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 5);
+
+  auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *reshapeOpt = llvm::dyn_cast<ReshapeNode>(saveOpt->getInput());
+  ASSERT_TRUE(reshapeOpt);
+  ASSERT_TRUE(llvm::isa<BatchNormalizationNode>(reshapeOpt->getInput()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+// Sink Reshape below BatchNorm: quantized testcase.
+TEST_F(GraphOptz, sinkReshapeBelowBatchNormQuantized) {
+  auto *in = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 10, 40, 3}, 1.5f, 0,
+                                    "input", false);
+  auto *params =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3}, 1.0f, 0, "params", false);
+  auto *RS = F_->createReshape("reshape", in, {1, 20, 20, 3});
+  auto *bnOutTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 20, 20, 3}, 2.7f, 0);
+  auto *BN = F_->createBatchNormalization("batch", bnOutTy, RS, params, params,
+                                          params, params, 3);
+  auto *save = F_->createSave("ret", BN);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *reshapeOpt = llvm::dyn_cast<ReshapeNode>(saveOpt->getInput());
+  ASSERT_TRUE(reshapeOpt);
+  auto *bnOpt = llvm::dyn_cast<BatchNormalizationNode>(reshapeOpt->getInput());
+  ASSERT_TRUE(bnOpt);
+  EXPECT_TRUE(
+      BN->getInput().getType()->isEqual(*bnOpt->getInput().getType(), true));
+  EXPECT_TRUE(
+      BN->getResult().getType()->isEqual(*bnOpt->getResult().getType(), true));
+}
+
 // Conv->Reshape->BatchNorm. Sink Reshape below BatchNorm. Check that BatchNorm
 // does not fold in to Conv.
 TEST_F(GraphOptz, sinkReshapeBelowBatchNormAndDoNotFuseConvBatchNorm) {
