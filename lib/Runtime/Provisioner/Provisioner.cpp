@@ -15,6 +15,7 @@
  */
 
 #include "glow/Runtime/Provisioner/Provisioner.h"
+#include "folly/String.h"
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Flags/Flags.h"
@@ -420,6 +421,18 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
             deviceBackendName.c_str(), function->getName().str().c_str());
         LOG(INFO) << "Dumping final graph to " << fname;
         function->dumpDAG(fname);
+        // print stats of node
+        std::map<std::string, int> opCounter;
+        for (const auto &node : function->getNodes()) {
+          opCounter[node.getKindName()]++;
+        }
+        std::ostringstream ss;
+        ss << "Dump of Node stats for Function:\n";
+        ss << folly::stringPrintf("%30s %13s \n", "NodeKind", "Count");
+        for (const auto &p : opCounter) {
+          ss << folly::stringPrintf("%30s %13d \n", p.first.c_str(), p.second);
+        }
+        LOG(INFO) << ss.str();
       }
 
       if (glow::flags::DumpCompilationLog) {
