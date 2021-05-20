@@ -125,9 +125,9 @@ void dumpOperatorStats(const torch::jit::Graph &graph) {
   }
   std::ostringstream ss;
   ss << "Dump of operator/node stats for graph:\n";
-  ss << folly::stringPrintf("%30s %13s \n", "Node Kind", "Count");
+  ss << folly::stringPrintf("%45s %13s \n", "Node Kind", "Count");
   for (const auto &[kind, count] : opCounter) {
-    ss << folly::stringPrintf("%30s %13d \n", kind.toQualString(), count);
+    ss << folly::stringPrintf("%45s %13d \n", kind.toQualString(), count);
   }
   LOG(INFO) << ss.str();
 }
