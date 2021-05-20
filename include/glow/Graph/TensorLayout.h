@@ -82,7 +82,7 @@ public:
   size_t getAlignment(const std::string &s) const;
   /// sets the alignment of dimension \p n to the value \p align. \returns the
   /// new layout serialization for the current dimension.
-  llvm::StringRef setAlignment(size_t n, size_t align);
+  std::string setAlignment(size_t n, size_t align);
   /// \returns the value of the attribute \p name of a dimension \p n.
   std::string getAttribute(size_t n, llvm::StringRef name) const;
   /// sets the value of attribute \p name to the value \p value. \returns the

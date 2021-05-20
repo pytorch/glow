@@ -689,7 +689,7 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
   llvm::GlobalVariable *gvarStr = new llvm::GlobalVariable(
       *llmodule_, constStrArray->getType(), true,
       llvm::GlobalValue::PrivateLinkage, constStrArray, ".str");
-  gvarStr->setAlignment(llvm::MaybeAlign(1));
+  gvarStr->setAlignment(1);
   // Add unnamed_addr attribute to enable constmerge pass.
   gvarStr->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
 
