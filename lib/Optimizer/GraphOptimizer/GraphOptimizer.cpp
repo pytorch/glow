@@ -2563,15 +2563,17 @@ bool ConvertMatMulToFullyConnected::run(Function *F,
     if (matMulNode->getResult().getType()->isQuantizedType()) {
       // Create null INT32 bias with offset 0 and a scale equal to the product
       // between LHS scale and RHS scale.
-      float biasScale = matMulNode->getLHS().getType()->getScale() * 
+      float biasScale = matMulNode->getLHS().getType()->getScale() *
                         matMulNode->getRHS().getType()->getScale();
       int32_t biasOffset = 0;
-      bias = F->getParent()->createConstant(ElemKind::Int32QTy, biasDims, biasScale, biasOffset, biasName);
-      bias->getHandle<int32_t>().zero();
+      bias = F->getParent()->createConstant(ElemKind::Int32QTy, biasDims,
+                                            biasScale, biasOffset, biasName);
+      bias->getPayloadMutable().zero();
     } else {
       // Create null FLOAT bias.
-      bias = F->getParent()->createConstant(ElemKind::FloatTy, biasDims, biasName);
-      bias->getHandle<float>().zero();
+      bias =
+          F->getParent()->createConstant(ElemKind::FloatTy, biasDims, biasName);
+      bias->getPayloadMutable().zero();
     }
 
     // Create a new FullyConnected node.
