@@ -2586,6 +2586,7 @@ bool ConvertMatMulToFullyConnected::run(Function *F,
 
   return changed;
 }
+
 // Fold Add after ConvTranspose into ConvTranspose's bias, if such Add was a
 // broadcasted Add. Examine by looking into Tensor repetitions. Fold this:
 //
