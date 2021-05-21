@@ -246,7 +246,7 @@ void TensorLayoutDescription::reconstructSerialized() {
   }
 }
 
-std::string TensorLayoutDescription::setAlignment(size_t n, size_t align) {
+llvm::StringRef TensorLayoutDescription::setAlignment(size_t n, size_t align) {
   assert(n < numDims_ && "Wrong dimension number");
   return setAttribute(n, "a=", std::to_string(align));
 }
