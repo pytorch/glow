@@ -1971,7 +1971,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto zeros = G_->createSplat(opName + ".zeros", outTy2D, 0);
 
     auto res2D = G_->createScatterData(opName + ".scatterData", zeros, indices,
-                                       data2D, false);
+                                       data2D, true);
     auto node = G_->createReshape(opName + ".result", res2D, outDims);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
