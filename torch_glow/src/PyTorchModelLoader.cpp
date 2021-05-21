@@ -2171,7 +2171,7 @@ Error PyTorchModelLoader::extractConstantFromNodeValue(
   glow::Constant *constant =
       llvm::dyn_cast<glow::Constant>(nodeValue.getNode());
   RETURN_ERR_IF_NOT(constant != nullptr, "constant is null.");
-  output = constant->getPayload().getHandle<T>().at({0});
+  output = constant->getPayload().getHandle<T>().raw(0);
   return Error::success();
 }
 
@@ -3023,9 +3023,9 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
                       inputs[QuantizedUnpackedLinearInputs::scale]))));
   } else {
     float scaleConstant;
-    extractConstantFromNodeValue<float>(
+    RETURN_IF_ERR(extractConstantFromNodeValue<float>(
         inputs[QuantizedUnpackedLinearInputs::scale], glow::ElemKind::FloatTy,
-        scaleConstant);
+        scaleConstant));
     ASSIGN_VALUE_OR_RETURN_ERR(outScale, to32Bit((double)scaleConstant));
   }
 
@@ -3037,11 +3037,10 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
                           inputs[QuantizedUnpackedLinearInputs::zero_point])));
   } else {
     int32_t zeroPointConstant;
-    extractConstantFromNodeValue<int32_t>(
+    RETURN_IF_ERR(extractConstantFromNodeValue<int32_t>(
         inputs[QuantizedUnpackedLinearInputs::zero_point],
-        glow::ElemKind::Int32ITy, zeroPointConstant);
-    ASSIGN_VALUE_OR_RETURN_ERR(outZeroPoint,
-                               Expected<int64_t>((int64_t)zeroPointConstant));
+        glow::ElemKind::Int32ITy, zeroPointConstant));
+    outZeroPoint = (int64_t)zeroPointConstant;
   }
 
   // Get bias or create a zero bias if no bias is found.
@@ -5606,8 +5605,8 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
                       getGlowIValueForValue(inputs[QuantizeInputs::scale]))));
   } else {
     float scaleConstant;
-    extractConstantFromNodeValue<float>(inputs[QuantizeInputs::scale],
-                                        glow::ElemKind::FloatTy, scaleConstant);
+    RETURN_IF_ERR(extractConstantFromNodeValue<float>(
+        inputs[QuantizeInputs::scale], glow::ElemKind::FloatTy, scaleConstant));
     ASSIGN_VALUE_OR_RETURN_ERR(outScale, to32Bit((double)scaleConstant));
   }
 
@@ -5619,9 +5618,9 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
         iValToInt(getGlowIValueForValue(inputs[QuantizeInputs::zero_point])));
   } else {
     int32_t offsetConstant;
-    extractConstantFromNodeValue<int32_t>(inputs[QuantizeInputs::zero_point],
-                                          glow::ElemKind::Int32ITy,
-                                          offsetConstant);
+    RETURN_IF_ERR(extractConstantFromNodeValue<int32_t>(
+        inputs[QuantizeInputs::zero_point], glow::ElemKind::Int32ITy,
+        offsetConstant));
     ASSIGN_VALUE_OR_RETURN_ERR(outOffset, Expected<int32_t>(offsetConstant));
   }
 
