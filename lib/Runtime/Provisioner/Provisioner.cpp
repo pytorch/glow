@@ -548,7 +548,10 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     // Load the first weight.
     auto err = loader->loadNextWeight();
     if (err) {
-      RETURN_ERR(err);
+      auto val = takeErrorValue(std::move(err));
+      std::string msg = val->logToString();
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEFERRED_WEIGHT_ERROR,
+                      msg);
     }
     std::string weightName = loader->getName();
     // Load weights while there are weights to be loaded.
@@ -558,7 +561,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                 << totalNumDeferredWeights << "): " << weightName;
       const auto PH = module.getPlaceholderByNameSlow(weightName);
       if (!PH) {
-        return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+        return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEFERRED_WEIGHT_ERROR,
                         llvm::formatv("Error loading deferred weight. Name: "
                                       "{0} not found in module.",
                                       weightName)
@@ -606,7 +609,10 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
 
       err = loader->loadNextWeight();
       if (err) {
-        RETURN_ERR(err);
+        auto val = takeErrorValue(std::move(err));
+        std::string msg = val->logToString();
+        return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEFERRED_WEIGHT_ERROR,
+                        msg);
       }
       weightName = loader->getName();
       // Remove PH from map, this way we can know that we've added all static
@@ -614,7 +620,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       placeholderToDeviceManager.erase(PH);
     }
     if (placeholderToDeviceManager.size()) {
-      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEFERRED_WEIGHT_ERROR,
                       "Error not all static placeholders were initialized.");
     }
 
@@ -817,7 +823,7 @@ Error Provisioner::provisionFX(DAGListTy &networks, Module &module,
     for (auto PH : module.getPlaceholders()) {
       if (PH->isStatic()) {
         return MAKE_ERR(
-            ErrorValue::ErrorCode::RUNTIME_ERROR,
+            ErrorValue::ErrorCode::RUNTIME_DEFERRED_WEIGHT_ERROR,
             llvm::formatv("Error Placholder: {0} is marked as static but no "
                           "deferredWeightLoader is provided.",
                           PH->getName())
@@ -864,7 +870,7 @@ Error Provisioner::provisionFX(DAGListTy &networks, Module &module,
                 << totalNumDeferredWeights << "): " << weightName;
       const auto PH = module.getPlaceholderByNameSlow(weightName);
       if (!PH) {
-        return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+        return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEFERRED_WEIGHT_ERROR,
                         llvm::formatv("Error loading deferred weight. Name: "
                                       "{0} not found in module.",
                                       weightName)
@@ -1001,13 +1007,6 @@ void Provisioner::cleanupProvision(
         &currentNetworkResidency,
     bool failure) {
   std::lock_guard<std::mutex> functionLock(functionsLock_);
-  for (auto &name : names) {
-    activeFunctions_.erase(name);
-    if (failure) {
-      // Remove any functions added before the failure.
-      functions_.erase(name);
-    }
-  }
   if (failure) {
     // Remove any partitions added to devices.
     for (auto &device : currentNetworkResidency) {
@@ -1027,6 +1026,17 @@ void Provisioner::cleanupProvision(
           LOG(ERROR) << "Unable to evict network: " << network << "\n";
         }
       }
+    }
+  }
+  // After we've removed the functions from the deviceManagers now free the
+  // compiledFunctions. We free after eviction to ensure the any reference the
+  // DeviceManager has to the compiledFunctions stays valid until after
+  // eviction.
+  for (auto &name : names) {
+    activeFunctions_.erase(name);
+    if (failure) {
+      // Remove any functions added before the failure.
+      functions_.erase(name);
     }
   }
 }
