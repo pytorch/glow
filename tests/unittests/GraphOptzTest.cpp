@@ -6461,9 +6461,9 @@ TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnectedBatched) {
 TEST_F(GraphOptz, ConvertMatMulToFullyConnected_Int8QTy) {
 
   auto *input =
-      mod_.createPlaceholder(ElemKind::Int8QTy, 0.1f, -13, {1, 3}, "input", false);
+      mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3}, 0.1f, -13, "input", false);
   auto *weights =
-      mod_.createPlaceholder(ElemKind::Int8QTy, 0.2f, 15, {3, 5}, "weights", false);
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5}, 0.2f, 15, "weights", false);
   MatMulNode *matmul = F_->createMatMul("matmul", input, weights);
   F_->createSave("save", matmul);
   EXPECT_EQ(2, F_->getNodes().size());

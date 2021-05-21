@@ -2559,19 +2559,18 @@ bool ConvertMatMulToFullyConnected::run(Function *F,
     // Create null bias.
     Constant *bias = nullptr;
     std::vector<dim_t> biasDims = {matMulNode->getResult().dims().back()};
+    std::string biasName = matMulNode->getName().str() + "bias";
     if (matMulNode->getResult().getType()->isQuantizedType()) {
       // Create null INT32 bias with offset 0 and a scale equal to the product
       // between LHS scale and RHS scale.
-      float biasScale = matMulNode->getLHS()->getType()->getScale() * 
-                        matMulNode->getRHS()->getType()->getScale();
+      float biasScale = matMulNode->getLHS().getType()->getScale() * 
+                        matMulNode->getRHS().getType()->getScale();
       int32_t biasOffset = 0;
-      bias = F->getParent()->createConstant(ElemKind::Int32QTy, biasScale, biasOffset,
-                                            biasDims, matMulNode->getName().str() + "bias");
+      bias = F->getParent()->createConstant(ElemKind::Int32QTy, biasDims, biasScale, biasOffset, biasName);
       bias->getHandle<int32_t>().zero();
     } else {
       // Create null FLOAT bias.
-      bias = F->getParent()->createConstant(ElemKind::FloatTy,
-                                            biasDims, matMulNode->getName().str() + "bias");
+      bias = F->getParent()->createConstant(ElemKind::FloatTy, biasDims, biasName);
       bias->getHandle<float>().zero();
     }
 
