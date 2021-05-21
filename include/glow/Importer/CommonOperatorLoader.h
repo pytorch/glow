@@ -1259,13 +1259,22 @@ protected:
     NodeValue dataToInferDim;
     ASSIGN_VALUE_OR_RETURN_ERR(dataToInferDim, getNodeValueByName(op.input(2)));
 
-    RETURN_ERR_IF_NOT(indices.dims().size() == 1,
-                      opErrMsg(op, "Indices must be 1D tensor."));
+    RETURN_ERR_IF_NOT(indices.dims().size() == 1 || indices.dims().size() == 2,
+                      opErrMsg(op, "Indices must be 1D or 2D tensor."));
     RETURN_ERR_IF_NOT(indices.getElementType() == ElemKind::Int32ITy ||
                           indices.getElementType() == ElemKind::Int64ITy,
                       opErrMsg(op, "Indices must be of int32 or int64 type."));
 
     const std::string &opName = loadOperatorName(op);
+
+    if (indices.dims().size() == 1) {
+      indices = G_->createReshape(opName + ".indices2D", indices,
+                                  {indices.dims()[0], 1});
+    } else {
+      RETURN_ERR_IF_NOT(
+          indices.dims()[1] == 1,
+          opErrMsg(op, "Second dimension should be 1 in indices."));
+    }
 
     ShapeVector outDims{values.dims().begin(), values.dims().end()};
     outDims[0] = dataToInferDim.dims()[0];
@@ -1276,12 +1285,8 @@ protected:
     // SparseToDense has very similar behavior to ScatterND from ONNX
     // https://github.com/onnx/onnx/blob/master/docs/Operators.md#ScatterND,
     // therefore we can use ScatterND to implement SparseToDense.
-    // The difference is that SparseToDense requires 1D indices tensor,
-    // while ScatterND requires 2D indices tensor.
-    Node *indices2D = G_->createReshape(opName + ".indices2D", indices,
-                                        {indices.dims()[0], 1});
-    Node *result = G_->createScatterData(opName + ".scatterData", data,
-                                         indices2D, values, true);
+    Node *result = G_->createScatterData(opName + ".scatterData", data, indices,
+                                         values, true);
 
     RETURN_IF_ERR(addNodeAsOutput(op, result));
     return Error::success();
