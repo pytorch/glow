@@ -412,6 +412,32 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   checkNumericalEquivalence();
 }
 
+TEST_F(GraphOptz, optimizeBatchNormAfterFullyConnected) {
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10}, "A", false);
+  Node *FN = F_->createFullyConnected(bindings_, "fc", A, 16);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", FN, 1, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *newFN = std::find_if_not(A->getUsers().begin(), A->getUsers().end(),
+                                 [FN](auto &it) { return it.getUser() == FN; })
+                    ->getUser();
+  EXPECT_TRUE(llvm::isa<FullyConnectedNode>(newFN));
+  ASSERT_EQ(newFN->getNumUsers(), 1);
+  Node *save = newFN->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<SaveNode>(save));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 void optimizeRedundantBatchNormTest(
     glow::Module &mod_, glow::Function *F_, glow::Function *&optimizedF_,
     glow::PlaceholderBindings &bindings_, llvm::ArrayRef<float> varV,

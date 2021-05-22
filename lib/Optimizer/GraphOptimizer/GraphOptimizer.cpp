@@ -2142,6 +2142,143 @@ static Constant *getConstant(const NodeValue &NV) {
   return dyn_cast<Constant>(N);
 }
 
+static bool foldBatchNormalizeIntoConv(Module *M, BatchNormalizationNode *BN,
+                                       ConvolutionNode *CV) {
+  bool normalizationHappened = false;
+  switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
+  case ElemKind::FloatTy:
+    normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
+    break;
+  case ElemKind::Float16Ty:
+    normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
+    break;
+  case ElemKind::BFloat16Ty:
+    normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
+    break;
+  default:
+    llvm_unreachable("Type not supported");
+  }
+
+  if (!normalizationHappened) {
+    return normalizationHappened;
+  }
+
+  // Take the predicate of what was expected for the output.
+  CV->setPredicate(BN->getPredicate());
+  BN->getResult().replaceAllUsesOfWith(CV);
+  return normalizationHappened;
+}
+
+// Normalize the weight of \p FullyConnectedNode with what \p BN is doing, given
+// containing
+/// Module \p M. \returns whether or not the normalization was possible.
+template <typename ElemTy>
+bool normalizeFullyConnectedWeights(Module *M, FullyConnectedNode &FC,
+                                    BatchNormalizationNode &BN) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t,
+                       typename std::remove_cv<ElemTy>::type>::value ||
+          std::is_same<bfloat16_t,
+                       typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  Constant *weightC = getUniquelyUsedConstant(M, *FC.getWeights().getNode());
+  Constant *fnBiasC = getUniquelyUsedConstant(M, *FC.getBias().getNode());
+
+  if (!weightC || !fnBiasC) {
+    return false;
+  }
+
+  // Optimize only if the normalization on the last dimension.
+  if (BN.getChannelIdx() != FC.getInput().dims().size() - 1) {
+    return false;
+  }
+
+  // Set the new filter and bias on FC if necessary.
+  if (weightC != FC.getWeights().getNode()) {
+    FC.getParent()->getLogContext()->logNodeInputChange(
+        FC, FC.getNthInput(FullyConnectedNode::WeightsIdx), weightC);
+    FC.setNthInput(FullyConnectedNode::WeightsIdx, weightC);
+  }
+  if (fnBiasC != FC.getBias().getNode()) {
+    FC.getParent()->getLogContext()->logNodeInputChange(
+        FC, FC.getNthInput(FullyConnectedNode::BiasIdx), fnBiasC);
+    FC.setNthInput(FullyConnectedNode::BiasIdx, fnBiasC);
+  }
+
+  // Identical to what normalizeWeights does.
+  Constant *scaleC = cast<Constant>(BN.getScale());
+  Constant *biasC = cast<Constant>(BN.getBias());
+  Constant *meanC = cast<Constant>(BN.getMean());
+  Constant *var = cast<Constant>(BN.getVar());
+
+  auto weightH = weightC->getHandle<ElemTy>();
+  auto fnBiasH = fnBiasC->getHandle<ElemTy>();
+  auto scaleH = scaleC->getHandle<ElemTy>();
+  auto biasH = biasC->getHandle<ElemTy>();
+  auto meanH = meanC->getHandle<ElemTy>();
+  auto varH = var->getHandle<ElemTy>();
+
+  // Update the filter/bias constants of the FullyConnected node.
+  auto epsilon = BN.getEpsilon();
+  for (size_t i = 0, e = weightH.size(); i < e; i++) {
+    // Dimension zero is the 'channel' dimension. If we ever change the
+    // layout of the filter then we need to change this optimization.
+    dim_t channelId = weightH.getDimForPtr(0, i);
+    float value = varH.at({channelId});
+    float stdvar = 1.0f / std::sqrt(value + epsilon);
+    float gamma = scaleH.at({channelId});
+    float A = gamma * stdvar;
+    weightH.raw(i) = ElemTy(float(weightH.raw(i)) * A);
+  }
+
+  for (size_t i = 0, e = fnBiasH.size(); i < e; i++) {
+    // Dimension zero is the 'channel' dimension. If we ever change the
+    // layout of the filter then we need to change this optimization.
+    dim_t channelId = fnBiasH.getDimForPtr(0, i);
+    float mu = meanH.at({channelId});
+    float value = varH.at({channelId});
+    float stdvar = 1.0f / std::sqrt(value + epsilon);
+    float gamma = scaleH.at({channelId});
+    float beta = biasH.at({channelId});
+    float A = gamma * stdvar;
+    float B = beta - mu * A;
+    fnBiasH.raw(i) = ElemTy(float(fnBiasH.raw(i)) * A + B);
+  }
+  return true;
+}
+
+static bool foldBatchNormalizeIntoFullyConnected(Module *M,
+                                                 BatchNormalizationNode *BN,
+                                                 FullyConnectedNode *FN) {
+  bool normalizationHappened = false;
+  switch (FN->getElementType(FullyConnectedNode::ResultIdx)) {
+  case ElemKind::FloatTy:
+    normalizationHappened = normalizeFullyConnectedWeights<float>(M, *FN, *BN);
+    break;
+  case ElemKind::Float16Ty:
+    normalizationHappened =
+        normalizeFullyConnectedWeights<float16_t>(M, *FN, *BN);
+    break;
+  case ElemKind::BFloat16Ty:
+    normalizationHappened =
+        normalizeFullyConnectedWeights<bfloat16_t>(M, *FN, *BN);
+    break;
+  default:
+    llvm_unreachable("Type not supported");
+  }
+
+  if (!normalizationHappened) {
+    return normalizationHappened;
+  }
+
+  // Take the predicate of what was expected for the output.
+  FN->setPredicate(BN->getPredicate());
+  BN->getResult().replaceAllUsesOfWith(FN);
+  return normalizationHappened;
+}
+
 bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
@@ -2179,43 +2316,24 @@ bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
       }
     }
 
-    // Merge the Batch Normalization operation into the convolution that comes
-    // before it by updating the weights of the filter and bias.
-    auto *CV = dyn_cast<ConvolutionNode>(BN->getInput());
-    if (!CV) {
-      continue;
-    }
+    // Merge the BatchNormalization operation into the convolution or
+    // fully connected that comes before it by updating the weights
+    // of the filter and bias.
+    if (auto *CV = dyn_cast<ConvolutionNode>(BN->getInput())) {
+      // We can't modify conv operators that have multiple users.
+      if (!CV->hasOneUse()) {
+        continue;
+      }
 
-    // We can't modify conv operators that have multiple users.
-    if (!CV->hasOneUse()) {
-      continue;
-    }
+      changed = foldBatchNormalizeIntoConv(M, BN, CV);
+    } else if (auto *FN = dyn_cast<FullyConnectedNode>(BN->getInput())) {
+      if (!FN->hasOneUse()) {
+        continue;
+      }
 
-    bool normalizationHappened = false;
-    switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
-    case ElemKind::FloatTy:
-      normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
-      break;
-    case ElemKind::Float16Ty:
-      normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
-      break;
-    case ElemKind::BFloat16Ty:
-      normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
-      break;
-    default:
-      llvm_unreachable("Type not supported");
+      changed = foldBatchNormalizeIntoFullyConnected(M, BN, FN);
     }
-
-    if (!normalizationHappened) {
-      continue;
-    }
-
-    // Take the predicate of what was expected for the output.
-    CV->setPredicate(BN->getPredicate());
-    BN->getResult().replaceAllUsesOfWith(CV);
-    changed = true;
-    continue;
-  } // For all nodes in the graph.
+  }
   return changed;
 }
 
