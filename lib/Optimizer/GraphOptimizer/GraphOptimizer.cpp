@@ -2576,7 +2576,7 @@ bool ConvertMatMulToFullyConnected::run(Function *F,
       bias->getPayloadMutable().zero();
     }
 
-    // Create a new FullyConnected node.
+    // Create a new FullyConnected node with null bias.
     auto *newFC = F->createFullyConnected(
         matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(), bias,
         matMulNode->getResult().getType());
