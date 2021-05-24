@@ -108,7 +108,10 @@ Expected<bool> OCLBackend::transformPostLowering(
     // not need to be copied separately or at runtime (which would increase
     // execution latency).
     if (auto *BRA = dyn_cast<BatchedReduceAddNode>(&node)) {
-      auto axis = BRA->getAxis();
+
+      assert(BRA->getAxes().size() == 1 &&
+             "ReduceAdd: supporting reduction of a single axis only.");
+      auto axis = BRA->getAxes()[0];
 
       // Determine and store the slice sizes of each input dimension excluding
       // the reduce axis into batchSliceSizes. Determine also the slice size on

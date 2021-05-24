@@ -193,9 +193,9 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       auto *RN =
           new ReshapeNode(DECORATE_NODE_NAME(TN, "grad", "reshape"),
                           BRAInputType, outputG, BRAInputType->dims(), "*");
-      auto *BRA =
-          new BatchedReduceAddNode(DECORATE_NODE_NAME(TN, "grad", "bra"),
-                                   TN->getInput().getType(), RN, TN->getAxis());
+      auto *BRA = new BatchedReduceAddNode(
+          DECORATE_NODE_NAME(TN, "grad", "bra"), TN->getInput().getType(), RN,
+          {TN->getAxis()});
 
       toAppend.push_back(RN);
       toAppend.push_back(BRA);
@@ -386,7 +386,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
       // Gradient for BatchedReduceAddNode is TileNode,
       // repeating OutputG batch times.
-      auto Axis = BRA->getAxis();
+      auto Axis = BRA->getAxes()[0];
       // Copy input dimensions first.
       std::vector<dim_t> Dims{Input.dims()};
       // Then set to 1 dimension size on axis.

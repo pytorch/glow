@@ -6731,7 +6731,7 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       case Kinded::Kind::BatchedReduceAddNodeKind: {
         BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
         splitDims[BatchedReduceAddNode::BatchIdx] =
-            (BR->getAxis() == 0) ? 1 : 0;
+            (BR->getAxes()[0] == 0) ? 1 : 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,

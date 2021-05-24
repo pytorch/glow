@@ -1586,8 +1586,7 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
                                              GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
-  unsigned_t axis = node->getAxis();
-  llvm::ArrayRef<unsigned_t> axes(axis);
+  llvm::ArrayRef<unsigned_t> axes(node->getAxes());
   addValueAttribute(proto, "axes", axes);
 
   proto->set_name(node->getName());
@@ -1604,8 +1603,7 @@ Error ONNXModelWriter::writeBatchedReduceSumSquare(
     const BatchedReduceSumSquareNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
-  unsigned_t axis = node->getAxis();
-  llvm::ArrayRef<unsigned_t> axes(axis);
+  llvm::ArrayRef<unsigned_t> axes(node->getAxes());
   addValueAttribute(proto, "axes", axes);
 
   proto->set_name(node->getName());
@@ -1640,8 +1638,7 @@ Error ONNXModelWriter::writeBatchedReduceProd(const BatchedReduceProdNode *node,
                                               GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
-  unsigned_t axis = node->getAxis();
-  llvm::ArrayRef<unsigned_t> axes(axis);
+  llvm::ArrayRef<unsigned_t> axes(node->getAxes());
   addValueAttribute(proto, "axes", axes);
 
   proto->set_name(node->getName());

@@ -21,6 +21,7 @@
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/TensorLayout.h"
+#include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Quantization.h"
@@ -1266,13 +1267,51 @@ static void lowerChannelShuffleNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, CSN.getResult(), R2);
 }
 
+// Lower Reduce w/ multiple axes to a single axis, by transposing the input
+// so all the axes to reduce are consecutive, the reshape axes into a single
+// one, to finally perform reduce on a single axis.
+template <typename RnTy>
+Node *reduceMultiAxesOpsHelper(Function *F, CompilationContext &cctx,
+                               RnTy &RN) {
+  auto in = RN.getBatch();
+  auto axes = RN.getAxes();
+  auto name = RN.getName().str();
+
+  std::vector<unsigned_t> perm(in.dims().size());
+  std::vector<unsigned_t> permOld(in.dims().size());
+  std::iota(std::begin(perm), std::end(perm), 0);
+  std::iota(std::begin(permOld), std::end(permOld), 0);
+  for (dim_t i = 1; i < axes.size(); i++) {
+    perm.erase(perm.begin() + axes[i]);
+    perm.insert(perm.begin() + axes[0] + i, axes[i]);
+  }
+
+  Node *out = in.getNode();
+  // Transpose so that axes to remove are consecutive.
+  if (permOld != perm) {
+    out = F->createTranspose(name + "_tr_in", in, perm);
+  }
+
+  // Reshape so that axes to remove are combined into a single axis.
+  auto newShape = getNewShapeCombineAxes(out->getNthResult(0).getType()->dims(),
+                                         axes[0], axes.size());
+  return F->createReshape(name + "_reshape_in", out, newShape);
+}
+
 static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
                                        const BatchedReduceMeanNode &BRM) {
   LOG_SCOPE(F->getLogContext(), "lowerBatchedReduceMeanNode")
 
   auto input = BRM.getBatch();
 
-  assert((BRM.getAxes().size() == 1) && "Only supporting single reduction.");
+  if (BRM.getAxes().size() > 1) {
+    auto *node = reduceMultiAxesOpsHelper(F, cctx, BRM);
+    auto *nRN = F->createBatchedReduceMean(
+        BRM.getName(), BRM.getResult().getType(), node, {BRM.getAxes()[0]});
+    replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(),
+                         nRN->getResult());
+    return;
+  }
 
   auto axis = BRM.getAxes()[0];
 
@@ -1313,19 +1352,21 @@ lowerBatchedReduceSumSquareNode(Function *F, CompilationContext &cctx,
                                 const BatchedReduceSumSquareNode &BR) {
   LOG_SCOPE(F->getLogContext(), "lowerBatchedReduceSumSquareNode")
 
-  auto input = BR.getBatch();
+  auto *in = BR.getBatch().getNode();
+  auto axes = BR.getAxes();
 
-  auto axis = BR.getAxis();
-  assert(axis < input.dims().size() &&
+  if (BR.getAxes().size() > 1) {
+    in = reduceMultiAxesOpsHelper(F, cctx, BR);
+  }
+
+  assert(axes[0] < in->getNthResult(0).getType()->dims().size() &&
          "Axis to remove must fit inside dimensions of the provided dims.");
 
   // Lower to mul + reduceAdd.
-  MulNode *mul =
-      F->createMul(BR.getName().str() + "_mul", input.getType(), input, input);
-
-  auto *BRA = F->createBatchedReduceAdd(BR.getName().str() + ".reduceAdd",
-                                        BR.getResult().getType(), mul, axis);
-
+  MulNode *mul = F->createMul(BR.getName().str() + "_mul", in, in);
+  auto BRA =
+      F->createBatchedReduceAdd(BR.getName().str() + ".reduceAdd",
+                                BR.getResult().getType(), mul, {axes[0]});
   replaceAllUsesOfWith(cctx.loweredInfoMap, BR.getResult(), BRA);
 }
 
@@ -1367,6 +1408,30 @@ static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
   auto *SQ = F->createPow(VN.getName().str() + ".sqrt", outTy, BRA, exp);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, VN.getResult(), SQ);
+}
+
+// Lower Reduce w/ multiple axes to a reduce w/ single axis.
+static void lowerBatchedReduceAddNode(Function *F, CompilationContext &cctx,
+                                      const BatchedReduceAddNode &RN) {
+  if (RN.getAxes().size() == 1) {
+    return;
+  }
+  auto *node = reduceMultiAxesOpsHelper(F, cctx, RN);
+  auto *nRN = F->createBatchedReduceAdd(RN.getName(), RN.getResult().getType(),
+                                        node, {RN.getAxes()[0]});
+  replaceAllUsesOfWith(cctx.loweredInfoMap, RN.getResult(), nRN->getResult());
+}
+
+// Lower Reduce w/ multiple axes to a reduce w/ single axis.
+static void lowerBatchedReduceProdNode(Function *F, CompilationContext &cctx,
+                                       const BatchedReduceProdNode &RN) {
+  if (RN.getAxes().size() == 1) {
+    return;
+  }
+  auto *node = reduceMultiAxesOpsHelper(F, cctx, RN);
+  auto *nRN = F->createBatchedReduceProd(RN.getName(), RN.getResult().getType(),
+                                         node, {RN.getAxes()[0]});
+  replaceAllUsesOfWith(cctx.loweredInfoMap, RN.getResult(), nRN->getResult());
 }
 
 /// Implement ReplaceNaN via a Select node with the input of \p RN as one of the
@@ -1903,6 +1968,8 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
+    CASE_LOWER(BatchedReduceAdd);
+    CASE_LOWER(BatchedReduceProd);
     CASE_LOWER(BatchedReduceSumSquare);
     CASE_LOWER(VectorNorm);
     CASE_LOWER(Bucketize);

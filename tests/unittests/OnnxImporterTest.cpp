@@ -1617,6 +1617,12 @@ TEST_F(OnnxImporterTest, reduceMean2AvgPoolKeepDims) {
                    {2.5, 6.5, 10.5, 14.5});
 }
 
+/// Test loading ReduceSum op from a ONNX model.
+/// Input shape is 4D, two dimensions are reduced, and output shape is 4D.
+TEST_F(OnnxImporterTest, reduceSum4DMulti) {
+  testReductionOps("reduceSum4DMulti.onnxtxt", {2, 1, 2, 1}, {14, 22, 46, 54});
+}
+
 /// Test loading ReduceSumSquare op from a ONNX model.
 /// Input shape is 4D, one dimension is reduced, and output shape is 4D.
 TEST_F(OnnxImporterTest, reduceSumSquare4D) {

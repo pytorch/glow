@@ -35,6 +35,7 @@ add_library(Graph
             PlaceholderBindings.cpp
             TensorLayout.cpp
             Graph.cpp
+            GraphUtils.cpp
             Grad.cpp
             VerifierHelper.cpp)
 
