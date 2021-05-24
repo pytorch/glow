@@ -236,7 +236,9 @@ Error setupGlowDeserializationSpecAndCctx(
     const PyTorchLoaderSettings &settings,
     const std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo> &info,
     CompilationContext &cctx, Function *f, GlowDeserializationSpec &spec) {
-  spec.pytorchLoaderSettings = settings.toString();
+  auto glowPyTorchLoaderSettings = spec.pytorchLoaderSettings;
+  glowPyTorchLoaderSettings->overrideSettings(settings);
+
   spec.functionName = info->functionName;
   auto &inputPHNames = spec.inputPHNames;
   auto &inputPHTypes = spec.inputPHTypes;
