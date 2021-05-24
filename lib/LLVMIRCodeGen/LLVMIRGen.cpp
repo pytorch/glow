@@ -689,14 +689,10 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
   llvm::GlobalVariable *gvarStr = new llvm::GlobalVariable(
       *llmodule_, constStrArray->getType(), true,
       llvm::GlobalValue::PrivateLinkage, constStrArray, ".str");
-  #if (LLVM_VERSION_MAJOR >=10)
-  {
-    gvarStr->setAlignment(llvm::MaybeAlign(1));
-  }
+  #if LLVM_VERSION_MAJOR >=10
+     gvarStr->setAlignment(llvm::MaybeAlign(1));
   #else
-  {
-    gvarStr->setAlignment(1);
-  }
+     gvarStr->setAlignment(1);
   #endif
   // Add unnamed_addr attribute to enable constmerge pass.
   gvarStr->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
