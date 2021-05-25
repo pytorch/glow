@@ -107,6 +107,10 @@ case ${CIRCLE_JOB} in
         run_unit_tests check
         run_unit_tests test_unopt
         ;;
+    DEBUG_LLVM_11)
+        run_unit_tests check
+        run_unit_tests test_unopt
+        ;;
     SHARED)
         # No tests with shared libs; it's similar to DEBUG.
         ;;

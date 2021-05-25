@@ -472,7 +472,7 @@ static void allocateConstantsImpl(const ConstantsTy &constants,
     symbol.input = false;
     symbol.output = false;
     symbol.symbolCategory = glow::runtime::SymbolCategory::Constant;
-    symbolTable.emplace(C->getName(), symbol);
+    symbolTable.emplace(C->getName().str(), symbol);
     DEBUG_GLOW(LOG(INFO) << strFormat(
                    "Assigned address to constant %s: %zx (%zd bytes)\n",
                    C->getName().data(), symbol.offset, symbol.size));

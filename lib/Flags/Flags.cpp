@@ -788,7 +788,7 @@ bool glow::flags::processBackendSpecificOpts(
       LOG(ERROR) << "No '=' found in backend-specific opt " << opt.str();
       return false;
     }
-    optsMap.emplace(keyValPair.first, keyValPair.second);
+    optsMap.emplace(keyValPair.first.str(), keyValPair.second.str());
   }
   return true;
 }
