@@ -71,6 +71,17 @@ elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
 
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
+elif [ "${CIRCLE_JOB}" == "DEBUG_LLVM_11" ]; then
+    # Download/add llvm-11 and clang-11 to paths.
+    wget https://github.com/llvm/llvm-project/releases/download/llvmorg-11.1.0/clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+    echo "c691a558967fb7709fb81e0ed80d1f775f4502810236aa968b4406526b43bee1  clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz" | sha256sum -c
+    tar xf clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+    export PATH=${PWD}/clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04/bin:${PATH}
+    export LD_LIBRARY_PATH=${PWD}/clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04/lib:${PATH}
+
+    sudo apt-get update
+    sudo apt-get install -y ${GLOW_DEPS}
+    install_fmt
 else
     # Install Glow dependencies
     sudo apt-get update
@@ -110,7 +121,11 @@ if [[ "${CIRCLE_JOB}" != "PYTORCH" ]]; then
     CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 fi
 
-CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
+# Temporarily disable warnings as errors for LLVM 11 builds.
+if [[ "${CIRCLE_JOB}" != "DEBUG_LLVM_11" ]]; then
+    CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
+fi
+
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
 CMAKE_ARGS+=("-DGLOW_WITH_HABANA=OFF")
 

@@ -73,6 +73,10 @@ jobs:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
     <<: *linux_default
+  DEBUG_LLVM_11:
+    environment:
+      DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
+    <<: *linux_default
   FEATURE_COMPILATION:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
@@ -106,6 +110,7 @@ workflows:
   build:
     jobs:
       - DEBUG
+      - DEBUG_LLVM_11
       - FEATURE_COMPILATION
       - OPENCL
       - ASAN
