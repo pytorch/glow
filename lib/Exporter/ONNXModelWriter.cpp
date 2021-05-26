@@ -2385,6 +2385,7 @@ DEF_ALL_WRITER_NODE(BitwiseNot)
 DEF_ALL_WRITER_NODE(GaussianFill)
 DEF_ALL_WRITER_NODE(NonZero)
 DEF_ALL_WRITER_NODE(BatchSparseToDense)
+DEF_ALL_WRITER_NODE(FillExamplesWithIndicator)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpNEQ)

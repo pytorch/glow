@@ -5828,6 +5828,65 @@ void BoundInterpreterFunction::fwdBatchSparseToDenseInst(
                                     I->getLengths()->getElementType(), I);
 }
 
+template <typename ElemTy, typename IndicatorTy>
+void BoundInterpreterFunction::fwdFillExamplesWithIndicatorInstImpl2(
+    const FillExamplesWithIndicatorInst *I) {
+  auto outT = getTensor(I->getDest());
+  auto dataT = getTensor(I->getData());
+  auto elemSize = dataT->getType().getElementSize();
+  auto indicatorH = getWeightHandle<IndicatorTy>(I->getIndicator());
+
+  size_t numBatches = indicatorH.dims()[0];
+  outT->zero();
+
+  size_t nonzero = 0;
+  for (size_t i = 0; i < numBatches; ++i) {
+    if (static_cast<bool>(indicatorH.at(i))) {
+      nonzero++;
+    }
+  }
+  CHECK_EQ(dataT->dims()[0], nonzero);
+
+  // Calculate size of last n-1 data dims
+  size_t blockSize = 1;
+  for (size_t i = 1; i < dataT->dims().size(); i++) {
+    blockSize *= dataT->dims()[i];
+  }
+  size_t blockByteSize = blockSize * elemSize;
+  size_t dataP = 0;
+  for (size_t i = 0; i < numBatches; i++) {
+    if (static_cast<bool>(indicatorH.at(i))) {
+      std::copy(&dataT->getUnsafePtr()[dataP],
+                &dataT->getUnsafePtr()[dataP + blockByteSize],
+                &outT->getUnsafePtr()[i * blockByteSize]);
+      dataP += blockByteSize;
+    }
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdFillExamplesWithIndicatorInstImpl1(
+    const FillExamplesWithIndicatorInst *I) {
+  switch (I->getIndicator()->getElementType()) {
+  case ElemKind::Int32ITy:
+    fwdFillExamplesWithIndicatorInstImpl2<ElemTy, int32_t>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdFillExamplesWithIndicatorInstImpl2<ElemTy, int64_t>(I);
+    break;
+  case ElemKind::BoolTy:
+    fwdFillExamplesWithIndicatorInstImpl2<ElemTy, bool>(I);
+    break;
+  default:
+    llvm_unreachable("Indicator type is not supported");
+  }
+}
+
+void BoundInterpreterFunction::fwdFillExamplesWithIndicatorInst(
+    const FillExamplesWithIndicatorInst *I) {
+  dispatchArithmeticImpl(fwdFillExamplesWithIndicatorInstImpl1,
+                         I->getDest()->getElementType(), I);
+}
 void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
     const SparseToDenseMaskInst *I) {
   auto out = getTensor(I->getDest());

@@ -1838,6 +1838,19 @@ bool BatchSparseToDenseNode::verify() const {
   return isValid;
 }
 
+bool FillExamplesWithIndicatorNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(
+      getIndicator(),
+      {ElemKind::Int64ITy, ElemKind::Int32ITy, ElemKind::BoolTy}, this);
+  isValid &= expectCompareTrue("Indicator must be a 1D vector",
+                               getIndicator().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Data must have at least one dimension",
+                               getData().dims().size(), size_t(1), this,
+                               CompareOperatorGreaterEqual<size_t>());
+  return isValid;
+}
+
 bool SparseToDenseMaskNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &= checkType(getResult(), getDefaultValue().getElementType(), this);

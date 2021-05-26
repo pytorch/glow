@@ -1546,6 +1546,12 @@ public:
                            NodeValue indices, NodeValue values,
                            float defaultValue, unsigned_t denseLastDim);
 
+  /// Implements an operation that inserts zeros into \p data along axis=0 for
+  /// indices where \p indicator is zero.
+  FillExamplesWithIndicatorNode *
+  createFillExamplesWithIndicator(llvm::StringRef name, NodeValue data,
+                                  NodeValue indicator);
+
   /// Implements an operation that converts the sparse representation given by
   /// the pair of \p indices and \p values into a dense representation, which
   /// only contains IDs from given \p mask. Indices cannot contain duplicates.
