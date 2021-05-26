@@ -992,6 +992,13 @@ int main(int argc, char **argv) {
           "DefaultValue otherwise. Within each batch, Indices shouldn't "
           "contain duplicate indices.");
 
+  BB.newNode("FillExamplesWithIndicator")
+      .addInput("Data")
+      .addInput("Indicator")
+      .addResultFromCtorArg()
+      .setDocstring("Inserts zeros into data along axis=0 for indices where "
+                    "indicator is zero.");
+
   BB.newNode("SparseToDenseMask")
       .addInput("Indices")
       .addInput("Values")

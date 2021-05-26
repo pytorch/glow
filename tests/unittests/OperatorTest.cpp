@@ -17880,6 +17880,80 @@ TEST_P(OperatorTest, BatchSparseToDense_BFloat16) {
       ElemKind::Int64ITy);
 }
 
+template <typename DataType, typename IndicatorType>
+static void testFillExamplesWithIndicator(glow::PlaceholderBindings &bindings,
+                                          glow::Module &mod, glow::Function *F,
+                                          glow::ExecutionEngine &EE,
+                                          ElemKind DTy, ElemKind IndTy) {
+  // Create and initialize inputs. Make input 3D to make sure
+  // multidimensional values are handled properly.
+  auto *indicator = mod.createPlaceholder(IndTy, {8}, "indicator", false);
+  auto *data = mod.createPlaceholder(DTy, {4, 3, 2}, "data", false);
+
+  auto IH = bindings.allocate(indicator)->getHandle<IndicatorType>();
+  auto DH = bindings.allocate(data)->getHandle<DataType>();
+
+  IH = {1, 0, 1, 0, 1, 1, 0, 0};
+
+  auto *filled = F->createFillExamplesWithIndicator("filled", data, indicator);
+  auto *S = F->createSave("save", filled);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+
+  DH.randomize(-3.0, 3.0, mod.getPRNG());
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+
+  // Compute expected output.
+  Tensor expected(DTy, {8, 3, 2});
+  expected.zero();
+  auto EH = expected.getHandle<DataType>();
+  dim_t idx = 0;
+  for (dim_t i = 0; i < 8; ++i) {
+    if (IH.at(i) == 1) {
+      for (dim_t j = 0; j < 3; ++j) {
+        for (dim_t k = 0; k < 2; ++k) {
+          EH.at({i, j, k}) = DH.at({idx, j, k});
+        }
+      }
+      idx++;
+    }
+  }
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Float_Int64) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Float16_Int32) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Float16_Bool) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<float16_t, bool>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::BoolTy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_BFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<bfloat16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Int32_Int32) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<int32_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Int32ITy, ElemKind::Int32ITy);
+}
+
 TEST_P(OperatorTest, SparseToDenseMask1) {
   CHECK_IF_ENABLED();
 

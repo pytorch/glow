@@ -419,6 +419,14 @@ private:
   template <typename ElemTy, typename LengthsTy, typename IndicesTy>
   void fwdBatchSparseToDenseInstImpl2(const BatchSparseToDenseInst *I);
 
+  template <typename ElemTy>
+  void
+  fwdFillExamplesWithIndicatorInstImpl1(const FillExamplesWithIndicatorInst *I);
+
+  template <typename ElemTy, typename IndicatorTy>
+  void
+  fwdFillExamplesWithIndicatorInstImpl2(const FillExamplesWithIndicatorInst *I);
+
   template <class eTy>
   void fwdRescaleQuantizedInstImpl(Value *src, Value *dest,
                                    TensorQuantizationParams &srcQ,

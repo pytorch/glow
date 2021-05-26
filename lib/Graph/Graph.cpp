@@ -2620,6 +2620,18 @@ BatchSparseToDenseNode *Function::createBatchSparseToDense(
       name, outTy, lengths, indices, values, defaultValue, denseLastDim));
 }
 
+FillExamplesWithIndicatorNode *
+Function::createFillExamplesWithIndicator(llvm::StringRef name, NodeValue data,
+                                          NodeValue indicator) {
+  ShapeVector outDims({indicator.dims()[0]});
+  if (data.dims().size() > 1) {
+    outDims.insert(outDims.end(), data.dims().begin() + 1, data.dims().end());
+  }
+  auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
+  return addNode(
+      new FillExamplesWithIndicatorNode(name, outTy, data, indicator));
+}
+
 SparseToDenseMaskNode *Function::createSparseToDenseMask(
     llvm::StringRef name, NodeValue indices, NodeValue values,
     NodeValue defaultValue, NodeValue lengths, llvm::ArrayRef<dim_t> mask) {

@@ -730,6 +730,16 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             NI.getInElemTy(BatchSparseToDenseNode::IndicesIdx) ==
                 ElemKind::Int32ITy);
 
+  case Kinded::Kind::FillExamplesWithIndicatorNodeKind:
+    return (NI.getInElemTy(FillExamplesWithIndicatorNode::DataIdx) ==
+            NI.getOutElemTy(FillExamplesWithIndicatorNode::ResultIdx)) &&
+           ((NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+             ElemKind::Int32ITy) ||
+            (NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+             ElemKind::Int64ITy) ||
+            (NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+             ElemKind::BoolTy));
+
   case Kinded::Kind::SparseToDenseMaskNodeKind:
     return (NI.getInElemTy(SparseToDenseMaskNode::IndicesIdx) ==
             ElemKind::Int64ITy) &&

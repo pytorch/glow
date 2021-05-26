@@ -556,6 +556,13 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
       .autoIRGen();
 
+  BB.newInstr("FillExamplesWithIndicator")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indicator", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoIRGen();
+
   BB.newInstr("SparseToDenseMask")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Indices", OperandKind::In)
