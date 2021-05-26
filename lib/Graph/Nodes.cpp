@@ -1817,6 +1817,27 @@ bool SparseToDenseNode::verify() const {
   return isValid;
 }
 
+bool BatchSparseToDenseNode::verify() const {
+  bool isValid = checkType(getResult(), getValues().getElementType(), this);
+  isValid &=
+      checkType(getIndices(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
+  isValid &=
+      checkType(getLengths(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices and Values must have the same shape",
+                               getIndices().dims(), getValues().dims(), this);
+  isValid &= expectCompareTrue(
+      "The size of Lengths and batches in the result should be the same",
+      getLengths().dims()[0], getResult().dims()[0], this);
+  isValid &= expectCompareTrue(
+      "The second dimension of the result should be equal to dense_last_dim",
+      getDenseLastDim(), (unsigned)getResult().dims()[1], this);
+  return isValid;
+}
+
 bool SparseToDenseMaskNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &= checkType(getResult(), getDefaultValue().getElementType(), this);

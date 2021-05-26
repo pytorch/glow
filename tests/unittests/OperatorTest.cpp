@@ -17803,6 +17803,83 @@ TEST_P(OperatorTest, SparseToDense_Int64) {
                                       ElemKind::Int64ITy, ElemKind::Int64ITy);
 }
 
+template <typename DataType, typename LengthType, typename IndexType>
+static void testBatchSparseToDense(glow::PlaceholderBindings &bindings,
+                                   glow::Module &mod, glow::Function *F,
+                                   glow::ExecutionEngine &EE, ElemKind DTy,
+                                   ElemKind LTy, ElemKind ITy) {
+  constexpr dim_t numBatches = 6;
+  constexpr dim_t numIndices = 10;
+
+  auto *lengths = mod.createPlaceholder(LTy, {numBatches}, "lengths", false);
+  auto *indices = mod.createPlaceholder(ITy, {numIndices}, "indices", false);
+  auto *values = mod.createPlaceholder(DTy, {numIndices}, "values", false);
+  float defaultValue = 0.5;
+  unsigned_t denseLastDim = 10;
+
+  auto LH = bindings.allocate(lengths)->getHandle<LengthType>();
+  auto IH = bindings.allocate(indices)->getHandle<IndexType>();
+  auto VH = bindings.allocate(values)->getHandle<DataType>();
+
+  LH = {1, 0, 3, 4, 0, 2};
+  IH = {0, 1, 2, 1, 3, 6, 4, 5, 2, 8};
+
+  auto *BSTD = F->createBatchSparseToDense("BSTD", lengths, indices, values,
+                                           defaultValue, denseLastDim);
+  auto *S = F->createSave("save", BSTD);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+
+  VH.randomize(-3.0, 3.0, mod.getPRNG());
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+
+  // Compute expected output.
+  Tensor expected(DTy, {numBatches, denseLastDim});
+  auto EH = expected.getHandle<DataType>();
+  EH.clear(defaultValue);
+  auto curInd = 0;
+  for (dim_t i = 0; i < numBatches; ++i) {
+    auto batchNumIndices = LH.at({i});
+    for (dim_t j = 0; j < batchNumIndices; ++j) {
+      EH.at({i, static_cast<dim_t>(IH.at(curInd))}) = VH.at(curInd);
+      curInd++;
+    }
+  }
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_Float) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<float, int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_Float_Int32_Int32) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<float, int32_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy,
+      ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<float16_t, int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy,
+      ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<bfloat16_t, int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int64ITy,
+      ElemKind::Int64ITy);
+}
+
 TEST_P(OperatorTest, SparseToDenseMask1) {
   CHECK_IF_ENABLED();
 

@@ -1534,6 +1534,19 @@ public:
                                          NodeValue dataToInferDim);
 
   /// Implements an operation that converts the sparse representation given by
+  /// the  \p lengths, \p indices and \p values into a dense representation.
+  /// This representation contains \p lengths[i] indices in batch i, and in each
+  /// batch contains the value of \p values at the corresponding index given by
+  /// \p indices. All indices that are not present in \p indices are filled with
+  /// defaultValue. \p indices within the same batch should not contain
+  /// duplicates. \p denseLastDim gives the last dimension of the output dense
+  /// representation (ie. the second dimension).
+  BatchSparseToDenseNode *
+  createBatchSparseToDense(llvm::StringRef name, NodeValue lengths,
+                           NodeValue indices, NodeValue values,
+                           float defaultValue, unsigned_t denseLastDim);
+
+  /// Implements an operation that converts the sparse representation given by
   /// the pair of \p indices and \p values into a dense representation, which
   /// only contains IDs from given \p mask. Indices cannot contain duplicates.
   /// \p lengths is used to distinguish elements that belong to different

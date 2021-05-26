@@ -2609,6 +2609,17 @@ SparseToDenseNode *Function::createSparseToDense(llvm::StringRef name,
   return addNode(new SparseToDenseNode(name, outTy, indices, values));
 }
 
+BatchSparseToDenseNode *Function::createBatchSparseToDense(
+    llvm::StringRef name, NodeValue lengths, NodeValue indices,
+    NodeValue values, float defaultValue, unsigned_t denseLastDim) {
+  // The output is a 2-D tensor with first dim = number of lengths and second
+  // dim = denseLastDim
+  ShapeVector outDims({lengths.dims()[0], denseLastDim});
+  auto outTy = getParent()->uniqueTypeWithNewShape(values.getType(), outDims);
+  return addNode(new BatchSparseToDenseNode(
+      name, outTy, lengths, indices, values, defaultValue, denseLastDim));
+}
+
 SparseToDenseMaskNode *Function::createSparseToDenseMask(
     llvm::StringRef name, NodeValue indices, NodeValue values,
     NodeValue defaultValue, NodeValue lengths, llvm::ArrayRef<dim_t> mask) {

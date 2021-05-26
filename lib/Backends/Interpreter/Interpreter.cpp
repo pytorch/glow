@@ -716,6 +716,20 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
             ElemKind::Int64ITy);
 
+  case Kinded::Kind::BatchSparseToDenseNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+               {BatchSparseToDenseNode::LengthsIdx,
+                BatchSparseToDenseNode::IndicesIdx}) &&
+           (NI.getInElemTy(BatchSparseToDenseNode::LengthsIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(BatchSparseToDenseNode::LengthsIdx) ==
+                ElemKind::Int32ITy) &&
+           (NI.getInElemTy(BatchSparseToDenseNode::IndicesIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(BatchSparseToDenseNode::IndicesIdx) ==
+                ElemKind::Int32ITy);
+
   case Kinded::Kind::SparseToDenseMaskNodeKind:
     return (NI.getInElemTy(SparseToDenseMaskNode::IndicesIdx) ==
             ElemKind::Int64ITy) &&
