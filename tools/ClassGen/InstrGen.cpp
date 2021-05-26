@@ -546,6 +546,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
       .autoIRGen();
 
+  BB.newInstr("BatchSparseToDense")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Lengths", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .addMember(MemberType::Float, "DefaultValue")
+      .addMember(MemberType::Unsigned, "DenseLastDim")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
+      .autoIRGen();
+
   BB.newInstr("SparseToDenseMask")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Indices", OperandKind::In)

@@ -5776,6 +5776,58 @@ void BoundInterpreterFunction::fwdSparseToDenseInst(
                          I->getDest()->getElementType(), I);
 }
 
+template <typename ElemTy, typename LengthsTy, typename IndicesTy>
+void BoundInterpreterFunction::fwdBatchSparseToDenseInstImpl2(
+    const BatchSparseToDenseInst *I) {
+  auto outH = getWeightHandle<ElemTy>(I->getDest());
+  auto lengthsH = getWeightHandle<LengthsTy>(I->getLengths());
+  auto valuesH = getWeightHandle<ElemTy>(I->getValues());
+  auto indicesH = getWeightHandle<IndicesTy>(I->getIndices());
+  auto denseLastDim = I->getDenseLastDim();
+  auto defaultValue = I->getDefaultValue();
+  outH.clear(defaultValue);
+
+  // Verifying input sizes.
+  size_t lengthsSum = 0;
+  auto batchSize = lengthsH.size();
+  for (dim_t i = 0; i < batchSize; ++i) {
+    lengthsSum += lengthsH.at(i);
+  }
+  CHECK_EQ(lengthsSum, indicesH.size());
+
+  dim_t k = 0;
+  for (dim_t i = 0; i < batchSize; ++i) {
+    for (dim_t j = 0; j < lengthsH.at(i); ++j) {
+      CHECK_LT(indicesH.at(i), denseLastDim);
+      outH.at({static_cast<dim_t>(i), static_cast<dim_t>(indicesH.at(k))}) =
+          valuesH.at(k);
+      k++;
+    }
+  }
+}
+
+template <typename ElemTy, typename LengthsTy>
+void BoundInterpreterFunction::fwdBatchSparseToDenseInstImpl1(
+    const BatchSparseToDenseInst *I) {
+  switch (I->getLengths()->getElementType()) {
+  case ElemKind::Int32ITy:
+    fwdBatchSparseToDenseInstImpl2<ElemTy, LengthsTy, int32_t>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdBatchSparseToDenseInstImpl2<ElemTy, LengthsTy, int64_t>(I);
+    break;
+  default:
+    llvm_unreachable("Index type is not supported");
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchSparseToDenseInst(
+    const BatchSparseToDenseInst *I) {
+  dispatchFloatingPointAndIndexImpl(fwdBatchSparseToDenseInstImpl1,
+                                    I->getDest()->getElementType(),
+                                    I->getLengths()->getElementType(), I);
+}
+
 void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
     const SparseToDenseMaskInst *I) {
   auto out = getTensor(I->getDest());
