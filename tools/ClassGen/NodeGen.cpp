@@ -975,6 +975,23 @@ int main(int argc, char **argv) {
           "and in this case, all of the corresponding values in Values "
           "are added together.");
 
+  BB.newNode("BatchSparseToDense")
+      .addInput("Lengths")
+      .addInput("Indices")
+      .addInput("Values")
+      .addMember(MemberType::Float, "DefaultValue")
+      .addMember(MemberType::Unsigned, "DenseLastDim")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Converts the sparse representation specified by "
+          "(Lengths, Indices, Values) into a dense one. In the dense "
+          "representation, elements of the lengths vector represent the number "
+          "of indices in the corresponding batch, where each batch "
+          "contains each value from Values at the "
+          "corresponding index specified in Indices, and is filled with "
+          "DefaultValue otherwise. Within each batch, Indices shouldn't "
+          "contain duplicate indices.");
+
   BB.newNode("SparseToDenseMask")
       .addInput("Indices")
       .addInput("Values")
