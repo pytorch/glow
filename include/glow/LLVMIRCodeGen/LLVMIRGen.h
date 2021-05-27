@@ -135,6 +135,8 @@ protected:
   std::string bundleName_;
   /// Name of the main entry.
   std::string mainEntryName_;
+  /// Base name of the saved bundle file, without extension.
+  std::string savedBundleName_;
   /// Instruction number for the module.
   std::unique_ptr<InstructionNumbering> instrNumbering_;
   /// Value holding the base address of the activations memory area.
@@ -398,6 +400,11 @@ public:
   llvm::StringRef getBundleName() const;
   /// Set the name of the bundle (name is automatically legalized).
   void setBundleName(const std::string &name);
+  /// \returns the base name of the saved bundle file to be used by a
+  /// BundleSaver.
+  llvm::StringRef getSavedBundleName() const;
+  /// Set the base name of the saved bundle file.
+  void setSavedBundleName(const std::string &name);
   /// \returns the name of the main entry point.
   /// When JITting, it will be "main". In case of bundling it will be the name
   /// of the bundle.
