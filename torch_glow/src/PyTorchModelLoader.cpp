@@ -4412,10 +4412,20 @@ Error PyTorchModelLoader::loadEmptyLike(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
 
-  const auto fillValue = at::nullopt;
-  return loadFullLikeImpl("empty_like", inputs[EmptyLikeInputs::self],
-                          inputs[EmptyLikeInputs::dtype], fillValue,
-                          outputs[0]);
+  glow::ElemKind outputGlowElemKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputGlowElemKind,
+                             getExpectedType(inputs[EmptyLikeInputs::self],
+                                             inputs[EmptyLikeInputs::dtype]));
+
+  if (outputGlowElemKind == ElemKind::Int32ITy) {
+    const auto fillValue = at::nullopt;
+    return loadFullLikeImpl<int>("empty_like", inputs[EmptyLikeInputs::self],
+                                 outputGlowElemKind, fillValue, outputs[0]);
+  } else {
+    const auto fillValue = at::nullopt;
+    return loadFullLikeImpl<double>("empty_like", inputs[EmptyLikeInputs::self],
+                                    outputGlowElemKind, fillValue, outputs[0]);
+  }
 }
 
 Error PyTorchModelLoader::loadZerosLike(const torch::jit::Node *ptNode) {
@@ -4423,10 +4433,20 @@ Error PyTorchModelLoader::loadZerosLike(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
 
-  const double fillValue = 0.0;
-  return loadFullLikeImpl("zeros_like", inputs[ZerosLikeInputs::self],
-                          inputs[ZerosLikeInputs::dtype], fillValue,
-                          outputs[0]);
+  glow::ElemKind outputGlowElemKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputGlowElemKind,
+                             getExpectedType(inputs[ZerosLikeInputs::self],
+                                             inputs[ZerosLikeInputs::dtype]));
+
+  if (outputGlowElemKind == ElemKind::Int32ITy) {
+    const int fillValue = 0;
+    return loadFullLikeImpl<int>("zeros_like", inputs[ZerosLikeInputs::self],
+                                 outputGlowElemKind, fillValue, outputs[0]);
+  } else {
+    const double fillValue = 0.0;
+    return loadFullLikeImpl<double>("zeros_like", inputs[ZerosLikeInputs::self],
+                                    outputGlowElemKind, fillValue, outputs[0]);
+  }
 }
 
 Error PyTorchModelLoader::loadOnesLike(const torch::jit::Node *ptNode) {
@@ -4434,9 +4454,20 @@ Error PyTorchModelLoader::loadOnesLike(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
 
-  const double fillValue = 1.0;
-  return loadFullLikeImpl("ones_like", inputs[OnesLikeInputs::self],
-                          inputs[OnesLikeInputs::dtype], fillValue, outputs[0]);
+  glow::ElemKind outputGlowElemKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputGlowElemKind,
+                             getExpectedType(inputs[OnesLikeInputs::self],
+                                             inputs[OnesLikeInputs::dtype]));
+
+  if (outputGlowElemKind == ElemKind::Int32ITy) {
+    const int fillValue = 1;
+    return loadFullLikeImpl<int>("ones_like", inputs[OnesLikeInputs::self],
+                                 outputGlowElemKind, fillValue, outputs[0]);
+  } else {
+    const double fillValue = 1.0;
+    return loadFullLikeImpl<double>("ones_like", inputs[OnesLikeInputs::self],
+                                    outputGlowElemKind, fillValue, outputs[0]);
+  }
 }
 
 Error PyTorchModelLoader::loadFullLike(const torch::jit::Node *ptNode) {
@@ -4444,42 +4475,82 @@ Error PyTorchModelLoader::loadFullLike(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
 
-  double fillValue;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      fillValue,
-      iValToDouble(getGlowIValueForValue(inputs[FullLikeInputs::fill_value])));
+  glow::ElemKind outputGlowElemKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputGlowElemKind,
+                             getExpectedType(inputs[FullLikeInputs::self],
+                                             inputs[FullLikeInputs::dtype]));
 
-  return loadFullLikeImpl("full_like", inputs[FullLikeInputs::self],
-                          inputs[FullLikeInputs::dtype], fillValue, outputs[0]);
+  if (outputGlowElemKind == ElemKind::Int32ITy) {
+    int fillValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        fillValue,
+        iValToInt(getGlowIValueForValue(inputs[FullLikeInputs::fill_value])));
+
+    return loadFullLikeImpl<int>("full_like", inputs[FullLikeInputs::self],
+                                 outputGlowElemKind, fillValue, outputs[0]);
+  } else {
+    double fillValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(fillValue,
+                               iValToDouble(getGlowIValueForValue(
+                                   inputs[FullLikeInputs::fill_value])));
+
+    return loadFullLikeImpl<double>("full_like", inputs[FullLikeInputs::self],
+                                    outputGlowElemKind, fillValue, outputs[0]);
+  }
 }
 
+Expected<ElemKind>
+PyTorchModelLoader::getExpectedType(const torch::jit::Value *inputTensorValue,
+                                    const torch::jit::Value *dtypeValue) {
+  glow::NodeValue inputTensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(inputTensor,
+                             getGlowNodeValueForValue(inputTensorValue));
+
+  glow::GlowIValue *dtypeGlowValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(dtypeGlowValue, getGlowIValueForValue(dtypeValue));
+
+  auto isNoneType = dtypeGlowValue->isNone();
+
+  // if dtype not specified, default dtype to the same type as input tensor
+  auto glowElemKind = inputTensor.getType()->getElementType();
+  auto correctType = elemKindToScalarType(glowElemKind);
+
+  if (!isNoneType) {
+    int32_t dtype;
+    ASSIGN_VALUE_OR_RETURN_ERR(dtype,
+                               iValToInt(getGlowIValueForValue(dtypeValue)));
+
+    correctType = static_cast<at::ScalarType>(dtype);
+  }
+
+  glowElemKind = correctType == at::kLong ? ElemKind::Int32ITy
+                                          : scalarTypeToElemKind(correctType);
+
+  return Expected<ElemKind>(glowElemKind);
+}
+
+template <class DType>
 Error PyTorchModelLoader::loadFullLikeImpl(
     llvm::StringRef name, const torch::jit::Value *inputTensorValue,
-    const torch::jit::Value *dtypeValue, at::optional<double> fillValue,
+    const glow::ElemKind outputGlowElemKind, at::optional<DType> fillValue,
     const torch::jit::Value *outputValue) {
   glow::NodeValue inputTensor;
   ASSIGN_VALUE_OR_RETURN_ERR(inputTensor,
                              getGlowNodeValueForValue(inputTensorValue));
 
-  int32_t dtype;
-  ASSIGN_VALUE_OR_RETURN_ERR(dtype,
-                             iValToInt(getGlowIValueForValue(dtypeValue)));
-
-  auto correctType = static_cast<at::ScalarType>(dtype);
   llvm::ArrayRef<glow::dim_t> selfDims(inputTensor.getType()->dims());
-  auto glowElemKind = correctType == at::kLong
-                          ? ElemKind::Int32ITy
-                          : scalarTypeToElemKind(correctType);
+  auto correctType = elemKindToScalarType(outputGlowElemKind);
 
   glow::NodeValue outputTensor;
   if (fillValue.has_value()) {
     outputTensor =
-        F_.createSplat(name, F_.getParent()->uniqueType(glowElemKind, selfDims),
+        F_.createSplat(name,
+                       F_.getParent()->uniqueType(outputGlowElemKind, selfDims),
                        fillValue.value())
             ->getResult();
   } else {
     outputTensor = F_.getParent()
-                       ->createConstant(glowElemKind, selfDims, name)
+                       ->createConstant(outputGlowElemKind, selfDims, name)
                        ->getOutput();
   }
 
