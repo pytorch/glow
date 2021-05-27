@@ -59,19 +59,19 @@ class LLVMBackendOptions {
 public:
   LLVMBackendOptions();
   /// \returns target triple used by this backend.
-  std::string getTarget() const { return target_; }
+  const std::string &getTarget() const { return target_; }
   /// Sets target triple used by this backend.
   void setTarget(llvm::StringRef target) { target_ = target.str(); }
   /// \returns arch used by this backend.
-  std::string getArch() const { return arch_; }
+  const std::string &getArch() const { return arch_; }
   /// Sets arch used by this backend.
   void setArch(llvm::StringRef arch) { arch_ = arch.str(); }
   /// \returns cpu used by this backend.
-  std::string getCPU() const { return cpu_; }
+  const std::string &getCPU() const { return cpu_; }
   /// Sets cpu used by this backend.
   void setCPU(llvm::StringRef cpu) { cpu_ = cpu.str(); }
   /// \returns ABI used by this backend.
-  std::string getABIName() const { return abi_; }
+  const std::string &getABIName() const { return abi_; }
   /// Sets ABI used by this backend.
   void setABIName(llvm::StringRef abi) { abi_ = abi.str(); }
   /// \returns Float ABI used by this backend.
