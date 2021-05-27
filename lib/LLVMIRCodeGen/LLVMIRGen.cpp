@@ -123,6 +123,15 @@ void LLVMIRGen::setBundleName(const std::string &name) {
   bundleName_ = name.empty() ? "bundle" : legalizeName(name);
 }
 
+llvm::StringRef LLVMIRGen::getSavedBundleName() const {
+  return savedBundleName_;
+}
+
+void LLVMIRGen::setSavedBundleName(const std::string &name) {
+  assert(!name.empty() && "Name cannot be empty");
+  savedBundleName_ = name;
+}
+
 std::string LLVMIRGen::getMainEntryName() const { return mainEntryName_; }
 
 void LLVMIRGen::setMainEntryName(std::string name) {

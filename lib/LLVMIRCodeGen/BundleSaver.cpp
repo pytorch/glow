@@ -536,12 +536,17 @@ void BundleSaver::produceBundle() {
   auto &M = irgen_->getModule();
   auto outputDir = irgen_->getOutputDir();
   auto bundleName = irgen_->getBundleName();
+  auto savedBundleName = irgen_->getSavedBundleName().empty()
+                             ? bundleName
+                             : irgen_->getSavedBundleName();
   std::string extension = (llvmCompiler.empty()) ? ".o" : ".bc";
-  auto bundleCodeOutput = (outputDir + "/" + bundleName + extension).str();
+  std::string bundleCodeOutput;
+  bundleCodeOutput = (outputDir + "/" + savedBundleName + extension).str();
   auto bundleWeightsBinOut =
-      (outputDir + "/" + bundleName + ".weights.bin").str();
-  auto bundleHeaderOutput = (outputDir + "/" + bundleName + ".h").str();
+      (outputDir + "/" + savedBundleName + ".weights.bin").str();
+  auto bundleHeaderOutput = (outputDir + "/" + savedBundleName + ".h").str();
   DEBUG_GLOW(llvm::dbgs() << "Producing a bundle:\n"
+                          << "saved bundle name: " << savedBundleName << "\n"
                           << "bundle name: " << bundleName << "\n"
                           << "bundle code: " << bundleCodeOutput << "\n"
                           << "bundle weights:" << bundleWeightsBinOut << "\n"
@@ -568,10 +573,10 @@ void BundleSaver::produceBundle() {
       if (!llvmOpt.empty()) {
         bundleObjectCodeOutputOpt =
             " -emit-llvm -o " +
-            (outputDir + "/" + bundleName + ".beforeopt.bc").str();
+            (outputDir + "/" + savedBundleName + ".beforeopt.bc").str();
       } else {
         bundleObjectCodeOutputOpt =
-            " -o " + (outputDir + "/" + bundleName + ".o").str();
+            " -o " + (outputDir + "/" + savedBundleName + ".o").str();
       }
 
       cmd += bundleObjectCodeOutputOpt;
@@ -583,8 +588,10 @@ void BundleSaver::produceBundle() {
       if (!llvmOpt.empty()) {
         cmd.clear();
         cmd = llvmOpt;
-        cmd += " " + (outputDir + "/" + bundleName + ".beforeopt.bc").str();
-        cmd += " -O3 -o " + (outputDir + "/" + bundleName + ".opt.bc").str();
+        cmd +=
+            " " + (outputDir + "/" + savedBundleName + ".beforeopt.bc").str();
+        cmd +=
+            " -O3 -o " + (outputDir + "/" + savedBundleName + ".opt.bc").str();
         CHECK(!system(cmd.c_str()))
             << "Error running external opt compiler: " << cmd;
 
@@ -593,8 +600,8 @@ void BundleSaver::produceBundle() {
         for (auto option : llvmCompilerOptions) {
           cmd += " " + option + " ";
         }
-        cmd += " " + (outputDir + "/" + bundleName + ".opt.bc").str();
-        cmd += " -o " + (outputDir + "/" + bundleName + ".o").str();
+        cmd += " " + (outputDir + "/" + savedBundleName + ".opt.bc").str();
+        cmd += " -o " + (outputDir + "/" + savedBundleName + ".o").str();
         CHECK(!system(cmd.c_str()))
             << "Error running external LLVM compiler: " << cmd;
       }
@@ -628,7 +635,7 @@ void BundleSaver::produceBundle() {
   // Save weights also in text format for Static API.
   if (bundleAPI_ == BundleApiType::Static) {
     auto bundleWeightsTxtOut =
-        (outputDir + "/" + bundleName + ".weights.txt").str();
+        (outputDir + "/" + savedBundleName + ".weights.txt").str();
     serializeBinaryToText(bundleWeightsBinOut, bundleWeightsTxtOut);
   }
 }
