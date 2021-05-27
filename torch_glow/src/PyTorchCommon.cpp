@@ -96,6 +96,7 @@ DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
 DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
 DEFINE_bool(lazyCompile, false, "see PyTorchLoaderSettings");
 DEFINE_bool(enableDeviceTracing, false, "See PyTorchLoaderSettings");
+DEFINE_int32(debugLayers, 5, "See PyTorchLoaderSettings");
 
 DEFINE_bool(saveGlowIRIntoONNX, false, "See PyTorchLoaderSettings");
 DEFINE_bool(loadGlowIRFromONNX, false, "See PyTorchLoaderSettings");
@@ -353,6 +354,7 @@ void PyTorchLoaderSettings::initSettings() {
   saveGlowIRIntoONNX = FLAGS_saveGlowIRIntoONNX;
   loadGlowIRFromONNX = FLAGS_loadGlowIRFromONNX;
   skipProvisioning = glow::flags::SkipProvisioning || saveGlowIRIntoONNX;
+  debugLayers = FLAGS_debugLayers;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -420,6 +422,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(dumpFailedInputsToOnnxFiles, s);
   INSERT_BOOL_TO_STREAM(lazyCompile, s);
   INSERT_BOOL_TO_STREAM(enableDeviceTracing, s);
+  INSERT_VALUE_TO_STREAM(debugLayers, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";

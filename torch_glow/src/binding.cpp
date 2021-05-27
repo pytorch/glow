@@ -260,6 +260,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("enable_lazy_compile",
         []() { getGlobalPyTorchLoaderSettingsMutable().lazyCompile = true; });
 
+  /// Set the number of layers to print when dumpContextOnError is true.
+  m.def("set_debug_layers", [](size_t debugLayers) {
+    getGlobalPyTorchLoaderSettingsMutable().debugLayers = debugLayers;
+  });
+
   /// Set interpreter device memory (in KiB).
   m.def("set_interpreter_memory", [](const unsigned &memorySize) {
     glow::runtime::flags::InterpreterMemory = memorySize;

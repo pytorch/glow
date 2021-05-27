@@ -849,6 +849,7 @@ struct GlowPyTorchLoaderSettings : public JsonSerializableCustomClass {
     obj["saveGlowIRIntoONNX"] = settings_.saveGlowIRIntoONNX;
     obj["loadGlowIRFromONNX"] = settings_.loadGlowIRFromONNX;
     obj["skipProvisioning"] = settings_.skipProvisioning;
+    obj["debugLayers"] = settings_.debugLayers;
     return obj;
   }
 
@@ -1087,6 +1088,11 @@ struct GlowPyTorchLoaderSettings : public JsonSerializableCustomClass {
     if (dyn.count("skipProvisioning")) {
       ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.skipProvisioning,
                                                "skipProvisioning");
+    }
+
+    if (dyn.count("debugLayers")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.debugLayers,
+                                              "debugLayers");
     }
 
     return Error::success();
