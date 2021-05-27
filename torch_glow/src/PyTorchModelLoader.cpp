@@ -1998,13 +1998,51 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
     return Error::success();
   };
 
+  // Indentation
+  auto errStringIndent = [](int layer, std::string &err) {
+    if (!err.empty()) {
+      err.push_back('\n');
+    }
+    for (int i = 0; i < layer; ++i) {
+      err.push_back(' ');
+    }
+  };
+
+  // If loadNode returns an error, following lambda will traverse
+  // through parents and get node information upto debugLayers(configurable)
+  std::function<void(const torch::jit::Node *, std::string &, int,
+                     std::unordered_set<const torch::jit::Node *> &)>
+      errStack = [&](const torch::jit::Node *nnode, std::string &err, int layer,
+                     std::unordered_set<const torch::jit::Node *> &traversed) {
+        if (layer <= 0 || nnode == nullptr || nnode->inputs().size() == 0 ||
+            !traversed.insert(nnode).second) {
+          return;
+        }
+
+        for (const auto parent : nnode->inputs()) {
+          if (parent == nullptr) {
+            continue;
+          }
+
+          errStack(parent->node(), err, layer - 1, traversed);
+        }
+
+        errStringIndent(layer, err);
+        err.append(jitNodeToString(nnode));
+      };
+
   // Nodes are topologically sorted.
   for (const auto *node : graph.nodes()) {
     VLOG(1) << "Loading node: " << jitNodeToString(node).c_str();
     if (auto err = loadNode(node)) {
-      ADD_MESSAGE_TO_ERR_STACK(
-          err, strFormat("Encountered Error while loading node %s",
-                         jitNodeToString(node).c_str()));
+
+      std::string errString;
+      std::unordered_set<const torch::jit::Node *> traversed;
+      if (settings_.debugLayers > 0) {
+        errStack(node, errString, settings_.debugLayers, traversed);
+      }
+
+      ADD_MESSAGE_TO_ERR_STACK(err, errString.c_str());
       RETURN_ERR(err);
     }
   }

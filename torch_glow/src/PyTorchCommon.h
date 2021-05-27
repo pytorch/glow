@@ -236,6 +236,9 @@ public:
   // and partitioned model into ONNX model file. During this process, we do not
   // need to do provisioning)
   bool skipProvisioning = false;
+
+  /// Set the number of predecessor Nodes to be printed from an error node.
+  int32_t debugLayers = 5;
 };
 
 /// Represents different possible output types from to_glow modules.
