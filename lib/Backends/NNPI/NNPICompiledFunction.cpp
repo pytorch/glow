@@ -342,7 +342,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
   NNPIImporter importer(compilationOptions_);
   // requiresDSPKernels set by importFunction.
-  bool requiresDSPKernels;
+  bool requiresDSPKernels = false;
   network_ = importer.importFunction(F, newOpts, requiresDSPKernels);
   iaExtensionPaths_ = importer.getIAExtensionPaths();
 
