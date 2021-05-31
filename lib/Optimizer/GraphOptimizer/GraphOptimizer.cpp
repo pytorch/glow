@@ -2351,6 +2351,7 @@ static NodeValue collectArithmeticChain(Function *F, NodeValue start,
 /// operate on Constant and fold them into a new BatchNormalization node.
 bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
                                              const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
   for (auto &node : F->getNodes()) {
@@ -2418,6 +2419,7 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
 /// operations into the BatchNormalization.
 bool FoldBatchNormalizationWithArithmeticChain::run(
     Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *BN = dyn_cast<BatchNormalizationNode>(&node);
@@ -2485,6 +2487,7 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
 /// for ONNX which does not have a representation for the FullyConnected node.
 bool FoldMatMulAddIntoFullyConnected::run(Function *F,
                                           const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *addNode = dyn_cast<AddNode>(&node);
@@ -3444,6 +3447,7 @@ bool OptimizeSplat::run(Function *F, const CompilationContext &cctx) {
 }
 
 bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
   for (auto &node : F->getNodes()) {
