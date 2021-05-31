@@ -320,8 +320,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       DeviceInfo info = devices_[device]->getDeviceInfo();
       info.availableMemory = devices_[device]->getAvailableMemory();
       info.backendName = devices_[device]->getBackendName().str();
-      info.nonSupportedNodes =devices_[device]->getParamByName("nonSupportedNodes").str();
-      info.supportedNodes = devices_[device]->getParamByName("supportedNodes").str();
+      info.nonSupportedNodes =
+          devices_[device]->getParamByName("nonSupportedNodes").str();
+      info.supportedNodes =
+          devices_[device]->getParamByName("supportedNodes").str();
       // If p2p is enabled update the inputCount limit.
       if (cctx.enableP2P) {
         info.inputCountMax = P2PInputLimit;

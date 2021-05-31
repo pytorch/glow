@@ -463,8 +463,9 @@ void Loader::loadModel(PlaceholderBindings *bindings,
     // For Caffe2 format the input placeholder names/types must be provided
     // explicitly (mandatory).
     std::unique_ptr<ProtobufLoader> protoLoader;
-    protoLoader.reset(new Caffe2ModelLoader(getCaffe2NetDescFilename().str(), getCaffe2NetWeightFilename().str(), inputNameRefs,
-	inputTypeRefs, *getFunction()));
+    protoLoader.reset(new Caffe2ModelLoader(
+        getCaffe2NetDescFilename().str(), getCaffe2NetWeightFilename().str(),
+        inputNameRefs, inputTypeRefs, *getFunction()));
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
     outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
@@ -475,7 +476,8 @@ void Loader::loadModel(PlaceholderBindings *bindings,
   } else if (!getTFLiteModelFilename().empty()) {
     // For TensorFlowLite format the input placeholder names/types are not
     // provided since are used directly from the model.
-    auto tfliteLoader = glow::make_unique<TFLiteModelLoader>(getTFLiteModelFilename().str(), getFunction());
+    auto tfliteLoader = glow::make_unique<TFLiteModelLoader>(
+        getTFLiteModelFilename().str(), getFunction());
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = tfliteLoader->getInputPlaceholderMap();
     outputPlaceholderByName_ = tfliteLoader->getOutputPlaceholderMap();
@@ -506,8 +508,9 @@ void Loader::loadModel(PlaceholderBindings *bindings,
     // the input placeholder types in order to override the placeholder sizes
     // (one such example is the batch size).
     std::unique_ptr<ProtobufLoader> protoLoader;
-    protoLoader.reset(new ONNXModelLoader(getOnnxModelFilename().str(), inputNameRefs,
-                                          inputTypeRefs, *getFunction()));
+    protoLoader.reset(new ONNXModelLoader(getOnnxModelFilename().str(),
+                                          inputNameRefs, inputTypeRefs,
+                                          *getFunction()));
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
     outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();

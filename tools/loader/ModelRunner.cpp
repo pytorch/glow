@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
   std::unique_ptr<ProtobufLoader> LD;
   if (!loader.getCaffe2NetDescFilename().empty()) {
     LD.reset(new Caffe2ModelLoader(loader.getCaffe2NetDescFilename().str(),
-                                   loader.getCaffe2NetWeightFilename().str(), {}, {},
-                                   *loader.getFunction()));
+                                   loader.getCaffe2NetWeightFilename().str(),
+                                   {}, {}, *loader.getFunction()));
   } else {
     LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename().str(), {}, {},
                                  *loader.getFunction()));

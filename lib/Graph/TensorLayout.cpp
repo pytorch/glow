@@ -195,7 +195,8 @@ TensorLayoutDescription::TensorLayoutDescription(
   }
 }
 
-const llvm::StringRef TensorLayoutDescription::getNthDimDescription(size_t n) const {
+const llvm::StringRef
+TensorLayoutDescription::getNthDimDescription(size_t n) const {
   assert(n < numDims_ && "Wrong dimension number");
   return dims_[n];
 }

@@ -1652,7 +1652,8 @@ static void tensorInputWriterLoader(ImageLayout outImageLayout,
   dumpInputTensorToFileWithType({path.str().str()}, tensorRef, outImageLayout);
   //
   Tensor tensorTest;
-  loadInputImageFromFileWithType({path.str().str()}, &tensorTest, inImageLayout);
+  loadInputImageFromFileWithType({path.str().str()}, &tensorTest,
+                                 inImageLayout);
 
   if (outImageLayout == ImageLayout::NHWC) {
     Tensor transposed;

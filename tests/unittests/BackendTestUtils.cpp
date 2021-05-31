@@ -1380,7 +1380,7 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
   auto fut = runPromise.get_future();
   Error runErr = Error::empty();
   device->runFunction(
-		      name.str(), std::move(contextPtr),
+      name.str(), std::move(contextPtr),
       [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.

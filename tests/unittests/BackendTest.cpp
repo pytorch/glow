@@ -465,8 +465,9 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   auto table = dag->nodes[0]->runtimeBundle->getSymbolTable();
 
   // Check that placeholders and constants are correctly labelled.
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.symbolCategory,
-            glow::runtime::SymbolCategory::Placeholder);
+  EXPECT_EQ(
+      table.find(S->getPlaceholder()->getName().str())->second.symbolCategory,
+      glow::runtime::SymbolCategory::Placeholder);
   EXPECT_EQ(table.find(ex->getName().str())->second.symbolCategory,
             glow::runtime::SymbolCategory::Constant);
   // Check that activations are labelled correctly.
@@ -478,16 +479,20 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
             glow::runtime::SymbolCategory::PlaceholderTensorView);
 
   // Check that placeholders and constants input/output flags are correctly set.
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.input, false);
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.output, true);
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.input,
+            false);
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.output,
+            true);
   EXPECT_EQ(table.find(ex->getName().str())->second.input, false);
   EXPECT_EQ(table.find(ex->getName().str())->second.output, false);
   EXPECT_EQ(table.find(input->getName().str())->second.input, true);
   EXPECT_EQ(table.find(input->getName().str())->second.output, false);
-  EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName().str())->second.input,
-            true);
-  EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName().str())->second.output,
-            true);
+  EXPECT_EQ(
+      table.find(qp->getHistogramPlaceholder()->getName().str())->second.input,
+      true);
+  EXPECT_EQ(
+      table.find(qp->getHistogramPlaceholder()->getName().str())->second.output,
+      true);
   // Check that activations are labelled correctly.
   EXPECT_EQ(table.find("FC_res")->second.input, false);
   EXPECT_EQ(table.find("FC_res")->second.output, false);

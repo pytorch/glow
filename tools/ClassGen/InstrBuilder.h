@@ -222,7 +222,7 @@ public:
       assert(operands.size() > 1 && "Must list 2 or more operands.");
     }
     auto newPair = std::make_pair(verif, std::vector<std::string>());
-    newPair.second.insert(newPair.second.begin(),operands.begin(),
+    newPair.second.insert(newPair.second.begin(), operands.begin(),
                           operands.end());
     autoVerificationPairs_.push_back(newPair);
     return *this;

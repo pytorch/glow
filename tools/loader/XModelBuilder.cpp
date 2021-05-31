@@ -103,9 +103,9 @@ createProtobufLoader(Loader &loader, const TypeRef inputType) {
 
   if (caffe2Model) {
     ptbLoader.reset(new Caffe2ModelLoader(
-					  loader.getCaffe2NetDescFilename().str(),
-					  loader.getCaffe2NetWeightFilename().str(),
-        {modelInputName.c_str()}, {inputType}, *loader.getFunction()));
+        loader.getCaffe2NetDescFilename().str(),
+        loader.getCaffe2NetWeightFilename().str(), {modelInputName.c_str()},
+        {inputType}, *loader.getFunction()));
   } else {
     ptbLoader.reset(new ONNXModelLoader(loader.getOnnxModelFilename().str(),
                                         {modelInputName.c_str()}, {inputType},
