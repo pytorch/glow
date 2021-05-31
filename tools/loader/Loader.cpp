@@ -463,9 +463,8 @@ void Loader::loadModel(PlaceholderBindings *bindings,
     // For Caffe2 format the input placeholder names/types must be provided
     // explicitly (mandatory).
     std::unique_ptr<ProtobufLoader> protoLoader;
-    protoLoader.reset(new Caffe2ModelLoader(
-					    getCaffe2NetDescFilename().str(), getCaffe2NetWeightFilename().str(), inputNameRefs,
-        inputTypeRefs, *getFunction()));
+    protoLoader.reset(new Caffe2ModelLoader(getCaffe2NetDescFilename().str(), getCaffe2NetWeightFilename().str(), inputNameRefs,
+	inputTypeRefs, *getFunction()));
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
     outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
