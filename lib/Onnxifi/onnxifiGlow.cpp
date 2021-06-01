@@ -20,6 +20,7 @@
 
 #include "glow/Flags/Flags.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
+#include "glow/Runtime/RequestData.h"
 
 #include <cstring>
 #include <glog/logging.h>
@@ -220,7 +221,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendInfo)(
     return setBackendInfoString(
         infoValue, infoValueSize,
         "onnxSetIOAndRunGraphFunction onnxWaitEventForFunction "
-        "onnxReleaseTraceEventsFunction");
+        "onnxReleaseTraceEventsFunction onnxGetCurrentBatchSizeFunction");
   default:
     return ONNXIFI_STATUS_UNSUPPORTED_PROPERTY;
   }
@@ -597,6 +598,20 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents)(
   return ONNXIFI_STATUS_SUCCESS;
 }
 
+EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetCurrentBatchSize)(
+    int64_t *currentBatchSize) {
+  if (!currentBatchSize) {
+    return ONNXIFI_STATUS_INVALID_POINTER;
+  }
+  auto requestData = glow::runtime::RequestData::get();
+  if (!requestData) {
+    return ONNXIFI_STATUS_INVALID_STATE;
+  }
+  *currentBatchSize = requestData->currentBatchSize;
+  return ONNXIFI_STATUS_SUCCESS;
+}
+
 /// Set Onnxifi option
 EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetOption)(const char *optionName,
@@ -675,6 +690,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetExtensionFunctionAddress)(
           {"onnxReleaseTraceEventsFunction",
            reinterpret_cast<onnxExtensionFunctionPointer>(
                GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents))},
+          {"onnxGetCurrentBatchSizeFunction",
+           reinterpret_cast<onnxExtensionFunctionPointer>(
+               GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetCurrentBatchSize))},
           {"onnxSetOptionFunction",
            reinterpret_cast<onnxExtensionFunctionPointer>(
                GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetOption))},

@@ -40,6 +40,8 @@ public:
   /// Time spent waiting on the device stack sum of time of all partitions.
   std::atomic<uint64_t> deviceRuntime{0};
 
+  int64_t currentBatchSize{0};
+
   static RequestData *get() {
     auto data = dynamic_cast<RequestData *>(
         folly::RequestContext::get()->getContextData(kContextDataName));
