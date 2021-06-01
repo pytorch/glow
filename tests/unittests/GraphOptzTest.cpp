@@ -8094,3 +8094,27 @@ TEST_F(GraphOptz, FoldExpSumDivIntoSoftmax) {
 
   checkNumericalEquivalence(1e-7f);
 }
+
+TEST_F(GraphOptz, SinkQuantizeBelowReshape) {
+  Placeholder *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
+  auto *qTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 0.2, 0);
+  QuantizeNode *QN = F_->createQuantize("quant", in, qTy);
+  ReshapeNode *reshape = F_->createReshape("reshape", QN, {2, 5});
+  auto *outTy = mod_.uniqueType(ElemKind::FloatTy, {2, 5});
+  DequantizeNode *DQN = F_->createDequantize("dequant", reshape, outTy);
+  SaveNode *save = F_->createSave("save", DQN);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Quant/Dequant nodes are expected to be merged.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  const SaveNode *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  ASSERT_TRUE(optSave);
+  ReshapeNode *newReshape = llvm::dyn_cast<ReshapeNode>(optSave->getInput());
+  ASSERT_TRUE(newReshape);
+  EXPECT_EQ(newReshape->getResult().dims(), reshape->getResult().dims());
+}

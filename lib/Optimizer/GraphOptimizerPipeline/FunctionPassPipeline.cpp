@@ -149,6 +149,10 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize away intermediate consecutive Clips.
       {FunctionPassID::OptimizeClips},
 
+      // Make sure to put this pass before OptimizeQuantization to merge
+      // quant/dequant after sinking.
+      {FunctionPassID::SinkQuantizeBelowReshape},
+
       // Optimize quantization related operators.
       {FunctionPassID::OptimizeQuantization, ConvergenceMode::UntilFixedPoint},
 
