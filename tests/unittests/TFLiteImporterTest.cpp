@@ -92,7 +92,7 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
 
   // Load data into the input placeholders.
   size_t dotPos = llvm::StringRef(modelPath).find_first_of('.');
-  std::string dataBasename = llvm::StringRef(modelPath).substr(0, dotPos);
+  std::string dataBasename = std::string(modelPath).substr(0, dotPos);
   size_t inpIdx = 0;
   for (const auto &inpPH : inputPH) {
     std::string inpFilename = dataBasename + ".inp" + std::to_string(inpIdx++);

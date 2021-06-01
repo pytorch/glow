@@ -187,7 +187,7 @@ void TraceContext::logCompleteTraceEvent(
 
 void TraceContext::setThreadName(int tid, llvm::StringRef name) {
   std::lock_guard<std::mutex> l(lock_);
-  threadNames_[tid] = name;
+  threadNames_[tid] = name.str();
 }
 
 void TraceContext::setThreadName(llvm::StringRef name) {
@@ -239,7 +239,7 @@ ScopedTraceBlock::~ScopedTraceBlock() { end(); }
 
 ScopedTraceBlock &ScopedTraceBlock::addArg(llvm::StringRef key,
                                            llvm::StringRef value) {
-  args_[key] = value;
+  args_[key.str()] = value.str();
   return *this;
 }
 

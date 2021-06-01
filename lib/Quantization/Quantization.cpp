@@ -956,7 +956,7 @@ findAndInsertLoweredInfos(llvm::StringRef currName,
   // also lowered from a previous node.
   for (auto i = currSet.begin(), e = currSet.end(); i != e; ++i) {
     llvm::StringRef currOrigName = i->getName();
-    profilingInfos.emplace_back(currOrigName, TPP);
+    profilingInfos.emplace_back(currOrigName.str(), TPP);
     findAndInsertLoweredInfos(currOrigName, loweredMap, profilingInfos, TPP);
   }
 }

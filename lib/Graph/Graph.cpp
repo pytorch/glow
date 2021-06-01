@@ -5550,8 +5550,9 @@ ExternalFunctionCallNode *Function::createExternalFunctionCall(
     llvm::StringRef name, TypeRef outTy, llvm::ArrayRef<glow::NodeValue> inputs,
     llvm::StringRef funcName, llvm::StringRef funcImpl,
     llvm::StringRef funcKind) {
-  return addNode(new ExternalFunctionCallNode(name, outTy, inputs, funcName,
-                                              funcImpl, funcKind));
+  return addNode(new ExternalFunctionCallNode(name.str(), outTy, inputs,
+                                              funcName.str(), funcImpl.str(),
+                                              funcKind.str()));
 }
 
 //===----------------------------------------------------------------------===//

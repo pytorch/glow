@@ -25,11 +25,11 @@
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
 #include "glow/Support/Debug.h"
-
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/Host.h"
 
 using namespace glow;
 
@@ -598,7 +598,7 @@ llvm::SmallVector<std::string, 0> LLVMBackend::getHostFeatures() {
         if (fn.startswith("avx512")) {
           continue;
         }
-        result.push_back(fn);
+        result.push_back(fn.str());
       }
     }
   }

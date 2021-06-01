@@ -38,7 +38,7 @@ public:
   bool hasName() const { return !name_.empty(); }
 
   /// Set the name of the instruction to \p name.
-  void setName(llvm::StringRef name) { name_ = name; }
+  void setName(llvm::StringRef name) { name_ = name.str(); }
 
   /// Compares by names, \returns true if name_ < x.name_.
   bool compareByName(const Named &x) const {
