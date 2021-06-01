@@ -82,6 +82,16 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
 /// Mutex to protect LLVM's TargetRegistry.
 static std::mutex initTargetMutex;
 
+void LLVMIRGen::initTargetOptions(llvm::TargetOptions &targetOpts,
+                                  const LLVMBackendOptions &backendOpts) {
+  if (backendOpts.getFloatABI().hasValue()) {
+    targetOpts.FloatABIType = backendOpts.getFloatABI().getValue();
+  }
+  if (!backendOpts.getABIName().empty()) {
+    targetOpts.MCOptions.ABIName = backendOpts.getABIName();
+  }
+}
+
 void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
   // LLVM's TargetRegistry is not thread safe so we add a critical section.
   std::lock_guard<std::mutex> g(initTargetMutex);
@@ -92,12 +102,9 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
   llvm::InitializeAllAsmParsers();
 
   llvm::TargetOptions targetOpts;
-  if (opts.getFloatABI().hasValue()) {
-    targetOpts.FloatABIType = opts.getFloatABI().getValue();
-  }
-  if (!opts.getABIName().empty()) {
-    targetOpts.MCOptions.ABIName = opts.getABIName();
-  }
+  // Initialize target options in a backend-specific way.
+  initTargetOptions(targetOpts, opts);
+
   if (opts.getTarget().empty()) {
     TM_.reset(llvm::EngineBuilder()
                   .setCodeModel(opts.getCodeModel())

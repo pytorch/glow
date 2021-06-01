@@ -348,6 +348,10 @@ public:
   /// Init the TargetMachine using settings provided by \p llvmBackend.
   virtual void initTargetMachine(const LLVMBackendOptions &opts);
 
+  /// Init the TargetOptions in a backend-specific way.
+  virtual void initTargetOptions(llvm::TargetOptions &targetOpts,
+                                 const LLVMBackendOptions &backendOpts);
+
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   /// Derived classes may want to override this function to implement a
   /// backend-specific LLVM IR generation logic for some intructions.
