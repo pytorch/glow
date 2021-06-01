@@ -2721,8 +2721,6 @@ TEST(Quantization, quantizeReshape) {
   std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
   quantization::quantizeFunction(F, quantConfig, *backend);
 
-  optimize(F, CompilationMode::Infer);
-
   {
     // Verify that the output variable is not quantized, and that it has a
     // single save node writer, which is also not quantized.
@@ -2739,16 +2737,16 @@ TEST(Quantization, quantizeReshape) {
     // Verify that the reshape is rescaled after being quantized.
     // The reason we need a rescale is because reshaping doesn't perform
     // rescaling by itself.
-    // Note: after optimization, the RescaleQuantized node created for the
-    // Reshape gets merged with the dequantize node.
-    auto *qreshape = llvm::dyn_cast<ReshapeNode>(DN->getInput());
+    auto *RQ = llvm::dyn_cast<RescaleQuantizedNode>(DN->getInput());
+    ASSERT_TRUE(RQ);
+    auto *qreshape = llvm::dyn_cast<ReshapeNode>(RQ->getInput());
     ASSERT_TRUE(qreshape);
     ASSERT_TRUE(qreshape->getResult().getType()->isQuantizedType());
     EXPECT_EQ(qreshape->getResult().getType()->getOffset(),
               reshapeInpTQP.offset);
     EXPECT_EQ(qreshape->getResult().getType()->getScale(), reshapeInpTQP.scale);
 
-    // Verify that the variable inputs to the matmul are quantized.
+    // Verify that the input to the reshape is quantized.
     auto *qinput = llvm::dyn_cast<QuantizeNode>(qreshape->getInput());
     ASSERT_TRUE(qinput);
     EXPECT_EQ(qinput->getResult().getType()->getOffset(),
