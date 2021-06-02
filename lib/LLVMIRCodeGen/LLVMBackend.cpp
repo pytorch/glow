@@ -678,7 +678,8 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   emitJitMain(*irgen);
   irgen->finishCodeGen();
   // Hand over the module to JIT for the machine code generation.
-  auto JIT = glow::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
+  auto JIT = glow::make_unique<GlowJIT>(irgen->takeTargetMachine());
+  JIT->setContext(irgen->takeLLVMContext());
   JIT->addModule(irgen->borrowModule());
   // Build runtimeBundle object containing offsets and allocation sizes.
   MemoryAllocator constantAllocator("ConstantWeights", 0);

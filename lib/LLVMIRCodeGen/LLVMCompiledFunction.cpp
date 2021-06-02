@@ -23,8 +23,7 @@
 using namespace glow;
 
 LLVMCompiledFunction::LLVMCompiledFunction(
-    std::unique_ptr<llvm::orc::GlowJIT> JIT,
-    runtime::RuntimeBundle &&runtimeBundle)
+    std::unique_ptr<GlowJIT> JIT, runtime::RuntimeBundle &&runtimeBundle)
     : CompiledFunction(std::move(runtimeBundle)), JIT_(std::move(JIT)) {}
 
 void LLVMCompiledFunction::collectConstants(const Module *module) {
