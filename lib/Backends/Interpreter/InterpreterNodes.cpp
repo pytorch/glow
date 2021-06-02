@@ -5494,7 +5494,8 @@ void BoundInterpreterFunction::
          "sum(Lengths) must be equal to len(Indices)");
 
   const bool using4BitQuantization =
-      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy;
+      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy ||
+      data->getType().getElementType() == ElemKind::UInt4FusedQTy;
 
   const size_t outLineSize = out->size() / out->dims()[0];
 
@@ -5552,6 +5553,10 @@ void BoundInterpreterFunction::
     fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   const auto ity = I->getIndices()->getElementType();
+  const bool fp32FusedScaleOffset =
+      (I->getData()->getElementType() == ElemKind::UInt4FusedQTy) ||
+      (I->getData()->getElementType() == ElemKind::UInt8FusedQTy);
+
   switch (I->getDest()->getElementType()) {
   case ElemKind::FloatTy:
     if (ity == ElemKind::Int32ITy) {
@@ -5565,7 +5570,7 @@ void BoundInterpreterFunction::
     }
     break;
   case ElemKind::Float16Ty:
-    if (I->getUseFP16Accumulation()) {
+    if (I->getUseFP16Accumulation() && !fp32FusedScaleOffset) {
       if (ity == ElemKind::Int32ITy) {
         fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<
             float16_t, float16_t, int32_t>(I);

@@ -17404,6 +17404,16 @@ TEST_P(OperatorTest,
                                /* useFP16Accumulation */ true);
 }
 
+/// Test Fused-RWQ-SLWS in Float16 wth 4-bit quantization for the embedding.
+/// Uses Float accumulation, Float for scale/offset.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSTwoColumn_Fused4Bit_Float_AccumFloat) {
+  ENABLED_BACKENDS("Interpreter");
+  testSLWSTwoColumn<float>(bindings_, mod_, F_, EE_, ElemKind::UInt4FusedQTy,
+                           0.1,
+                           /* useFP16Accumulation */ false);
+}
+
 /// Helper to test SLWS with different lengths modes, with precision \p DTy,
 /// and precision for data \p dataDTy.
 template <typename DataType>

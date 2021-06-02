@@ -528,6 +528,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
              (NI.getOutElemTy(
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);
+    case ElemKind::UInt4FusedQTy:
     case ElemKind::UInt8FusedQTy:
       if ((NI.getInElemTy(
                FusedRowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
