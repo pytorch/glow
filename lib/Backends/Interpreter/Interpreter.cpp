@@ -174,6 +174,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int16QTy});
 
+  case Kinded::Kind::BatchMatMulNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
+
   case Kinded::Kind::FullyConnectedNodeKind:
     if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
@@ -953,6 +957,8 @@ bool Interpreter::shouldLower(const Node *N) const {
     return false;
   case Kinded::Kind::LayerNormalizationNodeKind:
     return interpreter::flags::LowerLayerNormalization;
+  case Kinded::Kind::BatchMatMulNodeKind:
+    return interpreter::flags::LowerBatchMatMul;
   default:
     return true;
   }

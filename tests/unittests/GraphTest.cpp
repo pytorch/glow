@@ -340,6 +340,70 @@ TEST(Graph, float16LayerNorm) {
   interpreter::flags::LowerLayerNormalization = origFlagVal;
 }
 
+/// Check that we can create batch_matmul with float16.
+TEST(Graph, float16BatchMatMul) {
+  const auto origFlagVal = interpreter::flags::LowerBatchMatMul;
+  interpreter::flags::LowerBatchMatMul = false;
+
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  PlaceholderBindings bindings;
+  auto *LHS = MD.createPlaceholder(ElemKind::Float16Ty, {2, 3, 4}, "A", false);
+  auto *RHS = MD.createPlaceholder(ElemKind::Float16Ty, {2, 4, 5}, "B", false);
+
+  BatchMatMulNode *BMM = F->createBatchMatMul("BMM", LHS, RHS);
+  F->createSave("Save", BMM);
+
+  std::unique_ptr<const Backend> backend(createBackend("Interpreter"));
+
+  CompilationContext cctx;
+  lower(F, cctx, backend.get());
+
+  IRFunction M(F);
+
+  M.generateIR(*backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto bmmIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                            [](const Instruction &inst) -> bool {
+                              return llvm::isa<BatchMatMulInst>(inst);
+                            });
+  ASSERT_TRUE(bmmIt != M.getInstrs().end());
+  interpreter::flags::LowerBatchMatMul = origFlagVal;
+}
+
+/// Check that we can create batch_matmul with float.
+TEST(Graph, floatBatchMatMul) {
+  const auto origFlagVal = interpreter::flags::LowerBatchMatMul;
+  interpreter::flags::LowerBatchMatMul = false;
+
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  PlaceholderBindings bindings;
+  auto *LHS = MD.createPlaceholder(ElemKind::FloatTy, {2, 3, 4}, "A", false);
+  auto *RHS = MD.createPlaceholder(ElemKind::FloatTy, {2, 4, 5}, "B", false);
+
+  BatchMatMulNode *BMM = F->createBatchMatMul("BMM", LHS, RHS);
+  F->createSave("Save", BMM);
+
+  std::unique_ptr<const Backend> backend(createBackend("Interpreter"));
+
+  CompilationContext cctx;
+  lower(F, cctx, backend.get());
+
+  IRFunction M(F);
+
+  M.generateIR(*backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto bmmIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                            [](const Instruction &inst) -> bool {
+                              return llvm::isa<BatchMatMulInst>(inst);
+                            });
+  ASSERT_TRUE(bmmIt != M.getInstrs().end());
+  interpreter::flags::LowerBatchMatMul = origFlagVal;
+}
+
 /// Check that we can create conv3D with float16.
 TEST(Graph, float16Conv3DLower) {
   Module MD;

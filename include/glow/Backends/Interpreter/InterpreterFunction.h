@@ -209,6 +209,9 @@ private:
   void fwdMatMulInstQuantizedImpl(const MatMulInst *I);
   template <typename ElemTy> void fwdMatMulInstFloatImpl(const MatMulInst *I);
 
+  template <typename ElemTy>
+  void fwdBatchMatMulInstFloatImpl(const BatchMatMulInst *I);
+
   template <typename ElemTy, typename AccumulatorTy,
             typename BiasElemTy = int32_t>
   void fwdFullyConnectedInstQuantizedImpl(const FullyConnectedInst *I);

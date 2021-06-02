@@ -4259,6 +4259,35 @@ void BoundInterpreterFunction::fwdMatMulInstFloatImpl(const MatMulInst *I) {
   }
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchMatMulInstFloatImpl(
+    const BatchMatMulInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto lhs = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhs = getWeightHandle<ElemTy>(I->getRHS());
+  auto dest = getWeightHandle<ElemTy>(I->getDest());
+
+  auto destDim = dest.dims();
+  auto lhsDim = lhs.dims();
+
+  dest.clear(0);
+
+  for (dim_t batch = 0; batch < destDim[0]; batch++) {
+    // For each (x,y) in the destination matrix:
+    for (dim_t x = 0; x < destDim[1]; x++) {
+      for (dim_t y = 0; y < destDim[2]; y++) {
+        // Perform DOT on the row an column.
+        float sum = 0;
+        for (dim_t i = 0; i < lhsDim[2]; i++) {
+          sum += float(lhs.at({batch, x, i})) * float(rhs.at({batch, i, y}));
+        }
+        dest.at({batch, x, y}) = ElemTy(sum);
+      }
+    }
+  }
+}
+
 void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     dispatchQuantizedWithAccumulationImpl(fwdMatMulInstQuantizedImpl,
@@ -4272,7 +4301,13 @@ void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
 
 void BoundInterpreterFunction::fwdBatchMatMulInst(
     const glow::BatchMatMulInst *I) {
-  DCHECK(!"Found BatchMatMulInst but BatchMatMul is lowered on Interpreter");
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    DCHECK(!"Quantized implementation for BatchMatmul not supported yet.");
+    return;
+  }
+
+  dispatchFloatingPointImpl(fwdBatchMatMulInstFloatImpl,
+                            I->getLHS()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdReluGradInst(const glow::ReluGradInst *I) {

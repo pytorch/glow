@@ -113,6 +113,7 @@ extern bool DumpCustomKernelFiles;
 namespace glow {
 namespace interpreter {
 namespace flags {
+extern bool LowerBatchMatMul;
 extern bool LowerLayerNormalization;
 } // namespace flags
 } // namespace interpreter
