@@ -239,6 +239,17 @@ public:
 
   /// Set the number of predecessor Nodes to be printed from an error node.
   int32_t debugLayers = 5;
+
+  // Sparse NN Partitioning Scheme Constants
+  bool useSparseNNPartitioningScheme = false;
+  bool sparseNNPartitioningAddSLSConcats = false;
+  bool sparseNNPartitioningBalancePerfModel = false;
+  bool sparseNNPartitioningPairLNWithSLS = false;
+  bool sparseNNPartitioningPairTileWithSLS = false;
+  int32_t sparseNNPartitioningSchemeNumCards = 1;
+  int64_t sparseNNPartitioningSchemeSLSTableKBytesPerCard = 1;
+  int32_t SparseNNPartitioningSchemeNumCoresSLS = 1;
+  int32_t SparseNNPartitioningSchemeNumCoresOther = 1;
 };
 
 /// Represents different possible output types from to_glow modules.

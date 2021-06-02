@@ -219,6 +219,26 @@ void initializeCompilationContextFromSettings(
     LOG(INFO) << "Will skip provisioning (likely due to AOT opt).";
     cctx.skipProvisioning = true;
   }
+
+  if (settings.useSparseNNPartitioningScheme) {
+    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+    cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
+        settings.sparseNNPartitioningAddSLSConcats;
+    cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
+        settings.sparseNNPartitioningBalancePerfModel;
+    cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
+        settings.sparseNNPartitioningPairLNWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
+        settings.sparseNNPartitioningPairTileWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
+        settings.sparseNNPartitioningSchemeNumCards;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+        settings.sparseNNPartitioningSchemeSLSTableKBytesPerCard;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
+        settings.SparseNNPartitioningSchemeNumCoresSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
+        settings.SparseNNPartitioningSchemeNumCoresOther;
+  }
 }
 
 /// This function slice the input Tensor according to the expected shape in the

@@ -101,6 +101,24 @@ DEFINE_int32(debugLayers, 5, "See PyTorchLoaderSettings");
 DEFINE_bool(saveGlowIRIntoONNX, false, "See PyTorchLoaderSettings");
 DEFINE_bool(loadGlowIRFromONNX, false, "See PyTorchLoaderSettings");
 
+DEFINE_bool(useSparseNNPartitioningScheme, false, "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningAddSLSConcats, false,
+            "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningBalancePerfModel, false,
+            "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningPairLNWithSLS, false,
+            "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningPairTileWithSLS, false,
+            "See PyTorchLoaderSettings");
+DEFINE_int32(sparseNNPartitioningSchemeNumCards, 1,
+             "See PyTorchLoaderSettings");
+DEFINE_int64(sparseNNPartitioningSchemeSLSTableKBytesPerCard, 1,
+             "See PyTorchLoaderSettings");
+DEFINE_int32(SparseNNPartitioningSchemeNumCoresSLS, 1,
+             "See PyTorchLoaderSettings");
+DEFINE_int32(SparseNNPartitioningSchemeNumCoresOther, 1,
+             "See PyTorchLoaderSettings");
+
 namespace glow {
 namespace {
 
@@ -354,6 +372,20 @@ void PyTorchLoaderSettings::initSettings() {
   saveGlowIRIntoONNX = FLAGS_saveGlowIRIntoONNX;
   loadGlowIRFromONNX = FLAGS_loadGlowIRFromONNX;
   skipProvisioning = glow::flags::SkipProvisioning || saveGlowIRIntoONNX;
+  useSparseNNPartitioningScheme = FLAGS_useSparseNNPartitioningScheme;
+  sparseNNPartitioningAddSLSConcats = FLAGS_sparseNNPartitioningAddSLSConcats;
+  sparseNNPartitioningBalancePerfModel =
+      FLAGS_sparseNNPartitioningBalancePerfModel;
+  sparseNNPartitioningPairLNWithSLS = FLAGS_sparseNNPartitioningPairLNWithSLS;
+  sparseNNPartitioningPairTileWithSLS =
+      FLAGS_sparseNNPartitioningPairTileWithSLS;
+  sparseNNPartitioningSchemeNumCards = FLAGS_sparseNNPartitioningSchemeNumCards;
+  sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+      FLAGS_sparseNNPartitioningSchemeSLSTableKBytesPerCard;
+  SparseNNPartitioningSchemeNumCoresSLS =
+      FLAGS_SparseNNPartitioningSchemeNumCoresSLS;
+  SparseNNPartitioningSchemeNumCoresOther =
+      FLAGS_SparseNNPartitioningSchemeNumCoresOther;
   debugLayers = FLAGS_debugLayers;
 
   if (!FLAGS_opBlacklist.empty()) {
