@@ -14,6 +14,8 @@
  */
 
 #include "Importer.h"
+#include "CustomKernels/DSPInjectors/DSPInjectors.h"
+#include "CustomKernels/IAInjectors/IAInjectors.h"
 #include "DebugMacros.h"
 #include "NNPI.h"
 #include "glow/Flags/Flags.h"
@@ -21,9 +23,7 @@
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
-#include "glow/include/glow/Support/Error.h"
-#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectors.h"
-#include "glow/lib/Backends/NNPI/CustomKernels/IAInjectors/IAInjectors.h"
+#include "glow/Support/Error.h"
 #include "nnpi_transformer.h"
 #include <cmath>
 #include <cstdio>
@@ -556,9 +556,11 @@ getReplacementMap(Function *F) {
   const char *useInfApi = std::getenv("USE_INF_API");
   if (!glow::nnpi::flags::EnableCustomIAKernels) {
     LOG(INFO) << "Skipping custom IA kernels because they are disabled";
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION < 7
   } else if (!useInfApi || std::string(useInfApi) != "1") {
     LOG(INFO) << "Skipping custom IA kernels because hardware inference isn't "
                  "enabled";
+#endif // NNPI < 1.7
   } else {
     LOG(INFO) << "Custom IA ops enabled";
     static const auto iaInjectors = buildIAInjectors();
@@ -2423,9 +2425,26 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, error == NNPI_NO_ERROR,
                           "Failed to store IA extension", NNPI_INVALID_PARAM);
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+    const auto *kpConstant =
+        glowIA->getParent()->getParent()->getConstantByName(
+            glowIA->getKernelParams().getNode()->getName());
+    LOG_AND_RETURN_IF_NOT(ERROR, kpConstant, "Kernel Params must be constant",
+                          NNPI_INVALID_PARAM);
+    const Tensor *kpTensor = &kpConstant->getPayload();
+
+    auto res = nnpiNetworkAddCustomIAOp(
+        importer.getNetwork(), nodeName.begin(), numInputs, inputs, numOutputs,
+        outputs, glowIA->getKernelName().c_str(), kpTensor->getUnsafePtr(),
+        kpTensor->getSizeInBytes(),
+        reinterpret_cast<const NNPICustomIAIceRefCallback>(
+            glowIA->getICERefCallback()));
+#else
     auto res = nnpiNetworkAddCustomIAOp(importer.getNetwork(), nodeName.begin(),
                                         numInputs, inputs, numOutputs, outputs,
                                         glowIA->getKernelName().c_str());
+#endif // NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+
     return res;
   }
 };
@@ -2892,6 +2911,30 @@ public:
 };
 #endif // NNPI >= 1.1
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+class CumSumNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowCumSumNode = llvm::dyn_cast<CumSumNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowCumSumNode, "Bad CumSum node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowCumSumNode->getInput())},
+                            {nodeValueName(glowCumSumNode->getResult())});
+
+    int32_t axis = (int32_t)glowCumSumNode->getDim();
+    auto exclusive = glowCumSumNode->getExclusive();
+    auto reverse = glowCumSumNode->getReverse();
+
+    return nnpiNetworkAddCumsumOp(
+        importer.getNetwork(), glowCumSumNode->getName().begin(),
+        nodeValueName(glowCumSumNode->getInput()).c_str(),
+        nodeValueName(glowCumSumNode->getResult()).c_str(), axis, exclusive,
+        reverse);
+  }
+};
+#endif // NNPI >= 1.7
+
 //////////////////////////////////////////////////////////////////////////
 namespace {
 std::unordered_map<
@@ -2939,9 +2982,16 @@ std::unordered_map<
                 BinaryEltwiseNodeImporter<glow::SubNode, NNPI_ELTWISE_SUB>>()},
     {"Pow", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::PowNode, NNPI_ELTWISE_POW>>()},
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+    {"Fmod",
+     glow::make_unique<
+         BinaryEltwiseNodeImporter<glow::FmodNode, NNPI_ELTWISE_MODULO>>()},
+    {"CumSum", glow::make_unique<CumSumNodeImporter>()},
+#else
     {"Fmod",
      glow::make_unique<
          BinaryEltwiseNodeImporter<glow::FmodNode, NNPI_ELTWISE_FLOOR_MOD>>()},
+#endif // NNPI >= 1.7
     {"CmpEQ",
      glow::make_unique<
          BinaryEltwiseNodeImporter<glow::CmpEQNode, NNPI_ELTWISE_EQ>>()},

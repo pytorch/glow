@@ -43,9 +43,6 @@ public:
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
-  Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
-  compileFunctions(std::vector<Function *> &functions,
-                   llvm::StringMap<BackendOptions> &optsMap) const override;
 #if FACEBOOK_INTERNAL
   Expected<std::unique_ptr<CompiledFunction>>
   compileFX(const folly::dynamic &FXIR, const std::string &submod,
@@ -110,6 +107,13 @@ public:
   estimateEmbeddingNode(const glow::NodeInfo &NI, bool fp32Accumulation = false,
                         glow::LengthsMode lengthsMode = LengthsMode::Variable,
                         float averageLength = NAN) const;
+
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+  /// Estimate performance cost for a given BatchNorm Node \p BN.
+  /// \returns a unitless value to be used when comparing to other estimates.
+  /// or -1 if no estimate could be generated.
+  double estimateBatchNormalizationNode(const BatchNormalizationNode *BN) const;
+#endif // NNPI >= 1.7
 
   /// \returns a unitless value to be used when comparing Nodes or
   /// error if no estimate can be generated.
