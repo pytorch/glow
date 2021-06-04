@@ -76,8 +76,20 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   }
 
   if (dspKernelsFile.empty() && requiresDSPKernels) {
-    return MAKE_ERR("DSP kernels file not found, needed to run Function "
-                    "containing DSP kernels");
+    // If kernels file was not provided then check if pointer to lib content
+    // was provided in compilation options.
+    if (compilationOptions.customDspKernelsSize) {
+      config_.sizeCustomDspLib = compilationOptions.customDspKernelsSize.get();
+      config_.customDspLib = reinterpret_cast<uint8_t *>(
+          compilationOptions.customDspKernelsLibPtr.get());
+      LOG(INFO) << "Loading DSP library from NNPICompilationOptions with size "
+                << compilationOptions.customDspKernelsSize;
+    } else {
+      return MAKE_ERR(
+          "Neither DSP kernels file found, nor pointer to lib provided."
+          "Atleast one of them is needed to run function containing DSP "
+          "kernels");
+    }
   } else {
     std::strncpy(config_.customDspKernelsFile, dspKernelsFile.c_str(),
                  dspKernelsFile.size());
@@ -114,8 +126,17 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.enableLayerSplitter = compilationOptions.enableLayerSplitter;
   config_.enableConvSpatialSplitter =
       compilationOptions.enableConvSpatialSplitter;
-#endif
+  config_.enableConvBatchSplitter = compilationOptions.enableConvBatchSplitter;
   config_.disableWeightsInPool = compilationOptions.disableWeightsInPool;
+#endif
+
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+  config_.dumpIntermediate = compilationOptions.dumpIntermediate;
+  config_.numParallelDeciderCompilation =
+      compilationOptions.numDeciderCompilation;
+  config_.weightsThresholdForWeightSharing =
+      compilationOptions.thresholdDisableWeightsPool;
+#endif // NNPI >= 1.7
   return Error::success();
 }
 

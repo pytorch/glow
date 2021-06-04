@@ -192,7 +192,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
             {ElemKind::Float16Ty}, {ROIAlignNode::BatchIndicesIdx}) &&
-        (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int32ITy);
+        (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int32ITy ||
+         NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::LSTMUnitNodeKind:
     isNodePrecisionSupported =
@@ -279,10 +280,15 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         {ElemKind::Int8QTy, ElemKind::Float16Ty});
     break;
   case Kinded::Kind::FmodNodeKind:
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+#else
     // Supporting these two for now because for fp inputs NNPI returns result
     // with the same sign as the divisor instead of the dividend.
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int64ITy, ElemKind::Int32ITy});
+#endif // NNPI >= 1.7
     break;
   // Data transfer fp32/fp16/i8/i32/i64/bool.
   case Kinded::Kind::SaveNodeKind:
@@ -345,7 +351,11 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::BoolTy:
           return true;
         case ElemKind::Int32ITy:
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+          return true;
+#else
           return glow::nnpi::flags::EnableCustomIAKernels;
+#endif // NNPI >= 1.7
         default:
           return false;
         }
@@ -388,6 +398,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
 
       case ElemKind::Int32ITy:
         switch (kindTo) {
+        case ElemKind::Int64ITy:
         case ElemKind::Float16Ty:
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
@@ -791,8 +802,13 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     break;
   case Kinded::Kind::CumSumNodeKind:
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int32ITy, ElemKind::Int8QTy, ElemKind::UInt8QTy});
+#else
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
+#endif // NNPI >= 1.7
     break;
   default:
     isNodeHasAnySupport = false;
@@ -2184,12 +2200,12 @@ Error NNPIBackend::bindContexts(
 
 /// Partial update of the NNPITensorDesc. Some members are ignored as they're
 /// not used for estimation.
-static bool updateDescForEstimate(NNPITensorDesc &desc,
-                                  const glow::TypeRef ty) {
+static bool updateDescForEstimate(NNPITensorDesc &desc, const glow::TypeRef ty,
+                                  bool alternativeLayout) {
   LOG_AND_RETURN_IF(ERROR, ty == nullptr, "Invalid type", false);
 
   // Update dims and layout.
-  NNPIImporter::updateDescDimsFromGlow(ty->dims(), desc);
+  NNPIImporter::updateDescDimsFromGlow(ty->dims(), desc, alternativeLayout);
 
   // Update Quantization.
   switch (ty->getElementType()) {
@@ -2256,14 +2272,16 @@ static bool updateDescForEstimate(NNPITensorDesc &desc,
 
 /// Prepare the list of NNPITensorDesc for the estimate call.
 static bool updateDescListForEstimate(std::vector<NNPITensorDesc> &descs,
-                                      const std::vector<glow::TypeRef> types) {
+                                      const std::vector<glow::TypeRef> types,
+                                      bool alternativeLayout = false) {
   if (descs.size() != types.size()) {
     return false;
   }
   bool retVal = true;
   for (size_t i = 0; i < descs.size(); i++) {
     if (types.at(i) != nullptr) {
-      retVal &= updateDescForEstimate(descs.at(i), types.at(i));
+      retVal &=
+          updateDescForEstimate(descs.at(i), types.at(i), alternativeLayout);
     }
   }
   return retVal;
@@ -2438,6 +2456,57 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
   return estimate;
 }
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+static bool isBatchNormUsingAlternativeLayout(const size_t channelIdx,
+                                              const size_t numDims) {
+  // Handle NNPI_LAYOUT_NDHWC and NNPI_LAYOUT_NHWC layout.
+  if ((numDims == 4 || numDims == 5) && (channelIdx == numDims - 1)) {
+    return true;
+  }
+
+  // Handle NNPI_LAYOUT_CN layout.
+  if (numDims == 2 && channelIdx == 0) {
+    return true;
+  }
+
+  return false;
+}
+
+double NNPIBackend::estimateBatchNormalizationNode(
+    const BatchNormalizationNode *BN) const {
+
+  NodeInfo NI(*BN);
+  if (!isOpSupported(NI)) {
+    return -1.0;
+  }
+
+  auto inputDims = BN->getInput().getType()->dims().size();
+  auto alternativeLayout =
+      isBatchNormUsingAlternativeLayout(BN->getChannelIdx(), inputDims);
+
+  std::vector<NNPITensorDesc> descs(1); // only input for this node type
+
+  LOG_AND_RETURN_IF(ERROR,
+                    !updateDescListForEstimate(
+                        descs, {NI.getInTy(BatchNormalizationNode::InputIdx)},
+                        alternativeLayout),
+                    "Failed to update NNPITensorDesc", -1.0);
+
+  double estimate = -1.0;
+  const NNPITensorDesc *td = &(descs.at(0));
+
+  LOG_NNPI_IF_ERROR(
+      nnpiEstimateOp(
+          (BN->getName().str()).c_str(),
+          NNPI_COST_MODEL_OP_TYPE::NNPI_COST_MODEL_BATCH_NORMALIZATION,
+          0, /* subType is don't care for this node */
+          &td, 1, &estimate),
+      "Failed to estimate BatchNormalization op.");
+
+  return estimate;
+}
+#endif // NNPI >= 1.7
+
 Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
   double returnCost = -1.0;
   switch (node->getKind()) {
@@ -2494,6 +2563,13 @@ Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
                               EBBRO->getLengthsMode(), EBBRO->getAvgLength());
     break;
   }
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+  case Kinded::Kind::BatchNormalizationNodeKind: {
+    const BatchNormalizationNode *BN = llvm::cast<BatchNormalizationNode>(node);
+    returnCost = estimateBatchNormalizationNode(BN);
+    break;
+  }
+#endif // NNPI >= 1.7
   default:
     break;
   }
@@ -2503,17 +2579,3 @@ Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
   return returnCost;
 }
 
-Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
-NNPIBackend::compileFunctions(std::vector<Function *> &functions,
-                              llvm::StringMap<BackendOptions> &optsMap) const {
-  if (functions.size() > 1) {
-    // This is experimental, so it is disabled by default.
-    // Use NNPI_WEIGHTS_OFF_MEM_POOL=1 to override this.
-    std::pair<std::string, std::string> wtsPoolOption(
-        "NNPI_disableWeightsInPool", "0");
-    for (auto it = functions.begin(), end = functions.end(); it != end; ++it) {
-      optsMap[(*it)->getName()].backendSpecificOpts.insert(wtsPoolOption);
-    }
-  }
-  return (Backend::compileFunctions(functions, optsMap));
-}
