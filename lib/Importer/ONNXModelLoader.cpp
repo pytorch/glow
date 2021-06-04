@@ -2537,8 +2537,8 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
     }
     RETURN_ERR_IF_NOT(coordTransformMode == "asymmetric",
                       opErrMsg(op,
-                               "Resize 'asymmetric' coordinate transformation "
-                               "mode supported only."));
+                               strFormat("Resize 'asymmetric' coordinate transformation "
+                               "mode supported only, but found %s", coordTransformMode.c_str())));
 
     // If no scales tensor, sizes tensor should be valid.
     if (scalesC->getPayload().getHandle().size() == 0) {
