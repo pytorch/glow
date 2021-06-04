@@ -355,6 +355,14 @@ public:
 
   ~Function();
 
+  IRKind getIRKind() const override { return IRKind::GlowGraphIRKind; };
+
+  static bool classof(const IRContainer *I) {
+    return I->getIRKind() == IRKind::GlowGraphIRKind;
+  }
+
+  static bool classof(const Function *F) { return true; }
+
   /// Clear out \ref nodes_ and \ref uniqueNodeNames_.
   void clear();
 
@@ -379,7 +387,7 @@ public:
     return metadataPlaceholders_;
   }
 
-  Module *getParent() { return parent_; }
+  Module *getParent() override { return parent_; }
 
   /// Perform ordering of nodes_ based on node's name.
   /// This is to make sure that performing optimizations have a deterministic
@@ -404,7 +412,7 @@ public:
   ConstList findConstants();
   ConstList findConstants() const;
 
-  const Module *getParent() const { return parent_; }
+  const Module *getParent() const override { return parent_; }
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {

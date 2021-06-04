@@ -54,7 +54,7 @@ Interpreter::compile(Function *F, const BackendOptions &opts) const {
 
 std::unique_ptr<CompiledFunction>
 Interpreter::compileIR(std::unique_ptr<IRFunction> IR) const {
-  auto *mod = IR->getGraph()->getParent();
+  auto *mod = IR->getParent();
   auto function = compileIRWithoutConstants(std::move(IR));
   auto IFunction = static_cast<InterpreterFunction *>(function.get());
   IFunction->collectConstants(mod);
