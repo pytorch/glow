@@ -157,6 +157,13 @@ public:
   virtual Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
+#ifdef FACEBOOK_INTERNAL
+  Expected<std::unique_ptr<CompiledFunction>>
+  compileFX(const folly::dynamic &FXIR, const std::string &submod,
+            const llvm::StringMap<const void *> &constants,
+            const BackendOptions &opts, Module *glowModule) const override;
+#endif
+
   virtual void save(Function *F, llvm::StringRef outputDir,
                     llvm::StringRef bundleName,
                     llvm::StringRef mainEntryName) const override;

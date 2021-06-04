@@ -21,7 +21,7 @@
 namespace glow {
 
 class IRFunction;
-class Function;
+class IRContainer;
 class Backend;
 
 /// Perform target-independent optimizations on the IR representation of \p M.
@@ -36,9 +36,9 @@ void optimize(IRFunction &M, const Backend &B, bool shouldShareBuffers);
 /// shouldShareBuffers signifies whether to use the share buffers optimization.
 /// Backend /p B is used to allow for custom lowering from Node to
 /// Instruction IR.
-std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
+std::unique_ptr<IRFunction> generateAndOptimizeIR(IRContainer *F,
+                                                  const Backend &B,
                                                   bool shouldShareBuffers);
-
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_IROPTIMIZER_IROPTIMIZER_H
