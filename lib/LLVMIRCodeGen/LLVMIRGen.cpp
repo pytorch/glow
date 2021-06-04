@@ -65,7 +65,8 @@ static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC)
-    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
+    : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
+      allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
 }
@@ -73,7 +74,8 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC,
                      llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry)
-    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
+    : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
+      allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
       objectRegistry_(objectRegistry) {
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
@@ -405,7 +407,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt32PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt8ITy:
-    T = llvm::Type::getInt8PtrTy(ctx_);
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt8FusedQTy:
     T = llvm::Type::getInt8PtrTy(getLLVMContext());
@@ -514,10 +516,11 @@ llvm::Value *LLVMIRGen::emitConstFloatArray(llvm::IRBuilder<> &builder,
                                             llvm::ArrayRef<float> vals) {
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
-    elems.push_back(
-        llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), (float)I));
+    elems.push_back(llvm::ConstantFP::get(
+        llvm::Type::getFloatTy(getLLVMContext()), (float)I));
   }
-  return emitConstArray(builder, elems, llvm::Type::getFloatTy(ctx_));
+  return emitConstArray(builder, elems,
+                        llvm::Type::getFloatTy(getLLVMContext()));
 }
 
 llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,

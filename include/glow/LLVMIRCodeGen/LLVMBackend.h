@@ -205,7 +205,7 @@ protected:
   /// \param runtimeBundle bundle to be used for compiling the function.
   /// \returns created CompiledFunction.
   virtual std::unique_ptr<CompiledFunction>
-  createCompiledFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
+  createCompiledFunction(std::unique_ptr<GlowJIT> JIT,
                          runtime::RuntimeBundle &&runtimeBundle) const = 0;
 
   /// \returns libjit bitcode for the current backend.
