@@ -72,14 +72,15 @@ elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
 elif [ "${CIRCLE_JOB}" == "DEBUG_LLVM_11" ]; then
-    # Download/add llvm-11 and clang-11 to paths.
-    wget https://github.com/llvm/llvm-project/releases/download/llvmorg-11.1.0/clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
-    echo "c691a558967fb7709fb81e0ed80d1f775f4502810236aa968b4406526b43bee1  clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz" | sha256sum -c
-    tar xf clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
-    export PATH=${PWD}/clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04/bin:${PATH}
-    export LD_LIBRARY_PATH=${PWD}/clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04/lib:${PATH}
-
+    # Install Glow dependencies
     sudo apt-get update
+    sudo apt-get install -y llvm-11
+    # Redirect clang
+    sudo ln -s /usr/bin/clang-11 /usr/bin/clang
+    sudo ln -s /usr/bin/clang++-11 /usr/bin/clang++
+    sudo ln -s /usr/bin/llvm-symbolizer-11 /usr/bin/llvm-symbolizer
+    sudo ln -s /usr/bin/llvm-config-11 /usr/bin/llvm-config-11.0
+
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
 else
