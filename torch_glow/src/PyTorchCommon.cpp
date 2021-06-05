@@ -647,7 +647,8 @@ void glowAOTFusionWithShapeInference(
     torch::jit::Module &model, const InputMetaStack &metaStack,
     runtime::DeferredWeightLoader *loader,
     const PyTorchLoaderSettings &settings, const std::string method_name,
-    const std::unordered_map<int, std::string> &batchShapes) {
+    const std::unordered_map<int, std::string> &batchShapes,
+    const std::string &serializationSpec, const std::string &onnxModelFile) {
   auto graph = model.get_method(method_name).function().graph();
 
   // create some fake inputs to run shape inference.
@@ -731,10 +732,22 @@ void glowAOTFusionWithShapeInference(
             itr->second.dtype, itr->second.shape<TensorShape>());
       }
 
-      // Fault at any error during the cache warmup.
-      REPORT_AND_EXIT_ON_ERR(runner->warmCache({metaStackForCompilation},
-                                               settings, loader,
-                                               /*useMaxSizeCompilation*/ true));
+      e = runner->warmCache({metaStack}, settings, loader,
+                            /*useMaxSizeCompilation*/ true, serializationSpec,
+                            onnxModelFile);
+
+      if (e) {
+        // If warmCache fails for glow AOT, try to fallback to non-AOT first
+        if (settings.loadGlowIRFromONNX) {
+          LOG(WARNING) << "glow AOT model loading failed; Fallback to non-AOT";
+          auto newSettings = settings;
+          newSettings.loadGlowIRFromONNX = false;
+          REPORT_AND_EXIT_ON_ERR(runner->warmCache(
+              {metaStackForCompilation}, newSettings, loader,
+              /*useMaxSizeCompilation*/ true, /*serializationSpec*/ "",
+              /*onnxModelFile*/ ""));
+        }
+      }
 
       if (batchShapesMap.size() > 0) {
         auto graphOutputValues = subgraph->outputs();
@@ -764,7 +777,9 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    runtime::DeferredWeightLoader *loader,
                    const PyTorchLoaderSettings &settings,
                    const std::string method_name,
-                   const std::unordered_map<int, std::string> &batchShapes) {
+                   const std::unordered_map<int, std::string> &batchShapes,
+                   const std::string &serializationSpec,
+                   const std::string &onnxModelFile) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   modelPreprocessing(model, method_name);
@@ -773,7 +788,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
   // always enable inferShapeForCompilation
   if (FLAGS_inferShapeForCompilation || settings.saveGlowIRIntoONNX) {
     return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
-                                           method_name, batchShapes);
+                                           method_name, batchShapes,
+                                           serializationSpec, onnxModelFile);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
@@ -806,7 +822,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
       });
 
   auto e = runner->warmCache({metaStack}, settings, loader,
-                             /*useMaxSizeCompilation*/ true);
+                             /*useMaxSizeCompilation*/ true, serializationSpec,
+                             onnxModelFile);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report
     // an error but it is fine with our execution. So here we extract the

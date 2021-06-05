@@ -234,7 +234,9 @@ public:
   Error warmCache(const std::vector<InputMetaStack> &metaStacks,
                   const PyTorchLoaderSettings &settings,
                   runtime::DeferredWeightLoader *loader,
-                  bool useMaxSizeCompilation = true);
+                  bool useMaxSizeCompilation = true,
+                  const std::string &serializationSpec = "",
+                  const std::string &onnxModelFile = "");
 
   /// Warmup Graphoutput shape Map by getting output value shapes for each
   /// batch size.

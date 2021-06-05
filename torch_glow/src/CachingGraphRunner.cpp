@@ -1203,7 +1203,8 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 Error CachingGraphRunner::warmCache(
     const std::vector<InputMetaStack> &metaStacks,
     const PyTorchLoaderSettings &settings,
-    runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation) {
+    runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation,
+    const std::string &serializationSpec, const std::string &onnxModelFile) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }

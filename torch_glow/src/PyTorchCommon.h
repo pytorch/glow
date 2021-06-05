@@ -309,12 +309,13 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
 /// raw string containing the meta data of the glow fuser node input.
-void glowAOTFusion(
-    torch::jit::Module &module, const std::string &inputMetaStr,
-    runtime::DeferredWeightLoader *loader,
-    const PyTorchLoaderSettings &settings,
-    const std::string method_name = "forward",
-    const std::unordered_map<int, std::string> &batchShapes = {});
+void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
+                   runtime::DeferredWeightLoader *loader,
+                   const PyTorchLoaderSettings &settings,
+                   const std::string method_name = "forward",
+                   const std::unordered_map<int, std::string> &batchShapes = {},
+                   const std::string &serializationSpec = "",
+                   const std::string &onnxModelFile = "");
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
@@ -323,7 +324,9 @@ void glowAOTFusionWithShapeInference(
     runtime::DeferredWeightLoader *loader,
     const PyTorchLoaderSettings &settings,
     const std::string method_name = "forward",
-    const std::unordered_map<int, std::string> &batchShapes = {});
+    const std::unordered_map<int, std::string> &batchShapes = {},
+    const std::string &serializationSpec = "",
+    const std::string &onnxModelFile = "");
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in
