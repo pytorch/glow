@@ -301,9 +301,13 @@ Error setupGlowDeserializationSpecAndCctx(
               ? f->getParent()->uniqueType(elementType, newDims,
                                            type.getScale(), type.getOffset())
               : f->getParent()->uniqueType(elementType, newDims);
+      // Here staticPlaceholderTypes is used for serializing Glow IR in
+      // hostManager, which is post-precision conversion. staticPHTypes on the
+      // other hand is used in Glow deserialization, which requires the input
+      // tensor types (i.e., pre-precision conversion)
       staticPlaceholderTypes[std::string(ph->getName())] = *newType;
       staticPHNames.emplace_back(ph->getName().data());
-      staticPHTypes.emplace_back(newType->toString());
+      staticPHTypes.emplace_back(type.toString());
     }
   }
   size_t outputIdx = 0;

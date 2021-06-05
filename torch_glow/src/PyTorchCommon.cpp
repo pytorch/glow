@@ -769,7 +769,9 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
 
   modelPreprocessing(model, method_name);
 
-  if (FLAGS_inferShapeForCompilation) {
+  // In Glow AOT serialization (i.e., settings.saveGlowIRIntoONNX = true), we
+  // always enable inferShapeForCompilation
+  if (FLAGS_inferShapeForCompilation || settings.saveGlowIRIntoONNX) {
     return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
                                            method_name, batchShapes);
   }
