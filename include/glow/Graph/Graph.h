@@ -2135,9 +2135,10 @@ public:
   /// - DetectionBoxes - the chosen boxes (float)
   /// - DetectionClasses - the classes of the chosen boxes (int32)
   /// - DetectionScores - the scores of the chosen boxes (float)
-  /// - NumDetections - number of chose boxes (int32)
-  /// The first three output tensors will be created using the maximum
-  /// number of possible detections.
+  /// - NumDetections - number of chosen (detected) boxes (int32)
+  /// The first three output tensors will be allocated using the maximum
+  /// number of possible detections (worst case scenario) but the actual
+  /// usage will be given by the 'NumDetections' output.
   TFLiteDetectionPostProcessNode *createTFLiteDetectionPostProcess(
       llvm::StringRef name, NodeValue boxes, NodeValue scores,
       NodeValue anchors, int32_t numClasses, int32_t maxDetections,
