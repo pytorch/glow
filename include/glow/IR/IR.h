@@ -363,12 +363,6 @@ public:
   /// It allows Backend \p B to custom translate from a Node to Instruction IR.
   void generateIR(const Backend &B);
 
-#if FACEBOOK_INTERNAL
-  /// Generate IR from the FX graph nodes.
-  /// It allows Backend \p B to custom translate from a Node to Instruction IR.
-  void generateIRFX(const Backend &B) {}
-#endif
-
   /// Wipe out the content of the function. This allows the function to be used
   /// again for another round of code generation.
   void clear();
