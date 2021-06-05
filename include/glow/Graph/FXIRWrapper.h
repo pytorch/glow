@@ -36,6 +36,18 @@ public:
               Module *glowModule, llvm::StringRef name = {})
       : IRContainer(name), constants_(constants), parent_(glowModule) {
     fx_mod_ = &(FXIR["modules"][submod]);
+    // Create mapping from getattrs to the underlying name of the constants they
+    // alias.
+    for (const auto &node : fx_mod_->at("nodes")) {
+      const auto &opCode = node["op_code"].getString();
+      if (opCode == "get_attr") {
+        const auto &nodeName = node["name"].getString();
+        bool inserted =
+            getattrs_.try_emplace(nodeName, node["target"].getString()).second;
+        CHECK(inserted) << "Already mapped a getattr by name " << nodeName
+                        << " to its underlying Constant";
+      }
+    }
   }
 
   ~FXIRWrapper() = default;
@@ -48,6 +60,12 @@ public:
 
   static bool classof(const FXIRWrapper *F) { return true; }
 
+  /// \returns the name of input \p node. Fatals if \p node is not
+  /// specified as is_node. If \p optional then \returns an empty string if \p
+  /// node is null.
+  const std::string &getInputNodeName(const folly::dynamic &node,
+                                      bool optional = false) const;
+
   /// \returns the underlying name of a Constant given provided \p name. If \p
   /// name is already the name of a Constant it is returned, else looks for
   /// getattr aliases to return the name of the actual underlying Constant.
@@ -59,6 +77,9 @@ public:
   /// Constant.
   const void *getConstant(llvm::StringRef name);
 
+  /// \returns true if a constant with given \p name exists.
+  bool constantExists(llvm::StringRef name) const;
+
   /// \returns the weights of the graph.
   const FXWeight &getWeight();
 
@@ -68,6 +89,9 @@ public:
   /// \returns parent module that owns this graph.
   Module *getParent() override { return parent_; }
   const Module *getParent() const override { return parent_; }
+
+  /// \returns fx module.
+  const FXModule &getFXModule() { return *fx_mod_; }
 };
 
 } // namespace glow
