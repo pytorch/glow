@@ -1143,37 +1143,122 @@ bool SinkReshapes::run(Function *F, const CompilationContext &cctx) {
     auto *node = &N;
 
     // Sink Reshape below eltwise nodes.
-    if (!node->isDataParallel() || node->hasSideEffects()) {
-      continue;
+    if (node->isDataParallel() && !node->hasSideEffects()) {
+      // Unary eltwise nodes.
+      if (node->getNumInputs() == 1 && node->getNumResults() == 1) {
+        DCHECK(node->getNthResult(0).getType()->isFusedQuantizedType() ||
+               node->getNthInput(0).getType()->isFusedQuantizedType() ||
+               node->getNthResult(0).dims().equals(node->getNthInput(0).dims()))
+            << "SinkReshapes: not an element-wise node: " << node->toString();
+
+        auto *RS = dyn_cast<ReshapeNode>(node->getNthInput(0));
+        if (!RS) {
+          continue;
+        }
+
+        // Create new eltwise node.
+        auto in = RS->getInput();
+        auto out = node->getNthResult(0);
+        auto newTy =
+            F->getParent()->uniqueTypeWithNewShape(out.getType(), in.dims());
+        auto *newN = F->addNode(node->clone());
+        newN->setNthInput(0, in);
+        newN->setTypeUnsafe(0, newTy);
+        newN->setPredicate(node->getPredicate());
+
+        // Create new Reshape.
+        auto *newRS = F->createReshape(RS->getName(), newN,
+                                       RS->getResult().getType()->dims());
+        newRS->setPredicate(node->getPredicate());
+        out.replaceAllUsesOfWith(newRS->getResult());
+
+        changed = true;
+      }
+
+      // Binary eltwise nodes.
+      if (node->getNumInputs() == 2 && node->getNumResults() == 1) {
+        DCHECK(node->getNthResult(0).getType()->isFusedQuantizedType() ||
+               node->getNthInput(0).getType()->isFusedQuantizedType() ||
+               node->getNthResult(0).dims().equals(node->getNthInput(0).dims()))
+            << "SinkReshapes: not an element-wise node: " << node->toString();
+        DCHECK(node->getNthResult(0).getType()->isFusedQuantizedType() ||
+               node->getNthInput(1).getType()->isFusedQuantizedType() ||
+               node->getNthResult(0).dims().equals(node->getNthInput(1).dims()))
+            << "SinkReshapes: not an element-wise node: " << node->toString();
+
+        // At least one of the inputs must be a Reshape.
+        // If both inputs are Reshapes, they must have the same dimensions.
+        auto *LRN = dyn_cast<ReshapeNode>(node->getNthInput(0));
+        auto *RRN = dyn_cast<ReshapeNode>(node->getNthInput(1));
+        if (!LRN && !RRN) {
+          continue;
+        }
+        if (LRN && RRN &&
+            !LRN->getResult().dims().equals(RRN->getResult().dims())) {
+          continue;
+        }
+
+        // Canonicalize node to simplify transformation implementation (make LHS
+        // always be the input with a Reshape).
+        bool swap = (LRN == nullptr);
+        auto nv = node->getNthInput(1);
+        if (swap) {
+          nv = node->getNthInput(0);
+          LRN = RRN;
+          RRN = nullptr;
+        }
+
+        // RHS must be either a Reshape or a Constant (+ Quantize) or Splat.
+        auto *RQ = dyn_cast<QuantizeNode>(nv);
+        auto *RC = dyn_cast<Constant>(RQ ? RQ->getInput() : nv);
+        auto *RS = dyn_cast<SplatNode>(nv);
+        if (!RRN && !RC && !RS) {
+          continue;
+        }
+
+        // Create new Constant, Quantize or Splat, if needed.
+        NodeValue rhs;
+        if (RRN) {
+          rhs = RRN->getInput();
+        }
+        if (RC) {
+          auto ty = F->getParent()->uniqueTypeWithNewShape(
+              RC->getType(), LRN->getInput().dims());
+          auto *newC = F->getParent()->createConstant(ty, RC->getName());
+          newC->getPayloadMutable().copyRawFrom(&RC->getPayload());
+          rhs = newC->getOutput();
+        }
+        if (RQ) {
+          auto ty = F->getParent()->uniqueTypeWithNewShape(
+              RQ->getResult().getType(), LRN->getInput().dims());
+          rhs = F->createQuantize(RQ->getName(), rhs, ty);
+        }
+        if (RS) {
+          auto ty = F->getParent()->uniqueTypeWithNewShape(
+              RS->getResult().getType(), LRN->getInput().dims());
+          rhs = F->createSplat(RS->getName(), ty, RS->getValue());
+        }
+
+        // Create new eltwise node.
+        auto lhs = LRN->getInput();
+        auto out = node->getNthResult(0);
+        auto newTy =
+            F->getParent()->uniqueTypeWithNewShape(out.getType(), lhs.dims());
+        auto *newN = F->addNode(node->clone());
+        newN->setNthInput(0, swap ? rhs : lhs);
+        newN->setNthInput(1, swap ? lhs : rhs);
+        newN->setTypeUnsafe(0, newTy);
+        newN->setPredicate(node->getPredicate());
+
+        // Create new Reshape.
+        auto *newRN = F->createReshape(LRN->getName(), newN,
+                                       LRN->getResult().getType()->dims());
+        newRN->setPredicate(node->getPredicate());
+        out.replaceAllUsesOfWith(newRN->getResult());
+
+        changed = true;
+      }
     }
-
-    // Unary eltwise nodes.
-    if (node->getNumInputs() != 1 || node->getNumResults() != 1) {
-      continue;
-    }
-
-    auto *RS = dyn_cast<ReshapeNode>(node->getNthInput(0));
-    if (!RS) {
-      continue;
-    }
-
-    // Create new eltwise node.
-    auto in = RS->getInput();
-    auto out = node->getNthResult(0);
-    auto newTy =
-        F->getParent()->uniqueTypeWithNewShape(out.getType(), in.dims());
-    auto *newN = F->addNode(node->clone());
-    newN->setNthInput(0, in);
-    newN->setTypeUnsafe(0, newTy);
-    newN->setPredicate(node->getPredicate());
-
-    // Create new Reshape.
-    auto *newRS = F->createReshape(RS->getName(), newN,
-                                   RS->getResult().getType()->dims());
-    newRS->setPredicate(node->getPredicate());
-    out.replaceAllUsesOfWith(newRS->getResult());
-
-    changed = true;
   }
   return changed;
 }

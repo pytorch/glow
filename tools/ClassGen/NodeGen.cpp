@@ -673,7 +673,6 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs element-wise exponential to the Input.");
-  // clang-format on
 
   BB.newNode("Logit")
       .addInput("Input")
@@ -685,8 +684,8 @@ int main(int argc, char **argv) {
   BB.newNode("NonZero")
       .addInput("Cond")
       .addResultFromCtorArg()
-      .dataParallel()
       .setDocstring("Selects indices of the true elements in Cond");
+  // clang-format on
 
   BB.newNode("Select")
       .addInput("Cond")
@@ -1432,7 +1431,6 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Mapping")
       .addResultFromCtorArg()
-      .dataParallel()
       .setDocstring("Simple mapping between quantized numbers."
                     "This can be used as quantized sigmoid or tanh functions.");
 
