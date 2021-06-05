@@ -190,6 +190,14 @@ void initializeCompilationContextFromSettings(
     LOG(INFO) << "Skipping all layout verifying";
   }
 
+  // If we want to enable serialize, we have to not free compiled stream in
+  // provisoner.
+  if (settings.enableSerialize) {
+    glow::flags::DisableFreeCompilationResource = true;
+    LOG(INFO)
+        << "Free compilation resource after compiling on backend is disabled";
+  }
+
   if (settings.dumpFinalGlowGraph) {
     cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
   }
@@ -401,6 +409,12 @@ void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
     mergedTraceContext_->dump(filename);
     mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
   }
+}
+
+std::unique_ptr<
+    std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+CachingGraphRunner::getAllSerializedFunctionsMap() {
+  return hostManager_->getAllSerializedFunctions();
 }
 
 Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
@@ -1203,7 +1217,10 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 Error CachingGraphRunner::warmCache(
     const std::vector<InputMetaStack> &metaStacks,
     const PyTorchLoaderSettings &settings,
-    runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation) {
+    runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation,
+    bool useDeserialize,
+    std::shared_ptr<std::unordered_map<std::string, std::vector<char>>>
+        nameToFunctions) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -1256,8 +1273,21 @@ Error CachingGraphRunner::warmCache(
       // names should be unique so this is included in the name.
       auto info = std::make_shared<PerGlowGraphInfo>(
           strFormat("pt_function_%lu_%lu", size_t(this), hash), settings);
+      std::string functionNameHash = strFormat("%lu", hash);
 
       Function *f = glowModule->createFunction(info->functionName);
+
+      // If this function has already been compiled, the compiled stream is
+      // already stored in nameToFunction, and deserialize is enabled, we use
+      // the compiled stream instead of compiling it again.
+      if (useDeserialize &&
+          nameToFunctions->find(functionNameHash) != nameToFunctions->end()) {
+        cctx.nameToFunctions.emplace(std::make_pair(
+            info->functionName,
+            std::make_shared<std::vector<char>>(
+                nameToFunctions->find(functionNameHash)->second)));
+        cctx.backendOpts.useDeserialize = true;
+      }
 
       {
         TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,

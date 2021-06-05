@@ -86,6 +86,7 @@ DEFINE_bool(setIncludeLastOffsets, true, "See PyTorchLoaderSettings");
 DEFINE_bool(inferShapeForCompilation, false,
             "Infer shape for the entire model for compilation");
 DEFINE_bool(enableRemoveMutation, true, "See PyTorchLoaderSettings");
+DEFINE_bool(enableDeserialize, false, "See PyTorchLoaderSettings");
 DEFINE_string(backendSpecificOpts, "",
               "Comma separated list of key=value for building the "
               "BackendSpecificOptions map in BackendOptions in "
@@ -360,6 +361,7 @@ void PyTorchLoaderSettings::initSettings() {
   fusionStartIndex = FLAGS_fusionStartIndex;
   fusionEndIndex = FLAGS_fusionEndIndex;
   setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
+  enableDeserialize = FLAGS_enableDeserialize;
   enableRemoveMutation = FLAGS_enableRemoveMutation;
   debugContinuouslyVerifyDuringModelLoading =
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
@@ -434,6 +436,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(maxFusionMergeSize, s);
   INSERT_VALUE_TO_STREAM(fusionStartIndex, s);
   INSERT_BOOL_TO_STREAM(enableRemoveMutation, s);
+  INSERT_BOOL_TO_STREAM(enableDeserialize, s);
   INSERT_VALUE_TO_STREAM(fusionEndIndex, s);
   INSERT_BOOL_TO_STREAM(dumpFinalGlowGraph, s);
   INSERT_BOOL_TO_STREAM(enableGlowTracing, s);

@@ -332,8 +332,30 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("enable_accept_all_layout", []() {
     getGlobalPyTorchLoaderSettingsMutable().disableLayoutVerifying = true;
   });
+
   m.def("disable_accept_all_layout", []() {
     getGlobalPyTorchLoaderSettingsMutable().disableLayoutVerifying = false;
+  });
+
+  /// Enable dumping serialized model of backend to skip compilation for running
+  /// in the future.
+  m.def("enable_dump_serialized_model", []() {
+    getGlobalPyTorchLoaderSettingsMutable().enableSerialize = true;
+  });
+
+  /// Disable dumping serialized model of backend.
+  m.def("disable_dump_serialized_model", []() {
+    getGlobalPyTorchLoaderSettingsMutable().enableSerialize = false;
+  });
+
+  /// Enable deserialize compiled functions from model tensor.
+  m.def("enable_deserialize", []() {
+    getGlobalPyTorchLoaderSettingsMutable().enableDeserialize = true;
+  });
+
+  /// Disable deserialize compiled functions from model tensor.
+  m.def("disable_deserialize", []() {
+    getGlobalPyTorchLoaderSettingsMutable().enableDeserialize = false;
   });
 
   /// Set the active HostManager to one that owns 1 of type \p backendName.

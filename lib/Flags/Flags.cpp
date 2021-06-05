@@ -51,6 +51,7 @@ std::string BackendSpecificOpts = "";
 bool EnableLoadBalancedPartitioning = true;
 bool SkipProvisioning = false;
 bool DisableLayoutVerifying = false;
+bool DisableFreeCompilationResource = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;

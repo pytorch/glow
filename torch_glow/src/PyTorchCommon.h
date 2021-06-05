@@ -116,6 +116,12 @@ public:
   /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
   bool enableRemoveMutation = true;
 
+  /// Enable the dumping of compiled serialized model for backend.
+  bool enableSerialize = false;
+
+  /// Enable the extracting already serialized model to backend.
+  bool enableDeserialize = false;
+
   /// Disable all tensor layout verifying for all nodes.
   bool disableLayoutVerifying = true;
 
