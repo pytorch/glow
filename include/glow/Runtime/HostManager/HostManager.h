@@ -229,6 +229,12 @@ public:
   /// Update the list of available devices.
   void setAvailableDevices(const std::vector<DeviceIDTy> &devices);
 
+  /// Returns a string map containing the name and block-stream for all
+  /// serialized functions.
+  std::unique_ptr<
+      std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+  getAllSerializedFunctions();
+
   /// For a given \p network returns all partitions of that network and the
   /// devices each partition is assigned to.
   std::unordered_map<std::string, std::vector<DeviceIDTy>>

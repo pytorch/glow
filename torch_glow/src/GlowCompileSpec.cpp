@@ -100,6 +100,10 @@ void registerPyTorchGlowCustomClasses() {
   ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
                        CompilationSpecSettings, enable_fuser);
   ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, enable_serialize);
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, enable_deserialize);
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
                        CompilationSpecSettings, use_dag_optimizer);
   ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
                        CompilationSpecSettings, apl_parallelization_alg);

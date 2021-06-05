@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_COMPILEDFUNCTION_H
 
 #include "glow/Backend/BackendUtils.h"
+#include "glow/Backend/BlockStreamBase.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Support/Error.h"
@@ -71,6 +72,21 @@ public:
   /// Dumps a JSON representation of the result of compilation to the specified
   /// path \p fname.
   void dumpJSON(llvm::StringRef fname) const;
+
+  /// Return the ptr of serialized string of this compiled function.
+  /// Serialization is dependent on the backend.
+  /// If backend does not support serialization, return null.
+  /// Specifically, serialize() will take the ownership of BlockStream, as
+  /// unique_ptr is used.
+  virtual std::unique_ptr<BlockStreamBase> serialize() { return nullptr; }
+
+  /// Overwrite this compiled function through input \p serializedData.
+  /// Deserialization is dependent on the backend.
+  /// Return true if backend support deserialization, and deserialization is
+  /// successed.
+  virtual Error deserialize(const std::vector<char> &serializedData) {
+    return Error::success();
+  }
 
 protected:
   /// Contains symbol offsets and allocation sizes.

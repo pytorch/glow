@@ -17,6 +17,7 @@
 #define GLOW_RUNTIME_PROVISIONER_H
 
 #include "glow/Backend/Backend.h"
+#include "glow/Backend/BlockStreamBase.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/Error.h"
@@ -164,6 +165,16 @@ public:
     deviceMappings_ = mappings;
   }
 
+  // Extract function streams from functions_ to serializedFunctionMap_,
+  // and return a ptr of serializedFunctionMap_.
+  // Each time this function called, serializedFunctionMap_ will be regenerated.
+  std::unique_ptr<
+      std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+  getAllSerializedFunctionsMap();
+
+  // Clean up all stored serializedFunctionMap_.
+  void cleanUpSerializedFunctionMap();
+
 private:
   /// Map of backends for all devices, one backend per device type.
   std::unordered_map<std::string, std::unique_ptr<Backend>> backends_;
@@ -171,6 +182,12 @@ private:
   /// Map of compiledFunction unique pointers. This maintains
   /// ownership of the functions.
   std::unordered_map<std::string, std::unique_ptr<CompiledFunction>> functions_;
+
+  /// Map of serialized function pointers, storing all serialized functions on
+  /// backends.
+  /// Only used in serialization.
+  std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>
+      serializedFunctionMap_;
 
   /// Set of active functions - these are functions that are currently being
   /// compiled/added to devices.
