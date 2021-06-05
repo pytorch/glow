@@ -997,55 +997,6 @@ protected:
     return Error::success();
   }
 
-  Error loadTopK(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    RETURN_ERR_IF_NOT(
-        op.input_size() <= 2,
-        opErrMsg(
-            op,
-            strFormat(
-                "TopK: Maximum number of inputs is 2, but found input size %d ",
-                op.input_size())));
-    unsigned_t k = 0;
-    if (op.input_size() > 1) {
-      Constant *kConst = getConstantByNameOrNull(op.input(1));
-      RETURN_ERR_IF_NOT(
-          kConst,
-          opErrMsg(op, "TopK: Non-constant k is not supported by Glow."));
-      RETURN_ERR_IF_NOT(
-          kConst->getElementType() == ElemKind::Int64ITy,
-          opErrMsg(op, strFormat(
-                           "TopK: k input must be of type Int64, but found "
-                           "input type '%s' ",
-                           kConst->getType()->getElementName().str().c_str())));
-      auto constH = kConst->getPayload().getHandle<int64_t>();
-      k = constH.at({0});
-    } else {
-      ASSIGN_VALUE_OR_RETURN_ERR(k, loadInt(dict["k"]));
-    }
-
-    int lastDim = in.dims().size() - 1;
-    int axis = lastDim;
-    if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis,
-                                 loadAxis<int>(dict["axis"], in.dims().size()));
-    }
-
-    RETURN_ERR_IF_NOT(
-        axis == lastDim,
-        opErrMsg(
-            op,
-            strFormat(
-                "TopK: Currently only support axis %d being last dimension %d ",
-                axis, lastDim)));
-
-    auto *R = G_->createTopK(opName, in, k);
-    RETURN_IF_ERR(addNodeAsOutput(op, R));
-    return Error::success();
-  }
-
   Error loadReduceOp(llvm::StringRef typeName, const OpType &op,
                      ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
@@ -1622,10 +1573,6 @@ protected:
     }
     if (typeName == "Identity" || typeName == "Alias") {
       RETURN_IF_ERR(loadIdentity(op, dict));
-      return true;
-    }
-    if (typeName == "TopK") {
-      RETURN_IF_ERR(loadTopK(op, dict));
       return true;
     }
     if (typeName == "ReduceMean" || typeName == "ReduceSum" ||

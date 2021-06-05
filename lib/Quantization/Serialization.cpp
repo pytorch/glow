@@ -175,6 +175,12 @@ bool deserializeProfilingInfosFromYaml(
   // Read profiling info.
   yin >> profilingInfos;
   CHECK(!yin.error()) << profileErrMsg;
+
+  for (const auto &PI : profilingInfos) {
+    CHECK_LE(PI.min(), PI.max())
+        << "Bad profile for node " << PI.nodeOutputName_.c_str();
+  }
+
   return true;
 }
 

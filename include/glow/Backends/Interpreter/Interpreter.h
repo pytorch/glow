@@ -21,6 +21,9 @@
 
 #include "glow/Backend/Backend.h"
 
+#include <numeric>
+#include <vector>
+
 namespace glow {
 
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
@@ -41,6 +44,11 @@ public:
   }
   static std::string getName() { return "Interpreter"; }
   static unsigned numDevices() { return std::thread::hardware_concurrency(); }
+  static std::vector<unsigned> scanDeviceIDs() {
+    std::vector<unsigned> deviceIDs(Interpreter::numDevices());
+    std::iota(std::begin(deviceIDs), std::end(deviceIDs), 0);
+    return deviceIDs;
+  }
 
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;

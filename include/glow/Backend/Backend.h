@@ -75,23 +75,7 @@ public:
   /// support shared constants between functions.
   virtual Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
   compileFunctions(std::vector<Function *> &functions,
-                   llvm::StringMap<BackendOptions> &optsMap) const {
-    llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions;
-    for (auto &function : functions) {
-      auto functionName = function->getName();
-      RETURN_ERR_IF_NOT(optsMap.count(functionName),
-                        "Can't find corresponding option for compiling");
-      auto backendOpts = optsMap.find(functionName)->second;
-
-      if (auto resOrErr = compile(function, backendOpts)) {
-        compiledFunctions.insert({functionName, std::move(*resOrErr)});
-      } else {
-        RETURN_ERR(resOrErr.takeError());
-      }
-    }
-    return Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>(
-        std::move(compiledFunctions));
-  }
+                   llvm::StringMap<BackendOptions> &optsMap) const;
 
   virtual Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F) const {
@@ -328,6 +312,9 @@ public:
     unsigned numDevices() const override {                                     \
       return BackendClass::numDevices();                                       \
     }                                                                          \
+    std::vector<unsigned> scanDeviceIDs() const override {                     \
+      return BackendClass::scanDeviceIDs();                                    \
+    }                                                                          \
   };                                                                           \
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
@@ -346,6 +333,9 @@ public:
     }                                                                          \
     unsigned numDevices() const override {                                     \
       return BackendClass::numDevices();                                       \
+    }                                                                          \
+    std::vector<unsigned> scanDeviceIDs() const override {                     \
+      return BackendClass::scanDeviceIDs();                                    \
     }                                                                          \
                                                                                \
   private:                                                                     \

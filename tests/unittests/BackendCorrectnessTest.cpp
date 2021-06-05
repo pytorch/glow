@@ -322,7 +322,7 @@ TEST_P(BackendCorrectnessTest, MaxPoolGradTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(BackendCorrectnessTest, intLookupTable) {
+TEST_P(BackendCorrectnessTest, intLookupTableInt8) {
   CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   constexpr dim_t inputSize = 100;
@@ -336,8 +336,28 @@ TEST_P(BackendCorrectnessTest, intLookupTable) {
     initValues[i] = i - 128;
   }
 
-  inferIntLookupTableNet(&inputs, &out1, initValues, backendName_);
-  inferIntLookupTableNet(&inputs, &out2, initValues, "Interpreter");
+  inferIntLookupTableNetInt8(&inputs, &out1, initValues, backendName_);
+  inferIntLookupTableNetInt8(&inputs, &out2, initValues, "Interpreter");
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
+TEST_P(BackendCorrectnessTest, intLookupTableInt16) {
+  CHECK_IF_ENABLED();
+  PseudoRNG PRNG;
+  constexpr dim_t inputSize = 100;
+  Tensor inputs(ElemKind::Int16QTy, {inputSize}, 0.8, 4);
+  inputs.getHandle<int16_t>().randomize(-32768, 32767, PRNG);
+  Tensor out1, out2;
+
+  // Mapping i -> i.
+  std::vector<int16_t> initValues(65536);
+  for (dim_t i = 0; i < 65536; ++i) {
+    initValues[i] = i - 32768;
+  }
+
+  inferIntLookupTableNetInt16(&inputs, &out1, initValues, backendName_);
+  inferIntLookupTableNetInt16(&inputs, &out2, initValues, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }

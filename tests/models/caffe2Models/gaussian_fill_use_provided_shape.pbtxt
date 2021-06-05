@@ -1,0 +1,22 @@
+name: "gaussian_fill_use_provided_shape"
+op {
+  output: "result"
+  name: ""
+  type: "GaussianFill"
+  arg {
+    name: "mean"
+    f: 0.0
+  }
+  arg {
+    name: "std"
+    f: 1.0
+  }
+  arg {
+    name: "shape"
+    ints: 4
+    ints: 5
+    ints: 6
+    ints: 7
+  }
+}
+external_output: "result"

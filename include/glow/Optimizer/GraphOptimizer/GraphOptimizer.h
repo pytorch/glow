@@ -140,7 +140,19 @@ bool executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 
 /// Represents what kind of parallelization transformation should be performed
 /// by \ref parallelizeOps().
-enum class ParallelTransformKind { None, Data, Model };
+/// \p Data indicates splitting along batch axis (dim = 0)
+/// \p Model indicates splitting along dim = 1
+/// \p Model[n] where \p n is in \p [1-5] indicates splitting along dim = \p n
+enum class ParallelTransformKind {
+  None,
+  Data,
+  Model,
+  Model_Axis1,
+  Model_Axis2,
+  Model_Axis3,
+  Model_Axis4,
+  Model_Axis5
+};
 
 /// A specialized ScopeGuard which prevents constant modification from occuring
 /// by swappiing in temporary Placeholders in place of Constants during the

@@ -80,7 +80,7 @@ class TestQuantizedMul(utils.TorchGlowTestCase):
                 ["aten::quantize_per_tensor", "aten::dequantize"],
             ),
             lambda: (
-                "broadcast",
+                "broadcast_rhs",
                 SimpleQuantizedMulModel(
                     torch.nn.quantized.Quantize(
                         scale=0.2, zero_point=1, dtype=torch.quint8
@@ -93,6 +93,54 @@ class TestQuantizedMul(utils.TorchGlowTestCase):
                 ),
                 torch.randn([1, 5, 6, 6]),
                 torch.randn([1, 5, 1, 1]),
+                ["aten::quantize_per_tensor", "aten::dequantize"],
+            ),
+            lambda: (
+                "broadcast_lhs",
+                SimpleQuantizedMulModel(
+                    torch.nn.quantized.Quantize(
+                        scale=0.2, zero_point=1, dtype=torch.quint8
+                    ),
+                    torch.nn.quantized.Quantize(
+                        scale=0.2, zero_point=1, dtype=torch.quint8
+                    ),
+                    0.2,
+                    3,
+                ),
+                torch.randn([1, 5, 1, 1]),
+                torch.randn([1, 5, 6, 6]),
+                ["aten::quantize_per_tensor", "aten::dequantize"],
+            ),
+            lambda: (
+                "broadcast_with_implicit_degenerate_dimension",
+                SimpleQuantizedMulModel(
+                    torch.nn.quantized.Quantize(
+                        scale=0.2, zero_point=1, dtype=torch.quint8
+                    ),
+                    torch.nn.quantized.Quantize(
+                        scale=0.2, zero_point=1, dtype=torch.quint8
+                    ),
+                    0.2,
+                    3,
+                ),
+                torch.randn([1, 3, 1, 1]),
+                torch.randn([3, 4, 4]),
+                ["aten::quantize_per_tensor", "aten::dequantize"],
+            ),
+            lambda: (
+                "broadcast_outer",
+                SimpleQuantizedMulModel(
+                    torch.nn.quantized.Quantize(
+                        scale=0.2, zero_point=1, dtype=torch.quint8
+                    ),
+                    torch.nn.quantized.Quantize(
+                        scale=0.2, zero_point=1, dtype=torch.quint8
+                    ),
+                    0.2,
+                    3,
+                ),
+                torch.randn([1, 5]),
+                torch.randn([6, 1]),
                 ["aten::quantize_per_tensor", "aten::dequantize"],
             ),
             lambda: (

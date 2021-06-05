@@ -42,6 +42,8 @@
 DEFINE_string(torch_glow_backend, "Interpreter",
               "Glow backend used for torchifi");
 DEFINE_int32(torch_glow_num_devices, -1, "Number of devices for Glow backend");
+DEFINE_bool(torch_glow_scan_devices, false,
+            "Control if scanning available devices in torch glow backend");
 
 DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
 
@@ -136,18 +138,28 @@ getHostManager(const PyTorchLoaderSettings &settings) {
              "Backend but with a different number of devices";
     }
   } else {
-    // If number of devices isn't specified then just use 1 device.
     std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
-    for (int32_t i = 0, e = settings.numDevices < 0 ? 1 : settings.numDevices;
-         i < e; i++) {
-      auto config =
-          std::make_unique<runtime::DeviceConfig>(settings.backendName);
-      config->deviceID = i;
-      deviceConfigs.push_back(std::move(config));
+    // If scan devices flag is set, we should scan devices that's available
+    if (settings.scanDevices) {
+      deviceConfigs = runtime::DeviceManager::generateDeviceConfigs(
+          settings.backendName, true /*scanDevices*/);
+    } else {
+      // If number of devices isn't specified then just use 1 device.
+      for (int32_t i = 0, e = settings.numDevices < 0 ? 1 : settings.numDevices;
+           i < e; i++) {
+        auto config =
+            std::make_unique<runtime::DeviceConfig>(settings.backendName);
+        config->deviceID = i;
+        deviceConfigs.push_back(std::move(config));
+      }
     }
 
     glow::runtime::HostConfig hostConfig;
     hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
+
+    // Pass these hostmanager flags
+    hostConfig.maxQueueSize = glow::flags::MaxQueueSize;
+    hostConfig.executorThreads = glow::flags::ExecutorThreads;
 
     hostManager = std::make_shared<runtime::HostManager>(
         std::move(deviceConfigs), hostConfig);
@@ -192,6 +204,7 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
     return at::kBool;
   case ElemKind::Int8QTy:
     return at::kQInt8;
+  case ElemKind::Float64Ty:
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
   case ElemKind::UInt4FusedFP16QTy:
@@ -300,6 +313,7 @@ void PyTorchLoaderSettings::initSettings() {
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
   numDevices = FLAGS_torch_glow_num_devices;
+  scanDevices = FLAGS_torch_glow_scan_devices;
   runShapeInference = FLAGS_runShapeInference;
   fusionStartIndex = FLAGS_fusionStartIndex;
   fusionEndIndex = FLAGS_fusionEndIndex;
@@ -309,6 +323,10 @@ void PyTorchLoaderSettings::initSettings() {
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
   nominalBatchIdx = FLAGS_nominalBatchIdx;
   lazyCompile = FLAGS_lazyCompile;
+  use_dag_optimizer = glow::flags::UseDAGOptimizer;
+  apl_parallelization_alg =
+      glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
+  apl_num_parallel_chunks = glow::flags::DAGOptimizerNumParallelChunks;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -367,6 +385,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(writeWithoutRandomize, s);
   INSERT_VALUE_TO_STREAM(backendName, s);
   INSERT_VALUE_TO_STREAM(numDevices, s);
+  INSERT_BOOL_TO_STREAM(scanDevices, s);
   INSERT_BOOL_TO_STREAM(runShapeInference, s);
   INSERT_BOOL_TO_STREAM(setIncludeLastOffsets, s);
   INSERT_BOOL_TO_STREAM(enableDebugFuser, s);
@@ -519,7 +538,23 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
     }
     auto glowType =
         ptTypeToGlowType(*c10::TensorType::create(ptTensor), scale, offset);
-    return glow::Tensor(ptTensor.data_ptr(), &glowType);
+    glow::Tensor glowTensor(ptTensor.data_ptr(), &glowType);
+
+    // If tensor is of UInt8QTy kind, convert it to Int8QTy.
+    if (glowTensor.getElementType() == ElemKind::UInt8QTy) {
+      auto handle = glowTensor.getHandle<uint8_t>();
+      glow::Tensor newTensor(glow::ElemKind::Int8QTy, glowTensor.dims(),
+                             glowTensor.getType().getScale(),
+                             glowTensor.getType().getOffset() -
+                                 UINT8_TO_INT8_SHIFT);
+      auto newHandle = newTensor.getHandle<int8_t>();
+      for (size_t i = 0; i < handle.size(); i++) {
+        newHandle.raw(i) =
+            static_cast<int8_t>((int32_t)handle.raw(i) - UINT8_TO_INT8_SHIFT);
+      }
+      return newTensor;
+    }
+    return glowTensor;
   } else if (ptTensor.scalar_type() == at::kDouble) {
     at::Tensor atTensor = ptTensor.to(at::kFloat);
     auto glowType = ptTypeToGlowType(*c10::TensorType::create(atTensor));
@@ -538,6 +573,7 @@ void modelPreprocessing(torch::jit::Module &model,
 
   torch::jit::CanonicalizeOps(graph);
   detail::rewriteQuantizedLinear(graph);
+
   model = torch::jit::freeze_module(model);
 }
 
@@ -545,11 +581,11 @@ void modelPreprocessing(torch::jit::Module &model,
 // runners. We'd still need both since in some cases we may not be able to infer
 // the entire model and would leverage glowAOTFusion() to run the partially
 // lowered model.
-void glowAOTFusionWithShapeInference(torch::jit::Module &model,
-                                     const InputMetaStack &metaStack,
-                                     runtime::DeferredWeightLoader *loader,
-                                     const PyTorchLoaderSettings &settings,
-                                     const std::string method_name) {
+void glowAOTFusionWithShapeInference(
+    torch::jit::Module &model, const InputMetaStack &metaStack,
+    runtime::DeferredWeightLoader *loader,
+    const PyTorchLoaderSettings &settings, const std::string method_name,
+    const std::unordered_map<int, std::string> &batchShapes) {
   auto graph = model.get_method(method_name).function().graph();
 
   // create some fake inputs to run shape inference.
@@ -575,7 +611,7 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
   // There could be multiple glow fusion nodes created.
   glow::glowCustomFuse(graph, settings);
 
-  ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol);
+  ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
   auto e = shapeInf.run();
   if (e) {
     LOG(ERROR) << ERR_TO_STRING(std::move(e));
@@ -583,9 +619,16 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
 
   const auto &shapeMap = shapeInf.getVariableMap();
 
+  BatchShapesMapType batchShapesMap;
+  if (batchShapes.size() > 0) {
+    batchShapesMap =
+        parseBatchShapeMapFromInputMeta(graph, batchShapes, baseSymbol);
+    LOG(INFO) << "Finish populating batch shape map with batch size: "
+              << batchShapes.size();
+  }
+
   // this is a fuser subgraph to lower
   std::shared_ptr<torch::jit::Graph> subgraph;
-
   // Create one cachingGraphRunner for each fused graph.
   for (auto *node : graph->nodes()) {
     std::string kind = node->kind().toQualString();
@@ -634,6 +677,23 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
         // error only.
         LOG(ERROR) << ERR_TO_STRING(std::move(e));
       }
+
+      if (batchShapesMap.size() > 0) {
+        auto graphOutputValues = subgraph->outputs();
+        e = runner->warmupGraphOutputShapeMap(graphOutputValues,
+                                              batchShapesMap);
+        if (e) {
+          LOG(ERROR) << ERR_TO_STRING(std::move(e));
+        } else {
+          LOG(INFO) << "Finish warming up shape map: " << batchShapesMap.size();
+        }
+        e = runner->setNominalInputIndex(graphInputValues, batchShapesMap);
+        if (e) {
+          LOG(ERROR) << ERR_TO_STRING(std::move(e));
+        } else {
+          LOG(INFO) << "Finish Setting up the nomialInputIndex";
+        }
+      }
     }
   }
   if (!subgraph) {
@@ -645,14 +705,15 @@ void glowAOTFusionWithShapeInference(torch::jit::Module &model,
 void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    runtime::DeferredWeightLoader *loader,
                    const PyTorchLoaderSettings &settings,
-                   const std::string method_name) {
+                   const std::string method_name,
+                   const std::unordered_map<int, std::string> &batchShapes) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   modelPreprocessing(model, method_name);
 
   if (FLAGS_inferShapeForCompilation) {
     return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
-                                           method_name);
+                                           method_name, batchShapes);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
@@ -716,6 +777,27 @@ Expected<std::string> getTempFileLoc(const std::string &name,
   RETURN_ERR_IF_NOT(tempFileRes.value() == 0,
                     "Failed to create temp file to write into.");
   return std::string(path.c_str());
+}
+
+BatchShapesMapType parseBatchShapeMapFromInputMeta(
+    const std::shared_ptr<struct torch::jit::Graph> &graph,
+    const std::unordered_map<int, std::string> &batchShapes,
+    const std::string &baseSymbol) {
+  BatchShapesMapType batchShapesMap;
+  for (auto &it : batchShapes) {
+    InputMetaStack inputMetaStack = glow::loadInputMeta(it.second);
+    std::vector<torch::jit::IValue> inputs;
+    for (const auto &i : inputMetaStack.inputMetas) {
+      inputs.emplace_back(
+          torch::empty(i.dims, torch::TensorOptions().dtype(i.type)));
+    }
+    const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
+    ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
+    auto e = shapeInf.run();
+    const auto &shapeMap = shapeInf.getVariableMap();
+    batchShapesMap[it.first] = shapeMap;
+  }
+  return batchShapesMap;
 }
 
 } // namespace glow

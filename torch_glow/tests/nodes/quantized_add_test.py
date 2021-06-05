@@ -72,6 +72,30 @@ class TestQuantizedAdd(utils.TorchGlowTestCase):
             skip_to_glow=True,
         )
 
+    def test_quantized_add_with_broadcast(self):
+        """Basic test of the PyTorch quantized::add Node on Glow."""
+
+        utils.compare_tracing_methods(
+            SimpleQuantizedAddModule(
+                torch.nn.quantized.Quantize(
+                    scale=1.0 / 128, zero_point=5, dtype=torch.quint8
+                ),
+                torch.nn.quantized.Quantize(
+                    scale=1.0 / 128, zero_point=10, dtype=torch.quint8
+                ),
+                1.0 / 128,
+                3,
+            ),
+            torch.randn([1, 10]),
+            torch.randn([10]),
+            fusible_ops={
+                "quantized::add",
+                "aten::quantize_per_tensor",
+                "aten::dequantize",
+            },
+            skip_to_glow=True,
+        )
+
     def test_quantized_add_cut_q_dq(self):
         """Basic test of the PyTorch quantized::add Node on Glow, with quantize and dequantize excluded. """
 

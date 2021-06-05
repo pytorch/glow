@@ -11,8 +11,8 @@ arithmetic to integer arithmetic. Arithmetic using small integers is more
 efficient than the computation of full-width floating-point numbers, and
 additionally decreases memory usage.
 
-This is an external [link](https://www.tensorflow.org/performance/quantization)
-that explains how quantization is done in TensorFlow.
+This is an external [link](https://www.tensorflow.org/lite/performance/post_training_quantization)
+that explains how post-training quantization is done in TensorFlow Lite. 
 
 Glow is able to convert floating-point-based networks into signed 8-bit integer
 networks. The canonical quantization representation is using signed integers,

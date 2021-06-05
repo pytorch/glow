@@ -25,6 +25,6 @@ class TestLoadBackendSpecificOptions(utils.TorchGlowTestCase):
 
             # Run Glow
             torch_glow.loadBackendSpecificOptions(options_fd.name)
-            torch_glow.enableFusionPass()
+            torch_glow.enableFusionPass_DO_NOT_USE_THIS()
             glow_trace = torch.jit.trace(test_f, (x, y), check_trace=False)
             glow_trace(x, y)

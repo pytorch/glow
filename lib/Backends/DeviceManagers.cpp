@@ -67,13 +67,29 @@ unsigned DeviceManager::numDevices(llvm::StringRef backendName) {
 }
 
 std::vector<std::unique_ptr<runtime::DeviceConfig>>
-DeviceManager::generateDeviceConfigs(llvm::StringRef backendName) {
+DeviceManager::generateDeviceConfigs(llvm::StringRef backendName,
+                                     bool scanDevices /* false */) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
   auto deviceCount = numDevices(backendName);
-  for (unsigned i = 0; i < deviceCount; i++) {
-    auto config = glow::make_unique<runtime::DeviceConfig>(backendName);
-    config->deviceID = i;
-    configs.push_back(std::move(config));
+  // if scan devices, only generate device configs for available ones
+  if (scanDevices) {
+    const auto &factories = FactoryRegistry<std::string, Backend>::factories();
+    auto it = factories.find(backendName.str());
+    if (it != factories.end()) {
+      auto deviceIDs = it->second->scanDeviceIDs();
+      for (auto &deviceID : deviceIDs) {
+        auto config = glow::make_unique<runtime::DeviceConfig>(backendName);
+        config->deviceID = deviceID;
+        configs.push_back(std::move(config));
+      }
+    }
+  } else {
+    // othewise generate devices sequentially
+    for (unsigned i = 0; i < deviceCount; i++) {
+      auto config = glow::make_unique<runtime::DeviceConfig>(backendName);
+      config->deviceID = i;
+      configs.push_back(std::move(config));
+    }
   }
   return configs;
 }
