@@ -279,6 +279,14 @@ class TFLiteModelLoader {
   Error loadResizeBilinear(const tflite::Operator *op,
                            const OperatorInfo &opInfo);
 
+  /// Load Space To Batch ND operator.
+  Error loadSpaceToBatchNd(const tflite::Operator *op,
+                           const OperatorInfo &opInfo);
+
+  /// Load Batch To Space ND operator.
+  Error loadBatchToSpaceNd(const tflite::Operator *op,
+                           const OperatorInfo &opInfo);
+
   /// Load Tile operator.
   Error loadTile(const tflite::Operator *op, const OperatorInfo &opInfo);
 

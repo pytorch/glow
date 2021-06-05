@@ -93,8 +93,8 @@ static void printHeader(llvm::StringRef headerFileName,
   CHECK(!EC) << "Could not open header file!";
   std::string header;
   header += "// Bundle API auto-generated header file. Do not edit!\n";
-#ifdef GLOW_BUILD_DATE
-  header += "// Glow Tools version: " + std::string(GLOW_BUILD_DATE) + "\n";
+#ifdef GLOW_VERSION
+  header += "// Glow Tools version: " + std::string(GLOW_VERSION) + "\n";
 #endif
   headerFile << strFormat(headerFileTemplate, header.c_str(),
                           bundleName.upper().data(), bundleName.upper().data(),
@@ -175,7 +175,7 @@ BundleSaver::BundleSaver(const LLVMBackend &llvmBackend,
       bundleAPI_(llvmBackend.getOptions().getBundleAPI()) {
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
-  irgen_->setBundleName(bundleName);
+  irgen_->setBundleName(bundleName.str());
   irgen_->setOutputDir(outputDir);
   irgen_->setObjectRegistry(llvmBackend.getObjectRegistry());
   // Use the bundle code model as a code model for the TargetMachine.
@@ -189,7 +189,7 @@ void BundleSaver::setIRFunction(llvm::StringRef mainEntryName,
                                 const IRFunction *F) {
   irgen_->setIRFunction(F);
   if (F) {
-    savedIRFunctions_.push_back(SavedIRFunction{mainEntryName, F});
+    savedIRFunctions_.push_back(SavedIRFunction{mainEntryName.str(), F});
   }
 }
 
@@ -536,12 +536,17 @@ void BundleSaver::produceBundle() {
   auto &M = irgen_->getModule();
   auto outputDir = irgen_->getOutputDir();
   auto bundleName = irgen_->getBundleName();
+  auto savedBundleName = irgen_->getSavedBundleName().empty()
+                             ? bundleName
+                             : irgen_->getSavedBundleName();
   std::string extension = (llvmCompiler.empty()) ? ".o" : ".bc";
-  auto bundleCodeOutput = (outputDir + "/" + bundleName + extension).str();
+  std::string bundleCodeOutput;
+  bundleCodeOutput = (outputDir + "/" + savedBundleName + extension).str();
   auto bundleWeightsBinOut =
-      (outputDir + "/" + bundleName + ".weights.bin").str();
-  auto bundleHeaderOutput = (outputDir + "/" + bundleName + ".h").str();
+      (outputDir + "/" + savedBundleName + ".weights.bin").str();
+  auto bundleHeaderOutput = (outputDir + "/" + savedBundleName + ".h").str();
   DEBUG_GLOW(llvm::dbgs() << "Producing a bundle:\n"
+                          << "saved bundle name: " << savedBundleName << "\n"
                           << "bundle name: " << bundleName << "\n"
                           << "bundle code: " << bundleCodeOutput << "\n"
                           << "bundle weights:" << bundleWeightsBinOut << "\n"
@@ -568,10 +573,10 @@ void BundleSaver::produceBundle() {
       if (!llvmOpt.empty()) {
         bundleObjectCodeOutputOpt =
             " -emit-llvm -o " +
-            (outputDir + "/" + bundleName + ".beforeopt.bc").str();
+            (outputDir + "/" + savedBundleName + ".beforeopt.bc").str();
       } else {
         bundleObjectCodeOutputOpt =
-            " -o " + (outputDir + "/" + bundleName + ".o").str();
+            " -o " + (outputDir + "/" + savedBundleName + ".o").str();
       }
 
       cmd += bundleObjectCodeOutputOpt;
@@ -583,8 +588,10 @@ void BundleSaver::produceBundle() {
       if (!llvmOpt.empty()) {
         cmd.clear();
         cmd = llvmOpt;
-        cmd += " " + (outputDir + "/" + bundleName + ".beforeopt.bc").str();
-        cmd += " -O3 -o " + (outputDir + "/" + bundleName + ".opt.bc").str();
+        cmd +=
+            " " + (outputDir + "/" + savedBundleName + ".beforeopt.bc").str();
+        cmd +=
+            " -O3 -o " + (outputDir + "/" + savedBundleName + ".opt.bc").str();
         CHECK(!system(cmd.c_str()))
             << "Error running external opt compiler: " << cmd;
 
@@ -593,8 +600,8 @@ void BundleSaver::produceBundle() {
         for (auto option : llvmCompilerOptions) {
           cmd += " " + option + " ";
         }
-        cmd += " " + (outputDir + "/" + bundleName + ".opt.bc").str();
-        cmd += " -o " + (outputDir + "/" + bundleName + ".o").str();
+        cmd += " " + (outputDir + "/" + savedBundleName + ".opt.bc").str();
+        cmd += " -o " + (outputDir + "/" + savedBundleName + ".o").str();
         CHECK(!system(cmd.c_str()))
             << "Error running external LLVM compiler: " << cmd;
       }
@@ -628,7 +635,7 @@ void BundleSaver::produceBundle() {
   // Save weights also in text format for Static API.
   if (bundleAPI_ == BundleApiType::Static) {
     auto bundleWeightsTxtOut =
-        (outputDir + "/" + bundleName + ".weights.txt").str();
+        (outputDir + "/" + savedBundleName + ".weights.txt").str();
     serializeBinaryToText(bundleWeightsBinOut, bundleWeightsTxtOut);
   }
 }
@@ -739,7 +746,7 @@ void BundleSaver::performBundleMemoryAllocation() {
 
 void BundleSaver::save(llvm::StringRef mainEntryName, const IRFunction *F) {
   // Object files generation works properly only in small mode.
-  irgen_->setMainEntryName(mainEntryName);
+  irgen_->setMainEntryName(mainEntryName.str());
   // Set current IRFunction using the legalized name.
   setIRFunction(irgen_->getMainEntryName(), F);
   // irgen_->initCodeGen();

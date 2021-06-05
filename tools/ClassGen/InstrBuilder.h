@@ -217,7 +217,7 @@ public:
 
   /// Automatically generates verification of type \p verif
   InstrBuilder &autoVerify(VerifyKind verif,
-                           llvm::ArrayRef<llvm::StringRef> operands = {""}) {
+                           llvm::ArrayRef<std::string> operands = {""}) {
     if (verif != VerifyKind::NoVerify) {
       assert(operands.size() > 1 && "Must list 2 or more operands.");
     }

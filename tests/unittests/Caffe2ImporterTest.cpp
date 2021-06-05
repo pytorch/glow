@@ -1034,7 +1034,7 @@ TEST_F(Caffe2ImporterTest, batchMatMulManyDims) {
       {{2, 4, 5}, {3, 2, 5, 6}, {3, 2, 4, 6}},
   };
 
-  for (const auto shapes : shape_cases) {
+  for (const auto &shapes : shape_cases) {
     ExecutionEngine EE{};
     auto &mod = EE.getModule();
     Function *F = mod.createFunction("main");
@@ -2259,6 +2259,158 @@ TEST_F(Caffe2ImporterTest, SparseToDenseMask) {
   EXPECT_TRUE(N->getMask().equals({42, 100, 300, 1, 0, 312}));
 }
 
+// Test loading a FillExamplesWithIndicator
+TEST_F(Caffe2ImporterTest, FillExamplesWithIndicator) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/fill_examples_with_indicator.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *outputPH;
+  PlaceholderBindings bindings;
+  // Create inputs.
+  constexpr dim_t n = 20;
+  constexpr dim_t d1 = 3;
+  constexpr dim_t d2 = 4;
+  Tensor indicator(ElemKind::Int32ITy, {n});
+  auto indicatorH = indicator.getHandle<int32_t>();
+  indicatorH.randomize(0, 1, mod.getPRNG());
+
+  dim_t m = 0;
+  for (size_t i = 0, s = indicatorH.actualSize(); i < s; i++) {
+    m += indicatorH.at(i);
+  }
+  Tensor data(ElemKind::FloatTy, {m, d1, d2});
+  data.zero();
+  data.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"data", "indicator"},
+                               {&data.getType(), &indicator.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"data", "indicator"},
+                                  {&data, &indicator});
+  }
+
+  // Check that the shape of the output matches that of the expected output.
+  const std::vector<dim_t> expectedOutputShape{n, d1, d2};
+  EXPECT_EQ(expectedOutputShape, outputPH->dims().vec());
+  // Graph has 9 nodes: 2 Reshapes, 2 Converts, Nonzero, Slice, Splat,
+  // ScatterData, Output
+  EXPECT_EQ(F->getNodes().size(), 9);
+
+  // Graph has two inputs and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+
+  auto output = bindings.get(outputPH);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  // Initialize with zeroes
+  std::vector<std::vector<std::vector<float>>> expected(
+      n, std::vector<std::vector<float>>(d1, std::vector<float>(d2)));
+  for (dim_t d = 0, v = 0; d < n; ++d) {
+    if (indicatorH.at(d)) {
+      for (dim_t e = 0; e < d1; ++e) {
+        for (dim_t f = 0; f < d2; ++f) {
+          expected[d][e][f] = data.getHandle().at({v, e, f});
+        }
+      }
+      v++;
+    }
+  }
+
+  for (dim_t d = 0; d < n; ++d) {
+    for (dim_t e = 0; e < d1; ++e) {
+      for (dim_t f = 0; f < d2; ++f) {
+        EXPECT_NEAR(expected[d][e][f], outputH.at({d, e, f}), 1e-3);
+      }
+    }
+  }
+}
+
+// Test loading a BatchSparseToDense operator w/ second dimension = 1.
+TEST_F(Caffe2ImporterTest, BatchSparseToDense_lastdim1) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/batch_sparse_to_dense_last_dim_1.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *outputPH;
+  PlaceholderBindings bindings;
+  // Create inputs.
+  constexpr dim_t numBatches = 100;
+  Tensor lengths(ElemKind::Int32ITy, {numBatches});
+  auto lengthsH = lengths.getHandle<int32_t>();
+  lengthsH.randomize(0, 1, mod.getPRNG());
+
+  // Calculate number of nonzero indices.
+  dim_t numIndices = 0;
+  for (size_t i = 0, n = lengthsH.actualSize(); i < n; i++) {
+    numIndices += lengthsH.at(i);
+  }
+  Tensor indices(ElemKind::Int64ITy, {numIndices});
+  Tensor values(ElemKind::FloatTy, {numIndices});
+  indices.zero();
+  values.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"lengths", "indices", "values"},
+        {&lengths.getType(), &indices.getType(), &values.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod,
+                                  {"lengths", "indices", "values"},
+                                  {&lengths, &indices, &values});
+  }
+
+  // Check that the shape of the output matches that of the expected output.
+  const std::vector<dim_t> expectedOutputShape{numBatches, 1};
+  EXPECT_EQ(expectedOutputShape, outputPH->dims().vec());
+  EXPECT_EQ(F->getNodes().size(), 8);
+
+  // Graph has three inputs and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 4);
+
+  auto output = bindings.get(outputPH);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  // Initialize with zeroes
+  std::vector<std::vector<float>> expected(numBatches, std::vector<float>(1));
+  for (dim_t d = 0, v = 0; d < numBatches; ++d) {
+    if (lengthsH.at(d) == 1) {
+      expected[d][0] = values.getHandle().at({v});
+      v++;
+    }
+  }
+
+  for (dim_t d = 0; d < numBatches; ++d) {
+    EXPECT_NEAR(expected[d][0], outputH.at({d, 0}), 1e-3);
+  }
+}
+
 /// Test loading NCHW2NHWC op.
 TEST_F(Caffe2ImporterTest, testNCHW2NHWC) {
   ExecutionEngine EE{};
@@ -2531,7 +2683,7 @@ TEST_F(Caffe2ImporterTest, HalfToFloat) {
     // Loaded protos must have at least one external output, so load an unused
     // output and type to satisfy it. It is named unused_output in
     // empty_predict_net.pbtxt.
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename.str(), NetWeightFilename, {"X"},
                                {&input.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
@@ -2569,7 +2721,7 @@ TEST_F(Caffe2ImporterTest, Alias) {
     // Loaded protos must have at least one external output, so load an unused
     // output and type to satisfy it. It is named unused_output in
     // empty_predict_net.pbtxt.
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename.str(), NetWeightFilename, {"X"},
                                {&input.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
@@ -4705,7 +4857,7 @@ TEST_F(Caffe2ImporterTest, reduceBackSum) {
         {64, 64, 11},
         {2, 3, 4, 5},
     };
-    for (const auto inputShape : inputShapes) {
+    for (const auto &inputShape : inputShapes) {
       ExecutionEngine EE{};
       auto &mod = EE.getModule();
       Function *F = mod.createFunction("main");
@@ -5437,51 +5589,6 @@ TEST_F(Caffe2ImporterTest, Log1p) {
   }
 }
 
-TEST_F(Caffe2ImporterTest, CastInt32ToInt64) {
-  const std::string NetDescFilename(
-      GLOW_DATA_PATH "tests/models/caffe2Models/cast_int32_to_int64.pbtxt");
-  const std::string NetWeightFilename(
-      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
-
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  PlaceholderBindings bindings;
-  Placeholder *outputPH;
-
-  std::vector<dim_t> inputShape{3, 4};
-
-  Tensor input{ElemKind::Int32ITy, {inputShape}};
-  input.getHandle<int32_t>() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-  // Destroy the loader after the graph is loaded since the following
-  // execution will not depend on anything from the loader.
-  {
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
-                               {&input.getType()}, *F);
-    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-
-    bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
-  }
-
-  auto output = bindings.get(outputPH);
-  EXPECT_EQ(inputShape, output->dims().vec());
-
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  auto outputH = output->getHandle<int64_t>();
-
-  for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
-    for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
-      auto val = input.getHandle<int32_t>().at({d1, d2});
-      auto exp = static_cast<int64_t>(val);
-      EXPECT_EQ(exp, outputH.at({d1, d2}));
-    }
-  }
-}
-
 TEST_F(Caffe2ImporterTest, ReduceBackMean) {
   const std::string NetDescFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/reducebackmean.pbtxt");
@@ -5526,5 +5633,98 @@ TEST_F(Caffe2ImporterTest, ReduceBackMean) {
     }
     expected /= inputShape[1];
     EXPECT_NEAR(expected, outputH.at(d1), 1e-3);
+  }
+}
+
+// Test that dropout is a no-op
+TEST_F(Caffe2ImporterTest, Dropout) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/dropout.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  std::vector<dim_t> inputShape{20, 50};
+  Tensor input{ElemKind::FloatTy, {inputShape}};
+  input.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  // Expect graph to have one node (1 save node)
+  EXPECT_EQ(F->getNodes().size(), 1);
+  auto *save = getSaveNodeFromDest(outputPH);
+  ASSERT_TRUE(save);
+
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto inputH = input.getHandle();
+  auto outputH = output->getHandle();
+  for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
+      EXPECT_EQ(inputH.at(d1), outputH.at(d1));
+    }
+  }
+}
+
+TEST_F(Caffe2ImporterTest, CastInt64ToInt64) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/cast_int64_to_int64.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  std::vector<dim_t> inputShape{3, 4};
+
+  Tensor input{ElemKind::Int64ITy, {inputShape}};
+  input.getHandle<int64_t>() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle<int64_t>();
+
+  for (dim_t d1 = 0; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 0; d2 < inputShape[1]; ++d2) {
+      auto val = input.getHandle<int64_t>().at({d1, d2});
+      auto exp = static_cast<int64_t>(val);
+      EXPECT_EQ(exp, outputH.at({d1, d2}));
+    }
   }
 }

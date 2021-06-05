@@ -26,11 +26,63 @@
 #if FACEBOOK_INTERNAL
 namespace folly {
 struct dynamic;
+
+} // namespace folly
+namespace glow {
+namespace runtime {
+using FXFunction = folly::dynamic;
 }
+} // namespace glow
 #endif
 
 namespace glow {
 namespace runtime {
+
+enum class NetworkType {
+  // FX Network
+  FX_NETWORK,
+  // Glow Module network
+  GLOW_NETWORK,
+};
+
+/// Base struct for passing in a network to Provisioner. It contains all common
+/// elements: DagListTy, Module, and CCTX and a NetworkType denoting what
+/// subclass of network it is.
+struct Network {
+  /// Backend used for this config. It is used in
+  /// checking the type of config before casting to a derived class.
+  const NetworkType networkType;
+
+  /// Dag structure for the network to be added.
+  DAGListTy &networks;
+
+  /// Module containing PH's for the network and in some cases the network.
+  Module &module;
+
+  /// Compilation Context for the network being added.
+  CompilationContext &cctx;
+
+  Network(NetworkType netType, DAGListTy &networks, Module &module,
+          CompilationContext &cctx)
+      : networkType(netType), networks(networks), module(module), cctx(cctx) {}
+  virtual ~Network() = default;
+};
+#if FACEBOOK_INTERNAL
+struct FXNetwork : Network {
+  const FXFunction &FXIR;
+  const llvm::StringMap<const void *> &constants;
+  FXNetwork(DAGListTy &networks, Module &module, CompilationContext &cctx,
+            const FXFunction &FXIR,
+            const llvm::StringMap<const void *> &constants)
+      : Network(NetworkType::FX_NETWORK, networks, module, cctx), FXIR(FXIR),
+        constants(constants) {}
+};
+#endif
+
+struct GlowNetwork : Network {
+  GlowNetwork(DAGListTy &networks, Module &module, CompilationContext &cctx)
+      : Network(NetworkType::GLOW_NETWORK, networks, module, cctx) {}
+};
 
 /// The Provisioner is responsible for assigning networks to an actual device.
 /// It also compiles the networks before passing the compiled functions to the
@@ -84,16 +136,19 @@ public:
   ///   2. Compiles it using the provided CompilationContext \p cctx.
   ///   3. Assigns a device and calls addNetwork on the chosen device(s).
   /// \returns a Error indicating if the operation was a success.
-  Error provisionFX(DAGListTy &networks, Module &module,
-                    const folly::dynamic &FXIR,
+  Error provisionFX(DAGListTy &networks, Module &module, const FXFunction &FXIR,
                     const llvm::StringMap<const void *> &constants,
                     CompilationContext &cctx);
 #endif
+  // Unified provisioning function, tries to re-use most shared logic between
+  // provision and provisionFX.
+  Error provisionNetwork(std::unique_ptr<Network> network);
   /// Remove stored compiledFunction.
   Error removeFunction(llvm::StringRef name);
 
   /// Evict function from device.
-  Error evictFunction(llvm::StringRef name, DeviceManager *device);
+  Error evictFunction(llvm::StringRef name, DeviceManager *device,
+                      unsigned replicaCount);
 
   /// \returns a reference to the backend with name \p backendName.
   Backend &getBackend(llvm::StringRef backendName) const;

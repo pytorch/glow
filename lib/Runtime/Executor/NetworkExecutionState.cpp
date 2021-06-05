@@ -81,14 +81,21 @@ void NetworkExecutionState::bind(std::unique_ptr<ExecutionContext> resultCtx,
     if (ioIdxMapping_.empty()) {
       for (const auto &pair : externalIOBindings) {
         const auto it = externalPlaceholdersIdx_.find(pair.first);
-        CHECK(it != externalPlaceholdersIdx_.end())
-            << "Cannot match external placeholder: "
-            << pair.first->getDebugDesc();
-        ioIdxMapping_.emplace_back(it->second);
+        if (it == externalPlaceholdersIdx_.end()) {
+          LOG(WARNING) << "Cannot match external placeholder: "
+                       << pair.first->getDebugDesc();
+          ioIdxMapping_.emplace_back(-1);
+        } else {
+          ioIdxMapping_.emplace_back(it->second);
+        }
       }
     }
     DCHECK(ioIdxMapping_.size() == externalIOBindings.size());
     for (unsigned i = 0, e = externalIOBindings.size(); i < e; ++i) {
+      if (ioIdxMapping_[i] < 0) {
+        // Unable to match external placeholder
+        continue;
+      }
       const auto &pair = externalIOBindings[i];
       const auto &resultTensor = pair.second;
       for (auto &bindingIt : externalPlaceholders_[ioIdxMapping_[i]]) {

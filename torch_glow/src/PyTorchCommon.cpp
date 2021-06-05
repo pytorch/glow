@@ -17,6 +17,7 @@
 #include <fstream>
 #include <string>
 
+#include "ATen/core/interned_strings.h"
 #include "PyTorchCommon.h"
 
 #include "FuseKnownPatterns.h"
@@ -26,6 +27,7 @@
 #include "ShapeInferenceEngine.h"
 
 #include "glow/Flags/Flags.h"
+#include "glow/Runtime/ErrorReporter.h"
 #include "llvm/Support/FileSystem.h"
 
 #include "torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h"
@@ -94,6 +96,28 @@ DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
 DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
 DEFINE_bool(lazyCompile, false, "see PyTorchLoaderSettings");
 DEFINE_bool(enableDeviceTracing, false, "See PyTorchLoaderSettings");
+DEFINE_int32(debugLayers, 5, "See PyTorchLoaderSettings");
+
+DEFINE_bool(saveGlowIRIntoONNX, false, "See PyTorchLoaderSettings");
+DEFINE_bool(loadGlowIRFromONNX, false, "See PyTorchLoaderSettings");
+
+DEFINE_bool(useSparseNNPartitioningScheme, false, "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningAddSLSConcats, false,
+            "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningBalancePerfModel, false,
+            "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningPairLNWithSLS, false,
+            "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningPairTileWithSLS, false,
+            "See PyTorchLoaderSettings");
+DEFINE_int32(sparseNNPartitioningSchemeNumCards, 1,
+             "See PyTorchLoaderSettings");
+DEFINE_int64(sparseNNPartitioningSchemeSLSTableKBytesPerCard, 1,
+             "See PyTorchLoaderSettings");
+DEFINE_int32(SparseNNPartitioningSchemeNumCoresSLS, 1,
+             "See PyTorchLoaderSettings");
+DEFINE_int32(SparseNNPartitioningSchemeNumCoresOther, 1,
+             "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -113,6 +137,20 @@ PyTorchLoaderSettings &getPyTorchLoaderSettingsInternalOnly() {
 }
 
 } // namespace
+
+void dumpOperatorStats(const torch::jit::Graph &graph) {
+  std::map<torch::jit::NodeKind, int> opCounter;
+  for (const auto *node : graph.nodes()) {
+    opCounter[node->kind()]++;
+  }
+  std::ostringstream ss;
+  ss << "Dump of operator/node stats for graph:\n";
+  ss << folly::stringPrintf("%45s %13s \n", "Node Kind", "Count");
+  for (const auto &[kind, count] : opCounter) {
+    ss << folly::stringPrintf("%45s %13d \n", kind.toQualString(), count);
+  }
+  LOG(INFO) << ss.str();
+}
 
 std::shared_ptr<runtime::HostManager>
 getHostManager(const PyTorchLoaderSettings &settings) {
@@ -155,11 +193,13 @@ getHostManager(const PyTorchLoaderSettings &settings) {
     }
 
     glow::runtime::HostConfig hostConfig;
-    hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
 
-    // Pass these hostmanager flags
+    hostConfig.maxActiveRequests = glow::flags::MaxActiveRequests;
     hostConfig.maxQueueSize = glow::flags::MaxQueueSize;
     hostConfig.executorThreads = glow::flags::ExecutorThreads;
+
+    // now overwrite existing config if torch_glow gflag is present
+    hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
 
     hostManager = std::make_shared<runtime::HostManager>(
         std::move(deviceConfigs), hostConfig);
@@ -204,12 +244,14 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
     return at::kBool;
   case ElemKind::Int8QTy:
     return at::kQInt8;
+  case ElemKind::UInt8QTy:
+    LOG(DFATAL) << "UInt8QTy is not supported yet.";
+    return at::kQUInt8;
   case ElemKind::Float64Ty:
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
   case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::UInt4FusedQTy:
-  case ElemKind::UInt8QTy:
   case ElemKind::UInt8ITy:
   case ElemKind::Int16QTy:
   case ElemKind::Int32QTy:
@@ -327,6 +369,24 @@ void PyTorchLoaderSettings::initSettings() {
   apl_parallelization_alg =
       glow::flags::DAGOptimizerParallelizationTaggingAlgorithm;
   apl_num_parallel_chunks = glow::flags::DAGOptimizerNumParallelChunks;
+  saveGlowIRIntoONNX = FLAGS_saveGlowIRIntoONNX;
+  loadGlowIRFromONNX = FLAGS_loadGlowIRFromONNX;
+  skipProvisioning = glow::flags::SkipProvisioning || saveGlowIRIntoONNX;
+  useSparseNNPartitioningScheme = FLAGS_useSparseNNPartitioningScheme;
+  sparseNNPartitioningAddSLSConcats = FLAGS_sparseNNPartitioningAddSLSConcats;
+  sparseNNPartitioningBalancePerfModel =
+      FLAGS_sparseNNPartitioningBalancePerfModel;
+  sparseNNPartitioningPairLNWithSLS = FLAGS_sparseNNPartitioningPairLNWithSLS;
+  sparseNNPartitioningPairTileWithSLS =
+      FLAGS_sparseNNPartitioningPairTileWithSLS;
+  sparseNNPartitioningSchemeNumCards = FLAGS_sparseNNPartitioningSchemeNumCards;
+  sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+      FLAGS_sparseNNPartitioningSchemeSLSTableKBytesPerCard;
+  SparseNNPartitioningSchemeNumCoresSLS =
+      FLAGS_SparseNNPartitioningSchemeNumCoresSLS;
+  SparseNNPartitioningSchemeNumCoresOther =
+      FLAGS_SparseNNPartitioningSchemeNumCoresOther;
+  debugLayers = FLAGS_debugLayers;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -369,6 +429,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(replicationCount, s);
   INSERT_BOOL_TO_STREAM(fusionPassEnabled, s);
   INSERT_BOOL_TO_STREAM(dumpGlowDag, s);
+  INSERT_BOOL_TO_STREAM(dumpOperatorInventory, s);
   INSERT_VALUE_TO_STREAM(minFusionGroupSize, s);
   INSERT_VALUE_TO_STREAM(maxFusionMergeSize, s);
   INSERT_VALUE_TO_STREAM(fusionStartIndex, s);
@@ -393,6 +454,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(dumpFailedInputsToOnnxFiles, s);
   INSERT_BOOL_TO_STREAM(lazyCompile, s);
   INSERT_BOOL_TO_STREAM(enableDeviceTracing, s);
+  INSERT_VALUE_TO_STREAM(debugLayers, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
@@ -669,14 +731,10 @@ void glowAOTFusionWithShapeInference(
             itr->second.dtype, itr->second.shape<TensorShape>());
       }
 
-      e = runner->warmCache({metaStackForCompilation}, settings, loader,
-                            /*useMaxSizeCompilation*/ true);
-      if (e) {
-        // If the graph is already compiled previously, warmCache() will report
-        // an error but it is fine with our execution. So here we extract the
-        // error only.
-        LOG(ERROR) << ERR_TO_STRING(std::move(e));
-      }
+      // Fault at any error during the cache warmup.
+      REPORT_AND_EXIT_ON_ERR(runner->warmCache({metaStackForCompilation},
+                                               settings, loader,
+                                               /*useMaxSizeCompilation*/ true));
 
       if (batchShapesMap.size() > 0) {
         auto graphOutputValues = subgraph->outputs();
@@ -711,7 +769,9 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
 
   modelPreprocessing(model, method_name);
 
-  if (FLAGS_inferShapeForCompilation) {
+  // In Glow AOT serialization (i.e., settings.saveGlowIRIntoONNX = true), we
+  // always enable inferShapeForCompilation
+  if (FLAGS_inferShapeForCompilation || settings.saveGlowIRIntoONNX) {
     return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
                                            method_name, batchShapes);
   }

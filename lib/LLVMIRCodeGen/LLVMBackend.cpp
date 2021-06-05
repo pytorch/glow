@@ -25,11 +25,11 @@
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
 #include "glow/Support/Debug.h"
-
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/Host.h"
 
 using namespace glow;
 
@@ -404,8 +404,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy);
 
   case Kinded::Kind::SoftMaxNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
-                                                  {SoftMaxNode::SelectedIdx}) &&
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy},
+               {SoftMaxNode::SelectedIdx}) &&
            (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy ||
             NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int32ITy);
 
@@ -615,7 +616,7 @@ llvm::SmallVector<std::string, 0> LLVMBackend::getHostFeatures() {
         if (fn.startswith("avx512")) {
           continue;
         }
-        result.push_back(fn);
+        result.push_back(fn.str());
       }
     }
   }
@@ -695,7 +696,8 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   emitJitMain(*irgen);
   irgen->finishCodeGen();
   // Hand over the module to JIT for the machine code generation.
-  auto JIT = glow::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
+  auto JIT = glow::make_unique<GlowJIT>(irgen->takeTargetMachine());
+  JIT->setContext(irgen->takeLLVMContext());
   JIT->addModule(irgen->borrowModule());
   // Build runtimeBundle object containing offsets and allocation sizes.
   MemoryAllocator constantAllocator("ConstantWeights", 0);

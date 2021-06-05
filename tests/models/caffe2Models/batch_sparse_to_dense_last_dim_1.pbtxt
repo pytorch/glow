@@ -1,0 +1,21 @@
+name: "batchSparseToDense"
+op {
+  input: "lengths"
+  input: "indices"
+  input: "values"
+  output: "output"
+  name: ""
+  type: "BatchSparseToDense"
+  arg {
+    name: "dense_last_dim"
+    i: 1
+  }
+  arg {
+    name: "default_value"
+    f: 0
+  }
+}
+external_input: "lengths"
+external_input: "indices"
+external_input: "values"
+external_output: "output"

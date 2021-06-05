@@ -1,0 +1,13 @@
+name: "cast_int64_to_int64"
+op {
+  input: "input"
+  output: "output"
+  name: ""
+  type: "Cast"
+  arg {
+    name: "to"
+    i: 10
+  }
+}
+external_input: "input"
+external_output: "output"

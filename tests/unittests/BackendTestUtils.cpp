@@ -55,18 +55,6 @@ llvm::cl::opt<bool, /* ExternalStorage */ true> runDisabledTestsI(
 using llvm::cast;
 
 namespace {
-// Helpers for creating and intializing placeholders from tensors.
-static Placeholder *createPlaceholder(Module &mod,
-                                      PlaceholderBindings &bindings,
-                                      Tensor *tensor, llvm::StringRef name,
-                                      const std::string layout = ANY_LAYOUT) {
-  auto *P = mod.createPlaceholder(tensor->getElementType(), tensor->dims(),
-                                  name, false, layout);
-  auto *PTensor = bindings.allocate(P);
-  PTensor->assign(tensor);
-
-  return P;
-}
 
 static Placeholder *createQuantizedPlaceholder(Module &mod,
                                                PlaceholderBindings &bindings,
@@ -697,7 +685,7 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   for (auto *EE : engines) {
     auto &mod = EE->getModule();
     Function *F = mod.createFunction("main");
-    fName = F->getName();
+    fName = F->getName().str();
     var1 = createPlaceholder(mod, bindings, inputs, "var1");
     var2 = createPlaceholder(mod, bindings, selected, "var2");
     auto *fc = F->createFullyConnected(bindings, "fc", var1, bias->dims()[0]);
@@ -752,7 +740,7 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   for (auto *EE : engines) {
     auto &mod = EE->getModule();
     Function *F = mod.createFunction("main");
-    fName = F->getName();
+    fName = F->getName().str();
     var1 = createPlaceholder(mod, bindings, inputs, "var1");
     var2 = createPlaceholder(mod, bindings, selected, "var2");
     auto *fc = F->createFullyConnected(bindings, "fc", var1, bias->dims()[0]);
@@ -1371,7 +1359,7 @@ void inferMaxSplat(Tensor *input, Tensor *out, llvm::StringRef kind) {
 void insertCompiledFunction(llvm::StringRef name, CompiledFunction *func,
                             runtime::DeviceManager *device, Module *mod) {
   runtime::FunctionMapTy functionMap;
-  functionMap[name] = func;
+  functionMap[name.str()] = func;
 
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
@@ -1392,7 +1380,7 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
   auto fut = runPromise.get_future();
   Error runErr = Error::empty();
   device->runFunction(
-      name, std::move(contextPtr),
+      name.str(), std::move(contextPtr),
       [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.
@@ -1485,4 +1473,15 @@ Placeholder *createFusedRowwiseQuantizedPlaceholder(Module &mod,
 
   return ph;
 }
+
+// Helper for creating and intializing placeholders from tensors.
+Placeholder *createPlaceholder(Module &mod, PlaceholderBindings &bindings,
+                               Tensor *tensor, llvm::StringRef name,
+                               const std::string &layout) {
+  auto *P = mod.createPlaceholder(&tensor->getType(), name, false, layout);
+  auto *PTensor = bindings.allocate(P);
+  PTensor->assign(tensor);
+  return P;
+}
+
 } // namespace glow

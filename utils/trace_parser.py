@@ -23,7 +23,7 @@ import numpy
 
 
 def formatUs(time):
-    """ Format human readable time (input in us). """
+    """Format human readable time (input in us)."""
     if time < 1000:
         return f"{time:.2f} us"
 
@@ -36,7 +36,7 @@ def formatUs(time):
 
 
 class Event:
-    """ Class to hold TraceEvents, matches glow::TraceEvent. """
+    """Class to hold TraceEvents, matches glow::TraceEvent."""
 
     def __init__(self, name, start, end, optype):
         self.name = name
@@ -50,34 +50,34 @@ class Event:
         return f"Event({self.name}, {self.start}, {self.end}, {self.optype})"
 
     def printTree(self, tabs):
-        """ Pretty print the tree. """
+        """Pretty print the tree."""
         indent = tabs * "\t"
         print(f"{indent}{self.name} ({self.optype})")
         for c in self.children:
             c.printTree(tabs + 1)
 
     def totalOverlap(self, event):
-        """ Returns True if this Event completely incloses the provided event. """
+        """Returns True if this Event completely incloses the provided event."""
         return self.start <= event.start and self.end >= event.end
 
     def addChild(self, event):
-        """ Add an enclosed event. """
+        """Add an enclosed event."""
         self.children.append(event)
 
     def updateChildTime(self):
-        """ Determine the total time cost of all children. """
+        """Determine the total time cost of all children."""
         self.child_time = 0
         for child in self.children:
             child.updateChildTime()
             self.child_time += child.end - child.start
 
     def selfTime(self):
-        """ Return this Event's time cost above the sum of its children. """
+        """Return this Event's time cost above the sum of its children."""
         return (self.end - self.start) - self.child_time
 
 
 def loadEvents(filename, runtimeEvents, fixedEvent, skip):
-    """ Load the json trace file and create Events. """
+    """Load the json trace file and create Events."""
     trace = None
     with open(filename) as f:
         trace = json.load(f)

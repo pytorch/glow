@@ -18,9 +18,11 @@
 #include "glow/Base/TensorSerialization.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "lib/Onnxifi/Base.h"
 
 #include <algorithm>
 #include <cmath>
@@ -148,6 +150,12 @@ llvm::cl::opt<std::string> traceDir(
 llvm::cl::opt<bool> dumpBinaryResults(
     "dump-binary-results",
     llvm::cl::desc("Dump raw binary Tensor results after execution."),
+    llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> dumpModelInputs(
+    "dump-model-inputs",
+    llvm::cl::desc(
+        "Dump model and inputs into format that repro binary can run."),
     llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
@@ -392,6 +400,41 @@ protected:
     numDevices = numDevicesOpt;
   }
 
+  // dump inputs into onnx file which can run with repro binary.
+  void dumpInputs() {
+    std::stringstream ss;
+    ss << "input_0.onnx";
+    std::ofstream of(ss.str(), std::ios::binary);
+    auto *resultPHBindings = context_.getPlaceholderBindings();
+    ONNX_NAMESPACE::GraphProto inputG;
+    for (auto &pair : resultPHBindings->pairs()) {
+      auto *t = inputG.add_initializer();
+      auto *PH = pair.first;
+      const auto &resultTensor = pair.second;
+      ONNXModelWriter::writeTensor(resultTensor, t,
+                                   /*useGlowCustomOps*/ true);
+      t->set_name(PH->getName().str());
+    }
+    std::string buffer;
+    inputG.SerializeToString(&buffer);
+    of << buffer;
+  }
+
+  // dump outputs into onnx file which can run with repro binary.
+  void dumpOutputs() {
+    std::stringstream ss;
+    ss << "output_0.onnx";
+    std::ofstream of(ss.str(), std::ios::binary);
+    ONNX_NAMESPACE::GraphProto inputG;
+    auto *t = inputG.add_initializer();
+    ONNXModelWriter::writeTensor(*resultTensor, t,
+                                 /*useGlowCustomOps*/ true);
+    t->set_name("save");
+    std::string buffer;
+    inputG.SerializeToString(&buffer);
+    of << buffer;
+  }
+
   void TearDown() override {
     if (dumpBinaryResults) {
       ASSERT_TRUE(resultTensor) << "Could not dump result tensor, was nullptr";
@@ -408,6 +451,10 @@ protected:
       TensorSerializationOptions opts;
       opts.withType = false;
       dumpTensorToBinaryFile(*resultTensor, path, opts);
+    }
+
+    if (dumpModelInputs) {
+      dumpInputs();
     }
 
     resultTensor = nullptr;
@@ -924,6 +971,10 @@ protected:
       auto *saveConcat = F_->createSave("after_concat_data", CN);
       concatPH = saveConcat->getPlaceholder();
     }
+    if (dumpModelInputs) {
+      // dump model into a zip file which can run with repro binary.
+      glow::onnxifi::saveOnnxifiModel(F_);
+    }
     auto configs =
         runtime::generateDeviceConfigs(1, getBackendName(), MAX_MEMORY);
     std::unique_ptr<HostManager> hostManager(
@@ -975,6 +1026,10 @@ protected:
       for (int i = 0, e = resultTensorH.size(); i < e; ++i) {
         EXPECT_GE(resultTensorH.raw(i), 0.0);
       }
+    }
+
+    if (dumpModelInputs) {
+      dumpOutputs();
     }
 
     // Compare against interpreter if we're not executing already on it.

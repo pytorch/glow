@@ -527,6 +527,7 @@ foreach(backend ${GLOW_BACKENDS})
                    "${backend}"
                    EXPENSIVE
                    PRIVATE
+                   onnxifi-glow-lib
                    Partitioner
                    HostManager)
   add_backend_test(TEST TraceEventsTest BACKEND "${backend}" UNOPT)

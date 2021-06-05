@@ -72,8 +72,8 @@ static bool sanitizeOffsets(const Tensor *offsetsTensor,
 
   size_t offsetsLen = offsets.getRealNumElements();
   for (auto i = 0; i < offsetsLen - 1; i++) {
-    LOG_AND_RETURN_IF(ERROR, offsets.raw(i) >= offsets.raw(i + 1),
-                      "offset should be monotonically increasing " +
+    LOG_AND_RETURN_IF(ERROR, offsets.raw(i) > offsets.raw(i + 1),
+                      "offset should not be decreasing " +
                           to_string(offsets.raw(i)) + " " +
                           to_string(offsets.raw(i + 1)),
                       false);

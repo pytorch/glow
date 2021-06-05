@@ -83,7 +83,7 @@ std::shared_ptr<runtime::HostManager>
 GlowOnnxifiManager::getOrCreateHostManager(llvm::StringRef backendName) {
   std::shared_ptr<runtime::HostManager> hostManager;
 
-  auto it = hostManagers_.find(backendName);
+  auto it = hostManagers_.find(backendName.str());
 
   if (it != hostManagers_.end()) {
     hostManager = it->second.lock();
@@ -92,7 +92,7 @@ GlowOnnxifiManager::getOrCreateHostManager(llvm::StringRef backendName) {
   if (!hostManager) {
     hostManager = onnxifi::HostManagerBackend::createHostManager(backendName);
     assert(hostManager);
-    hostManagers_[backendName] = hostManager;
+    hostManagers_[backendName.str()] = hostManager;
   }
 
   return hostManager;

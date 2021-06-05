@@ -2965,6 +2965,52 @@ void libjit_softmax_f(const float *inW, float *outW, const dim_t *idim,
   } // N
 }
 
+void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
+                       const uint32_t *expData, int32_t outputOffset,
+                       uint32_t invScale, uint32_t integerPart,
+                       uint32_t invScalePoint) {
+  for (int j = 0; j < dims[0]; j++) {
+    uint32_t sum = 0;
+    int8_t max = std::numeric_limits<int8_t>::min();
+    uint32_t division;
+    int point, size;
+
+    // Find max value.
+    for (uint32_t i = 0; i < dims[1]; i++) {
+      max = MAX(max, *inW);
+      inW++;
+    }
+    inW -= dims[1];
+
+    // Compute the sum of exponentials.
+    for (int i = 0; i < dims[1]; i++) {
+      sum += (expData[*inW++ + 255 - max] >> (integerPart - 1));
+    }
+    inW -= dims[1];
+
+    // Compute 1 / outputScale * 1 / sum, where sum is computed above
+    // align point for both operands.
+    if ((32 - integerPart) >= (32 - invScalePoint)) {
+      division = ((uint64_t)invScale * (1 << (32 - invScalePoint))) /
+                 (sum >> (invScalePoint - integerPart));
+      size = (32 - invScalePoint);
+    } else {
+      division = ((uint64_t)(invScale >> (integerPart - invScalePoint))) *
+                 (1 << (32 - integerPart)) / sum;
+      size = (32 - integerPart);
+    }
+
+    point = size + 31;
+    // Multiply with exp and bring the result into the right range.
+    for (int i = 0; i < dims[1]; i++) {
+      uint32_t index = *inW++ + 255 - max;
+      uint64_t mul = (uint64_t)division * (uint64_t)expData[index];
+      int32_t res = (int32_t)(mul >> point) + outputOffset;
+      *outW++ = MAX(MIN(res, 127), -128);
+    }
+  }
+}
+
 void libjit_softmax_grad_f_u(float *inG, float *outW, const size_t *selectedW,
                              const dim_t *idim, const dim_t *selectdim) {
   libjit_softmax_grad_generic(inG, outW, selectedW, idim, selectdim);

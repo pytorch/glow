@@ -548,11 +548,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           continue;
         }
 
-        if (!RS->hasOneUse()) {
-          continue;
-        }
-
-        auto bnOutTy = BN->getResult().getType();
+        auto bnOutTy = F->getParent()->uniqueTypeWithNewShape(
+            BN->getResult().getType(), RS->getInput().getType());
         auto rsInputType = RS->getInput().getType();
         glow::TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
             bnOutTy, rsInputType->dims());
@@ -560,8 +557,9 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
             BN->getName(), outTy, RS->getInput(), BN->getBias(), BN->getScale(),
             BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
             BN->getMomentum());
-        RS->setNthInput(ReshapeNode::InputIdx, newBN);
-        BN->getResult().replaceAllUsesOfWith(RS);
+        auto *newRS = F->createReshape(RS->getName(), newBN,
+                                       RS->getResult().dims(), RS->getLayout());
+        BN->getResult().replaceAllUsesOfWith(newRS);
         changed = true;
         continue;
       }
@@ -1067,24 +1065,6 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         continue;
       }
     }
-
-    // Sink Clip below Reshape nodes.
-    if (auto *RN = dyn_cast<ReshapeNode>(node)) {
-      auto *CN = dyn_cast<ClipNode>(RN->getInput());
-      if (!CN) {
-        continue;
-      }
-
-      ReshapeNode *newRN = F->createReshape(RN->getName(), CN->getInput(),
-                                            RN->getDims(), RN->getLayout());
-      ClipNode *newCN = F->createClip(CN->getName(), newRN->getResult(),
-                                      CN->getMin(), CN->getMax());
-      RN->getResult().replaceAllUsesOfWith(newCN->getResult());
-      newRN->setPredicate(RN->getPredicate());
-      newCN->setPredicate(CN->getPredicate());
-      changed = true;
-      continue;
-    }
   } // For all nodes in the graph.
 
   // Transformations to sink nodes below Slice. Outlined into a separate loop to
@@ -1150,6 +1130,51 @@ bool HoistCode::run(Function *F, const CompilationContext &cctx) {
     }
   }
 
+  return changed;
+}
+
+/// Reshape Sinking.
+bool SinkReshapes::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    auto *node = &N;
+
+    // Sink Reshape below eltwise nodes.
+    if (!node->isDataParallel() || node->hasSideEffects()) {
+      continue;
+    }
+
+    // Unary eltwise nodes.
+    if (node->getNumInputs() != 1 || node->getNumResults() != 1) {
+      continue;
+    }
+
+    auto *RS = dyn_cast<ReshapeNode>(node->getNthInput(0));
+    if (!RS) {
+      continue;
+    }
+
+    // Create new eltwise node.
+    auto in = RS->getInput();
+    auto out = node->getNthResult(0);
+    auto newTy =
+        F->getParent()->uniqueTypeWithNewShape(out.getType(), in.dims());
+    auto *newN = F->addNode(node->clone());
+    newN->setNthInput(0, in);
+    newN->setTypeUnsafe(0, newTy);
+    newN->setPredicate(node->getPredicate());
+
+    // Create new Reshape.
+    auto *newRS = F->createReshape(RS->getName(), newN,
+                                   RS->getResult().getType()->dims());
+    newRS->setPredicate(node->getPredicate());
+    out.replaceAllUsesOfWith(newRS->getResult());
+
+    changed = true;
+  }
   return changed;
 }
 
@@ -2353,6 +2378,7 @@ static NodeValue collectArithmeticChain(Function *F, NodeValue start,
 /// operate on Constant and fold them into a new BatchNormalization node.
 bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
                                              const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
   for (auto &node : F->getNodes()) {
@@ -2420,6 +2446,7 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
 /// operations into the BatchNormalization.
 bool FoldBatchNormalizationWithArithmeticChain::run(
     Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *BN = dyn_cast<BatchNormalizationNode>(&node);
@@ -2487,6 +2514,7 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
 /// for ONNX which does not have a representation for the FullyConnected node.
 bool FoldMatMulAddIntoFullyConnected::run(Function *F,
                                           const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *addNode = dyn_cast<AddNode>(&node);
@@ -3446,6 +3474,7 @@ bool OptimizeSplat::run(Function *F, const CompilationContext &cctx) {
 }
 
 bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
   for (auto &node : F->getNodes()) {
@@ -5625,6 +5654,69 @@ bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Fold Exp + ReduceSum + Div into Softmax
+///    IN
+///     |
+///    Exp                IN
+///   /   \                |
+///  |  ReduceSum  -->  Softmax
+///   \   /                |
+///    Div                OUT
+///     |
+///    OUT
+bool FoldExpSumDivIntoSoftmax::run(Function *F,
+                                   const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *EN = dyn_cast<ExpNode>(&N);
+    if (!EN || EN->getNumUsers() != 2) {
+      continue;
+    }
+
+    DivNode *DN = nullptr;
+    BatchedReduceAddNode *RSN = nullptr;
+
+    auto *user1 = EN->getUsers().front().getUser();
+    auto *user2 = EN->getUsers().back().getUser();
+
+    if (isa<DivNode>(user1) && isa<BatchedReduceAddNode>(user2)) {
+      DN = cast<DivNode>(user1);
+      RSN = cast<BatchedReduceAddNode>(user2);
+    } else if (isa<DivNode>(user2) && isa<BatchedReduceAddNode>(user1)) {
+      DN = cast<DivNode>(user2);
+      RSN = cast<BatchedReduceAddNode>(user1);
+    } else {
+      continue;
+    }
+
+    if (RSN->getNumUsers() != 1) {
+      continue;
+    }
+
+    auto *broadcastNode = getOnlyUser(*RSN);
+    if (broadcastNode == nullptr) {
+      continue;
+    }
+    auto *tempDN = getOnlyUser(*broadcastNode);
+    // Ensure that the inputs to the DivNode are Exp and ReduceSum.
+    if (DN != tempDN) {
+      continue;
+    }
+
+    auto axes = EN->getInput().dims().vec();
+    axes.back() = 1;
+    auto *CN = F->getParent()->createConstant(glow::ElemKind::Int64ITy, axes,
+                                              "selected");
+
+    auto *SM = F->createSoftMax("softmax", EN->getInput(), CN);
+    DN->getResult().replaceAllUsesOfWith(SM);
+    changed = true;
+  }
+  return changed;
+}
+
 /// Convert a FullyConnected node to a 1x1 Convolution.
 bool ConvertFullyConnectedToConvolution::run(Function *F,
                                              const CompilationContext &cctx) {
@@ -6293,7 +6385,7 @@ parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
                          currInput, sliceDimsStart, sliceDimsEnd);
       clone->setNthInput(j, inputSlice);
 
-      newNodes[i] = clone;
+      newNodes[i] = NodeValue(clone, resultIdx);
     }
   }
 
@@ -6451,12 +6543,37 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                 ChannelwiseQuantizedConvolutionNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::ConvolutionNodeKind: {
+        splitDims[ConvolutionNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ConvolutionNode::InputIdx,
+                    ConvolutionNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::AdaptiveAvgPoolNodeKind: {
         splitDims[AdaptiveAvgPoolNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, AdaptiveAvgPoolNode::InputIdx,
                     AdaptiveAvgPoolNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ROIAlignNodeKind: {
+        splitDims[ROIAlignNode::BoxesIdx] = 0;
+        splitDims[ROIAlignNode::BatchIndicesIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ROIAlignNode::BoxesIdx,
+                    ROIAlignNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MaxPoolNodeKind: {
+        splitDims[MaxPoolNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, MaxPoolNode::InputIdx,
+                    MaxPoolNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ReshapeNodeKind: {
@@ -6511,6 +6628,15 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           splitDims, 0));
         break;
       }
+      case Kinded::Kind::PowNodeKind: {
+        splitDims[PowNode::LHSIdx] = 0;
+        splitDims[PowNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          PowNode::LHSIdx, PowNode::ResultIdx,
+                                          splitDims, 0));
+        break;
+      }
       case Kinded::Kind::SelectNodeKind: {
         splitDims[SelectNode::LHSIdx] = 0;
         splitDims[SelectNode::RHSIdx] = 0;
@@ -6519,6 +6645,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           SelectNode::LHSIdx,
                                           SelectNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::ExpNodeKind: {
+        splitDims[ExpNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ExpNode::InputIdx, ExpNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::SigmoidNodeKind: {
@@ -6559,6 +6693,24 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           SwishNode::InputIdx,
                                           SwishNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MaxNodeKind: {
+        splitDims[MaxNode::LHSIdx] = 0;
+        splitDims[MaxNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MaxNode::LHSIdx, MaxNode::ResultIdx,
+                                          splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::MinNodeKind: {
+        splitDims[MinNode::LHSIdx] = 0;
+        splitDims[MinNode::RHSIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MinNode::LHSIdx, MinNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::TransposeNodeKind: {
@@ -6615,6 +6767,23 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
                     BatchedReduceAddNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::BatchedReduceMeanNodeKind: {
+        auto *BR = llvm::cast<BatchedReduceMeanNode>(curNode);
+        const auto &BRaxes = BR->getAxes();
+        if (std::find(BRaxes.begin(), BRaxes.end(), 0) != BRaxes.end()) {
+          LOG(INFO) << "BatchedReduceMean along the first dimension not "
+                       "parallelized. Current node: "
+                    << BR->getDebugDesc();
+        } else {
+          splitDims[BatchedReduceMeanNode::BatchIdx] = 0;
+          ASSIGN_VALUE_OR_RETURN_ERR(
+              CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                            BatchedReduceMeanNode::BatchIdx,
+                                            BatchedReduceMeanNode::ResultIdx,
+                                            splitDims, 0));
+        }
         break;
       }
       case Kinded::Kind::ConcatNodeKind: {

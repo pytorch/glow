@@ -181,12 +181,19 @@ PYBIND11_MODULE(_torch_glow, m) {
   });
 
   /// Enable write Glow graph to onnx after model loading finishes.
-  m.def("enable_write_to_onnx",
-        []() { getGlobalPyTorchLoaderSettingsMutable().writeToOnnx = true; });
+  m.def("enable_write_to_onnx", []() {
+    // Also enable dumping out any custom kernel files that are used so that
+    // these can used with the onnx model.
+    glow::nnpi::flags::DumpCustomKernelFiles = true;
+    getGlobalPyTorchLoaderSettingsMutable().writeToOnnx = true;
+  });
 
   /// Disable write Glow graph to onnx after model loading finishes.
-  m.def("disable_write_to_onnx",
-        []() { getGlobalPyTorchLoaderSettingsMutable().writeToOnnx = false; });
+  m.def("disable_write_to_onnx", []() {
+    // Also disable dumping custom kernel files in case it was enabled.
+    glow::nnpi::flags::DumpCustomKernelFiles = false;
+    getGlobalPyTorchLoaderSettingsMutable().writeToOnnx = false;
+  });
 
   /// Enable zip mode when writing ONNX model to file
   m.def("enable_onnx_zip_mode",
@@ -252,6 +259,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Defer compilation to runtime.
   m.def("enable_lazy_compile",
         []() { getGlobalPyTorchLoaderSettingsMutable().lazyCompile = true; });
+
+  /// Set the number of layers to print when dumpContextOnError is true.
+  m.def("set_debug_layers", [](size_t debugLayers) {
+    getGlobalPyTorchLoaderSettingsMutable().debugLayers = debugLayers;
+  });
 
   /// Set interpreter device memory (in KiB).
   m.def("set_interpreter_memory", [](const unsigned &memorySize) {

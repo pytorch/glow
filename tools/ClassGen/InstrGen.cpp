@@ -546,6 +546,23 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
       .autoIRGen();
 
+  BB.newInstr("BatchSparseToDense")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Lengths", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .addMember(MemberType::Float, "DefaultValue")
+      .addMember(MemberType::Unsigned, "DenseLastDim")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
+      .autoIRGen();
+
+  BB.newInstr("FillExamplesWithIndicator")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indicator", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoIRGen();
+
   BB.newInstr("SparseToDenseMask")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Indices", OperandKind::In)
@@ -938,6 +955,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen("Erf");
 
+  BB.newInstr("NonZero")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Cond", OperandKind::In)
+      .inplaceOperand({"Dest", "Cond"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameElementType, {"Cond", "ElemKind::BoolTy"})
+      .autoIRGen("NonZero");
+
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Cond", OperandKind::In)
@@ -1110,6 +1135,14 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoIRGen();
+
+  BB.newInstr("GatherElements")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Dim")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
       .autoIRGen();
 
@@ -1414,6 +1447,21 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Int64, "RpnMaxLevel")
       .addMember(MemberType::Int64, "RpnMinLevel")
       .addMember(MemberType::Unsigned, "RpnPostNmsTopN")
+      .autoVerify(VerifyKind::NoVerify);
+
+  //===--------------------------------------------------------------------===//
+  //                Lookup Table Operators
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("LookupTable")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Table", OperandKind::In)
+      .addOperand("TableIdx", OperandKind::In)
+      .addMember(MEMBER_TYPE_INFO(glow::LUTOperator), "Operator")
+      .addMember(MemberType::VectorFloat, "OperatorArgs")
+      .dataParallel()
+      .autoIRGen()
       .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//

@@ -1817,6 +1817,40 @@ bool SparseToDenseNode::verify() const {
   return isValid;
 }
 
+bool BatchSparseToDenseNode::verify() const {
+  bool isValid = checkType(getResult(), getValues().getElementType(), this);
+  isValid &=
+      checkType(getIndices(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
+  isValid &=
+      checkType(getLengths(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices and Values must have the same shape",
+                               getIndices().dims(), getValues().dims(), this);
+  isValid &= expectCompareTrue(
+      "The size of Lengths and batches in the result should be the same",
+      getLengths().dims()[0], getResult().dims()[0], this);
+  isValid &= expectCompareTrue(
+      "The second dimension of the result should be equal to dense_last_dim",
+      getDenseLastDim(), (unsigned)getResult().dims()[1], this);
+  return isValid;
+}
+
+bool FillExamplesWithIndicatorNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(
+      getIndicator(),
+      {ElemKind::Int64ITy, ElemKind::Int32ITy, ElemKind::BoolTy}, this);
+  isValid &= expectCompareTrue("Indicator must be a 1D vector",
+                               getIndicator().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Data must have at least one dimension",
+                               getData().dims().size(), size_t(1), this,
+                               CompareOperatorGreaterEqual<size_t>());
+  return isValid;
+}
+
 bool SparseToDenseMaskNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &= checkType(getResult(), getDefaultValue().getElementType(), this);
@@ -1892,6 +1926,11 @@ bool IntLookupTableNode::verify() const {
   isValid &= expectCompareTrue("Mapping and result type must be the same",
                                getMapping().getType()->getElementType(),
                                getResult().getType()->getElementType(), this);
+  return isValid;
+}
+
+bool LookupTableNode::verify() const {
+  bool isValid = true;
   return isValid;
 }
 
@@ -2161,6 +2200,17 @@ bool GatherNode::verify() const {
       getData().dims().size() + getIndices().dims().size() - 1, this);
   isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
                                            getData().getType(), this);
+  return isValid;
+}
+
+bool GatherElementsNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(
+      getIndices(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+  isValid &= expectCompareTrue("Mismatching number of dimensions",
+                               getResult().dims().size(),
+                               getIndices().dims().size(), this);
   return isValid;
 }
 
@@ -2621,6 +2671,11 @@ bool ReplaceNaNNode::verify() const {
   return checkSameType(getResult(), getInput(), this);
 }
 
+bool NonZeroNode::verify() const {
+  return checkType(getCond(), ElemKind::BoolTy, this) &&
+         checkType(getResult(), ElemKind::Int32ITy, this);
+}
+
 bool SelectNode::verify() const {
   bool isValid = checkSameShape(getResult(), getLHS(), this);
   isValid &= checkSameShape(getResult(), getRHS(), this);
@@ -2945,6 +3000,30 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
     os << "TANH";
     break;
   case FusedActivation::LEAKY_RELU:
+    os << "LEAKY_RELU";
+    break;
+  }
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LUTOperator lutOperator) {
+  switch (lutOperator) {
+  case LUTOperator::NONE:
+    os << "NONE";
+    break;
+  case LUTOperator::RELU:
+    os << "RELU";
+    break;
+  case LUTOperator::CLIP:
+    os << "CLIP";
+    break;
+  case LUTOperator::SIGMOID:
+    os << "SIGMOID";
+    break;
+  case LUTOperator::TANH:
+    os << "TANH";
+    break;
+  case LUTOperator::LEAKY_RELU:
     os << "LEAKY_RELU";
     break;
   }

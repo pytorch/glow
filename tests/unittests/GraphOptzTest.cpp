@@ -292,6 +292,59 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvAndReshapeNHWCneg) {
   checkNumericalEquivalence();
 }
 
+// Sink Reshape below BatchNorm: multi-user testcase.
+TEST_F(GraphOptz, sinkReshapeBelowBatchNormMultiUser) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 40, 8}, "input", false);
+  auto *RS = F_->createReshape("reshape", in, {1, 20, 20, 8});
+  auto *BN =
+      F_->createBatchNormalization(bindings_, "batch", RS, 3, 0.0001, 0.9);
+  auto *save = F_->createSave("ret", BN);
+  F_->createSave("extra_user", RS);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 5);
+
+  auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *reshapeOpt = llvm::dyn_cast<ReshapeNode>(saveOpt->getInput());
+  ASSERT_TRUE(reshapeOpt);
+  ASSERT_TRUE(llvm::isa<BatchNormalizationNode>(reshapeOpt->getInput()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+// Sink Reshape below BatchNorm: quantized testcase.
+TEST_F(GraphOptz, sinkReshapeBelowBatchNormQuantized) {
+  auto *in = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 10, 40, 3}, 1.5f, 0,
+                                    "input", false);
+  auto *params =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3}, 1.0f, 0, "params", false);
+  auto *RS = F_->createReshape("reshape", in, {1, 20, 20, 3});
+  auto *bnOutTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 20, 20, 3}, 2.7f, 0);
+  auto *BN = F_->createBatchNormalization("batch", bnOutTy, RS, params, params,
+                                          params, params, 3);
+  auto *save = F_->createSave("ret", BN);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *saveOpt =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  auto *reshapeOpt = llvm::dyn_cast<ReshapeNode>(saveOpt->getInput());
+  ASSERT_TRUE(reshapeOpt);
+  auto *bnOpt = llvm::dyn_cast<BatchNormalizationNode>(reshapeOpt->getInput());
+  ASSERT_TRUE(bnOpt);
+  EXPECT_TRUE(
+      BN->getInput().getType()->isEqual(*bnOpt->getInput().getType(), true));
+  EXPECT_TRUE(
+      BN->getResult().getType()->isEqual(*bnOpt->getResult().getType(), true));
+}
+
 // Conv->Reshape->BatchNorm. Sink Reshape below BatchNorm. Check that BatchNorm
 // does not fold in to Conv.
 TEST_F(GraphOptz, sinkReshapeBelowBatchNormAndDoNotFuseConvBatchNorm) {
@@ -5346,6 +5399,219 @@ TEST_F(GraphOptz, ParallelizeGraph_Sub) {
   checkNumericalEquivalence();
 }
 
+/// Test Splitting Pow into multiple Pows.
+TEST_F(GraphOptz, ParallelizeGraph_Pow) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(1.0, 2.0,
+                                                           mod_.getPRNG());
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>().randomize(0.0, 5.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *Pow1 = F_->createPow("Pow1", input1, input2);
+  F_->createSave("save", Pow1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[Pow1] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 12 Pows from Pow1
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::PowNodeKind));
+
+  // Each input of the 12 Pows are sliced.
+  EXPECT_EQ(24, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  // One concat to bring all of the parallelized sliced Pows together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Max into multiple Maxs.
+TEST_F(GraphOptz, ParallelizeGraph_Max) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *Max1 = F_->createMax("Max1", input1, input2);
+  F_->createSave("save", Max1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[Max1] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 12 Maxs from Max1
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::MaxNodeKind));
+
+  // Each input of the 12 Maxs are sliced.
+  EXPECT_EQ(24, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  // One concat to bring all of the parallelized sliced Maxs together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Min into multiple Mins.
+TEST_F(GraphOptz, ParallelizeGraph_Min) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *Min1 = F_->createMin("Min1", input1, input2);
+  F_->createSave("save", Min1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[Min1] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 12 Mins from Min1
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::MinNodeKind));
+
+  // Each input of the 12 Mins are sliced.
+  EXPECT_EQ(24, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  // One concat to bring all of the parallelized sliced Mins together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting BatchedReduceMean into multiple BatchedReduceMeans.
+TEST_F(GraphOptz, ParallelizeGraph_BatchedReduceMean) {
+  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {32, 16, 2048},
+                                        "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *BatchedReduceMean1 =
+      F_->createBatchedReduceMean("BatchedReduceMean1", input1, {1});
+  F_->createSave("save", BatchedReduceMean1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[BatchedReduceMean1] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 12 BatchedReduceMeans from BatchedReduceMean1
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::BatchedReduceMeanNodeKind));
+
+  // Each input of the 12 BatchedReduceMeans are sliced.
+  EXPECT_EQ(12, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  // One concat to bring all of the parallelized sliced BatchedReduceMeans
+  // together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting BatchedReduceMean into multiple BatchedReduceMeans.
+/// Failure case with first dimension in reduction
+TEST_F(GraphOptz, ParallelizeGraph_BatchedReduceMean_failure) {
+  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {32, 16, 2048},
+                                        "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, 2048}, "output", false);
+  bindings_.allocate(output);
+
+  auto *BatchedReduceMean1 =
+      F_->createBatchedReduceMean("BatchedReduceMean1", input1, {0});
+  F_->createSave("save", BatchedReduceMean1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[BatchedReduceMean1] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), 0); // Nothing changes
+  runDCEPass(F_, cctx_);
+
+  // We now have only 1 BatchedReduceMean since parallelization is disabled
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::BatchedReduceMeanNodeKind));
+
+  // No concats
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
 /// Test Splitting Transpose into multiple Transposes.
 TEST_F(GraphOptz, ParallelizeGraph_Transpose) {
   auto *input =
@@ -5676,6 +5942,89 @@ TEST_F(GraphOptz, ParallelizeData_AdaptiveAvgPool) {
   checkNumericalEquivalence();
 }
 
+/// Test Splitting RoIAlign into multiple RoIAligns.
+TEST_F(GraphOptz, ParallelizeData_RoIAlign) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 5, 5, 8}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+  auto *boxes = mod_.createPlaceholder(ElemKind::FloatTy, {6, 4}, "roi", false);
+  bindings_.allocate(boxes)->getHandle<float>() = {
+      0, 0, 3, 3, 0, 0, 3, 3, 0, 0, 3, 3, 0, 0, 3, 3, 0, 0, 3, 3, 0, 0, 3, 3};
+  auto *batchIndices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {6}, "roi", false);
+  bindings_.allocate(batchIndices)
+      ->getHandle<int64_t>()
+      .randomize(0, 3, mod_.getPRNG());
+
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {6, 1, 1, 8}, "output", false);
+  bindings_.allocate(output);
+
+  auto *aap = F_->createROIAlign("ROIAlign", input1, boxes, batchIndices, 1, 1,
+                                 0, 1, false);
+  F_->createSave("save", aap, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[aap] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(), parOpts, 3));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 3 RoIAligns
+  EXPECT_EQ(3, countNodeKind(F_, Kinded::Kind::ROIAlignNodeKind));
+
+  // One concat to bring all of the parallelized sliced RoIAligns
+  // together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting MaxPool into multiple MaxPools.
+TEST_F(GraphOptz, ParallelizeData_MaxPool) {
+  auto *input1 = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5, 5, 8}, 1.0, 0,
+                                        "input1", false);
+  bindings_.allocate(input1)->getHandle<int8_t>().randomize(-1.0, 1.0,
+                                                            mod_.getPRNG());
+
+  auto *maxp = F_->createMaxPool("MaxPool1", input1, 5, 1, 0);
+  F_->createSave("save", maxp->getResult());
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[maxp] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(), parOpts, 3));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 3 MaxPools
+  EXPECT_EQ(3, countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind));
+
+  // One concat to bring all of the parallelized sliced MaxPools
+  // together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
 /// Test Splitting ChannelwiseQuantizedConvolution into multiple
 /// ChannelwiseQuantizedConvolutions.
 TEST_F(GraphOptz, ParallelizeData_ChannelwiseQuantizedConvolution) {
@@ -5717,6 +6066,49 @@ TEST_F(GraphOptz, ParallelizeData_ChannelwiseQuantizedConvolution) {
 
   // One concat to bring all of the parallelized sliced
   // ChannelwiseQuantizedConvolutions together.
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting Convolution into multiple Convolutions.
+TEST_F(GraphOptz, ParallelizeData_Convolution) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5, 5, 4}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>().randomize(-1, 1,
+                                                           mod_.getPRNG());
+  auto *filter =
+      mod_.createConstant(ElemKind::FloatTy, {6, 1, 1, 2}, "weights");
+  auto *bias = mod_.createConstant(ElemKind::FloatTy, {6}, "bias");
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5, 5, 6}, "output", false);
+  bindings_.allocate(output);
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {3, 5, 5, 6});
+
+  auto *conv =
+      F_->createConv("Convolution1", input1, filter, bias, outTy, 1, 1, 0, 2);
+  F_->createSave("save", conv, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  parOpts[conv] = ParallelTransformKind::Data;
+
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(), parOpts, 3));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+
+  // We now have 3 Convolutions
+  EXPECT_EQ(3, countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind));
+
+  // One concat to bring all of the parallelized sliced
+  // Convolutions together.
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
 
   checkNumericalEquivalence();
@@ -5893,33 +6285,6 @@ TEST_F(GraphOptz, ParallelizeGraph_AvgPool_Model_Axis4) {
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
 
   checkNumericalEquivalence(0.f);
-}
-
-TEST_F(GraphOptz, SinkClipBelowReshape) {
-  Placeholder *in =
-      mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  ClipNode *clip = F_->createClip("clip", in, 0.2, 0.8);
-  ReshapeNode *reshape = F_->createReshape("reshape", clip, {2, 5});
-  SaveNode *save = F_->createSave("save", reshape);
-
-  optimizedF_ = optimizeFunctionForTest(F_);
-
-  // Same number of nodes, just swapped order.
-  EXPECT_EQ(F_->getNodes().size(), 3);
-  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
-
-  const SaveNode *optSave =
-      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
-  ASSERT_TRUE(optSave);
-  ClipNode *newClip = llvm::dyn_cast<ClipNode>(optSave->getInput());
-  ASSERT_TRUE(newClip);
-  ReshapeNode *newReshape = llvm::dyn_cast<ReshapeNode>(newClip->getInput());
-  ASSERT_TRUE(newReshape);
-  EXPECT_EQ(newReshape->getResult().dims(), reshape->getResult().dims());
-
-  bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  checkNumericalEquivalence();
 }
 
 /// Test that Add after ConvTranspose is folded into Bias add when the actual
@@ -7638,6 +8003,46 @@ TEST_F(GraphOptz, SinkReshapeBelowConvertTo) {
   checkNumericalEquivalence(0.f);
 }
 
+TEST_F(GraphOptz, SinkReshapeBelowUnaryEltwiseOps) {
+  const dim_t dimsIn[] = {10, 10};
+  const dim_t dimsOut[] = {5, 5, 4};
+
+  auto *in = mod_.createPlaceholder(ElemKind::FloatTy, dimsIn, "in", false);
+  auto *RN = F_->createReshape("reshape", in, dimsOut);
+  auto *AN = F_->createAbs("abs", RN);
+  auto *SN = F_->createSin("sin", AN);
+  auto *CN = F_->createClip("clip", SN, -4.f, 5.f);
+  auto *TN = F_->createTanh("tanh", CN);
+  auto *save = F_->createSave("ret", TN);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  auto *optSave =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
+  ASSERT_TRUE(optSave);
+  auto *optRN = llvm::dyn_cast<ReshapeNode>(optSave->getInput());
+  ASSERT_TRUE(optRN);
+  EXPECT_EQ(optRN->getResult().dims(), llvm::makeArrayRef(dimsOut));
+  auto *optTN = llvm::dyn_cast<TanhNode>(optRN->getInput());
+  ASSERT_TRUE(optTN);
+  EXPECT_EQ(optTN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optCN = llvm::dyn_cast<ClipNode>(optTN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_FLOAT_EQ(optCN->getMin(), CN->getMin());
+  EXPECT_FLOAT_EQ(optCN->getMax(), CN->getMax());
+  EXPECT_EQ(optCN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optSN = llvm::dyn_cast<SinNode>(optCN->getInput());
+  ASSERT_TRUE(optSN);
+  EXPECT_EQ(optSN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optAN = llvm::dyn_cast<AbsNode>(optSN->getInput());
+  ASSERT_TRUE(optAN);
+  EXPECT_EQ(optAN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+
+  bindings_.allocate(in)->getHandle<float>().randomize(-30.f, 30.f,
+                                                       mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
 TEST_F(GraphOptz, OptConvertToDequantize) {
   auto *I =
       mod_.createPlaceholder(ElemKind::Int8QTy, {32, 64}, 0.2f, 1, "A", false);
@@ -7661,4 +8066,31 @@ TEST_F(GraphOptz, OptConvertToDequantize) {
   bindings_.allocate(I)->getHandle<int8_t>().randomize(-128, 127,
                                                        mod_.getPRNG());
   checkNumericalEquivalence(0.007f);
+}
+
+/// Test that Exp+ReduceSum+Div is replaced with SoftMax.
+TEST_F(GraphOptz, FoldExpSumDivIntoSoftmax) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  auto *exp = F_->createExp("exp", input);
+  auto *reduceSum = F_->createBatchedReduceAdd("reduce_sum", exp, {1});
+  auto *div = F_->createNodeWithBroadcast<DivNode>("div", 1, exp, reduceSum);
+  F_->createSave("save", div);
+
+  EXPECT_EQ(5, F_->getNodes().size());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::FoldExpSumDivIntoSoftmax, getDCEPassConfig()});
+
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::ExpNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::DivNodeKind));
+  EXPECT_EQ(0,
+            countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SoftMaxNodeKind));
+
+  checkNumericalEquivalence(1e-7f);
 }

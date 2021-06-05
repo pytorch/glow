@@ -150,6 +150,11 @@ public:
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims);
 
   /// The new type is identical to \p T, with a new shape \p dims and new \p
+  /// strides.
+  TypeRef uniqueTypeWithNewStrides(TypeRef T, llvm::ArrayRef<dim_t> dims,
+                                   llvm::ArrayRef<dim_t> strides);
+
+  /// The new type is identical to \p T, with a new shape \p dims and new \p
   /// alignments.
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims,
                                  llvm::ArrayRef<dim_t> alignments);
@@ -350,6 +355,14 @@ public:
 
   ~Function();
 
+  IRKind getIRKind() const override { return IRKind::GlowGraphIRKind; };
+
+  static bool classof(const IRContainer *I) {
+    return I->getIRKind() == IRKind::GlowGraphIRKind;
+  }
+
+  static bool classof(const Function *F) { return true; }
+
   /// Clear out \ref nodes_ and \ref uniqueNodeNames_.
   void clear();
 
@@ -374,7 +387,7 @@ public:
     return metadataPlaceholders_;
   }
 
-  Module *getParent() { return parent_; }
+  Module *getParent() override { return parent_; }
 
   /// Perform ordering of nodes_ based on node's name.
   /// This is to make sure that performing optimizations have a deterministic
@@ -399,7 +412,7 @@ public:
   ConstList findConstants();
   ConstList findConstants() const;
 
-  const Module *getParent() const { return parent_; }
+  const Module *getParent() const override { return parent_; }
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
@@ -1199,6 +1212,8 @@ public:
 
   PowNode *createPow(llvm::StringRef name, NodeValue base, float exp);
 
+  NonZeroNode *createNonZero(llvm::StringRef name, NodeValue Cond);
+
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);
 
@@ -1527,6 +1542,25 @@ public:
                                          NodeValue dataToInferDim);
 
   /// Implements an operation that converts the sparse representation given by
+  /// the  \p lengths, \p indices and \p values into a dense representation.
+  /// This representation contains \p lengths[i] indices in batch i, and in each
+  /// batch contains the value of \p values at the corresponding index given by
+  /// \p indices. All indices that are not present in \p indices are filled with
+  /// defaultValue. \p indices within the same batch should not contain
+  /// duplicates. \p denseLastDim gives the last dimension of the output dense
+  /// representation (ie. the second dimension).
+  BatchSparseToDenseNode *
+  createBatchSparseToDense(llvm::StringRef name, NodeValue lengths,
+                           NodeValue indices, NodeValue values,
+                           float defaultValue, unsigned_t denseLastDim);
+
+  /// Implements an operation that inserts zeros into \p data along axis=0 for
+  /// indices where \p indicator is zero.
+  FillExamplesWithIndicatorNode *
+  createFillExamplesWithIndicator(llvm::StringRef name, NodeValue data,
+                                  NodeValue indicator);
+
+  /// Implements an operation that converts the sparse representation given by
   /// the pair of \p indices and \p values into a dense representation, which
   /// only contains IDs from given \p mask. Indices cannot contain duplicates.
   /// \p lengths is used to distinguish elements that belong to different
@@ -1583,6 +1617,14 @@ public:
                                            std::function<float(float)> func,
                                            TypeRef outTy);
 
+  /// Create lookup table for operator \p lutOperator using the provided lookup
+  /// \p table.
+  LookupTableNode *createLookupTable(llvm::StringRef name, NodeValue input,
+                                     LUTOperator lutOperator,
+                                     std::vector<float> &lutOperatorArgs,
+                                     NodeValue table, NodeValue idxTable,
+                                     TypeRef outTy);
+
   /// Create quantized log.
   IntLookupTableNode *createIntLog(llvm::StringRef name, NodeValue input,
                                    TypeRef outTy);
@@ -1628,6 +1670,16 @@ public:
   /// into an output tensor of rank q + r - indices_shape[-1] - 1 - b.
   GatherNDNode *createGatherND(llvm::StringRef name, NodeValue data,
                                NodeValue indices);
+
+  /// Create a node, performing GatherElements operation:
+  /// GatherElements takes inputs \p data and indices of the same rank r >=
+  /// 1 and a \p dim attribute that identifies an axis of data. It is an
+  /// indexing operation that produces its output by indexing into the input
+  /// data tensor at by elements of the indices tensor. Its output shape is
+  /// the same as the shape of indices and consists of one value (gathered
+  /// from the data) for each element in indices.
+  GatherElementsNode *createGatherElements(llvm::StringRef name, NodeValue data,
+                                           NodeValue indices, unsigned_t dim);
 
   /// Create a node, performing GatherRanges operation:
   /// Gathers entries of \p data in groups specified by the "examples" in
@@ -1962,6 +2014,19 @@ public:
       std::string nameBase, T inputItr, const int timeSteps, NodeValue Wx,
       NodeValue Wh, NodeValue Bx, NodeValue Bh, NodeValue &H, NodeValue &C);
 
+  /// Helpfer function to create Pytorch Style Multiple Layer STM for one
+  /// direction
+  std::vector<NodeValue> createMultipleLayerSingleDirectionLSTM(
+      std::string nameBase, NodeValue input, unsigned batchSize,
+      unsigned inputSize, const int timeSteps, std::vector<NodeValue> &Wx,
+      std::vector<NodeValue> &Wh, std::vector<NodeValue> &Bx,
+      std::vector<NodeValue> &Bh, NodeValue &H, NodeValue &C);
+
+  /// Helpfer function to create sliced input for LSTM
+  std::vector<NodeValue>
+  createSlicedInput(NodeValue input, std::string &nameBase, unsigned batchSize,
+                    unsigned inputSize, const int timeSteps);
+
   /// Create PyTorch style LSTM with fixed weights and biases.
   /// The order of \p Wx \p Wh \p Bx and \p Bh is i, f, g, o,
   /// The \p inputs shape should be (numSteps, batchSize, hiddenSize),
@@ -1974,7 +2039,8 @@ public:
   /// For more details, please read:
   /// https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html
   void createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue inputs,
-                         NodeValue Wx, NodeValue Wh, NodeValue Bx, NodeValue Bh,
+                         std::vector<NodeValue> &Wx, std::vector<NodeValue> &Wh,
+                         std::vector<NodeValue> &Bx, std::vector<NodeValue> &Bh,
                          NodeValue &Ht, NodeValue &Ct, NodeValue &outputs,
                          bool isBidirectional = false,
                          NodeValue WxR = NodeValue(),

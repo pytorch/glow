@@ -103,14 +103,8 @@ HostManager::HostManager(
     : config_(hostConfig),
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
-  auto reporters = ErrorReporterRegistry::ErrorReporters();
 
-  auto err = init(std::move(deviceConfigs));
-  if (reporters && err) {
-    std::string msg = err.peekErrorValue()->logToString();
-    reporters->report(msg);
-  }
-  EXIT_ON_ERR(std::move(err));
+  REPORT_AND_EXIT_ON_ERR(init(std::move(deviceConfigs)));
   statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
 }
 
@@ -325,10 +319,11 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     for (auto &device : availableDevices_) {
       DeviceInfo info = devices_[device]->getDeviceInfo();
       info.availableMemory = devices_[device]->getAvailableMemory();
-      info.backendName = devices_[device]->getBackendName();
+      info.backendName = devices_[device]->getBackendName().str();
       info.nonSupportedNodes =
-          devices_[device]->getParamByName("nonSupportedNodes");
-      info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
+          devices_[device]->getParamByName("nonSupportedNodes").str();
+      info.supportedNodes =
+          devices_[device]->getParamByName("supportedNodes").str();
       // If p2p is enabled update the inputCount limit.
       if (cctx.enableP2P) {
         info.inputCountMax = P2PInputLimit;
@@ -509,9 +504,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       // meta info as the model does not need to be reloaded.
       ONNXModelWriter onnxWR(
           loc, nodeList, 7, 9, &writeErr,
-          /* textMode */ true, /* zipMode */ false,
-          /* includeConstantData */ false, extraMetadataProps, record,
-          cctx.backendOpts.backendSpecificNodeInfo,
+          /* textMode */ true,
+          /* zipMode */ cctx.useZipModeForSerializeCompiledDAG,
+          /* includeConstantData */ cctx.saveConstantInSerializeCompiledDAG,
+          extraMetadataProps, record, cctx.backendOpts.backendSpecificNodeInfo,
           cctx.skipProvisioning ? &cctx.loadedPHNames : nullptr,
           cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr);
       RETURN_IF_ERR(writeErr);
@@ -802,8 +798,8 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
   executor_->freePool(networkIterator->second.dag.root.get());
   for (auto &node : nodes) {
     for (auto device : node->deviceRuntimeInfos) {
-      Error evictErr =
-          provisioner_->evictFunction(node->name, devices_[device.first].get());
+      Error evictErr = provisioner_->evictFunction(
+          node->name, devices_[device.first].get(), node->replicationCount);
       err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.
@@ -1001,7 +997,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     }
     reportCurrentQueueSize(queueSize);
     // Setup the request
-    InferRequest queuedRequest(networkName, std::move(context), callback,
+    InferRequest queuedRequest(networkName.str(), std::move(context), callback,
                                priority, currentRun, requestReceived);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);

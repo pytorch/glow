@@ -54,7 +54,7 @@ Interpreter::compile(Function *F, const BackendOptions &opts) const {
 
 std::unique_ptr<CompiledFunction>
 Interpreter::compileIR(std::unique_ptr<IRFunction> IR) const {
-  auto *mod = IR->getGraph()->getParent();
+  auto *mod = IR->getParent();
   auto function = compileIRWithoutConstants(std::move(IR));
   auto IFunction = static_cast<InterpreterFunction *>(function.get());
   IFunction->collectConstants(mod);
@@ -174,6 +174,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int16QTy});
 
+  case Kinded::Kind::BatchMatMulNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
+
   case Kinded::Kind::FullyConnectedNodeKind:
     if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
@@ -243,9 +247,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ConcatNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
-         ElemKind::Int8QTy, ElemKind::Int32ITy, ElemKind::Int64ITy,
-         ElemKind::BoolTy});
-
+         ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32ITy,
+         ElemKind::Int64ITy, ElemKind::BoolTy});
+  case Kinded::Kind::NonZeroNodeKind:
+    return NI.getInElemTy(NonZeroNode::CondIdx) == ElemKind::BoolTy &&
+           NI.getOutElemTy(NonZeroNode::ResultIdx) == ElemKind::Int32ITy;
   case Kinded::Kind::SelectNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
@@ -293,7 +299,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::CmpLTENodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
-                ElemKind::Int8QTy, ElemKind::Int32ITy, ElemKind::Int64ITy},
+                ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32ITy,
+                ElemKind::Int64ITy},
                {}, {CmpEQNode::ResultIdx}) &&
            (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
 
@@ -525,6 +532,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
              (NI.getOutElemTy(
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);
+    case ElemKind::UInt4FusedQTy:
     case ElemKind::UInt8FusedQTy:
       if ((NI.getInElemTy(
                FusedRowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
@@ -561,6 +569,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     // Note: Data and Result can be any data type, but must match.
     return ((NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int32ITy) ||
             (NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int64ITy));
+
+  case Kinded::Kind::GatherElementsNodeKind:
+    // Note: Data and Result can be any data type, but must match.
+    return (NI.getInElemTy(GatherNode::DataIdx) ==
+            NI.getOutElemTy(GatherNode::ResultIdx)) &&
+           ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
+            (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
 
   case Kinded::Kind::BatchOneHotNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -705,6 +720,30 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {SparseToDenseNode::IndicesIdx}) &&
            (NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
             ElemKind::Int64ITy);
+
+  case Kinded::Kind::BatchSparseToDenseNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+               {BatchSparseToDenseNode::LengthsIdx,
+                BatchSparseToDenseNode::IndicesIdx}) &&
+           (NI.getInElemTy(BatchSparseToDenseNode::LengthsIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(BatchSparseToDenseNode::LengthsIdx) ==
+                ElemKind::Int32ITy) &&
+           (NI.getInElemTy(BatchSparseToDenseNode::IndicesIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(BatchSparseToDenseNode::IndicesIdx) ==
+                ElemKind::Int32ITy);
+
+  case Kinded::Kind::FillExamplesWithIndicatorNodeKind:
+    return (NI.getInElemTy(FillExamplesWithIndicatorNode::DataIdx) ==
+            NI.getOutElemTy(FillExamplesWithIndicatorNode::ResultIdx)) &&
+           ((NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+             ElemKind::Int32ITy) ||
+            (NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+             ElemKind::Int64ITy) ||
+            (NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+             ElemKind::BoolTy));
 
   case Kinded::Kind::SparseToDenseMaskNodeKind:
     return (NI.getInElemTy(SparseToDenseMaskNode::IndicesIdx) ==
@@ -936,6 +975,8 @@ bool Interpreter::shouldLower(const Node *N) const {
     return false;
   case Kinded::Kind::LayerNormalizationNodeKind:
     return interpreter::flags::LowerLayerNormalization;
+  case Kinded::Kind::BatchMatMulNodeKind:
+    return interpreter::flags::LowerBatchMatMul;
   default:
     return true;
   }

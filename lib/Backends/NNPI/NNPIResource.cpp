@@ -482,10 +482,21 @@ void NNPIResource::updateDeviceResourceFromTensor(
       "Invalid Static placeholder", resultCB);
 
   if (deviceOptions_->inferOnDevice) {
+    const auto sizeFromDesc = CalcDescSize(&desc_);
+    LOG_AND_FAIL_CALLBACK_IF_NOT(
+        sizeFromDesc == t->getSizeInBytes(),
+        "Tensor size " + std::to_string(t->getSizeInBytes()) +
+            " doesn't match size from description " +
+            std::to_string(sizeFromDesc) + " for " + name_,
+        resultCB);
+
     LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
         nnpiDeviceResourceSubLoad(deviceResource_, 0, t->getUnsafePtr(),
                                   t->getSizeInBytes()),
-        "Failed to execute device resource sub load", resultCB);
+        "Failed to execute device resource sub load for " + std::string(name_) +
+            ", size is " + std::to_string(t->getSizeInBytes()) +
+            " bytes, tensor is " + t->toString(),
+        resultCB);
   }
 
   resultCB(Error::success());

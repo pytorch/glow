@@ -306,8 +306,10 @@ public:
     MODEL_LOADER_INVALID_PROTOBUF,
     // Partitioner error.
     PARTITIONER_ERROR,
-    // Runtime error, out of device memory.
+    // Runtime error, general error.
     RUNTIME_ERROR,
+    // Runtime error, error while loading deferred weights.
+    RUNTIME_DEFERRED_WEIGHT_ERROR,
     // Runtime error, out of device memory.
     RUNTIME_OUT_OF_DEVICE_MEMORY,
     // Runtime error, could not find the specified model network.
@@ -379,6 +381,8 @@ public:
   bool isFatalError() const {
     return ec_ == ErrorCode::RUNTIME_DEVICE_NONRECOVERABLE;
   }
+
+  ErrorCode getErrorCode() const { return ec_; }
 
   GlowErrorValue(std::string message, ErrorCode ec)
       : message_(message), ec_(ec) {}

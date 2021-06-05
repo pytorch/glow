@@ -27,6 +27,9 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RepeatedSLWSWithPartialTensors/0",
     "SigmoidSweep_Float16/0",
     "TanHSweep_Float16/0",
+    "BatchNorm2D_FP16_NCHW/0",
+    "BatchNorm3D_NCTHW_FP16/0",
+    "BatchNorm3D_NTHWC_FP16/0",
     "ConvertFrom_BoolTy_To_FloatTy/0",
     "ConvertFrom_BoolTy_To_Float16Ty/0",
     "EmbeddingBag_1D_Float_End_Offset_Partial/0",
@@ -35,4 +38,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat_End_Offset_Partial/0",
     "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16_End_Offset_Partial/0",
     "SparseToDense_Float_Int32/0",
-    "SparseToDense_Float16_Int32/0"};
+    "SparseToDense_Float16_Int32/0",
+    "SoftMaxI8QTy/0"};

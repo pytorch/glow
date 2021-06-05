@@ -2311,6 +2311,15 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<int8_t>().clear(quantization::quantize(val, destQ));
   }
 
+  if (k == ElemKind::Int16QTy) {
+    // Quantize the requested floating point splat value into the correct
+    // integer representation.
+    auto destTy = I->getDest()->getType();
+    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+    float val = I->getValue();
+    return T->getHandle<int16_t>().clear(quantization::quantize(val, destQ));
+  }
+
   if (k == ElemKind::BoolTy) {
     return T->getHandle<bool>().clear(static_cast<bool>(I->getValue()));
   }
@@ -2340,6 +2349,7 @@ void BoundInterpreterFunction::fwdInsertTensorInst(
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
+  TYPED_INSERT(int16_t, ElemKind::Int16QTy);
   TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
 
@@ -2420,6 +2430,79 @@ void BoundInterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
     break;
   default:
     llvm_unreachable("Unsupported type for indices input of Gather.");
+  }
+}
+
+//===----------------------------------------------------------------------===//
+//                      Gather Elements
+//===----------------------------------------------------------------------===//
+
+template <typename IndexTy>
+void BoundInterpreterFunction::fwdGatherElementsInstImpl(
+    const glow::GatherElementsInst *I) {
+  Tensor *outT = getTensor(I->getDest());
+  Tensor *dataT = getTensor(I->getData());
+  auto dataDims = dataT->getType().dims();
+  Tensor *indicesT = getTensor(I->getIndices());
+  auto indicesDims = indicesT->getType().dims();
+  const auto dim = I->getDim();
+  const auto numElems = outT->getRealNumElements();
+  auto ndims = indicesDims.size();
+
+  std::vector<dim_t> ind_dim_off(ndims);
+  std::vector<dim_t> data_dim_off(ndims);
+
+  ind_dim_off[0] = 1;
+  data_dim_off[0] = 1;
+  for (dim_t i = 1; i < ndims; i++) {
+    ind_dim_off[i] =
+        std::accumulate(indicesDims.begin() + ndims - i, indicesDims.end(), 1,
+                        std::multiplies<dim_t>());
+    data_dim_off[i] =
+        std::accumulate(dataDims.begin() + ndims - i, dataDims.end(), 1,
+                        std::multiplies<dim_t>());
+  }
+
+  const auto dimPos = ndims - 1 - dim;
+  const auto elemSize = dataT->getType().getElementSize();
+  // Loop over number of elements in indices
+  for (size_t idx = 0; idx < numElems; idx++) {
+    unsigned_t offset = 0;
+    // Loop over number of dimensions to calculate offset
+    for (dim_t i = 0; i < ndims; i++) {
+      // Calculate axis index i.e. (i, j, k)
+      const dim_t dim_idx =
+          static_cast<dim_t>(std::floor(idx / ind_dim_off[i])) %
+          indicesDims[ndims - (i + 1)];
+      offset += (dimPos != i) * dim_idx * data_dim_off[i];
+    }
+    auto indIdx = indicesT->getHandle<IndexTy>().raw(idx);
+    assert(indIdx < 0 ? -indIdx <= dataDims[dim]
+                      : indIdx < dataDims[dim] &&
+                            "[GatherElements] Got out of bounds index");
+    // In case of negative indices
+    if (indIdx < 0) {
+      indIdx += dataDims[dim];
+    }
+    const auto dataRawIdx = indIdx * data_dim_off[dimPos] + offset;
+    std::copy(&dataT->getUnsafePtr()[dataRawIdx * elemSize],
+              &dataT->getUnsafePtr()[(dataRawIdx + 1) * elemSize],
+              &outT->getUnsafePtr()[idx * elemSize]);
+  }
+}
+
+void BoundInterpreterFunction::fwdGatherElementsInst(
+    const glow::GatherElementsInst *I) {
+  switch (I->getIndices()->getElementType()) {
+  case ElemKind::Int64ITy:
+    fwdGatherElementsInstImpl<int64_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdGatherElementsInstImpl<int32_t>(I);
+    break;
+  default:
+    llvm_unreachable("[GatherElements] Unsupported type for indices input of "
+                     "GatherElements.");
   }
 }
 
@@ -3693,7 +3776,16 @@ void BoundInterpreterFunction::fwdElementCmpLTEInst(
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpLTEInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpLTEInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpLTEInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3731,7 +3823,16 @@ void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpEQInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3770,7 +3871,16 @@ void BoundInterpreterFunction::fwdElementCmpNEQInst(
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpNEQInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3807,7 +3917,16 @@ void BoundInterpreterFunction::fwdElementCmpLTInstImpl(
 void BoundInterpreterFunction::fwdElementCmpLTInst(ElementCmpLTInst const *I) {
   auto *T = getTensor(I->getLHS());
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpLTInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpLTInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpLTInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3943,11 +4062,24 @@ void BoundInterpreterFunction::fwdElementExpInst(const ElementExpInst *I) {
                             I->getSrc()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdNonZeroInst(const NonZeroInst *I) {
+  auto *T = getTensor(I->getDest());
+  T->zero();
+  auto outW = T->getHandle<int32_t>();
+  auto condW = getWeightHandle<bool>(I->getCond());
+  for (size_t condIdx = 0, outIdx = 0, n = condW.size(); condIdx < n;
+       condIdx++) {
+    if (condW.raw(condIdx)) {
+      outW.raw(outIdx) = condIdx;
+      outIdx++;
+    }
+  }
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdElementSelectInstFloatImpl(
     const glow::ElementSelectInst *I) {
   staticAssertFloatingPointType(ElemTy);
-
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto condW = getWeightHandle<bool>(I->getCond());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -4135,6 +4267,35 @@ void BoundInterpreterFunction::fwdMatMulInstFloatImpl(const MatMulInst *I) {
   }
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchMatMulInstFloatImpl(
+    const BatchMatMulInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto lhs = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhs = getWeightHandle<ElemTy>(I->getRHS());
+  auto dest = getWeightHandle<ElemTy>(I->getDest());
+
+  auto destDim = dest.dims();
+  auto lhsDim = lhs.dims();
+
+  dest.clear(0);
+
+  for (dim_t batch = 0; batch < destDim[0]; batch++) {
+    // For each (x,y) in the destination matrix:
+    for (dim_t x = 0; x < destDim[1]; x++) {
+      for (dim_t y = 0; y < destDim[2]; y++) {
+        // Perform DOT on the row an column.
+        float sum = 0;
+        for (dim_t i = 0; i < lhsDim[2]; i++) {
+          sum += float(lhs.at({batch, x, i})) * float(rhs.at({batch, i, y}));
+        }
+        dest.at({batch, x, y}) = ElemTy(sum);
+      }
+    }
+  }
+}
+
 void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     dispatchQuantizedWithAccumulationImpl(fwdMatMulInstQuantizedImpl,
@@ -4148,7 +4309,13 @@ void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
 
 void BoundInterpreterFunction::fwdBatchMatMulInst(
     const glow::BatchMatMulInst *I) {
-  DCHECK(!"Found BatchMatMulInst but BatchMatMul is lowered on Interpreter");
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    DCHECK(!"Quantized implementation for BatchMatmul not supported yet.");
+    return;
+  }
+
+  dispatchFloatingPointImpl(fwdBatchMatMulInstFloatImpl,
+                            I->getLHS()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdReluGradInst(const glow::ReluGradInst *I) {
@@ -5370,7 +5537,8 @@ void BoundInterpreterFunction::
          "sum(Lengths) must be equal to len(Indices)");
 
   const bool using4BitQuantization =
-      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy;
+      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy ||
+      data->getType().getElementType() == ElemKind::UInt4FusedQTy;
 
   const size_t outLineSize = out->size() / out->dims()[0];
 
@@ -5428,6 +5596,10 @@ void BoundInterpreterFunction::
     fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   const auto ity = I->getIndices()->getElementType();
+  const bool fp32FusedScaleOffset =
+      (I->getData()->getElementType() == ElemKind::UInt4FusedQTy) ||
+      (I->getData()->getElementType() == ElemKind::UInt8FusedQTy);
+
   switch (I->getDest()->getElementType()) {
   case ElemKind::FloatTy:
     if (ity == ElemKind::Int32ITy) {
@@ -5441,7 +5613,7 @@ void BoundInterpreterFunction::
     }
     break;
   case ElemKind::Float16Ty:
-    if (I->getUseFP16Accumulation()) {
+    if (I->getUseFP16Accumulation() && !fp32FusedScaleOffset) {
       if (ity == ElemKind::Int32ITy) {
         fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<
             float16_t, float16_t, int32_t>(I);
@@ -5652,6 +5824,117 @@ void BoundInterpreterFunction::fwdSparseToDenseInst(
                          I->getDest()->getElementType(), I);
 }
 
+template <typename ElemTy, typename LengthsTy, typename IndicesTy>
+void BoundInterpreterFunction::fwdBatchSparseToDenseInstImpl2(
+    const BatchSparseToDenseInst *I) {
+  auto outH = getWeightHandle<ElemTy>(I->getDest());
+  auto lengthsH = getWeightHandle<LengthsTy>(I->getLengths());
+  auto valuesH = getWeightHandle<ElemTy>(I->getValues());
+  auto indicesH = getWeightHandle<IndicesTy>(I->getIndices());
+  auto denseLastDim = I->getDenseLastDim();
+  auto defaultValue = I->getDefaultValue();
+  outH.clear(defaultValue);
+
+  // Verifying input sizes.
+  size_t lengthsSum = 0;
+  auto batchSize = lengthsH.size();
+  for (dim_t i = 0; i < batchSize; ++i) {
+    lengthsSum += lengthsH.at(i);
+  }
+  CHECK_EQ(lengthsSum, indicesH.size());
+
+  dim_t k = 0;
+  for (dim_t i = 0; i < batchSize; ++i) {
+    for (dim_t j = 0; j < lengthsH.at(i); ++j) {
+      CHECK_LT(indicesH.at(i), denseLastDim);
+      outH.at({static_cast<dim_t>(i), static_cast<dim_t>(indicesH.at(k))}) =
+          valuesH.at(k);
+      k++;
+    }
+  }
+}
+
+template <typename ElemTy, typename LengthsTy>
+void BoundInterpreterFunction::fwdBatchSparseToDenseInstImpl1(
+    const BatchSparseToDenseInst *I) {
+  switch (I->getLengths()->getElementType()) {
+  case ElemKind::Int32ITy:
+    fwdBatchSparseToDenseInstImpl2<ElemTy, LengthsTy, int32_t>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdBatchSparseToDenseInstImpl2<ElemTy, LengthsTy, int64_t>(I);
+    break;
+  default:
+    llvm_unreachable("Index type is not supported");
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchSparseToDenseInst(
+    const BatchSparseToDenseInst *I) {
+  dispatchFloatingPointAndIndexImpl(fwdBatchSparseToDenseInstImpl1,
+                                    I->getDest()->getElementType(),
+                                    I->getLengths()->getElementType(), I);
+}
+
+template <typename ElemTy, typename IndicatorTy>
+void BoundInterpreterFunction::fwdFillExamplesWithIndicatorInstImpl2(
+    const FillExamplesWithIndicatorInst *I) {
+  auto outT = getTensor(I->getDest());
+  auto dataT = getTensor(I->getData());
+  auto elemSize = dataT->getType().getElementSize();
+  auto indicatorH = getWeightHandle<IndicatorTy>(I->getIndicator());
+
+  size_t numBatches = indicatorH.dims()[0];
+  outT->zero();
+
+  size_t nonzero = 0;
+  for (size_t i = 0; i < numBatches; ++i) {
+    if (static_cast<bool>(indicatorH.at(i))) {
+      nonzero++;
+    }
+  }
+  CHECK_EQ(dataT->dims()[0], nonzero);
+
+  // Calculate size of last n-1 data dims
+  size_t blockSize = 1;
+  for (size_t i = 1; i < dataT->dims().size(); i++) {
+    blockSize *= dataT->dims()[i];
+  }
+  size_t blockByteSize = blockSize * elemSize;
+  size_t dataP = 0;
+  for (size_t i = 0; i < numBatches; i++) {
+    if (static_cast<bool>(indicatorH.at(i))) {
+      std::copy(&dataT->getUnsafePtr()[dataP],
+                &dataT->getUnsafePtr()[dataP + blockByteSize],
+                &outT->getUnsafePtr()[i * blockByteSize]);
+      dataP += blockByteSize;
+    }
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdFillExamplesWithIndicatorInstImpl1(
+    const FillExamplesWithIndicatorInst *I) {
+  switch (I->getIndicator()->getElementType()) {
+  case ElemKind::Int32ITy:
+    fwdFillExamplesWithIndicatorInstImpl2<ElemTy, int32_t>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdFillExamplesWithIndicatorInstImpl2<ElemTy, int64_t>(I);
+    break;
+  case ElemKind::BoolTy:
+    fwdFillExamplesWithIndicatorInstImpl2<ElemTy, bool>(I);
+    break;
+  default:
+    llvm_unreachable("Indicator type is not supported");
+  }
+}
+
+void BoundInterpreterFunction::fwdFillExamplesWithIndicatorInst(
+    const FillExamplesWithIndicatorInst *I) {
+  dispatchArithmeticImpl(fwdFillExamplesWithIndicatorInstImpl1,
+                         I->getDest()->getElementType(), I);
+}
 void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
     const SparseToDenseMaskInst *I) {
   auto out = getTensor(I->getDest());
@@ -6224,6 +6507,10 @@ void BoundInterpreterFunction::fwdIntLookupTableInst(
   } else {
     llvm_unreachable("Type not supported for IntLookupTable!");
   }
+}
+
+void BoundInterpreterFunction::fwdLookupTableInst(const LookupTableInst *I) {
+  llvm_unreachable("LookupTable instruction is not supported yet");
 }
 
 void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {

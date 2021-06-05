@@ -200,6 +200,13 @@ onnxStatus HostManagerBackend::addNetwork(
     precConfig.convertFusedToFP16 = glow::flags::ConvertFusedScaleOffsetToFP16;
     LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
   }
+  if (glow::flags::ConvertFusedScaleOffsetToFP32) {
+    precConfig.convert4BitFusedToFP32 =
+        glow::flags::ConvertFusedScaleOffsetToFP32;
+    precConfig.convert8BitFusedToFP32 =
+        glow::flags::ConvertFusedScaleOffsetToFP32;
+    LOG(INFO) << "Conversion of fused scales/offsets to fp32 enabled";
+  }
   if (glow::flags::ClipToFP16) {
     precConfig.clipFP16 = glow::flags::ClipToFP16;
     LOG(INFO) << "Clipping to fp16 enabled";
@@ -296,6 +303,12 @@ onnxStatus HostManagerBackend::addNetwork(
       throw std::invalid_argument(strFormat(
           "Error during AOT optimization (non-provisioned addNetwork):\n%s\n",
           errMsg.c_str()));
+    } else if (err.peekErrorValue()->getErrorCode() ==
+               ErrorValue::ErrorCode::RUNTIME_DEFERRED_WEIGHT_ERROR) {
+      // If a deferred weight error occurs, log the error but do not fatal so we
+      // can try again.
+      LOG(ERROR) << errMsg;
+      return ONNXIFI_STATUS_INTERNAL_ERROR;
     } else {
       LOG(FATAL) << errMsg;
     }

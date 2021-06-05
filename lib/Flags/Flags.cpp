@@ -64,6 +64,9 @@ bool ForceSLSToFP16Accum = true;
 bool ClipQuantRangeToFP16 = false;
 bool ClipZeroScaleFP16 = false;
 
+// Fp32 constants
+bool ConvertFusedScaleOffsetToFP32 = false;
+
 // Debug Constants
 int32_t NumDebugTracesPerDump = 100;
 bool DumpDebugTraces = false;
@@ -109,6 +112,7 @@ bool EnableCustomDSPKernels = false;
 bool DumpCompilerData = false;
 bool UsePerPartitionIcetConfig = false;
 std::string InjectedIAOpKernelPath = "";
+bool DumpCustomKernelFiles = false;
 
 } // namespace flags
 } // namespace nnpi
@@ -117,6 +121,7 @@ std::string InjectedIAOpKernelPath = "";
 namespace glow {
 namespace interpreter {
 namespace flags {
+bool LowerBatchMatMul = true;
 bool LowerLayerNormalization = true;
 } // namespace flags
 } // namespace interpreter
@@ -137,6 +142,8 @@ std::string BackendName = "";
 bool SaveModel = false;
 bool SaveIO = false;
 bool SaveDAG = false;
+bool SaveDAGWithConstants = false;
+bool SaveDAGInZipMode = false;
 } // namespace flags
 } // namespace onnxifi
 } // namespace glow
@@ -277,6 +284,15 @@ DEFINE_validator(glow_global_fused_scale_offset_fp16,
                    return true;
                  });
 DEFINE_bool(
+    glow_global_fused_scale_offset_fp32,
+    glow::flags::ConvertFusedScaleOffsetToFP32,
+    "Enable converting scale/offset in sls's input data from fp16 to fp32");
+DEFINE_validator(glow_global_fused_scale_offset_fp32,
+                 [](const char *, bool val) {
+                   glow::flags::ConvertFusedScaleOffsetToFP32 = val;
+                   return true;
+                 });
+DEFINE_bool(
     glow_global_force_sls_fp16_accum, glow::flags::ForceSLSToFP16Accum,
     "Force all SLS/SLWS ops to use FP16 accumulation. True by default.");
 DEFINE_validator(glow_global_force_sls_fp16_accum, [](const char *, bool val) {
@@ -357,6 +373,23 @@ DEFINE_bool(
     "Whether to serialize the DAG that has been optimized and partitioned.");
 DEFINE_validator(glow_save_onnxifi_dag, [](const char *, bool val) {
   glow::onnxifi::flags::SaveDAG = val;
+  return true;
+});
+DEFINE_bool(glow_save_onnxifi_dag_with_constants,
+            glow::onnxifi::flags::SaveDAGWithConstants,
+            "Whether to serialize constants in the DAG that has been optimized "
+            "and partitioned.");
+DEFINE_validator(glow_save_onnxifi_dag_with_constants,
+                 [](const char *, bool val) {
+                   glow::onnxifi::flags::SaveDAGWithConstants = val;
+                   return true;
+                 });
+DEFINE_bool(glow_save_onnxifi_dag_in_zip_mode,
+            glow::onnxifi::flags::SaveDAGWithConstants,
+            "Whether to serialize the DAG that has been optimized and "
+            "partitioned in ZIP mode.");
+DEFINE_validator(glow_save_onnxifi_dag_in_zip_mode, [](const char *, bool val) {
+  glow::onnxifi::flags::SaveDAGInZipMode = val;
   return true;
 });
 DEFINE_bool(
@@ -562,6 +595,14 @@ DEFINE_validator(glow_injected_ia_op_kernel_path,
                    return true;
                  });
 
+DEFINE_bool(glow_dump_custom_kernel_files,
+            glow::nnpi::flags::DumpCustomKernelFiles,
+            "Enable dumping the compiled custom IA and DSP kernels to file.");
+DEFINE_validator(glow_dump_custom_kernel_files, [](const char *, bool val) {
+  glow::nnpi::flags::DumpCustomKernelFiles = val;
+  return true;
+});
+
 DEFINE_bool(glow_nnpi_lower_all_batch_matmul,
             glow::nnpi::flags::LowerAllBatchMatMul,
             "Whether to override default lowering for NNPI and always lower "
@@ -605,6 +646,14 @@ DEFINE_validator(glow_nnpi_timeout_ms, [](const char *, int32_t val) {
   return true;
 });
 
+DEFINE_bool(glow_interpreter_lower_batch_matmul,
+            glow::interpreter::flags::LowerBatchMatMul,
+            "Lower batch matmul node.");
+DEFINE_validator(glow_interpreter_lower_batch_matmul,
+                 [](const char *, bool val) {
+                   glow::interpreter::flags::LowerBatchMatMul = val;
+                   return true;
+                 });
 DEFINE_bool(glow_interpreter_lower_layer_normalization,
             glow::interpreter::flags::LowerLayerNormalization,
             "Lower layer normalization node.");

@@ -682,6 +682,12 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Computes elementwise: result = log(input / (1 - input)).");
 
+  BB.newNode("NonZero")
+      .addInput("Cond")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Selects indices of the true elements in Cond");
+
   BB.newNode("Select")
       .addInput("Cond")
       .addInput("LHS")
@@ -969,6 +975,30 @@ int main(int argc, char **argv) {
           "and in this case, all of the corresponding values in Values "
           "are added together.");
 
+  BB.newNode("BatchSparseToDense")
+      .addInput("Lengths")
+      .addInput("Indices")
+      .addInput("Values")
+      .addMember(MemberType::Float, "DefaultValue")
+      .addMember(MemberType::Unsigned, "DenseLastDim")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Converts the sparse representation specified by "
+          "(Lengths, Indices, Values) into a dense one. In the dense "
+          "representation, elements of the lengths vector represent the number "
+          "of indices in the corresponding batch, where each batch "
+          "contains each value from Values at the "
+          "corresponding index specified in Indices, and is filled with "
+          "DefaultValue otherwise. Within each batch, Indices shouldn't "
+          "contain duplicate indices.");
+
+  BB.newNode("FillExamplesWithIndicator")
+      .addInput("Data")
+      .addInput("Indicator")
+      .addResultFromCtorArg()
+      .setDocstring("Inserts zeros into data along axis=0 for indices where "
+                    "indicator is zero.");
+
   BB.newNode("SparseToDenseMask")
       .addInput("Indices")
       .addInput("Values")
@@ -1186,6 +1216,20 @@ int main(int argc, char **argv) {
           "Given Data tensor of rank r >= 1, Indices tensor of rank q >= 1 "
           "This operator gathers slices of Data into "
           "an output tensor of rank q + r - Indices_shape[-1] - 1 .");
+
+  BB.newNode("GatherElements")
+      .addInput("Data")
+      .addInput("Indices")
+      .addMember(MemberType::Unsigned, "Dim")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "GatherElements takes inputs data and indices of the same rank r "
+          ">= 1 and an attribute axis specified by dim. It is an indexing"
+          "operation that produces its output by indexing into the "
+          "input data tensor at index positions determined by elements of the "
+          "indices tensor. Its output shape is the same as the shape of "
+          "indices and consists of one value (gathered from the data) for each "
+          "element in indices.");
 
   BB.newNode("GatherRanges")
       .addInput("Data")
@@ -1660,6 +1704,27 @@ int main(int argc, char **argv) {
           "Format for upright boxes is (image_index, x1, y1, x2, y2)."
           "Format for rotated boxes (image_index, ctr_x, ctr_y, w, h, angle)"
           "RpnPostNmsTopN should be greater than zero");
+
+  //===--------------------------------------------------------------------===//
+  //                Lookup Table Operators
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("LookupTable")
+      // Input to the function.
+      .addInput("Input")
+      // Table containing the coefficients for interpolation.
+      .addInput("Table")
+      // Table containing the index mapping to find the right entry in the main
+      // table.
+      .addInput("TableIdx")
+      .addMember(MEMBER_TYPE_INFO(glow::LUTOperator), "Operator")
+      .addMember(MemberType::VectorFloat, "OperatorArgs")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring(
+          "LookupTable based data-parallel operation."
+          "Given an interpolation table and and index table, "
+          "return interpolated approximations for arbitrary functions.");
 
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes

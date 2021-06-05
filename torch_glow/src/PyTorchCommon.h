@@ -35,6 +35,8 @@ struct InputMetaStack;
 using BatchShapesMapType = std::unordered_map<
     int, std::unordered_map<const torch::jit::Value *, VariableMeta>>;
 
+void dumpOperatorStats(const torch::jit::Graph &graph);
+
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
@@ -141,6 +143,9 @@ public:
   /// Must be true in twshared hosts.
   bool writeOnnxToTmp = false;
 
+  /// The JSON file name that stores Glow deserialization specs
+  std::string serializationSpecFileName = "serializationSpec.json";
+
   /// Optional prefix for naming of onnx files (otherwise an internal id)
   std::string onnxFileNamePrefix = "";
 
@@ -218,6 +223,34 @@ public:
   /// Additional parameters to DAG optimizer
   std::string apl_parallelization_alg = "ParallelizeCVHeuristicData";
   int32_t apl_num_parallel_chunks = 2;
+
+  // Serialize GlowIR into ONNX txt file during warmCache, this file can be
+  // use for future model loading, which a part of AOT compilation
+  bool saveGlowIRIntoONNX = false;
+
+  // Load GlowIR by deserializing ONNX txt file during warmCache
+  bool loadGlowIRFromONNX = false;
+
+  // Skip provisioning (currently only happens in Glow serialization, in which
+  // we do model partition, DAG optimization, and then serialize the optimized
+  // and partitioned model into ONNX model file. During this process, we do not
+  // need to do provisioning)
+  bool skipProvisioning = false;
+
+  /// Set the number of predecessor Nodes to be printed from an error node.
+  int32_t debugLayers = 5;
+
+  // Sparse NN Partitioning Scheme Constants, refer to OptimizationOptions in
+  // CompilationContext for details
+  bool useSparseNNPartitioningScheme = false;
+  bool sparseNNPartitioningAddSLSConcats = false;
+  bool sparseNNPartitioningBalancePerfModel = false;
+  bool sparseNNPartitioningPairLNWithSLS = false;
+  bool sparseNNPartitioningPairTileWithSLS = false;
+  int32_t sparseNNPartitioningSchemeNumCards = 1;
+  int64_t sparseNNPartitioningSchemeSLSTableKBytesPerCard = 1;
+  int32_t SparseNNPartitioningSchemeNumCoresSLS = 1;
+  int32_t SparseNNPartitioningSchemeNumCoresOther = 1;
 };
 
 /// Represents different possible output types from to_glow modules.

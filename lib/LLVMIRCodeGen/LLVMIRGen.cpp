@@ -65,7 +65,8 @@ static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC)
-    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
+    : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
+      allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
 }
@@ -73,7 +74,8 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC,
                      llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry)
-    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
+    : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
+      allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
       objectRegistry_(objectRegistry) {
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
@@ -81,6 +83,16 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
 
 /// Mutex to protect LLVM's TargetRegistry.
 static std::mutex initTargetMutex;
+
+void LLVMIRGen::initTargetOptions(llvm::TargetOptions &targetOpts,
+                                  const LLVMBackendOptions &backendOpts) {
+  if (backendOpts.getFloatABI().hasValue()) {
+    targetOpts.FloatABIType = backendOpts.getFloatABI().getValue();
+  }
+  if (!backendOpts.getABIName().empty()) {
+    targetOpts.MCOptions.ABIName = backendOpts.getABIName();
+  }
+}
 
 void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
   // LLVM's TargetRegistry is not thread safe so we add a critical section.
@@ -92,12 +104,9 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
   llvm::InitializeAllAsmParsers();
 
   llvm::TargetOptions targetOpts;
-  if (opts.getFloatABI().hasValue()) {
-    targetOpts.FloatABIType = opts.getFloatABI().getValue();
-  }
-  if (!opts.getABIName().empty()) {
-    targetOpts.MCOptions.ABIName = opts.getABIName();
-  }
+  // Initialize target options in a backend-specific way.
+  initTargetOptions(targetOpts, opts);
+
   if (opts.getTarget().empty()) {
     TM_.reset(llvm::EngineBuilder()
                   .setCodeModel(opts.getCodeModel())
@@ -121,6 +130,15 @@ llvm::StringRef LLVMIRGen::getBundleName() const { return bundleName_; }
 
 void LLVMIRGen::setBundleName(const std::string &name) {
   bundleName_ = name.empty() ? "bundle" : legalizeName(name);
+}
+
+llvm::StringRef LLVMIRGen::getSavedBundleName() const {
+  return savedBundleName_;
+}
+
+void LLVMIRGen::setSavedBundleName(const std::string &name) {
+  assert(!name.empty() && "Name cannot be empty");
+  savedBundleName_ = name;
 }
 
 std::string LLVMIRGen::getMainEntryName() const { return mainEntryName_; }
@@ -389,7 +407,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt32PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt8ITy:
-    T = llvm::Type::getInt8PtrTy(ctx_);
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt8FusedQTy:
     T = llvm::Type::getInt8PtrTy(getLLVMContext());
@@ -498,10 +516,11 @@ llvm::Value *LLVMIRGen::emitConstFloatArray(llvm::IRBuilder<> &builder,
                                             llvm::ArrayRef<float> vals) {
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
-    elems.push_back(
-        llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), (float)I));
+    elems.push_back(llvm::ConstantFP::get(
+        llvm::Type::getFloatTy(getLLVMContext()), (float)I));
   }
-  return emitConstArray(builder, elems, llvm::Type::getFloatTy(ctx_));
+  return emitConstArray(builder, elems,
+                        llvm::Type::getFloatTy(getLLVMContext()));
 }
 
 llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
@@ -680,9 +699,14 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
   llvm::GlobalVariable *gvarStr = new llvm::GlobalVariable(
       *llmodule_, constStrArray->getType(), true,
       llvm::GlobalValue::PrivateLinkage, constStrArray, ".str");
+#if LLVM_VERSION_MAJOR >= 10
+  gvarStr->setAlignment(llvm::MaybeAlign(1));
+#else
   gvarStr->setAlignment(1);
+#endif
   // Add unnamed_addr attribute to enable constmerge pass.
   gvarStr->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
   return builder.CreateBitCast(gvarStr, builder.getInt8PtrTy());
 }
 
@@ -2878,12 +2902,44 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *src = SM->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
-
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
-
     auto *F = getFunction("softmax", dest->getElementType());
-    createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+
+    if (src->getType()->isQuantizedType()) {
+      std::vector<int32_t> lut;
+
+      // Compute lookup table containing all the exponentials based on the
+      // formula e^(scale * value), where scale is the input scale of
+      // the quantized input data and value is a value from [-255, 0].
+      for (int32_t i = 0; i < 256; i++) {
+        auto exponent =
+            FixedPointUInt32(exp(src->getType()->getScale() * (i - 255)), 1)
+                .getFixedVal();
+        lut.push_back(exponent);
+      }
+
+      auto *lutPtr = emitConstI32Array(builder, lut);
+      auto *outOffset = emitConstI32(builder, dest->getType()->getOffset());
+      float size = static_cast<float>(src->getType()->dims()[1]);
+      auto *sumIntegerPart = emitConstI32(builder, ceil(log2(size)));
+
+      if (ceil(log2(size)) == floor(log2(size))) {
+        sumIntegerPart = emitConstI32(builder, ceil(log2(size)) + 1);
+      }
+
+      FixedPointUInt32 invScaleFixedPoint =
+          FixedPointUInt32(1.f / dest->getType()->getScale());
+      auto *invScale = emitConstI32(builder, invScaleFixedPoint.getFixedVal());
+      auto *invScalePoint =
+          emitConstI32(builder, invScaleFixedPoint.getIntBits());
+      createCall(builder, F,
+                 {srcPtr, destPtr, srcDims, lutPtr, outOffset, invScale,
+                  sumIntegerPart, invScalePoint});
+    } else {
+      createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+    }
+
     break;
   }
 

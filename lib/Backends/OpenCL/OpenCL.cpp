@@ -1742,7 +1742,7 @@ void OpenCLFunction::collectConstants(const Module *module) {
 
 std::unique_ptr<CompiledFunction>
 OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
-  auto *module = IR->getGraph()->getParent();
+  auto *module = IR->getParent();
   TraceInfo traceInfo;
 
   MemoryAllocator allocator("GPU", 0xFFFFFFFF);

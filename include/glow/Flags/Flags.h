@@ -53,6 +53,9 @@ extern bool ForceSLSToFP16Accum;
 extern bool ClipZeroScaleFP16;
 extern bool ClipQuantRangeToFP16;
 
+// FP32 constants
+extern bool ConvertFusedScaleOffsetToFP32;
+
 // Debug Constants
 extern int32_t NumDebugTracesPerDump;
 extern bool DumpDebugTraces;
@@ -102,6 +105,7 @@ extern bool EnableCustomDSPKernels;
 extern bool DumpCompilerData;
 extern bool UsePerPartitionIcetConfig;
 extern std::string InjectedIAOpKernelPath;
+extern bool DumpCustomKernelFiles;
 } // namespace flags
 } // namespace nnpi
 } // namespace glow
@@ -109,6 +113,7 @@ extern std::string InjectedIAOpKernelPath;
 namespace glow {
 namespace interpreter {
 namespace flags {
+extern bool LowerBatchMatMul;
 extern bool LowerLayerNormalization;
 } // namespace flags
 } // namespace interpreter
@@ -129,6 +134,8 @@ extern std::string BackendName;
 extern bool SaveModel;
 extern bool SaveIO;
 extern bool SaveDAG;
+extern bool SaveDAGWithConstants;
+extern bool SaveDAGInZipMode;
 } // namespace flags
 } // namespace onnxifi
 } // namespace glow
@@ -160,6 +167,7 @@ DECLARE_bool(glow_global_fp16);
 DECLARE_bool(glow_skip_bias_fp32tofp16_convert);
 DECLARE_bool(glow_clip_fp16);
 DECLARE_bool(glow_global_fused_scale_offset_fp16);
+DECLARE_bool(glow_global_fused_scale_offset_fp32);
 DECLARE_int32(glow_snn_partitioning_kbytes_per_card);
 DECLARE_int32(glow_snn_partitioning_num_cores_sls);
 DECLARE_int32(glow_snn_partitioning_num_cores_other);

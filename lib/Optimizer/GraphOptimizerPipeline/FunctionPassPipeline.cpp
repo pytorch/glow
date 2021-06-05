@@ -202,6 +202,14 @@ createDefaultGraphOptimizationPassPipeline() {
       // Run code hoisting pass to undo such unsuccessful sinking.
       {FunctionPassID::HoistCode, ConvergenceMode::UntilFixedPoint},
 
+      // Try to eliminate Reshape nodes by sinking them through the graph.
+      // Such sinking can create new optimization opportunities as well as
+      // prevent some optimizations from happening, so do it at the very end of
+      // the pipeline to keep the current iteration unaffected and bear all
+      // benefits/consequences on the next pipeline iteration.
+      {FunctionPassID::SinkReshapes, ConvergenceMode::UntilFixedPoint},
+      {FunctionPassID::OptimizeReshape},
+
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };
@@ -252,6 +260,9 @@ std::unique_ptr<FunctionPassPipeline> createDefaultFoldPassPipeline() {
 
       // Fold Min + Max to Clip
       {FunctionPassID::FoldMinMaxToClip},
+
+      // Fold exp + reduce sum + div into softmax
+      {FunctionPassID::FoldExpSumDivIntoSoftmax},
 
       // Perform Dead Code Elimination.
       getDCEPassConfig(),
