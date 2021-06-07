@@ -3689,6 +3689,75 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::TFLiteDetectionPostProcessInstKind: {
+    auto *DPPI = llvm::cast<TFLiteDetectionPostProcessInst>(I);
+    auto boxes = DPPI->getBoxes();
+    auto scores = DPPI->getScores();
+    auto anchors = DPPI->getAnchors();
+    auto detectionBoxes = DPPI->getDetectionBoxes();
+    auto detectionClasses = DPPI->getDetectionClasses();
+    auto detectionScores = DPPI->getDetectionScores();
+    auto numDetections = DPPI->getNumDetections();
+    auto scratch = DPPI->getScratch();
+
+    // Emit pointers.
+    auto *boxesPtr = emitValueAddress(builder, boxes);
+    auto *scoresPtr = emitValueAddress(builder, scores);
+    auto *anchorsPtr = emitValueAddress(builder, anchors);
+    auto *detectionBoxesPtr = emitValueAddress(builder, detectionBoxes);
+    auto *detectionClassesPtr = emitValueAddress(builder, detectionClasses);
+    auto *detectionScoresPtr = emitValueAddress(builder, detectionScores);
+    auto *numDetectionsPtr = emitValueAddress(builder, numDetections);
+    auto *scratchPtr = emitValueAddress(builder, scratch);
+
+    // Emit parameters.
+    auto *numBoxes = emitConstI32(builder, boxes->dims()[1]);
+    auto *numTotalClasses = emitConstI32(builder, scores->dims()[2]);
+    auto *numClasses = emitConstI32(builder, DPPI->getNumClasses());
+    auto *maxDetections = emitConstI32(builder, DPPI->getMaxDetections());
+    auto *maxClassesPerDetection =
+        emitConstI32(builder, DPPI->getMaxClassesPerDetection());
+    auto *maxDetectionsPerClass =
+        emitConstI32(builder, DPPI->getMaxDetectionsPerClass());
+    auto *iouThreshold = emitConstF32(builder, DPPI->getIouThreshold());
+    auto *scoreThreshold = emitConstF32(builder, DPPI->getScoreThreshold());
+    auto *xScaleInv = emitConstF32(builder, 1.0f / DPPI->getXScale());
+    auto *yScaleInv = emitConstF32(builder, 1.0f / DPPI->getYScale());
+    auto *hScaleInv = emitConstF32(builder, 1.0f / DPPI->getHScale());
+    auto *wScaleInv = emitConstF32(builder, 1.0f / DPPI->getWScale());
+    auto *regularNMS = emitConstI1(builder, DPPI->getRegularNMS());
+
+    // Current implementation only supports batch size 1.
+    assert(boxes->dims()[0] == 1 &&
+           "TFLiteDetectionPostProcess batch not supported!");
+
+    // Call function.
+    auto *F = getFunction("tflite_detection_post_process_f");
+    createCall(builder, F,
+               {boxesPtr,
+                scoresPtr,
+                anchorsPtr,
+                detectionBoxesPtr,
+                detectionClassesPtr,
+                detectionScoresPtr,
+                numDetectionsPtr,
+                scratchPtr,
+                numBoxes,
+                numTotalClasses,
+                numClasses,
+                maxDetections,
+                maxClassesPerDetection,
+                maxDetectionsPerClass,
+                iouThreshold,
+                scoreThreshold,
+                xScaleInv,
+                yScaleInv,
+                hScaleInv,
+                wScaleInv,
+                regularNMS});
+    break;
+  }
+
   case Kinded::Kind::AudioSpectrogramInstKind: {
     auto *ASI = llvm::cast<AudioSpectrogramInst>(I);
     auto winOutScratch = ASI->getWinOutScratch();
