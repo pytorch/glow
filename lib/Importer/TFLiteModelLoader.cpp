@@ -2279,9 +2279,14 @@ Error TFLiteModelLoader::loadStridedSlice(const tflite::Operator *op,
     std::vector<dim_t> oldOutDims = output.dims();
     std::vector<dim_t> newOutDims;
     for (size_t idx = 0; idx < oldOutDims.size(); ++idx) {
-      if (!getMaskBit(shrink_axis_mask, idx)) {
+      if (getMaskBit(shrink_axis_mask, idx)) {
+        assert(oldOutDims[idx] == 1 && "Shrunk dimension should be 1!");
+      } else {
         newOutDims.push_back(oldOutDims[idx]);
       }
+    }
+    if (newOutDims.empty()) {
+      newOutDims.push_back(1);
     }
     output = F_->createReshape(opInfo.name + ".reshape", output, newOutDims);
   }
