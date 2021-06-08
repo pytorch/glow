@@ -217,6 +217,14 @@ TFLITE_UNIT_TEST(LessEqual, "less_equal.tflite")
 TFLITE_UNIT_TEST(Slice, "slice.tflite")
 TFLITE_UNIT_TEST(SliceNegSize, "slice_neg_size.tflite")
 
+TFLITE_UNIT_TEST(StridedSliceTest0, "strided_slice_test0.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest1, "strided_slice_test1.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest2, "strided_slice_test2.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest3, "strided_slice_test3.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest4, "strided_slice_test4.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest5, "strided_slice_test5.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest6, "strided_slice_test6.tflite")
+
 TFLITE_UNIT_TEST(Sin, "sin.tflite")
 
 TFLITE_UNIT_TEST(Tile, "tile.tflite")

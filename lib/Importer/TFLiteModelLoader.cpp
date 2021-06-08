@@ -1129,6 +1129,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_SQUEEZE) {
     return loadReshape(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_STRIDED_SLICE) {
+    return loadStridedSlice(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_EXP) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -1218,6 +1221,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   }
   if (opCode == tflite::BuiltinOperator_RSQRT) {
     return loadUnaryArithmetic(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_SHAPE) {
+    return loadShape(op, opInfo);
   }
   if (opCode == tflite::BuiltinOperator_POW) {
     return loadBinaryArithmetic(op, opInfo);
@@ -2018,6 +2024,36 @@ Error TFLiteModelLoader::loadArg(const tflite::Operator *op,
   return setOutputNodeValue(op, output);
 }
 
+Error TFLiteModelLoader::loadShape(const tflite::Operator *op,
+                                   const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  Constant *shapeC = F_->getParent()->createConstant(outTy, opInfo.name);
+  auto inputDims = input.getType()->dims();
+  RETURN_ERR_IF_NOT(outTy->dims().size() == 1,
+                    opErrMsg(opInfo, "Output should be 1D!"));
+  RETURN_ERR_IF_NOT(outTy->dims()[0] == inputDims.size(),
+                    opErrMsg(opInfo, "Output length should match input rank!"));
+  if (outTy->getElementType() == ElemKind::Int32ITy) {
+    auto shapeH = shapeC->getPayloadMutable().getHandle<int32_t>();
+    for (size_t idx = 0; idx < inputDims.size(); ++idx) {
+      shapeH.raw(idx) = static_cast<int32_t>(inputDims[idx]);
+    }
+  } else if (outTy->getElementType() == ElemKind::Int64ITy) {
+    auto shapeH = shapeC->getPayloadMutable().getHandle<int64_t>();
+    for (size_t idx = 0; idx < inputDims.size(); ++idx) {
+      shapeH.raw(idx) = static_cast<int64_t>(inputDims[idx]);
+    }
+  } else {
+    return MAKE_ERR(opErrMsg(opInfo, "Output should be INT32 or INT64!"));
+  }
+
+  return setOutputNodeValue(op, shapeC);
+}
+
 Error TFLiteModelLoader::loadSlice(const tflite::Operator *op,
                                    const OperatorInfo &opInfo) {
   NodeValue input;
@@ -2044,6 +2080,166 @@ Error TFLiteModelLoader::loadSlice(const tflite::Operator *op,
   }
 
   NodeValue output = F_->createSlice(opInfo.name, input, start, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadStridedSlice(const tflite::Operator *op,
+                                          const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_StridedSliceOptions();
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  NodeValue begin;
+  ASSIGN_VALUE_OR_RETURN_ERR(begin, getInputNodeValue(op, 1));
+  NodeValue end;
+  ASSIGN_VALUE_OR_RETURN_ERR(end, getInputNodeValue(op, 2));
+  NodeValue strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getInputNodeValue(op, 3));
+
+  // You can find more information about this operator here:
+  // https://www.tensorflow.org/api_docs/python/tf/strided_slice
+  // https://www.tensorflow.org/mlir/tfl_ops#tflstrided_slice_tflstridedsliceop
+
+  // We only support strided slice if begin/end/strides are constants. This
+  // is because Glow is statically typed.
+  auto inpDims = input.dims();
+  std::vector<dim_t> beginV;
+  ASSIGN_VALUE_OR_RETURN_ERR(beginV, loadArray<dim_t>(opInfo, begin));
+  std::vector<dim_t> endV;
+  ASSIGN_VALUE_OR_RETURN_ERR(endV, loadArray<dim_t>(opInfo, end));
+  std::vector<int32_t> stridesV;
+  ASSIGN_VALUE_OR_RETURN_ERR(stridesV, loadArray<int32_t>(opInfo, strides));
+
+  // The strides must be non-zero.
+  for (size_t idx = 0; idx < stridesV.size(); ++idx) {
+    RETURN_ERR_IF_NOT(stridesV[idx] != 0,
+                      opErrMsg(opInfo, "Strides must be non-zero!"));
+  }
+
+  // The begin/end/strides must have same size.
+  RETURN_ERR_IF_NOT(
+      beginV.size() == endV.size(),
+      opErrMsg(opInfo, "Begin/end/strides should have same length!"));
+  RETURN_ERR_IF_NOT(
+      beginV.size() == stridesV.size(),
+      opErrMsg(opInfo, "Begin/end/strides should have same length!"));
+
+  // The begin/end/strides length must be equal to the input rank.
+  RETURN_ERR_IF_NOT(beginV.size() == inpDims.size(),
+                    opErrMsg(opInfo, "Begin/end/strides length invalid!"));
+
+  // Get attributes.
+  int32_t begin_mask = opts->begin_mask();
+  int32_t end_mask = opts->end_mask();
+  int32_t ellipsis_mask = opts->ellipsis_mask();
+  int32_t new_axis_mask = opts->new_axis_mask();
+  int32_t shrink_axis_mask = opts->shrink_axis_mask();
+
+  // Utility to extract the Nth bit from a mask. Returns 0 or 1.
+  auto getMaskBit = [](uint32_t mask, size_t n) -> int {
+    assert((0 <= n) && (n <= 31) && "Bit number exceeded!");
+    return (mask >> n) & 0x01;
+  };
+
+  // If the ith bit of begin_mask is set, begin[i] is ignored and the fullest
+  // possible range in that dimension is used instead.
+  if (begin_mask) {
+    for (size_t idx = 0; idx < beginV.size(); ++idx) {
+      if (getMaskBit(begin_mask, idx)) {
+        // If stride is positive we start from 0 otherwise from dimension size.
+        beginV[idx] = (stridesV[idx] > 0) ? 0 : (inpDims[idx] - 1);
+      }
+    }
+  }
+
+  // If the ith bit of end_mask is set, end[i] is ignored and the fullest
+  // possible range in that dimension is used instead.
+  if (end_mask) {
+    for (size_t idx = 0; idx < endV.size(); ++idx) {
+      if (getMaskBit(end_mask, idx)) {
+        // If stride is positive we end at dimension size otherwise at 0.
+        endV[idx] = (stridesV[idx] > 0) ? inpDims[idx] : 0;
+      }
+    }
+  }
+
+  // If the ith bit of ellipsis_mask is set, as many unspecified dimensions as
+  // needed will be inserted between other dimensions. Only one non-zero bit is
+  // allowed in ellipsis_mask.
+  if (ellipsis_mask) {
+    size_t ellipsisIdx = 0;
+    for (size_t idx = 0; idx < 32; ++idx) {
+      if (getMaskBit(ellipsis_mask, idx)) {
+        ellipsisIdx = idx;
+        break;
+      }
+    }
+    // Note: It is unclear from the TFLite specification how to derive the
+    // number of dimensions associated to the ellipsis. We use the fact that
+    // when ellipsis is used the associated dimensions from "begin" and "end"
+    // arrays are commonly marked both with 0.
+    size_t idx = ellipsisIdx;
+    while ((idx < beginV.size()) && (beginV[idx] == 0) && (endV[idx] == 0)) {
+      beginV[idx] = (stridesV[idx] > 0) ? 0 : (inpDims[idx] - 1);
+      endV[idx] = (stridesV[idx] > 0) ? inpDims[idx] : 0;
+      idx++;
+    }
+  }
+
+  // If the ith bit of new_axis_mask is set, then begin, end, and stride are
+  // ignored and a new length 1 dimension is added at this point in the output
+  // tensor.
+  if (new_axis_mask) {
+    size_t inpIdx = 0;
+    size_t outIdx = 0;
+    std::vector<dim_t> newOutDims;
+    while (inpIdx < inpDims.size()) {
+      if (getMaskBit(new_axis_mask, outIdx)) {
+        newOutDims.push_back(1);
+      } else {
+        newOutDims.push_back(inpDims[inpIdx++]);
+      }
+      outIdx++;
+    }
+    NodeValue output = F_->createReshape(opInfo.name, input, newOutDims);
+    return setOutputNodeValue(op, output);
+  }
+
+  // If the ith bit of shrink_axis_mask is set, it implies that the ith
+  // specification shrinks the dimensionality by 1, taking on the value at
+  // index begin[i]. end[i] and strides[i] are ignored in this case.
+  if (shrink_axis_mask) {
+    for (size_t idx = 0; idx < beginV.size(); ++idx) {
+      if (getMaskBit(shrink_axis_mask, idx)) {
+        endV[idx] = beginV[idx] + 1;
+        stridesV[idx] = 1;
+      }
+    }
+  }
+
+  // Currently we only support strides of 1.
+  // TODO: Add support for strides different than 1 (positive or negative) once
+  // supported in Glow.
+  for (size_t idx = 0; idx < stridesV.size(); ++idx) {
+    RETURN_ERR_IF_NOT(
+        stridesV[idx] == 1,
+        opErrMsg(opInfo, "Only stride 1 is currently supported!"));
+  }
+
+  // Create Slice node.
+  NodeValue output = F_->createSlice(opInfo.name, input, beginV, endV);
+
+  // Reshape output if some dimensions were shrunk.
+  if (shrink_axis_mask) {
+    std::vector<dim_t> oldOutDims = output.dims();
+    std::vector<dim_t> newOutDims;
+    for (size_t idx = 0; idx < oldOutDims.size(); ++idx) {
+      if (!getMaskBit(shrink_axis_mask, idx)) {
+        newOutDims.push_back(oldOutDims[idx]);
+      }
+    }
+    output = F_->createReshape(opInfo.name + ".reshape", output, newOutDims);
+  }
+
   return setOutputNodeValue(op, output);
 }
 

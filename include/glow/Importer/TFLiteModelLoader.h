@@ -266,8 +266,15 @@ class TFLiteModelLoader {
   /// Load Arg operator (ArgMax or ArgMin).
   Error loadArg(const tflite::Operator *op, const OperatorInfo &opInfo);
 
+  /// Load Shape operator.
+  Error loadShape(const tflite::Operator *op, const OperatorInfo &opInfo);
+
   /// Load Slice operator.
   Error loadSlice(const tflite::Operator *op, const OperatorInfo &opInfo);
+
+  /// Load StridedSlice operator.
+  Error loadStridedSlice(const tflite::Operator *op,
+                         const OperatorInfo &opInfo);
 
   /// Load Resize Bilinear operator.
   Error loadResizeBilinear(const tflite::Operator *op,
