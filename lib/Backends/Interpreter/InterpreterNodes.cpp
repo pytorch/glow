@@ -2387,7 +2387,7 @@ void BoundInterpreterFunction::fwdGatherInstImpl(const glow::GatherInst *I) {
   auto &dataTy = dataT->getType();
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
-  unsigned_t axis = I->getAxis();
+  unsigned_t axis = I->getBatchDims();
 
   size_t out_p = 0;
   dim_t elementSize = dataTy.getElementSize();

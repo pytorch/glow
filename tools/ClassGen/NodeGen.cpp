@@ -1194,10 +1194,16 @@ int main(int argc, char **argv) {
                     "Small is inserted Count times along Axis. The resulting "
                     "Tensor will have the same type as the input Big tensor.");
 
+  // TODO: Rename "BatchDims" member to "Axis". This was attempted in #5565 but
+  // some internal FB tests failed. The member needs to be renamed because that
+  // is the true meaning of the member and that is what the implementation does
+  // according to both Caffe2, ONNX and TFLite operator definitions.
+  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#gather
+  // https://www.tensorflow.org/mlir/tfl_ops#tflgather_tflgatherop
   BB.newNode("Gather")
       .addInput("Data")
       .addInput("Indices")
-      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::Unsigned, "BatchDims")
       .addResultFromCtorArg()
       .setDocstring("Gathers entries of the outer-most dimension of Data "
                     "indexed by Indices, and concatenates them. Output tensor "

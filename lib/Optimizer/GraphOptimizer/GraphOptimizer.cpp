@@ -3492,7 +3492,7 @@ bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
     }
 
     dim_t index = 0;
-    size_t axis = GN->getAxis();
+    size_t axis = GN->getBatchDims();
     auto elementKind = indices->getElementType();
     if (elementKind == ElemKind::Int64ITy) {
       index = (size_t)indices->getHandle<int64_t>().raw(0);

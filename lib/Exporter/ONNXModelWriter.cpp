@@ -1874,7 +1874,7 @@ Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
 Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
-  auto axis = node->getAxis();
+  auto axis = node->getBatchDims();
 
   if (axis != 0) {
     addValueAttribute(proto, "axis", axis);
