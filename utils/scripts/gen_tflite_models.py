@@ -143,12 +143,33 @@ clean_dir(OUT_DIR)
 # ----------------------------------------------------------------------------------------------------------------------
 #                                                        Strided Slice
 # ----------------------------------------------------------------------------------------------------------------------
-def gen_strided_slice(name, input_shape, begin, end, strides, begin_mask=0, end_mask=0, ellipsis_mask=0,
-                      new_axis_mask=0, shrink_axis_mask=0):
+def gen_strided_slice(
+    name,
+    input_shape,
+    begin,
+    end,
+    strides,
+    begin_mask=0,
+    end_mask=0,
+    ellipsis_mask=0,
+    new_axis_mask=0,
+    shrink_axis_mask=0,
+):
     # Create model.
-    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32)
-    out = tf.strided_slice(inp, begin, end, strides, begin_mask, end_mask, ellipsis_mask,
-                           new_axis_mask, shrink_axis_mask)
+    inp = layers.Input(
+        name="input", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32
+    )
+    out = tf.strided_slice(
+        inp,
+        begin,
+        end,
+        strides,
+        begin_mask,
+        end_mask,
+        ellipsis_mask,
+        new_axis_mask,
+        shrink_axis_mask,
+    )
     model = Model(inputs=[inp], outputs=[out])
     # Create data.
     np.random.seed(0)
@@ -164,62 +185,76 @@ def gen_strided_slice(name, input_shape, begin, end, strides, begin_mask=0, end_
 
 
 # Basic test. Default strides are 1.
-gen_strided_slice(name="strided_slice_test0",
-                  input_shape=(1, 2, 3),
-                  begin=(0, 0, 0),
-                  end=(1, 1, 1),
-                  strides=(1, 1, 1))
+gen_strided_slice(
+    name="strided_slice_test0",
+    input_shape=(1, 2, 3),
+    begin=(0, 0, 0),
+    end=(1, 1, 1),
+    strides=(1, 1, 1),
+)
 
 # Test begin_mask. Ignore "begin" value for 2nd dimension and use value for maximum range.
-gen_strided_slice(name="strided_slice_test1",
-                  input_shape=(1, 3, 4),
-                  begin=(0, 2, 3),
-                  end=(1, 3, 4),
-                  strides=(1, 1, 1),
-                  begin_mask=2)
+gen_strided_slice(
+    name="strided_slice_test1",
+    input_shape=(1, 3, 4),
+    begin=(0, 2, 3),
+    end=(1, 3, 4),
+    strides=(1, 1, 1),
+    begin_mask=2,
+)
 
 # Test end_mask. Ignore "end" value for 2nd dimension and use value for maximum range.
-gen_strided_slice(name="strided_slice_test2",
-                  input_shape=(1, 3, 4),
-                  begin=(0, 0, 0),
-                  end=(1, 1, 1),
-                  strides=(1, 1, 1),
-                  end_mask=2)
+gen_strided_slice(
+    name="strided_slice_test2",
+    input_shape=(1, 3, 4),
+    begin=(0, 0, 0),
+    end=(1, 1, 1),
+    strides=(1, 1, 1),
+    end_mask=2,
+)
 
 # Test begin_mask & end_mask. Ignore "begin"/"end" value for 2nd dimension and use values for maximum range.
-gen_strided_slice(name="strided_slice_test3",
-                  input_shape=(1, 3, 4),
-                  begin=(0, 1, 1),
-                  end=(1, 2, 2),
-                  strides=(1, 1, 1),
-                  begin_mask=2,
-                  end_mask=2)
+gen_strided_slice(
+    name="strided_slice_test3",
+    input_shape=(1, 3, 4),
+    begin=(0, 1, 1),
+    end=(1, 2, 2),
+    strides=(1, 1, 1),
+    begin_mask=2,
+    end_mask=2,
+)
 
 # Test ellipsis_mask. Test access pattern [0, ..., 0] where the ellipsis position is marked as 0's for begin/end.
-gen_strided_slice(name="strided_slice_test4",
-                  input_shape=(1, 3, 4),
-                  begin=(0, 0, 0),
-                  end=(1, 0, 1),
-                  strides=(1, 1, 1),
-                  begin_mask=0,
-                  end_mask=0,
-                  ellipsis_mask=2)
+gen_strided_slice(
+    name="strided_slice_test4",
+    input_shape=(1, 3, 4),
+    begin=(0, 0, 0),
+    end=(1, 0, 1),
+    strides=(1, 1, 1),
+    begin_mask=0,
+    end_mask=0,
+    ellipsis_mask=2,
+)
 
 # Test new_axis_mask.
-gen_strided_slice(name="strided_slice_test5",
-                  input_shape=(1, 3, 4),
-                  begin=(0, 0, 0),
-                  end=(1, 2, 3),
-                  strides=(1, 1, 1),
-                  new_axis_mask=2)
+gen_strided_slice(
+    name="strided_slice_test5",
+    input_shape=(1, 3, 4),
+    begin=(0, 0, 0),
+    end=(1, 2, 3),
+    strides=(1, 1, 1),
+    new_axis_mask=2,
+)
 
 # Test shrink_axis_mask.
-gen_strided_slice(name="strided_slice_test6",
-                  input_shape=(1, 3, 4),
-                  begin=(0, 0, 0),
-                  end=(1, 2, 3),
-                  strides=(1, 1, 1),
-                  shrink_axis_mask=2)
+gen_strided_slice(
+    name="strided_slice_test6",
+    input_shape=(1, 3, 4),
+    begin=(0, 0, 0),
+    end=(1, 2, 3),
+    strides=(1, 1, 1),
+    shrink_axis_mask=2,
+)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
