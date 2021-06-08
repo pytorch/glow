@@ -92,9 +92,3 @@ Value *glow::valueForNode(
                           << nodeName;
   return value;
 }
-
-std::vector<glow::dim_t> glow::getNodeShape(const folly::dynamic &node) {
-  CHECK(node.find("shape") != node.items().end())
-      << "shape field doesn't exist in node " << node;
-  return toIntegerArray<glow::dim_t>(node.at("shape").getString());
-}
