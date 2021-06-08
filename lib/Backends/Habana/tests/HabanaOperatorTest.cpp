@@ -311,6 +311,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Logit_Float16/0",
     "LSTMUnitFP16/0",
     "PyTorchLSTMFP16/0",
+    "PyTorchMultipleLayerLSTMFP16/0",
     "DynamicQuantizedFullyConnectedBasic/0",
     "DynamicQuantizedFullyConnectedStrongWeights/0",
     "DynamicRowwiseQuantizedFullyConnectedBasic/0",

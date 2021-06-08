@@ -184,8 +184,10 @@ static Placeholder *createPlaceholderConditionallyQuantized(
     Module &mod, ElemKind T, llvm::ArrayRef<dim_t> dims, llvm::StringRef name,
     bool isTrainable, llvm::StringRef layout = ANY_LAYOUT) {
   return isQuantizedElemKind(T)
-             ? mod.createPlaceholder(T, dims, 1.0, 0, name, isTrainable, layout)
-             : mod.createPlaceholder(T, dims, name, isTrainable, layout);
+             ? mod.createPlaceholder(T, dims, 1.0, 0, name.str(), isTrainable,
+                                     layout.str())
+             : mod.createPlaceholder(T, dims, name.str(), isTrainable,
+                                     layout.str());
 }
 
 /// Helper to get a unique Type; if \p T is quantized, then it will include a
@@ -2799,7 +2801,12 @@ TEST_P(OperatorTest, PyTorchLSTMFP16) {
 
   NodeValue nH = H, nC = C;
   NodeValue output;
-  F_->createPyTorchLSTM("lstm", X, Wx, Wh, Bx, Bh, nH, nC, output, false);
+  std::vector<NodeValue> WxVector = {Wx};
+  std::vector<NodeValue> WhVector = {Wh};
+  std::vector<NodeValue> BxVector = {Bx};
+  std::vector<NodeValue> BhVector = {Bh};
+  F_->createPyTorchLSTM("lstm", X, WxVector, WhVector, BxVector, BhVector, nH,
+                        nC, output, false);
 
   auto *save = F_->createSave("save_output", output);
   auto *saveTensor = bindings_.allocate(save->getPlaceholder());
@@ -2815,6 +2822,108 @@ TEST_P(OperatorTest, PyTorchLSTMFP16) {
                           0.9704, 0.9758, 0.9866, 0.9890, 0.9910, 0.9926,
                           0.9940, 0.9951, 0.9959, 0.9967, 0.9982, 0.9985,
                           0.9988, 0.9990, 0.9992, 0.9993, 0.9995, 0.9996};
+  for (unsigned_t i = 0; i < numSteps * minibatchSize * hiddenSize; i++) {
+    EXPECT_NEAR(saveH.raw(i), expectOutput[i], 2E-3);
+  }
+}
+
+TEST_P(OperatorTest, PyTorchMultipleLayerLSTMFP16) {
+  CHECK_IF_ENABLED();
+
+  unsigned minibatchSize = 2;
+  unsigned inputSize = 3;
+  unsigned hiddenSize = 4;
+  unsigned numSteps = 3;
+  unsigned numLayers = 2;
+
+  // Input
+  auto *X = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                   {numSteps, minibatchSize, inputSize},
+                                   "Input", false);
+  auto IH = bindings_.allocate(X)->getHandle<float16_t>();
+  for (unsigned i = 0; i < numSteps * minibatchSize * inputSize; i++) {
+    IH.raw(i) = 0.1 * i;
+  }
+
+  // Weights & Bias
+  Tensor tWx0(ElemKind::Float16Ty, {inputSize, 4 * hiddenSize});
+  for (unsigned i = 0; i < inputSize * 4 * hiddenSize; i++) {
+    tWx0.getHandle<float16_t>().raw(i) = 0.1 * i;
+  }
+  auto Wx0 = (mod_.createConstant("Wx_0", std::move(tWx0)))->getOutput();
+
+  Tensor tWx1(ElemKind::Float16Ty, {hiddenSize, 4 * hiddenSize});
+  for (unsigned i = 0; i < hiddenSize * 4 * hiddenSize; i++) {
+    tWx1.getHandle<float16_t>().raw(i) = 0.1 * (i + 1);
+  }
+  auto Wx1 = (mod_.createConstant("Wx_1", std::move(tWx1)))->getOutput();
+  std::vector<NodeValue> WxVector = {Wx0, Wx1};
+
+  std::vector<NodeValue> WhVector;
+  for (unsigned j = 0; j < numLayers; j++) {
+    Tensor tWh(ElemKind::Float16Ty, {hiddenSize, 4 * hiddenSize});
+    for (unsigned i = 0; i < hiddenSize * 4 * hiddenSize; i++) {
+      tWh.getHandle<float16_t>().raw(i) = 0.1 * (i + 2 + j);
+    }
+    auto Wh = (mod_.createConstant("Wh_" + std::to_string(j), std::move(tWh)))
+                  ->getOutput();
+    WhVector.push_back(Wh);
+  }
+
+  std::vector<NodeValue> BxVector;
+  for (unsigned j = 0; j < numLayers; j++) {
+    Tensor tBx(ElemKind::Float16Ty, {4 * hiddenSize});
+    for (unsigned i = 0; i < 4 * hiddenSize; i++) {
+      tBx.getHandle<float16_t>().raw(i) = 0.1 * (i + 4 + j);
+    }
+    auto Bx = (mod_.createConstant("Bx_" + std::to_string(j), std::move(tBx)))
+                  ->getOutput();
+    BxVector.push_back(Bx);
+  }
+  std::vector<NodeValue> BhVector;
+  for (unsigned j = 0; j < numLayers; j++) {
+    Tensor tBh(ElemKind::Float16Ty, {4 * hiddenSize});
+    for (unsigned i = 0; i < 4 * hiddenSize; i++) {
+      tBh.getHandle<float16_t>().raw(i) = 0.1 * (i + 7 + j);
+    }
+    auto Bh = (mod_.createConstant("Bh_" + std::to_string(j), std::move(tBh)))
+                  ->getOutput();
+    BhVector.push_back(Bh);
+  }
+
+  // H & C
+  auto *H = mod_.createPlaceholder(
+      ElemKind::Float16Ty, {numLayers, minibatchSize, hiddenSize}, "H", false);
+  auto *C = mod_.createPlaceholder(
+      ElemKind::Float16Ty, {numLayers, minibatchSize, hiddenSize}, "C", false);
+
+  auto hH = bindings_.allocate(H)->getHandle<float16_t>();
+  auto hC = bindings_.allocate(C)->getHandle<float16_t>();
+  for (unsigned i = 0; i < numLayers * minibatchSize * hiddenSize; i++) {
+    hH.raw(i) = 0.1 * (i + 1);
+    hC.raw(i) = 0.1 * (i + 2);
+  }
+
+  NodeValue nH = H, nC = C;
+  NodeValue output;
+
+  F_->createPyTorchLSTM("lstm", X, WxVector, WhVector, BxVector, BhVector, nH,
+                        nC, output, false);
+
+  auto *save = F_->createSave("save_output", output);
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto saveH = saveTensor->getHandle<float16_t>();
+
+  // expectOutput calculated by PyTorch Float32 using torch.nn.LSTM() with same
+  // input, weights, biases, h and c. Set eps to 1E-3 since OperatorTest could
+  // be Float16
+  float expectOutput[] = {0.9640, 0.9705, 0.9757, 0.9801, 0.9837, 0.9866,
+                          0.9890, 0.9910, 0.9951, 0.9959, 0.9967, 0.9973,
+                          0.9978, 0.9982, 0.9985, 0.9988, 0.9993, 0.9995,
+                          0.9996, 0.9996, 0.9997, 0.9998, 0.9998, 0.9998};
   for (unsigned_t i = 0; i < numSteps * minibatchSize * hiddenSize; i++) {
     EXPECT_NEAR(saveH.raw(i), expectOutput[i], 2E-3);
   }
@@ -17351,6 +17460,16 @@ TEST_P(OperatorTest,
                                /* useFP16Accumulation */ true);
 }
 
+/// Test Fused-RWQ-SLWS in Float16 wth 4-bit quantization for the embedding.
+/// Uses Float accumulation, Float for scale/offset.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSTwoColumn_Fused4Bit_Float_AccumFloat) {
+  ENABLED_BACKENDS("Interpreter");
+  testSLWSTwoColumn<float>(bindings_, mod_, F_, EE_, ElemKind::UInt4FusedQTy,
+                           0.1,
+                           /* useFP16Accumulation */ false);
+}
+
 /// Helper to test SLWS with different lengths modes, with precision \p DTy,
 /// and precision for data \p dataDTy.
 template <typename DataType>
@@ -17750,6 +17869,157 @@ TEST_P(OperatorTest, SparseToDense_Int64) {
   CHECK_IF_ENABLED();
   testSparseToDense<int64_t, int64_t>(bindings_, mod_, F_, EE_,
                                       ElemKind::Int64ITy, ElemKind::Int64ITy);
+}
+
+template <typename DataType, typename LengthType, typename IndexType>
+static void testBatchSparseToDense(glow::PlaceholderBindings &bindings,
+                                   glow::Module &mod, glow::Function *F,
+                                   glow::ExecutionEngine &EE, ElemKind DTy,
+                                   ElemKind LTy, ElemKind ITy) {
+  constexpr dim_t numBatches = 6;
+  constexpr dim_t numIndices = 10;
+
+  auto *lengths = mod.createPlaceholder(LTy, {numBatches}, "lengths", false);
+  auto *indices = mod.createPlaceholder(ITy, {numIndices}, "indices", false);
+  auto *values = mod.createPlaceholder(DTy, {numIndices}, "values", false);
+  float defaultValue = 0.5;
+  unsigned_t denseLastDim = 10;
+
+  auto LH = bindings.allocate(lengths)->getHandle<LengthType>();
+  auto IH = bindings.allocate(indices)->getHandle<IndexType>();
+  auto VH = bindings.allocate(values)->getHandle<DataType>();
+
+  LH = {1, 0, 3, 4, 0, 2};
+  IH = {0, 1, 2, 1, 3, 6, 4, 5, 2, 8};
+
+  auto *BSTD = F->createBatchSparseToDense("BSTD", lengths, indices, values,
+                                           defaultValue, denseLastDim);
+  auto *S = F->createSave("save", BSTD);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+
+  VH.randomize(-3.0, 3.0, mod.getPRNG());
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+
+  // Compute expected output.
+  Tensor expected(DTy, {numBatches, denseLastDim});
+  auto EH = expected.getHandle<DataType>();
+  EH.clear(defaultValue);
+  auto curInd = 0;
+  for (dim_t i = 0; i < numBatches; ++i) {
+    auto batchNumIndices = LH.at({i});
+    for (dim_t j = 0; j < batchNumIndices; ++j) {
+      EH.at({i, static_cast<dim_t>(IH.at(curInd))}) = VH.at(curInd);
+      curInd++;
+    }
+  }
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_Float) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<float, int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_Float_Int32_Int32) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<float, int32_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy,
+      ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<float16_t, int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy,
+      ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<bfloat16_t, int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int64ITy,
+      ElemKind::Int64ITy);
+}
+
+template <typename DataType, typename IndicatorType>
+static void testFillExamplesWithIndicator(glow::PlaceholderBindings &bindings,
+                                          glow::Module &mod, glow::Function *F,
+                                          glow::ExecutionEngine &EE,
+                                          ElemKind DTy, ElemKind IndTy) {
+  // Create and initialize inputs. Make input 3D to make sure
+  // multidimensional values are handled properly.
+  auto *indicator = mod.createPlaceholder(IndTy, {8}, "indicator", false);
+  auto *data = mod.createPlaceholder(DTy, {4, 3, 2}, "data", false);
+
+  auto IH = bindings.allocate(indicator)->getHandle<IndicatorType>();
+  auto DH = bindings.allocate(data)->getHandle<DataType>();
+
+  IH = {1, 0, 1, 0, 1, 1, 0, 0};
+
+  auto *filled = F->createFillExamplesWithIndicator("filled", data, indicator);
+  auto *S = F->createSave("save", filled);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+
+  DH.randomize(-3.0, 3.0, mod.getPRNG());
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+
+  // Compute expected output.
+  Tensor expected(DTy, {8, 3, 2});
+  expected.zero();
+  auto EH = expected.getHandle<DataType>();
+  dim_t idx = 0;
+  for (dim_t i = 0; i < 8; ++i) {
+    if (IH.at(i) == 1) {
+      for (dim_t j = 0; j < 3; ++j) {
+        for (dim_t k = 0; k < 2; ++k) {
+          EH.at({i, j, k}) = DH.at({idx, j, k});
+        }
+      }
+      idx++;
+    }
+  }
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Float_Int64) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Float16_Int32) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Float16_Bool) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<float16_t, bool>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::BoolTy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_BFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<bfloat16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Int32_Int32) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<int32_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Int32ITy, ElemKind::Int32ITy);
 }
 
 TEST_P(OperatorTest, SparseToDenseMask1) {

@@ -34,23 +34,25 @@ class TestQuantizedLayerNorm(utils.TorchGlowTestCase):
     def test_layernorm_basic(self):
         """Basic test of the PyTorch quantized layernorm Node on Glow."""
 
-        inputs = torch.tensor([1.2, 0.6, 0.9]).reshape(1, 1, 3)
+        inputs = torch.tensor([0.3, 0.6, 0.3]).reshape(1, 1, 3)
         weight = torch.tensor([1.0, 1.1, 1.2])
         bias = torch.tensor([0.1, 0.1, 0.2])
 
         utils.compare_tracing_methods(
-            QuantizedLayerNormModule([3], 0.1, 0, weight, bias),
+            QuantizedLayerNormModule([3], 0.01, 66, weight, bias),
             inputs,
             fusible_ops={"quantized::layer_norm"},
+            atol=1e-02,
         )
 
     def test_layernorm_no_weight_bias(self):
         """Test of the PyTorch quantized::layer_norm without weights and bias."""
 
-        inputs = torch.tensor([1.2, 0.6, 0.9, 0.3]).reshape(1, 1, 2, 2)
+        inputs = torch.tensor([0.3, 0.6, 0.9, 0.3]).reshape(1, 1, 2, 2)
 
         utils.compare_tracing_methods(
-            QuantizedLayerNormModule([2, 2], 0.1, 0),
+            QuantizedLayerNormModule([2, 2], 0.01, 91),
             inputs,
             fusible_ops={"quantized::layer_norm"},
+            atol=1e-2,
         )

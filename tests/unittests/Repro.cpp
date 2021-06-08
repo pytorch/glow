@@ -696,7 +696,7 @@ int run() {
     std::copy_if(placeholderList.begin(), placeholderList.end(),
                  std::back_inserter(inputPlaceholderList),
                  [&](const glow::Placeholder *p) {
-                   return inputTensorNames.find(p->getName()) !=
+                   return inputTensorNames.find(p->getName().str()) !=
                           inputTensorNames.end();
                  });
 

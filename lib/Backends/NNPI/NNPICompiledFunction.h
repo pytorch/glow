@@ -18,6 +18,7 @@
 
 #include "BlockStream.h"
 #include "NNPIOptions.h"
+#include "glow/Backend/BlockStreamBase.h"
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Backends/BackendOptions.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
@@ -180,6 +181,10 @@ public:
   }
 
   const std::string toJSON() const override;
+
+  std::unique_ptr<BlockStreamBase> serialize() override;
+
+  Error deserialize(const std::vector<char> &serializedData) override;
 
 private:
   NNPINetwork network_;

@@ -103,14 +103,8 @@ HostManager::HostManager(
     : config_(hostConfig),
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
-  auto reporters = ErrorReporterRegistry::ErrorReporters();
 
-  auto err = init(std::move(deviceConfigs));
-  if (reporters && err) {
-    std::string msg = err.peekErrorValue()->logToString();
-    reporters->report(msg);
-  }
-  EXIT_ON_ERR(std::move(err));
+  REPORT_AND_EXIT_ON_ERR(init(std::move(deviceConfigs)));
   statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
 }
 
@@ -325,10 +319,11 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     for (auto &device : availableDevices_) {
       DeviceInfo info = devices_[device]->getDeviceInfo();
       info.availableMemory = devices_[device]->getAvailableMemory();
-      info.backendName = devices_[device]->getBackendName();
+      info.backendName = devices_[device]->getBackendName().str();
       info.nonSupportedNodes =
-          devices_[device]->getParamByName("nonSupportedNodes");
-      info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
+          devices_[device]->getParamByName("nonSupportedNodes").str();
+      info.supportedNodes =
+          devices_[device]->getParamByName("supportedNodes").str();
       // If p2p is enabled update the inputCount limit.
       if (cctx.enableP2P) {
         info.inputCountMax = P2PInputLimit;
@@ -1002,7 +997,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     }
     reportCurrentQueueSize(queueSize);
     // Setup the request
-    InferRequest queuedRequest(networkName, std::move(context), callback,
+    InferRequest queuedRequest(networkName.str(), std::move(context), callback,
                                priority, currentRun, requestReceived);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
@@ -1123,6 +1118,12 @@ Backend &HostManager::getBackend(llvm::StringRef backendName) const {
 
 Expected<Backend *> HostManager::getBackend() const {
   return provisioner_->getBackend();
+}
+
+std::unique_ptr<
+    std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+HostManager::getAllSerializedFunctions() {
+  return provisioner_->getAllSerializedFunctionsMap();
 }
 
 HostManager *HostManagerRegistry::getHostManager() { return hostManager_; }

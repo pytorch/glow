@@ -34,4 +34,19 @@ std::shared_ptr<ErrorReporterRegistry> ErrorReporterRegistry::ErrorReporters() {
   return reporters;
 }
 
+detail::GlowError reportOnError(detail::GlowError error) {
+  if (error) {
+    auto errorValue = error.peekErrorValue();
+    assert(errorValue != nullptr &&
+           "Error should have a non-null ErrorValue if bool(error) is true");
+
+    auto reporters = ErrorReporterRegistry::ErrorReporters();
+    if (reporters) {
+      reporters->report(errorValue->logToString());
+    }
+  }
+
+  return error;
+}
+
 } // namespace glow

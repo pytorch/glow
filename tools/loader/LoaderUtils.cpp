@@ -39,7 +39,7 @@ glow::readUnlabeledDataSetFromFile(llvm::StringRef dataSetFile,
             strFormat("The dataset path '%s' is not a directory!",
                       dataSetDirPath.data()));
   // Parse the dataset file.
-  std::ifstream inpFile(dataSetFile);
+  std::ifstream inpFile(dataSetFile.str());
   checkCond(inpFile.is_open(), strFormat("Cannot open the dataset file '%s'!",
                                          dataSetFile.data()));
   std::string line;
@@ -100,7 +100,7 @@ LabeledDataSet glow::readLabeledDataSet(llvm::StringRef dataSetFile,
             strFormat("The dataset path '%s' is not a directory!",
                       dataSetDirPath.data()));
   // Parse the dataset file.
-  std::ifstream inpFile(dataSetFile);
+  std::ifstream inpFile(dataSetFile.str());
   checkCond(inpFile.is_open(), strFormat("Cannot open the dataset file '%s'!",
                                          dataSetFile.data()));
   std::string line;

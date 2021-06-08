@@ -70,7 +70,8 @@ Stream &operator<<(Stream &os, const llvm::ArrayRef<E> list) {
 /// After the last block no delimiter is added.
 std::string separateString(const std::string &str, size_t length,
                            const std::string &delimiter = "\n");
-
+std::string separateString(llvm::StringRef str, size_t length,
+                           const std::string &delimiter = "\n");
 /// \returns the escaped content of string \p str.
 /// The char '\n' becomes '\'+'n' and quotes are handled correctly.
 std::string escapeDottyString(const std::string &str);

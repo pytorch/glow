@@ -685,7 +685,7 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   for (auto *EE : engines) {
     auto &mod = EE->getModule();
     Function *F = mod.createFunction("main");
-    fName = F->getName();
+    fName = F->getName().str();
     var1 = createPlaceholder(mod, bindings, inputs, "var1");
     var2 = createPlaceholder(mod, bindings, selected, "var2");
     auto *fc = F->createFullyConnected(bindings, "fc", var1, bias->dims()[0]);
@@ -740,7 +740,7 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   for (auto *EE : engines) {
     auto &mod = EE->getModule();
     Function *F = mod.createFunction("main");
-    fName = F->getName();
+    fName = F->getName().str();
     var1 = createPlaceholder(mod, bindings, inputs, "var1");
     var2 = createPlaceholder(mod, bindings, selected, "var2");
     auto *fc = F->createFullyConnected(bindings, "fc", var1, bias->dims()[0]);
@@ -1359,7 +1359,7 @@ void inferMaxSplat(Tensor *input, Tensor *out, llvm::StringRef kind) {
 void insertCompiledFunction(llvm::StringRef name, CompiledFunction *func,
                             runtime::DeviceManager *device, Module *mod) {
   runtime::FunctionMapTy functionMap;
-  functionMap[name] = func;
+  functionMap[name.str()] = func;
 
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
@@ -1380,7 +1380,7 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
   auto fut = runPromise.get_future();
   Error runErr = Error::empty();
   device->runFunction(
-      name, std::move(contextPtr),
+      name.str(), std::move(contextPtr),
       [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.

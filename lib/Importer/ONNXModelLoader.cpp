@@ -225,6 +225,27 @@ getQuantParamsFromDocString(const std::string &docStr) {
   return std::make_pair(scale, offset);
 }
 
+ShapeVector getStridesFromDocString(const std::string &docStr) {
+  ShapeVector strides;
+  std::string stridesStr;
+  auto stridesOrError = getAttrFromDocString(stridesSignifier, docStr);
+  if (ERR_TO_BOOL(stridesOrError.takeError(), /* log */ false)) {
+    return strides;
+  }
+  stridesStr = std::move(stridesOrError.get());
+  if (stridesStr.empty()) {
+    return strides;
+  }
+  // Parse comma-delimited stride values.
+  llvm::SmallVector<llvm::StringRef, max_tensor_dimensions> stridesStrSplit;
+  llvm::StringRef stridesStrRef = llvm::StringRef(stridesStr);
+  stridesStrRef.split(stridesStrSplit, ',');
+  for (const auto &stride : stridesStrSplit) {
+    strides.emplace_back(std::stoi(stride.str()));
+  }
+  return strides;
+}
+
 /// Used for retrieving an attribute of type \p T from \p attr. Some
 /// specializations used \p loader if necessary.
 template <bool IsInteger, typename T> struct AttributeRetriever {
@@ -426,6 +447,25 @@ Expected<T> loadAttribute(const ONNX_NAMESPACE::AttributeProto *attr,
 using ArgumentDictionaryTy =
     std::unordered_map<std::string, const ONNX_NAMESPACE::AttributeProto *>;
 
+/// \returns a type based on \p ty, but using the provided \p strides.
+static Type getTypeWithCustomStrides(const Type &ty,
+                                     llvm::ArrayRef<dim_t> strides) {
+  if (strides.empty()) {
+    return ty;
+  }
+  return Type::newStrides(ty, strides);
+}
+
+/// \returns a type in module \p mod, based on \p ty, but using the provided \p
+/// strides.
+static TypeRef getTypeWithCustomStrides(glow::Module &mod, const TypeRef ty,
+                                        llvm::ArrayRef<dim_t> strides) {
+  if (strides.empty()) {
+    return ty;
+  }
+  return mod.uniqueTypeWithNewStrides(ty, ty->dims(), strides);
+}
+
 /// Given a docstring encoding \p str of a type and its dimension \p
 /// dims, parses the string and \returns a Glow Type from it or Error if
 /// parsing failed. Expected format of str is either elemKindSignifier or
@@ -436,6 +476,7 @@ Expected<Type> parseTypeFromDocString(const std::string &str,
   float scale = 1.0;
   int32_t offset = 0;
   ElemKind elemKind = ElemKind::FloatTy;
+  ShapeVector strides;
 
   if (useGlowCustomOps) {
     std::string elemKindStr;
@@ -449,6 +490,7 @@ Expected<Type> parseTypeFromDocString(const std::string &str,
                                  getQuantParamsFromDocString(str));
       std::tie(scale, offset) = scaleOffsetPair;
     }
+    strides = getStridesFromDocString(str);
   } else {
     size_t begin = 0;
 
@@ -488,11 +530,13 @@ Expected<Type> parseTypeFromDocString(const std::string &str,
     elemKind = Type::getElementKindFromName(elemKindStr);
   }
 
+  Type ty;
   if (isQuantizedElemKind(elemKind)) {
-    return Type(elemKind, dims, scale, offset);
+    ty = Type(elemKind, dims, scale, offset);
   } else {
-    return Type(elemKind, dims);
+    ty = Type(elemKind, dims);
   }
+  return getTypeWithCustomStrides(ty, strides);
 }
 
 /// Translates the protocol buffer node \p op into a random access map.
@@ -586,8 +630,14 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     dim.push_back(d);
   }
 
+  ShapeVector strides;
+  if (in.has_doc_string()) {
+    strides = getStridesFromDocString(in.doc_string());
+  }
+
   if (in.data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
-    T->reset(ElemKind::FloatTy, dim);
+    Type ty(ElemKind::FloatTy, dim);
+    T->reset(getTypeWithCustomStrides(ty, strides));
 
     if (in.float_data_size() > 0) {
       auto TH = T->getHandle<>();
@@ -598,35 +648,38 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     } else if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(float));
+      inStream.read(T->getUnsafePtr(), T->actualSize() * sizeof(float));
     } else {
       return MAKE_ERR("Unsupported Tensor format for FLOAT, name: " + in.name(),
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::FLOAT16) {
-    T->reset(ElemKind::Float16Ty, dim);
+    Type ty(ElemKind::Float16Ty, dim);
+    T->reset(getTypeWithCustomStrides(ty, strides));
     if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * (sizeof(float) / 2));
+      inStream.read(T->getUnsafePtr(), T->actualSize() * (sizeof(float) / 2));
     } else {
       return MAKE_ERR("Unsupported Tensor format for FLOAT16, name: " +
                           in.name(),
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
-    T->reset(ElemKind::BFloat16Ty, dim);
+    Type ty(ElemKind::BFloat16Ty, dim);
+    T->reset(getTypeWithCustomStrides(ty, strides));
     if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * (sizeof(float) / 2));
+      inStream.read(T->getUnsafePtr(), T->actualSize() * (sizeof(float) / 2));
     } else {
       return MAKE_ERR("Unsupported Tensor format for BFLOAT16, name: " +
                           in.name(),
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-    T->reset(ElemKind::Int64ITy, dim);
+    Type ty(ElemKind::Int64ITy, dim);
+    T->reset(getTypeWithCustomStrides(ty, strides));
 
     if (in.int64_data_size() > 0) {
       auto TH = T->getHandle<int64_t>();
@@ -637,7 +690,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     } else if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int64_t));
+      inStream.read(T->getUnsafePtr(), T->actualSize() * sizeof(int64_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for INT64, name: " + in.name(),
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
@@ -654,12 +707,13 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       // does not have data field for int8_t or uint8_t.
       // scale is set to 1 and offset is set to 0 since both scale and offset
       // themselves are operators inputs.
-      T->reset(ElemKind::Int8QTy, dim, 1 /* scale*/, 0 /* offset*/);
+      Type ty(ElemKind::Int8QTy, dim, 1 /* scale*/, 0 /* offset*/);
+      T->reset(getTypeWithCustomStrides(ty, strides));
     }
     if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int8_t));
+      inStream.read(T->getUnsafePtr(), T->actualSize() * sizeof(int8_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for INT8, name: " + in.name(),
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
@@ -673,7 +727,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int16_t));
+      inStream.read(T->getUnsafePtr(), T->actualSize() * sizeof(int16_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for INT16, name: " + in.name(),
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
@@ -687,7 +741,8 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     } else {
       // There are few cases when we will have int32 tensors. For example, the
       // second output of Concat from Caffe2 concat op is int32
-      T->reset(ElemKind::Int32ITy, dim);
+      Type ty(ElemKind::Int32ITy, dim);
+      T->reset(getTypeWithCustomStrides(ty, strides));
     }
 
     if (in.int32_data_size() > 0) {
@@ -699,7 +754,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     } else if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int32_t));
+      inStream.read(T->getUnsafePtr(), T->actualSize() * sizeof(int32_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for INT32, name: " + in.name(),
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
@@ -716,23 +771,25 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       // does not have data field for int8_t or uint8_t.
       // scale is set to 1 and offset is set to 0 since both scale and offset
       // themselves are operators inputs.
-      T->reset(ElemKind::UInt8QTy, dim, 1 /* scale*/, 0 /* offset*/);
+      Type ty(ElemKind::UInt8QTy, dim, 1 /* scale*/, 0 /* offset*/);
+      T->reset(getTypeWithCustomStrides(ty, strides));
     }
 
     if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(uint8_t));
+      inStream.read(T->getUnsafePtr(), T->actualSize() * sizeof(uint8_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for UINT8, name: " + in.name(),
                       ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BOOL) {
-    T->reset(ElemKind::BoolTy, dim);
+    Type ty(ElemKind::BoolTy, dim);
+    T->reset(getTypeWithCustomStrides(ty, strides));
     if (in.has_raw_data() || !data.empty()) {
       std::istringstream inStream(data.empty() ? in.raw_data() : data,
                                   std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(bool));
+      inStream.read(T->getUnsafePtr(), T->actualSize() * sizeof(bool));
     } else if (in.int32_data_size() > 0) {
       // Some ONNX models use int32_data to initialize bool type (e.g., when
       // converted from Keras).
@@ -805,6 +862,7 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
   ElemKind kind = ElemKind::FloatTy;
   float scale = 1.0;
   int32_t offset = 0;
+  ShapeVector strides;
   if (useGlowCustomOps_) {
     std::string elemKindStr;
     ASSIGN_VALUE_OR_RETURN_ERR(
@@ -816,6 +874,7 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
                                  getQuantParamsFromDocString(in.doc_string()));
       std::tie(scale, offset) = scaleOffsetPair;
     }
+    strides = getStridesFromDocString(in.doc_string());
   } else {
     // Retrieve the ElemKind from the ONNX type, including considerations for
     // whether the datatype is quantized.
@@ -828,9 +887,9 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
   if (isQuantizedElemKind(kind)) {
     assert(useGlowCustomOps_ &&
            "Quantized loading not fully supported without custom Glow ops.");
-    return Type(kind, dim, scale, offset);
+    return getTypeWithCustomStrides(Type(kind, dim, scale, offset), strides);
   }
-  return Type(kind, dim);
+  return getTypeWithCustomStrides(Type(kind, dim), strides);
 }
 
 Error ONNXModelLoader::getInputsNamesAndTypes(
@@ -1245,9 +1304,20 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
         left = right + (pdim[1] & 0x1);
       }
       return Pads({top, left, bottom, right});
+    } else if (padStr == "NOTSET") {
+      // We use explicit pads (if not given we assume its all zeros).
+      if (dict.count("pads")) {
+        if (dict.at("pads")->ints_size() == 2) { // For maxPool1D
+          return Pads({0, (unsigned_t)dict.at("pads")->ints(0), 0,
+                       (unsigned_t)dict.at("pads")->ints(1)});
+        }
+        return getShape<unsigned_t>(dict["pads"]);
+      } else {
+        return Pads({0, 0, 0, 0});
+      }
     }
-    return MAKE_ERR(
-        "only auto_pad==VALID, SAME_UPPER and SAME_LOWER are supported");
+    return MAKE_ERR("Only auto_pad==VALID, SAME_UPPER, SAME_LOWER and NOTSET "
+                    "are supported");
   }
   // Return default value 0 for pads.
   return Pads({0, 0, 0, 0});
@@ -5133,9 +5203,19 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
       shape, getShape<dim_t>(dict[getTypeAttrID(resNo, shapeSignifier)],
                              /* allowEmptyShape */ true));
 
+  // Load strides. Note that we allow for empty strides here because 0
+  // dimensional shapes are allowed (representing scalars).
+  std::vector<dim_t> strides;
+  auto stridesKey = getTypeAttrID(resNo, stridesSignifier);
+  if (dict.count(stridesKey)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(strides,
+                               getShape<dim_t>(dict[stridesKey],
+                                               /* allowEmptyShape */ true));
+  }
+
   // Create and return uniqued non-quantized Type.
   if (!isQuantizedElemKind(k)) {
-    return mod_.uniqueType(k, shape);
+    return getTypeWithCustomStrides(mod_, mod_.uniqueType(k, shape), strides);
   }
 
   // Must be quantized kind, so get scale/offset and create and return uniqued
@@ -5159,7 +5239,8 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
     offset = TQP.offset;
   }
 
-  return mod_.uniqueType(k, shape, scale, offset);
+  return getTypeWithCustomStrides(
+      mod_, mod_.uniqueType(k, shape, scale, offset), strides);
 }
 
 Expected<Node *>
@@ -6021,7 +6102,7 @@ Error ONNXModelLoader::setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
                                        PrePartitionedConfig &PPC,
                                        llvm::StringRef rootName,
                                        int numPartitions) {
-  PPC.funcName = rootName;
+  PPC.funcName = rootName.str();
   PPC.resizeAndReserve(numPartitions);
 
   for (int i = 0; i < numPartitions; i++) {
@@ -6178,7 +6259,7 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
                                 "of updatedTQPs_ %lu",
                                 idx, updatedTQPs_.size()));
 
-    auto it = originNameToTQPMap.find(nameOffsetPair.first);
+    auto it = originNameToTQPMap.find(nameOffsetPair.first.str());
     RETURN_ERR_IF_NOT(it != originNameToTQPMap.end(),
                       strFormat("Did not find matching TQP for %s",
                                 nameOffsetPair.first.str().data()));

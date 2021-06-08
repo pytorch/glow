@@ -25,11 +25,11 @@
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
 #include "glow/Support/Debug.h"
-
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/Host.h"
 
 using namespace glow;
 
@@ -534,6 +534,24 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
                 ElemKind::Int64ITy);
 
+  case Kinded::Kind::TFLiteDetectionPostProcessNodeKind:
+    return NI.getInElemTy(TFLiteDetectionPostProcessNode::BoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::ScoresIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::AnchorsIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionBoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(
+               TFLiteDetectionPostProcessNode::DetectionClassesIdx) ==
+               ElemKind::Int32ITy &&
+           NI.getOutElemTy(
+               TFLiteDetectionPostProcessNode::DetectionScoresIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::NumDetectionsIdx) ==
+               ElemKind::Int32ITy;
+
   case Kinded::Kind::AudioSpectrogramNodeKind:
     return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==
                ElemKind::FloatTy &&
@@ -606,7 +624,7 @@ llvm::SmallVector<std::string, 0> LLVMBackend::getHostFeatures() {
         if (fn.startswith("avx512")) {
           continue;
         }
-        result.push_back(fn);
+        result.push_back(fn.str());
       }
     }
   }
@@ -686,7 +704,8 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   emitJitMain(*irgen);
   irgen->finishCodeGen();
   // Hand over the module to JIT for the machine code generation.
-  auto JIT = glow::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
+  auto JIT = glow::make_unique<GlowJIT>(irgen->takeTargetMachine());
+  JIT->setContext(irgen->takeLLVMContext());
   JIT->addModule(irgen->borrowModule());
   // Build runtimeBundle object containing offsets and allocation sizes.
   MemoryAllocator constantAllocator("ConstantWeights", 0);

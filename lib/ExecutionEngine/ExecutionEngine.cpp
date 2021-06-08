@@ -41,7 +41,7 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend,
   clear();
   module_.reset(new Module);
   rawModule_ = module_.get();
-  backendName_ = backend;
+  backendName_ = backend.str();
 
   if (hostManager_) {
     EXIT_ON_ERR(hostManager_->clearHost());
@@ -299,7 +299,7 @@ void ExecutionEngine::compile(CompilationContext &cctx) {
       skipAdding = std::find(pFuns.begin(), pFuns.end(), F) != pFuns.end();
     }
     if (!skipAdding) {
-      compiledFunctions_.insert(F->getName());
+      compiledFunctions_.insert(F->getName().str());
     }
   }
 

@@ -18,6 +18,9 @@
 #define GLOW_IMPORTER_TFLITEMODELLOADER_H
 
 #include "glow/Graph/Graph.h"
+
+#define FLATBUFFERS_LOCALE_INDEPENDENT 0
+#include "flatbuffers/flexbuffers.h"
 #include "schema_generated.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -99,6 +102,9 @@ class TFLiteModelLoader {
   /// \returns the operator code of the operator \p op.
   Expected<tflite::BuiltinOperator> getOperatorCode(const tflite::Operator *op);
 
+  /// \returns the operator custom code of the operator \p op.
+  Expected<std::string> getOperatorCustomCode(const tflite::Operator *op);
+
   /// \returns the operator version of the operator \p op.
   Expected<int32_t> getOperatorVersion(const tflite::Operator *op);
 
@@ -107,6 +113,9 @@ class TFLiteModelLoader {
 
   /// \returns the operator name of the operator \p op.
   Expected<std::string> getOperatorName(const tflite::Operator *op);
+
+  /// \returns the operator custom options as a map.
+  Expected<flexbuffers::Map> getOperatorCustomOpts(const tflite::Operator *op);
 
   /// \returns the tensor index of the input operand with index \p inputIdx
   /// of the operator \p op.
@@ -320,6 +329,11 @@ class TFLiteModelLoader {
 
   /// Load Unpack operator.
   Error loadUnpack(const tflite::Operator *op, const OperatorInfo &opInfo);
+
+  /// Load TFLite Detection PostProcess custom operator.
+  Error loadTFLiteDetectionPostProcess(const tflite::Operator *op,
+                                       const OperatorInfo &opInfo,
+                                       const flexbuffers::Map &opts);
 
 public:
   /// \returns the TensorFlowLite model version.

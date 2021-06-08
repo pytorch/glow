@@ -567,12 +567,18 @@ getReplacementMap(Function *F) {
 
   RETURN_IF_ERR(verifyReplacements(replacementMap));
 
+  if (!replacementMap.empty()) {
+    LOG(INFO) << "Found " << replacementMap.size()
+              << " ops to be replaced with custom kernels";
+  }
+
   return replacementMap;
 }
 
 NNPINetwork glow::NNPIImporter::importFunction(Function *F,
                                                const BackendOptions &opts,
                                                bool &requiresDSPKernels) {
+  requiresDSPKernels = false;
   if (compileOptions_.normalizeLayerNames) {
     std::map<std::string, uint32_t> type2count;
     std::map<std::string, glow::Node *> nodes;
@@ -1086,6 +1092,28 @@ public:
         nodeValueName(glowSD->getIndices()).c_str(),
         nodeValueName(glowSD->getSlices()).c_str(),
         nodeValueName(glowSD->getResult()).c_str(), glowSD->getCumulative());
+  }
+};
+
+class BucketizeNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBucketize = llvm::dyn_cast<BucketizeNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBucketize, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowBucketize->getInput())},
+                            {nodeValueName(glowBucketize->getResult())});
+
+    std::vector<float> bucketizeBoundaries(
+        glowBucketize->getBoundaries().begin(),
+        glowBucketize->getBoundaries().end());
+
+    return nnpiNetworkAddBucketizeOp(
+        importer.getNetwork(), glowBucketize->getName().begin(),
+        nodeValueName(glowBucketize->getInput()).c_str(),
+        nodeValueName(glowBucketize->getResult()).c_str(),
+        bucketizeBoundaries.data(), bucketizeBoundaries.size());
   }
 };
 
@@ -2835,6 +2863,33 @@ public:
         /* alignCorners */ false, /* halfPixelCenters */ false);
   }
 };
+
+class SparseLabelSplitNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowSpLabSplitNode = llvm::dyn_cast<SparseLabelSplitNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowSpLabSplitNode, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {nodeValueName(glowSpLabSplitNode->getLengths()),
+         nodeValueName(glowSpLabSplitNode->getIndices()),
+         nodeValueName(glowSpLabSplitNode->getValues())},
+        {nodeValueName(glowSpLabSplitNode->getLabelValues()),
+         nodeValueName(glowSpLabSplitNode->getExampleIds()),
+         nodeValueName(glowSpLabSplitNode->getGradientOffsetMap())});
+
+    return nnpiNetworkSparseLabelSplitOp(
+        importer.getNetwork(), glowSpLabSplitNode->getName().begin(),
+        nodeValueName(glowSpLabSplitNode->getLengths()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getIndices()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getValues()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getLabelValues()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getExampleIds()).c_str(),
+        nodeValueName(glowSpLabSplitNode->getGradientOffsetMap()).c_str(),
+        glowSpLabSplitNode->getNumLabels(), /* keepGradientOffsetMap */ true);
+  }
+};
 #endif // NNPI >= 1.1
 
 //////////////////////////////////////////////////////////////////////////
@@ -2859,6 +2914,7 @@ std::unordered_map<
     {"SoftPlus", glow::make_unique<SoftPlusNodeImporter>()},
     {"SoftMax", glow::make_unique<SoftMaxNodeImporter>()},
     {"ScatterData", glow::make_unique<ScatterDataNodeImporter>()},
+    {"Bucketize", glow::make_unique<BucketizeNodeImporter>()},
     {"Save", glow::make_unique<SaveNodeImporter>()},
     {"Relu", glow::make_unique<ReluNodeImporter>()},
     {"PRelu", glow::make_unique<PReluNodeImporter>()},
@@ -2972,6 +3028,7 @@ std::unordered_map<
      glow::make_unique<DynamicQuantizedFullyConnectedNodeImporter>()},
     {"DynamicRowwiseQuantizedFullyConnected",
      glow::make_unique<DynamicRowwiseQuantizedFullyConnectedNodeImporter>()},
+    {"SparseLabelSplit", glow::make_unique<SparseLabelSplitNodeImporter>()},
 #endif // NNPI >= 1.1
 };
 } // namespace
