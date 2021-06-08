@@ -1490,7 +1490,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
-      unsigned_t axis = GI->getAxis();
+      unsigned_t axis = GI->getBatchDims();
 
       auto *data = GI->getData();
 
