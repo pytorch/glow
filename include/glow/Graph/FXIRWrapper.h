@@ -30,6 +30,9 @@ class FXIRWrapper final : public IRContainer {
   /// A reference to the FXIR that this FXIRWrapper wraps.
   const FXModule *fx_mod_;
 
+  /// Map nodes to their names.
+  llvm::StringMap<const FXNode &> namedNodes_;
+
 public:
   FXIRWrapper(const FXModule &FXIR, const std::string &submod,
               const llvm::StringMap<const void *> &constants,
@@ -47,6 +50,8 @@ public:
         CHECK(inserted) << "Already mapped a getattr by name " << nodeName
                         << " to its underlying Constant";
       }
+      const auto &nodeName = node["name"].getString();
+      namedNodes_.try_emplace(nodeName, node);
     }
   }
 
@@ -92,6 +97,9 @@ public:
 
   /// \returns fx module.
   const FXModule &getFXModule() { return *fx_mod_; }
+
+  /// \returns the name of the node.
+  const FXNode &getFXNodeByName(llvm::StringRef nodeName) const;
 };
 
 } // namespace glow

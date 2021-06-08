@@ -55,4 +55,10 @@ bool FXIRWrapper::constantExists(llvm::StringRef name) const {
   return constants_.count(name) != 0;
 }
 
+const FXNode &FXIRWrapper::getFXNodeByName(llvm::StringRef nodeName) const {
+  auto it = namedNodes_.find(nodeName);
+  CHECK(it != namedNodes_.end()) << " Node with name doesn't exist";
+  return it->second;
+}
+
 } // namespace glow

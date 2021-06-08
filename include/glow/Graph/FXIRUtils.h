@@ -48,6 +48,39 @@ std::vector<T> toIntegerArray(std::string intArrayStr,
   return vec;
 }
 
+template <class T>
+std::vector<T> toIntegerArray(const folly::dynamic &dyn,
+                              const uint32_t &length = 0) {
+  std::vector<T> vec;
+  if (dyn.isInt()) {
+    vec.emplace_back(dyn.getInt());
+  } else if (dyn.isArray()) {
+    for (auto &e : dyn) {
+      if (e.isInt()) {
+        vec.emplace_back(e.getInt());
+      } else {
+        LOG(FATAL) << "Non-integer vector unhandled";
+      }
+    }
+  } else {
+    LOG(FATAL) << "Only supporting integer/vec<integer>";
+  }
+
+  CHECK(!vec.empty()) << "Empty dimension size!";
+  // Expand vec to length with the last element in vec.
+  while (vec.size() < length) {
+    vec.push_back(vec.back());
+  }
+
+  return vec;
+}
+
+template <class T> std::vector<T> getNodeStride(const folly::dynamic &node) {
+  CHECK(node.find("stride") != node.items().end())
+      << "stride field doesn't exist in node " << node;
+  return toIntegerArray<glow::dim_t>(node.at("stride").getString());
+}
+
 /// Get the opCode of the node.
 std::string getNodeOpCode(const folly::dynamic &node);
 
@@ -60,14 +93,46 @@ std::string getNodeTarget(const folly::dynamic &node);
 /// Get the data type of the node.
 ElemKind getNodeDataType(const folly::dynamic &node);
 
-/// Get the shape of the node.
-std::vector<glow::dim_t> getNodeShape(const folly::dynamic &node);
+template <class T> std::vector<T> getNodeShape(const folly::dynamic &node) {
+  CHECK(node.find("shape") != node.items().end())
+      << "shape field doesn't exist in node " << node;
+  return toIntegerArray<glow::dim_t>(node.at("shape").getString());
+}
 
 /// Get the arg of the node.
 const folly::dynamic &getNodeArgs(const folly::dynamic &node);
 
 /// Get the kwargs of the node.
 const folly::dynamic &getNodeKwargs(const folly::dynamic &node);
+
+template <class T> std::vector<T> getConvStride(const folly::dynamic &node) {
+  const auto &inputs = getNodeKwargs(node);
+  CHECK(inputs.find("stride") != inputs.items().end())
+      << "stride field doesn't exist in Conv Inputs " << node;
+  return toIntegerArray<uint32_t>(inputs["stride"], 2);
+}
+
+template <class T> std::vector<T> getConvPads(const folly::dynamic &node) {
+  const auto &inputs = getNodeKwargs(node);
+  CHECK(inputs.find("padding") != inputs.items().end())
+      << "padding field doesn't exist in Conv Inputs " << node;
+  return toIntegerArray<uint32_t>(inputs["padding"], 2);
+}
+
+template <class T> std::vector<T> getConvKernels(const folly::dynamic &node) {
+  const auto &inputs = getNodeKwargs(node);
+  CHECK(inputs.find("kernel_size") != inputs.items().end())
+      << "kernel_size field doesn't exist in Conv Inputs " << node;
+  return toIntegerArray<uint32_t>(inputs["kernel_size"], 2);
+}
+
+template <class T>
+std::vector<T> getTransposeShuffle(const folly::dynamic &node) {
+  const auto &inputs = getNodeKwargs(node);
+  CHECK(inputs.find("permutation") != inputs.items().end())
+      << "field transposed_dims doesn't exist in Conv Inputs " << node;
+  return toIntegerArray<uint32_t>(inputs["permutation"], 2);
+}
 
 /// Search \p storageNodeNameToDest and \p nonStorageNodeNameToDest for
 /// nodeName.
