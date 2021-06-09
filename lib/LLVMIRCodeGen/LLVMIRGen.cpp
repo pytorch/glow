@@ -65,7 +65,8 @@ static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC)
-    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
+    : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
+      allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
 }
@@ -73,7 +74,8 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC,
                      llvm::ArrayRef<llvm::MemoryBufferRef> objectRegistry)
-    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
+    : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
+      allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
       objectRegistry_(objectRegistry) {
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
@@ -81,6 +83,16 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
 
 /// Mutex to protect LLVM's TargetRegistry.
 static std::mutex initTargetMutex;
+
+void LLVMIRGen::initTargetOptions(llvm::TargetOptions &targetOpts,
+                                  const LLVMBackendOptions &backendOpts) {
+  if (backendOpts.getFloatABI().hasValue()) {
+    targetOpts.FloatABIType = backendOpts.getFloatABI().getValue();
+  }
+  if (!backendOpts.getABIName().empty()) {
+    targetOpts.MCOptions.ABIName = backendOpts.getABIName();
+  }
+}
 
 void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
   // LLVM's TargetRegistry is not thread safe so we add a critical section.
@@ -92,12 +104,9 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
   llvm::InitializeAllAsmParsers();
 
   llvm::TargetOptions targetOpts;
-  if (opts.getFloatABI().hasValue()) {
-    targetOpts.FloatABIType = opts.getFloatABI().getValue();
-  }
-  if (!opts.getABIName().empty()) {
-    targetOpts.MCOptions.ABIName = opts.getABIName();
-  }
+  // Initialize target options in a backend-specific way.
+  initTargetOptions(targetOpts, opts);
+
   if (opts.getTarget().empty()) {
     TM_.reset(llvm::EngineBuilder()
                   .setCodeModel(opts.getCodeModel())
@@ -121,6 +130,15 @@ llvm::StringRef LLVMIRGen::getBundleName() const { return bundleName_; }
 
 void LLVMIRGen::setBundleName(const std::string &name) {
   bundleName_ = name.empty() ? "bundle" : legalizeName(name);
+}
+
+llvm::StringRef LLVMIRGen::getSavedBundleName() const {
+  return savedBundleName_;
+}
+
+void LLVMIRGen::setSavedBundleName(const std::string &name) {
+  assert(!name.empty() && "Name cannot be empty");
+  savedBundleName_ = name;
 }
 
 std::string LLVMIRGen::getMainEntryName() const { return mainEntryName_; }
@@ -389,7 +407,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt32PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt8ITy:
-    T = llvm::Type::getInt8PtrTy(ctx_);
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt8FusedQTy:
     T = llvm::Type::getInt8PtrTy(getLLVMContext());
@@ -498,10 +516,11 @@ llvm::Value *LLVMIRGen::emitConstFloatArray(llvm::IRBuilder<> &builder,
                                             llvm::ArrayRef<float> vals) {
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
-    elems.push_back(
-        llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), (float)I));
+    elems.push_back(llvm::ConstantFP::get(
+        llvm::Type::getFloatTy(getLLVMContext()), (float)I));
   }
-  return emitConstArray(builder, elems, llvm::Type::getFloatTy(ctx_));
+  return emitConstArray(builder, elems,
+                        llvm::Type::getFloatTy(getLLVMContext()));
 }
 
 llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
@@ -680,9 +699,14 @@ llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
   llvm::GlobalVariable *gvarStr = new llvm::GlobalVariable(
       *llmodule_, constStrArray->getType(), true,
       llvm::GlobalValue::PrivateLinkage, constStrArray, ".str");
+#if LLVM_VERSION_MAJOR >= 10
+  gvarStr->setAlignment(llvm::MaybeAlign(1));
+#else
   gvarStr->setAlignment(1);
+#endif
   // Add unnamed_addr attribute to enable constmerge pass.
   gvarStr->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
   return builder.CreateBitCast(gvarStr, builder.getInt8PtrTy());
 }
 
@@ -3662,6 +3686,75 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                 indicesDimVal, indicesDimSizeVal, centerPointBoxVal,
                 maxBoxesPerClassVal, iouThresholdVal, scoreThresholdVal,
                 isV4Val});
+    break;
+  }
+
+  case Kinded::Kind::TFLiteDetectionPostProcessInstKind: {
+    auto *DPPI = llvm::cast<TFLiteDetectionPostProcessInst>(I);
+    auto boxes = DPPI->getBoxes();
+    auto scores = DPPI->getScores();
+    auto anchors = DPPI->getAnchors();
+    auto detectionBoxes = DPPI->getDetectionBoxes();
+    auto detectionClasses = DPPI->getDetectionClasses();
+    auto detectionScores = DPPI->getDetectionScores();
+    auto numDetections = DPPI->getNumDetections();
+    auto scratch = DPPI->getScratch();
+
+    // Emit pointers.
+    auto *boxesPtr = emitValueAddress(builder, boxes);
+    auto *scoresPtr = emitValueAddress(builder, scores);
+    auto *anchorsPtr = emitValueAddress(builder, anchors);
+    auto *detectionBoxesPtr = emitValueAddress(builder, detectionBoxes);
+    auto *detectionClassesPtr = emitValueAddress(builder, detectionClasses);
+    auto *detectionScoresPtr = emitValueAddress(builder, detectionScores);
+    auto *numDetectionsPtr = emitValueAddress(builder, numDetections);
+    auto *scratchPtr = emitValueAddress(builder, scratch);
+
+    // Emit parameters.
+    auto *numBoxes = emitConstI32(builder, boxes->dims()[1]);
+    auto *numTotalClasses = emitConstI32(builder, scores->dims()[2]);
+    auto *numClasses = emitConstI32(builder, DPPI->getNumClasses());
+    auto *maxDetections = emitConstI32(builder, DPPI->getMaxDetections());
+    auto *maxClassesPerDetection =
+        emitConstI32(builder, DPPI->getMaxClassesPerDetection());
+    auto *maxDetectionsPerClass =
+        emitConstI32(builder, DPPI->getMaxDetectionsPerClass());
+    auto *iouThreshold = emitConstF32(builder, DPPI->getIouThreshold());
+    auto *scoreThreshold = emitConstF32(builder, DPPI->getScoreThreshold());
+    auto *xScaleInv = emitConstF32(builder, 1.0f / DPPI->getXScale());
+    auto *yScaleInv = emitConstF32(builder, 1.0f / DPPI->getYScale());
+    auto *hScaleInv = emitConstF32(builder, 1.0f / DPPI->getHScale());
+    auto *wScaleInv = emitConstF32(builder, 1.0f / DPPI->getWScale());
+    auto *regularNMS = emitConstI1(builder, DPPI->getRegularNMS());
+
+    // Current implementation only supports batch size 1.
+    assert(boxes->dims()[0] == 1 &&
+           "TFLiteDetectionPostProcess batch not supported!");
+
+    // Call function.
+    auto *F = getFunction("tflite_detection_post_process_f");
+    createCall(builder, F,
+               {boxesPtr,
+                scoresPtr,
+                anchorsPtr,
+                detectionBoxesPtr,
+                detectionClassesPtr,
+                detectionScoresPtr,
+                numDetectionsPtr,
+                scratchPtr,
+                numBoxes,
+                numTotalClasses,
+                numClasses,
+                maxDetections,
+                maxClassesPerDetection,
+                maxDetectionsPerClass,
+                iouThreshold,
+                scoreThreshold,
+                xScaleInv,
+                yScaleInv,
+                hScaleInv,
+                wScaleInv,
+                regularNMS});
     break;
   }
 

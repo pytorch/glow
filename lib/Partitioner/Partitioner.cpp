@@ -431,18 +431,18 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
   const DeviceIDTy logDevice = 0;
   for (auto F : module_->getFunctions()) {
     if (!optimized_) {
-      auto backend = backendMap[backendName].backend;
+      auto backend = backendMap[backendName.str()].backend;
       RETURN_IF_ERR(::glow::optimizeFunction(
           F, *backend, cctx, &getDeviceInfoForBackend(backendName)));
     }
     std::unique_ptr<DAGNode> DAG0 = glow::make_unique<DAGNode>();
     DAG0->logicalDevices = {logDevice};
-    DAG0->name = F->getName();
+    DAG0->name = F->getName().str();
     DAG0->module = module_;
     std::unique_ptr<DAGNode> DAG1 = glow::make_unique<DAGNode>();
     DAG1->logicalDevices = {logDevice};
-    DAG1->name = F->getName();
-    DAG1->backendName = backendName;
+    DAG1->name = F->getName().str();
+    DAG1->backendName = backendName.str();
     DAG1->parents.push_back(DAG0.get());
     DAG0->children.push_back(DAG1.get());
     DAG1->replicationCount = cctx.replicationCount;
@@ -1034,7 +1034,7 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
   if (cctx.saturateHost) {
     // Use the config's logical IDs to determine how many cards it's using.
     llvm::SmallSet<DeviceIDTy, 6> allLogicalIDs;
-    for (const auto IDs : config.logicalIDs) {
+    for (const auto &IDs : config.logicalIDs) {
       for (const auto &id : IDs) {
         allLogicalIDs.insert(id);
       }

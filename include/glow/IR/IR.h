@@ -31,6 +31,11 @@
 #include <list>
 #include <unordered_map>
 #include <vector>
+#if FACEBOOK_INTERNAL
+namespace glow {
+class FXIRWrapper;
+}
+#endif
 
 namespace glow {
 class Instruction;
@@ -318,7 +323,7 @@ public:
 
 private:
   /// A pointer to the graph structure. The function does not own the graph.
-  Function *G_{};
+  IRContainer *G_{};
 
   /// A list of weights. Weights are shared between all execution context.
   WeightVarListTy weights_{};
@@ -341,13 +346,21 @@ public:
   /// Add an instruction to the instr stream.
   void pushInstr(Instruction *I) { instrs_.push_back(I); }
 
-  explicit IRFunction(Function *G = nullptr);
+  explicit IRFunction(IRContainer *G = nullptr);
 
   ~IRFunction();
 
+  IRKind getIRKind() const override { return IRKind::GlowInstructionIRKind; };
+
+  static bool classof(const IRContainer *I) {
+    return I->getIRKind() == IRKind::GlowInstructionIRKind;
+  }
+
+  static bool classof(const IRFunction *I) { return true; }
+
   /// Generate IR from the graph nodes. If the compilation mode is 'training'
   /// then this procedure will also generate the code for the backward pass.
-  /// It allows Backend /p B to custom translate from a Node to Instruction IR.
+  /// It allows Backend \p B to custom translate from a Node to Instruction IR.
   void generateIR(const Backend &B);
 
   /// Wipe out the content of the function. This allows the function to be used
@@ -376,11 +389,33 @@ public:
   clone(IRFunction *newF, llvm::DenseMap<const Value *, Value *> *map = nullptr,
         llvm::DenseMap<const Value *, Value *> *currToNewMap = nullptr) const;
 
-  /// \returns a reference to the high-level graph.
-  Function *getGraph() { return G_; }
+  ///  \returns a reference to the high-level graph without down casting it to
+  ///  children types like Function or FXIRWrapper.
+  IRContainer *getRawGraph() { return G_; }
 
   /// \returns a reference to the high-level graph.
-  const Function *getGraph() const { return G_; }
+  Function *getGraph() {
+    assert(llvm::isa<Function>(G_));
+    return llvm::cast<Function>(G_);
+  }
+
+  /// \returns a reference to the high-level graph.
+  const Function *getGraph() const {
+    assert(llvm::isa<Function>(G_));
+    return llvm::cast<Function>(G_);
+  }
+
+#if FACEBOOK_INTERNAL
+  /// \returns a reference to the glow FX graph.
+  FXIRWrapper *getFXGraph();
+
+  /// \returns a reference to the glow FX graph.
+  const FXIRWrapper *getFXGraph() const;
+#endif
+
+  Module *getParent() override { return G_->getParent(); }
+
+  const Module *getParent() const override { return G_->getParent(); }
 
   /// Sets the high-level graph corresponding to this function.
   void setGraph(Function *F) { G_ = F; }
@@ -389,7 +424,7 @@ public:
   /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
   llvm::StringRef uniqueName(llvm::StringRef name) {
     return Module::uniqueName(name, stringTable_, stringTable_,
-                              *G_->getParent()->getOriginalNames());
+                              *getParent()->getOriginalNames());
   }
 
   /// Verify the correctness of the function.

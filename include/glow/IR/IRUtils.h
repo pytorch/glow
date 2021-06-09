@@ -139,7 +139,6 @@ size_t getOriginOffset(Value *V);
 
 /// \returns peels off the layers of tensorviews from a value \p V.
 const Value *getOrigin(const Value *V);
-
 } // namespace glow
 
 #endif // GLOW_IR_IRUTILS_H

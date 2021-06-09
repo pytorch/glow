@@ -6183,7 +6183,7 @@ Error ONNXModelLoader::setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
                                        PrePartitionedConfig &PPC,
                                        llvm::StringRef rootName,
                                        int numPartitions) {
-  PPC.funcName = rootName;
+  PPC.funcName = rootName.str();
   PPC.resizeAndReserve(numPartitions);
 
   for (int i = 0; i < numPartitions; i++) {
@@ -6340,7 +6340,7 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
                                 "of updatedTQPs_ %lu",
                                 idx, updatedTQPs_.size()));
 
-    auto it = originNameToTQPMap.find(nameOffsetPair.first);
+    auto it = originNameToTQPMap.find(nameOffsetPair.first.str());
     RETURN_ERR_IF_NOT(it != originNameToTQPMap.end(),
                       strFormat("Did not find matching TQP for %s",
                                 nameOffsetPair.first.str().data()));

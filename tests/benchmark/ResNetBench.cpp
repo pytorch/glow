@@ -405,7 +405,7 @@ private:
           false);
       Placeholder *output = builder.build(input, F);
       FunctionBundle bundle;
-      bundle.name = F->getName();
+      bundle.name = F->getName().str();
       bundle.input = input;
       bundle.output = output;
       res.push_back(std::move(bundle));

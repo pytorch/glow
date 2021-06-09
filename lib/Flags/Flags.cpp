@@ -51,6 +51,7 @@ std::string BackendSpecificOpts = "";
 bool EnableLoadBalancedPartitioning = true;
 bool SkipProvisioning = false;
 bool DisableLayoutVerifying = false;
+bool DisableFreeCompilationResource = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
@@ -121,6 +122,7 @@ bool DumpCustomKernelFiles = false;
 namespace glow {
 namespace interpreter {
 namespace flags {
+bool LowerBatchMatMul = true;
 bool LowerLayerNormalization = true;
 } // namespace flags
 } // namespace interpreter
@@ -645,6 +647,14 @@ DEFINE_validator(glow_nnpi_timeout_ms, [](const char *, int32_t val) {
   return true;
 });
 
+DEFINE_bool(glow_interpreter_lower_batch_matmul,
+            glow::interpreter::flags::LowerBatchMatMul,
+            "Lower batch matmul node.");
+DEFINE_validator(glow_interpreter_lower_batch_matmul,
+                 [](const char *, bool val) {
+                   glow::interpreter::flags::LowerBatchMatMul = val;
+                   return true;
+                 });
 DEFINE_bool(glow_interpreter_lower_layer_normalization,
             glow::interpreter::flags::LowerLayerNormalization,
             "Lower layer normalization node.");

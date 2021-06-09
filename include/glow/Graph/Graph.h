@@ -355,6 +355,14 @@ public:
 
   ~Function();
 
+  IRKind getIRKind() const override { return IRKind::GlowGraphIRKind; };
+
+  static bool classof(const IRContainer *I) {
+    return I->getIRKind() == IRKind::GlowGraphIRKind;
+  }
+
+  static bool classof(const Function *F) { return true; }
+
   /// Clear out \ref nodes_ and \ref uniqueNodeNames_.
   void clear();
 
@@ -379,7 +387,7 @@ public:
     return metadataPlaceholders_;
   }
 
-  Module *getParent() { return parent_; }
+  Module *getParent() override { return parent_; }
 
   /// Perform ordering of nodes_ based on node's name.
   /// This is to make sure that performing optimizations have a deterministic
@@ -404,7 +412,7 @@ public:
   ConstList findConstants();
   ConstList findConstants() const;
 
-  const Module *getParent() const { return parent_; }
+  const Module *getParent() const override { return parent_; }
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
@@ -1534,6 +1542,25 @@ public:
                                          NodeValue dataToInferDim);
 
   /// Implements an operation that converts the sparse representation given by
+  /// the  \p lengths, \p indices and \p values into a dense representation.
+  /// This representation contains \p lengths[i] indices in batch i, and in each
+  /// batch contains the value of \p values at the corresponding index given by
+  /// \p indices. All indices that are not present in \p indices are filled with
+  /// defaultValue. \p indices within the same batch should not contain
+  /// duplicates. \p denseLastDim gives the last dimension of the output dense
+  /// representation (ie. the second dimension).
+  BatchSparseToDenseNode *
+  createBatchSparseToDense(llvm::StringRef name, NodeValue lengths,
+                           NodeValue indices, NodeValue values,
+                           float defaultValue, unsigned_t denseLastDim);
+
+  /// Implements an operation that inserts zeros into \p data along axis=0 for
+  /// indices where \p indicator is zero.
+  FillExamplesWithIndicatorNode *
+  createFillExamplesWithIndicator(llvm::StringRef name, NodeValue data,
+                                  NodeValue indicator);
+
+  /// Implements an operation that converts the sparse representation given by
   /// the pair of \p indices and \p values into a dense representation, which
   /// only contains IDs from given \p mask. Indices cannot contain duplicates.
   /// \p lengths is used to distinguish elements that belong to different
@@ -2212,6 +2239,41 @@ public:
       llvm::StringRef name, NodeValue boxes, NodeValue scores,
       int64_t centerPointBox, int64_t maxOutputBoxesPerClass,
       float iouThreshold, float scoreThreshold, TypeRef indicesTy);
+
+  /// Create a TensorFlowLite custom node called "DetectionPostProcess" which
+  /// corresponds to a custom NonMaxSuppresion node.
+  /// The node has the following inputs:
+  /// - \p boxes with size [N, B, 4]
+  /// - \p scores with size [N, B, C]
+  /// - \p anchors with size [B, 4]
+  /// where N is the batch size, B is the number of boxes and C is the number
+  /// of classes.
+  /// The node has the following attributes (parameters):
+  /// - \p numClasses - Number of effective classes (without the background).
+  /// - \p maxDetections - The maximum number of detections.
+  /// - \p maxClassesPerDetection - Maximum classes per detection (Fast NMS).
+  /// - \p maxDetectionsPerClass - Maximum detections per class (Regular NMS).
+  /// - \p iouThreshold - Detection threshold for IoU metric.
+  /// - \p scoreThreshold - Detection threshold for scores.
+  /// - \p xScale - X scale used for decoding the boxes.
+  /// - \p yScale - Y scale used for decoding the boxes.
+  /// - \p hScale - H scale used for decoding the boxes.
+  /// - \p wScale - W scale used for decoding the boxes.
+  /// - \p regularNMS - Whether the NMS is "Regular" or "Fast".
+  /// The node will have the following outputs:
+  /// - DetectionBoxes - the chosen boxes (float)
+  /// - DetectionClasses - the classes of the chosen boxes (int32)
+  /// - DetectionScores - the scores of the chosen boxes (float)
+  /// - NumDetections - number of chosen (detected) boxes (int32)
+  /// The first three output tensors will be allocated using the maximum
+  /// number of possible detections (worst case scenario) but the actual
+  /// usage will be given by the 'NumDetections' output.
+  TFLiteDetectionPostProcessNode *createTFLiteDetectionPostProcess(
+      llvm::StringRef name, NodeValue boxes, NodeValue scores,
+      NodeValue anchors, int32_t numClasses, int32_t maxDetections,
+      int32_t maxClassesPerDetection, int32_t maxDetectionsPerClass,
+      float iouThreshold, float scoreThreshold, float xScale, float yScale,
+      float hScale, float wScale, bool regularNMS);
 
   /// Create a constant node with a 1D cosine windowing function defined as:
   /// w[n] = 0.5 - 0.5 * cos(2 * pi * n / N) for n = 0 .. N - 1 where N

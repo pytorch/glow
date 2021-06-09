@@ -44,7 +44,7 @@ static void executeDAG(DAGNode *G, Module &mod, PlaceholderBindings &bindings,
   std::unordered_map<std::string, Function *> name2func;
 
   for (auto *F : mod.getFunctions()) {
-    name2func[F->getName()] = F;
+    name2func[F->getName().str()] = F;
   }
 
   std::vector<DAGNode *> exeList;
@@ -591,7 +591,7 @@ TEST_F(PartitionerTest, Basic1Roofline) {
                                        *backend, cctx));
   std::unordered_map<Node *, std::string> nodeNamesMap;
   for (auto &node : EEP.getModule().getFunction("main")->getNodes()) {
-    nodeNamesMap[&node] = node.getName();
+    nodeNamesMap[&node] = node.getName().str();
   }
 
   // check compute costs

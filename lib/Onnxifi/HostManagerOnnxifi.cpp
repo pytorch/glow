@@ -303,6 +303,12 @@ onnxStatus HostManagerBackend::addNetwork(
       throw std::invalid_argument(strFormat(
           "Error during AOT optimization (non-provisioned addNetwork):\n%s\n",
           errMsg.c_str()));
+    } else if (err.peekErrorValue()->getErrorCode() ==
+               ErrorValue::ErrorCode::RUNTIME_DEFERRED_WEIGHT_ERROR) {
+      // If a deferred weight error occurs, log the error but do not fatal so we
+      // can try again.
+      LOG(ERROR) << errMsg;
+      return ONNXIFI_STATUS_INTERNAL_ERROR;
     } else {
       LOG(FATAL) << errMsg;
     }

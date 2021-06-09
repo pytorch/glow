@@ -37,6 +37,17 @@
 #include <string>
 #include <vector>
 
+#ifndef GLOW_JIT_ORC_VERSION
+#if LLVM_VERSION_MAJOR < 10
+#define GLOW_JIT_ORC_VERSION 1
+#else
+#define GLOW_JIT_ORC_VERSION 2
+#endif
+#endif
+
+//##############################################################################
+#if GLOW_JIT_ORC_VERSION == 1
+//##############################################################################
 namespace llvm {
 namespace orc {
 
@@ -44,8 +55,9 @@ namespace orc {
 // KaleidoscopeJIT example in the LLVM tree.
 class GlowJIT {
 private:
-  TargetMachine &TM_;
+  std::unique_ptr<llvm::TargetMachine> TM_;
   const DataLayout DL_;
+  std::unique_ptr<llvm::LLVMContext> ctx_;
 #if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
   SymbolStringPool SSP_;
   ExecutionSession ES_;
@@ -93,10 +105,10 @@ private:
   std::string mangle(const std::string &name);
 
 public:
-  GlowJIT(llvm::TargetMachine &TM);
+  GlowJIT(std::unique_ptr<llvm::TargetMachine> TM);
   ~GlowJIT();
 
-  TargetMachine &getTargetMachine() { return TM_; }
+  TargetMachine &getTargetMachine() { return *TM_; }
 
   JITSymbol findSymbol(const std::string &name);
 
@@ -105,9 +117,68 @@ public:
   ModuleHandle addModule(std::unique_ptr<Module> M);
 
   void removeModule(ModuleHandle H);
+
+  void setContext(std::unique_ptr<llvm::LLVMContext> ctx);
 };
 
 } // end namespace orc
 } // end namespace llvm
+
+namespace glow {
+using GlowJIT = llvm::orc::GlowJIT;
+}
+
+//##############################################################################
+#elif GLOW_JIT_ORC_VERSION == 2
+//##############################################################################
+
+namespace glow {
+
+class GlowJITOrcV2 {
+  friend class GlowJITDefGenerator;
+
+  std::unique_ptr<llvm::TargetMachine> tm_;
+  const llvm::DataLayout dl_;
+  std::shared_ptr<llvm::orc::SymbolStringPool> ssp_;
+  llvm::orc::ExecutionSession es_;
+  llvm::orc::JITDylib &jd_;
+
+  llvm::orc::RTDyldObjectLinkingLayer objectLayer_;
+  llvm::orc::IRCompileLayer compileLayer_;
+  llvm::orc::ThreadSafeContext ctx_;
+
+  llvm::orc::MangleAndInterner mangler_;
+
+  /// Handles symbols that are overridden by the JIT engine (needed to manage
+  /// C++ destructors for static objects).
+  llvm::orc::LocalCXXRuntimeOverrides cxxSymbolOverride_;
+
+  /// Object that records static C++ constructor/destructor names.
+  std::vector<llvm::orc::CtorDtorRunner> irStaticDestructorRunners_;
+
+  /// \returns the JITSymbol for the symbol named \p name. Differs from
+  /// findSymbol in that it handles resolving symbols outside of the
+  /// CompileLayer (e.g. in process symbols, overridden symbols).
+  /// Called indirectly by the ObjectLinkingLayer.
+  llvm::Error tryToGenerate(llvm::orc::LookupKind K, llvm::orc::JITDylib &JD,
+                            llvm::orc::JITDylibLookupFlags JDLookupFlags,
+                            const llvm::orc::SymbolLookupSet &LookupSet);
+
+public:
+  GlowJITOrcV2(std::unique_ptr<llvm::TargetMachine> tm);
+  virtual ~GlowJITOrcV2();
+
+  llvm::JITSymbol findSymbol(const std::string &name);
+
+  using ModuleHandle = llvm::orc::VModuleKey;
+  void setContext(std::unique_ptr<llvm::LLVMContext> ctx);
+  ModuleHandle addModule(std::unique_ptr<llvm::Module> M);
+};
+using GlowJIT = GlowJITOrcV2;
+
+} // namespace glow
+#else
+#error Unsupported GLOW_JIT_ORC_VERSION
+#endif
 
 #endif // GLOW_LLVMIRCODEGEN_GLOWJIT_H
