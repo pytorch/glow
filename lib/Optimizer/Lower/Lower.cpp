@@ -228,7 +228,7 @@ static void lowerBatchedMulNode(Function *F, CompilationContext &cctx,
 static void lowerGemmNode(Function *F, CompilationContext &cctx,
                           const GemmNode &GN) {
 
-  LOG_SCOPE(F->getLogContext(), "lowerGemm")
+  LOG_SCOPE(F->getLogContext(), "lowerGemmNode")
 
   NodeValue A = GN.getA();
   NodeValue B = GN.getB();
@@ -1132,6 +1132,8 @@ static void lowerBucketizeNode(Function *F, CompilationContext &cctx,
   // 3.2 Else if they are all smaller = output is len(Boundaries)
   // 3.2 Else output is Boundaries[i-1] < x <= Boundaries[i]
   // 4. Gather the all 'x's and create a new tensor to replace the node with
+  LOG_SCOPE(F->getLogContext(), "lowerBucketizeNode")
+
   dim_t numOfBuckets = (dim_t)B.getBoundaries().size();
   const std::string &baseStr = B.getName().str();
   auto *boundariesConst = F->getParent()->createConstant(
@@ -1266,7 +1268,7 @@ static void lowerChannelShuffleNode(Function *F, CompilationContext &cctx,
 
 static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
                                        const BatchedReduceMeanNode &BRM) {
-  LOG_SCOPE(F->getLogContext(), "lowerBatchReduceMeanNode")
+  LOG_SCOPE(F->getLogContext(), "lowerBatchedReduceMeanNode")
 
   auto input = BRM.getBatch();
 
@@ -1309,7 +1311,7 @@ static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
 static void
 lowerBatchedReduceSumSquareNode(Function *F, CompilationContext &cctx,
                                 const BatchedReduceSumSquareNode &BR) {
-  LOG_SCOPE(F->getLogContext(), "lowerBatchReduceSumSquareNode")
+  LOG_SCOPE(F->getLogContext(), "lowerBatchedReduceSumSquareNode")
 
   auto input = BR.getBatch();
 
@@ -1454,6 +1456,9 @@ static void lowerSparseLengthsSumNode(Function *F, CompilationContext &cctx,
 static void lowerFusedRowwiseQuantizedSparseLengthsSumNode(
     Function *F, CompilationContext &cctx,
     const FusedRowwiseQuantizedSparseLengthsSumNode &FRQSLSN) {
+  LOG_SCOPE(F->getLogContext(),
+            "lowerFusedRowwiseQuantizedSparseLengthsSumNode")
+
   auto ty = F->getParent()->uniqueType(
       FRQSLSN.getResult().getType()->getElementType(),
       {FRQSLSN.getIndices().dims()[0]});
@@ -1468,6 +1473,8 @@ static void lowerFusedRowwiseQuantizedSparseLengthsSumNode(
 
 static void lowerBatchBoxCoxNode(Function *F, CompilationContext &cctx,
                                  const BatchBoxCoxNode &BBCN) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchBoxCoxNode")
+
   auto name = BBCN.getName();
   auto data = BBCN.getInput();
   auto lambda1 = BBCN.getLambda1();
@@ -1524,6 +1531,8 @@ static void lowerBatchBoxCoxNode(Function *F, CompilationContext &cctx,
 
 static void lowerClipNode(Function *F, CompilationContext &cctx,
                           const ClipNode &CN) {
+  LOG_SCOPE(F->getLogContext(), "lowerClipNode")
+
   auto const &name = CN.getName();
   auto min = CN.getMin();
   auto max = CN.getMax();
@@ -1538,6 +1547,8 @@ static void lowerClipNode(Function *F, CompilationContext &cctx,
 
 static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
                                    const Convolution3DNode &C3DN) {
+  LOG_SCOPE(F->getLogContext(), "lowerConvolution3DNode")
+
   VLOG(1) << "Lowering Convolution3D Node" << std::endl;
   VLOG(1) << "Input " << C3DN.getInput().dims() << std::endl;
   VLOG(1) << "Result " << C3DN.getResult().dims() << std::endl;
@@ -1706,6 +1717,8 @@ static void lowerLogitNode(Function *F, CompilationContext &cctx,
 
 static void lowerGeluNode(Function *F, CompilationContext &cctx,
                           const GeluNode &GN) {
+  LOG_SCOPE(F->getLogContext(), "lowerGeluNode")
+
   NodeValue input = GN.getInput();
   auto outTy = input.getType();
   auto name = GN.getName().str();
@@ -1746,6 +1759,8 @@ static void lowerGeluNode(Function *F, CompilationContext &cctx,
 
 static void lowerLSTMUnitNode(Function *F, CompilationContext &cctx,
                               const LSTMUnitNode &LUN) {
+  LOG_SCOPE(F->getLogContext(), "lowerLSTMUnitNode");
+
   NodeValue input = LUN.getInput();
   NodeValue inC = LUN.getC();
 
@@ -1782,6 +1797,8 @@ static void lowerLSTMUnitNode(Function *F, CompilationContext &cctx,
 
 static void lowerBroadcastNode(Function *F, CompilationContext &cctx,
                                const BroadcastNode &BN) {
+  LOG_SCOPE(F->getLogContext(), "lowerBroadcastNode");
+
   const auto input = BN.getInput();
   const auto newShape = BN.getTargetDim();
   const auto axis = BN.getAxis();
@@ -1821,6 +1838,8 @@ static void lowerBroadcastNode(Function *F, CompilationContext &cctx,
 
 static void lowerLogSoftMaxNode(Function *F, CompilationContext &cctx,
                                 const LogSoftMaxNode &LSMN) {
+  LOG_SCOPE(F->getLogContext(), "lowerLogSoftMaxNode");
+
   NodeValue input = LSMN.getInput();
   auto name = LSMN.getName().str();
 

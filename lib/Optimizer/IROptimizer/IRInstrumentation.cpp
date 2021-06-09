@@ -275,8 +275,8 @@ static bool performIRInstrumentation(IRFunction &M) {
     allocSize = std::max(1u, allocSize);
 
     // Add instrumentation before instruction.
-    auto *allocTy = M.getGraph()->getParent()->uniqueType(ElemKind::Int8QTy,
-                                                          {allocSize}, 0.0, 0);
+    auto *allocTy =
+        M.getParent()->uniqueType(ElemKind::Int8QTy, {allocSize}, 0.0, 0);
     auto *instrAlloc =
         new AllocActivationInst("instrument.alloc." + instrName, allocTy);
     auto *instrBefore =

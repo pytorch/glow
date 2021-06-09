@@ -23,8 +23,7 @@
 using namespace glow;
 
 LLVMCompiledFunction::LLVMCompiledFunction(
-    std::unique_ptr<llvm::orc::GlowJIT> JIT,
-    runtime::RuntimeBundle &&runtimeBundle)
+    std::unique_ptr<GlowJIT> JIT, runtime::RuntimeBundle &&runtimeBundle)
     : CompiledFunction(std::move(runtimeBundle)), JIT_(std::move(JIT)) {}
 
 void LLVMCompiledFunction::collectConstants(const Module *module) {
@@ -39,7 +38,7 @@ void LLVMCompiledFunction::loadPlaceholders(
   // Copy Placeholders into allocated memory.
   auto &symbolTable = runtimeBundle_.getSymbolTable();
   for (auto &PH : bindings->pairs()) {
-    auto it = symbolTable.find(PH.first->getName());
+    auto it = symbolTable.find(PH.first->getName().str());
     if (it == symbolTable.end()) {
       continue;
     }
@@ -58,7 +57,7 @@ void LLVMCompiledFunction::updatePlaceholders(
   // Copy placeholders from device back into bindings.
   auto &symbolTable = runtimeBundle_.getSymbolTable();
   for (auto &PH : bindings->pairs()) {
-    auto it = symbolTable.find(PH.first->getName());
+    auto it = symbolTable.find(PH.first->getName().str());
     if (it == symbolTable.end()) {
       continue;
     }

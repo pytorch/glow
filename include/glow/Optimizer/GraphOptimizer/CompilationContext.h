@@ -368,6 +368,11 @@ struct CompilationContext {
   /// Static placeholder type info used for AOT optimization.
   std::map<std::string, Type> staticPlaceholderTypesForAOT;
 
+  /// Map from function name to its corresponding compiled serialized functions;
+  /// Used in deserialization.
+  std::unordered_map<std::string, std::shared_ptr<std::vector<char>>>
+      nameToFunctions;
+
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
       : bindings(bindings_), loweredInfoMap(loweredInfoMap_) {}

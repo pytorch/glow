@@ -311,7 +311,8 @@ private:
   static Expected<TensorOutput> layerNorm(const MetaStack &variableMetas);
   // Shape inference for aten::linear
   static Expected<TensorOutput> linear(const MetaStack &variableMetas);
-  // Shape inference for fb::compressed_indices_remap
+  // Shape inference for fb::compressed_indices_remap and
+  // fb::xl_compressed_indices_remap
   static Expected<TensorListOutput>
   compressedIndicesRemap(const MetaStack &variableMetas);
   // Shape inference for quantized::embedding_bag_byte_unpack

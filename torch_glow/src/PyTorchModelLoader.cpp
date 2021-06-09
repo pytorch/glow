@@ -1998,13 +1998,51 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
     return Error::success();
   };
 
+  // Indentation
+  auto errStringIndent = [](int layer, std::string &err) {
+    if (!err.empty()) {
+      err.push_back('\n');
+    }
+    for (int i = 0; i < layer; ++i) {
+      err.push_back(' ');
+    }
+  };
+
+  // If loadNode returns an error, following lambda will traverse
+  // through parents and get node information upto debugLayers(configurable)
+  std::function<void(const torch::jit::Node *, std::string &, int,
+                     std::unordered_set<const torch::jit::Node *> &)>
+      errStack = [&](const torch::jit::Node *nnode, std::string &err, int layer,
+                     std::unordered_set<const torch::jit::Node *> &traversed) {
+        if (layer <= 0 || nnode == nullptr || nnode->inputs().size() == 0 ||
+            !traversed.insert(nnode).second) {
+          return;
+        }
+
+        for (const auto parent : nnode->inputs()) {
+          if (parent == nullptr) {
+            continue;
+          }
+
+          errStack(parent->node(), err, layer - 1, traversed);
+        }
+
+        errStringIndent(layer, err);
+        err.append(jitNodeToString(nnode));
+      };
+
   // Nodes are topologically sorted.
   for (const auto *node : graph.nodes()) {
     VLOG(1) << "Loading node: " << jitNodeToString(node).c_str();
     if (auto err = loadNode(node)) {
-      ADD_MESSAGE_TO_ERR_STACK(
-          err, strFormat("Encountered Error while loading node %s",
-                         jitNodeToString(node).c_str()));
+
+      std::string errString;
+      std::unordered_set<const torch::jit::Node *> traversed;
+      if (settings_.debugLayers > 0) {
+        errStack(node, errString, settings_.debugLayers, traversed);
+      }
+
+      ADD_MESSAGE_TO_ERR_STACK(err, errString.c_str());
       RETURN_ERR(err);
     }
   }
@@ -2171,7 +2209,7 @@ Error PyTorchModelLoader::extractConstantFromNodeValue(
   glow::Constant *constant =
       llvm::dyn_cast<glow::Constant>(nodeValue.getNode());
   RETURN_ERR_IF_NOT(constant != nullptr, "constant is null.");
-  output = constant->getPayload().getHandle<T>().at({0});
+  output = constant->getPayload().getHandle<T>().raw(0);
   return Error::success();
 }
 
@@ -3023,9 +3061,9 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
                       inputs[QuantizedUnpackedLinearInputs::scale]))));
   } else {
     float scaleConstant;
-    extractConstantFromNodeValue<float>(
+    RETURN_IF_ERR(extractConstantFromNodeValue<float>(
         inputs[QuantizedUnpackedLinearInputs::scale], glow::ElemKind::FloatTy,
-        scaleConstant);
+        scaleConstant));
     ASSIGN_VALUE_OR_RETURN_ERR(outScale, to32Bit((double)scaleConstant));
   }
 
@@ -3037,11 +3075,10 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
                           inputs[QuantizedUnpackedLinearInputs::zero_point])));
   } else {
     int32_t zeroPointConstant;
-    extractConstantFromNodeValue<int32_t>(
+    RETURN_IF_ERR(extractConstantFromNodeValue<int32_t>(
         inputs[QuantizedUnpackedLinearInputs::zero_point],
-        glow::ElemKind::Int32ITy, zeroPointConstant);
-    ASSIGN_VALUE_OR_RETURN_ERR(outZeroPoint,
-                               Expected<int64_t>((int64_t)zeroPointConstant));
+        glow::ElemKind::Int32ITy, zeroPointConstant));
+    outZeroPoint = (int64_t)zeroPointConstant;
   }
 
   // Get bias or create a zero bias if no bias is found.
@@ -4413,10 +4450,20 @@ Error PyTorchModelLoader::loadEmptyLike(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
 
-  const auto fillValue = at::nullopt;
-  return loadFullLikeImpl("empty_like", inputs[EmptyLikeInputs::self],
-                          inputs[EmptyLikeInputs::dtype], fillValue,
-                          outputs[0]);
+  glow::ElemKind outputGlowElemKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputGlowElemKind,
+                             getExpectedType(inputs[EmptyLikeInputs::self],
+                                             inputs[EmptyLikeInputs::dtype]));
+
+  if (outputGlowElemKind == ElemKind::Int32ITy) {
+    const auto fillValue = at::nullopt;
+    return loadFullLikeImpl<int>("empty_like", inputs[EmptyLikeInputs::self],
+                                 outputGlowElemKind, fillValue, outputs[0]);
+  } else {
+    const auto fillValue = at::nullopt;
+    return loadFullLikeImpl<double>("empty_like", inputs[EmptyLikeInputs::self],
+                                    outputGlowElemKind, fillValue, outputs[0]);
+  }
 }
 
 Error PyTorchModelLoader::loadZerosLike(const torch::jit::Node *ptNode) {
@@ -4424,10 +4471,20 @@ Error PyTorchModelLoader::loadZerosLike(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
 
-  const double fillValue = 0.0;
-  return loadFullLikeImpl("zeros_like", inputs[ZerosLikeInputs::self],
-                          inputs[ZerosLikeInputs::dtype], fillValue,
-                          outputs[0]);
+  glow::ElemKind outputGlowElemKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputGlowElemKind,
+                             getExpectedType(inputs[ZerosLikeInputs::self],
+                                             inputs[ZerosLikeInputs::dtype]));
+
+  if (outputGlowElemKind == ElemKind::Int32ITy) {
+    const int fillValue = 0;
+    return loadFullLikeImpl<int>("zeros_like", inputs[ZerosLikeInputs::self],
+                                 outputGlowElemKind, fillValue, outputs[0]);
+  } else {
+    const double fillValue = 0.0;
+    return loadFullLikeImpl<double>("zeros_like", inputs[ZerosLikeInputs::self],
+                                    outputGlowElemKind, fillValue, outputs[0]);
+  }
 }
 
 Error PyTorchModelLoader::loadOnesLike(const torch::jit::Node *ptNode) {
@@ -4435,9 +4492,20 @@ Error PyTorchModelLoader::loadOnesLike(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
 
-  const double fillValue = 1.0;
-  return loadFullLikeImpl("ones_like", inputs[OnesLikeInputs::self],
-                          inputs[OnesLikeInputs::dtype], fillValue, outputs[0]);
+  glow::ElemKind outputGlowElemKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputGlowElemKind,
+                             getExpectedType(inputs[OnesLikeInputs::self],
+                                             inputs[OnesLikeInputs::dtype]));
+
+  if (outputGlowElemKind == ElemKind::Int32ITy) {
+    const int fillValue = 1;
+    return loadFullLikeImpl<int>("ones_like", inputs[OnesLikeInputs::self],
+                                 outputGlowElemKind, fillValue, outputs[0]);
+  } else {
+    const double fillValue = 1.0;
+    return loadFullLikeImpl<double>("ones_like", inputs[OnesLikeInputs::self],
+                                    outputGlowElemKind, fillValue, outputs[0]);
+  }
 }
 
 Error PyTorchModelLoader::loadFullLike(const torch::jit::Node *ptNode) {
@@ -4445,42 +4513,82 @@ Error PyTorchModelLoader::loadFullLike(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
 
-  double fillValue;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      fillValue,
-      iValToDouble(getGlowIValueForValue(inputs[FullLikeInputs::fill_value])));
+  glow::ElemKind outputGlowElemKind;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputGlowElemKind,
+                             getExpectedType(inputs[FullLikeInputs::self],
+                                             inputs[FullLikeInputs::dtype]));
 
-  return loadFullLikeImpl("full_like", inputs[FullLikeInputs::self],
-                          inputs[FullLikeInputs::dtype], fillValue, outputs[0]);
+  if (outputGlowElemKind == ElemKind::Int32ITy) {
+    int fillValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        fillValue,
+        iValToInt(getGlowIValueForValue(inputs[FullLikeInputs::fill_value])));
+
+    return loadFullLikeImpl<int>("full_like", inputs[FullLikeInputs::self],
+                                 outputGlowElemKind, fillValue, outputs[0]);
+  } else {
+    double fillValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(fillValue,
+                               iValToDouble(getGlowIValueForValue(
+                                   inputs[FullLikeInputs::fill_value])));
+
+    return loadFullLikeImpl<double>("full_like", inputs[FullLikeInputs::self],
+                                    outputGlowElemKind, fillValue, outputs[0]);
+  }
 }
 
+Expected<ElemKind>
+PyTorchModelLoader::getExpectedType(const torch::jit::Value *inputTensorValue,
+                                    const torch::jit::Value *dtypeValue) {
+  glow::NodeValue inputTensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(inputTensor,
+                             getGlowNodeValueForValue(inputTensorValue));
+
+  glow::GlowIValue *dtypeGlowValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(dtypeGlowValue, getGlowIValueForValue(dtypeValue));
+
+  auto isNoneType = dtypeGlowValue->isNone();
+
+  // if dtype not specified, default dtype to the same type as input tensor
+  auto glowElemKind = inputTensor.getType()->getElementType();
+  auto correctType = elemKindToScalarType(glowElemKind);
+
+  if (!isNoneType) {
+    int32_t dtype;
+    ASSIGN_VALUE_OR_RETURN_ERR(dtype,
+                               iValToInt(getGlowIValueForValue(dtypeValue)));
+
+    correctType = static_cast<at::ScalarType>(dtype);
+  }
+
+  glowElemKind = correctType == at::kLong ? ElemKind::Int32ITy
+                                          : scalarTypeToElemKind(correctType);
+
+  return Expected<ElemKind>(glowElemKind);
+}
+
+template <class DType>
 Error PyTorchModelLoader::loadFullLikeImpl(
     llvm::StringRef name, const torch::jit::Value *inputTensorValue,
-    const torch::jit::Value *dtypeValue, at::optional<double> fillValue,
+    const glow::ElemKind outputGlowElemKind, at::optional<DType> fillValue,
     const torch::jit::Value *outputValue) {
   glow::NodeValue inputTensor;
   ASSIGN_VALUE_OR_RETURN_ERR(inputTensor,
                              getGlowNodeValueForValue(inputTensorValue));
 
-  int32_t dtype;
-  ASSIGN_VALUE_OR_RETURN_ERR(dtype,
-                             iValToInt(getGlowIValueForValue(dtypeValue)));
-
-  auto correctType = static_cast<at::ScalarType>(dtype);
   llvm::ArrayRef<glow::dim_t> selfDims(inputTensor.getType()->dims());
-  auto glowElemKind = correctType == at::kLong
-                          ? ElemKind::Int32ITy
-                          : scalarTypeToElemKind(correctType);
+  auto correctType = elemKindToScalarType(outputGlowElemKind);
 
   glow::NodeValue outputTensor;
   if (fillValue.has_value()) {
     outputTensor =
-        F_.createSplat(name, F_.getParent()->uniqueType(glowElemKind, selfDims),
+        F_.createSplat(name,
+                       F_.getParent()->uniqueType(outputGlowElemKind, selfDims),
                        fillValue.value())
             ->getResult();
   } else {
     outputTensor = F_.getParent()
-                       ->createConstant(glowElemKind, selfDims, name)
+                       ->createConstant(outputGlowElemKind, selfDims, name)
                        ->getOutput();
   }
 
@@ -5606,8 +5714,8 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
                       getGlowIValueForValue(inputs[QuantizeInputs::scale]))));
   } else {
     float scaleConstant;
-    extractConstantFromNodeValue<float>(inputs[QuantizeInputs::scale],
-                                        glow::ElemKind::FloatTy, scaleConstant);
+    RETURN_IF_ERR(extractConstantFromNodeValue<float>(
+        inputs[QuantizeInputs::scale], glow::ElemKind::FloatTy, scaleConstant));
     ASSIGN_VALUE_OR_RETURN_ERR(outScale, to32Bit((double)scaleConstant));
   }
 
@@ -5619,9 +5727,9 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
         iValToInt(getGlowIValueForValue(inputs[QuantizeInputs::zero_point])));
   } else {
     int32_t offsetConstant;
-    extractConstantFromNodeValue<int32_t>(inputs[QuantizeInputs::zero_point],
-                                          glow::ElemKind::Int32ITy,
-                                          offsetConstant);
+    RETURN_IF_ERR(extractConstantFromNodeValue<int32_t>(
+        inputs[QuantizeInputs::zero_point], glow::ElemKind::Int32ITy,
+        offsetConstant));
     ASSIGN_VALUE_OR_RETURN_ERR(outOffset, Expected<int32_t>(offsetConstant));
   }
 
@@ -8832,6 +8940,7 @@ PyTorchModelLoader::PyTorchModelLoader(
       out.open(fname);
       graph.print(out);
       out.close();
+      glow::dumpOperatorStats(graph);
     }
 
     RETURN_ERR_IF_NOT(

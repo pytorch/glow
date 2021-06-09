@@ -62,7 +62,7 @@ std::unique_ptr<HostManager>
 createHostManager(llvm::StringRef backendName,
                   HostConfig hostConfig = HostConfig()) {
   std::vector<std::unique_ptr<DeviceConfig>> configs =
-      generateConfigs(backendName, 1);
+      generateConfigs(std::string(backendName), 1);
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), hostConfig);
   return hostManager;
