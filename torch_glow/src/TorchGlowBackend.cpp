@@ -6,6 +6,7 @@
 #include "InputMeta.h"
 #include "Registration.h"
 
+#include "glow/Backend/BlockStreamBase.h"
 #include "glow/Runtime/ErrorReporter.h"
 
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
@@ -171,10 +172,77 @@ void registerTorchGlowBackendAndDeps() {
   registerGlowHelperOps();
 }
 
-c10::IValue
-preprocess(const torch::jit::Module &mod,
-           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec) {
-  return mod._ivalue();
+// Get the hash part of a method name and return it as a string.
+std::string getHashFromName(std::string name) {
+  auto pos = name.find_last_of("_");
+  return name.substr(pos + 1);
+}
+
+Expected<std::unordered_map<
+    std::string, std::unique_ptr<std::unordered_map<
+                     std::string, std::unique_ptr<BlockStreamBase>>>>>
+getSerializedModuleMap(
+    const std::unordered_map<
+        std::string, std::pair<std::unique_ptr<CachingGraphRunner>,
+                               std::unique_ptr<JITGraphRunner>>> &runnerMap,
+    const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec) {
+  std::unordered_map<std::string,
+                     std::unique_ptr<std::unordered_map<
+                         std::string, std::unique_ptr<BlockStreamBase>>>>
+      methodNameToSerializedMap;
+  for (const auto &kv : method_compile_spec) {
+    const auto methodName = kv.key().toString()->string();
+    // CHECK IF SAME TO COMPILE()
+    auto it = runnerMap.find(methodName);
+    RETURN_ERR_IF_NOT(
+        it != runnerMap.end(),
+        strFormat("Cannot find runnerMap for method %s", methodName.c_str()));
+    const auto &runnerPair = it->second;
+    RETURN_ERR_IF_NOT(
+        !runnerPair.second,
+        "Fuser should not be enabled while serialize/deserialize");
+    RETURN_ERR_IF_NOT(runnerPair.first, "Found empty caching graph runner");
+    auto &cachingGraphRunner = runnerPair.first;
+    const CompilationSpec &spec = *kv.value().toCustomClass<CompilationSpec>();
+
+    if ((spec.settings)->enable_serialize) {
+      auto map = cachingGraphRunner->getAllSerializedFunctionsMap();
+      methodNameToSerializedMap.emplace(
+          std::make_pair(methodName, std::move(map)));
+    }
+  }
+  return methodNameToSerializedMap;
+}
+
+void insertSerializationToModule(
+    const std::unordered_map<
+        std::string, std::unique_ptr<std::unordered_map<
+                         std::string, std::unique_ptr<BlockStreamBase>>>>
+        map,
+    torch::jit::Module &mod) {
+  for (const auto &kvModule : map) {
+    std::string moduleName = kvModule.first;
+    if (!kvModule.second->empty()) {
+      torch::jit::Module submodule = torch::jit::Module();
+      for (const auto &kvFunction : *kvModule.second) {
+        std::string functionName = kvFunction.first;
+        auto &block = kvFunction.second;
+        at::Tensor t = at::empty({static_cast<long>(block->getSize())},
+                                 at::TensorOptions().dtype(at::kChar));
+        block->read(static_cast<char *>(t.data_ptr()), block->getSize());
+        mod.register_buffer(functionName + "_SERIALIZED_DATA", t);
+      }
+    }
+  }
+
+  // Release block after serialize
+  for (auto &kvModule : map) {
+    if (!kvModule.second->empty()) {
+      for (auto &kvFunction : *kvModule.second) {
+        kvFunction.second->releaseMemory();
+      }
+    }
+  }
 }
 
 /// Unpacks conv2d and linear packed parameters and replaces
@@ -641,6 +709,17 @@ compileImpl(const torch::jit::Module &origModule,
   for (const auto &kv : method_compile_spec) {
     methodNames.push_back(kv.key().toStringRef());
   }
+  std::unordered_map<std::string, std::vector<char>> nameToFunction;
+  for (auto nv : origModule.named_buffers()) {
+    std::string name = nv.name;
+    if (name.size() > 16 &&
+        name.substr(name.size() - 16, 16) == "_SERIALIZED_DATA") {
+      std::string realName = name.substr(0, name.size() - 16);
+      char *ptr = static_cast<char *>(nv.value.data_ptr());
+      std::vector<char> data = std::vector<char>(ptr, ptr + nv.value.size(0));
+      nameToFunction.emplace(std::make_pair(realName, data));
+    }
+  }
   auto frozenModuleOrErr =
       preprocessImpl(origModule, methodNames, nameToOrigGraph);
   if (!frozenModuleOrErr) {
@@ -706,7 +785,11 @@ compileImpl(const torch::jit::Module &origModule,
               /*useRunOnly*/ !baseSettings.lazyCompile, origGraph,
               origModule._ivalue());
 
-      // Compile each compilation group
+      // Compile each compilation group.
+      // If we enabled always load serialized functions, and found the
+      // serialized functions already stored in model, we deserialize it instead
+      // of compiling it again.
+
       for (const auto &compilationGroup : spec.compilation_groups) {
         // Apply CompilationGroupSettings settings
         auto compilationGroupSettings = baseSettings;
@@ -718,9 +801,14 @@ compileImpl(const torch::jit::Module &origModule,
         for (const auto &inputSet : compilationGroup->input_sets) {
           metaStacks.push_back(getInputMetas(inputSet));
         }
-        auto err = runner->warmCache(metaStacks, compilationGroupSettings,
-                                     /*loader*/ nullptr,
-                                     /*useMaxSizeCompilation*/ false);
+        auto err = runner->warmCache(
+            metaStacks, compilationGroupSettings,
+            /*loader*/ nullptr,
+            /*useMaxSizeCompilation*/ false,
+            getGlobalPyTorchLoaderSettingsMutable().enableDeserialize,
+            std::make_shared<
+                std::unordered_map<std::string, std::vector<char>>>(
+                nameToFunction));
         err = checkForFatalError(std::move(err));
         RETURN_IF_ERR(err);
       }
@@ -728,12 +816,53 @@ compileImpl(const torch::jit::Module &origModule,
                                 std::make_pair(std::move(runner), nullptr));
     }
   }
-
   return methodToRunnerMap;
 }
 
 // Assumes Glow backend is always available.
 bool TorchGlowBackend::is_available() { return true; }
+
+c10::IValue
+preprocess(const torch::jit::Module &mod,
+           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec) {
+
+  // Compile and serialize the model before compile()
+  // Further options of serilization needed to be set in compilation group
+  if (getGlobalPyTorchLoaderSettingsMutable().enableSerialize) {
+    torch::jit::Module modNew = mod.copy();
+    modNew.eval();
+    auto runnersOrErr = compileImpl(modNew, method_compile_spec);
+
+    if (!runnersOrErr) {
+      auto err = runnersOrErr.takeError();
+      err = checkForFatalError(std::move(err));
+      throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+    }
+    std::unordered_map<std::string,
+                       std::pair<std::unique_ptr<CachingGraphRunner>,
+                                 std::unique_ptr<JITGraphRunner>>> &runners =
+        runnersOrErr.get();
+    // Get the serialization of the model
+    std::unordered_map<std::string,
+                       std::unique_ptr<std::unordered_map<
+                           std::string, std::unique_ptr<BlockStreamBase>>>>
+        methodNameToSerializedMap;
+
+    auto mapOrError = getSerializedModuleMap(runners, method_compile_spec);
+    if (!mapOrError) {
+      auto err = mapOrError.takeError();
+      err = checkForFatalError(std::move(err));
+      throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+    }
+
+    methodNameToSerializedMap = std::move(mapOrError.get());
+    // Insert the serialization to a copy of mod and return it
+    insertSerializationToModule(std::move(methodNameToSerializedMap), modNew);
+    return modNew._ivalue();
+  } else {
+    return mod._ivalue();
+  }
+}
 
 c10::impl::GenericDict
 TorchGlowBackend::compile(c10::IValue processed,

@@ -86,6 +86,7 @@ DEFINE_bool(setIncludeLastOffsets, true, "See PyTorchLoaderSettings");
 DEFINE_bool(inferShapeForCompilation, false,
             "Infer shape for the entire model for compilation");
 DEFINE_bool(enableRemoveMutation, true, "See PyTorchLoaderSettings");
+DEFINE_bool(enableDeserialize, false, "See PyTorchLoaderSettings");
 DEFINE_string(backendSpecificOpts, "",
               "Comma separated list of key=value for building the "
               "BackendSpecificOptions map in BackendOptions in "
@@ -96,9 +97,28 @@ DEFINE_int32(nominalBatchIdx, -1, "See PyTorchLoaderSettings");
 DEFINE_bool(dumpFailedInputsToOnnxFiles, false, "See PyTorchLoaderSettings");
 DEFINE_bool(lazyCompile, false, "see PyTorchLoaderSettings");
 DEFINE_bool(enableDeviceTracing, false, "See PyTorchLoaderSettings");
+DEFINE_int32(debugLayers, 5, "See PyTorchLoaderSettings");
 
 DEFINE_bool(saveGlowIRIntoONNX, false, "See PyTorchLoaderSettings");
 DEFINE_bool(loadGlowIRFromONNX, false, "See PyTorchLoaderSettings");
+
+DEFINE_bool(useSparseNNPartitioningScheme, false, "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningAddSLSConcats, false,
+            "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningBalancePerfModel, false,
+            "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningPairLNWithSLS, false,
+            "See PyTorchLoaderSettings");
+DEFINE_bool(sparseNNPartitioningPairTileWithSLS, false,
+            "See PyTorchLoaderSettings");
+DEFINE_int32(sparseNNPartitioningSchemeNumCards, 1,
+             "See PyTorchLoaderSettings");
+DEFINE_int64(sparseNNPartitioningSchemeSLSTableKBytesPerCard, 1,
+             "See PyTorchLoaderSettings");
+DEFINE_int32(SparseNNPartitioningSchemeNumCoresSLS, 1,
+             "See PyTorchLoaderSettings");
+DEFINE_int32(SparseNNPartitioningSchemeNumCoresOther, 1,
+             "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -341,6 +361,7 @@ void PyTorchLoaderSettings::initSettings() {
   fusionStartIndex = FLAGS_fusionStartIndex;
   fusionEndIndex = FLAGS_fusionEndIndex;
   setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
+  enableDeserialize = FLAGS_enableDeserialize;
   enableRemoveMutation = FLAGS_enableRemoveMutation;
   debugContinuouslyVerifyDuringModelLoading =
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
@@ -353,6 +374,21 @@ void PyTorchLoaderSettings::initSettings() {
   saveGlowIRIntoONNX = FLAGS_saveGlowIRIntoONNX;
   loadGlowIRFromONNX = FLAGS_loadGlowIRFromONNX;
   skipProvisioning = glow::flags::SkipProvisioning || saveGlowIRIntoONNX;
+  useSparseNNPartitioningScheme = FLAGS_useSparseNNPartitioningScheme;
+  sparseNNPartitioningAddSLSConcats = FLAGS_sparseNNPartitioningAddSLSConcats;
+  sparseNNPartitioningBalancePerfModel =
+      FLAGS_sparseNNPartitioningBalancePerfModel;
+  sparseNNPartitioningPairLNWithSLS = FLAGS_sparseNNPartitioningPairLNWithSLS;
+  sparseNNPartitioningPairTileWithSLS =
+      FLAGS_sparseNNPartitioningPairTileWithSLS;
+  sparseNNPartitioningSchemeNumCards = FLAGS_sparseNNPartitioningSchemeNumCards;
+  sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+      FLAGS_sparseNNPartitioningSchemeSLSTableKBytesPerCard;
+  SparseNNPartitioningSchemeNumCoresSLS =
+      FLAGS_SparseNNPartitioningSchemeNumCoresSLS;
+  SparseNNPartitioningSchemeNumCoresOther =
+      FLAGS_SparseNNPartitioningSchemeNumCoresOther;
+  debugLayers = FLAGS_debugLayers;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -400,6 +436,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(maxFusionMergeSize, s);
   INSERT_VALUE_TO_STREAM(fusionStartIndex, s);
   INSERT_BOOL_TO_STREAM(enableRemoveMutation, s);
+  INSERT_BOOL_TO_STREAM(enableDeserialize, s);
   INSERT_VALUE_TO_STREAM(fusionEndIndex, s);
   INSERT_BOOL_TO_STREAM(dumpFinalGlowGraph, s);
   INSERT_BOOL_TO_STREAM(enableGlowTracing, s);
@@ -420,6 +457,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(dumpFailedInputsToOnnxFiles, s);
   INSERT_BOOL_TO_STREAM(lazyCompile, s);
   INSERT_BOOL_TO_STREAM(enableDeviceTracing, s);
+  INSERT_VALUE_TO_STREAM(debugLayers, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
@@ -734,7 +772,9 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
 
   modelPreprocessing(model, method_name);
 
-  if (FLAGS_inferShapeForCompilation) {
+  // In Glow AOT serialization (i.e., settings.saveGlowIRIntoONNX = true), we
+  // always enable inferShapeForCompilation
+  if (FLAGS_inferShapeForCompilation || settings.saveGlowIRIntoONNX) {
     return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
                                            method_name, batchShapes);
   }

@@ -116,6 +116,12 @@ public:
   /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
   bool enableRemoveMutation = true;
 
+  /// Enable the dumping of compiled serialized model for backend.
+  bool enableSerialize = false;
+
+  /// Enable the extracting already serialized model to backend.
+  bool enableDeserialize = false;
+
   /// Disable all tensor layout verifying for all nodes.
   bool disableLayoutVerifying = true;
 
@@ -236,6 +242,21 @@ public:
   // and partitioned model into ONNX model file. During this process, we do not
   // need to do provisioning)
   bool skipProvisioning = false;
+
+  /// Set the number of predecessor Nodes to be printed from an error node.
+  int32_t debugLayers = 5;
+
+  // Sparse NN Partitioning Scheme Constants, refer to OptimizationOptions in
+  // CompilationContext for details
+  bool useSparseNNPartitioningScheme = false;
+  bool sparseNNPartitioningAddSLSConcats = false;
+  bool sparseNNPartitioningBalancePerfModel = false;
+  bool sparseNNPartitioningPairLNWithSLS = false;
+  bool sparseNNPartitioningPairTileWithSLS = false;
+  int32_t sparseNNPartitioningSchemeNumCards = 1;
+  int64_t sparseNNPartitioningSchemeSLSTableKBytesPerCard = 1;
+  int32_t SparseNNPartitioningSchemeNumCoresSLS = 1;
+  int32_t SparseNNPartitioningSchemeNumCoresOther = 1;
 };
 
 /// Represents different possible output types from to_glow modules.

@@ -24,8 +24,6 @@
 
 #define DEBUG_TYPE "jit-engine"
 
-using GlowJIT = llvm::orc::GlowJIT;
-
 namespace {
 /// An option to enabling the dump of the symbol information for the JITted
 /// functions. It dumps e.g. the names of the functions, their start addresses
@@ -73,7 +71,7 @@ class NotifyLoadedFunctor {
   }
 
 public:
-  NotifyLoadedFunctor(GlowJIT *jit)
+  NotifyLoadedFunctor()
       : dbgRegistrationListener_(
             llvm::JITEventListener::createGDBRegistrationListener()) {}
 
@@ -104,6 +102,11 @@ public:
 };
 
 } // namespace
+
+//##############################################################################
+#if GLOW_JIT_ORC_VERSION == 1
+//##############################################################################
+using GlowJIT = llvm::orc::GlowJIT;
 
 //==============================================================================
 #if LLVM_VERSION_MAJOR < 8 && FACEBOOK_INTERNAL
@@ -277,7 +280,7 @@ private:
     for (auto &S : Symbols) {
       // Note that we don't use Sym's operator bool() here since that returns
       // false for symbols with no address (which includes weak symbols).
-      JITSymbol Sym = LegacyLookup(*S);
+      JITSymbol Sym = LegacyLookup(std::string(*S));
       if (auto Err = Sym.takeError()) {
         return std::move(Err);
       }
@@ -323,8 +326,8 @@ createLookupResolver(llvm::orc::ExecutionSession &ES,
 }
 #endif
 
-GlowJIT::GlowJIT(llvm::TargetMachine &TM)
-    : TM_(TM), DL_(TM_.createDataLayout()),
+GlowJIT::GlowJIT(std::unique_ptr<llvm::TargetMachine> TM)
+    : TM_(std::move(TM)), DL_(TM_->createDataLayout()),
 #if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
       ES_(SSP_),
       resolver_(createLookupResolver(
@@ -346,8 +349,8 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
 #endif
       resolver_(createLookupResolver(
           ES_,
-          [this](const std::string &name) -> JITSymbol {
-            return this->resolveSymbol(name);
+          [this](llvm::StringRef name) -> JITSymbol {
+            return this->resolveSymbol(std::string(name));
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
 #if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
@@ -357,7 +360,7 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
             return RTDyldObjectLinkingLayer::Resources{
                 std::make_shared<SectionMemoryManager>(), resolver_};
           },
-          NotifyLoadedFunctor(this)),
+          NotifyLoadedFunctor()),
 #else
       objectLayer_(
           ES_,
@@ -365,10 +368,10 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
             return LegacyRTDyldObjectLinkingLayer::Resources{
                 std::make_shared<SectionMemoryManager>(), resolver_};
           },
-          NotifyLoadedFunctor(this)),
+          NotifyLoadedFunctor()),
 #endif
 #endif
-      compileLayer_(objectLayer_, SimpleCompiler(TM_)) {
+      compileLayer_(objectLayer_, SimpleCompiler(*TM_)) {
   //  When passing a null pointer to LoadLibraryPermanently, we request to
   //  'load' the host process itself, making its exported symbols available for
   //  execution.
@@ -401,9 +404,9 @@ GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<llvm::Module> M) {
   // https://github.com/llvm-mirror/llvm/blob/release_70/lib/ExecutionEngine/Orc/LLJIT.cpp).
   std::vector<std::string> ctorNames, dtorNames;
   for (auto ctor : orc::getConstructors(*M))
-    ctorNames.push_back(mangle(ctor.Func->getName()));
+    ctorNames.push_back(mangle(ctor.Func->getName().str()));
   for (auto dtor : orc::getDestructors(*M))
-    dtorNames.push_back(mangle(dtor.Func->getName()));
+    dtorNames.push_back(mangle(dtor.Func->getName().str()));
 
   cantFail(compileLayer_.addModule(K, std::move(M)));
   vModKeys_.insert(K);
@@ -437,3 +440,138 @@ std::string GlowJIT::mangle(const std::string &name) {
 llvm::JITSymbol GlowJIT::findSymbol(const std::string &name) {
   return compileLayer_.findSymbol(mangle(name), false);
 }
+
+void GlowJIT::setContext(std::unique_ptr<llvm::LLVMContext> ctx) {
+  ctx_ = std::move(ctx);
+}
+
+//##############################################################################
+#elif GLOW_JIT_ORC_VERSION == 2
+//##############################################################################
+
+namespace glow {
+
+class GlowJITDefGenerator : public llvm::orc::JITDylib::DefinitionGenerator {
+  GlowJIT *gj_;
+
+public:
+  GlowJITDefGenerator(GlowJIT *gj) : gj_(gj) {}
+  virtual ~GlowJITDefGenerator() {}
+
+  llvm::Error
+  tryToGenerate(llvm::orc::LookupKind k, llvm::orc::JITDylib &jd,
+                llvm::orc::JITDylibLookupFlags jdLookupFlags,
+                const llvm::orc::SymbolLookupSet &lookupSet) override {
+    return gj_->tryToGenerate(k, jd, jdLookupFlags, lookupSet);
+  }
+};
+
+GlowJITOrcV2::GlowJITOrcV2(std::unique_ptr<llvm::TargetMachine> tm)
+    : tm_(std::move(tm)), dl_(tm_->createDataLayout()),
+      ssp_(std::make_shared<llvm::orc::SymbolStringPool>()), es_(ssp_),
+      jd_(es_.createJITDylib("libGlowJIT.dylib")),
+      objectLayer_(
+          es_, []() { return std::make_unique<llvm::SectionMemoryManager>(); }),
+      compileLayer_(es_, objectLayer_,
+                    std::make_unique<llvm::orc::SimpleCompiler>(*tm_)),
+      mangler_(es_, dl_) {
+
+  cantFail(cxxSymbolOverride_.enable(jd_, mangler_));
+  objectLayer_.setNotifyLoaded(NotifyLoadedFunctor());
+  if (tm_->getTargetTriple().isOSBinFormatCOFF()) {
+    objectLayer_.setOverrideObjectFlagsWithResponsibilityFlags(true);
+    objectLayer_.setAutoClaimResponsibilityForObjectSymbols(true);
+  }
+  jd_.addGenerator(std::make_unique<GlowJITDefGenerator>(this));
+
+  //  When passing a null pointer to LoadLibraryPermanently, we request to
+  //  'load' the host process itself, making its exported symbols available for
+  //  execution.
+  llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
+}
+
+GlowJITOrcV2::~GlowJITOrcV2() {
+  // Run any destructor discovered in the LLVM IR of the JIT modules.
+  for (auto i = irStaticDestructorRunners_.rbegin();
+       i != irStaticDestructorRunners_.rend(); ++i) {
+    cantFail(i->run());
+  }
+
+  // Run any destructor registered with __cxa_atexit.
+  cxxSymbolOverride_.runDestructors();
+}
+
+llvm::Error
+GlowJITOrcV2::tryToGenerate(llvm::orc::LookupKind K, llvm::orc::JITDylib &JD,
+                            llvm::orc::JITDylibLookupFlags JDLookupFlags,
+                            const llvm::orc::SymbolLookupSet &LookupSet) {
+  llvm::orc::SymbolMap newSymbols;
+
+  for (const auto &i : LookupSet) {
+    const llvm::orc::SymbolStringPtr &ssp = i.first;
+    llvm::StringRef name = *ssp;
+
+    // FIXME: looking for symbols external to libjit in the process is
+    // dangerous because it can be environment dependent. For example,
+    // we get cases where a symbol is found in the Linux environment,
+    // but not in the Windows environment.
+    if (auto processSymAddr =
+            llvm::RTDyldMemoryManager::getSymbolAddressInProcess(name)) {
+      newSymbols[ssp] = llvm::JITEvaluatedSymbol(
+          processSymAddr, llvm::JITSymbolFlags::Exported);
+      continue;
+    }
+
+    // The symbol was not resolved. This will make the retreival of
+    // 'main' function symbol fail later without much information about
+    // the source of the problem. Then, we dump an error message now to
+    // ease debugging.
+    DEBUG_GLOW(llvm::dbgs()
+               << "JIT: Error resolving symbol '" << name << "'\n");
+    // Return a 'symbol not found' JITSymbol object (nullptr).
+  }
+
+  if (newSymbols.empty())
+    return llvm::Error::success();
+
+  return JD.define(absoluteSymbols(std::move(newSymbols)));
+}
+
+llvm::JITSymbol GlowJITOrcV2::findSymbol(const std::string &name) {
+  auto s = es_.lookup({&jd_}, name);
+  return s ? llvm::JITSymbol(s.get()) : llvm::JITSymbol(s.takeError());
+}
+
+void GlowJITOrcV2::setContext(std::unique_ptr<llvm::LLVMContext> ctx) {
+  ctx_ = llvm::orc::ThreadSafeContext(std::move(ctx));
+}
+
+GlowJITOrcV2::ModuleHandle
+GlowJITOrcV2::addModule(std::unique_ptr<llvm::Module> m) {
+  std::string modName = m->getName();
+  auto k = es_.allocateVModule();
+
+  auto ctors = llvm::orc::getConstructors(*m.get());
+  llvm::orc::CtorDtorRunner ctorRunner(jd_);
+  ctorRunner.add(ctors);
+
+  auto dtors = llvm::orc::getDestructors(*m.get());
+  irStaticDestructorRunners_.emplace_back(jd_);
+  irStaticDestructorRunners_.back().add(dtors);
+
+  cantFail(compileLayer_.add(
+      jd_, llvm::orc::ThreadSafeModule(std::move(m), ctx_), k));
+
+  // Run the static constructors
+  if (auto err = ctorRunner.run()) {
+    LOG(WARNING) << "Error while running static constructors for " << modName
+                 << ": " << llvm::toString(std::move(err));
+  }
+
+  return k;
+}
+
+} // namespace glow
+#else
+#error Unsupported GLOW_JIT_ORC_VERSION
+#endif

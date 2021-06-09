@@ -100,7 +100,7 @@ public:
     DCHECK(spaceIdx != llvm::StringRef::npos)
         << "Unexpected format for dict file.";
 
-    auto word = line.take_front(spaceIdx);
+    auto word = std::string(line.take_front(spaceIdx));
     DCHECK_GT(word.size(), 0) << "Did not find word correctly.";
 
     word2index_[word] = index2word_.size();
@@ -112,7 +112,7 @@ public:
   /// Load a dictionary from text file \p filename, adding each word from each
   /// line of the file.
   void loadDictionaryFromFile(llvm::StringRef filename) {
-    std::ifstream file(filename);
+    std::ifstream file(filename.str());
     std::string word;
     while (getline(file, word)) {
       addWord(word);
@@ -121,7 +121,7 @@ public:
 
   /// Get the index for the input \p word from the dictionary.
   size_t getIdxFromWord(llvm::StringRef word) {
-    auto iter = word2index_.find(word);
+    auto iter = word2index_.find(word.str());
     // If unknown word, return the index for unknown.
     if (iter == word2index_.end()) {
       return unkIdx;
@@ -158,7 +158,7 @@ static void encodeString(const llvm::StringRef sentence,
   encodedWords.reserve(maxInputLenOpt);
 
   // Get each word from the sentence and encode it.
-  std::istringstream iss(sentence);
+  std::istringstream iss(sentence.str());
   std::string word;
   while (iss >> word) {
     auto idx = srcVocab.getIdxFromWord(word);
@@ -368,8 +368,8 @@ int main(int argc, char **argv) {
       &encoderInputs.getType(), &attnWeights.getType(),
       &prevHyposIndices.getType(), &prevScores.getType(), &prevToken.getType()};
 
-  Caffe2ModelLoader LD(loader.getCaffe2NetDescFilename(),
-                       loader.getCaffe2NetWeightFilename(), inputNames,
+  Caffe2ModelLoader LD(loader.getCaffe2NetDescFilename().str(),
+                       loader.getCaffe2NetWeightFilename().str(), inputNames,
                        inputTensors, *loader.getFunction());
 
   // Allocate tensors to back all inputs and outputs.

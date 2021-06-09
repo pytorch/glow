@@ -463,7 +463,7 @@ inline bool isFusedQuantizedElemKind(ElemKind e) {
 /// \returns the scale and offset ElemKind used by the fused ElemKind \p e.
 inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
   assert(isFusedQuantizedElemKind(e) && "Must pass Fused ElemKind.");
-  if (e == ElemKind::UInt8FusedQTy) {
+  if (e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt4FusedQTy) {
     return ElemKind::FloatTy;
   }
   return ElemKind::Float16Ty;

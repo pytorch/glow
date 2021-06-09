@@ -184,8 +184,10 @@ static Placeholder *createPlaceholderConditionallyQuantized(
     Module &mod, ElemKind T, llvm::ArrayRef<dim_t> dims, llvm::StringRef name,
     bool isTrainable, llvm::StringRef layout = ANY_LAYOUT) {
   return isQuantizedElemKind(T)
-             ? mod.createPlaceholder(T, dims, 1.0, 0, name, isTrainable, layout)
-             : mod.createPlaceholder(T, dims, name, isTrainable, layout);
+             ? mod.createPlaceholder(T, dims, 1.0, 0, name.str(), isTrainable,
+                                     layout.str())
+             : mod.createPlaceholder(T, dims, name.str(), isTrainable,
+                                     layout.str());
 }
 
 /// Helper to get a unique Type; if \p T is quantized, then it will include a
@@ -17402,6 +17404,16 @@ TEST_P(OperatorTest,
                                /* useFP16Accumulation */ true);
 }
 
+/// Test Fused-RWQ-SLWS in Float16 wth 4-bit quantization for the embedding.
+/// Uses Float accumulation, Float for scale/offset.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSTwoColumn_Fused4Bit_Float_AccumFloat) {
+  ENABLED_BACKENDS("Interpreter");
+  testSLWSTwoColumn<float>(bindings_, mod_, F_, EE_, ElemKind::UInt4FusedQTy,
+                           0.1,
+                           /* useFP16Accumulation */ false);
+}
+
 /// Helper to test SLWS with different lengths modes, with precision \p DTy,
 /// and precision for data \p dataDTy.
 template <typename DataType>
@@ -17801,6 +17813,157 @@ TEST_P(OperatorTest, SparseToDense_Int64) {
   CHECK_IF_ENABLED();
   testSparseToDense<int64_t, int64_t>(bindings_, mod_, F_, EE_,
                                       ElemKind::Int64ITy, ElemKind::Int64ITy);
+}
+
+template <typename DataType, typename LengthType, typename IndexType>
+static void testBatchSparseToDense(glow::PlaceholderBindings &bindings,
+                                   glow::Module &mod, glow::Function *F,
+                                   glow::ExecutionEngine &EE, ElemKind DTy,
+                                   ElemKind LTy, ElemKind ITy) {
+  constexpr dim_t numBatches = 6;
+  constexpr dim_t numIndices = 10;
+
+  auto *lengths = mod.createPlaceholder(LTy, {numBatches}, "lengths", false);
+  auto *indices = mod.createPlaceholder(ITy, {numIndices}, "indices", false);
+  auto *values = mod.createPlaceholder(DTy, {numIndices}, "values", false);
+  float defaultValue = 0.5;
+  unsigned_t denseLastDim = 10;
+
+  auto LH = bindings.allocate(lengths)->getHandle<LengthType>();
+  auto IH = bindings.allocate(indices)->getHandle<IndexType>();
+  auto VH = bindings.allocate(values)->getHandle<DataType>();
+
+  LH = {1, 0, 3, 4, 0, 2};
+  IH = {0, 1, 2, 1, 3, 6, 4, 5, 2, 8};
+
+  auto *BSTD = F->createBatchSparseToDense("BSTD", lengths, indices, values,
+                                           defaultValue, denseLastDim);
+  auto *S = F->createSave("save", BSTD);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+
+  VH.randomize(-3.0, 3.0, mod.getPRNG());
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+
+  // Compute expected output.
+  Tensor expected(DTy, {numBatches, denseLastDim});
+  auto EH = expected.getHandle<DataType>();
+  EH.clear(defaultValue);
+  auto curInd = 0;
+  for (dim_t i = 0; i < numBatches; ++i) {
+    auto batchNumIndices = LH.at({i});
+    for (dim_t j = 0; j < batchNumIndices; ++j) {
+      EH.at({i, static_cast<dim_t>(IH.at(curInd))}) = VH.at(curInd);
+      curInd++;
+    }
+  }
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_Float) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<float, int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy,
+      ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_Float_Int32_Int32) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<float, int32_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy,
+      ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<float16_t, int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy,
+      ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, BatchSparseToDense_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchSparseToDense<bfloat16_t, int64_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int64ITy,
+      ElemKind::Int64ITy);
+}
+
+template <typename DataType, typename IndicatorType>
+static void testFillExamplesWithIndicator(glow::PlaceholderBindings &bindings,
+                                          glow::Module &mod, glow::Function *F,
+                                          glow::ExecutionEngine &EE,
+                                          ElemKind DTy, ElemKind IndTy) {
+  // Create and initialize inputs. Make input 3D to make sure
+  // multidimensional values are handled properly.
+  auto *indicator = mod.createPlaceholder(IndTy, {8}, "indicator", false);
+  auto *data = mod.createPlaceholder(DTy, {4, 3, 2}, "data", false);
+
+  auto IH = bindings.allocate(indicator)->getHandle<IndicatorType>();
+  auto DH = bindings.allocate(data)->getHandle<DataType>();
+
+  IH = {1, 0, 1, 0, 1, 1, 0, 0};
+
+  auto *filled = F->createFillExamplesWithIndicator("filled", data, indicator);
+  auto *S = F->createSave("save", filled);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+
+  DH.randomize(-3.0, 3.0, mod.getPRNG());
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+
+  // Compute expected output.
+  Tensor expected(DTy, {8, 3, 2});
+  expected.zero();
+  auto EH = expected.getHandle<DataType>();
+  dim_t idx = 0;
+  for (dim_t i = 0; i < 8; ++i) {
+    if (IH.at(i) == 1) {
+      for (dim_t j = 0; j < 3; ++j) {
+        for (dim_t k = 0; k < 2; ++k) {
+          EH.at({i, j, k}) = DH.at({idx, j, k});
+        }
+      }
+      idx++;
+    }
+  }
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Float_Int64) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Float16_Int32) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Float16_Bool) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<float16_t, bool>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::BoolTy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_BFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<bfloat16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, FillExamplesWithIndicator_Int32_Int32) {
+  CHECK_IF_ENABLED();
+  testFillExamplesWithIndicator<int32_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Int32ITy, ElemKind::Int32ITy);
 }
 
 TEST_P(OperatorTest, SparseToDenseMask1) {

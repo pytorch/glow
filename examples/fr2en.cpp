@@ -95,14 +95,14 @@ struct Vocabulary {
   std::unordered_map<std::string, int64_t> word2index_;
 
   void addWord(llvm::StringRef word) {
-    word2index_[word] = index2word_.size();
-    index2word_.push_back(word);
+    word2index_[word.str()] = index2word_.size();
+    index2word_.push_back(word.str());
   }
 
   Vocabulary() = default;
 
   void loadVocabularyFromFile(llvm::StringRef filename) {
-    std::ifstream file(filename);
+    std::ifstream file(filename.str());
     std::string word;
     while (getline(file, word))
       addWord(word);

@@ -1568,10 +1568,13 @@ bool performPeepholeOptimizations(IRFunction &M) {
 }
 
 namespace glow {
-std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
+
+std::unique_ptr<IRFunction> generateAndOptimizeIR(IRContainer *F,
+                                                  const Backend &B,
                                                   bool shouldShareBuffers) {
   auto IR = glow::make_unique<IRFunction>(F);
   IR->generateIR(B);
+
   ::glow::optimize(*IR, B, shouldShareBuffers);
   if (!B.verify(*IR)) {
     EXIT_ON_ERR(MAKE_ERR(
@@ -1650,4 +1653,5 @@ bool IRDumper::run(IRFunction *M, const CompilationContext &cctx) {
   return false;
 }
 } // namespace ir
+
 } // namespace glow

@@ -36,11 +36,11 @@ int main(int argc, char **argv) {
   // Create the model based on the input net, and get SaveNode for the output.
   std::unique_ptr<ProtobufLoader> LD;
   if (!loader.getCaffe2NetDescFilename().empty()) {
-    LD.reset(new Caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
-                                   loader.getCaffe2NetWeightFilename(), {}, {},
-                                   *loader.getFunction()));
+    LD.reset(new Caffe2ModelLoader(loader.getCaffe2NetDescFilename().str(),
+                                   loader.getCaffe2NetWeightFilename().str(),
+                                   {}, {}, *loader.getFunction()));
   } else {
-    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {}, {},
+    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename().str(), {}, {},
                                  *loader.getFunction()));
   }
   Placeholder *output = EXIT_ON_ERR(LD->getSingleOutput());
