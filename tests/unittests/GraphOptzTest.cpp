@@ -2978,6 +2978,8 @@ void fusePadIntoCWQConvTest(glow::Module &mod_, glow::Function *F_,
                         inputDims[3]};
   auto *F = mod_.createConstant(ElemKind::FloatTy, filterDims, "filter");
   auto *B = mod_.createConstant(ElemKind::FloatTy, {convNumKernels}, "bias");
+  F->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  B->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   auto convOutTy = mod_.uniqueType(ElemKind::Int8QTy, outputConvDims, 1.0, 0);
   auto *CV = F_->createChannelwiseQuantizedConv(
       "conv", P, F, B, /* filterScales */ nullptr, /* filterOffsets */ nullptr,
