@@ -1065,24 +1065,6 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         continue;
       }
     }
-
-    // Sink Clip below Reshape nodes.
-    if (auto *RN = dyn_cast<ReshapeNode>(node)) {
-      auto *CN = dyn_cast<ClipNode>(RN->getInput());
-      if (!CN) {
-        continue;
-      }
-
-      ReshapeNode *newRN = F->createReshape(RN->getName(), CN->getInput(),
-                                            RN->getDims(), RN->getLayout());
-      ClipNode *newCN = F->createClip(CN->getName(), newRN->getResult(),
-                                      CN->getMin(), CN->getMax());
-      RN->getResult().replaceAllUsesOfWith(newCN->getResult());
-      newRN->setPredicate(RN->getPredicate());
-      newCN->setPredicate(CN->getPredicate());
-      changed = true;
-      continue;
-    }
   } // For all nodes in the graph.
 
   // Transformations to sink nodes below Slice. Outlined into a separate loop to
@@ -1148,6 +1130,51 @@ bool HoistCode::run(Function *F, const CompilationContext &cctx) {
     }
   }
 
+  return changed;
+}
+
+/// Reshape Sinking.
+bool SinkReshapes::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    auto *node = &N;
+
+    // Sink Reshape below eltwise nodes.
+    if (!node->isDataParallel() || node->hasSideEffects()) {
+      continue;
+    }
+
+    // Unary eltwise nodes.
+    if (node->getNumInputs() != 1 || node->getNumResults() != 1) {
+      continue;
+    }
+
+    auto *RS = dyn_cast<ReshapeNode>(node->getNthInput(0));
+    if (!RS) {
+      continue;
+    }
+
+    // Create new eltwise node.
+    auto in = RS->getInput();
+    auto out = node->getNthResult(0);
+    auto newTy =
+        F->getParent()->uniqueTypeWithNewShape(out.getType(), in.dims());
+    auto *newN = F->addNode(node->clone());
+    newN->setNthInput(0, in);
+    newN->setTypeUnsafe(0, newTy);
+    newN->setPredicate(node->getPredicate());
+
+    // Create new Reshape.
+    auto *newRS = F->createReshape(RS->getName(), newN,
+                                   RS->getResult().getType()->dims());
+    newRS->setPredicate(node->getPredicate());
+    out.replaceAllUsesOfWith(newRS->getResult());
+
+    changed = true;
+  }
   return changed;
 }
 
@@ -2351,6 +2378,7 @@ static NodeValue collectArithmeticChain(Function *F, NodeValue start,
 /// operate on Constant and fold them into a new BatchNormalization node.
 bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
                                              const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
   for (auto &node : F->getNodes()) {
@@ -2418,6 +2446,7 @@ bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
 /// operations into the BatchNormalization.
 bool FoldBatchNormalizationWithArithmeticChain::run(
     Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *BN = dyn_cast<BatchNormalizationNode>(&node);
@@ -2485,6 +2514,7 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
 /// for ONNX which does not have a representation for the FullyConnected node.
 bool FoldMatMulAddIntoFullyConnected::run(Function *F,
                                           const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *addNode = dyn_cast<AddNode>(&node);
@@ -3444,6 +3474,7 @@ bool OptimizeSplat::run(Function *F, const CompilationContext &cctx) {
 }
 
 bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
   for (auto &node : F->getNodes()) {

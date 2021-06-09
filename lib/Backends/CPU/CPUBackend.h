@@ -84,7 +84,7 @@ public:
 
 protected:
   virtual std::unique_ptr<CompiledFunction>
-  createCompiledFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
+  createCompiledFunction(std::unique_ptr<GlowJIT> JIT,
                          runtime::RuntimeBundle &&runtimeBundle) const override;
 
   virtual llvm::StringRef getLibjitBitcode() const override;

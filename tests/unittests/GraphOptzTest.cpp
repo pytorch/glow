@@ -6287,33 +6287,6 @@ TEST_F(GraphOptz, ParallelizeGraph_AvgPool_Model_Axis4) {
   checkNumericalEquivalence(0.f);
 }
 
-TEST_F(GraphOptz, SinkClipBelowReshape) {
-  Placeholder *in =
-      mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  ClipNode *clip = F_->createClip("clip", in, 0.2, 0.8);
-  ReshapeNode *reshape = F_->createReshape("reshape", clip, {2, 5});
-  SaveNode *save = F_->createSave("save", reshape);
-
-  optimizedF_ = optimizeFunctionForTest(F_);
-
-  // Same number of nodes, just swapped order.
-  EXPECT_EQ(F_->getNodes().size(), 3);
-  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
-
-  const SaveNode *optSave =
-      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
-  ASSERT_TRUE(optSave);
-  ClipNode *newClip = llvm::dyn_cast<ClipNode>(optSave->getInput());
-  ASSERT_TRUE(newClip);
-  ReshapeNode *newReshape = llvm::dyn_cast<ReshapeNode>(newClip->getInput());
-  ASSERT_TRUE(newReshape);
-  EXPECT_EQ(newReshape->getResult().dims(), reshape->getResult().dims());
-
-  bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  checkNumericalEquivalence();
-}
-
 /// Test that Add after ConvTranspose is folded into Bias add when the actual
 /// Add is is a broadcast of the bias. Test \p RnL (right of left) side add.
 static void foldConvTransposeAddIntoBiasAdd(PlaceholderBindings &bindings,
@@ -8027,6 +8000,46 @@ TEST_F(GraphOptz, SinkReshapeBelowConvertTo) {
   EXPECT_EQ(optCN->getInput().getNode(), I);
 
   bindings_.allocate(I)->getHandle<float>().randomize(-30, 30, mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, SinkReshapeBelowUnaryEltwiseOps) {
+  const dim_t dimsIn[] = {10, 10};
+  const dim_t dimsOut[] = {5, 5, 4};
+
+  auto *in = mod_.createPlaceholder(ElemKind::FloatTy, dimsIn, "in", false);
+  auto *RN = F_->createReshape("reshape", in, dimsOut);
+  auto *AN = F_->createAbs("abs", RN);
+  auto *SN = F_->createSin("sin", AN);
+  auto *CN = F_->createClip("clip", SN, -4.f, 5.f);
+  auto *TN = F_->createTanh("tanh", CN);
+  auto *save = F_->createSave("ret", TN);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  auto *optSave =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
+  ASSERT_TRUE(optSave);
+  auto *optRN = llvm::dyn_cast<ReshapeNode>(optSave->getInput());
+  ASSERT_TRUE(optRN);
+  EXPECT_EQ(optRN->getResult().dims(), llvm::makeArrayRef(dimsOut));
+  auto *optTN = llvm::dyn_cast<TanhNode>(optRN->getInput());
+  ASSERT_TRUE(optTN);
+  EXPECT_EQ(optTN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optCN = llvm::dyn_cast<ClipNode>(optTN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_FLOAT_EQ(optCN->getMin(), CN->getMin());
+  EXPECT_FLOAT_EQ(optCN->getMax(), CN->getMax());
+  EXPECT_EQ(optCN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optSN = llvm::dyn_cast<SinNode>(optCN->getInput());
+  ASSERT_TRUE(optSN);
+  EXPECT_EQ(optSN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optAN = llvm::dyn_cast<AbsNode>(optSN->getInput());
+  ASSERT_TRUE(optAN);
+  EXPECT_EQ(optAN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+
+  bindings_.allocate(in)->getHandle<float>().randomize(-30.f, 30.f,
+                                                       mod_.getPRNG());
   checkNumericalEquivalence(0.f);
 }
 

@@ -1034,7 +1034,7 @@ TEST_F(Caffe2ImporterTest, batchMatMulManyDims) {
       {{2, 4, 5}, {3, 2, 5, 6}, {3, 2, 4, 6}},
   };
 
-  for (const auto shapes : shape_cases) {
+  for (const auto &shapes : shape_cases) {
     ExecutionEngine EE{};
     auto &mod = EE.getModule();
     Function *F = mod.createFunction("main");
@@ -2683,7 +2683,7 @@ TEST_F(Caffe2ImporterTest, HalfToFloat) {
     // Loaded protos must have at least one external output, so load an unused
     // output and type to satisfy it. It is named unused_output in
     // empty_predict_net.pbtxt.
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename.str(), NetWeightFilename, {"X"},
                                {&input.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
@@ -2721,7 +2721,7 @@ TEST_F(Caffe2ImporterTest, Alias) {
     // Loaded protos must have at least one external output, so load an unused
     // output and type to satisfy it. It is named unused_output in
     // empty_predict_net.pbtxt.
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename.str(), NetWeightFilename, {"X"},
                                {&input.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
@@ -4857,7 +4857,7 @@ TEST_F(Caffe2ImporterTest, reduceBackSum) {
         {64, 64, 11},
         {2, 3, 4, 5},
     };
-    for (const auto inputShape : inputShapes) {
+    for (const auto &inputShape : inputShapes) {
       ExecutionEngine EE{};
       auto &mod = EE.getModule();
       Function *F = mod.createFunction("main");

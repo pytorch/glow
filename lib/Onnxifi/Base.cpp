@@ -447,7 +447,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                   << " partial size=" << inputTensor.getUnpaddedSizeInBytes()
                   << " resized size=" << resized.getType().toString();
         }
-        t->set_name(p.first->getName());
+        t->set_name(p.first->getName().str());
       }
       std::string buffer;
       inputG.SerializeToString(&buffer);
@@ -543,7 +543,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         auto *t = inputG.add_initializer();
         ONNXModelWriter::writeTensor(outputTensor, t,
                                      glow::flags::UseCustomOpsForExport);
-        t->set_name(outPhPtr->getName());
+        t->set_name(outPhPtr->getName().str());
       }
       std::string buffer;
       inputG.SerializeToString(&buffer);

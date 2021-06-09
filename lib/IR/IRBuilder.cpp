@@ -73,7 +73,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
         createAllocActivationInst(name.str() + ".argmax", argMaxIndicesTy,
                                   {idim.n, outSz.first, outSz.second, idim.c});
 
-    outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+    outTy = F_->getParent()->uniqueTypeWithNewShape(
         input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
   } else {
     ShapeNCHW idim(input->dims());
@@ -86,7 +86,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
         createAllocActivationInst(name.str() + ".argmax", argMaxIndicesTy,
                                   {idim.n, idim.c, outSz.first, outSz.second});
 
-    outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+    outTy = F_->getParent()->uniqueTypeWithNewShape(
         input->getType(), {idim.n, idim.c, outSz.first, outSz.second});
   }
 
@@ -118,13 +118,13 @@ AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
     ShapeNHWC idim(input->dims());
     auto outSz =
         calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
-    outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+    outTy = F_->getParent()->uniqueTypeWithNewShape(
         input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
   } else {
     ShapeNCHW idim(input->dims());
     auto outSz =
         calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
-    outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+    outTy = F_->getParent()->uniqueTypeWithNewShape(
         input->getType(), {idim.n, idim.c, outSz.first, outSz.second});
   }
 
@@ -153,8 +153,7 @@ TensorViewInst *IRBuilder::createTensorView(ElemKind elemKind,
                                             llvm::ArrayRef<dim_t> dims,
                                             Value *src, llvm::StringRef name,
                                             llvm::ArrayRef<dim_t> offsets) {
-  auto ty =
-      getIRFunction().getGraph()->getParent()->uniqueType(Type(elemKind, dims));
+  auto ty = getIRFunction().getParent()->uniqueType(Type(elemKind, dims));
   return createTensorViewInst(
       name, src, ty,
       (offsets.size()
@@ -183,8 +182,8 @@ TopKInst *IRBuilder::createTopKOp(llvm::StringRef name, Value *input, size_t k,
          outIndicesTy == ElemKind::Int64ITy);
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims.back() = k;
-  auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
-      input->getType(), outDims);
+  auto outTy =
+      F_->getParent()->uniqueTypeWithNewShape(input->getType(), outDims);
   auto *values = createAllocActivationInst(name.str() + ".values", outTy);
   auto *indices =
       createAllocActivationInst(name.str() + ".indices", outIndicesTy, outDims);
@@ -206,7 +205,7 @@ WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
                                       llvm::ArrayRef<dim_t> dims,
                                       llvm::StringRef name,
                                       WeightVar::MutabilityKind m) {
-  auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims);
+  auto T = F_->getParent()->uniqueType(elemTy, dims);
   return createWeightVar(T, name, m);
 }
 
@@ -221,13 +220,13 @@ WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
                                       llvm::ArrayRef<dim_t> dims, float scale,
                                       int32_t offset, llvm::StringRef name,
                                       WeightVar::MutabilityKind m) {
-  auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims, scale, offset);
+  auto T = F_->getParent()->uniqueType(elemTy, dims, scale, offset);
   return createWeightVar(T, name, m);
 }
 
 AllocActivationInst *
 IRBuilder::createAllocActivationInst(llvm::StringRef name, ElemKind elemTy,
                                      llvm::ArrayRef<dim_t> dims) {
-  auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims);
+  auto T = F_->getParent()->uniqueType(elemTy, dims);
   return createAllocActivationInst(name, T);
 }

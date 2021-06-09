@@ -62,7 +62,7 @@ glow::runtime::RuntimeBundle::operator=(glow::runtime::RuntimeBundle &&rhs) {
 
 void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
   DCHECK(isValid_);
-  collectConstants(F->getGraph()->getParent());
+  collectConstants(F->getParent());
 }
 
 void glow::runtime::RuntimeBundle::freeConstants() {
