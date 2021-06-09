@@ -2956,8 +2956,8 @@ void fusePadIntoCWQConvTest(glow::Module &mod_, glow::Function *F_,
                             llvm::ArrayRef<int> pads, unsigned_t convKernelSize,
                             llvm::ArrayRef<unsigned_t> convPads,
                             unsigned_t convStride, unsigned_t convNumKernels) {
-  auto *input =
-      mod_.createPlaceholder(ElemKind::Int8QTy, inputDims, 1.0, 0, "input", true);
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, inputDims, 1.0, 0,
+                                       "input", true);
 
   // Pad.
   dim_t inputWithPadDims[4];
@@ -2970,20 +2970,19 @@ void fusePadIntoCWQConvTest(glow::Module &mod_, glow::Function *F_,
       inputWithPadDims[2] + convPads[1] + convPads[3] - (convKernelSize - 1),
       convNumKernels};
   auto padOutTy = mod_.uniqueType(ElemKind::Int8QTy, inputWithPadDims, 1.0, 0);
-  Node *P = F_->createPad("pad", input, padOutTy, PaddingMode::CONSTANT, pads, 0.f);
+  Node *P =
+      F_->createPad("pad", input, padOutTy, PaddingMode::CONSTANT, pads, 0.f);
 
   // Convolution.
   dim_t filterDims[] = {convNumKernels, convKernelSize, convKernelSize,
                         inputDims[3]};
-  auto *F =
-      mod_.createConstant(ElemKind::FloatTy, filterDims, "filter");
-  auto *B =
-      mod_.createConstant(ElemKind::FloatTy, {convNumKernels}, "bias");
+  auto *F = mod_.createConstant(ElemKind::FloatTy, filterDims, "filter");
+  auto *B = mod_.createConstant(ElemKind::FloatTy, {convNumKernels}, "bias");
   auto convOutTy = mod_.uniqueType(ElemKind::Int8QTy, outputConvDims, 1.0, 0);
   auto *CV = F_->createChannelwiseQuantizedConv(
-    "conv", P, F, B, /* filterScales */ nullptr, /* filterOffsets */ nullptr,
-    /* biasScales */ nullptr, /* biasOffsets */ nullptr, convOutTy,
-    {convKernelSize, convKernelSize}, {convStride, convStride}, convPads, 1);
+      "conv", P, F, B, /* filterScales */ nullptr, /* filterOffsets */ nullptr,
+      /* biasScales */ nullptr, /* biasOffsets */ nullptr, convOutTy,
+      {convKernelSize, convKernelSize}, {convStride, convStride}, convPads, 1);
   SaveNode *O = F_->createSave("save", CV);
 
   // The pad node must be merged into convolution.
@@ -2992,7 +2991,8 @@ void fusePadIntoCWQConvTest(glow::Module &mod_, glow::Function *F_,
   EXPECT_EQ(F_->getNodes().size(), 2);
 
   // Check the graph structure and additional properties after optimization.
-  auto *conv = llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(O->getInput());
+  auto *conv =
+      llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(O->getInput());
   ASSERT_NE(conv, nullptr);
   EXPECT_EQ(conv->getResult().dims(), llvm::ArrayRef<dim_t>(outputConvDims));
   unsigned_t expectedPads[4];

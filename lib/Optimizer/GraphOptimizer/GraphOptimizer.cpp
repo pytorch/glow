@@ -1475,8 +1475,7 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
 /// Local utility to check whether the given convolution \p node has a Pad
 /// node for its input and tries to merge the Pad into the convolution.
 /// \returns true or false whether the pad was merged or not.
-template <class ConvNodeTy>
-static bool mergePadIntoConvolution(Node *node) {
+template <class ConvNodeTy> static bool mergePadIntoConvolution(Node *node) {
 
   auto *CN = dyn_cast<ConvNodeTy>(node);
   if (!CN) {
@@ -1550,7 +1549,8 @@ bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
     // Merge Pad into Convolution node.
     changed |= mergePadIntoConvolution<ConvolutionNode>(&node);
     // Merge Pad into ChannelwiseQuantizedConvolution node.
-    changed |= mergePadIntoConvolution<ChannelwiseQuantizedConvolutionNode>(&node);
+    changed |=
+        mergePadIntoConvolution<ChannelwiseQuantizedConvolutionNode>(&node);
   }
   return changed;
 }
