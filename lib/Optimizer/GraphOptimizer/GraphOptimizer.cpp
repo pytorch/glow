@@ -1472,144 +1472,86 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Local utility to check whether the given convolution \p node has a Pad
+/// node for its input and tries to merge the Pad into the convolution.
+/// \returns true or false whether the pad was merged or not.
+template <class ConvNodeTy>
+static bool mergePadIntoConvolution(Node *node) {
+
+  auto *CN = dyn_cast<ConvNodeTy>(node);
+  if (!CN) {
+    return false;
+  }
+
+  auto *PN = dyn_cast<PadNode>(CN->getInput());
+  if (!PN) {
+    return false;
+  }
+
+  // Convolution only supports padding with 0 constant
+  if ((PN->getMode() != PaddingMode::CONSTANT) || (PN->getValue() != 0.f)) {
+    return false;
+  }
+
+  // The convolution needs to be the unique user
+  if (!PN->hasOneUse()) {
+    return false;
+  }
+
+  // Compute the new padding.
+  // Note: - convolution only supports positive padding
+  //       - the convolution takes NHWC input tensors.
+  bool canMerge = true;
+  auto padPads = PN->getPads();
+  auto convPads = CN->getPads();
+
+  // For now, there is a different interpretation of the ONNX spec for
+  // Pad and Convolution. The 'pads' array won't have the same size because
+  // only spatial dimensions are specified for the convolution while all
+  // dimensions are specified for Pad.
+
+  // The merge can apply only if no padding is requested for non spatial
+  // dimensions.
+  if ((padPads[0] != 0) || (padPads[3] != 0) || (padPads[4] != 0) ||
+      (padPads[7] != 0)) {
+    return false;
+  }
+
+  // Compute new spatial padding.
+  const int H_INDEX = 1;
+  std::vector<unsigned_t> newConvPads(4);
+  auto numDims = PN->getResult().dims().size();
+  for (size_t i = 0; i < 2; i++) {
+    // Two pad integers per dimension (begin and end padding).
+    for (size_t j = 0; j < 2; j++) {
+      int newConvPadSigned =
+          padPads[(i + H_INDEX) + j * numDims] + int(convPads[i + j * 2]);
+      if (newConvPadSigned < 0) {
+        canMerge = false;
+        break;
+      }
+      newConvPads[i + j * 2] = unsigned_t(newConvPadSigned);
+    }
+  }
+  if (!canMerge) {
+    return false;
+  }
+
+  // Set new pads and remove PadNode.
+  CN->setPads(newConvPads);
+  PN->getResult().typeUnsafeReplaceAllUsesOfWith(PN->getInput());
+  return true;
+}
+
 bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
-
-  // Merge Pad into Convolution node.
   for (auto &node : F->getNodes()) {
-    auto *CN = dyn_cast<ConvolutionNode>(&node);
-    if (!CN) {
-      continue;
-    }
-
-    auto *PN = dyn_cast<PadNode>(CN->getInput());
-    if (!PN) {
-      continue;
-    }
-
-    // Convolution only supports padding with 0 constant
-    if ((PN->getMode() != PaddingMode::CONSTANT) || (PN->getValue() != 0.f)) {
-      continue;
-    }
-
-    // The convolution needs to be the unique user
-    if (!PN->hasOneUse()) {
-      continue;
-    }
-
-    // Compute the new padding.
-    // Note: - convolution only supports positive padding
-    //       - the convolution takes NHWC input tensors.
-    bool canMerge = true;
-    auto padPads = PN->getPads();
-    auto convPads = CN->getPads();
-
-    // For now, there is a different interpretation of the ONNX spec for
-    // Pad and Convolution. The 'pads' array won't have the same size because
-    // only spatial dimensions are specified for the convolution while all
-    // dimensions are specified for Pad.
-
-    // The merge can apply only if no padding is requested for non spatial
-    // dimensions.
-    if ((padPads[0] != 0) || (padPads[3] != 0) || (padPads[4] != 0) ||
-        (padPads[7] != 0)) {
-      continue;
-    }
-
-    // Compute new spatial padding.
-    const int H_INDEX = 1;
-    std::vector<unsigned_t> newConvPads(4);
-    auto numDims = PN->getResult().dims().size();
-    for (size_t i = 0; i < 2; i++) {
-      // Two pad integers per dimension (begin and end padding).
-      for (size_t j = 0; j < 2; j++) {
-        int newConvPadSigned =
-            padPads[(i + H_INDEX) + j * numDims] + int(convPads[i + j * 2]);
-        if (newConvPadSigned < 0) {
-          canMerge = false;
-          break;
-        }
-        newConvPads[i + j * 2] = unsigned_t(newConvPadSigned);
-      }
-    }
-    if (!canMerge) {
-      continue;
-    }
-
-    // Set new pads and remove PadNode.
-    CN->setPads(newConvPads);
-    PN->getResult().typeUnsafeReplaceAllUsesOfWith(PN->getInput());
-    changed = true;
+    // Merge Pad into Convolution node.
+    changed |= mergePadIntoConvolution<ConvolutionNode>(&node);
+    // Merge Pad into ChannelwiseQuantizedConvolution node.
+    changed |= mergePadIntoConvolution<ChannelwiseQuantizedConvolutionNode>(&node);
   }
-
-  // Merge Pad into ChannelwiseQuantizedConvolution node.
-  for (auto &node : F->getNodes()) {
-    auto *CN = dyn_cast<ChannelwiseQuantizedConvolutionNode>(&node);
-    if (!CN) {
-      continue;
-    }
-
-    auto *PN = dyn_cast<PadNode>(CN->getInput());
-    if (!PN) {
-      continue;
-    }
-
-    // Convolution only supports padding with 0 constant
-    if ((PN->getMode() != PaddingMode::CONSTANT) || (PN->getValue() != 0.f)) {
-      continue;
-    }
-
-    // The convolution needs to be the unique user
-    if (!PN->hasOneUse()) {
-      continue;
-    }
-
-    // Compute the new padding.
-    // Note: - convolution only supports positive padding
-    //       - the convolution takes NHWC input tensors.
-    bool canMerge = true;
-    auto padPads = PN->getPads();
-    auto convPads = CN->getPads();
-
-    // For now, there is a different interpretation of the ONNX spec for
-    // Pad and Convolution. The 'pads' array won't have the same size because
-    // only spatial dimensions are specified for the convolution while all
-    // dimensions are specified for Pad.
-
-    // The merge can apply only if no padding is requested for non spatial
-    // dimensions.
-    if ((padPads[0] != 0) || (padPads[3] != 0) || (padPads[4] != 0) ||
-        (padPads[7] != 0)) {
-      continue;
-    }
-
-    // Compute new spatial padding.
-    const int H_INDEX = 1;
-    std::vector<unsigned_t> newConvPads(4);
-    auto numDims = PN->getResult().dims().size();
-    for (size_t i = 0; i < 2; i++) {
-      // Two pad integers per dimension (begin and end padding).
-      for (size_t j = 0; j < 2; j++) {
-        int newConvPadSigned =
-            padPads[(i + H_INDEX) + j * numDims] + int(convPads[i + j * 2]);
-        if (newConvPadSigned < 0) {
-          canMerge = false;
-          break;
-        }
-        newConvPads[i + j * 2] = unsigned_t(newConvPadSigned);
-      }
-    }
-    if (!canMerge) {
-      continue;
-    }
-
-    // Set new pads and remove PadNode.
-    CN->setPads(newConvPads);
-    PN->getResult().typeUnsafeReplaceAllUsesOfWith(PN->getInput());
-    changed = true;
-  }
-
   return changed;
 }
 

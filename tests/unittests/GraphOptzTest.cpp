@@ -2885,7 +2885,7 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
 
-  // Pad
+  // Pad.
   dim_t inputWithPadDims[4];
   for (int i = 0; i < 4; i++) {
     inputWithPadDims[i] = dim_t(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
@@ -2895,12 +2895,11 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
       inputWithPadDims[1] + convPads[0] + convPads[2] - (convKernelSize - 1),
       inputWithPadDims[2] + convPads[1] + convPads[3] - (convKernelSize - 1),
       convNumKernels};
-
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, inputWithPadDims);
   Node *P =
       F_->createPad("pad", input, outTy, PaddingMode::CONSTANT, pads, 0.f);
 
-  // Convolution
+  // Convolution.
   dim_t filterDims[] = {convNumKernels, convKernelSize, convKernelSize,
                         inputDims[3]};
   auto *F =
@@ -2910,7 +2909,6 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
   auto *CV = F_->createConv(
       "conv", P, F, B, mod_.uniqueType(ElemKind::FloatTy, outputConvDims),
       {convKernelSize, convKernelSize}, {convStride, convStride}, convPads, 1);
-
   SaveNode *O = F_->createSave("save", CV);
 
   // The pad node must be merged into convolution.
@@ -2951,6 +2949,81 @@ TEST_F(GraphOptz, fusePadIntoConvNeg2) {
                       {0, 1, -2, 0, 0, -3, 4, 0} /* pads */,
                       5 /* convKernelSize */, {0, 2, 5, 7} /* convPads */,
                       1 /* convStride */, 16 /* convNumKernels */);
+}
+
+void fusePadIntoCWQConvTest(glow::Module &mod_, glow::Function *F_,
+                            llvm::ArrayRef<dim_t> inputDims,
+                            llvm::ArrayRef<int> pads, unsigned_t convKernelSize,
+                            llvm::ArrayRef<unsigned_t> convPads,
+                            unsigned_t convStride, unsigned_t convNumKernels) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Int8QTy, inputDims, 1.0, 0, "input", true);
+
+  // Pad.
+  dim_t inputWithPadDims[4];
+  for (int i = 0; i < 4; i++) {
+    inputWithPadDims[i] = dim_t(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
+  }
+  dim_t outputConvDims[4] = {
+      inputWithPadDims[0],
+      inputWithPadDims[1] + convPads[0] + convPads[2] - (convKernelSize - 1),
+      inputWithPadDims[2] + convPads[1] + convPads[3] - (convKernelSize - 1),
+      convNumKernels};
+  auto padOutTy = mod_.uniqueType(ElemKind::Int8QTy, inputWithPadDims, 1.0, 0);
+  Node *P = F_->createPad("pad", input, padOutTy, PaddingMode::CONSTANT, pads, 0.f);
+
+  // Convolution.
+  dim_t filterDims[] = {convNumKernels, convKernelSize, convKernelSize,
+                        inputDims[3]};
+  auto *F =
+      mod_.createConstant(ElemKind::FloatTy, filterDims, "filter");
+  auto *B =
+      mod_.createConstant(ElemKind::FloatTy, {convNumKernels}, "bias");
+  auto convOutTy = mod_.uniqueType(ElemKind::Int8QTy, outputConvDims, 1.0, 0);
+  auto *CV = F_->createChannelwiseQuantizedConv(
+    "conv", P, F, B, /* filterScales */ nullptr, /* filterOffsets */ nullptr,
+    /* biasScales */ nullptr, /* biasOffsets */ nullptr, convOutTy,
+    {convKernelSize, convKernelSize}, {convStride, convStride}, convPads, 1);
+  SaveNode *O = F_->createSave("save", CV);
+
+  // The pad node must be merged into convolution.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Check the graph structure and additional properties after optimization.
+  auto *conv = llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(O->getInput());
+  ASSERT_NE(conv, nullptr);
+  EXPECT_EQ(conv->getResult().dims(), llvm::ArrayRef<dim_t>(outputConvDims));
+  unsigned_t expectedPads[4];
+  for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+      expectedPads[2 * i + j] =
+          unsigned_t(int(convPads[2 * i + j]) + pads[4 * i + (1 + j)]);
+    }
+  }
+  EXPECT_EQ(conv->getPads(), llvm::makeArrayRef(expectedPads));
+}
+
+TEST_F(GraphOptz, fusePadIntoCWQConv) {
+  fusePadIntoCWQConvTest(mod_, F_, {1, 6, 14, 3} /* inputDims */,
+                         {0, 1, 2, 0, 0, 3, 4, 0} /* pads */,
+                         5 /* convKernelSize */, {0, 0, 0, 0} /* convPads */,
+                         1 /* convStride */, 16 /* convNumKernels */);
+}
+
+TEST_F(GraphOptz, fusePadIntoCWQConvNeg1) {
+  fusePadIntoCWQConvTest(mod_, F_, {1, 6, 14, 3} /* inputDims */,
+                         {0, -1, 2, 0, 0, 3, -2, 0} /* pads */,
+                         5 /* convKernelSize */, {3, 0, 2, 5} /* convPads */,
+                         1 /* convStride */, 16 /* convNumKernels */);
+}
+
+TEST_F(GraphOptz, fusePadIntoCWQConvNeg2) {
+  fusePadIntoCWQConvTest(mod_, F_, {1, 6, 14, 3} /* inputDims */,
+                         {0, 1, -2, 0, 0, -3, 4, 0} /* pads */,
+                         5 /* convKernelSize */, {0, 2, 5, 7} /* convPads */,
+                         1 /* convStride */, 16 /* convNumKernels */);
 }
 
 /// This test checks that a lowered LeakyRelu is corrected folded:
