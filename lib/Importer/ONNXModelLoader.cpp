@@ -2535,10 +2535,11 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
           coordTransformMode,
           loadStr(dict.at("coordinate_transformation_mode")));
     }
-    RETURN_ERR_IF_NOT(coordTransformMode == "asymmetric",
-                      opErrMsg(op,
-                               strFormat("Resize 'asymmetric' coordinate transformation "
-                               "mode supported only, but found %s", coordTransformMode.c_str())));
+    RETURN_ERR_IF_NOT(
+        coordTransformMode == "asymmetric",
+        opErrMsg(op, strFormat("Resize 'asymmetric' coordinate transformation "
+                               "mode supported only, but found %s",
+                               coordTransformMode.c_str())));
 
     // If no scales tensor, sizes tensor should be valid.
     if (scalesC->getPayload().getHandle().size() == 0) {
