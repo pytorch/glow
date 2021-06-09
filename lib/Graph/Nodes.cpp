@@ -1817,6 +1817,40 @@ bool SparseToDenseNode::verify() const {
   return isValid;
 }
 
+bool BatchSparseToDenseNode::verify() const {
+  bool isValid = checkType(getResult(), getValues().getElementType(), this);
+  isValid &=
+      checkType(getIndices(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
+  isValid &=
+      checkType(getLengths(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Indices and Values must have the same shape",
+                               getIndices().dims(), getValues().dims(), this);
+  isValid &= expectCompareTrue(
+      "The size of Lengths and batches in the result should be the same",
+      getLengths().dims()[0], getResult().dims()[0], this);
+  isValid &= expectCompareTrue(
+      "The second dimension of the result should be equal to dense_last_dim",
+      getDenseLastDim(), (unsigned)getResult().dims()[1], this);
+  return isValid;
+}
+
+bool FillExamplesWithIndicatorNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(
+      getIndicator(),
+      {ElemKind::Int64ITy, ElemKind::Int32ITy, ElemKind::BoolTy}, this);
+  isValid &= expectCompareTrue("Indicator must be a 1D vector",
+                               getIndicator().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Data must have at least one dimension",
+                               getData().dims().size(), size_t(1), this,
+                               CompareOperatorGreaterEqual<size_t>());
+  return isValid;
+}
+
 bool SparseToDenseMaskNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &= checkType(getResult(), getDefaultValue().getElementType(), this);
@@ -2169,6 +2203,17 @@ bool GatherNode::verify() const {
   return isValid;
 }
 
+bool GatherElementsNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(
+      getIndices(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+  isValid &= expectCompareTrue("Mismatching number of dimensions",
+                               getResult().dims().size(),
+                               getIndices().dims().size(), this);
+  return isValid;
+}
+
 bool GatherNDNode::verify() const {
   bool isValid = checkType(getResult(), getData().getElementType(), this);
   isValid &= checkType(
@@ -2374,6 +2419,63 @@ bool NonMaxSuppressionNode::verify() const {
 
   isValid &= checkType(boxes, scores.getElementType(), this);
 
+  return isValid;
+}
+
+bool TFLiteDetectionPostProcessNode::verify() const {
+  NodeValue boxes = getBoxes();
+  NodeValue scores = getScores();
+  NodeValue anchors = getAnchors();
+
+  auto boxesDims = boxes.dims();
+  auto scoresDims = scores.dims();
+  auto anchorsDims = anchors.dims();
+
+  bool isValid = true;
+
+  // Validate input tensor sizes.
+  isValid &= expectCompareTrue("Input boxes must be a 3D tensor!",
+                               boxesDims.size(), size_t(3), this);
+  isValid &= expectCompareTrue("Input scores must be a 3D tensor!",
+                               scoresDims.size(), size_t(3), this);
+  isValid &= expectCompareTrue("Input anchors must be a 2D tensor!",
+                               anchorsDims.size(), size_t(2), this);
+  dim_t numBoxes = boxesDims[1];
+  dim_t numTotClasses = scoresDims[2];
+  isValid &= expectCompareTrue("Input boxes size invalid!", boxesDims[1],
+                               numBoxes, this);
+  isValid &= expectCompareTrue("Input boxes size invalid!", boxesDims[2],
+                               dim_t(4), this);
+  isValid &= expectCompareTrue("Input scores size invalid!", scoresDims[0],
+                               boxesDims[0], this);
+  isValid &= expectCompareTrue("Input scores size invalid!", scoresDims[1],
+                               numBoxes, this);
+  isValid &= expectCompareTrue("Input scores size invalid!", scoresDims[2],
+                               numTotClasses, this);
+  isValid &= expectCompareTrue("Input anchors size invalid!", anchorsDims[0],
+                               numBoxes, this);
+  isValid &= expectCompareTrue("Input anchors size invalid!", anchorsDims[1],
+                               dim_t(4), this);
+
+  // Validate parameters.
+  isValid &=
+      expectCompareTrue("Invalid IOU threshold!", getIouThreshold(), float(0.0),
+                        this, CompareOperatorGreaterThan<float>());
+  isValid &=
+      expectCompareTrue("Invalid IOU threshold!", getIouThreshold(), float(1.0),
+                        this, CompareOperatorLessEqual<float>());
+  isValid &=
+      expectCompareTrue("Invalid score threshold!", getScoreThreshold(),
+                        float(0.0), this, CompareOperatorGreaterThan<float>());
+  isValid &=
+      expectCompareTrue("Invalid score threshold!", getScoreThreshold(),
+                        float(1.0), this, CompareOperatorLessEqual<float>());
+  isValid &=
+      expectCompareTrue("Invalid number of classes!", dim_t(getNumClasses()),
+                        numTotClasses, this, CompareOperatorLessEqual<dim_t>());
+  isValid &=
+      expectCompareTrue("Invalid max detections!", dim_t(getMaxDetections()),
+                        dim_t(0), this, CompareOperatorGreaterThan<dim_t>());
   return isValid;
 }
 

@@ -1,7 +1,7 @@
 // (c) Facebook, Inc. and its affiliates. Confidential and proprietary.
 
-#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectorUtils.h"
-#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectors.h"
+#include "DSPInjectorUtils.h"
+#include "DSPInjectors.h"
 
 namespace glow {
 namespace {
@@ -31,21 +31,20 @@ NNPICustomDSPNode *createCustomReluFP16(Function *F_, llvm::StringRef name,
 }
 } // namespace
 
-bool CustomReluNodeDSPKernelInjector::tryInject(Function *F, Node *node) const {
+Node *CustomReluNodeDSPKernelInjector::tryInject(Function *F,
+                                                 Node *node) const {
   ReluNode *castedNode = llvm::dyn_cast<ReluNode>(node);
   if (!castedNode) {
-    return false;
+    return nullptr;
   }
 
   if (castedNode->getInput().getElementType() != ElemKind::Float16Ty) {
-    return false;
+    return nullptr;
   }
 
   NNPICustomDSPNode *dspNode =
       createCustomReluFP16(F, "custom_relu", castedNode->getInput());
 
-  castedNode->getResult().replaceAllUsesOfWith(dspNode);
-
-  return true;
+  return dspNode;
 }
 } // namespace glow

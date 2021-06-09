@@ -14,6 +14,8 @@
  */
 
 #include "NNPI.h"
+#include "CustomKernels/DSPInjectors/DSPInjectors.h"
+#include "CustomKernels/IAInjectors/IAInjectors.h"
 #include "DebugMacros.h"
 #include "Importer.h"
 #include "InferenceContext.h"
@@ -27,8 +29,6 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/Lower/Lower.h"
-#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectors.h"
-#include "glow/lib/Backends/NNPI/CustomKernels/IAInjectors/IAInjectors.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -155,7 +155,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::SoftPlusNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int32ITy});
     break;
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedReduceMaxNodeKind:
@@ -202,6 +203,25 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32QTy,
          ElemKind::Int8QTy, ElemKind::UInt8QTy});
     break;
+  case Kinded::Kind::SparseLabelSplitNodeKind: {
+    auto valuesIdxDataType = NI.getInElemTy(SparseLabelSplitNode::ValuesIdx);
+    isNodePrecisionSupported =
+        (NI.getInElemTy(SparseLabelSplitNode::LengthsIdx) ==
+         ElemKind::Int32ITy) &&
+        (NI.getInElemTy(SparseLabelSplitNode::IndicesIdx) ==
+         ElemKind::Int64ITy) &&
+        (NI.getInElemTy(SparseLabelSplitNode::ValuesIdx) ==
+         NI.getOutElemTy(SparseLabelSplitNode::LabelValuesIdx)) &&
+        (NI.getOutElemTy(SparseLabelSplitNode::ExampleIdsIdx) ==
+         ElemKind::Int32ITy) &&
+        (NI.getOutElemTy(SparseLabelSplitNode::GradientOffsetMapIdx) ==
+         ElemKind::Int32ITy) &&
+        (valuesIdxDataType == ElemKind::FloatTy ||
+         valuesIdxDataType == ElemKind::Float16Ty ||
+         valuesIdxDataType == ElemKind::Int8QTy ||
+         valuesIdxDataType == ElemKind::UInt8QTy);
+    break;
+  }
 #endif // NNPI > 1.1
   case Kinded::Kind::LayerNormalizationNodeKind: {
     auto scaleType = NI.getInElemTy(LayerNormalizationNode::ScaleIdx);
@@ -317,7 +337,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::ConvertToNodeKind: {
     auto isConversionSupportedFor = [](ElemKind kindFrom, ElemKind kindTo) {
       switch (kindFrom) {
-
       case ElemKind::Float16Ty:
         switch (kindTo) {
         case ElemKind::FloatTy:
@@ -357,9 +376,18 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         }
         return false;
 
+      // NOTE: this is supported by a custom kernel
+      case ElemKind::BoolTy:
+        switch (kindTo) {
+        case ElemKind::Int32ITy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
       case ElemKind::Int32ITy:
         switch (kindTo) {
-        case ElemKind::Int64ITy:
         case ElemKind::Float16Ty:
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
@@ -385,7 +413,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         return true;
 
       case ElemKind::UInt8FusedQTy:
-        return (kindTo == ElemKind::Float16Ty);
+        return (kindTo == ElemKind::Float16Ty ||
+                kindTo == ElemKind::UInt8FusedFP16QTy);
       case ElemKind::UInt8FusedFP16QTy:
         return (kindTo == ElemKind::Float16Ty);
       default:
@@ -689,17 +718,26 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::SparseToDenseNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy}, {SparseToDenseNode::IndicesIdx}) &&
+            {ElemKind::FloatTy, ElemKind::Float16Ty},
+            {SparseToDenseNode::IndicesIdx}) &&
         (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int32ITy ||
          NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::ScatterDataNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+             ElemKind::UInt8QTy},
             {ScatterDataNode::IndicesIdx}) &&
         (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy ||
          NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::BucketizeNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy}, {},
+            {BucketizeNode::ResultIdx}) &&
+        (NI.getOutElemTy(BucketizeNode::ResultIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::SoftMaxNodeKind:
     isNodePrecisionSupported =
@@ -752,6 +790,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::LogitNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+    break;
+  case Kinded::Kind::CumSumNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
     break;
   default:
     isNodeHasAnySupport = false;
@@ -1996,73 +2038,6 @@ NNPIBackend::transformPostOptPipeline(Function *F,
   return changed;
 }
 
-/// Replaces any operators in the Function \p F with custom DSP NNPI kernel
-/// operators by calling each CustomKernelInjector on each node in sequence.
-/// \returns true iff any custom NNPI node was injected into the Function.
-static bool injectCustomDSPOps(Function *F) {
-  if (!glow::nnpi::flags::EnableCustomDSPKernels) {
-    LOG(INFO) << "Skipping custom DSP kernels because they are disabled";
-    return false;
-  }
-
-  static const auto dspInjectors = buildDSPInjectors();
-
-  LOG(INFO) << "Custom DSP ops enabled";
-
-  bool modified = false;
-
-  auto &nodes = F->getNodes();
-  for (auto &node : nodes) {
-    for (auto &injector : dspInjectors) {
-      if (injector->tryInject(F, &node)) {
-        LOG(INFO) << "Using a custom DSP op for " << node.getName().str();
-        modified = true;
-        break;
-      }
-    }
-  }
-
-  return modified;
-}
-
-/// Replaces any operators in the Function \p F with custom IA NNPI kernel
-/// operators by calling each CustomKernelInjector on each node in sequence.
-/// \returns true iff any custom NNPI node was injected into the Function.
-static bool injectCustomIAOps(Function *F) {
-  if (!glow::nnpi::flags::EnableCustomIAKernels) {
-    LOG(INFO) << "Skipping custom IA kernels because they are disabled";
-    return false;
-  }
-
-  // For now only inject IA ops when running on device since custom IA
-  // kernels aren't currently supported by iceref.
-  const char *useInfApi = std::getenv("USE_INF_API");
-  if (!useInfApi || std::string(useInfApi) != "1") {
-    LOG(INFO) << "Skipping custom IA kernels because hardware inference isn't "
-                 "enabled";
-    return false;
-  }
-
-  static const auto iaInjectors = buildIAInjectors();
-
-  LOG(INFO) << "Custom IA ops enabled";
-
-  bool modified = false;
-
-  auto &nodes = F->getNodes();
-  for (auto &node : nodes) {
-    for (auto &injector : iaInjectors) {
-      if (injector->tryInject(F, &node)) {
-        LOG(INFO) << "Using a custom IA op for " << node.getName().str();
-        modified = true;
-        break;
-      }
-    }
-  }
-
-  return modified;
-}
-
 Expected<bool> NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
@@ -2102,12 +2077,6 @@ Expected<bool> NNPIBackend::transformPostLowering(
     changed |= FPM.run(F, cctx);
   }
   changed |= lowerRequiredNodes(F, cctx);
-
-  // NOTE: DSP kernels are generally faster and preferred relative to IA kernels
-  // so always call injectCustomDSPOps first to choose them over IA kernels
-  // where possible.
-  changed |= injectCustomDSPOps(F);
-  changed |= injectCustomIAOps(F);
 
 #if FACEBOOK_INTERNAL
   if (!(glow::nnpi::flags::EnableCustomDSPKernels ||
@@ -2329,7 +2298,6 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
 
   bool validWeight = false;
   bool useLengthAsOffset = false;
-  glow::TypeRef tr(nullptr);
   switch (NI.getKind()) {
 
   case Kinded::Kind::SparseLengthsSumNodeKind:
@@ -2534,4 +2502,19 @@ Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
                     strFormat("Estimate not supported for Node kind %s",
                               Kinded::getKindName(node->getKind())));
   return returnCost;
+}
+
+Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
+NNPIBackend::compileFunctions(std::vector<Function *> &functions,
+                              llvm::StringMap<BackendOptions> &optsMap) const {
+  if (functions.size() > 1) {
+    // This is experimental, so it is disabled by default.
+    // Use NNPI_WEIGHTS_OFF_MEM_POOL=1 to override this.
+    std::pair<std::string, std::string> wtsPoolOption(
+        "NNPI_disableWeightsInPool", "0");
+    for (auto it = functions.begin(), end = functions.end(); it != end; ++it) {
+      optsMap[(*it)->getName()].backendSpecificOpts.insert(wtsPoolOption);
+    }
+  }
+  return (Backend::compileFunctions(functions, optsMap));
 }

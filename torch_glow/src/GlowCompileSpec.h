@@ -152,6 +152,13 @@ template <> struct dynToType<int64_t> {
   }
 };
 
+template <> struct dynToType<int32_t> {
+  Expected<int64_t> operator()(const folly::dynamic &dyn) {
+    CHECK_DYN_IS_INT(dyn);
+    return int32_t(dyn.getInt());
+  }
+};
+
 template <typename T>
 folly::dynamic dynArrayFromVec(const std::vector<T> &vec) {
   auto dyn = folly::dynamic::array();
@@ -442,6 +449,8 @@ struct CompilationGroupSettings : public JsonSerializableCustomClass {
 struct CompilationSpecSettings : public JsonSerializableCustomClass {
   ADD_STRING_FIELD(glow_backend, "")
   ADD_BOOL_FIELD(enable_fuser, false)
+  ADD_BOOL_FIELD(enable_serialize, false)
+  ADD_BOOL_FIELD(enable_deserialize, false)
   ADD_BOOL_FIELD(use_dag_optimizer, false)
   ADD_STRING_FIELD(apl_parallelization_alg, "ParallelizeCVHeuristicData")
   ADD_INT_FIELD(apl_num_parallel_chunks, 2)
@@ -451,6 +460,8 @@ struct CompilationSpecSettings : public JsonSerializableCustomClass {
     obj["glow_backend"] = glow_backend;
     obj["enable_fuser"] = enable_fuser;
     obj["use_dag_optimizer"] = use_dag_optimizer;
+    obj["enable_serialize"] = enable_serialize;
+    obj["enable_deserialize"] = enable_deserialize;
     obj["apl_parallelization_alg"] = apl_parallelization_alg;
     obj["apl_num_parallel_chunks"] = apl_num_parallel_chunks;
     return obj;
@@ -469,6 +480,16 @@ struct CompilationSpecSettings : public JsonSerializableCustomClass {
     if (dyn.count("enable_fuser")) {
       ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, enable_fuser,
                                                "enable_fuser");
+    }
+
+    if (dyn.count("enable_serialize")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, enable_serialize,
+                                               "enable_serialize");
+    }
+
+    if (dyn.count("enable_deserialize")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, enable_deserialize,
+                                               "enable_deserialize");
     }
 
     if (dyn.count("use_dag_optimizer")) {
@@ -767,6 +788,335 @@ struct CompilationSpec : public JsonSerializableCustomClass {
   }
 };
 
+// This class is a wrapper of PyTorchLoaderSettings:
+// https://fburl.com/diffusion/fzhkej4j. We make it serializable for AOT
+// compilation: https://fb.quip.com/ABT1A021txMc
+struct GlowPyTorchLoaderSettings : public JsonSerializableCustomClass {
+  PyTorchLoaderSettings settings_;
+  GlowPyTorchLoaderSettings(const PyTorchLoaderSettings &settings =
+                                glow::getGlobalPyTorchLoaderSettingsSnapshot())
+      : settings_(settings) {}
+
+  PyTorchLoaderSettings getSettings() { return settings_; }
+  void overrideSettings(const PyTorchLoaderSettings &settings) {
+    settings_ = settings;
+  }
+
+  Expected<folly::dynamic> toDynamicImpl() const override {
+    folly::dynamic obj = folly::dynamic::object();
+    obj["fusionPassEnabled"] = settings_.fusionPassEnabled;
+    obj["dumpGlowDag"] = settings_.dumpGlowDag;
+    // In Glow serialization, we only use opBlacklistStrVec to save the op black
+    // list to avoid duplication.
+    std::vector<std::string> opBlacklistStrVec;
+    for (const auto &op : settings_.opBlacklist) {
+      opBlacklistStrVec.emplace_back(op.toQualString());
+    }
+    obj["opBlacklistStrVec"] = dynArrayFromVec(opBlacklistStrVec);
+    obj["minFusionGroupSize"] = settings_.minFusionGroupSize;
+    obj["maxFusionMergeSize"] = settings_.maxFusionMergeSize;
+    obj["fusionStartIndex"] = settings_.fusionStartIndex;
+    obj["fusionEndIndex"] = settings_.fusionEndIndex;
+    obj["convertToFP16"] = settings_.convertToFP16;
+    obj["convertFusedToFP16"] = settings_.convertFusedToFP16;
+    obj["printJITIndex"] = settings_.printJITIndex;
+    obj["ignoreDivRoundingArgs"] = settings_.ignoreDivRoundingArgs;
+    obj["clipFP16"] = settings_.clipFP16;
+    obj["clipFP16SkipInputs"] = settings_.clipFP16SkipInputs;
+    obj["convertPlaceholdersToFP16"] = settings_.convertPlaceholdersToFP16;
+    obj["convertConstantsToFP16"] = settings_.convertConstantsToFP16;
+    obj["forceFP16AccumSLS"] = settings_.forceFP16AccumSLS;
+    obj["dumpFinalGlowGraph"] = settings_.dumpFinalGlowGraph;
+    obj["enableGlowTracing"] = settings_.enableGlowTracing;
+    obj["enableRemoveMutation"] = settings_.enableRemoveMutation;
+    obj["disableLayoutVerifying"] = settings_.disableLayoutVerifying;
+    obj["dumpOperatorInventory"] = settings_.dumpOperatorInventory;
+    obj["numTracesPerDump"] = settings_.numTracesPerDump;
+    obj["replicationCount"] = settings_.replicationCount;
+    obj["backendSpecificOpts"] = dynArrayFromMap(settings_.backendSpecificOpts);
+    obj["writeToOnnx"] = settings_.writeToOnnx;
+    obj["onnxZipMode"] = settings_.onnxZipMode;
+    obj["writeOnnxToTmp"] = settings_.writeOnnxToTmp;
+    obj["onnxFileNamePrefix"] = settings_.onnxFileNamePrefix;
+    obj["jitVsGlowCompare"] = settings_.jitVsGlowCompare;
+    obj["backendOptionsFile"] = settings_.backendOptionsFile;
+    obj["saturateHost"] = settings_.saturateHost;
+    obj["saturateKDevices"] = settings_.saturateKDevices;
+    obj["randomizeConstants"] = settings_.randomizeConstants;
+    obj["writeWithoutRandomize"] = settings_.writeWithoutRandomize;
+    obj["backendName"] = settings_.backendName;
+    obj["numDevices"] = settings_.numDevices;
+    obj["scanDevices"] = settings_.scanDevices;
+    obj["runShapeInference"] = settings_.runShapeInference;
+    obj["enableDebugFuser"] = settings_.enableDebugFuser;
+    obj["setIncludeLastOffsets"] = settings_.setIncludeLastOffsets;
+    obj["debugContinuouslyVerifyDuringModelLoading"] =
+        settings_.debugContinuouslyVerifyDuringModelLoading;
+    obj["nominalBatchIdx"] = settings_.nominalBatchIdx;
+    obj["availableDevices"] = dynArrayFromVec(settings_.availableDevices);
+    obj["dumpFailedInputsToOnnxFiles"] = settings_.dumpFailedInputsToOnnxFiles;
+    obj["lazyCompile"] = settings_.lazyCompile;
+    obj["enableDeviceTracing"] = settings_.enableDeviceTracing;
+    obj["use_dag_optimizer"] = settings_.use_dag_optimizer;
+    obj["apl_parallelization_alg"] = settings_.apl_parallelization_alg;
+    obj["apl_num_parallel_chunks"] = settings_.apl_num_parallel_chunks;
+    obj["saveGlowIRIntoONNX"] = settings_.saveGlowIRIntoONNX;
+    obj["loadGlowIRFromONNX"] = settings_.loadGlowIRFromONNX;
+    obj["skipProvisioning"] = settings_.skipProvisioning;
+    obj["debugLayers"] = settings_.debugLayers;
+    return obj;
+  }
+
+  Error fromDynamicImpl(const folly::dynamic &dyn,
+                        int64_t bc_version_when_serialized) override {
+    RETURN_ERR_IF_NOT(
+        bc_version_when_serialized == 0,
+        strFormat("Only bc_version 0 is supported, got bc_version %d",
+                  int(bc_version_when_serialized)));
+
+    if (dyn.count("fusionPassEnabled")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.fusionPassEnabled,
+                                               "fusionPassEnabled");
+    }
+    if (dyn.count("dumpGlowDag")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.dumpGlowDag,
+                                               "dumpGlowDag");
+    }
+    // In Glow deserialization, we first deserialize opBlacklistStrVec to get
+    // the op black list, then use the list to initialize opBlacklist attribute,
+    if (dyn.count("opBlacklistStrVec")) {
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "opBlacklistStrVec");
+      std::vector<std::string> opBlacklistStrVec;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          opBlacklistStrVec,
+          dynArrayToVec<std::string>(dyn.at("opBlacklistStrVec")));
+      for (const auto &opStr : opBlacklistStrVec) {
+        settings_.opBlacklist.insert(torch::jit::Symbol::fromQualString(opStr));
+      }
+    }
+    if (dyn.count("minFusionGroupSize")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.minFusionGroupSize,
+                                              "minFusionGroupSize");
+    }
+    if (dyn.count("maxFusionMergeSize")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.maxFusionMergeSize,
+                                              "maxFusionMergeSize");
+    }
+    if (dyn.count("fusionStartIndex")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.fusionStartIndex,
+                                              "fusionStartIndex");
+    }
+    if (dyn.count("fusionEndIndex")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.fusionEndIndex,
+                                              "fusionEndIndex");
+    }
+    if (dyn.count("convertToFP16")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.convertToFP16,
+                                               "convertToFP16");
+    }
+    if (dyn.count("convertFusedToFP16")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.convertFusedToFP16, "convertFusedToFP16");
+    }
+    if (dyn.count("printJITIndex")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.printJITIndex,
+                                               "printJITIndex");
+    }
+    if (dyn.count("ignoreDivRoundingArgs")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.ignoreDivRoundingArgs, "ignoreDivRoundingArgs");
+    }
+    if (dyn.count("clipFP16")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.clipFP16,
+                                               "clipFP16");
+    }
+    if (dyn.count("clipFP16SkipInputs")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.clipFP16SkipInputs, "clipFP16SkipInputs");
+    }
+    if (dyn.count("convertPlaceholdersToFP16")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.convertPlaceholdersToFP16,
+          "convertPlaceholdersToFP16");
+    }
+    if (dyn.count("convertConstantsToFP16")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.convertConstantsToFP16, "convertConstantsToFP16");
+    }
+    if (dyn.count("forceFP16AccumSLS")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.forceFP16AccumSLS,
+                                               "forceFP16AccumSLS");
+    }
+    if (dyn.count("dumpFinalGlowGraph")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.dumpFinalGlowGraph, "dumpFinalGlowGraph");
+    }
+    if (dyn.count("enableGlowTracing")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.enableGlowTracing,
+                                               "enableGlowTracing");
+    }
+    if (dyn.count("enableRemoveMutation")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.enableRemoveMutation, "enableRemoveMutation");
+    }
+    if (dyn.count("disableLayoutVerifying")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.disableLayoutVerifying, "disableLayoutVerifying");
+    }
+    if (dyn.count("dumpOperatorInventory")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.dumpOperatorInventory, "dumpOperatorInventory");
+    }
+    if (dyn.count("numTracesPerDump")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.numTracesPerDump,
+                                              "numTracesPerDump");
+    }
+    if (dyn.count("replicationCount")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.replicationCount,
+                                              "replicationCount");
+    }
+    if (dyn.count("backendSpecificOpts")) {
+      // Maps are serialized as Arrays
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "backendSpecificOpts");
+      ASSIGN_VALUE_OR_RETURN_ERR(settings_.backendSpecificOpts,
+                                 (dynArrayToMap<std::string, std::string>(
+                                     dyn.at("backendSpecificOpts"))));
+    }
+    if (dyn.count("writeToOnnx")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.writeToOnnx,
+                                               "writeToOnnx");
+    }
+    if (dyn.count("onnxZipMode")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.onnxZipMode,
+                                               "onnxZipMode");
+    }
+    if (dyn.count("writeOnnxToTmp")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.writeOnnxToTmp,
+                                               "writeOnnxToTmp");
+    }
+    if (dyn.count("onnxFileNamePrefix")) {
+      ASSIGN_STRING_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.onnxFileNamePrefix, "onnxFileNamePrefix");
+    }
+    if (dyn.count("jitVsGlowCompare")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.jitVsGlowCompare,
+                                               "jitVsGlowCompare");
+    }
+    if (dyn.count("backendOptionsFile")) {
+      ASSIGN_STRING_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.backendOptionsFile, "backendOptionsFile");
+    }
+    if (dyn.count("saturateHost")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.saturateHost,
+                                               "saturateHost");
+    }
+    if (dyn.count("saturateKDevices")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.saturateKDevices,
+                                              "saturateKDevices");
+    }
+    if (dyn.count("randomizeConstants")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.randomizeConstants, "randomizeConstants");
+    }
+    if (dyn.count("writeWithoutRandomize")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.writeWithoutRandomize, "writeWithoutRandomize");
+    }
+    if (dyn.count("backendName")) {
+      ASSIGN_STRING_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.backendName,
+                                                 "backendName");
+    }
+    if (dyn.count("numDevices")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.numDevices,
+                                              "numDevices");
+    }
+    if (dyn.count("scanDevices")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.scanDevices,
+                                               "scanDevices");
+    }
+    if (dyn.count("runShapeInference")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.runShapeInference,
+                                               "runShapeInference");
+    }
+    if (dyn.count("enableDebugFuser")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.enableDebugFuser,
+                                               "enableDebugFuser");
+    }
+    if (dyn.count("setIncludeLastOffsets")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.setIncludeLastOffsets, "setIncludeLastOffsets");
+    }
+    if (dyn.count("debugContinuouslyVerifyDuringModelLoading")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.debugContinuouslyVerifyDuringModelLoading,
+          "debugContinuouslyVerifyDuringModelLoading");
+    }
+    if (dyn.count("nominalBatchIdx")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.nominalBatchIdx,
+                                              "nominalBatchIdx");
+    }
+    if (dyn.count("availableDevices")) {
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "availableDevices");
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          settings_.availableDevices,
+          dynArrayToVec<int32_t>(dyn.at("availableDevices")));
+    }
+    if (dyn.count("dumpFailedInputsToOnnxFiles")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.dumpFailedInputsToOnnxFiles,
+          "dumpFailedInputsToOnnxFiles");
+    }
+    if (dyn.count("lazyCompile")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.lazyCompile,
+                                               "lazyCompile");
+    }
+    if (dyn.count("enableDeviceTracing")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.enableDeviceTracing, "enableDeviceTracing");
+    }
+
+    if (dyn.count("use_dag_optimizer")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.use_dag_optimizer,
+                                               "use_dag_optimizer");
+    }
+
+    if (dyn.count("apl_parallelization_alg")) {
+      ASSIGN_STRING_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.apl_parallelization_alg, "apl_parallelization_alg");
+    }
+    if (dyn.count("apl_num_parallel_chunks")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.apl_num_parallel_chunks, "apl_num_parallel_chunks");
+    }
+
+    if (dyn.count("saveGlowIRIntoONNX")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.saveGlowIRIntoONNX, "saveGlowIRIntoONNX");
+    }
+
+    if (dyn.count("loadGlowIRFromONNX")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, settings_.loadGlowIRFromONNX, "loadGlowIRFromONNX");
+    }
+
+    if (dyn.count("skipProvisioning")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.skipProvisioning,
+                                               "skipProvisioning");
+    }
+
+    if (dyn.count("debugLayers")) {
+      ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.debugLayers,
+                                              "debugLayers");
+    }
+
+    return Error::success();
+  }
+
+  int64_t getCurrentBCVersion() const override { return 0; }
+
+  Error validate() const override { return Error::success(); }
+};
+
 // This class is used as the spec of Glow deserialiation
 struct GlowDeserializationSpec : public JsonSerializableCustomClass {
   ADD_VECTOR_FIELD(inputPHNames, std::string)
@@ -774,7 +1124,7 @@ struct GlowDeserializationSpec : public JsonSerializableCustomClass {
   ADD_VECTOR_FIELD(staticPHNames, std::string)
   ADD_VECTOR_FIELD(staticPHTypes, std::string)
   ADD_VECTOR_FIELD(outputPHNames, std::string)
-  ADD_STRING_FIELD(pytorchLoaderSettings, "")
+  ADD_OBJECT_POINTER_FIELD(pytorchLoaderSettings, GlowPyTorchLoaderSettings)
   ADD_STRING_FIELD(functionName, "")
 
   Expected<folly::dynamic> toDynamicImpl() const override {
@@ -784,7 +1134,10 @@ struct GlowDeserializationSpec : public JsonSerializableCustomClass {
     obj["staticPHNames"] = dynArrayFromVec(staticPHNames);
     obj["staticPHTypes"] = dynArrayFromVec(staticPHTypes);
     obj["outputPHNames"] = dynArrayFromVec(outputPHNames);
-    obj["pytorchLoaderSettings"] = pytorchLoaderSettings;
+    folly::dynamic settings_dyn;
+    ASSIGN_VALUE_OR_RETURN_ERR(settings_dyn,
+                               pytorchLoaderSettings->toDynamic());
+    obj["pytorchLoaderSettings"] = settings_dyn;
     obj["functionName"] = functionName;
     return obj;
   }
@@ -821,10 +1174,10 @@ struct GlowDeserializationSpec : public JsonSerializableCustomClass {
       ASSIGN_VALUE_OR_RETURN_ERR(
           outputPHNames, dynArrayToVec<std::string>(dyn.at("outputPHNames")));
     }
-    if (dyn.count("pytorchLoaderSettings")) {
-      ASSIGN_STRING_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, pytorchLoaderSettings,
-                                                 "pytorchLoaderSettings");
-    }
+    CHECK_DYN_CONTAINS_OBJECT(dyn, "pytorchLoaderSettings");
+    RETURN_IF_ERR(
+        pytorchLoaderSettings->fromDynamic(dyn.at("pytorchLoaderSettings")));
+
     if (dyn.count("functionName")) {
       ASSIGN_STRING_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, functionName,
                                                  "functionName");

@@ -117,21 +117,21 @@ getInputDatasets(std::vector<std::string> &inputNames,
     auto strPair = llvm::StringRef(str).split(',');
     llvm::StringRef name = strPair.first;
     checkCond(name.size(), "Model input name for dataset is empty!");
-    inputNames.push_back(name);
+    inputNames.push_back(name.str());
     // Parse format.
     strPair = strPair.second.split(',');
     llvm::StringRef format = strPair.first;
     checkCond(format.size(),
               strFormat("Model input dataset format is empty for '%s'!",
                         name.data()));
-    inputFormats.push_back(format);
+    inputFormats.push_back(format.str());
     // Parse source.
     strPair = strPair.second.split(',');
     llvm::StringRef source = strPair.first;
     checkCond(source.size(),
               strFormat("Model input dataset source is empty for '%s'!",
                         name.data()));
-    inputSources.push_back(source);
+    inputSources.push_back(source.str());
     // Parse options (optional).
     std::vector<std::string> options;
     while (strPair.second.size() != 0) {
@@ -140,7 +140,7 @@ getInputDatasets(std::vector<std::string> &inputNames,
       checkCond(opt.size(),
                 strFormat("Model input dataset options is empty for '%s'!",
                           name.data()));
-      options.push_back(opt);
+      options.push_back(opt.str());
     }
     inputOptions.push_back(options);
   }

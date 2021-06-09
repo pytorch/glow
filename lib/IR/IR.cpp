@@ -15,6 +15,7 @@
  */
 
 #include "glow/IR/IR.h"
+#include "glow/Graph/FXIRWrapper.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
@@ -594,8 +595,22 @@ void Instruction::dumpOperands(llvm::raw_ostream &os) const {
   }
 }
 
-IRFunction::IRFunction(Function *G)
+IRFunction::IRFunction(IRContainer *G)
     : IRContainer(G ? G->getName() : llvm::StringRef{}), G_(G) {}
+
+#if FACEBOOK_INTERNAL
+/// \returns a reference to the glow FX graph.
+FXIRWrapper *IRFunction::getFXGraph() {
+  assert(llvm::isa<FXIRWrapper>(G_));
+  return llvm::cast<FXIRWrapper>(G_);
+}
+
+/// \returns a reference to the glow FX graph.
+const FXIRWrapper *IRFunction::getFXGraph() const {
+  assert(llvm::isa<FXIRWrapper>(G_));
+  return llvm::cast<FXIRWrapper>(G_);
+}
+#endif
 
 static bool hasResultValue(const Instruction *I) {
   return I->getKind() == Instruction::Kind::AllocActivationInstKind ||
@@ -669,7 +684,7 @@ IRFunction::clone(llvm::StringRef newName,
                   llvm::DenseMap<const Value *, Value *> *map,
                   llvm::DenseMap<const Value *, Value *> *currToNewMap) {
   // Create a new function.
-  auto *newF = new IRFunction(getGraph());
+  auto *newF = new IRFunction(getRawGraph());
   newF->setName(newName);
   return clone(newF, map, currToNewMap);
 }

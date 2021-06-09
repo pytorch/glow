@@ -93,7 +93,7 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
       std::string allocSuffix = llvm::StringRef(op.first).lower();
       osB << "  std::string " << op.first << "Name = name.str() + \"."
           << allocSuffix << "\";\n";
-      osB << "  auto *" << op.first << "Type = F_->getGraph()->getParent()"
+      osB << "  auto *" << op.first << "Type = F_->getParent()"
           << "->uniqueType(ElemKind::Int8QTy, {1}, 0.0, 0);\n";
       osB << "  auto *" << op.first << " = createAllocActivationInst("
           << op.first << "Name, " << op.first << "Type);\n";
@@ -125,8 +125,8 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
           << op.first << "Size());\n";
       osB << "  " << op.first << "SizeVar = " << op.first << "SizeVar > 0 ? "
           << op.first << "SizeVar : 1;\n";
-      osB << "  auto *" << op.first << "TypeResized = F_->getGraph()"
-          << "->getParent()->uniqueType(ElemKind::Int8QTy, {" << op.first
+      osB << "  auto *" << op.first << "TypeResized = F_->getParent()"
+          << "->uniqueType(ElemKind::Int8QTy, {" << op.first
           << "SizeVar}, 0.0, 0);\n";
       osB << "  " << op.first << "->setType(" << op.first << "TypeResized);\n";
       osB << "  " << op.first << "->setTy(" << op.first << "TypeResized);\n";

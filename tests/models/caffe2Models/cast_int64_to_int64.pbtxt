@@ -1,4 +1,4 @@
-name: "cast_int32_to_int64"
+name: "cast_int64_to_int64"
 op {
   input: "input"
   output: "output"
@@ -11,4 +11,3 @@ op {
 }
 external_input: "input"
 external_output: "output"
-

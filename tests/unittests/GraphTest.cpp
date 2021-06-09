@@ -340,6 +340,70 @@ TEST(Graph, float16LayerNorm) {
   interpreter::flags::LowerLayerNormalization = origFlagVal;
 }
 
+/// Check that we can create batch_matmul with float16.
+TEST(Graph, float16BatchMatMul) {
+  const auto origFlagVal = interpreter::flags::LowerBatchMatMul;
+  interpreter::flags::LowerBatchMatMul = false;
+
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  PlaceholderBindings bindings;
+  auto *LHS = MD.createPlaceholder(ElemKind::Float16Ty, {2, 3, 4}, "A", false);
+  auto *RHS = MD.createPlaceholder(ElemKind::Float16Ty, {2, 4, 5}, "B", false);
+
+  BatchMatMulNode *BMM = F->createBatchMatMul("BMM", LHS, RHS);
+  F->createSave("Save", BMM);
+
+  std::unique_ptr<const Backend> backend(createBackend("Interpreter"));
+
+  CompilationContext cctx;
+  lower(F, cctx, backend.get());
+
+  IRFunction M(F);
+
+  M.generateIR(*backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto bmmIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                            [](const Instruction &inst) -> bool {
+                              return llvm::isa<BatchMatMulInst>(inst);
+                            });
+  ASSERT_TRUE(bmmIt != M.getInstrs().end());
+  interpreter::flags::LowerBatchMatMul = origFlagVal;
+}
+
+/// Check that we can create batch_matmul with float.
+TEST(Graph, floatBatchMatMul) {
+  const auto origFlagVal = interpreter::flags::LowerBatchMatMul;
+  interpreter::flags::LowerBatchMatMul = false;
+
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  PlaceholderBindings bindings;
+  auto *LHS = MD.createPlaceholder(ElemKind::FloatTy, {2, 3, 4}, "A", false);
+  auto *RHS = MD.createPlaceholder(ElemKind::FloatTy, {2, 4, 5}, "B", false);
+
+  BatchMatMulNode *BMM = F->createBatchMatMul("BMM", LHS, RHS);
+  F->createSave("Save", BMM);
+
+  std::unique_ptr<const Backend> backend(createBackend("Interpreter"));
+
+  CompilationContext cctx;
+  lower(F, cctx, backend.get());
+
+  IRFunction M(F);
+
+  M.generateIR(*backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto bmmIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                            [](const Instruction &inst) -> bool {
+                              return llvm::isa<BatchMatMulInst>(inst);
+                            });
+  ASSERT_TRUE(bmmIt != M.getInstrs().end());
+  interpreter::flags::LowerBatchMatMul = origFlagVal;
+}
+
 /// Check that we can create conv3D with float16.
 TEST(Graph, float16Conv3DLower) {
   Module MD;
@@ -937,7 +1001,7 @@ TEST(Graph, moduleCloneTest) {
     C->getPayloadMutable().getHandle().clear(1.0f);
     auto *SM = F->createAdd("add", concat, C);
     auto *SN = F->createSave("Save", SM);
-    resultName = SN->getPlaceholder()->getName();
+    resultName = SN->getPlaceholder()->getName().str();
 
     // Clone the original module into the cloned module.
     originalM.clone(&clonedM);
@@ -2385,4 +2449,60 @@ TEST(Graph, testRandomizeConstants) {
   EXPECT_FALSE(uint8FusedFP16QT.isEqual(uint8FusedFP16QC->getPayload()));
   EXPECT_FALSE(uint4FusedFP16QT.isEqual(uint4FusedFP16QC->getPayload()));
   EXPECT_FALSE(boolT.isEqual(boolC->getPayload()));
+}
+
+TEST(Graph, testSoftmaxMultiplier) {
+  glow::ExecutionEngine EE;
+  Module &M = EE.getModule();
+  Function *F = M.createFunction("F");
+
+  float beta = 2.0;
+
+  // Create a graph with single softmax.
+  auto *inputPH =
+      M.createPlaceholder(ElemKind::FloatTy, {1, 2}, "input", false);
+  auto *select =
+      M.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "select", true);
+  Node *softmaxNode =
+      F->createSoftMax("softmax", inputPH, select, inputPH->getType(), beta);
+  auto *saveNode = F->createSave("output", softmaxNode);
+
+  PlaceholderBindings bindings;
+  auto *inputT = bindings.allocate(inputPH);
+  inputT->getHandle() = {1.0, 2.0};
+  Tensor expectedT(inputT->getType());
+  expectedT.getHandle() = {0.11920292, 0.88079703};
+  auto *outputT = bindings.allocate(saveNode->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  EXPECT_TRUE(outputT->isEqual(expectedT));
+}
+
+TEST(Graph, testLogSoftmaxMultiplier) {
+  glow::ExecutionEngine EE;
+  Module &M = EE.getModule();
+  Function *F = M.createFunction("F");
+
+  float beta = 2.0;
+
+  // Create a graph with single softmax.
+  auto *inputPH =
+      M.createPlaceholder(ElemKind::FloatTy, {1, 2}, "input", false);
+  auto *select =
+      M.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "select", true);
+  Node *softmaxNode =
+      F->createLogSoftMax("softmax", inputPH, select, inputPH->getType(), beta);
+  auto *saveNode = F->createSave("output", softmaxNode);
+
+  PlaceholderBindings bindings;
+  auto *inputT = bindings.allocate(inputPH);
+  inputT->getHandle() = {1.0, 2.0};
+  Tensor expectedT(inputT->getType());
+  expectedT.getHandle() = {-2.1269, -0.1269};
+  auto *outputT = bindings.allocate(saveNode->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  EXPECT_TRUE(outputT->isEqual(expectedT));
 }

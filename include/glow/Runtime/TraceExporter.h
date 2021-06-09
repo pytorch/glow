@@ -18,6 +18,7 @@
 
 #include "glow/ExecutionContext/TraceEvents.h"
 
+#include <mutex>
 #include <vector>
 
 namespace glow {
@@ -66,6 +67,7 @@ public:
 private:
   /// Registered TraceExporters.
   std::vector<TraceExporter *> exporters_;
+  std::mutex mutex_;
 };
 
 } // namespace glow

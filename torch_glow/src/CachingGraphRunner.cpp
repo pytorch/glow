@@ -78,6 +78,27 @@ Error initializeCompilationContextFromGlowFlags(
     cctx.compilationLogPrefix = "torch-glow";
   }
 
+  // glow_sparsenn_partitioning_add_sls_concats
+  // (SparseNNPartitioningAddSLSConcats) enables addition of concats to create a
+  // bigger tensor out of many smaller tensors that needs to be communicated
+  // with other partitions so that communication is efficient. This doesn't work
+  // if one of the tensor is [1, x] (coming from user embeddings and it's [1, x]
+  // due to inbatch broadcast, i.e., broadcast happens on accelerator card) and
+  // other (coming from ad embeddings) is [32, y]. However, [1, x] is followed
+  // by tile in glow graph to make it [32, x]. This diff D27781184 (
+  // glow_sparsenn_partitioning_pair_tile_with_sls, i.e.,
+  // SparseNNPartitioningPairTileWithSLS) pulls in the tile operator on user
+  // embeddings to sls partition as well so that sls_concat can now work since
+  // post-tile tensors become [32, x] and [32, y]. Thus,
+  // SparseNNPartitioningPairTileWithSLS is required for
+  // SparseNNPartitioningAddSLSConcats to work.
+  if (glow::flags::SparseNNPartitioningAddSLSConcats) {
+    LOG(INFO)
+        << "Enabling glow_sparsenn_partitioning_pair_tile_with_sls because "
+           "glow_sparsenn_partitioning_add_sls_concats is enabled ";
+    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS = true;
+  }
+
   if (glow::flags::UseDAGOptimizer) {
     LOG(INFO) << "Enabling DAG optimizer and related options (server AOT)";
     cctx.callDAGOptimizer = true;
@@ -169,6 +190,14 @@ void initializeCompilationContextFromSettings(
     LOG(INFO) << "Skipping all layout verifying";
   }
 
+  // If we want to enable serialize, we have to not free compiled stream in
+  // provisoner.
+  if (settings.enableSerialize) {
+    glow::flags::DisableFreeCompilationResource = true;
+    LOG(INFO)
+        << "Free compilation resource after compiling on backend is disabled";
+  }
+
   if (settings.dumpFinalGlowGraph) {
     cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
   }
@@ -198,6 +227,26 @@ void initializeCompilationContextFromSettings(
     LOG(INFO) << "Will skip provisioning (likely due to AOT opt).";
     cctx.skipProvisioning = true;
   }
+
+  if (settings.useSparseNNPartitioningScheme) {
+    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+    cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
+        settings.sparseNNPartitioningAddSLSConcats;
+    cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
+        settings.sparseNNPartitioningBalancePerfModel;
+    cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
+        settings.sparseNNPartitioningPairLNWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
+        settings.sparseNNPartitioningPairTileWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
+        settings.sparseNNPartitioningSchemeNumCards;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+        settings.sparseNNPartitioningSchemeSLSTableKBytesPerCard;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
+        settings.SparseNNPartitioningSchemeNumCoresSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
+        settings.SparseNNPartitioningSchemeNumCoresOther;
+  }
 }
 
 /// This function slice the input Tensor according to the expected shape in the
@@ -215,7 +264,9 @@ Error setupGlowDeserializationSpecAndCctx(
     const PyTorchLoaderSettings &settings,
     const std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo> &info,
     CompilationContext &cctx, Function *f, GlowDeserializationSpec &spec) {
-  spec.pytorchLoaderSettings = settings.toString();
+  auto glowPyTorchLoaderSettings = spec.pytorchLoaderSettings;
+  glowPyTorchLoaderSettings->overrideSettings(settings);
+
   spec.functionName = info->functionName;
   auto &inputPHNames = spec.inputPHNames;
   auto &inputPHTypes = spec.inputPHTypes;
@@ -258,9 +309,13 @@ Error setupGlowDeserializationSpecAndCctx(
               ? f->getParent()->uniqueType(elementType, newDims,
                                            type.getScale(), type.getOffset())
               : f->getParent()->uniqueType(elementType, newDims);
+      // Here staticPlaceholderTypes is used for serializing Glow IR in
+      // hostManager, which is post-precision conversion. staticPHTypes on the
+      // other hand is used in Glow deserialization, which requires the input
+      // tensor types (i.e., pre-precision conversion)
       staticPlaceholderTypes[std::string(ph->getName())] = *newType;
       staticPHNames.emplace_back(ph->getName().data());
-      staticPHTypes.emplace_back(newType->toString());
+      staticPHTypes.emplace_back(type.toString());
     }
   }
   size_t outputIdx = 0;
@@ -354,6 +409,12 @@ void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
     mergedTraceContext_->dump(filename);
     mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
   }
+}
+
+std::unique_ptr<
+    std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+CachingGraphRunner::getAllSerializedFunctionsMap() {
+  return hostManager_->getAllSerializedFunctions();
 }
 
 Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
@@ -482,7 +543,7 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
     }
   }
 
-  LOG(INFO) << "Compiling graph with tensor shape:\n" << metaStack.print();
+  VLOG(1) << "Compiling graph with tensor shape:\n" << metaStack.print();
 
   // If we don't have a shape info for this graph output with and the
   // given inputs then run shape inference, then push into the map.
@@ -1156,7 +1217,10 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 Error CachingGraphRunner::warmCache(
     const std::vector<InputMetaStack> &metaStacks,
     const PyTorchLoaderSettings &settings,
-    runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation) {
+    runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation,
+    bool useDeserialize,
+    std::shared_ptr<std::unordered_map<std::string, std::vector<char>>>
+        nameToFunctions) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -1183,7 +1247,7 @@ Error CachingGraphRunner::warmCache(
       for (const auto &metaStack : metaStacks) {
         size_t hash = getGraphMapKeyFromInputStack(metaStack);
 
-        LOG(INFO) << "Caching compilation setting for hash:" << hash;
+        LOG(INFO) << "Caching compilation setting for hash: " << hash;
         pyTorchLoaderSettingsMap_.emplace(hash, settings);
       }
 
@@ -1209,8 +1273,21 @@ Error CachingGraphRunner::warmCache(
       // names should be unique so this is included in the name.
       auto info = std::make_shared<PerGlowGraphInfo>(
           strFormat("pt_function_%lu_%lu", size_t(this), hash), settings);
+      std::string functionNameHash = strFormat("%lu", hash);
 
       Function *f = glowModule->createFunction(info->functionName);
+
+      // If this function has already been compiled, the compiled stream is
+      // already stored in nameToFunction, and deserialize is enabled, we use
+      // the compiled stream instead of compiling it again.
+      if (useDeserialize &&
+          nameToFunctions->find(functionNameHash) != nameToFunctions->end()) {
+        cctx.nameToFunctions.emplace(std::make_pair(
+            info->functionName,
+            std::make_shared<std::vector<char>>(
+                nameToFunctions->find(functionNameHash)->second)));
+        cctx.backendOpts.useDeserialize = true;
+      }
 
       {
         TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,

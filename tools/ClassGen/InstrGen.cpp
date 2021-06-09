@@ -546,6 +546,23 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
       .autoIRGen();
 
+  BB.newInstr("BatchSparseToDense")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Lengths", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .addMember(MemberType::Float, "DefaultValue")
+      .addMember(MemberType::Unsigned, "DenseLastDim")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
+      .autoIRGen();
+
+  BB.newInstr("FillExamplesWithIndicator")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indicator", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoIRGen();
+
   BB.newInstr("SparseToDenseMask")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Indices", OperandKind::In)
@@ -1121,6 +1138,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
       .autoIRGen();
 
+  BB.newInstr("GatherElements")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Dim")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoIRGen();
+
   BB.newInstr("GatherRanges")
       .addOperand("Output", OperandKind::Out)
       .addOperand("Lengths", OperandKind::Out)
@@ -1356,6 +1381,29 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Boxes", "Scores"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "NumberOfSelectedIndices"})
+      .autoIRGen();
+
+  BB.newInstr("TFLiteDetectionPostProcess")
+      .addOperand("DetectionBoxes", OperandKind::Out)
+      .addOperand("DetectionClasses", OperandKind::Out)
+      .addOperand("DetectionScores", OperandKind::Out)
+      .addOperand("NumDetections", OperandKind::Out)
+      .addOperand("Boxes", OperandKind::In)
+      .addOperand("Scores", OperandKind::In)
+      .addOperand("Anchors", OperandKind::In)
+      .addOperand("Scratch", OperandKind::Scratch)
+      .addMember(MemberType::Unsigned, "NumClasses")
+      .addMember(MemberType::Unsigned, "MaxDetections")
+      .addMember(MemberType::Unsigned, "MaxClassesPerDetection")
+      .addMember(MemberType::Unsigned, "MaxDetectionsPerClass")
+      .addMember(MemberType::Float, "IouThreshold")
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Float, "XScale")
+      .addMember(MemberType::Float, "YScale")
+      .addMember(MemberType::Float, "HScale")
+      .addMember(MemberType::Float, "WScale")
+      .addMember(MemberType::Boolean, "RegularNMS")
+      .autoVerify(VerifyKind::NoVerify)
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

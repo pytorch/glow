@@ -20,26 +20,26 @@
 using glow::StrCheck;
 
 StrCheck &StrCheck::check(llvm::StringRef needle) {
-  size_t found = input_.find(needle, pos_);
+  size_t found = input_.find(needle.str(), pos_);
   return found != std::string::npos ? match(found, needle.size())
                                     : fail("not found: check", needle);
 }
 
 StrCheck &StrCheck::sameln(llvm::StringRef needle) {
-  size_t found = input_.find(needle, pos_);
+  size_t found = input_.find(needle.str(), pos_);
   return found < findEol() ? match(found, needle.size())
                            : fail("not found: sameln", needle);
 }
 
 StrCheck &StrCheck::nextln(llvm::StringRef needle) {
   size_t eol = findEol();
-  size_t found = input_.find(needle, eol);
+  size_t found = input_.find(needle.str(), eol);
   return found < findEol(eol) ? match(found, needle.size())
                               : fail("not found: nextln", needle);
 }
 
 StrCheck &StrCheck::no(llvm::StringRef needle) {
-  nos_.push_back(needle);
+  nos_.push_back(needle.str());
   return *this;
 }
 

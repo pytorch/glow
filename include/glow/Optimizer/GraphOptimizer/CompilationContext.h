@@ -346,6 +346,10 @@ struct CompilationContext {
   /// Whether to serialize the DAG that has been optimized and partitioned.
   bool serializeCompiledDAG{false};
 
+  /// Whether to use Zip mode to serialize the DAG that has been optimized and
+  /// partitioned.
+  bool useZipModeForSerializeCompiledDAG{false};
+
   /// Whether to save constant data into the serialized DAG.
   bool saveConstantInSerializeCompiledDAG{false};
 
@@ -363,6 +367,11 @@ struct CompilationContext {
 
   /// Static placeholder type info used for AOT optimization.
   std::map<std::string, Type> staticPlaceholderTypesForAOT;
+
+  /// Map from function name to its corresponding compiled serialized functions;
+  /// Used in deserialization.
+  std::unordered_map<std::string, std::shared_ptr<std::vector<char>>>
+      nameToFunctions;
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

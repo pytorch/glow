@@ -1,17 +1,19 @@
 // (c) Facebook, Inc. and its affiliates. Confidential and proprietary.
 
-#include "glow/lib/Backends/NNPI/CustomKernels/DSPInjectors/DSPInjectorUtils.h"
+#include "DSPInjectorUtils.h"
 
 #include <glog/logging.h>
 
 #define FBGEMM_FP16_MAX 65504.0f
 #define FBGEMM_FP16_MIN -65504.0f
-#define FBGEMM_DSP_VECTOR_WIDTH_F16 32
+#define FBGEMM_DSP_VECTOR_WIDTH 64
 
 namespace glow {
 namespace {
 
-NNPITileParams getWalkDim1RowwiseTile(std::vector<size_t> dims) {
+NNPITileParams getWalkDim1RowwiseTile(std::vector<size_t> dims,
+                                      const int itemsPerLoopIter,
+                                      const int bytesPerItem) {
   size_t numDims = (size_t)dims.size();
   DCHECK_GT(dims.size(), 0);
   size_t buffering = 1;
@@ -29,8 +31,7 @@ NNPITileParams getWalkDim1RowwiseTile(std::vector<size_t> dims) {
     DCHECK_LT(reverseDims, numDims);
     uint32_t dimval = dims[numDims - dim - 1];
     tensorDims[dim] = (uint32_t)dimval;
-    alignment[dim] =
-        (dim > 0) ? 1 : FBGEMM_DSP_VECTOR_WIDTH_F16 * sizeof(float16_t);
+    alignment[dim] = (dim > 0) ? 1 : itemsPerLoopIter * bytesPerItem;
 
     // Set tile size for this dim
     size_t numRowsNeeded = desiredSize / rowSize;
@@ -43,9 +44,9 @@ NNPITileParams getWalkDim1RowwiseTile(std::vector<size_t> dims) {
 
     // Pad dim0 to multiple of 32
     if (dim == 0) {
-      tileDims[dim] = FBGEMM_DSP_VECTOR_WIDTH_F16 *
-                      ((tileDims[dim] + FBGEMM_DSP_VECTOR_WIDTH_F16 - 1) /
-                       FBGEMM_DSP_VECTOR_WIDTH_F16);
+      tileDims[dim] =
+          itemsPerLoopIter *
+          ((tileDims[dim] + itemsPerLoopIter - 1) / itemsPerLoopIter);
     }
     rowSize = rowSize * tileDims[dim];
   }
@@ -100,10 +101,14 @@ int DSPInjectorUtils::GetNumElements(uint32_t *dims, int numDims) {
 }
 
 /* Reusable elementwise creation functions */
-NNPICustomDSPNode *DSPInjectorUtils::createCustomEltwiseFP16_configurable(
+NNPICustomDSPNode *DSPInjectorUtils::createCustomEltwise_configurable(
     Function *F_, const std::string &name, const std::string &kernel_name,
     std::vector<NodeValue> input_nodes, int64_t IceRefCallback,
-    NNPITileParams tileParams) {
+    NNPITileParams tileParamsInput, NNPITileParams tileParamsOutput,
+    const int itemsPerLoopIter, const ElemKind outElemKind) {
+
+  DCHECK_GT(input_nodes.size(), 0);
+
   // Set the kernel params (loop variable)
   Constant *kernelParams = F_->getParent()->createConstant(
       F_->getParent()->uniqueType(ElemKind::UInt8QTy, {sizeof(EltwiseParams)},
@@ -112,10 +117,19 @@ NNPICustomDSPNode *DSPInjectorUtils::createCustomEltwiseFP16_configurable(
   auto kpH = kernelParams->getPayload().getUnsafePtr();
   EltwiseParams params;
 
-  int32_t numTileElements = GetNumElements(tileParams.dims, tileParams.numDims);
-  DCHECK_EQ(numTileElements % 32, 0)
-      << "Tile num elements must be multiple of 32 for this op";
-  params.numOfVectors = numTileElements / 32;
+  int32_t numTileElementsInput =
+      GetNumElements(tileParamsInput.dims, tileParamsInput.numDims);
+  int32_t numTileElementsOutput =
+      GetNumElements(tileParamsOutput.dims, tileParamsOutput.numDims);
+  DCHECK_EQ(numTileElementsInput, numTileElementsOutput)
+      << "Tile num elements for input " << numTileElementsInput
+      << " must equal tile num elements for output " << numTileElementsOutput
+      << " for elementwise kernel";
+  int32_t numTileElements = numTileElementsInput;
+  DCHECK_EQ(numTileElements % itemsPerLoopIter, 0)
+      << "Tile num elements must be multiple of " << itemsPerLoopIter
+      << " for this op";
+  params.numOfVectors = numTileElements / itemsPerLoopIter;
   memcpy(kpH, &params, sizeof(EltwiseParams));
 
   // Setup walk config
@@ -125,9 +139,9 @@ NNPICustomDSPNode *DSPInjectorUtils::createCustomEltwiseFP16_configurable(
 
   // copy same tile params for all tensors
   for (int i = 0; i < input_nodes.size(); i++) {
-    walkConfig.inputTileWalkParams[i] = tileParams;
+    walkConfig.inputTileWalkParams[i] = tileParamsInput;
   }
-  walkConfig.outputTileWalkParams[0] = tileParams;
+  walkConfig.outputTileWalkParams[0] = tileParamsOutput;
 
   Constant *walkConfigConstant = F_->getParent()->createConstant(
       F_->getParent()->uniqueType(ElemKind::UInt8QTy, {sizeof(NNPIWalkConfig)},
@@ -137,11 +151,14 @@ NNPICustomDSPNode *DSPInjectorUtils::createCustomEltwiseFP16_configurable(
   memcpy(wcH, &walkConfig, sizeof(NNPIWalkConfig));
   DCHECK_GT(input_nodes.size(), 0);
 
+  auto outType = F_->getParent()->uniqueType(outElemKind,
+                                             input_nodes[0].getType()->dims());
+
   // Create the DSP node and add to the network
   NNPICustomDSPNode *dspNode = new NNPICustomDSPNode(
-      name,                     // name
-      input_nodes[0].getType(), // result type
-      kernelParams,             // kernel params tensor
+      name,         // name
+      outType,      // result type
+      kernelParams, // kernel params tensor
       walkConfigConstant,
       input_nodes,                              // input nodes
       10,                                       // private area size
@@ -157,19 +174,46 @@ NNPICustomDSPNode *DSPInjectorUtils::createEltwiseFP16(
     Function *F_, const std::string &name, const std::string &kernel_name,
     std::vector<NodeValue> input_nodes, int64_t IceRefCallback) {
   DCHECK_GT(input_nodes.size(), 0);
-  std::vector<size_t> dims = input_nodes[0].getType()->dims();
+  std::vector<size_t> dims;
+  if (input_nodes.size() > 0) {
+    dims = input_nodes[0].getType()->dims();
+  }
 
   // Choose tile size, amount of buffering, and alignment
   NNPITileParams tileParams;
-  tileParams = getWalkDim1RowwiseTile(dims);
+  const int itemsPerLoopIter = FBGEMM_DSP_VECTOR_WIDTH / sizeof(float16_t);
+  tileParams = getWalkDim1RowwiseTile(dims, itemsPerLoopIter,
+                                      /* bytesPerItem */ sizeof(float16_t));
 
   // Call configurable kernel
-  return DSPInjectorUtils::createCustomEltwiseFP16_configurable(
-      F_, name, kernel_name, input_nodes, IceRefCallback, tileParams);
+  return DSPInjectorUtils::createCustomEltwise_configurable(
+      F_, name, kernel_name, input_nodes, IceRefCallback, tileParams,
+      tileParams, itemsPerLoopIter, /* outputElemKind */ ElemKind::Float16Ty);
+}
+
+NNPICustomDSPNode *DSPInjectorUtils::createEltwiseInt32Compare(
+    Function *F_, const std::string &name, const std::string &kernel_name,
+    std::vector<NodeValue> input_nodes, int64_t IceRefCallback) {
+  DCHECK_GT(input_nodes.size(), 0);
+  std::vector<size_t> dims = input_nodes[0].getType()->dims();
+
+  // Choose tile size, amount of buffering, and alignment
+  NNPITileParams tileParamsInput, tileParamsOutput;
+  const int itemsPerLoopIter = 4 * FBGEMM_DSP_VECTOR_WIDTH / sizeof(int32_t);
+  tileParamsInput = getWalkDim1RowwiseTile(dims, itemsPerLoopIter,
+                                           /* bytesPerItem */ sizeof(int32_t));
+  tileParamsOutput = getWalkDim1RowwiseTile(dims, itemsPerLoopIter,
+                                            /* bytesPerItem */ sizeof(bool));
+
+  // Call configurable kernel
+  return DSPInjectorUtils::createCustomEltwise_configurable(
+      F_, name, kernel_name, input_nodes, IceRefCallback, tileParamsInput,
+      tileParamsOutput, itemsPerLoopIter,
+      /* outputElemKind */ ElemKind::BoolTy);
 }
 
 } // namespace glow
 
 #undef FBGEMM_FP16_MAX
 #undef FBGEMM_FP16_MIN
-#undef FBGEMM_DSP_VECTOR_WIDTH_F16
+#undef FBGEMM_DSP_VECTOR_WIDTH

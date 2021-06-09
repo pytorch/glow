@@ -21,6 +21,7 @@
 FUN_PASS(DCE)
 FUN_PASS(SinkCode)
 FUN_PASS(SinkConversions)
+FUN_PASS(SinkReshapes)
 FUN_PASS(HoistCode)
 FUN_PASS(MergeMatMul)
 FUN_PASS(MergePadIntoConvolution)
@@ -68,6 +69,7 @@ FUN_PASS(QuantizeSwish)
 FUN_PASS(ConvertFullyConnectedToConvolution)
 FUN_PASS(FoldMinMaxToClip)
 FUN_PASS(ReplaceZeroScaleFP16QuantNodes)
+FUN_PASS(FoldExpSumDivIntoSoftmax)
 
 
 // NOTE: This pass must be last; it's used to count the total number of passes.
