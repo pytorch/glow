@@ -2598,7 +2598,7 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
         opErrMsg(
             op,
             strFormat(
-                "UpSample Scales dimension invalid. Mode: %s Scale Size: %zu",
+                "Resize Scales dimension invalid. Mode: %s Scale Size: %zu",
                 modeStr.c_str(), scales.size())));
 
     for (auto &val : scales) {
