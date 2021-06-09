@@ -420,6 +420,21 @@ protected:
     of << buffer;
   }
 
+  // dump outputs into onnx file which can run with repro binary.
+  void dumpOutputs() {
+    std::stringstream ss;
+    ss << "output_0.onnx";
+    std::ofstream of(ss.str(), std::ios::binary);
+    ONNX_NAMESPACE::GraphProto inputG;
+    auto *t = inputG.add_initializer();
+    ONNXModelWriter::writeTensor(*resultTensor, t,
+                                 /*useGlowCustomOps*/ true);
+    t->set_name("save");
+    std::string buffer;
+    inputG.SerializeToString(&buffer);
+    of << buffer;
+  }
+
   void TearDown() override {
     if (dumpBinaryResults) {
       ASSERT_TRUE(resultTensor) << "Could not dump result tensor, was nullptr";
@@ -1011,6 +1026,10 @@ protected:
       for (int i = 0, e = resultTensorH.size(); i < e; ++i) {
         EXPECT_GE(resultTensorH.raw(i), 0.0);
       }
+    }
+
+    if (dumpModelInputs) {
+      dumpOutputs();
     }
 
     // Compare against interpreter if we're not executing already on it.

@@ -44,8 +44,8 @@ public:
   int64_t currentBatchSize{0};
   RequestData() {
     accessId = std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                    .count();
+                   std::chrono::system_clock::now().time_since_epoch())
+                   .count();
   }
 
   RequestData(int64_t id) : accessId(id) {}

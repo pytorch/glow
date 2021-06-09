@@ -629,14 +629,20 @@ void BundleSaver::produceBundle() {
   createBundleArchive(fileName, irgen_->getObjectRegistry(),
                       irgen_->getBundleObjects());
   // Output weights.
-  saveWeights(bundleWeightsBinOut);
+  if (saveWeights_) {
+    saveWeights(bundleWeightsBinOut);
+  }
   // Header file.
-  saveHeader(bundleHeaderOutput);
+  if (saveHeader_) {
+    saveHeader(bundleHeaderOutput);
+  }
   // Save weights also in text format for Static API.
-  if (bundleAPI_ == BundleApiType::Static) {
-    auto bundleWeightsTxtOut =
-        (outputDir + "/" + savedBundleName + ".weights.txt").str();
-    serializeBinaryToText(bundleWeightsBinOut, bundleWeightsTxtOut);
+  if (saveWeightsAsText_) {
+    if (bundleAPI_ == BundleApiType::Static) {
+      auto bundleWeightsTxtOut =
+          (outputDir + "/" + savedBundleName + ".weights.txt").str();
+      serializeBinaryToText(bundleWeightsBinOut, bundleWeightsTxtOut);
+    }
   }
 }
 

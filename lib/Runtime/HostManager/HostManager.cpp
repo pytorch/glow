@@ -1120,6 +1120,12 @@ Expected<Backend *> HostManager::getBackend() const {
   return provisioner_->getBackend();
 }
 
+std::unique_ptr<
+    std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+HostManager::getAllSerializedFunctions() {
+  return provisioner_->getAllSerializedFunctionsMap();
+}
+
 HostManager *HostManagerRegistry::getHostManager() { return hostManager_; }
 
 void HostManagerRegistry::registerHostManager(HostManager *hostManager) {
