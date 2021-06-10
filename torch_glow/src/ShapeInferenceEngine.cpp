@@ -261,6 +261,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&fused8BitRowwiseQuantizedToFloat, &SI::addShapeDefault)},
       {"fb::compressed_indices_remap",
        ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
+      {"fb::xl_compressed_indices_remap",
+       ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
       {"quantized::embedding_bag_byte_unpack",
        ShapeInference(&embeddingBagByteUnpack, &SI::addShapeDefault)},
       {"fb::unsqueeze_n_times",

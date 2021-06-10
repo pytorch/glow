@@ -308,11 +308,11 @@ static void dumpOperatorStats(const std::shared_ptr<torch::jit::Graph> graph,
   out << "InstanceCount: count of operator in graph\n";
   out << "FuseSupported: instances with IsSupportFunc returning true\n";
   out << "Fused: instances of operator that were merged into a subgraph\n";
-  out << folly::stringPrintf("%30s %13s %13s %13s\n", "Operator",
+  out << folly::stringPrintf("%45s %13s %13s %13s\n", "Operator",
                              "InstanceCount", "FuseSupported", "Fused");
   for (auto &kindAndStat : fuserStats) {
     out << folly::stringPrintf(
-        "%30s %13ld %13ld %13ld\n", kindAndStat.first.toQualString(),
+        "%45s %13ld %13ld %13ld\n", kindAndStat.first.toQualString(),
         kindAndStat.second.totalCount, kindAndStat.second.supportedCount,
         kindAndStat.second.fusedCount);
   }

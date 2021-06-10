@@ -16,6 +16,8 @@
 #ifndef GLOW_RUNTIME_ERROR_REPORTER_H
 #define GLOW_RUNTIME_ERROR_REPORTER_H
 
+#include "glow/Support/Error.h"
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -57,6 +59,16 @@ private:
   std::vector<ErrorReporter *> reporters_;
 };
 
+/// Reports the error with registered reporters and returns the same error for
+/// pipelining.
+detail::GlowError reportOnError(detail::GlowError error);
+
 } // namespace glow
+
+/// Unwraps the T from within an Expected<T>. If the Expected<T> contains
+/// an ErrorValue, the program will report it and exit.
+#define REPORT_AND_EXIT_ON_ERR(...)                                            \
+  (glow::detail::exitOnError(__FILE__, __LINE__,                               \
+                             glow::reportOnError(__VA_ARGS__)))
 
 #endif // GLOW_RUNTIME_ERROR_REPORTER_H

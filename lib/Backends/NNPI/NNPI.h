@@ -43,6 +43,9 @@ public:
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
+  Expected<llvm::StringMap<std::unique_ptr<CompiledFunction>>>
+  compileFunctions(std::vector<Function *> &functions,
+                   llvm::StringMap<BackendOptions> &optsMap) const override;
 #if FACEBOOK_INTERNAL
   Expected<std::unique_ptr<CompiledFunction>>
   compileFX(const folly::dynamic &FXIR, const std::string &submod,

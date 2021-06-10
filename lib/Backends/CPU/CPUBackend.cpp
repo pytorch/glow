@@ -121,7 +121,7 @@ std::vector<unsigned> CPUBackend::scanDeviceIDs() {
 }
 
 std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(
-    std::unique_ptr<llvm::orc::GlowJIT> JIT,
+    std::unique_ptr<GlowJIT> JIT,
     runtime::RuntimeBundle &&runtimeBundle) const {
   return glow::make_unique<CPUFunction>(std::move(JIT),
                                         std::move(runtimeBundle));

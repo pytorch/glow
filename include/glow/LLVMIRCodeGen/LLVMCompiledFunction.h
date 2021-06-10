@@ -25,7 +25,7 @@ namespace glow {
 /// A Glow IR function compiled using LLVM.
 class LLVMCompiledFunction : public CompiledFunction {
 public:
-  LLVMCompiledFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
+  LLVMCompiledFunction(std::unique_ptr<GlowJIT> JIT,
                        runtime::RuntimeBundle &&runtimeBundle);
 
   /// \name CompiledFunction interface
@@ -52,7 +52,7 @@ protected:
 
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.
-  std::unique_ptr<llvm::orc::GlowJIT> JIT_;
+  std::unique_ptr<GlowJIT> JIT_;
 
   /// The JIT can be accessed from multiple threads but is not thread safe,
   /// JITLock_ protects it.

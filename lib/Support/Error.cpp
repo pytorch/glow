@@ -77,6 +77,8 @@ std::string GlowErrorValue::errorCodeToString(const ErrorCode &ec) {
     return "PARTITIONER_ERROR";
   case ErrorCode::RUNTIME_ERROR:
     return "RUNTIME_ERROR";
+  case ErrorCode::RUNTIME_DEFERRED_WEIGHT_ERROR:
+    return "RUNTIME_DEFERRED_WEIGHT_ERROR";
   case ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY:
     return "RUNTIME_OUT_OF_DEVICE_MEMORY";
   case ErrorCode::RUNTIME_NET_NOT_FOUND:

@@ -351,7 +351,7 @@ public:
     // later.
     if (!parents.empty()) {
       for (const auto &parent : parents) {
-        auto it = nodes_.find(parent);
+        auto it = nodes_.find(parent.str());
         if (it == nodes_.end()) {
           assert(!"Parent specified for node not found!");
         }

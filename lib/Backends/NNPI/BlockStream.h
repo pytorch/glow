@@ -15,12 +15,13 @@
 
 #ifndef GLOW_NNPI_BLOCK_STREAM_H
 #define GLOW_NNPI_BLOCK_STREAM_H
+#include "glow/Backend/BlockStreamBase.h"
 #include <memory>
 #include <vector>
 namespace glow {
 
 #define DEFAULT_BLOCK_STREAM_BLOCK_SIZE (1024 * 1024 * 10)
-class BlockStream {
+class BlockStream : public BlockStreamBase {
 public:
   /// Default constructor with 0 pre-allocated blocks and 10M page size.
   BlockStream() : BlockStream(0, DEFAULT_BLOCK_STREAM_BLOCK_SIZE) {}

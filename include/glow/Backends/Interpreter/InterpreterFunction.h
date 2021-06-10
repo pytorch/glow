@@ -209,6 +209,9 @@ private:
   void fwdMatMulInstQuantizedImpl(const MatMulInst *I);
   template <typename ElemTy> void fwdMatMulInstFloatImpl(const MatMulInst *I);
 
+  template <typename ElemTy>
+  void fwdBatchMatMulInstFloatImpl(const BatchMatMulInst *I);
+
   template <typename ElemTy, typename AccumulatorTy,
             typename BiasElemTy = int32_t>
   void fwdFullyConnectedInstQuantizedImpl(const FullyConnectedInst *I);
@@ -412,6 +415,20 @@ private:
 
   template <typename ElemTy>
   void fwdSparseToDenseInstImpl(const SparseToDenseInst *I);
+
+  template <typename ElemTy, typename IndexTy>
+  void fwdBatchSparseToDenseInstImpl1(const BatchSparseToDenseInst *I);
+
+  template <typename ElemTy, typename LengthsTy, typename IndicesTy>
+  void fwdBatchSparseToDenseInstImpl2(const BatchSparseToDenseInst *I);
+
+  template <typename ElemTy>
+  void
+  fwdFillExamplesWithIndicatorInstImpl1(const FillExamplesWithIndicatorInst *I);
+
+  template <typename ElemTy, typename IndicatorTy>
+  void
+  fwdFillExamplesWithIndicatorInstImpl2(const FillExamplesWithIndicatorInst *I);
 
   template <class eTy>
   void fwdRescaleQuantizedInstImpl(Value *src, Value *dest,

@@ -171,7 +171,7 @@ public:
   /// Create a new partition \p F, and map it with \p backendName.
   void createPartition(Function *F, llvm::StringRef backendName) {
     functions_.emplace_back(F);
-    functionToBackendName_[F] = backendName;
+    functionToBackendName_[F] = backendName.str();
   }
 
   std::string getPartitionBackendName(Function *F) const {

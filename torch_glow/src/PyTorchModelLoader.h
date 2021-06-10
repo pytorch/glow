@@ -604,12 +604,19 @@ private:
   /// \returns error on failure.
   Error loadFullLike(const torch::jit::Node *ptNode);
 
+  /// Calculate expected output type based in input tensor and optional
+  /// argument.
+  /// \returns calculated type.
+  Expected<ElemKind> getExpectedType(const torch::jit::Value *inputTensorValue,
+                                     const torch::jit::Value *dtypeValue);
+
   /// Shared implementation for loadZerosLike, loadOnesLike, loadEmptyLike,
   /// and loadFullLike. \returns error on failure.
+  template <class DType>
   Error loadFullLikeImpl(llvm::StringRef name,
                          const torch::jit::Value *inputTensorValue,
-                         const torch::jit::Value *dtypeValue,
-                         at::optional<double> fillValue,
+                         const glow::ElemKind outputGlowElemKind,
+                         at::optional<DType> fillValue,
                          const torch::jit::Value *outputValue);
 
   /// Load a PyTorch sub node.

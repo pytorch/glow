@@ -1304,9 +1304,20 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
         left = right + (pdim[1] & 0x1);
       }
       return Pads({top, left, bottom, right});
+    } else if (padStr == "NOTSET") {
+      // We use explicit pads (if not given we assume its all zeros).
+      if (dict.count("pads")) {
+        if (dict.at("pads")->ints_size() == 2) { // For maxPool1D
+          return Pads({0, (unsigned_t)dict.at("pads")->ints(0), 0,
+                       (unsigned_t)dict.at("pads")->ints(1)});
+        }
+        return getShape<unsigned_t>(dict["pads"]);
+      } else {
+        return Pads({0, 0, 0, 0});
+      }
     }
-    return MAKE_ERR(
-        "only auto_pad==VALID, SAME_UPPER and SAME_LOWER are supported");
+    return MAKE_ERR("Only auto_pad==VALID, SAME_UPPER, SAME_LOWER and NOTSET "
+                    "are supported");
   }
   // Return default value 0 for pads.
   return Pads({0, 0, 0, 0});
@@ -4870,6 +4881,84 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadLogSoftmax(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  RETURN_ERR_IF_NOT(in.dims().size() >= 2,
+                    "LogSoftMax input dims must be >= 2");
+
+  // Create a constant to store labels to be used in SoftMaxGradNode.
+  auto selected =
+      mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
+
+  if (opsetVersion_ == 13) {
+    int axis = in.dims().size() - 1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
+    }
+    RETURN_ERR_IF_NOT(in.dims().size() == 4,
+                      "LogSoftMax 13 input dims must be 4");
+    // Compute the shuffle layout  based on axis input.
+    std::vector<unsigned_t> shuffle;
+    std::vector<unsigned_t> shuffleBack;
+    switch (axis) {
+    case 0:
+      shuffle = {1u, 2u, 3u, 0u};
+      shuffleBack = {3u, 0u, 1u, 2u};
+      break;
+
+    case 1:
+      shuffle = {0u, 2u, 3u, 1u};
+      shuffleBack = {0u, 3u, 1u, 2u};
+      break;
+
+    case 2:
+      shuffle = {0u, 1u, 3u, 2u};
+      shuffleBack = {0u, 1u, 3u, 2u};
+      break;
+
+    case 3:
+      shuffle = {0u, 1u, 2u, 3u};
+      shuffleBack = {0u, 1u, 2u, 3u};
+      break;
+
+    default:
+      return MAKE_ERR("LogSoftMax Axis must be <=3");
+      break;
+    }
+    auto *NH = G_->createTranspose(opName, in, shuffle);
+    auto *FN = G_->createFlattenV1("reshapeInput", NH, axis);
+    auto *SM = G_->createLogSoftMax(opName, FN, selected);
+
+    // The output should have the same shape as the original input.
+    auto origInDims = NH->getResult().dims();
+    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    auto *NC = G_->createTranspose(opName, RN, shuffleBack);
+    RETURN_IF_ERR(addNodeAsOutput(op, NC));
+  } else {
+    // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
+    // logsoftmax function. This is basimilar to a bitcast operation.
+    int axis = 1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
+    }
+    auto *FN = G_->createFlatten("reshapeInput", in, axis);
+    auto *SM = G_->createLogSoftMax(opName, FN, selected);
+
+    // The output should have the same shape as the original input.
+    auto origInDims = in.getType()->dims();
+    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    RETURN_IF_ERR(addNodeAsOutput(op, RN));
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadScatterData(const ONNX_NAMESPACE::NodeProto &op,
                                        const ArgumentDictionaryTy &dict) {
 
@@ -5604,6 +5693,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Softmax") {
     return loadSoftmax(op, dict);
   }
+  if (typeName == "LogSoftmax") {
+    return loadLogSoftmax(op, dict);
+  }
   if (typeName == "ScatterData") {
     return loadScatterData(op, dict);
   }
@@ -6091,7 +6183,7 @@ Error ONNXModelLoader::setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
                                        PrePartitionedConfig &PPC,
                                        llvm::StringRef rootName,
                                        int numPartitions) {
-  PPC.funcName = rootName;
+  PPC.funcName = rootName.str();
   PPC.resizeAndReserve(numPartitions);
 
   for (int i = 0; i < numPartitions; i++) {
@@ -6248,7 +6340,7 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
                                 "of updatedTQPs_ %lu",
                                 idx, updatedTQPs_.size()));
 
-    auto it = originNameToTQPMap.find(nameOffsetPair.first);
+    auto it = originNameToTQPMap.find(nameOffsetPair.first.str());
     RETURN_ERR_IF_NOT(it != originNameToTQPMap.end(),
                       strFormat("Did not find matching TQP for %s",
                                 nameOffsetPair.first.str().data()));

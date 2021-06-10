@@ -1163,7 +1163,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
     auto *FCL = F->createFullyConnected(inferBindings, "fc", TANH, 2);
     auto *SM = F->createSoftMax("sm", FCL, ex);
     F->createSave("ret", SM);
-    fName = F->getName();
+    fName = F->getName().str();
   }
 
   auto *mod = &EET_.getModule();
@@ -1300,7 +1300,7 @@ TEST_P(MLTest, testFindPixelRegression) {
     auto *FC1 = F->createFullyConnected(inferBindings, "fc1", RL0, 2);
     auto *R = F->createRegression("regression", FC1, ex);
     F->createSave("ret", R);
-    fName = F->getName();
+    fName = F->getName().str();
   }
 
   auto *mod = &EET_.getModule();

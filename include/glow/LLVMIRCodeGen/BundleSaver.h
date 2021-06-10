@@ -58,6 +58,23 @@ public:
   /// Produce a bundle.
   virtual void produceBundle();
 
+  /// Set flag for saving weights.
+  /// \p val set the flag to this value.
+  void setSaveWeights(bool val) { saveWeights_ = val; }
+  /// Set flag for saving header.
+  /// \p val set the flag to this value.
+  void setSaveHeader(bool val) { saveHeader_ = val; }
+  /// Set flag for saving weights as text.
+  /// \p val set the flag to this value.
+  void setSaveWeightsAsText(bool val) { saveWeightsAsText_ = val; }
+
+  /// Get flag for saving weights.
+  bool getSaveWeights() const { return saveWeights_; }
+  /// Get flag for saving header.
+  bool getSaveHeader() const { return saveHeader_; }
+  /// Get flag for saving weights as text.
+  bool getSaveWeightsAsText() const { return saveWeightsAsText_; }
+
 protected:
   /// Perform memory allocation for a bundle.
   virtual void performBundleMemoryAllocation();
@@ -104,6 +121,12 @@ protected:
   BundleApiType bundleAPI_;
   /// Indicates if this bundle was saved already.
   bool isSaved_{false};
+  /// Flag for saving weights (to binary file).
+  bool saveWeights_{true};
+  /// Flag for saving header.
+  bool saveHeader_{true};
+  /// Flag for saving weights as text.
+  bool saveWeightsAsText_{true};
 };
 
 } // namespace glow

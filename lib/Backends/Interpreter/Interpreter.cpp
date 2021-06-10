@@ -54,7 +54,7 @@ Interpreter::compile(Function *F, const BackendOptions &opts) const {
 
 std::unique_ptr<CompiledFunction>
 Interpreter::compileIR(std::unique_ptr<IRFunction> IR) const {
-  auto *mod = IR->getGraph()->getParent();
+  auto *mod = IR->getParent();
   auto function = compileIRWithoutConstants(std::move(IR));
   auto IFunction = static_cast<InterpreterFunction *>(function.get());
   IFunction->collectConstants(mod);
@@ -173,6 +173,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int8QTy, ElemKind::Int16QTy});
+
+  case Kinded::Kind::BatchMatMulNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty});
 
   case Kinded::Kind::FullyConnectedNodeKind:
     if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
@@ -528,6 +532,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
              (NI.getOutElemTy(
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);
+    case ElemKind::UInt4FusedQTy:
     case ElemKind::UInt8FusedQTy:
       if ((NI.getInElemTy(
                FusedRowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
@@ -716,6 +721,30 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
             ElemKind::Int64ITy);
 
+  case Kinded::Kind::BatchSparseToDenseNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+               {BatchSparseToDenseNode::LengthsIdx,
+                BatchSparseToDenseNode::IndicesIdx}) &&
+           (NI.getInElemTy(BatchSparseToDenseNode::LengthsIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(BatchSparseToDenseNode::LengthsIdx) ==
+                ElemKind::Int32ITy) &&
+           (NI.getInElemTy(BatchSparseToDenseNode::IndicesIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(BatchSparseToDenseNode::IndicesIdx) ==
+                ElemKind::Int32ITy);
+
+  case Kinded::Kind::FillExamplesWithIndicatorNodeKind:
+    return (NI.getInElemTy(FillExamplesWithIndicatorNode::DataIdx) ==
+            NI.getOutElemTy(FillExamplesWithIndicatorNode::ResultIdx)) &&
+           ((NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+             ElemKind::Int32ITy) ||
+            (NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+             ElemKind::Int64ITy) ||
+            (NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+             ElemKind::BoolTy));
+
   case Kinded::Kind::SparseToDenseMaskNodeKind:
     return (NI.getInElemTy(SparseToDenseMaskNode::IndicesIdx) ==
             ElemKind::Int64ITy) &&
@@ -769,6 +798,24 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
             NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
+
+  case Kinded::Kind::TFLiteDetectionPostProcessNodeKind:
+    return NI.getInElemTy(TFLiteDetectionPostProcessNode::BoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::ScoresIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::AnchorsIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionBoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(
+               TFLiteDetectionPostProcessNode::DetectionClassesIdx) ==
+               ElemKind::Int32ITy &&
+           NI.getOutElemTy(
+               TFLiteDetectionPostProcessNode::DetectionScoresIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::NumDetectionsIdx) ==
+               ElemKind::Int32ITy;
 
   case Kinded::Kind::AudioSpectrogramNodeKind:
     return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==
@@ -928,6 +975,8 @@ bool Interpreter::shouldLower(const Node *N) const {
     return false;
   case Kinded::Kind::LayerNormalizationNodeKind:
     return interpreter::flags::LowerLayerNormalization;
+  case Kinded::Kind::BatchMatMulNodeKind:
+    return interpreter::flags::LowerBatchMatMul;
   default:
     return true;
   }
