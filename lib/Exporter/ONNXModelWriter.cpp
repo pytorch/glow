@@ -940,9 +940,10 @@ ONNXModelWriter::ONNXModelWriter(
     const ConstantFoldingRecordMap &constFoldRecord,
     const BackendSpecificNodeInfo &backendSpecificNodeInfo,
     std::string *outputStringPtr)
-    : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
-      opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
-      includeConstantData_(includeConstantData),
+    : CommonOperatorWriter(modelFilename, &F, errPtr,
+                           outputStringPtr == nullptr),
+      irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
+      textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps),
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
       constFoldRecord_(constFoldRecord),
@@ -1069,7 +1070,8 @@ ONNXModelWriter::ONNXModelWriter(
     const LoadedPlaceholderNameMap *loadedPHNames,
     const std::map<std::string, Type> *staticPlaceholderTypes,
     std::string *outputStringPtr)
-    : CommonOperatorWriter(modelFilename, nullptr, errPtr),
+    : CommonOperatorWriter(modelFilename, nullptr, errPtr,
+                           outputStringPtr == nullptr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
