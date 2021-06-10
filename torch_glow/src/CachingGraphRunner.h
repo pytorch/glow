@@ -232,13 +232,15 @@ public:
   /// settings enable different settings for each compilation. If \p
   /// useMaxSizeCompilation , compile only a single Glow graph with an
   /// upper-bound on the input sizes (smaller inputs will be padded by Glow.)
-  Error
-  warmCache(const std::vector<InputMetaStack> &metaStacks,
-            const PyTorchLoaderSettings &settings,
-            runtime::DeferredWeightLoader *loader,
-            bool useMaxSizeCompilation = true, bool useDeserialize = false,
-            std::shared_ptr<std::unordered_map<std::string, std::vector<char>>>
-                nameToFunctions = nullptr);
+  Error warmCache(
+      const std::vector<InputMetaStack> &metaStacks,
+      const PyTorchLoaderSettings &settings,
+      runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation = true,
+      bool useDeserialize = false,
+      std::shared_ptr<std::unordered_map<std::string, std::vector<char>>>
+          nameToFunctions = nullptr,
+      std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
+      std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr);
 
   /// Warmup Graphoutput shape Map by getting output value shapes for each
   /// batch size.

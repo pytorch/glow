@@ -509,7 +509,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
           /* includeConstantData */ cctx.saveConstantInSerializeCompiledDAG,
           extraMetadataProps, record, cctx.backendOpts.backendSpecificNodeInfo,
           cctx.skipProvisioning ? &cctx.loadedPHNames : nullptr,
-          cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr);
+          cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr,
+          cctx.returnGlowSerializedModelStr
+              ? cctx.glowAOTSerializationModelStrPtr.get()
+              : nullptr);
       RETURN_IF_ERR(writeErr);
     }
 
