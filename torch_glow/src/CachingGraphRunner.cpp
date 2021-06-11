@@ -263,7 +263,8 @@ at::Tensor sliceTensor(at::Tensor &t, const TensorShape &shape) {
 Error setupGlowDeserializationSpecAndCctx(
     const PyTorchLoaderSettings &settings,
     const std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo> &info,
-    CompilationContext &cctx, Function *f, GlowDeserializationSpec &spec) {
+    CompilationContext &cctx, Function *f, GlowDeserializationSpec &spec,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr) {
   auto glowPyTorchLoaderSettings = spec.pytorchLoaderSettings;
   glowPyTorchLoaderSettings->overrideSettings(settings);
 
@@ -328,6 +329,8 @@ Error setupGlowDeserializationSpecAndCctx(
   cctx.serializeCompiledDAG = true;
   cctx.saveConstantInSerializeCompiledDAG = true;
   cctx.staticPlaceholderTypesForAOT = staticPlaceholderTypes;
+  cctx.returnGlowSerializedModelStr = true;
+  cctx.glowAOTSerializationModelStrPtr = glowAOTSerializationModelStrPtr;
   // We currently save all the non-embedding weights in the ONNX file
   // and thus do not delay/record constant modification. Since AOT
   // compilation is performed for every training snapshot, we do not
@@ -340,7 +343,7 @@ Error setupGlowDeserializationSpecAndCctx(
   return Error::success();
 }
 
-/// This function serialize Glow deserialization spec into a JSON file
+/// This function serialize Glow deserialization spec in JSON format
 /// The JSON file contains
 ///     1. PyTorchLoaderSettings;
 ///     2. Glow function name;
@@ -354,12 +357,12 @@ Error setupGlowDeserializationSpecAndCctx(
 ///           deserialization
 ///          (3) Input&Output PH names are used for reconstructing
 ///           PerGlowGraphInfo
-Error saveGlowDeserializationSpec(GlowDeserializationSpec &spec,
-                                  std::string fileName) {
+Error saveGlowDeserializationSpec(
+    GlowDeserializationSpec &spec,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr) {
   std::string serializedSpec;
   ASSIGN_VALUE_OR_RETURN_ERR(serializedSpec, spec.toJson());
-  std::ofstream file(fileName);
-  file << serializedSpec;
+  *glowAOTSerializationSpecStrPtr = std::move(serializedSpec);
   return Error::success();
 }
 
@@ -1220,7 +1223,9 @@ Error CachingGraphRunner::warmCache(
     runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation,
     bool useDeserialize,
     std::shared_ptr<std::unordered_map<std::string, std::vector<char>>>
-        nameToFunctions) {
+        nameToFunctions,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -1241,6 +1246,7 @@ Error CachingGraphRunner::warmCache(
   glow::CompilationContext cctx;
   RETURN_IF_ERR(initializeCompilationContextFromGlowFlags(cctx));
   initializeCompilationContextFromSettings(cctx, settings);
+  cctx.glowAOTSerializationModelStrPtr = glowAOTSerializationModelStrPtr;
 
   {
     if (settings.lazyCompile) {
@@ -1302,10 +1308,10 @@ Error CachingGraphRunner::warmCache(
         // Prepare GlowDeserializationSpec and cctx for serializing Glow IR
         if (settings.saveGlowIRIntoONNX) {
           GlowDeserializationSpec spec;
-          RETURN_IF_ERR(setupGlowDeserializationSpecAndCctx(settings, info,
-                                                            cctx, f, spec));
+          RETURN_IF_ERR(setupGlowDeserializationSpecAndCctx(
+              settings, info, cctx, f, spec, glowAOTSerializationModelStrPtr));
           RETURN_IF_ERR(saveGlowDeserializationSpec(
-              spec, settings.serializationSpecFileName));
+              spec, glowAOTSerializationSpecStrPtr));
         }
       }
 

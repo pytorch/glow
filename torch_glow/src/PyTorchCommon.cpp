@@ -633,7 +633,7 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
 // Preprocess jit module to prepare for lowering. Here we leverage JIT freeze
 // API to cleanup the IR after IR rewrites.
 void modelPreprocessing(torch::jit::Module &model,
-                        const std::string method_name) {
+                        const std::string &method_name) {
   auto graph = model.get_method(method_name).function().graph();
 
   torch::jit::CanonicalizeOps(graph);
@@ -649,8 +649,10 @@ void modelPreprocessing(torch::jit::Module &model,
 void glowAOTFusionWithShapeInference(
     torch::jit::Module &model, const InputMetaStack &metaStack,
     runtime::DeferredWeightLoader *loader,
-    const PyTorchLoaderSettings &settings, const std::string method_name,
-    const std::unordered_map<int, std::string> &batchShapes) {
+    const PyTorchLoaderSettings &settings, std::string method_name,
+    const std::unordered_map<int, std::string> &batchShapes,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr) {
   auto graph = model.get_method(method_name).function().graph();
 
   // create some fake inputs to run shape inference.
@@ -735,9 +737,11 @@ void glowAOTFusionWithShapeInference(
       }
 
       // Fault at any error during the cache warmup.
-      REPORT_AND_EXIT_ON_ERR(runner->warmCache({metaStackForCompilation},
-                                               settings, loader,
-                                               /*useMaxSizeCompilation*/ true));
+      REPORT_AND_EXIT_ON_ERR(runner->warmCache(
+          {metaStackForCompilation}, settings, loader,
+          /*useMaxSizeCompilation*/ true, /*useDeserialize*/ false,
+          /*nameToFunctions*/ nullptr, glowAOTSerializationSpecStrPtr,
+          glowAOTSerializationModelStrPtr));
 
       if (batchShapesMap.size() > 0) {
         auto graphOutputValues = subgraph->outputs();
@@ -763,11 +767,13 @@ void glowAOTFusionWithShapeInference(
   }
 }
 
-void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
-                   runtime::DeferredWeightLoader *loader,
-                   const PyTorchLoaderSettings &settings,
-                   const std::string method_name,
-                   const std::unordered_map<int, std::string> &batchShapes) {
+void glowAOTFusion(
+    torch::jit::Module &model, const std::string &inputMetaStr,
+    runtime::DeferredWeightLoader *loader,
+    const PyTorchLoaderSettings &settings, std::string method_name,
+    const std::unordered_map<int, std::string> &batchShapes,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   modelPreprocessing(model, method_name);
@@ -775,8 +781,9 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
   // In Glow AOT serialization (i.e., settings.saveGlowIRIntoONNX = true), we
   // always enable inferShapeForCompilation
   if (FLAGS_inferShapeForCompilation || settings.saveGlowIRIntoONNX) {
-    return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
-                                           method_name, batchShapes);
+    return glowAOTFusionWithShapeInference(
+        model, metaStack, loader, settings, method_name, batchShapes,
+        glowAOTSerializationSpecStrPtr, glowAOTSerializationModelStrPtr);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
@@ -808,8 +815,11 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
             subgraph, getHostManager(settings), settings, /*useRunOnly*/ true);
       });
 
-  auto e = runner->warmCache({metaStack}, settings, loader,
-                             /*useMaxSizeCompilation*/ true);
+  auto e = runner->warmCache(
+      {metaStack}, settings, loader,
+      /*useMaxSizeCompilation*/ true, /*useDeserialize*/ false,
+      /*nameToFunctions*/ nullptr, glowAOTSerializationSpecStrPtr,
+      glowAOTSerializationModelStrPtr);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report
     // an error but it is fine with our execution. So here we extract the
