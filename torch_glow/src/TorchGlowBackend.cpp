@@ -822,9 +822,10 @@ compileImpl(const torch::jit::Module &origModule,
 // Assumes Glow backend is always available.
 bool TorchGlowBackend::is_available() { return true; }
 
-c10::IValue
-preprocess(const torch::jit::Module &mod,
-           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec) {
+c10::IValue preprocess(
+    const torch::jit::Module &mod,
+    const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec,
+    const torch::jit::BackendDebugHandleGenerator &generate_debug_handles) {
 
   // Compile and serialize the model before compile()
   // Further options of serilization needed to be set in compilation group

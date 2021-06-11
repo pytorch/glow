@@ -5,6 +5,7 @@
 #include "CachingGraphRunner.h"
 #include "PyTorchCommon.h"
 #include <torch/csrc/jit/backends/backend.h>
+#include <torch/csrc/jit/backends/backend_detail.h>
 #include <torch/csrc/jit/backends/backend_interface.h>
 
 namespace glow {
@@ -61,9 +62,10 @@ private:
 void registerTorchGlowBackendAndDeps();
 
 /// TorchGlowBackend preprocessing.
-c10::IValue
-preprocess(const torch::jit::Module &mod,
-           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec);
+c10::IValue preprocess(
+    const torch::jit::Module &mod,
+    const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec,
+    const torch::jit::BackendDebugHandleGenerator &generate_debug_handles);
 
 // Register TorchGlowBackend
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend();
