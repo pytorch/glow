@@ -113,6 +113,11 @@ public:
   /// \returns a unitless value to be used when comparing to other estimates.
   /// or -1 if no estimate could be generated.
   double estimateBatchNormalizationNode(const BatchNormalizationNode *BN) const;
+
+  /// Estimate performance cost for a given AvgPool Node \p avgPoolNode.
+  /// \returns a unitless value to be used when comparing to other estimates.
+  /// or -1 if no estimate could be generated.
+  double estimateAvgPoolNode(const AvgPoolNode *avgPoolNode) const;
 #endif // NNPI >= 1.7
 
   /// \returns a unitless value to be used when comparing Nodes or

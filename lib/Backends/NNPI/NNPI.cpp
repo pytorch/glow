@@ -2506,6 +2506,63 @@ double NNPIBackend::estimateBatchNormalizationNode(
 
   return estimate;
 }
+
+double NNPIBackend::estimateAvgPoolNode(const AvgPoolNode *avgPoolNode) const {
+  NodeInfo NI(*avgPoolNode);
+  if (!isOpSupported(NI)) {
+    return -1.0;
+  }
+
+  // Update kernel Descriptors.
+  // These are partially filled with only 'numDims' and 'dims[]'.
+  NNPITensorDesc kernelDesc, strideDesc, padStartDesc, padEndDesc;
+  auto numKernelDims = avgPoolNode->getKernels().size();
+  kernelDesc.numDims = numKernelDims;
+  strideDesc.numDims = numKernelDims;
+  padStartDesc.numDims = numKernelDims;
+  padEndDesc.numDims = numKernelDims;
+
+  // Layout of kernels/stride etc. seems to be CHW/HW.
+  // This is what is used by NNPI API.
+  for (size_t i = 0; i < numKernelDims; i++) {
+    kernelDesc.dims[i] = avgPoolNode->getKernels()[i];
+    strideDesc.dims[i] = avgPoolNode->getStrides()[i];
+
+    if (numKernelDims == 2) {
+      padStartDesc.dims[i] = avgPoolNode->getPads()[i];
+      padEndDesc.dims[i] = avgPoolNode->getPads()[numKernelDims + i];
+    } else {
+      padStartDesc.dims[i] = avgPoolNode->getPads()[i * 2];
+      padEndDesc.dims[i] = avgPoolNode->getPads()[i * 2 + 1];
+    }
+  }
+
+  // Update IO Descriptors.
+  std::vector<NNPITensorDesc> ioDescs(2);
+  LOG_AND_RETURN_IF(
+      ERROR,
+      !updateDescListForEstimate(ioDescs,
+                                 {NI.getInTy(AvgPoolNode::InputIdx),
+                                  NI.getOutTy(AvgPoolNode::ResultIdx)},
+                                 true /* alternativeLayout */),
+      "Failed to update NNPITensorDesc", -1.0);
+
+  // The order of init in this array is _important_. This is
+  // the order the NNPI API expects the values for this Op.
+  // Any change here needs an update there also.
+  const uint64_t numTotalDescs = 6;
+  const NNPITensorDesc *td[numTotalDescs] = {&(ioDescs.at(0)), &(ioDescs.at(1)),
+                                             &kernelDesc,      &strideDesc,
+                                             &padStartDesc,    &padEndDesc};
+
+  double estimate = -1.0;
+  nnpiEstimateOp((avgPoolNode->getName().str()).c_str(),
+                 NNPI_COST_MODEL_OP_TYPE::NNPI_COST_MODEL_AVG_POOL,
+                 0, /* subType is don't care for this node */
+                 td, numTotalDescs, &estimate);
+
+  return estimate;
+}
 #endif // NNPI >= 1.7
 
 Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
@@ -2568,6 +2625,11 @@ Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
   case Kinded::Kind::BatchNormalizationNodeKind: {
     const BatchNormalizationNode *BN = llvm::cast<BatchNormalizationNode>(node);
     returnCost = estimateBatchNormalizationNode(BN);
+    break;
+  }
+  case Kinded::Kind::AvgPoolNodeKind: {
+    const AvgPoolNode *avgPoolNode = llvm::cast<AvgPoolNode>(node);
+    returnCost = estimateAvgPoolNode(avgPoolNode);
     break;
   }
 #endif // NNPI >= 1.7
