@@ -116,11 +116,27 @@ public:
 
 using KindSet = llvm::SmallSet<Kinded::Kind, 6>;
 
+/// Kind of the IR.
+enum class IRKind {
+  /// Glow high level graph IR.
+  GlowGraphIRKind,
+  /// Glow low level instruction IR.
+  GlowInstructionIRKind,
+  /// Glow FX IR.
+  GlowFXIRKind,
+};
+
+class Module;
+
 /// Subclasses of this class represent an IR container, e.g. a function or a
 /// module.
 class IRContainer : public Named {
 public:
   IRContainer(llvm::StringRef name) : Named(name) {}
+  virtual ~IRContainer() = default;
+  virtual IRKind getIRKind() const = 0;
+  virtual Module *getParent() = 0;
+  virtual const Module *getParent() const = 0;
 };
 
 } // namespace glow

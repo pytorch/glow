@@ -424,7 +424,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         return true;
 
       case ElemKind::UInt8FusedQTy:
-        return (kindTo == ElemKind::Float16Ty);
+        return (kindTo == ElemKind::Float16Ty ||
+                kindTo == ElemKind::UInt8FusedFP16QTy);
       case ElemKind::UInt8FusedFP16QTy:
         return (kindTo == ElemKind::Float16Ty);
       default:

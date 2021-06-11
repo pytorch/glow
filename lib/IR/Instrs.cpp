@@ -148,3 +148,35 @@ dim_t AudioSpectrogramInst::getFftOutScratchSize() const {
 dim_t MFCCInst::getScratchSize() const {
   return getFilterBankCount() * sizeof(float);
 }
+
+dim_t TFLiteDetectionPostProcessInst::getScratchSize() const {
+
+  dim_t numBoxes = getAnchors()->dims()[0];
+  dim_t numClasses = getNumClasses();
+  dim_t maxDetections = getMaxDetections();
+  dim_t maxDetectionsPerClass = getMaxDetectionsPerClass();
+
+  dim_t scratchSize = 0;
+  if (getRegularNMS()) {
+    // Compute scratch size for regular NMS.
+    scratchSize += numBoxes * sizeof(float);
+    scratchSize += (numBoxes + maxDetections) * sizeof(int32_t);
+    scratchSize += (numBoxes + maxDetections) * sizeof(float);
+    scratchSize += (numBoxes + maxDetections) * sizeof(int32_t);
+    scratchSize += std::min(numBoxes, maxDetectionsPerClass) * sizeof(float);
+    scratchSize += numBoxes * sizeof(int32_t);
+    scratchSize += numBoxes * sizeof(int32_t);
+    scratchSize += numBoxes * sizeof(float);
+    scratchSize += numBoxes * sizeof(int32_t);
+  } else {
+    // Compute scratch size for fast NMS.
+    scratchSize += numBoxes * sizeof(float);
+    scratchSize +=
+        numBoxes * std::min(maxDetections, numClasses) * sizeof(int32_t);
+    scratchSize += numBoxes * sizeof(int32_t);
+    scratchSize += numBoxes * sizeof(int32_t);
+    scratchSize += numBoxes * sizeof(float);
+    scratchSize += numBoxes * sizeof(int32_t);
+  }
+  return scratchSize;
+}

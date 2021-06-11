@@ -509,7 +509,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
           /* includeConstantData */ cctx.saveConstantInSerializeCompiledDAG,
           extraMetadataProps, record, cctx.backendOpts.backendSpecificNodeInfo,
           cctx.skipProvisioning ? &cctx.loadedPHNames : nullptr,
-          cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr);
+          cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr,
+          cctx.returnGlowSerializedModelStr
+              ? cctx.glowAOTSerializationModelStrPtr.get()
+              : nullptr);
       RETURN_IF_ERR(writeErr);
     }
 
@@ -1118,6 +1121,12 @@ Backend &HostManager::getBackend(llvm::StringRef backendName) const {
 
 Expected<Backend *> HostManager::getBackend() const {
   return provisioner_->getBackend();
+}
+
+std::unique_ptr<
+    std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+HostManager::getAllSerializedFunctions() {
+  return provisioner_->getAllSerializedFunctionsMap();
 }
 
 HostManager *HostManagerRegistry::getHostManager() { return hostManager_; }

@@ -183,6 +183,10 @@ class ONNXModelLoader
   Error loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
                     const ArgumentDictionaryTy &dict);
 
+  /// Load LogSoftmax ONNX operator
+  Error loadLogSoftmax(const ONNX_NAMESPACE::NodeProto &op,
+                       const ArgumentDictionaryTy &dict);
+
   /// Load ScatterData ONNX operator
   Error loadScatterData(const ONNX_NAMESPACE::NodeProto &op,
                         const ArgumentDictionaryTy &dict);

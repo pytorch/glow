@@ -86,6 +86,7 @@ DEFINE_bool(setIncludeLastOffsets, true, "See PyTorchLoaderSettings");
 DEFINE_bool(inferShapeForCompilation, false,
             "Infer shape for the entire model for compilation");
 DEFINE_bool(enableRemoveMutation, true, "See PyTorchLoaderSettings");
+DEFINE_bool(enableDeserialize, false, "See PyTorchLoaderSettings");
 DEFINE_string(backendSpecificOpts, "",
               "Comma separated list of key=value for building the "
               "BackendSpecificOptions map in BackendOptions in "
@@ -360,6 +361,7 @@ void PyTorchLoaderSettings::initSettings() {
   fusionStartIndex = FLAGS_fusionStartIndex;
   fusionEndIndex = FLAGS_fusionEndIndex;
   setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
+  enableDeserialize = FLAGS_enableDeserialize;
   enableRemoveMutation = FLAGS_enableRemoveMutation;
   debugContinuouslyVerifyDuringModelLoading =
       FLAGS_debugContinuouslyVerifyDuringModelLoading;
@@ -434,6 +436,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(maxFusionMergeSize, s);
   INSERT_VALUE_TO_STREAM(fusionStartIndex, s);
   INSERT_BOOL_TO_STREAM(enableRemoveMutation, s);
+  INSERT_BOOL_TO_STREAM(enableDeserialize, s);
   INSERT_VALUE_TO_STREAM(fusionEndIndex, s);
   INSERT_BOOL_TO_STREAM(dumpFinalGlowGraph, s);
   INSERT_BOOL_TO_STREAM(enableGlowTracing, s);
@@ -630,7 +633,7 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
 // Preprocess jit module to prepare for lowering. Here we leverage JIT freeze
 // API to cleanup the IR after IR rewrites.
 void modelPreprocessing(torch::jit::Module &model,
-                        const std::string method_name) {
+                        const std::string &method_name) {
   auto graph = model.get_method(method_name).function().graph();
 
   torch::jit::CanonicalizeOps(graph);
@@ -646,8 +649,10 @@ void modelPreprocessing(torch::jit::Module &model,
 void glowAOTFusionWithShapeInference(
     torch::jit::Module &model, const InputMetaStack &metaStack,
     runtime::DeferredWeightLoader *loader,
-    const PyTorchLoaderSettings &settings, const std::string method_name,
-    const std::unordered_map<int, std::string> &batchShapes) {
+    const PyTorchLoaderSettings &settings, std::string method_name,
+    const std::unordered_map<int, std::string> &batchShapes,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr) {
   auto graph = model.get_method(method_name).function().graph();
 
   // create some fake inputs to run shape inference.
@@ -732,9 +737,11 @@ void glowAOTFusionWithShapeInference(
       }
 
       // Fault at any error during the cache warmup.
-      REPORT_AND_EXIT_ON_ERR(runner->warmCache({metaStackForCompilation},
-                                               settings, loader,
-                                               /*useMaxSizeCompilation*/ true));
+      REPORT_AND_EXIT_ON_ERR(runner->warmCache(
+          {metaStackForCompilation}, settings, loader,
+          /*useMaxSizeCompilation*/ true, /*useDeserialize*/ false,
+          /*nameToFunctions*/ nullptr, glowAOTSerializationSpecStrPtr,
+          glowAOTSerializationModelStrPtr));
 
       if (batchShapesMap.size() > 0) {
         auto graphOutputValues = subgraph->outputs();
@@ -760,18 +767,23 @@ void glowAOTFusionWithShapeInference(
   }
 }
 
-void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
-                   runtime::DeferredWeightLoader *loader,
-                   const PyTorchLoaderSettings &settings,
-                   const std::string method_name,
-                   const std::unordered_map<int, std::string> &batchShapes) {
+void glowAOTFusion(
+    torch::jit::Module &model, const std::string &inputMetaStr,
+    runtime::DeferredWeightLoader *loader,
+    const PyTorchLoaderSettings &settings, std::string method_name,
+    const std::unordered_map<int, std::string> &batchShapes,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   modelPreprocessing(model, method_name);
 
-  if (FLAGS_inferShapeForCompilation) {
-    return glowAOTFusionWithShapeInference(model, metaStack, loader, settings,
-                                           method_name, batchShapes);
+  // In Glow AOT serialization (i.e., settings.saveGlowIRIntoONNX = true), we
+  // always enable inferShapeForCompilation
+  if (FLAGS_inferShapeForCompilation || settings.saveGlowIRIntoONNX) {
+    return glowAOTFusionWithShapeInference(
+        model, metaStack, loader, settings, method_name, batchShapes,
+        glowAOTSerializationSpecStrPtr, glowAOTSerializationModelStrPtr);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
@@ -803,8 +815,11 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
             subgraph, getHostManager(settings), settings, /*useRunOnly*/ true);
       });
 
-  auto e = runner->warmCache({metaStack}, settings, loader,
-                             /*useMaxSizeCompilation*/ true);
+  auto e = runner->warmCache(
+      {metaStack}, settings, loader,
+      /*useMaxSizeCompilation*/ true, /*useDeserialize*/ false,
+      /*nameToFunctions*/ nullptr, glowAOTSerializationSpecStrPtr,
+      glowAOTSerializationModelStrPtr);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report
     // an error but it is fine with our execution. So here we extract the

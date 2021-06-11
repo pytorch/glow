@@ -124,7 +124,7 @@ protected:
   /// Set of emitted LLVM functions for IR functions.
   llvm::SmallVector<llvm::Function *, 4> emittedLLVMFunctions_;
   /// The LLVM context.
-  llvm::LLVMContext ctx_;
+  std::unique_ptr<llvm::LLVMContext> ctx_;
   /// The LLVM IR module.
   std::unique_ptr<llvm::Module> llmodule_{nullptr};
   /// The target machine.
@@ -426,8 +426,18 @@ public:
   llvm::IRBuilder<> &getBuilder() { return *builder_; }
   /// \returns the target machine description.
   llvm::TargetMachine &getTargetMachine() { return *TM_; }
+  /// Takes the target machine for further processing, e.g. by a JIT.
+  /// The target machine cannot be used by the LLVMIRGen afterwards.
+  std::unique_ptr<llvm::TargetMachine> takeTargetMachine() {
+    return std::move(TM_);
+  }
   /// \returns the LLVMContext being used.
-  llvm::LLVMContext &getLLVMContext() { return ctx_; }
+  llvm::LLVMContext &getLLVMContext() { return *ctx_; }
+  /// Takes the LLVM Context for further processing, e.g. by a JIT.
+  /// The context cannot be used by the LLVMIRGen afterwards.
+  std::unique_ptr<llvm::LLVMContext> takeLLVMContext() {
+    return std::move(ctx_);
+  }
   /// Borrows the LLVM module for further processing, e.g. by a JIT.
   /// The module cannot be used by the LLVMIRGen afterwards.
   std::unique_ptr<llvm::Module> borrowModule() { return std::move(llmodule_); }

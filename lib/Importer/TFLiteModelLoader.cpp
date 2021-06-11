@@ -525,6 +525,23 @@ TFLiteModelLoader::getOperatorCode(const tflite::Operator *op) {
   return builtinCode;
 }
 
+Expected<std::string>
+TFLiteModelLoader::getOperatorCustomCode(const tflite::Operator *op) {
+  const auto *modelOpCodes = model_->operator_codes();
+  auto opCodeIdx = op->opcode_index();
+  RETURN_ERR_IF_NOT(opCodeIdx < modelOpCodes->size(),
+                    strFormat("TensorFlowLite: Missing registration for "
+                              "opcode_index %d!",
+                              opCodeIdx));
+  auto *opCode = (*modelOpCodes)[opCodeIdx];
+  auto customCode = opCode->custom_code();
+  RETURN_ERR_IF_NOT(customCode,
+                    strFormat("TensorFlowLite: Missing custom code for "
+                              "opcode_index %d!",
+                              opCodeIdx));
+  return customCode->str();
+}
+
 Expected<int32_t>
 TFLiteModelLoader::getOperatorVersion(const tflite::Operator *op) {
   const auto *modelOpCodes = model_->operator_codes();
@@ -566,6 +583,23 @@ TFLiteModelLoader::getOperatorName(const tflite::Operator *op) {
   const tflite::Tensor *tensor;
   ASSIGN_VALUE_OR_RETURN_ERR(tensor, getTensorByIndex(opOutIdx));
   return getTensorName(tensor);
+}
+
+Expected<flexbuffers::Map>
+TFLiteModelLoader::getOperatorCustomOpts(const tflite::Operator *op) {
+  size_t optsSize = op->custom_options()->size();
+  auto *customOpts = op->custom_options();
+  RETURN_ERR_IF_NOT(customOpts,
+                    strFormat("TensorFlowLite: Missing custom options for "
+                              "opcode_index %d!",
+                              op->opcode_index()));
+  const uint8_t *optsAddr =
+      reinterpret_cast<const uint8_t *>(customOpts->data());
+  RETURN_ERR_IF_NOT(optsAddr,
+                    strFormat("TensorFlowLite: Missing custom options for "
+                              "opcode_index %d!",
+                              op->opcode_index()));
+  return flexbuffers::GetRoot(optsAddr, optsSize).AsMap();
 }
 
 Expected<size_t>
@@ -1237,7 +1271,19 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_ROUND) {
     return loadUnaryArithmetic(op, opInfo);
   }
-
+  // Load custom operators.
+  if (opCode == tflite::BuiltinOperator_CUSTOM) {
+    // Get custom operator code.
+    std::string customOpCode;
+    ASSIGN_VALUE_OR_RETURN_ERR(customOpCode, getOperatorCustomCode(op));
+    // Get custom operator options.
+    flexbuffers::Map opts = flexbuffers::Map::EmptyMap();
+    ASSIGN_VALUE_OR_RETURN_ERR(opts, getOperatorCustomOpts(op));
+    // Load custom operator.
+    if (customOpCode == "TFLite_Detection_PostProcess") {
+      return loadTFLiteDetectionPostProcess(op, opInfo, opts);
+    }
+  }
   return MAKE_ERR(
       strFormat("TensorFlowLite: Operator type '%s' is not supported!",
                 opInfo.type.c_str()));
@@ -2297,6 +2343,48 @@ Error TFLiteModelLoader::loadUnpack(const tflite::Operator *op,
         F_->createReshape(opInfo.name + ".Reshape" + std::to_string(idx),
                           outputNodeValues[idx], outTy->dims());
   }
+  return setOutputNodeValues(op, outputNodeValues);
+}
+
+Error TFLiteModelLoader::loadTFLiteDetectionPostProcess(
+    const tflite::Operator *op, const OperatorInfo &opInfo,
+    const flexbuffers::Map &opts) {
+  NodeValue boxes;
+  ASSIGN_VALUE_OR_RETURN_ERR(boxes, getInputNodeValue(op, 0));
+  NodeValue scores;
+  ASSIGN_VALUE_OR_RETURN_ERR(scores, getInputNodeValue(op, 1));
+  NodeValue anchors;
+  ASSIGN_VALUE_OR_RETURN_ERR(anchors, getInputNodeValue(op, 2));
+
+  // Note: We cannot use the output types of the node because they are dynamic.
+  // We create instead static types for this node with fixed sizes.
+
+  // Get operator attributes.
+  int32_t numClasses = opts["num_classes"].AsInt32();
+  int32_t maxDetections = opts["max_detections"].AsInt32();
+  int32_t maxClassesPerDetection = opts["max_classes_per_detection"].AsInt32();
+  constexpr int32_t defaultNumDetectionsPerClass = 100;
+  int32_t maxDetectionsPerClass = (opts["detections_per_class"].IsNull())
+                                      ? defaultNumDetectionsPerClass
+                                      : opts["detections_per_class"].AsInt32();
+  float iouThreshold = opts["nms_iou_threshold"].AsFloat();
+  float scoreThreshold = opts["nms_score_threshold"].AsFloat();
+  float xScale = opts["x_scale"].AsFloat();
+  float yScale = opts["y_scale"].AsFloat();
+  float hScale = opts["h_scale"].AsFloat();
+  float wScale = opts["w_scale"].AsFloat();
+  bool regularNMS = (opts["use_regular_nms"].IsNull())
+                        ? false
+                        : opts["use_regular_nms"].AsBool();
+
+  // Create node.
+  auto *node = F_->createTFLiteDetectionPostProcess(
+      opInfo.name, boxes, scores, anchors, numClasses, maxDetections,
+      maxClassesPerDetection, maxDetectionsPerClass, iouThreshold,
+      scoreThreshold, xScale, yScale, hScale, wScale, regularNMS);
+  std::vector<NodeValue> outputNodeValues = {
+      node->getDetectionBoxes(), node->getDetectionClasses(),
+      node->getDetectionScores(), node->getNumDetections()};
   return setOutputNodeValues(op, outputNodeValues);
 }
 

@@ -1586,6 +1586,51 @@ int main(int argc, char **argv) {
                     "V4 by outputting indices and scalar tensor with number of "
                     "valid indices. It pads the rest with global MIN box.");
 
+  BB.newNode("TFLiteDetectionPostProcess")
+      .addInput("Boxes")
+      .addInput("Scores")
+      .addInput("Anchors")
+      .addMember(MemberType::Unsigned, "NumClasses")
+      .addMember(MemberType::Unsigned, "MaxDetections")
+      .addMember(MemberType::Unsigned, "MaxClassesPerDetection")
+      .addMember(MemberType::Unsigned, "MaxDetectionsPerClass")
+      .addMember(MemberType::Float, "IouThreshold")
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Float, "XScale")
+      .addMember(MemberType::Float, "YScale")
+      .addMember(MemberType::Float, "HScale")
+      .addMember(MemberType::Float, "WScale")
+      .addMember(MemberType::Boolean, "RegularNMS")
+      .addResultFromCtorArg("DetectionBoxes")
+      .addResultFromCtorArg("DetectionClasses")
+      .addResultFromCtorArg("DetectionScores")
+      .addResultFromCtorArg("NumDetections")
+      .setDocstring(
+          "This node is a TensorFlowLite version of NonMaxSuppresion. The node "
+          "has the following inputs: Boxes with size [N, B, 4], Scores with "
+          "size [N, B, C] and Anchors with size [B, 4] where N is the batch "
+          "size, B is the number of boxes and C is the number of classes. "
+          "The node has the following attributes (parameters): "
+          "NumClasses - Number of classes (without the background class). "
+          "MaxDetections - The maximum number of detections. "
+          "MaxClassesPerDetection - Maximum classes per detection (Fast NMS). "
+          "MaxDetectionsPerClass - Maximum detections per class (Regular NMS). "
+          "IouThreshold - Detection threshold for IoU metric. "
+          "ScoreThreshold - Detection threshold for scores. "
+          "XScale - X scale used for decoding the boxes. "
+          "YScale - Y scale used for decoding the boxes. "
+          "HScale - H scale used for decoding the boxes. "
+          "WScale - W scale used for decoding the boxes. "
+          "RegularNMS - Whether the NMS is 'Regular' or 'Fast'. "
+          "The node will have the following outputs: "
+          "DetectionBoxes - the chosen boxes (float). "
+          "DetectionClasses - the classes of the chosen boxes (int32). "
+          "DetectionScores - the scores of the chosen boxes (float). "
+          "NumDetections - number of chose boxes (int32). "
+          "The first three output tensors will be allocated using the maximum "
+          "number of possible detections (worst case scenario) but the actual "
+          "usage will be given by the 'NumDetections' output. ");
+
   //===--------------------------------------------------------------------===//
   //                Region of Interest nodes
   //===--------------------------------------------------------------------===//

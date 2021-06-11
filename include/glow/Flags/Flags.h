@@ -40,6 +40,7 @@ extern std::string BackendSpecificOpts;
 extern bool EnableLoadBalancedPartitioning;
 extern bool SkipProvisioning;
 extern bool DisableLayoutVerifying;
+extern bool DisableFreeCompilationResource;
 
 // FP16 Constants
 extern bool ConvertToFP16;

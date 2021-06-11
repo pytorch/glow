@@ -5279,6 +5279,58 @@ NonMaxSuppressionNode *Function::createNonMaxSuppressionONNX(
       maxOutputBoxesPerClass, iouThreshold, scoreThreshold, false));
 }
 
+TFLiteDetectionPostProcessNode *Function::createTFLiteDetectionPostProcess(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores, NodeValue anchors,
+    int32_t numClasses, int32_t maxDetections, int32_t maxClassesPerDetection,
+    int32_t maxDetectionsPerClass, float iouThreshold, float scoreThreshold,
+    float xScale, float yScale, float hScale, float wScale, bool regularNMS) {
+
+  // Maximum number of detections depending on fast/regular method.
+  dim_t numBoxes = anchors.dims()[0];
+  dim_t fastMaxDetections =
+      std::min(numBoxes, static_cast<dim_t>(maxDetections));
+  dim_t regularMaxDetections = maxDetections;
+  dim_t numMaxDetections =
+      regularNMS ? regularMaxDetections : fastMaxDetections;
+
+  // Create output types. We allocate enough size for the worst possible case
+  // when the maximum number of detections is obtained.
+  std::vector<dim_t> detectionBoxesDims = {static_cast<dim_t>(numMaxDetections),
+                                           4};
+  TypeRef detectionBoxesTy =
+      getParent()->uniqueType(ElemKind::FloatTy, detectionBoxesDims);
+  std::vector<dim_t> detectionClassesDims = {
+      static_cast<dim_t>(numMaxDetections)};
+  TypeRef detectionClassesTy =
+      getParent()->uniqueType(ElemKind::Int32ITy, detectionClassesDims);
+  std::vector<dim_t> detectionScoresDims = {
+      static_cast<dim_t>(numMaxDetections)};
+  TypeRef detectionScoresTy =
+      getParent()->uniqueType(ElemKind::FloatTy, detectionScoresDims);
+  TypeRef numDetectionsTy = getParent()->uniqueType(ElemKind::Int32ITy, {1});
+
+  // Dequantize inputs if quantized.
+  if (boxes.getType()->isQuantizedType()) {
+    boxes = createDequantize(name.str() + ".dequant.boxes", boxes,
+                             ElemKind::FloatTy);
+  }
+  if (scores.getType()->isQuantizedType()) {
+    scores = createDequantize(name.str() + ".dequant.scores", scores,
+                              ElemKind::FloatTy);
+  }
+  if (anchors.getType()->isQuantizedType()) {
+    anchors = createDequantize(name.str() + ".dequant.anchors", anchors,
+                               ElemKind::FloatTy);
+  }
+
+  // Create node.
+  return addNode(new TFLiteDetectionPostProcessNode(
+      name, detectionBoxesTy, detectionClassesTy, detectionScoresTy,
+      numDetectionsTy, boxes, scores, anchors, numClasses, maxDetections,
+      maxClassesPerDetection, maxDetectionsPerClass, iouThreshold,
+      scoreThreshold, xScale, yScale, hScale, wScale, regularNMS));
+}
+
 Constant *Function::createCosineWindow(llvm::StringRef name, dim_t length) {
   auto window = getParent()->createConstant(ElemKind::FloatTy, {length}, name);
   auto windowH = window->getHandle<float>();

@@ -190,6 +190,14 @@ void initializeCompilationContextFromSettings(
     LOG(INFO) << "Skipping all layout verifying";
   }
 
+  // If we want to enable serialize, we have to not free compiled stream in
+  // provisoner.
+  if (settings.enableSerialize) {
+    glow::flags::DisableFreeCompilationResource = true;
+    LOG(INFO)
+        << "Free compilation resource after compiling on backend is disabled";
+  }
+
   if (settings.dumpFinalGlowGraph) {
     cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
   }
@@ -255,7 +263,8 @@ at::Tensor sliceTensor(at::Tensor &t, const TensorShape &shape) {
 Error setupGlowDeserializationSpecAndCctx(
     const PyTorchLoaderSettings &settings,
     const std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo> &info,
-    CompilationContext &cctx, Function *f, GlowDeserializationSpec &spec) {
+    CompilationContext &cctx, Function *f, GlowDeserializationSpec &spec,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr) {
   auto glowPyTorchLoaderSettings = spec.pytorchLoaderSettings;
   glowPyTorchLoaderSettings->overrideSettings(settings);
 
@@ -301,9 +310,13 @@ Error setupGlowDeserializationSpecAndCctx(
               ? f->getParent()->uniqueType(elementType, newDims,
                                            type.getScale(), type.getOffset())
               : f->getParent()->uniqueType(elementType, newDims);
+      // Here staticPlaceholderTypes is used for serializing Glow IR in
+      // hostManager, which is post-precision conversion. staticPHTypes on the
+      // other hand is used in Glow deserialization, which requires the input
+      // tensor types (i.e., pre-precision conversion)
       staticPlaceholderTypes[std::string(ph->getName())] = *newType;
       staticPHNames.emplace_back(ph->getName().data());
-      staticPHTypes.emplace_back(newType->toString());
+      staticPHTypes.emplace_back(type.toString());
     }
   }
   size_t outputIdx = 0;
@@ -316,6 +329,8 @@ Error setupGlowDeserializationSpecAndCctx(
   cctx.serializeCompiledDAG = true;
   cctx.saveConstantInSerializeCompiledDAG = true;
   cctx.staticPlaceholderTypesForAOT = staticPlaceholderTypes;
+  cctx.returnGlowSerializedModelStr = true;
+  cctx.glowAOTSerializationModelStrPtr = glowAOTSerializationModelStrPtr;
   // We currently save all the non-embedding weights in the ONNX file
   // and thus do not delay/record constant modification. Since AOT
   // compilation is performed for every training snapshot, we do not
@@ -328,7 +343,7 @@ Error setupGlowDeserializationSpecAndCctx(
   return Error::success();
 }
 
-/// This function serialize Glow deserialization spec into a JSON file
+/// This function serialize Glow deserialization spec in JSON format
 /// The JSON file contains
 ///     1. PyTorchLoaderSettings;
 ///     2. Glow function name;
@@ -342,12 +357,12 @@ Error setupGlowDeserializationSpecAndCctx(
 ///           deserialization
 ///          (3) Input&Output PH names are used for reconstructing
 ///           PerGlowGraphInfo
-Error saveGlowDeserializationSpec(GlowDeserializationSpec &spec,
-                                  std::string fileName) {
+Error saveGlowDeserializationSpec(
+    GlowDeserializationSpec &spec,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr) {
   std::string serializedSpec;
   ASSIGN_VALUE_OR_RETURN_ERR(serializedSpec, spec.toJson());
-  std::ofstream file(fileName);
-  file << serializedSpec;
+  *glowAOTSerializationSpecStrPtr = std::move(serializedSpec);
   return Error::success();
 }
 
@@ -397,6 +412,12 @@ void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
     mergedTraceContext_->dump(filename);
     mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
   }
+}
+
+std::unique_ptr<
+    std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+CachingGraphRunner::getAllSerializedFunctionsMap() {
+  return hostManager_->getAllSerializedFunctions();
 }
 
 Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
@@ -1199,7 +1220,12 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 Error CachingGraphRunner::warmCache(
     const std::vector<InputMetaStack> &metaStacks,
     const PyTorchLoaderSettings &settings,
-    runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation) {
+    runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation,
+    bool useDeserialize,
+    std::shared_ptr<std::unordered_map<std::string, std::vector<char>>>
+        nameToFunctions,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -1220,6 +1246,7 @@ Error CachingGraphRunner::warmCache(
   glow::CompilationContext cctx;
   RETURN_IF_ERR(initializeCompilationContextFromGlowFlags(cctx));
   initializeCompilationContextFromSettings(cctx, settings);
+  cctx.glowAOTSerializationModelStrPtr = glowAOTSerializationModelStrPtr;
 
   {
     if (settings.lazyCompile) {
@@ -1252,8 +1279,21 @@ Error CachingGraphRunner::warmCache(
       // names should be unique so this is included in the name.
       auto info = std::make_shared<PerGlowGraphInfo>(
           strFormat("pt_function_%lu_%lu", size_t(this), hash), settings);
+      std::string functionNameHash = strFormat("%lu", hash);
 
       Function *f = glowModule->createFunction(info->functionName);
+
+      // If this function has already been compiled, the compiled stream is
+      // already stored in nameToFunction, and deserialize is enabled, we use
+      // the compiled stream instead of compiling it again.
+      if (useDeserialize &&
+          nameToFunctions->find(functionNameHash) != nameToFunctions->end()) {
+        cctx.nameToFunctions.emplace(std::make_pair(
+            info->functionName,
+            std::make_shared<std::vector<char>>(
+                nameToFunctions->find(functionNameHash)->second)));
+        cctx.backendOpts.useDeserialize = true;
+      }
 
       {
         TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
@@ -1268,10 +1308,10 @@ Error CachingGraphRunner::warmCache(
         // Prepare GlowDeserializationSpec and cctx for serializing Glow IR
         if (settings.saveGlowIRIntoONNX) {
           GlowDeserializationSpec spec;
-          RETURN_IF_ERR(setupGlowDeserializationSpecAndCctx(settings, info,
-                                                            cctx, f, spec));
+          RETURN_IF_ERR(setupGlowDeserializationSpecAndCctx(
+              settings, info, cctx, f, spec, glowAOTSerializationModelStrPtr));
           RETURN_IF_ERR(saveGlowDeserializationSpec(
-              spec, settings.serializationSpecFileName));
+              spec, glowAOTSerializationSpecStrPtr));
         }
       }
 

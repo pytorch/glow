@@ -116,6 +116,12 @@ public:
   /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
   bool enableRemoveMutation = true;
 
+  /// Enable the dumping of compiled serialized model for backend.
+  bool enableSerialize = false;
+
+  /// Enable the extracting already serialized model to backend.
+  bool enableDeserialize = false;
+
   /// Disable all tensor layout verifying for all nodes.
   bool disableLayoutVerifying = true;
 
@@ -312,18 +318,20 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 void glowAOTFusion(
     torch::jit::Module &module, const std::string &inputMetaStr,
     runtime::DeferredWeightLoader *loader,
-    const PyTorchLoaderSettings &settings,
-    const std::string method_name = "forward",
-    const std::unordered_map<int, std::string> &batchShapes = {});
+    const PyTorchLoaderSettings &settings, std::string method_name = "forward",
+    const std::unordered_map<int, std::string> &batchShapes = {},
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
 void glowAOTFusionWithShapeInference(
     torch::jit::Module &module, const glow::InputMetaStack &metaStack,
     runtime::DeferredWeightLoader *loader,
-    const PyTorchLoaderSettings &settings,
-    const std::string method_name = "forward",
-    const std::unordered_map<int, std::string> &batchShapes = {});
+    const PyTorchLoaderSettings &settings, std::string method_name = "forward",
+    const std::unordered_map<int, std::string> &batchShapes = {},
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr);
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in

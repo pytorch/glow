@@ -1383,6 +1383,29 @@ int main(int argc, char **argv) {
                   {"Indices", "NumberOfSelectedIndices"})
       .autoIRGen();
 
+  BB.newInstr("TFLiteDetectionPostProcess")
+      .addOperand("DetectionBoxes", OperandKind::Out)
+      .addOperand("DetectionClasses", OperandKind::Out)
+      .addOperand("DetectionScores", OperandKind::Out)
+      .addOperand("NumDetections", OperandKind::Out)
+      .addOperand("Boxes", OperandKind::In)
+      .addOperand("Scores", OperandKind::In)
+      .addOperand("Anchors", OperandKind::In)
+      .addOperand("Scratch", OperandKind::Scratch)
+      .addMember(MemberType::Unsigned, "NumClasses")
+      .addMember(MemberType::Unsigned, "MaxDetections")
+      .addMember(MemberType::Unsigned, "MaxClassesPerDetection")
+      .addMember(MemberType::Unsigned, "MaxDetectionsPerClass")
+      .addMember(MemberType::Float, "IouThreshold")
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Float, "XScale")
+      .addMember(MemberType::Float, "YScale")
+      .addMember(MemberType::Float, "HScale")
+      .addMember(MemberType::Float, "WScale")
+      .addMember(MemberType::Boolean, "RegularNMS")
+      .autoVerify(VerifyKind::NoVerify)
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //                Region of Interest (ROI)
   //===--------------------------------------------------------------------===//
