@@ -315,23 +315,35 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
 /// raw string containing the meta data of the glow fuser node input.
+/// \p glowAOTSerializationSpecStrPtr and \p glowAOTSerializationModelStrPtr are
+/// used in offline Glow AOT compilation (i.e., Glow serialization), while
+/// \p serializationSpec and \p onnxModelFile are used for online serving (i.e.,
+/// Glow deserialization)
 void glowAOTFusion(
     torch::jit::Module &module, const std::string &inputMetaStr,
     runtime::DeferredWeightLoader *loader,
     const PyTorchLoaderSettings &settings, std::string method_name = "forward",
     const std::unordered_map<int, std::string> &batchShapes = {},
     std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
-    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr);
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
+    const std::string &serializationSpec = "",
+    const std::string &onnxModelFile = "");
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
+/// \p glowAOTSerializationSpecStrPtr and \p glowAOTSerializationModelStrPtr are
+/// used in offline Glow AOT compilation (i.e., Glow serialization), while
+/// \p serializationSpec and \p onnxModelFile are used for online serving (i.e.,
+/// Glow deserialization)
 void glowAOTFusionWithShapeInference(
     torch::jit::Module &module, const glow::InputMetaStack &metaStack,
     runtime::DeferredWeightLoader *loader,
     const PyTorchLoaderSettings &settings, std::string method_name = "forward",
     const std::unordered_map<int, std::string> &batchShapes = {},
     std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
-    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr);
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
+    const std::string &serializationSpec = "",
+    const std::string &onnxModelFile = "");
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in
