@@ -2596,10 +2596,9 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
         (scales.size() >= 3 && scales.size() <= 6 && modeStr == "nearest") ||
             scales.size() == 4,
         opErrMsg(
-            op,
-            strFormat(
-                "Resize Scales dimension invalid. Mode: %s Scale Size: %zu",
-                modeStr.c_str(), scales.size())));
+            op, strFormat(
+                    "Resize Scales dimension invalid. Mode: %s Scale Size: %zu",
+                    modeStr.c_str(), scales.size())));
 
     for (auto &val : scales) {
       RETURN_ERR_IF_NOT(
