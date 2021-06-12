@@ -2529,7 +2529,7 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
                                  modeStr.c_str())));
     }
     // attribute: coordinate_transformation_mode.
-    std::string coordTransformMode = "half_pixel";
+    std::string coordTransformMode = "asymmetric";
     if (dict.count("coordinate_transformation_mode")) {
       ASSIGN_VALUE_OR_RETURN_ERR(
           coordTransformMode,
