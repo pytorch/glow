@@ -870,6 +870,9 @@ BatchShapesMapType parseBatchShapeMapFromInputMeta(
     const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
     ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
     auto e = shapeInf.run();
+    if (e) {
+      LOG(ERROR) << ERR_TO_STRING(std::move(e));
+    }
     const auto &shapeMap = shapeInf.getVariableMap();
     batchShapesMap[it.first] = shapeMap;
   }
