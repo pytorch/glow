@@ -1403,7 +1403,7 @@ Error CachingGraphRunner::warmCache(
                 settings, info, cctx, f, spec,
                 glowAOTSerializationModelStrPtr));
             RETURN_IF_ERR(saveGlowDeserializationSpec(
-                spec, glowAOTSerializationModelStrPtr));
+                spec, glowAOTSerializationSpecStrPtr));
           }
         }
 
