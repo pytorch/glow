@@ -167,6 +167,10 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize combinations of Quantized Nodes and Clips.
       {FunctionPassID::OptimizeQuantizeClip},
 
+      // Remove identity Relu and Clip nodes.
+      {FunctionPassID::RemoveIdentityRelu},
+      {FunctionPassID::RemoveIdentityClip},
+
       // Fold a Convolution dilated manually using Transpose, SpaceToDepth and
       // DepthToSpace nodes into a single Convolution node.
       // Run Reshape/Transpose optimizations afterwards to clean up the graph.

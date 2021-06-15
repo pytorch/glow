@@ -5718,6 +5718,69 @@ bool FoldExpSumDivIntoSoftmax::run(Function *F,
   return changed;
 }
 
+bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *RN = dyn_cast<ReluNode>(&N);
+    if (!RN) {
+      continue;
+    }
+
+    // The input and output types must be quantized and the same.
+    auto inpTy = RN->getInput().getType();
+    auto outTy = RN->getResult().getType();
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType() && inpTy->isEqual(outTy))) {
+      continue;
+    }
+
+    // The quantized 0.0f (which is equal to the offset) must match the min of
+    // the output data type.
+    auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+    if (outTy->getOffset() != outRange.first) {
+      continue;
+    }
+
+    // Remove Relu.
+    RN->getResult().replaceAllUsesOfWith(RN->getInput());
+    changed = true;
+  }
+  return changed;
+}
+
+bool RemoveIdentityClip::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *CN = dyn_cast<ClipNode>(&N);
+    if (!CN) {
+      continue;
+    }
+
+    // The input and output types must be quantized and the same.
+    auto inpTy = CN->getInput().getType();
+    auto outTy = CN->getResult().getType();
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType() && inpTy->isEqual(outTy))) {
+      continue;
+    }
+
+    // The quantized min/max for Clip must match the min/max of the output data type.
+    TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
+    auto qMin = quantization::quantize(CN->getMin(), outTQP);
+    auto qMax = quantization::quantize(CN->getMax(), outTQP);
+    auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+    if (!(qMin == outRange.first && qMax == outRange.second)) {
+      continue;
+    }
+
+    // Remove Clip.
+    CN->getResult().replaceAllUsesOfWith(CN->getInput());
+    changed = true;
+  }
+  return changed;
+}
+
 /// Convert a FullyConnected node to a 1x1 Convolution.
 bool ConvertFullyConnectedToConvolution::run(Function *F,
                                              const CompilationContext &cctx) {
