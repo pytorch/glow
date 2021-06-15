@@ -5731,7 +5731,8 @@ bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
     // The input and output types must be quantized and the same.
     auto inpTy = RN->getInput().getType();
     auto outTy = RN->getResult().getType();
-    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType() && inpTy->isEqual(outTy))) {
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType() &&
+          inpTy->isEqual(outTy))) {
       continue;
     }
 
@@ -5761,11 +5762,13 @@ bool RemoveIdentityClip::run(Function *F, const CompilationContext &cctx) {
     // The input and output types must be quantized and the same.
     auto inpTy = CN->getInput().getType();
     auto outTy = CN->getResult().getType();
-    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType() && inpTy->isEqual(outTy))) {
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType() &&
+          inpTy->isEqual(outTy))) {
       continue;
     }
 
-    // The quantized min/max for Clip must match the min/max of the output data type.
+    // The quantized min/max for Clip must match the min/max of the output data
+    // type.
     TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
     auto qMin = quantization::quantize(CN->getMin(), outTQP);
     auto qMax = quantization::quantize(CN->getMax(), outTQP);
