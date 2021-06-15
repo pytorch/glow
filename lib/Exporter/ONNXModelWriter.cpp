@@ -1154,6 +1154,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
   case ElemKind::Int32QTy:
   case ElemKind::Int32ITy:
     return TensorType::INT32;
+  case ElemKind::Int64QTy:
   case ElemKind::Int64ITy:
     return TensorType::INT64;
   case ElemKind::BoolTy:

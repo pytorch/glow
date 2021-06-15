@@ -256,6 +256,7 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
   case ElemKind::UInt8ITy:
   case ElemKind::Int16QTy:
   case ElemKind::Int32QTy:
+  case ElemKind::Int64QTy:
     LOG(DFATAL) << "Not supported yet.";
     return at::kLong;
   }
