@@ -8098,8 +8098,10 @@ TEST_F(GraphOptz, FoldExpSumDivIntoSoftmax) {
 /// Test that identity Relu is removed.
 TEST_F(GraphOptz, RemoveIdentityRelu) {
 
-  Placeholder *input = mod_.createPlaceholder(ElemKind::Int8QTy, {20}, 0.123f, -128, "input", /* isTrainable */ false);
-  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127, mod_.getPRNG());
+  Placeholder *input = mod_.createPlaceholder(
+      ElemKind::Int8QTy, {20}, 0.123f, -128, "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
   auto *relu = F_->createRELU("exp", input);
   F_->createSave("save", relu);
 
@@ -8107,7 +8109,8 @@ TEST_F(GraphOptz, RemoveIdentityRelu) {
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::SaveNodeKind));
 
-  optimizedF_ = optimizeFunctionForTest(F_, {FunctionPassID::RemoveIdentityRelu, getDCEPassConfig()});
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::RemoveIdentityRelu, getDCEPassConfig()});
 
   EXPECT_EQ(1, optimizedF_->getNodes().size());
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind));
@@ -8119,8 +8122,11 @@ TEST_F(GraphOptz, RemoveIdentityRelu) {
 /// Test that identity Clip is removed.
 TEST_F(GraphOptz, RemoveIdentityClip) {
 
-  Placeholder *input = mod_.createPlaceholder(ElemKind::Int8QTy, {20}, 0.023529412f, -128, "input", /* isTrainable */ false);
-  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127, mod_.getPRNG());
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {20}, 0.023529412f, -128,
+                             "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
   auto *clip = F_->createClip("exp", input, 0.0f, 6.0f);
   F_->createSave("save", clip);
 
@@ -8128,7 +8134,8 @@ TEST_F(GraphOptz, RemoveIdentityClip) {
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ClipNodeKind));
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::SaveNodeKind));
 
-  optimizedF_ = optimizeFunctionForTest(F_, {FunctionPassID::RemoveIdentityClip, getDCEPassConfig()});
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::RemoveIdentityClip, getDCEPassConfig()});
 
   EXPECT_EQ(1, optimizedF_->getNodes().size());
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind));
