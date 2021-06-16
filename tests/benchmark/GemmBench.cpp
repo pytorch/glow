@@ -277,7 +277,7 @@ int main(int argc, char *argv[]) {
          "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
-  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
+  llvm::cl::ParseCommandLineOptions(1, argv, "", nullptr, "GLOW_OPTS");
 
   std::vector<GemmParam> params;
   std::string runHeader;

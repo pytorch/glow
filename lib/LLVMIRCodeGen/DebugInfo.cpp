@@ -83,6 +83,22 @@ llvm::DIType *LLVMIRGen::getDebugType(llvm::IRBuilder<> &builder,
   return DITy;
 }
 
+static llvm::DebugLoc getDebugLoc(unsigned Line, unsigned Col,
+                                  const llvm::MDNode *Scope) {
+
+#if LLVM_VERSION_MAJOR < 12
+  return llvm::DebugLoc::get(Line, Col, Scope);
+#else
+  // If no scope is available, this is an unknown location.
+  if (!Scope)
+    return llvm::DebugLoc();
+
+  return llvm::DILocation::get(Scope->getContext(), Line, Col,
+                               const_cast<llvm::MDNode *>(Scope), nullptr,
+                               false);
+#endif
+}
+
 void LLVMIRGen::generateFunctionDebugInfo(llvm::Function *F) {
   if (!emitDebugInfo)
     return;
@@ -109,7 +125,7 @@ void LLVMIRGen::generateFunctionDebugInfo(llvm::Function *F) {
     // Insert before the first instruction in the entry block.
     builder.SetInsertPoint(&F->getEntryBlock().front());
     if (!debugLoc) {
-      debugLoc = llvm::DebugLoc::get(lineNo, 0, currentScope);
+      debugLoc = getDebugLoc(lineNo, 0, currentScope);
     }
     builder.SetCurrentDebugLocation(debugLoc);
   }
@@ -132,9 +148,9 @@ void LLVMIRGen::generateFunctionDebugInfo(llvm::Function *F) {
     // Store the initial value into the alloca, so that the debugger can show
     // it.
     auto *store = builder.CreateStore(F->arg_begin() + i, paramAlloca);
-    DIBuilder_->insertDeclare(
-        paramAlloca, param, DIBuilder_->createExpression(),
-        llvm::DebugLoc::get(lineNo, 0, currentScope), store);
+    DIBuilder_->insertDeclare(paramAlloca, param,
+                              DIBuilder_->createExpression(),
+                              getDebugLoc(lineNo, 0, currentScope), store);
   }
   DIBuilder_->finalizeSubprogram(F->getSubprogram());
   llvm::DIScope *scope = F->getSubprogram();
