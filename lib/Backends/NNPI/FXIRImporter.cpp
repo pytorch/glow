@@ -406,6 +406,23 @@ public:
   }
 };
 
+class TanhNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddTanhOp(importer.getNetwork(), name.c_str(),
+                                inputName.c_str(), name.c_str());
+  }
+};
+
 class ConvertNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -441,6 +458,7 @@ static std::unordered_map<
     {"acc_ops.div",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
     {"acc_ops.reshape", std::make_unique<ReshapeNodeImporter>()},
+    {"acc_ops.tanh", std::make_unique<TanhNodeImporter>()},
     {"acc_ops.linear", std::make_unique<LinearNodeImporter>()},
     {"acc_ops.quantized_linear", std::make_unique<LinearNodeImporter>()},
     {"acc_ops.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
