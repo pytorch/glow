@@ -216,6 +216,8 @@ void initializeCompilationContextFromSettings(
     cctx.callDAGOptimizer = true;
     cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
         settings.apl_parallelization_alg;
+    cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
+        settings.apl_placement_alg;
     cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
         settings.apl_num_parallel_chunks;
   }
@@ -249,6 +251,16 @@ void initializeCompilationContextFromSettings(
         settings.SparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         settings.SparseNNPartitioningSchemeNumCoresOther;
+  }
+
+  if (settings.enableP2P) {
+    LOG(INFO) << "Glow P2P Enabled";
+    cctx.enableP2P = true;
+  }
+
+  if (settings.enableDRT) {
+    LOG(INFO) << "Glow DRT Enabled";
+    cctx.enableDRT = true;
   }
 }
 
