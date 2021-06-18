@@ -5836,10 +5836,10 @@ bool RemoveIdentityClip::run(Function *F, const CompilationContext &cctx) {
 
     // The quantized min/max for Clip must match the min/max of the output type.
     TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
-    auto qMin =
-        quantization::quantize(CN->getMin(), outTQP, outTy->getElementType());
-    auto qMax =
-        quantization::quantize(CN->getMax(), outTQP, outTy->getElementType());
+    auto fMin = CN->getMin();
+    auto fMax = CN->getMax();
+    auto qMin = quantization::quantize(fMin, outTQP, outTy->getElementType());
+    auto qMax = quantization::quantize(fMax, outTQP, outTy->getElementType());
     auto outRange = quantization::getQuantizedRange(outTy->getElementType());
     if (!(qMin == outRange.first && qMax == outRange.second)) {
       continue;
