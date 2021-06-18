@@ -4833,6 +4833,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
+      case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
       case Kinded::Kind::FullyConnectedNodeKind:
       case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
         changed = true;
@@ -5770,9 +5771,10 @@ bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
     if (inpTy->isEqual(outTy)) {
       RN->getResult().replaceAllUsesOfWith(RN->getInput());
     } else {
-      auto *rescale =
-          F->createRescaleQuantized(RN->getName(), RN->getInput(), outTy);
-      RN->getResult().replaceAllUsesOfWith(rescale);
+      // TODO: Uncomment this once #5729 gets fixed.
+      // auto *rescale =
+      //     F->createRescaleQuantized(RN->getName(), RN->getInput(), outTy);
+      // RN->getResult().replaceAllUsesOfWith(rescale);
     }
     changed = true;
   }
@@ -5848,9 +5850,10 @@ bool RemoveIdentityClip::run(Function *F, const CompilationContext &cctx) {
     if (inpTy->isEqual(outTy)) {
       CN->getResult().replaceAllUsesOfWith(CN->getInput());
     } else {
-      auto *rescale =
-          F->createRescaleQuantized(CN->getName(), CN->getInput(), outTy);
-      CN->getResult().replaceAllUsesOfWith(rescale);
+      // TODO: Uncomment this once #5729 gets fixed.
+      // auto *rescale =
+      //     F->createRescaleQuantized(CN->getName(), CN->getInput(), outTy);
+      // CN->getResult().replaceAllUsesOfWith(rescale);
     }
     changed = true;
   }
