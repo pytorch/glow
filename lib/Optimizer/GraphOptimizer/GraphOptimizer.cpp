@@ -5720,7 +5720,6 @@ bool FoldExpSumDivIntoSoftmax::run(Function *F,
 
 bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
-
   bool changed = false;
   for (auto &N : F->getNodes()) {
     auto *RN = dyn_cast<ReluNode>(&N);
@@ -5728,11 +5727,10 @@ bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // The input and output types must be quantized and the same.
+    // The input and output types must be quantized.
     auto inpTy = RN->getInput().getType();
     auto outTy = RN->getResult().getType();
-    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType() &&
-          inpTy->isEqual(outTy))) {
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType())) {
       continue;
     }
 
@@ -5743,8 +5741,15 @@ bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // Remove Relu.
-    RN->getResult().replaceAllUsesOfWith(RN->getInput());
+    // Remove Relu if input and output types are the same.
+    // Otherwise change it with a RescaleQuantized.
+    if (inpTy->isEqual(outTy)) {
+      RN->getResult().replaceAllUsesOfWith(RN->getInput());
+    } else {
+      auto *rescale =
+          F->createRescaleQuantized(RN->getName(), RN->getInput(), outTy);
+      RN->getResult().replaceAllUsesOfWith(rescale);
+    }
     changed = true;
   }
   return changed;
@@ -5759,26 +5764,33 @@ bool RemoveIdentityClip::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // The input and output types must be quantized and the same.
+    // The input and output types must be quantized.
     auto inpTy = CN->getInput().getType();
     auto outTy = CN->getResult().getType();
-    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType() &&
-          inpTy->isEqual(outTy))) {
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType())) {
       continue;
     }
 
-    // The quantized min/max for Clip must match the min/max of the output data
-    // type.
+    // The quantized min/max for Clip must match the min/max of the output type.
     TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
-    auto qMin = quantization::quantize(CN->getMin(), outTQP);
-    auto qMax = quantization::quantize(CN->getMax(), outTQP);
+    auto qMin =
+        quantization::quantize(CN->getMin(), outTQP, outTy->getElementType());
+    auto qMax =
+        quantization::quantize(CN->getMax(), outTQP, outTy->getElementType());
     auto outRange = quantization::getQuantizedRange(outTy->getElementType());
     if (!(qMin == outRange.first && qMax == outRange.second)) {
       continue;
     }
 
-    // Remove Clip.
-    CN->getResult().replaceAllUsesOfWith(CN->getInput());
+    // Remove Clip if input and output types are the same.
+    // Otherwise change it with a RescaleQuantized.
+    if (inpTy->isEqual(outTy)) {
+      CN->getResult().replaceAllUsesOfWith(CN->getInput());
+    } else {
+      auto *rescale =
+          F->createRescaleQuantized(CN->getName(), CN->getInput(), outTy);
+      CN->getResult().replaceAllUsesOfWith(rescale);
+    }
     changed = true;
   }
   return changed;
