@@ -10190,9 +10190,7 @@ TEST_P(OperatorTest, Relu_Int8) {
       mod_.uniqueType(ElemKind::Int8QTy, {size}, outputScale, outputOffset);
   auto *input = mod_.createPlaceholder(inputTy, "input", false);
   auto *relu = F_->createRELU("relu", input, outputTy);
-  auto *dequantize =
-      F_->createDequantize("dequantize", relu, ElemKind::FloatTy);
-  auto *save = F_->createSave("save", dequantize);
+  auto *save = F_->createSave("save", relu);
   bindings_.allocate(mod_.getPlaceholders());
 
   auto inputH = bindings_.get(input)->getHandle<int8_t>();
@@ -10204,9 +10202,10 @@ TEST_P(OperatorTest, Relu_Int8) {
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
-  auto outputH = bindings_.get(save->getPlaceholder())->getHandle();
+  auto outputH = bindings_.get(save->getPlaceholder())->getHandle<int8_t>();
   for (dim_t idx = 0; idx < size; idx++) {
-    float expectedValue = std::max(0.0f, inputVals[idx]);
+    int8_t expectedValue = quantization::quantize(std::max(0.0f, inputVals[idx]),
+                                                  {outputScale, outputOffset});
     EXPECT_EQ(expectedValue, outputH.raw(idx));
   }
 }
