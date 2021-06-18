@@ -360,6 +360,31 @@ public:
   }
 };
 
+class PermuteNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    auto dimSize = toIntegerArray<glow::dim_t>(node["shape"].getString());
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    auto dims = toIntegerArray<uint32_t>(kwargs["permutation"]);
+    uint32_t nnpiOrder[NNPI_MAX_DIMS];
+    for (size_t i = 0, e = dimSize.size(); i < e; i++) {
+      nnpiOrder[i] = dims[i];
+    }
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddTransposeOp(importer.getNetwork(), name.c_str(),
+                                     inputName.c_str(), name.c_str(), nnpiOrder,
+                                     dimSize.size());
+  }
+};
+
 class MatMulNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -475,6 +500,7 @@ static std::unordered_map<
      std::make_unique<EmbeddingBagByteRowwiseOffsetsNodeImporter>()},
     {"acc_ops.cat", glow::make_unique<ConcatNodeImporter>()},
     {"acc_ops.transpose", glow::make_unique<TransposeNodeImporter>()},
+    {"acc_ops.permute", glow::make_unique<PermuteNodeImporter>()},
     {"acc_ops.matmul", glow::make_unique<MatMulNodeImporter>()},
     {"acc_ops.max_pool2d",
      std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
