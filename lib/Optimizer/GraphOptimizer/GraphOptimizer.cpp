@@ -5800,10 +5800,10 @@ template <class NodeTy> static bool removeFusedIdentityClip(Node *node) {
   }
   // The quantized min/max for Clip must match the min/max of the output type.
   TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
-  auto qMin =
-      quantization::quantize(CN->getMin(), outTQP, outTy->getElementType());
-  auto qMax =
-      quantization::quantize(CN->getMax(), outTQP, outTy->getElementType());
+  auto fMin = CN->getFusedActivationArgs()[0];
+  auto fMax = CN->getFusedActivationArgs()[1];
+  auto qMin = quantization::quantize(fMin, outTQP, outTy->getElementType());
+  auto qMax = quantization::quantize(fMax, outTQP, outTy->getElementType());
   auto outRange = quantization::getQuantizedRange(outTy->getElementType());
   if (!(qMin == outRange.first && qMax == outRange.second)) {
     return false;
