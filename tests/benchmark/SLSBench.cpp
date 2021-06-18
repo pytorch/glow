@@ -519,7 +519,7 @@ int main(int argc, char *argv[]) {
   printf("\n");
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
-  llvm::cl::ParseCommandLineOptions(1, argv, "", nullptr, "GLOW_OPTS");
+  benchParseGlowOpts(argc, argv);
 
   std::vector<SLSParam> params;
   std::string runHeader;
