@@ -329,7 +329,7 @@ inline DestTy quantize(float input, const TensorQuantizationParams &TQP) {
 }
 
 /// Converts floating point value \p input to \p DestTy (quantized type) based
-/// on the quantization parameters \p TQP. The value is retrieved as int64.
+/// on the quantization parameters \p TQP. The value is returned as int64.
 inline int64_t quantize(float input, const TensorQuantizationParams &TQP,
                         ElemKind DestTy) {
   if (DestTy == ElemKind::Int8QTy) {

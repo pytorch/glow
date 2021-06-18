@@ -5718,9 +5718,34 @@ bool FoldExpSumDivIntoSoftmax::run(Function *F,
   return changed;
 }
 
+/// Local utility to remove identity Relu if fused into \p node.
+/// \returns true or false whether the Relu was removed or not.
+template <class NodeTy> static bool removeFusedIdentityRelu(Node *node) {
+  auto *RN = dyn_cast<NodeTy>(node);
+  if (!RN || RN->getFusedActivation() != FusedActivation::RELU) {
+    return false;
+  }
+  // The output type must be quantized.
+  auto outTy = RN->getResult().getType();
+  if (!outTy->isQuantizedType()) {
+    return false;
+  }
+  // The quantized 0.0f for Relu must match the min of the output type.
+  auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+  if (outTy->getOffset() != outRange.first) {
+    return false;
+  }
+  // Remove fused Relu.
+  RN->setFusedActivation(FusedActivation::NONE);
+  RN->setFusedActivationArgs({});
+  return true;
+}
+
 bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
+
+  // Remove standalone Relu.
   for (auto &N : F->getNodes()) {
     auto *RN = dyn_cast<ReluNode>(&N);
     if (!RN) {
@@ -5734,8 +5759,7 @@ bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // The quantized 0.0f (which is equal to the offset) must match the min of
-    // the output data type.
+    // The quantized 0.0f for Relu must match the min of the output type.
     auto outRange = quantization::getQuantizedRange(outTy->getElementType());
     if (outTy->getOffset() != outRange.first) {
       continue;
@@ -5752,12 +5776,49 @@ bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
     }
     changed = true;
   }
+
+  // Remove fused Relu.
+  for (auto &N : F->getNodes()) {
+    changed |= removeFusedIdentityRelu<ConvolutionNode>(&N);
+    changed |= removeFusedIdentityRelu<ChannelwiseQuantizedConvolutionNode>(&N);
+  }
+
   return changed;
+}
+
+/// Local utility to remove identity Clip if fused into \p node.
+/// \returns true or false whether the Clip was removed or not.
+template <class NodeTy> static bool removeFusedIdentityClip(Node *node) {
+  auto *CN = dyn_cast<NodeTy>(node);
+  if (!CN || CN->getFusedActivation() != FusedActivation::CLIP) {
+    return false;
+  }
+  // The output type must be quantized.
+  auto outTy = CN->getResult().getType();
+  if (!outTy->isQuantizedType()) {
+    return false;
+  }
+  // The quantized min/max for Clip must match the min/max of the output type.
+  TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
+  auto qMin =
+      quantization::quantize(CN->getMin(), outTQP, outTy->getElementType());
+  auto qMax =
+      quantization::quantize(CN->getMax(), outTQP, outTy->getElementType());
+  auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+  if (!(qMin == outRange.first && qMax == outRange.second)) {
+    return false;
+  }
+  // Remove fused Relu.
+  CN->setFusedActivation(FusedActivation::NONE);
+  CN->setFusedActivationArgs({});
+  return true;
 }
 
 bool RemoveIdentityClip::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
+
+  // Remove standalone Clip.
   for (auto &N : F->getNodes()) {
     auto *CN = dyn_cast<ClipNode>(&N);
     if (!CN) {
@@ -5793,6 +5854,13 @@ bool RemoveIdentityClip::run(Function *F, const CompilationContext &cctx) {
     }
     changed = true;
   }
+
+  // Remove fused Clip.
+  for (auto &N : F->getNodes()) {
+    changed |= removeFusedIdentityClip<ConvolutionNode>(&N);
+    changed |= removeFusedIdentityClip<ChannelwiseQuantizedConvolutionNode>(&N);
+  }
+
   return changed;
 }
 
