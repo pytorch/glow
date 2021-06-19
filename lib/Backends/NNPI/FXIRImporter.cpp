@@ -313,6 +313,23 @@ public:
   }
 };
 
+class SigmoidNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddSigmoidOp(importer.getNetwork(), name.c_str(),
+                                   inputName.c_str(), name.c_str());
+  }
+};
+
 class ReshapeNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -493,6 +510,7 @@ static std::unordered_map<
     {"acc_ops.quantized_batch_norm2d",
      std::make_unique<BatchNormalizationNodeImporter>()},
     {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
+    {"acc_ops.sigmoid", std::make_unique<SigmoidNodeImporter>()},
     {"acc_ops.adaptive_avg_pool2d",
      std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
     {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},
