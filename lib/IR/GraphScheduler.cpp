@@ -48,27 +48,27 @@ Scheduler *createScheduler(SchedulerKind schedulerKind, Function &G,
 
 void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
   Schedule.clear();
-  auto constants = G_->findConstants();
-  auto placeholders = G_->findPlaceholders();
+  auto constants = getGraph()->findConstants();
+  auto placeholders = getGraph()->findPlaceholders();
   for (auto &N : constants) {
     Schedule.push_back(N);
   }
   for (auto &N : placeholders) {
     Schedule.push_back(N);
   }
-  for (auto &N : G_->getMetadataPlaceholders()) {
+  for (auto &N : getGraph()->getMetadataPlaceholders()) {
     Schedule.push_back(N);
   }
   auto numVars = constants.size();
   auto numPlaceholders =
-      placeholders.size() + G_->getMetadataPlaceholders().size();
+      placeholders.size() + getGraph()->getMetadataPlaceholders().size();
   (void)numVars;
   (void)numPlaceholders;
   std::unique_ptr<Scheduler> scheduler{
-      createScheduler(graphScheduler, *G_, Schedule)};
+      createScheduler(graphScheduler, *getGraph(), Schedule)};
   scheduler->schedule();
   assert(scheduler->getSchedule().size() ==
-             G_->getNodes().size() + numPlaceholders + numVars &&
+             getGraph()->getNodes().size() + numPlaceholders + numVars &&
          "All graph nodes have to be scheduled");
 }
 } // namespace glow

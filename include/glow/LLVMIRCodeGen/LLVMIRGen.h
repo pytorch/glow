@@ -124,7 +124,7 @@ protected:
   /// Set of emitted LLVM functions for IR functions.
   llvm::SmallVector<llvm::Function *, 4> emittedLLVMFunctions_;
   /// The LLVM context.
-  llvm::LLVMContext ctx_;
+  std::unique_ptr<llvm::LLVMContext> ctx_;
   /// The LLVM IR module.
   std::unique_ptr<llvm::Module> llmodule_{nullptr};
   /// The target machine.
@@ -135,6 +135,8 @@ protected:
   std::string bundleName_;
   /// Name of the main entry.
   std::string mainEntryName_;
+  /// Base name of the saved bundle file, without extension.
+  std::string savedBundleName_;
   /// Instruction number for the module.
   std::unique_ptr<InstructionNumbering> instrNumbering_;
   /// Value holding the base address of the activations memory area.
@@ -346,6 +348,11 @@ public:
   /// Init the TargetMachine using settings provided by \p llvmBackend.
   virtual void initTargetMachine(const LLVMBackendOptions &opts);
 
+  /// Init the TargetOptions \p targetOpts in a backend-specific way. Use \p
+  /// backendOpts as input if necessary.
+  virtual void initTargetOptions(llvm::TargetOptions &targetOpts,
+                                 const LLVMBackendOptions &backendOpts);
+
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   /// Derived classes may want to override this function to implement a
   /// backend-specific LLVM IR generation logic for some intructions.
@@ -398,6 +405,11 @@ public:
   llvm::StringRef getBundleName() const;
   /// Set the name of the bundle (name is automatically legalized).
   void setBundleName(const std::string &name);
+  /// \returns the base name of the saved bundle file to be used by a
+  /// BundleSaver.
+  llvm::StringRef getSavedBundleName() const;
+  /// Set the base name of the saved bundle file.
+  void setSavedBundleName(const std::string &name);
   /// \returns the name of the main entry point.
   /// When JITting, it will be "main". In case of bundling it will be the name
   /// of the bundle.
@@ -414,8 +426,18 @@ public:
   llvm::IRBuilder<> &getBuilder() { return *builder_; }
   /// \returns the target machine description.
   llvm::TargetMachine &getTargetMachine() { return *TM_; }
+  /// Takes the target machine for further processing, e.g. by a JIT.
+  /// The target machine cannot be used by the LLVMIRGen afterwards.
+  std::unique_ptr<llvm::TargetMachine> takeTargetMachine() {
+    return std::move(TM_);
+  }
   /// \returns the LLVMContext being used.
-  llvm::LLVMContext &getLLVMContext() { return ctx_; }
+  llvm::LLVMContext &getLLVMContext() { return *ctx_; }
+  /// Takes the LLVM Context for further processing, e.g. by a JIT.
+  /// The context cannot be used by the LLVMIRGen afterwards.
+  std::unique_ptr<llvm::LLVMContext> takeLLVMContext() {
+    return std::move(ctx_);
+  }
   /// Borrows the LLVM module for further processing, e.g. by a JIT.
   /// The module cannot be used by the LLVMIRGen afterwards.
   std::unique_ptr<llvm::Module> borrowModule() { return std::move(llmodule_); }

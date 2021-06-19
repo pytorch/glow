@@ -40,6 +40,7 @@ extern std::string BackendSpecificOpts;
 extern bool EnableLoadBalancedPartitioning;
 extern bool SkipProvisioning;
 extern bool DisableLayoutVerifying;
+extern bool DisableFreeCompilationResource;
 
 // FP16 Constants
 extern bool ConvertToFP16;
@@ -113,6 +114,7 @@ extern bool DumpCustomKernelFiles;
 namespace glow {
 namespace interpreter {
 namespace flags {
+extern bool LowerBatchMatMul;
 extern bool LowerLayerNormalization;
 } // namespace flags
 } // namespace interpreter

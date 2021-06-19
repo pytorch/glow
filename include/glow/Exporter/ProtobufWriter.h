@@ -41,7 +41,7 @@ public:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
   ProtobufWriter(const std::string &modelFilename, Function *F,
-                 Error *errPtr = nullptr);
+                 Error *errPtr = nullptr, bool writingToFile = true);
 };
 
 } // namespace glow

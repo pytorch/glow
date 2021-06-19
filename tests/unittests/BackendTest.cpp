@@ -465,9 +465,10 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   auto table = dag->nodes[0]->runtimeBundle->getSymbolTable();
 
   // Check that placeholders and constants are correctly labelled.
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.symbolCategory,
-            glow::runtime::SymbolCategory::Placeholder);
-  EXPECT_EQ(table.find(ex->getName())->second.symbolCategory,
+  EXPECT_EQ(
+      table.find(S->getPlaceholder()->getName().str())->second.symbolCategory,
+      glow::runtime::SymbolCategory::Placeholder);
+  EXPECT_EQ(table.find(ex->getName().str())->second.symbolCategory,
             glow::runtime::SymbolCategory::Constant);
   // Check that activations are labelled correctly.
   EXPECT_EQ(table.find("FC_res")->second.symbolCategory,
@@ -478,16 +479,21 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
             glow::runtime::SymbolCategory::PlaceholderTensorView);
 
   // Check that placeholders and constants input/output flags are correctly set.
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.input, false);
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.output, true);
-  EXPECT_EQ(table.find(ex->getName())->second.input, false);
-  EXPECT_EQ(table.find(ex->getName())->second.output, false);
-  EXPECT_EQ(table.find(input->getName())->second.input, true);
-  EXPECT_EQ(table.find(input->getName())->second.output, false);
-  EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName())->second.input,
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.input,
+            false);
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.output,
             true);
-  EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName())->second.output,
-            true);
+  EXPECT_EQ(table.find(ex->getName().str())->second.input, false);
+  EXPECT_EQ(table.find(ex->getName().str())->second.output, false);
+  EXPECT_EQ(table.find(input->getName().str())->second.input, true);
+  EXPECT_EQ(table.find(input->getName().str())->second.output, false);
+  // HistogramPlaceholder node is not an input node, it is an output node.
+  EXPECT_EQ(
+      table.find(qp->getHistogramPlaceholder()->getName().str())->second.input,
+      false);
+  EXPECT_EQ(
+      table.find(qp->getHistogramPlaceholder()->getName().str())->second.output,
+      true);
   // Check that activations are labelled correctly.
   EXPECT_EQ(table.find("FC_res")->second.input, false);
   EXPECT_EQ(table.find("FC_res")->second.output, false);
@@ -518,6 +524,39 @@ TEST(IR, testInputToTensorView) {
   // should not be marked as an input buffer since that doesn't include any
   // reads of the buffer.
   EXPECT_EQ(isInput(output), false);
+}
+
+// Test the correctness of isInput.
+TEST(IR, testIsInput) {
+  Module mod;
+  Function *F = mod.createFunction("main");
+  IRFunction M(F);
+  IRBuilder builder(&M);
+  auto T0 = mod.uniqueType(ElemKind::FloatTy, {1024, 1024});
+  auto T1 = mod.uniqueType(ElemKind::FloatTy, {512, 1024});
+  auto *input0 = builder.createWeightVar(T1, "A");
+  auto *input1 = builder.createWeightVar(T1, "B");
+  auto *output0 = builder.createWeightVar(T0, "C0");
+  auto *output1 = builder.createWeightVar(T0, "C1");
+  auto *tvo0 =
+      builder.createTensorViewInst("output_view0", output0, T0, {0, 0});
+  auto *tvo1 =
+      builder.createTensorViewInst("output_view1", output1, T0, {512, 0});
+  // tv0 is used as src and dest in this instruction. This is a first operation
+  // using output0 and it first reads from it. Thus output0 should be reported
+  // as input.
+  builder.createElementAddInst("add0", tvo0, tvo0, input1);
+  // Write into tvo1. This is the first operation touching output1 and it is a
+  // write.
+  builder.createElementAddInst("add1", tvo1, input0, input1);
+  // Read from tvo1 and then write into it.
+  builder.createElementAddInst("add2", tvo1, tvo1, input1);
+  // output is used as an input to a TensorView instruction tvo0, which doesn't
+  // count. But then tvo0 is  used an input and output for the same add
+  // instruction. Thus, it is an input.
+  EXPECT_EQ(isInput(output0), true);
+  // output1 was first written into and then read. Therefore it is not an input.
+  EXPECT_EQ(isInput(output1), false);
 }
 
 // Test if the placeholders are allocated contiguously as
@@ -1009,8 +1048,8 @@ TEST_P(BackendExecTest, BundleSharedConstant) {
   auto table1 = function->getRuntimeBundle().getSymbolTable();
   auto table2 = function2->getRuntimeBundle().getSymbolTable();
   /// Make sure X is in both tables.
-  auto it = table1.find(X->getName());
-  auto it2 = table2.find(X->getName());
+  auto it = table1.find(X->getName().str());
+  auto it2 = table2.find(X->getName().str());
   EXPECT_TRUE(it != table1.end());
   EXPECT_TRUE(it2 != table2.end());
 }

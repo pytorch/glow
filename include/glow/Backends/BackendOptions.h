@@ -61,6 +61,9 @@ struct BackendOptions {
   /// Insert TraceEvents between all instructions for profiling.
   bool autoInstrument{false};
 
+  /// Use a serialized precompiled function instead of compiling.
+  bool useDeserialize{false};
+
   /// Hints for the compiler for this compilation.
   BackendHints backendHints;
 

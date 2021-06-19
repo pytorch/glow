@@ -206,7 +206,7 @@ void ProtobufLoader::deleteUnusedConstants() {
     auto *node = kv.second.getNode();
     if (auto *c = llvm::dyn_cast<Constant>(node)) {
       if (!c->hasUsers()) {
-        nodeValuesToRemove.push_back(kv.getKey());
+        nodeValuesToRemove.push_back(kv.getKey().str());
         constantToRemove.insert(c);
       }
     }

@@ -578,6 +578,7 @@ getReplacementMap(Function *F) {
 NNPINetwork glow::NNPIImporter::importFunction(Function *F,
                                                const BackendOptions &opts,
                                                bool &requiresDSPKernels) {
+  requiresDSPKernels = false;
   if (compileOptions_.normalizeLayerNames) {
     std::map<std::string, uint32_t> type2count;
     std::map<std::string, glow::Node *> nodes;
