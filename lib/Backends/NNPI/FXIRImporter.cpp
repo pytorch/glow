@@ -313,6 +313,23 @@ public:
   }
 };
 
+class SigmoidNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddSigmoidOp(importer.getNetwork(), name.c_str(),
+                                   inputName.c_str(), name.c_str());
+  }
+};
+
 class ReshapeNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -351,6 +368,31 @@ public:
     auto dim1 = kwargs["dim1"].getInt();
     nnpiOrder[dim0] = dim1;
     nnpiOrder[dim1] = dim0;
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddTransposeOp(importer.getNetwork(), name.c_str(),
+                                     inputName.c_str(), name.c_str(), nnpiOrder,
+                                     dimSize.size());
+  }
+};
+
+class PermuteNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    auto dimSize = toIntegerArray<glow::dim_t>(node["shape"].getString());
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    auto dims = toIntegerArray<uint32_t>(kwargs["permutation"]);
+    uint32_t nnpiOrder[NNPI_MAX_DIMS];
+    for (size_t i = 0, e = dimSize.size(); i < e; i++) {
+      nnpiOrder[i] = dims[i];
+    }
 
     importer.setUsedTensors({inputName}, {name});
 
@@ -468,6 +510,7 @@ static std::unordered_map<
     {"acc_ops.quantized_batch_norm2d",
      std::make_unique<BatchNormalizationNodeImporter>()},
     {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
+    {"acc_ops.sigmoid", std::make_unique<SigmoidNodeImporter>()},
     {"acc_ops.adaptive_avg_pool2d",
      std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
     {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},
@@ -475,6 +518,7 @@ static std::unordered_map<
      std::make_unique<EmbeddingBagByteRowwiseOffsetsNodeImporter>()},
     {"acc_ops.cat", glow::make_unique<ConcatNodeImporter>()},
     {"acc_ops.transpose", glow::make_unique<TransposeNodeImporter>()},
+    {"acc_ops.permute", glow::make_unique<PermuteNodeImporter>()},
     {"acc_ops.matmul", glow::make_unique<MatMulNodeImporter>()},
     {"acc_ops.max_pool2d",
      std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
