@@ -163,6 +163,11 @@ llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
     llvm::cl::desc(
         "Enable converting scale/offset in sls's input data from fp16 to fp32"),
     llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> skipCorrectnessCheck(
+    "skip_correctness_check",
+    llvm::cl::desc("Skip correctness check with Interpreter backend"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 } // namespace
 
 class TestDeferredWeightLoader : public DeferredWeightLoader {
@@ -1033,8 +1038,11 @@ protected:
     }
 
     // Compare against interpreter if we're not executing already on it.
-    if (getBackendName() != "Interpreter") {
+    if (!skipCorrectnessCheck && getBackendName() != "Interpreter") {
       compareAgainstInterpreter();
+    } else {
+      std::cout << "Skip correctness check with Interpreter backend"
+                << std::endl;
     }
   }
 

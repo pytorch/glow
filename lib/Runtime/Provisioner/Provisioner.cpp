@@ -435,7 +435,7 @@ Error Provisioner::provisionNetwork(std::unique_ptr<Network> network) {
 
         // Deserialize compiled function from cctx.nameToFunctions
         if (cctx.backendOpts.useDeserialize) {
-          std::string name = compiledFunction.first();
+          std::string name = compiledFunction.first().str();
           if (cctx.nameToFunctions.find(name) == cctx.nameToFunctions.end()) {
             return MAKE_ERR(
                 ErrorValue::ErrorCode::UNKNOWN,

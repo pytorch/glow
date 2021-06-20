@@ -5674,3 +5674,12 @@ TEST_F(OnnxImporterTest, importConvPadNotset) {
   EXPECT_EQ(conv2->getPads().vec(), std::vector<unsigned_t>({1, 1, 1, 1}));
   EXPECT_EQ(conv1->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
 }
+
+/// Test loading LogSoftmax opset13 from a ONNX model.
+TEST_F(OnnxImporterTest, logsoftmax) {
+  testSoftmax("logsoftmax.onnxtxt", {2, 2, 2, 2},
+              {-2.1269281, -2.1269281, -0.12692806, -0.12692806, -2.1269281,
+               -2.1269281, -0.12692806, -0.12692806, -2.1269281, -2.1269281,
+               -0.12692806, -0.12692806, -2.1269281, -2.1269281, -0.12692806,
+               -0.12692806});
+}

@@ -526,7 +526,7 @@ void OpenCLDeviceManager::transferStaticPlaceholderToDevice(
       return;
     }
     auto symbolTable = func->getRuntimeBundle().getSymbolTable();
-    auto symbolIt = symbolTable.find(PH->getName());
+    auto symbolIt = symbolTable.find(PH->getName().str());
     if (symbolIt == symbolTable.end()) {
       resultCB(
           MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
@@ -568,7 +568,7 @@ void OpenCLDeviceManager::copyInputsToDevice(
 
   auto &symbolTable = runtimeBundle.getSymbolTable();
   for (auto &PH : context->getPlaceholderBindings()->pairs()) {
-    auto it = symbolTable.find(PH.first->getName());
+    auto it = symbolTable.find(PH.first->getName().str());
     if (it == symbolTable.end()) {
       continue;
     }
@@ -612,7 +612,7 @@ void OpenCLDeviceManager::copyOutputsFromDevice(
 
   auto &symbolTable = runtimeBundle.getSymbolTable();
   for (auto &PH : context->getPlaceholderBindings()->pairs()) {
-    auto it = symbolTable.find(PH.first->getName());
+    auto it = symbolTable.find(PH.first->getName().str());
     if (it == symbolTable.end()) {
       continue;
     }

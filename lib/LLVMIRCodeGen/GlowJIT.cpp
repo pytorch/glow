@@ -35,7 +35,8 @@ static llvm::cl::opt<bool> dumpJITSymbolInfo(
 
 /// This is a callback that is invoked when an LLVM module is compiled and
 /// loaded by the JIT for execution.
-class NotifyLoadedFunctor {
+class NotifyLoadedFunctorBase {
+protected:
   /// The listener for debugger events. It is used to provide debuggers with the
   /// information about JITted code.
   llvm::JITEventListener *dbgRegistrationListener_;
@@ -70,11 +71,20 @@ class NotifyLoadedFunctor {
     }
   }
 
-public:
-  NotifyLoadedFunctor()
+  NotifyLoadedFunctorBase()
       : dbgRegistrationListener_(
             llvm::JITEventListener::createGDBRegistrationListener()) {}
+};
 
+} // namespace
+
+//##############################################################################
+#if GLOW_JIT_ORC_VERSION == 1
+//##############################################################################
+using GlowJIT = llvm::orc::GlowJIT;
+
+class NotifyLoadedFunctor : public NotifyLoadedFunctorBase {
+public:
   void operator()(llvm::orc::VModuleKey key,
                   const llvm::object::ObjectFile &obj,
                   const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
@@ -100,13 +110,6 @@ public:
     dumpSymbolInfo(loadedObj, objInfo);
   }
 };
-
-} // namespace
-
-//##############################################################################
-#if GLOW_JIT_ORC_VERSION == 1
-//##############################################################################
-using GlowJIT = llvm::orc::GlowJIT;
 
 //==============================================================================
 #if LLVM_VERSION_MAJOR < 8 && FACEBOOK_INTERNAL
@@ -451,6 +454,68 @@ void GlowJIT::setContext(std::unique_ptr<llvm::LLVMContext> ctx) {
 
 namespace glow {
 
+class NotifyLoadedFunctorOrcV2Base : public NotifyLoadedFunctorBase {
+protected:
+  void notify(const llvm::object::ObjectFile &obj,
+              const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
+    auto &loadedObj = obj;
+    // Inform the debugger about the loaded object file. This should allow for
+    // more complete stack traces under debugger. And even it should even enable
+    // the stepping functionality on platforms supporting it.
+    dbgRegistrationListener_->notifyObjectLoaded(
+        (llvm::JITEventListener::ObjectKey)&loadedObj, loadedObj, objInfo);
+
+    // Dump symbol information for the JITed symbols.
+    dumpSymbolInfo(loadedObj, objInfo);
+  }
+};
+
+//******************************************************************************
+#if LLVM_VERSION_MAJOR >= 12
+//******************************************************************************
+class NotifyLoadedFunctor : public NotifyLoadedFunctorOrcV2Base {
+public:
+  void operator()(llvm::orc::MaterializationResponsibility &R,
+                  const llvm::object::ObjectFile &obj,
+                  const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
+    notify(obj, objInfo);
+  }
+};
+
+class GlowJITDefGenerator : public llvm::orc::DefinitionGenerator {
+  GlowJIT *gj_;
+
+public:
+  GlowJITDefGenerator(GlowJIT *gj) : gj_(gj) {}
+  virtual ~GlowJITDefGenerator() {}
+
+  llvm::Error
+  tryToGenerate(llvm::orc::LookupState &ls, llvm::orc::LookupKind k,
+                llvm::orc::JITDylib &jd,
+                llvm::orc::JITDylibLookupFlags jdLookupFlags,
+                const llvm::orc::SymbolLookupSet &lookupSet) override {
+    return gj_->tryToGenerate(k, jd, jdLookupFlags, lookupSet);
+  }
+};
+
+void endSession(llvm::orc::ExecutionSession &es) {
+  if (auto err = es.endSession()) {
+    llvm::errs() << "Error ending session: " << err << "\n";
+  }
+}
+
+//==============================================================================
+#else // LLVM_VERSION_MAJOR: 10, 11
+//==============================================================================
+class NotifyLoadedFunctor : public NotifyLoadedFunctorOrcV2Base {
+public:
+  void operator()(llvm::orc::VModuleKey key,
+                  const llvm::object::ObjectFile &obj,
+                  const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
+    notify(obj, objInfo);
+  }
+};
+
 class GlowJITDefGenerator : public llvm::orc::JITDylib::DefinitionGenerator {
   GlowJIT *gj_;
 
@@ -466,10 +531,28 @@ public:
   }
 };
 
+void endSession(llvm::orc::ExecutionSession &es) {}
+#endif
+
+//******************************************************************************
+#if LLVM_VERSION_MAJOR >= 11
+//******************************************************************************
+llvm::orc::JITDylib &createJITDylib(llvm::orc::ExecutionSession &es) {
+  return cantFail(es.createJITDylib(std::string("libGlowJIT.dylib")));
+}
+#else // LLVM_VERSION_MAJOR: 10
+llvm::orc::JITDylib &createJITDylib(llvm::orc::ExecutionSession &es) {
+  return es.createJITDylib(std::string("libGlowJIT.dylib"));
+}
+#endif
+
+//******************************************************************************
+// GlowJITOrcV2
+//******************************************************************************
 GlowJITOrcV2::GlowJITOrcV2(std::unique_ptr<llvm::TargetMachine> tm)
     : tm_(std::move(tm)), dl_(tm_->createDataLayout()),
       ssp_(std::make_shared<llvm::orc::SymbolStringPool>()), es_(ssp_),
-      jd_(es_.createJITDylib("libGlowJIT.dylib")),
+      jd_(createJITDylib(es_)),
       objectLayer_(
           es_, []() { return std::make_unique<llvm::SectionMemoryManager>(); }),
       compileLayer_(es_, objectLayer_,
@@ -499,6 +582,8 @@ GlowJITOrcV2::~GlowJITOrcV2() {
 
   // Run any destructor registered with __cxa_atexit.
   cxxSymbolOverride_.runDestructors();
+
+  endSession(es_);
 }
 
 llvm::Error
@@ -516,7 +601,7 @@ GlowJITOrcV2::tryToGenerate(llvm::orc::LookupKind K, llvm::orc::JITDylib &JD,
     // we get cases where a symbol is found in the Linux environment,
     // but not in the Windows environment.
     if (auto processSymAddr =
-            llvm::RTDyldMemoryManager::getSymbolAddressInProcess(name)) {
+            llvm::RTDyldMemoryManager::getSymbolAddressInProcess(name.str())) {
       newSymbols[ssp] = llvm::JITEvaluatedSymbol(
           processSymAddr, llvm::JITSymbolFlags::Exported);
       continue;
@@ -546,11 +631,7 @@ void GlowJITOrcV2::setContext(std::unique_ptr<llvm::LLVMContext> ctx) {
   ctx_ = llvm::orc::ThreadSafeContext(std::move(ctx));
 }
 
-GlowJITOrcV2::ModuleHandle
-GlowJITOrcV2::addModule(std::unique_ptr<llvm::Module> m) {
-  std::string modName = m->getName();
-  auto k = es_.allocateVModule();
-
+void GlowJITOrcV2::addModule(std::unique_ptr<llvm::Module> m) {
   auto ctors = llvm::orc::getConstructors(*m.get());
   llvm::orc::CtorDtorRunner ctorRunner(jd_);
   ctorRunner.add(ctors);
@@ -559,16 +640,15 @@ GlowJITOrcV2::addModule(std::unique_ptr<llvm::Module> m) {
   irStaticDestructorRunners_.emplace_back(jd_);
   irStaticDestructorRunners_.back().add(dtors);
 
-  cantFail(compileLayer_.add(
-      jd_, llvm::orc::ThreadSafeModule(std::move(m), ctx_), k));
+  cantFail(
+      compileLayer_.add(jd_, llvm::orc::ThreadSafeModule(std::move(m), ctx_)));
 
   // Run the static constructors
   if (auto err = ctorRunner.run()) {
-    LOG(WARNING) << "Error while running static constructors for " << modName
-                 << ": " << llvm::toString(std::move(err));
+    LOG(WARNING) << "Error while running static constructors for "
+                 << m->getName().str() << ": "
+                 << llvm::toString(std::move(err));
   }
-
-  return k;
 }
 
 } // namespace glow
