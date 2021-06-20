@@ -62,7 +62,7 @@ glow::runtime::RuntimeBundle::operator=(glow::runtime::RuntimeBundle &&rhs) {
 
 void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
   DCHECK(isValid_);
-  collectConstants(F->getGraph()->getParent());
+  collectConstants(F->getParent());
 }
 
 void glow::runtime::RuntimeBundle::freeConstants() {
@@ -150,26 +150,51 @@ bool isOutput(const Placeholder *PH, const IRFunction &F) {
   return isOutput(weight);
 }
 
-/// If \p W is a weight that is read from \returns true.
+/// If \p W is a weight that is first read from \returns true.
 bool isInput(const Value *W) {
   auto *weight = llvm::dyn_cast<WeightVar>(W);
-  DCHECK(weight) << "Expected WeightVar";
-
-  for (const auto &use : ValueUses(weight)) {
-    Instruction *user = use.get();
-    // Ignore deallocs.
-    if (isa<DeallocActivationInst>(user)) {
-      continue;
-    }
+  const glow::Instruction *firstUser = nullptr;
+  bool hasReads = false;
+  for (const auto &U : ValueUses(weight)) {
+    const auto *user = U.get();
     // TensorView instruction doesn't read from a placeholder.
     if (isa<TensorViewInst>(user)) {
       continue;
     }
-    OperandKind kind = use.getOperand().second;
+    // Remember the earliest use.
+    if (!firstUser || firstUser->getIterator() > user->getIterator()) {
+      firstUser = user;
+    }
+    // Ignore deallocs.
+    if (isa<DeallocActivationInst>(user)) {
+      continue;
+    }
+    OperandKind kind = U.getOperand().second;
     if (kind == OperandKind::In || kind == OperandKind::InOut) {
-      return true;
+      hasReads = true;
     }
   }
+
+  if (!hasReads) {
+    return false;
+  }
+
+  // Check if the first use is a read.
+  if (firstUser) {
+    // If this instruction has reads, then the first use is an @in.
+    auto *weightOrigin = getOrigin(weight);
+    for (int idx = 0, e = firstUser->getNumOperands(); idx < e; ++idx) {
+      const auto op = firstUser->getOperand(idx);
+      auto *opOrigin = getOrigin(op.first);
+      auto opKind = op.second;
+      if (opOrigin == weightOrigin && opKind == OperandKind::In) {
+        return true;
+      }
+    }
+    // No reads were found, thus the first use is a write.
+    return false;
+  }
+  // If there are no users, it is not an input.
   return false;
 }
 

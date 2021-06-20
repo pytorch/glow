@@ -163,6 +163,11 @@ llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
     llvm::cl::desc(
         "Enable converting scale/offset in sls's input data from fp16 to fp32"),
     llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> skipCorrectnessCheck(
+    "skip_correctness_check",
+    llvm::cl::desc("Skip correctness check with Interpreter backend"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 } // namespace
 
 class TestDeferredWeightLoader : public DeferredWeightLoader {
@@ -415,6 +420,21 @@ protected:
                                    /*useGlowCustomOps*/ true);
       t->set_name(PH->getName().str());
     }
+    std::string buffer;
+    inputG.SerializeToString(&buffer);
+    of << buffer;
+  }
+
+  // dump outputs into onnx file which can run with repro binary.
+  void dumpOutputs() {
+    std::stringstream ss;
+    ss << "output_0.onnx";
+    std::ofstream of(ss.str(), std::ios::binary);
+    ONNX_NAMESPACE::GraphProto inputG;
+    auto *t = inputG.add_initializer();
+    ONNXModelWriter::writeTensor(*resultTensor, t,
+                                 /*useGlowCustomOps*/ true);
+    t->set_name("save");
     std::string buffer;
     inputG.SerializeToString(&buffer);
     of << buffer;
@@ -1013,9 +1033,16 @@ protected:
       }
     }
 
+    if (dumpModelInputs) {
+      dumpOutputs();
+    }
+
     // Compare against interpreter if we're not executing already on it.
-    if (getBackendName() != "Interpreter") {
+    if (!skipCorrectnessCheck && getBackendName() != "Interpreter") {
       compareAgainstInterpreter();
+    } else {
+      std::cout << "Skip correctness check with Interpreter backend"
+                << std::endl;
     }
   }
 

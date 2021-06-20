@@ -940,9 +940,10 @@ ONNXModelWriter::ONNXModelWriter(
     const ConstantFoldingRecordMap &constFoldRecord,
     const BackendSpecificNodeInfo &backendSpecificNodeInfo,
     std::string *outputStringPtr)
-    : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
-      opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
-      includeConstantData_(includeConstantData),
+    : CommonOperatorWriter(modelFilename, &F, errPtr,
+                           outputStringPtr == nullptr),
+      irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
+      textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps),
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
       constFoldRecord_(constFoldRecord),
@@ -1069,7 +1070,8 @@ ONNXModelWriter::ONNXModelWriter(
     const LoadedPlaceholderNameMap *loadedPHNames,
     const std::map<std::string, Type> *staticPlaceholderTypes,
     std::string *outputStringPtr)
-    : CommonOperatorWriter(modelFilename, nullptr, errPtr),
+    : CommonOperatorWriter(modelFilename, nullptr, errPtr,
+                           outputStringPtr == nullptr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
@@ -1152,6 +1154,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
   case ElemKind::Int32QTy:
   case ElemKind::Int32ITy:
     return TensorType::INT32;
+  case ElemKind::Int64QTy:
   case ElemKind::Int64ITy:
     return TensorType::INT64;
   case ElemKind::BoolTy:
@@ -2398,6 +2401,7 @@ DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
 DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(NonMaxSuppression)
+DEF_ALL_WRITER_NODE(TFLiteDetectionPostProcess)
 DEF_ALL_WRITER_NODE(HardSwish)
 DEF_ALL_WRITER_NODE(ConvTranspose)
 DEF_ALL_WRITER_NODE(Logit)

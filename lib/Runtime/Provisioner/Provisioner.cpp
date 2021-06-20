@@ -432,10 +432,21 @@ Error Provisioner::provisionNetwork(std::unique_ptr<Network> network) {
       }
       auto compiled = std::move(*compiledOrErr);
       for (auto &compiledFunction : compiled) {
+
+        // Deserialize compiled function from cctx.nameToFunctions
+        if (cctx.backendOpts.useDeserialize) {
+          std::string name = compiledFunction.first().str();
+          if (cctx.nameToFunctions.find(name) == cctx.nameToFunctions.end()) {
+            return MAKE_ERR(
+                ErrorValue::ErrorCode::UNKNOWN,
+                "Cannot find compiled function when deserializing " + name);
+          }
+          RETURN_IF_ERR(compiledFunction.second->deserialize(
+              *(cctx.nameToFunctions.find(name)->second)));
+        }
         compiledFunctions.try_emplace(compiledFunction.first(),
                                       std::move(compiledFunction.second));
       }
-
       // Construnct functionMap for physical device.
       for (auto &node : logicalDevices[logicalDevice]) {
         RETURN_ERR_IF_NOT(compiledFunctions.count(node->name),
@@ -494,9 +505,13 @@ Error Provisioner::provisionNetwork(std::unique_ptr<Network> network) {
         }
 
         // Free compilation resources. This need to be done after add network
-        // and before move on to next logical device.
+        // and before move on to next logical device. If
+        // DisableFreeCompilationResource is true, we will not free it here.
+        // This is used in scenarios like model serialization.
         auto &funtionPtr = compiledFunctions[node->name];
-        funtionPtr->freeCompilationResources();
+        if (!glow::flags::DisableFreeCompilationResource) {
+          funtionPtr->freeCompilationResources();
+        }
 
         // Move compiled functions from compiledFunctions to functions_.
         {
@@ -882,4 +897,31 @@ void Provisioner::cleanupProvision(
       functions_.erase(name);
     }
   }
+}
+
+void Provisioner::cleanUpSerializedFunctionMap() {
+  serializedFunctionMap_.clear();
+}
+
+// Get the hash as a string from a function's name
+std::string getNameHash(std::string name) {
+  return name.substr(name.find_last_of("_") + 1);
+}
+
+std::unique_ptr<
+    std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+Provisioner::getAllSerializedFunctionsMap() {
+  // Assume all functions in functions_ are using the same backend
+  cleanUpSerializedFunctionMap();
+  for (auto &kv : functions_) {
+    std::string name = kv.first;
+    auto data = kv.second->serialize();
+    if (data != nullptr) {
+      serializedFunctionMap_.emplace(
+          std::make_pair(getNameHash(name), std::move(data)));
+    }
+  }
+  return std::make_unique<
+      std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>(
+      std::move(serializedFunctionMap_));
 }

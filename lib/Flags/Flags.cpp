@@ -51,6 +51,7 @@ std::string BackendSpecificOpts = "";
 bool EnableLoadBalancedPartitioning = true;
 bool SkipProvisioning = false;
 bool DisableLayoutVerifying = false;
+bool DisableFreeCompilationResource = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
@@ -181,6 +182,10 @@ DEFINE_validator(glow_num_devices, [](const char *, int32_t val) {
 });
 DEFINE_bool(glow_scan_devices, glow::flags::ScanDevices,
             "Scan available devices for Glow backend");
+DEFINE_validator(glow_scan_devices, [](const char *, bool val) {
+  glow::flags::ScanDevices = val;
+  return true;
+});
 DEFINE_int32(glow_snn_partitioning_num_cards,
              glow::flags::SparseNNPartitioningSchemeNumCards,
              "Number of devices to distribute tables across in SparseNN "

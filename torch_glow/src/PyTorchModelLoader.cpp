@@ -380,6 +380,8 @@ bool isQParamWeightNode(const torch::jit::Node *node) {
       torch::jit::Symbol::fromQualString("glow::unpacked_quantized_conv3d"),
       torch::jit::Symbol::fromQualString(
           "glow::unpacked_quantized_conv3d_relu"),
+      torch::jit::Symbol::fromQualString("fb::quantize_per_tensor"),
+      torch::jit::Symbol::fromQualString("fb::quantized_linear"),
   };
 
   const auto uses = node->output()->uses();
@@ -1495,7 +1497,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::linear"},
        &PyTorchModelLoader::loadLinear,
        &PyTorchModelLoader::getCorrectTypeFromInput<LinearInput::input>},
-      {{"quantized::linear"},
+      {{"quantized::linear", "fb::quantized_linear"},
        &PyTorchModelLoader::loadQuantizedLinear,
        &PyTorchModelLoader::getCorrectTypeFromInput<
            QuantizedLinearInputs::input>},
@@ -3016,14 +3018,30 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   auto bias = biasConstant->getOutput();
 
   float outScale;
-  ASSIGN_VALUE_OR_RETURN_ERR(outScale,
-                             to32Bit(iValToDouble(getGlowIValueForValue(
-                                 inputs[QuantizedLinearInputs::scale]))));
+  if (hasGlowIValueForValue(inputs[QuantizedLinearInputs::scale])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(outScale,
+                               to32Bit(iValToDouble(getGlowIValueForValue(
+                                   inputs[QuantizedLinearInputs::scale]))));
+  } else {
+    float scaleConstant;
+    RETURN_IF_ERR(extractConstantFromNodeValue<float>(
+        inputs[QuantizedLinearInputs::scale], glow::ElemKind::FloatTy,
+        scaleConstant));
+    ASSIGN_VALUE_OR_RETURN_ERR(outScale, to32Bit((double)scaleConstant));
+  }
 
   int64_t outZeroPoint;
-  ASSIGN_VALUE_OR_RETURN_ERR(outZeroPoint,
-                             iValToInt(getGlowIValueForValue(
-                                 inputs[QuantizedLinearInputs::zero_point])));
+  if (hasGlowIValueForValue(inputs[QuantizedLinearInputs::zero_point])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(outZeroPoint,
+                               iValToInt(getGlowIValueForValue(
+                                   inputs[QuantizedLinearInputs::zero_point])));
+  } else {
+    int32_t zeroPointConstant;
+    RETURN_IF_ERR(extractConstantFromNodeValue<int32_t>(
+        inputs[QuantizedLinearInputs::zero_point], glow::ElemKind::Int32ITy,
+        zeroPointConstant));
+    outZeroPoint = (int64_t)zeroPointConstant;
+  }
 
   bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
                             ptWeightTensor.qscheme() == at::kPerChannelAffine;

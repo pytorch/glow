@@ -54,7 +54,7 @@ Interpreter::compile(Function *F, const BackendOptions &opts) const {
 
 std::unique_ptr<CompiledFunction>
 Interpreter::compileIR(std::unique_ptr<IRFunction> IR) const {
-  auto *mod = IR->getGraph()->getParent();
+  auto *mod = IR->getParent();
   auto function = compileIRWithoutConstants(std::move(IR));
   auto IFunction = static_cast<InterpreterFunction *>(function.get());
   IFunction->collectConstants(mod);
@@ -798,6 +798,24 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
             NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
+
+  case Kinded::Kind::TFLiteDetectionPostProcessNodeKind:
+    return NI.getInElemTy(TFLiteDetectionPostProcessNode::BoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::ScoresIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(TFLiteDetectionPostProcessNode::AnchorsIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::DetectionBoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(
+               TFLiteDetectionPostProcessNode::DetectionClassesIdx) ==
+               ElemKind::Int32ITy &&
+           NI.getOutElemTy(
+               TFLiteDetectionPostProcessNode::DetectionScoresIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(TFLiteDetectionPostProcessNode::NumDetectionsIdx) ==
+               ElemKind::Int32ITy;
 
   case Kinded::Kind::AudioSpectrogramNodeKind:
     return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==

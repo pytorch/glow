@@ -425,10 +425,13 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
         }
       };
       DBG_MEM_USAGE("NNPICompiledFunction call get compile <<");
-      LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
-          nnpiNetworkCompileToStream(network_, &config_, &outFileStream, NULL),
-          "Failed NNPI Compile");
+      if (!opts.useDeserialize) {
 
+        LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
+            nnpiNetworkCompileToStream(network_, &config_, &outFileStream,
+                                       NULL),
+            "Failed NNPI Compile");
+      }
       DBG_MEM_USAGE("NNPICompiledFunction done compile <<");
     } else // Compile to file.
     {
@@ -840,4 +843,17 @@ const std::string NNPICompiledFunction::toJSON() const {
   fs << edgesToJSON(compilationInfo_.opDependencies) << std::endl;
   fs << "}" << std::endl;
   return fs.str();
+}
+
+std::unique_ptr<BlockStreamBase> NNPICompiledFunction::serialize() {
+  compiledStream_.resetRead();
+  return std::make_unique<BlockStream>(compiledStream_);
+}
+
+Error NNPICompiledFunction::deserialize(
+    const std::vector<char> &serializedData) {
+  compiledStream_.releaseMemory();
+  const char *buffer = reinterpret_cast<const char *>(serializedData.data());
+  compiledStream_.write(buffer, serializedData.size());
+  return Error::success();
 }
