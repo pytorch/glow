@@ -95,6 +95,7 @@ createDefaultGraphOptimizationPassPipeline() {
 
       // Optimize Pad nodes
       {FunctionPassID::MergePadIntoConvolution},
+      {FunctionPassID::MergePadIntoPooling},
 
       // Optimize Convolution nodes with small input tensors.
       {FunctionPassID::OptimizeSmallConv},

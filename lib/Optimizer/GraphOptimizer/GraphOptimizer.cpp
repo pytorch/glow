@@ -1472,12 +1472,12 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
-/// Local utility to check whether the given convolution \p node has a Pad
-/// node for its input and tries to merge the Pad into the convolution.
+/// Local utility to check whether the given convolution or pooling \p node has
+/// a Pad node for its input and tries to merge the Pad into the node.
 /// \returns true or false whether the pad was merged or not.
-template <class ConvNodeTy> static bool mergePadIntoConvolution(Node *node) {
+template <class NodeTy> static bool mergePadIntoConvPool(Node *node) {
 
-  auto *CN = dyn_cast<ConvNodeTy>(node);
+  auto *CN = dyn_cast<NodeTy>(node);
   if (!CN) {
     return false;
   }
@@ -1547,10 +1547,22 @@ bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Merge Pad into Convolution node.
-    changed |= mergePadIntoConvolution<ConvolutionNode>(&node);
+    changed |= mergePadIntoConvPool<ConvolutionNode>(&node);
     // Merge Pad into ChannelwiseQuantizedConvolution node.
     changed |=
-        mergePadIntoConvolution<ChannelwiseQuantizedConvolutionNode>(&node);
+        mergePadIntoConvPool<ChannelwiseQuantizedConvolutionNode>(&node);
+  }
+  return changed;
+}
+
+bool MergePadIntoPooling::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    // Merge Pad into MaxPool node.
+    changed |= mergePadIntoConvPool<MaxPoolNode>(&node);
+    // Merge Pad into AvgPool node.
+    changed |= mergePadIntoConvPool<AvgPoolNode>(&node);
   }
   return changed;
 }
