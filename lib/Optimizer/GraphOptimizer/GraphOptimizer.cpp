@@ -1549,8 +1549,7 @@ bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
     // Merge Pad into Convolution node.
     changed |= mergePadIntoConvPool<ConvolutionNode>(&node);
     // Merge Pad into ChannelwiseQuantizedConvolution node.
-    changed |=
-        mergePadIntoConvPool<ChannelwiseQuantizedConvolutionNode>(&node);
+    changed |= mergePadIntoConvPool<ChannelwiseQuantizedConvolutionNode>(&node);
   }
   return changed;
 }

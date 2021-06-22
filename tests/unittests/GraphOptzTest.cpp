@@ -3028,6 +3028,73 @@ TEST_F(GraphOptz, fusePadIntoCWQConvNeg2) {
                          1 /* convStride */, 16 /* convNumKernels */);
 }
 
+void fusePadIntoPoolTest(glow::Module &mod_, glow::Function *F_,
+                         llvm::ArrayRef<dim_t> inputDims,
+                         llvm::ArrayRef<int> pads, unsigned_t poolKernelSize,
+                         llvm::ArrayRef<unsigned_t> poolPads,
+                         unsigned_t poolStride) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
+
+  // Pad.
+  dim_t inputWithPadDims[4];
+  for (int i = 0; i < 4; i++) {
+    inputWithPadDims[i] = dim_t(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
+  }
+  dim_t outputPoolDims[4] = {
+      inputWithPadDims[0],
+      inputWithPadDims[1] + poolPads[0] + poolPads[2] - (poolKernelSize - 1),
+      inputWithPadDims[2] + poolPads[1] + poolPads[3] - (poolKernelSize - 1),
+      16};
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, inputWithPadDims);
+  Node *P =
+      F_->createPad("pad", input, outTy, PaddingMode::CONSTANT, pads, 0.f);
+
+  // Pooling.
+  auto *MP = F_->createMaxPool("pool", P, {poolKernelSize, poolKernelSize},
+                               {poolStride, poolStride}, poolPads);
+  SaveNode *O = F_->createSave("save", MP);
+
+  // The pad node must be merged into pooling.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Check the graph structure and additional properties after optimization.
+  auto *pool = llvm::dyn_cast<MaxPoolNode>(O->getInput());
+  ASSERT_NE(pool, nullptr);
+  EXPECT_EQ(pool->getResult().dims(), llvm::ArrayRef<dim_t>(outputPoolDims));
+  unsigned_t expectedPads[4];
+  for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+      expectedPads[2 * i + j] =
+          unsigned_t(int(poolPads[2 * i + j]) + pads[4 * i + (1 + j)]);
+    }
+  }
+  EXPECT_EQ(pool->getPads(), llvm::makeArrayRef(expectedPads));
+}
+
+TEST_F(GraphOptz, fusePadIntoPool) {
+  fusePadIntoPoolTest(mod_, F_, {1, 6, 14, 3} /* inputDims */,
+                      {0, 1, 2, 0, 0, 3, 4, 0} /* pads */,
+                      5 /* poolKernelSize */, {0, 0, 0, 0} /* poolPads */,
+                      1 /* poolStride */);
+}
+
+TEST_F(GraphOptz, fusePadIntoPoolNeg1) {
+  fusePadIntoPoolTest(mod_, F_, {1, 6, 14, 3} /* inputDims */,
+                      {0, -1, 2, 0, 0, 3, -2, 0} /* pads */,
+                      5 /* poolKernelSize */, {3, 0, 2, 5} /* poolPads */,
+                      1 /* poolStride */);
+}
+
+TEST_F(GraphOptz, fusePadIntoPoolNeg2) {
+  fusePadIntoPoolTest(mod_, F_, {1, 6, 14, 3} /* inputDims */,
+                      {0, 1, -2, 0, 0, -3, 4, 0} /* pads */,
+                      5 /* poolKernelSize */, {0, 2, 5, 7} /* poolPads */,
+                      1 /* poolStride */);
+}
+
 /// This test checks that a lowered LeakyRelu is corrected folded:
 /// Max(A, Mult(A, Splat)) -> PRelu(Splat)
 TEST_F(GraphFold, foldLeakyReluFromSplat) {
