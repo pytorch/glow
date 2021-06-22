@@ -3053,7 +3053,7 @@ void fusePadIntoPoolTest(glow::Module &mod_, glow::Function *F_,
   // Pooling.
   auto *MP = F_->createMaxPool("pool", P, {poolKernelSize, poolKernelSize},
                                {poolStride, poolStride}, poolPads);
-  SaveNode *O = F_->createSave("save", MP);
+  SaveNode *O = F_->createSave("save", MP->getResult());
 
   // The pad node must be merged into pooling.
   EXPECT_EQ(F_->getNodes().size(), 3);
