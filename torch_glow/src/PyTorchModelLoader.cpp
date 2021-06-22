@@ -8582,6 +8582,11 @@ Error PyTorchModelLoader::loadFusedSplit(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       dim, iValToInt(getGlowIValueForValue(inputs[FusedSplitInputs::dim])));
 
+  // wrap if dim is negative
+  if (dim < 0) {
+    dim += input.dims().size();
+  }
+
   at::ScalarType inputCorrectType;
   ASSIGN_VALUE_OR_RETURN_ERR(inputCorrectType,
                              getCorrectTypeMapping(ptNode->input(0)));
