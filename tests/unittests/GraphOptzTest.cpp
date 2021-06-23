@@ -3045,7 +3045,7 @@ void fusePadIntoPoolTest(glow::Module &mod_, glow::Function *F_,
       inputWithPadDims[0],
       inputWithPadDims[1] + poolPads[0] + poolPads[2] - (poolKernelSize - 1),
       inputWithPadDims[2] + poolPads[1] + poolPads[3] - (poolKernelSize - 1),
-      16};
+      inputWithPadDims[3]};
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, inputWithPadDims);
   Node *P =
       F_->createPad("pad", input, outTy, PaddingMode::CONSTANT, pads, 0.f);
