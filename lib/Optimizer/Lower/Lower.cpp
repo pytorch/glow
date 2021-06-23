@@ -812,6 +812,138 @@ static void lowerLayerNormalizationNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, out, output);
 }
 
+static void
+lowerInstanceNormalizationNode(Function *F, CompilationContext &cctx,
+                               const InstanceNormalizationNode &IN) {
+  LOG_SCOPE(F->getLogContext(), "lowerInstanceNormalizationNode")
+
+  auto in = IN.getInput();
+  auto out = IN.getResult();
+  auto bias = IN.getBias();
+  auto scale = IN.getScale();
+  auto channelIdx = IN.getChannelIdx();
+  auto epsilon = IN.getEpsilon();
+  const dim_t numChannels = in.dims()[channelIdx];
+  const dim_t numBatch = in.dims()[0];
+  const dim_t numInstances = numBatch * numChannels;
+  // The number of elements that each Instance holds.
+  const dim_t samplesPerInstance = in.getType()->size() / numInstances;
+
+  NodeValue inPrep = in;
+  std::vector<unsigned_t> perm(in.dims().size());
+  for (size_t i = 0; i < perm.size(); i++) {
+    perm[i] = i;
+  }
+  if (channelIdx + 1 != in.dims().size()) {
+    // If channelIdx is not the last, move it to the last.
+    std::swap(perm[channelIdx], perm[perm.size() - 1]);
+    inPrep =
+        F->createTranspose(DECORATE_NODE_NAME(IN, "in", "transpose"), in, perm)
+            ->getResult();
+  }
+  // Reshape input tensor to: {numBatch, samplesPerInstance, numChannels}.
+  auto inPrepDims = inPrep.dims();
+  inPrep = F->createReshape(DECORATE_NODE_NAME(IN, "in", "flat"), inPrep,
+                            {numBatch, samplesPerInstance, numChannels})
+               ->getResult();
+
+  // Calculate Local Mean=sum(in[i,j]) / samplesPerInstance:
+  // Reduce the tensor by the middle dimension, to get
+  // {numBatch,samplerPerInstance,numChannels}.
+  auto localMean = F->createBatchedReduceAdd(
+                        DECORATE_NODE_NAME(IN, "in", "sum"), inPrep, {1})
+                       ->getResult();
+  auto samplesPerInstanceSplat =
+      F->createSplat(DECORATE_NODE_NAME(IN, "samplesPerInstanceSplat"),
+                     localMean.getType(), samplesPerInstance)
+          ->getResult();
+  localMean = F->createDiv(DECORATE_NODE_NAME(IN, "localMean"), localMean,
+                           samplesPerInstanceSplat)
+                  ->getResult();
+  auto meanSquare = F->createMul(DECORATE_NODE_NAME(IN, "square", "localMean"),
+                                 localMean, localMean)
+                        ->getResult();
+
+  // Var = sum(in[i,j]*in[i,j])/samplerPerInstance
+  auto localVar =
+      F->createBatchedReduceSumSquare(
+           DECORATE_NODE_NAME(IN, "in", "sum", "square"), inPrep, {1})
+          ->getResult();
+  localVar = F->createDiv(DECORATE_NODE_NAME(IN, "scaled", "sum", "square"),
+                          localVar, samplesPerInstanceSplat)
+                 ->getResult();
+  localVar =
+      F->createSub(DECORATE_NODE_NAME(IN, "sumsq_meansq"), localVar, meanSquare)
+          ->getResult();
+  auto epsilonSplat = F->createSplat(DECORATE_NODE_NAME(IN, "epsilonSplat"),
+                                     localMean.getType(), epsilon)
+                          ->getResult();
+  localVar =
+      F->createAdd(DECORATE_NODE_NAME(IN, "locaVar2"), localVar, epsilonSplat)
+          ->getResult();
+  localVar = F->createPow(DECORATE_NODE_NAME(IN, "locaVar"), localVar, 0.5)
+                 ->getResult();
+
+  // Broadcast scale and bias to shape: {numBatch, numchannel}.
+  auto scaleB = F->createReshape(DECORATE_NODE_NAME(IN, "scale", "reshape"),
+                                 scale, {1, numChannels})
+                    ->getResult();
+  scaleB = F->createTile(DECORATE_NODE_NAME(IN, "scale", "tile"), scaleB,
+                         numBatch, 0)
+               ->getResult();
+  auto biasB = F->createReshape(DECORATE_NODE_NAME(IN, "bias", "reshape"), bias,
+                                {1, numChannels})
+                   ->getResult();
+  biasB =
+      F->createTile(DECORATE_NODE_NAME(IN, "bias", "tile1"), biasB, numBatch, 0)
+          ->getResult();
+
+  // Compute merged scale and bias.
+  // mergedScale = scale/stddev
+  // mergedBias = bias - mergedScale * mean
+  scaleB =
+      F->createDiv(DECORATE_NODE_NAME(IN, "merged", "scale"), scaleB, localVar)
+          ->getResult();
+  auto scaledMean =
+      F->createMul(DECORATE_NODE_NAME(IN, "scaled", "mean"), scaleB, localMean)
+          ->getResult();
+  biasB =
+      F->createSub(DECORATE_NODE_NAME(IN, "merged", "bias"), biasB, scaledMean)
+          ->getResult();
+
+  // Broadcast merged scale and bias to shape: {numBatch, samplesPerInstance,
+  // numChannel}.
+  scaleB =
+      F->createReshape(DECORATE_NODE_NAME(IN, "merged", "scale", "reshape"),
+                       scaleB, {numBatch, 1, numChannels})
+          ->getResult();
+  scaleB = F->createTile(DECORATE_NODE_NAME(IN, "merged", "scale", "tile"),
+                         scaleB, samplesPerInstance, 1)
+               ->getResult();
+  biasB = F->createReshape(DECORATE_NODE_NAME(IN, "merged", "bias", "reshape"),
+                           biasB, {numBatch, 1, numChannels})
+              ->getResult();
+  biasB = F->createTile(DECORATE_NODE_NAME(IN, "merged", "bias", "tile"), biasB,
+                        samplesPerInstance, 1)
+              ->getResult();
+
+  auto newResult =
+      F->createMul(DECORATE_NODE_NAME(IN, "mul"), inPrep, scaleB)->getResult();
+  newResult = F->createAdd(DECORATE_NODE_NAME(IN, "result"), newResult, biasB)
+                  ->getResult();
+  newResult = F->createReshape(DECORATE_NODE_NAME(IN, "result", "reshape"),
+                               newResult, inPrepDims)
+                  ->getResult();
+  if (channelIdx + 1 != in.dims().size()) {
+    // If channelIdx is not the last, transform output tensor back.
+    newResult =
+        F->createTranspose(DECORATE_NODE_NAME(IN, "result", "transpose"),
+                           newResult, perm)
+            ->getResult();
+  }
+  replaceAllUsesOfWith(cctx.loweredInfoMap, IN.getResult(), newResult);
+}
+
 static void lowerMeanVarNormalizationNode(Function *F, CompilationContext &cctx,
                                           const MeanVarNormalizationNode &MVN) {
   LOG_SCOPE(F->getLogContext(), "lowerMeanVarNormalizationNode")
@@ -1899,6 +2031,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(SGD);
     CASE_LOWER(BatchNormalization);
     CASE_LOWER(LayerNormalization);
+    CASE_LOWER(InstanceNormalization);
     CASE_LOWER(MeanVarNormalization);
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);

@@ -2755,6 +2755,30 @@ Error ONNXModelLoader::loadBatchNormalization(
   return Error::success();
 }
 
+Error ONNXModelLoader::loadInstanceNormalization(
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  NodeValue scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(scale, getNodeValueByName(op.input(1)));
+  NodeValue bias;
+  ASSIGN_VALUE_OR_RETURN_ERR(bias, getNodeValueByName(op.input(2)));
+
+  float epsilon = 1e-5f; // default
+  auto epsilonIt = dict.find("epsilon");
+  if (epsilonIt != dict.end()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(epsilonIt->second));
+  }
+
+  auto *node =
+      G_->createInstanceNormalization(opName, in, bias, scale, 1, epsilon);
+  RETURN_IF_ERR(addNodeAsOutput(op, node, 1));
+
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -5506,6 +5530,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "BatchNormalization") {
     return loadBatchNormalization(op, dict);
+  }
+  if (typeName == "InstanceNormalization") {
+    return loadInstanceNormalization(op, dict);
   }
   if (typeName == "Concat") {
     return loadConcat(op, dict);
