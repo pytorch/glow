@@ -111,8 +111,6 @@ public:
                           std::all_of(dilation.cbegin(), dilation.cend(),
                                       [](int i) { return i == 1; }),
                           "Dilation is not supported", NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR, groups == 1, "Group is not supported",
-                          NNPI_INVALID_PARAM);
 
     LOG_AND_RETURN_IF_NOT(ERROR, importer.isConstant(filterName),
                           "convolution (" + name + ") filter (" + filterName +
@@ -496,6 +494,8 @@ static std::unordered_map<
     {"acc_ops.sub",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
     {"acc_ops.mul",
+     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
+    {"acc_ops.quantized_mul",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
     {"acc_ops.div",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
