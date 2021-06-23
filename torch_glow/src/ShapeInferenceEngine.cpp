@@ -269,6 +269,7 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&unsqueezeNTimes, &SI::addShapeDefault)},
       {"fb::equally_split",
        ShapeInference(&equallySplit, &SI::addShapeDefaultList)},
+      {"aten::squeeze", ShapeInference(&squeeze, &SI::addShapeDefault)},
   });
   return map;
 }
@@ -2274,6 +2275,36 @@ ShapeInferenceEngine::equallySplit(const MetaStack &variableMetas) {
 
   TensorListOutput output;
   output.shape = outputShape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::squeeze(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2 || variableMetas.size() == 1,
+      strFormat("Expected 1 or 2 input, got %zu.", variableMetas.size()));
+
+  const auto &t = variableMetas[0].shape<TensorShape>();
+  // Load dim parameter if provided
+  int64_t dim = 0;
+  bool dimProvided = false;
+  if (variableMetas.size() == 2) {
+    dimProvided = true;
+    dim = variableMetas[1].intValue[0];
+    if (dim < 0) {
+      dim += t.size();
+    }
+  }
+
+  TensorShape shape;
+  for (int i = 0; i < t.size(); i++) {
+    if (t[i] != 1 || (dimProvided && i != dim)) {
+      shape.push_back(t[i]);
+    }
+  }
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }
