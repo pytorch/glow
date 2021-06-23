@@ -158,6 +158,12 @@ llvm::cl::opt<bool> dumpModelInputs(
         "Dump model and inputs into format that repro binary can run."),
     llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 
+llvm::cl::opt<bool> dumpFinalGraph(
+    "dump-final-graph",
+    llvm::cl::desc(
+        "Call dumpDag on each Function passed to the backend for compilation."),
+    llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
 llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
     "glow_global_fused_scale_offset_fp32",
     llvm::cl::desc(
@@ -990,6 +996,7 @@ protected:
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
     cctx.deferredWeightLoader = &loader;
+    cctx.dumpFinalGraph = dumpFinalGraph;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
     // Run graph
@@ -1123,10 +1130,10 @@ protected:
         sparseNNPartitioningNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         sparseNNPartitioningNumCoresOther;
+    cctx.dumpFinalGraph = dumpFinalGraph;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(modP), cctx));
     std::cout << "Partitions = " << rawModule->getFunctions().size()
               << std::endl;
-    ASSERT_LE(rawModule->getFunctions().size(), numDevices);
 
     // Run the partitioned graph and compare the results.
     auto &bindings = *context.getPlaceholderBindings();
