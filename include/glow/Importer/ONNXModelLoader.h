@@ -291,6 +291,10 @@ class ONNXModelLoader
   Error loadCast(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
 
+  /// Load HardSigmoid ONNX operator.
+  Error loadHardSigmoid(const ONNX_NAMESPACE::NodeProto &op,
+                 ArgumentDictionaryTy &dict);
+
   /// Load LeakyRelu ONNX operator.
   Error loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
                       ArgumentDictionaryTy &dict);

@@ -14018,6 +14018,72 @@ TEST_P(OperatorTest, Sigmoid_BFloat16) {
                           0.01f);
 }
 
+/// Helper to test HardSigmoid using \p DTy.
+template <typename DataType>
+static void testHardSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                        glow::Function *F, glow::ExecutionEngine &EE,
+                        ElemKind DTy, float allowedError = 0.001f) {
+  constexpr dim_t size = 5;
+  float alpha = 0.2;
+  float beta = 0.5;
+  auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {-3., -1., 0., 1., 3.};
+  auto *hardsigmoid = F->createHardSigmoid("hardsigmoid", input, alpha, beta);
+  auto *save = F->createSave("save", hardsigmoid);
+  bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto saveH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
+  auto inH = bindings.get(input)->getHandle<DataType>();
+
+  for (dim_t i = 0; i < size; i++) {
+    DataType expectedResult =
+      std::max<DataType>(0, std::min<DataType>(1, (DataType)alpha * inH.raw(i) + (DataType)beta));
+    EXPECT_NEAR((float)saveH.raw(i), (float)expectedResult, allowedError);
+  }
+}
+
+/// Verify that the HardSigmoid operator works correctly with FloatTy.
+TEST_P(OperatorTest, HardSigmoid_Float) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the HardSigmoid operator works correctly with Float16Ty.
+TEST_P(OperatorTest, HardSigmoid_Float16) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Verify that the HardSigmoid operator works correctly with BFloat16Ty.
+TEST_P(OperatorTest, HardSigmoid_BFloat16) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
+/*
+TEST_P(OperatorTest, HardSigmoid_Float) {
+  CHECK_IF_ENABLED();
+  constexpr dim_t size = 5;
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+  bindings_.allocate(input)->getHandle<float>() = {-3, -1, 0.0, 1, 3};
+  auto *node = F_->createHardSigmoid("hardsigmoid", input, 0.2, 0.5);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 5);
+  EXPECT_FLOAT_EQ(outH.raw(0), 0.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 0.3);
+  EXPECT_FLOAT_EQ(outH.raw(2), 0.5);
+  EXPECT_FLOAT_EQ(outH.raw(3), 0.7);
+  EXPECT_FLOAT_EQ(outH.raw(4), 1.0);
+}
+*/
+
 /// Helper to test Swish using \p DTy.
 template <typename DataType>
 static void testSwish(glow::PlaceholderBindings &bindings, glow::Module &mod,

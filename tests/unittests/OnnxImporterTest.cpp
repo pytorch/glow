@@ -944,6 +944,32 @@ TEST_F(OnnxImporterTest, importPReluInvalidBroadcastSlope) {
   }
 }
 
+/// Test loading HardSigmoid op from an ONNX model.
+TEST_F(OnnxImporterTest, hardsigmoid) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/hardsigmoid.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {5});
+    x.getHandle() = {-3, -1, 0, 1, 3};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  HardSigmoidNode *LR = llvm::dyn_cast<HardSigmoidNode>(save->getInput().getNode());
+  ASSERT_TRUE(LR);
+  EXPECT_FLOAT_EQ(LR->getAlpha(), 0.1666666667);
+  EXPECT_FLOAT_EQ(LR->getBeta(), 0.500000001);
+}
+
 /// Helper method to run the Conv operator test cases.
 /// \p filename contains the model .onnxtxt.
 /// \p expectedDims: output Tensor dimensions.

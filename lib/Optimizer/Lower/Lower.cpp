@@ -448,6 +448,26 @@ static void lowerReluNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), relu);
 }
 
+static void lowerHardSigmoidNode(Function *F, CompilationContext &cctx,
+                               const HardSigmoidNode &R) {
+  LOG_SCOPE(F->getLogContext(), "lowerHardSigmoidNode")
+
+  auto ty = R.getResult().getType();
+  CHECK(ty->isFPType()) << "HardSigmoid: quantized type not supported: " << ty;
+
+  // max(0, min(1, alpha * x + beta))
+  auto *Alpha = F->createSplat(DECORATE_NODE_NAME(R, "Alpha"), ty, R.getAlpha());
+  auto *Beta = F->createSplat(DECORATE_NODE_NAME(R, "Beta"), ty, R.getBeta());
+  auto *zero = F->createSplat(DECORATE_NODE_NAME(R, "zero"), ty, 0);
+  auto *one = F->createSplat(DECORATE_NODE_NAME(R, "one"), ty, 1);
+
+  auto *mul = F->createMul(DECORATE_NODE_NAME(R, "mul"), Alpha, R.getInput());
+  auto *add = F->createAdd(DECORATE_NODE_NAME(R, "add"), mul, Beta);
+  auto *min = F->createMin(DECORATE_NODE_NAME(R, "min"), add, one);
+  auto *max = F->createMax(DECORATE_NODE_NAME(R, "max"), min, zero);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), max);
+}
+
 static void lowerHardSwishNode(Function *F, CompilationContext &cctx,
                                const HardSwishNode &R) {
   LOG_SCOPE(F->getLogContext(), "lowerHardSwishNode")
@@ -1925,6 +1945,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(LSTMUnit);
     CASE_LOWER(Broadcast);
     CASE_LOWER(LogSoftMax);
+    CASE_LOWER(HardSigmoid);
     CASE_LOWER(HardSwish);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
