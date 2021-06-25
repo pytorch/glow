@@ -194,11 +194,11 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
           biasC->setPayloadType(newBiasTy);
         }
       } else if (tfliteBiasScaleCheckThrowErrorOpt) {
-        return MAKE_ERR(
-            strFormat("TensorFlowLite: ERROR: Per tensor BIAS scale value was "
-                      "expected to be exactly %E (inputScale * weightsScale) but "
-                      "found %E instead! Relative absolute error is %E!\n",
-                      matMulScale, biasScale, relErr));
+        return MAKE_ERR(strFormat(
+            "TensorFlowLite: ERROR: Per tensor BIAS scale value was "
+            "expected to be exactly %E (inputScale * weightsScale) but "
+            "found %E instead! Relative absolute error is %E!\n",
+            matMulScale, biasScale, relErr));
       }
     }
     int32_t biasOffset = biasTy->getOffset();
