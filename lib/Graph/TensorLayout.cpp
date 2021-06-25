@@ -709,6 +709,8 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::SGDNodeKind:
   case Kinded::Kind::BroadcastNodeKind:
   case Kinded::Kind::GaussianFillNodeKind:
+  case Kinded::Kind::SpaceToDepthNodeKind:
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
     return true;
   default:
     return false;

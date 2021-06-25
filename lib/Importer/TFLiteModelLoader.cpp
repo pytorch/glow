@@ -1371,7 +1371,11 @@ Error TFLiteModelLoader::loadUnaryArithmetic(const tflite::Operator *op,
   } else if (opCode == tflite::BuiltinOperator_LOGICAL_NOT) {
     output = F_->createNot(opInfo.name, input);
   } else if (opCode == tflite::BuiltinOperator_QUANTIZE) {
-    output = F_->createQuantize(opInfo.name, input, outTy);
+    if (input.getType()->isFPType()) {
+      output = F_->createQuantize(opInfo.name, input, outTy);
+    } else {
+      output = F_->createRescaleQuantized(opInfo.name, input, outTy);
+    }
   } else if (opCode == tflite::BuiltinOperator_DEQUANTIZE) {
     output = F_->createDequantize(opInfo.name, input, outTy);
   } else {
