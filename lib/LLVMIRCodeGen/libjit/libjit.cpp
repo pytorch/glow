@@ -2981,6 +2981,7 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
     inW -= dims[1];
 
     // Compute the sum of exponentials.
+    // The exponentials from the LookUp Table are in Q1.31 format.
     uint32_t sum = 0;
     for (int i = 0; i < dims[1]; i++) {
       sum += (expData[*inW++ - max] >> (integerPoint - 1));
@@ -3000,7 +3001,7 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
     uint32_t division = (invScale + sum / 2) / sum;
     int size = (16 - invScalePoint + sumPoint);
     int point = 31 + size;
-  
+
     // Multiply with exp and bring the result into the right range.
     uint64_t rnd = 1 << (point - 1);
     for (int i = 0; i < dims[1]; i++) {
