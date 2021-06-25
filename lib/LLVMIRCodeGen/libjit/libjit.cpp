@@ -2988,19 +2988,20 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
     }
     inW -= dims[1];
 
+    // Reformat fixed point representation for sum.
+    uint32_t sumPoint = integerPart;
+    while (!(sum & 0x80000000)) {
+      sum = sum << 1;
+      sumPoint--;
+    }
+    sum = sum >> 16;
+
     // Compute 1 / outputScale * 1 / sum, where sum is computed above
     // align point for both operands.
-    if ((32 - integerPart) >= (32 - invScalePoint)) {
-      division = ((uint64_t)invScale * (1 << (32 - invScalePoint))) /
-                 (sum >> (invScalePoint - integerPart));
-      size = (32 - invScalePoint);
-    } else {
-      division = ((uint64_t)(invScale >> (integerPart - invScalePoint))) *
-                 (1 << (32 - integerPart)) / sum;
-      size = (32 - integerPart);
-    }
+    division = (invScale + sum / 2) / sum;
+    size = (16 - invScalePoint + sumPoint);
+    point = 31 + size;
 
-    point = size + 31;
     // Multiply with exp and bring the result into the right range.
     for (int i = 0; i < dims[1]; i++) {
       uint32_t index = *inW++ + 255 - max;
