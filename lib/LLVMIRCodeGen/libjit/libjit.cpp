@@ -2992,7 +2992,7 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
     uint32_t sumPoint = integerPart;
     while (!(sum & 0x80000000)) {
       sum = sum << 1;
-      sumPoint --;
+      sumPoint--;
     }
     sum = sum >> 16;
 
