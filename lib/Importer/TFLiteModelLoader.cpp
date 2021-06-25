@@ -179,7 +179,7 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
     if (biasScale != matMulScale) {
       float relErr = std::abs(matMulScale - biasScale) / matMulScale;
       llvm::errs() << strFormat(
-          "TensorFlowLite: WARNING: Bias scale value was expected "
+          "TensorFlowLite: WARNING: Per tensor BIAS scale value was expected "
           "to be exactly %E (inputScale * weightsScale) but found "
           "%E instead! Relative absolute error is %E!\n",
           matMulScale, biasScale, relErr);
@@ -195,9 +195,9 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
         }
       } else if (tfliteBiasScaleCheckThrowErrorOpt) {
         return MAKE_ERR(
-            strFormat("TensorFlowLite: ERROR: Bias scale value was expected "
-                      "to be exactly %E (inputScale * weightsScale) but found "
-                      "%E instead! Relative absolute error is %E!\n",
+            strFormat("TensorFlowLite: ERROR: Per tensor BIAS scale value was "
+                      "expected to be exactly %E (inputScale * weightsScale) but "
+                      "found %E instead! Relative absolute error is %E!\n",
                       matMulScale, biasScale, relErr));
       }
     }
@@ -1062,7 +1062,7 @@ Expected<bool> TFLiteModelLoader::isConv2DPerAxisQuantized(
       float relErr = std::abs(matMulScale - biasScale) / matMulScale;
       llvm::errs() << opErrMsg(
           opInfo,
-          strFormat("WARNING: Bias scale value was expected "
+          strFormat("WARNING: Per channel BIAS scale value was expected "
                     "to be exactly %E (inputScale * weightsScale) but found "
                     "%E instead! Relative absolute error is %E!\n",
                     matMulScale, biasScale, relErr));
@@ -1072,7 +1072,7 @@ Expected<bool> TFLiteModelLoader::isConv2DPerAxisQuantized(
       } else if (tfliteBiasScaleCheckThrowErrorOpt) {
         return MAKE_ERR(opErrMsg(
             opInfo,
-            strFormat("ERROR: Bias scale value was expected "
+            strFormat("ERROR: Per channel BIAS scale value was expected "
                       "to be exactly %E (inputScale * weightsScale) but found "
                       "%E instead! Relative absolute error is %E!\n",
                       matMulScale, biasScale, relErr)));
