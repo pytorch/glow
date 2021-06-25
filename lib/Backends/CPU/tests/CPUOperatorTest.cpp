@@ -515,4 +515,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "IntConcat16/0",
     "CmpNEQ_Int16QTy/0",
     "less_int16Cases/0",
+    "InstanceNormalization_FloatTy/0",
 };
