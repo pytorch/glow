@@ -1091,7 +1091,7 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
 
-    BB.newNode("HardSigmoid")
+  BB.newNode("HardSigmoid")
       .addInput("Input")
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")

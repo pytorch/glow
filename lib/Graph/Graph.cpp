@@ -1285,13 +1285,15 @@ SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input,
   return createSwish(name, OT, input);
 }
 
-HardSigmoidNode *Function::createHardSigmoid(llvm::StringRef name, TypeRef outTy, 
-                                 NodeValue input, float alpha, float beta) {
+HardSigmoidNode *Function::createHardSigmoid(llvm::StringRef name,
+                                             TypeRef outTy, NodeValue input,
+                                             float alpha, float beta) {
   return addNode(new HardSigmoidNode(name, outTy, input, alpha, beta));
 }
 
-HardSigmoidNode *Function::createHardSigmoid(llvm::StringRef name, NodeValue input,
-                                 float alpha, float beta) {
+HardSigmoidNode *Function::createHardSigmoid(llvm::StringRef name,
+                                             NodeValue input, float alpha,
+                                             float beta) {
   return createHardSigmoid(name, input.getType(), input, alpha, beta);
 }
 

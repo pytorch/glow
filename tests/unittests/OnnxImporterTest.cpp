@@ -964,7 +964,8 @@ TEST_F(OnnxImporterTest, hardsigmoid) {
   }
 
   auto *save = getSaveNodeFromDest(output);
-  HardSigmoidNode *LR = llvm::dyn_cast<HardSigmoidNode>(save->getInput().getNode());
+  HardSigmoidNode *LR =
+      llvm::dyn_cast<HardSigmoidNode>(save->getInput().getNode());
   ASSERT_TRUE(LR);
   EXPECT_FLOAT_EQ(LR->getAlpha(), 0.1666666667);
   EXPECT_FLOAT_EQ(LR->getBeta(), 0.500000001);

@@ -449,14 +449,15 @@ static void lowerReluNode(Function *F, CompilationContext &cctx,
 }
 
 static void lowerHardSigmoidNode(Function *F, CompilationContext &cctx,
-                               const HardSigmoidNode &R) {
+                                 const HardSigmoidNode &R) {
   LOG_SCOPE(F->getLogContext(), "lowerHardSigmoidNode")
 
   auto ty = R.getResult().getType();
   CHECK(ty->isFPType()) << "HardSigmoid: quantized type not supported: " << ty;
 
   // max(0, min(1, alpha * x + beta))
-  auto *Alpha = F->createSplat(DECORATE_NODE_NAME(R, "Alpha"), ty, R.getAlpha());
+  auto *Alpha =
+      F->createSplat(DECORATE_NODE_NAME(R, "Alpha"), ty, R.getAlpha());
   auto *Beta = F->createSplat(DECORATE_NODE_NAME(R, "Beta"), ty, R.getBeta());
   auto *zero = F->createSplat(DECORATE_NODE_NAME(R, "zero"), ty, 0);
   auto *one = F->createSplat(DECORATE_NODE_NAME(R, "one"), ty, 1);

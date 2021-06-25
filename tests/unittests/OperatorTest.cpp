@@ -14020,9 +14020,10 @@ TEST_P(OperatorTest, Sigmoid_BFloat16) {
 
 /// Helper to test HardSigmoid using \p DTy.
 template <typename DataType>
-static void testHardSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                        glow::Function *F, glow::ExecutionEngine &EE,
-                        ElemKind DTy, float allowedError = 0.001f) {
+static void testHardSigmoid(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            float allowedError = 0.001f) {
   constexpr dim_t size = 5;
   float alpha = 0.2;
   float beta = 0.5;
@@ -14039,8 +14040,9 @@ static void testHardSigmoid(glow::PlaceholderBindings &bindings, glow::Module &m
   auto inH = bindings.get(input)->getHandle<DataType>();
 
   for (dim_t i = 0; i < size; i++) {
-    DataType expectedResult =
-      std::max<DataType>(0, std::min<DataType>(1, (DataType)alpha * inH.raw(i) + (DataType)beta));
+    DataType expectedResult = std::max<DataType>(
+        0,
+        std::min<DataType>(1, (DataType)alpha * inH.raw(i) + (DataType)beta));
     EXPECT_NEAR((float)saveH.raw(i), (float)expectedResult, allowedError);
   }
 }
@@ -14067,8 +14069,8 @@ TEST_P(OperatorTest, HardSigmoid_BFloat16) {
 TEST_P(OperatorTest, HardSigmoid_Float) {
   CHECK_IF_ENABLED();
   constexpr dim_t size = 5;
-  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
-  bindings_.allocate(input)->getHandle<float>() = {-3, -1, 0.0, 1, 3};
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input",
+false); bindings_.allocate(input)->getHandle<float>() = {-3, -1, 0.0, 1, 3};
   auto *node = F_->createHardSigmoid("hardsigmoid", input, 0.2, 0.5);
   auto *save = F_->createSave("save", node);
   auto *outT = bindings_.allocate(save->getPlaceholder());

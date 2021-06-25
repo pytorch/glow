@@ -2912,7 +2912,7 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadHardSigmoid(const ONNX_NAMESPACE::NodeProto &op,
-                                     ArgumentDictionaryTy &dict) {
+                                       ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   // Input Type.

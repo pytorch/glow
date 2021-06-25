@@ -799,15 +799,15 @@ public:
   // deprecated.
   SwishNode *createSwish(llvm::StringRef name, NodeValue input, TypeRef OT);
 
-  /// Create a HardSigmoid node with the given \p name, \p input, \p alpha and \p beta.
-  /// Result type will be implicitly set based on the \p input type.
+  /// Create a HardSigmoid node with the given \p name, \p input, \p alpha and
+  /// \p beta. Result type will be implicitly set based on the \p input type.
   HardSigmoidNode *createHardSigmoid(llvm::StringRef name, NodeValue input,
-                         float alpha, float beta);
+                                     float alpha, float beta);
 
   /// Create a HardSigmoid node with the given \p name, \p input,
   /// \p alpha, \p beta and output type \p outTy.
-  HardSigmoidNode *createHardSigmoid(llvm::StringRef name, TypeRef outTy, 
-                         NodeValue input, float alpha, float beta);
+  HardSigmoidNode *createHardSigmoid(llvm::StringRef name, TypeRef outTy,
+                                     NodeValue input, float alpha, float beta);
 
   /// Create a Tanh node with the given \p name, \p input and
   /// output type \p outTy.
