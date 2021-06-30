@@ -3710,35 +3710,69 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
 bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
-  // Remove identity ResizeNearest node.
+  // Optimize ResizeNearest node.
   for (auto &node : F->getNodes()) {
     auto *resizeNode = dyn_cast<ResizeNearestNode>(&node);
     if (!resizeNode) {
       continue;
     }
-    // Input and output shapes should be the same.
-    if (resizeNode->getInput().dims() != resizeNode->getResult().dims()) {
+    auto inpDims = resizeNode->getInput().dims();
+    auto outDims = resizeNode->getResult().dims();
+    // Remove identity resize (same input and output shape).
+    if (inpDims == outDims) {
+      resizeNode->getResult().replaceAllUsesOfWith(resizeNode->getInput());
+      changed = true;
       continue;
     }
-    // Remove node.
-    resizeNode->getResult().replaceAllUsesOfWith(resizeNode->getInput());
-    changed = true;
-    continue;
+    // Dimensions which are resized with integer scales should be replaced
+    // with Tile (repetition) nodes.
+    NodeValue newOut = resizeNode->getInput();
+    for (size_t idx = 0; idx < inpDims.size(); idx++) {
+      if ((outDims[idx] > inpDims[idx]) && (outDims[idx] % inpDims[idx] == 0)) {
+        unsigned_t numTiles = outDims[idx] / inpDims[idx];
+        newOut = F->createTile(node.getName().str() + "." + std::to_string(idx),
+                               newOut, numTiles, idx);
+      }
+    }
+    if (newOut != resizeNode->getInput()) {
+      newOut = F->createResizeNearest(node.getName(), newOut,
+                                      resizeNode->getResult().getType());
+      resizeNode->getResult().replaceAllUsesOfWith(newOut);
+      changed = true;
+      continue;
+    }
   }
-  // Remove identity ResizeBilinear node.
+  // Optimize ResizeBilinear node.
   for (auto &node : F->getNodes()) {
     auto *resizeNode = dyn_cast<ResizeBilinearNode>(&node);
     if (!resizeNode) {
       continue;
     }
-    // Input and output shapes should be the same.
-    if (resizeNode->getInput().dims() != resizeNode->getResult().dims()) {
+    auto inpDims = resizeNode->getInput().dims();
+    auto outDims = resizeNode->getResult().dims();
+    // Remove identity resize (same input and output shape).
+    if (inpDims == outDims) {
+      resizeNode->getResult().replaceAllUsesOfWith(resizeNode->getInput());
+      changed = true;
       continue;
     }
-    // Remove node.
-    resizeNode->getResult().replaceAllUsesOfWith(resizeNode->getInput());
-    changed = true;
-    continue;
+    // Dimensions which are resized with integer scales should be replaced
+    // with Tile (repetition) nodes.
+    NodeValue newOut = resizeNode->getInput();
+    for (size_t idx = 0; idx < inpDims.size(); idx++) {
+      if ((outDims[idx] > inpDims[idx]) && (outDims[idx] % inpDims[idx] == 0)) {
+        unsigned_t numTiles = outDims[idx] / inpDims[idx];
+        newOut = F->createTile(node.getName().str() + "." + std::to_string(idx),
+                               newOut, numTiles, idx);
+      }
+    }
+    if (newOut != resizeNode->getInput()) {
+      newOut = F->createResizeBilinear(node.getName(), newOut,
+                                       resizeNode->getResult().getType());
+      resizeNode->getResult().replaceAllUsesOfWith(newOut);
+      changed = true;
+      continue;
+    }
   }
   return changed;
 }
