@@ -91,6 +91,9 @@ public:
   /// by offsets contained in symbolTable_.
   void collectConstants(const IRFunction *F);
   void collectConstants(const Module *M);
+#if FACEBOOK_INTERNAL
+  void collectConstants(const FXIRWrapper *F);
+#endif
   /// Free constants.
   void freeConstants();
 

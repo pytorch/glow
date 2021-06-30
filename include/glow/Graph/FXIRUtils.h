@@ -17,6 +17,7 @@
 #ifndef GLOW_IR_FXIRUTILS_H
 #define GLOW_IR_FXIRUTILS_H
 
+#include "glow/Graph/FXIRWrapper.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
 

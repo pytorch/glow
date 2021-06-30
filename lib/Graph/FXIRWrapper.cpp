@@ -15,11 +15,14 @@
  */
 
 #include "glow/Graph/FXIRWrapper.h"
+#include "glow/Graph/FXIRUtils.h"
 
 namespace glow {
-const FXWeight &FXIRWrapper::getWeight() { return fx_mod_->at("weights"); }
+const FXWeight &FXIRWrapper::getWeight() const {
+  return fx_mod_->at("weights");
+}
 
-const FXNodeList &FXIRWrapper::getNodes() { return fx_mod_->at("nodes"); }
+const FXNodeList &FXIRWrapper::getNodes() const { return fx_mod_->at("nodes"); }
 
 const char *FXIRWrapper::getConstantName(llvm::StringRef name) const {
   if (name.empty()) {
@@ -73,6 +76,15 @@ const FXNode &FXIRWrapper::getFXNodeByName(llvm::StringRef nodeName) const {
   auto it = namedNodes_.find(nodeName);
   CHECK(it != namedNodes_.end()) << " Node with name doesn't exist";
   return it->second;
+}
+
+const FXNode &FXIRWrapper::getSingleUserNode(const FXNode &node) const {
+
+  CHECK(node.find("users") != node.items().end())
+      << "users field doesn't exist in node " << node;
+  auto users = node["users"].at(0);
+  auto user_name = users["name"].getString();
+  return getFXNodeByName(user_name);
 }
 
 } // namespace glow
