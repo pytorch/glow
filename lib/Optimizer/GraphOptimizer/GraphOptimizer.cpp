@@ -3728,8 +3728,8 @@ bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
     // with Tile (repetition) nodes.
     NodeValue newOut = resizeNode->getInput();
     for (size_t idx = 0; idx < inpDims.size(); idx++) {
-      if ((outDims[idx] > inpDims[idx]) && (outDims[idx] % inpDims[idx] == 0)) {
-        unsigned_t numTiles = outDims[idx] / inpDims[idx];
+      if ((outDims[idx] > inpDims[idx]) && (inpDims[idx] == 1)) {
+        unsigned_t numTiles = outDims[idx];
         newOut = F->createTile(node.getName().str() + "." + std::to_string(idx),
                                newOut, numTiles, idx);
       }
@@ -3760,8 +3760,8 @@ bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
     // with Tile (repetition) nodes.
     NodeValue newOut = resizeNode->getInput();
     for (size_t idx = 0; idx < inpDims.size(); idx++) {
-      if ((outDims[idx] > inpDims[idx]) && (outDims[idx] % inpDims[idx] == 0)) {
-        unsigned_t numTiles = outDims[idx] / inpDims[idx];
+      if ((outDims[idx] > inpDims[idx]) && (inpDims[idx] == 1)) {
+        unsigned_t numTiles = outDims[idx];
         newOut = F->createTile(node.getName().str() + "." + std::to_string(idx),
                                newOut, numTiles, idx);
       }

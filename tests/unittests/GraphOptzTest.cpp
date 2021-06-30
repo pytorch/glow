@@ -8113,7 +8113,7 @@ TEST_F(GraphOptz, OptimizeIdentityResizeNearest) {
 
 /// Test that a ResizeNearest with integer scales is transformed to Tile.
 TEST_F(GraphOptz, OptimizeResizeNearest) {
-  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 33, 33, 1},
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 33, 1},
                                               "input", /* isTrainable */ false);
   bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
                                                           mod_.getPRNG());
@@ -8147,7 +8147,7 @@ TEST_F(GraphOptz, OptimizeIdentityResizeBilinear) {
 
 /// Test that a ResizeBilinear with integer scales is transformed to Tile.
 TEST_F(GraphOptz, OptimizeResizeBilinear) {
-  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 33, 33, 1},
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 33, 1},
                                               "input", /* isTrainable */ false);
   bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
                                                           mod_.getPRNG());
