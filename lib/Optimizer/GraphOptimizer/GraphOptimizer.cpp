@@ -3724,8 +3724,7 @@ bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
-    // Dimensions which are resized with integer scales should be replaced
-    // with Tile (repetition) nodes.
+    // Dimensions which are resized from unitary sizes should use Tile nodes.
     NodeValue newOut = resizeNode->getInput();
     for (size_t idx = 0; idx < inpDims.size(); idx++) {
       if ((outDims[idx] > inpDims[idx]) && (inpDims[idx] == 1)) {
@@ -3756,8 +3755,7 @@ bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
-    // Dimensions which are resized with integer scales should be replaced
-    // with Tile (repetition) nodes.
+    // Dimensions which are resized from unitary sizes should use Tile nodes.
     NodeValue newOut = resizeNode->getInput();
     for (size_t idx = 0; idx < inpDims.size(); idx++) {
       if ((outDims[idx] > inpDims[idx]) && (inpDims[idx] == 1)) {
