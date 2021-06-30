@@ -3706,6 +3706,43 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Optimize resize nodes.
+bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  // Remove identity ResizeNearest node.
+  for (auto &node : F->getNodes()) {
+    auto *resizeNode = dyn_cast<ResizeNearestNode>(&node);
+    if (!resizeNode) {
+      continue;
+    }
+    // Input and output shapes should be the same.
+    if (resizeNode->getInput().dims() != resizeNode->getResult().dims()) {
+      continue;
+    }
+    // Remove node.
+    resizeNode->getResult().replaceAllUsesOfWith(resizeNode->getInput());
+    changed = true;
+    continue;
+  }
+  // Remove identity ResizeBilinear node.
+  for (auto &node : F->getNodes()) {
+    auto *resizeNode = dyn_cast<ResizeBilinearNode>(&node);
+    if (!resizeNode) {
+      continue;
+    }
+    // Input and output shapes should be the same.
+    if (resizeNode->getInput().dims() != resizeNode->getResult().dims()) {
+      continue;
+    }
+    // Remove node.
+    resizeNode->getResult().replaceAllUsesOfWith(resizeNode->getInput());
+    changed = true;
+    continue;
+  }
+  return changed;
+}
+
 /// Optimize: Max(Splat(), otherInput) or Max(otherInput, Splat()) for
 /// quantized operations.
 /// Splat and Max can be eliminated if Splat value cannot impact the result.

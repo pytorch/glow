@@ -8094,3 +8094,31 @@ TEST_F(GraphOptz, FoldExpSumDivIntoSoftmax) {
 
   checkNumericalEquivalence(1e-7f);
 }
+
+/// Test that an identity ResizeNearest is removed.
+TEST_F(GraphOptz, OptimizeIdentityResizeNearest) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 33, 33, 1}, "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+  auto *resize = F_->createResizeNearest("resize", input, {1, 1, 1, 1});
+  F_->createSave("save", resize);
+  EXPECT_EQ(2, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeResize, getDCEPassConfig()});
+  EXPECT_EQ(1, optimizedF_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+  checkNumericalEquivalence(1e-7f);
+}
+
+/// Test that an identity ResizeBilinear is removed.
+TEST_F(GraphOptz, OptimizeIdentityResizeBilinear) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 33, 33, 1}, "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+  auto *resize = F_->createResizeBilinear("resize", input, {1, 1, 1, 1});
+  F_->createSave("save", resize);
+  EXPECT_EQ(2, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeResize, getDCEPassConfig()});
+  EXPECT_EQ(1, optimizedF_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+  checkNumericalEquivalence(1e-7f);
+}
