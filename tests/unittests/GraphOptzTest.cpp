@@ -8117,7 +8117,7 @@ TEST_F(GraphOptz, OptimizeResizeNearest) {
                                               "input", /* isTrainable */ false);
   bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
                                                           mod_.getPRNG());
-  auto *resize = F_->createResizeNearest("resize", input, {1, 2, 2.5, 1});
+  auto *resize = F_->createResizeNearest("resize", input, {1, 2, 7.787879, 1});
   F_->createSave("save", resize);
   EXPECT_EQ(2, F_->getNodes().size());
   optimizedF_ = optimizeFunctionForTest(
@@ -8151,7 +8151,7 @@ TEST_F(GraphOptz, OptimizeResizeBilinear) {
                                               "input", /* isTrainable */ false);
   bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
                                                           mod_.getPRNG());
-  auto *resize = F_->createResizeBilinear("resize", input, {1, 2, 2.5, 1});
+  auto *resize = F_->createResizeBilinear("resize", input, {1, 2, 7.787879, 1});
   F_->createSave("save", resize);
   EXPECT_EQ(2, F_->getNodes().size());
   optimizedF_ = optimizeFunctionForTest(
