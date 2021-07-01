@@ -46,7 +46,11 @@
 #include <vector>
 
 // Utility macro to continue loop if given condition is not met.
-#define CONTINUE_IF_NOT(cond)  if(!(cond)){continue;}
+// This is intended to improve code readability and size.
+#define CONTINUE_IF_NOT(cond)                                                  \
+  if (!(cond)) {                                                               \
+    continue;                                                                  \
+  }
 
 llvm::cl::OptionCategory graphOptCat("Graph Optimizations Options");
 llvm::cl::opt<unsigned> constDedupSizeOpt(
@@ -3742,14 +3746,16 @@ bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
       }
     }
     CONTINUE_IF_NOT(axes.size());
-    auto newOutType = F->getParent()->uniqueTypeWithNewShape(outType, newOutDims);
+    auto newOutType =
+        F->getParent()->uniqueTypeWithNewShape(outType, newOutDims);
     // Create Resize node.
     NodeValue newOut = resizeNode->getInput();
     if (!inpType->isEqual(newOutType)) {
       newOut = F->createResizeNearest(node.getName(), newOut, newOutType);
     }
     // Create Tile nodes.
-    newOut = F->createTile(node.getName().str() + "." + "Tile", newOut, tiles, axes);
+    newOut =
+        F->createTile(node.getName().str() + "." + "Tile", newOut, tiles, axes);
     resizeNode->getResult().replaceAllUsesOfWith(newOut);
     changed = true;
     continue;
@@ -3783,14 +3789,16 @@ bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
       }
     }
     CONTINUE_IF_NOT(axes.size());
-    auto newOutType = F->getParent()->uniqueTypeWithNewShape(outType, newOutDims);
+    auto newOutType =
+        F->getParent()->uniqueTypeWithNewShape(outType, newOutDims);
     // Create Resize node.
     NodeValue newOut = resizeNode->getInput();
     if (!inpType->isEqual(newOutType)) {
       newOut = F->createResizeBilinear(node.getName(), newOut, newOutType);
     }
     // Create Tile nodes.
-    newOut = F->createTile(node.getName().str() + "." + "Tile", newOut, tiles, axes);
+    newOut =
+        F->createTile(node.getName().str() + "." + "Tile", newOut, tiles, axes);
     resizeNode->getResult().replaceAllUsesOfWith(newOut);
     changed = true;
     continue;
@@ -3815,8 +3823,8 @@ bool OptimizeInsert::run(Function *F, const CompilationContext &cctx) {
     smallDims[insertNode->getAxis()] *= insertNode->getCount();
     CONTINUE_IF_NOT(isUniformArray(insertNode->getStart(), dim_t(0)) &&
                     dyn_cast<SplatNode>(big) && (bigDims == smallDims));
-    NodeValue touch = F->createTouch(node.getName().str() + "." + "Touch",
-                                     big.getType());
+    NodeValue touch =
+        F->createTouch(node.getName().str() + "." + "Touch", big.getType());
     node.setNthInput(InsertTensorNode::BigIdx, touch);
     changed = true;
     continue;

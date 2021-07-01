@@ -8163,3 +8163,27 @@ TEST_F(GraphOptz, OptimizeResizeBilinear) {
   EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
   checkNumericalEquivalence(1e-7f);
 }
+
+/// Test that a InsertTensor which has the Big operand a Splat is replaced
+/// with a Touch node when the Small operand fills it entirely.
+TEST_F(GraphOptz, OptimizeInsertTensorBigSplat) {
+  Type bigTy(ElemKind::FloatTy, {10});
+  SplatNode *big = F_->createSplat("splat", &bigTy, 0);
+  Placeholder *small = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input",
+                                              /* isTrainable */ false);
+  bindings_.allocate(small)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  auto *insert = F_->createInsertTensor("insert", big, small,
+                                        /* start */ {0},
+                                        /* count */ 10,
+                                        /* axis */ 0);
+  F_->createSave("save", insert);
+  EXPECT_EQ(3, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeInsert, getDCEPassConfig()});
+  EXPECT_EQ(3, optimizedF_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::TouchNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::InsertTensorNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+  checkNumericalEquivalence(1e-7f);
+}
