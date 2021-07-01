@@ -111,6 +111,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize Resize nodes.
       {FunctionPassID::OptimizeResize},
 
+      // Optimize Insert nodes.
+      {FunctionPassID::OptimizeInsert},
+
       // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
       {FunctionPassID::ConvertBroadcastedBatchMatMul},
 
