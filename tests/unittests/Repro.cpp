@@ -676,6 +676,8 @@ int run() {
   }
 
   llvm::outs() << "Starting inference\n";
+  llvm::outs().flush(); // Explicit flush to denote the progress
+
   auto nowTime = std::chrono::steady_clock::now();
   auto endTimeDuration = nowTime + std::chrono::minutes(durationMinOpt);
   do {
@@ -991,7 +993,8 @@ int run() {
     std::cout << "Avg inference duration (ms): "
               << duration.count() / numTotalInferences << "\n";
     std::cout << "Avg inference per second: "
-              << numTotalInferences * 1000 / duration.count() << "\n";
+              << numTotalInferences * 1000 / duration.count()
+              << std::endl; // Use endl to flush the buffer
     nowTime = std::chrono::steady_clock::now();
   } while (std::chrono::duration_cast<std::chrono::seconds>(nowTime -
                                                             endTimeDuration)

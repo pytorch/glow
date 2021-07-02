@@ -494,7 +494,7 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
                                &global[0], &local[0], 0, nullptr,
                                profile ? &event : nullptr);
   CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
-  kernelLaunches.push_back(KernelLaunch(kernel, name, kernelType, event));
+  kernelLaunches.push_back(KernelLaunch(kernel, name.str(), kernelType, event));
 }
 
 /// Enqueue a \p kernel for execution on the command queue \p commands on a
@@ -520,7 +520,7 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
                                profile ? &event : nullptr);
   CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
   kernelLaunches.push_back(
-      KernelLaunch(kernel, name, kernelType, profile ? event : nullptr));
+      KernelLaunch(kernel, name.str(), kernelType, profile ? event : nullptr));
 }
 
 void OpenCLFunction::executeNCHWConvolution(
@@ -1480,7 +1480,8 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
                                        srcOff, destOff, sizeInBytes, 0, nullptr,
                                        kernelProfiling_ ? &event : nullptr);
       if (kernelProfiling_) {
-        kernelLaunches.emplace_back(KernelLaunch(I.getName(), "copy", event));
+        kernelLaunches.emplace_back(
+            KernelLaunch(I.getName().str(), "copy", event));
       }
       CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueCopyBuffer.";
       continue;
@@ -1629,7 +1630,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
                                  &global[0], &local[0], 0, nullptr, &event);
       CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
       kernelLaunches.push_back(
-          KernelLaunch(kernel, TE->getName(), "checkpoint", event));
+          KernelLaunch(kernel, TE->getName().str(), "checkpoint", event));
       continue;
     }
 
@@ -2139,7 +2140,7 @@ TraceInfo OCLBackend::buildManualTraceInfo(Function *F) const {
         type = TEN->getEventType()[0];
       }
       info.add(backing, TEN->getIndex(), TEN->getEventName(), type,
-               TEN->getName());
+               TEN->getName().str());
       info.enabled = true;
     }
   }
