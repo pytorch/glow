@@ -232,6 +232,10 @@ std::string TFLiteModelLoader::getTensorName(const tflite::Tensor *tensor) {
 
 Expected<std::vector<dim_t>>
 TFLiteModelLoader::getTensorShape(const tflite::Tensor *tensor) {
+  // If tensor shape is NULL we use a 1D shape with size 1.
+  if (!tensor->shape()) {
+    return std::vector<dim_t>({1});
+  }
   std::vector<dim_t> shape;
   for (auto dim : *(tensor->shape())) {
     RETURN_ERR_IF_NOT(dim > 0,
@@ -2528,7 +2532,8 @@ Error TFLiteModelLoader::loadSpaceToBatchNd(const tflite::Operator *op,
       F_->createTranspose(opInfo.name + ".trIn", pad, {3, 1, 2, 0}, "NHWC");
   // @lint-ignore CLANGTIDY LocalUncheckedArrayBounds
   auto *S2D = F_->createSpaceToDepth(opInfo.name + ".S2D", trIn, blockV[0]);
-  auto *output = F_->createTranspose(opInfo.name + ".trOut", S2D, {3, 1, 2, 0});
+  auto *output =
+      F_->createTranspose(opInfo.name + ".trOut", S2D, {3, 1, 2, 0}, "NHWC");
 
   return setOutputNodeValue(op, output);
 }
@@ -2586,7 +2591,8 @@ Error TFLiteModelLoader::loadBatchToSpaceNd(const tflite::Operator *op,
       F_->createTranspose(opInfo.name + ".trPre", input, {3, 1, 2, 0}, "NHWC");
   // @lint-ignore CLANGTIDY LocalUncheckedArrayBounds
   auto *D2S = F_->createDepthToSpace(opInfo.name + ".D2S", tr1, blockV[0]);
-  auto *tr2 = F_->createTranspose(opInfo.name + ".trPost", D2S, {3, 1, 2, 0});
+  auto *tr2 =
+      F_->createTranspose(opInfo.name + ".trPost", D2S, {3, 1, 2, 0}, "NHWC");
 
   // Create Crop Node.
   RETURN_ERR_IF_NOT(cropC->getType()->getElementType() == ElemKind::Int32ITy,
