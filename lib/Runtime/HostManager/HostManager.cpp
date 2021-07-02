@@ -1083,10 +1083,27 @@ runtime::generateDeviceConfigs(unsigned int numDevices,
   if (!loadDeviceConfigsFromFile(configs, memSize)) {
     // If there is no device config file, use numDevices to generate the
     // configs.
+    std::vector<unsigned> available_device_ids;
+    if (glow::flags::ScanDevices) {
+      const auto &factories =
+          FactoryRegistry<std::string, Backend>::factories();
+      auto it = factories.find(backendName.str());
+      if (it != factories.end()) {
+        available_device_ids = it->second->scanDeviceIDs();
+      }
+      CHECK_GE(available_device_ids.size(), 0) << "No devices found.";
+      CHECK_GE(available_device_ids.size(), numDevices)
+          << "Not enough devices found.";
+    }
     for (unsigned int i = 0; i < numDevices; ++i) {
       auto config = glow::make_unique<runtime::DeviceConfig>(backendName);
       config->setDeviceMemory(memSize);
-      config->deviceID = i;
+      if (glow::flags::ScanDevices) {
+        config->deviceID = available_device_ids.back();
+        available_device_ids.pop_back();
+      } else {
+        config->deviceID = i;
+      }
       configs.push_back(std::move(config));
     }
   }

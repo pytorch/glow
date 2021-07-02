@@ -22,7 +22,6 @@
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
@@ -38,7 +37,7 @@
 #include <vector>
 
 #ifndef GLOW_JIT_ORC_VERSION
-#if LLVM_VERSION_MAJOR < 10
+#if LLVM_VERSION_MAJOR < 11
 #define GLOW_JIT_ORC_VERSION 1
 #else
 #define GLOW_JIT_ORC_VERSION 2
@@ -170,9 +169,8 @@ public:
 
   llvm::JITSymbol findSymbol(const std::string &name);
 
-  using ModuleHandle = llvm::orc::VModuleKey;
   void setContext(std::unique_ptr<llvm::LLVMContext> ctx);
-  ModuleHandle addModule(std::unique_ptr<llvm::Module> M);
+  void addModule(std::unique_ptr<llvm::Module> M);
 };
 using GlowJIT = GlowJITOrcV2;
 

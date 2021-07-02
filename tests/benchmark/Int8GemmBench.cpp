@@ -287,7 +287,7 @@ int main(int argc, char *argv[]) {
          "dev_id(Int)\n");
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
-  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
+  benchParseGlowOpts(argc, argv);
 
   std::vector<Int8GemmParam> params;
   std::string runHeader;

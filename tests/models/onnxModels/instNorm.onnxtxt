@@ -1,0 +1,57 @@
+ir_version: 7
+producer_name: "onnx-test"
+opset_import { 
+  version: 12
+}
+graph {
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+  }
+  initializer {
+    dims: 3 
+    data_type: 1
+    name: "s:0"
+    float_data: 1.0
+    float_data: 1.5
+    float_data: 2.0
+  }
+  initializer {
+    dims: 3
+    data_type: 1
+    name: "bias:0"
+    float_data: 0.0
+    float_data: 1.0
+    float_data: 2.0
+  }
+  node {
+    input: "input"
+    input: "s:0"
+    input: "bias:0"
+    output: "output"
+    name: "instanceNorm"
+    op_type: "InstanceNormalization"
+  }
+  output {
+    name: "output"
+  }
+}
+

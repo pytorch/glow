@@ -1,9 +1,24 @@
-// (c) Facebook, Inc. and its affiliates. Confidential and proprietary.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #ifndef GLOW_GRAPH_FXIRWRAPPER_H
 #define GLOW_GRAPH_FXIRWRAPPER_H
 
 #include "glow/Graph/Graph.h"
+#include "llvm/ADT/MapVector.h"
 
 #include <folly/dynamic.h>
 
@@ -57,6 +72,9 @@ public:
 
   ~FXIRWrapper() = default;
 
+  /// A map to store (key) node name to  (value) placeholder/constant.
+  llvm::StringMap<const Storage *> mapNodeNameToStorage_ = {};
+
   IRKind getIRKind() const override { return IRKind::GlowFXIRKind; };
 
   static bool classof(const IRContainer *I) {
@@ -86,20 +104,30 @@ public:
   bool constantExists(llvm::StringRef name) const;
 
   /// \returns the weights of the graph.
-  const FXWeight &getWeight();
+  const FXWeight &getWeight() const;
 
   /// \returns the nodes of the graph.
-  const FXNodeList &getNodes();
+  const FXNodeList &getNodes() const;
 
   /// \returns parent module that owns this graph.
   Module *getParent() override { return parent_; }
   const Module *getParent() const override { return parent_; }
 
   /// \returns fx module.
-  const FXModule &getFXModule() { return *fx_mod_; }
+  const FXModule &getFXModule() const { return *fx_mod_; }
 
   /// \returns the name of the node.
   const FXNode &getFXNodeByName(llvm::StringRef nodeName) const;
+
+  const llvm::StringMap<const Storage *> &getMapNodeNameToStorage() const {
+    return mapNodeNameToStorage_;
+  }
+
+  const llvm::StringMap<const void *> &getConstantsStringMap() const {
+    return constants_;
+  }
+
+  const FXNode &getSingleUserNode(const FXNode &node) const;
 };
 
 } // namespace glow
