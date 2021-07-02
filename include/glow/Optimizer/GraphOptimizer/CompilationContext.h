@@ -346,6 +346,15 @@ struct CompilationContext {
   /// Whether to serialize the DAG that has been optimized and partitioned.
   bool serializeCompiledDAG{false};
 
+  /// Whether to return the Glow AOT serialized ONNX model as a string;
+  /// If false, dump the model as an ONNX model file in local;
+  /// If true, return the model string to glowAOTSerializationModelStrPtr;
+  /// This is for Glow AOT compilation
+  bool returnGlowSerializedModelStr{false};
+
+  /// Placeholder for the returned Glow AOT serialized ONNX model string
+  std::shared_ptr<std::string> glowAOTSerializationModelStrPtr{nullptr};
+
   /// Whether to use Zip mode to serialize the DAG that has been optimized and
   /// partitioned.
   bool useZipModeForSerializeCompiledDAG{false};

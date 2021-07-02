@@ -459,6 +459,36 @@ static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
   return isValid;
 }
 
+static bool verifyInstanceNormalization(NodeValue src, NodeValue dest,
+                                        NodeValue bias, NodeValue scale,
+                                        unsigned_t channel) {
+  const Node *parent = dest.getNode();
+  bool isValid = true;
+  if (src.getType()->isQuantizedType()) {
+    isValid &= checkType(src, dest.getElementType(), dest.getNode());
+    isValid &= checkSameShape(src, dest, parent);
+  } else {
+    isValid &= checkSameType(src, dest, parent);
+  }
+
+  isValid &= expectCompareTrue(
+      "Require at least two input dims i.e., batch and channel dimensions",
+      src.dims().size(), (size_t)1, parent,
+      CompareOperatorGreaterThan<size_t>());
+
+  // Figure out how many channels are in the tensor.
+  dim_t channels = src.dims()[channel];
+
+  const dim_t expArray[] = {channels};
+  auto exp = llvm::makeArrayRef(expArray);
+  isValid &= expectCompareTrue("Invalid bias dimension", bias.getType()->dims(),
+                               exp, parent);
+  isValid &= expectCompareTrue("Invalid scale dimension",
+                               scale.getType()->dims(), exp, parent);
+
+  return isValid;
+}
+
 static bool verifyActivation(NodeValue src, NodeValue dest) {
   const Node *parent = dest.getNode();
   bool isValid = checkSameIsQuantized(src.getType(), dest.getType(), parent);
@@ -1306,6 +1336,11 @@ bool TileNode::verify() const {
 bool BatchNormalizationNode::verify() const {
   return verifyBatchNormalization(getInput(), getResult(), getBias(),
                                   getScale(), getMean(), getVar(), ChannelIdx_);
+}
+
+bool InstanceNormalizationNode::verify() const {
+  return verifyInstanceNormalization(getInput(), getResult(), getBias(),
+                                     getScale(), ChannelIdx_);
 }
 
 bool LayerNormalizationNode::verify() const {
