@@ -14,8 +14,7 @@ implementation of the backend is contained here. This includes derived classes
 for [`Backend`](#backend-abstract-class) and
 [`CompiledFunction`](#compiledfunction-abstract-class).
 Each backend needs to be registered through its own registration factory in
-order to be discovered by Glow, see [CPUBackend for example]
-(https://github.com/pytorch/glow/blob/master/lib/Backends/CPU/CPUFactory.cpp).
+order to be discovered by Glow, see [CPUBackend for example](https://github.com/pytorch/glow/blob/master/lib/Backends/CPU/CPUFactory.cpp).
 And all factories must be linked to the Backends library, see
 [here](https://github.com/pytorch/glow/blob/master/lib/Backends/CMakeLists.txt).
 
@@ -226,8 +225,7 @@ BB.newBackendSpecificInstr("CPUMaxSplat")
 
 These instructions will appear in the instruction stream sent to the CPU backend
 JIT; its [standard library](JIT.md#usage-of-the-standard-library) has a kernel
-for executing this `CPUMaxSplat` instruction. You can see such instructions in
-the [LeNet MNIST example](Example.md#lowering-to-ir).
+for executing this `CPUMaxSplat` instruction. 
 
 Note that backend-specific nodes and instructions can be treated just as any
 other node or instruction defined in `tools/ClassGen/NodeGen.cpp` or
