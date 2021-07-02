@@ -261,8 +261,8 @@ llvm::StringRef TensorLayoutDescription::setAttribute(size_t n,
   removeAttribute(name.str(), dimStr);
   // Add new name information to dim:
   dimStr.append("[");
-  dimStr.append(name);
-  dimStr.append(value);
+  dimStr.append(name.str());
+  dimStr.append(value.str());
   dimStr.append("]");
   reconstructSerialized();
   return dimStr;
@@ -271,7 +271,7 @@ llvm::StringRef TensorLayoutDescription::setAttribute(size_t n,
 std::string TensorLayoutDescription::getAttribute(size_t n,
                                                   llvm::StringRef name) const {
   assert(n < numDims_ && "Wrong dimension number");
-  size_t pos = dims_[n].find(name);
+  size_t pos = dims_[n].find(name.str());
   if (pos == std::string::npos) {
     return "";
   }
@@ -567,7 +567,7 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
         input.dims().size());
     auto shuffle = TN->getShuffle();
     for (unsigned idx = 0, e = inputLayoutHelper.getNumDims(); idx < e; ++idx) {
-      dims[shuffle[idx]] = inputLayoutHelper.getNthDimDescription(idx);
+      dims[shuffle[idx]] = inputLayoutHelper.getNthDimDescription(idx).str();
     }
     TensorLayoutDescription tld(dims);
     return tld.getSerializedLayout();
@@ -697,6 +697,7 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedReduceMaxNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
+  case Kinded::Kind::InstanceNormalizationNodeKind:
   case Kinded::Kind::BatchNormalizationGradNodeKind:
   case Kinded::Kind::PadNodeKind:
   case Kinded::Kind::ReshapeNodeKind:

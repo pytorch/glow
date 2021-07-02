@@ -37,15 +37,15 @@ public:
   }
 
   void addTimeSeriesValue(llvm::StringRef key, double value) override {
-    timeSeries[key].push_back(value);
+    timeSeries[key.str()].push_back(value);
   }
 
   void incrementCounter(llvm::StringRef key, int64_t value) override {
-    counters[key] += value;
+    counters[key.str()] += value;
   }
 
   void setCounter(llvm::StringRef key, int64_t value) override {
-    counters[key] = value;
+    counters[key.str()] = value;
   }
 
   void clear() {

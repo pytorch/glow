@@ -418,6 +418,7 @@ TEST(exporter, onnxModels) {
         name.find("sign.onnxtxt") != std::string::npos ||
         name.find("gatherND.onnxtxt") != std::string::npos ||
         name.find("softmax13.onnxtxt") != std::string::npos ||
+        name.find("logsoftmax.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=
@@ -1130,4 +1131,53 @@ TEST(exporter, TestUniqueOffsetMapSerialization) {
                                /* backendSpecificNodeInfo */ {},
                                originNameToTQPMap));
   (void)R;
+}
+
+/// Test that we can serialize tensor strides.
+TEST(exporter, TestStridesSerialization) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  auto ty = mod.uniqueType(ElemKind::Float16Ty, {5, 3});
+  // Create a type with non-standard strides.
+  ty = mod.uniqueTypeWithNewStrides(ty, ty->dims(), {332, 1});
+  Placeholder *I = mod.createPlaceholder(ty, "input", false);
+  SaveNode *save = F->createSave("save_out", I);
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({I, output});
+
+  // Save and reload F in text mode.
+  {
+    Function *R;
+    Module reloadMod;
+    ASSIGN_VALUE_OR_FAIL_TEST(
+        R, saveAndReloadFunction(reloadMod, F, {"input"}, {I->getType()}, 7, 9,
+                                 /* zipMode */ false,
+                                 /* useGlowCustomOps */ true,
+                                 /* useString */ false,
+                                 /* includeConstantData */ true,
+                                 /* record */ nullptr, /* reloadCctx */ nullptr,
+                                 /* backendSpecificNodeInfo */ {}));
+    (void)R;
+  }
+  // Save and reload F in zip mode.
+  {
+    Function *R;
+    Module reloadMod;
+    ASSIGN_VALUE_OR_FAIL_TEST(
+        R, saveAndReloadFunction(reloadMod, F, {"input"}, {I->getType()}, 7, 9,
+                                 /* zipMode */ true,
+                                 /* useGlowCustomOps */ true,
+                                 /* useString */ false,
+                                 /* includeConstantData */ true,
+                                 /* record */ nullptr, /* reloadCctx */ nullptr,
+                                 /* backendSpecificNodeInfo */ {}));
+    (void)R;
+  }
 }

@@ -21,7 +21,7 @@
 namespace glow {
 
 ProtobufWriter::ProtobufWriter(const std::string &modelFilename, Function *F,
-                               Error *errPtr)
+                               Error *errPtr, bool writingToFile)
     : F_(F) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
@@ -35,10 +35,14 @@ ProtobufWriter::ProtobufWriter(const std::string &modelFilename, Function *F,
   // Lambda to setup the ProtobufWriter and return any Errors that were
   // raised.
   auto setup = [&]() -> Error {
-    // Try to open file for write
-    ff_.open(modelFilename, std::ios::out | std::ios::trunc | std::ios::binary);
-    RETURN_ERR_IF_NOT(ff_, "Can't find the output file name: " + modelFilename,
-                      ErrorValue::ErrorCode::MODEL_WRITER_INVALID_FILENAME);
+    if (writingToFile) {
+      // Try to open file for write
+      ff_.open(modelFilename,
+               std::ios::out | std::ios::trunc | std::ios::binary);
+      RETURN_ERR_IF_NOT(ff_,
+                        "Can't find the output file name: " + modelFilename,
+                        ErrorValue::ErrorCode::MODEL_WRITER_INVALID_FILENAME);
+    }
     return Error::success();
   };
 

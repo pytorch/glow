@@ -1186,7 +1186,16 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(
           outTy, loadQuantTy(opName, ElemKind::Int8QTy,
                              {outputDims.first, B.dims()[0]}, dict));
-      node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
+      int dequantizeOutput = 0;
+      if (dict.count("dequantize_output")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(dequantizeOutput,
+                                   loadInt(dict["dequantize_output"]));
+      }
+      if (dequantizeOutput == 1) {
+        node = G_->createDynamicQuantizedFullyConnected(opName, in, W, B);
+      } else {
+        node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
+      }
     } else if (typeName == "FbFCPacked") {
       RETURN_ERR_IF_NOT(W.getElementType() == ElemKind::Float16Ty,
                         opErrMsg(op, "Expected float16 weights."));
@@ -1449,7 +1458,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       break;
     }
     case caffe2::TensorProto_DataType_INT64: {
-      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int32ITy,
+      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int64ITy,
                         opErrMsg(op, "Can only cast int64 to int64."));
       break;
     }
@@ -1971,7 +1980,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto zeros = G_->createSplat(opName + ".zeros", outTy2D, 0);
 
     auto res2D = G_->createScatterData(opName + ".scatterData", zeros, indices,
-                                       data2D, false);
+                                       data2D, true);
     auto node = G_->createReshape(opName + ".result", res2D, outDims);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
@@ -2043,7 +2052,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto values2D =
         G_->createReshape(opName + ".reshape", values, {numIndices, 1});
     auto scatterData = G_->createScatterData(opName + ".scatterData", data,
-                                             indicesSliced, values2D, false);
+                                             indicesSliced, values2D, true);
 
     RETURN_IF_ERR(addNodeAsOutput(op, scatterData));
     return Error::success();

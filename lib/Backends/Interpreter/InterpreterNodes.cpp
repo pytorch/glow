@@ -240,6 +240,14 @@ using namespace glow;
                        typename std::remove_cv<ElemTy>::type>::value,          \
       "This implementation is for arithmetic values only")
 
+#ifndef MIN
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef MAX
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
+
 //===----------------------------------------------------------------------===//
 //                       Convolution
 //===----------------------------------------------------------------------===//
@@ -525,6 +533,12 @@ void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
       fwdConvolutionInstFloatImpl, I->getSrc()->getElementType(), I->getSrc(),
       I->getDest(), I->getFilter(), I->getBias(), kernelSizes, strides, pads,
       group, I->getDilation());
+}
+
+void BoundInterpreterFunction::fwdConcatInst(const ConcatInst *I) {
+  (void)I;
+  // TODO
+  llvm_unreachable("not yet implemented");
 }
 
 void BoundInterpreterFunction::fwdConvolutionGradInst(
@@ -2303,6 +2317,15 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<int8_t>().clear(quantization::quantize(val, destQ));
   }
 
+  if (k == ElemKind::Int16QTy) {
+    // Quantize the requested floating point splat value into the correct
+    // integer representation.
+    auto destTy = I->getDest()->getType();
+    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+    float val = I->getValue();
+    return T->getHandle<int16_t>().clear(quantization::quantize(val, destQ));
+  }
+
   if (k == ElemKind::BoolTy) {
     return T->getHandle<bool>().clear(static_cast<bool>(I->getValue()));
   }
@@ -2332,6 +2355,7 @@ void BoundInterpreterFunction::fwdInsertTensorInst(
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
+  TYPED_INSERT(int16_t, ElemKind::Int16QTy);
   TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
 
@@ -2412,6 +2436,79 @@ void BoundInterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
     break;
   default:
     llvm_unreachable("Unsupported type for indices input of Gather.");
+  }
+}
+
+//===----------------------------------------------------------------------===//
+//                      Gather Elements
+//===----------------------------------------------------------------------===//
+
+template <typename IndexTy>
+void BoundInterpreterFunction::fwdGatherElementsInstImpl(
+    const glow::GatherElementsInst *I) {
+  Tensor *outT = getTensor(I->getDest());
+  Tensor *dataT = getTensor(I->getData());
+  auto dataDims = dataT->getType().dims();
+  Tensor *indicesT = getTensor(I->getIndices());
+  auto indicesDims = indicesT->getType().dims();
+  const auto dim = I->getDim();
+  const auto numElems = outT->getRealNumElements();
+  auto ndims = indicesDims.size();
+
+  std::vector<dim_t> ind_dim_off(ndims);
+  std::vector<dim_t> data_dim_off(ndims);
+
+  ind_dim_off[0] = 1;
+  data_dim_off[0] = 1;
+  for (dim_t i = 1; i < ndims; i++) {
+    ind_dim_off[i] =
+        std::accumulate(indicesDims.begin() + ndims - i, indicesDims.end(), 1,
+                        std::multiplies<dim_t>());
+    data_dim_off[i] =
+        std::accumulate(dataDims.begin() + ndims - i, dataDims.end(), 1,
+                        std::multiplies<dim_t>());
+  }
+
+  const auto dimPos = ndims - 1 - dim;
+  const auto elemSize = dataT->getType().getElementSize();
+  // Loop over number of elements in indices
+  for (size_t idx = 0; idx < numElems; idx++) {
+    unsigned_t offset = 0;
+    // Loop over number of dimensions to calculate offset
+    for (dim_t i = 0; i < ndims; i++) {
+      // Calculate axis index i.e. (i, j, k)
+      const dim_t dim_idx =
+          static_cast<dim_t>(std::floor(idx / ind_dim_off[i])) %
+          indicesDims[ndims - (i + 1)];
+      offset += (dimPos != i) * dim_idx * data_dim_off[i];
+    }
+    auto indIdx = indicesT->getHandle<IndexTy>().raw(idx);
+    assert(indIdx < 0 ? -indIdx <= dataDims[dim]
+                      : indIdx < dataDims[dim] &&
+                            "[GatherElements] Got out of bounds index");
+    // In case of negative indices
+    if (indIdx < 0) {
+      indIdx += dataDims[dim];
+    }
+    const auto dataRawIdx = indIdx * data_dim_off[dimPos] + offset;
+    std::copy(&dataT->getUnsafePtr()[dataRawIdx * elemSize],
+              &dataT->getUnsafePtr()[(dataRawIdx + 1) * elemSize],
+              &outT->getUnsafePtr()[idx * elemSize]);
+  }
+}
+
+void BoundInterpreterFunction::fwdGatherElementsInst(
+    const glow::GatherElementsInst *I) {
+  switch (I->getIndices()->getElementType()) {
+  case ElemKind::Int64ITy:
+    fwdGatherElementsInstImpl<int64_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdGatherElementsInstImpl<int32_t>(I);
+    break;
+  default:
+    llvm_unreachable("[GatherElements] Unsupported type for indices input of "
+                     "GatherElements.");
   }
 }
 
@@ -3685,7 +3782,16 @@ void BoundInterpreterFunction::fwdElementCmpLTEInst(
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpLTEInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpLTEInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpLTEInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3723,7 +3829,16 @@ void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpEQInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3762,7 +3877,16 @@ void BoundInterpreterFunction::fwdElementCmpNEQInst(
   auto *T = getTensor(I->getLHS());
 
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpNEQInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -3799,7 +3923,16 @@ void BoundInterpreterFunction::fwdElementCmpLTInstImpl(
 void BoundInterpreterFunction::fwdElementCmpLTInst(ElementCmpLTInst const *I) {
   auto *T = getTensor(I->getLHS());
   if (T->getType().isQuantizedType()) {
-    fwdElementCmpLTInstImpl<int8_t, int32_t, float, int32_t>(I);
+    switch (T->getElementType()) {
+    case ElemKind::Int8QTy:
+      fwdElementCmpLTInstImpl<int8_t, int32_t, float, int32_t>(I);
+      break;
+    case ElemKind::Int16QTy:
+      fwdElementCmpLTInstImpl<int16_t, int32_t, float, int32_t>(I);
+      break;
+    default:
+      llvm_unreachable("Type is not supported");
+    }
     return;
   }
 
@@ -4140,6 +4273,35 @@ void BoundInterpreterFunction::fwdMatMulInstFloatImpl(const MatMulInst *I) {
   }
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchMatMulInstFloatImpl(
+    const BatchMatMulInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto lhs = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhs = getWeightHandle<ElemTy>(I->getRHS());
+  auto dest = getWeightHandle<ElemTy>(I->getDest());
+
+  auto destDim = dest.dims();
+  auto lhsDim = lhs.dims();
+
+  dest.clear(0);
+
+  for (dim_t batch = 0; batch < destDim[0]; batch++) {
+    // For each (x,y) in the destination matrix:
+    for (dim_t x = 0; x < destDim[1]; x++) {
+      for (dim_t y = 0; y < destDim[2]; y++) {
+        // Perform DOT on the row an column.
+        float sum = 0;
+        for (dim_t i = 0; i < lhsDim[2]; i++) {
+          sum += float(lhs.at({batch, x, i})) * float(rhs.at({batch, i, y}));
+        }
+        dest.at({batch, x, y}) = ElemTy(sum);
+      }
+    }
+  }
+}
+
 void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     dispatchQuantizedWithAccumulationImpl(fwdMatMulInstQuantizedImpl,
@@ -4153,7 +4315,13 @@ void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
 
 void BoundInterpreterFunction::fwdBatchMatMulInst(
     const glow::BatchMatMulInst *I) {
-  DCHECK(!"Found BatchMatMulInst but BatchMatMul is lowered on Interpreter");
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    DCHECK(!"Quantized implementation for BatchMatmul not supported yet.");
+    return;
+  }
+
+  dispatchFloatingPointImpl(fwdBatchMatMulInstFloatImpl,
+                            I->getLHS()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdReluGradInst(const glow::ReluGradInst *I) {
@@ -5375,7 +5543,8 @@ void BoundInterpreterFunction::
          "sum(Lengths) must be equal to len(Indices)");
 
   const bool using4BitQuantization =
-      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy;
+      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy ||
+      data->getType().getElementType() == ElemKind::UInt4FusedQTy;
 
   const size_t outLineSize = out->size() / out->dims()[0];
 
@@ -5433,6 +5602,10 @@ void BoundInterpreterFunction::
     fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   const auto ity = I->getIndices()->getElementType();
+  const bool fp32FusedScaleOffset =
+      (I->getData()->getElementType() == ElemKind::UInt4FusedQTy) ||
+      (I->getData()->getElementType() == ElemKind::UInt8FusedQTy);
+
   switch (I->getDest()->getElementType()) {
   case ElemKind::FloatTy:
     if (ity == ElemKind::Int32ITy) {
@@ -5446,7 +5619,7 @@ void BoundInterpreterFunction::
     }
     break;
   case ElemKind::Float16Ty:
-    if (I->getUseFP16Accumulation()) {
+    if (I->getUseFP16Accumulation() && !fp32FusedScaleOffset) {
       if (ity == ElemKind::Int32ITy) {
         fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<
             float16_t, float16_t, int32_t>(I);
@@ -5657,6 +5830,117 @@ void BoundInterpreterFunction::fwdSparseToDenseInst(
                          I->getDest()->getElementType(), I);
 }
 
+template <typename ElemTy, typename LengthsTy, typename IndicesTy>
+void BoundInterpreterFunction::fwdBatchSparseToDenseInstImpl2(
+    const BatchSparseToDenseInst *I) {
+  auto outH = getWeightHandle<ElemTy>(I->getDest());
+  auto lengthsH = getWeightHandle<LengthsTy>(I->getLengths());
+  auto valuesH = getWeightHandle<ElemTy>(I->getValues());
+  auto indicesH = getWeightHandle<IndicesTy>(I->getIndices());
+  auto denseLastDim = I->getDenseLastDim();
+  auto defaultValue = I->getDefaultValue();
+  outH.clear(defaultValue);
+
+  // Verifying input sizes.
+  size_t lengthsSum = 0;
+  auto batchSize = lengthsH.size();
+  for (dim_t i = 0; i < batchSize; ++i) {
+    lengthsSum += lengthsH.at(i);
+  }
+  CHECK_EQ(lengthsSum, indicesH.size());
+
+  dim_t k = 0;
+  for (dim_t i = 0; i < batchSize; ++i) {
+    for (dim_t j = 0; j < lengthsH.at(i); ++j) {
+      CHECK_LT(indicesH.at(i), denseLastDim);
+      outH.at({static_cast<dim_t>(i), static_cast<dim_t>(indicesH.at(k))}) =
+          valuesH.at(k);
+      k++;
+    }
+  }
+}
+
+template <typename ElemTy, typename LengthsTy>
+void BoundInterpreterFunction::fwdBatchSparseToDenseInstImpl1(
+    const BatchSparseToDenseInst *I) {
+  switch (I->getLengths()->getElementType()) {
+  case ElemKind::Int32ITy:
+    fwdBatchSparseToDenseInstImpl2<ElemTy, LengthsTy, int32_t>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdBatchSparseToDenseInstImpl2<ElemTy, LengthsTy, int64_t>(I);
+    break;
+  default:
+    llvm_unreachable("Index type is not supported");
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchSparseToDenseInst(
+    const BatchSparseToDenseInst *I) {
+  dispatchFloatingPointAndIndexImpl(fwdBatchSparseToDenseInstImpl1,
+                                    I->getDest()->getElementType(),
+                                    I->getLengths()->getElementType(), I);
+}
+
+template <typename ElemTy, typename IndicatorTy>
+void BoundInterpreterFunction::fwdFillExamplesWithIndicatorInstImpl2(
+    const FillExamplesWithIndicatorInst *I) {
+  auto outT = getTensor(I->getDest());
+  auto dataT = getTensor(I->getData());
+  auto elemSize = dataT->getType().getElementSize();
+  auto indicatorH = getWeightHandle<IndicatorTy>(I->getIndicator());
+
+  size_t numBatches = indicatorH.dims()[0];
+  outT->zero();
+
+  size_t nonzero = 0;
+  for (size_t i = 0; i < numBatches; ++i) {
+    if (static_cast<bool>(indicatorH.at(i))) {
+      nonzero++;
+    }
+  }
+  CHECK_EQ(dataT->dims()[0], nonzero);
+
+  // Calculate size of last n-1 data dims
+  size_t blockSize = 1;
+  for (size_t i = 1; i < dataT->dims().size(); i++) {
+    blockSize *= dataT->dims()[i];
+  }
+  size_t blockByteSize = blockSize * elemSize;
+  size_t dataP = 0;
+  for (size_t i = 0; i < numBatches; i++) {
+    if (static_cast<bool>(indicatorH.at(i))) {
+      std::copy(&dataT->getUnsafePtr()[dataP],
+                &dataT->getUnsafePtr()[dataP + blockByteSize],
+                &outT->getUnsafePtr()[i * blockByteSize]);
+      dataP += blockByteSize;
+    }
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdFillExamplesWithIndicatorInstImpl1(
+    const FillExamplesWithIndicatorInst *I) {
+  switch (I->getIndicator()->getElementType()) {
+  case ElemKind::Int32ITy:
+    fwdFillExamplesWithIndicatorInstImpl2<ElemTy, int32_t>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdFillExamplesWithIndicatorInstImpl2<ElemTy, int64_t>(I);
+    break;
+  case ElemKind::BoolTy:
+    fwdFillExamplesWithIndicatorInstImpl2<ElemTy, bool>(I);
+    break;
+  default:
+    llvm_unreachable("Indicator type is not supported");
+  }
+}
+
+void BoundInterpreterFunction::fwdFillExamplesWithIndicatorInst(
+    const FillExamplesWithIndicatorInst *I) {
+  dispatchArithmeticImpl(fwdFillExamplesWithIndicatorInstImpl1,
+                         I->getDest()->getElementType(), I);
+}
 void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
     const SparseToDenseMaskInst *I) {
   auto out = getTensor(I->getDest());
@@ -6716,6 +7000,409 @@ void BoundInterpreterFunction::fwdNonMaxSuppressionInst(
     llvm_unreachable("Type is not supported.");
     break;
   }
+}
+
+//===----------------------------------------------------------------------===//
+//                       TensorFlowLite NonMaxSuppression
+//===----------------------------------------------------------------------===//
+static int32_t partition(int32_t *arr, int32_t low, int32_t high,
+                         float *values) {
+  float pivot = values[high];
+  int32_t i = (low - 1);
+  float swap_float;
+  int32_t swap_int;
+
+  for (int32_t j = low; j <= high - 1; j++) {
+    if (values[j] > pivot) {
+      i++;
+
+      swap_float = values[i];
+      values[i] = values[j];
+      values[j] = swap_float;
+
+      swap_int = arr[i];
+      arr[i] = arr[j];
+      arr[j] = swap_int;
+    }
+  }
+
+  swap_float = values[i + 1];
+  values[i + 1] = values[high];
+  values[high] = swap_float;
+
+  swap_int = arr[i + 1];
+  arr[i + 1] = arr[high];
+  arr[high] = swap_int;
+
+  return (i + 1);
+}
+
+static void partial_sort(int32_t *arr, int32_t i, int32_t j, int32_t k,
+                         float *values) {
+  int32_t p;
+  if (i < j) {
+    p = partition(arr, i, j, values);
+
+    partial_sort(arr, i, p - 1, k, values);
+
+    if (p < k - 1)
+      partial_sort(arr, p + 1, j, k, values);
+  }
+}
+
+static void iota(int32_t *first, int32_t *last, int32_t value) {
+  while (first != last) {
+    *first++ = value;
+    value++;
+  }
+}
+
+static void decreasing_partial_arg_sort(float *values, int32_t num_values,
+                                        int32_t num_to_sort, int32_t *indices,
+                                        float *aux_values) {
+  iota(indices, indices + num_values, 0);
+
+  memcpy(aux_values, values, sizeof(float) * num_values);
+
+  partial_sort(indices, 0, num_values - 1, num_to_sort, aux_values);
+}
+
+static void select_detection_above_score_threshold(
+    float *scores, int32_t num_scores, float threshold, float *keep_values,
+    int32_t *keep_indices, int32_t *num_indices) {
+  int32_t idx = 0;
+  for (int32_t i = 0; i < num_scores; i++) {
+    if (scores[i] >= threshold) {
+      keep_indices[idx] = i;
+      keep_values[idx] = scores[i];
+      idx++;
+    }
+  }
+  *num_indices = idx;
+}
+
+/// Compute the IOU (Intersection Over Union) metric between two boxes. Each
+/// of box1 and box2 is a vector with 4 floating-point values with the box
+/// coordinates in the following format: [ymin, xmin, ymax, xmax].
+static float tflite_compute_iou(float *box1, float *box2) {
+
+  // Compute the areas of the two boxes.
+  float box1Area = (box1[2] - box1[0]) * (box1[3] - box1[1]);
+  float box2Area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
+
+  // If box coordinates are invalid we return 0.
+  if (box1Area <= 0 || box2Area <= 0) {
+    return 0.0f;
+  }
+
+  // Determine the coordinates of the intersection rectangle.
+  float iYmin = MAX(box1[0], box2[0]);
+  float iXmin = MAX(box1[1], box2[1]);
+  float iYmax = MIN(box1[2], box2[2]);
+  float iXmax = MIN(box1[3], box2[3]);
+
+  // Compute the area of the intersection rectangle.
+  float iArea = MAX(0.0f, iXmax - iXmin) * MAX(0.0f, iYmax - iYmin);
+
+  // Compute the area of the union (reunion) rectangle.
+  float uArea = box1Area + box2Area - iArea;
+
+  // Compute the Intersection Over Union metric.
+  return iArea / uArea;
+}
+
+static void tflite_helper(float *boxesPtr, int32_t num_boxes,
+                          float nms_score_threshold, float nms_iou_treshold,
+                          float *class_scores, int32_t num_scores,
+                          int32_t *selected, int32_t *num_selected,
+                          int32_t max_detections, int32_t *keep_indices,
+                          float *keep_scores, int32_t *sorted_indices_helper) {
+
+  *num_selected = 0;
+
+  int32_t num_scores_kept;
+  select_detection_above_score_threshold(class_scores, num_boxes,
+                                         nms_score_threshold, keep_scores,
+                                         keep_indices, &num_scores_kept);
+
+  decreasing_partial_arg_sort(keep_scores, num_scores_kept, num_scores_kept,
+                              sorted_indices_helper, (float *)selected);
+
+  int32_t num_boxes_kept = num_scores_kept;
+  int32_t output_size = MIN(num_boxes_kept, max_detections);
+
+  int32_t num_active_candidate = num_boxes_kept;
+
+  uint8_t *active_box_candidate = (uint8_t *)keep_scores;
+
+  for (int32_t row = 0; row < num_boxes_kept; row++) {
+    active_box_candidate[row] = 1;
+  }
+
+  for (int32_t i = 0; i < num_boxes_kept; i++) {
+    if (num_active_candidate == 0 || *num_selected >= output_size)
+      break;
+    if (active_box_candidate[i] == 1) {
+      selected[*num_selected] = keep_indices[sorted_indices_helper[i]];
+      (*num_selected)++;
+      active_box_candidate[i] = 0;
+      num_active_candidate--;
+    } else {
+      continue;
+    }
+
+    for (int32_t j = i + 1; j < num_boxes_kept; ++j) {
+      if (active_box_candidate[j] == 1) {
+
+        float *box1 = boxesPtr + 4 * keep_indices[sorted_indices_helper[i]];
+        float *box2 = boxesPtr + 4 * keep_indices[sorted_indices_helper[j]];
+        float iou = tflite_compute_iou(box1, box2);
+
+        if (iou > nms_iou_treshold) {
+          active_box_candidate[j] = 0;
+          num_active_candidate--;
+        }
+      }
+    }
+  }
+}
+
+static void tflite_detection_post_process_f(
+    float *boxes, float *scores, float *anchors, float *detectionBoxes,
+    int32_t *detectionClasses, float *detectionScores, int32_t *numDetections,
+    int8_t *scratch, int32_t numBoxes, int32_t numTotalClasses,
+    int32_t numClasses, int32_t maxDetections, int32_t maxClassesPerDetection,
+    int32_t maxDetectionsPerClass, float iouThreshold, float scoreThreshold,
+    float xScaleInv, float yScaleInv, float hScaleInv, float wScaleInv,
+    bool regularNMS) {
+
+  // Decode the box coordinates in-place using the anchors.
+  for (int32_t i = 0; i < numBoxes; i++) {
+
+    float *box = &boxes[i * 4];
+    float *anchor = &anchors[i * 4];
+
+    float ycenter = box[0] * yScaleInv * anchor[2] + anchor[0];
+    float xcenter = box[1] * xScaleInv * anchor[3] + anchor[1];
+
+    float half_h = 0.5f * expf(box[2] * hScaleInv) * anchor[2];
+    float half_w = 0.5f * expf(box[3] * wScaleInv) * anchor[3];
+
+    box[0] = ycenter - half_h;
+    box[1] = xcenter - half_w;
+    box[2] = ycenter + half_h;
+    box[3] = xcenter + half_w;
+  }
+
+  int32_t max_categories_per_anchor = maxClassesPerDetection;
+  int32_t num_categories_per_anchor =
+      MIN(max_categories_per_anchor, numClasses);
+  int32_t label_offset = numTotalClasses - numClasses;
+
+  if (regularNMS) {
+    int32_t num_detections_per_class = maxDetectionsPerClass;
+
+    float *class_scores = (float *)(scratch);
+    scratch += numBoxes * sizeof(float);
+
+    int32_t *box_indices_after_regular_nms = (int32_t *)(scratch);
+    scratch += (numBoxes + maxDetections) * sizeof(int32_t);
+
+    float *scores_after_regular_nms = (float *)(scratch);
+    scratch += (numBoxes + maxDetections) * sizeof(float);
+
+    int32_t size_of_sorted_indices = 0;
+
+    int32_t *sorted_indices = (int32_t *)(scratch);
+    scratch += (numBoxes + maxDetections) * sizeof(int32_t);
+
+    float *sorted_values = (float *)(scratch);
+    scratch += MIN(numBoxes, maxDetectionsPerClass) * sizeof(float);
+
+    int32_t *selected = (int32_t *)scratch;
+    scratch += numBoxes * sizeof(int32_t);
+
+    int32_t *keep_indices = (int32_t *)(scratch);
+    scratch += numBoxes * sizeof(int32_t);
+
+    float *keep_scores = (float *)(scratch);
+    scratch += numBoxes * sizeof(float);
+
+    int32_t *sorted_indices_helper = (int32_t *)scratch;
+    scratch += numBoxes * sizeof(int32_t);
+
+    for (int32_t col = 0; col < numClasses; col++) {
+      for (int32_t row = 0; row < numBoxes; row++) {
+        class_scores[row] =
+            *(scores + row * numTotalClasses + col + label_offset);
+      }
+
+      int32_t num_selected;
+      tflite_helper(boxes, numBoxes, scoreThreshold, iouThreshold, class_scores,
+                    numBoxes, selected, &num_selected, num_detections_per_class,
+                    keep_indices, keep_scores, sorted_indices_helper);
+
+      int32_t output_index = size_of_sorted_indices;
+      for (int32_t i = 0; i < num_selected; i++) {
+        int32_t selected_index = selected[i];
+        box_indices_after_regular_nms[output_index] =
+            (selected_index * numTotalClasses + col + label_offset);
+        scores_after_regular_nms[output_index] = class_scores[selected_index];
+        output_index++;
+      }
+
+      int32_t num_indices_to_sort = MIN(output_index, maxDetections);
+
+      decreasing_partial_arg_sort(scores_after_regular_nms, output_index,
+                                  num_indices_to_sort, sorted_indices,
+                                  keep_scores);
+
+      for (int32_t row = 0; row < num_indices_to_sort; row++) {
+        int32_t temp = sorted_indices[row];
+        sorted_indices[row] = box_indices_after_regular_nms[temp];
+        sorted_values[row] = scores_after_regular_nms[temp];
+      }
+
+      for (int32_t row = 0; row < num_indices_to_sort; row++) {
+        box_indices_after_regular_nms[row] = sorted_indices[row];
+        scores_after_regular_nms[row] = sorted_values[row];
+      }
+
+      size_of_sorted_indices = num_indices_to_sort;
+    }
+
+    for (int32_t output_box_index = 0;
+         output_box_index < size_of_sorted_indices; output_box_index++) {
+
+      int32_t anchor_index =
+          box_indices_after_regular_nms[output_box_index] / numTotalClasses;
+      int32_t class_index = box_indices_after_regular_nms[output_box_index] -
+                            anchor_index * numTotalClasses - label_offset;
+      float selected_score = scores_after_regular_nms[output_box_index];
+      float *box = boxes + anchor_index * 4;
+
+      *detectionBoxes++ = *box++;
+      *detectionBoxes++ = *box++;
+      *detectionBoxes++ = *box++;
+      *detectionBoxes++ = *box++;
+      *detectionClasses++ = class_index;
+      *detectionScores++ = selected_score;
+    }
+
+    *numDetections = size_of_sorted_indices;
+  } else {
+    float *max_scores = (float *)scratch;
+    scratch += numBoxes * sizeof(float);
+
+    int32_t *sorted_classes_indices = (int32_t *)scratch;
+    scratch += numBoxes * MIN(maxDetections, numClasses) * sizeof(int32_t);
+
+    int32_t *selected = (int32_t *)scratch;
+    scratch += numBoxes * sizeof(int32_t);
+
+    int32_t *keep_indices = (int32_t *)(scratch);
+    scratch += numBoxes * sizeof(int32_t);
+
+    float *keep_scores = (float *)(scratch);
+    scratch += numBoxes * sizeof(float);
+
+    int32_t *sorted_indices_helper = (int32_t *)scratch;
+    scratch += numBoxes * sizeof(int32_t);
+
+    for (int32_t row = 0; row < numBoxes; row++) {
+      float *box_scores = scores + row * numTotalClasses + label_offset;
+      int32_t *class_indices =
+          sorted_classes_indices + row * num_categories_per_anchor;
+
+      decreasing_partial_arg_sort(box_scores, numClasses,
+                                  num_categories_per_anchor, keep_indices,
+                                  keep_scores);
+
+      for (int32_t i = 0; i < num_categories_per_anchor; i++) {
+        class_indices[i] = keep_indices[i];
+      }
+
+      max_scores[row] = box_scores[class_indices[0]];
+    }
+
+    int32_t selected_size = 0;
+    tflite_helper(boxes, numBoxes, scoreThreshold, iouThreshold, max_scores,
+                  numBoxes, selected, &selected_size, maxDetections,
+                  keep_indices, keep_scores, sorted_indices_helper);
+
+    int32_t num_detections = 0;
+    for (int32_t i = 0; i < selected_size; i++) {
+
+      int32_t selected_index = selected[i];
+      float *box = boxes + selected_index * 4;
+      float *box_scores =
+          scores + selected_index * numTotalClasses + label_offset;
+      int32_t *class_indices =
+          sorted_classes_indices + selected_index * num_categories_per_anchor;
+
+      for (int32_t col = 0; (col < num_categories_per_anchor) &&
+                            (num_detections <= selected_size);
+           ++col) {
+        *detectionBoxes++ = box[0];
+        *detectionBoxes++ = box[1];
+        *detectionBoxes++ = box[2];
+        *detectionBoxes++ = box[3];
+        *detectionClasses++ = class_indices[col];
+        *detectionScores++ = box_scores[class_indices[col]];
+        num_detections++;
+      }
+    }
+
+    *numDetections = selected_size;
+  }
+}
+
+void BoundInterpreterFunction::fwdTFLiteDetectionPostProcessInst(
+    glow::TFLiteDetectionPostProcessInst const *I) {
+  auto boxes = I->getBoxes();
+  auto scores = I->getScores();
+  auto anchors = I->getAnchors();
+  auto detectionBoxes = I->getDetectionBoxes();
+  auto detectionClasses = I->getDetectionClasses();
+  auto detectionScores = I->getDetectionScores();
+  auto numDetections = I->getNumDetections();
+  auto scratch = I->getScratch();
+
+  // Get raw pointers.
+  float *boxesPtr = (float *)getTensor(boxes)->getUnsafePtr();
+  float *scoresPtr = (float *)getTensor(scores)->getUnsafePtr();
+  float *anchorsPtr = (float *)getTensor(anchors)->getUnsafePtr();
+  float *detectionBoxesPtr = (float *)getTensor(detectionBoxes)->getUnsafePtr();
+  int32_t *detectionClassesPtr =
+      (int32_t *)getTensor(detectionClasses)->getUnsafePtr();
+  float *detectionScoresPtr =
+      (float *)getTensor(detectionScores)->getUnsafePtr();
+  int32_t *numDetectionsPtr =
+      (int32_t *)getTensor(numDetections)->getUnsafePtr();
+  int8_t *scratchPtr = (int8_t *)getTensor(scratch)->getUnsafePtr();
+
+  // Get parameters.
+  int32_t numBoxes = boxes->dims()[1];
+  int32_t numTotalClasses = scores->dims()[2];
+  int32_t numClasses = I->getNumClasses();
+  int32_t maxDetections = I->getMaxDetections();
+  int32_t maxClassesPerDetection = I->getMaxClassesPerDetection();
+  int32_t maxDetectionsPerClass = I->getMaxDetectionsPerClass();
+  float iouThreshold = I->getIouThreshold();
+  float scoreThreshold = I->getScoreThreshold();
+  float xScaleInv = 1.0f / I->getXScale();
+  float yScaleInv = 1.0f / I->getYScale();
+  float hScaleInv = 1.0f / I->getHScale();
+  float wScaleInv = 1.0f / I->getWScale();
+  bool regularNMS = I->getRegularNMS();
+
+  // Compute TFLite NMS.
+  tflite_detection_post_process_f(
+      boxesPtr, scoresPtr, anchorsPtr, detectionBoxesPtr, detectionClassesPtr,
+      detectionScoresPtr, numDetectionsPtr, scratchPtr, numBoxes,
+      numTotalClasses, numClasses, maxDetections, maxClassesPerDetection,
+      maxDetectionsPerClass, iouThreshold, scoreThreshold, xScaleInv, yScaleInv,
+      hScaleInv, wScaleInv, regularNMS);
 }
 
 void BoundInterpreterFunction::fwdAudioSpectrogramInstFloatImpl(

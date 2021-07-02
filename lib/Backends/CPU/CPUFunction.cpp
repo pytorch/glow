@@ -21,7 +21,7 @@
 
 using namespace glow;
 
-CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
+CPUFunction::CPUFunction(std::unique_ptr<GlowJIT> JIT,
                          runtime::RuntimeBundle &&runtimeBundle)
     : LLVMCompiledFunction(std::move(JIT), std::move(runtimeBundle)) {}
 

@@ -20,6 +20,7 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include "glow/Graph/FXIRWrapper.h"
 #include <glog/logging.h>
 
 #define DEBUG_TYPE "backend-utils"
@@ -62,7 +63,7 @@ glow::runtime::RuntimeBundle::operator=(glow::runtime::RuntimeBundle &&rhs) {
 
 void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
   DCHECK(isValid_);
-  collectConstants(F->getGraph()->getParent());
+  collectConstants(F->getParent());
 }
 
 void glow::runtime::RuntimeBundle::freeConstants() {
@@ -104,6 +105,49 @@ void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
     memcpy(constants_ + info.offset, payload, info.size);
   }
 }
+
+#if FACEBOOK_INTERNAL
+void glow::runtime::RuntimeBundle::collectConstants(const FXIRWrapper *F) {
+  DCHECK(isValid_);
+
+  // At compile time condense constants to a single block of memory.
+  // This allows the graph to go away after compile time.
+  // If there are no constants return nullptr.
+  if (constantWeightVarsMemSize_ == 0) {
+    constants_ = nullptr;
+    return;
+  }
+
+  assert(constants_ == nullptr && "constants already allocated");
+  constants_ =
+      (uint8_t *)alignedAlloc(constantWeightVarsMemSize_, TensorAlignment);
+
+  for (const auto &symbol : symbolTable_) {
+    llvm::StringRef name = symbol.first;
+    const RuntimeSymbolInfo &info = symbol.second;
+
+    // Only work with constants/weights here.
+    auto category = info.symbolCategory;
+    if (category != glow::runtime::SymbolCategory::Constant) {
+      continue;
+    }
+
+    auto mapToConstants = F->getMapNodeNameToStorage();
+    assert(mapToConstants.find(name.str()) != mapToConstants.end());
+    const auto *wt = mapToConstants[name.str()];
+    const auto *c = llvm::dyn_cast<const Constant>(wt);
+    if (!c) {
+      continue;
+    }
+    auto *payload = c->getPayload().getUnsafePtr();
+    assert(info.size == c->getPayload().getSizeInBytes() &&
+           "Mismatched constant size");
+
+    // Copy weight to offset.
+    memcpy(constants_ + info.offset, payload, info.size);
+  }
+}
+#endif
 
 size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
   DCHECK(isValid_);
@@ -150,26 +194,51 @@ bool isOutput(const Placeholder *PH, const IRFunction &F) {
   return isOutput(weight);
 }
 
-/// If \p W is a weight that is read from \returns true.
+/// If \p W is a weight that is first read from \returns true.
 bool isInput(const Value *W) {
   auto *weight = llvm::dyn_cast<WeightVar>(W);
-  DCHECK(weight) << "Expected WeightVar";
-
-  for (const auto &use : ValueUses(weight)) {
-    Instruction *user = use.get();
-    // Ignore deallocs.
-    if (isa<DeallocActivationInst>(user)) {
-      continue;
-    }
+  const glow::Instruction *firstUser = nullptr;
+  bool hasReads = false;
+  for (const auto &U : ValueUses(weight)) {
+    const auto *user = U.get();
     // TensorView instruction doesn't read from a placeholder.
     if (isa<TensorViewInst>(user)) {
       continue;
     }
-    OperandKind kind = use.getOperand().second;
+    // Remember the earliest use.
+    if (!firstUser || firstUser->getIterator() > user->getIterator()) {
+      firstUser = user;
+    }
+    // Ignore deallocs.
+    if (isa<DeallocActivationInst>(user)) {
+      continue;
+    }
+    OperandKind kind = U.getOperand().second;
     if (kind == OperandKind::In || kind == OperandKind::InOut) {
-      return true;
+      hasReads = true;
     }
   }
+
+  if (!hasReads) {
+    return false;
+  }
+
+  // Check if the first use is a read.
+  if (firstUser) {
+    // If this instruction has reads, then the first use is an @in.
+    auto *weightOrigin = getOrigin(weight);
+    for (int idx = 0, e = firstUser->getNumOperands(); idx < e; ++idx) {
+      const auto op = firstUser->getOperand(idx);
+      auto *opOrigin = getOrigin(op.first);
+      auto opKind = op.second;
+      if (opOrigin == weightOrigin && opKind == OperandKind::In) {
+        return true;
+      }
+    }
+    // No reads were found, thus the first use is a write.
+    return false;
+  }
+  // If there are no users, it is not an input.
   return false;
 }
 

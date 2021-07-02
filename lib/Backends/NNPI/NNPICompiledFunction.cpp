@@ -76,8 +76,20 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   }
 
   if (dspKernelsFile.empty() && requiresDSPKernels) {
-    return MAKE_ERR("DSP kernels file not found, needed to run Function "
-                    "containing DSP kernels");
+    // If kernels file was not provided then check if pointer to lib content
+    // was provided in compilation options.
+    if (compilationOptions.customDspKernelsSize) {
+      config_.sizeCustomDspLib = compilationOptions.customDspKernelsSize.get();
+      config_.customDspLib = reinterpret_cast<uint8_t *>(
+          compilationOptions.customDspKernelsLibPtr.get());
+      LOG(INFO) << "Loading DSP library from NNPICompilationOptions with size "
+                << compilationOptions.customDspKernelsSize;
+    } else {
+      return MAKE_ERR(
+          "Neither DSP kernels file found, nor pointer to lib provided."
+          "Atleast one of them is needed to run function containing DSP "
+          "kernels");
+    }
   } else {
     std::strncpy(config_.customDspKernelsFile, dspKernelsFile.c_str(),
                  dspKernelsFile.size());
@@ -103,6 +115,8 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.dumpDotFiles = compilationOptions.dumpDotFiles;
 
   config_.forceWeightsOutOfLLC = compilationOptions.forceWeightsOutOfLLC;
+  config_.enableFCDynamicQuantizationAllSA =
+      compilationOptions.enableFCDynamicQuantizationAllSA;
   config_.disableSlsAllLenOneCalcAtRunTime =
       compilationOptions.disableSlsAllLenOneCalcAtRunTime;
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
@@ -112,8 +126,17 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.enableLayerSplitter = compilationOptions.enableLayerSplitter;
   config_.enableConvSpatialSplitter =
       compilationOptions.enableConvSpatialSplitter;
+  config_.enableConvBatchSplitter = compilationOptions.enableConvBatchSplitter;
+  config_.disableWeightsInPool = compilationOptions.disableWeightsInPool;
 #endif
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+  config_.dumpIntermediate = compilationOptions.dumpIntermediate;
+  config_.numParallelDeciderCompilation =
+      compilationOptions.numDeciderCompilation;
+  config_.weightsThresholdForWeightSharing =
+      compilationOptions.thresholdDisableWeightsPool;
+#endif // NNPI >= 1.7
   return Error::success();
 }
 
@@ -339,7 +362,9 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
       compilationFileName_.length() < NNPI_MAX_STRING_LEN, "Bad filename");
 
   NNPIImporter importer(compilationOptions_);
-  network_ = importer.importFunction(F, newOpts);
+  // requiresDSPKernels set by importFunction.
+  bool requiresDSPKernels = false;
+  network_ = importer.importFunction(F, newOpts, requiresDSPKernels);
   iaExtensionPaths_ = importer.getIAExtensionPaths();
 
   LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
@@ -366,15 +391,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   DBG_MEM_USAGE("NNPICompiledFunction call get compilation config <<");
   LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiGetDefaultCompilationConfig(&config_),
                                      "Failed NNPI API Read Config");
-
-  // If Function contains any DSP nodes then we require DSP kernels.
-  bool requiresDSPKernels = false;
-  for (const auto &node : F->getNodes()) {
-    if (node.getKind() == Kinded::Kind::NNPICustomDSPNodeKind) {
-      requiresDSPKernels = true;
-      break;
-    }
-  }
 
   RETURN_IF_ERR(updateCompilationConfigFromOptions(compilationOptions_,
                                                    requiresDSPKernels));
@@ -430,10 +446,13 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
         }
       };
       DBG_MEM_USAGE("NNPICompiledFunction call get compile <<");
-      LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
-          nnpiNetworkCompileToStream(network_, &config_, &outFileStream, NULL),
-          "Failed NNPI Compile");
+      if (!opts.useDeserialize) {
 
+        LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
+            nnpiNetworkCompileToStream(network_, &config_, &outFileStream,
+                                       NULL),
+            "Failed NNPI Compile");
+      }
       DBG_MEM_USAGE("NNPICompiledFunction done compile <<");
     } else // Compile to file.
     {
@@ -845,4 +864,17 @@ const std::string NNPICompiledFunction::toJSON() const {
   fs << edgesToJSON(compilationInfo_.opDependencies) << std::endl;
   fs << "}" << std::endl;
   return fs.str();
+}
+
+std::unique_ptr<BlockStreamBase> NNPICompiledFunction::serialize() {
+  compiledStream_.resetRead();
+  return std::make_unique<BlockStream>(compiledStream_);
+}
+
+Error NNPICompiledFunction::deserialize(
+    const std::vector<char> &serializedData) {
+  compiledStream_.releaseMemory();
+  const char *buffer = reinterpret_cast<const char *>(serializedData.data());
+  compiledStream_.write(buffer, serializedData.size());
+  return Error::success();
 }

@@ -155,7 +155,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::SoftPlusNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int32ITy});
     break;
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedReduceMaxNodeKind:
@@ -191,7 +192,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
             {ElemKind::Float16Ty}, {ROIAlignNode::BatchIndicesIdx}) &&
-        (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int32ITy);
+        (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int32ITy ||
+         NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::LSTMUnitNodeKind:
     isNodePrecisionSupported =
@@ -202,6 +204,25 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32QTy,
          ElemKind::Int8QTy, ElemKind::UInt8QTy});
     break;
+  case Kinded::Kind::SparseLabelSplitNodeKind: {
+    auto valuesIdxDataType = NI.getInElemTy(SparseLabelSplitNode::ValuesIdx);
+    isNodePrecisionSupported =
+        (NI.getInElemTy(SparseLabelSplitNode::LengthsIdx) ==
+         ElemKind::Int32ITy) &&
+        (NI.getInElemTy(SparseLabelSplitNode::IndicesIdx) ==
+         ElemKind::Int64ITy) &&
+        (NI.getInElemTy(SparseLabelSplitNode::ValuesIdx) ==
+         NI.getOutElemTy(SparseLabelSplitNode::LabelValuesIdx)) &&
+        (NI.getOutElemTy(SparseLabelSplitNode::ExampleIdsIdx) ==
+         ElemKind::Int32ITy) &&
+        (NI.getOutElemTy(SparseLabelSplitNode::GradientOffsetMapIdx) ==
+         ElemKind::Int32ITy) &&
+        (valuesIdxDataType == ElemKind::FloatTy ||
+         valuesIdxDataType == ElemKind::Float16Ty ||
+         valuesIdxDataType == ElemKind::Int8QTy ||
+         valuesIdxDataType == ElemKind::UInt8QTy);
+    break;
+  }
 #endif // NNPI > 1.1
   case Kinded::Kind::LayerNormalizationNodeKind: {
     auto scaleType = NI.getInElemTy(LayerNormalizationNode::ScaleIdx);
@@ -259,10 +280,15 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         {ElemKind::Int8QTy, ElemKind::Float16Ty});
     break;
   case Kinded::Kind::FmodNodeKind:
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+#else
     // Supporting these two for now because for fp inputs NNPI returns result
     // with the same sign as the divisor instead of the dividend.
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int64ITy, ElemKind::Int32ITy});
+#endif // NNPI >= 1.7
     break;
   // Data transfer fp32/fp16/i8/i32/i64/bool.
   case Kinded::Kind::SaveNodeKind:
@@ -317,7 +343,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::ConvertToNodeKind: {
     auto isConversionSupportedFor = [](ElemKind kindFrom, ElemKind kindTo) {
       switch (kindFrom) {
-
       case ElemKind::Float16Ty:
         switch (kindTo) {
         case ElemKind::FloatTy:
@@ -326,7 +351,11 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::BoolTy:
           return true;
         case ElemKind::Int32ITy:
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+          return true;
+#else
           return glow::nnpi::flags::EnableCustomIAKernels;
+#endif // NNPI >= 1.7
         default:
           return false;
         }
@@ -351,6 +380,16 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         case ElemKind::Int32ITy:
         case ElemKind::FloatTy:
         case ElemKind::Int8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      // NOTE: this is supported by a custom kernel
+      case ElemKind::BoolTy:
+        switch (kindTo) {
+        case ElemKind::Int32ITy:
           return true;
         default:
           return false;
@@ -385,7 +424,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         return true;
 
       case ElemKind::UInt8FusedQTy:
-        return (kindTo == ElemKind::Float16Ty);
+        return (kindTo == ElemKind::Float16Ty ||
+                kindTo == ElemKind::UInt8FusedFP16QTy);
       case ElemKind::UInt8FusedFP16QTy:
         return (kindTo == ElemKind::Float16Ty);
       default:
@@ -689,17 +729,26 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::SparseToDenseNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy}, {SparseToDenseNode::IndicesIdx}) &&
+            {ElemKind::FloatTy, ElemKind::Float16Ty},
+            {SparseToDenseNode::IndicesIdx}) &&
         (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int32ITy ||
          NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::ScatterDataNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+             ElemKind::UInt8QTy},
             {ScatterDataNode::IndicesIdx}) &&
         (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy ||
          NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::BucketizeNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy}, {},
+            {BucketizeNode::ResultIdx}) &&
+        (NI.getOutElemTy(BucketizeNode::ResultIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::SoftMaxNodeKind:
     isNodePrecisionSupported =
@@ -752,6 +801,15 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::LogitNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+    break;
+  case Kinded::Kind::CumSumNodeKind:
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int32ITy, ElemKind::Int8QTy, ElemKind::UInt8QTy});
+#else
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
+#endif // NNPI >= 1.7
     break;
   default:
     isNodeHasAnySupport = false;
@@ -1996,73 +2054,6 @@ NNPIBackend::transformPostOptPipeline(Function *F,
   return changed;
 }
 
-/// Replaces any operators in the Function \p F with custom DSP NNPI kernel
-/// operators by calling each CustomKernelInjector on each node in sequence.
-/// \returns true iff any custom NNPI node was injected into the Function.
-static bool injectCustomDSPOps(Function *F) {
-  if (!glow::nnpi::flags::EnableCustomDSPKernels) {
-    LOG(INFO) << "Skipping custom DSP kernels because they are disabled";
-    return false;
-  }
-
-  static const auto dspInjectors = buildDSPInjectors();
-
-  LOG(INFO) << "Custom DSP ops enabled";
-
-  bool modified = false;
-
-  auto &nodes = F->getNodes();
-  for (auto &node : nodes) {
-    for (auto &injector : dspInjectors) {
-      if (injector->tryInject(F, &node)) {
-        LOG(INFO) << "Using a custom DSP op for " << node.getName().str();
-        modified = true;
-        break;
-      }
-    }
-  }
-
-  return modified;
-}
-
-/// Replaces any operators in the Function \p F with custom IA NNPI kernel
-/// operators by calling each CustomKernelInjector on each node in sequence.
-/// \returns true iff any custom NNPI node was injected into the Function.
-static bool injectCustomIAOps(Function *F) {
-  if (!glow::nnpi::flags::EnableCustomIAKernels) {
-    LOG(INFO) << "Skipping custom IA kernels because they are disabled";
-    return false;
-  }
-
-  // For now only inject IA ops when running on device since custom IA
-  // kernels aren't currently supported by iceref.
-  const char *useInfApi = std::getenv("USE_INF_API");
-  if (!useInfApi || std::string(useInfApi) != "1") {
-    LOG(INFO) << "Skipping custom IA kernels because hardware inference isn't "
-                 "enabled";
-    return false;
-  }
-
-  static const auto iaInjectors = buildIAInjectors();
-
-  LOG(INFO) << "Custom IA ops enabled";
-
-  bool modified = false;
-
-  auto &nodes = F->getNodes();
-  for (auto &node : nodes) {
-    for (auto &injector : iaInjectors) {
-      if (injector->tryInject(F, &node)) {
-        LOG(INFO) << "Using a custom IA op for " << node.getName().str();
-        modified = true;
-        break;
-      }
-    }
-  }
-
-  return modified;
-}
-
 Expected<bool> NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
@@ -2102,12 +2093,6 @@ Expected<bool> NNPIBackend::transformPostLowering(
     changed |= FPM.run(F, cctx);
   }
   changed |= lowerRequiredNodes(F, cctx);
-
-  // NOTE: DSP kernels are generally faster and preferred relative to IA kernels
-  // so always call injectCustomDSPOps first to choose them over IA kernels
-  // where possible.
-  changed |= injectCustomDSPOps(F);
-  changed |= injectCustomIAOps(F);
 
 #if FACEBOOK_INTERNAL
   if (!(glow::nnpi::flags::EnableCustomDSPKernels ||
@@ -2216,12 +2201,12 @@ Error NNPIBackend::bindContexts(
 
 /// Partial update of the NNPITensorDesc. Some members are ignored as they're
 /// not used for estimation.
-static bool updateDescForEstimate(NNPITensorDesc &desc,
-                                  const glow::TypeRef ty) {
+static bool updateDescForEstimate(NNPITensorDesc &desc, const glow::TypeRef ty,
+                                  bool alternativeLayout) {
   LOG_AND_RETURN_IF(ERROR, ty == nullptr, "Invalid type", false);
 
   // Update dims and layout.
-  NNPIImporter::updateDescDimsFromGlow(ty->dims(), desc);
+  NNPIImporter::updateDescDimsFromGlow(ty->dims(), desc, alternativeLayout);
 
   // Update Quantization.
   switch (ty->getElementType()) {
@@ -2288,14 +2273,16 @@ static bool updateDescForEstimate(NNPITensorDesc &desc,
 
 /// Prepare the list of NNPITensorDesc for the estimate call.
 static bool updateDescListForEstimate(std::vector<NNPITensorDesc> &descs,
-                                      const std::vector<glow::TypeRef> types) {
+                                      const std::vector<glow::TypeRef> types,
+                                      bool alternativeLayout = false) {
   if (descs.size() != types.size()) {
     return false;
   }
   bool retVal = true;
   for (size_t i = 0; i < descs.size(); i++) {
     if (types.at(i) != nullptr) {
-      retVal &= updateDescForEstimate(descs.at(i), types.at(i));
+      retVal &=
+          updateDescForEstimate(descs.at(i), types.at(i), alternativeLayout);
     }
   }
   return retVal;
@@ -2329,7 +2316,6 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
 
   bool validWeight = false;
   bool useLengthAsOffset = false;
-  glow::TypeRef tr(nullptr);
   switch (NI.getKind()) {
 
   case Kinded::Kind::SparseLengthsSumNodeKind:
@@ -2471,6 +2457,114 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
   return estimate;
 }
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+static bool isBatchNormUsingAlternativeLayout(const size_t channelIdx,
+                                              const size_t numDims) {
+  // Handle NNPI_LAYOUT_NDHWC and NNPI_LAYOUT_NHWC layout.
+  if ((numDims == 4 || numDims == 5) && (channelIdx == numDims - 1)) {
+    return true;
+  }
+
+  // Handle NNPI_LAYOUT_CN layout.
+  if (numDims == 2 && channelIdx == 0) {
+    return true;
+  }
+
+  return false;
+}
+
+double NNPIBackend::estimateBatchNormalizationNode(
+    const BatchNormalizationNode *BN) const {
+
+  NodeInfo NI(*BN);
+  if (!isOpSupported(NI)) {
+    return -1.0;
+  }
+
+  auto inputDims = BN->getInput().getType()->dims().size();
+  auto alternativeLayout =
+      isBatchNormUsingAlternativeLayout(BN->getChannelIdx(), inputDims);
+
+  std::vector<NNPITensorDesc> descs(1); // only input for this node type
+
+  LOG_AND_RETURN_IF(ERROR,
+                    !updateDescListForEstimate(
+                        descs, {NI.getInTy(BatchNormalizationNode::InputIdx)},
+                        alternativeLayout),
+                    "Failed to update NNPITensorDesc", -1.0);
+
+  double estimate = -1.0;
+  const NNPITensorDesc *td = &(descs.at(0));
+
+  LOG_NNPI_IF_ERROR(
+      nnpiEstimateOp(
+          (BN->getName().str()).c_str(),
+          NNPI_COST_MODEL_OP_TYPE::NNPI_COST_MODEL_BATCH_NORMALIZATION,
+          0, /* subType is don't care for this node */
+          &td, 1, &estimate),
+      "Failed to estimate BatchNormalization op.");
+
+  return estimate;
+}
+
+double NNPIBackend::estimateAvgPoolNode(const AvgPoolNode *avgPoolNode) const {
+  NodeInfo NI(*avgPoolNode);
+  if (!isOpSupported(NI)) {
+    return -1.0;
+  }
+
+  // Update kernel Descriptors.
+  // These are partially filled with only 'numDims' and 'dims[]'.
+  NNPITensorDesc kernelDesc, strideDesc, padStartDesc, padEndDesc;
+  auto numKernelDims = avgPoolNode->getKernels().size();
+  kernelDesc.numDims = numKernelDims;
+  strideDesc.numDims = numKernelDims;
+  padStartDesc.numDims = numKernelDims;
+  padEndDesc.numDims = numKernelDims;
+
+  // Layout of kernels/stride etc. seems to be CHW/HW.
+  // This is what is used by NNPI API.
+  for (size_t i = 0; i < numKernelDims; i++) {
+    kernelDesc.dims[i] = avgPoolNode->getKernels()[i];
+    strideDesc.dims[i] = avgPoolNode->getStrides()[i];
+
+    if (numKernelDims == 2) {
+      padStartDesc.dims[i] = avgPoolNode->getPads()[i];
+      padEndDesc.dims[i] = avgPoolNode->getPads()[numKernelDims + i];
+    } else {
+      padStartDesc.dims[i] = avgPoolNode->getPads()[i * 2];
+      padEndDesc.dims[i] = avgPoolNode->getPads()[i * 2 + 1];
+    }
+  }
+
+  // Update IO Descriptors.
+  std::vector<NNPITensorDesc> ioDescs(2);
+  LOG_AND_RETURN_IF(
+      ERROR,
+      !updateDescListForEstimate(ioDescs,
+                                 {NI.getInTy(AvgPoolNode::InputIdx),
+                                  NI.getOutTy(AvgPoolNode::ResultIdx)},
+                                 true /* alternativeLayout */),
+      "Failed to update NNPITensorDesc", -1.0);
+
+  // The order of init in this array is _important_. This is
+  // the order the NNPI API expects the values for this Op.
+  // Any change here needs an update there also.
+  const uint64_t numTotalDescs = 6;
+  const NNPITensorDesc *td[numTotalDescs] = {&(ioDescs.at(0)), &(ioDescs.at(1)),
+                                             &kernelDesc,      &strideDesc,
+                                             &padStartDesc,    &padEndDesc};
+
+  double estimate = -1.0;
+  nnpiEstimateOp((avgPoolNode->getName().str()).c_str(),
+                 NNPI_COST_MODEL_OP_TYPE::NNPI_COST_MODEL_AVG_POOL,
+                 0, /* subType is don't care for this node */
+                 td, numTotalDescs, &estimate);
+
+  return estimate;
+}
+#endif // NNPI >= 1.7
+
 Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
   double returnCost = -1.0;
   switch (node->getKind()) {
@@ -2527,6 +2621,18 @@ Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
                               EBBRO->getLengthsMode(), EBBRO->getAvgLength());
     break;
   }
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+  case Kinded::Kind::BatchNormalizationNodeKind: {
+    const BatchNormalizationNode *BN = llvm::cast<BatchNormalizationNode>(node);
+    returnCost = estimateBatchNormalizationNode(BN);
+    break;
+  }
+  case Kinded::Kind::AvgPoolNodeKind: {
+    const AvgPoolNode *avgPoolNode = llvm::cast<AvgPoolNode>(node);
+    returnCost = estimateAvgPoolNode(avgPoolNode);
+    break;
+  }
+#endif // NNPI >= 1.7
   default:
     break;
   }

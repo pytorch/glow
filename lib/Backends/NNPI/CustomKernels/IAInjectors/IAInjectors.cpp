@@ -1,4 +1,18 @@
-// (c) Facebook, Inc. and its affiliates. Confidential and proprietary.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "IAInjectors.h"
 #include "../GetNNPIKernels.h"
@@ -9,59 +23,62 @@ namespace glow {
 namespace {
 template <typename GlowNode, ElemKind InputKind>
 struct UnaryNodeIAKernelInjector : public CustomKernelInjector {
-  bool tryInject(Function *F, Node *node) const override {
+  Node *tryInject(Function *F, Node *node) const override {
     GlowNode *castedNode = llvm::dyn_cast<GlowNode>(node);
     if (!castedNode) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getInput().getElementType() != InputKind) {
-      return false;
+      return nullptr;
     }
 
     auto kernelName = strFormat("%s_%s_IAKernel", getNodeName<GlowNode>(),
                                 Type::getElementName(InputKind).str().c_str());
-
+    Constant *kernelParams =
+        F->getParent()->createConstant(ElemKind::Int32ITy, {}, "kernelParams");
     auto *iaNode = F->addNode(new NNPICustomIANode(
         strFormat("%s_as_%s", castedNode->getName().str().c_str(),
                   kernelName.c_str()),
-        castedNode->getResult().getType(), {castedNode->getInput()}, kernelName,
-        GetNNPIKernels::getCompiledIAKernelsFilePath()));
-    castedNode->getResult().replaceAllUsesOfWith(iaNode);
+        castedNode->getResult().getType(), kernelParams,
+        {castedNode->getInput()}, kernelName,
+        GetNNPIKernels::getCompiledIAKernelsFilePath(),
+        /* IceRefCallback */ static_cast<int64_t>(0)));
 
-    return true;
+    return iaNode;
   }
 };
 
 template <typename GlowNode, ElemKind Input1Kind, ElemKind Input2Kind>
 struct BinaryNodeIAKernelInjector : public CustomKernelInjector {
-  bool tryInject(Function *F, Node *node) const override {
+  Node *tryInject(Function *F, Node *node) const override {
     GlowNode *castedNode = llvm::dyn_cast<GlowNode>(node);
     if (!castedNode) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getNthInput(0).getElementType() != Input1Kind) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getNthInput(1).getElementType() != Input2Kind) {
-      return false;
+      return nullptr;
     }
 
     auto kernelName = strFormat("%s_%s_%s_IAKernel", getNodeName<GlowNode>(),
                                 Type::getElementName(Input1Kind).str().c_str(),
                                 Type::getElementName(Input2Kind).str().c_str());
-
+    Constant *kernelParams =
+        F->getParent()->createConstant(ElemKind::Int32ITy, {}, "kernelParams");
     auto *iaNode = F->addNode(new NNPICustomIANode(
         strFormat("%s_as_%s", castedNode->getName().str().c_str(),
                   kernelName.c_str()),
-        castedNode->getResult().getType(),
+        castedNode->getResult().getType(), kernelParams,
         {castedNode->getNthInput(0), castedNode->getNthInput(1)}, kernelName,
-        GetNNPIKernels::getCompiledIAKernelsFilePath()));
-    castedNode->getResult().replaceAllUsesOfWith(iaNode);
+        GetNNPIKernels::getCompiledIAKernelsFilePath(),
+        /* IceRefCallback */ static_cast<int64_t>(0)));
 
-    return true;
+    return iaNode;
   }
 };
 
@@ -69,14 +86,14 @@ struct BinaryNodeIAKernelInjector : public CustomKernelInjector {
 // tensor input.
 template <typename GlowNode, ElemKind Input1Kind>
 struct DimensionedIAKernelInjector : public CustomKernelInjector {
-  bool tryInject(Function *F, Node *node) const override {
+  Node *tryInject(Function *F, Node *node) const override {
     GlowNode *castedNode = llvm::dyn_cast<GlowNode>(node);
     if (!castedNode) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getNthInput(0).getElementType() != Input1Kind) {
-      return false;
+      return nullptr;
     }
 
     auto kernelName = strFormat("%s_%s_Dim_IAKernel", getNodeName<GlowNode>(),
@@ -88,46 +105,51 @@ struct DimensionedIAKernelInjector : public CustomKernelInjector {
     Handle<int32_t> tensor_handle(&constNode->getPayloadMutable());
     *tensor_handle.begin() = castedNode->getDim();
 
+    Constant *kernelParams =
+        F->getParent()->createConstant(ElemKind::Int32ITy, {}, "kernelParams");
     auto *iaNode = F->addNode(new NNPICustomIANode(
         strFormat("%s_as_%s", castedNode->getName().str().c_str(),
                   kernelName.c_str()),
-        castedNode->getResult().getType(),
+        castedNode->getResult().getType(), kernelParams,
         {castedNode->getNthInput(0), constNode}, kernelName,
-        GetNNPIKernels::getCompiledIAKernelsFilePath()));
-    castedNode->getResult().replaceAllUsesOfWith(iaNode);
+        GetNNPIKernels::getCompiledIAKernelsFilePath(),
+        /* IceRefCallback */ static_cast<int64_t>(0)));
 
-    return true;
+    return iaNode;
   }
 };
 
 template <typename GlowNode, ElemKind ToKind, ElemKind FromKind>
 struct ConversionNodeIAKernelInjector : public CustomKernelInjector {
-  bool tryInject(Function *F, Node *node) const override {
+  Node *tryInject(Function *F, Node *node) const override {
     GlowNode *castedNode = llvm::dyn_cast<GlowNode>(node);
     if (!castedNode) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getResult().getElementType() != ToKind) {
-      return false;
+      return nullptr;
     }
 
     if (castedNode->getInput().getElementType() != FromKind) {
-      return false;
+      return nullptr;
     }
 
     auto kernelName = strFormat("%s_%s_%s_IAKernel", getNodeName<GlowNode>(),
                                 Type::getElementName(ToKind).str().c_str(),
                                 Type::getElementName(FromKind).str().c_str());
 
+    Constant *kernelParams =
+        F->getParent()->createConstant(ElemKind::Int32ITy, {}, "kernelParams");
     auto *iaNode = F->addNode(new NNPICustomIANode(
         strFormat("%s_as_%s", castedNode->getName().str().c_str(),
                   kernelName.c_str()),
-        castedNode->getResult().getType(), {castedNode->getInput()}, kernelName,
-        GetNNPIKernels::getCompiledIAKernelsFilePath()));
-    castedNode->getResult().replaceAllUsesOfWith(iaNode);
+        castedNode->getResult().getType(), kernelParams,
+        {castedNode->getInput()}, kernelName,
+        GetNNPIKernels::getCompiledIAKernelsFilePath(),
+        /* IceRefCallback */ static_cast<int64_t>(0)));
 
-    return true;
+    return iaNode;
   }
 };
 } // namespace
@@ -195,11 +217,13 @@ std::vector<std::unique_ptr<CustomKernelInjector>> buildIAInjectors() {
       std::make_unique<BinaryNodeIAKernelInjector<
           CmpNEQNode, ElemKind::Int32ITy, ElemKind::Int32ITy>>());
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION < 7
   // CumSum Int32
   // TODO: pass dim as a second tensor
   injectors.emplace_back(
       std::make_unique<
           DimensionedIAKernelInjector<CumSumNode, ElemKind::Int32ITy>>());
+#endif // NNPI < 1.7
 
   // SparseToDense Int32, float
   injectors.emplace_back(
@@ -221,6 +245,7 @@ std::vector<std::unique_ptr<CustomKernelInjector>> buildIAInjectors() {
       std::make_unique<ConversionNodeIAKernelInjector<
           ConvertToNode, ElemKind::Int32ITy, ElemKind::BoolTy>>());
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION < 7
   // ConverTo Float16 Int32
   injectors.emplace_back(
       std::make_unique<ConversionNodeIAKernelInjector<
@@ -230,7 +255,7 @@ std::vector<std::unique_ptr<CustomKernelInjector>> buildIAInjectors() {
   injectors.emplace_back(
       std::make_unique<ConversionNodeIAKernelInjector<
           ConvertToNode, ElemKind::Int32ITy, ElemKind::Float16Ty>>());
-
+#endif // NNPI < 1.7
   return injectors;
 }
 } // namespace glow

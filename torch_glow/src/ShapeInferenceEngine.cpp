@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <ATen/WrapDimUtils.h>
 #include <iostream>
@@ -184,6 +198,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&glowUnpackedQuantizedLinear, &SI::addShapeDefault)},
       {"fb::quantized_linear_unpacked_weight",
        ShapeInference(&glowUnpackedQuantizedLinear, &SI::addShapeDefault)},
+      {"fb::quantized_linear_unpacked_weight_v2",
+       ShapeInference(&glowUnpackedQuantizedLinear, &SI::addShapeDefault)},
       {"fb::lengths_to_offsets",
        ShapeInference(&lengthsToOffsets, &SI::addShapeDefault)},
       {"fb::simple_embedding_bag_sum",
@@ -210,6 +226,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       // Current shape inference function can handle both cases.
       {"fb::lengths_range_w_truncation_size",
        ShapeInference(&lengthsRange, &SI::addShapeDefault)},
+      {"fb::quantize_per_tensor",
+       ShapeInference(&quantizePerTensor, &SI::addShapeDefault)},
       {"aten::quantize_per_tensor",
        ShapeInference(&quantizePerTensor, &SI::addShapeDefault)},
       {"aten::dequantize", ShapeInference(&dequantize, &SI::addShapeDefault)},
@@ -218,6 +236,9 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"aten::tanh", ShapeInference(&unaryOp, &SI::addShapeDefault)},
       {"aten::relu", ShapeInference(&unaryOp, &SI::addShapeDefault)},
       {"aten::sigmoid", ShapeInference(&unaryOp, &SI::addShapeDefault)},
+      {"aten::sign", ShapeInference(&unaryOp, &SI::addShapeDefault)},
+      {"aten::abs", ShapeInference(&unaryOp, &SI::addShapeDefault)},
+      {"aten::log1p", ShapeInference(&unaryOp, &SI::addShapeDefault)},
       {"aten::sub", ShapeInference(&binaryOp, &SI::addShapeDefault)},
       {"aten::pow", ShapeInference(&binaryOp, &SI::addShapeDefault)},
       {"aten::mul", ShapeInference(&binaryOp, &SI::addShapeDefault)},
@@ -254,10 +275,15 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&fused8BitRowwiseQuantizedToFloat, &SI::addShapeDefault)},
       {"fb::compressed_indices_remap",
        ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
+      {"fb::xl_compressed_indices_remap",
+       ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
       {"quantized::embedding_bag_byte_unpack",
        ShapeInference(&embeddingBagByteUnpack, &SI::addShapeDefault)},
       {"fb::unsqueeze_n_times",
        ShapeInference(&unsqueezeNTimes, &SI::addShapeDefault)},
+      {"fb::equally_split",
+       ShapeInference(&equallySplit, &SI::addShapeDefaultList)},
+      {"aten::squeeze", ShapeInference(&squeeze, &SI::addShapeDefault)},
   });
   return map;
 }
@@ -637,7 +663,8 @@ ShapeInferenceEngine::primConstant(const torch::jit::Node *node) {
   return output;
 }
 
-// Shape inference for aten::tanh, aten::relu, aten::sigmoid
+// Shape inference for aten::tanh, aten::relu, aten::sigmoid, aten::abs,
+// aten::sign, aten::log1p
 Expected<TensorOutput>
 ShapeInferenceEngine::unaryOp(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(variableMetas.size() == 1,
@@ -1764,7 +1791,8 @@ ShapeInferenceEngine::chunk(const MetaStack &variableMetas) {
       "b, float r_scale, int r_zero_point) -> Tensor";
  * fb::quantized_linear_unpacked_weight(Tensor a_quant, Tensor w_quant, "
       "Tensor b, float r_scale, int r_zero_point) -> Tensor";
-
+ * fb::quantized_linear_unpacked_weight_v2(Tensor a_quant, Tensor w_quant, "
+      "Tensor b, Tensor r_scale, Tensor r_zero_point) -> Tensor";
 Input: (N, *, in_features) where * means any number of
 additional dimensions
 Weight: (out_features, in_features)
@@ -2004,8 +2032,9 @@ ShapeInferenceEngine::lengthsRange(const MetaStack &variableMetas) {
 }
 
 /*
- * quantize_per_tensor(Tensor self, float scale, int zero_point, ScalarType
- * dtype) -> Tensor
+ * aten::quantize_per_tensor(Tensor self, float scale, int zero_point,
+ * ScalarType dtype) -> Tensor fb::quantize_per_tensor(Tensor self, Tensor
+ * scale, Tensor zero_point, ScalarType dtype) -> Tensor
  */
 Expected<TensorOutput>
 ShapeInferenceEngine::quantizePerTensor(const MetaStack &variableMetas) {
@@ -2224,6 +2253,69 @@ ShapeInferenceEngine::unsqueezeNTimes(const MetaStack &variableMetas) {
     // according to unsqueeze_n_times definition, we always insert
     // a dimension of size one at the end
     shape.push_back(1);
+  }
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * fb::equally_split(Tensor input, int num_split, int dim) -> Tensor
+ */
+Expected<TensorListOutput>
+ShapeInferenceEngine::equallySplit(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected 3 input, got %zu", variableMetas.size()));
+  int64_t numSplit = variableMetas[1].intValue[0];
+  int64_t dim = variableMetas[2].intValue[0];
+
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(inputShape.size() > 0,
+                    "Expected input shape size is larger than 0");
+
+  // Convert dim to positive
+  dim = at::maybe_wrap_dim(dim, inputShape.size());
+  RETURN_ERR_IF_NOT(
+      inputShape[dim] % numSplit == 0,
+      strFormat("Expected dimension size could be evenly divided by numSplit, "
+                "got dimSize %long and numSplit %long",
+                inputShape[dim], numSplit));
+
+  TensorShape sliceShape = inputShape;
+  sliceShape[dim] = inputShape[dim] / numSplit;
+  TensorListShape outputShape(numSplit, sliceShape);
+
+  TensorListOutput output;
+  output.shape = outputShape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::squeeze(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2 || variableMetas.size() == 1,
+      strFormat("Expected 1 or 2 input, got %zu.", variableMetas.size()));
+
+  const auto &t = variableMetas[0].shape<TensorShape>();
+  // Load dim parameter if provided
+  int64_t dim = 0;
+  bool dimProvided = false;
+  if (variableMetas.size() == 2) {
+    dimProvided = true;
+    dim = variableMetas[1].intValue[0];
+    if (dim < 0) {
+      dim += t.size();
+    }
+  }
+
+  TensorShape shape;
+  for (int i = 0; i < t.size(); i++) {
+    if (t[i] != 1 || (dimProvided && i != dim)) {
+      shape.push_back(t[i]);
+    }
   }
   TensorOutput output;
   output.shapeOrIntValues = shape;

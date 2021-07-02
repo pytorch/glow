@@ -433,14 +433,17 @@ enum class ElemKind : unsigned char {
   UInt4FusedQTy,
   // Bool type (bool)
   BoolTy,
+  // 64-bit quantized type (int64_t, partial support)
+  Int64QTy,
 };
 
 /// \returns whether \p e is a quantized ElemKind.
 inline bool isQuantizedElemKind(ElemKind e) {
   return e == ElemKind::Int8QTy || e == ElemKind::UInt8QTy ||
          e == ElemKind::Int16QTy || e == ElemKind::Int32QTy ||
-         e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||
-         e == ElemKind::UInt4FusedFP16QTy || e == ElemKind::UInt4FusedQTy;
+         e == ElemKind::Int64QTy || e == ElemKind::UInt8FusedQTy ||
+         e == ElemKind::UInt8FusedFP16QTy || e == ElemKind::UInt4FusedFP16QTy ||
+         e == ElemKind::UInt4FusedQTy;
 }
 
 /// \returns whether \p e is a float ElemKind.
@@ -463,7 +466,7 @@ inline bool isFusedQuantizedElemKind(ElemKind e) {
 /// \returns the scale and offset ElemKind used by the fused ElemKind \p e.
 inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
   assert(isFusedQuantizedElemKind(e) && "Must pass Fused ElemKind.");
-  if (e == ElemKind::UInt8FusedQTy) {
+  if (e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt4FusedQTy) {
     return ElemKind::FloatTy;
   }
   return ElemKind::Float16Ty;
@@ -569,11 +572,40 @@ struct Type final {
     return ty;
   }
 
+  /// Reshape existing type \p T by taking shapes and using the provided \p
+  /// strides.
+  static Type newStrides(const Type &T, llvm::ArrayRef<dim_t> strides) {
+    assert(strides.size() == T.strides().size());
+    Type ty = T;
+    // Copy the stride information.
+    std::copy(&strides[0], &strides[0] + ty.numSizes_, ty.strides_);
+    return ty;
+  }
+
   /// Reshape existing type. This method takes care of quantized types.
   static Type newQuantparams(const Type &T, float scale, int32_t offset) {
     assert(T.isQuantizedType() &&
            "Can't modify scale and offset of non quantized types");
     return Type(T.getElementType(), T.dims(), scale, offset);
+  }
+
+  /// \returns true if a type has standard strides and no special alignment
+  /// requirements.
+  bool hasStandardStrides() const {
+    if (numSizes_ > 0) {
+      // Stride of the last dimension is always 1.
+      assert(strides_[numSizes_ - 1] == 1 &&
+             "Last dimension must always be aligned.");
+    }
+    for (int i = numSizes_ - 2; i >= 0; i--) {
+      // All the strides (except for last one) depend on the previous dimension.
+      // For standard strides the following should be true:
+      // strides_[i] == sizes_[i + 1] * strides_[i + 1]
+      if (strides_[i] != sizes_[i + 1] * strides_[i + 1]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// An empty type.
@@ -726,6 +758,8 @@ struct Type final {
       return std::is_same<ElemTy, int16_t>::value;
     case ElemKind::Int32QTy:
       return std::is_same<ElemTy, int32_t>::value;
+    case ElemKind::Int64QTy:
+      return std::is_same<ElemTy, int64_t>::value;
     case ElemKind::UInt8ITy:
       return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::Int32ITy:
@@ -801,6 +835,8 @@ struct Type final {
       return sizeof(int16_t);
     case ElemKind::Int32QTy:
       return sizeof(int32_t);
+    case ElemKind::Int64QTy:
+      return sizeof(int64_t);
     case ElemKind::UInt8ITy:
       return sizeof(uint8_t);
     case ElemKind::Int32ITy:
@@ -829,10 +865,10 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float",        "float16",      "bfloat16", "float64",
-        "i8",           "ui8",          "i16",      "i32",
-        "uindex8",      "index32",      "index64",  "ui8fused",
-        "ui8fusedfp16", "ui4fusedfp16", "ui4fused", "bool",
+        "float",   "float16",  "bfloat16",     "float64",      "i8",
+        "ui8",     "i16",      "i32",          "uindex8",      "index32",
+        "index64", "ui8fused", "ui8fusedfp16", "ui4fusedfp16", "ui4fused",
+        "bool",    "i64",
     };
     return names[(int)Ty];
   }
@@ -873,6 +909,8 @@ struct Type final {
       return ElemKind::UInt4FusedQTy;
     } else if (str == Type::getElementName(ElemKind::BoolTy)) {
       return ElemKind::BoolTy;
+    } else if (str == Type::getElementName(ElemKind::Int64QTy)) {
+      return ElemKind::Int64QTy;
     } else {
       LOG(DFATAL) << "Invalid ElemKind string: " << str.str();
       return ElemKind::FloatTy;

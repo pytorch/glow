@@ -103,14 +103,8 @@ HostManager::HostManager(
     : config_(hostConfig),
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
-  auto reporters = ErrorReporterRegistry::ErrorReporters();
 
-  auto err = init(std::move(deviceConfigs));
-  if (reporters && err) {
-    std::string msg = err.peekErrorValue()->logToString();
-    reporters->report(msg);
-  }
-  EXIT_ON_ERR(std::move(err));
+  REPORT_AND_EXIT_ON_ERR(init(std::move(deviceConfigs)));
   statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
 }
 
@@ -325,10 +319,11 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     for (auto &device : availableDevices_) {
       DeviceInfo info = devices_[device]->getDeviceInfo();
       info.availableMemory = devices_[device]->getAvailableMemory();
-      info.backendName = devices_[device]->getBackendName();
+      info.backendName = devices_[device]->getBackendName().str();
       info.nonSupportedNodes =
-          devices_[device]->getParamByName("nonSupportedNodes");
-      info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
+          devices_[device]->getParamByName("nonSupportedNodes").str();
+      info.supportedNodes =
+          devices_[device]->getParamByName("supportedNodes").str();
       // If p2p is enabled update the inputCount limit.
       if (cctx.enableP2P) {
         info.inputCountMax = P2PInputLimit;
@@ -509,11 +504,15 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       // meta info as the model does not need to be reloaded.
       ONNXModelWriter onnxWR(
           loc, nodeList, 7, 9, &writeErr,
-          /* textMode */ true, /* zipMode */ false,
+          /* textMode */ true,
+          /* zipMode */ cctx.useZipModeForSerializeCompiledDAG,
           /* includeConstantData */ cctx.saveConstantInSerializeCompiledDAG,
           extraMetadataProps, record, cctx.backendOpts.backendSpecificNodeInfo,
           cctx.skipProvisioning ? &cctx.loadedPHNames : nullptr,
-          cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr);
+          cctx.skipProvisioning ? &cctx.staticPlaceholderTypesForAOT : nullptr,
+          cctx.returnGlowSerializedModelStr
+              ? cctx.glowAOTSerializationModelStrPtr.get()
+              : nullptr);
       RETURN_IF_ERR(writeErr);
     }
 
@@ -1001,7 +1000,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     }
     reportCurrentQueueSize(queueSize);
     // Setup the request
-    InferRequest queuedRequest(networkName, std::move(context), callback,
+    InferRequest queuedRequest(networkName.str(), std::move(context), callback,
                                priority, currentRun, requestReceived);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
@@ -1084,10 +1083,27 @@ runtime::generateDeviceConfigs(unsigned int numDevices,
   if (!loadDeviceConfigsFromFile(configs, memSize)) {
     // If there is no device config file, use numDevices to generate the
     // configs.
+    std::vector<unsigned> available_device_ids;
+    if (glow::flags::ScanDevices) {
+      const auto &factories =
+          FactoryRegistry<std::string, Backend>::factories();
+      auto it = factories.find(backendName.str());
+      if (it != factories.end()) {
+        available_device_ids = it->second->scanDeviceIDs();
+      }
+      CHECK_GE(available_device_ids.size(), 0) << "No devices found.";
+      CHECK_GE(available_device_ids.size(), numDevices)
+          << "Not enough devices found.";
+    }
     for (unsigned int i = 0; i < numDevices; ++i) {
       auto config = glow::make_unique<runtime::DeviceConfig>(backendName);
       config->setDeviceMemory(memSize);
-      config->deviceID = i;
+      if (glow::flags::ScanDevices) {
+        config->deviceID = available_device_ids.back();
+        available_device_ids.pop_back();
+      } else {
+        config->deviceID = i;
+      }
       configs.push_back(std::move(config));
     }
   }
@@ -1122,6 +1138,12 @@ Backend &HostManager::getBackend(llvm::StringRef backendName) const {
 
 Expected<Backend *> HostManager::getBackend() const {
   return provisioner_->getBackend();
+}
+
+std::unique_ptr<
+    std::unordered_map<std::string, std::unique_ptr<BlockStreamBase>>>
+HostManager::getAllSerializedFunctions() {
+  return provisioner_->getAllSerializedFunctionsMap();
 }
 
 HostManager *HostManagerRegistry::getHostManager() { return hostManager_; }

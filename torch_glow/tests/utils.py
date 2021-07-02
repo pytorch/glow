@@ -105,7 +105,7 @@ def assert_equivalent(
         matches = (
             torch.equal(result1, result2)
             if use_eq
-            else torch.allclose(result1, result2, atol, rtol)
+            else torch.allclose(result1, result2, rtol=rtol, atol=atol)
         )
         if matches:
             return True

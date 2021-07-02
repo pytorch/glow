@@ -28,6 +28,9 @@ print_usage() {
 }
 
 fix_format() {
+  export LC_ALL=C.UTF-8
+  export LANG=C.UTF-8
+
   $CLANG_COMMAND -version
   find lib tests/unittests/ tools/ include examples torch_glow inference_engines externalbackends \
     -name \*.h -print0 \

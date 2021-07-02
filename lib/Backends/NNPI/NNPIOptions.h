@@ -103,6 +103,8 @@ template <> int NNPIOptions::getStringAsType<int>(std::string sVal);
 template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal);
 /// Explicit forward declaration of template type.
 template <> float NNPIOptions::getStringAsType<float>(std::string sVal);
+/// Explicit forward declaration of template type for uint64_t.
+template <> uint64_t NNPIOptions::getStringAsType<uint64_t>(std::string sVal);
 
 #define DECLARE_NNPI_OPTION(VAR_NAME, VAR_TYPE, OPT_NAME, OPT_DESC, OPT_ENV,   \
                             OPT_DEFAULT)                                       \
@@ -346,7 +348,51 @@ public:
                       "enableConvSpatialSplitter",
                       "Enable splits along X-Y Dims of Convolution Nodes.",
                       "NNPI_ENABLE_CONV_SPATIAL_SPLITTER", "0");
+
+  /// Enable Batch splitter for Convolution Nodes
+  /// This needs the 'Generic Node splitter' to be enabled.
+  DECLARE_NNPI_OPTION(enableConvBatchSplitter, bool, "enableConvBatchSplitter",
+                      "Enable splits on Batch Dim of Convolution Nodes.",
+                      "NNPI_ENABLE_CONV_BATCH_SPLITTER", "0");
+
+  /// Approximation used in dequantization
+  DECLARE_NNPI_OPTION(enableFCDynamicQuantizationAllSA, bool,
+                      "enableFCDynamicQuantizationAllSA",
+                      "Enable approximation in dequant after dynamic FC.",
+                      "NNPI_ENABLE_FC_DQ_ALL_SA", "1");
 #endif
+
+  /// Pointer to custom DSP kernels library.
+  /// This is only valid if CustomDSPLib is not provided.
+  DECLARE_NNPI_OPTION(customDspKernelsLibPtr, uint64_t, "CustomDSPLibPtr",
+                      "Pointer to custom DSP kernels lib.",
+                      "NNPI_CUSTOM_DSP_LIB_PTR", "0");
+  /// Size of custom DSP kernels library.
+  DECLARE_NNPI_OPTION(customDspKernelsSize, uint64_t, "CustomDSPLibSize",
+                      "Size of custom DSP kernels lib.",
+                      "NNPI_CUSTOM_DSP_LIB_SIZE", "0");
+
+  /// Disable weigths from memory pool.
+  /// When this flag is true, weights will not be part of memory pool.
+  /// This helps runtime to reuse weights based on SHA.
+  DECLARE_NNPI_OPTION(disableWeightsInPool, bool, "disableWeightsInPool",
+                      "Don't include weights in memory pool.",
+                      "NNPI_WEIGHTS_OFF_MEM_POOL", "0");
+
+  /// Dump intermediate buffers.
+  DECLARE_NNPI_OPTION(dumpIntermediate, bool, "dumpIntermediate",
+                      "Dump Intermediate buffers.", "NNPI_DUMP_INTER", "0");
+
+  /// Number of Parallel Decider Compilations. 0 means all decider in parallel.
+  DECLARE_NNPI_OPTION(numDeciderCompilation, uint32_t, "numDeciderCompilation",
+                      "Number of Parallel Decider OMP Compilations.",
+                      "NNPI_NUM_PARALLEL_COMPILE", "2");
+
+  /// Weights threshold to be in pool, valid if disable weights pool is enabled.
+  DECLARE_NNPI_OPTION(thresholdDisableWeightsPool, uint32_t,
+                      "thresholdDisableWeightsPool",
+                      "Below this threshold, weights to be part of pool.",
+                      "NNPI_THRESHOLD_WEIGHTS_OFF_MEM_POOL", "0");
 
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
@@ -380,10 +426,24 @@ public:
     INIT_NNPI_OPTIONS(dumpDotFiles, parameters);
     INIT_NNPI_OPTIONS(dumpCompilationInfo, parameters);
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+    INIT_NNPI_OPTIONS(enableFCDynamicQuantizationAllSA, parameters);
     INIT_NNPI_OPTIONS(enableESUnifyAdditionalPass, parameters);
     INIT_NNPI_OPTIONS(enableLayerSplitter, parameters);
     INIT_NNPI_OPTIONS(enableConvSpatialSplitter, parameters);
+    INIT_NNPI_OPTIONS(enableConvBatchSplitter, parameters);
 #endif
+    INIT_NNPI_OPTIONS(customDspKernelsLibPtr, parameters);
+    INIT_NNPI_OPTIONS(customDspKernelsSize, parameters);
+    INIT_NNPI_OPTIONS(disableWeightsInPool, parameters);
+
+    INIT_NNPI_OPTIONS(dumpIntermediate, parameters);
+    if (inferOnDevice) {
+      // dumpIntermediate is not supported for device, works only with ice-ref.
+      dumpIntermediate.setVal(false);
+    }
+
+    INIT_NNPI_OPTIONS(numDeciderCompilation, parameters);
+    INIT_NNPI_OPTIONS(thresholdDisableWeightsPool, parameters);
   }
 
   virtual llvm::StringRef getOptionsName() const override {
