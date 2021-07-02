@@ -940,9 +940,10 @@ ONNXModelWriter::ONNXModelWriter(
     const ConstantFoldingRecordMap &constFoldRecord,
     const BackendSpecificNodeInfo &backendSpecificNodeInfo,
     std::string *outputStringPtr)
-    : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
-      opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
-      includeConstantData_(includeConstantData),
+    : CommonOperatorWriter(modelFilename, &F, errPtr,
+                           outputStringPtr == nullptr),
+      irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
+      textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps),
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
       constFoldRecord_(constFoldRecord),
@@ -1069,7 +1070,8 @@ ONNXModelWriter::ONNXModelWriter(
     const LoadedPlaceholderNameMap *loadedPHNames,
     const std::map<std::string, Type> *staticPlaceholderTypes,
     std::string *outputStringPtr)
-    : CommonOperatorWriter(modelFilename, nullptr, errPtr),
+    : CommonOperatorWriter(modelFilename, nullptr, errPtr,
+                           outputStringPtr == nullptr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
@@ -1152,6 +1154,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
   case ElemKind::Int32QTy:
   case ElemKind::Int32ITy:
     return TensorType::INT32;
+  case ElemKind::Int64QTy:
   case ElemKind::Int64ITy:
     return TensorType::INT64;
   case ElemKind::BoolTy:
@@ -1669,6 +1672,23 @@ Error ONNXModelWriter::writeBatchNormalization(
   proto->add_input(node->getBias().getNode()->getName().str());
   proto->add_input(node->getMean().getNode()->getName().str());
   proto->add_input(node->getVar().getNode()->getName().str());
+
+  outputsToProto(node, graph, proto);
+  return Error::success();
+}
+
+Error ONNXModelWriter::writeInstanceNormalization(
+    const InstanceNormalizationNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "epsilon", node->getEpsilon());
+
+  proto->set_name(node->getName());
+  proto->set_op_type("InstanceNormalization");
+
+  proto->add_input(node->getInput().getNode()->getName());
+  proto->add_input(node->getScale().getNode()->getName());
+  proto->add_input(node->getBias().getNode()->getName());
 
   outputsToProto(node, graph, proto);
   return Error::success();

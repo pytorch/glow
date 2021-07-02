@@ -2755,6 +2755,30 @@ Error ONNXModelLoader::loadBatchNormalization(
   return Error::success();
 }
 
+Error ONNXModelLoader::loadInstanceNormalization(
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  NodeValue scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(scale, getNodeValueByName(op.input(1)));
+  NodeValue bias;
+  ASSIGN_VALUE_OR_RETURN_ERR(bias, getNodeValueByName(op.input(2)));
+
+  float epsilon = 1e-5f; // default
+  auto epsilonIt = dict.find("epsilon");
+  if (epsilonIt != dict.end()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(epsilonIt->second));
+  }
+
+  auto *node =
+      G_->createInstanceNormalization(opName, in, bias, scale, 1, epsilon);
+  RETURN_IF_ERR(addNodeAsOutput(op, node, 1));
+
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -4881,6 +4905,84 @@ Error ONNXModelLoader::loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadLogSoftmax(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  RETURN_ERR_IF_NOT(in.dims().size() >= 2,
+                    "LogSoftMax input dims must be >= 2");
+
+  // Create a constant to store labels to be used in SoftMaxGradNode.
+  auto selected =
+      mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
+
+  if (opsetVersion_ == 13) {
+    int axis = in.dims().size() - 1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
+    }
+    RETURN_ERR_IF_NOT(in.dims().size() == 4,
+                      "LogSoftMax 13 input dims must be 4");
+    // Compute the shuffle layout  based on axis input.
+    std::vector<unsigned_t> shuffle;
+    std::vector<unsigned_t> shuffleBack;
+    switch (axis) {
+    case 0:
+      shuffle = {1u, 2u, 3u, 0u};
+      shuffleBack = {3u, 0u, 1u, 2u};
+      break;
+
+    case 1:
+      shuffle = {0u, 2u, 3u, 1u};
+      shuffleBack = {0u, 3u, 1u, 2u};
+      break;
+
+    case 2:
+      shuffle = {0u, 1u, 3u, 2u};
+      shuffleBack = {0u, 1u, 3u, 2u};
+      break;
+
+    case 3:
+      shuffle = {0u, 1u, 2u, 3u};
+      shuffleBack = {0u, 1u, 2u, 3u};
+      break;
+
+    default:
+      return MAKE_ERR("LogSoftMax Axis must be <=3");
+      break;
+    }
+    auto *NH = G_->createTranspose(opName, in, shuffle);
+    auto *FN = G_->createFlattenV1("reshapeInput", NH, axis);
+    auto *SM = G_->createLogSoftMax(opName, FN, selected);
+
+    // The output should have the same shape as the original input.
+    auto origInDims = NH->getResult().dims();
+    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    auto *NC = G_->createTranspose(opName, RN, shuffleBack);
+    RETURN_IF_ERR(addNodeAsOutput(op, NC));
+  } else {
+    // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
+    // logsoftmax function. This is basimilar to a bitcast operation.
+    int axis = 1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.at("axis"), in.dims().size()));
+    }
+    auto *FN = G_->createFlatten("reshapeInput", in, axis);
+    auto *SM = G_->createLogSoftMax(opName, FN, selected);
+
+    // The output should have the same shape as the original input.
+    auto origInDims = in.getType()->dims();
+    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
+    RETURN_IF_ERR(addNodeAsOutput(op, RN));
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadScatterData(const ONNX_NAMESPACE::NodeProto &op,
                                        const ArgumentDictionaryTy &dict) {
 
@@ -5429,6 +5531,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "BatchNormalization") {
     return loadBatchNormalization(op, dict);
   }
+  if (typeName == "InstanceNormalization") {
+    return loadInstanceNormalization(op, dict);
+  }
   if (typeName == "Concat") {
     return loadConcat(op, dict);
   }
@@ -5614,6 +5719,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Softmax") {
     return loadSoftmax(op, dict);
+  }
+  if (typeName == "LogSoftmax") {
+    return loadLogSoftmax(op, dict);
   }
   if (typeName == "ScatterData") {
     return loadScatterData(op, dict);

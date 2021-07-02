@@ -81,6 +81,13 @@ template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal) {
   return 0;
 }
 
+template <> uint64_t NNPIOptions::getStringAsType<uint64_t>(std::string sVal) {
+  if (isUInt(sVal)) {
+    return (uint64_t)std::strtoull(sVal.c_str(), NULL, 0);
+  }
+  return 0;
+}
+
 template <> float NNPIOptions::getStringAsType<float>(std::string sVal) {
   return std::strtof(sVal.c_str(), nullptr);
 }
