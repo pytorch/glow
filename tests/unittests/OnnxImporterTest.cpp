@@ -2993,6 +2993,30 @@ TEST_F(OnnxImporterTest, importPadConstantPositive) {
             PaddingMode::CONSTANT, 2.55f, true);
 }
 
+TEST_F(OnnxImporterTest, instNorm) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/instNorm.onnxtxt");
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor inputTensor(ElemKind::FloatTy, {1, 3, 10, 10});
+  {
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inputTensor.getType()},
+                           *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("output"));
+    auto inputs = onnxLD.getInputVarsMapping();
+    EXPECT_EQ(inputs.size(), 1);
+    EXPECT_TRUE(inputTensor.getType().isEqual(inputs["input"]->getType()));
+  }
+
+  // Check the graph structure.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *inNode =
+      llvm::dyn_cast<InstanceNormalizationNode>(saveNode->getInput().getNode());
+  EXPECT_NE(nullptr, inNode);
+}
+
 /// Test loading BatchNorm with all optional outputs declared, but not used in
 /// the model. Glow supports only the first mandatory output, but declaring
 /// optional outputs while not using them in the model should not make the
@@ -5673,4 +5697,13 @@ TEST_F(OnnxImporterTest, importConvPadNotset) {
   ASSERT_TRUE(conv2);
   EXPECT_EQ(conv2->getPads().vec(), std::vector<unsigned_t>({1, 1, 1, 1}));
   EXPECT_EQ(conv1->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
+}
+
+/// Test loading LogSoftmax opset13 from a ONNX model.
+TEST_F(OnnxImporterTest, logsoftmax) {
+  testSoftmax("logsoftmax.onnxtxt", {2, 2, 2, 2},
+              {-2.1269281, -2.1269281, -0.12692806, -0.12692806, -2.1269281,
+               -2.1269281, -0.12692806, -0.12692806, -2.1269281, -2.1269281,
+               -0.12692806, -0.12692806, -2.1269281, -2.1269281, -0.12692806,
+               -0.12692806});
 }

@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "glow/Base/DimType.h"
+#include "llvm/Support/CommandLine.h"
 
 namespace glow {
 
@@ -63,6 +64,15 @@ std::vector<dim_t> getBatchSizePerCore(size_t batchSize, dim_t numCores) {
     batchSizePerCore[core] = (endIdx - startIdx);
   }
   return batchSizePerCore;
+}
+
+inline void benchParseGlowOpts(int argc, const char *const *argv,
+                               const char *envvar = "GLOW_OPTS") {
+#if LLVM_VERSION_MAJOR < 8
+  llvm::cl::ParseEnvironmentOptions(argv[0], envvar);
+#else
+  llvm::cl::ParseCommandLineOptions(1, argv, "", nullptr, envvar);
+#endif
 }
 
 } // namespace glow

@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
          "backendStr(String) dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
-  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
+  benchParseGlowOpts(argc, argv);
 
   assert(argc == 10 || argc == 11);
   size_t batchSize = atoi(argv[1]);

@@ -1098,6 +1098,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
+  /// Input(s) will be added in backend specific function
+  /// (Backend::generateInst()) when the concat node is not lowered into a list
+  //  of inserttensor.
+  BB.newInstr("Concat")
+      .addOperand("Dest", OperandKind::Out)
+      .addMember(MemberType::Unsigned, "Axis")
+      .autoVerify(VerifyKind::NoVerify);
+
   BB.newInstr("Splat")
       .addMember(MemberType::Float, "Value")
       .addOperand("Dest", OperandKind::Out)
