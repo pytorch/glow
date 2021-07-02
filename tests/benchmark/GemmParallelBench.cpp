@@ -156,7 +156,7 @@ public:
 };
 
 int main(int argc, char *argv[]) {
-  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
+  benchParseGlowOpts(argc, argv);
   assert(argc == 9);
   size_t m = atoi(argv[1]);
   size_t n = atoi(argv[2]);

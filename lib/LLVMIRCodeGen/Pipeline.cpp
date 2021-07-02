@@ -79,6 +79,24 @@ void LLVMIRGen::updateInlineAttributes(llvm::Module *M) {
         FF.hasFnAttribute(llvm::Attribute::AttrKind::AlwaysInline);
     bool optnone = FF.hasFnAttribute(llvm::Attribute::AttrKind::OptimizeNone);
 
+    bool hasOmitFramePointer = FF.hasFnAttribute("omit-frame-pointer");
+    llvm::Attribute omitFramePointerAttr;
+    if (hasOmitFramePointer) {
+      omitFramePointerAttr = FF.getFnAttribute("omit-frame-pointer");
+    }
+
+    bool hasFramePointer = FF.hasFnAttribute("frame-pointer");
+    llvm::Attribute framePointerAttr;
+    if (hasFramePointer) {
+      framePointerAttr = FF.getFnAttribute("frame-pointer");
+    }
+
+    bool hasNoFramePointerElim = FF.hasFnAttribute("no-frame-pointer-elim");
+    llvm::Attribute noFramePointerElimAttr;
+    if (hasNoFramePointerElim) {
+      noFramePointerElimAttr = FF.getFnAttribute("no-frame-pointer-elim");
+    }
+
     auto inlineAttr = getInlinineAttr(&FF);
     if (inlineAttr != llvm::Attribute::AttrKind::None) {
       DCHECK(inlineAttr == llvm::Attribute::AttrKind::AlwaysInline ||
@@ -91,6 +109,17 @@ void LLVMIRGen::updateInlineAttributes(llvm::Module *M) {
     // noalias.
     FF.setAttributes(FF.getAttributes().removeAttributes(
         M->getContext(), llvm::AttributeList::FunctionIndex));
+    if (hasOmitFramePointer) {
+      FF.addFnAttr("omit-frame-pointer",
+                   omitFramePointerAttr.getValueAsString());
+    }
+    if (hasFramePointer) {
+      FF.addFnAttr("frame-pointer", framePointerAttr.getValueAsString());
+    }
+    if (hasNoFramePointerElim) {
+      FF.addFnAttr("no-frame-pointer-elim",
+                   noFramePointerElimAttr.getValueAsString());
+    }
     // Force inline all non-no-inline functions.
     if (!dontInline || alwaysInline) {
       FF.addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
@@ -163,6 +192,11 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
   // debugging the produced code.
   for (auto &FF : *M) {
     if (FF.isDeclaration()) {
+      continue;
+    }
+    if (FF.hasFnAttribute("no-frame-pointer-elim") ||
+        FF.hasFnAttribute("frame-pointer") ||
+        FF.hasFnAttribute("omit-frame-pointer")) {
       continue;
     }
     FF.addFnAttr("no-frame-pointer-elim", "true");

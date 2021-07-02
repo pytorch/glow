@@ -158,11 +158,22 @@ llvm::cl::opt<bool> dumpModelInputs(
         "Dump model and inputs into format that repro binary can run."),
     llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 
+llvm::cl::opt<bool> dumpFinalGraph(
+    "dump-final-graph",
+    llvm::cl::desc(
+        "Call dumpDag on each Function passed to the backend for compilation."),
+    llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
 llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
     "glow_global_fused_scale_offset_fp32",
     llvm::cl::desc(
         "Enable converting scale/offset in sls's input data from fp16 to fp32"),
     llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> skipCorrectnessCheck(
+    "skip_correctness_check",
+    llvm::cl::desc("Skip correctness check with Interpreter backend"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 } // namespace
 
 class TestDeferredWeightLoader : public DeferredWeightLoader {
@@ -985,6 +996,7 @@ protected:
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
     cctx.deferredWeightLoader = &loader;
+    cctx.dumpFinalGraph = dumpFinalGraph;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
     // Run graph
@@ -1033,8 +1045,11 @@ protected:
     }
 
     // Compare against interpreter if we're not executing already on it.
-    if (getBackendName() != "Interpreter") {
+    if (!skipCorrectnessCheck && getBackendName() != "Interpreter") {
       compareAgainstInterpreter();
+    } else {
+      std::cout << "Skip correctness check with Interpreter backend"
+                << std::endl;
     }
   }
 
@@ -1115,10 +1130,10 @@ protected:
         sparseNNPartitioningNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         sparseNNPartitioningNumCoresOther;
+    cctx.dumpFinalGraph = dumpFinalGraph;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(modP), cctx));
     std::cout << "Partitions = " << rawModule->getFunctions().size()
               << std::endl;
-    ASSERT_LE(rawModule->getFunctions().size(), numDevices);
 
     // Run the partitioned graph and compare the results.
     auto &bindings = *context.getPlaceholderBindings();

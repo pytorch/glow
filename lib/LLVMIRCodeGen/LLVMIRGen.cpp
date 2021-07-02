@@ -270,6 +270,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt16Ty();
   case ElemKind::Int32QTy:
     return builder.getInt32Ty();
+  case ElemKind::Int64QTy:
+    return builder.getInt64Ty();
   case ElemKind::UInt8ITy:
     return builder.getInt8Ty();
   case ElemKind::Int32ITy:
@@ -399,6 +401,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     break;
   case ElemKind::Int32QTy:
     T = llvm::Type::getInt32PtrTy(getLLVMContext());
+    break;
+  case ElemKind::Int64QTy:
+    T = llvm::Type::getInt64PtrTy(getLLVMContext());
     break;
   case ElemKind::Int64ITy:
     T = llvm::Type::getInt64PtrTy(getLLVMContext());
@@ -676,6 +681,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::UInt8ITy:
     return builder.getInt8(static_cast<uint8_t>(val));
+  case ElemKind::Int64QTy:
+    return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int32ITy:
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::UInt8FusedQTy:
