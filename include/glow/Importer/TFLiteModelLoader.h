@@ -71,6 +71,9 @@ class TFLiteModelLoader {
   /// \returns the shape of the tensor \p tensor.
   Expected<std::vector<dim_t>> getTensorShape(const tflite::Tensor *tensor);
 
+  /// \returns whether the shape of the tensor \p tensor is undefined.
+  Expected<bool> isTensorShapeUndefined(const tflite::Tensor *tensor);
+
   /// \returns the element type of the tensor \p tensor.
   Expected<ElemKind> getTensorElemKind(const tflite::Tensor *tensor);
 
@@ -147,15 +150,26 @@ class TFLiteModelLoader {
                                         size_t inputIdx);
 
   /// Register the single output node value \p nodeValue for the operator \p op.
-  Error setOutputNodeValue(const tflite::Operator *op, NodeValue nodeValue);
+  /// The flag \p checkType specifies whether the type of the given node value
+  /// is checked to be the same with the type registered in the model.
+  Error setOutputNodeValue(const tflite::Operator *op, NodeValue nodeValue,
+                           bool checkType = true);
 
   /// Register multiple output node values \p nodeValues for the operator \p op.
+  /// The flag \p checkType specifies whether the type of the given node value
+  /// is checked to be the same with the type registered in the model.
   Error setOutputNodeValues(const tflite::Operator *op,
-                            llvm::ArrayRef<NodeValue> nodeValues);
+                            llvm::ArrayRef<NodeValue> nodeValues,
+                            bool checkType = true);
 
   /// \returns the output type for operator \p op with index \p outputIndex.
   Expected<TypeRef> getOutputType(const tflite::Operator *op,
                                   size_t outputIndex);
+
+  /// \returns whether the output shape for operator \p op with index
+  /// \p outputIndex is undefined.
+  Expected<bool> isOutputShapeUndefined(const tflite::Operator *op,
+                                        size_t outputIndex);
 
   /// Initialize the node value array \ref nodeValueByIndex_.
   void initializeNodeValues();
@@ -334,6 +348,15 @@ class TFLiteModelLoader {
   Error loadTFLiteDetectionPostProcess(const tflite::Operator *op,
                                        const OperatorInfo &opInfo,
                                        const flexbuffers::Map &opts);
+
+  /// Load TFLite Audio Spectrogram custom operator.
+  Error loadTFLiteAudioSpectrogram(const tflite::Operator *op,
+                                   const OperatorInfo &opInfo,
+                                   const flexbuffers::Map &opts);
+
+  /// Load TFLite MFCC custom operator.
+  Error loadTFLiteMFCC(const tflite::Operator *op, const OperatorInfo &opInfo,
+                       const flexbuffers::Map &opts);
 
 public:
   /// \returns the TensorFlowLite model version.

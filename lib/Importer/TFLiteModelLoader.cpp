@@ -87,6 +87,15 @@ llvm::cl::opt<bool> tfliteBiasScaleCheckThrowErrorOpt(
     llvm::cl::init(false), llvm::cl::Optional,
     llvm::cl::cat(tfliteModelLoaderCat));
 
+llvm::cl::opt<float> tfliteMfccSampleRateOpt(
+    "tflite-mfcc-sample-rate",
+    llvm::cl::desc(
+        "When the TensorFlowLite model has a MFCC node (Mel Frequency Cepstral "
+        "Coefficient) this option is used to set the sample rate (in Hz) used "
+        "by the node when no such attribute is specified."),
+    llvm::cl::init(16000.0), llvm::cl::Optional,
+    llvm::cl::cat(tfliteModelLoaderCat));
+
 /// Function to read a TensorFlowLite model from the file \p modelFilename into
 /// the data buffer \p modelData provided by the caller. The \p modelData buffer
 /// is allocated and initialized by this function but the caller must ensure its
@@ -249,6 +258,19 @@ TFLiteModelLoader::getTensorShape(const tflite::Tensor *tensor) {
     shape = {1};
   }
   return shape;
+}
+
+Expected<bool>
+TFLiteModelLoader::isTensorShapeUndefined(const tflite::Tensor *tensor) {
+  // If tensor shape is NULL.
+  if (!tensor->shape()) {
+    return true;
+  }
+  // If tensor shape is empty (scalar).
+  if (tensor->shape()->size() == 0) {
+    return true;
+  }
+  return false;
 }
 
 Expected<ElemKind>
@@ -690,13 +712,15 @@ TFLiteModelLoader::getInputNodeValue(const tflite::Operator *op,
 }
 
 Error TFLiteModelLoader::setOutputNodeValue(const tflite::Operator *op,
-                                            NodeValue nodeValue) {
+                                            NodeValue nodeValue,
+                                            bool checkType) {
   std::vector<NodeValue> nodeValues = {nodeValue};
-  return setOutputNodeValues(op, nodeValues);
+  return setOutputNodeValues(op, nodeValues, checkType);
 }
 
 Error TFLiteModelLoader::setOutputNodeValues(
-    const tflite::Operator *op, llvm::ArrayRef<NodeValue> nodeValues) {
+    const tflite::Operator *op, llvm::ArrayRef<NodeValue> nodeValues,
+    bool checkType) {
   std::string opType;
   ASSIGN_VALUE_OR_RETURN_ERR(opType, getOperatorType(op));
   const auto *opOutputs = op->outputs();
@@ -709,14 +733,20 @@ Error TFLiteModelLoader::setOutputNodeValues(
     // Verify the output type of the node value matches the type registered in
     // the model with the exception of the final tensors which are allowed to
     // be modified (for example for the Softmax output when it is a final node).
-    TypeRef outTy;
-    ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, idx));
-    bool isFinal;
-    ASSIGN_VALUE_OR_RETURN_ERR(isFinal, isOperatorOutputFinalTensor(op, idx));
-    RETURN_ERR_IF_NOT(isFinal || outTy->isEqual(outNodeValue.getType()),
-                      strFormat("TensorFlowLite: Operator '%s' modifies the "
-                                "output type registered in the model!",
-                                opType.c_str()));
+    // Tensors with undefined shapes are also not checked.
+    if (checkType) {
+      TypeRef outTy;
+      ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, idx));
+      bool isUndefined;
+      ASSIGN_VALUE_OR_RETURN_ERR(isUndefined, isOutputShapeUndefined(op, idx));
+      bool isFinal;
+      ASSIGN_VALUE_OR_RETURN_ERR(isFinal, isOperatorOutputFinalTensor(op, idx));
+      RETURN_ERR_IF_NOT(isUndefined || isFinal ||
+                            outTy->isEqual(outNodeValue.getType()),
+                        strFormat("TensorFlowLite: Operator '%s' modifies the "
+                                  "output type registered in the model!",
+                                  opType.c_str()));
+    }
     // Register the output node value.
     size_t tensorIdx = static_cast<size_t>((*opOutputs)[idx]);
     RETURN_IF_ERR(setNodeValueByIndex(tensorIdx, outNodeValue));
@@ -734,6 +764,19 @@ Expected<TypeRef> TFLiteModelLoader::getOutputType(const tflite::Operator *op,
   Type type;
   ASSIGN_VALUE_OR_RETURN_ERR(type, getTensorType(tensor));
   return mod_.uniqueType(type);
+}
+
+Expected<bool>
+TFLiteModelLoader::isOutputShapeUndefined(const tflite::Operator *op,
+                                          size_t outputIndex) {
+  size_t tensorIdx;
+  ASSIGN_VALUE_OR_RETURN_ERR(tensorIdx,
+                             getOperatorOutputTensorIdx(op, outputIndex));
+  const tflite::Tensor *tensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(tensor, getTensorByIndex(tensorIdx));
+  bool undefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(undefined, isTensorShapeUndefined(tensor));
+  return undefined;
 }
 
 void TFLiteModelLoader::initializeNodeValues() {
@@ -1317,6 +1360,12 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
     if (customOpCode == "TFLite_Detection_PostProcess") {
       return loadTFLiteDetectionPostProcess(op, opInfo, opts);
     }
+    if (customOpCode == "AudioSpectrogram") {
+      return loadTFLiteAudioSpectrogram(op, opInfo, opts);
+    }
+    if (customOpCode == "Mfcc") {
+      return loadTFLiteMFCC(op, opInfo, opts);
+    }
   }
   return MAKE_ERR(
       strFormat("TensorFlowLite: Operator type '%s' is not supported!",
@@ -1842,6 +1891,30 @@ Error TFLiteModelLoader::loadReshape(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  // Get output type if undefined.
+  if (isOutputShapeUndefined(op, 0)) {
+    if (const auto *opts = op->builtin_options_as_ReshapeOptions()) {
+      auto *newShape = opts->new_shape();
+      std::vector<dim_t> outDims(newShape->size());
+      dim_t dimProd = 1;
+      for (size_t idx = 0; idx < newShape->size(); ++idx) {
+        auto newDim = (*newShape)[idx];
+        if (newDim != -1) {
+          outDims[idx] = newDim;
+          dimProd *= newDim;
+        }
+      }
+      for (size_t idx = 0; idx < newShape->size(); ++idx) {
+        auto newDim = (*newShape)[idx];
+        if (newDim == -1) {
+          outDims[idx] = input.getType()->size() / dimProd;
+        }
+      }
+      outTy = F_->getParent()->uniqueTypeWithNewShape(outTy, outDims);
+    }
+  }
+
   // Note: The Reshape node has a second input operand which provides
   // the new shape but the documentation states that is should be ignored
   // and the 'new_shape' attribute should be used instead. Moreover, in
@@ -2751,6 +2824,45 @@ Error TFLiteModelLoader::loadTFLiteDetectionPostProcess(
       node->getDetectionBoxes(), node->getDetectionClasses(),
       node->getDetectionScores(), node->getNumDetections()};
   return setOutputNodeValues(op, outputNodeValues);
+}
+
+Error TFLiteModelLoader::loadTFLiteAudioSpectrogram(
+    const tflite::Operator *op, const OperatorInfo &opInfo,
+    const flexbuffers::Map &opts) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+
+  // Get operator attributes.
+  int32_t windowSize = opts["window_size"].AsInt32();
+  int32_t windowStride = opts["stride"].AsInt32();
+  bool magnitudeSquared = opts["magnitude_squared"].AsBool();
+
+  // Create node.
+  NodeValue output = F_->createAudioSpectrogram(opInfo.name, input, windowSize,
+                                                windowStride, magnitudeSquared);
+  return setOutputNodeValue(op, output, /* checkType */ false);
+}
+
+Error TFLiteModelLoader::loadTFLiteMFCC(const tflite::Operator *op,
+                                        const OperatorInfo &opInfo,
+                                        const flexbuffers::Map &opts) {
+  NodeValue spectrogram;
+  ASSIGN_VALUE_OR_RETURN_ERR(spectrogram, getInputNodeValue(op, 0));
+
+  // Get operator attributes.
+  float sampleRate = (opts["sample_rate"].IsNull())
+                         ? tfliteMfccSampleRateOpt
+                         : opts["sample_rate"].AsFloat();
+  float lowerFrequency = opts["lower_frequency_limit"].AsFloat();
+  float upperFrequency = opts["upper_frequency_limit"].AsFloat();
+  int32_t filterBankCount = opts["filterbank_channel_count"].AsInt32();
+  int32_t numCoefficients = opts["dct_coefficient_count"].AsInt32();
+
+  // Create node.
+  NodeValue output =
+      F_->createMFCC(opInfo.name, spectrogram, sampleRate, lowerFrequency,
+                     upperFrequency, filterBankCount, numCoefficients);
+  return setOutputNodeValue(op, output, /* checkType */ false);
 }
 
 TFLiteModelLoader::TFLiteModelLoader(const std::string &modelFilename,
