@@ -158,6 +158,18 @@ std::pair<unsigned_t, unsigned_t> getSamePads(dim_t inputSize, dim_t outputSize,
   return std::pair<unsigned_t, unsigned_t>(padBefore, padAfter);
 }
 
+/// Function used to compute the output size for convolution and pooling kernels
+/// for the given \p inputSize, \p kernel, \p stride and \p dilation. This
+/// function is used to infer the output shape when not defined.
+dim_t getConvPoolOutputSize(dim_t inputSize, unsigned_t kernel,
+                            unsigned_t stride = 1, unsigned_t dilation = 1) {
+  // Effective dilated filter (kernel) size.
+  unsigned_t effKernel = (kernel - 1) * dilation + 1;
+
+  // We compute the output size as CEIL((inputSize - effKernel) / stride) + 1.
+  return (inputSize - effKernel + stride - 1) / stride + 1;
+}
+
 /// Retrieves data from a constant Tensor and stores it in a vector.
 template <typename T, typename datatype = ssize_t>
 static void helperSetter(Constant *constT, std::vector<datatype> &vec) {
@@ -1536,6 +1548,18 @@ Error TFLiteModelLoader::loadPool2D(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
+  // Output shape inference when not defined.
+  if (isOutputShapeUndefined(op, 0)) {
+    dim_t outN = input.dims()[0];
+    dim_t outH = getConvPoolOutputSize(input.dims()[1], opts->filter_height(),
+                                       opts->stride_h());
+    dim_t outW = getConvPoolOutputSize(input.dims()[2], opts->filter_width(),
+                                       opts->stride_w());
+    dim_t outC = input.dims()[3];
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy,
+                                                    {outN, outH, outW, outC});
+  }
+
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
   ShapeNHWC outputShape = ShapeNHWC(outTy->dims());
 
@@ -1636,6 +1660,20 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
+  // Output shape inference when not defined.
+  if (isOutputShapeUndefined(op, 0)) {
+    dim_t outN = input.dims()[0];
+    dim_t outH =
+        getConvPoolOutputSize(input.dims()[1], filter.dims()[1],
+                              opts->stride_h(), opts->dilation_h_factor());
+    dim_t outW =
+        getConvPoolOutputSize(input.dims()[2], filter.dims()[2],
+                              opts->stride_w(), opts->dilation_w_factor());
+    dim_t outC = filter.dims()[0];
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy,
+                                                    {outN, outH, outW, outC});
+  }
+
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
   ShapeNHWC filterShape = ShapeNHWC(filter.dims());
   ShapeNHWC outputShape = ShapeNHWC(outTy->dims());
@@ -1722,6 +1760,20 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(bias, getInputNodeValue(op, 2));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  // Output shape inference when not defined.
+  if (isOutputShapeUndefined(op, 0)) {
+    dim_t outN = input.dims()[0];
+    dim_t outH =
+        getConvPoolOutputSize(input.dims()[1], filter.dims()[1],
+                              opts->stride_h(), opts->dilation_h_factor());
+    dim_t outW =
+        getConvPoolOutputSize(input.dims()[2], filter.dims()[2],
+                              opts->stride_w(), opts->dilation_w_factor());
+    dim_t outC = input.dims()[3] * opts->depth_multiplier();
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy,
+                                                    {outN, outH, outW, outC});
+  }
 
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
   ShapeNHWC filterShape = ShapeNHWC(filter.dims());
@@ -1892,7 +1944,7 @@ Error TFLiteModelLoader::loadReshape(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
-  // Get output type if undefined.
+  // Output shape inference when not defined.
   if (isOutputShapeUndefined(op, 0)) {
     if (const auto *opts = op->builtin_options_as_ReshapeOptions()) {
       auto *newShape = opts->new_shape();
