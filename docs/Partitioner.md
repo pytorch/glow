@@ -19,6 +19,8 @@ If Glow ExecutionEngine is used to compile and run a model, users need to provid
 ./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -cpu-memory=100000 -load-device-configs="tests/runtime_test/heterogeneousConfigs.yaml"
 ```
 
+Note: Please keep in mind that the device config file is **order-sensitive**. If a backend A is written before B and both backend A and B support a specific node, Glow always chooses the node to the backend A.   For instance, an interpreter backend supports more operators than the OpenCL backend. Glow assigns all nodes to the interpreter if it's put before OpenCL in device config.
+
 ### User-defined partition
 Glow also supports user-defined partition. This feature gives user the full control of partitioning. Given the partition configuration, which should be represented as [```struct PartitionConfig```](https://github.com/pytorch/glow/blob/master/include/glow/Runtime/RuntimeTypes.h#L181), Glow generates the partition, and also validates the partition (memory constraint, number of partitions, and DAG). An example can be found [here](https://github.com/pytorch/glow/blob/master/tests/unittests/PartitionerTest.cpp#L977).  
 
