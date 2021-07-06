@@ -1549,7 +1549,9 @@ Error TFLiteModelLoader::loadPool2D(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
   // Output shape inference when not defined.
-  if (isOutputShapeUndefined(op, 0)) {
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
     dim_t outN = input.dims()[0];
     dim_t outH = getConvPoolOutputSize(input.dims()[1], opts->filter_height(),
                                        opts->stride_h());
@@ -1661,7 +1663,9 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
   // Output shape inference when not defined.
-  if (isOutputShapeUndefined(op, 0)) {
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
     dim_t outN = input.dims()[0];
     dim_t outH =
         getConvPoolOutputSize(input.dims()[1], filter.dims()[1],
@@ -1762,7 +1766,9 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
   // Output shape inference when not defined.
-  if (isOutputShapeUndefined(op, 0)) {
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
     dim_t outN = input.dims()[0];
     dim_t outH =
         getConvPoolOutputSize(input.dims()[1], filter.dims()[1],
@@ -1945,7 +1951,9 @@ Error TFLiteModelLoader::loadReshape(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
   // Output shape inference when not defined.
-  if (isOutputShapeUndefined(op, 0)) {
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
     if (const auto *opts = op->builtin_options_as_ReshapeOptions()) {
       auto *newShape = opts->new_shape();
       std::vector<dim_t> outDims(newShape->size());
