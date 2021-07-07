@@ -657,6 +657,10 @@ llvm::Value *LLVMIRGen::emitConstDimT(llvm::IRBuilder<> &builder, dim_t val) {
   return builder.getIntN(sizeof(dim_t) * 8, val);
 }
 
+llvm::Value *LLVMIRGen::emitConstSDimT(llvm::IRBuilder<> &builder, sdim_t val) {
+  return builder.getIntN(sizeof(sdim_t) * 8, val);
+}
+
 llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
                                   glow::ElemKind kind) {
   switch (kind) {
@@ -2909,8 +2913,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *src = SM->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
-    auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
+
     auto *F = getFunction("softmax", dest->getElementType());
 
     if (src->getType()->isQuantizedType()) {
@@ -2944,7 +2948,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                  {srcPtr, destPtr, srcDims, lutPtr, outOffset, invScale,
                   sumIntegerPart, invScalePoint});
     } else {
-      createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+      createCall(builder, F, {srcPtr, destPtr, srcDims});
     }
 
     break;
@@ -3015,20 +3019,18 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
 
-    auto *destDims = emitValueDims(builder, dest);
-    auto *srcDims = emitValueDims(builder, src);
-
-    // Convert the mask to size_t type.
-    ShapeVector shuffSizeT;
-    for (auto D : TI->getShuffle()) {
-      shuffSizeT.push_back((size_t)D);
-    }
-
-    auto *shuffle = emitConstDimTArray(builder, llvm::makeArrayRef(shuffSizeT));
-    auto *len = emitConstDimT(builder, TI->getShuffle().size());
+    // Get transpose access pattern.
+    auto pattern =
+        getTransposeAccessPattern(src->getType()->dims(), TI->getShuffle());
+    assert(pattern.addrStart == 0 && "Tensor address start should be 0!");
+    auto *numLoops = emitConstDimT(builder, pattern.numLoops);
+    auto *loopCounts =
+        emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
+    auto *inOffsets =
+        emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
 
     auto *F = getFunction("transpose", dest->getElementType());
-    createCall(builder, F, {srcPtr, destPtr, srcDims, destDims, shuffle, len});
+    createCall(builder, F, {srcPtr, destPtr, numLoops, loopCounts, inOffsets});
     break;
   }
 
@@ -3054,59 +3056,55 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::InsertTensorInstKind: {
     auto *ITI = llvm::cast<InsertTensorInst>(I);
-    auto *dest = ITI->getDest();
     auto *src = ITI->getSrc();
-    auto offsets = ITI->getOffsets();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *srcPtr = emitValueAddress(builder, src);
+    auto *dest = ITI->getDest();
+    auto *slicePtr = emitValueAddress(builder, src);
+    auto *tensorPtr = emitValueAddress(builder, dest);
 
-    auto *destDims = emitValueDims(builder, dest);
-    auto *srcDims = emitValueDims(builder, src);
-
-    auto *destDimsSize = emitConstDimT(builder, dest->getType()->dims().size());
-    auto *srcDimsSize = emitConstDimT(builder, src->getType()->dims().size());
-    auto *offsetsPtr = emitConstDimTArray(builder, offsets);
-    auto *offsetsArraySize = emitConstDimT(builder, offsets.size());
-    auto *count = emitConstDimT(builder, ITI->getCount());
-    auto *axis = emitConstDimT(builder, ITI->getAxis());
-
-    // Don't specialize the offsetPtr because we typically generate lots of
-    // extracts from different offsets and specializing on this argument does
-    // not speed things up.
-    markArgAsUnspecialized(offsetsPtr);
+    // Get insert access pattern. For now we use slice steps/strides of 1 but
+    // we can easily change this if the Insert instruction needs striding.
+    std::vector<sdim_t> sliceSteps(dest->getType()->dims().size(), 1);
+    auto pattern = getInsertAccessPattern(
+        dest->getType()->dims(), src->getType()->dims(), ITI->getOffsets(),
+        sliceSteps, ITI->getCount(), ITI->getAxis());
+    auto *numLoops = emitConstDimT(builder, pattern.numLoops);
+    auto *loopCounts =
+        emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
+    auto *tensorStart = emitConstDimT(builder, pattern.addrStart);
+    auto *tensorOffsets =
+        emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
 
     auto *F = getFunction("insert_tensor", dest->getElementType());
     createCall(builder, F,
-               {destPtr, srcPtr, offsetsPtr, destDims, srcDims, destDimsSize,
-                srcDimsSize, offsetsArraySize, count, axis});
+               {tensorPtr, slicePtr, numLoops, loopCounts, tensorStart,
+                tensorOffsets});
     break;
   }
 
   case Kinded::Kind::ExtractTensorInstKind: {
-    auto *ITI = llvm::cast<ExtractTensorInst>(I);
-    auto *dest = ITI->getDest();
-    auto *src = ITI->getSrc();
-    auto offsets = ITI->getOffsets();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *srcPtr = emitValueAddress(builder, src);
+    auto *ETI = llvm::cast<ExtractTensorInst>(I);
+    auto *src = ETI->getSrc();
+    auto *dest = ETI->getDest();
+    auto *tensorPtr = emitValueAddress(builder, src);
+    auto *slicePtr = emitValueAddress(builder, dest);
 
-    auto *destDims = emitValueDims(builder, dest);
-    auto *srcDims = emitValueDims(builder, src);
-
-    auto *destDimsSize = emitConstDimT(builder, dest->getType()->dims().size());
-    auto *srcDimsSize = emitConstDimT(builder, src->getType()->dims().size());
-    auto *offsetsPtr = emitConstDimTArray(builder, offsets);
-    auto *offsetsArraySize = emitConstDimT(builder, offsets.size());
-
-    // Don't specialize the offsetPtr because we typically generate lots of
-    // extracts from different offsets and specializing on this argument does
-    // not speed things up.
-    markArgAsUnspecialized(offsetsPtr);
+    // Get extract access pattern. For now we use slice steps/strides of 1 but
+    // we can easily change this if the Extract instruction needs striding.
+    std::vector<sdim_t> sliceSteps(src->getType()->dims().size(), 1);
+    auto pattern =
+        getExtractAccessPattern(src->getType()->dims(), dest->getType()->dims(),
+                                ETI->getOffsets(), sliceSteps);
+    auto *numLoops = emitConstDimT(builder, pattern.numLoops);
+    auto *loopCounts =
+        emitConstDimTArray(builder, llvm::makeArrayRef(pattern.loopCounts));
+    auto *tensorStart = emitConstDimT(builder, pattern.addrStart);
+    auto *tensorOffsets =
+        emitConstSDimTArray(builder, llvm::makeArrayRef(pattern.addrOffsets));
 
     auto *F = getFunction("extract_tensor", dest->getElementType());
     createCall(builder, F,
-               {srcPtr, destPtr, offsetsPtr, srcDims, destDims, srcDimsSize,
-                destDimsSize, offsetsArraySize});
+               {tensorPtr, slicePtr, numLoops, loopCounts, tensorStart,
+                tensorOffsets});
     break;
   }
 
@@ -3633,7 +3631,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *scalePtr = emitConstFloatArray(builder, RNI->getScale());
     auto *destDims = emitValueDims(builder, result);
     auto *srcDims = emitValueDims(builder, input);
-    auto *F = getFunction("resizenearest", input->getElementType());
+    auto *F = getFunction("resize_nearest", input->getElementType());
     createCall(builder, F, {resultPtr, inputPtr, scalePtr, srcDims, destDims});
     break;
   }
@@ -3651,7 +3649,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *scalePtr = emitConstFloatArray(builder, RBI->getScale());
     auto *destDims = emitValueDims(builder, result);
     auto *srcDims = emitValueDims(builder, input);
-    auto *F = getFunction("resizebilinear", input->getElementType());
+    auto *F = getFunction("resize_bilinear", input->getElementType());
     createCall(builder, F, {resultPtr, inputPtr, scalePtr, srcDims, destDims});
     break;
   }
