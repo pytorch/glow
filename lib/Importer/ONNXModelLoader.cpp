@@ -6074,6 +6074,10 @@ Error ONNXModelLoader::collectStaticInputs(ONNX_NAMESPACE::GraphProto &net) {
 Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
                                    llvm::ArrayRef<const char *> tensorNames,
                                    llvm::ArrayRef<TypeRef> types) {
+
+  llvm::SmallPtrSet<const char *, 4> unchecked(tensorNames.begin(),
+                                               tensorNames.end());
+
   for (size_t i = 0; i < tensorNames.size(); i++) {
     // Look if a corresponding input exists.
     for (int j = 0; j < net.input_size(); j++) {
@@ -6103,7 +6107,18 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
       }
 
       RETURN_IF_ERR(checkStaticPH(valueInfo, staticInputs_, useGlowCustomOps_));
+
+      unchecked.erase(tensorNames[i]);
     }
+  }
+
+  for (const char *i : unchecked) {
+    std::string msg = llvm::formatv(
+        "'{0}' does not match any model inputs.\nModel inputs are:", i);
+    for (int j = 0; j < net.input_size(); j++) {
+      msg += "\n\t" + net.input(j).name();
+    }
+    LOG(WARNING) << msg;
   }
   return Error::success();
 }
