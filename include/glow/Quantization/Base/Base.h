@@ -318,14 +318,31 @@ template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
   return std::max<SrcTy>(mn, std::min<SrcTy>(mx, in));
 }
 
-/// Converts floating point value to DestTy (quantized type) based on the
-/// quantization parameters \p TQP.
+/// Converts floating point value \p input to DestTy (quantized type) based
+/// on the quantization parameters \p TQP.
 template <class DestTy = int8_t>
 inline DestTy quantize(float input, const TensorQuantizationParams &TQP) {
   float result = input / TQP.scale + TQP.offset;
   // Note: use int64_t since casts of large values might be wrapped around
   // before clipping, for example for result = 2147483648.00 (float).
   return quantization::clip<int64_t, DestTy>((int64_t)nearbyintf(result));
+}
+
+/// Converts floating point value \p input to \p DestTy (quantized type) based
+/// on the quantization parameters \p TQP. The value is returned as int64.
+inline int64_t quantize(float input, const TensorQuantizationParams &TQP,
+                        ElemKind DestTy) {
+  if (DestTy == ElemKind::Int8QTy) {
+    return quantize<int8_t>(input, TQP);
+  } else if (DestTy == ElemKind::Int16QTy) {
+    return quantize<int16_t>(input, TQP);
+  } else if (DestTy == ElemKind::Int32QTy) {
+    return quantize<int32_t>(input, TQP);
+  } else if (DestTy == ElemKind::Int64QTy) {
+    return quantize<int64_t>(input, TQP);
+  } else {
+    llvm_unreachable("Precision not supported!");
+  }
 }
 
 /// Converts a quantized value (type eTy) to floating point based on the
