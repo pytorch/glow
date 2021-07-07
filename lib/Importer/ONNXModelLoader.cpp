@@ -6062,13 +6062,19 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
           dimsProto, getProtoShape(valueInfo.type().tensor_type().shape()));
 
       // Check if the number of dimensions is consistent.
-      RETURN_ERR_IF_NOT(dims.size() == dimsProto.size(),
-                        "Mismatch between input image and ONNX input shape");
+      RETURN_ERR_IF_NOT(
+          dims.size() == dimsProto.size(),
+          strFormat("Mismatch between input image and ONNX input dimension "
+                    "size. (input size = %lu vs ONNX size = %lu)",
+                    dims.size(), dimsProto.size()));
 
       // Allow batch dimensions to be different.
       for (size_t k = 1; k < dims.size(); k++) {
-        RETURN_ERR_IF_NOT(dims[k] == dimsProto[k],
-                          "Mismatch between input image and ONNX input shape");
+        RETURN_ERR_IF_NOT(
+            dims[k] == dimsProto[k],
+            strFormat("Mismatch between input image and ONNX input shape. "
+                      "(input.dim[%lu] = %lu vs ONNX dim[%lu] = %lu)",
+                      k, dims[k], k, dimsProto[k]));
       }
 
       RETURN_IF_ERR(checkStaticPH(valueInfo, staticInputs_, useGlowCustomOps_));
