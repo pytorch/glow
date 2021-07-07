@@ -290,4 +290,21 @@ Expected<float> getFloatFromStr(llvm::StringRef input) {
   return (float)val;
 }
 
+std::string strReplaceAll(llvm::StringRef s, llvm::StringRef oldVal,
+                          llvm::StringRef newVal) {
+  std::string t;
+  size_t i = 0;
+  for (;;) {
+    size_t j = s.find(oldVal, i);
+    if (j == llvm::StringRef::npos) {
+      t += s.substr(i);
+      break;
+    }
+    t += s.substr(i, j - i);
+    t += newVal;
+    i = j + oldVal.size();
+  }
+  return t;
+}
+
 } // namespace glow

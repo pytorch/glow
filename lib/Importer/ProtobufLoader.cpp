@@ -172,7 +172,10 @@ ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name,
 Expected<NodeValue> ProtobufLoader::getNodeValueByName(llvm::StringRef name,
                                                        bool ignoreSrcFun) {
   RETURN_ERR_IF_NOT(hasNodeByName(name),
-                    llvm::Twine("No node under name ", name).str());
+                    llvm::Twine("No node under name '", name)
+                        .concat("'.\nEither the model is invalid or specified "
+                                "input name is incorrect.")
+                        .str());
   auto node = getNodeValueByNameOrNullNodeValue(name, ignoreSrcFun);
   RETURN_ERR_IF_NOT(node.getNode(), "Null is under that name??");
   return node;

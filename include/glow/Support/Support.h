@@ -184,6 +184,11 @@ const std::string &staticStrFormat(const char *format, ...)
 #endif
 ;
 
+/// Return a copy of 's' where all occurrences of 'oldVal' are replaced with
+/// 'newVal'
+std::string strReplaceAll(llvm::StringRef s, llvm::StringRef oldVal,
+                          llvm::StringRef newVal);
+
 /// Helper that converts and \returns an enum class to an unsigned. Useful when
 /// using an enum class in a bitset.
 template <class T> inline constexpr unsigned convertEnumToUnsigned(T e) {

@@ -54,6 +54,12 @@ loadOperatorName<caffe2::OperatorDef>(const caffe2::OperatorDef &op) {
   return op.type();
 }
 
+template <>
+const std::string &
+getOperatorTypeString<caffe2::OperatorDef>(const caffe2::OperatorDef &op) {
+  return op.type();
+}
+
 // FIXME: this is a temporary solution for the case when NonZero returns
 // -2^31 as the boundary for the returned indices. For examples, currently
 // we get this NonZero([0, 1, 1, 0, 0]) -> [1, 2, -2^31, 0, 0], because the

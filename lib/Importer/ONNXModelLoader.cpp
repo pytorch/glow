@@ -444,6 +444,14 @@ Expected<T> loadAttribute(const ONNX_NAMESPACE::AttributeProto *attr,
 
 } // namespace
 
+namespace glow {
+template <>
+const std::string &getOperatorTypeString<ONNX_NAMESPACE::NodeProto>(
+    const ONNX_NAMESPACE::NodeProto &op) {
+  return op.op_type();
+}
+} // namespace glow
+
 using ArgumentDictionaryTy =
     std::unordered_map<std::string, const ONNX_NAMESPACE::AttributeProto *>;
 
