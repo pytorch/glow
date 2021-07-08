@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
 #include "glow/Flags/Flags.h"
@@ -111,8 +125,6 @@ public:
                           std::all_of(dilation.cbegin(), dilation.cend(),
                                       [](int i) { return i == 1; }),
                           "Dilation is not supported", NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR, groups == 1, "Group is not supported",
-                          NNPI_INVALID_PARAM);
 
     LOG_AND_RETURN_IF_NOT(ERROR, importer.isConstant(filterName),
                           "convolution (" + name + ") filter (" + filterName +
@@ -313,6 +325,23 @@ public:
   }
 };
 
+class SigmoidNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddSigmoidOp(importer.getNetwork(), name.c_str(),
+                                   inputName.c_str(), name.c_str());
+  }
+};
+
 class ReshapeNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -480,6 +509,8 @@ static std::unordered_map<
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
     {"acc_ops.mul",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
+    {"acc_ops.quantized_mul",
+     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
     {"acc_ops.div",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
     {"acc_ops.reshape", std::make_unique<ReshapeNodeImporter>()},
@@ -493,6 +524,7 @@ static std::unordered_map<
     {"acc_ops.quantized_batch_norm2d",
      std::make_unique<BatchNormalizationNodeImporter>()},
     {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
+    {"acc_ops.sigmoid", std::make_unique<SigmoidNodeImporter>()},
     {"acc_ops.adaptive_avg_pool2d",
      std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
     {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},

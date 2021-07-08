@@ -1,11 +1,28 @@
-// (c) Facebook, Inc. and its affiliates. Confidential and proprietary.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "glow/Graph/FXIRWrapper.h"
+#include "glow/Graph/FXIRUtils.h"
 
 namespace glow {
-const FXWeight &FXIRWrapper::getWeight() { return fx_mod_->at("weights"); }
+const FXWeight &FXIRWrapper::getWeight() const {
+  return fx_mod_->at("weights");
+}
 
-const FXNodeList &FXIRWrapper::getNodes() { return fx_mod_->at("nodes"); }
+const FXNodeList &FXIRWrapper::getNodes() const { return fx_mod_->at("nodes"); }
 
 const char *FXIRWrapper::getConstantName(llvm::StringRef name) const {
   if (name.empty()) {
@@ -59,6 +76,15 @@ const FXNode &FXIRWrapper::getFXNodeByName(llvm::StringRef nodeName) const {
   auto it = namedNodes_.find(nodeName);
   CHECK(it != namedNodes_.end()) << " Node with name doesn't exist";
   return it->second;
+}
+
+const FXNode &FXIRWrapper::getSingleUserNode(const FXNode &node) const {
+
+  CHECK(node.find("users") != node.items().end())
+      << "users field doesn't exist in node " << node;
+  auto users = node["users"].at(0);
+  auto user_name = users["name"].getString();
+  return getFXNodeByName(user_name);
 }
 
 } // namespace glow
