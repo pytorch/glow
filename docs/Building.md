@@ -17,8 +17,7 @@ support for the JIT and/or OpenCL backends, pass additional options to cmake:
 If you decide to use OpenCL, the easiest way is to install
 portable open source implementation of the OpenCL standard,
 [pocl](https://github.com/pocl/pocl). Glow relies on pocl to run OpenCL tests
-on CI. All required steps are outlined in the [install_pocl]
-(https://github.com/pytorch/glow/blob/master/.circleci/build.sh#L9) method.
+on CI. All required steps are outlined in the [install_pocl](https://github.com/pytorch/glow/blob/bd66a74eab5e7d855052221bb6715fcd499af3b6/.circleci/build.sh#L29) method.
 
 Alternatively, you can follow these steps:
 
