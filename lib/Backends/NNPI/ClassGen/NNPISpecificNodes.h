@@ -29,9 +29,12 @@ BB.newNode("NNPICustomDSP")
 
 BB.newNode("NNPICustomIA")
     .addMember(MemberType::VectorNodeValue, "Inputs")
-    .addResultFromCtorArg() // for now use single output
+    .addResultFromCtorArg()   // for now use single output
+    .addInput("KernelParams") // paramsblob
     .addMember(MemberType::String, "KernelName")
     .addMember(MemberType::String, "IAPath")
+    .addMember(MemberType::Int64,
+               "ICERefCallback") // NNPICustomIAIceRefCallback*
     .setDocstring("This is an experimental NNPI-specific node representing a "
                   "custom IA op");
 
