@@ -64,7 +64,7 @@ template <typename Helper> struct SequenceTraits<std::vector<Helper>> {
 
 template <typename T> static T deserializeFromYaml(llvm::StringRef fileName) {
   T result;
-  llvm::outs() << fileName << "\n";
+  llvm::outs() << "Deserialize from " << fileName << "\n";
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> text =
       llvm::MemoryBuffer::getFileAsStream(fileName);
   assert(!text.getError() && "Unable to open file");
