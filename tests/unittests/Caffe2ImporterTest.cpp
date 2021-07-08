@@ -1613,6 +1613,60 @@ TEST_F(Caffe2ImporterTest, Int8FC4DFirstAxis) {
   EXPECT_EQ(finalShape, llvm::makeArrayRef(expectedOutput));
 }
 
+TEST_F(Caffe2ImporterTest, Int8FCDynamicQuantized) {
+  const std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/dynamic_quantized_fc_predict_net.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/dynamic_quantized_fc_init.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+
+  const std::vector<dim_t> inputShape{2, 3};
+
+  // Create and populate input tensor
+  Tensor input{ElemKind::Float16Ty, inputShape};
+  std::vector<float16_t> inputData;
+  inputData.resize(input.size());
+  std::iota(inputData.begin(), inputData.end(), 1);
+  input.getHandle<float16_t>() = inputData;
+
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  std::vector<dim_t> expectedShape{2, 4};
+  EXPECT_EQ(expectedShape, res->dims().vec());
+
+  auto result = res->getHandle<float16_t>();
+
+  std::vector<std::vector<float>> expectedData{{8, 27, 46, 65},
+                                               {17, 63, 109, 155}};
+
+  for (dim_t dim1 = 0; dim1 < expectedShape[0]; ++dim1) {
+    for (dim_t dim2 = 0; dim2 < expectedShape[1]; ++dim2) {
+      EXPECT_NEAR(expectedData[dim1][dim2], result.at({dim1, dim2}), 0.3);
+    }
+  }
+}
+
 /// Test loading bucketize op from a Caffe2 model.
 /// Test with arg boundaries = [0.1, 2.5]
 TEST_F(Caffe2ImporterTest, importBucketize) {

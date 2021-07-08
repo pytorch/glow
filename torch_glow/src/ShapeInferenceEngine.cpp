@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <ATen/WrapDimUtils.h>
 #include <iostream>
@@ -257,7 +271,7 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"prim::dtype", ShapeInference(&primDtype, &SI::addShapeConstant)},
       {"prim::ListUnpack",
        ShapeInference(&listUnpack, &SI::addShapeDefaultList)},
-      {"fb::Fused8BitRowwiseQuantizedToFloat",
+      {"fbgemm::Fused8BitRowwiseQuantizedToFloat",
        ShapeInference(&fused8BitRowwiseQuantizedToFloat, &SI::addShapeDefault)},
       {"fb::compressed_indices_remap",
        ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
@@ -269,6 +283,7 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&unsqueezeNTimes, &SI::addShapeDefault)},
       {"fb::equally_split",
        ShapeInference(&equallySplit, &SI::addShapeDefaultList)},
+      {"aten::squeeze", ShapeInference(&squeeze, &SI::addShapeDefault)},
   });
   return map;
 }
@@ -2274,6 +2289,36 @@ ShapeInferenceEngine::equallySplit(const MetaStack &variableMetas) {
 
   TensorListOutput output;
   output.shape = outputShape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::squeeze(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2 || variableMetas.size() == 1,
+      strFormat("Expected 1 or 2 input, got %zu.", variableMetas.size()));
+
+  const auto &t = variableMetas[0].shape<TensorShape>();
+  // Load dim parameter if provided
+  int64_t dim = 0;
+  bool dimProvided = false;
+  if (variableMetas.size() == 2) {
+    dimProvided = true;
+    dim = variableMetas[1].intValue[0];
+    if (dim < 0) {
+      dim += t.size();
+    }
+  }
+
+  TensorShape shape;
+  for (int i = 0; i < t.size(); i++) {
+    if (t[i] != 1 || (dimProvided && i != dim)) {
+      shape.push_back(t[i]);
+    }
+  }
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }

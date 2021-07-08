@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
 #include "glow/Flags/Flags.h"
@@ -111,8 +125,6 @@ public:
                           std::all_of(dilation.cbegin(), dilation.cend(),
                                       [](int i) { return i == 1; }),
                           "Dilation is not supported", NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR, groups == 1, "Group is not supported",
-                          NNPI_INVALID_PARAM);
 
     LOG_AND_RETURN_IF_NOT(ERROR, importer.isConstant(filterName),
                           "convolution (" + name + ") filter (" + filterName +
@@ -496,6 +508,8 @@ static std::unordered_map<
     {"acc_ops.sub",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
     {"acc_ops.mul",
+     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
+    {"acc_ops.quantized_mul",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
     {"acc_ops.div",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
