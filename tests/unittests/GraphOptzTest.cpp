@@ -8094,3 +8094,96 @@ TEST_F(GraphOptz, FoldExpSumDivIntoSoftmax) {
 
   checkNumericalEquivalence(1e-7f);
 }
+
+/// Test that an identity ResizeNearest is removed.
+TEST_F(GraphOptz, OptimizeIdentityResizeNearest) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 33, 33, 1},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  auto *resize = F_->createResizeNearest("resize", input, {1, 1, 1, 1});
+  F_->createSave("save", resize);
+  EXPECT_EQ(2, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeResize, getDCEPassConfig()});
+  EXPECT_EQ(1, optimizedF_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+  checkNumericalEquivalence(1e-7f);
+}
+
+/// Test that a ResizeNearest with integer scales is transformed to Tile.
+TEST_F(GraphOptz, OptimizeResizeNearest) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 33, 1},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  auto *resize = F_->createResizeNearest("resize", input, {1, 2, 7.787879, 1});
+  F_->createSave("save", resize);
+  EXPECT_EQ(2, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeResize, getDCEPassConfig()});
+  EXPECT_EQ(3, optimizedF_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::ResizeNearestNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+  checkNumericalEquivalence(1e-7f);
+}
+
+/// Test that an identity ResizeBilinear is removed.
+TEST_F(GraphOptz, OptimizeIdentityResizeBilinear) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 33, 33, 1},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  auto *resize = F_->createResizeBilinear("resize", input, {1, 1, 1, 1});
+  F_->createSave("save", resize);
+  EXPECT_EQ(2, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeResize, getDCEPassConfig()});
+  EXPECT_EQ(1, optimizedF_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+  checkNumericalEquivalence(1e-7f);
+}
+
+/// Test that a ResizeBilinear with integer scales is transformed to Tile.
+TEST_F(GraphOptz, OptimizeResizeBilinear) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 33, 1},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  auto *resize = F_->createResizeBilinear("resize", input, {1, 2, 7.787879, 1});
+  F_->createSave("save", resize);
+  EXPECT_EQ(2, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeResize, getDCEPassConfig()});
+  EXPECT_EQ(3, optimizedF_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind));
+  EXPECT_EQ(1,
+            countNodeKind(optimizedF_, Kinded::Kind::ResizeBilinearNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+  checkNumericalEquivalence(1e-7f);
+}
+
+/// Test that a InsertTensor which has the Big operand a Splat is replaced
+/// with a Touch node when the Small operand fills it entirely.
+TEST_F(GraphOptz, OptimizeInsertTensorBigSplat) {
+  Type bigTy(ElemKind::FloatTy, {10});
+  SplatNode *big = F_->createSplat("splat", &bigTy, 0);
+  Placeholder *small = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input",
+                                              /* isTrainable */ false);
+  bindings_.allocate(small)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  auto *insert = F_->createInsertTensor("insert", big, small,
+                                        /* start */ {0},
+                                        /* count */ 10,
+                                        /* axis */ 0);
+  F_->createSave("save", insert);
+  EXPECT_EQ(3, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeInsert, getDCEPassConfig()});
+  EXPECT_EQ(3, optimizedF_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::TouchNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::InsertTensorNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+  checkNumericalEquivalence(1e-7f);
+}
