@@ -71,15 +71,15 @@ elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
 
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
-elif [ "${CIRCLE_JOB}" == "DEBUG_LLVM_11" ]; then
+elif [ "${CIRCLE_JOB}" == "DEBUG_LLVM_12" ]; then
     # Install Glow dependencies
     sudo apt-get update
-    sudo apt-get install -y llvm-11
-    # Redirect clang
-    sudo ln -s /usr/bin/clang-11 /usr/bin/clang
-    sudo ln -s /usr/bin/clang++-11 /usr/bin/clang++
-    sudo ln -s /usr/bin/llvm-symbolizer-11 /usr/bin/llvm-symbolizer
-    sudo ln -s /usr/bin/llvm-config-11 /usr/bin/llvm-config-11.0
+    # sudo apt-get install -y llvm-11
+    # # Redirect clang
+    # sudo ln -s /usr/bin/clang-11 /usr/bin/clang
+    # sudo ln -s /usr/bin/clang++-11 /usr/bin/clang++
+    # sudo ln -s /usr/bin/llvm-symbolizer-11 /usr/bin/llvm-symbolizer
+    # sudo ln -s /usr/bin/llvm-config-11 /usr/bin/llvm-config-11.0
 
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
@@ -122,8 +122,8 @@ if [[ "${CIRCLE_JOB}" != "PYTORCH" ]]; then
     CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 fi
 
-# Temporarily disable warnings as errors for LLVM 11 builds.
-if [[ "${CIRCLE_JOB}" != "DEBUG_LLVM_11" ]]; then
+# Temporarily disable warnings as errors for LLVM 12 builds.
+if [[ "${CIRCLE_JOB}" != "DEBUG_LLVM_12" ]]; then
     CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
 fi
 
