@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "ImporterTestUtils.h"
+#include "glow/Base/Tensor.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
@@ -96,12 +97,29 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
   size_t inpIdx = 0;
   for (const auto &inpPH : inputPH) {
     std::string inpFilename = dataBasename + ".inp" + std::to_string(inpIdx++);
-    Tensor *inpT = bindings.get(inpPH);
-    loadTensor(inpT, inpFilename);
-    if (tflitePrintTestTensorsOpt) {
-      llvm::outs() << "Input Placeholder: " << inpPH->getName() << "\n";
-      inpT->dump();
+
+    auto phTy = inpPH->getNthResult(0).getType();
+    // Load reference tensor.
+    // For quantized models, input data is expected to be float, thus
+    // the tensor needs to be quantized.
+    Type newTy = *phTy;
+    if (phTy->isQuantizedType()) {
+      newTy = {ElemKind::FloatTy, phTy->dims()};
     }
+
+    Tensor inpT(newTy);
+    loadTensor(&inpT, inpFilename);
+
+    if (tflitePrintTestTensorsOpt) {
+      llvm::outs() << "Input Data: " << inpPH->getName() << "\n";
+      inpT.dump();
+    }
+
+    if (phTy->isQuantizedType()) {
+      TensorQuantizationParams TQP{phTy->getScale(), phTy->getOffset()};
+      inpT = glow::quantization::quantizeTensor(inpT, TQP, ElemKind::Int8QTy);
+    }
+    *bindings.get(inpPH) = std::move(inpT);
   }
 
   // Run model.
@@ -114,20 +132,29 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
     std::string refFilename = dataBasename + ".out" + std::to_string(outIdx++);
 
     // Get output tensor.
-    Tensor *outT = bindings.get(outPH);
+    // For quantized models, the reference data is float. We dequantized
+    // the output tensor so it can be compared against the reference one.
+    Tensor outT = std::move(*bindings.get(outPH));
 
-    // Load reference tensor.
-    Tensor refT(outT->getType());
+    auto outTy = outT.getType();
+    auto newTy = outTy;
+    if (outTy.isQuantizedType()) {
+      maxError = 2 * outTy.getScale();
+      outT = glow::quantization::dequantizeTensor(outT, ElemKind::FloatTy);
+      newTy = {ElemKind::FloatTy, outTy.dims()};
+    }
+    Tensor refT(newTy);
     loadTensor(&refT, refFilename);
+
     if (tflitePrintTestTensorsOpt) {
       llvm::outs() << "Reference Tensor:\n";
       refT.dump();
       llvm::outs() << "Output Placeholder: " << outPH->getName() << "\n";
-      outT->dump();
+      outT.dump();
     }
 
     // Compare.
-    ASSERT_TRUE(outT->isEqual(refT, maxError, /* verbose */ true));
+    ASSERT_TRUE(outT.isEqual(refT, maxError, /* verbose */ true));
   }
 }
 
@@ -155,6 +182,7 @@ TFLITE_UNIT_TEST(DepthwiseConv2D_Ch2Mult1, "depthwise_conv2d_c2_m1.tflite")
 TFLITE_UNIT_TEST(DepthwiseConv2D_Ch2Mult2, "depthwise_conv2d_c2_m2.tflite")
 
 TFLITE_UNIT_TEST(HardSwish, "hardSwish.tflite")
+TFLITE_UNIT_TEST(HardSwish_int8, "hardSwish_int8.tflite")
 
 TFLITE_UNIT_TEST(Floor, "floor.tflite")
 
@@ -179,6 +207,7 @@ TFLITE_UNIT_TEST(ReshapeNegShape, "reshape_neg_shape.tflite")
 TFLITE_UNIT_TEST(Softmax, "softmax.tflite")
 
 TFLITE_UNIT_TEST(Tanh, "tanh.tflite")
+TFLITE_UNIT_TEST(Tanh_Int8, "tanh_int8.tflite")
 
 TFLITE_UNIT_TEST(Pad, "pad.tflite")
 
