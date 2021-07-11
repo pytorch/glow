@@ -1683,12 +1683,12 @@ Error ONNXModelWriter::writeInstanceNormalization(
   // Add dictionary entries.
   addValueAttribute(proto, "epsilon", node->getEpsilon());
 
-  proto->set_name(node->getName());
+  proto->set_name(node->getName().str());
   proto->set_op_type("InstanceNormalization");
 
-  proto->add_input(node->getInput().getNode()->getName());
-  proto->add_input(node->getScale().getNode()->getName());
-  proto->add_input(node->getBias().getNode()->getName());
+  proto->add_input(node->getInput().getNode()->getName().str());
+  proto->add_input(node->getScale().getNode()->getName().str());
+  proto->add_input(node->getBias().getNode()->getName().str());
 
   outputsToProto(node, graph, proto);
   return Error::success();
