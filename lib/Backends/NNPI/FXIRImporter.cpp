@@ -460,6 +460,29 @@ public:
   }
 };
 
+class LayerNormalizationNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &biasName = importer.getInputNodeName(kwargs["bias"]);
+    auto eps = kwargs["eps"].getDouble();
+    auto shape = toIntegerArray<uint32_t>(kwargs["normalized_shape"]);
+
+    importer.setUsedTensors({inputName, weightName}, {biasName, name});
+
+    return nnpiNetworkAddLayerNormOp(
+        importer.getNetwork(), name.c_str(), inputName.c_str(), name.c_str(),
+        weightName.c_str(), biasName.c_str(), shape.data(), shape.size(), eps);
+  }
+};
+
 class TanhNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -523,6 +546,7 @@ static std::unordered_map<
     {"acc_ops.batch_norm", std::make_unique<BatchNormalizationNodeImporter>()},
     {"acc_ops.quantized_batch_norm2d",
      std::make_unique<BatchNormalizationNodeImporter>()},
+    {"acc_ops.layer_norm", std::make_unique<LayerNormalizationNodeImporter>()},
     {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
     {"acc_ops.sigmoid", std::make_unique<SigmoidNodeImporter>()},
     {"acc_ops.adaptive_avg_pool2d",
