@@ -2323,21 +2323,23 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   const dim_t reshape[] = {1, 6000};
   Type t1(ElemKind::FloatTy, shape);
   Type t2(ElemKind::FloatTy, reshape);
-  Node *input = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape,
-                                                   "input", true);
+  Node *input1 = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape,
+                                                    "input1", true);
+  Node *input2 = F_->getParent()->createPlaceholder(ElemKind::FloatTy, reshape,
+                                                    "input2", true);
   auto *Z1 = F_->createSplat("zero1", &t1, 1.5);
-  auto *A1 = F_->createAdd("add1", Z1->getResult().getType(), input, Z1);
+  auto *A1 = F_->createAdd("add1", Z1->getResult().getType(), input1, Z1);
   auto *R1 = F_->createReshape("reshape1", Z1, reshape);
   // Z1 is used by R1 and A1.
   // The reshape optimization will thus NOT be able to remove this reshape node
   // (R1).
-  auto *R2 = F_->createReshape("reshape2", A1, reshape);
-  auto *A2 = F_->createAdd("add", R1->getResult().getType(), R1, R2);
+  F_->createSave("save", A1);
+  auto *A2 = F_->createAdd("add", R1->getResult().getType(), R1, input2);
   auto *Z2 = F_->createSplat("zero2", &t1, 2.5);
-  auto *R3 = F_->createReshape("reshape3", Z2, reshape);
-  // Z2 is only used by R3.
-  // The Z2,R3 nodes will be replaced by a new splat node with the shape of R3.
-  auto *A3 = F_->createAdd("add", A2->getResult().getType(), A2, R3);
+  auto *R2 = F_->createReshape("reshape3", Z2, reshape);
+  // Z2 is only used by R2.
+  // The Z2,R2 nodes will be replaced by a new splat node with the shape of R2.
+  auto *A3 = F_->createAdd("add", A2->getResult().getType(), A2, R2);
   auto *O = F_->createSave("ret", A3);
 
   // Before optimization, we have 9 nodes in the graph.
@@ -2352,7 +2354,7 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   // replace by a new splat node.
   EXPECT_EQ(F_->getNodes().size(), 8);
 
-  // The second input of A3 shoule be a splat node with a shape of R3.
+  // The second input of A3 shoule be a splat node with a shape of R2.
   auto *newA3 = llvm::dyn_cast<AddNode>(O->getInput());
   ASSERT_TRUE(newA3);
   auto *SN = llvm::dyn_cast<SplatNode>(newA3->getRHS());
@@ -2362,8 +2364,8 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   // R1 should still be in the graph.
   EXPECT_TRUE(functionContainsNode(F_, R1));
 
-  // R3 and Z2 should not be in the graph any more.
-  EXPECT_FALSE(functionContainsNode(F_, R3));
+  // R2 and Z2 should not be in the graph any more.
+  EXPECT_FALSE(functionContainsNode(F_, R2));
   EXPECT_FALSE(functionContainsNode(F_, Z2));
 }
 
@@ -8040,6 +8042,62 @@ TEST_F(GraphOptz, SinkReshapeBelowUnaryEltwiseOps) {
 
   bindings_.allocate(in)->getHandle<float>().randomize(-30.f, 30.f,
                                                        mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, SinkReshapeBelowBinaryEltwiseOps) {
+  const dim_t dimsIn[] = {10, 10};
+  const dim_t dimsOut[] = {5, 5, 4};
+
+  // Prepare inputs.
+  auto *in1 = mod_.createPlaceholder(glow::ElemKind::Int8QTy, dimsIn, 0.12f, 0,
+                                     "in1", false);
+  auto *in2 = mod_.createPlaceholder(glow::ElemKind::Int8QTy, dimsIn, 0.17f, 0,
+                                     "in2", false);
+  auto *QCN =
+      mod_.createConstant(ElemKind::Int8QTy, dimsOut, 0.13f, 0, "quant_const");
+  auto *FCN = mod_.createConstant(ElemKind::FloatTy, dimsOut, "float_const");
+  auto qTy = mod_.uniqueType(ElemKind::Int8QTy, dimsOut, 0.15f, 0);
+  auto *QN = F_->createQuantize("quantize", FCN, qTy);
+  auto *SN = F_->createSplat("splat", qTy, 1.79f);
+  QCN->getHandle<int8_t>().randomize(-128, 127, mod_.getPRNG());
+  FCN->getHandle<float>().randomize(-1.f, 2.f, mod_.getPRNG());
+
+  // Test different combinations of Reshape, Constant, Quantize, Splat passed as
+  // LHS or RHS.
+  auto *RN1 = F_->createReshape("reshape", in1, dimsOut);
+  auto *RN2 = F_->createReshape("reshape", in2, dimsOut);
+  auto *AN = F_->createAdd("add", RN1, RN2);
+  auto *MLN = F_->createMul("mul", AN, QCN);
+  auto *MXN = F_->createMax("max", QN, MLN);
+  auto *SBN = F_->createSub("sub", MXN, SN);
+  auto *save = F_->createSave("ret", SBN);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  auto *optSave =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
+  ASSERT_TRUE(optSave);
+  auto *optRN = llvm::dyn_cast<ReshapeNode>(optSave->getInput());
+  ASSERT_TRUE(optRN);
+  EXPECT_EQ(optRN->getResult().dims(), llvm::makeArrayRef(dimsOut));
+  auto *optSBN = llvm::dyn_cast<SubNode>(optRN->getInput());
+  ASSERT_TRUE(optSBN);
+  EXPECT_EQ(optSBN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optMXN = llvm::dyn_cast<MaxNode>(optSBN->getLHS());
+  ASSERT_TRUE(optMXN);
+  EXPECT_EQ(optMXN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optMLN = llvm::dyn_cast<MulNode>(optMXN->getRHS());
+  ASSERT_TRUE(optMLN);
+  EXPECT_EQ(optMLN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+  auto *optAN = llvm::dyn_cast<AddNode>(optMLN->getLHS());
+  ASSERT_TRUE(optAN);
+  EXPECT_EQ(optAN->getResult().dims(), llvm::makeArrayRef(dimsIn));
+
+  bindings_.allocate(in1)->getHandle<int8_t>().randomize(-128, 127,
+                                                         mod_.getPRNG());
+  bindings_.allocate(in2)->getHandle<int8_t>().randomize(-128, 127,
+                                                         mod_.getPRNG());
   checkNumericalEquivalence(0.f);
 }
 
