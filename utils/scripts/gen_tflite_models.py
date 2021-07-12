@@ -116,6 +116,7 @@ def save_model(model, filename):
         output_arrays=model_outputs_array,
     )
     converter.dump_graphviz_video = False
+    converter.allow_custom_ops = True
     tflite_model = converter.convert()
     model_filename = os.path.join(OUT_DIR, filename)
     if not model_filename.endswith(".tflite"):
@@ -137,6 +138,284 @@ def save_tensor(tensor, filename):
 
 # Create output directory.
 clean_dir(OUT_DIR)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                        Strided Slice
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_strided_slice(
+    name,
+    input_shape,
+    begin,
+    end,
+    strides,
+    begin_mask=0,
+    end_mask=0,
+    ellipsis_mask=0,
+    new_axis_mask=0,
+    shrink_axis_mask=0,
+):
+    # Create model.
+    inp = layers.Input(
+        name="input", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32
+    )
+    out = tf.strided_slice(
+        inp,
+        begin,
+        end,
+        strides,
+        begin_mask,
+        end_mask,
+        ellipsis_mask,
+        new_axis_mask,
+        shrink_axis_mask,
+    )
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict([inp_tensor])
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+# Basic test. Default strides are 1.
+gen_strided_slice(
+    name="strided_slice_test0",
+    input_shape=(1, 2, 3),
+    begin=(0, 0, 0),
+    end=(1, 1, 1),
+    strides=(1, 1, 1),
+)
+
+# Test begin_mask. Ignore "begin" value for 2nd dimension and use value for maximum range.
+gen_strided_slice(
+    name="strided_slice_test1",
+    input_shape=(1, 3, 4),
+    begin=(0, 2, 3),
+    end=(1, 3, 4),
+    strides=(1, 1, 1),
+    begin_mask=2,
+)
+
+# Test end_mask. Ignore "end" value for 2nd dimension and use value for maximum range.
+gen_strided_slice(
+    name="strided_slice_test2",
+    input_shape=(1, 3, 4),
+    begin=(0, 0, 0),
+    end=(1, 1, 1),
+    strides=(1, 1, 1),
+    end_mask=2,
+)
+
+# Test begin_mask & end_mask. Ignore "begin"/"end" value for 2nd dimension and use values for maximum range.
+gen_strided_slice(
+    name="strided_slice_test3",
+    input_shape=(1, 3, 4),
+    begin=(0, 1, 1),
+    end=(1, 2, 2),
+    strides=(1, 1, 1),
+    begin_mask=2,
+    end_mask=2,
+)
+
+# Test ellipsis_mask. Test access pattern [0, ..., 0] where the ellipsis position is marked as 0's for begin/end.
+gen_strided_slice(
+    name="strided_slice_test4",
+    input_shape=(1, 3, 4),
+    begin=(0, 0, 0),
+    end=(1, 0, 1),
+    strides=(1, 1, 1),
+    begin_mask=0,
+    end_mask=0,
+    ellipsis_mask=2,
+)
+
+# Test new_axis_mask.
+gen_strided_slice(
+    name="strided_slice_test5",
+    input_shape=(1, 3, 4),
+    begin=(0, 0, 0),
+    end=(1, 2, 3),
+    strides=(1, 1, 1),
+    new_axis_mask=2,
+)
+
+# Test shrink_axis_mask.
+gen_strided_slice(
+    name="strided_slice_test6",
+    input_shape=(1, 3, 4),
+    begin=(0, 0, 0),
+    end=(1, 2, 3),
+    strides=(1, 1, 1),
+    shrink_axis_mask=2,
+)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                        Select
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_select_test(name, input_shape):
+    # Create model.
+    cond = layers.Input(
+        name="cond", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.bool
+    )
+    lhs = layers.Input(
+        name="lhs", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32
+    )
+    rhs = layers.Input(
+        name="rhs", batch_size=input_shape[0], shape=input_shape[1:], dtype=tf.float32
+    )
+    out = tf.where(cond, x=lhs, y=rhs)
+    model = Model(inputs=[cond, lhs, rhs], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    cond_tensor = np.random.randint(low=0, high=2, size=input_shape).astype(np.bool)
+    lhs_tensor = np.random.rand(*input_shape).astype(np.float32)
+    rhs_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict([cond_tensor, lhs_tensor, rhs_tensor])
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(cond_tensor, name + ".inp0")
+    save_tensor(lhs_tensor, name + ".inp1")
+    save_tensor(rhs_tensor, name + ".inp2")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_select_test(name="select", input_shape=(1, 2, 3))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                        LogSoftmax
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_log_softmax_test(name, input_shape, axis):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.nn.log_softmax(inp, axis=axis)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_log_softmax_test(name="log_softmax", input_shape=(1, 3), axis=-1)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                      GATHER ND
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_gather_nd_test(name, data_shape, indices_shape):
+    # Create model.
+    data = layers.Input(
+        name="data", batch_size=data_shape[0], shape=data_shape[1:], dtype=tf.float32
+    )
+    indices = layers.Input(
+        name="indices",
+        batch_size=indices_shape[0],
+        shape=indices_shape[1:],
+        dtype=tf.int32,
+    )
+    out = tf.gather_nd(data, indices, batch_dims=0)
+    model = Model(inputs=[data, indices], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    data_tensor = np.random.rand(*data_shape).astype(np.float32)
+    indices_tensor = np.random.randint(
+        low=0, high=data_shape, size=indices_shape
+    ).astype(np.int32)
+    out_tensor = model.predict([data_tensor, indices_tensor])
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(data_tensor, name + ".inp0")
+    save_tensor(indices_tensor, name + ".inp1")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_gather_nd_test(name="gather_nd", data_shape=(2, 3, 4), indices_shape=(2, 3))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                      GATHER
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_gather_test(name, data_shape, indices_shape, axis):
+    # Create model.
+    data = layers.Input(
+        name="data", batch_size=data_shape[0], shape=data_shape[1:], dtype=tf.float32
+    )
+    indices = layers.Input(
+        name="indices",
+        batch_size=indices_shape[0],
+        shape=indices_shape[1:],
+        dtype=tf.int32,
+    )
+    out = tf.gather(data, indices, axis=axis, batch_dims=0)
+    model = Model(inputs=[data, indices], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    data_tensor = np.random.rand(*data_shape).astype(np.float32)
+    indices_tensor = np.random.randint(data_shape[axis], size=indices_shape).astype(
+        np.int32
+    )
+    out_tensor = model.predict([data_tensor, indices_tensor])
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(data_tensor, name + ".inp0")
+    save_tensor(indices_tensor, name + ".inp1")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_gather_test(
+    name="gather_axis0", data_shape=(1, 2, 3, 4), indices_shape=(1, 5), axis=0
+)
+gen_gather_test(
+    name="gather_axis1", data_shape=(1, 2, 3, 4), indices_shape=(1, 5), axis=1
+)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                          CAST
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_cast_test(name, input_shape, dtype):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.cast(inp, dtype=dtype)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_cast_test(name="cast_f32_to_int32", input_shape=(1, 1, 2, 12), dtype=tf.int32)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1011,3 +1290,105 @@ def gen_tile_test(name, input_shape, tiles):
 
 
 gen_tile_test(name="tile", input_shape=(1, 2, 3), tiles=[1, 3, 2])
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                     RESIZE NEAREST
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_resize_nearest_test(name, input_shape, output_shape):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.compat.v1.image.resize_nearest_neighbor(inp, size=output_shape)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_resize_nearest_test(
+    name="resize_nearest", input_shape=(1, 3, 4, 2), output_shape=(5, 7)
+)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                     RESIZE BILINEAR
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_resize_bilinear_test(name, input_shape, output_shape):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.compat.v1.image.resize_bilinear(inp, size=output_shape)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_resize_bilinear_test(
+    name="resize_bilinear", input_shape=(1, 3, 4, 2), output_shape=(5, 7)
+)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                    SPACE TO DEPTH
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_space_to_depth_test(name, input_shape, block_size):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.compat.v1.space_to_depth(inp, block_size=block_size)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_space_to_depth_test(name="space_to_depth", input_shape=(1, 2, 4, 3), block_size=2)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                     DEPTH TO SPACE
+# ----------------------------------------------------------------------------------------------------------------------
+# Note: Older version of TensorFlow handles this operator as custom. This test is generated separately by manually
+# editing the 'space_to_depth' test.
+def gen_depth_to_space_test(name, input_shape, block_size):
+    # Create model.
+    inp = layers.Input(name="input", batch_size=input_shape[0], shape=input_shape[1:])
+    out = tf.nn.depth_to_space(inp, block_size=block_size)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + ".inp0")
+    save_tensor(out_tensor, name + ".out0")
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_depth_to_space_test(name="depth_to_space", input_shape=(1, 1, 2, 12), block_size=2)

@@ -134,9 +134,6 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
 #define TFLITE_UNIT_TEST(name, model)                                          \
   TEST(TFLiteImporterTest, name) { loadAndRunModel(model); }
 
-#define TFLITE_UNIT_TEST_MAX_ERR(name, model, maxErr)                          \
-  TEST(TFLiteImporterTest, name) { loadAndRunModel(model, maxErr); }
-
 TFLITE_UNIT_TEST(Add, "add.tflite")
 
 TFLITE_UNIT_TEST(AvgPool2D_PaddingSame, "avgpool2d_same.tflite")
@@ -220,11 +217,36 @@ TFLITE_UNIT_TEST(LessEqual, "less_equal.tflite")
 TFLITE_UNIT_TEST(Slice, "slice.tflite")
 TFLITE_UNIT_TEST(SliceNegSize, "slice_neg_size.tflite")
 
+TFLITE_UNIT_TEST(StridedSliceTest0, "strided_slice_test0.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest1, "strided_slice_test1.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest2, "strided_slice_test2.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest3, "strided_slice_test3.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest4, "strided_slice_test4.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest5, "strided_slice_test5.tflite")
+TFLITE_UNIT_TEST(StridedSliceTest6, "strided_slice_test6.tflite")
+
 TFLITE_UNIT_TEST(Sin, "sin.tflite")
 
 TFLITE_UNIT_TEST(Tile, "tile.tflite")
 
-TFLITE_UNIT_TEST_MAX_ERR(ResizeBilinear, "resize_bilinear.tflite", 2e-6)
+TFLITE_UNIT_TEST(ResizeBilinear, "resize_bilinear.tflite")
+
+TFLITE_UNIT_TEST(ResizeNearest, "resize_nearest.tflite")
+
+TFLITE_UNIT_TEST(SpaceToDepth, "space_to_depth.tflite")
+
+TFLITE_UNIT_TEST(DepthToSpace, "depth_to_space.tflite")
+
+TFLITE_UNIT_TEST(CastF32ToInt32, "cast_f32_to_int32.tflite")
+
+TFLITE_UNIT_TEST(GatherAxis0, "gather_axis0.tflite")
+TFLITE_UNIT_TEST(GatherAxis1, "gather_axis1.tflite")
+
+TFLITE_UNIT_TEST(GatherND, "gather_nd.tflite")
+
+TFLITE_UNIT_TEST(LogSoftmax, "log_softmax.tflite")
+
+TFLITE_UNIT_TEST(Select, "select.tflite")
 
 TFLITE_UNIT_TEST(SpaceToBatchNd, "spaceToBatchNd.tflite")
 TFLITE_UNIT_TEST(BatchToSpaceNd, "batchToSpaceNd.tflite")

@@ -2257,7 +2257,7 @@ bool GatherNDNode::verify() const {
   isValid &= expectCompareTrue(
       "Mismatching number of dimensions", getResult().dims().size(),
       getData().dims().size() + getIndices().dims().size() -
-          getIndices().dims()[getIndices().dims().size() - 1] - 1,
+          getIndices().dims().back() - 1 - getBatchDims(),
       this);
   isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
                                            getData().getType(), this);

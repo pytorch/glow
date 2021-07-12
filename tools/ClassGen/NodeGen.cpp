@@ -1205,6 +1205,12 @@ int main(int argc, char **argv) {
                     "Small is inserted Count times along Axis. The resulting "
                     "Tensor will have the same type as the input Big tensor.");
 
+  // TODO: Rename "BatchDims" member to "Axis". This was attempted in #5565 but
+  // some internal FB tests failed. The member needs to be renamed because that
+  // is the true meaning of the member and that is what the implementation does
+  // according to both Caffe2, ONNX and TFLite operator definitions.
+  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#gather
+  // https://www.tensorflow.org/mlir/tfl_ops#tflgather_tflgatherop
   BB.newNode("Gather")
       .addInput("Data")
       .addInput("Indices")
@@ -1214,14 +1220,15 @@ int main(int argc, char **argv) {
                     "indexed by Indices, and concatenates them. Output tensor "
                     "will have dimensions: {I_0, I_1, ... I_n, D_1, D_2, ... "
                     "D_m}, where D_i and I_j denote Data and Indices "
-                    "dimensions respectively. If batchDims is not zero, the "
-                    "gather operator will treat the first batchDims as the "
+                    "dimensions respectively. If axis is not zero, the "
+                    "gather operator will treat the first axis as the "
                     "batch and will concat the result of the gather operation "
                     "on each sample in the batch.");
 
   BB.newNode("GatherND")
       .addInput("Data")
       .addInput("Indices")
+      .addMember(MemberType::Unsigned, "BatchDims")
       .addResultFromCtorArg()
       .setDocstring(
           "Given Data tensor of rank r >= 1, Indices tensor of rank q >= 1 "
