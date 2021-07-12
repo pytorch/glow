@@ -3113,6 +3113,53 @@ TEST_F(GraphFold, foldDilatedConv) {
   checkNumericalEquivalence();
 }
 
+/// Fold a Convolution dilated manually using Transpose, SpaceToDepth and
+/// DepthToSpace nodes into a single Convolution node. Pattern:
+/// NHWC2CHWN -> S2D -> CHWN2NHWC -> Conv -> NHWC2CHWN -> D2S -> CHWN2NHWC
+/// Test for ChannelwiseQuantizedConvolution.
+TEST_F(GraphFold, foldDilatedConv_ChannelwiseQuantized) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 10, 10, 16}, 1.f,
+                                       0, "input", true);
+
+  auto *filterF =
+      mod_.createConstant(ElemKind::FloatTy, {16, 3, 3, 16}, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                            mod_.getPRNG());
+  auto *biasF = mod_.createConstant(ElemKind::FloatTy, {16}, "biasF");
+  biasF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+
+  auto *T1 = F_->createTranspose("t1", input, NHWC2CHWN, "NHWC");
+  auto *S2D = F_->createSpaceToDepth("s2d", T1, 2);
+  auto *T2 = F_->createTranspose("t2", S2D, CHWN2NHWC, "NHWC");
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {4, 3, 3, 16}, 1.f, 0);
+  auto *CN = F_->createChannelwiseQuantizedConv(
+      "conv", T2, filterF, biasF, nullptr, nullptr, nullptr, nullptr, outTy,
+      {3, 3}, {1, 1}, {0, 0, 0, 0}, 1, {1, 1}, true, true,
+      quantization::Schema::Asymmetric, ElemKind::Int8QTy, ElemKind::Int32QTy);
+  auto *T3 = F_->createTranspose("t3", CN, NHWC2CHWN, "NHWC");
+  auto *D2S = F_->createDepthToSpace("d2s", T3, 2);
+  auto *T4 = F_->createTranspose("t4", D2S, CHWN2NHWC, "NHWC");
+  auto *save = F_->createSave("save", T4);
+
+  EXPECT_EQ(10, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+
+  const auto *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+
+  auto *newCN =
+      llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(optSave->getInput());
+  ASSERT_TRUE(newCN);
+  EXPECT_TRUE(isUniformArray(newCN->getDilation(), 2u));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                      mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
   const dim_t inputDims[] = {3, 136, 28, 28};
