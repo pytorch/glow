@@ -45,6 +45,13 @@
 #include <unordered_set>
 #include <vector>
 
+// Utility macro to continue loop if given condition is not met.
+// This is intended to improve code readability and size.
+#define CONTINUE_IF_NOT(cond)                                                  \
+  if (!(cond)) {                                                               \
+    continue;                                                                  \
+  }
+
 llvm::cl::OptionCategory graphOptCat("Graph Optimizations Options");
 llvm::cl::opt<unsigned> constDedupSizeOpt(
     "const-dedup-size",
@@ -3702,6 +3709,96 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
+  }
+  return changed;
+}
+
+/// Helper to optimize Resize nodes.
+template <typename ResizeNodeType>
+static bool optimizeResize(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *resizeNode = dyn_cast<ResizeNodeType>(&node);
+    CONTINUE_IF_NOT(resizeNode);
+    // Remove identity resize (same input and output type).
+    auto inpType = resizeNode->getInput().getType();
+    auto outType = resizeNode->getResult().getType();
+    if (inpType->isEqual(outType)) {
+      resizeNode->getResult().replaceAllUsesOfWith(resizeNode->getInput());
+      changed = true;
+      continue;
+    }
+    // Dimensions which are resized from unitary sizes should use Tile nodes.
+    // We pull out Tile nodes from the Resize output such that the Resize node
+    // operates on smaller sizes thus reducing the complexity. We create Tile
+    // nodes in the decreasing order of the dimensions to increase locality.
+    auto inpDims = resizeNode->getInput().dims();
+    auto outDims = resizeNode->getResult().dims();
+    std::vector<dim_t> newOutDims = outDims.vec();
+    std::vector<unsigned_t> axes;
+    std::vector<unsigned_t> tiles;
+    for (ssize_t idx = outDims.size() - 1; idx >= 0; idx--) {
+      if ((inpDims[idx] == 1) && (outDims[idx] > 1)) {
+        newOutDims[idx] = 1;
+        axes.push_back(idx);
+        tiles.push_back(outDims[idx]);
+      }
+    }
+    CONTINUE_IF_NOT(axes.size());
+    auto newOutType =
+        F->getParent()->uniqueTypeWithNewShape(outType, newOutDims);
+    // Create Resize node.
+    NodeValue newOut = resizeNode->getInput();
+    if (!inpType->isEqual(newOutType)) {
+      if (std::is_same<ResizeNodeType, ResizeNearestNode>::value) {
+        newOut = F->createResizeNearest(node.getName(), newOut, newOutType);
+      } else if (std::is_same<ResizeNodeType, ResizeBilinearNode>::value) {
+        newOut = F->createResizeBilinear(node.getName(), newOut, newOutType);
+      } else {
+        llvm_unreachable("Resize node type not supported!");
+      }
+    }
+    // Create Tile nodes.
+    newOut =
+        F->createTile(node.getName().str() + "." + "Tile", newOut, tiles, axes);
+    resizeNode->getResult().replaceAllUsesOfWith(newOut);
+    changed = true;
+    continue;
+  }
+  return changed;
+}
+
+/// Optimize Resize nodes.
+bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  changed |= optimizeResize<ResizeNearestNode>(F, cctx);
+  changed |= optimizeResize<ResizeBilinearNode>(F, cctx);
+  return changed;
+}
+
+/// Optimize Insert nodes.
+bool OptimizeInsert::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *insertNode = dyn_cast<InsertTensorNode>(&node);
+    CONTINUE_IF_NOT(insertNode);
+    // When the "Big" tensor is a Splat which is entirely filled by the
+    // "Small" tensor then we replace the Splat with a Touch node to remove
+    // the initialization overhead of the Splat which is not needed.
+    NodeValue big = insertNode->getBig();
+    NodeValue small = insertNode->getSmall();
+    auto bigDims = big.dims().vec();
+    auto smallDims = small.dims().vec();
+    smallDims[insertNode->getAxis()] *= insertNode->getCount();
+    CONTINUE_IF_NOT(isUniformArray(insertNode->getStart(), dim_t(0)) &&
+                    dyn_cast<SplatNode>(big) && (bigDims == smallDims));
+    NodeValue touch =
+        F->createTouch(node.getName().str() + "." + "Touch", big.getType());
+    node.setNthInput(InsertTensorNode::BigIdx, touch);
+    changed = true;
+    continue;
   }
   return changed;
 }

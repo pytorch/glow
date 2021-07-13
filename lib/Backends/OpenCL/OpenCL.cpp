@@ -1785,6 +1785,7 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
 bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::SplatNodeKind:
+  case Kinded::Kind::TouchNodeKind:
   case Kinded::Kind::TransposeNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy});

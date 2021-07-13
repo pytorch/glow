@@ -1186,7 +1186,16 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(
           outTy, loadQuantTy(opName, ElemKind::Int8QTy,
                              {outputDims.first, B.dims()[0]}, dict));
-      node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
+      int dequantizeOutput = 0;
+      if (dict.count("dequantize_output")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(dequantizeOutput,
+                                   loadInt(dict["dequantize_output"]));
+      }
+      if (dequantizeOutput == 1) {
+        node = G_->createDynamicQuantizedFullyConnected(opName, in, W, B);
+      } else {
+        node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
+      }
     } else if (typeName == "FbFCPacked") {
       RETURN_ERR_IF_NOT(W.getElementType() == ElemKind::Float16Ty,
                         opErrMsg(op, "Expected float16 weights."));

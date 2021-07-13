@@ -535,6 +535,12 @@ void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
       group, I->getDilation());
 }
 
+void BoundInterpreterFunction::fwdConcatInst(const ConcatInst *I) {
+  (void)I;
+  // TODO
+  llvm_unreachable("not yet implemented");
+}
+
 void BoundInterpreterFunction::fwdConvolutionGradInst(
     const ConvolutionGradInst *I) {
   auto inW = getWeightHandle(I->getSrc());

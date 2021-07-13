@@ -15,8 +15,8 @@
  */
 
 #include "glow/Graph/FXIRUtils.h"
-#include "glow/IR/Instrs.h"
 
+#include "glow/Graph/FXIRWrapper.h"
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
