@@ -67,10 +67,10 @@ Which includes the following virtual methods they can override:
   - This function takes an operator `Node *node` and returns the layout requirements of the Nth result `n`.
 
 - ```
-virtual bool isSatisfiedBy(TypeRef ty,
+  virtual bool isSatisfiedBy(TypeRef ty,
                                const TensorLayoutDescription &destLayout,
                                const TensorLayoutDescription *srcLayout) const
-                               ```
+  ```
 	- This function checks if `ty` satisfies `destLayout` layout requirements, if `srcLayout` is provided for `ty`, take that into account.
 
 - `virtual llvm::ArrayRef<TensorLayoutDescription> getLayoutsForDims() const`
