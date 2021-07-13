@@ -14065,27 +14065,6 @@ TEST_P(OperatorTest, HardSigmoid_BFloat16) {
   testHardSigmoid<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
 }
 
-/*
-TEST_P(OperatorTest, HardSigmoid_Float) {
-  CHECK_IF_ENABLED();
-  constexpr dim_t size = 5;
-  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input",
-false); bindings_.allocate(input)->getHandle<float>() = {-3, -1, 0.0, 1, 3};
-  auto *node = F_->createHardSigmoid("hardsigmoid", input, 0.2, 0.5);
-  auto *save = F_->createSave("save", node);
-  auto *outT = bindings_.allocate(save->getPlaceholder());
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
-  auto outH = outT->getHandle<float>();
-  EXPECT_EQ(outH.size(), 5);
-  EXPECT_FLOAT_EQ(outH.raw(0), 0.0);
-  EXPECT_FLOAT_EQ(outH.raw(1), 0.3);
-  EXPECT_FLOAT_EQ(outH.raw(2), 0.5);
-  EXPECT_FLOAT_EQ(outH.raw(3), 0.7);
-  EXPECT_FLOAT_EQ(outH.raw(4), 1.0);
-}
-*/
-
 /// Helper to test Swish using \p DTy.
 template <typename DataType>
 static void testSwish(glow::PlaceholderBindings &bindings, glow::Module &mod,
