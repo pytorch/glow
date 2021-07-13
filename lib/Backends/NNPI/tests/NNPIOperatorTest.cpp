@@ -84,7 +84,9 @@ struct BlacklistInitializer {
       {"IntGemm/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Float/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION < 7
       {"CumSum_Int32/0", TestBlacklist::AnyDeviceSWEngine},
+#endif // NNPI < 1.7
       {"CumSum_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Exclusive/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum_Reverse/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -125,11 +127,13 @@ struct BlacklistInitializer {
       {"CumSum3D_bfloat16_t_Dim0/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum3D_bfloat16_t_Dim1/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum3D_bfloat16_t_Dim2/0", TestBlacklist::AnyDeviceAnyEngine},
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION < 7
       {"CumSum2D_int32_t_Dim0/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum2D_int32_t_Dim1/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum3D_int32_t_Dim0/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum3D_int32_t_Dim1/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CumSum3D_int32_t_Dim2/0", TestBlacklist::AnyDeviceAnyEngine},
+#endif // NNPI < 1.7
       {"LayerNorm_Int8_With_Float_Scale_Bias/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"LayerNorm_BFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -229,6 +233,14 @@ struct BlacklistInitializer {
       {"testQuantizedBatchAdd_Int8/0", TestBlacklist::AnyDeviceAnyEngine},
       {"testQuantizedBatchAdd_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"testQuantizedBatchMul_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"ArithAdd_int32_t/0", TestBlacklist::AnyDeviceSWEngine},
+      {"ArithDiv_int32_t/0", TestBlacklist::AnyDeviceSWEngine},
+      {"ArithMax_int32_t/0", TestBlacklist::AnyDeviceSWEngine},
+      {"ArithMin_int32_t/0", TestBlacklist::AnyDeviceSWEngine},
+      {"ArithMul_int32_t/0", TestBlacklist::AnyDeviceSWEngine},
+      {"ArithSub_int32_t/0", TestBlacklist::AnyDeviceSWEngine},
+      {"add_int32/0", TestBlacklist::AnyDeviceSWEngine},
+      {"mul_int32/0", TestBlacklist::AnyDeviceSWEngine},
       {"ArithAdd_int64_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ArithMax_int64_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ArithMin_int64_t/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -246,7 +258,12 @@ struct BlacklistInitializer {
       {"FloorDiv_Trunc_Int32ITy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"FloorDiv_Trunc_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ArithFmod_float/0", TestBlacklist::AnyDeviceAnyEngine},
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
+      {"ArithFmod_int32_t/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"ArithFmod_int64_t/0", TestBlacklist::AnyDeviceAnyEngine},
+#else
       {"ArithFmod_float16_t/0", TestBlacklist::AnyDeviceAnyEngine},
+#endif // NNPI >= 1.7
       {"ArithFmod_bfloat16_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BasicFmodNetFloatVsFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BasicFmodNetFloatVsBFloat16/0", TestBlacklist::AnyDeviceAnyEngine},

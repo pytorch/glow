@@ -438,6 +438,7 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
         // If PH is static treat like a constant.
         if (ph->isStatic()) {
           ret.constMemSize += size;
+          ret.deferredConstMemSize += size;
         } else {
           // PlaceHolder for Input.
           ret.inMemSize += size;
@@ -511,6 +512,7 @@ GraphMemInfo getFunctionMemory(Function *func) {
   for (auto &place : func->findPlaceholders()) {
     if (place->isStatic()) {
       graphMem.constMemSize += place->getType()->getSizeInBytes();
+      graphMem.deferredConstMemSize += place->getType()->getSizeInBytes();
     } else {
       if (isInput(place, *func)) {
         graphMem.inMemSize += place->getType()->getSizeInBytes();
@@ -563,7 +565,13 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
               << "\t\t\t output size:\t"
               << partitions.getGraphMemInfo(subF).outMemSize << "\n"
               << "\t\t\t constant size:\t"
-              << partitions.getGraphMemInfo(subF).constMemSize << "\n";
+              << partitions.getGraphMemInfo(subF).constMemSize << "\n"
+              << "\t\t\t\t non-deferred constant size:\t"
+              << partitions.getGraphMemInfo(subF).constMemSize -
+                     partitions.getGraphMemInfo(subF).deferredConstMemSize
+              << "\n"
+              << "\t\t\t\t deferred constant size:\t"
+              << partitions.getGraphMemInfo(subF).deferredConstMemSize << "\n";
     // This may be called before logicalDevices are assigned so check before
     // printing.
     if (partitions.getLogicalDeviceIDList(subF).size()) {
