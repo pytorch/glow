@@ -505,6 +505,18 @@ int main(int argc, char **argv) {
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
+  BB.newInstr("FusedRowwiseQuantizedSparseLengthsSum")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Lengths", OperandKind::In)
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int32ITy"});
+
   BB.newInstr("EmbeddingBagByteRowwiseOffsets")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
