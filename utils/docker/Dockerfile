@@ -14,7 +14,8 @@ RUN apt-get update && \
         libdouble-conversion-dev libevent-dev libssl-dev libgflags-dev \
         libjemalloc-dev libpthread-stubs0-dev \
         # Additional dependencies
-        git python-numpy && \
+        git python-numpy \
+        ocl-icd-opencl-dev ocl-icd-libopencl1 opencl-headers clinfo && \
     # Delete outdated llvm to avoid conflicts
     apt-get autoremove -y llvm-6.0 && \
     apt-get clean && \
