@@ -5646,6 +5646,11 @@ void BoundInterpreterFunction::
   }
 }
 
+void BoundInterpreterFunction::fwdFusedRowwiseQuantizedSparseLengthsSumInst(
+    const FusedRowwiseQuantizedSparseLengthsSumInst *I) {
+  llvm_unreachable("Not supported");
+}
+
 template <typename T, typename AccumT>
 void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
     const EmbeddingBagByteRowwiseOffsetsInst *I) {
