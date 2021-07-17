@@ -1293,21 +1293,34 @@ bool FoldDilatedConv::run(Function *F, const CompilationContext &cctx) {
     }
 
     // 4. Convolution.
+    llvm::StringRef name;
+    llvm::ArrayRef<unsigned_t> kernels, strides, pads, dilation;
+    NodeValue convInput, convResult;
+    auto getConvParams = [&](auto *N) -> bool {
+      if (!N || !N->hasOneUse()) {
+        return false;
+      }
+      name = N->getName();
+      kernels = N->getKernels();
+      strides = N->getStrides();
+      pads = N->getPads();
+      dilation = N->getDilation();
+      convInput = N->getInput();
+      convResult = N->getResult();
+      return true;
+    };
     auto *CN = dyn_cast<ConvolutionNode>(T1->getInput());
-    if (!CN || !CN->hasOneUse()) {
+    auto *CQCN = dyn_cast<ChannelwiseQuantizedConvolutionNode>(T1->getInput());
+    if (!getConvParams(CN) && !getConvParams(CQCN)) {
       continue;
     }
-    llvm::StringRef name = CN->getName();
-    auto kernels = CN->getKernels();
-    auto strides = CN->getStrides();
-    auto pads = CN->getPads();
     if (!isUniformArray(strides, 1u) || !isUniformArray(pads, 0u) ||
-        !isUniformArray(CN->getDilation(), 1u)) {
+        !isUniformArray(dilation, 1u)) {
       continue;
     }
 
     // 5. Transpose CHWN2NHWC.
-    auto *T2 = dyn_cast<TransposeNode>(CN->getInput());
+    auto *T2 = dyn_cast<TransposeNode>(convInput);
     if (!T2 || T2->getShuffle() != llvm::makeArrayRef(CHWN2NHWC)) {
       continue;
     }
@@ -1332,14 +1345,25 @@ bool FoldDilatedConv::run(Function *F, const CompilationContext &cctx) {
     auto outHW = calculateConvPoolOutputDims(
         trOutDims[1], trOutDims[2], kernels, strides, pads, {block, block});
     auto convOutTy = F->getParent()->uniqueTypeWithNewShape(
-        CN->getResult().getType(),
-        {trOutDims[0], outHW.first, outHW.second, CN->getResult().dims()[3]});
-    auto *newCN = F->createConv(name, newT1->getResult(), CN->getFilter(),
-                                CN->getBias(), convOutTy, kernels, strides,
-                                pads, CN->getGroup(), {block, block});
+        convResult.getType(),
+        {trOutDims[0], outHW.first, outHW.second, convResult.dims()[3]});
+    Node *newCN;
+    if (CN) {
+      newCN = F->createConv(name, newT1->getResult(), CN->getFilter(),
+                            CN->getBias(), convOutTy, kernels, strides, pads,
+                            CN->getGroup(), {block, block});
+    } else if (CQCN) {
+      newCN = F->createChannelwiseQuantizedConv(
+          name, newT1->getResult(), CQCN->getFilter(), CQCN->getBias(),
+          CQCN->getFilterScales(), CQCN->getFilterOffsets(),
+          CQCN->getBiasScales(), CQCN->getBiasOffsets(), convOutTy, kernels,
+          strides, pads, CQCN->getGroup(), {block, block}, false, false);
+    } else {
+      llvm_unreachable("Convolution must be in the pattern");
+    }
 
-    auto *newT2 = F->createTranspose(name.str() + "_nhwc2chwn",
-                                     newCN->getResult(), NHWC2CHWN);
+    auto *newT2 =
+        F->createTranspose(name.str() + "_nhwc2chwn", newCN, NHWC2CHWN);
 
     idim = newT2->getResult().dims();
     odim = {idim[0], idim[1] / block, block, idim[2] / block, block, idim[3]};
