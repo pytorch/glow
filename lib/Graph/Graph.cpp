@@ -1285,13 +1285,23 @@ SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input,
   return createSwish(name, OT, input);
 }
 
-HardSigmoidNode *Function::createHardSigmoid(llvm::StringRef name,
+ClipNode *Function::createHardSigmoid(llvm::StringRef name,
                                              TypeRef outTy, NodeValue input,
                                              float alpha, float beta) {
-  return addNode(new HardSigmoidNode(name, outTy, input, alpha, beta));
+  auto ty = input.getType();
+
+  // max(0, min(1, alpha * x + beta))
+  auto *alphaSplat =
+      createSplat(name.str() + ".alpha", ty, alpha);
+  auto *betaSplat = createSplat(name.str() + ".beta", ty, beta);
+
+  auto *mul = createMul(name.str() + ".mul", alphaSplat, input);
+  auto *add = createAdd(name.str() + ".add", mul, betaSplat);
+
+  return createClip(name.str() + ".clip", add, outTy, 0, 1);
 }
 
-HardSigmoidNode *Function::createHardSigmoid(llvm::StringRef name,
+ClipNode *Function::createHardSigmoid(llvm::StringRef name,
                                              NodeValue input, float alpha,
                                              float beta) {
   return createHardSigmoid(name, input.getType(), input, alpha, beta);

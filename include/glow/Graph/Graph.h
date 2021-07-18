@@ -801,12 +801,12 @@ public:
 
   /// Create a HardSigmoid node with the given \p name, \p input, \p alpha and
   /// \p beta. Result type will be implicitly set based on the \p input type.
-  HardSigmoidNode *createHardSigmoid(llvm::StringRef name, NodeValue input,
+  ClipNode *createHardSigmoid(llvm::StringRef name, NodeValue input,
                                      float alpha, float beta);
 
   /// Create a HardSigmoid node with the given \p name, \p input,
   /// \p alpha, \p beta and output type \p outTy.
-  HardSigmoidNode *createHardSigmoid(llvm::StringRef name, TypeRef outTy,
+  ClipNode *createHardSigmoid(llvm::StringRef name, TypeRef outTy,
                                      NodeValue input, float alpha, float beta);
 
   /// Create a Tanh node with the given \p name, \p input and

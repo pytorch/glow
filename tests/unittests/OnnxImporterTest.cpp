@@ -964,11 +964,11 @@ TEST_F(OnnxImporterTest, hardsigmoid) {
   }
 
   auto *save = getSaveNodeFromDest(output);
-  HardSigmoidNode *LR =
-      llvm::dyn_cast<HardSigmoidNode>(save->getInput().getNode());
+  ClipNode *LR =
+      llvm::dyn_cast<ClipNode>(save->getInput().getNode());
   ASSERT_TRUE(LR);
-  EXPECT_FLOAT_EQ(LR->getAlpha(), 0.1666666667);
-  EXPECT_FLOAT_EQ(LR->getBeta(), 0.500000001);
+  EXPECT_FLOAT_EQ(LR->getMax(), 1.0);
+  EXPECT_FLOAT_EQ(LR->getMin(), 0.0);
 }
 
 /// Helper method to run the Conv operator test cases.
