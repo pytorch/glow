@@ -1285,14 +1285,13 @@ SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input,
   return createSwish(name, OT, input);
 }
 
-ClipNode *Function::createHardSigmoid(llvm::StringRef name,
-                                             TypeRef outTy, NodeValue input,
-                                             float alpha, float beta) {
+ClipNode *Function::createHardSigmoid(llvm::StringRef name, TypeRef outTy,
+                                      NodeValue input, float alpha,
+                                      float beta) {
   auto ty = input.getType();
 
   // max(0, min(1, alpha * x + beta))
-  auto *alphaSplat =
-      createSplat(name.str() + ".alpha", ty, alpha);
+  auto *alphaSplat = createSplat(name.str() + ".alpha", ty, alpha);
   auto *betaSplat = createSplat(name.str() + ".beta", ty, beta);
 
   auto *mul = createMul(name.str() + ".mul", alphaSplat, input);
@@ -1301,9 +1300,8 @@ ClipNode *Function::createHardSigmoid(llvm::StringRef name,
   return createClip(name.str() + ".clip", add, outTy, 0, 1);
 }
 
-ClipNode *Function::createHardSigmoid(llvm::StringRef name,
-                                             NodeValue input, float alpha,
-                                             float beta) {
+ClipNode *Function::createHardSigmoid(llvm::StringRef name, NodeValue input,
+                                      float alpha, float beta) {
   return createHardSigmoid(name, input.getType(), input, alpha, beta);
 }
 

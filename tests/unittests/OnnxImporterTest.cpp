@@ -964,8 +964,7 @@ TEST_F(OnnxImporterTest, hardsigmoid) {
   }
 
   auto *save = getSaveNodeFromDest(output);
-  ClipNode *LR =
-      llvm::dyn_cast<ClipNode>(save->getInput().getNode());
+  ClipNode *LR = llvm::dyn_cast<ClipNode>(save->getInput().getNode());
   ASSERT_TRUE(LR);
   EXPECT_FLOAT_EQ(LR->getMax(), 1.0);
   EXPECT_FLOAT_EQ(LR->getMin(), 0.0);
