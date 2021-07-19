@@ -227,7 +227,10 @@ public:
   /// Whethere to enable DAG optimizer
   bool use_dag_optimizer = false;
   /// Additional parameters to DAG optimizer
-  std::string apl_parallelization_alg = "ParallelizeCVHeuristicData";
+  /// Keep algorithm default empty as only some of the algorithms may be
+  /// required.
+  std::string apl_parallelization_alg = "";
+  std::string apl_placement_alg = "";
   int32_t apl_num_parallel_chunks = 2;
 
   // Serialize GlowIR into ONNX txt file during warmCache, this file can be
@@ -257,6 +260,12 @@ public:
   int64_t sparseNNPartitioningSchemeSLSTableKBytesPerCard = 1;
   int32_t SparseNNPartitioningSchemeNumCoresSLS = 1;
   int32_t SparseNNPartitioningSchemeNumCoresOther = 1;
+
+  // Enables Peer to Peer Tensor optimization
+  bool enableP2P = false;
+
+  // Enables Device Resident Tensor optimization
+  bool enableDRT = false;
 };
 
 /// Represents different possible output types from to_glow modules.

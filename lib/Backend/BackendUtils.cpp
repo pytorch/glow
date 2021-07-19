@@ -20,6 +20,7 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include "glow/Graph/FXIRWrapper.h"
 #include <glog/logging.h>
 
 #define DEBUG_TYPE "backend-utils"
@@ -104,6 +105,49 @@ void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
     memcpy(constants_ + info.offset, payload, info.size);
   }
 }
+
+#if FACEBOOK_INTERNAL
+void glow::runtime::RuntimeBundle::collectConstants(const FXIRWrapper *F) {
+  DCHECK(isValid_);
+
+  // At compile time condense constants to a single block of memory.
+  // This allows the graph to go away after compile time.
+  // If there are no constants return nullptr.
+  if (constantWeightVarsMemSize_ == 0) {
+    constants_ = nullptr;
+    return;
+  }
+
+  assert(constants_ == nullptr && "constants already allocated");
+  constants_ =
+      (uint8_t *)alignedAlloc(constantWeightVarsMemSize_, TensorAlignment);
+
+  for (const auto &symbol : symbolTable_) {
+    llvm::StringRef name = symbol.first;
+    const RuntimeSymbolInfo &info = symbol.second;
+
+    // Only work with constants/weights here.
+    auto category = info.symbolCategory;
+    if (category != glow::runtime::SymbolCategory::Constant) {
+      continue;
+    }
+
+    auto mapToConstants = F->getMapNodeNameToStorage();
+    assert(mapToConstants.find(name.str()) != mapToConstants.end());
+    const auto *wt = mapToConstants[name.str()];
+    const auto *c = llvm::dyn_cast<const Constant>(wt);
+    if (!c) {
+      continue;
+    }
+    auto *payload = c->getPayload().getUnsafePtr();
+    assert(info.size == c->getPayload().getSizeInBytes() &&
+           "Mismatched constant size");
+
+    // Copy weight to offset.
+    memcpy(constants_ + info.offset, payload, info.size);
+  }
+}
+#endif
 
 size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
   DCHECK(isValid_);

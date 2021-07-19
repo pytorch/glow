@@ -323,6 +323,7 @@ private:
   // Shape inference for fb::equally_split
   static Expected<TensorListOutput>
   equallySplit(const MetaStack &variableMetas);
+  static Expected<TensorOutput> squeeze(const MetaStack &variableMetas);
 };
 
 } // namespace glow

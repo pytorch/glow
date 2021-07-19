@@ -880,12 +880,18 @@ public:
                            llvm::ArrayRef<NodeValue> inputs,
                            unsigned_t dimension, TypeRef outTy);
 
-  /// Create a quantized TileNode with \p name, \p input, \p tiles, and \p axis.
+  /// Create a TileNode with \p name, \p input, \p tiles, and \p axis.
   /// For example, an input tensor {{1,2,3,4}} of dimension 1x4 with tiles = 2
   /// and axis = 0 would result in an output tensor {{1,2,3,4}, {1,2,3,4}} of
   /// dimension 2x4.
   TileNode *createTile(llvm::StringRef name, NodeValue input, unsigned_t tiles,
                        unsigned_t axis, TypeRef outTy = nullptr);
+
+  /// Create a TileNode with \p name, \p input which repeats the input data
+  /// the given count values \p tiles along the given \p axes.
+  TileNode *createTile(llvm::StringRef name, NodeValue input,
+                       llvm::ArrayRef<unsigned_t> tiles,
+                       llvm::ArrayRef<unsigned_t> axes);
 
   /// Create an insert tensor node \p name, which inserts \p small into \p big
   /// at offset into big \p start \p count times along \p axis.
@@ -965,6 +971,16 @@ public:
       llvm::StringRef name, TypeRef resType, NodeValue input, NodeValue beta,
       NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx = 0,
       float epsilon = 1e-5, float momentum = 0.9);
+
+  /// Create and \returns an InstanceNormalizationNode with result type of \p
+  /// outTy that computes the instance normalization of \p input based on the \p
+  /// scale and \p bias combined with the computed mean and stddev of each
+  /// batch. \p epsilon is a small perterbation used to avoid division by 0
+  /// during normalization.
+  InstanceNormalizationNode *
+  createInstanceNormalization(llvm::StringRef name, NodeValue input,
+                              NodeValue beta, NodeValue scale,
+                              unsigned_t channelIdx = 0, float epsilon = 1e-5);
 
   /// Creates and \returns a LayerNormalizationNode with result type of \p outTy
   /// that computes the layer normalization of the inner most layers of \p input

@@ -1087,7 +1087,7 @@ runtime::generateDeviceConfigs(unsigned int numDevices,
     if (glow::flags::ScanDevices) {
       const auto &factories =
           FactoryRegistry<std::string, Backend>::factories();
-      auto it = factories.find(backendName);
+      auto it = factories.find(backendName.str());
       if (it != factories.end()) {
         available_device_ids = it->second->scanDeviceIDs();
       }

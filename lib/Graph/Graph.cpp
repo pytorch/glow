@@ -1557,6 +1557,22 @@ TileNode *Function::createTile(llvm::StringRef name, NodeValue input,
   return addNode(new TileNode(name, outTy, input, tiles, axis));
 }
 
+TileNode *Function::createTile(llvm::StringRef name, NodeValue input,
+                               llvm::ArrayRef<unsigned_t> tiles,
+                               llvm::ArrayRef<unsigned_t> axes) {
+  assert(tiles.size() && "The array of tiles is empty!");
+  assert(axes.size() && "The array of axes is empty!");
+  assert(tiles.size() == axes.size() &&
+         "The array for tiles and axes must be equal!");
+  TileNode *tileNode = nullptr;
+  for (size_t idx = 0; idx < tiles.size(); ++idx) {
+    tileNode = createTile(name.str() + "." + std::to_string(idx),
+                          tileNode ? tileNode->getResult() : input, tiles[idx],
+                          axes[idx]);
+  }
+  return tileNode;
+}
+
 InsertTensorNode *Function::createInsertTensor(llvm::StringRef name,
                                                NodeValue big, NodeValue small,
                                                llvm::ArrayRef<dim_t> start,
@@ -1731,6 +1747,14 @@ BatchNormalizationNode *Function::createBatchNormalization(
   return addNode(new BatchNormalizationNode(name, resType, input, scale, beta,
                                             mean, var, channelIdx, epsilon,
                                             momentum));
+}
+
+InstanceNormalizationNode *
+Function::createInstanceNormalization(llvm::StringRef name, NodeValue input,
+                                      NodeValue beta, NodeValue scale,
+                                      unsigned_t channelIdx, float epsilon) {
+  return addNode(new InstanceNormalizationNode(name, input, scale, beta,
+                                               channelIdx, epsilon));
 }
 
 LayerNormalizationNode *
