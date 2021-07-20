@@ -1143,6 +1143,12 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorDimT, "Offsets");
 
+  // TODO: Rename "BatchDims" member to "Axis". This was attempted in #5565 but
+  // some internal FB tests failed. The member needs to be renamed because that
+  // is the true meaning of the member and that is what the implementation does
+  // according to both Caffe2, ONNX and TFLite operator definitions.
+  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#gather
+  // https://www.tensorflow.org/mlir/tfl_ops#tflgather_tflgatherop
   BB.newInstr("Gather")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
@@ -1155,6 +1161,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
+      .addMember(MemberType::Unsigned, "BatchDims")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
       .autoIRGen();
 

@@ -1674,18 +1674,27 @@ public:
       std::vector<NodeValue> &roiProbsIn, int64_t rpnMaxLevel,
       int64_t rpnMinLevel, unsigned_t rpnPostNmsTopN);
 
-  /// Gathers entries of the outer-most dimension of \p data indexed by
-  /// \p indices, and concatenates them. A non-zero \p batchDims specifies the
-  /// batch, and the result is the concatenation of the operation on each sample
-  /// in the batch.
+  /// Given \p data tensor of rank r >= 1, and \p indices tensor of rank q,
+  /// gather entries of the \p axis dimension of data (default outer-most for
+  /// axis = 0) indexed by indices and concatenate them in the output tensor of
+  /// rank q + (r - 1).
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#gather
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
-                           NodeValue indices, unsigned_t batchDims = 0);
+                           NodeValue indices, unsigned_t axis = 0);
 
   /// Given \p data tensor of rank r >= 1, \p indices tensor of rank q >= 1,
-  /// and batch_dims integer b, this operator gathers slices of data
+  /// and \p batchDims integer b, this operator gathers slices of data
   /// into an output tensor of rank q + r - indices_shape[-1] - 1 - b.
+  /// \p indices is a q-dimensional integer tensor, best thought of as a (q-1)
+  /// dimensional tensor of index-tuples into \p data, where each element
+  /// defines a slice of data.
+  /// \p batchDims is an integer b indicating the number of batch dimensions,
+  /// that is the leading number of dimensions of \p data tensor and
+  /// \p indices that are representing the batches such that the gather starts
+  /// from the b+1 dimension.
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#gathernd
   GatherNDNode *createGatherND(llvm::StringRef name, NodeValue data,
-                               NodeValue indices);
+                               NodeValue indices, unsigned_t batchDims = 0);
 
   /// Create a node, performing GatherElements operation:
   /// GatherElements takes inputs \p data and indices of the same rank r >=
