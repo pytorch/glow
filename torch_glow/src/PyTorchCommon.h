@@ -227,8 +227,10 @@ public:
   /// Whethere to enable DAG optimizer
   bool use_dag_optimizer = false;
   /// Additional parameters to DAG optimizer
-  std::string apl_parallelization_alg = "ParallelizeCVHeuristicData";
-  std::string apl_placement_alg = "ListSchedulingNonSLSOnly";
+  /// Keep algorithm default empty as only some of the algorithms may be
+  /// required.
+  std::string apl_parallelization_alg = "";
+  std::string apl_placement_alg = "";
   int32_t apl_num_parallel_chunks = 2;
 
   // Serialize GlowIR into ONNX txt file during warmCache, this file can be

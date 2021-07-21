@@ -43,6 +43,8 @@ struct GraphMemInfo {
   // Count of inputs to the graph that are coming from a peer graph, i.e. are
   // the output of another graph, and not inputs to the original input model.
   unsigned inputFromPeerCount{0};
+  // The memory usage of only deferred constants used in this subgraph.
+  uint64_t deferredConstMemSize{0};
 
   GraphMemInfo()
       : inMemSize(0), outMemSize(0), constMemSize(0), contextCount(1){};
