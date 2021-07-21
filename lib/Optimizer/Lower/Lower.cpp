@@ -1352,14 +1352,16 @@ static void lowerTileNode(Function *F, CompilationContext &cctx,
                           const TileNode &TN) {
   LOG_SCOPE(F->getLogContext(), "lowerTileNode")
 
-  auto input = TN.getInput();
+  auto small = TN.getInput();
 
-  // Use a zero splat as the Big node input for InsertTensor.
-  auto *zero = F->createSplat("zero", TN.getResult().getType(), 0);
+  // No need to initialize the Big node input for InsertTensor with any specific
+  // value (e.g. using a splat) as this tensor will be completely overwriten
+  // with the copies of the 'small' tensor.
+  auto *big = F->createTouch("init", TN.getResult().getType());
   // Insert at the beginning of the splat.
-  auto start = std::vector<dim_t>(input.dims().size(), 0);
+  auto start = std::vector<dim_t>(small.dims().size(), 0);
 
-  auto *IN = F->createInsertTensor(TN.getName(), zero, input, start,
+  auto *IN = F->createInsertTensor(TN.getName(), big, small, start,
                                    TN.getCount(), TN.getAxis());
   replaceAllUsesOfWith(cctx.loweredInfoMap, TN.getResult(), IN);
 }

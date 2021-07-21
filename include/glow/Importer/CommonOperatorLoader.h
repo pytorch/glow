@@ -1333,13 +1333,12 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
     NodeValue indices;
     ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
-    size_t batchDims = typeName == "Gather" ? 0 : 1;
+    size_t axis = typeName == "Gather" ? 0 : 1;
 
     if (dict.count("axis")) {
-      int axis;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          axis, loadAxis<int>(dict.find("axis")->second, data.dims().size()));
-      batchDims = axis;
+          axis,
+          loadAxis<size_t>(dict.find("axis")->second, data.dims().size()));
     }
 
     if (indices.getElementType() != ElemKind::Int64ITy &&
@@ -1352,7 +1351,7 @@ protected:
           G_->getParent()->uniqueType(ElemKind::Int32ITy, indices.dims()));
     }
 
-    auto *GN = G_->createGather(loadOperatorName(op), data, indices, batchDims);
+    auto *GN = G_->createGather(loadOperatorName(op), data, indices, axis);
     RETURN_IF_ERR(addNodeAsOutput(op, GN));
     return Error::success();
   }

@@ -93,6 +93,12 @@ bool removeGraphRunnerForKey(const std::string &key) {
   return true;
 }
 
+void clearGraphRunners() {
+  auto &preloadedRunners = getPreloadedRunnerMap();
+  std::unique_lock<std::shared_timed_mutex> wlock(runnerMapMutex);
+  preloadedRunners.clear();
+}
+
 int findIndex(const torch::jit::Node *node) {
   auto g = node->owningGraph();
   auto kind = node->kind();

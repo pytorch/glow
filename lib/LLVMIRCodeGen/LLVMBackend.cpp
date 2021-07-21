@@ -323,6 +323,14 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
            ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
             (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
 
+  case Kinded::Kind::GatherNDNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
+                ElemKind::Int32ITy},
+               {GatherNDNode::IndicesIdx}) &&
+           ((NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int32ITy) ||
+            (NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int64ITy));
+
   case Kinded::Kind::GatherRangesNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
