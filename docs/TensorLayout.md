@@ -67,18 +67,18 @@ Which includes the following virtual methods they can override:
   - This function takes an operator `Node *node` and returns the layout requirements of the Nth result `n`.
 
 - ```
-virtual bool isSatisfiedBy(TypeRef ty,
+  virtual bool isSatisfiedBy(TypeRef ty,
                                const TensorLayoutDescription &destLayout,
                                const TensorLayoutDescription *srcLayout) const
-                               ```
-	- This function checks if `ty` satisfies `destLayout` layout requirements, if `srcLayout` is provided for `ty`, take that into account.
+  ```
+   - This function checks if `ty` satisfies `destLayout` layout requirements, if `srcLayout` is provided for `ty`, take that into account.
 
 - `virtual llvm::ArrayRef<TensorLayoutDescription> getLayoutsForDims() const`
 
   - This helper function returns an array of predefined layouts for all dimensions from `0-D` to Glow's max tensor layout dimension.
 
 - `bool isEnabled() const`
-	- Indicates whatever checking for layout requirements is enabled or not. default is off.
+   - Indicates whatever checking for layout requirements is enabled or not. default is off.
 
 An example of why backends may want to override such methods can be seen in the `OpenCL` backend:
 Convolutions are more efficient in `NCHW` format, as such, we may lower a `ConvolutionNode`
@@ -192,7 +192,7 @@ extendable enum that can be used in the backends without touching the generic co
 Some operations, such as `TransposeNode`, have a shuffle that tells them what to do.
 This can be deprecated and automatically deduced by specifying layout constraints.
 
-There is some discrepancy is the fact that with currently use both typed tensor, 
+There is some discrepancy is the fact that with currently use both typed tensor,
 with named dimensions, and explicitly indexed dimensions like we currently do
 everywhere in the code base, shuffle arrays being an example of that, This
 may lead to potential inconsistency in certain cases.

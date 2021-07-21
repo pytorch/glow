@@ -108,6 +108,12 @@ createDefaultGraphOptimizationPassPipeline() {
       // Merge ReduceMean into AveragePool if possible.
       {FunctionPassID::OptimizeReduceMean},
 
+      // Optimize Resize nodes.
+      {FunctionPassID::OptimizeResize},
+
+      // Optimize Insert nodes.
+      {FunctionPassID::OptimizeInsert},
+
       // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
       {FunctionPassID::ConvertBroadcastedBatchMatMul},
 
@@ -166,6 +172,10 @@ createDefaultGraphOptimizationPassPipeline() {
 
       // Optimize combinations of Quantized Nodes and Clips.
       {FunctionPassID::OptimizeQuantizeClip},
+
+      // Remove identity Relu and Clip nodes.
+      {FunctionPassID::RemoveIdentityRelu},
+      {FunctionPassID::RemoveIdentityClip},
 
       // Fold a Convolution dilated manually using Transpose, SpaceToDepth and
       // DepthToSpace nodes into a single Convolution node.

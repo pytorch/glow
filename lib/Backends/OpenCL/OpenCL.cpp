@@ -1491,7 +1491,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
-      unsigned_t batchDims = GI->getBatchDims();
+      unsigned_t axis = GI->getBatchDims();
 
       auto *data = GI->getData();
 
@@ -1499,9 +1499,9 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       size_t numIndices = GI->getIndices()->size();
 
       // The size of the sample in the batch.
-      size_t sliceSize = dataType->getSliceSize(batchDims + 1);
+      size_t sliceSize = dataType->getSliceSize(axis + 1);
       // The size of the slices that we gather.
-      size_t srcSampleSize = dataType->getSliceSize(batchDims);
+      size_t srcSampleSize = dataType->getSliceSize(axis);
       // The size of the slices that we pack.
       size_t destSampleSize = numIndices * sliceSize;
       // The size of each sample in the batch.
@@ -1785,6 +1785,7 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
 bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::SplatNodeKind:
+  case Kinded::Kind::TouchNodeKind:
   case Kinded::Kind::TransposeNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy});
