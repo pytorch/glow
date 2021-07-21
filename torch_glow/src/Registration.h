@@ -53,6 +53,9 @@ getGraphRunnerForKey(const std::string &key);
 /// no CachingGraphRunner was registered for the given key, true otherwise.
 bool removeGraphRunnerForKey(const std::string &key);
 
+/// Clear all existing CachingGraphRunner instances in the preloaded table
+void clearGraphRunners();
+
 /// Custom op registration needs to happen before Glow fusion since AliasDB
 /// needs to be able to recognize each registered op/node. If there are multiple
 /// graphs then it's hard to know how many node kinds we need. It's probably not
