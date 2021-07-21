@@ -2603,6 +2603,52 @@ bool FoldMatMulAddIntoFullyConnected::run(Function *F,
   return changed;
 }
 
+/// Convert MatMul into FullyConnected with null bias. This pass is used if
+/// we have an optimized implementation for FullyConnected but NOT for MatMul.
+/// Make sure you run this pass after the FoldMatMulAddIntoFullyConnected pass
+/// otherwise a MatMul followed by Add will be converted into a FullyConnected
+/// followed by Add and NOT a single FullyConnected instance.
+bool ConvertMatMulToFullyConnected::run(Function *F,
+                                        const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *matMulNode = dyn_cast<MatMulNode>(&node);
+    if (!matMulNode) {
+      continue;
+    }
+
+    // Create null bias.
+    Constant *bias = nullptr;
+    std::vector<dim_t> biasDims = {matMulNode->getResult().dims().back()};
+    std::string biasName = matMulNode->getName().str() + "bias";
+    if (matMulNode->getResult().getType()->isQuantizedType()) {
+      // Create null bias with offset 0 and a scale equal to the product
+      // between LHS scale and RHS scale.
+      float biasScale = matMulNode->getLHS().getType()->getScale() *
+                        matMulNode->getRHS().getType()->getScale();
+      int32_t biasOffset = 0;
+      ElemKind biasPrec = cctx.precisionConfig.quantConfig.precisionBias;
+      bias = F->getParent()->createConstant(biasPrec, biasDims, biasScale,
+                                            biasOffset, biasName);
+      bias->getPayloadMutable().zero();
+    } else {
+      // Create null FLOAT bias.
+      bias =
+          F->getParent()->createConstant(ElemKind::FloatTy, biasDims, biasName);
+      bias->getPayloadMutable().zero();
+    }
+
+    // Create a new FullyConnected node with null bias.
+    auto *newFC = F->createFullyConnected(
+        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(), bias,
+        matMulNode->getResult().getType());
+    matMulNode->getResult().replaceAllUsesOfWith(newFC);
+    changed = true;
+  }
+
+  return changed;
+}
+
 // Fold Add after ConvTranspose into ConvTranspose's bias, if such Add was a
 // broadcasted Add. Examine by looking into Tensor repetitions. Fold this:
 //

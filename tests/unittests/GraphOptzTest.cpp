@@ -6477,6 +6477,44 @@ TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnectedBatched) {
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
 }
 
+/// Test that MatMul is converted to FullyConnected for Int8QTy.
+TEST_F(GraphOptz, ConvertMatMulToFullyConnected_Int8QTy) {
+
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3}, 0.1f, -13,
+                                       "input", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5}, 0.2f, 15,
+                                         "weights", false);
+  MatMulNode *matmul = F_->createMatMul("matmul", input, weights);
+  F_->createSave("save", matmul);
+  EXPECT_EQ(2, F_->getNodes().size());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::ConvertMatMulToFullyConnected, getDCEPassConfig()});
+
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+  EXPECT_EQ(1,
+            countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind));
+}
+
+/// Test that MatMul is converted to FullyConnected for FloatTy.
+TEST_F(GraphOptz, ConvertMatMulToFullyConnected_FloatTy) {
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5}, "weights", false);
+  MatMulNode *matmul = F_->createMatMul("matmul", input, weights);
+  F_->createSave("save", matmul);
+  EXPECT_EQ(2, F_->getNodes().size());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::ConvertMatMulToFullyConnected, getDCEPassConfig()});
+
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+  EXPECT_EQ(1,
+            countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind));
+}
+
 /// Test that FoldSlicesIntoConstants pass works as expected.
 TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
   Constant *C = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "C");
