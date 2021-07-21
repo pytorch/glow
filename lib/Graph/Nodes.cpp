@@ -2580,7 +2580,7 @@ bool MFCCNode::verify() const {
   isValid &= expectCompareTrue(
       "Number of coefficients should be smaller than the filter bank count",
       dim_t(filterBankCount), dim_t(numCoefficients), this,
-      CompareOperatorGreaterThan<dim_t>());
+      CompareOperatorGreaterEqual<dim_t>());
   return isValid;
 }
 
