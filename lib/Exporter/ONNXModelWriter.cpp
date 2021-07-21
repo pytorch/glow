@@ -1894,10 +1894,10 @@ Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
 Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
-  auto batchDims = node->getBatchDims();
+  auto axis = node->getBatchDims();
 
-  if (batchDims != 0) {
-    addValueAttribute(proto, "axis", batchDims);
+  if (axis != 0) {
+    addValueAttribute(proto, "axis", axis);
     return writeAllWithNode("BatchGather", node, graph, proto);
   } else {
     return writeAllWithNode("Gather", node, graph, proto);

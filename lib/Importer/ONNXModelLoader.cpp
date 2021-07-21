@@ -2535,10 +2535,11 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
           coordTransformMode,
           loadStr(dict.at("coordinate_transformation_mode")));
     }
-    RETURN_ERR_IF_NOT(coordTransformMode == "asymmetric",
-                      opErrMsg(op,
-                               "Resize 'asymmetric' coordinate transformation "
-                               "mode supported only."));
+    RETURN_ERR_IF_NOT(
+        coordTransformMode == "asymmetric",
+        opErrMsg(op, strFormat("Resize 'asymmetric' coordinate transformation "
+                               "mode supported only, but found %s",
+                               coordTransformMode.c_str())));
 
     // If no scales tensor, sizes tensor should be valid.
     if (scalesC->getPayload().getHandle().size() == 0) {
@@ -2596,10 +2597,9 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
         (scales.size() >= 3 && scales.size() <= 6 && modeStr == "nearest") ||
             scales.size() == 4,
         opErrMsg(
-            op,
-            strFormat(
-                "UpSample Scales dimension invalid. Mode: %s Scale Size: %zu",
-                modeStr.c_str(), scales.size())));
+            op, strFormat(
+                    "Resize Scales dimension invalid. Mode: %s Scale Size: %zu",
+                    modeStr.c_str(), scales.size())));
 
     for (auto &val : scales) {
       RETURN_ERR_IF_NOT(
