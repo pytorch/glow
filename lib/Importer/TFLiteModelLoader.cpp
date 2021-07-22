@@ -140,11 +140,9 @@ void convertUint8ToInt8(const uint8_t *inpPtr, int8_t *outPtr, size_t numElem) {
 /// (kernel) size \p kernel \p stride, \p dilation and padding type \p padding.
 /// \returns a pair with the explicit padding values to be used for the input
 /// before and after the actual input data.
-std::pair<unsigned_t, unsigned_t> getConvPads(dim_t inputSize, dim_t outputSize,
-                                              unsigned_t kernel,
-                                              unsigned_t stride,
-                                              unsigned_t dilation,
-                                              tflite::Padding padding) {
+std::pair<unsigned_t, unsigned_t>
+getConvPads(dim_t inputSize, dim_t outputSize, unsigned_t kernel,
+            unsigned_t stride, unsigned_t dilation, tflite::Padding padding) {
   if (padding == tflite::Padding::Padding_VALID) {
     // For VALID padding we do not use padding.
     return std::pair<unsigned_t, unsigned_t>(0, 0);
@@ -153,9 +151,10 @@ std::pair<unsigned_t, unsigned_t> getConvPads(dim_t inputSize, dim_t outputSize,
     unsigned_t effKernel = (kernel - 1) * dilation + 1;
     // Compute the total padding size while saturating above 0.
     unsigned_t padTotal = (outputSize - 1) * stride + effKernel;
-    padTotal = std::max(padTotal, static_cast<unsigned_t>(inputSize)) - inputSize;
-    // We split the total padding evenly before/after. If the padding is odd then
-    // the "after" part gets the extra unit.
+    padTotal =
+        std::max(padTotal, static_cast<unsigned_t>(inputSize)) - inputSize;
+    // We split the total padding evenly before/after. If the padding is odd
+    // then the "after" part gets the extra unit.
     unsigned_t padBefore = padTotal / 2;
     unsigned_t padAfter = padTotal - padBefore;
     return std::pair<unsigned_t, unsigned_t>(padBefore, padAfter);
@@ -166,11 +165,8 @@ std::pair<unsigned_t, unsigned_t> getConvPads(dim_t inputSize, dim_t outputSize,
 /// Function used to compute the output size for convolution and pooling kernels
 /// for the given \p inputSize, \p kernel, \p stride, \p dilation, \p padding.
 /// This function is used to infer the output shape when not defined.
-dim_t getConvOutputSize(dim_t inputSize,
-                        unsigned_t kernel,
-                        unsigned_t stride,
-                        unsigned_t dilation,
-                        tflite::Padding padding) {
+dim_t getConvOutputSize(dim_t inputSize, unsigned_t kernel, unsigned_t stride,
+                        unsigned_t dilation, tflite::Padding padding) {
   if (padding == tflite::Padding::Padding_VALID) {
     // Effective dilated filter (kernel) size.
     unsigned_t effKernel = (kernel - 1) * dilation + 1;
@@ -1566,10 +1562,15 @@ Error TFLiteModelLoader::loadPool2D(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
   if (outShapeUndefined) {
     dim_t outN = input.dims()[0];
-    dim_t outH = getConvOutputSize(input.dims()[1], opts->filter_height(), opts->stride_h(), /* dilation */ 1, opts->padding());
-    dim_t outW = getConvOutputSize(input.dims()[2], opts->filter_width(), opts->stride_w(), /* dilation */ 1, opts->padding());
+    dim_t outH =
+        getConvOutputSize(input.dims()[1], opts->filter_height(),
+                          opts->stride_h(), /* dilation */ 1, opts->padding());
+    dim_t outW =
+        getConvOutputSize(input.dims()[2], opts->filter_width(),
+                          opts->stride_w(), /* dilation */ 1, opts->padding());
     dim_t outC = input.dims()[3];
-    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy, {outN, outH, outW, outC});
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy,
+                                                    {outN, outH, outW, outC});
   }
 
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
@@ -1584,9 +1585,12 @@ Error TFLiteModelLoader::loadPool2D(const tflite::Operator *op,
       static_cast<unsigned_t>(opts->stride_w()),
   };
 
-  auto padsTB = getConvPads(inputShape.h, outputShape.h, kernels[0], strides[0], /* dilation */ 1, opts->padding());
-  auto padsLR = getConvPads(inputShape.w, outputShape.w, kernels[1], strides[1], /* dilation */ 1, opts->padding());
-  std::vector<unsigned_t> pads = {padsTB.first, padsLR.first, padsTB.second, padsLR.second};
+  auto padsTB = getConvPads(inputShape.h, outputShape.h, kernels[0], strides[0],
+                            /* dilation */ 1, opts->padding());
+  auto padsLR = getConvPads(inputShape.w, outputShape.w, kernels[1], strides[1],
+                            /* dilation */ 1, opts->padding());
+  std::vector<unsigned_t> pads = {padsTB.first, padsLR.first, padsTB.second,
+                                  padsLR.second};
 
   auto opCode = opInfo.code;
   NodeValue output;
@@ -1668,10 +1672,15 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
   if (outShapeUndefined) {
     dim_t outN = input.dims()[0];
-    dim_t outH = getConvOutputSize(input.dims()[1], filter.dims()[1], opts->stride_h(), opts->dilation_h_factor(), opts->padding());
-    dim_t outW = getConvOutputSize(input.dims()[2], filter.dims()[2], opts->stride_w(), opts->dilation_w_factor(), opts->padding());
+    dim_t outH =
+        getConvOutputSize(input.dims()[1], filter.dims()[1], opts->stride_h(),
+                          opts->dilation_h_factor(), opts->padding());
+    dim_t outW =
+        getConvOutputSize(input.dims()[2], filter.dims()[2], opts->stride_w(),
+                          opts->dilation_w_factor(), opts->padding());
     dim_t outC = filter.dims()[0];
-    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy, {outN, outH, outW, outC});
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy,
+                                                    {outN, outH, outW, outC});
   }
 
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
@@ -1691,9 +1700,12 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
       static_cast<unsigned_t>(opts->dilation_w_factor()),
   };
 
-  auto padsTB = getConvPads(inputShape.h, outputShape.h, kernels[0], strides[0], dilations[0], opts->padding());
-  auto padsLR = getConvPads(inputShape.w, outputShape.w, kernels[1], strides[1], dilations[1], opts->padding());
-  std::vector<unsigned_t> pads = {padsTB.first, padsLR.first, padsTB.second, padsLR.second};
+  auto padsTB = getConvPads(inputShape.h, outputShape.h, kernels[0], strides[0],
+                            dilations[0], opts->padding());
+  auto padsLR = getConvPads(inputShape.w, outputShape.w, kernels[1], strides[1],
+                            dilations[1], opts->padding());
+  std::vector<unsigned_t> pads = {padsTB.first, padsLR.first, padsTB.second,
+                                  padsLR.second};
 
   // There are TensorFlowLite models which have only the weights quantized
   // to INT8 (the rest of the operands being FLOAT32). Since Glow does not
@@ -1757,8 +1769,12 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
   if (outShapeUndefined) {
     dim_t outN = input.dims()[0];
-    dim_t outH = getConvOutputSize(input.dims()[1], filter.dims()[1], opts->stride_h(), opts->dilation_h_factor(), opts->padding());
-    dim_t outW = getConvOutputSize(input.dims()[2], filter.dims()[2], opts->stride_w(), opts->dilation_w_factor(), opts->padding());
+    dim_t outH =
+        getConvOutputSize(input.dims()[1], filter.dims()[1], opts->stride_h(),
+                          opts->dilation_h_factor(), opts->padding());
+    dim_t outW =
+        getConvOutputSize(input.dims()[2], filter.dims()[2], opts->stride_w(),
+                          opts->dilation_w_factor(), opts->padding());
     dim_t outC = input.dims()[3] * opts->depth_multiplier();
     outTy = F_->getParent()->uniqueTypeWithNewShape(outTy,
                                                     {outN, outH, outW, outC});
@@ -1782,9 +1798,12 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
                  static_cast<unsigned_t>(opts->dilation_w_factor())};
   }
 
-  auto padsTB = getConvPads(inputShape.h, outputShape.h, kernels[0], strides[0], dilations[0], opts->padding());
-  auto padsLR = getConvPads(inputShape.w, outputShape.w, kernels[1], strides[1], dilations[1], opts->padding());
-  std::vector<unsigned_t> pads = {padsTB.first, padsLR.first, padsTB.second, padsLR.second};
+  auto padsTB = getConvPads(inputShape.h, outputShape.h, kernels[0], strides[0],
+                            dilations[0], opts->padding());
+  auto padsLR = getConvPads(inputShape.w, outputShape.w, kernels[1], strides[1],
+                            dilations[1], opts->padding());
+  std::vector<unsigned_t> pads = {padsTB.first, padsLR.first, padsTB.second,
+                                  padsLR.second};
 
   // Convolution group is inputChannels / filterChannels = inputChannels.
   unsigned_t group = input.dims().back();
