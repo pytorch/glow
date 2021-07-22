@@ -966,8 +966,20 @@ TEST_F(OnnxImporterTest, hardsigmoid) {
   auto *save = getSaveNodeFromDest(output);
   ClipNode *LR = llvm::dyn_cast<ClipNode>(save->getInput().getNode());
   ASSERT_TRUE(LR);
-  EXPECT_FLOAT_EQ(LR->getMax(), 1.0);
-  EXPECT_FLOAT_EQ(LR->getMin(), 0.0);
+
+  // check beta
+  AddNode *addBeta = llvm::dyn_cast<AddNode>(LR->getInput());
+  ASSERT_TRUE(addBeta);
+  SplatNode *betaSplat = llvm::dyn_cast<SplatNode>(addBeta->getRHS());
+  ASSERT_TRUE(betaSplat);
+  EXPECT_FLOAT_EQ(betaSplat->getValue(), 0.500000001);
+
+  // check alpha
+  MulNode *mulAlpha = llvm::dyn_cast<MulNode>(addBeta->getLHS());
+  ASSERT_TRUE(mulAlpha);
+  SplatNode *alphaSplat = llvm::dyn_cast<SplatNode>(mulAlpha->getLHS());
+  ASSERT_TRUE(alphaSplat);
+  EXPECT_FLOAT_EQ(alphaSplat->getValue(), 0.16666667);
 }
 
 /// Helper method to run the Conv operator test cases.
