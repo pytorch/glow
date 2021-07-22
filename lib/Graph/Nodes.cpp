@@ -646,10 +646,6 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
   return isValid;
 }
 
-bool HardSigmoidNode::verify() const {
-  return checkSameType(getInput(), getResult(), this);
-}
-
 bool HardSwishNode::verify() const {
   return checkSameType(getInput(), getResult(), this);
 }

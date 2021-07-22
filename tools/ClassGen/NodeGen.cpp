@@ -1091,15 +1091,6 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
 
-  BB.newNode("HardSigmoid")
-      .addInput("Input")
-      .addMember(MemberType::Float, "Alpha")
-      .addMember(MemberType::Float, "Beta")
-      .addResultFromCtorArg()
-      .dataParallel()
-      .setDocstring("Applies HardSigmoid, max(0, min(1, alpha * x + beta)) "
-                    "to each element in the Input tensor.");
-
   BB.newNode("HardSwish")
       .addInput("Input")
       .addResultFromCtorArg()
