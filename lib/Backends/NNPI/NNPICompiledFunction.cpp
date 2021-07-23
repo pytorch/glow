@@ -366,6 +366,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   bool requiresDSPKernels = false;
   network_ = importer.importFunction(F, newOpts, requiresDSPKernels);
   iaExtensionPaths_ = importer.getIAExtensionPaths();
+  iaExtensionLibs_ = importer.getIAExtensionLibs();
 
   LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
   // Setting the network name.
