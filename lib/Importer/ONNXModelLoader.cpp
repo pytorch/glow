@@ -1647,10 +1647,6 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                     opErrMsg(op, strFormat("'axes' %zu and 'starts' %zu must"
                                            "be the same size.",
                                            axes.size(), starts.size())));
-  RETURN_ERR_IF_NOT(starts.size() == ends.size(),
-                    opErrMsg(op, strFormat("'starts' %zu and 'ends' %zu must"
-                                           "be the same size.",
-                                           starts.size(), ends.size())));
   for (size_t i = 0; i < axes.size(); i++) {
     ssize_t newStart = starts[i];
     ssize_t newEnd = ends[i];
