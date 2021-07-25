@@ -1294,7 +1294,9 @@ TEST_F(OnnxImporterTest, importConvTransposeOutputShape) {
 template <typename T>
 static void rangeTestHelper(std::string &filename,
                             llvm::ArrayRef<dim_t> expectedDims,
-                            llvm::ArrayRef<T> expectedValues) {
+                            llvm::ArrayRef<T> expectedValues,
+                            bool expectLoadError = false,
+                            std::string errorMessage = "") {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1305,6 +1307,13 @@ static void rangeTestHelper(std::string &filename,
   PlaceholderBindings bindings;
   Placeholder *output;
   {
+    if (expectLoadError) {
+      Error err = Error::empty();
+      ONNXModelLoader onnxLD(NetFilename, {}, {}, *F, &err);
+      auto actualErrorMessage = ERR_TO_STRING(std::move(err));
+      EXPECT_TRUE(actualErrorMessage.find(errorMessage) != std::string::npos);
+      return;
+    }
     ONNXModelLoader onnxLD(NetFilename, {}, {}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
@@ -1334,6 +1343,14 @@ TEST(onnx, importRangeFloat) {
   std::vector<dim_t> expectedDims = {5};
   std::vector<float> expectedValues = {0.0, 1.0, 2.0, 3.0, 4.0};
   rangeTestHelper<float>(filename, expectedDims, expectedValues);
+}
+
+/// Test loading Range with bool datatype (unsupported).
+TEST(onnx, importRangeBool) {
+  std::string filename("RangeBool.onnxtxt");
+  std::vector<dim_t> expectedDims = {};
+  std::vector<float> expectedValues = {};
+  rangeTestHelper<float>(filename, expectedDims, expectedValues, true, "Data type not supported: bool");
 }
 
 /// Test loading ConvTranspose, implicit kernel, multi-channel input/output,

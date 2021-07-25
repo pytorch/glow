@@ -1488,7 +1488,8 @@ Error ONNXModelLoader::loadRange(const ONNX_NAMESPACE::NodeProto &op,
   } else if (glowType == ElemKind::FloatTy) {
     return getRange<float>(op, constT);
   } else {
-    return MAKE_ERR("Data type not supported");
+    return MAKE_ERR(strFormat("Data type not supported: %s",
+                              Type::getElementName(glowType).str().c_str()));
   }
 }
 
