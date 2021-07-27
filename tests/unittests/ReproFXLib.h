@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <folly/dynamic.h>
 #include <string>
 #include <torch/script.h>
 #include <torch/torch.h>
@@ -34,6 +35,9 @@ public:
   using TorchDict = torch::Dict<std::string, torch::Tensor>;
   TorchDict weights;
 
+  void load(const folly::dynamic &data,
+            const torch::jit::script::Module &container,
+            const std::vector<char> &input);
   void parseCommandLine(int argc, char **argv);
   std::vector<torch::Tensor> run();
 };

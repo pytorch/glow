@@ -45,16 +45,11 @@ llvm::cl::opt<std::string> outputPathOpt(
     llvm::cl::desc("Path to output file to be compared with reproFX output"),
     llvm::cl::value_desc("output path"), llvm::cl::cat(reproTestCat));
 
-void ReproFXLib::parseCommandLine(int argc, char **argv) {
-  llvm::cl::ParseCommandLineOptions(argc, argv);
-
-  // Load and parse model JSON file
-  std::ifstream jsonFile(jsonPathOpt.c_str());
-  std::stringstream buffer;
-  buffer << jsonFile.rdbuf();
-  folly::dynamic data = folly::parseJson(buffer.str());
-
-  // Get runNetwork paramaters from parsed JSON.
+// Parses JSON input, weights, and user inputs
+void ReproFXLib::load(const folly::dynamic &data,
+                      const torch::jit::script::Module &container,
+                      const std::vector<char> &input) {
+  // Get runNetwork paramaters from data
   // serialized_graph_json
   serializedGraphJson = data[0].asString();
 
@@ -76,23 +71,11 @@ void ReproFXLib::parseCommandLine(int argc, char **argv) {
     keys.push_back(data[4][i].asString());
   }
 
-  // Load and parse weights file.
-  torch::jit::script::Module container =
-      torch::jit::load(weightsPathOpt.c_str());
-
   // Insert all pairs into TorchDict for passing into loadNetwork.
   for (auto &key : keys) {
     torch::Tensor tensor = container.attr(key).toTensor();
     weights.insert(key, tensor);
   }
-
-  // Load and parse inputs file.
-  std::ifstream inputStream(inputPathOpt.c_str());
-  inputStream >> std::noskipws;
-
-  std::vector<char> input;
-  input.insert(input.begin(), std::istream_iterator<char>(inputStream),
-               std::istream_iterator<char>());
 
   // Load all inputs tensors
   std::vector<at::IValue> tensors =
@@ -102,6 +85,30 @@ void ReproFXLib::parseCommandLine(int argc, char **argv) {
     torch::Tensor tensor = i.toTensor();
     inputs.push_back(tensor);
   }
+}
+
+void ReproFXLib::parseCommandLine(int argc, char **argv) {
+  llvm::cl::ParseCommandLineOptions(argc, argv);
+
+  // Load model JSON file
+  std::ifstream jsonFile(jsonPathOpt.c_str());
+  std::stringstream buffer;
+  buffer << jsonFile.rdbuf();
+  folly::dynamic data = folly::parseJson(buffer.str());
+
+  // Load weights file.
+  torch::jit::script::Module container =
+      torch::jit::load(weightsPathOpt.c_str());
+
+  // Load inputs file.
+  std::ifstream inputStream(inputPathOpt.c_str());
+  inputStream >> std::noskipws;
+
+  std::vector<char> input;
+  input.insert(input.begin(), std::istream_iterator<char>(inputStream),
+               std::istream_iterator<char>());
+
+  load(data, container, input);
 }
 
 std::vector<torch::Tensor> ReproFXLib::run() {
