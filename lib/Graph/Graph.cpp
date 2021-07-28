@@ -5776,11 +5776,10 @@ static void convertDotFileToRightFormat(llvm::StringRef dotFile) {
     std::string cmd =
         "dot -T" + ext + " " + dotFile.str() + " -o " + dotFile.str();
     std::string cmdErr =
-        "Error running DOT conversion application with command '"
-        + cmd
-        + "'! Check that you have the 'dot' application installed on your "
-           "system in order to convert files from DOT format to other formats! "
-           "Otherwise choose the extension of the DOT file to '.dot'!";
+        "Error running DOT conversion application with command '" + cmd +
+        "'! Check that you have the 'dot' application installed on your "
+        "system in order to convert files from DOT format to other formats! "
+        "Otherwise choose the extension of the DOT file to '.dot'!";
     CHECK(!system(cmd.c_str())) << cmdErr;
   }
 }
