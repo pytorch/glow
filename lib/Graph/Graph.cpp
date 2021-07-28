@@ -29,6 +29,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 
 #ifdef WIN32
@@ -5758,6 +5759,32 @@ std::string Function::dumpDAG() {
   return std::string(dotPath.begin(), dotPath.end());
 }
 
+/// Local utility function to convert an existing DOT file \p dotFile to
+/// the right format suggested by the file name extension. For example if
+/// the file name ends with ".pdf" then the file will be converted to PDF.
+/// For conversion we use the "dot" application (assumed available) and
+/// the conversion is done in place.
+static void convertDotFileToRightFormat(llvm::StringRef dotFile) {
+  static const std::vector<std::string> supportedFormats = {"pdf", "svg",
+                                                            "png"};
+  // Get file extension.
+  llvm::StringRef extWithDot = llvm::sys::path::extension(dotFile);
+  std::string ext = extWithDot.take_back(extWithDot.size() - 1);
+  // Convert to new format if supported.
+  if (std::find(supportedFormats.begin(), supportedFormats.end(), ext) !=
+      supportedFormats.end()) {
+    std::string cmd =
+        "dot -T" + ext + " " + dotFile.str() + " -o " + dotFile.str();
+    std::string cmdErr =
+        "Error running DOT conversion application with command '"
+        + cmd
+        + "'! Check that you have the 'dot' application installed on your "
+           "system in order to convert files from DOT format to other formats! "
+           "Otherwise choose the extension of the DOT file to '.dot'!";
+    CHECK(!system(cmd.c_str())) << cmdErr;
+  }
+}
+
 void Function::dumpDAG(llvm::StringRef dotFilename) {
   llvm::StringRef legalDotFilename = dotFilename.take_back(255);
   llvm::outs() << "Writing dotty graph for Function to: " << legalDotFilename
@@ -5781,6 +5808,7 @@ void Function::dumpDAG(llvm::StringRef dotFilename) {
     DP.dumpAll(myfile);
   }
   myfile.close();
+  convertDotFileToRightFormat(legalDotFilename);
 }
 
 void Function::dumpDAG(const char *dotFilename) {
