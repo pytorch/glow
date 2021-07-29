@@ -936,7 +936,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     onnxFileNamePrefix = settings.onnxFileNamePrefix;
   }
 
-  if (settings.writeToOnnx || settings.jitVsGlowCompare) {
+  if (settings.jitVsGlowCompare) {
 
     // We will use original graph for runOnJit, which means the first input
     // should be module.
@@ -1126,10 +1126,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
             info.settings, info.outputPlaceholders, convertedGlowTensors));
 
         // Convert JIT outputs to Glow outputs and write to file
-        RETURN_IF_ERR(writeJITOutputsToOnnxFile(
-            strFormat("%s_pytorch_output_%zu", onnxFileNamePrefix.c_str(),
-                      runId),
-            copyStack, info));
+        if (settings.jitVsGlowCompare) {
+          RETURN_IF_ERR(writeJITOutputsToOnnxFile(
+              strFormat("%s_pytorch_output_%zu", onnxFileNamePrefix.c_str(),
+                        runId),
+              copyStack, info));
+        }
       }
     }
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
