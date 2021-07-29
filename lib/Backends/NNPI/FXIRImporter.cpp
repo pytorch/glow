@@ -361,6 +361,49 @@ public:
   }
 };
 
+class SliceTensorNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+    auto dims = toIntegerArray<uint32_t>(inputs["dims"]);
+    auto starts = toIntegerArray<uint32_t>(inputs["starts"]);
+    auto stops = toIntegerArray<uint32_t>(inputs["stops"]);
+    auto steps = toIntegerArray<uint32_t>(inputs["steps"]);
+    CHECK_EQ(dims.size(), 1) << "Only supporting single dim slice";
+    CHECK_EQ(starts.size(), 1) << "Only supporting single start slice";
+    CHECK_EQ(stops.size(), 1) << "Only supporting single stop slice";
+    CHECK_EQ(steps.size(), 1) << "Only supporting single step slice";
+    CHECK_EQ(steps[0], 1) << "Only supporting step == 1";
+
+    auto shape = toIntegerArray<glow::dim_t>(node["shape"].getString());
+
+    int32_t startOffset[NNPI_MAX_DIMS] = {0};
+    int32_t endOffset[NNPI_MAX_DIMS] = {0};
+
+    for (size_t i = 0, e = shape.size(); i < e; i++) {
+      if (i != dims[0]) {
+        startOffset[i] = 0;
+        endOffset[i] = shape[i];
+        continue;
+      }
+      startOffset[i] = starts[0];
+      endOffset[i] = stops[0];
+    }
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddSliceOp(importer.getNetwork(), name.c_str(),
+                                 inputName.c_str(), name.c_str(), startOffset,
+                                 endOffset, nullptr, uint32_t(shape.size()));
+  }
+};
+
 class TransposeNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -538,6 +581,7 @@ static std::unordered_map<
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
     {"acc_ops.reshape", std::make_unique<ReshapeNodeImporter>()},
     {"acc_ops.tanh", std::make_unique<TanhNodeImporter>()},
+    {"acc_ops.slice_tensor", std::make_unique<SliceTensorNodeImporter>()},
     {"acc_ops.linear", std::make_unique<LinearNodeImporter>()},
     {"acc_ops.quantized_linear", std::make_unique<LinearNodeImporter>()},
     {"acc_ops.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},

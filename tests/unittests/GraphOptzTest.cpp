@@ -3113,6 +3113,53 @@ TEST_F(GraphFold, foldDilatedConv) {
   checkNumericalEquivalence();
 }
 
+/// Fold a Convolution dilated manually using Transpose, SpaceToDepth and
+/// DepthToSpace nodes into a single Convolution node. Pattern:
+/// NHWC2CHWN -> S2D -> CHWN2NHWC -> Conv -> NHWC2CHWN -> D2S -> CHWN2NHWC
+/// Test for ChannelwiseQuantizedConvolution.
+TEST_F(GraphFold, foldDilatedConv_ChannelwiseQuantized) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 10, 10, 16}, 1.f,
+                                       0, "input", true);
+
+  auto *filterF =
+      mod_.createConstant(ElemKind::FloatTy, {16, 3, 3, 16}, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                            mod_.getPRNG());
+  auto *biasF = mod_.createConstant(ElemKind::FloatTy, {16}, "biasF");
+  biasF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+
+  auto *T1 = F_->createTranspose("t1", input, NHWC2CHWN, "NHWC");
+  auto *S2D = F_->createSpaceToDepth("s2d", T1, 2);
+  auto *T2 = F_->createTranspose("t2", S2D, CHWN2NHWC, "NHWC");
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {4, 3, 3, 16}, 1.f, 0);
+  auto *CN = F_->createChannelwiseQuantizedConv(
+      "conv", T2, filterF, biasF, nullptr, nullptr, nullptr, nullptr, outTy,
+      {3, 3}, {1, 1}, {0, 0, 0, 0}, 1, {1, 1}, true, true,
+      quantization::Schema::Asymmetric, ElemKind::Int8QTy, ElemKind::Int32QTy);
+  auto *T3 = F_->createTranspose("t3", CN, NHWC2CHWN, "NHWC");
+  auto *D2S = F_->createDepthToSpace("d2s", T3, 2);
+  auto *T4 = F_->createTranspose("t4", D2S, CHWN2NHWC, "NHWC");
+  auto *save = F_->createSave("save", T4);
+
+  EXPECT_EQ(10, F_->getNodes().size());
+  optimizedF_ = optimizeFunctionForTest(F_);
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+
+  const auto *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+
+  auto *newCN =
+      llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(optSave->getInput());
+  ASSERT_TRUE(newCN);
+  EXPECT_TRUE(isUniformArray(newCN->getDilation(), 2u));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                      mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
   const dim_t inputDims[] = {3, 136, 28, 28};
@@ -6430,6 +6477,44 @@ TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnectedBatched) {
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
 }
 
+/// Test that MatMul is converted to FullyConnected for Int8QTy.
+TEST_F(GraphOptz, ConvertMatMulToFullyConnected_Int8QTy) {
+
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3}, 0.1f, -13,
+                                       "input", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5}, 0.2f, 15,
+                                         "weights", false);
+  MatMulNode *matmul = F_->createMatMul("matmul", input, weights);
+  F_->createSave("save", matmul);
+  EXPECT_EQ(2, F_->getNodes().size());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::ConvertMatMulToFullyConnected, getDCEPassConfig()});
+
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+  EXPECT_EQ(1,
+            countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind));
+}
+
+/// Test that MatMul is converted to FullyConnected for FloatTy.
+TEST_F(GraphOptz, ConvertMatMulToFullyConnected_FloatTy) {
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5}, "weights", false);
+  MatMulNode *matmul = F_->createMatMul("matmul", input, weights);
+  F_->createSave("save", matmul);
+  EXPECT_EQ(2, F_->getNodes().size());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::ConvertMatMulToFullyConnected, getDCEPassConfig()});
+
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+  EXPECT_EQ(1,
+            countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind));
+}
+
 /// Test that FoldSlicesIntoConstants pass works as expected.
 TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
   Constant *C = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "C");
@@ -8093,6 +8178,55 @@ TEST_F(GraphOptz, FoldExpSumDivIntoSoftmax) {
   EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SoftMaxNodeKind));
 
   checkNumericalEquivalence(1e-7f);
+}
+
+/// Test that identity Relu is removed.
+TEST_F(GraphOptz, RemoveIdentityRelu) {
+
+  Placeholder *input = mod_.createPlaceholder(
+      ElemKind::Int8QTy, {20}, 0.123f, -128, "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  auto *relu = F_->createRELU("exp", input);
+  F_->createSave("save", relu);
+
+  EXPECT_EQ(2, F_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::SaveNodeKind));
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::RemoveIdentityRelu, getDCEPassConfig()});
+
+  EXPECT_EQ(1, optimizedF_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+
+  checkNumericalEquivalence(0);
+}
+
+/// Test that identity Clip is removed.
+TEST_F(GraphOptz, RemoveIdentityClip) {
+
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {20}, 0.023529412f, -128,
+                             "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  auto *clip = F_->createClip("exp", input, 0.0f, 6.0f);
+  F_->createSave("save", clip);
+
+  EXPECT_EQ(2, F_->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ClipNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::SaveNodeKind));
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::RemoveIdentityClip, getDCEPassConfig()});
+
+  EXPECT_EQ(1, optimizedF_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
+
+  checkNumericalEquivalence(0);
 }
 
 /// Test that an identity ResizeNearest is removed.

@@ -1293,21 +1293,34 @@ bool FoldDilatedConv::run(Function *F, const CompilationContext &cctx) {
     }
 
     // 4. Convolution.
+    llvm::StringRef name;
+    llvm::ArrayRef<unsigned_t> kernels, strides, pads, dilation;
+    NodeValue convInput, convResult;
+    auto getConvParams = [&](auto *N) -> bool {
+      if (!N || !N->hasOneUse()) {
+        return false;
+      }
+      name = N->getName();
+      kernels = N->getKernels();
+      strides = N->getStrides();
+      pads = N->getPads();
+      dilation = N->getDilation();
+      convInput = N->getInput();
+      convResult = N->getResult();
+      return true;
+    };
     auto *CN = dyn_cast<ConvolutionNode>(T1->getInput());
-    if (!CN || !CN->hasOneUse()) {
+    auto *CQCN = dyn_cast<ChannelwiseQuantizedConvolutionNode>(T1->getInput());
+    if (!getConvParams(CN) && !getConvParams(CQCN)) {
       continue;
     }
-    llvm::StringRef name = CN->getName();
-    auto kernels = CN->getKernels();
-    auto strides = CN->getStrides();
-    auto pads = CN->getPads();
     if (!isUniformArray(strides, 1u) || !isUniformArray(pads, 0u) ||
-        !isUniformArray(CN->getDilation(), 1u)) {
+        !isUniformArray(dilation, 1u)) {
       continue;
     }
 
     // 5. Transpose CHWN2NHWC.
-    auto *T2 = dyn_cast<TransposeNode>(CN->getInput());
+    auto *T2 = dyn_cast<TransposeNode>(convInput);
     if (!T2 || T2->getShuffle() != llvm::makeArrayRef(CHWN2NHWC)) {
       continue;
     }
@@ -1332,14 +1345,25 @@ bool FoldDilatedConv::run(Function *F, const CompilationContext &cctx) {
     auto outHW = calculateConvPoolOutputDims(
         trOutDims[1], trOutDims[2], kernels, strides, pads, {block, block});
     auto convOutTy = F->getParent()->uniqueTypeWithNewShape(
-        CN->getResult().getType(),
-        {trOutDims[0], outHW.first, outHW.second, CN->getResult().dims()[3]});
-    auto *newCN = F->createConv(name, newT1->getResult(), CN->getFilter(),
-                                CN->getBias(), convOutTy, kernels, strides,
-                                pads, CN->getGroup(), {block, block});
+        convResult.getType(),
+        {trOutDims[0], outHW.first, outHW.second, convResult.dims()[3]});
+    Node *newCN;
+    if (CN) {
+      newCN = F->createConv(name, newT1->getResult(), CN->getFilter(),
+                            CN->getBias(), convOutTy, kernels, strides, pads,
+                            CN->getGroup(), {block, block});
+    } else if (CQCN) {
+      newCN = F->createChannelwiseQuantizedConv(
+          name, newT1->getResult(), CQCN->getFilter(), CQCN->getBias(),
+          CQCN->getFilterScales(), CQCN->getFilterOffsets(),
+          CQCN->getBiasScales(), CQCN->getBiasOffsets(), convOutTy, kernels,
+          strides, pads, CQCN->getGroup(), {block, block}, false, false);
+    } else {
+      llvm_unreachable("Convolution must be in the pattern");
+    }
 
-    auto *newT2 = F->createTranspose(name.str() + "_nhwc2chwn",
-                                     newCN->getResult(), NHWC2CHWN);
+    auto *newT2 =
+        F->createTranspose(name.str() + "_nhwc2chwn", newCN, NHWC2CHWN);
 
     idim = newT2->getResult().dims();
     odim = {idim[0], idim[1] / block, block, idim[2] / block, block, idim[3]};
@@ -2579,6 +2603,52 @@ bool FoldMatMulAddIntoFullyConnected::run(Function *F,
   return changed;
 }
 
+/// Convert MatMul into FullyConnected with null bias. This pass is used if
+/// we have an optimized implementation for FullyConnected but NOT for MatMul.
+/// Make sure you run this pass after the FoldMatMulAddIntoFullyConnected pass
+/// otherwise a MatMul followed by Add will be converted into a FullyConnected
+/// followed by Add and NOT a single FullyConnected instance.
+bool ConvertMatMulToFullyConnected::run(Function *F,
+                                        const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *matMulNode = dyn_cast<MatMulNode>(&node);
+    if (!matMulNode) {
+      continue;
+    }
+
+    // Create null bias.
+    Constant *bias = nullptr;
+    std::vector<dim_t> biasDims = {matMulNode->getResult().dims().back()};
+    std::string biasName = matMulNode->getName().str() + "bias";
+    if (matMulNode->getResult().getType()->isQuantizedType()) {
+      // Create null bias with offset 0 and a scale equal to the product
+      // between LHS scale and RHS scale.
+      float biasScale = matMulNode->getLHS().getType()->getScale() *
+                        matMulNode->getRHS().getType()->getScale();
+      int32_t biasOffset = 0;
+      ElemKind biasPrec = cctx.precisionConfig.quantConfig.precisionBias;
+      bias = F->getParent()->createConstant(biasPrec, biasDims, biasScale,
+                                            biasOffset, biasName);
+      bias->getPayloadMutable().zero();
+    } else {
+      // Create null FLOAT bias.
+      bias =
+          F->getParent()->createConstant(ElemKind::FloatTy, biasDims, biasName);
+      bias->getPayloadMutable().zero();
+    }
+
+    // Create a new FullyConnected node with null bias.
+    auto *newFC = F->createFullyConnected(
+        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(), bias,
+        matMulNode->getResult().getType());
+    matMulNode->getResult().replaceAllUsesOfWith(newFC);
+    changed = true;
+  }
+
+  return changed;
+}
+
 // Fold Add after ConvTranspose into ConvTranspose's bias, if such Add was a
 // broadcasted Add. Examine by looking into Tensor repetitions. Fold this:
 //
@@ -3499,7 +3569,7 @@ bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
     }
 
     dim_t index = 0;
-    size_t bd = GN->getBatchDims();
+    size_t axis = GN->getBatchDims();
     auto elementKind = indices->getElementType();
     if (elementKind == ElemKind::Int64ITy) {
       index = (size_t)indices->getHandle<int64_t>().raw(0);
@@ -3512,7 +3582,7 @@ bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
     std::vector<dim_t> start;
     std::vector<dim_t> end;
     for (size_t i = 0; i < data.dims().size(); ++i) {
-      if (i == bd) {
+      if (i == axis) {
         start.push_back(index);
         end.push_back(index + 1);
       } else {
@@ -4930,6 +5000,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
+      case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
       case Kinded::Kind::FullyConnectedNodeKind:
       case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
         changed = true;
@@ -5812,6 +5883,154 @@ bool FoldExpSumDivIntoSoftmax::run(Function *F,
     DN->getResult().replaceAllUsesOfWith(SM);
     changed = true;
   }
+  return changed;
+}
+
+/// Local utility to remove identity Relu if fused into \p node.
+/// \returns true or false whether the Relu was removed or not.
+template <class NodeTy> static bool removeFusedIdentityRelu(Node *node) {
+  auto *RN = dyn_cast<NodeTy>(node);
+  if (!RN || RN->getFusedActivation() != FusedActivation::RELU) {
+    return false;
+  }
+  // The output type must be quantized.
+  auto outTy = RN->getResult().getType();
+  if (!outTy->isQuantizedType()) {
+    return false;
+  }
+  // The quantized 0.0f for Relu must match the min of the output type.
+  auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+  if (outTy->getOffset() != outRange.first) {
+    return false;
+  }
+  // Remove fused Relu.
+  RN->setFusedActivation(FusedActivation::NONE);
+  RN->setFusedActivationArgs({});
+  return true;
+}
+
+bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  // Remove standalone Relu.
+  for (auto &N : F->getNodes()) {
+    auto *RN = dyn_cast<ReluNode>(&N);
+    if (!RN) {
+      continue;
+    }
+
+    // The input and output types must be quantized.
+    auto inpTy = RN->getInput().getType();
+    auto outTy = RN->getResult().getType();
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType())) {
+      continue;
+    }
+
+    // The quantized 0.0f for Relu must match the min of the output type.
+    auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+    if (outTy->getOffset() != outRange.first) {
+      continue;
+    }
+
+    // Remove Relu if input and output types are the same.
+    // Otherwise change it with a RescaleQuantized.
+    if (inpTy->isEqual(outTy)) {
+      RN->getResult().replaceAllUsesOfWith(RN->getInput());
+    } else {
+      // TODO: Uncomment this once #5729 gets fixed.
+      // auto *rescale =
+      //     F->createRescaleQuantized(RN->getName(), RN->getInput(), outTy);
+      // RN->getResult().replaceAllUsesOfWith(rescale);
+    }
+    changed = true;
+  }
+
+  // Remove fused Relu.
+  for (auto &N : F->getNodes()) {
+    changed |= removeFusedIdentityRelu<ConvolutionNode>(&N);
+    changed |= removeFusedIdentityRelu<ChannelwiseQuantizedConvolutionNode>(&N);
+  }
+
+  return changed;
+}
+
+/// Local utility to remove identity Clip if fused into \p node.
+/// \returns true or false whether the Clip was removed or not.
+template <class NodeTy> static bool removeFusedIdentityClip(Node *node) {
+  auto *CN = dyn_cast<NodeTy>(node);
+  if (!CN || CN->getFusedActivation() != FusedActivation::CLIP) {
+    return false;
+  }
+  // The output type must be quantized.
+  auto outTy = CN->getResult().getType();
+  if (!outTy->isQuantizedType()) {
+    return false;
+  }
+  // The quantized min/max for Clip must match the min/max of the output type.
+  TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
+  auto fMin = CN->getFusedActivationArgs()[0];
+  auto fMax = CN->getFusedActivationArgs()[1];
+  auto qMin = quantization::quantize(fMin, outTQP, outTy->getElementType());
+  auto qMax = quantization::quantize(fMax, outTQP, outTy->getElementType());
+  auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+  if (!(qMin == outRange.first && qMax == outRange.second)) {
+    return false;
+  }
+  // Remove fused Relu.
+  CN->setFusedActivation(FusedActivation::NONE);
+  CN->setFusedActivationArgs({});
+  return true;
+}
+
+bool RemoveIdentityClip::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  // Remove standalone Clip.
+  for (auto &N : F->getNodes()) {
+    auto *CN = dyn_cast<ClipNode>(&N);
+    if (!CN) {
+      continue;
+    }
+
+    // The input and output types must be quantized.
+    auto inpTy = CN->getInput().getType();
+    auto outTy = CN->getResult().getType();
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType())) {
+      continue;
+    }
+
+    // The quantized min/max for Clip must match the min/max of the output type.
+    TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
+    auto fMin = CN->getMin();
+    auto fMax = CN->getMax();
+    auto qMin = quantization::quantize(fMin, outTQP, outTy->getElementType());
+    auto qMax = quantization::quantize(fMax, outTQP, outTy->getElementType());
+    auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+    if (!(qMin == outRange.first && qMax == outRange.second)) {
+      continue;
+    }
+
+    // Remove Clip if input and output types are the same.
+    // Otherwise change it with a RescaleQuantized.
+    if (inpTy->isEqual(outTy)) {
+      CN->getResult().replaceAllUsesOfWith(CN->getInput());
+    } else {
+      // TODO: Uncomment this once #5729 gets fixed.
+      // auto *rescale =
+      //     F->createRescaleQuantized(CN->getName(), CN->getInput(), outTy);
+      // CN->getResult().replaceAllUsesOfWith(rescale);
+    }
+    changed = true;
+  }
+
+  // Remove fused Clip.
+  for (auto &N : F->getNodes()) {
+    changed |= removeFusedIdentityClip<ConvolutionNode>(&N);
+    changed |= removeFusedIdentityClip<ChannelwiseQuantizedConvolutionNode>(&N);
+  }
+
   return changed;
 }
 
