@@ -1372,6 +1372,8 @@ Error CachingGraphRunner::warmCache(
               /* inputStringPtr */ &onnxModelFile));
           RETURN_IF_ERR(err);
           VLOG(1) << "Successfully deserialized Glow IR from onnx model file";
+
+          std::map<std::string, Type> staticPlaceholderTypes;
           for (auto &ph : glowModule->getPlaceholders()) {
             // Set PH static if it is in the original GlowIR
             if (std::find(spec.staticPHNames.begin(), spec.staticPHNames.end(),
@@ -1392,6 +1394,10 @@ Error CachingGraphRunner::warmCache(
                                                convertedDims);
               ph->setType(0, convertedType);
               ph->setStatic(true);
+
+              // Record the types of the actual placeholders before conversion,
+              // so that we can replay the conversion in Provisioner
+              staticPlaceholderTypes[std::string(ph->getName())] = type;
             }
             // Reconstruct PerGlowGraphInfo
             if (std::find(spec.inputPHNames.begin(), spec.inputPHNames.end(),
@@ -1402,6 +1408,9 @@ Error CachingGraphRunner::warmCache(
                           ph->getName().data()) != spec.outputPHNames.end()) {
               info->outputPlaceholders.push_back(ph);
             }
+          }
+          if (loader) {
+            loader->setTypeInfo(std::move(staticPlaceholderTypes));
           }
           info->functionName = spec.functionName;
           cctx.loadingAOTModel = true;
@@ -1442,14 +1451,6 @@ Error CachingGraphRunner::warmCache(
       zeroLengthSequence_.zero();
 
       if (loader) {
-        std::map<std::string, Type> staticPlaceholderTypes;
-        for (auto *PH : glowModule->getPlaceholders()) {
-          if (PH->isStatic()) {
-            staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
-          }
-        }
-        loader->setTypeInfo(std::move(staticPlaceholderTypes));
-
         cctx.deferredWeightLoader = loader;
 
         // Signal that we want to fold convertTo and Quantize into static
