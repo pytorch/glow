@@ -160,6 +160,12 @@ void initializeCompilationContextFromSettings(
     cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
   }
+  if (!cctx.precisionConfig.skipBiasFp32tofp16Convert &&
+      settings.skipBiasFp32tofp16Convert) {
+    cctx.precisionConfig.skipBiasFp32tofp16Convert =
+        settings.skipBiasFp32tofp16Convert;
+    LOG(INFO) << "Skipping bias fp32 -> fp16 conversion enabled";
+  }
   if (!cctx.precisionConfig.convertPlaceholdersToFP16 &&
       settings.convertPlaceholdersToFP16) {
     cctx.precisionConfig.convertPlaceholdersToFP16 =

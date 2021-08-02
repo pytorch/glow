@@ -82,6 +82,8 @@ public:
   /// Convert fp32 opts to fp16 ops during Glow compilation.
   bool convertToFP16 = false;
 
+  bool skipBiasFp32tofp16Convert = false;
+
   /// Convert fp32 fused opts to fp16 ops during Glow compilation.
   bool convertFusedToFP16 = false;
 

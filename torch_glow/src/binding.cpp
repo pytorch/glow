@@ -113,6 +113,19 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("get_convert_to_fp16",
         []() { return getGlobalPyTorchLoaderSettingsMutable().convertToFP16; });
 
+  /// Enable skipping fp32 -> fp16 conversion for Bias in FC
+  m.def("enable_skip_bias_fp32tofp16_convert", []() {
+    getGlobalPyTorchLoaderSettingsMutable().skipBiasFp32tofp16Convert = true;
+  });
+  /// Disable skipping fp32 -> fp16 conversion for Bias in FC
+  m.def("disable_skip_bias_fp32tofp16_convert", []() {
+    getGlobalPyTorchLoaderSettingsMutable().skipBiasFp32tofp16Convert = false;
+  });
+  /// Get status of skipping fp32 -> fp16 conversion for Bias in FC
+  m.def("get_skip_bias_fp32tofp16_convert", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().skipBiasFp32tofp16Convert;
+  });
+
   /// Enable clipping of fp16.
   m.def("enable_clip_fp16",
         []() { getGlobalPyTorchLoaderSettingsMutable().clipFP16 = true; });
