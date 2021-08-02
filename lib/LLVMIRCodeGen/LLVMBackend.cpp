@@ -371,6 +371,7 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
   case Kinded::Kind::SqrtNodeKind:
+  case Kinded::Kind::ErfNodeKind:
   case Kinded::Kind::RsqrtNodeKind:
   case Kinded::Kind::ReciprocalNodeKind:
   case Kinded::Kind::SinNodeKind:
