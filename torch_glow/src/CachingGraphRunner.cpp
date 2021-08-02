@@ -214,12 +214,16 @@ void initializeCompilationContextFromSettings(
 
   if (settings.use_dag_optimizer) {
     cctx.callDAGOptimizer = true;
-    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
-        settings.apl_parallelization_alg;
-    cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
-        settings.apl_placement_alg;
-    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
-        settings.apl_num_parallel_chunks;
+    if (!settings.apl_placement_alg.empty()) {
+      cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
+          settings.apl_placement_alg;
+    }
+    if (!settings.apl_parallelization_alg.empty()) {
+      cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+          settings.apl_parallelization_alg;
+      cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+          settings.apl_num_parallel_chunks;
+    }
   }
 
   if (!settings.backendSpecificOpts.empty()) {
