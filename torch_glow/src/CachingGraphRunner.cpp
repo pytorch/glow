@@ -1335,6 +1335,8 @@ Error CachingGraphRunner::warmCache(
         cctx.backendOpts.useDeserialize = true;
       }
 
+      // Type table for deferred weight loader
+      std::map<std::string, Type> staticPlaceholderTypes;
       {
         TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
                           "loadJITGraph");
@@ -1383,7 +1385,6 @@ Error CachingGraphRunner::warmCache(
           RETURN_IF_ERR(err);
           VLOG(1) << "Successfully deserialized Glow IR from onnx model file";
 
-          std::map<std::string, Type> staticPlaceholderTypes;
           for (auto &ph : glowModule->getPlaceholders()) {
             // Set PH static if it is in the original GlowIR
             if (std::find(spec.staticPHNames.begin(), spec.staticPHNames.end(),
@@ -1419,9 +1420,6 @@ Error CachingGraphRunner::warmCache(
               info->outputPlaceholders.push_back(ph);
             }
           }
-          if (loader) {
-            loader->setTypeInfo(std::move(staticPlaceholderTypes));
-          }
           info->functionName = spec.functionName;
           cctx.loadingAOTModel = true;
         } else {
@@ -1437,6 +1435,13 @@ Error CachingGraphRunner::warmCache(
                 glowAOTSerializationModelStrPtr));
             RETURN_IF_ERR(saveGlowDeserializationSpec(
                 spec, glowAOTSerializationSpecStrPtr));
+          }
+
+          for (auto *PH : glowModule->getPlaceholders()) {
+            if (PH->isStatic()) {
+              staticPlaceholderTypes[std::string(PH->getName())] =
+                  *PH->getType();
+            }
           }
         }
 
@@ -1461,6 +1466,7 @@ Error CachingGraphRunner::warmCache(
       zeroLengthSequence_.zero();
 
       if (loader) {
+        loader->setTypeInfo(std::move(staticPlaceholderTypes));
         cctx.deferredWeightLoader = loader;
 
         // Signal that we want to fold convertTo and Quantize into static
