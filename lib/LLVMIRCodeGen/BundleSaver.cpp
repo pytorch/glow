@@ -279,6 +279,9 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
   auto constMemSize = irgen_->getAllocationsInfo().constantWeightVarsMemSize_;
   auto mutableMemSize = irgen_->getAllocationsInfo().mutableWeightVarsMemSize_;
   auto activationsMemSize = irgen_->getAllocationsInfo().activationsMemSize_;
+  auto activationsMemAllocEff = irgen_->getAllocationsInfo()
+                                    .getActivationsAllocator()
+                                    .getAllocationEfficiency();
   auto memAlignSize = TensorAlignment;
   auto totMemSize = constMemSize + mutableMemSize + activationsMemSize;
 
@@ -288,9 +291,11 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
                            : staticApiCommonDefines;
 
   // Format model description.
-  std::string modelInfo = strFormat("// Model name: \"%s\"\n"
-                                    "// Total data size: %lu (bytes)\n",
-                                    bundleName.data(), totMemSize);
+  std::string modelInfo =
+      strFormat("// Model name: \"%s\"\n"
+                "// Total data size: %lu (bytes)\n"
+                "// Activations allocation efficiency: %.4f\n",
+                bundleName.data(), totMemSize, activationsMemAllocEff);
   // Print placeholders (mandatory).
   modelInfo += "// Placeholders:\n";
   auto placeholders = findPlaceholders();
