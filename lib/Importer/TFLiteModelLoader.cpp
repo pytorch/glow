@@ -2139,17 +2139,15 @@ Error TFLiteModelLoader::loadReduce(const tflite::Operator *op,
   if (opInfo.code == tflite::BuiltinOperator_MEAN && axesVal.size() == 2 &&
       axesVal.at(0) == 1 && axesVal.at(1) == 2 && input.dims().size() == 4) {
     std::vector<unsigned_t> kernels = {
-      static_cast<unsigned_t>(input.dims()[1]),
-      static_cast<unsigned_t>(input.dims()[2])
-    };
+        static_cast<unsigned_t>(input.dims()[1]),
+        static_cast<unsigned_t>(input.dims()[2])};
     std::vector<unsigned_t> strides = {1, 1};
     std::vector<unsigned_t> pads = {0, 0, 0, 0};
-    auto kernels = {inputShape.h, inputShape.w};
     NodeValue output = F_->createAvgPool(opInfo.name, input, kernels, strides,
                                          pads, ConvolutionLayout::NHWC,
                                          /* countIncludePads */ false);
     if (!keepDims) {
-      output = F_->createSqueeze(opInfo.name + ".Squeeze", output, axesVal);
+      output = F_->createSqueeze(opInfo.name + ".Squeeze", output, {1, 2});
     }
     return setOutputNodeValue(op, output);
   }
