@@ -2133,6 +2133,21 @@ Error TFLiteModelLoader::loadReduce(const tflite::Operator *op,
 
   bool keepDims = opts->keep_dims();
 
+  // Try to load ReduceMean as AveragePool if equivalent.
+  // TODO: Move this into the GraphOptimizer once Glow supports reduce
+  // operators with multiple axes.
+  if (opInfo.code == tflite::BuiltinOperator_MEAN && axesVal.size() == 2 &&
+      axesVal.at(0) == 1 && axesVal.at(1) == 2 && input.dims().size() == 4) {
+    ShapeNHWC inputShape = ShapeNHWC(input.dims());
+    auto kernels = {inputShape.h, inputShape.w};
+    NodeValue output = F_->createAvgPool(opInfo.name, input, kernels, kernels,
+                                         {0, 0, 0, 0}, glow::NHWC, false);
+    if (!keepDims) {
+      output = F_->createSqueeze(opInfo.name + ".Squeeze", output, axesVal);
+    }
+    return setOutputNodeValue(op, output);
+  }
+
   // Currently the Glow reduce operators do not support multiple axes so we
   // create chained reduce operators with single axis.
   // TODO: When Glow supports reduce operators with multiple axes remove this!
