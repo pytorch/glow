@@ -48,14 +48,14 @@ for ifn in glob.glob(args.input):
     print("processing", name, "as", outputname)
 
     im = PIL.Image.open(ifn)
-    im.convert("RGB")
+    im = im.convert("RGB")
     resize = torchvision.transforms.Compose(
         [torchvision.transforms.Resize(256), torchvision.transforms.CenterCrop(224)]
     )
     processed_im = resize(im)
 
     if args.normalize:
-        normalize = torchvision.transforms.Compose(
+        trans = torchvision.transforms.Compose(
             [
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize(
@@ -63,8 +63,10 @@ for ifn in glob.glob(args.input):
                 ),
             ]
         )
-        processed_im = normalize(processed_im)
+    else:
+        trans = torchvision.transforms.ToTensor()
 
+    processed_im = trans(processed_im)
     processed_im = processed_im.unsqueeze(0)
 
     torchvision.utils.save_image(processed_im, outputname)
