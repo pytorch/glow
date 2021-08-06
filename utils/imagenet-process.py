@@ -21,7 +21,7 @@ import os
 # imagenet-process : Runs preprocessing of standard imagenet images
 #                    to work with a pretrained model (e.g. resnet)
 #                    through glow
-# usage: python3 imagenet-process images/*.JPEG processed/
+# usage: python3 imagenet-process.py "images/*.JPEG" processed
 import PIL.Image
 import torchvision
 
