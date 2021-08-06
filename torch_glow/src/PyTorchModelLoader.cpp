@@ -3362,7 +3362,7 @@ PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
   }
 
   std::pair<NodeValue, at::ScalarType> pp = {
-       F_.createNodeWithBroadcast<GlowNode>(name.str(), /*axis*/ -1, lhsInput,
+      F_.createNodeWithBroadcast<GlowNode>(name.str(), /*axis*/ -1, lhsInput,
                                            rhsInput)
           ->getNthResult(0),
       correctType};
