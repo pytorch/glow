@@ -37,9 +37,9 @@ args = parser.parse_args()
 
 # create the output dir if necessary
 try:
-    os.mkdir(args.output)
+    os.makedirs(args.output, exist_ok=True)
 except Exception:
-    pass
+    raise FileNotFoundError()
 
 for ifn in glob.glob(args.input):
     name, ext = os.path.splitext(ifn)
