@@ -43,8 +43,8 @@ except Exception as e:
 
 for ifn in glob.glob(args.input):
     name, ext = os.path.splitext(ifn)
-    name = name.split("/")[-1]
-    outputname = args.output + "/" + name + ".png"
+    name = os.path.basename(name)
+    outputname = os.path.join(args.output, name + ".png")
     print("processing", name, "as", outputname)
 
     im = PIL.Image.open(ifn)
