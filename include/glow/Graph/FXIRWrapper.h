@@ -53,7 +53,7 @@ public:
               const llvm::StringMap<const void *> &constants,
               Module *glowModule, llvm::StringRef name = {})
       : IRContainer(name), constants_(constants), parent_(glowModule) {
-    fx_mod_ = &(FXIR["modules"][submod]);
+    fx_mod_ = submod == "" ? &FXIR : &(FXIR["modules"][submod]);
     // Create mapping from getattrs to the underlying name of the constants they
     // alias.
     for (const auto &node : fx_mod_->at("nodes")) {
