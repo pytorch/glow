@@ -128,6 +128,9 @@ public:
   /// Post-Lowering, false if it must be done after post-lowering.
   virtual bool shouldPreQuantizeConstants() const { return true; }
 
+  /// \returns true if a module should be stripped after deployment/compilation.
+  virtual bool shouldStripModule() const { return true; }
+
   /// \returns whether the provided \p NI is supported by the backend.
   virtual bool isOpSupported(const NodeInfo &NI) const = 0;
 
