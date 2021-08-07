@@ -1038,6 +1038,14 @@ private:
   /// Load PyTorch aten::narrow
   /// \returns error on failure.
   Error loadNarrow(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::pixel_shuffle.
+  // \returns error on failure.
+  Error loadPixelShuffle(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::pixel_unshuffle.
+  // \returns error on failure.
+  Error loadPixelUnshuffle(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
