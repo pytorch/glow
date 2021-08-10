@@ -127,7 +127,9 @@ public:
     return constants_;
   }
 
-  const FXNode &getSingleUserNode(const FXNode &node) const;
+  /// When FXIR has the notion of memory/buffers. This function returns
+  /// the memory buffer a node(operator) writes to.
+  const FXNode &getDestinationBufferForNode(const FXNode &node) const;
 };
 
 } // namespace glow
