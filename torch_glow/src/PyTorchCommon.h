@@ -268,6 +268,9 @@ public:
 
   // Enables Device Resident Tensor optimization
   bool enableDRT = false;
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  bool convert8BitFusedToFP32 = false;
 };
 
 /// Represents different possible output types from to_glow modules.

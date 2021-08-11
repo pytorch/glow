@@ -194,6 +194,13 @@ void initializeCompilationContextFromSettings(
     cctx.precisionConfig.forceFP16AccumSLS = settings.forceFP16AccumSLS;
     LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
   }
+  if (!cctx.precisionConfig.convert8BitFusedToFP32 &&
+      settings.convert8BitFusedToFP32) {
+    LOG(INFO) << "Enabling conversion of FP16 scale and bias to FP32 for 8bit "
+                 "EmbeddingBagByteRowwiseOffset";
+    cctx.precisionConfig.convert8BitFusedToFP32 =
+        settings.convert8BitFusedToFP32;
+  }
   if (!glow::flags::DisableLayoutVerifying && settings.disableLayoutVerifying) {
     glow::flags::DisableLayoutVerifying = true;
     LOG(INFO) << "Skipping all layout verifying";
