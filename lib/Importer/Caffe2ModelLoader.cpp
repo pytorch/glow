@@ -2082,8 +2082,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                       opErrMsg(op, "Lengths should be of int32 type."));
     RETURN_ERR_IF_NOT(lengths.dims().size() == 1 || lengths.dims().size() == 2,
                       opErrMsg(op, "Lengths should be 1D or 2D tensor."));
-    RETURN_ERR_IF_NOT(indices.getElementType() == ElemKind::Int64ITy,
-                      opErrMsg(op, "Indices should be of int64 type."));
+    RETURN_ERR_IF_NOT(
+        indices.getElementType() == ElemKind::Int32ITy ||
+            indices.getElementType() == ElemKind::Int64ITy,
+        opErrMsg(op, "Indices should be of int32 or int64 type."));
     RETURN_ERR_IF_NOT(indices.dims().size() == 1 || indices.dims().size() == 2,
                       opErrMsg(op, "Indices should be 1D or 2D tensor."));
     RETURN_ERR_IF_NOT(values.getElementType() == ElemKind::FloatTy,
@@ -2101,6 +2103,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           opErrMsg(op, "Second dimension should be 1 in lengths."));
       lengths = G_->createReshape(opName + ".lengths1D", lengths,
                                   {lengths.dims()[0]});
+    }
+    if (indices.getElementType() == ElemKind::Int32ITy) {
+      indices = G_->createConvertTo(opName + ".int32ToInt64", indices,
+                                    ElemKind::Int64ITy);
     }
     if (indices.dims().size() == 2) {
       RETURN_ERR_IF_NOT(
