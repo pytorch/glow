@@ -19,6 +19,7 @@
 #include "glow/Support/Support.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "nnpi_transformer_types.h"
+#include <vector>
 
 using namespace utils;
 
@@ -342,6 +343,34 @@ public:
   }
 };
 
+class SumNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    auto dim = inputs.find("dim");
+    std::vector<uint32_t> axis;
+    if (dim != inputs.items().end()) {
+      auto dims = toIntegerArray<uint32_t>(inputs["dim"]);
+      for (auto &d : dims) {
+        axis.push_back(d);
+      }
+    }
+
+    return nnpiNetworkAddReduceOp(importer.getNetwork(), name.c_str(),
+                                  inputName.c_str(), name.c_str(),
+                                  NNPI_REDUCE_SUM, axis.data(), axis.size(), 0);
+  }
+};
+
 class ReshapeNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -599,6 +628,7 @@ static std::unordered_map<
     {"acc_ops.embedding_bag_byte_rowwise_offsets",
      std::make_unique<EmbeddingBagByteRowwiseOffsetsNodeImporter>()},
     {"acc_ops.cat", glow::make_unique<ConcatNodeImporter>()},
+    {"acc_ops.sum", glow::make_unique<SumNodeImporter>()},
     {"acc_ops.transpose", glow::make_unique<TransposeNodeImporter>()},
     {"acc_ops.permute", glow::make_unique<PermuteNodeImporter>()},
     {"acc_ops.matmul", glow::make_unique<MatMulNodeImporter>()},
