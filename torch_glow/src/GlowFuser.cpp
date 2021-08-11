@@ -55,8 +55,7 @@ sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
 
 bool isNodeSupportedForMerge(const torch::jit::Node *node, IsSupportFunc fn) {
   return fn(node) || node->kind() == torch::jit::prim::Constant ||
-         node->kind() == torch::jit::prim::GetAttr ||
-         node->kind() == getGlowSymbol();
+         node->kind() == torch::jit::prim::GetAttr;
 }
 
 bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
@@ -132,14 +131,9 @@ torch::jit::Node *tryMerge(torch::jit::Node *consumer,
                            torch::jit::Node *producer,
                            torch::jit::AliasDb &aliasDb, IsSupportFunc fn,
                            at::Symbol kind) {
-  // Check that producer can be merged
-  if (!canMerge(producer, fn, consumer)) {
-    return nullptr;
-  }
 
   // Check that consumer can be merged
-  if (!(consumer->kind() == kind ||
-        canMerge(consumer, fn, /*consumer*/ nullptr))) {
+  if (!canMerge(consumer, fn, /*consumer*/ nullptr)) {
     return nullptr;
   }
 
@@ -154,19 +148,20 @@ torch::jit::Node *tryMerge(torch::jit::Node *consumer,
     consumer =
         torch::jit::SubgraphUtils::createSingletonSubgraph(consumer, kind);
   }
-
-  // Move (or for constants, copy) node into subgraph
-  if (producer->kind() == torch::jit::prim::Constant) {
-    auto &subgraph = consumer->g(torch::jit::attr::Subgraph);
-    torch::jit::Node *inConst = subgraph->createClone(
-        producer, [](torch::jit::Value *) -> torch::jit::Value * {
-          throw std::runtime_error("unexpected input to Constant node");
-        });
-    subgraph->insertNode(inConst);
-  } else {
-    torch::jit::SubgraphUtils::mergeNodeIntoSubgraph(producer, consumer);
+  // Check that producer can be merged, and move (or for constants, copy) node
+  // into subgraph
+  if (canMerge(producer, fn, consumer) || producer->kind() == kind) {
+    if (producer->kind() == torch::jit::prim::Constant) {
+      auto &subgraph = consumer->g(torch::jit::attr::Subgraph);
+      torch::jit::Node *inConst = subgraph->createClone(
+          producer, [](torch::jit::Value *) -> torch::jit::Value * {
+            throw std::runtime_error("unexpected input to Constant node");
+          });
+      subgraph->insertNode(inConst);
+    } else {
+      torch::jit::SubgraphUtils::mergeNodeIntoSubgraph(producer, consumer);
+    }
   }
-
   return consumer;
 }
 
