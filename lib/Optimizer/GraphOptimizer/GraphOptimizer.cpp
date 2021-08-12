@@ -505,6 +505,28 @@ bool SinkConcatBelowQuantize::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// If \p N is a TransposeNode with all of the same node kind of users, then
+/// \returns that TransposeNode, else \returns nullptr. For example, if \p N is
+/// a TransposeNode with two QuantizeNode users, this will return the
+/// TransposeNode, but if it had one QuantizeNode and one MatMul node then it
+/// will return nullptr.
+static TransposeNode *getTransposeNodeWithAllSameUserKind(Node *N) {
+  auto *TN = dyn_cast<TransposeNode>(N);
+  if (!TN) {
+    return nullptr;
+  }
+  if (TN->getNumUsers() <= 1) {
+    return TN;
+  }
+  auto firstKind = N->getUsers().front().getUser()->getKind();
+  for (auto &U : N->getUsers()) {
+    if (U.getUser()->getKind() != firstKind) {
+      return nullptr;
+    }
+  }
+  return TN;
+}
+
 /// Code Sinking.
 bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -931,8 +953,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
 
     if (auto *Q = dyn_cast<QuantizeNode>(node)) {
       // Sink TransposeNode below QuantizedNode.
-      // If it doesn't work out it will be re-sinked later.
-      if (auto *TR = dyn_cast<TransposeNode>(Q->getInput())) {
+      if (auto *TR = getTransposeNodeWithAllSameUserKind(Q->getInput())) {
         auto newQType = F->getParent()->uniqueTypeWithNewShape(
             Q->getResult().getType(), TR->getInput().dims());
         auto *newQ = F->createQuantize(Q->getName(), TR->getInput(), newQType);

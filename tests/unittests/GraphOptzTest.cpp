@@ -8321,3 +8321,44 @@ TEST_F(GraphOptz, OptimizeInsertTensorBigSplat) {
   EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
   checkNumericalEquivalence(1e-7f);
 }
+
+TEST_F(GraphOptz, sinkQuantizeTransposeMultiUser) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "input",
+                             /* isTrainable */ false);
+  auto *T = F_->createTranspose("transpose", input, NHWC2NCHW);
+  auto *Q1 = F_->createQuantize("q1", T, ElemKind::Int8QTy, 0.11, 1);
+  auto *Q2 = F_->createQuantize("q2", T, ElemKind::Int8QTy, 0.12, 2);
+  auto *S1 = F_->createSave("save1", Q1);
+  auto *S2 = F_->createSave("save2", Q2);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  auto *optS1 = findFunctionNodeByName<SaveNode>(optimizedF_, S1->getName());
+  auto *optS2 = findFunctionNodeByName<SaveNode>(optimizedF_, S2->getName());
+
+  // Check that transpose has been sunk below quantize now for both.
+  EXPECT_TRUE(llvm::isa<TransposeNode>(optS1->getInput()));
+  EXPECT_TRUE(llvm::isa<TransposeNode>(optS2->getInput()));
+
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, skipSinkQuantizeTransposeMultiUser) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "input",
+                             /* isTrainable */ false);
+  auto *T = F_->createTranspose("transpose", input, NHWC2NCHW);
+  auto *Q = F_->createQuantize("quant", T, ElemKind::Int8QTy, 0.11, 1);
+  F_->createSave("save1", Q);
+  F_->createSave("save2", T);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Verify the graph hasn't changed.
+  EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false, /* skipName */ true),
+            optimizedF_->toString(/* skipUsersForStorage */ false,
+                                  /* skipName */ true));
+}
