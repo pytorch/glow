@@ -165,6 +165,18 @@ PYBIND11_MODULE(_torch_glow, m) {
                false;
   });
 
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  m.def("enable_convert_4bit_fused_to_fp32", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().convert4BitFusedToFP32 =
+               true;
+  });
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  m.def("disable_convert_4bit_fused_to_fp32", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().convert4BitFusedToFP32 =
+               false;
+  });
+
   /// Enable dumping the final Glow dag after compilation.
   m.def("enable_dump_final_glow_graph", []() {
     getGlobalPyTorchLoaderSettingsMutable().dumpFinalGlowGraph = true;

@@ -201,6 +201,13 @@ void initializeCompilationContextFromSettings(
     cctx.precisionConfig.convert8BitFusedToFP32 =
         settings.convert8BitFusedToFP32;
   }
+  if (!cctx.precisionConfig.convert4BitFusedToFP32 &&
+      settings.convert4BitFusedToFP32) {
+    LOG(INFO) << "Enabling conversion of FP16 scale and bias to FP32 for 4bit "
+                 "EmbeddingBagByteRowwiseOffset";
+    cctx.precisionConfig.convert4BitFusedToFP32 =
+        settings.convert4BitFusedToFP32;
+  }
   if (!glow::flags::DisableLayoutVerifying && settings.disableLayoutVerifying) {
     glow::flags::DisableLayoutVerifying = true;
     LOG(INFO) << "Skipping all layout verifying";
