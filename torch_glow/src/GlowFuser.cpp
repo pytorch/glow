@@ -133,7 +133,8 @@ torch::jit::Node *tryMerge(torch::jit::Node *consumer,
                            at::Symbol kind) {
 
   // Check that consumer can be merged
-  if (!canMerge(consumer, fn, /*consumer*/ nullptr)) {
+  if (!canMerge(consumer, fn, /*consumer*/ nullptr) &&
+      consumer->kind() != kind) {
     return nullptr;
   }
 
@@ -143,10 +144,12 @@ torch::jit::Node *tryMerge(torch::jit::Node *consumer,
   }
 
   // Wrap consumer as a subgraph
+  bool new_wrap_created = false;
   if (!consumer->hasAttribute(torch::jit::attr::Subgraph) &&
       consumer->kind() != kind) {
     consumer =
         torch::jit::SubgraphUtils::createSingletonSubgraph(consumer, kind);
+    new_wrap_created = true;
   }
   // Check that producer can be merged, and move (or for constants, copy) node
   // into subgraph
@@ -160,6 +163,10 @@ torch::jit::Node *tryMerge(torch::jit::Node *consumer,
       subgraph->insertNode(inConst);
     } else {
       torch::jit::SubgraphUtils::mergeNodeIntoSubgraph(producer, consumer);
+    }
+  } else {
+    if (!new_wrap_created) {
+      return nullptr;
     }
   }
   return consumer;
