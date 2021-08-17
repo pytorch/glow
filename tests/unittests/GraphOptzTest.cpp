@@ -8362,3 +8362,44 @@ TEST_F(GraphOptz, skipSinkQuantizeTransposeMultiUser) {
             optimizedF_->toString(/* skipUsersForStorage */ false,
                                   /* skipName */ true));
 }
+
+TEST_F(GraphOptz, MergeMatMulsWhenSkippingOne) {
+  Placeholder *LHS1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "LHS1", false);
+  Placeholder *LHS2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {30, 10}, "LHS2", false);
+  Placeholder *LHS3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {20, 10}, "LHS3", false);
+  Placeholder *RHS =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 15}, "RHS", false);
+  bindings_.allocate(LHS1)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+  bindings_.allocate(LHS2)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+  bindings_.allocate(LHS3)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+  bindings_.allocate(RHS)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+
+  // Chain a bunch of nodes together for LHS2 to prevent dependency analysis
+  // from allowing merging for MM2 below.
+  Node *sigLHS2 = LHS2;
+  for (size_t i = 0, e = 7; i < e; i++) {
+    sigLHS2 = F_->createSigmoid("s_lhs2", sigLHS2);
+  }
+
+  Node *MM1 = F_->createMatMul("mm1", LHS1, RHS);
+  Node *MM2 = F_->createMatMul("mm2", sigLHS2, RHS);
+  Node *MM3 = F_->createMatMul("mm3", LHS3, RHS);
+
+  F_->createSave("save1", MM1);
+  F_->createSave("save2", MM2);
+  F_->createSave("save3", MM3);
+  ASSERT_TRUE(F_->verify());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::MergeMatMul, getDCEPassConfig()});
+  ASSERT_TRUE(optimizedF_->verify());
+
+  // Expect three matmuls -> two matmuls, because mm1 and mm3 were merged.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::MatMulNodeKind), 2);
+
+  checkNumericalEquivalence(0.f);
+}

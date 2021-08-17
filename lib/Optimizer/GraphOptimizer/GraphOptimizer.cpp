@@ -1491,15 +1491,25 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
     std::vector<NodeValue> LHS;
 
     // For each matmul that depends on the rhs matrix.
-    for (auto &MM : MMs) {
+    std::unordered_set<MatMulNode *> skippedMMs;
+    std::string firstMMName;
+    std::string firstLHSName;
+    for (auto *MM : MMs) {
       auto L = MM->getLHS();
       // The operands to the matrix multiplier should not depend on one another
       // or else we won't be able to get rid of the original matrix
       // multiplication.
       if (mayDependOnAny(LHS, L.getNode())) {
+        skippedMMs.insert(MM);
         continue;
       }
       LHS.push_back(L);
+      if (firstMMName.empty()) {
+        firstMMName = MM->getName().str();
+      }
+      if (firstLHSName.empty()) {
+        firstLHSName = L.getNode()->getName().str();
+      }
     }
 
     // We need to have at least two matrices to merge.
@@ -1508,14 +1518,18 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
     }
 
     // Merge the matmul:
-    auto *CC = F->createConcat("mergeLHS", LHS, 0);
-    auto *MM = F->createMatMul("bigMatMul", CC, it.first);
+    auto *CC = F->createConcat(firstLHSName + "_mergeLHS", LHS, 0);
+    auto *MM = F->createMatMul(firstMMName + "_bigMatMul", CC, it.first);
 
     dim_t R = MM->getResult().dims()[1];
     dim_t start = 0;
     for (auto *origMM : MMs) {
+      if (skippedMMs.count(origMM)) {
+        continue;
+      }
       dim_t H = origMM->getResult().dims()[0];
-      auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
+      auto *ex = F->createSlice(origMM->getName().str() + "_extract", MM,
+                                {start, 0}, {start + H, R});
       start += H;
       origMM->getResult().replaceAllUsesOfWith(ex);
       changed = true;
