@@ -181,8 +181,8 @@ public:
     const auto &kwargs = node["kwargs"];
     const auto &inputName = importer.getInputNodeName(kwargs["input"]);
     const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
-    const auto &per_sample_weights =
-        importer.getInputNodeName(kwargs["per_sample_weights"]);
+    const auto &per_sample_weights = importer.getInputNodeName(
+        kwargs["per_sample_weights"], /* optional */ true);
     const auto &offsetsName = importer.getInputNodeName(kwargs["offsets"]);
 
     const auto &hasEndOffset = kwargs["include_last_offset"].asBool();
@@ -202,8 +202,9 @@ public:
         {name});
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
-        importer.getNetwork(), name.c_str(), weightName.c_str(), name.c_str(),
-        per_sample_weights.c_str(), inputName.c_str(), offsetsName.c_str(),
+        importer.getNetwork(), finalize(name), finalize(weightName),
+        finalize(name), finalize(per_sample_weights), finalize(inputName),
+        finalize(offsetsName),
         /* useFP32Accumulation */ 0, /* useLengthsAsOffsets */ 1,
         /*avg length*/ NAN, NNPI_LENGTH_VARIABLE);
   }
@@ -219,8 +220,8 @@ public:
     const auto &kwargs = node["kwargs"];
     const auto &inputName = importer.getInputNodeName(kwargs["input"]);
     const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
-    const auto &per_sample_weights =
-        importer.getInputNodeName(kwargs["per_sample_weights"]);
+    const auto &per_sample_weights = importer.getInputNodeName(
+        kwargs["per_sample_weights"], /* optional */ true);
     const auto &offsetsName = importer.getInputNodeName(kwargs["offsets"]);
 
     const auto &hasEndOffset = kwargs["include_last_offset"].asBool();
@@ -232,8 +233,9 @@ public:
         {weightName, per_sample_weights, inputName, offsetsName}, {name});
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
-        importer.getNetwork(), name.c_str(), weightName.c_str(), name.c_str(),
-        per_sample_weights.c_str(), inputName.c_str(), offsetsName.c_str(),
+        importer.getNetwork(), finalize(name), finalize(weightName),
+        finalize(name), finalize(per_sample_weights), finalize(inputName),
+        finalize(offsetsName),
         /* useFP32Accumulation */ true, /* useLengthsAsOffsets */ 1,
         /*avg length*/ NAN, NNPI_LENGTH_VARIABLE);
   }
@@ -338,8 +340,8 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddSigmoidOp(importer.getNetwork(), name.c_str(),
-                                   inputName.c_str(), name.c_str());
+    return nnpiNetworkAddSigmoidOp(importer.getNetwork(), finalize(name),
+                                   finalize(inputName), finalize(name));
   }
 };
 
@@ -365,8 +367,8 @@ public:
       }
     }
 
-    return nnpiNetworkAddReduceOp(importer.getNetwork(), name.c_str(),
-                                  inputName.c_str(), name.c_str(),
+    return nnpiNetworkAddReduceOp(importer.getNetwork(), finalize(name),
+                                  finalize(inputName), finalize(name),
                                   NNPI_REDUCE_SUM, axis.data(), axis.size(), 0);
   }
 };
@@ -427,9 +429,10 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddSliceOp(importer.getNetwork(), name.c_str(),
-                                 inputName.c_str(), name.c_str(), startOffset,
-                                 endOffset, nullptr, uint32_t(shape.size()));
+    return nnpiNetworkAddSliceOp(importer.getNetwork(), finalize(name),
+                                 finalize(inputName), finalize(name),
+                                 startOffset, endOffset, nullptr,
+                                 uint32_t(shape.size()));
   }
 };
 
@@ -455,9 +458,9 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddTransposeOp(importer.getNetwork(), name.c_str(),
-                                     inputName.c_str(), name.c_str(), nnpiOrder,
-                                     dimSize.size());
+    return nnpiNetworkAddTransposeOp(importer.getNetwork(), finalize(name),
+                                     finalize(inputName), finalize(name),
+                                     nnpiOrder, dimSize.size());
   }
 };
 
@@ -480,9 +483,9 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddTransposeOp(importer.getNetwork(), name.c_str(),
-                                     inputName.c_str(), name.c_str(), nnpiOrder,
-                                     dimSize.size());
+    return nnpiNetworkAddTransposeOp(importer.getNetwork(), finalize(name),
+                                     finalize(inputName), finalize(name),
+                                     nnpiOrder, dimSize.size());
   }
 };
 
@@ -500,9 +503,9 @@ public:
 
     importer.setUsedTensors({inputName, otherName}, {name});
 
-    return nnpiNetworkAddMatMulOp(importer.getNetwork(), name.c_str(),
-                                  inputName.c_str(), otherName.c_str(),
-                                  name.c_str());
+    return nnpiNetworkAddMatMulOp(importer.getNetwork(), finalize(name),
+                                  finalize(inputName), finalize(otherName),
+                                  finalize(name));
   }
 };
 
@@ -526,8 +529,8 @@ public:
     }
 
     importer.setUsedTensors(inputTensors, {name});
-    return nnpiNetworkAddConcatOp(importer.getNetwork(), name.c_str(), inputs,
-                                  numInputs, name.c_str(),
+    return nnpiNetworkAddConcatOp(importer.getNetwork(), finalize(name), inputs,
+                                  numInputs, finalize(name),
                                   kwargs["dim"].getInt());
   }
 };
@@ -549,9 +552,10 @@ public:
 
     importer.setUsedTensors({inputName, weightName}, {biasName, name});
 
-    return nnpiNetworkAddLayerNormOp(
-        importer.getNetwork(), name.c_str(), inputName.c_str(), name.c_str(),
-        weightName.c_str(), biasName.c_str(), shape.data(), shape.size(), eps);
+    return nnpiNetworkAddLayerNormOp(importer.getNetwork(), finalize(name),
+                                     finalize(inputName), finalize(name),
+                                     finalize(weightName), finalize(biasName),
+                                     shape.data(), shape.size(), eps);
   }
 };
 
@@ -567,8 +571,8 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddTanhOp(importer.getNetwork(), name.c_str(),
-                                inputName.c_str(), name.c_str());
+    return nnpiNetworkAddTanhOp(importer.getNetwork(), finalize(name),
+                                finalize(inputName), finalize(name));
   }
 };
 
