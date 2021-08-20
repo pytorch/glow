@@ -37,6 +37,9 @@ using ElemShape = boost::variant<TensorShape, TensorListShape>;
 struct TensorOutput {
   TensorShape shapeOrIntValues;
   c10::ScalarType dtype;
+
+  // This flag signals that tensor output contains real value rather than shape
+  bool scalar = false;
 };
 
 struct TensorListOutput {
@@ -55,6 +58,7 @@ struct VariableMeta {
   c10::ScalarType dtype = c10::ScalarType::Float;
 
   template <typename T> const T &shape() const {
+    CHECK_GT(listOfShape.size(), 0);
     return boost::get<T>(listOfShape[0]);
   }
 };
@@ -84,6 +88,10 @@ public:
   /// \returns a set of symbols
   std::unordered_set<std::string>
   findUnsupportedGraphSymbols(bool skipLastFusionNode = false);
+
+  /// Print shapeMap_ as format:
+  /// %5: [2 4]
+  void printShapeMap();
 
 private:
   /// Graph that needs to be run shape inference.
@@ -129,10 +137,6 @@ private:
 
   /// \return true if the node's symbol is supported for shape inference
   static bool isSupportedNodeSymbol(const torch::jit::Node *);
-
-  /// Print shapeMap_ as format:
-  /// %5: [2 4]
-  void printShapeMap();
 
   /// print graph for debugging purpose
   void printGraph(const torch::jit::Graph &graph, int64_t level);
@@ -203,12 +207,16 @@ private:
   void addShapeDefaultList(const torch::jit::Node *node,
                            TensorListOutput &output);
 
+  static bool isScalarInt(const VariableMeta &vm);
+
   // Shape inference for prim::Constant
   static Expected<TensorOutput> primConstant(const torch::jit::Node *node);
   // Shape inference for aten::tanh, aten::relu, aten::sigmoid
   static Expected<TensorOutput> unaryOp(const MetaStack &variableMetas);
   // Shape inference for aten::add, aten::mul, aten::pow
   static Expected<TensorOutput> binaryOp(const MetaStack &variableMetas);
+  // Shape inference for aten::mul
+  static Expected<TensorOutput> mul(const MetaStack &variableMetas);
   // Shape inference for aten::mm
   static Expected<TensorOutput> mm(const MetaStack &variableMetas);
   // Shape inference for aten::bmm
@@ -230,11 +238,12 @@ private:
                        const torch::jit::Node *node);
   // Shape inference for prim::ListConstruct
   static Expected<TensorListOutput>
-  listConstruct(const MetaStack &variableMetas);
+  listConstruct(const MetaStack &variableMetas, const torch::jit::Node *node);
   // Shape inference for aten::permute
   static Expected<TensorOutput> permute(const MetaStack &variableMetas);
   // Shape inference for aten::reshape
-  static Expected<TensorOutput> reshape(const MetaStack &variableMetas);
+  static Expected<TensorOutput> reshape(const MetaStack &variableMetas,
+                                        const torch::jit::Node *node);
   // Shape inference for aten::slice
   static Expected<TensorOutput> slice(const MetaStack &variableMetas);
   // Shape inference for aten::cat
@@ -323,7 +332,26 @@ private:
   // Shape inference for fb::equally_split
   static Expected<TensorListOutput>
   equallySplit(const MetaStack &variableMetas);
+  // Shape inference for aten::squeeze
   static Expected<TensorOutput> squeeze(const MetaStack &variableMetas);
+  // Shape inference for aten::narrow
+  static Expected<TensorOutput> narrow(const MetaStack &variableMetas);
+  // Shape inference for fb::index_hash
+  static Expected<TensorOutput> indexHash(const MetaStack &variableMetas);
+  // Shape inference for fb::bucketize
+  static Expected<TensorOutput> bucketize(const MetaStack &variableMetas);
+  // Shape inference for fb::expand_dims
+  static Expected<TensorOutput> expandDims(const MetaStack &variableMetas);
+  // Shape inference for aten::split_with_sizes
+  static Expected<TensorListOutput>
+  splitWithSizes(const MetaStack &variableMetas);
+  // Shape inference for aten::Int
+  static Expected<TensorOutput> inferInt(const MetaStack &variableMetas);
+  // Shape inference for prim::NumToTensor
+  static Expected<TensorOutput> numToTensor(const MetaStack &variableMetas,
+                                            const torch::jit::Node *node);
+  // Shape inference for aten::size
+  static Expected<TensorOutput> size(const MetaStack &variableMetas);
 };
 
 } // namespace glow
