@@ -944,6 +944,44 @@ TEST_F(OnnxImporterTest, importPReluInvalidBroadcastSlope) {
   }
 }
 
+/// Test loading HardSigmoid op from an ONNX model.
+TEST_F(OnnxImporterTest, hardsigmoid) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/hardsigmoid.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {5});
+    x.getHandle() = {-3, -1, 0, 1, 3};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  ClipNode *LR = llvm::dyn_cast<ClipNode>(save->getInput().getNode());
+  ASSERT_TRUE(LR);
+
+  // check beta
+  AddNode *addBeta = llvm::dyn_cast<AddNode>(LR->getInput());
+  ASSERT_TRUE(addBeta);
+  SplatNode *betaSplat = llvm::dyn_cast<SplatNode>(addBeta->getRHS());
+  ASSERT_TRUE(betaSplat);
+  EXPECT_FLOAT_EQ(betaSplat->getValue(), 0.500000001);
+
+  // check alpha
+  MulNode *mulAlpha = llvm::dyn_cast<MulNode>(addBeta->getLHS());
+  ASSERT_TRUE(mulAlpha);
+  SplatNode *alphaSplat = llvm::dyn_cast<SplatNode>(mulAlpha->getLHS());
+  ASSERT_TRUE(alphaSplat);
+  EXPECT_FLOAT_EQ(alphaSplat->getValue(), 0.16666667);
+}
+
 /// Helper method to run the Conv operator test cases.
 /// \p filename contains the model .onnxtxt.
 /// \p expectedDims: output Tensor dimensions.

@@ -50,17 +50,20 @@ TEST(Support, legalizeName) {
   std::string str3 = legalizeName("abc_1aBc");
   EXPECT_TRUE(str3.compare("abc_1aBc") == 0);
 
-  // Check that a long name should be truncated.
-  std::string str4 = legalizeName("string_with_25_characters", 20);
-  EXPECT_EQ("string_with__trunc_1", str4);
+  // Check that a long name is truncated.
+  std::string str4 =
+      legalizeName("__________string_with_45_characters_v1_______", 30);
+  EXPECT_EQ("_____trunc_1743199862606518811", str4);
 
-  // Check that a long name is truncated and truncation counter is increased.
-  std::string str5 = legalizeName("long_string_with_30_characters", 20);
-  EXPECT_EQ("long_string__trunc_2", str5);
+  // Check that a long name is truncated and gets different suffix.
+  std::string str5 =
+      legalizeName("__________string_with_45_characters_v2_______", 30);
+  EXPECT_EQ("_____trunc_2836065357594492436", str5);
 
-  // Check that a long name is not truncated twice.
-  std::string str6 = legalizeName("string_with_25_characters", 20);
-  EXPECT_EQ("string_with__trunc_1", str6);
+  // Check that equal long string are truncated to the same string.
+  std::string str6 =
+      legalizeName("__________string_with_45_characters_v2_______", 30);
+  EXPECT_EQ("_____trunc_2836065357594492436", str6);
 }
 
 /// Check the reading Device config from a yaml file.

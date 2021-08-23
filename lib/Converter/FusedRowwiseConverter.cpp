@@ -49,6 +49,11 @@ static void convertFusedRowwiseQuantizedData(Function *F, bool convertUInt4FP16,
       idx = FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx;
       break;
     }
+
+    case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
+      idx = FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx;
+      break;
+    }
     default:
       continue;
     }

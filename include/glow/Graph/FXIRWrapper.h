@@ -53,7 +53,7 @@ public:
               const llvm::StringMap<const void *> &constants,
               Module *glowModule, llvm::StringRef name = {})
       : IRContainer(name), constants_(constants), parent_(glowModule) {
-    fx_mod_ = &(FXIR["modules"][submod]);
+    fx_mod_ = submod == "" ? &FXIR : &(FXIR["modules"][submod]);
     // Create mapping from getattrs to the underlying name of the constants they
     // alias.
     for (const auto &node : fx_mod_->at("nodes")) {
@@ -127,7 +127,9 @@ public:
     return constants_;
   }
 
-  const FXNode &getSingleUserNode(const FXNode &node) const;
+  /// When FXIR has the notion of memory/buffers. This function returns
+  /// the memory buffer a node(operator) writes to.
+  const FXNode &getDestinationBufferForNode(const FXNode &node) const;
 };
 
 } // namespace glow

@@ -458,6 +458,19 @@ glow::NNPIImporter::addIAExtentionPath(const std::string &extPath) {
   return NNPI_NO_ERROR;
 }
 
+NNPIErrorCode glow::NNPIImporter::addIAExtentionLib(const std::string libName,
+                                                    const char *pLib,
+                                                    size_t sizeLib) {
+  LOG_AND_RETURN_IF(
+      ERROR, (pLib == nullptr || sizeLib == 0),
+      strFormat("Check if IA extension lib is of 0 size or pointer is Null"),
+      NNPI_INVALID_PARAM);
+
+  std::vector<char> libContents(pLib, pLib + sizeLib);
+  iaExtensionLibs_.push_back(std::make_pair(libName, libContents));
+  return NNPI_NO_ERROR;
+}
+
 /// Replaces any operators in the Function \p F with custom DSP NNPI kernel
 /// operators by calling each CustomKernelInjector on each node in sequence.
 /// \returns true iff any custom NNPI node was injected into the Function.
@@ -2421,10 +2434,20 @@ public:
     outputTensors.insert(nvName);
 
     importer.setUsedTensors(inputTensors, outputTensors);
+
     NNPIErrorCode error = importer.addIAExtentionPath(glowIA->getIAPath());
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 8
+    if (error != NNPI_NO_ERROR) {
+      error = importer.addIAExtentionLib(
+          glowIA->getKernelName(), (const char *)glowIA->getPointerToIALib(),
+          glowIA->getSizeOfIALib());
+      LOG_AND_RETURN_IF_NOT(ERROR, error == NNPI_NO_ERROR,
+                            "Failed to store IA extension", NNPI_INVALID_PARAM);
+    }
+#else
     LOG_AND_RETURN_IF_NOT(ERROR, error == NNPI_NO_ERROR,
                           "Failed to store IA extension", NNPI_INVALID_PARAM);
-
+#endif // NNPI >= 1.8
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
     const auto *kpConstant =
         glowIA->getParent()->getParent()->getConstantByName(
@@ -3001,6 +3024,11 @@ std::unordered_map<
     {"CmpLT",
      glow::make_unique<
          BinaryEltwiseNodeImporter<glow::CmpLTNode, NNPI_ELTWISE_LESS>>()},
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 8
+    {"CmpNEQ",
+     glow::make_unique<
+         BinaryEltwiseNodeImporter<glow::CmpNEQNode, NNPI_ELTWISE_NEQ>>()},
+#endif // NNPI >= 1.8
     {"ArgMax", glow::make_unique<ArgMaxNodeImporter>()},
     {"ArgMin", glow::make_unique<ArgMinNodeImporter>()},
     {"Reshape", glow::make_unique<ReshapeNodeImporter>()},
