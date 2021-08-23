@@ -799,6 +799,16 @@ public:
   // deprecated.
   SwishNode *createSwish(llvm::StringRef name, NodeValue input, TypeRef OT);
 
+  /// Create a HardSigmoid node with the given \p name, \p input, \p alpha and
+  /// \p beta. Result type will be implicitly set based on the \p input type.
+  ClipNode *createHardSigmoid(llvm::StringRef name, NodeValue input,
+                              float alpha, float beta);
+
+  /// Create a HardSigmoid node with the given \p name, \p input,
+  /// \p alpha, \p beta and output type \p outTy.
+  ClipNode *createHardSigmoid(llvm::StringRef name, TypeRef outTy,
+                              NodeValue input, float alpha, float beta);
+
   /// Create a Tanh node with the given \p name, \p input and
   /// output type \p outTy.
   TanhNode *createTanh(llvm::StringRef name, TypeRef outTy, NodeValue input);

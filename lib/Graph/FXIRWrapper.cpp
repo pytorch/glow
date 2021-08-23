@@ -78,13 +78,17 @@ const FXNode &FXIRWrapper::getFXNodeByName(llvm::StringRef nodeName) const {
   return it->second;
 }
 
-const FXNode &FXIRWrapper::getSingleUserNode(const FXNode &node) const {
+const FXNode &
+FXIRWrapper::getDestinationBufferForNode(const FXNode &node) const {
 
   CHECK(node.find("users") != node.items().end())
       << "users field doesn't exist in node " << node;
+  CHECK_EQ(node["users"].size(), 1);
   auto users = node["users"].at(0);
   auto user_name = users["name"].getString();
-  return getFXNodeByName(user_name);
+  auto &dest_node = getFXNodeByName(user_name);
+  auto &dest = (getNodeOpCode(dest_node) == "output") ? node : dest_node;
+  return dest;
 }
 
 } // namespace glow

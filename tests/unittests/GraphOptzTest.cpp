@@ -8347,3 +8347,85 @@ TEST_F(GraphOptz, OptimizeInsertTensorBigSplat) {
   EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind));
   checkNumericalEquivalence(1e-7f);
 }
+
+TEST_F(GraphOptz, sinkQuantizeTransposeMultiUser) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "input",
+                             /* isTrainable */ false);
+  auto *T = F_->createTranspose("transpose", input, NHWC2NCHW);
+  auto *Q1 = F_->createQuantize("q1", T, ElemKind::Int8QTy, 0.11, 1);
+  auto *Q2 = F_->createQuantize("q2", T, ElemKind::Int8QTy, 0.12, 2);
+  auto *S1 = F_->createSave("save1", Q1);
+  auto *S2 = F_->createSave("save2", Q2);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  auto *optS1 = findFunctionNodeByName<SaveNode>(optimizedF_, S1->getName());
+  auto *optS2 = findFunctionNodeByName<SaveNode>(optimizedF_, S2->getName());
+
+  // Check that transpose has been sunk below quantize now for both.
+  EXPECT_TRUE(llvm::isa<TransposeNode>(optS1->getInput()));
+  EXPECT_TRUE(llvm::isa<TransposeNode>(optS2->getInput()));
+
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, skipSinkQuantizeTransposeMultiUser) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "input",
+                             /* isTrainable */ false);
+  auto *T = F_->createTranspose("transpose", input, NHWC2NCHW);
+  auto *Q = F_->createQuantize("quant", T, ElemKind::Int8QTy, 0.11, 1);
+  F_->createSave("save1", Q);
+  F_->createSave("save2", T);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Verify the graph hasn't changed.
+  EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false, /* skipName */ true),
+            optimizedF_->toString(/* skipUsersForStorage */ false,
+                                  /* skipName */ true));
+}
+
+TEST_F(GraphOptz, MergeMatMulsWhenSkippingOne) {
+  Placeholder *LHS1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "LHS1", false);
+  Placeholder *LHS2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {30, 10}, "LHS2", false);
+  Placeholder *LHS3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {20, 10}, "LHS3", false);
+  Placeholder *RHS =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 15}, "RHS", false);
+  bindings_.allocate(LHS1)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+  bindings_.allocate(LHS2)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+  bindings_.allocate(LHS3)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+  bindings_.allocate(RHS)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+
+  // Chain a bunch of nodes together for LHS2 to prevent dependency analysis
+  // from allowing merging for MM2 below.
+  Node *sigLHS2 = LHS2;
+  for (size_t i = 0, e = 7; i < e; i++) {
+    sigLHS2 = F_->createSigmoid("s_lhs2", sigLHS2);
+  }
+
+  Node *MM1 = F_->createMatMul("mm1", LHS1, RHS);
+  Node *MM2 = F_->createMatMul("mm2", sigLHS2, RHS);
+  Node *MM3 = F_->createMatMul("mm3", LHS3, RHS);
+
+  F_->createSave("save1", MM1);
+  F_->createSave("save2", MM2);
+  F_->createSave("save3", MM3);
+  ASSERT_TRUE(F_->verify());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::MergeMatMul, getDCEPassConfig()});
+  ASSERT_TRUE(optimizedF_->verify());
+
+  // Expect three matmuls -> two matmuls, because mm1 and mm3 were merged.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::MatMulNodeKind), 2);
+
+  checkNumericalEquivalence(0.f);
+}

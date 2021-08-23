@@ -505,6 +505,28 @@ bool SinkConcatBelowQuantize::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// If \p N is a TransposeNode with all of the same node kind of users, then
+/// \returns that TransposeNode, else \returns nullptr. For example, if \p N is
+/// a TransposeNode with two QuantizeNode users, this will return the
+/// TransposeNode, but if it had one QuantizeNode and one MatMul node then it
+/// will return nullptr.
+static TransposeNode *getTransposeNodeWithAllSameUserKind(Node *N) {
+  auto *TN = dyn_cast<TransposeNode>(N);
+  if (!TN) {
+    return nullptr;
+  }
+  if (TN->getNumUsers() <= 1) {
+    return TN;
+  }
+  auto firstKind = N->getUsers().front().getUser()->getKind();
+  for (auto &U : N->getUsers()) {
+    if (U.getUser()->getKind() != firstKind) {
+      return nullptr;
+    }
+  }
+  return TN;
+}
+
 /// Code Sinking.
 bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -931,8 +953,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
 
     if (auto *Q = dyn_cast<QuantizeNode>(node)) {
       // Sink TransposeNode below QuantizedNode.
-      // If it doesn't work out it will be re-sinked later.
-      if (auto *TR = dyn_cast<TransposeNode>(Q->getInput())) {
+      if (auto *TR = getTransposeNodeWithAllSameUserKind(Q->getInput())) {
         auto newQType = F->getParent()->uniqueTypeWithNewShape(
             Q->getResult().getType(), TR->getInput().dims());
         auto *newQ = F->createQuantize(Q->getName(), TR->getInput(), newQType);
@@ -1470,15 +1491,25 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
     std::vector<NodeValue> LHS;
 
     // For each matmul that depends on the rhs matrix.
-    for (auto &MM : MMs) {
+    std::unordered_set<MatMulNode *> skippedMMs;
+    std::string firstMMName;
+    std::string firstLHSName;
+    for (auto *MM : MMs) {
       auto L = MM->getLHS();
       // The operands to the matrix multiplier should not depend on one another
       // or else we won't be able to get rid of the original matrix
       // multiplication.
       if (mayDependOnAny(LHS, L.getNode())) {
+        skippedMMs.insert(MM);
         continue;
       }
       LHS.push_back(L);
+      if (firstMMName.empty()) {
+        firstMMName = MM->getName().str();
+      }
+      if (firstLHSName.empty()) {
+        firstLHSName = L.getNode()->getName().str();
+      }
     }
 
     // We need to have at least two matrices to merge.
@@ -1487,14 +1518,18 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
     }
 
     // Merge the matmul:
-    auto *CC = F->createConcat("mergeLHS", LHS, 0);
-    auto *MM = F->createMatMul("bigMatMul", CC, it.first);
+    auto *CC = F->createConcat(firstLHSName + "_mergeLHS", LHS, 0);
+    auto *MM = F->createMatMul(firstMMName + "_bigMatMul", CC, it.first);
 
     dim_t R = MM->getResult().dims()[1];
     dim_t start = 0;
     for (auto *origMM : MMs) {
+      if (skippedMMs.count(origMM)) {
+        continue;
+      }
       dim_t H = origMM->getResult().dims()[0];
-      auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
+      auto *ex = F->createSlice(origMM->getName().str() + "_extract", MM,
+                                {start, 0}, {start + H, R});
       start += H;
       origMM->getResult().replaceAllUsesOfWith(ex);
       changed = true;

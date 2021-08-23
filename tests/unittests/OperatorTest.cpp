@@ -14074,6 +14074,53 @@ TEST_P(OperatorTest, Sigmoid_BFloat16) {
                           0.01f);
 }
 
+/// Helper to test HardSigmoid using \p DTy.
+template <typename DataType>
+static void testHardSigmoid(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            float allowedError = 0.001f) {
+  constexpr dim_t size = 5;
+  float alpha = 0.2;
+  float beta = 0.5;
+  auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {-3., -1., 0., 1., 3.};
+  auto *hardsigmoid = F->createHardSigmoid("hardsigmoid", input, alpha, beta);
+  auto *save = F->createSave("save", hardsigmoid);
+  bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto saveH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
+  auto inH = bindings.get(input)->getHandle<DataType>();
+
+  for (dim_t i = 0; i < size; i++) {
+    DataType expectedResult = std::max<DataType>(
+        0,
+        std::min<DataType>(1, (DataType)alpha * inH.raw(i) + (DataType)beta));
+    EXPECT_NEAR((float)saveH.raw(i), (float)expectedResult, allowedError);
+  }
+}
+
+/// Verify that the HardSigmoid operator works correctly with FloatTy.
+TEST_P(OperatorTest, HardSigmoid_Float) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the HardSigmoid operator works correctly with Float16Ty.
+TEST_P(OperatorTest, HardSigmoid_Float16) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Verify that the HardSigmoid operator works correctly with BFloat16Ty.
+TEST_P(OperatorTest, HardSigmoid_BFloat16) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
 /// Helper to test Swish using \p DTy.
 template <typename DataType>
 static void testSwish(glow::PlaceholderBindings &bindings, glow::Module &mod,
