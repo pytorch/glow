@@ -35,6 +35,8 @@ BB.newNode("NNPICustomIA")
     .addMember(MemberType::String, "IAPath")
     .addMember(MemberType::Int64,
                "ICERefCallback") // NNPICustomIAIceRefCallback*
+    .addMember(MemberType::Int64, "PointerToIALib")
+    .addMember(MemberType::Unsigned, "SizeOfIALib")
     .setDocstring("This is an experimental NNPI-specific node representing a "
                   "custom IA op");
 
