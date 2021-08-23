@@ -22,6 +22,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/HostManager/HostManager.h"
 #include "lib/Onnxifi/Base.h"
 
 #include <algorithm>
@@ -1043,6 +1044,13 @@ protected:
     if (dumpModelInputs) {
       dumpOutputs();
     }
+
+    // Undeploy the network.
+    CHECK(!ERR_TO_BOOL(hostManager->removeNetwork("main")))
+        << "Could not remove the network";
+    // Free memory.
+    hostManager.reset();
+    mod.reset();
 
     // Compare against interpreter if we're not executing already on it.
     if (!skipCorrectnessCheck && getBackendName() != "Interpreter") {

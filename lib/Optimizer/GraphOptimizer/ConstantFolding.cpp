@@ -414,6 +414,8 @@ static bool constantFoldFun(Function *F, const CompilationContext &cctx,
       // Replace the old result by the new constant result.
       N->getNthResult(idx).replaceAllUsesOfWith(constResult);
     }
+    // Perform Dead Code Elimination.
+    runDCEPass(F, cctx);
     changed = true;
   }
   return changed;

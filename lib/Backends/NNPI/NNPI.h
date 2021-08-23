@@ -118,7 +118,28 @@ public:
   /// \returns a unitless value to be used when comparing to other estimates.
   /// or -1 if no estimate could be generated.
   double estimateAvgPoolNode(const AvgPoolNode *avgPoolNode) const;
+
 #endif // NNPI >= 1.7
+
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 8
+  /// Estimate performance cost for a given LayerNorm Node \p LN.
+  /// \returns a unitless value to be used when comparing to other estimates.
+  /// or -1 if no estimate could be generated.
+  double estimateLayerNormalizationNode(const LayerNormalizationNode *LN) const;
+
+  /// Estimate performance cost for a given Binary Eltwise Node \p glowEltwise.
+  /// \returns a unitless value to be used when comparing to other estimates.
+  /// or -1 if no estimate could be generated.
+  template <class EltwiseNodeType, NNPI_ELTWISE_TYPE eltwiseType>
+  double estimateBinaryEltwiseNode(const glow::Node *glowEltwise) const;
+
+  /// Estimate performance cost for a given Unary Eltwise Node \p glowEltwise.
+  /// \returns a unitless value to be used when comparing to other estimates.
+  /// or -1 if no estimate could be generated.
+  template <class EltwiseNodeType, NNPI_ELTWISE_TYPE eltwiseType>
+  double estimateUnaryEltwiseNode(const glow::Node *glowEltwise) const;
+
+#endif // NNPI >= 1.8
 
   /// \returns a unitless value to be used when comparing Nodes or
   /// error if no estimate can be generated.

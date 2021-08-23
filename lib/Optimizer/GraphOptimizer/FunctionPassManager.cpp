@@ -75,7 +75,8 @@ bool ThePassManager::runPassHook(const PassConfigBase &passConfig, PassBase &P,
                                           cctx);
 }
 
-bool runDCEPass(ThePassManager::IRContainerTy *F, CompilationContext &cctx) {
+bool runDCEPass(ThePassManager::IRContainerTy *F,
+                const CompilationContext &cctx) {
   auto pipeline = glow::make_unique<FunctionPassPipeline>();
   pipeline->pushBack(getDCEPassConfig());
   return FunctionPassManager("DCE_FPM", std::move(pipeline)).run(F, cctx);
