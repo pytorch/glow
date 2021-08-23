@@ -176,6 +176,11 @@ public:
     return iaExtensionPaths_;
   }
 
+  const std::vector<std::pair<std::string, std::vector<char>>> &
+  getIAExtensionLibs() const {
+    return iaExtensionLibs_;
+  }
+
   const NNPICompilationInfo &getCompilationInfo() const {
     return compilationInfo_;
   }
@@ -201,6 +206,7 @@ private:
   std::vector<std::string> outputNames_;
   NNPIDeviceNetworkConfig devNetConfig_;
   std::vector<std::string> iaExtensionPaths_;
+  std::vector<std::pair<std::string, std::vector<char>>> iaExtensionLibs_;
   NNPICompilationInfo compilationInfo_;
 
   Error

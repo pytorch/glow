@@ -43,7 +43,8 @@ struct UnaryNodeIAKernelInjector : public CustomKernelInjector {
         castedNode->getResult().getType(), kernelParams,
         {castedNode->getInput()}, kernelName,
         GetNNPIKernels::getCompiledIAKernelsFilePath(),
-        /* IceRefCallback */ static_cast<int64_t>(0)));
+        /* IceRefCallback */ static_cast<int64_t>(0),
+        /* PointerToLib */ static_cast<int64_t>(0), /* SizeOfLib */ 0));
 
     return iaNode;
   }
@@ -76,7 +77,8 @@ struct BinaryNodeIAKernelInjector : public CustomKernelInjector {
         castedNode->getResult().getType(), kernelParams,
         {castedNode->getNthInput(0), castedNode->getNthInput(1)}, kernelName,
         GetNNPIKernels::getCompiledIAKernelsFilePath(),
-        /* IceRefCallback */ static_cast<int64_t>(0)));
+        /* IceRefCallback */ static_cast<int64_t>(0),
+        /* PointerToLib */ static_cast<int64_t>(0), /* SizeOfLib */ 0));
 
     return iaNode;
   }
@@ -147,7 +149,8 @@ struct ConversionNodeIAKernelInjector : public CustomKernelInjector {
         castedNode->getResult().getType(), kernelParams,
         {castedNode->getInput()}, kernelName,
         GetNNPIKernels::getCompiledIAKernelsFilePath(),
-        /* IceRefCallback */ static_cast<int64_t>(0)));
+        /* IceRefCallback */ static_cast<int64_t>(0),
+        /* PointerToLib */ static_cast<int64_t>(0), /* SizeOfLib */ 0));
 
     return iaNode;
   }
@@ -197,6 +200,7 @@ std::vector<std::unique_ptr<CustomKernelInjector>> buildIAInjectors() {
       std::make_unique<
           UnaryNodeIAKernelInjector<NegNode, ElemKind::Int32ITy>>());
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION < 8
   // LTE Int32 Int32
   injectors.emplace_back(
       std::make_unique<BinaryNodeIAKernelInjector<
@@ -216,6 +220,8 @@ std::vector<std::unique_ptr<CustomKernelInjector>> buildIAInjectors() {
   injectors.emplace_back(
       std::make_unique<BinaryNodeIAKernelInjector<
           CmpNEQNode, ElemKind::Int32ITy, ElemKind::Int32ITy>>());
+
+#endif // NNPI < 1.8
 
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION < 7
   // CumSum Int32
