@@ -68,6 +68,9 @@ extern llvm::cl::opt<std::string> llvmOpt;
 /// Set of options to pass to the external LLVM compiler.
 extern llvm::cl::list<std::string> llvmCompilerOptions;
 
+/// Option to create an asm file from llvm compiler.
+extern llvm::cl::opt<bool> llvmSaveAsm;
+
 /// Option to set float ABI. Used as -float-abi=<abi-type>.
 extern llvm::cl::opt<llvm::FloatABI::ABIType> floatABI;
 

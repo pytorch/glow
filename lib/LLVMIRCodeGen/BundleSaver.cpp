@@ -553,7 +553,7 @@ void BundleSaver::produceBundle() {
                           << "header file: " << bundleHeaderOutput << "\n");
   llvm::StringRef fileName = bundleCodeOutput;
   std::error_code EC;
-  llvm::raw_fd_ostream outputFile(fileName, EC, llvm::sys::fs::F_None);
+  llvm::raw_fd_ostream outputFile(fileName, EC, llvm::sys::fs::OF_None);
   CHECK(!EC) << "Could not open the output file for saving the bundle "
                 "code with file name: "
              << fileName.str();
@@ -595,6 +595,18 @@ void BundleSaver::produceBundle() {
         CHECK(!system(cmd.c_str()))
             << "Error running external opt compiler: " << cmd;
 
+        if (llvmSaveAsm) {
+          cmd.clear();
+          cmd = llvmCompiler;
+          for (auto option : llvmCompilerOptions) {
+            cmd += " " + option + " ";
+          }
+          cmd += " " + (outputDir + "/" + savedBundleName + ".opt.bc").str();
+          cmd += " -S -o " + (outputDir + "/" + savedBundleName + ".s").str();
+          CHECK(!system(cmd.c_str()))
+              << "Error running external LLVM compiler: " << cmd;
+        }
+
         cmd.clear();
         cmd = llvmCompiler;
         for (auto option : llvmCompilerOptions) {
@@ -611,6 +623,32 @@ void BundleSaver::produceBundle() {
     llvm::legacy::PassManager PM;
     auto &TM = irgen_->getTargetMachine();
 
+    // Create asm output file.
+    if (llvmSaveAsm) {
+      auto asm_FileName = (outputDir + "/" + savedBundleName + ".s").str();
+      llvm::StringRef asmFileName = asm_FileName;
+      std::error_code EC2;
+      llvm::raw_fd_ostream outputFileAsm(asmFileName, EC2,
+                                         llvm::sys::fs::OF_None);
+      CHECK(!EC2) << "Could not open the output file for saving the asm "
+                     "code with file name: "
+                  << asmFileName.str();
+      llvm::legacy::PassManager PM2;
+#if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
+      TM.addPassesToEmitFile(
+          PM2, outputFileAsm,
+          llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
+#elif LLVM_VERSION_MAJOR < 10
+      TM.addPassesToEmitFile(
+          PM2, outputFileAsm, nullptr,
+          llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
+#else
+      TM.addPassesToEmitFile(PM2, outputFileAsm, nullptr,
+                             llvm::CGFT_AssemblyFile);
+#endif
+      PM2.run(M);
+    }
+
 #if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
     TM.addPassesToEmitFile(
         PM, outputFile, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
@@ -621,7 +659,6 @@ void BundleSaver::produceBundle() {
 #else
     TM.addPassesToEmitFile(PM, outputFile, nullptr, llvm::CGFT_ObjectFile);
 #endif
-
     PM.run(M);
   }
   outputFile.close();
