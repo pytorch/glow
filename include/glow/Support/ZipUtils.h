@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef GLOW_SUPPORT_ZIPUTILS_H
+#define GLOW_SUPPORT_ZIPUTILS_H
 
 #include <fstream>
 #include <iostream>
@@ -105,3 +107,5 @@ public:
                                  const void *pBuf, size_t n);
 };
 } // namespace glow
+
+#endif // GLOW_SUPPORT_ZIPUTILS_H

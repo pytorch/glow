@@ -2563,7 +2563,113 @@ double NNPIBackend::estimateAvgPoolNode(const AvgPoolNode *avgPoolNode) const {
 
   return estimate;
 }
+
 #endif // NNPI >= 1.7
+
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 8
+double NNPIBackend::estimateLayerNormalizationNode(
+    const LayerNormalizationNode *LN) const {
+
+  NodeInfo NI(*LN);
+  if (!isOpSupported(NI)) {
+    return -1.0;
+  }
+
+  std::vector<NNPITensorDesc> descs(3); // only input for this node type
+
+  LOG_AND_RETURN_IF(ERROR,
+                    !updateDescListForEstimate(
+                        descs,
+                        {NI.getInTy(LayerNormalizationNode::InputIdx),
+                         NI.getOutTy(LayerNormalizationNode::ResultIdx),
+                         NI.getInTy(LayerNormalizationNode::ScaleIdx)},
+                        false /* alternativeLayout */),
+                    "Failed to update NNPITensorDesc", -1.0);
+
+  const uint64_t numTotalDescs = 3;
+  const NNPITensorDesc *td[numTotalDescs] = {&(descs.at(0)), &(descs.at(1)),
+                                             &(descs.at(2))};
+
+  double estimate = -1.0;
+  LOG_NNPI_IF_ERROR(
+      nnpiEstimateOp(
+          (LN->getName().str()).c_str(),
+          NNPI_COST_MODEL_OP_TYPE::NNPI_COST_MODEL_LAYER_NORMALIZATION,
+          0, /* subType is don't care for this node */
+          td, 3, &estimate),
+      "Failed to estimate LayerNormalization op.");
+
+  return estimate;
+}
+
+template <class EltwiseNodeType, NNPI_ELTWISE_TYPE eltwiseType>
+double NNPIBackend::estimateBinaryEltwiseNode(const glow::Node *n) const {
+
+  auto *glowEltwise = llvm::dyn_cast<EltwiseNodeType>(n);
+
+  NodeInfo NI(*glowEltwise);
+  if (!isOpSupported(NI)) {
+    return -1.0;
+  }
+
+  std::vector<NNPITensorDesc> descs(3); // 2 inputs and 1 output
+
+  LOG_AND_RETURN_IF(
+      ERROR,
+      !updateDescListForEstimate(descs,
+                                 {NI.getInTy(EltwiseNodeType::RHSIdx),
+                                  NI.getInTy(EltwiseNodeType::LHSIdx),
+                                  NI.getOutTy(EltwiseNodeType::ResultIdx)},
+                                 false /* alternativeLayout */),
+      "Failed to update NNPITensorDesc", -1.0);
+
+  const uint64_t numTotalDescs = 3;
+  const NNPITensorDesc *td[numTotalDescs] = {&(descs.at(0)), &(descs.at(1)),
+                                             &(descs.at(2))};
+
+  double estimate = -1.0;
+  LOG_NNPI_IF_ERROR(
+      nnpiEstimateOp((glowEltwise->getName().str()).c_str(),
+                     NNPI_COST_MODEL_OP_TYPE::NNPI_COST_MODEL_ELTWISE_OPS,
+                     eltwiseType, td, 3, &estimate),
+      "Failed to estimate Binary Eltwise op.");
+
+  return estimate;
+}
+
+template <class EltwiseNodeType, NNPI_ELTWISE_TYPE eltwiseType>
+double NNPIBackend::estimateUnaryEltwiseNode(const glow::Node *n) const {
+
+  auto *glowEltwise = llvm::dyn_cast<EltwiseNodeType>(n);
+
+  NodeInfo NI(*glowEltwise);
+  if (!isOpSupported(NI)) {
+    return -1.0;
+  }
+
+  std::vector<NNPITensorDesc> descs(2); // 1 input and 1 output
+
+  LOG_AND_RETURN_IF(
+      ERROR,
+      !updateDescListForEstimate(descs,
+                                 {NI.getInTy(EltwiseNodeType::InputIdx),
+                                  NI.getOutTy(EltwiseNodeType::ResultIdx)},
+                                 false /* alternativeLayout */),
+      "Failed to update NNPITensorDesc", -1.0);
+
+  const uint64_t numTotalDescs = 2;
+  const NNPITensorDesc *td[numTotalDescs] = {&(descs.at(0)), &(descs.at(1))};
+
+  double estimate = -1.0;
+  LOG_NNPI_IF_ERROR(
+      nnpiEstimateOp((glowEltwise->getName().str()).c_str(),
+                     NNPI_COST_MODEL_OP_TYPE::NNPI_COST_MODEL_ELTWISE_OPS,
+                     eltwiseType, td, 2, &estimate),
+      "Failed to estimate Unary Eltwise op.");
+  return estimate;
+}
+
+#endif // NNPI >= 1.8
 
 Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
   double returnCost = -1.0;
@@ -2633,6 +2739,85 @@ Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
     break;
   }
 #endif // NNPI >= 1.7
+
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 8
+  case Kinded::Kind::LayerNormalizationNodeKind: {
+    const LayerNormalizationNode *LN = llvm::cast<LayerNormalizationNode>(node);
+    returnCost = estimateLayerNormalizationNode(LN);
+    break;
+  }
+  case Kinded::Kind::AddNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::AddNode, NNPI_ELTWISE_ADD>(node);
+    break;
+  }
+  case Kinded::Kind::MulNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::MulNode, NNPI_ELTWISE_MUL>(node);
+    break;
+  }
+  case Kinded::Kind::DivNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::DivNode, NNPI_ELTWISE_DIV>(node);
+    break;
+  }
+  case Kinded::Kind::SubNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::SubNode, NNPI_ELTWISE_SUB>(node);
+    break;
+  }
+  case Kinded::Kind::PowNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::PowNode, NNPI_ELTWISE_POW>(node);
+    break;
+  }
+  case Kinded::Kind::FmodNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::FmodNode, NNPI_ELTWISE_MODULO>(node);
+    break;
+  }
+  case Kinded::Kind::CmpEQNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::CmpEQNode, NNPI_ELTWISE_EQ>(node);
+    break;
+  }
+  case Kinded::Kind::CmpLTENodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::CmpLTENode, NNPI_ELTWISE_LTE>(node);
+    break;
+  }
+  case Kinded::Kind::CmpLTNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::CmpLTNode, NNPI_ELTWISE_LESS>(node);
+    break;
+  }
+  case Kinded::Kind::MaxNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::MaxNode, NNPI_ELTWISE_MAX>(node);
+    break;
+  }
+  case Kinded::Kind::MinNodeKind: {
+    returnCost =
+        estimateBinaryEltwiseNode<glow::MinNode, NNPI_ELTWISE_MIN>(node);
+    break;
+  }
+  case Kinded::Kind::ExpNodeKind: {
+    returnCost =
+        estimateUnaryEltwiseNode<glow::ExpNode, NNPI_ELTWISE_EXP>(node);
+    break;
+  }
+  case Kinded::Kind::AbsNodeKind: {
+    returnCost =
+        estimateUnaryEltwiseNode<glow::AbsNode, NNPI_ELTWISE_ABS>(node);
+    break;
+  }
+  case Kinded::Kind::NegNodeKind: {
+    returnCost =
+        estimateUnaryEltwiseNode<glow::NegNode, NNPI_ELTWISE_NEG>(node);
+    break;
+  }
+#endif // NNPI >= 1.8
+
   default:
     break;
   }

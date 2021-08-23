@@ -26,7 +26,7 @@ namespace glow {
 using FunctionPassManager = PassManager<FunctionPassPipeline, FunctionPass>;
 
 /// Helper to run a DCE pass on \p F given \p cctx. \returns if \p was modified.
-bool runDCEPass(Function *F, CompilationContext &cctx);
+bool runDCEPass(Function *F, const CompilationContext &cctx);
 
 } // namespace glow
 
