@@ -19,6 +19,7 @@
 #include "glow/Support/Support.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "nnpi_transformer_types.h"
+#include <vector>
 
 using namespace utils;
 
@@ -180,8 +181,8 @@ public:
     const auto &kwargs = node["kwargs"];
     const auto &inputName = importer.getInputNodeName(kwargs["input"]);
     const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
-    const auto &per_sample_weights =
-        importer.getInputNodeName(kwargs["per_sample_weights"]);
+    const auto &per_sample_weights = importer.getInputNodeName(
+        kwargs["per_sample_weights"], /* optional */ true);
     const auto &offsetsName = importer.getInputNodeName(kwargs["offsets"]);
 
     const auto &hasEndOffset = kwargs["include_last_offset"].asBool();
@@ -201,8 +202,9 @@ public:
         {name});
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
-        importer.getNetwork(), name.c_str(), weightName.c_str(), name.c_str(),
-        per_sample_weights.c_str(), inputName.c_str(), offsetsName.c_str(),
+        importer.getNetwork(), finalize(name), finalize(weightName),
+        finalize(name), finalize(per_sample_weights), finalize(inputName),
+        finalize(offsetsName),
         /* useFP32Accumulation */ 0, /* useLengthsAsOffsets */ 1,
         /*avg length*/ NAN, NNPI_LENGTH_VARIABLE);
   }
@@ -218,8 +220,8 @@ public:
     const auto &kwargs = node["kwargs"];
     const auto &inputName = importer.getInputNodeName(kwargs["input"]);
     const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
-    const auto &per_sample_weights =
-        importer.getInputNodeName(kwargs["per_sample_weights"]);
+    const auto &per_sample_weights = importer.getInputNodeName(
+        kwargs["per_sample_weights"], /* optional */ true);
     const auto &offsetsName = importer.getInputNodeName(kwargs["offsets"]);
 
     const auto &hasEndOffset = kwargs["include_last_offset"].asBool();
@@ -231,8 +233,9 @@ public:
         {weightName, per_sample_weights, inputName, offsetsName}, {name});
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
-        importer.getNetwork(), name.c_str(), weightName.c_str(), name.c_str(),
-        per_sample_weights.c_str(), inputName.c_str(), offsetsName.c_str(),
+        importer.getNetwork(), finalize(name), finalize(weightName),
+        finalize(name), finalize(per_sample_weights), finalize(inputName),
+        finalize(offsetsName),
         /* useFP32Accumulation */ true, /* useLengthsAsOffsets */ 1,
         /*avg length*/ NAN, NNPI_LENGTH_VARIABLE);
   }
@@ -337,8 +340,36 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddSigmoidOp(importer.getNetwork(), name.c_str(),
-                                   inputName.c_str(), name.c_str());
+    return nnpiNetworkAddSigmoidOp(importer.getNetwork(), finalize(name),
+                                   finalize(inputName), finalize(name));
+  }
+};
+
+class SumNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    auto dim = inputs.find("dim");
+    std::vector<uint32_t> axis;
+    if (dim != inputs.items().end()) {
+      auto dims = toIntegerArray<uint32_t>(inputs["dim"]);
+      for (auto &d : dims) {
+        axis.push_back(d);
+      }
+    }
+
+    return nnpiNetworkAddReduceOp(importer.getNetwork(), finalize(name),
+                                  finalize(inputName), finalize(name),
+                                  NNPI_REDUCE_SUM, axis.data(), axis.size(), 0);
   }
 };
 
@@ -358,6 +389,50 @@ public:
     importer.setUsedTensors({inputName}, {name});
     return nnpiNetworkAddReshapeOp(importer.getNetwork(), finalize(name),
                                    finalize(inputName), finalize(name), &desc);
+  }
+};
+
+class SliceTensorNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+    auto dims = toIntegerArray<uint32_t>(inputs["dims"]);
+    auto starts = toIntegerArray<uint32_t>(inputs["starts"]);
+    auto stops = toIntegerArray<uint32_t>(inputs["stops"]);
+    auto steps = toIntegerArray<uint32_t>(inputs["steps"]);
+    CHECK_EQ(dims.size(), 1) << "Only supporting single dim slice";
+    CHECK_EQ(starts.size(), 1) << "Only supporting single start slice";
+    CHECK_EQ(stops.size(), 1) << "Only supporting single stop slice";
+    CHECK_EQ(steps.size(), 1) << "Only supporting single step slice";
+    CHECK_EQ(steps[0], 1) << "Only supporting step == 1";
+
+    auto shape = toIntegerArray<glow::dim_t>(node["shape"].getString());
+
+    int32_t startOffset[NNPI_MAX_DIMS] = {0};
+    int32_t endOffset[NNPI_MAX_DIMS] = {0};
+
+    for (size_t i = 0, e = shape.size(); i < e; i++) {
+      if (i != dims[0]) {
+        startOffset[i] = 0;
+        endOffset[i] = shape[i];
+        continue;
+      }
+      startOffset[i] = starts[0];
+      endOffset[i] = stops[0];
+    }
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddSliceOp(importer.getNetwork(), finalize(name),
+                                 finalize(inputName), finalize(name),
+                                 startOffset, endOffset, nullptr,
+                                 uint32_t(shape.size()));
   }
 };
 
@@ -383,9 +458,9 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddTransposeOp(importer.getNetwork(), name.c_str(),
-                                     inputName.c_str(), name.c_str(), nnpiOrder,
-                                     dimSize.size());
+    return nnpiNetworkAddTransposeOp(importer.getNetwork(), finalize(name),
+                                     finalize(inputName), finalize(name),
+                                     nnpiOrder, dimSize.size());
   }
 };
 
@@ -408,9 +483,9 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddTransposeOp(importer.getNetwork(), name.c_str(),
-                                     inputName.c_str(), name.c_str(), nnpiOrder,
-                                     dimSize.size());
+    return nnpiNetworkAddTransposeOp(importer.getNetwork(), finalize(name),
+                                     finalize(inputName), finalize(name),
+                                     nnpiOrder, dimSize.size());
   }
 };
 
@@ -428,9 +503,9 @@ public:
 
     importer.setUsedTensors({inputName, otherName}, {name});
 
-    return nnpiNetworkAddMatMulOp(importer.getNetwork(), name.c_str(),
-                                  inputName.c_str(), otherName.c_str(),
-                                  name.c_str());
+    return nnpiNetworkAddMatMulOp(importer.getNetwork(), finalize(name),
+                                  finalize(inputName), finalize(otherName),
+                                  finalize(name));
   }
 };
 
@@ -454,9 +529,33 @@ public:
     }
 
     importer.setUsedTensors(inputTensors, {name});
-    return nnpiNetworkAddConcatOp(importer.getNetwork(), name.c_str(), inputs,
-                                  numInputs, name.c_str(),
+    return nnpiNetworkAddConcatOp(importer.getNetwork(), finalize(name), inputs,
+                                  numInputs, finalize(name),
                                   kwargs["dim"].getInt());
+  }
+};
+
+class LayerNormalizationNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &biasName = importer.getInputNodeName(kwargs["bias"]);
+    auto eps = kwargs["eps"].getDouble();
+    auto shape = toIntegerArray<uint32_t>(kwargs["normalized_shape"]);
+
+    importer.setUsedTensors({inputName, weightName}, {biasName, name});
+
+    return nnpiNetworkAddLayerNormOp(importer.getNetwork(), finalize(name),
+                                     finalize(inputName), finalize(name),
+                                     finalize(weightName), finalize(biasName),
+                                     shape.data(), shape.size(), eps);
   }
 };
 
@@ -472,8 +571,8 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddTanhOp(importer.getNetwork(), name.c_str(),
-                                inputName.c_str(), name.c_str());
+    return nnpiNetworkAddTanhOp(importer.getNetwork(), finalize(name),
+                                finalize(inputName), finalize(name));
   }
 };
 
@@ -515,6 +614,7 @@ static std::unordered_map<
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
     {"acc_ops.reshape", std::make_unique<ReshapeNodeImporter>()},
     {"acc_ops.tanh", std::make_unique<TanhNodeImporter>()},
+    {"acc_ops.slice_tensor", std::make_unique<SliceTensorNodeImporter>()},
     {"acc_ops.linear", std::make_unique<LinearNodeImporter>()},
     {"acc_ops.quantized_linear", std::make_unique<LinearNodeImporter>()},
     {"acc_ops.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
@@ -523,6 +623,7 @@ static std::unordered_map<
     {"acc_ops.batch_norm", std::make_unique<BatchNormalizationNodeImporter>()},
     {"acc_ops.quantized_batch_norm2d",
      std::make_unique<BatchNormalizationNodeImporter>()},
+    {"acc_ops.layer_norm", std::make_unique<LayerNormalizationNodeImporter>()},
     {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
     {"acc_ops.sigmoid", std::make_unique<SigmoidNodeImporter>()},
     {"acc_ops.adaptive_avg_pool2d",
@@ -531,6 +632,7 @@ static std::unordered_map<
     {"acc_ops.embedding_bag_byte_rowwise_offsets",
      std::make_unique<EmbeddingBagByteRowwiseOffsetsNodeImporter>()},
     {"acc_ops.cat", glow::make_unique<ConcatNodeImporter>()},
+    {"acc_ops.sum", glow::make_unique<SumNodeImporter>()},
     {"acc_ops.transpose", glow::make_unique<TransposeNodeImporter>()},
     {"acc_ops.permute", glow::make_unique<PermuteNodeImporter>()},
     {"acc_ops.matmul", glow::make_unique<MatMulNodeImporter>()},

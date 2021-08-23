@@ -5788,47 +5788,19 @@ TEST_P(OperatorTest, GatherDataInt8IdxInt64) {
 
 /// Helper for testing GatherND with different \p ITy / \p IndexType.
 template <typename DataType, typename IndexType>
-static void gatherNDFloatInputTest(glow::PlaceholderBindings &bindings,
-                                   glow::Module &mod, glow::Function *F,
-                                   glow::ExecutionEngine &EE, ElemKind DTy,
-                                   ElemKind ITy) {
-  /*
-    Data = [
-         [
-           [0.0,1.0],
-           [2.0,3.0]
-         ],
-         [
-           [4.0,5.0],
-           [6.0,7.0]
-         ]
-    ]
+static void gatherNDFloatTest(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind ITy,
+    std::vector<dim_t> dataDims, std::vector<DataType> dataVals,
+    std::vector<dim_t> indicesDims, std::vector<IndexType> indicesVals,
+    std::vector<dim_t> outputDims, std::vector<DataType> outputVals,
+    unsigned_t batchDims) {
 
-    INDICES = [
-            [0,1],
-            [1,0]
-    ]
-
-    OUTPUT = [
-            [2.0,3.0],
-            [4.0,5.0]
-    ]
-  */
-  auto *data = mod.createPlaceholder(DTy, {2, 2, 2}, "data", false);
-  auto *indices = mod.createPlaceholder(ITy, {2, 2}, "indices", false);
-
-  bindings.allocate(data)->getHandle<DataType>() = {
-      0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f,
-  };
-  bindings.allocate(indices)->getHandle<IndexType>() = {
-      0,
-      1,
-      1,
-      0,
-  };
-
-  auto *R = F->createGatherND("gatherND", data, indices);
-
+  auto *data = mod.createPlaceholder(DTy, dataDims, "data", false);
+  auto *indices = mod.createPlaceholder(ITy, indicesDims, "indices", false);
+  bindings.allocate(data)->getHandle<DataType>() = dataVals;
+  bindings.allocate(indices)->getHandle<IndexType>() = indicesVals;
+  auto *R = F->createGatherND("gatherND", data, indices, batchDims);
   auto *result = F->createSave("save", R);
   bindings.allocate(result->getPlaceholder());
 
@@ -5836,41 +5808,125 @@ static void gatherNDFloatInputTest(glow::PlaceholderBindings &bindings,
   EE.run(bindings);
 
   Tensor *resultT = bindings.get(result->getPlaceholder());
-  Tensor expectedT(DTy, {2, 2});
-  expectedT.getHandle<DataType>() = {2.0, 3.0, 4.0, 5.0};
-
+  Tensor expectedT(DTy, outputDims);
+  expectedT.getHandle<DataType>() = outputVals;
   EXPECT_TRUE(resultT->isEqual(expectedT));
 }
 
-/// Test that Gather works with Float data and Int32 indices.
-TEST_P(OperatorTest, GatherNDDataFloatIdxInt32) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest<float, int32_t>(bindings_, mod_, F_, EE_,
-                                         ElemKind::FloatTy, ElemKind::Int32ITy);
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest1(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 1
+  // batch_dims = 0
+  // data    = [[0,1],[2,3]]   # data_shape = [2, 2]
+  // indices = [[0,0],[1,1]]   # indices_shape = [2, 2]
+  // output  = [0,3]           # output_shape = [2]
+  gatherNDFloatTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2},
+                                         {0.0, 1.0, 2.0, 3.0}, {2, 2},
+                                         {0, 0, 1, 1}, {2}, {0.0, 3.0}, 0);
 }
+
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest2(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 2
+  // batch_dims = 0
+  // data    = [[0,1],[2,3]]  # data_shape = [2, 2]
+  // indices = [[1],[0]]      # indices_shape = [2, 1]
+  // output  = [[2,3],[0,1]]  # output_shape = [2, 2]
+  gatherNDFloatTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2},
+                                         {0.0, 1.0, 2.0, 3.0}, {2, 1}, {1, 0},
+                                         {2, 2}, {2.0, 3.0, 0.0, 1.0}, 0);
+}
+
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest3(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 3
+  // batch_dims = 0
+  // data    = [[[0,1],[2,3]],[[4,5],[6,7]]] # data_shape = [2, 2, 2]
+  // indices = [[0,1],[1,0]]                 # indices_shape = [2, 2]
+  // output  = [[2,3],[4,5]]                 # output_shape = [2, 2]
+  gatherNDFloatTest<DataType, IndexType>(
+      bindings, mod, F, EE, DTy, ITy, {2, 2, 2},
+      {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 2}, {0, 1, 1, 0}, {2, 2},
+      {2.0, 3.0, 4.0, 5.0}, 0);
+}
+
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest4(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 4
+  // batch_dims = 0
+  // data    = [[[0,1],[2,3]],[[4,5],[6,7]]] # data_shape = [2, 2, 2]
+  // indices = [[[0,1]],[[1,0]]]             # indices_shape = [2, 1, 2]
+  // output  = [[[2,3]],[[4,5]]]             # output_shape = [2, 1, 2]
+  gatherNDFloatTest<DataType, IndexType>(
+      bindings, mod, F, EE, DTy, ITy, {2, 2, 2},
+      {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 1, 2}, {0, 1, 1, 0},
+      {2, 1, 2}, {2.0, 3.0, 4.0, 5.0}, 0);
+}
+
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest5(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 5
+  // batch_dims = 1
+  // data    = [[[0,1],[2,3]],[[4,5],[6,7]]] # data_shape = [2, 2, 2]
+  // indices = [[1],[0]]                     # indices_shape = [2, 1]
+  // output  = [[2,3],[4,5]]                 # output_shape = [2, 2]
+  gatherNDFloatTest<DataType, IndexType>(
+      bindings, mod, F, EE, DTy, ITy, {2, 2, 2},
+      {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 1}, {1, 0}, {2, 2},
+      {2.0, 3.0, 4.0, 5.0}, 1);
+}
+
+#define TEST_GATHER_ND(N, DATA_KIND, INDEX_KIND, DATA_TYPE, INDEX_TYPE)        \
+  TEST_P(OperatorTest, GatherND_##DATA_KIND##_##INDEX_KIND##_Test##N) {        \
+    CHECK_IF_ENABLED();                                                        \
+    gatherNDFloatTest##N<DATA_TYPE, INDEX_TYPE>(                               \
+        bindings_, mod_, F_, EE_, ElemKind::DATA_KIND, ElemKind::INDEX_KIND);  \
+  }
+
+TEST_GATHER_ND(1, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(2, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(3, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(4, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(5, FloatTy, Int32ITy, float, int32_t)
 
 #if DIM_T_BITWIDTH >= 64
-/// Test that Gather works with Float data and Int64 indices.
-TEST_P(OperatorTest, GatherNDDataFloatIdxInt64) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest<float, int64_t>(bindings_, mod_, F_, EE_,
-                                         ElemKind::FloatTy, ElemKind::Int64ITy);
-}
+TEST_GATHER_ND(1, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(2, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(3, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(4, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(5, FloatTy, Int64ITy, float, int64_t)
 #endif
 
-/// Test that Gather works with Float16 data and Int32 indices.
-TEST_P(OperatorTest, GatherDataNDFloat16IdxInt32) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest<float16_t, int32_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
-}
+TEST_GATHER_ND(1, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(2, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(3, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(4, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(5, Float16Ty, Int32ITy, float16_t, int32_t)
 
-/// Test that Gather works with Float16 data and Int64 indices.
-TEST_P(OperatorTest, GatherNDDataFloat16IdxInt64) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest<float16_t, int64_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
-}
+#if DIM_T_BITWIDTH >= 64
+TEST_GATHER_ND(1, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(2, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(3, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(4, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(5, Float16Ty, Int64ITy, float16_t, int64_t)
+#endif
+
+#undef TEST_GATHER_ND
 
 /// Helper for testing GatherND with different \p ITy / \p IndexType.
 template <typename IndexType>
@@ -14016,6 +14072,53 @@ TEST_P(OperatorTest, Sigmoid_BFloat16) {
   CHECK_IF_ENABLED();
   testSigmoid<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
                           0.01f);
+}
+
+/// Helper to test HardSigmoid using \p DTy.
+template <typename DataType>
+static void testHardSigmoid(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            float allowedError = 0.001f) {
+  constexpr dim_t size = 5;
+  float alpha = 0.2;
+  float beta = 0.5;
+  auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {-3., -1., 0., 1., 3.};
+  auto *hardsigmoid = F->createHardSigmoid("hardsigmoid", input, alpha, beta);
+  auto *save = F->createSave("save", hardsigmoid);
+  bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto saveH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
+  auto inH = bindings.get(input)->getHandle<DataType>();
+
+  for (dim_t i = 0; i < size; i++) {
+    DataType expectedResult = std::max<DataType>(
+        0,
+        std::min<DataType>(1, (DataType)alpha * inH.raw(i) + (DataType)beta));
+    EXPECT_NEAR((float)saveH.raw(i), (float)expectedResult, allowedError);
+  }
+}
+
+/// Verify that the HardSigmoid operator works correctly with FloatTy.
+TEST_P(OperatorTest, HardSigmoid_Float) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the HardSigmoid operator works correctly with Float16Ty.
+TEST_P(OperatorTest, HardSigmoid_Float16) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Verify that the HardSigmoid operator works correctly with BFloat16Ty.
+TEST_P(OperatorTest, HardSigmoid_BFloat16) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
 }
 
 /// Helper to test Swish using \p DTy.

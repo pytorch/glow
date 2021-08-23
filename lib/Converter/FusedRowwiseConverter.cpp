@@ -36,13 +36,28 @@ static void convertFusedRowwiseQuantizedData(Function *F, bool convertUInt4FP16,
   do {
     --nodeIt;
     Node &node = *nodeIt;
-    // Only convert FusedRowwiseQuantizedSparseLengthsWeightedSumNode;
-    if (node.getKind() !=
-        Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind) {
+    unsigned idx = 0;
+    // Only convert FusedRowwiseQuantizedSparseLengthsWeightedSumNode and
+    // FusedRowwiseQuantizedSparseLengthsSumNode.
+    switch (node.getKind()) {
+    case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
+      idx = FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx;
+      break;
+    }
+
+    case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
+      idx = FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx;
+      break;
+    }
+
+    case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
+      idx = FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx;
+      break;
+    }
+    default:
       continue;
     }
 
-    auto idx = FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx;
     NodeValue data = node.getNthInput(idx);
     auto dataType = data.getType()->getElementType();
     if (dataType != ElemKind::UInt8FusedFP16QTy &&

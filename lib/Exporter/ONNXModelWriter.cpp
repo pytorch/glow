@@ -1683,12 +1683,12 @@ Error ONNXModelWriter::writeInstanceNormalization(
   // Add dictionary entries.
   addValueAttribute(proto, "epsilon", node->getEpsilon());
 
-  proto->set_name(node->getName());
+  proto->set_name(node->getName().str());
   proto->set_op_type("InstanceNormalization");
 
-  proto->add_input(node->getInput().getNode()->getName());
-  proto->add_input(node->getScale().getNode()->getName());
-  proto->add_input(node->getBias().getNode()->getName());
+  proto->add_input(node->getInput().getNode()->getName().str());
+  proto->add_input(node->getScale().getNode()->getName().str());
+  proto->add_input(node->getBias().getNode()->getName().str());
 
   outputsToProto(node, graph, proto);
   return Error::success();
@@ -1894,10 +1894,10 @@ Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
 Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
-  auto batchDims = node->getBatchDims();
+  auto axis = node->getBatchDims();
 
-  if (batchDims != 0) {
-    addValueAttribute(proto, "axis", batchDims);
+  if (axis != 0) {
+    addValueAttribute(proto, "axis", axis);
     return writeAllWithNode("BatchGather", node, graph, proto);
   } else {
     return writeAllWithNode("Gather", node, graph, proto);

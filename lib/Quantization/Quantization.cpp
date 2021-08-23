@@ -813,6 +813,15 @@ public:
           Constant *biasC = llvm::dyn_cast<Constant>(biasQ->getInput());
 
           if (filterC && biasC) {
+            // When the overall requested quantization schema is asymmetric
+            // we use symmetric quantization schema for the channelwise filter
+            // and bias in order to be closer to the TFLite quantization specs:
+            // https://www.tensorflow.org/lite/performance/quantization_spec
+            quantization::Schema quantSchema = schema_;
+            if (quantSchema == quantization::Schema::Asymmetric) {
+              quantSchema = quantization::Schema::Symmetric;
+            }
+            // Create per channel quantized Convolution.
             auto *convNodeCWQ = function_.createChannelwiseQuantizedConv(
                 "ChannelwiseQuantizedConv", input, filterC, biasC,
                 /* filterScales */ nullptr, /* filterOffsets */ nullptr,
@@ -820,7 +829,7 @@ public:
                 result.getType(), convNode->getKernels(),
                 convNode->getStrides(), convNode->getPads(),
                 convNode->getGroup(), convNode->getDilation(),
-                /* quantizeFilter */ true, /* quantizeBias */ true, schema_,
+                /* quantizeFilter */ true, /* quantizeBias */ true, quantSchema,
                 quantizationPrecision_, quantizationPrecisionBias_);
             convNodeCWQ->setFusedActivation(convNode->getFusedActivation());
             convNodeCWQ->setFusedActivationArgs(

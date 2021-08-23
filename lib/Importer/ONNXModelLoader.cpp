@@ -2535,10 +2535,11 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
           coordTransformMode,
           loadStr(dict.at("coordinate_transformation_mode")));
     }
-    RETURN_ERR_IF_NOT(coordTransformMode == "asymmetric",
-                      opErrMsg(op,
-                               "Resize 'asymmetric' coordinate transformation "
-                               "mode supported only."));
+    RETURN_ERR_IF_NOT(
+        coordTransformMode == "asymmetric",
+        opErrMsg(op, strFormat("Resize 'asymmetric' coordinate transformation "
+                               "mode supported only, but found %s",
+                               coordTransformMode.c_str())));
 
     // If no scales tensor, sizes tensor should be valid.
     if (scalesC->getPayload().getHandle().size() == 0) {
@@ -2596,10 +2597,9 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
         (scales.size() >= 3 && scales.size() <= 6 && modeStr == "nearest") ||
             scales.size() == 4,
         opErrMsg(
-            op,
-            strFormat(
-                "UpSample Scales dimension invalid. Mode: %s Scale Size: %zu",
-                modeStr.c_str(), scales.size())));
+            op, strFormat(
+                    "Resize Scales dimension invalid. Mode: %s Scale Size: %zu",
+                    modeStr.c_str(), scales.size())));
 
     for (auto &val : scales) {
       RETURN_ERR_IF_NOT(
@@ -2908,6 +2908,30 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
     Node *node = G_->createMatMul(opName, LHS, RHS);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
   }
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadHardSigmoid(const ONNX_NAMESPACE::NodeProto &op,
+                                       ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Input Type.
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  float alphaVal = 0.2f;
+  if (dict.count("alpha")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(alphaVal, loadFloat(dict.at("alpha")));
+  }
+  float betaVal = 0.5f;
+  if (dict.count("beta")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(betaVal, loadFloat(dict.at("beta")));
+  }
+
+  // Create the node.
+  Node *N = G_->createHardSigmoid(opName, input, alphaVal, betaVal);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
   return Error::success();
 }
 
@@ -5557,6 +5581,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Cast") {
     return loadCast(op, dict);
+  }
+  if (typeName == "HardSigmoid") {
+    return loadHardSigmoid(op, dict);
   }
   if (typeName == "LeakyRelu") {
     return loadLeakyRelu(op, dict);
