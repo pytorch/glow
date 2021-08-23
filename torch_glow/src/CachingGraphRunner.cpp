@@ -160,6 +160,12 @@ void initializeCompilationContextFromSettings(
     cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
   }
+  if (!cctx.precisionConfig.skipBiasFp32tofp16Convert &&
+      settings.skipBiasFp32tofp16Convert) {
+    cctx.precisionConfig.skipBiasFp32tofp16Convert =
+        settings.skipBiasFp32tofp16Convert;
+    LOG(INFO) << "Skipping bias fp32 -> fp16 conversion enabled";
+  }
   if (!cctx.precisionConfig.convertPlaceholdersToFP16 &&
       settings.convertPlaceholdersToFP16) {
     cctx.precisionConfig.convertPlaceholdersToFP16 =
@@ -188,6 +194,20 @@ void initializeCompilationContextFromSettings(
     cctx.precisionConfig.forceFP16AccumSLS = settings.forceFP16AccumSLS;
     LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
   }
+  if (!cctx.precisionConfig.convert8BitFusedToFP32 &&
+      settings.convert8BitFusedToFP32) {
+    LOG(INFO) << "Enabling conversion of FP16 scale and bias to FP32 for 8bit "
+                 "EmbeddingBagByteRowwiseOffset";
+    cctx.precisionConfig.convert8BitFusedToFP32 =
+        settings.convert8BitFusedToFP32;
+  }
+  if (!cctx.precisionConfig.convert4BitFusedToFP32 &&
+      settings.convert4BitFusedToFP32) {
+    LOG(INFO) << "Enabling conversion of FP16 scale and bias to FP32 for 4bit "
+                 "EmbeddingBagByteRowwiseOffset";
+    cctx.precisionConfig.convert4BitFusedToFP32 =
+        settings.convert4BitFusedToFP32;
+  }
   if (!glow::flags::DisableLayoutVerifying && settings.disableLayoutVerifying) {
     glow::flags::DisableLayoutVerifying = true;
     LOG(INFO) << "Skipping all layout verifying";
@@ -214,12 +234,16 @@ void initializeCompilationContextFromSettings(
 
   if (settings.use_dag_optimizer) {
     cctx.callDAGOptimizer = true;
-    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
-        settings.apl_parallelization_alg;
-    cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
-        settings.apl_placement_alg;
-    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
-        settings.apl_num_parallel_chunks;
+    if (!settings.apl_placement_alg.empty()) {
+      cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
+          settings.apl_placement_alg;
+    }
+    if (!settings.apl_parallelization_alg.empty()) {
+      cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+          settings.apl_parallelization_alg;
+      cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+          settings.apl_num_parallel_chunks;
+    }
   }
 
   if (!settings.backendSpecificOpts.empty()) {
@@ -936,7 +960,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     onnxFileNamePrefix = settings.onnxFileNamePrefix;
   }
 
-  if (settings.writeToOnnx || settings.jitVsGlowCompare) {
+  if (settings.jitVsGlowCompare) {
 
     // We will use original graph for runOnJit, which means the first input
     // should be module.
@@ -1126,10 +1150,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
             info.settings, info.outputPlaceholders, convertedGlowTensors));
 
         // Convert JIT outputs to Glow outputs and write to file
-        RETURN_IF_ERR(writeJITOutputsToOnnxFile(
-            strFormat("%s_pytorch_output_%zu", onnxFileNamePrefix.c_str(),
-                      runId),
-            copyStack, info));
+        if (settings.jitVsGlowCompare) {
+          RETURN_IF_ERR(writeJITOutputsToOnnxFile(
+              strFormat("%s_pytorch_output_%zu", onnxFileNamePrefix.c_str(),
+                        runId),
+              copyStack, info));
+        }
       }
     }
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
@@ -1323,6 +1349,8 @@ Error CachingGraphRunner::warmCache(
         cctx.backendOpts.useDeserialize = true;
       }
 
+      // Type table for deferred weight loader
+      std::map<std::string, Type> staticPlaceholderTypes;
       {
         TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
                           "loadJITGraph");
@@ -1370,6 +1398,7 @@ Error CachingGraphRunner::warmCache(
               /* inputStringPtr */ &onnxModelFile));
           RETURN_IF_ERR(err);
           VLOG(1) << "Successfully deserialized Glow IR from onnx model file";
+
           for (auto &ph : glowModule->getPlaceholders()) {
             // Set PH static if it is in the original GlowIR
             if (std::find(spec.staticPHNames.begin(), spec.staticPHNames.end(),
@@ -1390,6 +1419,10 @@ Error CachingGraphRunner::warmCache(
                                                convertedDims);
               ph->setType(0, convertedType);
               ph->setStatic(true);
+
+              // Record the types of the actual placeholders before conversion,
+              // so that we can replay the conversion in Provisioner
+              staticPlaceholderTypes[std::string(ph->getName())] = type;
             }
             // Reconstruct PerGlowGraphInfo
             if (std::find(spec.inputPHNames.begin(), spec.inputPHNames.end(),
@@ -1417,6 +1450,13 @@ Error CachingGraphRunner::warmCache(
             RETURN_IF_ERR(saveGlowDeserializationSpec(
                 spec, glowAOTSerializationSpecStrPtr));
           }
+
+          for (auto *PH : glowModule->getPlaceholders()) {
+            if (PH->isStatic()) {
+              staticPlaceholderTypes[std::string(PH->getName())] =
+                  *PH->getType();
+            }
+          }
         }
 
         TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
@@ -1440,14 +1480,7 @@ Error CachingGraphRunner::warmCache(
       zeroLengthSequence_.zero();
 
       if (loader) {
-        std::map<std::string, Type> staticPlaceholderTypes;
-        for (auto *PH : glowModule->getPlaceholders()) {
-          if (PH->isStatic()) {
-            staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
-          }
-        }
         loader->setTypeInfo(std::move(staticPlaceholderTypes));
-
         cctx.deferredWeightLoader = loader;
 
         // Signal that we want to fold convertTo and Quantize into static

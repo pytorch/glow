@@ -63,6 +63,7 @@ DEFINE_int32(numTracesPerDump, 1, "See PyTorchLoaderSettings");
 
 // settings for model precision conversion
 DEFINE_bool(convertToFP16, false, "See PyTorchLoaderSettings");
+DEFINE_bool(skipBiasFp32tofp16Convert, false, "See PyTorchLoaderSettings");
 DEFINE_bool(convertFusedToFP16, false, "See PyTorchLoaderSettings");
 DEFINE_bool(clipFP16, false, "See PyTorchLoaderSettings");
 DEFINE_bool(clipFP16SkipInputs, true, "See PyTorchLoaderSettings");
@@ -341,6 +342,7 @@ void PyTorchLoaderSettings::initSettings() {
   numTracesPerDump = FLAGS_numTracesPerDump;
   saturateHost = FLAGS_saturateHost;
   convertToFP16 = FLAGS_convertToFP16;
+  skipBiasFp32tofp16Convert = FLAGS_skipBiasFp32tofp16Convert;
   convertFusedToFP16 = FLAGS_convertFusedToFP16;
   clipFP16 = FLAGS_clipFP16;
   clipFP16SkipInputs = FLAGS_clipFP16SkipInputs;
@@ -421,6 +423,7 @@ std::string PyTorchLoaderSettings::toString() const {
   std::stringstream s;
   s << std::endl;
   INSERT_BOOL_TO_STREAM(convertToFP16, s);
+  INSERT_BOOL_TO_STREAM(skipBiasFp32tofp16Convert, s);
   INSERT_BOOL_TO_STREAM(convertFusedToFP16, s);
   INSERT_BOOL_TO_STREAM(clipFP16, s);
   INSERT_BOOL_TO_STREAM(clipFP16SkipInputs, s);

@@ -419,6 +419,7 @@ TEST(exporter, onnxModels) {
         name.find("gatherND.onnxtxt") != std::string::npos ||
         name.find("softmax13.onnxtxt") != std::string::npos ||
         name.find("logsoftmax.onnxtxt") != std::string::npos ||
+        name.find("hardsigmoid.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=

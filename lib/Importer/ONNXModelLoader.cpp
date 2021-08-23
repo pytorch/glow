@@ -2911,6 +2911,30 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadHardSigmoid(const ONNX_NAMESPACE::NodeProto &op,
+                                       ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Input Type.
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  float alphaVal = 0.2f;
+  if (dict.count("alpha")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(alphaVal, loadFloat(dict.at("alpha")));
+  }
+  float betaVal = 0.5f;
+  if (dict.count("beta")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(betaVal, loadFloat(dict.at("beta")));
+  }
+
+  // Create the node.
+  Node *N = G_->createHardSigmoid(opName, input, alphaVal, betaVal);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
                                      ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -5557,6 +5581,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Cast") {
     return loadCast(op, dict);
+  }
+  if (typeName == "HardSigmoid") {
+    return loadHardSigmoid(op, dict);
   }
   if (typeName == "LeakyRelu") {
     return loadLeakyRelu(op, dict);
