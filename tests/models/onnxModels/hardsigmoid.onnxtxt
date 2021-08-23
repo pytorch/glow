@@ -1,0 +1,45 @@
+ir_version: 6
+producer_name: "hardsigmoid"
+graph {
+  node {
+    input: "input"
+    output: "output"
+    name: "HardSigmoid-test"
+    op_type: "HardSigmoid"
+    attribute {
+      name: "alpha"
+      f: 0.1666666716337204
+      type: FLOAT
+    }
+  }
+  name: "hardsigmoid-node"
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "output"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}

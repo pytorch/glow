@@ -22,10 +22,13 @@
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "folly/hash/SpookyHashV2.h"
+
 #include <atomic>
 #include <cctype>
 #include <cstdarg>
 #include <mutex>
+#include <shared_mutex>
 #include <sstream>
 #include <string>
 
@@ -213,29 +216,18 @@ std::string legalizeName(llvm::StringRef name, size_t maxLength) {
   }
 
   // Now we have to deal with long names.
-  // If current name was already processed, then we shoud have its trunctated
-  // version.
-  static std::mutex truncatedNamesMutex;
-  static std::unordered_map<std::string, std::string> truncatedNames;
-  static size_t truncatedCounter = 0;
-  {
-    std::lock_guard<std::mutex> lock{truncatedNamesMutex};
 
-    auto it = truncatedNames.find(legalName);
-    if (it != truncatedNames.end()) {
-      return it->second;
-    }
+  // Assuming that having long names is a rare case,
+  // therefore using a good hash function can produce unique enough names.
+  std::string truncationSuffix{"_trunc_"};
+  truncationSuffix += std::to_string(
+      folly::hash::SpookyHashV2::Hash64(legalName.data(), legalName.size(), 0));
 
-    std::string truncatedSuffix{"_trunc_"};
-    truncatedSuffix += std::to_string(++truncatedCounter);
+  std::string truncatedName{legalName.data(),
+                            maxLength - truncationSuffix.size()};
+  truncatedName += truncationSuffix;
 
-    std::string truncatedName{legalName.data(),
-                              maxLength - truncatedSuffix.size()};
-    truncatedName += truncatedSuffix;
-
-    truncatedNames.emplace(legalName, truncatedName);
-    return truncatedName;
-  }
+  return truncatedName;
 }
 
 /// \returns the color based on \p index which is used in dot file.
