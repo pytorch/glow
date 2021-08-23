@@ -1030,6 +1030,14 @@ private:
   // Load a PyTorch fb::equally_split.
   // \returns error on failure.
   Error loadEquallySplit(const torch::jit::Node *ptNode);
+
+  /// Load PyTorch fb::expand_dims
+  /// \returns error on failure.
+  Error loadExpandDims(const torch::jit::Node *ptNode);
+
+  /// Load PyTorch aten::narrow
+  /// \returns error on failure.
+  Error loadNarrow(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

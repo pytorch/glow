@@ -1223,6 +1223,19 @@ struct RepeatInputs {
   };
 };
 
+/// Indexes used for fb::expand_dims inputs
+struct ExpandDimsInputs {
+  enum {
+    input = 0,
+    dims,
+  };
+};
+
+/// Indexes used for aten::narrow inputs
+struct NarrowInputs {
+  enum { input = 0, dim, start, length };
+};
+
 } // namespace
 
 // static
@@ -1744,6 +1757,12 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::correctTypeAlreadySet},
       {{"fb::equally_split"},
        &PyTorchModelLoader::loadEquallySplit,
+       &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"fb::expand_dims"},
+       &PyTorchModelLoader::loadExpandDims,
+       &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"aten::narrow"},
+       &PyTorchModelLoader::loadNarrow,
        &PyTorchModelLoader::correctTypeAlreadySet},
   });
 #undef UNARY_NODE_LOADER
@@ -3990,12 +4009,18 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
   std::vector<bool> needBroadcast(inputs.size(), false);
   bool noBroadcastNeeded = true;
 
-  // Use mulitple vectors for hierarchical concats, the first vector is the
+  // Use multiple vectors for hierarchical concats, the first vector is the
   // final concat
   for (size_t i = 0; i < inputs.size(); ++i) {
     auto input = inputs[i];
-    RETURN_ERR_IF_NOT(numInputDims == input.dims().size(),
-                      "All inputs must have the same number of dimensions.");
+    if (numInputDims != input.dims().size()) {
+      std::ostringstream ss;
+      ss << "All inputs must have the same number of dimensions, but got";
+      for (const auto &inp : inputs) {
+        ss << " [" << folly::join(",", inp.dims()) << "]";
+      }
+      return MAKE_ERR(ss.str());
+    }
 
     // Record broadcast shapes to perform broadcasting
     for (int d = 0; d < input.dims().size(); ++d) {
@@ -4113,14 +4138,6 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
 
-  // In the case of a single input, just return it.
-  if (inputs.size() == 1) {
-    glow::NodeValue input;
-    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-    RETURN_IF_ERR(addValueMapping(outputs[0], input));
-    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
-    return Error::success();
-  }
   std::pair<NodeValue, at::ScalarType> concatAndHigherType;
   ASSIGN_VALUE_OR_RETURN_ERR(concatAndHigherType,
                              createConcatNode(this, F_, ptNode,
@@ -4249,15 +4266,6 @@ Error PyTorchModelLoader::loadFusedBroadcastStack(
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
-
-  // In the case of a single input, just return it.
-  if (inputs.size() == 1) {
-    glow::NodeValue input;
-    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-    RETURN_IF_ERR(addValueMapping(outputs[0], input));
-    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
-    return Error::success();
-  }
 
   std::pair<NodeValue, at::ScalarType> concatAndHigherType;
   ASSIGN_VALUE_OR_RETURN_ERR(concatAndHigherType,
@@ -4416,7 +4424,7 @@ Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
   dim_t input_len = intConstant->getPayload().size();
   RETURN_ERR_IF_NOT(
       input_len == 1,
-      strFormat("Expected input to have length 1, but found: %zu", input_len));
+      strFormat("Expected input to have length 1, but found: %lu", input_len));
   // Also need to check if intConstant is a scalar
   int value;
 
@@ -8834,6 +8842,74 @@ Error PyTorchModelLoader::loadBBoxTransform(const torch::jit::Node *ptNode) {
   return Error::success();
 }
 
+Error PyTorchModelLoader::loadExpandDims(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ExpandDimsInputs::input]));
+
+  std::vector<int64_t> *dimValues;
+  ASSIGN_VALUE_OR_RETURN_ERR(dimValues, iValToIntList(getGlowIValueForValue(
+                                            inputs[ExpandDimsInputs::dims])));
+  std::vector<dim_t> dims;
+  for (dim_t dim : *dimValues) {
+    dims.push_back(dim);
+  }
+  auto *g = F_.createExpandDims("ExpandDims", input, dims);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], g->getResult()));
+
+  RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadNarrow(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[NarrowInputs::input]));
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[NarrowInputs::dim])));
+  int64_t start;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      start, iValToInt(getGlowIValueForValue(inputs[NarrowInputs::start])));
+  int64_t length;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      length, iValToInt(getGlowIValueForValue(inputs[NarrowInputs::length])));
+
+  std::vector<dim_t> starts;
+  std::vector<dim_t> ends;
+  for (auto d : input.dims()) {
+    starts.push_back(0);
+    ends.push_back(d); // ends are exclusive
+  }
+  RETURN_ERR_IF_NOT(
+      starts.size() > dim,
+      strFormat("Expected input node to have at least %lu dims", dim + 1));
+  starts[dim] = start;
+
+  RETURN_ERR_IF_NOT(
+      ends.size() > dim,
+      strFormat("Expected input node to have at least %lu dims", dim + 1));
+  ends[dim] = start + length;
+
+  auto *g = F_.createSlice("Narrow", input, starts, ends);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], g->getResult()));
+
+  RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
+
+  return Error::success();
+}
+
 Error PyTorchModelLoader::loadAttributes(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs) {
@@ -8970,7 +9046,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     LOG(INFO) << "Using settings: " << settings_.toString();
 
     if (settings_.dumpFinalGlowGraph || settings_.dumpGlowDag) {
-      const std::string fname = "preLoadGlowGraph.ir";
+      const std::string fname = "preLoadGlowGraph-" + F.getName().str() + "ir";
       LOG(INFO) << "Dumping pre load graph at " + fname;
       std::ofstream out;
       out.open(fname);
