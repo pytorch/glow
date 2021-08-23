@@ -118,6 +118,16 @@ public:
     return iaExtensionPaths_;
   }
 
+  /// Add custom IA lib to be loaded.
+  NNPIErrorCode addIAExtentionLib(const std::string, const char *pLib,
+                                  size_t sizeLib);
+
+  /// Get custom IA extension libs.
+  const std::vector<std::pair<std::string, std::vector<char>>> &
+  getIAExtensionLibs() const {
+    return iaExtensionLibs_;
+  }
+
   /// Convert from Glow lengths mode enum to NNPI length type enum.
   static NNPIErrorCode
   convertLengthsModeToLengthType(glow::LengthsMode mode,
@@ -155,6 +165,9 @@ private:
 
   /// A list of IA extensions that need to be loaded by the device.
   std::vector<std::string> iaExtensionPaths_;
+
+  /// A list of IA extensions libs to be loaded by the device.
+  std::vector<std::pair<std::string, std::vector<char>>> iaExtensionLibs_;
 
   /// Instead of importing \p origNode directly, import a NNPICustomDSPNodeKind
   /// \p glowDSPReplacementNode representation of it created by a custom

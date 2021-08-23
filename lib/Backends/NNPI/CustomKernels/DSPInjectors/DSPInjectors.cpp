@@ -22,10 +22,14 @@ std::vector<std::unique_ptr<CustomKernelInjector>> buildDSPInjectors() {
   std::vector<std::unique_ptr<CustomKernelInjector>> injectors;
   // Custom relu, used as a sample, disabled by default.
   // injectors.emplace_back(std::make_unique<CustomReluNodeDSPKernelInjector>());
+
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION < 8
   injectors.emplace_back(std::make_unique<CustomCmpNEQNodeDSPKernelInjector>());
   injectors.emplace_back(std::make_unique<CustomCmpEQNodeDSPKernelInjector>());
   injectors.emplace_back(std::make_unique<CustomCmpLTNodeDSPKernelInjector>());
   injectors.emplace_back(std::make_unique<CustomCmpLTENodeDSPKernelInjector>());
+#endif // NNPI < 1.8
+
   return injectors;
 }
 } // namespace glow
