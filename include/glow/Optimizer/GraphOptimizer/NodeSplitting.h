@@ -293,6 +293,7 @@ inline SplitNodeConstraint SplitNodeMaxMemConstraint(unsigned maxMem) {
 ///     Node *node = &*(it++);
 ///     splitNode(node, ...);
 ///   }
+Expected<std::vector<Node *>>
 splitNode(Node *node, const SplitNodeOption *splitOption,
           const SplitNodeConstraint *splitConstraint);
 
