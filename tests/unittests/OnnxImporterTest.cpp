@@ -3597,6 +3597,37 @@ TEST_F(OnnxImporterTest, importLess) {
   EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
 }
 
+TEST_F(OnnxImporterTest, importGreaterOrEqual) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/GreaterOrEqual.onnxtxt");
+
+  Placeholder *out = nullptr;
+  {
+    Tensor X(ElemKind::FloatTy, {1, 4, 1});
+    Tensor Y(ElemKind::FloatTy, {4, 1, 1});
+    X.zero();
+    Y.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"X", "Y"},
+                           {&X.getType(), &Y.getType()}, *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName("Out"));
+  }
+
+  auto *save = getSaveNodeFromDest(out);
+
+  CmpLTNode *CMPLT = llvm::dyn_cast<CmpLTNode>(save->getInput().getNode());
+
+  ASSERT_TRUE(CMPLT);
+  ASSERT_EQ(CMPLT->getResult().dims().size(), 3);
+  EXPECT_EQ(CMPLT->getResult().dims()[0], 4);
+  EXPECT_EQ(CMPLT->getResult().dims()[1], 4);
+  EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
+}
+
 TEST_F(OnnxImporterTest, importLessEqual) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();

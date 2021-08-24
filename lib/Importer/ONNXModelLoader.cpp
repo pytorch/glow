@@ -5624,6 +5624,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Equal") {
     return loadCmpEQ(op, dict);
   }
+  if (typeName == "GreaterOrEqual") {
+    return loadLess(op, dict, true);
+  }
   if (typeName == "CmpLTE") {
     return loadCmpLTE(op, dict);
   }

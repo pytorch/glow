@@ -1421,7 +1421,9 @@ protected:
   }
 
   // Loads Less operator. Internally it's a cmpLT Node.
-  Error loadLess(const OpType &op, ArgumentDictionaryTy &dict) {
+  // Reused for GreaterOrEqual by setting swapInputs to true.
+  Error loadLess(const OpType &op, ArgumentDictionaryTy &dict,
+                 bool swapInputs = false) {
     // Input Type.
     NodeValue xNV;
     ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
@@ -1433,8 +1435,10 @@ protected:
     auto *xNode = xNV.getNode();
     auto *yNode = yNV.getNode();
 
-    Node *N = G_->createNodeWithBroadcast<CmpLTNode>(opName, /* axis */ -1,
-                                                     xNode, yNode);
+    Node *N = swapInputs ? G_->createNodeWithBroadcast<CmpLTNode>(
+                               opName, /* axis */ -1, yNode, xNode)
+                         : G_->createNodeWithBroadcast<CmpLTNode>(
+                               opName, /* axis */ -1, xNode, yNode);
 
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();
