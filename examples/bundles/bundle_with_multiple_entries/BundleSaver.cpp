@@ -55,23 +55,27 @@ int main(int argc, char **argv) {
   Function *F1 = M.createFunction("F1");
   auto *inputPH1 =
       M.createPlaceholder(ElemKind::FloatTy, {tensorSize}, "input1", false);
-  auto *reshapeNode11 = F1->createReshape("reshape", inputPH1, {1, tensorSize});
-  auto *matMulNode11 = F1->createMatMul("matmul", reshapeNode11, matMulConst1);
-  auto *matMulNode12 = F1->createMatMul("matmul", matMulNode11, matMulConst2);
+  auto *reshapeNode11 =
+      F1->createReshape("reshape11", inputPH1, {1, tensorSize});
+  auto *matMulNode11 =
+      F1->createMatMul("matmul11", reshapeNode11, matMulConst1);
+  auto *matMulNode12 = F1->createMatMul("matmul12", matMulNode11, matMulConst2);
   auto *reshapeNode12 =
-      F1->createReshape("reshape", matMulNode12, {tensorSize});
+      F1->createReshape("reshape12", matMulNode12, {tensorSize});
   auto *save1 = F1->createSave("output1", reshapeNode12);
 
   // Create a simple graph with 3 MatMul layers.
   Function *F2 = M.createFunction("F2");
   auto *inputPH2 =
       M.createPlaceholder(ElemKind::FloatTy, {tensorSize}, "input2", false);
-  auto *reshapeNode21 = F2->createReshape("reshape", inputPH2, {1, tensorSize});
-  auto *matMulNode21 = F2->createMatMul("matmul", reshapeNode21, matMulConst1);
-  auto *matMulNode22 = F2->createMatMul("matmul", matMulNode21, matMulConst2);
-  auto *matMulNode23 = F2->createMatMul("matmul", matMulNode22, matMulConst3);
+  auto *reshapeNode21 =
+      F2->createReshape("reshape21", inputPH2, {1, tensorSize});
+  auto *matMulNode21 =
+      F2->createMatMul("matmul21", reshapeNode21, matMulConst1);
+  auto *matMulNode22 = F2->createMatMul("matmul22", matMulNode21, matMulConst2);
+  auto *matMulNode23 = F2->createMatMul("matmul23", matMulNode22, matMulConst3);
   auto *reshapeNode22 =
-      F2->createReshape("reshape", matMulNode23, {tensorSize});
+      F2->createReshape("reshape22", matMulNode23, {tensorSize});
   auto *save2 = F2->createSave("output2", reshapeNode22);
 
   // Save a bundle with multiple functions.
