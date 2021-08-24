@@ -53,7 +53,7 @@ static bool isBatchNormUsingAlternativeLayout(const glow::Node *node,
 
 static std::string nodeValueName(const glow::NodeValue &nv) {
   if (nv.getNode()->getKind() == glow::Kinded::Kind::PlaceholderKind) {
-    return nv.getNode()->getName();
+    return nv.getNode()->getName().str();
   } else if (nv.getNode()->getKind() == glow::Kinded::Kind::ConstantKind) {
     return std::string(nv.getNode()->getName()) + std::string("__const");
   }
@@ -168,7 +168,7 @@ NNPIErrorCode glow::NNPIImporter::addValueIfTensor(Value *v) {
   auto *weight = llvm::dyn_cast<WeightVar>(v);
   if (weight &&
       weight->getMutability() == WeightVar::MutabilityKind::Constant &&
-      constants_.count(v->getName())) {
+      constants_.count(v->getName().str())) {
     // Add a tensor.
     return addTensor(v->getName().begin());
   }
