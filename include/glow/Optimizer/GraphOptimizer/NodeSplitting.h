@@ -288,9 +288,9 @@ inline SplitNodeConstraint SplitNodeMaxMemConstraint(unsigned maxMem) {
 /// NOTE: The original node is deleted from the graph after being split. When
 /// using this function while iterating the nodes of a function make sure to
 /// reverse iterate in order to not invalidate the iterator:
-///   auto &nodes = F->getNodes(); 
+///   auto &nodes = F->getNodes();
 ///   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
-///     Node *node = &*(it++); 
+///     Node *node = &*(it++);
 ///     splitNode(node, ...);
 ///   }
 splitNode(Node *node, const SplitNodeOption *splitOption,
@@ -303,9 +303,9 @@ splitNode(Node *node, const SplitNodeOption *splitOption,
 /// NOTE: The original node is deleted from the graph after being split. When
 /// using this function while iterating the nodes of a function make sure to
 /// reverse iterate in order to not invalidate the iterator:
-///   auto &nodes = F->getNodes(); 
+///   auto &nodes = F->getNodes();
 ///   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
-///     Node *node = &*(it++); 
+///     Node *node = &*(it++);
 ///     splitNode(node, ...);
 ///   }
 Expected<std::vector<Node *>> splitNode(Node *node,
@@ -318,9 +318,9 @@ Expected<std::vector<Node *>> splitNode(Node *node,
 /// NOTE: The original node is deleted from the graph after being split. When
 /// using this function while iterating the nodes of a function make sure to
 /// reverse iterate in order to not invalidate the iterator:
-///   auto &nodes = F->getNodes(); 
+///   auto &nodes = F->getNodes();
 ///   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
-///     Node *node = &*(it++); 
+///     Node *node = &*(it++);
 ///     splitNode(node, ...);
 ///   }
 Expected<std::vector<Node *>>
@@ -391,9 +391,9 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 /// NOTE: The original node is deleted from the graph after being split. When
 /// using this function while iterating the nodes of a function make sure to
 /// reverse iterate in order to not invalidate the iterator:
-///   auto &nodes = F->getNodes(); 
+///   auto &nodes = F->getNodes();
 ///   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
-///     Node *node = &*(it++); 
+///     Node *node = &*(it++);
 ///     splitNode(node, ...);
 ///   }
 Expected<SplitNodeMap>
@@ -413,9 +413,9 @@ splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
 /// NOTE: The original node is deleted from the graph after being split. When
 /// using this function while iterating the nodes of a function make sure to
 /// reverse iterate in order to not invalidate the iterator:
-///   auto &nodes = F->getNodes(); 
+///   auto &nodes = F->getNodes();
 ///   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
-///     Node *node = &*(it++); 
+///     Node *node = &*(it++);
 ///     splitNode(node, ...);
 ///   }
 Expected<SplitNodeMap> splitNodeRecursively(Node *node,
@@ -433,9 +433,9 @@ Expected<SplitNodeMap> splitNodeRecursively(Node *node,
 /// NOTE: The original node is deleted from the graph after being split. When
 /// using this function while iterating the nodes of a function make sure to
 /// reverse iterate in order to not invalidate the iterator:
-///   auto &nodes = F->getNodes(); 
+///   auto &nodes = F->getNodes();
 ///   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
-///     Node *node = &*(it++); 
+///     Node *node = &*(it++);
 ///     splitNode(node, ...);
 ///   }
 Expected<SplitNodeMap>
