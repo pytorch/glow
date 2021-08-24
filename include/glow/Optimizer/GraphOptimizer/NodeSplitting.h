@@ -389,8 +389,8 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 /// - when a node is encountered for which there is no split support.
 /// - when a node is encountered for which the split constraint is not met.
 /// \returns a split node map for those nodes which were actually split.
-/// NOTE: The original nodes are deleted from the graph after being split. Do not
-/// use this utility while iterating the nodes of a function.
+/// NOTE: The original nodes are deleted from the graph after being split. Do
+/// not use this utility while iterating the nodes of a function.
 Expected<SplitNodeMap>
 splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
                      const SplitNodeConstraint *splitConstraint,
@@ -405,8 +405,8 @@ splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
 /// If \p singleUseOnly is given then the recursive split procedure stops when
 /// encountering a node which has multiple uses.
 /// \returns a split node map for those nodes which were actually split.
-/// NOTE: The original nodes are deleted from the graph after being split. Do not
-/// use this utility while iterating the nodes of a function.
+/// NOTE: The original nodes are deleted from the graph after being split. Do
+/// not use this utility while iterating the nodes of a function.
 Expected<SplitNodeMap> splitNodeRecursively(Node *node,
                                             const SplitNodeOption &splitOption,
                                             unsigned maxDepth,
@@ -419,8 +419,8 @@ Expected<SplitNodeMap> splitNodeRecursively(Node *node,
 /// If \p singleUseOnly is given then the recursive split procedure stops when
 /// encountering a node which has multiple uses.
 /// \returns a split node map for those nodes which were actually split.
-/// NOTE: The original nodes are deleted from the graph after being split. Do not
-/// use this utility while iterating the nodes of a function.
+/// NOTE: The original nodes are deleted from the graph after being split. Do
+/// not use this utility while iterating the nodes of a function.
 Expected<SplitNodeMap>
 splitNodeRecursively(Node *node, const SplitNodeConstraint &splitConstraint,
                      unsigned maxDepth, bool singleUseOnly = false);
