@@ -179,9 +179,10 @@ void Executor::addLoaderExtensions(Loader &ld) {
 }
 
 void parseInputFiles(VecVec<std::string> &inputImageFiles) {
-  if (inputImageListFileOpt.empty() && inputTensorListFile.empty() &&
-      inputImageFilenamesOpt.size() == 0) {
+  if (inputImageListFileOpt.empty() && inputImageDirs.empty() &&
+      inputTensorListFile.empty() && inputImageFilenamesOpt.size() == 0) {
     llvm::errs() << "Args: Either positional image list or "
+                    "-input-image-dir or "
                     "-input-image-list-file or "
                     "-input-tensor-list-file  "
                     "must be used to specify input images.\n";
@@ -236,6 +237,7 @@ void parseInputFiles(VecVec<std::string> &inputImageFiles) {
       parseInputDir(inputImageDir, imageFiles);
       inputImageFiles.push_back(imageFiles);
     }
+    return;
   }
 
   // If images are given using vector of lists of images
