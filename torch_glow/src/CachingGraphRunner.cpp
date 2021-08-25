@@ -813,7 +813,7 @@ Error CachingGraphRunner::writeJitIOToOnnxFile(
 
 Expected<std::pair<glow::Tensor, torch::Tensor>>
 CachingGraphRunner::convertPyTorchInputToGlowInput(
-    torch::Tensor ptTensor, const glow::Placeholder *ph) {
+    torch::Tensor &&ptTensor, const glow::Placeholder *ph) {
   glow::Tensor glowTensor;
 
   glow::TypeRef ty = ph->getType();
@@ -920,7 +920,7 @@ CachingGraphRunner::processPyTorchInputs(
 
     std::pair<glow::Tensor, torch::Tensor> tensors;
     ASSIGN_VALUE_OR_RETURN_ERR(
-        tensors, convertPyTorchInputToGlowInput(ptTensorOrig, ph));
+        tensors, convertPyTorchInputToGlowInput(std::move(ptTensorOrig), ph));
 
     glowTensorInputs.push_back(std::move(tensors.first));
 
