@@ -598,7 +598,7 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
     std::map<std::string, uint32_t> type2count;
     std::map<std::string, glow::Node *> nodes;
     for (auto &N : F->getNodes()) {
-      nodes[N.getName()] = &N;
+      nodes[N.getName().str()] = &N;
     }
     auto *module = F->getParent();
     std::string prefix;
@@ -737,13 +737,13 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
 
   // Handle placeholders (inputs/outputs).
   for (auto *v : F->getParent()->getPlaceholders()) {
-    bool inputVar(readTensors_.count(v->getName()) &&
-                  !writeTensors_.count(v->getName()));
-    bool outputVar(!readTensors_.count(v->getName()) &&
-                   writeTensors_.count(v->getName()));
+    bool inputVar(readTensors_.count(v->getName().str()) &&
+                  !writeTensors_.count(v->getName().str()));
+    bool outputVar(!readTensors_.count(v->getName().str()) &&
+                   writeTensors_.count(v->getName().str()));
     if (inputVar || outputVar) {
       LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
-          addValue(v->getName(), v->getType(),
+          addValue(v->getName().str(), v->getType(),
                    isVariableUsingAlternativeLayout(v), inputVar, outputVar),
           "Failed to add placeholder");
       DBG("[--IO--] Setting IO variable: " << v->getName().str() << ", R:"
@@ -1069,12 +1069,12 @@ public:
     // Overwrite input/output values for layout.
     const auto *input = glowFC->getInput().getNode();
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        importer.addValue(input->getName(), input->getType(0),
+        importer.addValue(input->getName().str(), input->getType(0),
                           input->getType(0)->dims().size() == 4),
         "Failed to add tensor to NNPI");
     const auto *result = glowFC->getResult().getNode();
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        importer.addValue(result->getName(), result->getType(0),
+        importer.addValue(result->getName().str(), result->getType(0),
                           result->getType(0)->dims().size() == 4),
         "Failed to add tensor to NNPI");
 
