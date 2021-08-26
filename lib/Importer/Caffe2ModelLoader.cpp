@@ -1967,15 +1967,36 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // must go from int -> float -> bool. Due to fp16 clipping, since only
     // int32 -> fp16 conversions are available, there is an initial conversion
     // from int64 to int32 if necessary.
-    auto indicatorIntToFloat = G_->createConvertTo(
-        opName + ".intToFloat", indicator, ElemKind::FloatTy);
-    auto indicatorFloatToBool = G_->createConvertTo(
-        opName + ".floatToBool", indicatorIntToFloat, ElemKind::BoolTy);
-    auto nonZeroIndices =
-        G_->createNonZero(opName + ".nonzero", indicatorFloatToBool);
-    auto nonZeroCount = data.dims()[0];
-    auto indices = G_->createSlice(opName + ".indices", nonZeroIndices, {0, 0},
-                                   {nonZeroCount, 1});
+    auto indicatorFloat = G_->createConvertTo(opName + ".intToFloat", indicator,
+                                              ElemKind::FloatTy);
+    auto indicatorBool = G_->createConvertTo(opName + ".floatToBool",
+                                             indicatorFloat, ElemKind::BoolTy);
+    auto nzIndices = G_->createNonZero(opName + ".nonzero", indicatorBool);
+
+    // FIXME: this is a temporary solution for the case when NonZero returns
+    // -2^31 as the boundary for the returned indices. For examples, currently
+    // we get this NonZero([0, 1, 1, 0, 0]) -> [1, 2, -2^31, 0, 0], because the
+    // shapes are static. Instead it might be more convenient to have something
+    // like [1, 2, -1, -1, -1] for now. Therefore the extra logic here.
+    // Using cumsum will make everything following -2^31 negative.
+    auto nzIndicesCumSum =
+        G_->createCumSum(opName + ".nzIndicesCumSum", nzIndices, 0);
+    auto nzIndicesCheckNeg = G_->createCmpLT(
+        opName + ".nzIndicesCheckNeg", nzIndicesCumSum,
+        G_->createSplat(opName + ".nzIndicesZeroes", nzIndices->getType(0), 0));
+    auto nzIndicesFloatTy =
+        mod_.uniqueType(ElemKind::Float16Ty, nzIndices->dims(0));
+    auto nzIndicesWithMinusOnes = G_->createSelect(
+        opName + ".nzIndicesWithMinusOnes", nzIndicesCheckNeg,
+        G_->createSplat(opName + ".nzIndicesMinusOnes", nzIndicesFloatTy, -1),
+        G_->createConvertTo(opName + ".nzIndicesFloat", nzIndices,
+                            nzIndicesFloatTy));
+    auto nzIndicesInt =
+        G_->createConvertTo(opName + ".nzIndicesInt", nzIndicesWithMinusOnes,
+                            nzIndices->getType(0));
+
+    auto indices = G_->createSlice(opName + ".indices", nzIndicesInt, {0, 0},
+                                   {data.dims()[0], 1});
 
     auto zeros = G_->createSplat(opName + ".zeros", outTy2D, 0);
 
