@@ -485,17 +485,26 @@ static onnxStatus verifyDescriptors(uint32_t count,
       return ONNXIFI_STATUS_INVALID_MEMORY_TYPE;
     }
 
-    if (!descriptor.buffer &&
-        !(descriptor.dimensions == 1 && descriptor.shape[0] == 0)) {
-      LOG(ERROR) << "Bad memory on input " << descriptor.name << " (" << i
-                 << " out of " << count
-                 << "). It has no memory buffer, but has "
-                 << descriptor.dimensions << " dimensions: ["
-                 << folly::join(",",
-                                llvm::ArrayRef<uint64_t>(descriptor.shape,
-                                                         descriptor.dimensions))
-                 << "]";
-      return ONNXIFI_STATUS_INVALID_MEMORY_LOCATION;
+    if (!descriptor.buffer) {
+      bool hasZeroDims = false;
+      for (int i = 0; i < descriptor.dimensions; ++i) {
+        if (descriptor.shape[i] == 0) {
+          hasZeroDims = true;
+          break;
+        }
+      }
+
+      if (!hasZeroDims) {
+        LOG(ERROR) << "Bad memory on input " << descriptor.name << " (" << i
+                   << " out of " << count
+                   << "). It has no memory buffer, but has "
+                   << descriptor.dimensions << " dimensions: ["
+                   << folly::join(
+                          ",", llvm::ArrayRef<uint64_t>(descriptor.shape,
+                                                        descriptor.dimensions))
+                   << "]";
+        return ONNXIFI_STATUS_INVALID_MEMORY_LOCATION;
+      }
     }
   }
 

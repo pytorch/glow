@@ -2381,7 +2381,8 @@ TEST_F(Caffe2ImporterTest, FillExamplesWithIndicator) {
   EXPECT_EQ(expectedOutputShape, outputPH->dims().vec());
   // Graph has 9 nodes: 2 Reshapes, 2 Converts, Nonzero, Slice, Splat,
   // ScatterData, Output
-  EXPECT_EQ(F->getNodes().size(), 9);
+  // NonZero is translated into multiple ops.
+  EXPECT_EQ(F->getNodes().size(), 16);
 
   // Graph has two inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
