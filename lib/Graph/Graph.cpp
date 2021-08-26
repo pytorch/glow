@@ -5789,7 +5789,7 @@ static void convertDotFileToRightFormat(llvm::StringRef dotFile) {
                                                             "png"};
   // Get file extension.
   llvm::StringRef extWithDot = llvm::sys::path::extension(dotFile);
-  std::string ext = extWithDot.take_back(extWithDot.size() - 1);
+  std::string ext = extWithDot.take_back(extWithDot.size() - 1).str();
   // Convert to new format if supported.
   if (std::find(supportedFormats.begin(), supportedFormats.end(), ext) !=
       supportedFormats.end()) {
