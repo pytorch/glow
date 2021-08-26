@@ -26,6 +26,7 @@
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Runtime/TraceExporter.h"
 #include "glow/Support/Support.h"
+#include <folly/SingletonThreadLocal.h>
 
 #include <mutex>
 
@@ -761,12 +762,9 @@ Error CachingGraphRunner::writeJitIOToOnnxFile(
   std::vector<glow::Tensor> glowTensorInputs;
   std::vector<torch::Tensor> ptTensorInputs;
 
-  if (auto tensorsOrErr =
-          processPyTorchInputs(inputs, info->inputPlaceholders)) {
-    glowTensorInputs = std::move(tensorsOrErr->first);
-    ptTensorInputs = std::move(tensorsOrErr->second);
-  } else {
-    RETURN_ERR(tensorsOrErr.takeError());
+  if (auto err = processPyTorchInputs(inputs, info->inputPlaceholders,
+                                      glowTensorInputs, ptTensorInputs)) {
+    return err;
   }
 
   RETURN_IF_ERR(writeGlowTensorsToOnnx(inputFilePrefix, info->settings,
@@ -894,16 +892,12 @@ CachingGraphRunner::convertPyTorchInputToGlowInput(
   return tensors;
 }
 
-Expected<std::pair<std::vector<glow::Tensor>, std::vector<torch::Tensor>>>
-CachingGraphRunner::processPyTorchInputs(
+Error CachingGraphRunner::processPyTorchInputs(
     at::ArrayRef<at::IValue> inputs,
-    const std::vector<Placeholder *> &inputPlaceholders) {
+    const std::vector<Placeholder *> &inputPlaceholders,
+    std::vector<glow::Tensor> &glowTensorInputs,
+    std::vector<torch::Tensor> &ptTensorInputs) {
   size_t numInputs = inputs.size();
-
-  std::vector<glow::Tensor> glowTensorInputs;
-  std::vector<torch::Tensor> ptTensorInputs;
-  glowTensorInputs.reserve(numInputs);
-  ptTensorInputs.reserve(numInputs);
 
   // We only hold placeholders for tensor inputs so indexing them is
   // different than indexing all inputs.
@@ -933,10 +927,7 @@ CachingGraphRunner::processPyTorchInputs(
                               int(inputPlaceholders.size()),
                               int(glowTensorInputs.size())));
 
-  std::pair<std::vector<glow::Tensor>, std::vector<torch::Tensor>> tensors = {
-      std::move(glowTensorInputs), std::move(ptTensorInputs)};
-
-  return tensors;
+  return detail::GlowError::success();
 }
 
 Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
@@ -949,7 +940,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
   // Save all of the PyTorch input tensors in case they were allocated here for
   // things like making an input contiguous.
-  std::vector<torch::Tensor> ptTensorInputs;
+  FOLLY_DECLARE_REUSED(glowTensorInputs, std::vector<glow::Tensor>);
+  FOLLY_DECLARE_REUSED(ptTensorInputs, std::vector<torch::Tensor>);
 
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
@@ -994,13 +986,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     {
       RECORD_USER_SCOPE("adjustInputs");
 
-      std::vector<glow::Tensor> glowTensorInputs;
-      if (auto tensorsOrErr =
-              processPyTorchInputs(inputs, info.inputPlaceholders)) {
-        glowTensorInputs = std::move(tensorsOrErr->first);
-        ptTensorInputs = std::move(tensorsOrErr->second);
-      } else {
-        RETURN_ERR(tensorsOrErr.takeError());
+      if (auto err = processPyTorchInputs(inputs, info.inputPlaceholders,
+                                          glowTensorInputs, ptTensorInputs)) {
+        return err;
       }
 
       // Write input tensors to file

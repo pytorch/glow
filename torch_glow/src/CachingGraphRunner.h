@@ -195,10 +195,13 @@ private:
                                  const glow::Placeholder *ph);
 
   /// Calls convertPyTorchInputToGlowInput for several \p inputs and \p
-  /// inputPlaceholders.
-  Expected<std::pair<std::vector<glow::Tensor>, std::vector<torch::Tensor>>>
+  /// inputPlaceholders, filling \p glowTensorInputs and \p ptTensorInputs
+  /// inplace.
+  Error
   processPyTorchInputs(at::ArrayRef<at::IValue> inputs,
-                       const std::vector<Placeholder *> &inputPlaceholders);
+                       const std::vector<Placeholder *> &inputPlaceholders,
+                       std::vector<glow::Tensor> &glowTensorInputs,
+                       std::vector<torch::Tensor> &ptTensorInputs);
 
   /// The Glow Function should've already been created. Returns an error if not.
   Error runOnly(torch::jit::Stack &stack);
