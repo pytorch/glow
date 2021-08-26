@@ -462,6 +462,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(lazyCompile, s);
   INSERT_BOOL_TO_STREAM(enableDeviceTracing, s);
   INSERT_VALUE_TO_STREAM(debugLayers, s);
+  INSERT_BOOL_TO_STREAM(useMaxSizeCompilation, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";

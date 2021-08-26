@@ -125,6 +125,8 @@ void registerPyTorchGlowCustomClasses() {
                        CompilationSpecSettings, apl_parallelization_alg);
   ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
                        CompilationSpecSettings, apl_num_parallel_chunks);
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, use_max_size_compilation);
   addSerializationDefs<CompilationSpecSettings>(
       CompilationSpecSettings_registry);
 

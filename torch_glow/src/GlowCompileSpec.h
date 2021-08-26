@@ -475,6 +475,7 @@ struct CompilationSpecSettings : public JsonSerializableCustomClass {
   ADD_BOOL_FIELD(use_dag_optimizer, false)
   ADD_STRING_FIELD(apl_parallelization_alg, "ParallelizeCVHeuristicData")
   ADD_INT_FIELD(apl_num_parallel_chunks, 2)
+  ADD_BOOL_FIELD(use_max_size_compilation, false)
 
   Expected<folly::dynamic> toDynamicImpl() const override {
     folly::dynamic obj = folly::dynamic::object();
@@ -485,6 +486,7 @@ struct CompilationSpecSettings : public JsonSerializableCustomClass {
     obj["enable_deserialize"] = enable_deserialize;
     obj["apl_parallelization_alg"] = apl_parallelization_alg;
     obj["apl_num_parallel_chunks"] = apl_num_parallel_chunks;
+    obj["use_max_size_compilation"] = use_max_size_compilation;
     return obj;
   }
 
@@ -526,6 +528,11 @@ struct CompilationSpecSettings : public JsonSerializableCustomClass {
     if (dyn.count("apl_num_parallel_chunks")) {
       ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, apl_num_parallel_chunks,
                                               "apl_num_parallel_chunks");
+    }
+
+    if (dyn.count("use_max_size_compilation")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, use_max_size_compilation,
+                                               "use_max_size_compilation");
     }
 
     return Error::success();
