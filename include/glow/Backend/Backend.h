@@ -31,6 +31,9 @@
 namespace folly {
 struct dynamic;
 }
+namespace glow {
+struct CompiledResult;
+}
 #endif
 
 namespace glow {
@@ -90,6 +93,13 @@ public:
   compileFX(const folly::dynamic &FXIR, const std::string &submod,
             const llvm::StringMap<const void *> &constants,
             const BackendOptions &opts, Module *glowModule) const {
+    LOG(FATAL) << "Compiling FXIR is not supported by the backend";
+  }
+
+  virtual Expected<std::unique_ptr<CompiledResult>>
+  compileFXToCompiledResults(const folly::dynamic &FXIR,
+                             const llvm::StringMap<const void *> &constants,
+                             bool lowerToLLVMIR = true) const {
     LOG(FATAL) << "Compiling FXIR is not supported by the backend";
   }
 #endif
