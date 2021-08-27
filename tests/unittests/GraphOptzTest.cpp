@@ -6081,7 +6081,9 @@ TEST_F(GraphOptz, ParallelizeData_ChannelwiseQuantizedConvolution) {
                                                             mod_.getPRNG());
   auto *filter =
       mod_.createConstant(ElemKind::FloatTy, {12, 1, 1, 8}, "weights");
+  filter->getPayloadMutable().getHandle().randomize(-10, 10, mod_.getPRNG());
   auto *bias = mod_.createConstant(ElemKind::FloatTy, {12}, "bias");
+  bias->getPayloadMutable().getHandle().randomize(-1, 1, mod_.getPRNG());
   auto *output = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5, 5, 12}, 1.0,
                                         0, "output", false);
   bindings_.allocate(output);
@@ -6126,7 +6128,9 @@ TEST_F(GraphOptz, ParallelizeData_Convolution) {
                                                            mod_.getPRNG());
   auto *filter =
       mod_.createConstant(ElemKind::FloatTy, {6, 1, 1, 2}, "weights");
+  filter->getPayloadMutable().getHandle().randomize(-1, 1, mod_.getPRNG());
   auto *bias = mod_.createConstant(ElemKind::FloatTy, {6}, "bias");
+  bias->getPayloadMutable().getHandle().randomize(-.1, .1, mod_.getPRNG());
   auto *output =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 5, 5, 6}, "output", false);
   bindings_.allocate(output);
@@ -6170,10 +6174,17 @@ TEST_F(GraphOptz, ParallelizeData_RowwiseQuantizedFullyConnected) {
                                                             mod_.getPRNG());
   auto *weights =
       mod_.createConstant(ElemKind::Int8QTy, {12, 8}, 1.0, 0, "weights");
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
   auto *scales = mod_.createConstant(ElemKind::FloatTy, {12}, "scales");
+  scales->getPayloadMutable().getHandle().randomize(0.01, 0.1, mod_.getPRNG());
   auto *offsets = mod_.createConstant(ElemKind::Int32ITy, {12}, "offsets");
+  offsets->getPayloadMutable().getHandle<int32_t>().randomize(0, 10,
+                                                              mod_.getPRNG());
 
   auto *bias = mod_.createConstant(ElemKind::Int8QTy, {12}, 1.0, 0, "bias");
+  bias->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                          mod_.getPRNG());
   auto *output = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 12}, 1.0, 0,
                                         "output", false);
   bindings_.allocate(output);
