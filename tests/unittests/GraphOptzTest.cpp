@@ -7288,6 +7288,46 @@ TEST_F(GraphOptz, EliminateSliceConcatWithReshapeTest) {
   checkNumericalEquivalence(0.f);
 }
 
+// Check the merging of Sub(const, BN(x, scale, bias)) into BN.
+TEST_F(GraphOptz, FoldArithmeticChainIntoBatchNormQuant) {
+  auto *subC = mod_.createConstant(ElemKind::FloatTy, {1, 1, 1, 1}, "subC");
+  auto *var = mod_.createConstant(ElemKind::FloatTy, {1}, "var");
+  auto *mean = mod_.createConstant(ElemKind::FloatTy, {1}, "mean");
+  auto *beta = mod_.createConstant(ElemKind::FloatTy, {1}, "beta");
+  auto *gamma = mod_.createConstant(ElemKind::FloatTy, {1}, "gamma");
+  float v = 0.3f, m = 0.4f, b = 0.7f, g = -0.5f, c = 0.1;
+  // (X - mean) * (1.0 / sqrt(var + eps)) * gamma + beta
+  var->getPayloadMutable().getHandle<float>() = {v};
+  mean->getPayloadMutable().getHandle<float>() = {m};
+  beta->getPayloadMutable().getHandle<float>() = {b};
+  gamma->getPayloadMutable().getHandle<float>() = {g};
+  subC->getPayloadMutable().getHandle<float>() = {c};
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 1, 1}, "input",
+                                       false, "NHWC");
+
+  auto *BN = F_->createBatchNormalization("batch", input->getType(), input,
+                                          beta, gamma, mean, var);
+  auto *sub = F_->createSub("sub", subC, BN);
+  auto *res = F_->createSave("save", sub);
+  // Compile.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+
+  optimizedF_ = optimizeFunctionForTest(F_, {}, cctx_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  auto *opt_res = findFunctionNodeByName<SaveNode>(optimizedF_, res->getName());
+  auto *opt_bn = llvm::dyn_cast<BatchNormalizationNode>(opt_res->getInput());
+  ASSERT_TRUE(opt_bn);
+  // Verify that scale and offset are computed correctly.
+  Constant *bnScale = llvm::dyn_cast<Constant>(opt_bn->getScale().getNode());
+  Constant *bnBias = llvm::dyn_cast<Constant>(opt_bn->getBias().getNode());
+  auto bnBiasVals = bnBias->getHandle<float>().raw(0);
+  auto bnScaleVals = bnScale->getHandle<float>().raw(0);
+  EXPECT_EQ(bnBiasVals, c - b);
+  EXPECT_EQ(bnScaleVals, -g);
+}
+
 /// Test that EliminateSliceConcat makes no optimization when the axis of
 /// concatenation and slicing are not adjacent.
 TEST_F(GraphOptz, EliminateSliceConcatWithReshapeTestNoChange) {

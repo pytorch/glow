@@ -2423,11 +2423,12 @@ static NodeValue collectArithmeticChain(Function *F, NodeValue start,
         scaleH.raw(i) *= toMerge[i];
         biasH.raw(i) *= toMerge[i];
       } else if (isa<SubNode>(user)) {
-        // TODO: Can we support Sub(Constant, Chain)?
         if (chainEnd == rhs) {
-          break;
+          scaleH.raw(i) *= -1;
+          biasH.raw(i) = toMerge[i] - biasH.raw(i);
+        } else {
+          biasH.raw(i) -= toMerge[i];
         }
-        biasH.raw(i) -= toMerge[i];
       } else if (isa<AddNode>(user)) {
         biasH.raw(i) += toMerge[i];
       } else {
