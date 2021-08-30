@@ -78,6 +78,8 @@ DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
 DEFINE_bool(writeOnnxToTmp, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
+DEFINE_bool(dumpOperatorInventory, false,
+            "Dump jit operator inventory after glow lowering.");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
 DEFINE_bool(writeWithoutRandomize, false, "See PyTorchLoaderSettings");
 DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
@@ -356,6 +358,7 @@ void PyTorchLoaderSettings::initSettings() {
   enableDeviceTracing = FLAGS_enableDeviceTracing;
   writeOnnxToTmp = FLAGS_writeOnnxToTmp;
   randomizeConstants = FLAGS_randomizeConstants;
+  dumpOperatorInventory = FLAGS_dumpOperatorInventory;
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
   numDevices = FLAGS_torch_glow_num_devices;
