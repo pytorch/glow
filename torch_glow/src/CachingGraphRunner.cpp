@@ -680,8 +680,14 @@ writeGlowTensorsToOnnx(const std::string &filePrefix,
 
   ONNX_NAMESPACE::GraphProto onnxGraph;
   for (size_t i = 0; i < placeholders.size(); ++i) {
-    auto *onnxT = onnxGraph.add_initializer();
     const auto *ph = placeholders[i];
+    if (ph->getNumUsers() == 0) {
+      LOG(INFO) << "Tensor onnxification not required. Not being used: "
+                << ph->getName().str() << "\n";
+      continue;
+    }
+
+    auto *onnxT = onnxGraph.add_initializer();
     const auto &t = glowTensors[i];
     onnxT->set_name(ph->getName());
     size_t unpaddedSize = t.getUnpaddedSizeInBytes();
