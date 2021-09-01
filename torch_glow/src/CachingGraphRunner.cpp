@@ -689,7 +689,7 @@ writeGlowTensorsToOnnx(const std::string &filePrefix,
 
     auto *onnxT = onnxGraph.add_initializer();
     const auto &t = glowTensors[i];
-    onnxT->set_name(ph->getName());
+    onnxT->set_name(ph->getName().str());
     size_t unpaddedSize = t.getUnpaddedSizeInBytes();
     size_t tensorSize = t.getSizeInBytes();
     if (unpaddedSize == tensorSize) {
