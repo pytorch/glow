@@ -55,7 +55,7 @@ for ifn in glob.glob(args.input):
     processed_im = resize(im)
 
     if args.normalize:
-        trans = torchvision.transforms.Compose(
+        transform_fn = torchvision.transforms.Compose(
             [
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize(
@@ -64,9 +64,9 @@ for ifn in glob.glob(args.input):
             ]
         )
     else:
-        trans = torchvision.transforms.ToTensor()
+        transform_fn = torchvision.transforms.ToTensor()
 
-    processed_im = trans(processed_im)
+    processed_im = transform_fn(processed_im)
     processed_im = processed_im.unsqueeze(0)
 
     torchvision.utils.save_image(processed_im, outputname)
