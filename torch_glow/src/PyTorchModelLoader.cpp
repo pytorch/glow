@@ -1236,6 +1236,22 @@ struct NarrowInputs {
   enum { input = 0, dim, start, length };
 };
 
+///  Indexes used for aten::pixel_shuffle inputs
+struct PixelShuffleInputs {
+  enum {
+    input = 0,
+    upscale_factor,
+  };
+};
+
+///  Indexes used for aten::pixel_shuffle inputs
+struct PixelUnshuffleInputs {
+  enum {
+    input = 0,
+    downscale_factor,
+  };
+};
+
 } // namespace
 
 // static
@@ -1764,6 +1780,13 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::narrow"},
        &PyTorchModelLoader::loadNarrow,
        &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"aten::pixel_shuffle"},
+       &PyTorchModelLoader::loadPixelShuffle,
+       &PyTorchModelLoader::getCorrectTypeFromInput<PixelShuffleInputs::input>},
+      {{"aten::pixel_unshuffle"},
+       &PyTorchModelLoader::loadPixelUnshuffle,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           PixelUnshuffleInputs::input>},
   });
 #undef UNARY_NODE_LOADER
 
@@ -8908,6 +8931,155 @@ Error PyTorchModelLoader::loadNarrow(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
 
   return Error::success();
+}
+
+Error PyTorchModelLoader::loadPixelShuffle(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[PixelShuffleInputs::input]));
+
+  RETURN_ERR_IF_NOT(input.dims().size() > 3,
+                    "Input must have at least 3 dimensions");
+
+  dim_t upscaleFactor;
+  ASSIGN_VALUE_OR_RETURN_ERR(upscaleFactor,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[PixelShuffleInputs::upscale_factor])));
+
+  RETURN_ERR_IF_NOT(upscaleFactor > 0, "upscale_factor must be > 0");
+
+  const auto NUM_NON_BATCH_DIMS = 3;
+  const auto sizesBatchEnd = input.dims().end() - NUM_NON_BATCH_DIMS;
+
+  std::vector<dim_t> shape = input.dims().vec();
+
+  dim_t iC = shape[shape.size() - 3];
+  dim_t iH = shape[shape.size() - 2];
+  dim_t iW = shape[shape.size() - 1];
+
+  dim_t upscaleFactorSquared = upscaleFactor * upscaleFactor;
+
+  RETURN_ERR_IF_NOT(
+      iC % upscaleFactorSquared == 0,
+      "Channel dimension must be divisible by the square of upscale_factor");
+
+  dim_t oC = iC / upscaleFactorSquared;
+  dim_t oH = iH * upscaleFactor;
+  dim_t oW = iW * upscaleFactor;
+
+  // First, reshape to split the channels dim from c into 3 separate dims: (oC,
+  // upscaleFactor, upscaleFactor). This allows shuffling to be done next by
+  // permuting dims.
+  std::vector<dim_t> addedDimsShape(input.dims().begin(), sizesBatchEnd);
+  addedDimsShape.insert(addedDimsShape.end(),
+                        {oC, upscaleFactor, upscaleFactor, iH, iW});
+
+  auto *inputReshaped = F_.createReshape("reshape", input, addedDimsShape);
+
+  // Next, shuffle by permuting the new upscaleFactor dims alongside the height
+  // and width dims.
+  std::vector<dim_t> permutation(input.dims().begin(), sizesBatchEnd);
+  const auto idx = permutation.size();
+  std::iota(permutation.begin(), permutation.end(), 0);
+  permutation.insert(permutation.end(), {
+                                            idx,     /* oC */
+                                            idx + 3, /* iH */
+                                            idx + 1, /* upscaleFactor */
+                                            idx + 4, /* iW */
+                                            idx + 2  /* upscaleFactor */
+                                        });
+
+  const auto inputPermuted = F_.createTranspose(
+      "reshapeInput", inputReshaped, castVector<glow::unsigned_t>(permutation));
+
+  // Finally, upscale by collapsing (iH, upscaleFactor) -> a single dim (oH)
+  // and (iW, upscaleFactor) -> a single dim (oW).
+  std::vector<dim_t> finalShape(input.dims().begin(), sizesBatchEnd);
+  finalShape.insert(finalShape.end(), {oC, oH, oW});
+
+  auto output =
+      F_.createReshape("reshape", inputPermuted, finalShape)->getResult();
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadPixelUnshuffle(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[PixelUnshuffleInputs::input]));
+
+  RETURN_ERR_IF_NOT(input.dims().size() > 3,
+                    "Input must have at least 3 dimensions");
+
+  dim_t downscaleFactor;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      downscaleFactor, iValToInt(getGlowIValueForValue(
+                           inputs[PixelUnshuffleInputs::downscale_factor])));
+
+  RETURN_ERR_IF_NOT(downscaleFactor > 0, "downscale_factor must be > 0");
+
+  const auto NUM_NON_BATCH_DIMS = 3;
+  const auto sizesBatchEnd = input.dims().end() - NUM_NON_BATCH_DIMS;
+
+  std::vector<dim_t> shape = input.dims().vec();
+
+  dim_t iC = shape[shape.size() - 3];
+  dim_t iH = shape[shape.size() - 2];
+  dim_t iW = shape[shape.size() - 1];
+
+  RETURN_ERR_IF_NOT(iH % downscaleFactor == 0,
+                    "height must be evenly divisible by downscale_factor");
+
+  RETURN_ERR_IF_NOT(iW % downscaleFactor == 0,
+                    "width must be evenly divisible by downscale_factor");
+
+  dim_t downscaleFactorSquared = downscaleFactor * downscaleFactor;
+
+  dim_t oC = iC * downscaleFactorSquared;
+  dim_t oH = iH / downscaleFactor;
+  dim_t oW = iW / downscaleFactor;
+
+  // First, reshape to split height dim into (oH, downscaleFactor) dims and
+  // width dim into (oW, downscaleFactor) dims. This allows unshuffling to be
+  // done next by permuting dims.
+  std::vector<dim_t> addedDimsShape(input.dims().begin(), sizesBatchEnd);
+  addedDimsShape.insert(addedDimsShape.end(),
+                        {iC, oH, downscaleFactor, oW, downscaleFactor});
+
+  auto *inputReshaped = F_.createReshape("reshape", input, addedDimsShape);
+
+  // unshuffle by permuting the downscaleFactor dims alongside the channel dim.
+  std::vector<dim_t> permutation(input.dims().begin(), sizesBatchEnd);
+  const auto idx = permutation.size();
+  std::iota(permutation.begin(), permutation.end(), 0);
+  permutation.insert(permutation.end(), {
+                                            idx,     /* iC */
+                                            idx + 2, /* downscaleFactor */
+                                            idx + 4, /* downscaleFactor */
+                                            idx + 1, /* oH */
+                                            idx + 3  /* oW */
+                                        });
+
+  const auto inputPermuted = F_.createTranspose(
+      "reshapeInput", inputReshaped, castVector<glow::unsigned_t>(permutation));
+
+  // Finally, downscale by collapsing (iC, downscaleFactor, downscaleFactor) ->
+  // a single dim (oC), resulting in height=oH and width=oW.
+  std::vector<dim_t> finalShape(input.dims().begin(), sizesBatchEnd);
+  finalShape.insert(finalShape.end(), {oC, oH, oW});
+
+  auto output =
+      F_.createReshape("reshape", inputPermuted, finalShape)->getResult();
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadAttributes(
