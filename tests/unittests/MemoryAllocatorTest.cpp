@@ -118,6 +118,8 @@ TEST(MemAlloc, dealloc) {
   void *handle2 = reinterpret_cast<void *>(2);
   void *handle3 = reinterpret_cast<void *>(3);
   void *handle4 = reinterpret_cast<void *>(4);
+  void *handle5 = reinterpret_cast<void *>(5);
+  void *handle6 = reinterpret_cast<void *>(6);
 
   auto p0 = MA.allocate(10, handle0);
   auto p1 = MA.allocate(10, handle1);
@@ -126,16 +128,23 @@ TEST(MemAlloc, dealloc) {
 
   auto p4 = MA.allocate(10, handle4);
 
+  auto p5 = MA.allocate(0, handle5);
+  auto p6 = MA.allocate(0, handle6);
+
   EXPECT_EQ(p0, 0);
   EXPECT_NE(p1, MemoryAllocator::npos);
   EXPECT_NE(p2, MemoryAllocator::npos);
   EXPECT_NE(p3, MemoryAllocator::npos);
   EXPECT_NE(p4, MemoryAllocator::npos);
+  EXPECT_NE(p5, MemoryAllocator::npos);
+  EXPECT_NE(p6, MemoryAllocator::npos);
 
   // Deallocate in some arbitrary order.
   MA.deallocate(handle0);
+  MA.deallocate(handle5);
   MA.deallocate(handle2);
   MA.deallocate(handle1);
+  MA.deallocate(handle6);
   MA.deallocate(handle3);
   // Check that it is possible to deallocate using the associated handle.
   MA.deallocate(handle4);

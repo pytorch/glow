@@ -56,7 +56,10 @@ uint64_t MemoryAllocator::getEffectiveSize(uint64_t size) const {
 
 uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
   // Always allocate buffers properly aligned to hold values of any type.
-  uint64_t segmentSize = getEffectiveSize(size);
+  // Zero is a valid size and shows up in some shape computations and
+  // tests. To associate a Handle with the returned ptr, we
+  // need to allocate a segment.
+  uint64_t segmentSize = getEffectiveSize(std::max<uint64_t>(1, size));
   uint64_t prev = 0;
   for (auto it = segments_.begin(), e = segments_.end(); it != e; it++) {
     if (it->begin - prev >= segmentSize) {
