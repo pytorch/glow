@@ -39,7 +39,7 @@ args = parser.parse_args()
 try:
     os.makedirs(args.output, exist_ok=True)
 except Exception as e:
-    raise print(e)
+    print(e)
 
 for ifn in glob.glob(args.input):
     name, ext = os.path.splitext(ifn)
