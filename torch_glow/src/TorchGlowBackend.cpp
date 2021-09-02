@@ -598,6 +598,7 @@ Error applyCompilationSpecSettingsToPyTorchLoaderSettings(
   settings.use_dag_optimizer = newSettings.use_dag_optimizer;
   settings.apl_parallelization_alg = newSettings.apl_parallelization_alg;
   settings.apl_num_parallel_chunks = newSettings.apl_num_parallel_chunks;
+  settings.useMaxSizeCompilation = newSettings.use_max_size_compilation;
 
   // Ensure override flags are honored
   RETURN_IF_ERR(applySettingsOverrideFlagsToPyTorchLoaderSettings(settings));
@@ -792,6 +793,8 @@ compileImpl(const torch::jit::Module &origModule,
                         "self must have no uses in order to lower to Glow.");
       graph->block()->eraseInput(0);
 
+      const bool useMaxSizeCompilation = baseSettings.useMaxSizeCompilation;
+
       // Create a corresponding runner and store {handle, runner} pair.
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
@@ -817,8 +820,7 @@ compileImpl(const torch::jit::Module &origModule,
         }
         auto err = runner->warmCache(
             metaStacks, compilationGroupSettings,
-            /*loader*/ nullptr,
-            /*useMaxSizeCompilation*/ false,
+            /*loader*/ nullptr, useMaxSizeCompilation,
             getGlobalPyTorchLoaderSettingsMutable().enableDeserialize,
             std::make_shared<
                 std::unordered_map<std::string, std::vector<char>>>(

@@ -40,8 +40,8 @@ uint64_t IceRefCallback_ReluFP16(void **inputsData,
 NNPICustomDSPNode *createCustomReluFP16(Function *F_, llvm::StringRef name,
                                         NodeValue in0) {
   int64_t cb = reinterpret_cast<int64_t>(IceRefCallback_ReluFP16);
-  return DSPInjectorUtils::createEltwiseFP16(F_, name, std::string("ReluFP16"),
-                                             {in0}, cb);
+  return DSPInjectorUtils::createEltwiseFP16(
+      F_, name.str(), std::string("ReluFP16"), {in0}, cb);
 }
 } // namespace
 

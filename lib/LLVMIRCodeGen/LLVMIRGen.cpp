@@ -1297,6 +1297,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_UNARY_OP_CASE(ElementCeil, "element_ceil");
     ARITHMETIC_UNARY_OP_CASE(ElementRound, "element_round");
     ARITHMETIC_UNARY_OP_CASE(ElementSqrt, "element_sqrt");
+    ARITHMETIC_UNARY_OP_CASE(ElementErf, "element_erf");
     ARITHMETIC_UNARY_OP_CASE(ElementRsqrt, "element_rsqrt");
     ARITHMETIC_UNARY_OP_CASE(ElementReciprocal, "element_reciprocal");
     ARITHMETIC_UNARY_OP_CASE(ElementSin, "element_sin");

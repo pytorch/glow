@@ -53,7 +53,7 @@ static bool isBatchNormUsingAlternativeLayout(const glow::Node *node,
 
 static std::string nodeValueName(const glow::NodeValue &nv) {
   if (nv.getNode()->getKind() == glow::Kinded::Kind::PlaceholderKind) {
-    return nv.getNode()->getName();
+    return nv.getNode()->getName().str();
   } else if (nv.getNode()->getKind() == glow::Kinded::Kind::ConstantKind) {
     return std::string(nv.getNode()->getName()) + std::string("__const");
   }
@@ -168,7 +168,7 @@ NNPIErrorCode glow::NNPIImporter::addValueIfTensor(Value *v) {
   auto *weight = llvm::dyn_cast<WeightVar>(v);
   if (weight &&
       weight->getMutability() == WeightVar::MutabilityKind::Constant &&
-      constants_.count(v->getName())) {
+      constants_.count(v->getName().str())) {
     // Add a tensor.
     return addTensor(v->getName().begin());
   }
@@ -458,6 +458,19 @@ glow::NNPIImporter::addIAExtentionPath(const std::string &extPath) {
   return NNPI_NO_ERROR;
 }
 
+NNPIErrorCode glow::NNPIImporter::addIAExtentionLib(const std::string libName,
+                                                    const char *pLib,
+                                                    size_t sizeLib) {
+  LOG_AND_RETURN_IF(
+      ERROR, (pLib == nullptr || sizeLib == 0),
+      strFormat("Check if IA extension lib is of 0 size or pointer is Null"),
+      NNPI_INVALID_PARAM);
+
+  std::vector<char> libContents(pLib, pLib + sizeLib);
+  iaExtensionLibs_.push_back(std::make_pair(libName, libContents));
+  return NNPI_NO_ERROR;
+}
+
 /// Replaces any operators in the Function \p F with custom DSP NNPI kernel
 /// operators by calling each CustomKernelInjector on each node in sequence.
 /// \returns true iff any custom NNPI node was injected into the Function.
@@ -585,7 +598,7 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
     std::map<std::string, uint32_t> type2count;
     std::map<std::string, glow::Node *> nodes;
     for (auto &N : F->getNodes()) {
-      nodes[N.getName()] = &N;
+      nodes[N.getName().str()] = &N;
     }
     auto *module = F->getParent();
     std::string prefix;
@@ -724,13 +737,13 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
 
   // Handle placeholders (inputs/outputs).
   for (auto *v : F->getParent()->getPlaceholders()) {
-    bool inputVar(readTensors_.count(v->getName()) &&
-                  !writeTensors_.count(v->getName()));
-    bool outputVar(!readTensors_.count(v->getName()) &&
-                   writeTensors_.count(v->getName()));
+    bool inputVar(readTensors_.count(v->getName().str()) &&
+                  !writeTensors_.count(v->getName().str()));
+    bool outputVar(!readTensors_.count(v->getName().str()) &&
+                   writeTensors_.count(v->getName().str()));
     if (inputVar || outputVar) {
       LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
-          addValue(v->getName(), v->getType(),
+          addValue(v->getName().str(), v->getType(),
                    isVariableUsingAlternativeLayout(v), inputVar, outputVar),
           "Failed to add placeholder");
       DBG("[--IO--] Setting IO variable: " << v->getName().str() << ", R:"
@@ -1056,12 +1069,12 @@ public:
     // Overwrite input/output values for layout.
     const auto *input = glowFC->getInput().getNode();
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        importer.addValue(input->getName(), input->getType(0),
+        importer.addValue(input->getName().str(), input->getType(0),
                           input->getType(0)->dims().size() == 4),
         "Failed to add tensor to NNPI");
     const auto *result = glowFC->getResult().getNode();
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        importer.addValue(result->getName(), result->getType(0),
+        importer.addValue(result->getName().str(), result->getType(0),
                           result->getType(0)->dims().size() == 4),
         "Failed to add tensor to NNPI");
 
@@ -2421,10 +2434,20 @@ public:
     outputTensors.insert(nvName);
 
     importer.setUsedTensors(inputTensors, outputTensors);
+
     NNPIErrorCode error = importer.addIAExtentionPath(glowIA->getIAPath());
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 8
+    if (error != NNPI_NO_ERROR) {
+      error = importer.addIAExtentionLib(
+          glowIA->getKernelName(), (const char *)glowIA->getPointerToIALib(),
+          glowIA->getSizeOfIALib());
+      LOG_AND_RETURN_IF_NOT(ERROR, error == NNPI_NO_ERROR,
+                            "Failed to store IA extension", NNPI_INVALID_PARAM);
+    }
+#else
     LOG_AND_RETURN_IF_NOT(ERROR, error == NNPI_NO_ERROR,
                           "Failed to store IA extension", NNPI_INVALID_PARAM);
-
+#endif // NNPI >= 1.8
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 7
     const auto *kpConstant =
         glowIA->getParent()->getParent()->getConstantByName(
@@ -3001,6 +3024,11 @@ std::unordered_map<
     {"CmpLT",
      glow::make_unique<
          BinaryEltwiseNodeImporter<glow::CmpLTNode, NNPI_ELTWISE_LESS>>()},
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 8
+    {"CmpNEQ",
+     glow::make_unique<
+         BinaryEltwiseNodeImporter<glow::CmpNEQNode, NNPI_ELTWISE_NEQ>>()},
+#endif // NNPI >= 1.8
     {"ArgMax", glow::make_unique<ArgMaxNodeImporter>()},
     {"ArgMin", glow::make_unique<ArgMinNodeImporter>()},
     {"Reshape", glow::make_unique<ReshapeNodeImporter>()},

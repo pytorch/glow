@@ -31,6 +31,9 @@
 namespace folly {
 struct dynamic;
 }
+namespace glow {
+struct CompiledResult;
+}
 #endif
 
 namespace glow {
@@ -92,6 +95,13 @@ public:
             const BackendOptions &opts, Module *glowModule) const {
     LOG(FATAL) << "Compiling FXIR is not supported by the backend";
   }
+
+  virtual Expected<std::unique_ptr<CompiledResult>>
+  compileFXToCompiledResults(const folly::dynamic &FXIR,
+                             const llvm::StringMap<const void *> &constants,
+                             bool lowerToLLVMIR = true) const {
+    LOG(FATAL) << "Compiling FXIR is not supported by the backend";
+  }
 #endif
 
   /// Generate code for input function \param F given settings in \p opts.
@@ -127,6 +137,9 @@ public:
   /// \returns true if Constants must be actually quantized before
   /// Post-Lowering, false if it must be done after post-lowering.
   virtual bool shouldPreQuantizeConstants() const { return true; }
+
+  /// \returns true if a module should be stripped after deployment/compilation.
+  virtual bool shouldStripModule() const { return true; }
 
   /// \returns whether the provided \p NI is supported by the backend.
   virtual bool isOpSupported(const NodeInfo &NI) const = 0;

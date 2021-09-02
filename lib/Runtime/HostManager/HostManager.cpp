@@ -592,7 +592,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // Clear constants contents from the module then put it in a
   // shared_ptr to be shared between all of the networks created from each
   // function in the module.
-  if (!cctx.skipModuleStrip) {
+  auto targetBackendName = std::string(devices_[0]->getBackendName());
+  const auto &targetBackend = provisioner_->getBackend(targetBackendName);
+  if (targetBackend.shouldStripModule() && !cctx.skipModuleStrip) {
     module->strip();
   }
   VLOG(1) << "Cleanup";
@@ -627,7 +629,7 @@ Error HostManager::addNetworkFX(
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     auto functions = module->getFunctions();
     for (auto &F : functions) {
-      std::string name = F->getName();
+      const auto name = F->getName().str();
       auto it = networks_.find(name);
       if (it != networks_.end() ||
           processingNetworks_.find(name) != processingNetworks_.end()) {
@@ -731,7 +733,9 @@ Error HostManager::addNetworkFX(
   // Clear constants contents from the module then put it in a
   // shared_ptr to be shared between all of the networks created from each
   // function in the module.
-  if (!cctx.skipModuleStrip) {
+  auto targetBackendName = std::string(devices_[0]->getBackendName());
+  const auto &targetBackend = provisioner_->getBackend(targetBackendName);
+  if (targetBackend.shouldStripModule() && !cctx.skipModuleStrip) {
     module->strip();
   }
   VLOG(1) << "Cleanup";

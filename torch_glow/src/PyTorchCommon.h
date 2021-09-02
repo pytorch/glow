@@ -82,6 +82,8 @@ public:
   /// Convert fp32 opts to fp16 ops during Glow compilation.
   bool convertToFP16 = false;
 
+  bool skipBiasFp32tofp16Convert = false;
+
   /// Convert fp32 fused opts to fp16 ops during Glow compilation.
   bool convertFusedToFP16 = false;
 
@@ -233,6 +235,9 @@ public:
   std::string apl_placement_alg = "";
   int32_t apl_num_parallel_chunks = 2;
 
+  /// Whether to use max size compilation.
+  bool useMaxSizeCompilation = false;
+
   // Serialize GlowIR into ONNX txt file during warmCache, this file can be
   // use for future model loading, which a part of AOT compilation
   bool saveGlowIRIntoONNX = false;
@@ -266,6 +271,12 @@ public:
 
   // Enables Device Resident Tensor optimization
   bool enableDRT = false;
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  bool convert8BitFusedToFP32 = false;
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  bool convert4BitFusedToFP32 = false;
 };
 
 /// Represents different possible output types from to_glow modules.

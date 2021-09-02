@@ -2911,6 +2911,30 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadHardSigmoid(const ONNX_NAMESPACE::NodeProto &op,
+                                       ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Input Type.
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  float alphaVal = 0.2f;
+  if (dict.count("alpha")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(alphaVal, loadFloat(dict.at("alpha")));
+  }
+  float betaVal = 0.5f;
+  if (dict.count("beta")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(betaVal, loadFloat(dict.at("beta")));
+  }
+
+  // Create the node.
+  Node *N = G_->createHardSigmoid(opName, input, alphaVal, betaVal);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
                                      ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -4495,7 +4519,7 @@ Error ONNXModelLoader::loadNonMaxSuppression(
   if (op.input_size() > 2 && !op.input(2).empty()) {
     maxOutputBoxesPerClassC = getConstantByNameOrNull(op.input(2));
     RETURN_ERR_IF_NOT(maxOutputBoxesPerClassC,
-                      "NMS: maxOutputBoxesPerClass is not a contant tensor.");
+                      "NMS: maxOutputBoxesPerClass is not a constant tensor.");
     if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
         ElemKind::Int64ITy) {
       maxOutputBoxesPerClass =
@@ -4513,7 +4537,7 @@ Error ONNXModelLoader::loadNonMaxSuppression(
   if (op.input_size() > 3 && !op.input(3).empty()) {
     iouThresholdC = getConstantByNameOrNull(op.input(3));
     RETURN_ERR_IF_NOT(iouThresholdC,
-                      "NMS: iouThreshold is not a contant tensor.");
+                      "NMS: iouThreshold is not a constant tensor.");
     iouThreshold = iouThresholdC->getPayload().getHandle<float>().raw(0);
   }
   float scoreThreshold = 0.0f;
@@ -4521,7 +4545,7 @@ Error ONNXModelLoader::loadNonMaxSuppression(
   if (op.input_size() > 4 && !op.input(4).empty()) {
     scoreThresholdC = getConstantByNameOrNull(op.input(4));
     RETURN_ERR_IF_NOT(scoreThresholdC,
-                      "NMS: scoreThrehold is not a contant tensor.");
+                      "NMS: scoreThreshold is not a constant tensor.");
     scoreThreshold = scoreThresholdC->getPayload().getHandle<float>().raw(0);
   }
 
@@ -5557,6 +5581,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Cast") {
     return loadCast(op, dict);
+  }
+  if (typeName == "HardSigmoid") {
+    return loadHardSigmoid(op, dict);
   }
   if (typeName == "LeakyRelu") {
     return loadLeakyRelu(op, dict);

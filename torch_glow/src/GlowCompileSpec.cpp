@@ -97,6 +97,8 @@ void registerPyTorchGlowCustomClasses() {
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, convert_to_fp16);
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings, skip_bias_fp32tofp16_convert);
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, num_devices_to_use);
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, replication_count);
@@ -123,6 +125,8 @@ void registerPyTorchGlowCustomClasses() {
                        CompilationSpecSettings, apl_parallelization_alg);
   ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
                        CompilationSpecSettings, apl_num_parallel_chunks);
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, use_max_size_compilation);
   addSerializationDefs<CompilationSpecSettings>(
       CompilationSpecSettings_registry);
 

@@ -191,7 +191,7 @@ private:
   /// contiguous. The new PyTorch tensor owns the memory used by the Glow tensor
   /// so much live at least as long as it.
   Expected<std::pair<glow::Tensor, torch::Tensor>>
-  convertPyTorchInputToGlowInput(torch::Tensor ptTensor,
+  convertPyTorchInputToGlowInput(torch::Tensor &&ptTensor,
                                  const glow::Placeholder *ph);
 
   /// Calls convertPyTorchInputToGlowInput for several \p inputs and \p

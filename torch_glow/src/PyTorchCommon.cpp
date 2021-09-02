@@ -63,6 +63,7 @@ DEFINE_int32(numTracesPerDump, 1, "See PyTorchLoaderSettings");
 
 // settings for model precision conversion
 DEFINE_bool(convertToFP16, false, "See PyTorchLoaderSettings");
+DEFINE_bool(skipBiasFp32tofp16Convert, false, "See PyTorchLoaderSettings");
 DEFINE_bool(convertFusedToFP16, false, "See PyTorchLoaderSettings");
 DEFINE_bool(clipFP16, false, "See PyTorchLoaderSettings");
 DEFINE_bool(clipFP16SkipInputs, true, "See PyTorchLoaderSettings");
@@ -77,6 +78,8 @@ DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
 DEFINE_bool(writeOnnxToTmp, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
+DEFINE_bool(dumpOperatorInventory, false,
+            "Dump jit operator inventory after glow lowering.");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
 DEFINE_bool(writeWithoutRandomize, false, "See PyTorchLoaderSettings");
 DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
@@ -341,6 +344,7 @@ void PyTorchLoaderSettings::initSettings() {
   numTracesPerDump = FLAGS_numTracesPerDump;
   saturateHost = FLAGS_saturateHost;
   convertToFP16 = FLAGS_convertToFP16;
+  skipBiasFp32tofp16Convert = FLAGS_skipBiasFp32tofp16Convert;
   convertFusedToFP16 = FLAGS_convertFusedToFP16;
   clipFP16 = FLAGS_clipFP16;
   clipFP16SkipInputs = FLAGS_clipFP16SkipInputs;
@@ -354,6 +358,7 @@ void PyTorchLoaderSettings::initSettings() {
   enableDeviceTracing = FLAGS_enableDeviceTracing;
   writeOnnxToTmp = FLAGS_writeOnnxToTmp;
   randomizeConstants = FLAGS_randomizeConstants;
+  dumpOperatorInventory = FLAGS_dumpOperatorInventory;
   writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
   numDevices = FLAGS_torch_glow_num_devices;
@@ -421,6 +426,7 @@ std::string PyTorchLoaderSettings::toString() const {
   std::stringstream s;
   s << std::endl;
   INSERT_BOOL_TO_STREAM(convertToFP16, s);
+  INSERT_BOOL_TO_STREAM(skipBiasFp32tofp16Convert, s);
   INSERT_BOOL_TO_STREAM(convertFusedToFP16, s);
   INSERT_BOOL_TO_STREAM(clipFP16, s);
   INSERT_BOOL_TO_STREAM(clipFP16SkipInputs, s);
@@ -459,6 +465,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(lazyCompile, s);
   INSERT_BOOL_TO_STREAM(enableDeviceTracing, s);
   INSERT_VALUE_TO_STREAM(debugLayers, s);
+  INSERT_BOOL_TO_STREAM(useMaxSizeCompilation, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
