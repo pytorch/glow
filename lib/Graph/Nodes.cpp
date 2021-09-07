@@ -2578,9 +2578,9 @@ bool MFCCNode::verify() const {
       "Upper frequency must be lower than half the sample rate", sampleRate,
       float(2.0 * upperFrequency), this, CompareOperatorGreaterThan<float>());
   isValid &= expectCompareTrue(
-      "Number of coefficients should be smaller than the filter bank count",
+      "Number of coefficients should be smaller or equal than the filter bank",
       dim_t(filterBankCount), dim_t(numCoefficients), this,
-      CompareOperatorGreaterThan<dim_t>());
+      CompareOperatorGreaterEqual<dim_t>());
   return isValid;
 }
 
