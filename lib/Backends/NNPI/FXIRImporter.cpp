@@ -218,7 +218,7 @@ public:
 
     const auto &name = node["name"].getString();
     const auto &kwargs = node["kwargs"];
-    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &inputName = importer.getInputNodeName(kwargs["indices"]);
     const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
     const auto &per_sample_weights = importer.getInputNodeName(
         kwargs["per_sample_weights"], /* optional */ true);
