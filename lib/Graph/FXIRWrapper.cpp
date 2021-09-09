@@ -91,4 +91,11 @@ FXIRWrapper::getDestinationBufferForNode(const FXNode &node) const {
   return dest;
 }
 
+const Storage *FXIRWrapper::getStorageFromNodeName(llvm::StringRef name) const {
+  auto it = mapNodeNameToStorage_.find(name);
+  CHECK(it != mapNodeNameToStorage_.end())
+      << " Storage with that name doesn't exist";
+  return it->second;
+}
+
 } // namespace glow

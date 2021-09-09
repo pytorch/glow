@@ -127,6 +127,9 @@ public:
     return constants_;
   }
 
+  /// For a given weights node, get the underlying Storage.
+  const Storage *getStorageFromNodeName(llvm::StringRef name) const;
+
   /// When FXIR has the notion of memory/buffers. This function returns
   /// the memory buffer a node(operator) writes to.
   const FXNode &getDestinationBufferForNode(const FXNode &node) const;
