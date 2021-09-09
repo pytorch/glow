@@ -1045,6 +1045,14 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
       } else {
         DBG("[--IO--] Unused Placeholder: " << name);
       }
+
+      // Gather Placeholders that allow partial input and require padding.
+      if (getValOrDefault(node, "allow_partial", false)) {
+        allowPartialPlaceholderNames_.insert(name);
+      }
+      if (getValOrDefault(node, "requires_padding", false)) {
+        requiresPaddingPlaceholderNames_.insert(name);
+      }
     } else if (opCode == "output") {
       const auto &args = node["args"];
 
