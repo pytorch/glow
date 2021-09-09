@@ -151,7 +151,7 @@ public:
 #if FACEBOOK_INTERNAL
   Error compileFX(const folly::dynamic &FXIR, const std::string &submod,
                   const llvm::StringMap<const void *> &constants,
-                  const BackendOptions &opts);
+                  const BackendOptions &opts, Module *glowModule);
 #endif
 
   NNPICompilationOptions getCompilationOptions() const {
