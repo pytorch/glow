@@ -1402,6 +1402,18 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
     }
     setupBasicParallelizationConfigs(F, numChunks, parOpts,
                                      defaultNumParallelChunks);
+
+    // Override basic parallelization for everything but Gelu
+    auto it =
+        opts.backendSpecificOpts.find(std::string("NNPIOnlyParallelizeGelu"));
+    if (it != opts.backendSpecificOpts.end()) {
+      for (const auto &pair : parOpts) {
+        Node *N = pair.first;
+        if (N->getKind() != Kinded::Kind::GeluNodeKind) {
+          numChunks[N] = 1;
+        }
+      }
+    }
   }
 
   RETURN_ERR_IF_NOT(numChunks.size() == parOpts.size(),
