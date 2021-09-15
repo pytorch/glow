@@ -51,10 +51,12 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend,
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
   if (!ignoreUserDeviceConfig_ &&
       loadDeviceConfigsFromFile(configs, deviceMemory_)) {
-    // Loaded from file, so verify that there is just a single device configured
-    // and that it matches the expected backend name.
-    CHECK_EQ(configs.size(), 1)
-        << "Expected a single device for the ExecutionEngine";
+    // Warning if there is more than a single device configured.
+    if (configs.size() != 1) {
+      LOG(WARNING) << "Found " << configs.size()
+                   << " devices configured for the ExecutionEngine";
+    }
+    // Verify that all configured devices match the expected backend name.
     CHECK(backendName_ == configs[0]->backendName)
         << "Expected backend name to match the ExecutionEngine";
   } else {
