@@ -1046,6 +1046,14 @@ private:
   // Load a PyTorch aten::pixel_unshuffle.
   // \returns error on failure.
   Error loadPixelUnshuffle(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::square.
+  // \returns error on failure.
+  Error loadSquare(const torch::jit::Node *ptNode);
+
+  // Load fb::scale_gradient.
+  // \returns error on failure.
+  Error loadScaleGradient(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
