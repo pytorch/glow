@@ -252,6 +252,7 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
     LOG(DFATAL) << "UInt8QTy is not supported yet.";
     return at::kQUInt8;
   case ElemKind::Float64Ty:
+    return at::kDouble;
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
   case ElemKind::UInt4FusedFP16QTy:
@@ -286,9 +287,11 @@ glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
     return ElemKind::Int8QTy;
   } else if (ty == at::kQUInt8) {
     return ElemKind::UInt8QTy;
+  } else if (ty == at::kDouble) {
+    return ElemKind::Float64Ty;
   } else {
-    LOG(DFATAL) << "ScalarType " << static_cast<int>(ty)
-                << " not supported yet.";
+    LOG(DFATAL) << "ScalarType " << c10::toString(ty)
+                << " is not supported yet. Using int64 instead";
     return ElemKind::Int64ITy;
   }
 }

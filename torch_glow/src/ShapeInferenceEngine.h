@@ -214,19 +214,25 @@ private:
   // Shape inference for aten::tanh, aten::relu, aten::sigmoid
   static Expected<TensorOutput> unaryOp(const MetaStack &variableMetas);
   // Shape inference for aten::add, aten::mul, aten::pow
-  static Expected<TensorOutput> binaryOp(const MetaStack &variableMetas);
+  static Expected<TensorOutput> binaryOp(const MetaStack &variableMetas,
+                                         const torch::jit::Node *ptNode);
+  // Shape inference for aten::add
+  static Expected<TensorOutput> add(const MetaStack &variableMetas,
+                                    const torch::jit::Node *ptNode);
   // Shape inference for aten::mul
-  static Expected<TensorOutput> mul(const MetaStack &variableMetas);
+  static Expected<TensorOutput> mul(const MetaStack &variableMetas,
+                                    const torch::jit::Node *ptNode);
   // Shape inference for aten::mm
   static Expected<TensorOutput> mm(const MetaStack &variableMetas);
   // Shape inference for aten::bmm
   static Expected<TensorOutput> bmm(const MetaStack &variableMetas);
   // Shape inference for aten::addmm
-  static Expected<TensorOutput> addmm(const MetaStack &variableMetas);
+  static Expected<TensorOutput> addmm(const MetaStack &variableMetas,
+                                      const torch::jit::Node *ptNode);
   // Shape inference for aten::t
   static Expected<TensorOutput> t(const MetaStack &variableMetas);
-  // Shape inference for aten::sum
-  static Expected<TensorOutput> sum(const MetaStack &variableMetas);
+  // Shape inference for aten::sum, aten::mean
+  static Expected<TensorOutput> reduceOp(const MetaStack &variableMetas);
   // Shape inference for prim::ConstantChunk
   static Expected<TensorListOutput>
   constantChunk(const MetaStack &variableMetas, const torch::jit::Node *node);
@@ -352,6 +358,14 @@ private:
                                             const torch::jit::Node *node);
   // Shape inference for aten::size
   static Expected<TensorOutput> size(const MetaStack &variableMetas);
+  // Shape inference for fb::scale_gradient
+  static Expected<TensorOutput> scaleGradient(const MetaStack &variableMetas);
+  // Shape inference for aten::repeat
+  static Expected<TensorOutput> repeat(const MetaStack &variableMetas);
+  // Shape inference for aten::softmax
+  static Expected<TensorOutput> softmax(const MetaStack &variableMetas);
+  // Shape inference for aten::unsqueeze
+  static Expected<TensorOutput> unsqueeze(const MetaStack &variableMetas);
 };
 
 } // namespace glow

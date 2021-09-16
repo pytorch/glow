@@ -1787,6 +1787,12 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadPixelUnshuffle,
        &PyTorchModelLoader::getCorrectTypeFromInput<
            PixelUnshuffleInputs::input>},
+      {{"aten::square"},
+       &PyTorchModelLoader::loadSquare,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"fb::scale_gradient"},
+       &PyTorchModelLoader::loadScaleGradient,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
   });
 #undef UNARY_NODE_LOADER
 
@@ -4795,7 +4801,7 @@ Error PyTorchModelLoader::loadRepeat(const torch::jit::Node *ptNode) {
                                           inputs[RepeatInputs::repeats])));
   std::vector<int64_t> repeatsCast = castVector<int64_t>(*repeats);
   RETURN_ERR_IF_NOT(repeatsCast.size() >= input.dims().size(),
-                    "The rank of the input tensor must be greater than or "
+                    "The rank of the input tensor must be less than or "
                     "equal to the size of repeats vector for aten::repeat");
 
   const bool needsExpand = input.dims().size() < repeatsCast.size();
@@ -6510,6 +6516,10 @@ Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
         axis, iValToIntList(getGlowIValueForValue(inputs[MeanInputs::axis])));
     std::sort(axis->begin(), axis->end(), std::greater<int64_t>());
     for (auto i : *axis) {
+      // Wrap dimension if it is negative.
+      if (i < 0) {
+        i += input.dims().size();
+      }
       input = F_.createBatchedReduceMean("mean", input, i);
     }
   } else {
@@ -9080,6 +9090,34 @@ Error PyTorchModelLoader::loadPixelUnshuffle(const torch::jit::Node *ptNode) {
       F_.createReshape("reshape", inputPermuted, finalShape)->getResult();
 
   RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadSquare(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto node = F_.createMul("square", input, input);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], node->getResult()));
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadScaleGradient(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  // Currently PyTorch importer only supports inference,
+  // therefore return the input as is.
+  RETURN_ERR(addValueMapping(outputs[0], input));
 }
 
 Error PyTorchModelLoader::loadAttributes(
