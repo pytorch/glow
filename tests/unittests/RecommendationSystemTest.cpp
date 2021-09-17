@@ -142,6 +142,12 @@ llvm::cl::opt<unsigned> numDevicesOpt(
     "num-devices", llvm::cl::desc("Number of devices to use for partitioning."),
     llvm::cl::Optional, llvm::cl::init(2), llvm::cl::cat(recSysTestCat));
 
+llvm::cl::opt<unsigned> partitioningNumDevicesOpt(
+    "partitioning-num-devices",
+    llvm::cl::desc(
+        "Number of devices to override sparseNNPartitioningNumCards."),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(recSysTestCat));
+
 llvm::cl::opt<std::string> traceDir(
     "trace-dir",
     llvm::cl::desc("Directory used to store Glow trace events files. If not "
@@ -1513,7 +1519,7 @@ TEST_P(RecommendationSystemTest,
   // Options for SparseNN Partitioning
   useSparseNNPartitioning = true;
   sparseNNPartitioningAddSLSConcats = true;
-  sparseNNPartitioningNumCards = 1;
+  sparseNNPartitioningNumCards = partitioningNumDevicesOpt;
   sparseNNPartitioningSLSKbytes = 1000000;
   sparseNNPartitioningNumCoresSLS = 6;
   sparseNNPartitioningNumCoresOther = 4;
