@@ -464,6 +464,8 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
     unfuseSmallGraphs(graph, minFusionGroupSize, kind);
   }
 
+  unfuseDummyOperators(graph);
+
   EliminateCommonSubexpression(graph);
 
   EliminateDeadCode(graph);
