@@ -811,6 +811,32 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
 #endif // NNPI >= 1.7
     break;
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 9
+  case Kinded::Kind::BatchSparseToDenseNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::UInt8QTy, ElemKind::Int8QTy},
+            {BatchSparseToDenseNode::LengthsIdx,
+             BatchSparseToDenseNode::IndicesIdx}) &&
+        ((NI.getInElemTy(BatchSparseToDenseNode::LengthsIdx) ==
+              ElemKind::Int64ITy ||
+          NI.getInElemTy(BatchSparseToDenseNode::LengthsIdx) ==
+              ElemKind::Int32ITy)) &&
+        ((NI.getInElemTy(BatchSparseToDenseNode::IndicesIdx) ==
+              ElemKind::Int64ITy ||
+          NI.getInElemTy(BatchSparseToDenseNode::IndicesIdx) ==
+              ElemKind::Int32ITy));
+    break;
+  case Kinded::Kind::FillExamplesWithIndicatorNodeKind:
+    isNodePrecisionSupported =
+        (NI.getInElemTy(FillExamplesWithIndicatorNode::DataIdx) ==
+         NI.getOutElemTy(FillExamplesWithIndicatorNode::ResultIdx)) &&
+        ((NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+          ElemKind::Int32ITy) ||
+         (NI.getInElemTy(FillExamplesWithIndicatorNode::IndicatorIdx) ==
+          ElemKind::Int64ITy));
+    break;
+#endif // NNPI >= 1.9
   default:
     isNodeHasAnySupport = false;
     isNodePrecisionSupported = false;

@@ -2958,6 +2958,60 @@ public:
 };
 #endif // NNPI >= 1.7
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 9
+class BatchSparseToDenseNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBatchSparseToDenseNode =
+        llvm::dyn_cast<BatchSparseToDenseNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBatchSparseToDenseNode,
+                          "Bad BatchSparseToDense node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {nodeValueName(glowBatchSparseToDenseNode->getLengths()),
+         nodeValueName(glowBatchSparseToDenseNode->getIndices()),
+         nodeValueName(glowBatchSparseToDenseNode->getValues())},
+        {nodeValueName(glowBatchSparseToDenseNode->getResult())});
+
+    auto defaultValue = glowBatchSparseToDenseNode->getDefaultValue();
+    auto denseLastDim = glowBatchSparseToDenseNode->getDenseLastDim();
+
+    return nnpiNetworkAddBatchSparseToDenseOp(
+        importer.getNetwork(), glowBatchSparseToDenseNode->getName().begin(),
+        nodeValueName(glowBatchSparseToDenseNode->getLengths()).c_str(),
+        nodeValueName(glowBatchSparseToDenseNode->getIndices()).c_str(),
+        nodeValueName(glowBatchSparseToDenseNode->getValues()).c_str(),
+        nodeValueName(glowBatchSparseToDenseNode->getResult()).c_str(),
+        denseLastDim, defaultValue);
+  }
+};
+
+class FillExamplesWithIndicatorNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowFillExamplesWithIndicatorNode =
+        llvm::dyn_cast<FillExamplesWithIndicatorNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowFillExamplesWithIndicatorNode,
+                          "Bad FillExamplesWithIndicator node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {nodeValueName(glowFillExamplesWithIndicatorNode->getData()),
+         nodeValueName(glowFillExamplesWithIndicatorNode->getIndicator())},
+        {nodeValueName(glowFillExamplesWithIndicatorNode->getResult())});
+
+    return nnpiNetworkAddFillExamplesWithIndicatorOp(
+        importer.getNetwork(),
+        glowFillExamplesWithIndicatorNode->getName().begin(),
+        nodeValueName(glowFillExamplesWithIndicatorNode->getData()).c_str(),
+        nodeValueName(glowFillExamplesWithIndicatorNode->getIndicator())
+            .c_str(),
+        nodeValueName(glowFillExamplesWithIndicatorNode->getResult()).c_str());
+  }
+};
+#endif // NNPI >= 1.9
+
 //////////////////////////////////////////////////////////////////////////
 namespace {
 std::unordered_map<
@@ -3108,6 +3162,11 @@ std::unordered_map<
      glow::make_unique<DynamicRowwiseQuantizedFullyConnectedNodeImporter>()},
     {"SparseLabelSplit", glow::make_unique<SparseLabelSplitNodeImporter>()},
 #endif // NNPI >= 1.1
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 9
+    {"BatchSparseToDense", glow::make_unique<BatchSparseToDenseNodeImporter>()},
+    {"FillExamplesWithIndicator",
+     glow::make_unique<FillExamplesWithIndicatorNodeImporter>()},
+#endif // NNPI >= 1.9
 };
 } // namespace
 
