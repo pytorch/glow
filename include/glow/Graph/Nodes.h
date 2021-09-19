@@ -257,6 +257,27 @@ inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
   return {outsx, outsy};
 }
 
+/// Calculate the size of the output tensor based on the ConvTranspose
+/// parameters.
+inline std::tuple<dim_t, dim_t, dim_t> calculateConv3DTransposeOutputDims(
+    size_t sz, size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    llvm::ArrayRef<unsigned_t> dilation = {1, 1, 1}) {
+  PaddingNFTBLR pdim(pads);
+  ShapeTHW kdim(kernels);
+  ShapeTHW sdim(strides);
+
+  size_t outsz = (sz - 1) * sdim.temporal_frames +
+                 (kdim.temporal_frames - 1) * dilation[0] + 1 - pdim.near -
+                 pdim.far;
+  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * dilation[1] + 1 -
+                 pdim.top - pdim.bottom;
+  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * dilation[2] + 1 -
+                 pdim.left - pdim.right;
+
+  return std::make_tuple(outsz, outsx, outsy);
+}
+
 /// Modes of the padding operation.
 enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
 

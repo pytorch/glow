@@ -1199,12 +1199,13 @@ ONNXModelLoader::loadProto(const std::string &filename, bool zipMode,
   }
 
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  if (inputStringPtr == nullptr) {
-    RETURN_ERR_IF_NOT(ff,
-                      strFormat("Can't find the model or network files for %s.",
-                                filename.c_str()),
-                      ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
-  }
+  // if (inputStringPtr == nullptr) {
+  //   RETURN_ERR_IF_NOT(ff,
+  //                     strFormat("Can't find the model or network files for
+  //                     %s.",
+  //                               filename.c_str()),
+  //                     ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+  // }
 
   // TODO: intend to find a way to reuse the following function later
   // for the text format onnx model:
@@ -1266,14 +1267,24 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
     }
     return getShape<unsigned_t>(dict["pads"]);
   }
+
+  // Set the default zero pads. Number of pads is dependent on input dims
+  auto zeroPads = [idim]() {
+    if (idim.size() == 3) {
+      return Pads({0, 0, 0, 0, 0, 0});
+    } else {
+      return Pads({0, 0, 0, 0});
+    }
+  };
+
   if (dict.count("auto_pad")) {
     std::string padStr;
     ASSIGN_VALUE_OR_RETURN_ERR(padStr, loadStr(dict.at("auto_pad")));
     if (padStr == "VALID") {
       // Return default value 0 for pads.
-      return Pads({0, 0, 0, 0});
+      return zeroPads();
     } else if (padStr == "SAME_UPPER" || padStr == "SAME_LOWER") {
-      unsigned_t top, left, bottom, right;
+      unsigned_t near, far, top, left, bottom, right;
       // From https://arxiv.org/pdf/1603.07285.pdf 2.4,
       // o = floor((i + 2*p - k)/s) + 1
       // Also, from https://github.com/onnx/onnx/blob/master/docs/Operators.md
@@ -1283,27 +1294,56 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
       //     (output_spatial_shape[i] - 1) * strides_spatial_shape[i]
       //         + kernel_spatial_shape[i] - input_spatial_shape[i]
       // Use the smallest padding possible out of the possible options.
-      llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
       unsigned_t odim;
-      for (size_t i = 0, e = pdim.size(); i < e; i++) {
-        odim = ceil<unsigned_t>((float)idim[i] / (float)sdim[i]);
-        pdim[i] = sdim[i] * (odim - 1) + kdim[i] - idim[i];
-      }
-      if (padStr == "SAME_UPPER") {
-        // SAME_UPPPER: if odd number for pdim[i], use extra padding at the end.
-        top = pdim[0] / 2;
-        bottom = top + (pdim[0] & 0x1);
-        left = pdim[1] / 2;
-        right = left + (pdim[1] & 0x1);
+      if (idim.size() == 3) {
+        llvm::SmallVector<unsigned_t, 3> pdim(3); // Total Paddding, HW.
+        for (size_t i = 0, e = pdim.size(); i < e; i++) {
+          odim = ceil<unsigned_t>((float)idim[i] / (float)sdim[i]);
+          pdim[i] = sdim[i] * (odim - 1) + kdim[i] - idim[i];
+        }
+        if (padStr == "SAME_UPPER") {
+          // SAME_UPPPER: if odd number for pdim[i], use extra padding at the
+          // end.
+          near = pdim[0] / 2;
+          far = near + (pdim[0] & 0x1);
+          top = pdim[1] / 2;
+          bottom = top + (pdim[1] & 0x1);
+          left = pdim[2] / 2;
+          right = left + (pdim[2] & 0x1);
+        } else {
+          // SAME_LOWER: if odd number for pdim[i], use extra padding at the
+          // beginning.
+          far = pdim[0] / 2;
+          near = far + (pdim[0] & 0x1);
+          bottom = pdim[1] / 2;
+          top = bottom + (pdim[1] & 0x1);
+          right = pdim[2] / 2;
+          left = right + (pdim[2] & 0x1);
+        }
+        return Pads({near, far, top, bottom, left, right});
       } else {
-        // SAME_LOWER: if odd number for pdim[i], use extra padding at the
-        // beginning.
-        bottom = pdim[0] / 2;
-        top = bottom + (pdim[0] & 0x1);
-        right = pdim[1] / 2;
-        left = right + (pdim[1] & 0x1);
+        llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
+        for (size_t i = 0, e = pdim.size(); i < e; i++) {
+          odim = ceil<unsigned_t>((float)idim[i] / (float)sdim[i]);
+          pdim[i] = sdim[i] * (odim - 1) + kdim[i] - idim[i];
+        }
+        if (padStr == "SAME_UPPER") {
+          // SAME_UPPPER: if odd number for pdim[i], use extra padding at the
+          // end.
+          top = pdim[0] / 2;
+          bottom = top + (pdim[0] & 0x1);
+          left = pdim[1] / 2;
+          right = left + (pdim[1] & 0x1);
+        } else {
+          // SAME_LOWER: if odd number for pdim[i], use extra padding at the
+          // beginning.
+          bottom = pdim[0] / 2;
+          top = bottom + (pdim[0] & 0x1);
+          right = pdim[1] / 2;
+          left = right + (pdim[1] & 0x1);
+        }
+        return Pads({top, left, bottom, right});
       }
-      return Pads({top, left, bottom, right});
     } else if (padStr == "NOTSET") {
       // We use explicit pads (if not given we assume its all zeros).
       if (dict.count("pads")) {
@@ -1313,14 +1353,14 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
         }
         return getShape<unsigned_t>(dict["pads"]);
       } else {
-        return Pads({0, 0, 0, 0});
+        return zeroPads();
       }
     }
     return MAKE_ERR("Only auto_pad==VALID, SAME_UPPER, SAME_LOWER and NOTSET "
                     "are supported");
   }
   // Return default value 0 for pads.
-  return Pads({0, 0, 0, 0});
+  return zeroPads();
 }
 
 /// Get the Pads value based on setting for auto_pad.
@@ -1725,6 +1765,26 @@ Error ONNXModelLoader::loadErf(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
+                                ArgumentDictionaryTy &dict) {
+  // Load the inputs
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  if (in.dims().size() == 3) {
+    return loadConv1D(op, dict);
+  } else if (in.dims().size() == 4) {
+    return loadConv2D(op, dict);
+  } else if (in.dims().size() == 5) {
+    return loadConv3D(op, dict);
+  } else {
+    return MAKE_ERR(strFormat(
+        "Only 1D (3 dims), 2D (4 dims) and 3D (5 dims) convolution are "
+        "supported by the ONNX loader but there are %zu input dims.",
+        in.dims().size()));
+  }
+}
+
 Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -1815,17 +1875,13 @@ Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
-Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
-                                ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadConv2D(const ONNX_NAMESPACE::NodeProto &op,
+                                  ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   // Load the inputs
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-
-  if (in.dims().size() == 3) {
-    return loadConv1D(op, dict);
-  }
 
   NodeValue filterValue;
   ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
@@ -1845,7 +1901,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
                              getDilations(dict, std::vector<unsigned_t>{1, 1}));
   RETURN_ERR_IF_NOT(
       dilations.size() == 2,
-      opErrMsg(op, strFormat("Conv dilations must be specified for 2 axes "
+      opErrMsg(op, strFormat("2D Conv dilations must be specified for 2 axes "
                              " found axes %zu",
                              dilations.size())));
 
@@ -1921,6 +1977,124 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
 
   // Transpose the output back.
   auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadConv3D(const ONNX_NAMESPACE::NodeProto &op,
+                                  ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Load the inputs
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  NodeValue filterValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
+
+  // Load the attributes
+  std::vector<unsigned_t> strides(3, 1);
+  if (dict.count("strides")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
+  }
+  unsigned_t group = 1;
+  if (dict.count("group")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
+  }
+
+  std::vector<unsigned_t> dilations;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dilations, getDilations(dict, std::vector<unsigned_t>{1, 1, 1}));
+  RETURN_ERR_IF_NOT(
+      dilations.size() == 3,
+      opErrMsg(op, strFormat("3D Conv dilations must be specified for 3 axes "
+                             " found axes %zu",
+                             dilations.size())));
+
+  // Transpose the filter to the right format. Glow expects to read the
+  // weights in the format CRSK. ONNX stores the operators as KCRS.
+  // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
+  TransposeNode *filterTransposeNode =
+      G_->createTranspose(opName, filterValue, NCTHW2NTHWC);
+
+  // The structure of the conv weights is: CRSK. We take the C, which is the
+  // number of filters. We use this value to calculate the size of the bias
+  // if it is not specified.
+  const NodeValue filterTransposedValue = filterTransposeNode->getResult();
+  dim_t depth = filterTransposedValue.dims()[0];
+
+  // Get the kernel shape from the input.
+  llvm::SmallVector<unsigned_t, 3> kernelShape(3);
+  kernelShape[0] = filterTransposedValue.dims()[1];
+  kernelShape[1] = filterTransposedValue.dims()[2];
+  kernelShape[2] = filterTransposedValue.dims()[3];
+
+  // Extra check when the 'kernel_shape' attribute exists.
+  // The 'kernel_shape' attribute is redundant not mandatory.
+  if (dict.count("kernel_shape")) {
+    std::vector<unsigned_t> kernelShapeAttribute;
+    ASSIGN_VALUE_OR_RETURN_ERR(kernelShapeAttribute,
+                               getShape<unsigned_t>(dict["kernel_shape"]));
+    bool cond = (kernelShape[0] == kernelShapeAttribute[0] &&
+                 kernelShape[1] == kernelShapeAttribute[1] &&
+                 (kernelShape[2] == kernelShapeAttribute[2]));
+    std::string msg = strFormat(
+        "The 'kernel_shape' attribute [%d, %d, %d] is not consistent with the "
+        "actual convolution kernel shape [%d, %d, %d].",
+        kernelShapeAttribute[0], kernelShapeAttribute[1],
+        kernelShapeAttribute[2], kernelShape[0], kernelShape[1],
+        kernelShape[2]);
+    RETURN_ERR_IF_NOT(cond, opErrMsg(op, msg));
+    (void)kernelShapeAttribute; // Avoids compilation warning in release mode.
+  }
+
+  // Construct the Bias field.
+  NodeValue B;
+  // Check if we have a serialized bias vector.
+  if (op.input_size() > 2) {
+    auto &biasTensorName = op.input(2);
+    // Load the serialized bias vector as NodeValue.
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(biasTensorName));
+  }
+
+  // If a serialized bias wasn't found then create a zero bias.
+  if (op.input_size() == 2) {
+    auto biasTy = mod_.uniqueTypeWithNewShape(in.getType(), {depth});
+    Tensor biasTensor(biasTy);
+    biasTensor.zero();
+    B = mod_.createConstant("conv.bias", std::move(biasTensor));
+  }
+
+  // ONNX passes the input as NCTHW, and we expect the input to be NTHWC.
+  auto *tr = G_->createTranspose(opName, in, NCTHW2NTHWC);
+
+  // Calculate the size and allocate the output buffer.
+  ShapeNTHWC idim(tr->getResult().dims());
+
+  llvm::SmallVector<unsigned_t, 3> idimTHW(3);
+  idimTHW = {static_cast<glow::unsigned_t>(idim.t),
+             static_cast<glow::unsigned_t>(idim.h),
+             static_cast<glow::unsigned_t>(idim.w)};
+
+  // Pads : {pad_top, pad_left, pad_bottom, pad_right}
+  Pads pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads,
+                             getPads(dict, kernelShape, strides, idimTHW));
+
+  auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w,
+                                             kernelShape, strides, pads);
+  std::array<dim_t, 5> outDims = {
+      {idim.n, outSz.temporal_frames, outSz.height, outSz.width, depth}};
+  auto outTy = mod_.uniqueTypeWithNewShape(in.getType(), outDims);
+
+  auto *node = G_->createConv3D(opName, tr, filterTransposeNode, B, outTy,
+                                kernelShape, strides, pads, group);
+
+  // Transpose the output back.
+  auto *N = G_->createTranspose(opName, node, NTHWC2NCTHW);
+
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return Error::success();
