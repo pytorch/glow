@@ -2004,14 +2004,22 @@ Error ONNXModelLoader::loadConv3D(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
   }
 
-  std::vector<unsigned_t> dilations;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dilations, getDilations(dict, std::vector<unsigned_t>{1, 1, 1}));
-  RETURN_ERR_IF_NOT(
-      dilations.size() == 3,
-      opErrMsg(op, strFormat("3D Conv dilations must be specified for 3 axes "
-                             " found axes %zu",
-                             dilations.size())));
+  std::vector<unsigned_t> dilations(3, 1);
+  if (dict.count("dilations")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dilations, getDilations(dict, std::vector<unsigned_t>{1, 1, 1}));
+    RETURN_ERR_IF_NOT(
+        dilations.size() == 3,
+        opErrMsg(op, strFormat("3D Conv dilations must be specified for 3 axes "
+                               "found %zu axes",
+                               dilations.size())));
+    RETURN_ERR_IF_NOT(
+        dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1,
+        opErrMsg(op, strFormat("3D Conv dilations currently only support "
+                               "the default value of [1, 1, 1] but the model "
+                               "contains [%u, %u, %u]",
+                               dilations[0], dilations[1], dilations[2])));
+  }
 
   // Transpose the filter to the right format. Glow expects to read the
   // weights in the format CRSK. ONNX stores the operators as KCRS.
@@ -2037,16 +2045,18 @@ Error ONNXModelLoader::loadConv3D(const ONNX_NAMESPACE::NodeProto &op,
     std::vector<unsigned_t> kernelShapeAttribute;
     ASSIGN_VALUE_OR_RETURN_ERR(kernelShapeAttribute,
                                getShape<unsigned_t>(dict["kernel_shape"]));
-    bool cond = (kernelShape[0] == kernelShapeAttribute[0] &&
-                 kernelShape[1] == kernelShapeAttribute[1] &&
-                 (kernelShape[2] == kernelShapeAttribute[2]));
-    std::string msg = strFormat(
-        "The 'kernel_shape' attribute [%d, %d, %d] is not consistent with the "
-        "actual convolution kernel shape [%d, %d, %d].",
-        kernelShapeAttribute[0], kernelShapeAttribute[1],
-        kernelShapeAttribute[2], kernelShape[0], kernelShape[1],
-        kernelShape[2]);
-    RETURN_ERR_IF_NOT(cond, opErrMsg(op, msg));
+    RETURN_ERR_IF_NOT(
+        (kernelShape[0] == kernelShapeAttribute[0] &&
+         kernelShape[1] == kernelShapeAttribute[1] &&
+         kernelShape[2] == kernelShapeAttribute[2]),
+        opErrMsg(
+            op,
+            strFormat(
+                "The 'kernel_shape' attribute [%d, %d, %d] is not consistent "
+                "with the actual convolution kernel shape [%d, %d, %d].",
+                kernelShapeAttribute[0], kernelShapeAttribute[1],
+                kernelShapeAttribute[2], kernelShape[0], kernelShape[1],
+                kernelShape[2])));
     (void)kernelShapeAttribute; // Avoids compilation warning in release mode.
   }
 

@@ -2257,6 +2257,7 @@ Error ONNXModelWriter::writeConvolution3D(const Convolution3DNode *node,
   }
 
   // Add dictionary entries.
+  addValueAttribute(proto, "kernel_shape", node->getKernels());
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
   addValueAttribute(proto, "group", node->getGroup());
