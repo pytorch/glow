@@ -88,7 +88,7 @@ void prepareBlacklist(const std::vector<TestSetup> &testBlacklistedSetups,
                                                       NNPI_EXECUTION_ENGINE_HW);
 
   auto currentSetup = currentDeviceVersion | currentExecutionEngine;
-  for (const auto testBlacklistedSetup : testBlacklistedSetups) {
+  for (const auto &testBlacklistedSetup : testBlacklistedSetups) {
     auto testname = testBlacklistedSetup.first;
     auto testSetup = testBlacklistedSetup.second;
     if ((testSetup & currentSetup) == currentSetup) {

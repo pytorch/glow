@@ -37,10 +37,10 @@ using namespace glow;
 /// Get a path to a temporary file for the compiled recipe.
 static Expected<std::string> getRecipeFile() {
   llvm::SmallString<64> path;
-  auto err = llvm::sys::fs::createTemporaryFile("glow", "recipe", path);
+  const auto err = llvm::sys::fs::createTemporaryFile("glow", "recipe", path);
   RETURN_ERR_IF_NOT(
       !err, strFormat("Unable to create recipe file at %s", path.str().data()));
-  return path.str();
+  return path.str().str();
 }
 
 /// Convert a Glow data type to a Synapse data type.

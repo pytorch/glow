@@ -1591,7 +1591,7 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
         for (unsigned j = 0, e = iterationsPerThread; j < e; ++j) {
           // Run function.
           deviceManager->runFunction(
-              functionName, std::move(inputExecutionContexts[j]),
+              functionName.str(), std::move(inputExecutionContexts[j]),
               [&threadDonePromise, &completeIterations,
                expectedResultBindings = outputBindings[j]](
                   RunIdentifierTy runId, Error err,
