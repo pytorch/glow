@@ -41,6 +41,7 @@ extern bool EnableLoadBalancedPartitioning;
 extern bool SkipProvisioning;
 extern bool DisableLayoutVerifying;
 extern bool DisableFreeCompilationResource;
+extern bool SinkTanhBelowConcat;
 
 // FP16 Constants
 extern bool ConvertToFP16;

@@ -257,6 +257,11 @@ void initializeCompilationContextFromSettings(
     cctx.skipProvisioning = true;
   }
 
+  if (settings.sinkTanhBelowConcat) {
+    LOG(INFO) << "Sinking tanh below concat";
+    cctx.optimizationOpts.sinkTanhBelowConcat = true;
+  }
+
   if (settings.useSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =

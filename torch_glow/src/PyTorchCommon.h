@@ -254,6 +254,9 @@ public:
   /// Set the number of predecessor Nodes to be printed from an error node.
   int32_t debugLayers = 5;
 
+  // Sink tanh below concat
+  bool sinkTanhBelowConcat = false;
+
   // Sparse NN Partitioning Scheme Constants, refer to OptimizationOptions in
   // CompilationContext for details
   bool useSparseNNPartitioningScheme = false;

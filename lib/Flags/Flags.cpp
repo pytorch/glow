@@ -52,6 +52,7 @@ bool EnableLoadBalancedPartitioning = true;
 bool SkipProvisioning = false;
 bool DisableLayoutVerifying = false;
 bool DisableFreeCompilationResource = false;
+bool SinkTanhBelowConcat = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
@@ -468,6 +469,12 @@ DEFINE_bool(glow_skip_provisioning, glow::flags::SkipProvisioning,
             "Skip provisioning. Used for AOT opts or debugging.");
 DEFINE_validator(glow_skip_provisioning, [](const char *, bool val) {
   glow::flags::SkipProvisioning = val;
+  return true;
+});
+DEFINE_bool(glow_sink_tanh_below_concat, glow::flags::SinkTanhBelowConcat,
+            "Sink tanh ops below concat.");
+DEFINE_validator(glow_sink_tanh_below_concat, [](const char *, bool val) {
+  glow::flags::SinkTanhBelowConcat = val;
   return true;
 });
 DEFINE_bool(glow_save_onnxifi_model, glow::onnxifi::flags::SaveModel,
