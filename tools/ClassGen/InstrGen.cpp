@@ -972,7 +972,7 @@ int main(int argc, char **argv) {
       .addOperand("Cond", OperandKind::In)
       .inplaceOperand({"Dest", "Cond"})
       .dataParallel()
-      .autoVerify(VerifyKind::SameElementType, {"Cond", "ElemKind::BoolTy"})
+      .autoVerify(VerifyKind::NoVerify)
       .autoIRGen("NonZero");
 
   BB.newInstr("ElementSelect")

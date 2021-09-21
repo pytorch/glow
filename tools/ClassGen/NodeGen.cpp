@@ -697,7 +697,7 @@ int main(int argc, char **argv) {
       .addInput("Cond")
       .addResultFromCtorArg()
       .dataParallel()
-      .setDocstring("Selects indices of the true elements in Cond");
+      .setDocstring("Selects indices of the nonzero elements in Cond");
 
   BB.newNode("Select")
       .addInput("Cond")

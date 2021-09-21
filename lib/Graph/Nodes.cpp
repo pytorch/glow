@@ -2707,8 +2707,13 @@ bool ReplaceNaNNode::verify() const {
 }
 
 bool NonZeroNode::verify() const {
-  return checkType(getCond(), ElemKind::BoolTy, this) &&
-         checkType(getResult(), ElemKind::Int32ITy, this);
+  bool isValid =
+      expectCompareTrue("Cond type should be bool or int32",
+                        getCond().getElementType() == ElemKind::BoolTy ||
+                            getCond().getElementType() == ElemKind::Int32ITy,
+                        true, this);
+  isValid &= checkType(getResult(), ElemKind::Int32ITy, this);
+  return isValid;
 }
 
 bool SelectNode::verify() const {

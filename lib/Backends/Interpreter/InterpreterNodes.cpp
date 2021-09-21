@@ -4094,17 +4094,26 @@ void BoundInterpreterFunction::fwdElementExpInst(const ElementExpInst *I) {
                             I->getSrc()->getElementType(), I);
 }
 
-void BoundInterpreterFunction::fwdNonZeroInst(const NonZeroInst *I) {
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdNonZeroInstImpl(const NonZeroInst *I) {
   auto *T = getTensor(I->getDest());
   T->zero();
   auto outW = T->getHandle<int32_t>();
-  auto condW = getWeightHandle<bool>(I->getCond());
+  auto condW = getWeightHandle<ElemTy>(I->getCond());
   for (size_t condIdx = 0, outIdx = 0, n = condW.size(); condIdx < n;
        condIdx++) {
     if (condW.raw(condIdx)) {
       outW.raw(outIdx) = condIdx;
       outIdx++;
     }
+  }
+}
+
+void BoundInterpreterFunction::fwdNonZeroInst(const NonZeroInst *I) {
+  if (I->getCond()->getElementType() == ElemKind::Int32ITy) {
+    fwdNonZeroInstImpl<int32_t>(I);
+  } else {
+    fwdNonZeroInstImpl<bool>(I);
   }
 }
 

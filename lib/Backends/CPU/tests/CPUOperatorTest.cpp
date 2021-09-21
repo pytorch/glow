@@ -60,6 +60,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "batchedReduceMax_Int8/0",
     "batchedReduceMaxMultiAxis_Int8/0",
     "NonZero/0",
+    "NonZeroInt/0",
     "ReluSimple_BFloat16/0",
     "ReluSimple_Float16/0",
     "PReluSimple_BFloat16/0",

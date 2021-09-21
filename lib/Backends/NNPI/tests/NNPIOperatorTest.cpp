@@ -146,6 +146,7 @@ struct BlacklistInitializer {
       {"ModuloInt64NoSignFollow/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ModuloInt64SignFollow/0", TestBlacklist::AnyDeviceAnyEngine},
       {"mul_int64/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"NonZeroInt/0", TestBlacklist::AnyDeviceAnyEngine},
       {"NonCubicKernelConv3DQuantized/0", TestBlacklist::AnyDeviceAnyEngine},
       {"NonSquarePaddingAveragePool/0", TestBlacklist::AnyDeviceAnyEngine},
       {"NonSquarePaddingMaxPool/0", TestBlacklist::AnyDeviceAnyEngine},

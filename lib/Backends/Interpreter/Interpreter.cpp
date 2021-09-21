@@ -250,7 +250,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32ITy,
          ElemKind::Int64ITy, ElemKind::BoolTy});
   case Kinded::Kind::NonZeroNodeKind:
-    return NI.getInElemTy(NonZeroNode::CondIdx) == ElemKind::BoolTy &&
+    return (NI.getInElemTy(NonZeroNode::CondIdx) == ElemKind::BoolTy ||
+            NI.getInElemTy(NonZeroNode::CondIdx) == ElemKind::Int32ITy) &&
            NI.getOutElemTy(NonZeroNode::ResultIdx) == ElemKind::Int32ITy;
   case Kinded::Kind::SelectNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

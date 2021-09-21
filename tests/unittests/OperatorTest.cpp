@@ -18283,6 +18283,28 @@ TEST_P(OperatorTest, ReshapeInt) {
 }
 
 /// Verify that the NonZero operator works correctly.
+TEST_P(OperatorTest, NonZeroInt) {
+  CHECK_IF_ENABLED();
+
+  auto *Cond = mod_.createPlaceholder(ElemKind::Int32ITy, {8}, "Cond", false);
+  bindings_.allocate(Cond)->getHandle<int32_t>() = {1, 0, 2, 4, 0, 6, 2, 0};
+
+  auto *N = F_->createNonZero("nonZero", Cond);
+  auto *result = F_->createSave("saveNonZero", N);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  std::array<int, 5> expected{0, 2, 3, 5, 6};
+  auto resH = bindings_.get(result->getPlaceholder())->getHandle<int32_t>();
+
+  for (dim_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(resH.raw(i), expected[i]);
+  }
+}
+
+/// Verify that the NonZero operator works correctly.
 TEST_P(OperatorTest, NonZero) {
   CHECK_IF_ENABLED();
 
