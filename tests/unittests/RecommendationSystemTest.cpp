@@ -19,6 +19,7 @@
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
@@ -170,6 +171,11 @@ llvm::cl::opt<bool> dumpFinalGraph(
     llvm::cl::desc(
         "Call dumpDag on each Function passed to the backend for compilation."),
     llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> saturateHost("saturate-host",
+                                 llvm::cl::desc("Enable host saturation."),
+                                 llvm::cl::init(false),
+                                 llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
     "glow_global_fused_scale_offset_fp32",
@@ -1145,6 +1151,7 @@ protected:
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         sparseNNPartitioningNumCoresOther;
     cctx.dumpFinalGraph = dumpFinalGraph;
+    cctx.saturateHost = saturateHost;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(modP), cctx));
     std::cout << "Partitions = " << rawModule->getFunctions().size()
               << std::endl;
