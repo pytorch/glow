@@ -15,6 +15,7 @@
  */
 #include "BackendTestUtils.h"
 
+#include "glow/Base/Type.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -7070,6 +7071,48 @@ TEST_F(GraphOptz, SinkQuantizeBelowConcatTest) {
             optQuantize->getResult().getType()->getElementType());
 
   // Find quantize node in the optimized graph.
+  checkNumericalEquivalence();
+}
+
+/// Test that if we have a Concat with all Tanh inputs,
+/// we can sink the Tanh's below the Concat.
+TEST_F(GraphOptz, SinkTanhBelowConcatTest) {
+  std::array<NodeValue, 5> inputs;
+  for (dim_t i = 0; i < 5; i++) {
+    Placeholder *input = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                                {i + 1, 100}, "input", false);
+    bindings_.allocate(input)->getHandle<float16_t>().randomize(-100, 100,
+                                                                mod_.getPRNG());
+    TanhNode *tanh = F_->createTanh("tanh", input);
+    inputs[i] = tanh->getResult();
+  }
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+  SaveNode *SN = F_->createSave("ret", concat);
+  EXPECT_EQ(F_->getNodes().size(), 7);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TanhNodeKind), 5);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 1);
+
+  CompilationContext cctx;
+  cctx.optimizationOpts.sinkTanhBelowConcat = true;
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::SinkConversions, getDCEPassConfig()}, cctx);
+
+  // Concat, dequantize, save.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::TanhNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  TanhNode *optTanh = llvm::dyn_cast<TanhNode>(optSN->getInput());
+  ASSERT_TRUE(optTanh);
+  NodeValue input = optTanh->getInput();
+  EXPECT_EQ(ElemKind::Float16Ty, input.getType()->getElementType());
+
   checkNumericalEquivalence();
 }
 

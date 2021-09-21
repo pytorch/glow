@@ -383,6 +383,7 @@ void PyTorchLoaderSettings::initSettings() {
   saveGlowIRIntoONNX = FLAGS_saveGlowIRIntoONNX;
   loadGlowIRFromONNX = FLAGS_loadGlowIRFromONNX;
   skipProvisioning = glow::flags::SkipProvisioning || saveGlowIRIntoONNX;
+  sinkTanhBelowConcat = glow::flags::SinkTanhBelowConcat;
   useSparseNNPartitioningScheme = FLAGS_useSparseNNPartitioningScheme;
   sparseNNPartitioningAddSLSConcats = FLAGS_sparseNNPartitioningAddSLSConcats;
   sparseNNPartitioningBalancePerfModel =
