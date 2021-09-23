@@ -988,6 +988,9 @@ int run() {
         }
       }
     }
+
+    llvm::outs().flush();
+
     std::chrono::duration<double, std::milli> duration = endTime - startTime;
     std::cout << "Total inference duration (ms): " << duration.count() << "\n";
     std::cout << "Avg inference duration (ms): "
