@@ -357,12 +357,14 @@ Error writeMatMulKind(const T *node, ONNX_TRAITS::GraphProto &graph,
 
 // Creates a Transpose Node as the Result of the \p node.
 // Reuses given \p proto pointer and create a new proto adding it to \p graph.
+// The permutation argument enables use of a different permutation. E.g. - for
+// tranposing 3D convolution with NCTHW2NTHWC.
 template <typename T>
 void writeTransposeResult(const T *node, ONNX_NAMESPACE::NodeProto *&proto,
-                          ONNX_TRAITS::GraphProto &graph) {
+                          ONNX_TRAITS::GraphProto &graph,
+                          llvm::ArrayRef<unsigned_t> permutation = NCHW2NHWC) {
   // Add dictionary entries.
-  std::vector<unsigned_t> shuffle(NCHW2NHWC);
-  llvm::ArrayRef<unsigned_t> container(shuffle);
+  llvm::ArrayRef<unsigned_t> container(permutation);
   addValueAttribute(proto, "perm", container);
   // Re-use proto for Transpose node.
   auto newName = node->getName().str() + "_out_transpose";
@@ -379,9 +381,12 @@ void writeTransposeResult(const T *node, ONNX_NAMESPACE::NodeProto *&proto,
 
 // Creates a Transpose Node as the Input \p input of the \p node.
 // Reuses given \p proto pointer and create a new proto adding it to \p graph.
+// The permutation argument enables use of a different permutation. E.g. - for
+// tranposing 3D convolution with NCTHW2NTHWC.
 void writeTransposeInput(const Node *node, const Node *input,
                          ONNX_NAMESPACE::NodeProto *proto,
-                         ONNX_TRAITS::GraphProto &graph) {
+                         ONNX_TRAITS::GraphProto &graph,
+                         llvm::ArrayRef<unsigned_t> permutation = NHWC2NCHW) {
   // Write "mirror" Transform input, i.e. NHWC2NCHW
   auto newName =
       node->getName().str() + "_" + input->getName().str() + "_in_transpose";
@@ -390,8 +395,7 @@ void writeTransposeInput(const Node *node, const Node *input,
   transformProto->set_op_type("Transpose");
 
   // Add dictionary entries.
-  std::vector<unsigned_t> shuffle(NHWC2NCHW);
-  llvm::ArrayRef<unsigned_t> container(shuffle);
+  llvm::ArrayRef<unsigned_t> container(permutation);
   addValueAttribute(transformProto, "perm", container);
   transformProto->add_input(input->getName().str());
   transformProto->add_output(newName);
@@ -1381,6 +1385,7 @@ Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
   // Some nodes create transpose for outputs.
   auto *input = node->getInput().getNode();
   if (llvm::dyn_cast<ConvolutionNode>(input) ||
+      llvm::dyn_cast<Convolution3DNode>(input) ||
       llvm::dyn_cast<AvgPoolNode>(input) ||
       llvm::dyn_cast<MaxPoolNode>(input) ||
       llvm::dyn_cast<SpaceToDepthNode>(input)) {
@@ -2225,14 +2230,68 @@ Error ONNXModelWriter::writeMaxPool(const MaxPoolNode *node, GraphType &graph) {
 
 Error ONNXModelWriter::writeConvolution3D(const Convolution3DNode *node,
                                           GraphType &graph) {
+  // Loading convolution creates a sandwich with Transpose nodes for Input,
+  // Weights, and Result. The lowering algorithm can remove Transpose nodes and
+  // replace one set of nodes with another ones. When saving a graph to ONNX
+  // format, keep in mind that when it will be loaded again a Transpose nodes
+  // sandwich will be created again. The steps will be:
+  // Remove Transpose nodes for Input and Weights, if such Transpose are not
+  // found (they are supposed to be NCTHW2NTHWC then create a "mirror"
+  // Transpose, i.e. NTHWC2NCTHW for correspondent Input or/and Weights.
+  // The similar algorithm will be applied for Result. If Transpose NTHWC2NCTHW
+  // node is found for Result user then remove it, otherwise create a "mirror"
+  // Transpose, i.e. NCTHW2NTHWC.
+  // assert(node->getLayout() == NTHWC && "can only write NTHWC Convolutions");
+
+  // Delegate writing quantized Convs to writeTensorwiseQuantizedConvolution.
+  if (isQuantizedElemKind(node->getInput().getElementType())) {
+    return MAKE_ERR("Not implemented");
+    // return writeTensorwiseQuantizedConvolution(node, graph);
+  }
+
   auto *proto = graph.add_node();
+
+  // Use the output of transpose node.
+  if (!outputKindToProto(Kinded::Kind::TransposeNodeKind, node, graph, proto)) {
+    // Apparently Result Transpose has been removed, add NCTHW2NTHWC Transpose.
+    writeTransposeResult(node, proto, graph, NCTHW2NTHWC);
+  }
+
   // Add dictionary entries.
   addValueAttribute(proto, "kernel_shape", node->getKernels());
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
   addValueAttribute(proto, "group", node->getGroup());
+  // addValueAttribute(proto, "dilations", node->getDilation());
 
-  return writeAllWithNode("Convolution3D", node, graph, proto);
+  const Node *input = node->getInput().getNode();
+  if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {
+    proto->add_input(TN->getInput().getNode()->getName().str());
+    reportedNodes_.insert(TN);
+  } else if (const ReshapeNode *RSN = llvm::dyn_cast<ReshapeNode>(input)) {
+    proto->add_input(RSN->getInput().getNode()->getName().str());
+    reportedNodes_.insert(RSN);
+  } else {
+    writeTransposeInput(node, input, proto, graph, NTHWC2NCTHW);
+  }
+
+  const Node *filter = node->getFilter().getNode();
+  if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(filter)) {
+    proto->add_input(TN->getInput().getNode()->getName().str());
+    reportedNodes_.insert(TN);
+  } else if (const ReshapeNode *RSN = llvm::dyn_cast<ReshapeNode>(filter)) {
+    proto->add_input(RSN->getInput().getNode()->getName().str());
+    reportedNodes_.insert(RSN);
+  } else {
+    writeTransposeInput(node, filter, proto, graph, NTHWC2NCTHW);
+  }
+
+  proto->add_input(node->getBias().getNode()->getName().str());
+
+  proto->set_name(node->getName().str());
+  proto->set_op_type("Conv");
+
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeSpaceToDepth(const SpaceToDepthNode *node,
