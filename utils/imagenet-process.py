@@ -21,7 +21,7 @@ import os
 # imagenet-process : Runs preprocessing of standard imagenet images
 #                    to work with a pretrained model (e.g. resnet)
 #                    through glow
-# usage: python3 imagenet-process images/*.JPEG processed/
+# usage: python3 imagenet-process.py "images/*.JPEG" processed
 import PIL.Image
 import torchvision
 
@@ -37,25 +37,25 @@ args = parser.parse_args()
 
 # create the output dir if necessary
 try:
-    os.mkdir(args.output)
-except Exception:
-    pass
+    os.makedirs(args.output, exist_ok=True)
+except Exception as e:
+    print(e)
 
 for ifn in glob.glob(args.input):
     name, ext = os.path.splitext(ifn)
-    name = name.split("/")[-1]
-    outputname = args.output + "/" + name + ".png"
+    name = os.path.basename(name)
+    outputname = os.path.join(args.output, name + ".png")
     print("processing", name, "as", outputname)
 
     im = PIL.Image.open(ifn)
-    im.convert("RGB")
+    im = im.convert("RGB")
     resize = torchvision.transforms.Compose(
         [torchvision.transforms.Resize(256), torchvision.transforms.CenterCrop(224)]
     )
     processed_im = resize(im)
 
     if args.normalize:
-        normalize = torchvision.transforms.Compose(
+        transform_fn = torchvision.transforms.Compose(
             [
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize(
@@ -63,8 +63,10 @@ for ifn in glob.glob(args.input):
                 ),
             ]
         )
-        processed_im = normalize(processed_im)
+    else:
+        transform_fn = torchvision.transforms.ToTensor()
 
+    processed_im = transform_fn(processed_im)
     processed_im = processed_im.unsqueeze(0)
 
     torchvision.utils.save_image(processed_im, outputname)
