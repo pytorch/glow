@@ -1648,10 +1648,6 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                     opErrMsg(op, strFormat("'axes' %zu and 'starts' %zu must"
                                            "be the same size.",
                                            axes.size(), starts.size())));
-  RETURN_ERR_IF_NOT(starts.size() == ends.size(),
-                    opErrMsg(op, strFormat("'starts' %zu and 'ends' %zu must"
-                                           "be the same size.",
-                                           starts.size(), ends.size())));
   for (size_t i = 0; i < axes.size(); i++) {
     ssize_t newStart = starts[i];
     ssize_t newEnd = ends[i];
@@ -4520,7 +4516,7 @@ Error ONNXModelLoader::loadNonMaxSuppression(
   if (op.input_size() > 2 && !op.input(2).empty()) {
     maxOutputBoxesPerClassC = getConstantByNameOrNull(op.input(2));
     RETURN_ERR_IF_NOT(maxOutputBoxesPerClassC,
-                      "NMS: maxOutputBoxesPerClass is not a contant tensor.");
+                      "NMS: maxOutputBoxesPerClass is not a constant tensor.");
     if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
         ElemKind::Int64ITy) {
       maxOutputBoxesPerClass =
@@ -4538,7 +4534,7 @@ Error ONNXModelLoader::loadNonMaxSuppression(
   if (op.input_size() > 3 && !op.input(3).empty()) {
     iouThresholdC = getConstantByNameOrNull(op.input(3));
     RETURN_ERR_IF_NOT(iouThresholdC,
-                      "NMS: iouThreshold is not a contant tensor.");
+                      "NMS: iouThreshold is not a constant tensor.");
     iouThreshold = iouThresholdC->getPayload().getHandle<float>().raw(0);
   }
   float scoreThreshold = 0.0f;
@@ -4546,7 +4542,7 @@ Error ONNXModelLoader::loadNonMaxSuppression(
   if (op.input_size() > 4 && !op.input(4).empty()) {
     scoreThresholdC = getConstantByNameOrNull(op.input(4));
     RETURN_ERR_IF_NOT(scoreThresholdC,
-                      "NMS: scoreThrehold is not a contant tensor.");
+                      "NMS: scoreThreshold is not a constant tensor.");
     scoreThreshold = scoreThresholdC->getPayload().getHandle<float>().raw(0);
   }
 

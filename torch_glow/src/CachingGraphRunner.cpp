@@ -257,6 +257,11 @@ void initializeCompilationContextFromSettings(
     cctx.skipProvisioning = true;
   }
 
+  if (settings.sinkTanhBelowConcat) {
+    LOG(INFO) << "Sinking tanh below concat";
+    cctx.optimizationOpts.sinkTanhBelowConcat = true;
+  }
+
   if (settings.useSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
@@ -680,10 +685,16 @@ writeGlowTensorsToOnnx(const std::string &filePrefix,
 
   ONNX_NAMESPACE::GraphProto onnxGraph;
   for (size_t i = 0; i < placeholders.size(); ++i) {
-    auto *onnxT = onnxGraph.add_initializer();
     const auto *ph = placeholders[i];
+    if (ph->getNumUsers() == 0) {
+      LOG(INFO) << "Tensor onnxification not required. Not being used: "
+                << ph->getName().str() << "\n";
+      continue;
+    }
+
+    auto *onnxT = onnxGraph.add_initializer();
     const auto &t = glowTensors[i];
-    onnxT->set_name(ph->getName());
+    onnxT->set_name(ph->getName().str());
     size_t unpaddedSize = t.getUnpaddedSizeInBytes();
     size_t tensorSize = t.getSizeInBytes();
     if (unpaddedSize == tensorSize) {
@@ -813,7 +824,7 @@ Error CachingGraphRunner::writeJitIOToOnnxFile(
 
 Expected<std::pair<glow::Tensor, torch::Tensor>>
 CachingGraphRunner::convertPyTorchInputToGlowInput(
-    torch::Tensor ptTensor, const glow::Placeholder *ph) {
+    torch::Tensor &&ptTensor, const glow::Placeholder *ph) {
   glow::Tensor glowTensor;
 
   glow::TypeRef ty = ph->getType();
@@ -920,7 +931,7 @@ CachingGraphRunner::processPyTorchInputs(
 
     std::pair<glow::Tensor, torch::Tensor> tensors;
     ASSIGN_VALUE_OR_RETURN_ERR(
-        tensors, convertPyTorchInputToGlowInput(ptTensorOrig, ph));
+        tensors, convertPyTorchInputToGlowInput(std::move(ptTensorOrig), ph));
 
     glowTensorInputs.push_back(std::move(tensors.first));
 

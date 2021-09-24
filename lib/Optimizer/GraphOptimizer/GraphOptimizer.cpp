@@ -411,6 +411,32 @@ static ConcatNode *setupQuantDequantSinkBelowConcat(Function *F,
   return F->createConcat(CN->getName(), newInputs, CN->getDim());
 }
 
+/// Given \p CN from \p F, determines if all inputs are Tanh
+/// and if so creates and \returns a new concat with all
+/// inputs as the inputs from the Tanh inputs. Otherwise
+/// \returns nullptr.
+static ConcatNode *setupTanhSinkBelowConcat(Function *F, ConcatNode *CN) {
+  // Check if all inputs are Tanh
+  std::vector<TanhNode *> tanhNodes;
+  tanhNodes.reserve(CN->getInputs().size());
+  for (auto &concatInput : CN->getInputs()) {
+    TanhNode *T = dyn_cast<TanhNode>(concatInput);
+    if (!T) {
+      return nullptr;
+    }
+    tanhNodes.push_back(T);
+  }
+
+  // Gather all inputs of the nodes in tanhNodes.
+  std::vector<NodeValue> newInputs;
+  newInputs.reserve(tanhNodes.size());
+  for (size_t i = 0, e = tanhNodes.size(); i < e; i++) {
+    newInputs.emplace_back(tanhNodes[i]->getInput());
+  }
+  // Create and return a new ConcatNode with newInputs.
+  return F->createConcat(CN->getName(), newInputs, CN->getDim());
+}
+
 bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
@@ -458,6 +484,27 @@ bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
       CN->getResult().replaceAllUsesOfWith(newQuantize->getResult());
       changed = true;
       continue;
+    }
+
+    // Sink Tanh below Concat nodes.
+    if (cctx.optimizationOpts.sinkTanhBelowConcat) {
+      if (firstNode->getKind() == Kinded::Kind::TanhNodeKind) {
+        ConcatNode *newCN = setupTanhSinkBelowConcat(F, CN);
+        if (!newCN) {
+          continue;
+        }
+
+        const TypeRef TTy =
+            llvm::cast<TanhNode>(firstNode)->getResult().getType();
+        const TypeRef concatTy = F->getParent()->uniqueType(
+            TTy->getElementType(), newCN->getResult().dims());
+        TanhNode *newTanh =
+            F->createTanh(CN->getName().str() + "_tanh", concatTy, newCN);
+
+        CN->getResult().replaceAllUsesOfWith(newTanh->getResult());
+        changed = true;
+        continue;
+      }
     }
   }
 
@@ -2423,11 +2470,12 @@ static NodeValue collectArithmeticChain(Function *F, NodeValue start,
         scaleH.raw(i) *= toMerge[i];
         biasH.raw(i) *= toMerge[i];
       } else if (isa<SubNode>(user)) {
-        // TODO: Can we support Sub(Constant, Chain)?
         if (chainEnd == rhs) {
-          break;
+          scaleH.raw(i) *= -1;
+          biasH.raw(i) = toMerge[i] - biasH.raw(i);
+        } else {
+          biasH.raw(i) -= toMerge[i];
         }
-        biasH.raw(i) -= toMerge[i];
       } else if (isa<AddNode>(user)) {
         biasH.raw(i) += toMerge[i];
       } else {

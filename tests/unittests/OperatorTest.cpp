@@ -15198,7 +15198,7 @@ TEST_P(OperatorTest, CumSum3D_bfloat16_t_Dim2) {
 }
 
 TEST_P(OperatorTest, CumSum2D_int32_t_Dim0) {
-  // Data: {1..24} arranged in 2 x 3 x 4
+  // Data: {1..12} arranged in 3 x 4
   // Answer sums ALONG the axis specified
   CHECK_IF_ENABLED();
   Tensor *dimSums =
@@ -15214,7 +15214,7 @@ TEST_P(OperatorTest, CumSum2D_int32_t_Dim0) {
 }
 
 TEST_P(OperatorTest, CumSum2D_int32_t_Dim1) {
-  // Data: {1..24} arranged in 2 x 3 x 4
+  // Data: {1..12} arranged in 3 x 4
   // Answer sums ALONG the axis specified
   CHECK_IF_ENABLED();
   Tensor *dimSums =

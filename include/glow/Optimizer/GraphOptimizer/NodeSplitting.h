@@ -285,7 +285,14 @@ inline SplitNodeConstraint SplitNodeMaxMemConstraint(unsigned maxMem) {
 /// then an error is thrown. \returns a vector with the nodes obtained after
 /// splitting \p node. The node is split only if there is a splitting logic
 /// implemented for the node type, otherwise an empty vector is returned.
-/// NOTE: The original node is deleted from the graph after being split.
+/// NOTE: The original node is deleted from the graph after being split. When
+/// using this utility while iterating the nodes of a function make sure to
+/// reverse iterate in order to not invalidate the iterator:
+///   auto &nodes = F->getNodes();
+///   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
+///     Node *node = &*(it++);
+///     splitNode(node, ...);
+///   }
 Expected<std::vector<Node *>>
 splitNode(Node *node, const SplitNodeOption *splitOption,
           const SplitNodeConstraint *splitConstraint);
@@ -294,7 +301,14 @@ splitNode(Node *node, const SplitNodeOption *splitOption,
 /// \returns a vector with the nodes obtained after splitting \p node. The node
 /// is split only if there is a splitting logic implemented for the node type,
 /// otherwise an empty vector is returned.
-/// NOTE: The original node is deleted from the graph after being split.
+/// NOTE: The original node is deleted from the graph after being split. When
+/// using this utility while iterating the nodes of a function make sure to
+/// reverse iterate in order to not invalidate the iterator:
+///   auto &nodes = F->getNodes();
+///   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
+///     Node *node = &*(it++);
+///     splitNode(node, ...);
+///   }
 Expected<std::vector<Node *>> splitNode(Node *node,
                                         const SplitNodeOption &splitOption);
 
@@ -302,7 +316,14 @@ Expected<std::vector<Node *>> splitNode(Node *node,
 /// \returns a vector with the nodes obtained after splitting \p node. The node
 /// is split only if there is a splitting logic implemented for the node type,
 /// otherwise an empty vector is returned.
-/// NOTE: The original node is deleted from the graph after being split.
+/// NOTE: The original node is deleted from the graph after being split. When
+/// using this utility while iterating the nodes of a function make sure to
+/// reverse iterate in order to not invalidate the iterator:
+///   auto &nodes = F->getNodes();
+///   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e;) {
+///     Node *node = &*(it++);
+///     splitNode(node, ...);
+///   }
 Expected<std::vector<Node *>>
 splitNode(Node *node, const SplitNodeConstraint &splitConstraint);
 
@@ -368,7 +389,8 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 /// - when a node is encountered for which there is no split support.
 /// - when a node is encountered for which the split constraint is not met.
 /// \returns a split node map for those nodes which were actually split.
-/// NOTE: The original nodes are deleted from the graph after being split.
+/// NOTE: The original nodes are deleted from the graph after being split. Do
+/// not use this utility while iterating the nodes of a function.
 Expected<SplitNodeMap>
 splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
                      const SplitNodeConstraint *splitConstraint,
@@ -383,7 +405,8 @@ splitNodeRecursively(Node *node, const SplitNodeOption *splitOption,
 /// If \p singleUseOnly is given then the recursive split procedure stops when
 /// encountering a node which has multiple uses.
 /// \returns a split node map for those nodes which were actually split.
-/// NOTE: The original nodes are deleted from the graph after being split.
+/// NOTE: The original nodes are deleted from the graph after being split. Do
+/// not use this utility while iterating the nodes of a function.
 Expected<SplitNodeMap> splitNodeRecursively(Node *node,
                                             const SplitNodeOption &splitOption,
                                             unsigned maxDepth,
@@ -396,7 +419,8 @@ Expected<SplitNodeMap> splitNodeRecursively(Node *node,
 /// If \p singleUseOnly is given then the recursive split procedure stops when
 /// encountering a node which has multiple uses.
 /// \returns a split node map for those nodes which were actually split.
-/// NOTE: The original nodes are deleted from the graph after being split.
+/// NOTE: The original nodes are deleted from the graph after being split. Do
+/// not use this utility while iterating the nodes of a function.
 Expected<SplitNodeMap>
 splitNodeRecursively(Node *node, const SplitNodeConstraint &splitConstraint,
                      unsigned maxDepth, bool singleUseOnly = false);

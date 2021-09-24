@@ -1030,6 +1030,30 @@ private:
   // Load a PyTorch fb::equally_split.
   // \returns error on failure.
   Error loadEquallySplit(const torch::jit::Node *ptNode);
+
+  /// Load PyTorch fb::expand_dims
+  /// \returns error on failure.
+  Error loadExpandDims(const torch::jit::Node *ptNode);
+
+  /// Load PyTorch aten::narrow
+  /// \returns error on failure.
+  Error loadNarrow(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::pixel_shuffle.
+  // \returns error on failure.
+  Error loadPixelShuffle(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::pixel_unshuffle.
+  // \returns error on failure.
+  Error loadPixelUnshuffle(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::square.
+  // \returns error on failure.
+  Error loadSquare(const torch::jit::Node *ptNode);
+
+  // Load fb::scale_gradient.
+  // \returns error on failure.
+  Error loadScaleGradient(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

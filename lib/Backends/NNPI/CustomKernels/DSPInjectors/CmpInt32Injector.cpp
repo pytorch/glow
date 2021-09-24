@@ -63,7 +63,7 @@ NNPICustomDSPNode *createCustomCmp_int32(Function *F_, llvm::StringRef name,
                                          std::string kernelName) {
   auto cb = reinterpret_cast<int64_t>(IceRefCallback_Cmp_int32<CmpOp>);
   return DSPInjectorUtils::createEltwiseInt32Compare(
-      F_, name, std::string(kernelName), {in0, in1}, cb);
+      F_, name.str(), std::string(kernelName), {in0, in1}, cb);
 }
 
 template <class CmpOp, typename GlowNode>

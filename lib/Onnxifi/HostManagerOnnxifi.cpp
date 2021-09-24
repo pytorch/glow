@@ -226,6 +226,11 @@ onnxStatus HostManagerBackend::addNetwork(
   if (glow::flags::DumpCompilationLog) {
     cctx.compilationLogPrefix = "glow-onnxifi";
   }
+  if (glow::flags::SinkTanhBelowConcat) {
+    cctx.optimizationOpts.sinkTanhBelowConcat =
+        glow::flags::SinkTanhBelowConcat;
+    LOG(INFO) << "Sinking tanh below concat";
+  }
   if (glow::flags::UseSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =

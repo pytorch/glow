@@ -26,6 +26,8 @@ void fuseKnownPatterns(
     std::shared_ptr<torch::jit::Graph> &graph,
     const std::unordered_set<torch::jit::Symbol> &opBlacklist);
 
+void unfuseDummyOperators(std::shared_ptr<torch::jit::Graph> &graph);
+
 /// Passes in detail namespace should not be used directly except for by
 /// unittests.
 namespace detail {

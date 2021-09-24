@@ -53,6 +53,49 @@ loadOperatorName<caffe2::OperatorDef>(const caffe2::OperatorDef &op) {
   }
   return op.type();
 }
+
+// FIXME: this is a temporary solution for the case when NonZero returns
+// -2^31 as the boundary for the returned indices. For examples, currently
+// we get this NonZero([0, 1, 1, 0, 0]) -> [1, 2, -2^31, 0, 0], because the
+// shapes are static. This function makes sure that the output looks like
+// [1, 2, -1, -1, -1] which is more convenient for now.
+// The logic is we get [1, 2, -2^31, 0, 0], then we convert to [0, 0, 1, 0, 0]
+// by finding negative element, then do cumsum so we get [0, 0, 1, 1, 1],
+// then whenever we see 0, we use original value and when we see 1 we use -1,
+// so it becomes [1, 2, -1, -1, -1].
+Node *fixNonZero(Function *F, Module &mod, const std::string opName,
+                 NodeValue node) {
+  auto zeroes = F->createSplat(opName + ".fixNZ.zeroes", node.getType(), 0);
+  auto floatTy = mod.uniqueType(ElemKind::Float16Ty, node.dims());
+  auto minusOnesFloat =
+      F->createSplat(opName + ".fixNZ.minusOnesFloat", floatTy, -1);
+  auto zeroesFloat = F->createSplat(opName + ".fixNZ.zeroesFloat", floatTy, 0);
+  auto onesFloat = F->createSplat(opName + ".fixNZ.onesFloat", floatTy, 1);
+  auto nodeFloat = F->createConvertTo(opName + ".fixNZ.float", node, floatTy);
+
+  // If there is a boundary, it will be marked as true.
+  auto isNegBool = F->createCmpLT(opName + ".fixNZ.isNegBool", node, zeroes);
+  auto isNegFloat = F->createSelect(opName + ".fixNZ.isNegFloat", isNegBool,
+                                    onesFloat, zeroesFloat);
+  auto isNegInt = F->createConvertTo(opName + ".fixNZ.isNegInt", isNegFloat,
+                                     node.getType());
+
+  // After applying cumsum every element before boundary will be 0
+  // and starting from boundary will be 1.
+  auto cumSum = F->createCumSum(opName + ".fixNZ.cumSum", isNegInt, 0);
+
+  auto isAfterBoundary =
+      F->createCmpGT(opName + ".fixNZ.isAfterBoundary", cumSum, zeroes);
+
+  auto withMinusOnesFloat =
+      F->createSelect(opName + ".fixNZ.withMinusOnesFloat", isAfterBoundary,
+                      minusOnesFloat, nodeFloat);
+
+  auto withMinusOnesInt = F->createConvertTo(
+      opName + ".fixNZ.withMinusOnesInt", withMinusOnesFloat, node.getType());
+
+  return withMinusOnesInt;
+}
 }; // namespace glow
 
 /// Legacy padding modes supported in caffe2.  These are used by MaxPool
@@ -1967,15 +2010,16 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // must go from int -> float -> bool. Due to fp16 clipping, since only
     // int32 -> fp16 conversions are available, there is an initial conversion
     // from int64 to int32 if necessary.
-    auto indicatorIntToFloat = G_->createConvertTo(
-        opName + ".intToFloat", indicator, ElemKind::FloatTy);
-    auto indicatorFloatToBool = G_->createConvertTo(
-        opName + ".floatToBool", indicatorIntToFloat, ElemKind::BoolTy);
-    auto nonZeroIndices =
-        G_->createNonZero(opName + ".nonzero", indicatorFloatToBool);
-    auto nonZeroCount = data.dims()[0];
-    auto indices = G_->createSlice(opName + ".indices", nonZeroIndices, {0, 0},
-                                   {nonZeroCount, 1});
+    auto indicatorFloat = G_->createConvertTo(opName + ".intToFloat", indicator,
+                                              ElemKind::FloatTy);
+    auto indicatorBool = G_->createConvertTo(opName + ".floatToBool",
+                                             indicatorFloat, ElemKind::BoolTy);
+    auto nzIndices = G_->createNonZero(opName + ".nonzero", indicatorBool);
+
+    auto nzIndicesFixed = fixNonZero(G_, mod_, opName, nzIndices);
+
+    auto indices = G_->createSlice(opName + ".indices", nzIndicesFixed, {0, 0},
+                                   {data.dims()[0], 1});
 
     auto zeros = G_->createSplat(opName + ".zeros", outTy2D, 0);
 
@@ -2042,9 +2086,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         opName + ".floatToBool", lengthsIntToFloat, ElemKind::BoolTy);
     auto nonZeroIndices =
         G_->createNonZero(opName + ".nonzero", lengthsFloatToBool);
+    auto nonZeroIndicesFixed = fixNonZero(G_, mod_, opName, nonZeroIndices);
     auto numIndices = indices.dims()[0];
     auto indicesSliced = G_->createSlice(
-        opName + ".indicesSlice", nonZeroIndices, {0, 0}, {numIndices, 1});
+        opName + ".indicesSlice", nonZeroIndicesFixed, {0, 0}, {numIndices, 1});
 
     ShapeVector outDims{lengths.dims()[0], 1};
     auto dataTy = mod_.uniqueTypeWithNewShape(values.getType(), outDims);

@@ -132,9 +132,9 @@ template <> uint64_t NNPIOptions::getStringAsType<uint64_t>(std::string sVal);
         llvm::formatv("{0} Default: {1} Environment Variable:",                \
                       VAR_NAME.getDefault(), VAR_NAME.getEnv())                \
             .str();                                                            \
-    std::string stVal =                                                        \
-        getFromMap(map, VAR_NAME.getName(), VAR_NAME.getDefault());            \
-    stVal = NNPIOptions::getFromEnv(VAR_NAME.getEnv(), stVal);                 \
+    std::string stVal = getFromMap(map, VAR_NAME.getName().str(),              \
+                                   VAR_NAME.getDefault().str());               \
+    stVal = NNPIOptions::getFromEnv(VAR_NAME.getEnv().str(), stVal);           \
     this->VAR_NAME.setValFromString(stVal);                                    \
     this->loadedOptions_[VAR_NAME.getEnv()] =                                  \
         llvm::formatv("{0}", VAR_NAME).str();                                  \

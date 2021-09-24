@@ -629,7 +629,7 @@ Error HostManager::addNetworkFX(
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     auto functions = module->getFunctions();
     for (auto &F : functions) {
-      std::string name = F->getName();
+      const auto name = F->getName().str();
       auto it = networks_.find(name);
       if (it != networks_.end() ||
           processingNetworks_.find(name) != processingNetworks_.end()) {

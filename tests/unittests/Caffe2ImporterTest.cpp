@@ -2381,7 +2381,8 @@ TEST_F(Caffe2ImporterTest, FillExamplesWithIndicator) {
   EXPECT_EQ(expectedOutputShape, outputPH->dims().vec());
   // Graph has 9 nodes: 2 Reshapes, 2 Converts, Nonzero, Slice, Splat,
   // ScatterData, Output
-  EXPECT_EQ(F->getNodes().size(), 9);
+  // NonZero is translated into multiple ops.
+  EXPECT_EQ(F->getNodes().size(), 21);
 
   // Graph has two inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
@@ -2461,7 +2462,7 @@ TEST_F(Caffe2ImporterTest, BatchSparseToDense_lastdim1) {
   // Check that the shape of the output matches that of the expected output.
   const std::vector<dim_t> expectedOutputShape{numBatches, 1};
   EXPECT_EQ(expectedOutputShape, outputPH->dims().vec());
-  EXPECT_EQ(F->getNodes().size(), 8);
+  EXPECT_EQ(F->getNodes().size(), 20);
 
   // Graph has three inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 4);

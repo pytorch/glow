@@ -26,7 +26,8 @@ NNPIBackend::compileFX(const folly::dynamic &FXIR, const std::string &submod,
                        const BackendOptions &opts, Module *glowModule) const {
   auto compiledFunc = std::make_unique<NNPICompiledFunction>(
       FXIR, submod, constants, glowModule);
-  auto compileHasError = compiledFunc->compileFX(FXIR, submod, constants, opts);
+  auto compileHasError =
+      compiledFunc->compileFX(FXIR, submod, constants, opts, glowModule);
 
   return compileHasError ? std::move(compileHasError)
                          : Expected<std::unique_ptr<CompiledFunction>>(

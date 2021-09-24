@@ -246,6 +246,9 @@ struct OptimizationOptions {
   /// If true, ConcatNodes will not be merged during the optimizer.
   bool skipConcatMerging{false};
 
+  /// If true, will sink tanh below concat
+  bool sinkTanhBelowConcat{false};
+
   /// Default ctor.
   OptimizationOptions() {
     // By default, always materialize Splats used by ConvolutionNodes, as

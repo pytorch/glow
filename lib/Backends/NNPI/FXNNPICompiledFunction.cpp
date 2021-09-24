@@ -43,8 +43,8 @@ NNPICompiledFunction::NNPICompiledFunction(
 
 Error NNPICompiledFunction::compileFX(
     const folly::dynamic &FXIR, const std::string &submod,
-    const llvm::StringMap<const void *> &constants,
-    const BackendOptions &opts) {
+    const llvm::StringMap<const void *> &constants, const BackendOptions &opts,
+    Module *glowModule) {
   BackendOptions newOpts = opts;
   compilationOptions_ = NNPICompilationOptions(newOpts.backendSpecificOpts);
 
@@ -59,6 +59,18 @@ Error NNPICompiledFunction::compileFX(
 
   FXNNPIImporter importer(compilationOptions_, constants);
   network_ = importer.importFunction(FXIR, submod);
+
+  // Setup partial inputs and padded Placeholders based on parsing from FXIR.
+  for (const auto &str : importer.getAllowPartialPlaceholderNames()) {
+    if (auto *P = glowModule->getPlaceholderByNameSlow(str.getKey())) {
+      partialInputs_.insert(P);
+    }
+  }
+  for (const auto &str : importer.getRequiresPaddingPlaceholderNames()) {
+    if (auto *P = glowModule->getPlaceholderByNameSlow(str.getKey())) {
+      paddedInputs_.insert(P);
+    }
+  }
 
   LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
   // Setting the network name.

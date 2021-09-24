@@ -235,6 +235,9 @@ public:
   std::string apl_placement_alg = "";
   int32_t apl_num_parallel_chunks = 2;
 
+  /// Whether to use max size compilation.
+  bool useMaxSizeCompilation = false;
+
   // Serialize GlowIR into ONNX txt file during warmCache, this file can be
   // use for future model loading, which a part of AOT compilation
   bool saveGlowIRIntoONNX = false;
@@ -250,6 +253,9 @@ public:
 
   /// Set the number of predecessor Nodes to be printed from an error node.
   int32_t debugLayers = 5;
+
+  // Sink tanh below concat
+  bool sinkTanhBelowConcat = false;
 
   // Sparse NN Partitioning Scheme Constants, refer to OptimizationOptions in
   // CompilationContext for details

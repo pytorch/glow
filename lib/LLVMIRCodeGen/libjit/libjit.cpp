@@ -1662,6 +1662,8 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_element_round_kernel_f, float,
                             std::nearbyintf(LHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_sqrt_kernel_f, float,
                             std::sqrt(LHS[idx]))
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_erf_kernel_f, float,
+                            std::erf(LHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_rsqrt_kernel_f, float,
                             1 / std::sqrt(LHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_reciprocal_kernel_f, float,
