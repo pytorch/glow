@@ -410,7 +410,7 @@ private:
                             int64_t padIdx, bool sparse, bool scale,
                             dim_t embedding_dim);
 
-  template <typename ElemTy>
+  template <typename ElemTy, typename IndexTy>
   void fwdEmbeddingBagInstFloatImpl(const EmbeddingBagInst *I);
 
   template <typename ElemTy>
