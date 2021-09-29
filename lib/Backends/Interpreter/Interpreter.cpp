@@ -442,12 +442,17 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             NI.getInElemTy(EmbeddingNode::IndicesIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::EmbeddingBagNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
-               {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
-           (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
-            ElemKind::Int32ITy) &&
-           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int32ITy);
+    return (NI.allInputsAndOutputsHaveSameElemKind(
+                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+                {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
+            (((NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
+               ElemKind::Int64ITy) &&
+              (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) ==
+               ElemKind::Int64ITy)) ||
+             ((NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
+               ElemKind::Int32ITy) &&
+              (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) ==
+               ElemKind::Int32ITy))));
 
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to

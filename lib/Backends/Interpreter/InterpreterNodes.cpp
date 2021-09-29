@@ -5328,7 +5328,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
   }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename IndexType>
 void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
     const EmbeddingBagInst *I) {
   staticAssertFloatingPointType(ElemTy);
@@ -5342,8 +5342,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int32_t>();
-  auto OFFH = offsets->getHandle<int32_t>();
+  auto IH = indices->getHandle<IndexType>();
+  auto OFFH = offsets->getHandle<IndexType>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments
@@ -5387,8 +5387,9 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
 }
 
 void BoundInterpreterFunction::fwdEmbeddingBagInst(const EmbeddingBagInst *I) {
-  dispatchFloatingPointImpl(fwdEmbeddingBagInstFloatImpl,
-                            I->getData()->getElementType(), I);
+  dispatchFloatingPointAndIndexImpl(fwdEmbeddingBagInstFloatImpl,
+                                    I->getData()->getElementType(),
+                                    I->getIndices()->getElementType(), I);
 }
 
 template <typename ElemTy>
