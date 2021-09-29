@@ -8517,10 +8517,15 @@ Error PyTorchModelLoader::loadSplit(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(
       checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
   glow::NodeValue input;
-  unsigned int dimension;
+  int64_t dimension;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
   ASSIGN_VALUE_OR_RETURN_ERR(
       dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+
+  // Handle negative dimensions
+  if (dimension < 0) {
+    dimension += input.dims().size();
+  }
 
   uint64_t chunkSize;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -8548,10 +8553,16 @@ Error PyTorchModelLoader::loadSplitWithSizes(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(
       checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
   glow::NodeValue input;
-  unsigned int dimension;
+  int64_t dimension;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
   ASSIGN_VALUE_OR_RETURN_ERR(
       dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+
+  // Handle negative dimensions
+  if (dimension < 0) {
+    dimension += input.dims().size();
+  }
+
   std::vector<int64_t> *signedSizes;
   ASSIGN_VALUE_OR_RETURN_ERR(
       signedSizes, iValToIntList(getGlowIValueForValue(ptNode->input(1))));
