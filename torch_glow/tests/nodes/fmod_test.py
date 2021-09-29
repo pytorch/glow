@@ -14,17 +14,23 @@ class SimpleFmodModule(torch.nn.Module):
             c = a.fmod(b.item())
         else:
             c = a.fmod(b)
-        return c.fmod(1.0)
+        return c.fmod(torch.tensor(1.0, dtype=c.dtype))
 
 
 class TestFmod(utils.TorchGlowTestCase):
     @utils.deterministic_expand(
         [
             lambda: (
-                "int_tensor",
+                "int64_tensor",
                 SimpleFmodModule(),
                 torch.tensor([14]),
                 torch.tensor([10]),
+            ),
+            lambda: (
+                "int32_tensor",
+                SimpleFmodModule(),
+                torch.tensor([14], dtype=torch.int32),
+                torch.tensor([10], dtype=torch.int32),
             ),
             lambda: (
                 "float_tensor",
