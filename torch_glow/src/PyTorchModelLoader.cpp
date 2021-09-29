@@ -3504,9 +3504,39 @@ Error PyTorchModelLoader::loadFmod(const torch::jit::Node *ptNode) {
                                          /* convertToDefaultType */
                                          true));
 
-  RETURN_IF_ERR(addValueMapping(outputs[0], nodeValueAndCorrectType.first));
-  RETURN_IF_ERR(
-      setCorrectTypeMapping(outputs[0], nodeValueAndCorrectType.second));
+  // if both input tensors are of type int/long
+  // then output tensor should have same data type as input
+  glow::NodeValue lhsInput;
+  at::ScalarType lhsType;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(inputs[0]));
+  ASSIGN_VALUE_OR_RETURN_ERR(lhsType, getCorrectTypeMapping(inputs[0]));
+
+  glow::NodeValue rhsInput;
+  at::ScalarType rhsType;
+  if (hasGlowNodeValueForValue(inputs[1])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(inputs[1]));
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsType, getCorrectTypeMapping(inputs[1]));
+  } else {
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, loadNodeValueOrBroadcastedIValue(
+                                             inputs[1], lhsInput.getType()));
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsType, getCorrectTypeMapping(inputs[0]));
+  }
+
+  if (isNonQuantizedIntElemKind(lhsInput.getElementType()) &&
+      isNonQuantizedIntElemKind(rhsInput.getElementType())) {
+    at::ScalarType resultType =
+        ((lhsType == rhsType) && (lhsType == at::kInt)) ? lhsType : at::kLong;
+    auto glowElemKind = scalarTypeToElemKind(resultType);
+    auto result = F_.createConvertTo(
+        "result_to", nodeValueAndCorrectType.first,
+        F_.getParent()->uniqueType(glowElemKind, lhsInput.getType()->dims()));
+    RETURN_IF_ERR(addValueMapping(outputs[0], result));
+    RETURN_IF_ERR(setCorrectTypeMapping(outputs[0], resultType));
+  } else {
+    RETURN_IF_ERR(addValueMapping(outputs[0], nodeValueAndCorrectType.first));
+    RETURN_IF_ERR(
+        setCorrectTypeMapping(outputs[0], nodeValueAndCorrectType.second));
+  }
   return Error::success();
 }
 
