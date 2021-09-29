@@ -289,6 +289,9 @@ enum class GraphOutputType {
   TENSOR_LIST,  // Single list of tensors
 };
 
+using PostFusionProcessFn =
+    std::function<void(std::shared_ptr<torch::jit::Graph> graph)>;
+
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
 ElemKind scalarTypeToElemKind(c10::ScalarType ty);
 
@@ -350,7 +353,8 @@ void glowAOTFusion(
     std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
     std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
     const std::string &serializationSpec = "",
-    const std::string &onnxModelFile = "");
+    const std::string &onnxModelFile = "",
+    c10::optional<PostFusionProcessFn> postFusionProcessFn = {});
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
@@ -366,7 +370,8 @@ void glowAOTFusionWithShapeInference(
     std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
     std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
     const std::string &serializationSpec = "",
-    const std::string &onnxModelFile = "");
+    const std::string &onnxModelFile = "",
+    c10::optional<PostFusionProcessFn> postFusionProcessFn = {});
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in

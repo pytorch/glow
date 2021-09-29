@@ -665,7 +665,8 @@ void glowAOTFusionWithShapeInference(
     const std::unordered_map<int, std::string> &batchShapes,
     std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
     std::shared_ptr<std::string> glowAOTSerializationModelStrPtr,
-    const std::string &serializationSpec, const std::string &onnxModelFile) {
+    const std::string &serializationSpec, const std::string &onnxModelFile,
+    c10::optional<PostFusionProcessFn> postFusionProcessFn) {
   auto graph = model.get_method(method_name).function().graph();
 
   // create some fake inputs to run shape inference.
@@ -690,6 +691,12 @@ void glowAOTFusionWithShapeInference(
 
   // There could be multiple glow fusion nodes created.
   glow::glowCustomFuse(graph, settings);
+
+  // If anything needs to be adjusted after graph fusion,
+  // then this callback can do it.
+  if (postFusionProcessFn) {
+    (*postFusionProcessFn)(graph);
+  }
 
   ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol, true);
   auto e = shapeInf.run();
@@ -787,7 +794,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
                    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr,
                    const std::string &serializationSpec,
-                   const std::string &onnxModelFile) {
+                   const std::string &onnxModelFile,
+                   c10::optional<PostFusionProcessFn> postFusionProcessFn) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   modelPreprocessing(model, method_name);
@@ -798,7 +806,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
     return glowAOTFusionWithShapeInference(
         model, metaStack, loader, settings, method_name, batchShapes,
         glowAOTSerializationSpecStrPtr, glowAOTSerializationModelStrPtr,
-        serializationSpec, onnxModelFile);
+        serializationSpec, onnxModelFile, postFusionProcessFn);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
@@ -808,6 +816,12 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
   c10::Symbol symbol = glow::getGlowSymbol(graph);
   glow::registerGlowOp(symbol);
   glow::glowCustomFuse(graph, settings, symbol);
+
+  // If anything needs to be adjusted after graph fusion,
+  // then this callback can do it.
+  if (postFusionProcessFn) {
+    (*postFusionProcessFn)(graph);
+  }
 
   // this is the fuser subgraph to lower
   std::shared_ptr<torch::jit::Graph> subgraph;
