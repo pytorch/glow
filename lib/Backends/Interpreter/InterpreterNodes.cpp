@@ -5678,7 +5678,7 @@ void BoundInterpreterFunction::fwdFusedRowwiseQuantizedSparseLengthsSumInst(
   llvm_unreachable("Not supported");
 }
 
-template <typename T, typename AccumT>
+template <typename T, typename AccumT, typename IndexT>
 void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
     const EmbeddingBagByteRowwiseOffsetsInst *I) {
   auto *out = getTensor(I->getDest());
@@ -5690,8 +5690,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int32_t>();
-  auto OFFH = offsets->getHandle<int32_t>();
+  auto IH = indices->getHandle<IndexT>();
+  auto OFFH = offsets->getHandle<IndexT>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments
@@ -5757,15 +5757,38 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
 
 void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsInst(
     const EmbeddingBagByteRowwiseOffsetsInst *I) {
+  const auto ity = I->getIndices()->getElementType();
+  const bool fp32FusedScaleOffset =
+      (I->getData()->getElementType() == ElemKind::UInt4FusedQTy) ||
+      (I->getData()->getElementType() == ElemKind::UInt8FusedQTy);
+
   switch (I->getDest()->getElementType()) {
   case ElemKind::FloatTy:
-    fwdEmbeddingBagByteRowwiseOffsetsImpl<float, float>(I);
+    if (ity == ElemKind::Int32ITy) {
+      fwdEmbeddingBagByteRowwiseOffsetsImpl<float, float, int32_t>(I);
+    } else if (ity == ElemKind::Int64ITy) {
+      fwdEmbeddingBagByteRowwiseOffsetsImpl<float, float, int64_t>(I);
+    } else {
+      llvm_unreachable("Index type is not supported");
+    }
     break;
   case ElemKind::Float16Ty:
-    if (I->getUseFP16Accumulation()) {
-      fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float16_t>(I);
+    if (I->getUseFP16Accumulation() && !fp32FusedScaleOffset) {
+      if (ity == ElemKind::Int32ITy) {
+        fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float16_t, int32_t>(I);
+      } else if (ity == ElemKind::Int64ITy) {
+        fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float16_t, int64_t>(I);
+      } else {
+        llvm_unreachable("Index type is not supported");
+      }
     } else {
-      fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float>(I);
+      if (ity == ElemKind::Int32ITy) {
+        fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float, int32_t>(I);
+      } else if (ity == ElemKind::Int64ITy) {
+        fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float, int64_t>(I);
+      } else {
+        llvm_unreachable("Index type is not supported");
+      }
     }
     break;
   default:
