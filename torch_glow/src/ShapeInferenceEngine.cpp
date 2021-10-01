@@ -23,6 +23,7 @@
 
 #include "ShapeInferenceEngine.h"
 
+#include "folly/Overload.h"
 #include "folly/String.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
@@ -138,42 +139,69 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
 Error ShapeInferenceEngine::ShapeInference::infer(
     ShapeInferenceEngine *engine, const MetaStack &meta,
     const torch::jit::Node *node) const {
-
-  // TensorOutput or TensorListOutput?
-  if (addShapeFn.which() == 0) {
-    TensorOutput output;
-    auto add = boost::get<AddShapeFn0>(addShapeFn);
-    if (inferenceFn.which() == 0) {
-      ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 boost::get<InferenceFn0>(inferenceFn)(meta));
-    } else if (inferenceFn.which() == 1) {
-      ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 boost::get<InferenceFn1>(inferenceFn)(node));
-    } else if (inferenceFn.which() == 2) {
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          output, boost::get<InferenceFn2>(inferenceFn)(meta, node));
-    } else {
-      return MAKE_ERR("Shape inference misconfiguration");
-    }
-    (engine->*(add))(node, output);
-  } else {
-    TensorListOutput output;
-    auto add = boost::get<AddShapeFn1>(addShapeFn);
-    if (inferenceFn.which() == 3) {
-      ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 boost::get<InferenceFn3>(inferenceFn)(meta));
-    } else if (inferenceFn.which() == 4) {
-      ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 boost::get<InferenceFn4>(inferenceFn)(node));
-    } else if (inferenceFn.which() == 5) {
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          output, boost::get<InferenceFn5>(inferenceFn)(meta, node));
-    } else {
-      return MAKE_ERR("Shape inference misconfiguration");
-    }
-    (engine->*(add))(node, output);
-  }
-  return Error::success();
+  auto matchTensorOutputFn = folly::overload(
+      [&](const InferenceFn0 &metastackInferFn) -> Expected<TensorOutput> {
+        return metastackInferFn(meta);
+      },
+      [&](const InferenceFn1 &nodeInferFn) -> Expected<TensorOutput> {
+        return nodeInferFn(node);
+      },
+      [&](const InferenceFn2 &metastackNodeInferFn) -> Expected<TensorOutput> {
+        return metastackNodeInferFn(meta, node);
+      },
+      [&](const auto &) -> Expected<TensorOutput> {
+        return MAKE_ERR("Shape inference misconfiguration. Inference function "
+                        "expected to return a TensorOutput. ");
+      });
+  auto matchTensorListOutputFn = folly::overload(
+      [&](const InferenceFn3 &metastackInferFn) -> Expected<TensorListOutput> {
+        return metastackInferFn(meta);
+      },
+      [&](const InferenceFn4 &nodeInferFn) -> Expected<TensorListOutput> {
+        return nodeInferFn(node);
+      },
+      [&](const InferenceFn5 &metastackNodeInferFn)
+          -> Expected<TensorListOutput> {
+        return metastackNodeInferFn(meta, node);
+      },
+      [&](const auto &) -> Expected<TensorListOutput> {
+        return MAKE_ERR("Shape inference misconfiguration. Inference function "
+                        "expected to return a TensorListOutput.");
+      });
+  auto matchElemOutputFn = folly::overload(
+      [&](const InferenceFn6 &metastackInferFn) -> Expected<ElemOutput> {
+        return metastackInferFn(meta);
+      },
+      [&](const auto &) -> Expected<ElemOutput> {
+        return (MAKE_ERR("Shape inference misconfiguration. Inference function "
+                         "expected to return an ElemOutput."));
+      });
+  return folly::variant_match(
+      addShapeFn,
+      [&](const AddShapeFn0 &addTensorOutput) -> Error {
+        TensorOutput output;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            output, boost::apply_visitor(matchTensorOutputFn, inferenceFn));
+        (engine->*(addTensorOutput))(node, output);
+        return Error::success();
+      },
+      [&](const AddShapeFn1 &addTensorListOutput) -> Error {
+        TensorListOutput output;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            output, boost::apply_visitor(matchTensorListOutputFn, inferenceFn));
+        (engine->*(addTensorListOutput))(node, output);
+        return Error::success();
+      },
+      [&](const AddShapeFn2 &addElemOutput) -> Error {
+        ElemOutput output;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            output, boost::apply_visitor(matchElemOutputFn, inferenceFn));
+        (engine->*(addElemOutput))(node, output);
+        return Error::success();
+      },
+      [&](const auto &) {
+        return MAKE_ERR("Unsupported types for addShapeFn");
+      });
 }
 
 ShapeInferenceEngine::SymbolToFunctionMap
@@ -260,7 +288,7 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"aten::chunk", ShapeInference(&chunk, &SI::addShapeChunk)},
       {"prim::ListConstruct",
        ShapeInference(&listConstruct, &SI::addShapeListConstruct)},
-      {"aten::slice", ShapeInference(&slice, &SI::addShapeDefault)},
+      {"aten::slice", ShapeInference(&slice, &SI::addShapeSlice)},
       {"aten::reshape", ShapeInference(&reshape, &SI::addShapeDefault)},
       {"aten::cat", ShapeInference(&cat, &SI::addShapeDefault)},
       {"aten::permute", ShapeInference(&permute, &SI::addShapeDefault)},
@@ -400,6 +428,18 @@ void ShapeInferenceEngine::addShapeDefaultList(const torch::jit::Node *node,
   }
 }
 
+void ShapeInferenceEngine::addShapeSlice(const torch::jit::Node *node,
+                                         ElemOutput &output) {
+  folly::variant_match(
+      output,
+      [&](TensorOutput &tensorOutput) { addShapeDefault(node, tensorOutput); },
+      [&](TensorListOutput &tensorListOutput) {
+        shapeMap_[node->output()].listOfShape.emplace_back(
+            std::move(tensorListOutput.shape));
+        shapeMap_[node->output()].dtype = tensorListOutput.dtype;
+      });
+}
+
 Error ShapeInferenceEngine::runSubGraph(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> &inputs) {
@@ -416,7 +456,6 @@ Error ShapeInferenceEngine::runGraph(
     const at::ArrayRef<torch::jit::IValue> &inputs) {
   // Populate input shapes
   RETURN_IF_ERR(getGraphInputShapeType(graph, inputs));
-  LOG(INFO) << "running graph";
   int totalFusionNodes = 0;
   for (auto *node : graph.nodes()) {
     if (node->kind().toQualString() == fusionNodeSymbol_) {
@@ -539,23 +578,23 @@ void ShapeInferenceEngine::findUnsupportedGraphSymbols(
 void ShapeInferenceEngine::printShapeMap() {
   for (auto elem : shapeMap_) {
     std::cout << elem.first->debugName() << ":[ ";
-    if (elem.second.listOfShape[0].type() == typeid(TensorShape)) {
-      const TensorShape &shape = elem.second.shape<TensorShape>();
-      for (auto value : shape) {
-        std::cout << value << " ";
-      }
-    } else if (elem.second.listOfShape[0].type() == typeid(TensorListShape)) {
-      const TensorListShape &shapes = elem.second.shape<TensorListShape>();
-      for (auto shape : shapes) {
-        std::cout << "[ ";
-        for (auto value : shape) {
-          std::cout << value << " ";
-        }
-        std::cout << "]";
-      }
-    } else {
-      std::cout << "Type doesn't support yet.";
-    }
+    folly::variant_match(
+        elem.second.listOfShape[0],
+        [&](const TensorShape &shape) {
+          for (auto value : shape) {
+            std::cout << value << " ";
+          }
+        },
+        [&](const TensorListShape &shapes) {
+          for (auto shape : shapes) {
+            std::cout << "[ ";
+            for (auto value : shape) {
+              std::cout << value << " ";
+            }
+            std::cout << "]";
+          }
+        },
+        [&](const auto &) { std::cout << "Type doesn't support yet."; });
     std::cout << "]" << std::endl;
   }
 }
@@ -1040,7 +1079,8 @@ ShapeInferenceEngine::cat(const MetaStack &variableMetas) {
   dim = at::maybe_wrap_dim(dim, inDims);
 
   // Handle multiple input cases.
-  // Verify all inputs dimenions are the same execpt the dimension applies cat.
+  // Verify all inputs dimenions are the same except the dimension applies
+  // cat.
   for (int i = 1; i < tensorListShapes.size(); ++i) {
     RETURN_ERR_IF_NOT(inDims == tensorListShapes[i].size(),
                       "All inputs must have the same number of dimensions.");
@@ -1280,63 +1320,126 @@ ShapeInferenceEngine::fusedBroadcastConcat(const MetaStack &variableMetas,
 
 /**
  * aten::slice(Tensor self, int dim, int start, int end, int step)
+ * aten::slice(t[] l, int start, int end, int step) -> t[]
  * variableMetas: 0: self, 1: dim, 2: start, 3: end, 4: step.
  */
-Expected<TensorOutput>
+Expected<ElemOutput>
 ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
 
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 5,
+      variableMetas.size() == 5 || variableMetas.size() == 4,
       strFormat("Expected 5 inputs, got %zu.", variableMetas.size()));
-
-  for (int i = 1; i < 5; i++) {
-    RETURN_ERR_IF_NOT(variableMetas[i].intValue.size() == 1,
-                      "Expected int in Slice.");
+  auto argSize = variableMetas.size();
+  for (int i = 1; i < argSize; i++) {
+    auto isNone = variableMetas[i].dtype == c10::ScalarType::Undefined;
+    auto isInt = variableMetas[i].intValue.size() == 1;
+    RETURN_ERR_IF_NOT(isNone || isInt, "Expected int in Slice.");
   }
+  RETURN_ERR_IF_NOT(variableMetas[argSize - 1].intValue.size() == 1,
+                    "Expected int in Slice.");
 
-  int64_t dim = variableMetas[1].intValue[0];
-  int64_t start = variableMetas[2].intValue[0];
-  int64_t end = variableMetas[3].intValue[0];
-  int64_t step = variableMetas[4].intValue[0];
+  int64_t dim = 0;
+  int64_t start = 0;
+  int64_t end = std::numeric_limits<long>::max();
+  int64_t step = 1;
+  ElemOutput output;
+  if (argSize == 5) {
+    dim = variableMetas[1].intValue[0];
+    if (variableMetas[2].intValue.size() == 1) {
+      start = variableMetas[2].intValue[0];
+    }
+    if (variableMetas[3].intValue.size() == 1) {
+      end = variableMetas[3].intValue[0];
+    }
+    step = variableMetas[4].intValue[0];
+    TensorOutput outputTensor;
+    TensorShape shape = variableMetas[0].shape<TensorShape>();
+    RETURN_ERR_IF_NOT(shape.size() > 0, "Shape expected to be nonempty.");
+    int64_t inDims = shape[dim];
+    outputTensor.dtype = variableMetas[0].dtype;
 
-  TensorShape shape = variableMetas[0].shape<TensorShape>();
-  int64_t inDims = shape[dim];
+    /// Check if the start or end dim out of the input dimension
+    if (start >= inDims || end <= -inDims) {
+      shape[dim] = 0;
+      outputTensor.shapeOrIntValues = shape;
+      return outputTensor;
+    }
 
-  TensorOutput output;
-  output.dtype = variableMetas[0].dtype;
+    /// Convert start dim into positive
+    if (start <= -inDims) {
+      start = 0;
+    } else if (start > -inDims && start < 0) {
+      start += inDims;
+    }
 
-  /// Check if the start or end dim out of the input dimension
-  if (start >= inDims || end <= -inDims) {
-    shape[dim] = 0;
-    output.shapeOrIntValues = shape;
-    return output;
+    /// Convert end dim into positive
+    if (end > inDims) {
+      end = inDims;
+    } else if (end > -inDims && end < 0) {
+      end += inDims;
+    }
+
+    if (start >= end) {
+      shape[dim] = 0;
+      outputTensor.shapeOrIntValues = shape;
+      return outputTensor;
+    }
+
+    shape[dim] = (end - start) / step;
+    if ((end - start) % step) {
+      shape[dim] += 1;
+    }
+    outputTensor.shapeOrIntValues = shape;
+    output = outputTensor;
+  } else if (argSize == 4) {
+    if (variableMetas[1].intValue.size() == 1) {
+      start = variableMetas[1].intValue[0];
+    }
+    if (variableMetas[2].intValue.size() == 1) {
+      end = variableMetas[2].intValue[0];
+    }
+    step = variableMetas[3].intValue[0];
+    TensorListShape shape = variableMetas[0].shape<TensorListShape>();
+    TensorListOutput outputTensorList;
+
+    outputTensorList.dtype = variableMetas[0].dtype;
+    int64_t inDims = shape.size();
+    /// Check if the start or end dim out of the input dimension
+    RETURN_ERR_IF_NOT(start < inDims && end > -inDims,
+                      strFormat("Invalid start or end dims. Start is %ld and "
+                                "end is %ld, while total dims are %ld",
+                                start, end, inDims));
+
+    /// Convert start dim into positive
+    if (start <= -inDims) {
+      start = 0;
+    } else if (start > -inDims && start < 0) {
+      start += inDims;
+    }
+
+    /// Convert end dim into positive
+    if (end > inDims) {
+      end = inDims;
+    } else if (end > -inDims && end < 0) {
+      end += inDims;
+    }
+
+    RETURN_ERR_IF_NOT(
+        start < end || (start == end && end < inDims),
+        strFormat("Invalid start and end dims. Start is %ld and end is %ld",
+                  start, end));
+
+    TensorListShape outShapes;
+    RETURN_ERR_IF_NOT(shape.size() >= end,
+                      strFormat("Expected the shape size to be at least end. "
+                                "Shape size is %ld and end is %ld",
+                                shape.size(), end));
+    for (auto i = start; i < end; i += step) {
+      outShapes.emplace_back(shape[i]);
+    }
+    outputTensorList.shape = outShapes;
+    output = outputTensorList;
   }
-
-  /// Convert start dim into positive
-  if (start <= -inDims) {
-    start = 0;
-  } else if (start > -inDims && start < 0) {
-    start += inDims;
-  }
-
-  /// Convert end dim into positive
-  if (end > inDims) {
-    end = inDims;
-  } else if (end > -inDims && end < 0) {
-    end += inDims;
-  }
-
-  if (start >= end) {
-    shape[dim] = 0;
-    output.shapeOrIntValues = shape;
-    return output;
-  }
-
-  shape[dim] = (end - start) / step;
-  if ((end - start) % step) {
-    shape[dim] += 1;
-  }
-  output.shapeOrIntValues = shape;
   return output;
 }
 
