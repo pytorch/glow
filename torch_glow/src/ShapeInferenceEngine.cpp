@@ -1783,8 +1783,8 @@ Expected<TensorOutput>
 ShapeInferenceEngine::xlEmbeddingBag(const MetaStack &variableMetas) {
 
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 10,
-      strFormat("Expected 10 inputs, got %zu.", variableMetas.size()));
+      variableMetas.size() == 10 || variableMetas.size() == 11,
+      strFormat("Expected 10 or 11 inputs, got %zu.", variableMetas.size()));
 
   TensorShape shape;
 
@@ -1831,8 +1831,8 @@ ShapeInferenceEngine::quantizedXLEmbeddingBagByteRowwiseOffsets(
     const MetaStack &variableMetas) {
 
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 11,
-      strFormat("Expected 11 inputs, got %zu.", variableMetas.size()));
+      variableMetas.size() == 11 || variableMetas.size() == 12,
+      strFormat("Expected 11 or 12 inputs, got %zu.", variableMetas.size()));
 
   TensorShape shape;
 

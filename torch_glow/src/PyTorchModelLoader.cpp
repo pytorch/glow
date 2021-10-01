@@ -1075,6 +1075,7 @@ struct XLEmbeddingBagInputs {
     include_last_offset,
     num_embeddings,
     embedding_dim,
+    avg_length,
   };
 };
 
@@ -1129,6 +1130,7 @@ struct XLEmbeddingBagRowwiseOffsetsInputs {
     include_last_offset,
     num_embeddings,
     embedding_dim,
+    avg_length,
   };
 };
 /// Indexes used for glow::fused_split inputs.
@@ -7963,7 +7965,7 @@ Error PyTorchModelLoader::loadGlowEmbeddingBag(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadXLEmbeddingBag(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 10, outputs, 4));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -10, outputs, 4));
   // get the shape (num_embeddings, embedding_dim) and qualName for the
   // embeddingBag, and create placeholder node
   glow::dim_t numEmbedding;
@@ -8016,9 +8018,22 @@ Error PyTorchModelLoader::loadXLEmbeddingBag(const torch::jit::Node *ptNode) {
       inputs[XLEmbeddingBagInputs::per_sample_weights], "EmbeddingBag.ones",
       glow::Type(ElemKind::FloatTy, {indices.dims()[0]}), 1.0);
 
-  auto *EB =
-      F_.createEmbeddingBag("XLEmbeddingBag", ph->getOutput(), perSampleWeights,
-                            indices, offsets, includeLastOffset);
+  float avgLength = NAN;
+  if (inputs.size() > XLEmbeddingBagInputs::avg_length) {
+    double avgLenValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(avgLenValue,
+                               iValToDouble(getGlowIValueForValue(
+                                   inputs[XLEmbeddingBagInputs::avg_length])));
+    LOG(INFO) << "Loading avg length " << avgLenValue
+              << " for xlEmbeddingBag with weightID " << legalizedWeightID;
+    if (avgLenValue >= 0) {
+      avgLength = avgLenValue;
+    }
+  }
+
+  auto *EB = F_.createEmbeddingBag(
+      "XLEmbeddingBag", ph->getOutput(), perSampleWeights, indices, offsets,
+      includeLastOffset, LengthsMode::Variable, avgLength);
   return addValueMapping(outputs[0], EB->getResult());
 }
 
@@ -8415,7 +8430,7 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
     const torch::jit::Node *ptNode, bool is4Bit) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 11, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -11, outputs, 1));
 
   glow::dim_t numEmbedding;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -8516,11 +8531,25 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
         glow::Type((ElemKind::FloatTy), {indices.dims()[0]}), 1.0);
   }
 
+  float avgLength = NAN;
+  if (inputs.size() > XLEmbeddingBagRowwiseOffsetsInputs::avg_length) {
+    double avgLenValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        avgLenValue,
+        iValToDouble(getGlowIValueForValue(
+            inputs[XLEmbeddingBagRowwiseOffsetsInputs::avg_length])));
+    LOG(INFO) << "Loading avg length " << avgLenValue
+              << " for quantized xlEmbeddingBag with weightID " << weightID;
+    if (avgLenValue >= 0) {
+      avgLength = avgLenValue;
+    }
+  }
+
   auto *EB = F_.createEmbeddingBagByteRowwiseOffsets(
       (is4Bit ? "EmbeddingBag4BitRowwiseOffsets"
               : "EmbeddingBagByteRowwiseOffsets"),
       ph->getOutput(), perSampleWeights, indices, offsets, false,
-      includeLastOffset);
+      includeLastOffset, LengthsMode::Variable, avgLength);
 
   // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output
   // type is Float16.
