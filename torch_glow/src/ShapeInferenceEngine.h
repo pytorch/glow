@@ -47,6 +47,7 @@ struct TensorListOutput {
   c10::ScalarType dtype;
   std::vector<c10::ScalarType> dtypeList;
 };
+using ElemOutput = boost::variant<TensorOutput, TensorListOutput>;
 
 struct VariableMeta {
   /// For Tensor, Tensor[], store the shape in \p listOfShape[0]
@@ -164,16 +165,19 @@ private:
         Expected<TensorListOutput> (*)(const torch::jit::Node *);
     using InferenceFn5 = Expected<TensorListOutput> (*)(
         const MetaStack &, const torch::jit::Node *);
+    using InferenceFn6 = Expected<ElemOutput> (*)(const MetaStack &);
 
     using AddShapeFn0 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
                                                        TensorOutput &);
     using AddShapeFn1 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
                                                        TensorListOutput &);
+    using AddShapeFn2 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
+                                                       ElemOutput &);
 
     using InferenceFn =
         boost::variant<InferenceFn0, InferenceFn1, InferenceFn2, InferenceFn3,
-                       InferenceFn4, InferenceFn5>;
-    using AddShapeFn = boost::variant<AddShapeFn0, AddShapeFn1>;
+                       InferenceFn4, InferenceFn5, InferenceFn6>;
+    using AddShapeFn = boost::variant<AddShapeFn0, AddShapeFn1, AddShapeFn2>;
 
     ShapeInference(InferenceFn inferenceFn, AddShapeFn addShapeFn)
         : inferenceFn(inferenceFn), addShapeFn(addShapeFn) {}
@@ -201,6 +205,8 @@ private:
   void addShapeBag(const torch::jit::Node *node, TensorOutput &output);
 
   void addShapeChunk(const torch::jit::Node *node, TensorListOutput &output);
+
+  void addShapeSlice(const torch::jit::Node *node, ElemOutput &output);
 
   void addShapeDefault(const torch::jit::Node *node, TensorOutput &output);
 
@@ -251,7 +257,7 @@ private:
   static Expected<TensorOutput> reshape(const MetaStack &variableMetas,
                                         const torch::jit::Node *node);
   // Shape inference for aten::slice
-  static Expected<TensorOutput> slice(const MetaStack &variableMetas);
+  static Expected<ElemOutput> slice(const MetaStack &variableMetas);
   // Shape inference for aten::cat
   static Expected<TensorOutput> cat(const MetaStack &variableMetas);
   // Shape inference for aten::transpose
