@@ -461,7 +461,7 @@ private:
   template <typename T>
   void fwdBBoxTransformInstFloatImpl(glow::BBoxTransformInst const *I);
 
-  template <typename T, typename AccumT>
+  template <typename T, typename AccumT, typename IndexT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(
       const EmbeddingBagByteRowwiseOffsetsInst *I);
 
