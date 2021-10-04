@@ -766,6 +766,10 @@ private:
   /// \return error on failure.
   Error loadQuantizedAddRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::leaky_relu node.
+  /// \return error on failure.
+  Error loadQuantizedLeakyRelu(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantized::mul node.
   /// \return error on failure.
   Error loadQuantizedMul(const torch::jit::Node *ptNode);
