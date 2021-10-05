@@ -19,10 +19,10 @@ class Bar(torch.nn.Module):
             conv = torch.nn.Conv2d(4, 2, [2, 2], groups=1)
             conv.weight.random_(-1, 1)
             conv.bias.data.random_(-1, 1)
-            self.model = torch.quantization.QuantWrapper(conv)
-            self.model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-            torch.quantization.prepare(self.model, inplace=True)
-            torch.quantization.convert(self.model, inplace=True)
+            self.model = torch.ao.quantization.QuantWrapper(conv)
+            self.model.qconfig = torch.ao.quantization.get_default_qconfig("fbgemm")
+            torch.ao.quantization.prepare(self.model, inplace=True)
+            torch.ao.quantization.convert(self.model, inplace=True)
 
     def forward(self, x):
         return self.model(x)

@@ -35,16 +35,16 @@ def create_model(x, relu, bias=True):
             model = torch.nn.Sequential(
                 OrderedDict([("conv", conv_op), ("relu", torch.nn.ReLU())])
             )
-            model = torch.quantization.fuse_modules(model, [["conv", "relu"]])
+            model = torch.ao.quantization.fuse_modules(model, [["conv", "relu"]])
         else:
             model = torch.nn.Sequential(OrderedDict([("conv", conv_op)]))
 
-        model = torch.quantization.QuantWrapper(model)
-        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+        model = torch.ao.quantization.QuantWrapper(model)
+        model.qconfig = torch.ao.quantization.get_default_qconfig("fbgemm")
 
-        torch.quantization.prepare(model, inplace=True)
+        torch.ao.quantization.prepare(model, inplace=True)
         model(x)
-        torch.quantization.convert(model, inplace=True)
+        torch.ao.quantization.convert(model, inplace=True)
 
         return model
 

@@ -45,11 +45,11 @@ class Baz(torch.nn.Module):
 
 def create_model(x, ModType):
     foo = Foo()
-    foo = torch.quantization.QuantWrapper(foo)
-    foo.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-    torch.quantization.prepare(foo, inplace=True)
+    foo = torch.ao.quantization.QuantWrapper(foo)
+    foo.qconfig = torch.ao.quantization.get_default_qconfig("fbgemm")
+    torch.ao.quantization.prepare(foo, inplace=True)
     foo(x)
-    torch.quantization.convert(foo, inplace=True)
+    torch.ao.quantization.convert(foo, inplace=True)
     model = ModType(foo)
     return model
 

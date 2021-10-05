@@ -53,12 +53,12 @@ class TestQuantizedConv2dBigStrideSmallKernel(utils.TorchGlowTestCase):
     def test_qconv_2d(self, name, conv, tensor):
         """Test of quantized conv2d whose stride is bigger than kernel."""
         with torch.no_grad():
-            model = torch.quantization.QuantWrapper(conv)
-            model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-            torch.quantization.prepare(model, inplace=True)
+            model = torch.ao.quantization.QuantWrapper(conv)
+            model.qconfig = torch.ao.quantization.get_default_qconfig("fbgemm")
+            torch.ao.quantization.prepare(model, inplace=True)
             # Calibration
             model.forward(tensor)
-            torch.quantization.convert(model, inplace=True)
+            torch.ao.quantization.convert(model, inplace=True)
             utils.compare_tracing_methods(
                 model,
                 tensor,
@@ -86,12 +86,12 @@ class TestQuantizedConv2dBigStrideSmallKernel(utils.TorchGlowTestCase):
     def test_qconv_3d(self, name, conv, tensor):
         """Test of quantized conv3d whose stride is bigger than kernel."""
         with torch.no_grad():
-            model = torch.quantization.QuantWrapper(conv)
-            model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-            torch.quantization.prepare(model, inplace=True)
+            model = torch.ao.quantization.QuantWrapper(conv)
+            model.qconfig = torch.ao.quantization.get_default_qconfig("fbgemm")
+            torch.ao.quantization.prepare(model, inplace=True)
             # Calibration
             model.forward(tensor)
-            torch.quantization.convert(model, inplace=True)
+            torch.ao.quantization.convert(model, inplace=True)
             utils.compare_tracing_methods(
                 model,
                 tensor,
