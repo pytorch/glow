@@ -1207,7 +1207,6 @@ sparseNNInsertSplitConcat(Function *F,
 };
 
 Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
-
   VLOG(1) << "Doing SparseNN partitioning" << std::endl;
   PartitionConfig partitionConfig;
   partitionConfig.numOfPartitions = 0;
@@ -1355,6 +1354,12 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   std::vector<std::unordered_set<NodeValue>> frontierValues;
   unsigned int snnNumCards =
       cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards;
+
+  LOG(INFO) << "totalDeviceMemory=" << totalDeviceMemory
+            << ", nonSLSPartitionSize=" << nonSLSPartitionSize
+            << ", allowedSLSMemBytes=" << allowedSLSMemBytes
+            << ", snnNumCards=" << snnNumCards;
+
   bool partitionSucceeded = false;
   std::vector<unsigned int> factors;
   factors.push_back(snnNumCards);
