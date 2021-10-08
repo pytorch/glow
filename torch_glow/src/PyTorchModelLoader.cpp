@@ -703,6 +703,17 @@ struct QuantizedAddReluInputs {
   };
 };
 
+/// Indexes of quantized::leaky_relu inputs.
+struct QuantizedLeakyReluInputs {
+  enum {
+    lhs = 0,
+    alpha = 1,
+    inplace = 2,
+    scale = 3,
+    zero_point = 4,
+  };
+};
+
 /// Indexes of quantized::add inputs.
 struct QuantizedAddInputs {
   enum {
@@ -1482,6 +1493,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedAddRelu,
        &PyTorchModelLoader::getCorrectTypeFromInput<
            QuantizedAddReluInputs::lhs>},
+      {{"quantized::leaky_relu"},
+       &PyTorchModelLoader::loadQuantizedLeakyRelu,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           QuantizedLeakyReluInputs::lhs>},
       {{"quantized::mul"},
        &PyTorchModelLoader::loadQuantizedMul,
        &PyTorchModelLoader::getCorrectTypeFromInput<QuantizedMulInputs::lhs>},
@@ -2657,6 +2672,52 @@ Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
   glow::AddNode *qadd = F_.createAdd("quantized_add", outTy, lhs, rhs);
   glow::ReluNode *qrelu = F_.createRELU("quantized_relu", qadd);
   auto output = qrelu->getResult();
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadQuantizedLeakyRelu(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      lhs, getGlowNodeValueForValue(inputs[QuantizedLeakyReluInputs::lhs]));
+
+  // negative_slope
+  float alphaVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(alphaVal,
+                             iValToDouble(getGlowIValueForValue(
+                                 inputs[QuantizedLeakyReluInputs::alpha])));
+
+  // inplace
+  bool inplace;
+  ASSIGN_VALUE_OR_RETURN_ERR(inplace,
+                             iValToBool(getGlowIValueForValue(
+                                 inputs[QuantizedLeakyReluInputs::inplace])));
+
+  // scale
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale,
+                             iValToDouble(getGlowIValueForValue(
+                                 inputs[QuantizedLeakyReluInputs::scale])));
+
+  // zero_point
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outOffset, iValToInt(getGlowIValueForValue(
+                     inputs[QuantizedLeakyReluInputs::zero_point])));
+
+  TypeRef inputType = lhs.getType();
+  auto outDims = inputType->dims();
+  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                          outOffset - UINT8_TO_INT8_SHIFT);
+
+  glow::LeakyReluNode *qleakyrelu =
+      F_.createLeakyRELU("quantized_leaky_relu", lhs, alphaVal);
+  auto output = qleakyrelu->getResult();
 
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
