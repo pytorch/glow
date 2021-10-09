@@ -21,6 +21,8 @@ class TestSplit(utils.TorchGlowTestCase):
             lambda: (torch.randn(10), [1, 2, 3, 4], 0),
             lambda: (torch.randn(10, 10, 10), 3, 2),
             lambda: (torch.randn(100, 100), [25, 50, 25], 1),
+            lambda: (torch.randn(100, 100), [25, 50, 25], -2),
+            lambda: (torch.randn(100, 100), 25, -1),
         ]
     )
     def test_split(self, tensor, split_size_or_sections, dimension):

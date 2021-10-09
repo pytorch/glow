@@ -8637,17 +8637,21 @@ Error PyTorchModelLoader::loadSplit(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(
       checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
   glow::NodeValue input;
-  unsigned int dimension;
+  int64_t dimension;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
   ASSIGN_VALUE_OR_RETURN_ERR(
       dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+
+  unsigned int dimensionPositive;
+  ASSIGN_VALUE_OR_RETURN_ERR(dimensionPositive,
+                             getPositiveIndex(dimension, input.dims().size()));
 
   uint64_t chunkSize;
   ASSIGN_VALUE_OR_RETURN_ERR(
       chunkSize, iValToInt(getGlowIValueForValue(ptNode->input(1))));
   std::vector<glow::NodeValue> chunks;
-  ASSIGN_VALUE_OR_RETURN_ERR(chunks,
-                             loadSplitImpl(input, dimension, chunkSize));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      chunks, loadSplitImpl(input, dimensionPositive, chunkSize));
   size_t numChunks = chunks.size();
   glow::GlowIValue output;
   output.fromNodeValueList(chunks);
@@ -8668,10 +8672,15 @@ Error PyTorchModelLoader::loadSplitWithSizes(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(
       checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
   glow::NodeValue input;
-  unsigned int dimension;
+  int64_t dimension;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
   ASSIGN_VALUE_OR_RETURN_ERR(
       dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+
+  unsigned int dimensionPositive;
+  ASSIGN_VALUE_OR_RETURN_ERR(dimensionPositive,
+                             getPositiveIndex(dimension, input.dims().size()));
+
   std::vector<int64_t> *signedSizes;
   ASSIGN_VALUE_OR_RETURN_ERR(
       signedSizes, iValToIntList(getGlowIValueForValue(ptNode->input(1))));
@@ -8680,7 +8689,8 @@ Error PyTorchModelLoader::loadSplitWithSizes(const torch::jit::Node *ptNode) {
     sizes.push_back(size);
   }
   std::vector<glow::NodeValue> chunks;
-  ASSIGN_VALUE_OR_RETURN_ERR(chunks, loadSplitImpl(input, dimension, sizes));
+  ASSIGN_VALUE_OR_RETURN_ERR(chunks,
+                             loadSplitImpl(input, dimensionPositive, sizes));
   size_t numChunks = chunks.size();
   glow::GlowIValue output;
   output.fromNodeValueList(chunks);
