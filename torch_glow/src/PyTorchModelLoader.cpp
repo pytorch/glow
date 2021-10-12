@@ -1810,6 +1810,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"fb::scale_gradient"},
        &PyTorchModelLoader::loadScaleGradient,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"aten::erf"},
+       &PyTorchModelLoader::loadErf,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
   });
 #undef UNARY_NODE_LOADER
 
@@ -9248,6 +9251,21 @@ Error PyTorchModelLoader::loadScaleGradient(const torch::jit::Node *ptNode) {
   // Currently PyTorch importer only supports inference,
   // therefore return the input as is.
   RETURN_ERR(addValueMapping(outputs[0], input));
+}
+
+Error PyTorchModelLoader::loadErf(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto node = F_.createErf("erf", input)->getResult();
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], node));
+
+  return Error::success();
 }
 
 Error PyTorchModelLoader::loadAttributes(

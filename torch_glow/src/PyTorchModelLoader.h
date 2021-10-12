@@ -1058,6 +1058,10 @@ private:
   // Load fb::scale_gradient.
   // \returns error on failure.
   Error loadScaleGradient(const torch::jit::Node *ptNode);
+
+  // Load aten::erf.
+  // \returns error on failure.
+  Error loadErf(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
