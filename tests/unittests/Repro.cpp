@@ -79,7 +79,7 @@ llvm::cl::opt<std::string> ExecutionBackend(
     "backend", llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, NNPI:"),
     llvm::cl::init("NNPI"), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<unsigned> concurrentRequestsOpt(
+llvm::cl::opt<unsigned> concurrentCountOpt(
     "concurrent_count", llvm::cl::desc("Number of concurrent requests."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
@@ -120,9 +120,11 @@ llvm::cl::opt<bool, /* ExternalStorage */ true> enablePartialTensorOpt(
     llvm::cl::Optional, llvm::cl::location(glow::flags::EnablePartialTensors),
     llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<unsigned> itersOpt(
-    "iters", llvm::cl::desc("Number of times to loop over provided input."),
+llvm::cl::opt<unsigned> requestCountOpt(
+    "request_count",
+    llvm::cl::desc("Total number of requests to loop over provided input."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<unsigned> durationMinOpt(
     "duration_min", llvm::cl::desc("Running duration limit in minutes"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
@@ -682,10 +684,10 @@ int run() {
   auto endTimeDuration = nowTime + std::chrono::minutes(durationMinOpt);
   do {
     TraceContext mergedTraceContext(TraceLevel::STANDARD);
-    folly::CPUThreadPoolExecutor threadPool(concurrentRequestsOpt);
+    folly::CPUThreadPoolExecutor threadPool(concurrentCountOpt);
     std::mutex mutex;
     std::condition_variable cv;
-    int numTotalInferences = inputGroupSize * itersOpt;
+    int numTotalInferences = inputGroupSize * requestCountOpt;
     int numFinishedInferences = 0;
 
     // Figure out which placeholder is input.
