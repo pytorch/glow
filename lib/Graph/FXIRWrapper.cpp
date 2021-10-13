@@ -98,4 +98,12 @@ const Storage *FXIRWrapper::getStorageFromNodeName(llvm::StringRef name) const {
   return it->second;
 }
 
+const std::string
+FXIRWrapper::getFXWeightNameFromGlowConstNodeName(llvm::StringRef name) const {
+  auto it = mapGlowConstNodeToFXNodeName.find(name);
+  CHECK(it != mapGlowConstNodeToFXNodeName.end())
+      << " Glow const Node with that name doesn't exist";
+  return it->second;
+}
+
 } // namespace glow
