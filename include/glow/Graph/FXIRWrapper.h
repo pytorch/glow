@@ -75,6 +75,12 @@ public:
   /// A map to store (key) node name to  (value) placeholder/constant.
   llvm::StringMap<const Storage *> mapNodeNameToStorage_ = {};
 
+  /// A map to store (key) Glow constant(storage) node name to FX IR weight node
+  /// name. This is in spirit the reverse of the above map.
+  /// Example use of this is to map constant node name from the symbol table to
+  /// a FX weight node name.
+  llvm::StringMap<std::string> mapGlowConstNodeToFXNodeName = {};
+
   IRKind getIRKind() const override { return IRKind::GlowFXIRKind; };
 
   static bool classof(const IRContainer *I) {
@@ -129,6 +135,10 @@ public:
 
   /// For a given weights node, get the underlying Storage.
   const Storage *getStorageFromNodeName(llvm::StringRef name) const;
+
+  /// Given the name of Glow Constant Node, return the FX Weight node name.
+  [[nodiscard]] const std::string
+  getFXWeightNameFromGlowConstNodeName(llvm::StringRef name) const;
 
   /// When FXIR has the notion of memory/buffers. This function returns
   /// the memory buffer a node(operator) writes to.
