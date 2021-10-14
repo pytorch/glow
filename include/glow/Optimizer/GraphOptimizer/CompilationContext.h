@@ -236,6 +236,11 @@ struct OptimizationOptions {
   /// The number of parallel chunks used in DAG Optimizer parallelization
   int32_t DAGOptimizerNumParallelChunks;
 
+  /// If it is true (false), perform (not perform) ASAP op placement in DAG
+  /// optimization; If it is not set, use acc perf GFlag APLASAPPlacement to
+  /// determine whether to perform ASAP op placement or not
+  std::optional<bool> enableAPLASAPPlacement;
+
   /// If true does int64 to int32 type demotion if backend supports for specific
   /// nodes.
   bool enableTypeDemotion{true};
