@@ -124,6 +124,10 @@ Error initializeCompilationContextFromGlowFlags(
         glow::flags::SparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
         glow::flags::SparseNNPartitioningPairTileWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairSLSWith =
+        glow::flags::SparseNNPartitioningPairSLSWith;
+    cctx.optimizationOpts.sparseNNPartitioningConcatSplitSize =
+        glow::flags::SparseNNPartitioningConcatSplitSize;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
@@ -272,6 +276,8 @@ void initializeCompilationContextFromSettings(
         settings.sparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
         settings.sparseNNPartitioningPairTileWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairSLSWith =
+        settings.sparseNNPartitioningPairSLSWith;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         settings.sparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =

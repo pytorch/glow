@@ -81,6 +81,12 @@ void printSlsDeviceInfo(const std::vector<SLSDeviceInfo> &slsDevices,
                         const std::vector<NodesSet> &nodesets,
                         const unsigned contextCount, bool verbose_only);
 
+// Returns whether \p node is an SLS node
+bool isSLSNode(const Node *node);
+
+// Returns whether all inputs to \p node are of the kind \p kind
+bool checkNodeInputsAllKind(const Node *node, glow::Kinded::Kind kind);
+
 /// Loop through slsDevices, assign \p table to first available \p slsDevices
 /// that can fit \p table.
 /// \returns Error if we could not find one.

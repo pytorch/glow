@@ -90,6 +90,8 @@ bool SparseNNPartitioningAddSLSConcats = false;
 bool SparseNNPartitioningBalancePerfModel = false;
 bool SparseNNPartitioningPairLNWithSLS = false;
 bool SparseNNPartitioningPairTileWithSLS = false;
+std::string SparseNNPartitioningPairSLSWith = "";
+int32_t SparseNNPartitioningConcatSplitSize = 1;
 
 // Dag Optimizer Constants
 bool UseDAGOptimizer = false;
@@ -354,6 +356,26 @@ DEFINE_bool(
 DEFINE_validator(glow_sparsenn_partitioning_pair_tile_with_sls,
                  [](const char *, bool val) {
                    glow::flags::SparseNNPartitioningPairTileWithSLS = val;
+                   return true;
+                 });
+DEFINE_string(
+    glow_sparsenn_partitioning_pair_sls_with,
+    glow::flags::SparseNNPartitioningPairSLSWith,
+    "Put nodes specified immediately following SLS into SLS partitions."
+    "Supported for LayerNorm, Tile, Concat, and Tanh nodes"
+    "Comma separated list of node names, e.g. LayerNorm,Tile.");
+DEFINE_validator(glow_sparsenn_partitioning_pair_sls_with,
+                 [](const char *, const std::string &val) {
+                   glow::flags::SparseNNPartitioningPairSLSWith = val;
+                   return true;
+                 });
+DEFINE_int32(glow_sparsenn_partitioning_concat_split_size,
+             glow::flags::SparseNNPartitioningConcatSplitSize,
+             "The number of inputs to split each concat to be moved into SLS "
+             "partitions to");
+DEFINE_validator(glow_sparsenn_partitioning_concat_split_size,
+                 [](const char *, const int32_t val) {
+                   glow::flags::SparseNNPartitioningConcatSplitSize = val;
                    return true;
                  });
 DEFINE_bool(glow_clip_fp16, glow::flags::ClipToFP16,
