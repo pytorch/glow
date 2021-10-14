@@ -137,7 +137,7 @@ public:
   const Storage *getStorageFromNodeName(llvm::StringRef name) const;
 
   /// Given the name of Glow Constant Node, return the FX Weight node name.
-  [[nodiscard]] const std::string
+  const std::string
   getFXWeightNameFromGlowConstNodeName(llvm::StringRef name) const;
 
   /// When FXIR has the notion of memory/buffers. This function returns
