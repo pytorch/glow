@@ -1721,7 +1721,16 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
 
 ReshapeNode *Function::createFlatten(llvm::StringRef name, NodeValue input,
                                      unsigned_t axis) {
-  auto xDim = flattenCdr(input.getType()->dims(), axis);
+  std::pair<dim_t, dim_t> xDim;
+  if (axis == 0) {
+    dim_t d = 1;
+    for (auto dim : input.getType()->dims()) {
+      d *= dim;
+    }
+    xDim = {1, d};
+  } else {
+    xDim = flattenCdr(input.getType()->dims(), axis);
+  }
   return createReshape(name, input, {xDim.first, xDim.second});
 }
 
