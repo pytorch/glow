@@ -618,7 +618,7 @@ Error applyFuserSettingsToPyTorchLoaderSettings(
   settings.fusionStartIndex = newSettings.fusion_start_index;
   settings.fusionEndIndex = newSettings.fusion_end_index;
   for (const auto &symbol : newSettings.op_blacklist) {
-    settings.opBlacklist.insert(torch::jit::Symbol::fromQualString(symbol));
+    settings.opBlocklist.insert(torch::jit::Symbol::fromQualString(symbol));
   }
 
   // Ensure override flags are honored

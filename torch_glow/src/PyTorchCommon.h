@@ -58,7 +58,7 @@ public:
 
   /// A list of symbols for nodes that will be ignored by the Glow fuser and
   /// thus will not be fused to Glow.
-  std::unordered_set<torch::jit::Symbol> opBlacklist;
+  std::unordered_set<torch::jit::Symbol> opBlocklist;
 
   /// The minimum size of a glow fusion groups in terms of number of PyTorch
   /// nodes. 0 indicates no minimum size.

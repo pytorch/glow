@@ -36,7 +36,7 @@ def ephemeral_torchglow_settings(
     old_clip = torch_glow.get_clip_fp16()
     old_convert_fused = torch_glow.get_convert_fused_to_fp16()
     old_backend = torch_glow.getGlowBackendName()
-    old_blocklist = torch_glow.getFusionBlacklist()
+    old_blocklist = torch_glow.getFusionBlocklist()
     old_fusion = torch_glow.getFusionPassEnabled()
     try:
         if fusion:
@@ -52,9 +52,9 @@ def ephemeral_torchglow_settings(
             torch_glow.disable_convert_fused_to_fp16()
             torch_glow.disable_clip_fp16()
         if blocklist is None:
-            torch_glow.clearFusionBlacklist()
+            torch_glow.clearFusionBlocklist()
         else:
-            torch_glow.setFusionBlacklist(list(blocklist))
+            torch_glow.setFusionBlocklist(list(blocklist))
         if accept_all_layouts:
             torch_glow.enable_accept_all_layout()
         else:
@@ -67,7 +67,7 @@ def ephemeral_torchglow_settings(
         torch_glow.enable_convert_fused_to_fp16() if old_convert_fused else torch_glow.disable_convert_fused_to_fp16()
         torch_glow.enableFusionPass_DO_NOT_USE_THIS() if old_fusion else torch_glow.disableFusionPass()
         torch_glow.setGlowBackend(old_backend)
-        torch_glow.setFusionBlacklist(old_blocklist)
+        torch_glow.setFusionBlocklist(old_blocklist)
 
 
 def check_skip(case):

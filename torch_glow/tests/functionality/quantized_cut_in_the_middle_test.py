@@ -38,17 +38,17 @@ class TestQuantizedCut(utils.TorchGlowTestCase):
             d = torch.randn([5, 5])
             res_torch = fun(a, b, c, d)
             torch_glow.enableFusionPass_DO_NOT_USE_THIS()
-            # Cut using blacklist functionality
-            blacklist = ["quantized::add_relu"]
-            torch_glow.setFusionBlacklist(blacklist)
+            # Cut using blocklist functionality
+            blocklist = ["quantized::add_relu"]
+            torch_glow.setFusionBlocklist(blocklist)
             torch_glow.setGlowBackend("Interpreter")
             traced_model = torch.jit.trace(fun, (a, b, c, d))
             for node in traced_model.graph_for(a, b, c, d).nodes():
                 kind = node.kind()
-                # Make sure the blacklist is working
+                # Make sure the blocklist is working
                 assert (
                     kind == GLOW_FUSION_GROUP
-                    or kind in blacklist
+                    or kind in blocklist
                     or kind == "prim::Constant"
                 )
             res_glow = traced_model(a, b, c, d)
