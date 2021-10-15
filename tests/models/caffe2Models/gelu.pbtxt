@@ -1,0 +1,9 @@
+name: "gelu"
+op {
+  input: "input"
+  output: "output"
+  name: ""
+  type: "Gelu"
+}
+external_input: "input"
+external_output: "output"

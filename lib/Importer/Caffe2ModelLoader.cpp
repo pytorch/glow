@@ -815,6 +815,15 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
   const std::string &opName = loadOperatorName(op);
 
+  if (typeName == "Gelu") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    Node *node = G_->createGelu(opName, in);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   if (typeName == "Conv" || typeName == "ConvRelu") {
     return loadConv(op, dict);
   }

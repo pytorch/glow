@@ -5805,3 +5805,57 @@ TEST_F(Caffe2ImporterTest, CastInt64ToInt64) {
     }
   }
 }
+
+// Gelu test
+TEST_F(Caffe2ImporterTest, gelu) {
+  const std::string NetDescFilename(GLOW_DATA_PATH
+                                    "tests/models/caffe2Models/gelu.pbtxt");
+  const std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *outputPH;
+
+  std::vector<dim_t> inputShape{10, 30};
+
+  Tensor input{ElemKind::FloatTy, {inputShape}};
+  input.getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following
+  // execution will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    outputPH = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+  }
+
+  auto output = bindings.get(outputPH);
+  EXPECT_EQ(inputShape, output->dims().vec());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto outputH = output->getHandle();
+
+  for (dim_t d1 = 1; d1 < inputShape[0]; ++d1) {
+    for (dim_t d2 = 1; d2 < inputShape[1]; ++d2) {
+      auto val = input.getHandle().at({d1, d2});
+      // Gaussian Error Linear Unit. An activation function used in the most
+      // recent Transformers – Google's BERT and OpenAI's GPT-2. This activation
+      // function takes the form of this equation:
+      // GELU(x) = 0.5𝑥(1+erf(𝑥/√2))
+      // Knowing that erf(𝑥) is very close to tanh(𝑥)
+      // GELU(x) ≃ 0.5x(1+tanh(√2/π(x+0.044715x3)))
+      // = 0.5𝑥(1 + tanh(0.797885𝑥+0.035677𝑥3))
+      auto exp =
+          0.5 * val * (1 + tanh(0.797885 * val + 0.035677 * pow(val, 3)));
+      EXPECT_NEAR(exp, outputH.at({d1, d2}), 1e-3);
+    }
+  }
+}
