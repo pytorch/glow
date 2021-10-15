@@ -1194,6 +1194,8 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(X, getNodeValueByName(op.input(0)));
     NodeValue Y;
     ASSIGN_VALUE_OR_RETURN_ERR(Y, getNodeValueByName(op.input(1)));
+    RETURN_ERR_IF_NOT(X.dims() == Y.dims(),
+                      opErrMsg(op, "X and Y must have the same dimensions"));
     auto *node = G_->createDotProduct(loadOperatorName(op), X, Y);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
