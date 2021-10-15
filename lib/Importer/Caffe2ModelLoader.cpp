@@ -2018,6 +2018,12 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto nzIndices = G_->createNonZero(opName + ".nonzero", indicatorBool);
 
     auto nzIndicesFixed = fixNonZero(G_, mod_, opName, nzIndices);
+    auto nonZeroCount = data.dims()[0];
+    RETURN_ERR_IF_NOT(nonZeroCount <= nzIndicesFixed->getNthResult(0).dims()[0],
+                      opErrMsg(op,
+                               "The number of "
+                               "non-zero elements in the indicator must be at "
+                               "least that of the first dimension of data"));
 
     auto indices = G_->createSlice(opName + ".indices", nzIndicesFixed, {0, 0},
                                    {data.dims()[0], 1});
