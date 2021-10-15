@@ -195,21 +195,31 @@ struct OptimizationOptions {
   /// scheme
   bool useSparseNNPartitioningScheme{false};
 
-  /// If true, SparseNN partiitoning scheme will add extra concats to the
+  /// If true, SparseNN partitioning scheme will add extra concats to the
   /// SLS partition for more efficient inter-partition transfers
   bool sparseNNPartitioningAddSLSConcats{false};
 
-  /// If true, SparseNN partiitoning scheme will balance SLS tables across
+  /// If true, SparseNN partitioning scheme will balance SLS tables across
   /// cards using a performance model
   bool sparseNNPartitioningBalancePerfModel{false};
 
-  /// If true, SparseNN partiitoning scheme will move Layer Normalization
+  /// If true, SparseNN partitioning scheme will move Layer Normalization
   /// nodes immediately following SLS into SLS partitions
   bool sparseNNPartitioningPairLNWithSLS{false};
 
-  /// If true, SparseNN partiitoning scheme will move Tile
+  /// If true, SparseNN partitioning scheme will move Tile
   /// nodes immediately following SLS for user embeddings into SLS partitions
   bool sparseNNPartitioningPairTileWithSLS{false};
+
+  /// SparseNN partitioning scheme will move nodes specified
+  /// in a comma-separated string which immediately follow SLS nodes into SLS
+  /// partitions. For example, to move Tanh and Concat, use "Tanh,Concat".
+  std::string sparseNNPartitioningPairSLSWith{""};
+
+  // If "Concat" and "Tanh" are specified in sparseNNPartitioningPairSLSWith,
+  // this will split large Concats going into a Tanh sink to the specified size
+  // before moving them into SLS partitions
+  unsigned int sparseNNPartitioningConcatSplitSize{1};
 
   /// The number of cards over which to split SLS tables when using SparseNN
   /// partitioning scheme

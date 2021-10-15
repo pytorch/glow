@@ -16,6 +16,7 @@
 
 #include "glow/Partitioner/Partitioner.h"
 
+#include "folly/String.h"
 #include "glow/Flags/Flags.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/PartitionerOptimizer.h"
@@ -26,6 +27,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include <unordered_map>
 
 #include <fstream>
 
@@ -1045,32 +1047,187 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
   return std::move(partitions);
 }
 
-// Do a search starting at an SLS output to capture any Clip or
-// LayerNormalization nodes which are there
-static void expandFrontier(Node *node, const NodeValue &value,
-                           std::unordered_set<NodeValue> &frontier,
-                           std::unordered_set<Node *> &traversedNodes,
-                           bool includeLN, bool includeTile) {
+// Do a search starting at an SLS node to split any concats/tanh that will
+// be included the SLS partition
+static void splitConcatTanhFromNode(Function *F, Node *node,
+                                    int concatSplitSize,
+                                    const KindSet &pairSLSWithNodeKinds,
+                                    bool concatTanhSinkApplied) {
+  auto users = node->getUsers();
+  for (auto &j : users) {
+    Node *user = j.getUser();
+    auto shouldPairWithSls = pairSLSWithNodeKinds.count(user->getKind());
+    if (!shouldPairWithSls) {
+      continue;
+    }
+
+    if (auto *CN = llvm::dyn_cast<ConcatNode>(user)) {
+      if (concatTanhSinkApplied) {
+        auto concatUsers = CN->getUsers();
+        // Skip splitting concats which don't go into a tanh sink or are small
+        if (concatUsers.empty() ||
+            concatUsers.begin()->getUser()->getKind() !=
+                glow::Kinded::Kind::TanhNodeKind ||
+            CN->getNumInputs() <= concatSplitSize) {
+          continue;
+        }
+        auto tanhNode =
+            llvm::dyn_cast<TanhNode>(concatUsers.begin()->getUser());
+        auto dim = CN->getDim();
+        // Split the concat into smaller concats and create a tanh sink for each
+        // split
+        std::vector<NodeValue> concats;
+        for (size_t i = 0, n = CN->getNumInputs(); i < n;
+             i += concatSplitSize) {
+          auto begin = CN->getInputs().begin() + i;
+          auto length = i + concatSplitSize < n ? concatSplitSize : n - i;
+
+          std::vector<NodeValue> concatInputs(begin, begin + length);
+          auto *concat = F->createConcat(CN->getName().str() + "_part_" +
+                                             std::to_string(i / n),
+                                         concatInputs, dim);
+          auto *tanh = F->createTanh(CN->getName().str() + "_tanh_part_" +
+                                         std::to_string(i / n),
+                                     concat->getResult());
+          concats.emplace_back(tanh->getResult());
+        }
+        // Combine split up concats
+        auto *newConcat =
+            F->createConcat(CN->getName().str() + "_combined", concats, dim);
+        tanhNode->getResult().replaceAllUsesOfWith(newConcat->getResult());
+        F->eraseNode(CN);
+        F->eraseNode(tanhNode);
+      } else {
+        // Skip splitting concats which don't have all tanh inputs or are small
+        if (!checkNodeInputsAllKind(user, glow::Kinded::Kind::TanhNodeKind) ||
+            CN->getNumInputs() <= concatSplitSize) {
+          continue;
+        }
+        auto dim = CN->getDim();
+        // Split the concat into smaller concats
+        std::vector<NodeValue> concats;
+        for (size_t i = 0, n = CN->getNumInputs(); i < n;
+             i += concatSplitSize) {
+          auto begin = CN->getInputs().begin() + i;
+          auto length = i + concatSplitSize < n ? concatSplitSize : n - i;
+
+          std::vector<NodeValue> concatInputs(begin, begin + length);
+          auto *concat = F->createConcat(CN->getName().str() + "_part_" +
+                                             std::to_string(i / n),
+                                         concatInputs, dim);
+          concats.emplace_back(concat->getResult());
+        }
+        // Combine split-up concats
+        auto *newConcat =
+            F->createConcat(CN->getName().str() + "_combined", concats, dim);
+        CN->getResult().replaceAllUsesOfWith(newConcat->getResult());
+        F->eraseNode(CN);
+      }
+    } else {
+      splitConcatTanhFromNode(F, user, concatSplitSize, pairSLSWithNodeKinds,
+                              concatTanhSinkApplied);
+    }
+  }
+}
+
+static void splitConcatTanh(Function *F, int concatSplitSize,
+                            std::vector<std::string> pairSLSWith,
+                            bool concatTanhSinkApplied) {
+  const std::unordered_map<std::string, glow::Kinded::Kind> nameToNodeKind = {
+      {"Concat", glow::Kinded::Kind::ConcatNodeKind},
+      {"LayerNorm", glow::Kinded::Kind::LayerNormalizationNodeKind},
+      {"Tile", glow::Kinded::Kind::TileNodeKind},
+      {"Tanh", glow::Kinded::Kind::TanhNodeKind}};
+  for (auto &node : F->getNodes()) {
+    switch (node.getKind()) {
+
+#define SPLIT_CONCAT_TANH_CASE(NODE_NAME_)                                     \
+  case Kinded::Kind::NODE_NAME_##Kind: {                                       \
+    auto SLS = llvm::cast<NODE_NAME_>(&node);                                  \
+    KindSet pairSLSWithNodeKinds;                                              \
+    for (auto &s : pairSLSWith) {                                              \
+      if (nameToNodeKind.find(s) == nameToNodeKind.end() ||                    \
+          pairSLSWithNodeKinds.count(nameToNodeKind.at(s))) {                  \
+        continue;                                                              \
+      }                                                                        \
+      if (s == "Tile") {                                                       \
+        if (SLS->getResult().dims()[0] == 1) {                                 \
+          pairSLSWithNodeKinds.insert(nameToNodeKind.at(s));                   \
+        }                                                                      \
+      } else {                                                                 \
+        pairSLSWithNodeKinds.insert(nameToNodeKind.at(s));                     \
+      }                                                                        \
+    }                                                                          \
+    splitConcatTanhFromNode(F, SLS, concatSplitSize, pairSLSWithNodeKinds,     \
+                            concatTanhSinkApplied);                            \
+  }                                                                            \
+    continue;
+
+      SPLIT_CONCAT_TANH_CASE(FusedRowwiseQuantizedSparseLengthsWeightedSumNode);
+      SPLIT_CONCAT_TANH_CASE(FusedRowwiseQuantizedSparseLengthsSumNode);
+      SPLIT_CONCAT_TANH_CASE(RowwiseQuantizedSparseLengthsWeightedSumNode);
+      SPLIT_CONCAT_TANH_CASE(SparseLengthsSumNode);
+      SPLIT_CONCAT_TANH_CASE(SparseLengthsWeightedSumNode);
+      SPLIT_CONCAT_TANH_CASE(EmbeddingBagNode);
+      SPLIT_CONCAT_TANH_CASE(EmbeddingBagByteRowwiseOffsetsNode);
+#undef SPLIT_CONCAT_TANH_CASE
+
+    default:
+      continue;
+    }
+  }
+}
+
+// Do a search starting at an SLS output to capture any Clip,
+// LayerNormalization, Tile, Tanh nodes which are there
+static void
+expandFrontier(Node *node, const NodeValue &value,
+               std::unordered_set<NodeValue> &frontier,
+               std::unordered_set<Node *> &traversedNodes,
+               const std::map<glow::Kinded::Kind, size_t> &pairSlsWithNodeKinds,
+               bool concatTanhSinkApplied) {
   traversedNodes.insert(node);
   bool covered = true;
   auto users = node->getUsers();
   for (auto j = users.begin(), f = users.end(); j != f; ++j) {
     Node *user = (*j).getUser();
     if (ClipNode *CN = llvm::dyn_cast<ClipNode>(user)) {
-      expandFrontier(user, CN->getResult(), frontier, traversedNodes, includeLN,
-                     includeTile);
-    } else if ((includeLN) &&
-               (user->getKind() ==
-                glow::Kinded::Kind::LayerNormalizationNodeKind)) {
-      expandFrontier(user,
-                     user->getNthResult(LayerNormalizationNode::ResultIdx),
-                     frontier, traversedNodes, includeLN, includeTile);
-    } else if ((includeTile) &&
-               (user->getKind() == glow::Kinded::Kind::TileNodeKind)) {
-      expandFrontier(user, user->getNthResult(TileNode::ResultIdx), frontier,
-                     traversedNodes, includeLN, includeTile);
+      expandFrontier(user, CN->getResult(), frontier, traversedNodes,
+                     pairSlsWithNodeKinds, concatTanhSinkApplied);
     } else {
-      covered = false;
+      auto it = pairSlsWithNodeKinds.find(user->getKind());
+      if (it != pairSlsWithNodeKinds.end()) {
+
+        if (it->first == glow::Kinded::Kind::ConcatNodeKind) {
+          auto concatUsers = user->getUsers();
+          // If tanh sink was applied, only include concats which go into tanh
+          // sink
+          if (concatTanhSinkApplied && !concatUsers.empty() &&
+              concatUsers.begin()->getUser()->getKind() ==
+                  glow::Kinded::Kind::TanhNodeKind) {
+            expandFrontier(user, user->getNthResult(it->second), frontier,
+                           traversedNodes, pairSlsWithNodeKinds,
+                           concatTanhSinkApplied);
+          }
+          // If tanh sink was not applied, only include concats whose inputs are
+          // all tanh
+          else if (!concatTanhSinkApplied &&
+                   checkNodeInputsAllKind(user,
+                                          glow::Kinded::Kind::TanhNodeKind)) {
+            expandFrontier(user, user->getNthResult(it->second), frontier,
+                           traversedNodes, pairSlsWithNodeKinds,
+                           concatTanhSinkApplied);
+          } else {
+            covered = false;
+          }
+        } else {
+          expandFrontier(user, user->getNthResult(it->second), frontier,
+                         traversedNodes, pairSlsWithNodeKinds,
+                         concatTanhSinkApplied);
+        }
+      } else {
+        covered = false;
+      }
     }
   }
   if (!covered) {
@@ -1083,7 +1240,8 @@ static void expandFrontier(Node *node, const NodeValue &value,
 template <typename SLSType>
 static Error appendSLSTable(SLSType *SLS, std::vector<SLSTableInfo> &slsTables,
                             bool doPerfModelBalance, Backend *backend,
-                            bool addLN, bool addTile) {
+                            const std::vector<std::string> &pairSLSWith,
+                            bool concatTanhSinkApplied) {
   uint64_t cost = 1;
   uint64_t numBytesInTable =
       (uint64_t)SLS->getData().getType()->getSizeInBytes();
@@ -1095,21 +1253,79 @@ static Error appendSLSTable(SLSType *SLS, std::vector<SLSTableInfo> &slsTables,
     cost = (uint64_t)cost_d;
   }
   auto slsResult = SLS->getResult();
-  auto insertTile = addTile && (slsResult.dims()[0] == 1);
+  const std::unordered_map<std::string, std::pair<glow::Kinded::Kind, size_t>>
+      nameToNodeKind{
+          {"Concat",
+           {glow::Kinded::Kind::ConcatNodeKind, ConcatNode::ResultIdx}},
+          {"LayerNorm",
+           {glow::Kinded::Kind::LayerNormalizationNodeKind,
+            LayerNormalizationNode::ResultIdx}},
+          {"Tile", {glow::Kinded::Kind::TileNodeKind, TileNode::ResultIdx}},
+          {"Tanh", {glow::Kinded::Kind::TanhNodeKind, TanhNode::ResultIdx}},
+      };
+  std::map<glow::Kinded::Kind, size_t> pairSlsWithNodeKinds;
+  for (auto &s : pairSLSWith) {
+    if (nameToNodeKind.find(s) == nameToNodeKind.end() ||
+        pairSlsWithNodeKinds.find(nameToNodeKind.at(s).first) !=
+            pairSlsWithNodeKinds.end()) {
+      continue;
+    }
+    // Only expand SLS w/ tile for user embeddings
+    if (s == "Tile") {
+      // The first dimension = 1 corresponds to user embeddings, so we expand w/
+      // Tile
+      if (slsResult.dims()[0] == 1) {
+        pairSlsWithNodeKinds.insert(nameToNodeKind.at(s));
+      }
+    } else {
+      pairSlsWithNodeKinds.insert(nameToNodeKind.at(s));
+    }
+  }
   std::unordered_set<NodeValue> frontier;
   std::unordered_set<Node *> neighbors;
-  expandFrontier(SLS, slsResult, frontier, neighbors, addLN, insertTile);
+  expandFrontier(SLS, slsResult, frontier, neighbors, pairSlsWithNodeKinds,
+                 concatTanhSinkApplied);
 
   // neighbors contains only successors; add all predecessors too.
+  std::unordered_set<Node *> addedSLSNeighbors;
   std::queue<Node *> preds;
   for (auto *N : neighbors) {
     preds.push(N);
   }
   preds.push(SLS);
+  auto hasConcat = pairSlsWithNodeKinds.find(Kinded::Kind::ConcatNodeKind) !=
+                   pairSlsWithNodeKinds.end();
   while (!preds.empty()) {
     auto *cur = preds.front();
     if (cur != SLS) {
       neighbors.insert(cur);
+      // Sum up the total sizes of SLS nodes under the same concat since they'll
+      // all be in the same partition
+      if (hasConcat && isSLSNode(cur) &&
+          addedSLSNeighbors.find(cur) == addedSLSNeighbors.end()) {
+        addedSLSNeighbors.insert(cur);
+        switch (cur->getKind()) {
+#define ADD_SLS_NB_NODE_SIZE_CASE(NODE_NAME_)                                  \
+  case Kinded::Kind::NODE_NAME_##Kind: {                                       \
+    auto SLS = llvm::cast<NODE_NAME_>(cur);                                    \
+    numBytesInTable += (uint64_t)SLS->getData().getType()->getSizeInBytes();   \
+  }                                                                            \
+    continue;
+
+          ADD_SLS_NB_NODE_SIZE_CASE(
+              FusedRowwiseQuantizedSparseLengthsWeightedSumNode);
+          ADD_SLS_NB_NODE_SIZE_CASE(FusedRowwiseQuantizedSparseLengthsSumNode);
+          ADD_SLS_NB_NODE_SIZE_CASE(
+              RowwiseQuantizedSparseLengthsWeightedSumNode);
+          ADD_SLS_NB_NODE_SIZE_CASE(SparseLengthsSumNode);
+          ADD_SLS_NB_NODE_SIZE_CASE(SparseLengthsWeightedSumNode);
+          ADD_SLS_NB_NODE_SIZE_CASE(EmbeddingBagNode);
+          ADD_SLS_NB_NODE_SIZE_CASE(EmbeddingBagByteRowwiseOffsetsNode);
+#undef ADD_SLS_NB_NODE_SIZE_CASE
+        default:
+          continue;
+        }
+      }
     }
     preds.pop();
     for (auto *N : getInputs(cur)) {
@@ -1171,10 +1387,10 @@ sparseNNInsertSplitConcat(Function *F,
                                     (size_t)tableDims[otherDim],
                                     (size_t)templateDims[otherDim]));
       }
-      RETURN_ERR_IF_NOT(
-          tableResult.getType()->getElementType() ==
-              templateResult.getType()->getElementType(),
-          "SLS concat addition encountered tensors with differing ElementType");
+      RETURN_ERR_IF_NOT(tableResult.getType()->getElementType() ==
+                            templateResult.getType()->getElementType(),
+                        "SLS concat addition encountered tensors with "
+                        "differing ElementType");
       concatInputs[p].push_back(tableResult);
     }
 
@@ -1265,15 +1481,15 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     RETURN_IF_ERR(::glow::optimizeFunction(F, *(backends[0]), cctx));
   }
 
-  // Now we may want to duplicate Splat input nodes in case they have been CSE'd
-  // (CSE stands for common subexpression elimination) into a single SplatNode.
-  // This is because if two SLWS that share Splat input nodes are separated to
-  // two partitions, then partitioning will force a dependence from whichever
-  // partition the input node are placed to the other partition. After
-  // partitioning when we optimize each partition individually, they may be
-  // merged again inside the partition. Besides, the potential partition
-  // dependency introduced might lead to a circular dependency in the final
-  // graph.
+  // Now we may want to duplicate Splat input nodes in case they have been
+  // CSE'd (CSE stands for common subexpression elimination) into a single
+  // SplatNode. This is because if two SLWS that share Splat input nodes are
+  // separated to two partitions, then partitioning will force a dependence
+  // from whichever partition the input node are placed to the other
+  // partition. After partitioning when we optimize each partition
+  // individually, they may be merged again inside the partition. Besides, the
+  // potential partition dependency introduced might lead to a circular
+  // dependency in the final graph.
   //
   // We fix this issue by iterating over the Function and finding Splat input
   // nodes with multiple users and just creating new Splats (by cloning) for
@@ -1286,9 +1502,24 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   std::vector<SLSTableInfo> slsTables;
   partitionConfig.funcName = std::string(F->getName());
   VLOG(1) << "Function: " << std::string(F->getName()) << std::endl;
-  const bool addTile =
-      cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS;
-  const bool addLN = cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS;
+
+  std::vector<std::string> pairSLSWith;
+  folly::split<char, std::string, std::string>(
+      ',', cctx.optimizationOpts.sparseNNPartitioningPairSLSWith, pairSLSWith,
+      /*ignoreEmpty*/ true);
+  if (cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS) {
+    pairSLSWith.emplace_back("Tile");
+  }
+  if (cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS) {
+    pairSLSWith.emplace_back("LayerNorm");
+  }
+  bool concatTanhSinkApplied = cctx.optimizationOpts.sinkTanhBelowConcat;
+  if (std::find(pairSLSWith.begin(), pairSLSWith.end(), "Concat") !=
+      pairSLSWith.end()) {
+    auto splitConcatSize =
+        cctx.optimizationOpts.sparseNNPartitioningConcatSplitSize;
+    splitConcatTanh(F, splitConcatSize, pairSLSWith, concatTanhSinkApplied);
+  }
   const bool doPerfModelBalance =
       cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel;
   size_t totalSLSTableSizes = 0;
@@ -1297,9 +1528,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
 #define APPEND_TABLE_CASE(NODE_NAME_)                                          \
   case Kinded::Kind::NODE_NAME_##Kind:                                         \
-    RETURN_IF_ERR(appendSLSTable<NODE_NAME_>(llvm::cast<NODE_NAME_>(&node),    \
-                                             slsTables, doPerfModelBalance,    \
-                                             backends[0], addLN, addTile));    \
+    RETURN_IF_ERR(appendSLSTable<NODE_NAME_>(                                  \
+        llvm::cast<NODE_NAME_>(&node), slsTables, doPerfModelBalance,          \
+        backends[0], pairSLSWith, concatTanhSinkApplied));                     \
     totalSLSTableSizes += slsTables.back().numBytesInTable;                    \
     continue;
 
@@ -1320,7 +1551,8 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
             << " SLS embedding tables: " << totalSLSTableSizes;
 
   // Now determine all nodes that fit in the NonSLS partition, so we know its
-  // total size and can better judge how much space is left for SLS partitions.
+  // total size and can better judge how much space is left for SLS
+  // partitions.
   std::unordered_set<const Node *> slsPartitionNodes;
   for (auto &slsTable : slsTables) {
     slsPartitionNodes.insert(slsTable.node);
@@ -1336,17 +1568,18 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     }
   }
 
-  // Calculate how much space the NonSLS partition takes up, and compare that to
-  // how much memory the device has to determine the allows SLS partition size.
+  // Calculate how much space the NonSLS partition takes up, and compare that
+  // to how much memory the device has to determine the allows SLS partition
+  // size.
   const uint64_t nonSLSPartitionSize =
       getGraphMemInfo(nonSLSPartitionNodes, contextCount_).getTotalMemSize();
   const uint64_t totalDeviceMemory = deviceInfo_[0].availableMemory;
-  RETURN_ERR_IF_NOT(
-      nonSLSPartitionSize < totalDeviceMemory,
-      strFormat(
-          "nonSLSPartitionSize %lu must be less than %s totalDeviceMemory %lu",
-          nonSLSPartitionSize, deviceInfo_[0].backendName.c_str(),
-          totalDeviceMemory));
+  RETURN_ERR_IF_NOT(nonSLSPartitionSize < totalDeviceMemory,
+                    strFormat("nonSLSPartitionSize %lu must be less than %s "
+                              "totalDeviceMemory %lu",
+                              nonSLSPartitionSize,
+                              deviceInfo_[0].backendName.c_str(),
+                              totalDeviceMemory));
   const uint64_t allowedSLSMemBytes = totalDeviceMemory - nonSLSPartitionSize;
 
   // Create table of devices
@@ -1384,8 +1617,8 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     // Now assign SLS Nodes to devices
     if (ERR_TO_BOOL(assignSlsTablesToDevices(slsTables, slsDevices,
                                              frontierValues, contextCount_))) {
-      LOG(INFO)
-          << "Failed to partition SLS tables, fall back to greedy algorithm.";
+      LOG(INFO) << "Failed to partition SLS tables, fall back to greedy "
+                   "algorithm.";
       if (!ERR_TO_BOOL(assignSlsTablesToDevicesGreedy(
               slsTables, slsDevices, frontierValues, contextCount_))) {
         partitionSucceeded = true;
@@ -1395,7 +1628,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     }
 
     if (partitionSucceeded) {
-      LOG(INFO) << "Successfully got a SparseNN parition solution with "
+      LOG(INFO) << "Successfully got a SparseNN partition solution with "
                 << snnNumCards << " sparse partitions.";
       break;
     } else {
