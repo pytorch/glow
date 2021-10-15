@@ -403,7 +403,7 @@ void PyTorchLoaderSettings::initSettings() {
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
     for (const auto &kindString : kindStrings) {
-      opBlacklist.insert(torch::jit::Symbol::fromQualString(kindString));
+      opBlocklist.insert(torch::jit::Symbol::fromQualString(kindString));
     }
   }
 
@@ -471,9 +471,9 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(debugLayers, s);
   INSERT_BOOL_TO_STREAM(useMaxSizeCompilation, s);
 
-  if (opBlacklist.size() > 0) {
-    s << "opBlacklist: [";
-    for (const auto &op : opBlacklist) {
+  if (opBlocklist.size() > 0) {
+    s << "opBlocklist: [";
+    for (const auto &op : opBlocklist) {
       s << op.toQualString() << ",";
     }
     s << "]" << std::endl;

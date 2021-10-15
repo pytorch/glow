@@ -423,12 +423,12 @@ void fuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph) {
 } // namespace detail
 
 /// \returns true if none of the symbols in \p symbolNames are contained in \p
-/// opBlacklist
+/// opBlocklist
 static bool
-noneInBlacklist(const std::unordered_set<torch::jit::Symbol> &opBlacklist,
+noneInBlocklist(const std::unordered_set<torch::jit::Symbol> &opBlocklist,
                 std::vector<const char *> symbolNames) {
   for (const char *symbolName : symbolNames) {
-    if (opBlacklist.count(at::Symbol::fromQualString(symbolName))) {
+    if (opBlocklist.count(at::Symbol::fromQualString(symbolName))) {
       return false;
     }
   }
@@ -621,37 +621,37 @@ void unfuseDummyOperators(std::shared_ptr<torch::jit::Graph> &graph) {
 
 void fuseKnownPatterns(
     std::shared_ptr<torch::jit::Graph> &graph,
-    const std::unordered_set<torch::jit::Symbol> &opBlacklist) {
+    const std::unordered_set<torch::jit::Symbol> &opBlockList) {
   detail::removeExceptions(graph);
   EliminateDeadCode(graph);
 
-  if (noneInBlacklist(opBlacklist, {"aten::dim", "aten::eq", "prim::If",
+  if (noneInBlocklist(opBlockList, {"aten::dim", "aten::eq", "prim::If",
                                     "aten::t", "aten::mm", "aten::add",
                                     "aten::matmul", "aten::add_"})) {
     detail::fuseBranchedLinearPattern(graph);
     EliminateDeadCode(graph);
   }
 
-  if (noneInBlacklist(opBlacklist,
+  if (noneInBlocklist(opBlockList,
                       {"aten::cat", "prim::ListConstruct", "aten::stack"})) {
     detail::fuseConcat(graph);
   }
 
-  if (noneInBlacklist(opBlacklist,
+  if (noneInBlocklist(opBlockList,
                       {"quantized::conv2d_prepack", "quantized::conv2d"})) {
     detail::fuseConvPrepack(graph);
   }
 
-  if (noneInBlacklist(opBlacklist,
+  if (noneInBlocklist(opBlockList,
                       {"quantized::linear_prepack", "quantized::linear"})) {
     detail::fuseLinearPrepack(graph);
   }
 
-  if (noneInBlacklist(opBlacklist, {"prim::NumToTensor", "aten::Int"})) {
+  if (noneInBlocklist(opBlockList, {"prim::NumToTensor", "aten::Int"})) {
     detail::fuseNumToTensorToNum(graph);
   }
 
-  if (noneInBlacklist(opBlacklist, {"prim::ListUnpack", "fb::equally_split"})) {
+  if (noneInBlocklist(opBlockList, {"prim::ListUnpack", "fb::equally_split"})) {
     detail::fuseSplit(graph);
   }
 

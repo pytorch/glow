@@ -18,7 +18,7 @@ class TestMinGraphSize(utils.TorchGlowTestCase):
 
         # Disable aten::div so that each group of aten::mul nodes will be forced
         # into separate subgraphs
-        torch_glow.setFusionBlacklist(["aten::div"])
+        torch_glow.setFusionBlocklist(["aten::div"])
 
         # Set minimum fusion group size to 3 nodes so that the smallest group which
         # contains only 2 nodes will not be created
@@ -44,5 +44,5 @@ class TestMinGraphSize(utils.TorchGlowTestCase):
 
         assert fusion_nodes == 2, "Expected smallest fusion group to not be created"
 
-        torch_glow.clearFusionBlacklist()
+        torch_glow.clearFusionBlocklist()
         torch_glow.setMinFusionGroupSize(0)
