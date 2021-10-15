@@ -79,6 +79,8 @@ extern bool SparseNNPartitioningAddSLSConcats;
 extern bool SparseNNPartitioningBalancePerfModel;
 extern bool SparseNNPartitioningPairLNWithSLS;
 extern bool SparseNNPartitioningPairTileWithSLS;
+extern std::string SparseNNPartitioningPairSLSWith;
+extern int32_t SparseNNPartitioningConcatSplitSize;
 
 // Dag Optimizer Constants
 extern bool UseDAGOptimizer;

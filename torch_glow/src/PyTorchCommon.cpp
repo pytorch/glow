@@ -114,6 +114,9 @@ DEFINE_bool(sparseNNPartitioningPairLNWithSLS, false,
             "See PyTorchLoaderSettings");
 DEFINE_bool(sparseNNPartitioningPairTileWithSLS, false,
             "See PyTorchLoaderSettings");
+DEFINE_string(sparseNNPartitioningPairSLSWith, "", "See PyTorchLoaderSettings");
+DEFINE_int32(sparseNNPartitioningConcatSplitSize, 1,
+             "See PyTorchLoaderSettings");
 DEFINE_int32(sparseNNPartitioningSchemeNumCards, 1,
              "See PyTorchLoaderSettings");
 DEFINE_int64(sparseNNPartitioningSchemeSLSTableKBytesPerCard, 1,
@@ -391,6 +394,9 @@ void PyTorchLoaderSettings::initSettings() {
   sparseNNPartitioningPairLNWithSLS = FLAGS_sparseNNPartitioningPairLNWithSLS;
   sparseNNPartitioningPairTileWithSLS =
       FLAGS_sparseNNPartitioningPairTileWithSLS;
+  sparseNNPartitioningPairSLSWith = FLAGS_sparseNNPartitioningPairSLSWith;
+  sparseNNPartitioningConcatSplitSize =
+      FLAGS_sparseNNPartitioningConcatSplitSize;
   sparseNNPartitioningSchemeNumCards = FLAGS_sparseNNPartitioningSchemeNumCards;
   sparseNNPartitioningSchemeSLSTableKBytesPerCard =
       FLAGS_sparseNNPartitioningSchemeSLSTableKBytesPerCard;

@@ -264,6 +264,8 @@ public:
   bool sparseNNPartitioningBalancePerfModel = false;
   bool sparseNNPartitioningPairLNWithSLS = false;
   bool sparseNNPartitioningPairTileWithSLS = false;
+  std::string sparseNNPartitioningPairSLSWith = "";
+  int32_t sparseNNPartitioningConcatSplitSize = 1;
   int32_t sparseNNPartitioningSchemeNumCards = 1;
   int64_t sparseNNPartitioningSchemeSLSTableKBytesPerCard = 1;
   int32_t SparseNNPartitioningSchemeNumCoresSLS = 1;

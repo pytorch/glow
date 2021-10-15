@@ -713,7 +713,7 @@ static void createSimpleModule(Module &mod) {
 
 static void createSimpleSparseNNModule(Module &mod, bool shareSplatInputs,
                                        bool addClipAndLayerNorm, bool addTile,
-                                       dim_t numFCLayers) {
+                                       bool addTanh, dim_t numFCLayers) {
   mod.clear();
   auto *F = mod.createFunction("test");
 
@@ -807,6 +807,10 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatInputs,
       /* Tile */
       auto *tiled = F->createTile("SLS_tiled", slsOutput, batchSize, 0);
       slsOutputs.emplace_back(tiled);
+    } else if (addTanh) {
+      /* Tanh */
+      auto *tanh = F->createTanh("SLS_tanh", slsOutput);
+      slsOutputs.emplace_back(tanh);
     } else {
       slsOutputs.emplace_back(slsOutput);
     }
@@ -847,12 +851,12 @@ static bool findNodeInFunction(const Function *func,
 /// To check if the generated DAG is correct for the SparseNN Partiton
 /// unnittests. The network used for check is generated from function static
 /// void createSimpleSparseNNModule(Module &mod).
-static void sparseNNPartitionValidation(const DAGListTy &dagList,
-                                        uint64_t deviceMemory, Module &mod,
-                                        bool shareSplatInputs,
-                                        bool addClipAndLayerNorm,
-                                        bool pairLNWithSLS, bool addTile,
-                                        bool pairTileWithSLS) {
+static void
+sparseNNPartitionValidation(const DAGListTy &dagList, uint64_t deviceMemory,
+                            Module &mod, bool shareSplatInputs,
+                            bool addClipAndLayerNorm, bool pairLNWithSLS,
+                            bool addTile, bool pairTileWithSLS, bool addTanh,
+                            std::string sparseNNPartitioningPairSLSWith) {
   int numOfCPUBackends = 0;
   int numOfSLSNodes = 0;
   int numOfFCNodes = 0;
@@ -903,6 +907,10 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList,
         if (addTile && pairTileWithSLS) {
           tileAdded |= findNodeInFunction(func, Kinded::Kind::TileNodeKind);
         }
+        if (addTanh &&
+            sparseNNPartitioningPairSLSWith.find("Tanh") != std::string::npos) {
+          EXPECT_TRUE(findNodeInFunction(func, Kinded::Kind::TanhNodeKind));
+        }
       } else if (findNodeInFunction(func,
                                     Kinded::Kind::FullyConnectedNodeKind)) {
         nonSlsPartitionSize = memInfo.getTotalMemSize();
@@ -912,6 +920,10 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList,
           EXPECT_TRUE(findNodeInFunction(
               func, Kinded::Kind::LayerNormalizationNodeKind));
           EXPECT_TRUE(findNodeInFunction(func, Kinded::Kind::ClipNodeKind));
+        }
+        if (addTanh &&
+            sparseNNPartitioningPairSLSWith.find("Tanh") == std::string::npos) {
+          EXPECT_TRUE(findNodeInFunction(func, Kinded::Kind::TanhNodeKind));
         }
       } else {
         FAIL() << "Unexpected partition";
@@ -934,9 +946,10 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList,
 static void testSimpleSparseNNPartitioning(
     Module &mod, bool shareSplatInputs, bool concatSLSOutputs,
     bool balancePerfModel, bool addClipAndLayerNorm, bool pairLNWithSLS,
-    bool addTile, bool pairTileWithSLS, bool forceFailure = false) {
+    bool addTile, bool pairTileWithSLS, bool addTanh,
+    std::string sparseNNPartitioningPairSLSWith, bool forceFailure = false) {
   createSimpleSparseNNModule(mod, shareSplatInputs, addClipAndLayerNorm,
-                             addTile, forceFailure ? 5 : 4);
+                             addTile, addTanh, forceFailure ? 5 : 4);
   BackendWithoutSub backend1, backend2, backend3;
   std::vector<Backend *> backends;
   backends.emplace_back(&backend1);
@@ -953,6 +966,8 @@ static void testSimpleSparseNNPartitioning(
   cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel = balancePerfModel;
   cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS = pairLNWithSLS;
   cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS = pairTileWithSLS;
+  cctx.optimizationOpts.sparseNNPartitioningPairSLSWith =
+      sparseNNPartitioningPairSLSWith;
   Expected<DAGListTy> dagList = partitioner.partition(cctx);
   bool failed = ERR_TO_BOOL(dagList.takeError());
   if (forceFailure) {
@@ -968,7 +983,8 @@ static void testSimpleSparseNNPartitioning(
   ASSERT_TRUE(checkSaveNode(mod));
   sparseNNPartitionValidation(*dagList, deviceMemory, mod, shareSplatInputs,
                               addClipAndLayerNorm, pairLNWithSLS, addTile,
-                              pairTileWithSLS);
+                              pairTileWithSLS, addTanh,
+                              sparseNNPartitioningPairSLSWith);
   mod.clear();
 }
 
@@ -980,7 +996,9 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
                                  /*addClipAndLayerNorm*/ false,
                                  /*pairLNWithSLS*/ false,
                                  /*addTile*/ false,
-                                 /*pairTileWithSLS*/ false);
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test that this flag is a NOP when LN doesn't exist
@@ -991,7 +1009,10 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningPairLNNOP) {
                                  /*addClipAndLayerNorm*/ false,
                                  /*pairLNWithSLS*/ true,
                                  /*addTile*/ false,
-                                 /*pairTileWithSLS*/ false);
+                                 /*addTanh*/ false,
+                                 /*pairTileWithSLS*/
+                                 false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test using user-defined backends for SparseNN partition.
@@ -1002,7 +1023,9 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningClipAndLayerNormInNonSLS) {
                                  /*addClipAndLayerNorm*/ true,
                                  /*pairLNWithSLS*/ false,
                                  /*addTile*/ false,
-                                 /*pairTileWithSLS*/ false);
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test using user-defined backends for SparseNN partition.
@@ -1013,7 +1036,9 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningClipAndLayerNormInSLS) {
                                  /*addClipAndLayerNorm*/ true,
                                  /*pairLNWithSLS*/ true,
                                  /*addTile*/ false,
-                                 /*pairTileWithSLS*/ false);
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning_ConcatSLSOutputs) {
@@ -1023,7 +1048,9 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioning_ConcatSLSOutputs) {
                                  /*addClipAndLayerNorm*/ true,
                                  /*pairLNWithSLS*/ false,
                                  /*addTile*/ false,
-                                 /*pairTileWithSLS*/ false);
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test using user-defined backends for SparseNN partition when inputs are
@@ -1035,7 +1062,9 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioning_SharedSplatInputs) {
                                  /*addClipAndLayerNorm*/ true,
                                  /*pairLNWithSLS*/ false,
                                  /*addTile*/ false,
-                                 /*pairTileWithSLS*/ false);
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test using user-defined backends for SparseNN partition when inputs are
@@ -1048,7 +1077,9 @@ TEST_F(PartitionerTest,
                                  /*addClipAndLayerNorm*/ true,
                                  /*pairLNWithSLS*/ true,
                                  /*addTile*/ false,
-                                 /*pairTileWithSLS*/ false);
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test using user-defined backends for SparseNN partition.
@@ -1059,7 +1090,9 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningBalancePerfModel) {
                                  /*addClipAndLayerNorm*/ true,
                                  /*pairLNWithSLS*/ false,
                                  /*addTile*/ false,
-                                 /*pairTileWithSLS*/ false);
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test pairTileWithSLS is NOP when Tile doesn't exist
@@ -1070,7 +1103,9 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningPairTileNOP) {
                                  /*addClipAndLayerNorm*/ false,
                                  /*pairLNWithSLS*/ false,
                                  /*addTile*/ false,
-                                 /*pairTileWithSLS*/ true);
+                                 /*pairTileWithSLS*/ true,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test concatting SLS nodes where one node has first dimension = 1 without
@@ -1082,7 +1117,9 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningTileAndConcatSLSOutputs) {
                                  /*addClipAndLayerNorm*/ false,
                                  /*pairLNWithSLS*/ false,
                                  /*addTile*/ true,
-                                 /*pairTileWithSLS*/ false);
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test concatSLSOutputs on SLS nodes w/ first dimension = 1 while other nodes
@@ -1095,7 +1132,9 @@ TEST_F(PartitionerTest,
                                  /*addClipAndLayerNorm*/ false,
                                  /*pairLNWithSLS*/ false,
                                  /*addTile*/ true,
-                                 /*pairTileWithSLS*/ false);
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
 }
 
 /// Test concatSLSOutputs on SLS nodes w/ first dimension = 1 while other nodes
@@ -1107,7 +1146,35 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningPairTileAndConcatSlsOutputs) {
                                  /*addClipAndLayerNorm*/ false,
                                  /*pairLNWithSLS*/ false,
                                  /*addTile*/ true,
-                                 /*pairTileWithSLS*/ true);
+                                 /*pairTileWithSLS*/ true,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "");
+}
+
+/// Test pairSLSWith is NOP when Tanh doesn't exist
+TEST_F(PartitionerTest, SimpleSparseNNPartitioningPairTanhNOP) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ false,
+                                 /*concatSLSOutputs*/ true,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ false,
+                                 /*pairLNWithSLS*/ false,
+                                 /*addTile*/ false,
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "Tanh");
+}
+
+/// Test using user-defined backends for SparseNN partition.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioningPairTanhAndSLS) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatInputs*/ false,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ false,
+                                 /*pairLNWithSLS*/ false,
+                                 /*addTile*/ false,
+                                 /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ true,
+                                 /*pairSLSWith*/ "Tanh");
 }
 
 /// This test checks that we fail partitioning when we have a SLSPartition and
@@ -1120,6 +1187,8 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningExpectFailure) {
                                  /*pairLNWithSLS*/ true,
                                  /*addTile*/ false,
                                  /*pairTileWithSLS*/ false,
+                                 /*addTanh*/ false,
+                                 /*pairSLSWith*/ "LayerNorm",
                                  /*forceFailure*/ true);
 }
 
