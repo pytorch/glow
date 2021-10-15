@@ -1549,7 +1549,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "ConstantFill" || typeName == "GivenTensorIntFill" ||
-      typeName == "GivenTensorInt64Fill" || typeName == "GaussianFill") {
+      typeName == "GivenTensorInt64Fill" || typeName == "GaussianFill" ||
+      typeName == "UniformFill") {
     RETURN_IF_ERR(loadWeight(op));
     return Error::success();
   }
@@ -2767,7 +2768,36 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     const auto &name = op.output(0);
     Tensor T;
     std::vector<dim_t> dim;
-    ASSIGN_VALUE_OR_RETURN_ERR(dim, getShape<dim_t>(dict["shape"]));
+    if (dict.count("shape")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(dim, getShape<dim_t>(dict["shape"]));
+    } else {
+      RETURN_ERR_IF_NOT(op.input_size() > 0,
+                        "If no shape provided, must have input shape.");
+
+      bool inputAsShape = false;
+      if (dict.count("input_as_shape")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(inputAsShape,
+                                   loadInt(dict["input_as_shape"]));
+      }
+
+      if (inputAsShape) {
+        Constant *in;
+        ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
+        RETURN_ERR_IF_NOT(in->dims().size() == 1,
+                          opErrMsg(op, "Input must be 1D tensor."));
+        RETURN_ERR_IF_NOT(in->getElementType() == ElemKind::Int64ITy,
+                          opErrMsg(op, "Input must be of int64 type."));
+        const auto handle = in->getHandle<int64_t>();
+        dim.reserve(in->dims().size());
+        for (auto d : handle) {
+          dim.push_back(d);
+        }
+      } else {
+        NodeValue input;
+        ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+        dim = input.dims();
+      }
+    }
     T.reset(ElemKind::FloatTy, dim);
     auto TH = T.getHandle<>();
     float tensorMin;

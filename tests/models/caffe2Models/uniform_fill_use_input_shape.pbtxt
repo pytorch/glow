@@ -1,0 +1,17 @@
+name: "uniform_fill_use_input_shape"
+op {
+  input: "inputs_0"
+  output: "result"
+  name: ""
+  type: "UniformFill"
+  arg {
+    name: "min"
+    f: 0.0
+  }
+  arg {
+    name: "max"
+    f: 10.0
+  }
+}
+external_input: "inputs_0"
+external_output: "result"
