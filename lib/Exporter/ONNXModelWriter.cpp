@@ -2597,26 +2597,6 @@ Error ONNXModelWriter::writeRowwiseQuantizedFullyConnected(
   return writeAllWithNode("RowwiseQuantizedFullyConnected", node, graph, proto);
 }
 
-Error ONNXModelWriter::writeSparseToDense(const SparseToDenseNode *node,
-                                          GraphType &graph) {
-  auto *proto = graph.add_node();
-
-  RETURN_IF_ERR(writeAllWithNode("SparseToDense", node, graph, proto));
-
-  // Write dataToInferDim as additional input with initialization.
-  auto values = node->getValues();
-  auto out = node->getResult();
-  ShapeVector outDims(values.dims().begin(), values.dims().end());
-  outDims[0] = out.dims()[0];
-
-  auto outTy =
-      F_->getParent()->uniqueTypeWithNewShape(values.getType(), outDims);
-  auto *inputProto = graph.add_input();
-  tensorShapeFromInput("dataToInferDim", outTy, inputProto);
-  proto->add_input("dataToInferDim");
-  return Error::success();
-}
-
 Error ONNXModelWriter::writeTile(const TileNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
 

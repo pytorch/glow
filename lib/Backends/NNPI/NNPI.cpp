@@ -726,14 +726,6 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
              RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
          ElemKind::Int32ITy);
     break;
-  case Kinded::Kind::SparseToDenseNodeKind:
-    isNodePrecisionSupported =
-        NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy, ElemKind::Float16Ty},
-            {SparseToDenseNode::IndicesIdx}) &&
-        (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int32ITy ||
-         NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
-    break;
   case Kinded::Kind::ScatterDataNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(

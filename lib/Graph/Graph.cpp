@@ -2642,18 +2642,6 @@ GaussianFillNode *Function::createGaussianFill(llvm::StringRef name,
   return addNode(new GaussianFillNode(name, outTy, input, mean, scale, seed));
 }
 
-SparseToDenseNode *Function::createSparseToDense(llvm::StringRef name,
-                                                 NodeValue indices,
-                                                 NodeValue values,
-                                                 NodeValue dataToInferDim) {
-  // The dimensions of the output are the same as the values tensor except for
-  // the first dimension, which should match that of dataToInferDim.
-  ShapeVector outDims(values.dims().begin(), values.dims().end());
-  outDims[0] = dataToInferDim.dims()[0];
-  auto outTy = getParent()->uniqueTypeWithNewShape(values.getType(), outDims);
-  return addNode(new SparseToDenseNode(name, outTy, indices, values));
-}
-
 BatchSparseToDenseNode *Function::createBatchSparseToDense(
     llvm::StringRef name, NodeValue lengths, NodeValue indices,
     NodeValue values, float defaultValue, unsigned_t denseLastDim) {

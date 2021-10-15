@@ -413,9 +413,6 @@ private:
   template <typename ElemTy, typename IndexTy>
   void fwdEmbeddingBagInstFloatImpl(const EmbeddingBagInst *I);
 
-  template <typename ElemTy>
-  void fwdSparseToDenseInstImpl(const SparseToDenseInst *I);
-
   template <typename ElemTy, typename IndexTy>
   void fwdBatchSparseToDenseInstImpl1(const BatchSparseToDenseInst *I);
 

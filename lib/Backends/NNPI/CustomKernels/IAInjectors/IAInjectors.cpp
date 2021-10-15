@@ -231,16 +231,6 @@ std::vector<std::unique_ptr<CustomKernelInjector>> buildIAInjectors() {
           DimensionedIAKernelInjector<CumSumNode, ElemKind::Int32ITy>>());
 #endif // NNPI < 1.7
 
-  // SparseToDense Int32, float
-  injectors.emplace_back(
-      std::make_unique<BinaryNodeIAKernelInjector<
-          SparseToDenseNode, ElemKind::Int32ITy, ElemKind::FloatTy>>());
-
-  // SparseToDense Int32, fp16
-  injectors.emplace_back(
-      std::make_unique<BinaryNodeIAKernelInjector<
-          SparseToDenseNode, ElemKind::Int32ITy, ElemKind::Float16Ty>>());
-
   // ConverTo Bool Int32
   injectors.emplace_back(
       std::make_unique<ConversionNodeIAKernelInjector<

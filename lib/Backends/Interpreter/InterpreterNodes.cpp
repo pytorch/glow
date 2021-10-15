@@ -5831,60 +5831,6 @@ void BoundInterpreterFunction::fwdGaussianFillInst(const GaussianFillInst *I) {
   }
 }
 
-template <typename ElemTy>
-void BoundInterpreterFunction::fwdSparseToDenseInstImpl(
-    const SparseToDenseInst *I) {
-
-  auto out = getTensor(I->getDest());
-  auto indices = getTensor(I->getIndices());
-  auto values = getTensor(I->getValues());
-
-  out->zero();
-
-  auto IH = indices->getHandle<int64_t>();
-
-  size_t numIndices = indices->dims()[0];
-  size_t numOutDims = out->dims().size();
-
-  // Convert sparse representation to dense representation by taking
-  // slices of output and values and accumulating the value slice into
-  // the output slice.
-
-  // Dimensions and offsets for the output and values slices. sliceDims
-  // will always be {1, [rest of output dimensions]} since the first dimension
-  // is the index in this operation. sliceOffsets will be {indices[j], 0, ...}
-  // for the output slice and {j, 0, ...} for the values slice so that the
-  // slice at index j gets mapped to index indices[j] in the dense
-  // representation.
-  ShapeVector sliceDims(out->dims().begin(), out->dims().end());
-  ShapeVector sliceOffsets(numOutDims, 0);
-  sliceDims[0] = 1;
-
-  for (dim_t j = 0; j < numIndices; ++j) {
-    // Create values slice with offsets {j, 0, ...}.
-    sliceOffsets[0] = j;
-    auto VS = values->getUnowned(sliceDims, sliceOffsets);
-    auto VSH = VS.getHandle<ElemTy>();
-
-    // Create output slice with offsets {indices[j], 0, ...}.
-    sliceOffsets[0] = IH.at({j});
-    auto OS = out->getUnowned(sliceDims, sliceOffsets);
-    auto OSH = OS.getHandle<ElemTy>();
-
-    // Accumulate values slice into output slice.
-    size_t outputSliceSize = OS.size();
-    for (size_t k = 0; k < outputSliceSize; ++k) {
-      OSH.raw(k) += VSH.raw(k);
-    }
-  }
-}
-
-void BoundInterpreterFunction::fwdSparseToDenseInst(
-    const SparseToDenseInst *I) {
-  dispatchArithmeticImpl(fwdSparseToDenseInstImpl,
-                         I->getDest()->getElementType(), I);
-}
-
 template <typename ElemTy, typename LengthsTy, typename IndicesTy>
 void BoundInterpreterFunction::fwdBatchSparseToDenseInstImpl2(
     const BatchSparseToDenseInst *I) {

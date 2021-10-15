@@ -550,14 +550,6 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"});
 
-  /// Converts the given sparse representation into a dense one.
-  BB.newInstr("SparseToDense")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("Indices", OperandKind::In)
-      .addOperand("Values", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
-      .autoIRGen();
-
   BB.newInstr("BatchSparseToDense")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Lengths", OperandKind::In)

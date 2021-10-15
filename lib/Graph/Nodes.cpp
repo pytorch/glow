@@ -1840,18 +1840,6 @@ bool LengthsRangeFillNode::verify() const {
   return isValid;
 }
 
-bool SparseToDenseNode::verify() const {
-  bool isValid = checkType(getResult(), getValues().getElementType(), this);
-  isValid &=
-      checkType(getIndices(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
-  isValid &= expectCompareTrue("Indices must be a 1D vector",
-                               getIndices().dims().size(), size_t(1), this);
-  isValid &=
-      expectCompareTrue("Indices and Values must have the same first dimension",
-                        getIndices().dims()[0], getValues().dims()[0], this);
-  return isValid;
-}
-
 bool BatchSparseToDenseNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &=
