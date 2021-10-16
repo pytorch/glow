@@ -299,6 +299,26 @@ void initializeCompilationContextFromSettings(
   }
 }
 
+/// Initialize the Glow compilation context \p cctx with \p
+/// ModelCompilationConfigOverride configOverride
+void initializeCompilationContextFromModelCompilationConfigOverride(
+    glow::CompilationContext &cctx,
+    const glow::ModelCompilationConfigOverride &configOverride) {
+  if (configOverride.useDagOptimizer.has_value()) {
+    cctx.callDAGOptimizer = configOverride.useDagOptimizer.value();
+  }
+
+  if (configOverride.aplNumParallelChunks.has_value()) {
+    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+        configOverride.aplNumParallelChunks.value();
+  }
+
+  if (configOverride.aplAsapPlacement.has_value()) {
+    cctx.optimizationOpts.enableAPLASAPPlacement =
+        configOverride.aplAsapPlacement.value();
+  }
+}
+
 /// This function slice the input Tensor according to the expected shape in the
 /// zero dimension.
 /// TODO: Multi-dimension slicing will be supported later.
@@ -1296,7 +1316,9 @@ Error CachingGraphRunner::warmCache(
         nameToFunctions,
     std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
     std::shared_ptr<std::string> glowAOTSerializationModelStrPtr,
-    const std::string &serializationSpec, const std::string &onnxModelFile) {
+    const std::string &serializationSpec, const std::string &onnxModelFile,
+    const c10::optional<ModelCompilationConfigOverride>
+        &modelCompilationConfigOverride) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -1317,6 +1339,10 @@ Error CachingGraphRunner::warmCache(
   glow::CompilationContext cctx;
   RETURN_IF_ERR(initializeCompilationContextFromGlowFlags(cctx));
   initializeCompilationContextFromSettings(cctx, settings);
+  if (modelCompilationConfigOverride.has_value()) {
+    initializeCompilationContextFromModelCompilationConfigOverride(
+        cctx, modelCompilationConfigOverride.value());
+  }
   cctx.glowAOTSerializationModelStrPtr = glowAOTSerializationModelStrPtr;
 
   {

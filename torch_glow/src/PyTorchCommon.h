@@ -284,6 +284,12 @@ public:
   bool convert4BitFusedToFP32 = false;
 };
 
+struct ModelCompilationConfigOverride {
+  c10::optional<bool> useDagOptimizer;
+  c10::optional<int32_t> aplNumParallelChunks;
+  c10::optional<bool> aplAsapPlacement;
+};
+
 /// Represents different possible output types from to_glow modules.
 enum class GraphOutputType {
   TENSORS,      // Single tensor or multiple tensors
@@ -356,7 +362,9 @@ void glowAOTFusion(
     std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
     const std::string &serializationSpec = "",
     const std::string &onnxModelFile = "",
-    c10::optional<PostFusionProcessFn> postFusionProcessFn = {});
+    c10::optional<PostFusionProcessFn> postFusionProcessFn = {},
+    const c10::optional<ModelCompilationConfigOverride>
+        &modelCompilationConfigOverride = c10::nullopt);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
@@ -373,7 +381,9 @@ void glowAOTFusionWithShapeInference(
     std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
     const std::string &serializationSpec = "",
     const std::string &onnxModelFile = "",
-    c10::optional<PostFusionProcessFn> postFusionProcessFn = {});
+    c10::optional<PostFusionProcessFn> postFusionProcessFn = {},
+    const c10::optional<ModelCompilationConfigOverride>
+        &modelCompilationConfigOverride = c10::nullopt);
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in
