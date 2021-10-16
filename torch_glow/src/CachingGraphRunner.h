@@ -246,7 +246,9 @@ public:
       std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
       std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
       const std::string &serializationSpec = "",
-      const std::string &onnxModelFile = "");
+      const std::string &onnxModelFile = "",
+      const c10::optional<ModelCompilationConfigOverride>
+          &modelCompilationConfigOverride = c10::nullopt);
 
   /// Warmup Graphoutput shape Map by getting output value shapes for each
   /// batch size.

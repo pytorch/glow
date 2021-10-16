@@ -672,7 +672,9 @@ void glowAOTFusionWithShapeInference(
     std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
     std::shared_ptr<std::string> glowAOTSerializationModelStrPtr,
     const std::string &serializationSpec, const std::string &onnxModelFile,
-    c10::optional<PostFusionProcessFn> postFusionProcessFn) {
+    c10::optional<PostFusionProcessFn> postFusionProcessFn,
+    const c10::optional<ModelCompilationConfigOverride>
+        &modelCompilationConfigOverride) {
   auto graph = model.get_method(method_name).function().graph();
 
   // create some fake inputs to run shape inference.
@@ -766,7 +768,8 @@ void glowAOTFusionWithShapeInference(
           {metaStackForCompilation}, settings, loader,
           /*useMaxSizeCompilation*/ true, /*useDeserialize*/ false,
           /*nameToFunctions*/ nullptr, glowAOTSerializationSpecStrPtr,
-          glowAOTSerializationModelStrPtr, serializationSpec, onnxModelFile));
+          glowAOTSerializationModelStrPtr, serializationSpec, onnxModelFile,
+          modelCompilationConfigOverride));
 
       if (batchShapesMap.size() > 0) {
         auto graphOutputValues = subgraph->outputs();
@@ -801,7 +804,9 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr,
                    const std::string &serializationSpec,
                    const std::string &onnxModelFile,
-                   c10::optional<PostFusionProcessFn> postFusionProcessFn) {
+                   c10::optional<PostFusionProcessFn> postFusionProcessFn,
+                   const c10::optional<ModelCompilationConfigOverride>
+                       &modelCompilationConfigOverride) {
   InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   modelPreprocessing(model, method_name);
@@ -812,7 +817,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
     return glowAOTFusionWithShapeInference(
         model, metaStack, loader, settings, method_name, batchShapes,
         glowAOTSerializationSpecStrPtr, glowAOTSerializationModelStrPtr,
-        serializationSpec, onnxModelFile, postFusionProcessFn);
+        serializationSpec, onnxModelFile, postFusionProcessFn,
+        modelCompilationConfigOverride);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
@@ -854,7 +860,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
       {metaStack}, settings, loader,
       /*useMaxSizeCompilation*/ true, /*useDeserialize*/ false,
       /*nameToFunctions*/ nullptr, glowAOTSerializationSpecStrPtr,
-      glowAOTSerializationModelStrPtr, serializationSpec, onnxModelFile);
+      glowAOTSerializationModelStrPtr, serializationSpec, onnxModelFile,
+      modelCompilationConfigOverride);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report
     // an error but it is fine with our execution. So here we extract the
