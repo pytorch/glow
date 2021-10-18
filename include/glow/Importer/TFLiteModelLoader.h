@@ -121,9 +121,10 @@ class TFLiteModelLoader {
   Expected<flexbuffers::Map> getOperatorCustomOpts(const tflite::Operator *op);
 
   /// \returns the tensor index of the input operand with index \p inputIdx
-  /// of the operator \p op.
-  Expected<size_t> getOperatorInputTensorIdx(const tflite::Operator *op,
-                                             size_t inputIdx);
+  /// of the operator \p op. This function returns a negative number if the
+  /// tensor does not exist (is not used).
+  Expected<int32_t> getOperatorInputTensorIdx(const tflite::Operator *op,
+                                              size_t inputIdx);
 
   /// \returns the tensor index of the output operand with index \p outputIdx
   /// of the operator \p op.
@@ -144,7 +145,7 @@ class TFLiteModelLoader {
   Error setNodeValueByIndex(size_t index, NodeValue nodeValue);
 
   /// \returns Expected<NodeValue> if an input node value with the given index
-  /// \p index (operator level index that is 0 for 1st input node value, etc)
+  /// \p inputIdx (operator level index that is 0 for 1st input node value, etc)
   /// is found for the operator \p op and Error otherwise.
   Expected<NodeValue> getInputNodeValue(const tflite::Operator *op,
                                         size_t inputIdx);
