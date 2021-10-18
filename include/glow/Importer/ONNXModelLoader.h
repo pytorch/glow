@@ -226,6 +226,14 @@ class ONNXModelLoader
   Error loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);
 
+  /// Load Conv operator with 2D input
+  Error loadConv2D(const ONNX_NAMESPACE::NodeProto &op,
+                   ArgumentDictionaryTy &dict);
+
+  /// Load Conv operator with 3D input
+  Error loadConv3D(const ONNX_NAMESPACE::NodeProto &op,
+                   ArgumentDictionaryTy &dict);
+
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.
   Error loadPool(const ONNX_NAMESPACE::NodeProto &op,
