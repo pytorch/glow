@@ -120,10 +120,14 @@ llvm::cl::opt<bool, /* ExternalStorage */ true> enablePartialTensorOpt(
     llvm::cl::Optional, llvm::cl::location(glow::flags::EnablePartialTensors),
     llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<unsigned> requestCountOpt(
-    "request_count",
+llvm::cl::opt<unsigned> itersOpt(
+    "iters",
     llvm::cl::desc("Total number of requests to loop over provided input."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
+llvm::cl::alias requestCountOpt("request_count",
+                                llvm::cl::desc("Alias for -iters"),
+                                llvm::cl::aliasopt(itersOpt));
 
 llvm::cl::opt<unsigned> durationMinOpt(
     "duration_min", llvm::cl::desc("Running duration limit in minutes"),
@@ -687,7 +691,7 @@ int run() {
     folly::CPUThreadPoolExecutor threadPool(concurrentCountOpt);
     std::mutex mutex;
     std::condition_variable cv;
-    int numTotalInferences = inputGroupSize * requestCountOpt;
+    int numTotalInferences = inputGroupSize * itersOpt;
     int numFinishedInferences = 0;
 
     // Figure out which placeholder is input.
