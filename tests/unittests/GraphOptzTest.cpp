@@ -8457,7 +8457,7 @@ TEST_F(GraphOptz, skipSinkQuantizeTransposeMultiUser) {
                                   /* skipName */ true));
 }
 
-TEST_F(GraphOptz, MergeMatMulsWhenSkippingOne) {
+TEST_F(GraphOptz, MergeMatMulsOnLHSWhenSkippingOne) {
   Placeholder *LHS1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "LHS1", false);
   Placeholder *LHS2 =
@@ -8488,7 +8488,48 @@ TEST_F(GraphOptz, MergeMatMulsWhenSkippingOne) {
   ASSERT_TRUE(F_->verify());
 
   optimizedF_ = optimizeFunctionForTest(
-      F_, {FunctionPassID::MergeMatMul, getDCEPassConfig()});
+      F_, {FunctionPassID::MergeMatMulOnLHS, getDCEPassConfig()});
+  ASSERT_TRUE(optimizedF_->verify());
+
+  // Expect three matmuls -> two matmuls, because mm1 and mm3 were merged.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::MatMulNodeKind), 2);
+
+  checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, MergeMatMulsOnRHSWhenSkippingOne) {
+  Placeholder *LHS =
+      mod_.createPlaceholder(ElemKind::FloatTy, {40, 10}, "LHS", false);
+  Placeholder *RHS1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 15}, "RHS1", false);
+  Placeholder *RHS2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 20}, "RHS2", false);
+  Placeholder *RHS3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 30}, "RHS3", false);
+  bindings_.allocate(LHS)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+  bindings_.allocate(RHS1)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+  bindings_.allocate(RHS2)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+  bindings_.allocate(RHS3)->getHandle().randomize(-1.f, 1.f, mod_.getPRNG());
+
+  // Chain a bunch of nodes together for RHS2 to prevent dependency analysis
+  // from allowing merging for MM2 below.
+  Node *sigRHS2 = RHS2;
+  for (size_t i = 0, e = 7; i < e; i++) {
+    sigRHS2 = F_->createSigmoid("s_rhs2", sigRHS2);
+  }
+
+  Node *MM1 = F_->createMatMul("mm1", LHS, RHS1);
+  Node *MM2 = F_->createMatMul("mm2", LHS, sigRHS2);
+  Node *MM3 = F_->createMatMul("mm3", LHS, RHS3);
+
+  F_->createSave("save1", MM1);
+  F_->createSave("save2", MM2);
+  F_->createSave("save3", MM3);
+  ASSERT_TRUE(F_->verify());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::MergeMatMulOnRHS, getDCEPassConfig()});
   ASSERT_TRUE(optimizedF_->verify());
 
   // Expect three matmuls -> two matmuls, because mm1 and mm3 were merged.
