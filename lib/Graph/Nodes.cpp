@@ -2959,6 +2959,35 @@ bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
 bool ExternalFunctionCallNode::verify() const { return true; }
 
+static bool verifyBatchedUnaryEmbeddingsBags(NodeValue dest, NodeValue weights,
+                                             NodeValue indices,
+                                             NodeValue offsets) {
+  bool isValid = checkType(dest, weights.getElementType(), dest.getNode());
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &= checkType(
+      offsets,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &=
+      expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Offsets must be a 1D vector", offsets.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Weights must be a 3D vector", weights.dims().size(),
+                        size_t(3), dest.getNode());
+  return isValid;
+}
+
+bool BatchedUnaryEmbeddingsBagsNode::verify() const {
+  return verifyBatchedUnaryEmbeddingsBags(getResult(), getWeights(),
+                                          getIndices(), getOffsets());
+}
+
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//

@@ -20995,5 +20995,75 @@ TEST_P(OperatorTest, SparseLabelSplit) {
   }
 }
 
+/// Test BatchedUnaryEmbeddingsBags
+template <typename DataTy>
+static void testBatchedUnaryEmbeddingsBags(glow::PlaceholderBindings &bindings,
+                                           glow::Module &mod, glow::Function *F,
+                                           glow::ExecutionEngine &EE,
+                                           ElemKind DTy, float allowedError) {
+  ShapeVector idims = {1, 38, 1};
+  ShapeVector odims = {1, 1, 3};
+
+  Tensor weightsTensorReal(DTy, idims);
+  Tensor indicesTensorReal(ElemKind::Int32ITy, {9});
+  Tensor offsetsTensorReal(ElemKind::Int32ITy, {4});
+  Tensor tableOffsetsTensorReal(ElemKind::Int32ITy, {4});
+
+  weightsTensorReal.getHandle<DataTy>() = {
+      0.4705, 0.0634, 0.8867, 0.3685, 0.0328, 0.1191, 0.1907, 0.9518,
+      0.3688, 0.5838, 0.0315, 0.3067, 0.0160, 0.3304, 0.2706, 0.4694,
+      0.0182, 0.9961, 0.5213, 0.4605, 0.6342, 0.5052, 0.9236, 0.2747,
+      0.3745, 0.9434, 0.5810, 0.5646, 0.5182, 0.9379, 0.0866, 0.0854,
+      0.1088, 0.4771, 0.0636, 0.5778, 0.5571, 0.3586};
+  indicesTensorReal.getHandle<int32_t>() = {1, 1, 3, 13, 14, 4, 15, 11, 16};
+  offsetsTensorReal.getHandle<int32_t>() = {0, 3, 5, 9};
+  tableOffsetsTensorReal.getHandle<int32_t>() = {0, 4, 21, 38};
+
+  auto weights = mod.createPlaceholder(DTy, idims, "weights", false);
+  auto indices =
+      mod.createPlaceholder(ElemKind::Int32ITy, {9}, "indices", false);
+  auto offsets =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "offsets", false);
+  auto tableOffsets =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "tableOffsets", false);
+
+  bindings.insert(weights, std::move(weightsTensorReal));
+  bindings.insert(indices, std::move(indicesTensorReal));
+  bindings.insert(offsets, std::move(offsetsTensorReal));
+  bindings.insert(tableOffsets, std::move(tableOffsetsTensorReal));
+
+  auto *R = F->createBatchedUnaryEmbeddingsBags(
+      "BatchedUnaryEmbeddingsBags", weights, tableOffsets, indices, offsets);
+  auto *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, odims);
+  expected.getHandle<DataTy>() = {
+      0.4953,
+      1.5174,
+      1.9679,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test that BatchedUnaryEmbeddingsBags is correctly supported in FloatTy.
+TEST_P(OperatorTest, BatchedUnaryEmbeddingsBags_Float) {
+  CHECK_IF_ENABLED();
+  testBatchedUnaryEmbeddingsBags<float>(bindings_, mod_, F_, EE_,
+                                        ElemKind::FloatTy, 0.0001);
+}
+
+/// Test that BatchedUnaryEmbeddingsBags is correctly supported in Float16Ty.
+TEST_P(OperatorTest, BatchedUnaryEmbeddingsBags_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchedUnaryEmbeddingsBags<float16_t>(bindings_, mod_, F_, EE_,
+                                            ElemKind::Float16Ty, 0.005);
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);

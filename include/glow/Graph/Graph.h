@@ -1875,6 +1875,13 @@ public:
                            NodeValue input, unsigned_t channelIdx = 0,
                            float epsilon = 1e-5, float momentum = 0.9);
 
+  /// Create a BatchedUnaryEmbedding node. \p offsets which marks the end
+  /// of the last range.
+  BatchedUnaryEmbeddingsBagsNode *
+  createBatchedUnaryEmbeddingsBags(llvm::StringRef name, NodeValue weights,
+                                   NodeValue tableOffsets, NodeValue indices,
+                                   NodeValue offsets);
+
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input. \p kernels defines the size of the height and width dimensions
   /// of the convolutional filters. \p stride defines the the number of steps

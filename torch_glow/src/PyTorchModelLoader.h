@@ -1062,6 +1062,10 @@ private:
   // Load aten::erf.
   // \returns error on failure.
   Error loadErf(const torch::jit::Node *ptNode);
+
+  // Load fb::batched_unary_embeddings
+  // \returns error on failure.
+  Error loadBatchedUnaryEmbeddingsBags(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

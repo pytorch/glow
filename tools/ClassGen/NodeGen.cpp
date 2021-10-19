@@ -1051,6 +1051,14 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Performs the gradient operation for BatchedPairwiseDotProduct");
 
+  BB.newNode("BatchedUnaryEmbeddingsBags")
+      .addInput("Weights")
+      .addInput("TableOffsets")
+      .addInput("Offsets")
+      .addInput("Indices")
+      .addResultFromCtorArg()
+      .setDocstring("Sum weight embeddings according to offsets and indices");
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//

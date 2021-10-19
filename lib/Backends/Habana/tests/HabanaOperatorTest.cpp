@@ -506,4 +506,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "batchedReduceAdd_Int32ITy/0",
     "CollectRpnProposals/0",
     "InstanceNormalization_FloatTy/0",
+    "BatchedUnaryEmbeddingsBags_Float/0",
+    "BatchedUnaryEmbeddingsBags_Float16/0",
 };
