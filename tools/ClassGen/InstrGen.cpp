@@ -1004,6 +1004,20 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "VectorSize")
       .autoVerify(VerifyKind::NoVerify);
 
+  BB.newInstr("BatchedUnaryEmbeddingsBags")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("TableOffsets", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"TableOffsets", "Indices", "Offsets"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int32ITy"});
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//

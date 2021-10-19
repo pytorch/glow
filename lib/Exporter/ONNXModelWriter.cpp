@@ -2482,6 +2482,7 @@ DEF_ALL_WRITER_NODE(HardSwish)
 DEF_ALL_WRITER_NODE(ConvTranspose)
 DEF_ALL_WRITER_NODE(Logit)
 DEF_ALL_WRITER_NODE(Truncate)
+DEF_ALL_WRITER_NODE(BatchedUnaryEmbeddingsBags)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();

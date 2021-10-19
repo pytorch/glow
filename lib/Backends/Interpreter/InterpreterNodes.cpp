@@ -6310,6 +6310,56 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
                                     indW->getElementType(), outW, indW, inW, k);
 }
 
+void BoundInterpreterFunction::fwdBatchedUnaryEmbeddingsBagsInst(
+    const BatchedUnaryEmbeddingsBagsInst *I) {
+  dispatchFloatingPointAndIndexImpl(fwdBatchedUnaryEmbeddingsBagsInstImpl,
+                                    I->getWeights()->getElementType(),
+                                    I->getIndices()->getElementType(), I);
+}
+
+template <typename ElemTy, typename IndexType>
+void BoundInterpreterFunction::fwdBatchedUnaryEmbeddingsBagsInstImpl(
+    const BatchedUnaryEmbeddingsBagsInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto out = getTensor(I->getDest());
+  auto weights = getTensor(I->getWeights());
+  auto tableOffsets = getTensor(I->getTableOffsets());
+  auto indices = getTensor(I->getIndices());
+  auto offsets = getTensor(I->getOffsets());
+
+  out->zero();
+
+  auto indicesH = indices->getHandle<IndexType>();
+  auto offsetsH = offsets->getHandle<IndexType>();
+  auto weightsH = weights->getHandle<ElemTy>();
+  auto tableOffsetsH = tableOffsets->getHandle<IndexType>();
+  auto outH = out->getHandle<ElemTy>();
+
+  size_t numTasks = weightsH.dims()[0];
+  size_t numTables = tableOffsets->size() - 1;
+  size_t numBatches = (offsets->size() - 1) / numTables;
+
+  IndexType sumTable = tableOffsetsH.raw(numTables);
+
+  for (size_t n = 0; n < numTasks; n++) {
+    for (size_t b = 0; b < numBatches; b++) {
+      for (size_t t = 0; t < numTables; t++) {
+        IndexType indicesStart = offsetsH.raw(t * numBatches + b);
+        IndexType indicesEnd = offsetsH.raw(t * numBatches + b + 1);
+        ElemTy sum = 0;
+        for (IndexType i = indicesStart; i < indicesEnd; i++) {
+          IndexType idx = n * sumTable + tableOffsetsH.raw(t) + indicesH.raw(i);
+          assert(idx < weightsH.size() &&
+                 "Index shall be within weights boundary.");
+          sum += weightsH.raw(idx);
+        }
+        outH.raw((n * numBatches + b) * numTables + t) = sum;
+      }
+    }
+  }
+}
+
 #define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \
   switch (elemTy) {                                                            \
   case ElemKind::FloatTy:                                                      \

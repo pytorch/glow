@@ -1265,6 +1265,15 @@ struct PixelUnshuffleInputs {
   };
 };
 
+struct BatchedUnaryEmbeddingsBagsInputs {
+  enum {
+    weights = 0,
+    tableOffsets,
+    offsets,
+    indices,
+  };
+};
+
 } // namespace
 
 // static
@@ -1813,6 +1822,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::erf"},
        &PyTorchModelLoader::loadErf,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"fb::batched_unary_embeddings"},
+       &PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           BatchedUnaryEmbeddingsBagsInputs::weights>},
   });
 #undef UNARY_NODE_LOADER
 
@@ -9266,6 +9279,36 @@ Error PyTorchModelLoader::loadErf(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(addValueMapping(outputs[0], node));
 
   return Error::success();
+}
+
+Error PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
+
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weights, getGlowNodeValueForValue(
+                   inputs[BatchedUnaryEmbeddingsBagsInputs::weights]));
+  glow::NodeValue tableOffsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      tableOffsets,
+      getGlowNodeValueForValue(
+          inputs[BatchedUnaryEmbeddingsBagsInputs::tableOffsets]));
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(
+                   inputs[BatchedUnaryEmbeddingsBagsInputs::indices]));
+  glow::NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offsets, getGlowNodeValueForValue(
+                   inputs[BatchedUnaryEmbeddingsBagsInputs::offsets]));
+
+  auto *EB = F_.createBatchedUnaryEmbeddingsBags(
+      "BatchedUnaryEmbeddingsBags", weights, tableOffsets, indices, offsets);
+
+  RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
 }
 
 Error PyTorchModelLoader::loadAttributes(

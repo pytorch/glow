@@ -474,6 +474,10 @@ private:
   void fwdAvgPool2DGradInst(const AvgPoolGradInst *I);
   void fwdAvgPool3DGradInst(const AvgPoolGradInst *I);
 
+  template <typename ElemTy, typename IndexTy>
+  void fwdBatchedUnaryEmbeddingsBagsInstImpl(
+      const BatchedUnaryEmbeddingsBagsInst *I);
+
   ///@}
 };
 
