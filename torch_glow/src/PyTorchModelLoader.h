@@ -1074,6 +1074,10 @@ private:
   // Load fb::bucketize.
   // \returns error on failure.
   Error loadBucketize(const torch::jit::Node *ptNode);
+
+  // Load Pytorch aten::index_add
+  // \returns error on failure.
+  Error loadIndexAdd(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
