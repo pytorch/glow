@@ -1274,6 +1274,14 @@ struct BatchedUnaryEmbeddingsBagsInputs {
   };
 };
 
+///  Indexes used for fb::bucketize inputs
+struct BucketizeInputs {
+  enum {
+    input = 0,
+    boundaries,
+  };
+};
+
 } // namespace
 
 // static
@@ -1828,6 +1836,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
            BatchedUnaryEmbeddingsBagsInputs::weights>},
       {{"aten::sign"},
        &PyTorchModelLoader::loadSign,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"fb::bucketize"},
+       &PyTorchModelLoader::loadBucketize,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
   });
 #undef UNARY_NODE_LOADER
@@ -9346,6 +9357,30 @@ Error PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags(
       "BatchedUnaryEmbeddingsBags", weights, tableOffsets, indices, offsets);
 
   RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+}
+
+Error PyTorchModelLoader::loadBucketize(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  std::vector<double> *boundariesDb;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[BucketizeInputs::input]));
+  ASSIGN_VALUE_OR_RETURN_ERR(boundariesDb,
+                             iValToDoubleList(getGlowIValueForValue(
+                                 inputs[BucketizeInputs::boundaries])));
+  std::vector<float> boundaries;
+  for (const auto &w : *boundariesDb) {
+    boundaries.push_back(w);
+  }
+  auto node =
+      F_.createBucketizeNode("bucketize", input, boundaries)->getResult();
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], node));
+
+  return Error::success();
 }
 
 Error PyTorchModelLoader::loadAttributes(

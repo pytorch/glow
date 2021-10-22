@@ -1070,6 +1070,10 @@ private:
   // Load a PyTorch aten::sign.
   // \returns error on failure.
   Error loadSign(const torch::jit::Node *ptNode);
+
+  // Load fb::bucketize.
+  // \returns error on failure.
+  Error loadBucketize(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
