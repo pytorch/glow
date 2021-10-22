@@ -624,8 +624,10 @@ quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
   quantConfig.enableChannelwise = enableChannelwiseOpt;
   quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
   if (!loadProfileFileOpt.empty()) {
-    deserializeProfilingInfosFromYaml(
+    auto fileExists = deserializeProfilingInfosFromYaml(
         loadProfileFileOpt, quantConfig.graphPreLowerHash, quantConfig.infos);
+    CHECK(fileExists) << strFormat("Profile file \"%s\" does not exist!",
+                                   loadProfileFileOpt.c_str());
   }
   quantConfig.checkGraphPreLowerHash = true;
   return quantConfig;
