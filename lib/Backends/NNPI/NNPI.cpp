@@ -2064,8 +2064,8 @@ NNPIBackend::transformPostOptPipeline(Function *F,
     auto P = getOptimizationPipeline();
     P->removeAllInstancesOfPass(FunctionPassID::SinkConversions);
     P->removeAllInstancesOfPass(FunctionPassID::SinkConcatBelowQuantize);
-    P->removeAllInstancesOfPass(FunctionPassID::MergeMatMul);
-
+    P->removeAllInstancesOfPass(FunctionPassID::MergeMatMulOnLHS);
+    P->removeAllInstancesOfPass(FunctionPassID::MergeMatMulOnRHS);
     // Do not re-merge ConcatNodes, as we may be parallelizing them.
     const bool restoreMerge = cctx.optimizationOpts.skipConcatMerging;
     cctx.optimizationOpts.skipConcatMerging = true;

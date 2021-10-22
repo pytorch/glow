@@ -1495,25 +1495,18 @@ static bool mayDependOnAny(llvm::ArrayRef<NodeValue> list, Node *N) {
   return false;
 }
 
-// Merge several two or more multiple matrix multiplications into a single
-// large matmul. The large matmul is more likely to utilize the hardware. The
-// result of the big matmul is the concatenated results.
-//
-//            ____      _________        _________
-//   ----    |    |    |         |     M|  A * C  |
-// M| A  |  T| B  | * K|    C    | =    |---------|
-//   ---- ,  |    |    |         |     T|  B * C  |
-//    K       ----      ---------        ---------
-//             K            R                R
-bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
-  LOG_SCOPE(F->getLogContext(), getName());
+/// Helper function to merge matmuls in \p F.
+/// If \p mergeOnLHS is true, it merges LHS operands of matmuls that have the
+/// same RHS. If \p mergeOnLHS is false, it merges RHS operands of matmuls that
+/// have the same LHS. \returns true if any matmuls are merged in the Function
+/// \p F.
+static bool mergeMatMuls(Function *F, bool mergeOnLHS) {
   bool changed = false;
   auto &nodes = F->getNodes();
 
-  // These two maps record the list of matrix multipliers that use each node
+  // A map to record the list of matrix multipliers that use each node
   // value either as a right-hand-side user or a left-hand-user.
-  llvm::DenseMap<Node *, std::vector<MatMulNode *>> rightMatrixUsers;
-  llvm::DenseMap<Node *, std::vector<MatMulNode *>> leftMatrixUsers;
+  llvm::DenseMap<Node *, std::vector<MatMulNode *>> matrixUsers;
 
   // Collect the list of nodes that are used by the matrix multiplier.
   for (auto &node : nodes) {
@@ -1525,64 +1518,105 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
         continue;
       }
 
-      rightMatrixUsers[MM->getRHS().getNode()].push_back(MM);
-      leftMatrixUsers[MM->getLHS().getNode()].push_back(MM);
+      if (!mergeOnLHS) {
+        matrixUsers[MM->getLHS().getNode()].push_back(MM);
+      } else {
+        matrixUsers[MM->getRHS().getNode()].push_back(MM);
+      }
     }
   }
 
-  // Merge RHS matrices.
-  for (auto &it : rightMatrixUsers) {
+  // Merge matrices.
+  for (auto &it : matrixUsers) {
     auto &MMs = it.second;
 
-    // Collects the LHS values to merge.
-    std::vector<NodeValue> LHS;
+    // Collects the LHS or RHS values to merge.
+    std::vector<NodeValue> lhsOrRhs;
 
-    // For each matmul that depends on the rhs matrix.
+    // For each matmul that depends on the matrix.
     std::unordered_set<MatMulNode *> skippedMMs;
     std::string firstMMName;
-    std::string firstLHSName;
+    std::string firstMatrixName;
     for (auto *MM : MMs) {
-      auto L = MM->getLHS();
+      auto I = mergeOnLHS ? MM->getLHS() : MM->getRHS();
       // The operands to the matrix multiplier should not depend on one another
       // or else we won't be able to get rid of the original matrix
       // multiplication.
-      if (mayDependOnAny(LHS, L.getNode())) {
+      if (mayDependOnAny(lhsOrRhs, I.getNode())) {
         skippedMMs.insert(MM);
         continue;
       }
-      LHS.push_back(L);
+      lhsOrRhs.push_back(I);
       if (firstMMName.empty()) {
         firstMMName = MM->getName().str();
       }
-      if (firstLHSName.empty()) {
-        firstLHSName = L.getNode()->getName().str();
+      if (firstMatrixName.empty()) {
+        firstMatrixName = I.getNode()->getName().str();
       }
     }
 
     // We need to have at least two matrices to merge.
-    if (LHS.size() < 2) {
+    if (lhsOrRhs.size() < 2) {
       continue;
     }
 
     // Merge the matmul:
-    auto *CC = F->createConcat(firstLHSName + "_mergeLHS", LHS, 0);
-    auto *MM = F->createMatMul(firstMMName + "_bigMatMul", CC, it.first);
+    auto *CC = F->createConcat(firstMatrixName + "_merge", lhsOrRhs,
+                               mergeOnLHS ? 0 : 1);
+    auto *MM =
+        F->createMatMul(firstMMName + "_bigMatMul", mergeOnLHS ? CC : it.first,
+                        mergeOnLHS ? it.first : CC);
 
-    dim_t R = MM->getResult().dims()[1];
+    // Slice the output so that other nodes can consume each slice separately.
+    dim_t O = MM->getResult().dims()[mergeOnLHS ? 1 : 0];
     dim_t start = 0;
     for (auto *origMM : MMs) {
       if (skippedMMs.count(origMM)) {
         continue;
       }
-      dim_t H = origMM->getResult().dims()[0];
+      dim_t H = origMM->getResult().dims()[mergeOnLHS ? 0 : 1];
+      auto startIndices = mergeOnLHS ? std::array<dim_t, 2>({start, 0})
+                                     : std::array<dim_t, 2>({0, start});
+      auto endIndices = mergeOnLHS ? std::array<dim_t, 2>({start + H, O})
+                                   : std::array<dim_t, 2>({O, start + H});
       auto *ex = F->createSlice(origMM->getName().str() + "_extract", MM,
-                                {start, 0}, {start + H, R});
+                                startIndices, endIndices);
       start += H;
       origMM->getResult().replaceAllUsesOfWith(ex);
       changed = true;
     }
   }
   return changed;
+}
+
+// Merge several two or more multiple matrix multiplications that share the same
+// RHS into a single large matmul. The large matmul is more likely to utilize
+// the hardware. The result of the big matmul is the concatenated results.
+//
+//            ____      _________        _________
+//   ----    |    |    |         |     M|  A * C  |
+// M| A  |  T| B  | * K|    C    | =    |---------|
+//   ---- ,  |    |    |         |     T|  B * C  |
+//    K       ----      ---------        ---------
+//             K            R                R
+bool MergeMatMulOnLHS::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  return mergeMatMuls(F, /* mergeOnLHS */ true);
+}
+
+// Merge several two or more multiple matrix multiplications that share the same
+// LHS into a single large matmul. The large matmul is more likely to utilize
+// the hardware. The result of the big matmul is the concatenated results.
+//
+//             ____      _________        _________
+//   ----     |    |    |         |      |  A | A  |
+// M| A  | * K| B  | , K|    C    | =   M|  * | *  |
+//   ----     |    |    |         |      |  B | C  |
+//    K        ----      ---------        ---------
+//              R            S              R   S
+bool MergeMatMulOnRHS::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  return mergeMatMuls(F, /* mergeOnLHS */ false);
 }
 
 bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
