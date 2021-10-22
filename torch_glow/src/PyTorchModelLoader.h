@@ -1066,6 +1066,10 @@ private:
   // Load fb::batched_unary_embeddings
   // \returns error on failure.
   Error loadBatchedUnaryEmbeddingsBags(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::sign.
+  // \returns error on failure.
+  Error loadSign(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
