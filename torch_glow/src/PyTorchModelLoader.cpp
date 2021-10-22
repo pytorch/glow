@@ -1826,6 +1826,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags,
        &PyTorchModelLoader::getCorrectTypeFromInput<
            BatchedUnaryEmbeddingsBagsInputs::weights>},
+      {{"aten::sign"},
+       &PyTorchModelLoader::loadSign,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
   });
 #undef UNARY_NODE_LOADER
 
@@ -5088,9 +5091,20 @@ Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
 
   glow::PowNode *PN = nullptr;
   if (hasGlowIValueForValue(inputs[1])) {
+    glow::GlowIValue *exponentIValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(exponentIValue,
+                               getGlowIValueForValue(inputs[1]));
+
     float exponent;
-    ASSIGN_VALUE_OR_RETURN_ERR(exponent,
-                               iValToDouble(getGlowIValueForValue(inputs[1])));
+    if (exponentIValue->isDouble()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(exponent, iValToDouble(exponentIValue));
+    } else if (exponentIValue->isInt()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(exponent, iValToInt(exponentIValue));
+    } else {
+      std::ostringstream ss;
+      ss << "Unsupported type for exponent in node " << *ptNode;
+      return MAKE_ERR(ss.str());
+    }
     PN = F_.createPow("pow", input, exponent);
   } else {
     NodeValue expNV;
@@ -9277,6 +9291,29 @@ Error PyTorchModelLoader::loadErf(const torch::jit::Node *ptNode) {
   auto node = F_.createErf("erf", input)->getResult();
 
   RETURN_IF_ERR(addValueMapping(outputs[0], node));
+
+  return Error::success();
+}
+Error PyTorchModelLoader::loadSign(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto zeroes = F_.createSplat("zeroes", input.getType(), 0.f);
+
+  auto isPos = F_.createCmpLT("isPos", zeroes, input);
+  auto isNeg = F_.createCmpLT("isNeg", input, zeroes);
+
+  auto posOnes = F_.createSplat("posOnes", input.getType(), 1);
+  auto negOnes = F_.createSplat("negOnes", input.getType(), -1);
+
+  auto fillPositive = F_.createSelect("fillPos", isPos, posOnes, zeroes);
+  auto fillNegative = F_.createSelect("fillNeg", isNeg, negOnes, fillPositive);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], fillNegative->getResult()));
 
   return Error::success();
 }
