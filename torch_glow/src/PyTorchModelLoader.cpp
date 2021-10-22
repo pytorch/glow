@@ -1228,6 +1228,17 @@ struct IndexPutInputs {
   };
 };
 
+/// Indexes of aten::index_add inputs.
+struct IndexAddInputs {
+  enum {
+    input = 0,
+    dim,
+    index,
+    source,
+    alpha,
+  };
+};
+
 /// Indexes used for aten::repeat inputs
 struct RepeatInputs {
   enum {
@@ -1839,6 +1850,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"fb::bucketize"},
        &PyTorchModelLoader::loadBucketize,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"aten::index_add_", "aten::index_add"},
+       &PyTorchModelLoader::loadIndexAdd,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
   });
 #undef UNARY_NODE_LOADER
@@ -9381,6 +9395,66 @@ Error PyTorchModelLoader::loadBucketize(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(addValueMapping(outputs[0], node));
 
   return Error::success();
+}
+
+Error PyTorchModelLoader::loadIndexAdd(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[IndexAddInputs::input]));
+
+  int dim = 0;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[IndexAddInputs::dim])));
+  RETURN_ERR_IF_NOT(dim == 0,
+                    "Only adding along dim = 0 is currently supported. ");
+  glow::NodeValue index;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      index, getGlowNodeValueForValue(inputs[IndexAddInputs::index]));
+
+  glow::NodeValue source;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      source, getGlowNodeValueForValue(inputs[IndexAddInputs::source]));
+
+  float alpha = 1.0;
+  if (hasGlowIValueForValue(inputs[IndexAddInputs::alpha])) {
+    GlowIValue *ival;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        ival, getGlowIValueForValue(inputs[IndexAddInputs::alpha]));
+    if (ival->isDouble()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(alpha, ival->toDouble());
+    } else if (ival->isInt()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(alpha,
+                                 static_cast_expected<float>(ival->toInt()));
+    } else if (!ival->isNone()) {
+      return MAKE_ERR("Unexpected scalar type");
+    }
+  }
+
+  RETURN_ERR_IF_NOT(index.dims().size() == 1,
+                    "Indices should be 1-dimensional");
+  RETURN_ERR_IF_NOT(source.dims().size() > dim,
+                    "dim must be less than the number of dims of source");
+  RETURN_ERR_IF_NOT(index.dims()[0] == source.dims()[dim],
+                    "The dim-th dimension of source must have the same size as "
+                    "the length of index");
+  for (auto i = 0; i < index.dims().size(); i++) {
+    RETURN_ERR_IF_NOT(
+        i != dim && input.dims()[i] != source.dims()[i],
+        "Every dimension of source has to match that of input other than dim");
+  }
+
+  auto scaleType =
+      F_.getParent()->uniqueType(ElemKind::FloatTy, {source.dims()});
+  auto scales = F_.createSplat("scales", scaleType, alpha);
+  Node *scaledSource = F_.createMul("scaledSource", source, scales);
+  auto indices2D = F_.createReshape("indices2D", index, {index.dims()[0], 1});
+  auto scatterNode =
+      F_.createScatterData("scatter", index, indices2D, scaledSource, true);
+  RETURN_ERR(addValueMapping(outputs[0], scatterNode));
 }
 
 Error PyTorchModelLoader::loadAttributes(
