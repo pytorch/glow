@@ -508,10 +508,16 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
              (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
               ElemKind::Float16Ty);
     case ElemKind::UInt8FusedQTy:
-      return (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
-              ElemKind::FloatTy) &&
-             (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
-              ElemKind::FloatTy);
+      return (
+          (((NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                WeightsIdx) == ElemKind::FloatTy) &&
+            (NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 ResultIdx) == ElemKind::FloatTy))) ||
+          ((NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                               WeightsIdx) == ElemKind::Float16Ty) &&
+           (NI.getOutElemTy(
+                FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
+            ElemKind::Float16Ty)));
     default:
       return false;
     }
