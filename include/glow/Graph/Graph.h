@@ -799,6 +799,16 @@ public:
   // deprecated.
   SwishNode *createSwish(llvm::StringRef name, NodeValue input, TypeRef OT);
 
+  /// Create a HardSigmoid node with the given \p name, \p input, \p alpha and
+  /// \p beta. Result type will be implicitly set based on the \p input type.
+  ClipNode *createHardSigmoid(llvm::StringRef name, NodeValue input,
+                              float alpha, float beta);
+
+  /// Create a HardSigmoid node with the given \p name, \p input,
+  /// \p alpha, \p beta and output type \p outTy.
+  ClipNode *createHardSigmoid(llvm::StringRef name, TypeRef outTy,
+                              NodeValue input, float alpha, float beta);
+
   /// Create a Tanh node with the given \p name, \p input and
   /// output type \p outTy.
   TanhNode *createTanh(llvm::StringRef name, TypeRef outTy, NodeValue input);
@@ -880,12 +890,18 @@ public:
                            llvm::ArrayRef<NodeValue> inputs,
                            unsigned_t dimension, TypeRef outTy);
 
-  /// Create a quantized TileNode with \p name, \p input, \p tiles, and \p axis.
+  /// Create a TileNode with \p name, \p input, \p tiles, and \p axis.
   /// For example, an input tensor {{1,2,3,4}} of dimension 1x4 with tiles = 2
   /// and axis = 0 would result in an output tensor {{1,2,3,4}, {1,2,3,4}} of
   /// dimension 2x4.
   TileNode *createTile(llvm::StringRef name, NodeValue input, unsigned_t tiles,
                        unsigned_t axis, TypeRef outTy = nullptr);
+
+  /// Create a TileNode with \p name, \p input which repeats the input data
+  /// the given count values \p tiles along the given \p axes.
+  TileNode *createTile(llvm::StringRef name, NodeValue input,
+                       llvm::ArrayRef<unsigned_t> tiles,
+                       llvm::ArrayRef<unsigned_t> axes);
 
   /// Create an insert tensor node \p name, which inserts \p small into \p big
   /// at offset into big \p start \p count times along \p axis.
@@ -965,6 +981,16 @@ public:
       llvm::StringRef name, TypeRef resType, NodeValue input, NodeValue beta,
       NodeValue scale, NodeValue mean, NodeValue var, unsigned_t channelIdx = 0,
       float epsilon = 1e-5, float momentum = 0.9);
+
+  /// Create and \returns an InstanceNormalizationNode with result type of \p
+  /// outTy that computes the instance normalization of \p input based on the \p
+  /// scale and \p bias combined with the computed mean and stddev of each
+  /// batch. \p epsilon is a small perterbation used to avoid division by 0
+  /// during normalization.
+  InstanceNormalizationNode *
+  createInstanceNormalization(llvm::StringRef name, NodeValue input,
+                              NodeValue beta, NodeValue scale,
+                              unsigned_t channelIdx = 0, float epsilon = 1e-5);
 
   /// Creates and \returns a LayerNormalizationNode with result type of \p outTy
   /// that computes the layer normalization of the inner most layers of \p input
@@ -1529,19 +1555,6 @@ public:
                                                unsigned_t maxOutputSize);
 
   /// Implements an operation that converts the sparse representation given by
-  /// the pair of \p indices and \p values into a dense representation.
-  /// This representation contains each value of \p values at the corresponding
-  /// index given by \p indices. All indices that are not present in \p indices
-  /// are filled with zeroes. \p indices can contain duplicates, and in this
-  /// case, the corresponding values in \p values are added.
-  ///
-  /// \p dataToInferDim acts as a hint about the shape of the output. The first
-  /// dimension of the output is the first dimension of this tensor.
-  SparseToDenseNode *createSparseToDense(llvm::StringRef name,
-                                         NodeValue indices, NodeValue values,
-                                         NodeValue dataToInferDim);
-
-  /// Implements an operation that converts the sparse representation given by
   /// the  \p lengths, \p indices and \p values into a dense representation.
   /// This representation contains \p lengths[i] indices in batch i, and in each
   /// batch contains the value of \p values at the corresponding index given by
@@ -1658,18 +1671,27 @@ public:
       std::vector<NodeValue> &roiProbsIn, int64_t rpnMaxLevel,
       int64_t rpnMinLevel, unsigned_t rpnPostNmsTopN);
 
-  /// Gathers entries of the outer-most dimension of \p data indexed by
-  /// \p indices, and concatenates them. A non-zero \p batchDims specifies the
-  /// batch, and the result is the concatenation of the operation on each sample
-  /// in the batch.
+  /// Given \p data tensor of rank r >= 1, and \p indices tensor of rank q,
+  /// gather entries of the \p axis dimension of data (default outer-most for
+  /// axis = 0) indexed by indices and concatenate them in the output tensor of
+  /// rank q + (r - 1).
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#gather
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
-                           NodeValue indices, unsigned_t batchDims = 0);
+                           NodeValue indices, unsigned_t axis = 0);
 
   /// Given \p data tensor of rank r >= 1, \p indices tensor of rank q >= 1,
-  /// and batch_dims integer b, this operator gathers slices of data
+  /// and \p batchDims integer b, this operator gathers slices of data
   /// into an output tensor of rank q + r - indices_shape[-1] - 1 - b.
+  /// \p indices is a q-dimensional integer tensor, best thought of as a (q-1)
+  /// dimensional tensor of index-tuples into \p data, where each element
+  /// defines a slice of data.
+  /// \p batchDims is an integer b indicating the number of batch dimensions,
+  /// that is the leading number of dimensions of \p data tensor and
+  /// \p indices that are representing the batches such that the gather starts
+  /// from the b+1 dimension.
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#gathernd
   GatherNDNode *createGatherND(llvm::StringRef name, NodeValue data,
-                               NodeValue indices);
+                               NodeValue indices, unsigned_t batchDims = 0);
 
   /// Create a node, performing GatherElements operation:
   /// GatherElements takes inputs \p data and indices of the same rank r >=
@@ -1852,6 +1874,13 @@ public:
   createBatchNormalization(PlaceholderBindings &bindings, llvm::StringRef name,
                            NodeValue input, unsigned_t channelIdx = 0,
                            float epsilon = 1e-5, float momentum = 0.9);
+
+  /// Create a BatchedUnaryEmbedding node. \p offsets which marks the end
+  /// of the last range.
+  BatchedUnaryEmbeddingsBagsNode *
+  createBatchedUnaryEmbeddingsBags(llvm::StringRef name, NodeValue weights,
+                                   NodeValue tableOffsets, NodeValue indices,
+                                   NodeValue offsets);
 
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input. \p kernels defines the size of the height and width dimensions

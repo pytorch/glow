@@ -19,9 +19,11 @@
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/HostManager/HostManager.h"
 #include "lib/Onnxifi/Base.h"
 
 #include <algorithm>
@@ -141,6 +143,12 @@ llvm::cl::opt<unsigned> numDevicesOpt(
     "num-devices", llvm::cl::desc("Number of devices to use for partitioning."),
     llvm::cl::Optional, llvm::cl::init(2), llvm::cl::cat(recSysTestCat));
 
+llvm::cl::opt<unsigned> partitioningNumDevicesOpt(
+    "partitioning-num-devices",
+    llvm::cl::desc(
+        "Number of devices to override sparseNNPartitioningNumCards."),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(recSysTestCat));
+
 llvm::cl::opt<std::string> traceDir(
     "trace-dir",
     llvm::cl::desc("Directory used to store Glow trace events files. If not "
@@ -158,11 +166,27 @@ llvm::cl::opt<bool> dumpModelInputs(
         "Dump model and inputs into format that repro binary can run."),
     llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 
+llvm::cl::opt<bool> dumpFinalGraph(
+    "dump-final-graph",
+    llvm::cl::desc(
+        "Call dumpDag on each Function passed to the backend for compilation."),
+    llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> saturateHost("saturate-host",
+                                 llvm::cl::desc("Enable host saturation."),
+                                 llvm::cl::init(false),
+                                 llvm::cl::cat(recSysTestCat));
+
 llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
     "glow_global_fused_scale_offset_fp32",
     llvm::cl::desc(
         "Enable converting scale/offset in sls's input data from fp16 to fp32"),
     llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> skipCorrectnessCheck(
+    "skip_correctness_check",
+    llvm::cl::desc("Skip correctness check with Interpreter backend"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 } // namespace
 
 class TestDeferredWeightLoader : public DeferredWeightLoader {
@@ -985,6 +1009,7 @@ protected:
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
     cctx.deferredWeightLoader = &loader;
+    cctx.dumpFinalGraph = dumpFinalGraph;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
     // Run graph
@@ -1032,9 +1057,19 @@ protected:
       dumpOutputs();
     }
 
+    // Undeploy the network.
+    CHECK(!ERR_TO_BOOL(hostManager->removeNetwork("main")))
+        << "Could not remove the network";
+    // Free memory.
+    hostManager.reset();
+    mod.reset();
+
     // Compare against interpreter if we're not executing already on it.
-    if (getBackendName() != "Interpreter") {
+    if (!skipCorrectnessCheck && getBackendName() != "Interpreter") {
       compareAgainstInterpreter();
+    } else {
+      std::cout << "Skip correctness check with Interpreter backend"
+                << std::endl;
     }
   }
 
@@ -1115,10 +1150,11 @@ protected:
         sparseNNPartitioningNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         sparseNNPartitioningNumCoresOther;
+    cctx.dumpFinalGraph = dumpFinalGraph;
+    cctx.saturateHost = saturateHost;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(modP), cctx));
     std::cout << "Partitions = " << rawModule->getFunctions().size()
               << std::endl;
-    ASSERT_LE(rawModule->getFunctions().size(), numDevices);
 
     // Run the partitioned graph and compare the results.
     auto &bindings = *context.getPlaceholderBindings();
@@ -1490,7 +1526,7 @@ TEST_P(RecommendationSystemTest,
   // Options for SparseNN Partitioning
   useSparseNNPartitioning = true;
   sparseNNPartitioningAddSLSConcats = true;
-  sparseNNPartitioningNumCards = 1;
+  sparseNNPartitioningNumCards = partitioningNumDevicesOpt;
   sparseNNPartitioningSLSKbytes = 1000000;
   sparseNNPartitioningNumCoresSLS = 6;
   sparseNNPartitioningNumCoresOther = 4;

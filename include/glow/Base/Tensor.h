@@ -564,24 +564,46 @@ public:
 
   // Move ctor.
   Tensor(Tensor &&other) noexcept {
-    std::swap(data_, other.data_);
-    std::swap(type_, other.type_);
-    std::swap(isUnowned_, other.isUnowned_);
-    std::swap(tensorPool_, other.tensorPool_);
-    std::swap(unpaddedSize_, other.unpaddedSize_);
-    std::swap(deviceResidency_, other.deviceResidency_);
-    std::swap(ownsDeviceResidency_, other.ownsDeviceResidency_);
+    if (!isUnowned()) {
+      alignedFree(getData());
+    }
+    if (ownsDeviceResidency_) {
+      delete deviceResidency_;
+    }
+    data_ = other.data_;
+    type_ = other.type_;
+    isUnowned_ = other.isUnowned_;
+    tensorPool_ = other.tensorPool_;
+    unpaddedSize_ = other.unpaddedSize_;
+    deviceResidency_ = other.deviceResidency_;
+    ownsDeviceResidency_ = other.ownsDeviceResidency_;
+    other.data_ = nullptr;
+    other.isUnowned_ = true;
+    other.tensorPool_ = nullptr;
+    other.deviceResidency_ = nullptr;
+    other.ownsDeviceResidency_ = false;
   }
 
   /// Move assignment operator.
-  Tensor &operator=(Tensor &&other) noexcept {
-    std::swap(data_, other.data_);
-    std::swap(type_, other.type_);
-    std::swap(isUnowned_, other.isUnowned_);
-    std::swap(tensorPool_, other.tensorPool_);
-    std::swap(unpaddedSize_, other.unpaddedSize_);
-    std::swap(deviceResidency_, other.deviceResidency_);
-    std::swap(ownsDeviceResidency_, other.ownsDeviceResidency_);
+  Tensor &operator=(Tensor &&other) {
+    if (!isUnowned()) {
+      alignedFree(getData());
+    }
+    if (ownsDeviceResidency_) {
+      delete deviceResidency_;
+    }
+    data_ = other.data_;
+    type_ = other.type_;
+    isUnowned_ = other.isUnowned_;
+    tensorPool_ = other.tensorPool_;
+    unpaddedSize_ = other.unpaddedSize_;
+    deviceResidency_ = other.deviceResidency_;
+    ownsDeviceResidency_ = other.ownsDeviceResidency_;
+    other.data_ = nullptr;
+    other.isUnowned_ = true;
+    other.tensorPool_ = nullptr;
+    other.deviceResidency_ = nullptr;
+    other.ownsDeviceResidency_ = false;
     return *this;
   }
 
@@ -697,6 +719,8 @@ public:
       return isEqualImpl<int16_t>(other, allowedError, verbose);
     case ElemKind::Int32QTy:
       return isEqualImpl<int32_t>(other, allowedError, verbose);
+    case ElemKind::Int64QTy:
+      return isEqualImpl<int64_t>(other, allowedError, verbose);
     case ElemKind::UInt8ITy:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::Int32ITy:

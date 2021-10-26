@@ -535,6 +535,12 @@ void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
       group, I->getDilation());
 }
 
+void BoundInterpreterFunction::fwdConcatInst(const ConcatInst *I) {
+  (void)I;
+  // TODO
+  llvm_unreachable("not yet implemented");
+}
+
 void BoundInterpreterFunction::fwdConvolutionGradInst(
     const ConvolutionGradInst *I) {
   auto inW = getWeightHandle(I->getSrc());
@@ -2387,20 +2393,20 @@ void BoundInterpreterFunction::fwdGatherInstImpl(const glow::GatherInst *I) {
   auto &dataTy = dataT->getType();
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
-  unsigned_t batchDims = I->getBatchDims();
+  unsigned_t axis = I->getBatchDims();
 
   size_t out_p = 0;
   dim_t elementSize = dataTy.getElementSize();
   // The size of the sample in the batch.
-  dim_t dataSampleSize = dataTy.getSliceSize(batchDims) * elementSize;
+  dim_t dataSampleSize = dataTy.getSliceSize(axis) * elementSize;
   // The size of the slices that we gather.
-  dim_t dataSliceSize = dataTy.getSliceSize(batchDims + 1) * elementSize;
+  dim_t dataSliceSize = dataTy.getSliceSize(axis + 1) * elementSize;
 
   // Calculate the size of each sample in the batch.
   dim_t numSamples = (dataT->size() * elementSize) / dataSampleSize;
 
   // Calculate number of samples in the batch.
-  dim_t batchSize = dataTy.dims()[batchDims];
+  dim_t batchSize = dataTy.dims()[axis];
   (void)batchSize;
 
   // For each sample in the batch:
@@ -2511,47 +2517,73 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
     const glow::GatherNDInst *I) {
 
   Tensor *dataT = getTensor(I->getData());
-  auto &dataTy = dataT->getType();
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
-  auto &indicesTy = indicesT->getType();
+  auto batchDims = I->getBatchDims();
 
-  // Get the last dimension of indices Tensor
-  const dim_t lastIndicesDimension =
-      indicesTy.dims()[indicesTy.dims().size() - 1];
+  auto dataDims = I->getData()->dims();
+  auto indicesDims = I->getIndices()->dims();
+  dim_t indicesDimLast = indicesDims.back();
 
-  size_t outP = 0;
-  dim_t elementSize = dataTy.getElementSize();
-
-  // The size of the each slice that we gather
-  dim_t dataSliceSize = 1;
-  for (size_t i = lastIndicesDimension; i < dataTy.dims().size(); i++) {
-    dataSliceSize *= dataTy.dims()[i];
-  }
-  // Calculate number of such slices that we gather
-  dim_t numOfSlices = 1;
-  for (size_t i = 0; i < indicesTy.dims().size() - 1; i++) {
-    numOfSlices *= indicesTy.dims()[i];
+  // Compute batch count.
+  dim_t batchCount = 1;
+  for (size_t idx = 0; idx < batchDims; ++idx) {
+    batchCount *= dataDims[idx];
   }
 
-  dim_t dataSliceSizeInBytes = dataSliceSize * elementSize;
+  // Compute input slice count.
+  dim_t inpSliceCount = 1;
+  for (size_t idx = batchDims; idx < batchDims + indicesDimLast; ++idx) {
+    inpSliceCount *= dataDims[idx];
+  }
 
-  for (dim_t i = 0, end = numOfSlices; i < end; i++) {
-    dim_t x = indicesT->getHandle<ElemTy>().raw(i * dataSliceSize);
+  // Compute output slice count.
+  dim_t outSliceCount = 1;
+  for (size_t idx = batchDims; idx < indicesDims.size() - 1; ++idx) {
+    outSliceCount *= indicesDims[idx];
+  }
 
-    for (dim_t j = 1; j < lastIndicesDimension; j++) {
-      x = (x * dataTy.dims()[j]) +
-          indicesT->getHandle<ElemTy>().raw(i * dataSliceSize + j);
+  // Compute slice size (in bytes).
+  dim_t sliceSize = dataT->getType().getElementSize();
+  for (size_t idx = batchDims + indicesDimLast; idx < dataDims.size(); idx++) {
+    sliceSize *= dataDims[idx];
+  }
+
+  // Get indices dimension products.
+  std::vector<dim_t> indicesDimProd(indicesDimLast);
+  indicesDimProd[indicesDimLast - 1] = 1;
+  for (ssize_t idx = static_cast<ssize_t>(indicesDimLast) - 2; idx >= 0;
+       idx--) {
+    indicesDimProd[idx] =
+        indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
+  }
+
+  // We will view the tensors as equivalent 3D tensors with the dimensions:
+  // data    - batchCount x inpSliceCount x sliceSize
+  // indices - batchCount x outSliceCount x indicesDimLast
+  // output  - batchCount x outSliceCount x sliceSize
+
+  char *dataPtr = dataT->getUnsafePtr();
+  ElemTy *indicesPtr = (ElemTy *)indicesT->getUnsafePtr();
+  char *outPtr = outT->getUnsafePtr();
+
+  for (size_t batchIdx = 0; batchIdx < batchCount; ++batchIdx) {
+    for (size_t outSliceIdx = 0; outSliceIdx < outSliceCount; ++outSliceIdx) {
+
+      // Compute input slice index.
+      dim_t inpSliceIdx = 0;
+      for (size_t idx = 0; idx < indicesDimLast; ++idx) {
+        inpSliceIdx += (*indicesPtr++) * indicesDimProd[idx];
+      }
+
+      // Copy data.
+      std::copy(dataPtr + (inpSliceIdx + 0) * sliceSize,
+                dataPtr + (inpSliceIdx + 1) * sliceSize, outPtr);
+      outPtr += sliceSize;
     }
 
-    if (lastIndicesDimension < dataTy.dims().size()) {
-      x = x * dataTy.dims()[lastIndicesDimension];
-    }
-
-    std::copy(&dataT->getUnsafePtr()[x * elementSize],
-              &dataT->getUnsafePtr()[x * elementSize + dataSliceSizeInBytes],
-              &outT->getUnsafePtr()[outP]);
-    outP += dataSliceSizeInBytes;
+    // Increment input pointer for next batch.
+    dataPtr += inpSliceCount * sliceSize;
   }
 }
 
@@ -5296,7 +5328,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
   }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename IndexType>
 void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
     const EmbeddingBagInst *I) {
   staticAssertFloatingPointType(ElemTy);
@@ -5310,8 +5342,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int32_t>();
-  auto OFFH = offsets->getHandle<int32_t>();
+  auto IH = indices->getHandle<IndexType>();
+  auto OFFH = offsets->getHandle<IndexType>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments
@@ -5355,8 +5387,9 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
 }
 
 void BoundInterpreterFunction::fwdEmbeddingBagInst(const EmbeddingBagInst *I) {
-  dispatchFloatingPointImpl(fwdEmbeddingBagInstFloatImpl,
-                            I->getData()->getElementType(), I);
+  dispatchFloatingPointAndIndexImpl(fwdEmbeddingBagInstFloatImpl,
+                                    I->getData()->getElementType(),
+                                    I->getIndices()->getElementType(), I);
 }
 
 template <typename ElemTy>
@@ -5640,7 +5673,12 @@ void BoundInterpreterFunction::
   }
 }
 
-template <typename T, typename AccumT>
+void BoundInterpreterFunction::fwdFusedRowwiseQuantizedSparseLengthsSumInst(
+    const FusedRowwiseQuantizedSparseLengthsSumInst *I) {
+  llvm_unreachable("Not supported");
+}
+
+template <typename T, typename AccumT, typename IndexT>
 void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
     const EmbeddingBagByteRowwiseOffsetsInst *I) {
   auto *out = getTensor(I->getDest());
@@ -5652,8 +5690,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int32_t>();
-  auto OFFH = offsets->getHandle<int32_t>();
+  auto IH = indices->getHandle<IndexT>();
+  auto OFFH = offsets->getHandle<IndexT>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments
@@ -5719,15 +5757,38 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
 
 void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsInst(
     const EmbeddingBagByteRowwiseOffsetsInst *I) {
+  const auto ity = I->getIndices()->getElementType();
+  const bool fp32FusedScaleOffset =
+      (I->getData()->getElementType() == ElemKind::UInt4FusedQTy) ||
+      (I->getData()->getElementType() == ElemKind::UInt8FusedQTy);
+
   switch (I->getDest()->getElementType()) {
   case ElemKind::FloatTy:
-    fwdEmbeddingBagByteRowwiseOffsetsImpl<float, float>(I);
+    if (ity == ElemKind::Int32ITy) {
+      fwdEmbeddingBagByteRowwiseOffsetsImpl<float, float, int32_t>(I);
+    } else if (ity == ElemKind::Int64ITy) {
+      fwdEmbeddingBagByteRowwiseOffsetsImpl<float, float, int64_t>(I);
+    } else {
+      llvm_unreachable("Index type is not supported");
+    }
     break;
   case ElemKind::Float16Ty:
-    if (I->getUseFP16Accumulation()) {
-      fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float16_t>(I);
+    if (I->getUseFP16Accumulation() && !fp32FusedScaleOffset) {
+      if (ity == ElemKind::Int32ITy) {
+        fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float16_t, int32_t>(I);
+      } else if (ity == ElemKind::Int64ITy) {
+        fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float16_t, int64_t>(I);
+      } else {
+        llvm_unreachable("Index type is not supported");
+      }
     } else {
-      fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float>(I);
+      if (ity == ElemKind::Int32ITy) {
+        fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float, int32_t>(I);
+      } else if (ity == ElemKind::Int64ITy) {
+        fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float, int64_t>(I);
+      } else {
+        llvm_unreachable("Index type is not supported");
+      }
     }
     break;
   default:
@@ -5768,60 +5829,6 @@ void BoundInterpreterFunction::fwdGaussianFillInst(const GaussianFillInst *I) {
   for (auto &elem : outH) {
     elem = dist(rnd);
   }
-}
-
-template <typename ElemTy>
-void BoundInterpreterFunction::fwdSparseToDenseInstImpl(
-    const SparseToDenseInst *I) {
-
-  auto out = getTensor(I->getDest());
-  auto indices = getTensor(I->getIndices());
-  auto values = getTensor(I->getValues());
-
-  out->zero();
-
-  auto IH = indices->getHandle<int64_t>();
-
-  size_t numIndices = indices->dims()[0];
-  size_t numOutDims = out->dims().size();
-
-  // Convert sparse representation to dense representation by taking
-  // slices of output and values and accumulating the value slice into
-  // the output slice.
-
-  // Dimensions and offsets for the output and values slices. sliceDims
-  // will always be {1, [rest of output dimensions]} since the first dimension
-  // is the index in this operation. sliceOffsets will be {indices[j], 0, ...}
-  // for the output slice and {j, 0, ...} for the values slice so that the
-  // slice at index j gets mapped to index indices[j] in the dense
-  // representation.
-  ShapeVector sliceDims(out->dims().begin(), out->dims().end());
-  ShapeVector sliceOffsets(numOutDims, 0);
-  sliceDims[0] = 1;
-
-  for (dim_t j = 0; j < numIndices; ++j) {
-    // Create values slice with offsets {j, 0, ...}.
-    sliceOffsets[0] = j;
-    auto VS = values->getUnowned(sliceDims, sliceOffsets);
-    auto VSH = VS.getHandle<ElemTy>();
-
-    // Create output slice with offsets {indices[j], 0, ...}.
-    sliceOffsets[0] = IH.at({j});
-    auto OS = out->getUnowned(sliceDims, sliceOffsets);
-    auto OSH = OS.getHandle<ElemTy>();
-
-    // Accumulate values slice into output slice.
-    size_t outputSliceSize = OS.size();
-    for (size_t k = 0; k < outputSliceSize; ++k) {
-      OSH.raw(k) += VSH.raw(k);
-    }
-  }
-}
-
-void BoundInterpreterFunction::fwdSparseToDenseInst(
-    const SparseToDenseInst *I) {
-  dispatchArithmeticImpl(fwdSparseToDenseInstImpl,
-                         I->getDest()->getElementType(), I);
 }
 
 template <typename ElemTy, typename LengthsTy, typename IndicesTy>
@@ -6301,6 +6308,56 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
 
   dispatchFloatingPointAndIndexImpl(fwdTopK, inW->getElementType(),
                                     indW->getElementType(), outW, indW, inW, k);
+}
+
+void BoundInterpreterFunction::fwdBatchedUnaryEmbeddingsBagsInst(
+    const BatchedUnaryEmbeddingsBagsInst *I) {
+  dispatchFloatingPointAndIndexImpl(fwdBatchedUnaryEmbeddingsBagsInstImpl,
+                                    I->getWeights()->getElementType(),
+                                    I->getIndices()->getElementType(), I);
+}
+
+template <typename ElemTy, typename IndexType>
+void BoundInterpreterFunction::fwdBatchedUnaryEmbeddingsBagsInstImpl(
+    const BatchedUnaryEmbeddingsBagsInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto out = getTensor(I->getDest());
+  auto weights = getTensor(I->getWeights());
+  auto tableOffsets = getTensor(I->getTableOffsets());
+  auto indices = getTensor(I->getIndices());
+  auto offsets = getTensor(I->getOffsets());
+
+  out->zero();
+
+  auto indicesH = indices->getHandle<IndexType>();
+  auto offsetsH = offsets->getHandle<IndexType>();
+  auto weightsH = weights->getHandle<ElemTy>();
+  auto tableOffsetsH = tableOffsets->getHandle<IndexType>();
+  auto outH = out->getHandle<ElemTy>();
+
+  size_t numTasks = weightsH.dims()[0];
+  size_t numTables = tableOffsets->size() - 1;
+  size_t numBatches = (offsets->size() - 1) / numTables;
+
+  IndexType sumTable = tableOffsetsH.raw(numTables);
+
+  for (size_t n = 0; n < numTasks; n++) {
+    for (size_t b = 0; b < numBatches; b++) {
+      for (size_t t = 0; t < numTables; t++) {
+        IndexType indicesStart = offsetsH.raw(t * numBatches + b);
+        IndexType indicesEnd = offsetsH.raw(t * numBatches + b + 1);
+        ElemTy sum = 0;
+        for (IndexType i = indicesStart; i < indicesEnd; i++) {
+          IndexType idx = n * sumTable + tableOffsetsH.raw(t) + indicesH.raw(i);
+          assert(idx < weightsH.size() &&
+                 "Index shall be within weights boundary.");
+          sum += weightsH.raw(idx);
+        }
+        outH.raw((n * numBatches + b) * numTables + t) = sum;
+      }
+    }
+  }
 }
 
 #define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \

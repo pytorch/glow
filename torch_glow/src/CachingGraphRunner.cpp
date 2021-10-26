@@ -18,9 +18,12 @@
 
 #include "ShapeInferenceEngine.h"
 
+#include "glow/Base/Type.h"
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Flags/Flags.h"
+#include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Runtime/TraceExporter.h"
 #include "glow/Support/Support.h"
 
@@ -121,6 +124,10 @@ Error initializeCompilationContextFromGlowFlags(
         glow::flags::SparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
         glow::flags::SparseNNPartitioningPairTileWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairSLSWith =
+        glow::flags::SparseNNPartitioningPairSLSWith;
+    cctx.optimizationOpts.sparseNNPartitioningConcatSplitSize =
+        glow::flags::SparseNNPartitioningConcatSplitSize;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
@@ -157,6 +164,12 @@ void initializeCompilationContextFromSettings(
     cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
   }
+  if (!cctx.precisionConfig.skipBiasFp32tofp16Convert &&
+      settings.skipBiasFp32tofp16Convert) {
+    cctx.precisionConfig.skipBiasFp32tofp16Convert =
+        settings.skipBiasFp32tofp16Convert;
+    LOG(INFO) << "Skipping bias fp32 -> fp16 conversion enabled";
+  }
   if (!cctx.precisionConfig.convertPlaceholdersToFP16 &&
       settings.convertPlaceholdersToFP16) {
     cctx.precisionConfig.convertPlaceholdersToFP16 =
@@ -185,6 +198,20 @@ void initializeCompilationContextFromSettings(
     cctx.precisionConfig.forceFP16AccumSLS = settings.forceFP16AccumSLS;
     LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
   }
+  if (!cctx.precisionConfig.convert8BitFusedToFP32 &&
+      settings.convert8BitFusedToFP32) {
+    LOG(INFO) << "Enabling conversion of FP16 scale and bias to FP32 for 8bit "
+                 "EmbeddingBagByteRowwiseOffset";
+    cctx.precisionConfig.convert8BitFusedToFP32 =
+        settings.convert8BitFusedToFP32;
+  }
+  if (!cctx.precisionConfig.convert4BitFusedToFP32 &&
+      settings.convert4BitFusedToFP32) {
+    LOG(INFO) << "Enabling conversion of FP16 scale and bias to FP32 for 4bit "
+                 "EmbeddingBagByteRowwiseOffset";
+    cctx.precisionConfig.convert4BitFusedToFP32 =
+        settings.convert4BitFusedToFP32;
+  }
   if (!glow::flags::DisableLayoutVerifying && settings.disableLayoutVerifying) {
     glow::flags::DisableLayoutVerifying = true;
     LOG(INFO) << "Skipping all layout verifying";
@@ -211,10 +238,16 @@ void initializeCompilationContextFromSettings(
 
   if (settings.use_dag_optimizer) {
     cctx.callDAGOptimizer = true;
-    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
-        settings.apl_parallelization_alg;
-    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
-        settings.apl_num_parallel_chunks;
+    if (!settings.apl_placement_alg.empty()) {
+      cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
+          settings.apl_placement_alg;
+    }
+    if (!settings.apl_parallelization_alg.empty()) {
+      cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+          settings.apl_parallelization_alg;
+      cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+          settings.apl_num_parallel_chunks;
+    }
   }
 
   if (!settings.backendSpecificOpts.empty()) {
@@ -228,6 +261,11 @@ void initializeCompilationContextFromSettings(
     cctx.skipProvisioning = true;
   }
 
+  if (settings.sinkTanhBelowConcat) {
+    LOG(INFO) << "Sinking tanh below concat";
+    cctx.optimizationOpts.sinkTanhBelowConcat = true;
+  }
+
   if (settings.useSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
@@ -238,6 +276,8 @@ void initializeCompilationContextFromSettings(
         settings.sparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
         settings.sparseNNPartitioningPairTileWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairSLSWith =
+        settings.sparseNNPartitioningPairSLSWith;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         settings.sparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
@@ -246,6 +286,36 @@ void initializeCompilationContextFromSettings(
         settings.SparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         settings.SparseNNPartitioningSchemeNumCoresOther;
+  }
+
+  if (settings.enableP2P) {
+    LOG(INFO) << "Glow P2P Enabled";
+    cctx.enableP2P = true;
+  }
+
+  if (settings.enableDRT) {
+    LOG(INFO) << "Glow DRT Enabled";
+    cctx.enableDRT = true;
+  }
+}
+
+/// Initialize the Glow compilation context \p cctx with \p
+/// ModelCompilationConfigOverride configOverride
+void initializeCompilationContextFromModelCompilationConfigOverride(
+    glow::CompilationContext &cctx,
+    const glow::ModelCompilationConfigOverride &configOverride) {
+  if (configOverride.useDagOptimizer.has_value()) {
+    cctx.callDAGOptimizer = configOverride.useDagOptimizer.value();
+  }
+
+  if (configOverride.aplNumParallelChunks.has_value()) {
+    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+        configOverride.aplNumParallelChunks.value();
+  }
+
+  if (configOverride.aplAsapPlacement.has_value()) {
+    cctx.optimizationOpts.enableAPLASAPPlacement =
+        configOverride.aplAsapPlacement.value();
   }
 }
 
@@ -257,13 +327,40 @@ at::Tensor sliceTensor(at::Tensor &t, const TensorShape &shape) {
   return at::native::slice(t, 0, 0, shape[0]);
 }
 
+/// The following two methods account for the auto FP32->FP16 conversion in Glow
+/// for placeholder \p type match in AOT
+ElemKind getConvertElemTypeForAOT(const Type &type,
+                                  const CompilationContext &cctx) {
+  auto elementType = type.getElementType();
+  if (cctx.precisionConfig.convertToFP16 && elementType == ElemKind::FloatTy) {
+    elementType = ElemKind::Float16Ty;
+  } else if (cctx.precisionConfig.convertFusedToFP16 &&
+             elementType == ElemKind::UInt8FusedQTy) {
+    elementType = ElemKind::UInt8FusedFP16QTy;
+  }
+  return elementType;
+}
+
+std::vector<unsigned long>
+getConvertDimVecForAOT(const Type &type, const CompilationContext &cctx) {
+  auto dims = type.dims();
+  auto dimVec = dims.vec();
+  if (cctx.precisionConfig.convertFusedToFP16 &&
+      type.getElementType() == ElemKind::UInt8FusedQTy) {
+    assert(dimVec.size() == 2);
+    dimVec[1] = dimVec[1] - 4;
+  }
+  return dimVec;
+}
+
 /// This function is the preparation of Glow serialization. It sets \p
 /// GlowDeserializationSpec for AOT model loading and sets cctx to let
 /// HostManager serialize lowerred Glow IR into onnx file
 Error setupGlowDeserializationSpecAndCctx(
     const PyTorchLoaderSettings &settings,
     const std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo> &info,
-    CompilationContext &cctx, Function *f, GlowDeserializationSpec &spec) {
+    CompilationContext &cctx, Function *f, GlowDeserializationSpec &spec,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr) {
   auto glowPyTorchLoaderSettings = spec.pytorchLoaderSettings;
   glowPyTorchLoaderSettings->overrideSettings(settings);
 
@@ -287,33 +384,19 @@ Error setupGlowDeserializationSpecAndCctx(
       auto type = *ph->getType();
       /// Account for the auto FP32->FP16 conversion in Glow
       /// for placeholder \p type match
-      auto elementType = type.getElementType();
-      auto dims = type.dims();
-      auto dimVec = dims.vec();
-      RETURN_ERR_IF_NOT(
-          dimVec.size() == 2,
-          strFormat("static ph must have 2 dims, got %zu", dimVec.size()));
-      if (cctx.precisionConfig.convertToFP16 &&
-          elementType == ElemKind::FloatTy) {
-        elementType = ElemKind::Float16Ty;
-      } else if (cctx.precisionConfig.convertFusedToFP16 &&
-                 elementType == ElemKind::UInt8FusedQTy) {
-        elementType = ElemKind::UInt8FusedFP16QTy;
-        /// Subtracting 4 because we have FP16 scale/bias (2 + 2 = 4bytes)
-        /// instead of FP32 (4 + 4 = 8bytes), so 4 fewer bytes
-        dimVec[1] = dimVec[1] - 4;
-      }
-      auto newDims = llvm::ArrayRef<unsigned long>(dimVec);
-      auto newType =
+      auto convertedElemType = getConvertElemTypeForAOT(type, cctx);
+      auto convertedDimVec = getConvertDimVecForAOT(type, cctx);
+      auto convertedDims = llvm::ArrayRef<unsigned long>(convertedDimVec);
+      auto convertedType =
           type.isQuantizedType()
-              ? f->getParent()->uniqueType(elementType, newDims,
+              ? f->getParent()->uniqueType(convertedElemType, convertedDims,
                                            type.getScale(), type.getOffset())
-              : f->getParent()->uniqueType(elementType, newDims);
+              : f->getParent()->uniqueType(convertedElemType, convertedDims);
       // Here staticPlaceholderTypes is used for serializing Glow IR in
       // hostManager, which is post-precision conversion. staticPHTypes on the
       // other hand is used in Glow deserialization, which requires the input
       // tensor types (i.e., pre-precision conversion)
-      staticPlaceholderTypes[std::string(ph->getName())] = *newType;
+      staticPlaceholderTypes[std::string(ph->getName())] = *convertedType;
       staticPHNames.emplace_back(ph->getName().data());
       staticPHTypes.emplace_back(type.toString());
     }
@@ -328,6 +411,8 @@ Error setupGlowDeserializationSpecAndCctx(
   cctx.serializeCompiledDAG = true;
   cctx.saveConstantInSerializeCompiledDAG = true;
   cctx.staticPlaceholderTypesForAOT = staticPlaceholderTypes;
+  cctx.returnGlowSerializedModelStr = true;
+  cctx.glowAOTSerializationModelStrPtr = glowAOTSerializationModelStrPtr;
   // We currently save all the non-embedding weights in the ONNX file
   // and thus do not delay/record constant modification. Since AOT
   // compilation is performed for every training snapshot, we do not
@@ -340,7 +425,7 @@ Error setupGlowDeserializationSpecAndCctx(
   return Error::success();
 }
 
-/// This function serialize Glow deserialization spec into a JSON file
+/// This function serialize Glow deserialization spec in JSON format
 /// The JSON file contains
 ///     1. PyTorchLoaderSettings;
 ///     2. Glow function name;
@@ -354,12 +439,12 @@ Error setupGlowDeserializationSpecAndCctx(
 ///           deserialization
 ///          (3) Input&Output PH names are used for reconstructing
 ///           PerGlowGraphInfo
-Error saveGlowDeserializationSpec(GlowDeserializationSpec &spec,
-                                  std::string fileName) {
+Error saveGlowDeserializationSpec(
+    GlowDeserializationSpec &spec,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr) {
   std::string serializedSpec;
   ASSIGN_VALUE_OR_RETURN_ERR(serializedSpec, spec.toJson());
-  std::ofstream file(fileName);
-  file << serializedSpec;
+  *glowAOTSerializationSpecStrPtr = std::move(serializedSpec);
   return Error::success();
 }
 
@@ -626,10 +711,16 @@ writeGlowTensorsToOnnx(const std::string &filePrefix,
 
   ONNX_NAMESPACE::GraphProto onnxGraph;
   for (size_t i = 0; i < placeholders.size(); ++i) {
-    auto *onnxT = onnxGraph.add_initializer();
     const auto *ph = placeholders[i];
+    if (ph->getNumUsers() == 0) {
+      LOG(INFO) << "Tensor onnxification not required. Not being used: "
+                << ph->getName().str() << "\n";
+      continue;
+    }
+
+    auto *onnxT = onnxGraph.add_initializer();
     const auto &t = glowTensors[i];
-    onnxT->set_name(ph->getName());
+    onnxT->set_name(ph->getName().str());
     size_t unpaddedSize = t.getUnpaddedSizeInBytes();
     size_t tensorSize = t.getSizeInBytes();
     if (unpaddedSize == tensorSize) {
@@ -759,7 +850,7 @@ Error CachingGraphRunner::writeJitIOToOnnxFile(
 
 Expected<std::pair<glow::Tensor, torch::Tensor>>
 CachingGraphRunner::convertPyTorchInputToGlowInput(
-    torch::Tensor ptTensor, const glow::Placeholder *ph) {
+    torch::Tensor &&ptTensor, const glow::Placeholder *ph) {
   glow::Tensor glowTensor;
 
   glow::TypeRef ty = ph->getType();
@@ -866,7 +957,7 @@ CachingGraphRunner::processPyTorchInputs(
 
     std::pair<glow::Tensor, torch::Tensor> tensors;
     ASSIGN_VALUE_OR_RETURN_ERR(
-        tensors, convertPyTorchInputToGlowInput(ptTensorOrig, ph));
+        tensors, convertPyTorchInputToGlowInput(std::move(ptTensorOrig), ph));
 
     glowTensorInputs.push_back(std::move(tensors.first));
 
@@ -906,7 +997,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     onnxFileNamePrefix = settings.onnxFileNamePrefix;
   }
 
-  if (settings.writeToOnnx || settings.jitVsGlowCompare) {
+  if (settings.jitVsGlowCompare) {
 
     // We will use original graph for runOnJit, which means the first input
     // should be module.
@@ -1096,10 +1187,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
             info.settings, info.outputPlaceholders, convertedGlowTensors));
 
         // Convert JIT outputs to Glow outputs and write to file
-        RETURN_IF_ERR(writeJITOutputsToOnnxFile(
-            strFormat("%s_pytorch_output_%zu", onnxFileNamePrefix.c_str(),
-                      runId),
-            copyStack, info));
+        if (settings.jitVsGlowCompare) {
+          RETURN_IF_ERR(writeJITOutputsToOnnxFile(
+              strFormat("%s_pytorch_output_%zu", onnxFileNamePrefix.c_str(),
+                        runId),
+              copyStack, info));
+        }
       }
     }
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
@@ -1220,7 +1313,12 @@ Error CachingGraphRunner::warmCache(
     runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation,
     bool useDeserialize,
     std::shared_ptr<std::unordered_map<std::string, std::vector<char>>>
-        nameToFunctions) {
+        nameToFunctions,
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr,
+    const std::string &serializationSpec, const std::string &onnxModelFile,
+    const c10::optional<ModelCompilationConfigOverride>
+        &modelCompilationConfigOverride) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -1241,6 +1339,11 @@ Error CachingGraphRunner::warmCache(
   glow::CompilationContext cctx;
   RETURN_IF_ERR(initializeCompilationContextFromGlowFlags(cctx));
   initializeCompilationContextFromSettings(cctx, settings);
+  if (modelCompilationConfigOverride.has_value()) {
+    initializeCompilationContextFromModelCompilationConfigOverride(
+        cctx, modelCompilationConfigOverride.value());
+  }
+  cctx.glowAOTSerializationModelStrPtr = glowAOTSerializationModelStrPtr;
 
   {
     if (settings.lazyCompile) {
@@ -1257,6 +1360,8 @@ Error CachingGraphRunner::warmCache(
     TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
                       "torch_glow::warmCache");
     RECORD_USER_SCOPE("torch_glow::warmCache");
+
+    runtime::PrePartitionedConfig PPC;
 
     for (const auto &metaStack : metaStacks) {
       size_t hash = getGraphMapKeyFromInputStack(metaStack);
@@ -1275,8 +1380,6 @@ Error CachingGraphRunner::warmCache(
           strFormat("pt_function_%lu_%lu", size_t(this), hash), settings);
       std::string functionNameHash = strFormat("%lu", hash);
 
-      Function *f = glowModule->createFunction(info->functionName);
-
       // If this function has already been compiled, the compiled stream is
       // already stored in nameToFunction, and deserialize is enabled, we use
       // the compiled stream instead of compiling it again.
@@ -1289,24 +1392,118 @@ Error CachingGraphRunner::warmCache(
         cctx.backendOpts.useDeserialize = true;
       }
 
+      // Type table for deferred weight loader
+      std::map<std::string, Type> staticPlaceholderTypes;
       {
         TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
                           "loadJITGraph");
         RECORD_USER_SCOPE("loadJITGraph");
-        RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-            *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-            outputCorrectTypes_, info->settings, {}, metaStack));
+        if (settings.loadGlowIRFromONNX) {
+          if (serializationSpec.empty()) {
+            return MAKE_ERR("Missing serialization spec file when doing Glow "
+                            "deserialization");
+          }
+          if (onnxModelFile.empty()) {
+            return MAKE_ERR(
+                "Missing onnx model file when doing Glow deserialization");
+          }
+          GlowDeserializationSpec spec;
+          RETURN_IF_ERR(spec.fromJson(serializationSpec));
+          std::vector<const char *> tensorNames;
+          for (const auto &name : spec.inputPHNames) {
+            tensorNames.emplace_back(name.data());
+          }
+          for (const auto &name : spec.staticPHNames) {
+            tensorNames.emplace_back(name.data());
+          }
+          std::vector<Type> types;
+          for (const auto &typeStr : spec.inputPHTypes) {
+            types.emplace_back(Type::fromString(typeStr));
+          }
+          for (const auto &typeStr : spec.staticPHTypes) {
+            types.emplace_back(Type::fromString(typeStr));
+          }
+          std::vector<TypeRef> typeRefs;
+          for (const auto &type : types) {
+            typeRefs.emplace_back(&type);
+          }
+          Error err = Error::empty();
+          cctx.prepartitionedConfig = &PPC;
+          // We use a dummy file name "model.onnxtxt" to trigger the loadproto
+          // logic in ONNXModelLoader; Note that the file name must contain
+          // ".onnxtxt" to trigger the logic
+          static_cast<void>(ONNXModelLoader(
+              "model.onnxtxt", tensorNames, typeRefs, *glowModule,
+              spec.functionName, &PPC, &err, /* zipMode */ false,
+              /* perNodeOpts */ nullptr,
+              /* loadIntoExistingModule */ false,
+              /* disableConstFoldInLoader */ false, /* B */ nullptr,
+              /* inputStringPtr */ &onnxModelFile));
+          RETURN_IF_ERR(err);
+          VLOG(1) << "Successfully deserialized Glow IR from onnx model file";
+
+          for (auto &ph : glowModule->getPlaceholders()) {
+            // Set PH static if it is in the original GlowIR
+            if (std::find(spec.staticPHNames.begin(), spec.staticPHNames.end(),
+                          ph->getName().data()) != spec.staticPHNames.end()) {
+              auto type = *ph->getType();
+              /// Account for the auto FP32->FP16 conversion in Glow
+              /// for placeholder \p type match
+              auto convertedElemType = getConvertElemTypeForAOT(type, cctx);
+              auto convertedDimVec = getConvertDimVecForAOT(type, cctx);
+              auto convertedDims =
+                  llvm::ArrayRef<unsigned long>(convertedDimVec);
+              auto convertedType =
+                  type.isQuantizedType()
+                      ? glowModule->uniqueType(convertedElemType, convertedDims,
+                                               type.getScale(),
+                                               type.getOffset())
+                      : glowModule->uniqueType(convertedElemType,
+                                               convertedDims);
+              ph->setType(0, convertedType);
+              ph->setStatic(true);
+
+              // Record the types of the actual placeholders before conversion,
+              // so that we can replay the conversion in Provisioner
+              staticPlaceholderTypes[std::string(ph->getName())] = type;
+            }
+            // Reconstruct PerGlowGraphInfo
+            if (std::find(spec.inputPHNames.begin(), spec.inputPHNames.end(),
+                          ph->getName().data()) != spec.inputPHNames.end()) {
+              info->inputPlaceholders.push_back(ph);
+            }
+            if (std::find(spec.outputPHNames.begin(), spec.outputPHNames.end(),
+                          ph->getName().data()) != spec.outputPHNames.end()) {
+              info->outputPlaceholders.push_back(ph);
+            }
+          }
+          info->functionName = spec.functionName;
+          cctx.loadingAOTModel = true;
+        } else {
+          Function *f = glowModule->createFunction(info->functionName);
+          RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
+              *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
+              outputCorrectTypes_, info->settings, {}, metaStack));
+          // Prepare GlowDeserializationSpec and cctx for serializing Glow IR
+          if (settings.saveGlowIRIntoONNX) {
+            GlowDeserializationSpec spec;
+            RETURN_IF_ERR(setupGlowDeserializationSpecAndCctx(
+                settings, info, cctx, f, spec,
+                glowAOTSerializationModelStrPtr));
+            RETURN_IF_ERR(saveGlowDeserializationSpec(
+                spec, glowAOTSerializationSpecStrPtr));
+          }
+
+          for (auto *PH : glowModule->getPlaceholders()) {
+            if (PH->isStatic()) {
+              staticPlaceholderTypes[std::string(PH->getName())] =
+                  *PH->getType();
+            }
+          }
+        }
+
         TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
                         "loadJITGraph");
-
-        // Prepare GlowDeserializationSpec and cctx for serializing Glow IR
-        if (settings.saveGlowIRIntoONNX) {
-          GlowDeserializationSpec spec;
-          RETURN_IF_ERR(setupGlowDeserializationSpecAndCctx(settings, info,
-                                                            cctx, f, spec));
-          RETURN_IF_ERR(saveGlowDeserializationSpec(
-              spec, settings.serializationSpecFileName));
-        }
       }
 
       // Obtain maxSeqLength from metaStack
@@ -1326,14 +1523,7 @@ Error CachingGraphRunner::warmCache(
       zeroLengthSequence_.zero();
 
       if (loader) {
-        std::map<std::string, Type> staticPlaceholderTypes;
-        for (auto *PH : glowModule->getPlaceholders()) {
-          if (PH->isStatic()) {
-            staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
-          }
-        }
         loader->setTypeInfo(std::move(staticPlaceholderTypes));
-
         cctx.deferredWeightLoader = loader;
 
         // Signal that we want to fold convertTo and Quantize into static

@@ -1,0 +1,151 @@
+ir_version: 3
+producer_name: "onnx-conv"
+graph {
+  node {
+    input: "data"
+    input: "W"
+    input: "B"
+    output: "y"
+    name: "conv1"
+    op_type: "Conv"
+    attribute {
+      name: "kernel_shape"
+      ints: 1
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "pads"
+      ints: 1
+      ints: 2
+      ints: 3
+      ints: 3
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "strides"
+      ints: 1
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "dilations"
+      ints: 1
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+  }
+  name: "test-model"
+  initializer {
+    dims: 1
+    dims: 1
+    dims: 1
+    dims: 1
+    dims: 1
+    data_type: 1
+    float_data: 1.0
+    name: "W"
+  }
+  initializer {
+    dims: 1
+    data_type: 1
+    float_data: 0.0
+    name: "B"
+  }
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "W"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "B"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 6
+          }
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 4
+}

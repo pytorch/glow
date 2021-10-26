@@ -459,6 +459,36 @@ static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
   return isValid;
 }
 
+static bool verifyInstanceNormalization(NodeValue src, NodeValue dest,
+                                        NodeValue bias, NodeValue scale,
+                                        unsigned_t channel) {
+  const Node *parent = dest.getNode();
+  bool isValid = true;
+  if (src.getType()->isQuantizedType()) {
+    isValid &= checkType(src, dest.getElementType(), dest.getNode());
+    isValid &= checkSameShape(src, dest, parent);
+  } else {
+    isValid &= checkSameType(src, dest, parent);
+  }
+
+  isValid &= expectCompareTrue(
+      "Require at least two input dims i.e., batch and channel dimensions",
+      src.dims().size(), (size_t)1, parent,
+      CompareOperatorGreaterThan<size_t>());
+
+  // Figure out how many channels are in the tensor.
+  dim_t channels = src.dims()[channel];
+
+  const dim_t expArray[] = {channels};
+  auto exp = llvm::makeArrayRef(expArray);
+  isValid &= expectCompareTrue("Invalid bias dimension", bias.getType()->dims(),
+                               exp, parent);
+  isValid &= expectCompareTrue("Invalid scale dimension",
+                               scale.getType()->dims(), exp, parent);
+
+  return isValid;
+}
+
 static bool verifyActivation(NodeValue src, NodeValue dest) {
   const Node *parent = dest.getNode();
   bool isValid = checkSameIsQuantized(src.getType(), dest.getType(), parent);
@@ -1308,6 +1338,11 @@ bool BatchNormalizationNode::verify() const {
                                   getScale(), getMean(), getVar(), ChannelIdx_);
 }
 
+bool InstanceNormalizationNode::verify() const {
+  return verifyInstanceNormalization(getInput(), getResult(), getBias(),
+                                     getScale(), ChannelIdx_);
+}
+
 bool LayerNormalizationNode::verify() const {
   auto dest = getResult();
   auto src = getInput();
@@ -1805,18 +1840,6 @@ bool LengthsRangeFillNode::verify() const {
   return isValid;
 }
 
-bool SparseToDenseNode::verify() const {
-  bool isValid = checkType(getResult(), getValues().getElementType(), this);
-  isValid &=
-      checkType(getIndices(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
-  isValid &= expectCompareTrue("Indices must be a 1D vector",
-                               getIndices().dims().size(), size_t(1), this);
-  isValid &=
-      expectCompareTrue("Indices and Values must have the same first dimension",
-                        getIndices().dims()[0], getValues().dims()[0], this);
-  return isValid;
-}
-
 bool BatchSparseToDenseNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &=
@@ -2222,7 +2245,7 @@ bool GatherNDNode::verify() const {
   isValid &= expectCompareTrue(
       "Mismatching number of dimensions", getResult().dims().size(),
       getData().dims().size() + getIndices().dims().size() -
-          getIndices().dims()[getIndices().dims().size() - 1] - 1,
+          getIndices().dims().back() - 1 - getBatchDims(),
       this);
   isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
                                            getData().getType(), this);
@@ -2543,9 +2566,9 @@ bool MFCCNode::verify() const {
       "Upper frequency must be lower than half the sample rate", sampleRate,
       float(2.0 * upperFrequency), this, CompareOperatorGreaterThan<float>());
   isValid &= expectCompareTrue(
-      "Number of coefficients should be smaller than the filter bank count",
+      "Number of coefficients should be smaller or equal than the filter bank",
       dim_t(filterBankCount), dim_t(numCoefficients), this,
-      CompareOperatorGreaterThan<dim_t>());
+      CompareOperatorGreaterEqual<dim_t>());
   return isValid;
 }
 
@@ -2935,6 +2958,35 @@ bool BroadcastNode::verify() const {
 bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
 bool ExternalFunctionCallNode::verify() const { return true; }
+
+static bool verifyBatchedUnaryEmbeddingsBags(NodeValue dest, NodeValue weights,
+                                             NodeValue indices,
+                                             NodeValue offsets) {
+  bool isValid = checkType(dest, weights.getElementType(), dest.getNode());
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &= checkType(
+      offsets,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &=
+      expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Offsets must be a 1D vector", offsets.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Weights must be a 3D vector", weights.dims().size(),
+                        size_t(3), dest.getNode());
+  return isValid;
+}
+
+bool BatchedUnaryEmbeddingsBagsNode::verify() const {
+  return verifyBatchedUnaryEmbeddingsBags(getResult(), getWeights(),
+                                          getIndices(), getOffsets());
+}
 
 //===----------------------------------------------------------------------===//
 //                     Node hashing support

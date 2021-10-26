@@ -35,9 +35,9 @@ class PackedConv3dModel(torch.nn.Sequential):
             quantization, convolution, dequantization
         )
         self.eval()
-        self.qconfig = torch.quantization.get_default_qconfig("fbgemm")
-        torch.quantization.prepare(self, inplace=True)
-        torch.quantization.convert(self, inplace=True)
+        self.qconfig = torch.ao.quantization.get_default_qconfig("fbgemm")
+        torch.ao.quantization.prepare(self, inplace=True)
+        torch.ao.quantization.convert(self, inplace=True)
 
 
 class TestQuantizedConv3d(utils.TorchGlowTestCase):
@@ -154,13 +154,13 @@ class TestQuantizedConv3d(utils.TorchGlowTestCase):
             conv.weight.random_(-1, 1)
             conv.bias.data.random_(-1, 1)
 
-            model = torch.quantization.QuantWrapper(conv)
-            model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+            model = torch.ao.quantization.QuantWrapper(conv)
+            model.qconfig = torch.ao.quantization.get_default_qconfig("fbgemm")
 
-            torch.quantization.prepare(model, inplace=True)
+            torch.ao.quantization.prepare(model, inplace=True)
             # Calibration
             model.forward(x)
-            torch.quantization.convert(model, inplace=True)
+            torch.ao.quantization.convert(model, inplace=True)
 
             # TODO: acuracy needs to be investigated. Average acuracy is decent
             # but some elements have errors (possibly from rounding differences)

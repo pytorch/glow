@@ -183,6 +183,10 @@ class ONNXModelLoader
   Error loadSoftmax(const ONNX_NAMESPACE::NodeProto &op,
                     const ArgumentDictionaryTy &dict);
 
+  /// Load LogSoftmax ONNX operator
+  Error loadLogSoftmax(const ONNX_NAMESPACE::NodeProto &op,
+                       const ArgumentDictionaryTy &dict);
+
   /// Load ScatterData ONNX operator
   Error loadScatterData(const ONNX_NAMESPACE::NodeProto &op,
                         const ArgumentDictionaryTy &dict);
@@ -220,6 +224,14 @@ class ONNXModelLoader
   ///   c) Then use Conv2d for execution
   ///   d) To reduce the output tensor dimension from 4 to 3, Squeeze is used
   Error loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
+                   ArgumentDictionaryTy &dict);
+
+  /// Load Conv operator with 2D input
+  Error loadConv2D(const ONNX_NAMESPACE::NodeProto &op,
+                   ArgumentDictionaryTy &dict);
+
+  /// Load Conv operator with 3D input
+  Error loadConv3D(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);
 
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
@@ -263,6 +275,10 @@ class ONNXModelLoader
   Error loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
                                ArgumentDictionaryTy &dict);
 
+  /// Load InstanceNormalization ONNX operator.
+  Error loadInstanceNormalization(const ONNX_NAMESPACE::NodeProto &op,
+                                  ArgumentDictionaryTy &dict);
+
   /// Load Concat ONNX operator.
   Error loadConcat(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);
@@ -286,6 +302,10 @@ class ONNXModelLoader
   /// Load Cast ONNX operator.
   Error loadCast(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
+
+  /// Load HardSigmoid ONNX operator.
+  Error loadHardSigmoid(const ONNX_NAMESPACE::NodeProto &op,
+                        ArgumentDictionaryTy &dict);
 
   /// Load LeakyRelu ONNX operator.
   Error loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,

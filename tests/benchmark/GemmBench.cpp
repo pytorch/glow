@@ -44,6 +44,10 @@ llvm::cl::opt<bool> checkCorrectness(
     llvm::cl::desc("Check the correctness of the results against the reference "
                    "backend (Interpreter)"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(GemmBenchCat));
+llvm::cl::opt<bool> dumpOnnx("dump_onnx",
+                             llvm::cl::desc("dump onnx text format for model"),
+                             llvm::cl::Optional, llvm::cl::init(false),
+                             llvm::cl::cat(GemmBenchCat));
 
 struct GemmParam {
   dim_t m_;
@@ -177,6 +181,7 @@ public:
 
     CompilationContext ctx;
     ctx.dumpFinalGraph = true;
+    ctx.serializeCompiledDAG = dumpOnnx;
     if (isRef) {
       EXIT_ON_ERR(refHostManager_->addNetwork(std::move(mod), ctx));
     } else {
@@ -277,7 +282,7 @@ int main(int argc, char *argv[]) {
          "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
-  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
+  benchParseGlowOpts(argc, argv);
 
   std::vector<GemmParam> params;
   std::string runHeader;

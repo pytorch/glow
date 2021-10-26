@@ -84,7 +84,16 @@ llvm::cl::opt<bool> tfliteBiasScaleCheckThrowErrorOpt(
         "bias quantization parameter biasScale = inputScale * weightsScale. If "
         "this contraint is not met within the given tolerance then an error "
         "will be thrown if this option is enabled."),
-    llvm::cl::init(false), llvm::cl::Optional,
+    llvm::cl::init(true), llvm::cl::Optional,
+    llvm::cl::cat(tfliteModelLoaderCat));
+
+llvm::cl::opt<float> tfliteMfccSampleRateOpt(
+    "tflite-mfcc-sample-rate",
+    llvm::cl::desc(
+        "When the TensorFlowLite model has a MFCC node (Mel Frequency Cepstral "
+        "Coefficient) this option is used to set the sample rate (in Hz) used "
+        "by the node when no such attribute is specified."),
+    llvm::cl::init(16000.0), llvm::cl::Optional,
     llvm::cl::cat(tfliteModelLoaderCat));
 
 /// Function to read a TensorFlowLite model from the file \p modelFilename into
@@ -126,27 +135,48 @@ void convertUint8ToInt8(const uint8_t *inpPtr, int8_t *outPtr, size_t numElem) {
   }
 }
 
-/// Function to compute the padding according to the TensorFlowLite "SAME"
-/// algorithm along a single dimension for the given input size \p inputSize and
-/// output size \p outputSize and for the given filter (kernel) size \p kernel
-/// \p stride and \p dilation. \returns a pair with the padding to be used for
-/// the input before and after the actual input data.
-std::pair<unsigned_t, unsigned_t> getSamePads(dim_t inputSize, dim_t outputSize,
-                                              unsigned_t kernel,
-                                              unsigned_t stride,
-                                              unsigned_t dilation = 1) {
-  // Effective dilated filter (kernel) size.
-  unsigned_t effKernel = (kernel - 1) * dilation + 1;
+/// Function to compute the padding along a single dimension for the given input
+/// size \p inputSize and output size \p outputSize and for the given filter
+/// (kernel) size \p kernel \p stride, \p dilation and padding type \p padding.
+/// \returns a pair with the explicit padding values to be used for the input
+/// before and after the actual input data.
+std::pair<unsigned_t, unsigned_t>
+getConvPads(dim_t inputSize, dim_t outputSize, unsigned_t kernel,
+            unsigned_t stride, unsigned_t dilation, tflite::Padding padding) {
+  if (padding == tflite::Padding::Padding_VALID) {
+    // For VALID padding we do not use padding.
+    return std::pair<unsigned_t, unsigned_t>(0, 0);
+  } else if (padding == tflite::Padding::Padding_SAME) {
+    // Effective dilated filter (kernel) size.
+    unsigned_t effKernel = (kernel - 1) * dilation + 1;
+    // Compute the total padding size while saturating above 0.
+    unsigned_t padTotal = (outputSize - 1) * stride + effKernel;
+    padTotal =
+        std::max(padTotal, static_cast<unsigned_t>(inputSize)) - inputSize;
+    // We split the total padding evenly before/after. If the padding is odd
+    // then the "after" part gets the extra unit.
+    unsigned_t padBefore = padTotal / 2;
+    unsigned_t padAfter = padTotal - padBefore;
+    return std::pair<unsigned_t, unsigned_t>(padBefore, padAfter);
+  }
+  llvm_unreachable("Padding parameter invalid!");
+}
 
-  // Compute the total padding size while saturating above 0.
-  unsigned_t padTotal = (outputSize - 1) * stride + effKernel;
-  padTotal = std::max(padTotal, static_cast<unsigned_t>(inputSize)) - inputSize;
-
-  // We split the total padding evenly before/after. If the padding is odd then
-  // the "after" part gets the extra unit.
-  unsigned_t padBefore = padTotal / 2;
-  unsigned_t padAfter = padTotal - padBefore;
-  return std::pair<unsigned_t, unsigned_t>(padBefore, padAfter);
+/// Function used to compute the output size for convolution and pooling kernels
+/// for the given \p inputSize, \p kernel, \p stride, \p dilation, \p padding.
+/// This function is used to infer the output shape when not defined.
+dim_t getConvOutputSize(dim_t inputSize, unsigned_t kernel, unsigned_t stride,
+                        unsigned_t dilation, tflite::Padding padding) {
+  if (padding == tflite::Padding::Padding_VALID) {
+    // Effective dilated filter (kernel) size.
+    unsigned_t effKernel = (kernel - 1) * dilation + 1;
+    // We compute the output size as CEIL((inputSize - effKernel) / stride) + 1.
+    return (inputSize - effKernel + stride - 1) / stride + 1;
+  } else if (padding == tflite::Padding::Padding_SAME) {
+    // For SAME padding the output size is computed as CEIL(inputSize / stride).
+    return (inputSize + stride - 1) / stride;
+  }
+  llvm_unreachable("Padding parameter invalid!");
 }
 
 /// Retrieves data from a constant Tensor and stores it in a vector.
@@ -179,7 +209,7 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
     if (biasScale != matMulScale) {
       float relErr = std::abs(matMulScale - biasScale) / matMulScale;
       llvm::errs() << strFormat(
-          "TensorFlowLite: WARNING: Bias scale value was expected "
+          "TensorFlowLite: WARNING: Per tensor BIAS scale value was expected "
           "to be exactly %E (inputScale * weightsScale) but found "
           "%E instead! Relative absolute error is %E!\n",
           matMulScale, biasScale, relErr);
@@ -194,11 +224,11 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
           biasC->setPayloadType(newBiasTy);
         }
       } else if (tfliteBiasScaleCheckThrowErrorOpt) {
-        return MAKE_ERR(
-            strFormat("TensorFlowLite: ERROR: Bias scale value was expected "
-                      "to be exactly %E (inputScale * weightsScale) but found "
-                      "%E instead! Relative absolute error is %E!\n",
-                      matMulScale, biasScale, relErr));
+        return MAKE_ERR(strFormat(
+            "TensorFlowLite: ERROR: Per tensor BIAS scale value was "
+            "expected to be exactly %E (inputScale * weightsScale) but "
+            "found %E instead! Relative absolute error is %E!\n",
+            matMulScale, biasScale, relErr));
       }
     }
     int32_t biasOffset = biasTy->getOffset();
@@ -232,6 +262,10 @@ std::string TFLiteModelLoader::getTensorName(const tflite::Tensor *tensor) {
 
 Expected<std::vector<dim_t>>
 TFLiteModelLoader::getTensorShape(const tflite::Tensor *tensor) {
+  // If tensor shape is NULL we use a 1D shape with size 1.
+  if (!tensor->shape()) {
+    return std::vector<dim_t>({1});
+  }
   std::vector<dim_t> shape;
   for (auto dim : *(tensor->shape())) {
     RETURN_ERR_IF_NOT(dim > 0,
@@ -245,6 +279,19 @@ TFLiteModelLoader::getTensorShape(const tflite::Tensor *tensor) {
     shape = {1};
   }
   return shape;
+}
+
+Expected<bool>
+TFLiteModelLoader::isTensorShapeUndefined(const tflite::Tensor *tensor) {
+  // If tensor shape is NULL.
+  if (!tensor->shape()) {
+    return true;
+  }
+  // If tensor shape is empty (scalar).
+  if (tensor->shape()->size() == 0) {
+    return true;
+  }
+  return false;
 }
 
 Expected<ElemKind>
@@ -686,13 +733,15 @@ TFLiteModelLoader::getInputNodeValue(const tflite::Operator *op,
 }
 
 Error TFLiteModelLoader::setOutputNodeValue(const tflite::Operator *op,
-                                            NodeValue nodeValue) {
+                                            NodeValue nodeValue,
+                                            bool checkType) {
   std::vector<NodeValue> nodeValues = {nodeValue};
-  return setOutputNodeValues(op, nodeValues);
+  return setOutputNodeValues(op, nodeValues, checkType);
 }
 
 Error TFLiteModelLoader::setOutputNodeValues(
-    const tflite::Operator *op, llvm::ArrayRef<NodeValue> nodeValues) {
+    const tflite::Operator *op, llvm::ArrayRef<NodeValue> nodeValues,
+    bool checkType) {
   std::string opType;
   ASSIGN_VALUE_OR_RETURN_ERR(opType, getOperatorType(op));
   const auto *opOutputs = op->outputs();
@@ -705,14 +754,20 @@ Error TFLiteModelLoader::setOutputNodeValues(
     // Verify the output type of the node value matches the type registered in
     // the model with the exception of the final tensors which are allowed to
     // be modified (for example for the Softmax output when it is a final node).
-    TypeRef outTy;
-    ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, idx));
-    bool isFinal;
-    ASSIGN_VALUE_OR_RETURN_ERR(isFinal, isOperatorOutputFinalTensor(op, idx));
-    RETURN_ERR_IF_NOT(isFinal || outTy->isEqual(outNodeValue.getType()),
-                      strFormat("TensorFlowLite: Operator '%s' modifies the "
-                                "output type registered in the model!",
-                                opType.c_str()));
+    // Tensors with undefined shapes are also not checked.
+    if (checkType) {
+      TypeRef outTy;
+      ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, idx));
+      bool isUndefined;
+      ASSIGN_VALUE_OR_RETURN_ERR(isUndefined, isOutputShapeUndefined(op, idx));
+      bool isFinal;
+      ASSIGN_VALUE_OR_RETURN_ERR(isFinal, isOperatorOutputFinalTensor(op, idx));
+      RETURN_ERR_IF_NOT(isUndefined || isFinal ||
+                            outTy->isEqual(outNodeValue.getType()),
+                        strFormat("TensorFlowLite: Operator '%s' modifies the "
+                                  "output type registered in the model!",
+                                  opType.c_str()));
+    }
     // Register the output node value.
     size_t tensorIdx = static_cast<size_t>((*opOutputs)[idx]);
     RETURN_IF_ERR(setNodeValueByIndex(tensorIdx, outNodeValue));
@@ -730,6 +785,19 @@ Expected<TypeRef> TFLiteModelLoader::getOutputType(const tflite::Operator *op,
   Type type;
   ASSIGN_VALUE_OR_RETURN_ERR(type, getTensorType(tensor));
   return mod_.uniqueType(type);
+}
+
+Expected<bool>
+TFLiteModelLoader::isOutputShapeUndefined(const tflite::Operator *op,
+                                          size_t outputIndex) {
+  size_t tensorIdx;
+  ASSIGN_VALUE_OR_RETURN_ERR(tensorIdx,
+                             getOperatorOutputTensorIdx(op, outputIndex));
+  const tflite::Tensor *tensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(tensor, getTensorByIndex(tensorIdx));
+  bool undefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(undefined, isTensorShapeUndefined(tensor));
+  return undefined;
 }
 
 void TFLiteModelLoader::initializeNodeValues() {
@@ -1062,7 +1130,7 @@ Expected<bool> TFLiteModelLoader::isConv2DPerAxisQuantized(
       float relErr = std::abs(matMulScale - biasScale) / matMulScale;
       llvm::errs() << opErrMsg(
           opInfo,
-          strFormat("WARNING: Bias scale value was expected "
+          strFormat("WARNING: Per channel BIAS scale value was expected "
                     "to be exactly %E (inputScale * weightsScale) but found "
                     "%E instead! Relative absolute error is %E!\n",
                     matMulScale, biasScale, relErr));
@@ -1072,7 +1140,7 @@ Expected<bool> TFLiteModelLoader::isConv2DPerAxisQuantized(
       } else if (tfliteBiasScaleCheckThrowErrorOpt) {
         return MAKE_ERR(opErrMsg(
             opInfo,
-            strFormat("ERROR: Bias scale value was expected "
+            strFormat("ERROR: Per channel BIAS scale value was expected "
                       "to be exactly %E (inputScale * weightsScale) but found "
                       "%E instead! Relative absolute error is %E!\n",
                       matMulScale, biasScale, relErr)));
@@ -1139,6 +1207,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_SOFTMAX) {
     return loadSoftmax(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_LOG_SOFTMAX) {
+    return loadLogSoftmax(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_TANH) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -1159,6 +1230,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   }
   if (opCode == tflite::BuiltinOperator_SQUEEZE) {
     return loadReshape(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_STRIDED_SLICE) {
+    return loadStridedSlice(op, opInfo);
   }
   if (opCode == tflite::BuiltinOperator_EXP) {
     return loadUnaryArithmetic(op, opInfo);
@@ -1199,6 +1273,27 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_RESIZE_BILINEAR) {
     return loadResizeBilinear(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR) {
+    return loadResizeNearest(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_SPACE_TO_DEPTH) {
+    return loadSpaceToDepth(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_DEPTH_TO_SPACE) {
+    return loadDepthToSpace(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_CAST) {
+    return loadCast(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_GATHER) {
+    return loadGather(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_GATHER_ND) {
+    return loadGatherND(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_SELECT) {
+    return loadSelect(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_SPACE_TO_BATCH_ND) {
     return loadSpaceToBatchNd(op, opInfo);
   }
@@ -1228,6 +1323,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   }
   if (opCode == tflite::BuiltinOperator_RSQRT) {
     return loadUnaryArithmetic(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_SHAPE) {
+    return loadShape(op, opInfo);
   }
   if (opCode == tflite::BuiltinOperator_POW) {
     return loadBinaryArithmetic(op, opInfo);
@@ -1282,6 +1380,12 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
     // Load custom operator.
     if (customOpCode == "TFLite_Detection_PostProcess") {
       return loadTFLiteDetectionPostProcess(op, opInfo, opts);
+    }
+    if (customOpCode == "AudioSpectrogram") {
+      return loadTFLiteAudioSpectrogram(op, opInfo, opts);
+    }
+    if (customOpCode == "Mfcc") {
+      return loadTFLiteMFCC(op, opInfo, opts);
     }
   }
   return MAKE_ERR(
@@ -1341,7 +1445,11 @@ Error TFLiteModelLoader::loadUnaryArithmetic(const tflite::Operator *op,
   } else if (opCode == tflite::BuiltinOperator_LOGICAL_NOT) {
     output = F_->createNot(opInfo.name, input);
   } else if (opCode == tflite::BuiltinOperator_QUANTIZE) {
-    output = F_->createQuantize(opInfo.name, input, outTy);
+    if (input.getType()->isFPType()) {
+      output = F_->createQuantize(opInfo.name, input, outTy);
+    } else {
+      output = F_->createRescaleQuantized(opInfo.name, input, outTy);
+    }
   } else if (opCode == tflite::BuiltinOperator_DEQUANTIZE) {
     output = F_->createDequantize(opInfo.name, input, outTy);
   } else {
@@ -1449,6 +1557,22 @@ Error TFLiteModelLoader::loadPool2D(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
+  // Output shape inference when not defined.
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
+    dim_t outN = input.dims()[0];
+    dim_t outH =
+        getConvOutputSize(input.dims()[1], opts->filter_height(),
+                          opts->stride_h(), /* dilation */ 1, opts->padding());
+    dim_t outW =
+        getConvOutputSize(input.dims()[2], opts->filter_width(),
+                          opts->stride_w(), /* dilation */ 1, opts->padding());
+    dim_t outC = input.dims()[3];
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy,
+                                                    {outN, outH, outW, outC});
+  }
+
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
   ShapeNHWC outputShape = ShapeNHWC(outTy->dims());
 
@@ -1461,18 +1585,12 @@ Error TFLiteModelLoader::loadPool2D(const tflite::Operator *op,
       static_cast<unsigned_t>(opts->stride_w()),
   };
 
-  std::vector<unsigned_t> pads;
-  if (opts->padding() == tflite::Padding::Padding_VALID) {
-    pads = {0, 0, 0, 0};
-  } else if (opts->padding() == tflite::Padding::Padding_SAME) {
-    auto padsTB =
-        getSamePads(inputShape.h, outputShape.h, kernels[0], strides[0]);
-    auto padsLR =
-        getSamePads(inputShape.w, outputShape.w, kernels[1], strides[1]);
-    pads = {padsTB.first, padsLR.first, padsTB.second, padsLR.second};
-  } else {
-    return MAKE_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
-  }
+  auto padsTB = getConvPads(inputShape.h, outputShape.h, kernels[0], strides[0],
+                            /* dilation */ 1, opts->padding());
+  auto padsLR = getConvPads(inputShape.w, outputShape.w, kernels[1], strides[1],
+                            /* dilation */ 1, opts->padding());
+  std::vector<unsigned_t> pads = {padsTB.first, padsLR.first, padsTB.second,
+                                  padsLR.second};
 
   auto opCode = opInfo.code;
   NodeValue output;
@@ -1549,6 +1667,22 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
+  // Output shape inference when not defined.
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
+    dim_t outN = input.dims()[0];
+    dim_t outH =
+        getConvOutputSize(input.dims()[1], filter.dims()[1], opts->stride_h(),
+                          opts->dilation_h_factor(), opts->padding());
+    dim_t outW =
+        getConvOutputSize(input.dims()[2], filter.dims()[2], opts->stride_w(),
+                          opts->dilation_w_factor(), opts->padding());
+    dim_t outC = filter.dims()[0];
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy,
+                                                    {outN, outH, outW, outC});
+  }
+
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
   ShapeNHWC filterShape = ShapeNHWC(filter.dims());
   ShapeNHWC outputShape = ShapeNHWC(outTy->dims());
@@ -1566,18 +1700,12 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
       static_cast<unsigned_t>(opts->dilation_w_factor()),
   };
 
-  std::vector<unsigned_t> pads;
-  if (opts->padding() == tflite::Padding::Padding_VALID) {
-    pads = {0, 0, 0, 0};
-  } else if (opts->padding() == tflite::Padding::Padding_SAME) {
-    auto padsTB = getSamePads(inputShape.h, outputShape.h, kernels[0],
-                              strides[0], dilations[0]);
-    auto padsLR = getSamePads(inputShape.w, outputShape.w, kernels[1],
-                              strides[1], dilations[1]);
-    pads = {padsTB.first, padsLR.first, padsTB.second, padsLR.second};
-  } else {
-    return MAKE_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
-  }
+  auto padsTB = getConvPads(inputShape.h, outputShape.h, kernels[0], strides[0],
+                            dilations[0], opts->padding());
+  auto padsLR = getConvPads(inputShape.w, outputShape.w, kernels[1], strides[1],
+                            dilations[1], opts->padding());
+  std::vector<unsigned_t> pads = {padsTB.first, padsLR.first, padsTB.second,
+                                  padsLR.second};
 
   // There are TensorFlowLite models which have only the weights quantized
   // to INT8 (the rest of the operands being FLOAT32). Since Glow does not
@@ -1636,6 +1764,22 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
+  // Output shape inference when not defined.
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
+    dim_t outN = input.dims()[0];
+    dim_t outH =
+        getConvOutputSize(input.dims()[1], filter.dims()[1], opts->stride_h(),
+                          opts->dilation_h_factor(), opts->padding());
+    dim_t outW =
+        getConvOutputSize(input.dims()[2], filter.dims()[2], opts->stride_w(),
+                          opts->dilation_w_factor(), opts->padding());
+    dim_t outC = input.dims()[3] * opts->depth_multiplier();
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy,
+                                                    {outN, outH, outW, outC});
+  }
+
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
   ShapeNHWC filterShape = ShapeNHWC(filter.dims());
   ShapeNHWC outputShape = ShapeNHWC(outTy->dims());
@@ -1654,18 +1798,12 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
                  static_cast<unsigned_t>(opts->dilation_w_factor())};
   }
 
-  std::vector<unsigned_t> pads;
-  if (opts->padding() == tflite::Padding::Padding_VALID) {
-    pads = {0, 0, 0, 0};
-  } else if (opts->padding() == tflite::Padding::Padding_SAME) {
-    auto padsTB = getSamePads(inputShape.h, outputShape.h, kernels[0],
-                              strides[0], dilations[0]);
-    auto padsLR = getSamePads(inputShape.w, outputShape.w, kernels[1],
-                              strides[1], dilations[1]);
-    pads = {padsTB.first, padsLR.first, padsTB.second, padsLR.second};
-  } else {
-    return MAKE_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
-  }
+  auto padsTB = getConvPads(inputShape.h, outputShape.h, kernels[0], strides[0],
+                            dilations[0], opts->padding());
+  auto padsLR = getConvPads(inputShape.w, outputShape.w, kernels[1], strides[1],
+                            dilations[1], opts->padding());
+  std::vector<unsigned_t> pads = {padsTB.first, padsLR.first, padsTB.second,
+                                  padsLR.second};
 
   // Convolution group is inputChannels / filterChannels = inputChannels.
   unsigned_t group = input.dims().back();
@@ -1753,6 +1891,15 @@ Error TFLiteModelLoader::loadFullyConnected(const tflite::Operator *op,
 
   RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, weights, bias));
 
+  // Output shape inference when not defined.
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
+    dim_t outN = input.dims()[0];
+    dim_t outC = weights.dims()[0];
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy, {outN, outC});
+  }
+
   // There are TensorFlowLite models which have only the weights quantized
   // to INT8 (the rest of the operands being FLOAT32). Since Glow does not
   // support mixed precision operation we dequantize the weights.
@@ -1804,6 +1951,32 @@ Error TFLiteModelLoader::loadReshape(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  // Output shape inference when not defined.
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
+    if (const auto *opts = op->builtin_options_as_ReshapeOptions()) {
+      auto *newShape = opts->new_shape();
+      std::vector<dim_t> outDims(newShape->size());
+      dim_t dimProd = 1;
+      for (size_t idx = 0; idx < newShape->size(); ++idx) {
+        auto newDim = (*newShape)[idx];
+        if (newDim != -1) {
+          outDims[idx] = newDim;
+          dimProd *= newDim;
+        }
+      }
+      for (size_t idx = 0; idx < newShape->size(); ++idx) {
+        auto newDim = (*newShape)[idx];
+        if (newDim == -1) {
+          outDims[idx] = input.getType()->size() / dimProd;
+        }
+      }
+      outTy = F_->getParent()->uniqueTypeWithNewShape(outTy, outDims);
+    }
+  }
+
   // Note: The Reshape node has a second input operand which provides
   // the new shape but the documentation states that is should be ignored
   // and the 'new_shape' attribute should be used instead. Moreover, in
@@ -1821,6 +1994,13 @@ Error TFLiteModelLoader::loadSoftmax(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  // Output shape inference when not defined.
+  bool outShapeUndefined;
+  ASSIGN_VALUE_OR_RETURN_ERR(outShapeUndefined, isOutputShapeUndefined(op, 0));
+  if (outShapeUndefined) {
+    outTy = F_->getParent()->uniqueTypeWithNewShape(outTy, input.dims());
+  }
 
   RETURN_ERR_IF_NOT(input.dims().size() >= 2,
                     opErrMsg(opInfo, "Input rank must be >= 2!"));
@@ -1853,6 +2033,21 @@ Error TFLiteModelLoader::loadSoftmax(const tflite::Operator *op,
   } else {
     output = F_->createSoftMax(opInfo.name, input, selected, outTy, beta);
   }
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadLogSoftmax(const tflite::Operator *op,
+                                        const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  // Create a constant to store labels to be used in SoftMaxGradNode.
+  auto selected =
+      mod_.createConstant(ElemKind::Int64ITy, {input.dims()[0], 1}, "selected");
+
+  NodeValue output = F_->createLogSoftMax(opInfo.name, input, selected, outTy);
   return setOutputNodeValue(op, output);
 }
 
@@ -1937,6 +2132,25 @@ Error TFLiteModelLoader::loadReduce(const tflite::Operator *op,
                              loadAxes<unsigned_t>(opInfo, axes, input));
 
   bool keepDims = opts->keep_dims();
+
+  // Try to load ReduceMean as AveragePool if equivalent.
+  // TODO: Move this into the GraphOptimizer once Glow supports reduce
+  // operators with multiple axes.
+  if (opInfo.code == tflite::BuiltinOperator_MEAN && axesVal.size() == 2 &&
+      axesVal.at(0) == 1 && axesVal.at(1) == 2 && input.dims().size() == 4) {
+    std::vector<unsigned_t> kernels = {
+        static_cast<unsigned_t>(input.dims()[1]),
+        static_cast<unsigned_t>(input.dims()[2])};
+    std::vector<unsigned_t> strides = {1, 1};
+    std::vector<unsigned_t> pads = {0, 0, 0, 0};
+    NodeValue output = F_->createAvgPool(opInfo.name, input, kernels, strides,
+                                         pads, ConvolutionLayout::NHWC,
+                                         /* countIncludePads */ false);
+    if (!keepDims) {
+      output = F_->createSqueeze(opInfo.name + ".Squeeze", output, {1, 2});
+    }
+    return setOutputNodeValue(op, output);
+  }
 
   // Currently the Glow reduce operators do not support multiple axes so we
   // create chained reduce operators with single axis.
@@ -2025,6 +2239,36 @@ Error TFLiteModelLoader::loadArg(const tflite::Operator *op,
   return setOutputNodeValue(op, output);
 }
 
+Error TFLiteModelLoader::loadShape(const tflite::Operator *op,
+                                   const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  Constant *shapeC = F_->getParent()->createConstant(outTy, opInfo.name);
+  auto inputDims = input.getType()->dims();
+  RETURN_ERR_IF_NOT(outTy->dims().size() == 1,
+                    opErrMsg(opInfo, "Output should be 1D!"));
+  RETURN_ERR_IF_NOT(outTy->dims()[0] == inputDims.size(),
+                    opErrMsg(opInfo, "Output length should match input rank!"));
+  if (outTy->getElementType() == ElemKind::Int32ITy) {
+    auto shapeH = shapeC->getPayloadMutable().getHandle<int32_t>();
+    for (size_t idx = 0; idx < inputDims.size(); ++idx) {
+      shapeH.raw(idx) = static_cast<int32_t>(inputDims[idx]);
+    }
+  } else if (outTy->getElementType() == ElemKind::Int64ITy) {
+    auto shapeH = shapeC->getPayloadMutable().getHandle<int64_t>();
+    for (size_t idx = 0; idx < inputDims.size(); ++idx) {
+      shapeH.raw(idx) = static_cast<int64_t>(inputDims[idx]);
+    }
+  } else {
+    return MAKE_ERR(opErrMsg(opInfo, "Output should be INT32 or INT64!"));
+  }
+
+  return setOutputNodeValue(op, shapeC);
+}
+
 Error TFLiteModelLoader::loadSlice(const tflite::Operator *op,
                                    const OperatorInfo &opInfo) {
   NodeValue input;
@@ -2054,26 +2298,306 @@ Error TFLiteModelLoader::loadSlice(const tflite::Operator *op,
   return setOutputNodeValue(op, output);
 }
 
+Error TFLiteModelLoader::loadStridedSlice(const tflite::Operator *op,
+                                          const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_StridedSliceOptions();
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  NodeValue begin;
+  ASSIGN_VALUE_OR_RETURN_ERR(begin, getInputNodeValue(op, 1));
+  NodeValue end;
+  ASSIGN_VALUE_OR_RETURN_ERR(end, getInputNodeValue(op, 2));
+  NodeValue strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getInputNodeValue(op, 3));
+
+  // You can find more information about this operator here:
+  // https://www.tensorflow.org/api_docs/python/tf/strided_slice
+  // https://www.tensorflow.org/mlir/tfl_ops#tflstrided_slice_tflstridedsliceop
+
+  // We only support strided slice if begin/end/strides are constants. This
+  // is because Glow is statically typed.
+  auto inpDims = input.dims();
+  std::vector<dim_t> beginV;
+  ASSIGN_VALUE_OR_RETURN_ERR(beginV, loadArray<dim_t>(opInfo, begin));
+  std::vector<dim_t> endV;
+  ASSIGN_VALUE_OR_RETURN_ERR(endV, loadArray<dim_t>(opInfo, end));
+  std::vector<int32_t> stridesV;
+  ASSIGN_VALUE_OR_RETURN_ERR(stridesV, loadArray<int32_t>(opInfo, strides));
+
+  // The strides must be non-zero.
+  for (size_t idx = 0; idx < stridesV.size(); ++idx) {
+    RETURN_ERR_IF_NOT(stridesV[idx] != 0,
+                      opErrMsg(opInfo, "Strides must be non-zero!"));
+  }
+
+  // The begin/end/strides must have same size.
+  RETURN_ERR_IF_NOT(
+      beginV.size() == endV.size(),
+      opErrMsg(opInfo, "Begin/end/strides should have same length!"));
+  RETURN_ERR_IF_NOT(
+      beginV.size() == stridesV.size(),
+      opErrMsg(opInfo, "Begin/end/strides should have same length!"));
+
+  // The begin/end/strides length must be equal to the input rank.
+  RETURN_ERR_IF_NOT(beginV.size() == inpDims.size(),
+                    opErrMsg(opInfo, "Begin/end/strides length invalid!"));
+
+  // Get attributes.
+  int32_t begin_mask = opts->begin_mask();
+  int32_t end_mask = opts->end_mask();
+  int32_t ellipsis_mask = opts->ellipsis_mask();
+  int32_t new_axis_mask = opts->new_axis_mask();
+  int32_t shrink_axis_mask = opts->shrink_axis_mask();
+
+  // Utility to extract the Nth bit from a mask. Returns 0 or 1.
+  auto getMaskBit = [](uint32_t mask, size_t n) -> int {
+    assert((0 <= n) && (n <= 31) && "Bit number exceeded!");
+    return (mask >> n) & 0x01;
+  };
+
+  // If the ith bit of begin_mask is set, begin[i] is ignored and the fullest
+  // possible range in that dimension is used instead.
+  if (begin_mask) {
+    for (size_t idx = 0; idx < beginV.size(); ++idx) {
+      if (getMaskBit(begin_mask, idx)) {
+        // If stride is positive we start from 0 otherwise from dimension size.
+        beginV[idx] = (stridesV[idx] > 0) ? 0 : (inpDims[idx] - 1);
+      }
+    }
+  }
+
+  // If the ith bit of end_mask is set, end[i] is ignored and the fullest
+  // possible range in that dimension is used instead.
+  if (end_mask) {
+    for (size_t idx = 0; idx < endV.size(); ++idx) {
+      if (getMaskBit(end_mask, idx)) {
+        // If stride is positive we end at dimension size otherwise at 0.
+        endV[idx] = (stridesV[idx] > 0) ? inpDims[idx] : 0;
+      }
+    }
+  }
+
+  // If the ith bit of ellipsis_mask is set, as many unspecified dimensions as
+  // needed will be inserted between other dimensions. Only one non-zero bit is
+  // allowed in ellipsis_mask.
+  if (ellipsis_mask) {
+    size_t ellipsisIdx = 0;
+    for (size_t idx = 0; idx < 32; ++idx) {
+      if (getMaskBit(ellipsis_mask, idx)) {
+        ellipsisIdx = idx;
+        break;
+      }
+    }
+    // Note: It is unclear from the TFLite specification how to derive the
+    // number of dimensions associated to the ellipsis. We use the fact that
+    // when ellipsis is used the associated dimensions from "begin" and "end"
+    // arrays are commonly marked both with 0.
+    size_t idx = ellipsisIdx;
+    while ((idx < beginV.size()) && (beginV[idx] == 0) && (endV[idx] == 0)) {
+      beginV[idx] = (stridesV[idx] > 0) ? 0 : (inpDims[idx] - 1);
+      endV[idx] = (stridesV[idx] > 0) ? inpDims[idx] : 0;
+      idx++;
+    }
+  }
+
+  // If the ith bit of new_axis_mask is set, then begin, end, and stride are
+  // ignored and a new length 1 dimension is added at this point in the output
+  // tensor.
+  if (new_axis_mask) {
+    size_t inpIdx = 0;
+    size_t outIdx = 0;
+    std::vector<dim_t> newOutDims;
+    while (inpIdx < inpDims.size()) {
+      if (getMaskBit(new_axis_mask, outIdx)) {
+        newOutDims.push_back(1);
+      } else {
+        newOutDims.push_back(inpDims[inpIdx++]);
+      }
+      outIdx++;
+    }
+    NodeValue output = F_->createReshape(opInfo.name, input, newOutDims);
+    return setOutputNodeValue(op, output);
+  }
+
+  // If the ith bit of shrink_axis_mask is set, it implies that the ith
+  // specification shrinks the dimensionality by 1, taking on the value at
+  // index begin[i]. end[i] and strides[i] are ignored in this case.
+  if (shrink_axis_mask) {
+    for (size_t idx = 0; idx < beginV.size(); ++idx) {
+      if (getMaskBit(shrink_axis_mask, idx)) {
+        endV[idx] = beginV[idx] + 1;
+        stridesV[idx] = 1;
+      }
+    }
+  }
+
+  // Currently we only support strides of 1.
+  // TODO: Add support for strides different than 1 (positive or negative) once
+  // supported in Glow.
+  for (size_t idx = 0; idx < stridesV.size(); ++idx) {
+    RETURN_ERR_IF_NOT(
+        stridesV[idx] == 1,
+        opErrMsg(opInfo, "Only stride 1 is currently supported!"));
+  }
+
+  // Create Slice node.
+  NodeValue output = F_->createSlice(opInfo.name, input, beginV, endV);
+
+  // Reshape output if some dimensions were shrunk.
+  if (shrink_axis_mask) {
+    std::vector<dim_t> oldOutDims = output.dims();
+    std::vector<dim_t> newOutDims;
+    for (size_t idx = 0; idx < oldOutDims.size(); ++idx) {
+      if (getMaskBit(shrink_axis_mask, idx)) {
+        assert(oldOutDims[idx] == 1 && "Shrunk dimension should be 1!");
+      } else {
+        newOutDims.push_back(oldOutDims[idx]);
+      }
+    }
+    if (newOutDims.empty()) {
+      newOutDims.push_back(1);
+    }
+    output = F_->createReshape(opInfo.name + ".reshape", output, newOutDims);
+  }
+
+  return setOutputNodeValue(op, output);
+}
+
 Error TFLiteModelLoader::loadResizeBilinear(const tflite::Operator *op,
                                             const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_ResizeBilinearOptions();
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
-  const auto *opts = op->builtin_options_as_ResizeBilinearOptions();
-
-  bool align_corners = opts->align_corners();
-  if (align_corners) {
-    LOG(WARNING) << opErrMsg(opInfo, "Align Corners option is ignored!");
+  bool alignCorners = opts->align_corners();
+  if (alignCorners) {
+    LOG(WARNING) << opErrMsg(opInfo, "Option 'align_corners' is ignored!");
   }
 
-  bool half_pixel_centers = opts->half_pixel_centers();
-  if (half_pixel_centers) {
-    LOG(WARNING) << opErrMsg(opInfo, "Half Pixel Centers option is ignored!");
+  bool halfPixelCenters = opts->half_pixel_centers();
+  if (halfPixelCenters) {
+    LOG(WARNING) << opErrMsg(opInfo, "Option 'half_pixel_centers' is ignored!");
   }
 
   NodeValue output = F_->createResizeBilinear(opInfo.name, input, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadResizeNearest(const tflite::Operator *op,
+                                           const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_ResizeNearestNeighborOptions();
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  bool alignCorners = opts->align_corners();
+  if (alignCorners) {
+    LOG(WARNING) << opErrMsg(opInfo, "Option 'align_corners' is ignored!");
+  }
+
+  bool halfPixelCenters = opts->half_pixel_centers();
+  if (halfPixelCenters) {
+    LOG(WARNING) << opErrMsg(opInfo, "Option 'half_pixel_centers' is ignored!");
+  }
+
+  NodeValue output = F_->createResizeNearest(opInfo.name, input, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadSpaceToDepth(const tflite::Operator *op,
+                                          const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_SpaceToDepthOptions();
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  int32_t blockSize = opts->block_size();
+
+  NodeValue output = F_->createSpaceToDepth(opInfo.name, input, blockSize);
+  RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
+                    opErrMsg(opInfo, "Expected output type incorrect!"));
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadDepthToSpace(const tflite::Operator *op,
+                                          const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_DepthToSpaceOptions();
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  int32_t blockSize = opts->block_size();
+
+  NodeValue output = F_->createDepthToSpace(opInfo.name, input, blockSize);
+  RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
+                    opErrMsg(opInfo, "Expected output type incorrect!"));
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadCast(const tflite::Operator *op,
+                                  const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+  // The Cast operator has two attributes "in_data_type" and "out_data_type" but
+  // are not used because the input and output types are already available.
+  NodeValue output = F_->createConvertTo(opInfo.name, input, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadGather(const tflite::Operator *op,
+                                    const OperatorInfo &opInfo) {
+  const auto *opts = op->builtin_options_as_GatherOptions();
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getInputNodeValue(op, 0));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getInputNodeValue(op, 1));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  unsigned_t axis;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      axis, getPositiveAxis<unsigned_t>(opts->axis(), data.dims().size()));
+
+  NodeValue output = F_->createGather(opInfo.name, data, indices, axis);
+  RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
+                    opErrMsg(opInfo, "Expected output type incorrect!"));
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadGatherND(const tflite::Operator *op,
+                                      const OperatorInfo &opInfo) {
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getInputNodeValue(op, 0));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getInputNodeValue(op, 1));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  NodeValue output = F_->createGatherND(opInfo.name, data, indices);
+  RETURN_ERR_IF_NOT(output.getType()->isEqual(outTy),
+                    opErrMsg(opInfo, "Expected output type incorrect!"));
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadSelect(const tflite::Operator *op,
+                                    const OperatorInfo &opInfo) {
+  NodeValue cond;
+  ASSIGN_VALUE_OR_RETURN_ERR(cond, getInputNodeValue(op, 0));
+  NodeValue LHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(LHS, getInputNodeValue(op, 1));
+  NodeValue RHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(RHS, getInputNodeValue(op, 2));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  NodeValue output = F_->createSelect(opInfo.name, outTy, cond, LHS, RHS);
   return setOutputNodeValue(op, output);
 }
 
@@ -2169,7 +2693,8 @@ Error TFLiteModelLoader::loadSpaceToBatchNd(const tflite::Operator *op,
       F_->createTranspose(opInfo.name + ".trIn", pad, {3, 1, 2, 0}, "NHWC");
   // @lint-ignore CLANGTIDY LocalUncheckedArrayBounds
   auto *S2D = F_->createSpaceToDepth(opInfo.name + ".S2D", trIn, blockV[0]);
-  auto *output = F_->createTranspose(opInfo.name + ".trOut", S2D, {3, 1, 2, 0});
+  auto *output =
+      F_->createTranspose(opInfo.name + ".trOut", S2D, {3, 1, 2, 0}, "NHWC");
 
   return setOutputNodeValue(op, output);
 }
@@ -2227,7 +2752,8 @@ Error TFLiteModelLoader::loadBatchToSpaceNd(const tflite::Operator *op,
       F_->createTranspose(opInfo.name + ".trPre", input, {3, 1, 2, 0}, "NHWC");
   // @lint-ignore CLANGTIDY LocalUncheckedArrayBounds
   auto *D2S = F_->createDepthToSpace(opInfo.name + ".D2S", tr1, blockV[0]);
-  auto *tr2 = F_->createTranspose(opInfo.name + ".trPost", D2S, {3, 1, 2, 0});
+  auto *tr2 =
+      F_->createTranspose(opInfo.name + ".trPost", D2S, {3, 1, 2, 0}, "NHWC");
 
   // Create Crop Node.
   RETURN_ERR_IF_NOT(cropC->getType()->getElementType() == ElemKind::Int32ITy,
@@ -2386,6 +2912,45 @@ Error TFLiteModelLoader::loadTFLiteDetectionPostProcess(
       node->getDetectionBoxes(), node->getDetectionClasses(),
       node->getDetectionScores(), node->getNumDetections()};
   return setOutputNodeValues(op, outputNodeValues);
+}
+
+Error TFLiteModelLoader::loadTFLiteAudioSpectrogram(
+    const tflite::Operator *op, const OperatorInfo &opInfo,
+    const flexbuffers::Map &opts) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+
+  // Get operator attributes.
+  int32_t windowSize = opts["window_size"].AsInt32();
+  int32_t windowStride = opts["stride"].AsInt32();
+  bool magnitudeSquared = opts["magnitude_squared"].AsBool();
+
+  // Create node.
+  NodeValue output = F_->createAudioSpectrogram(opInfo.name, input, windowSize,
+                                                windowStride, magnitudeSquared);
+  return setOutputNodeValue(op, output, /* checkType */ false);
+}
+
+Error TFLiteModelLoader::loadTFLiteMFCC(const tflite::Operator *op,
+                                        const OperatorInfo &opInfo,
+                                        const flexbuffers::Map &opts) {
+  NodeValue spectrogram;
+  ASSIGN_VALUE_OR_RETURN_ERR(spectrogram, getInputNodeValue(op, 0));
+
+  // Get operator attributes.
+  float sampleRate = (opts["sample_rate"].IsNull())
+                         ? tfliteMfccSampleRateOpt
+                         : opts["sample_rate"].AsFloat();
+  float lowerFrequency = opts["lower_frequency_limit"].AsFloat();
+  float upperFrequency = opts["upper_frequency_limit"].AsFloat();
+  int32_t filterBankCount = opts["filterbank_channel_count"].AsInt32();
+  int32_t numCoefficients = opts["dct_coefficient_count"].AsInt32();
+
+  // Create node.
+  NodeValue output =
+      F_->createMFCC(opInfo.name, spectrogram, sampleRate, lowerFrequency,
+                     upperFrequency, filterBankCount, numCoefficients);
+  return setOutputNodeValue(op, output, /* checkType */ false);
 }
 
 TFLiteModelLoader::TFLiteModelLoader(const std::string &modelFilename,

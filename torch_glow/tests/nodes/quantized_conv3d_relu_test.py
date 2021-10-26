@@ -41,13 +41,13 @@ class TestQuantizedConv3dRelu(utils.TorchGlowTestCase):
                 )
             )
             model.eval()
-            model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+            model.qconfig = torch.ao.quantization.get_default_qconfig("fbgemm")
 
             # Fuse conv and relu to conv_relu
-            model = torch.quantization.fuse_modules(model, [["conv1", "relu1"]])
+            model = torch.ao.quantization.fuse_modules(model, [["conv1", "relu1"]])
 
-            torch.quantization.prepare(model, inplace=True)
-            torch.quantization.convert(model, inplace=True)
+            torch.ao.quantization.prepare(model, inplace=True)
+            torch.ao.quantization.convert(model, inplace=True)
 
             utils.compare_tracing_methods(
                 model,
@@ -99,13 +99,13 @@ class TestQuantizedConv3dRelu(utils.TorchGlowTestCase):
                 )
             )
             model.eval()
-            model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+            model.qconfig = torch.ao.quantization.get_default_qconfig("fbgemm")
 
             # Fuse conv and relu to conv_relu
-            model = torch.quantization.fuse_modules(model, [["conv1", "relu1"]])
+            model = torch.ao.quantization.fuse_modules(model, [["conv1", "relu1"]])
 
-            torch.quantization.prepare(model, inplace=True)
-            torch.quantization.convert(model, inplace=True)
+            torch.ao.quantization.prepare(model, inplace=True)
+            torch.ao.quantization.convert(model, inplace=True)
 
             utils.compare_tracing_methods(
                 model,

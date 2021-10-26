@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include "TorchGlowBackend.h"
 #include "FuseKnownPatterns.h"
 #include "GlowCompileSpec.h"
@@ -584,6 +598,7 @@ Error applyCompilationSpecSettingsToPyTorchLoaderSettings(
   settings.use_dag_optimizer = newSettings.use_dag_optimizer;
   settings.apl_parallelization_alg = newSettings.apl_parallelization_alg;
   settings.apl_num_parallel_chunks = newSettings.apl_num_parallel_chunks;
+  settings.useMaxSizeCompilation = newSettings.use_max_size_compilation;
 
   // Ensure override flags are honored
   RETURN_IF_ERR(applySettingsOverrideFlagsToPyTorchLoaderSettings(settings));
@@ -603,7 +618,7 @@ Error applyFuserSettingsToPyTorchLoaderSettings(
   settings.fusionStartIndex = newSettings.fusion_start_index;
   settings.fusionEndIndex = newSettings.fusion_end_index;
   for (const auto &symbol : newSettings.op_blacklist) {
-    settings.opBlacklist.insert(torch::jit::Symbol::fromQualString(symbol));
+    settings.opBlocklist.insert(torch::jit::Symbol::fromQualString(symbol));
   }
 
   // Ensure override flags are honored
@@ -778,6 +793,8 @@ compileImpl(const torch::jit::Module &origModule,
                         "self must have no uses in order to lower to Glow.");
       graph->block()->eraseInput(0);
 
+      const bool useMaxSizeCompilation = baseSettings.useMaxSizeCompilation;
+
       // Create a corresponding runner and store {handle, runner} pair.
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
@@ -803,8 +820,7 @@ compileImpl(const torch::jit::Module &origModule,
         }
         auto err = runner->warmCache(
             metaStacks, compilationGroupSettings,
-            /*loader*/ nullptr,
-            /*useMaxSizeCompilation*/ false,
+            /*loader*/ nullptr, useMaxSizeCompilation,
             getGlobalPyTorchLoaderSettingsMutable().enableDeserialize,
             std::make_shared<
                 std::unordered_map<std::string, std::vector<char>>>(
@@ -822,9 +838,10 @@ compileImpl(const torch::jit::Module &origModule,
 // Assumes Glow backend is always available.
 bool TorchGlowBackend::is_available() { return true; }
 
-c10::IValue
-preprocess(const torch::jit::Module &mod,
-           const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec) {
+c10::IValue preprocess(
+    const torch::jit::Module &mod,
+    const c10::Dict<c10::IValue, c10::IValue> &method_compile_spec,
+    const torch::jit::BackendDebugHandleGenerator &generate_debug_handles) {
 
   // Compile and serialize the model before compile()
   // Further options of serilization needed to be set in compilation group

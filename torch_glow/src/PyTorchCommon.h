@@ -58,7 +58,7 @@ public:
 
   /// A list of symbols for nodes that will be ignored by the Glow fuser and
   /// thus will not be fused to Glow.
-  std::unordered_set<torch::jit::Symbol> opBlacklist;
+  std::unordered_set<torch::jit::Symbol> opBlocklist;
 
   /// The minimum size of a glow fusion groups in terms of number of PyTorch
   /// nodes. 0 indicates no minimum size.
@@ -81,6 +81,8 @@ public:
 
   /// Convert fp32 opts to fp16 ops during Glow compilation.
   bool convertToFP16 = false;
+
+  bool skipBiasFp32tofp16Convert = false;
 
   /// Convert fp32 fused opts to fp16 ops during Glow compilation.
   bool convertFusedToFP16 = false;
@@ -227,8 +229,14 @@ public:
   /// Whethere to enable DAG optimizer
   bool use_dag_optimizer = false;
   /// Additional parameters to DAG optimizer
-  std::string apl_parallelization_alg = "ParallelizeCVHeuristicData";
+  /// Keep algorithm default empty as only some of the algorithms may be
+  /// required.
+  std::string apl_parallelization_alg = "";
+  std::string apl_placement_alg = "";
   int32_t apl_num_parallel_chunks = 2;
+
+  /// Whether to use max size compilation.
+  bool useMaxSizeCompilation = false;
 
   // Serialize GlowIR into ONNX txt file during warmCache, this file can be
   // use for future model loading, which a part of AOT compilation
@@ -246,6 +254,9 @@ public:
   /// Set the number of predecessor Nodes to be printed from an error node.
   int32_t debugLayers = 5;
 
+  // Sink tanh below concat
+  bool sinkTanhBelowConcat = false;
+
   // Sparse NN Partitioning Scheme Constants, refer to OptimizationOptions in
   // CompilationContext for details
   bool useSparseNNPartitioningScheme = false;
@@ -253,10 +264,30 @@ public:
   bool sparseNNPartitioningBalancePerfModel = false;
   bool sparseNNPartitioningPairLNWithSLS = false;
   bool sparseNNPartitioningPairTileWithSLS = false;
+  std::string sparseNNPartitioningPairSLSWith = "";
+  int32_t sparseNNPartitioningConcatSplitSize = 1;
   int32_t sparseNNPartitioningSchemeNumCards = 1;
   int64_t sparseNNPartitioningSchemeSLSTableKBytesPerCard = 1;
   int32_t SparseNNPartitioningSchemeNumCoresSLS = 1;
   int32_t SparseNNPartitioningSchemeNumCoresOther = 1;
+
+  // Enables Peer to Peer Tensor optimization
+  bool enableP2P = false;
+
+  // Enables Device Resident Tensor optimization
+  bool enableDRT = false;
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  bool convert8BitFusedToFP32 = false;
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  bool convert4BitFusedToFP32 = false;
+};
+
+struct ModelCompilationConfigOverride {
+  c10::optional<bool> useDagOptimizer;
+  c10::optional<int32_t> aplNumParallelChunks;
+  c10::optional<bool> aplAsapPlacement;
 };
 
 /// Represents different possible output types from to_glow modules.
@@ -265,6 +296,9 @@ enum class GraphOutputType {
   TENSOR_TUPLE, // Single tuple of tensors
   TENSOR_LIST,  // Single list of tensors
 };
+
+using PostFusionProcessFn =
+    std::function<void(std::shared_ptr<torch::jit::Graph> graph)>;
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
 ElemKind scalarTypeToElemKind(c10::ScalarType ty);
@@ -315,21 +349,41 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
 /// raw string containing the meta data of the glow fuser node input.
+/// \p glowAOTSerializationSpecStrPtr and \p glowAOTSerializationModelStrPtr are
+/// used in offline Glow AOT compilation (i.e., Glow serialization), while
+/// \p serializationSpec and \p onnxModelFile are used for online serving (i.e.,
+/// Glow deserialization)
 void glowAOTFusion(
     torch::jit::Module &module, const std::string &inputMetaStr,
     runtime::DeferredWeightLoader *loader,
-    const PyTorchLoaderSettings &settings,
-    const std::string method_name = "forward",
-    const std::unordered_map<int, std::string> &batchShapes = {});
+    const PyTorchLoaderSettings &settings, std::string method_name = "forward",
+    const std::unordered_map<int, std::string> &batchShapes = {},
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
+    const std::string &serializationSpec = "",
+    const std::string &onnxModelFile = "",
+    c10::optional<PostFusionProcessFn> postFusionProcessFn = {},
+    const c10::optional<ModelCompilationConfigOverride>
+        &modelCompilationConfigOverride = c10::nullopt);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
+/// \p glowAOTSerializationSpecStrPtr and \p glowAOTSerializationModelStrPtr are
+/// used in offline Glow AOT compilation (i.e., Glow serialization), while
+/// \p serializationSpec and \p onnxModelFile are used for online serving (i.e.,
+/// Glow deserialization)
 void glowAOTFusionWithShapeInference(
     torch::jit::Module &module, const glow::InputMetaStack &metaStack,
     runtime::DeferredWeightLoader *loader,
-    const PyTorchLoaderSettings &settings,
-    const std::string method_name = "forward",
-    const std::unordered_map<int, std::string> &batchShapes = {});
+    const PyTorchLoaderSettings &settings, std::string method_name = "forward",
+    const std::unordered_map<int, std::string> &batchShapes = {},
+    std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
+    std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
+    const std::string &serializationSpec = "",
+    const std::string &onnxModelFile = "",
+    c10::optional<PostFusionProcessFn> postFusionProcessFn = {},
+    const c10::optional<ModelCompilationConfigOverride>
+        &modelCompilationConfigOverride = c10::nullopt);
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in

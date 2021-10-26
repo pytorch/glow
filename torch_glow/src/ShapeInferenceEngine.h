@@ -37,6 +37,9 @@ using ElemShape = boost::variant<TensorShape, TensorListShape>;
 struct TensorOutput {
   TensorShape shapeOrIntValues;
   c10::ScalarType dtype;
+
+  // This flag signals that tensor output contains real value rather than shape
+  bool scalar = false;
 };
 
 struct TensorListOutput {
@@ -44,6 +47,7 @@ struct TensorListOutput {
   c10::ScalarType dtype;
   std::vector<c10::ScalarType> dtypeList;
 };
+using ElemOutput = boost::variant<TensorOutput, TensorListOutput>;
 
 struct VariableMeta {
   /// For Tensor, Tensor[], store the shape in \p listOfShape[0]
@@ -55,6 +59,7 @@ struct VariableMeta {
   c10::ScalarType dtype = c10::ScalarType::Float;
 
   template <typename T> const T &shape() const {
+    CHECK_GT(listOfShape.size(), 0);
     return boost::get<T>(listOfShape[0]);
   }
 };
@@ -84,6 +89,10 @@ public:
   /// \returns a set of symbols
   std::unordered_set<std::string>
   findUnsupportedGraphSymbols(bool skipLastFusionNode = false);
+
+  /// Print shapeMap_ as format:
+  /// %5: [2 4]
+  void printShapeMap();
 
 private:
   /// Graph that needs to be run shape inference.
@@ -130,10 +139,6 @@ private:
   /// \return true if the node's symbol is supported for shape inference
   static bool isSupportedNodeSymbol(const torch::jit::Node *);
 
-  /// Print shapeMap_ as format:
-  /// %5: [2 4]
-  void printShapeMap();
-
   /// print graph for debugging purpose
   void printGraph(const torch::jit::Graph &graph, int64_t level);
 
@@ -160,16 +165,19 @@ private:
         Expected<TensorListOutput> (*)(const torch::jit::Node *);
     using InferenceFn5 = Expected<TensorListOutput> (*)(
         const MetaStack &, const torch::jit::Node *);
+    using InferenceFn6 = Expected<ElemOutput> (*)(const MetaStack &);
 
     using AddShapeFn0 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
                                                        TensorOutput &);
     using AddShapeFn1 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
                                                        TensorListOutput &);
+    using AddShapeFn2 = void (ShapeInferenceEngine::*)(const torch::jit::Node *,
+                                                       ElemOutput &);
 
     using InferenceFn =
         boost::variant<InferenceFn0, InferenceFn1, InferenceFn2, InferenceFn3,
-                       InferenceFn4, InferenceFn5>;
-    using AddShapeFn = boost::variant<AddShapeFn0, AddShapeFn1>;
+                       InferenceFn4, InferenceFn5, InferenceFn6>;
+    using AddShapeFn = boost::variant<AddShapeFn0, AddShapeFn1, AddShapeFn2>;
 
     ShapeInference(InferenceFn inferenceFn, AddShapeFn addShapeFn)
         : inferenceFn(inferenceFn), addShapeFn(addShapeFn) {}
@@ -198,27 +206,39 @@ private:
 
   void addShapeChunk(const torch::jit::Node *node, TensorListOutput &output);
 
+  void addShapeSlice(const torch::jit::Node *node, ElemOutput &output);
+
   void addShapeDefault(const torch::jit::Node *node, TensorOutput &output);
 
   void addShapeDefaultList(const torch::jit::Node *node,
                            TensorListOutput &output);
+
+  static bool isScalarInt(const VariableMeta &vm);
 
   // Shape inference for prim::Constant
   static Expected<TensorOutput> primConstant(const torch::jit::Node *node);
   // Shape inference for aten::tanh, aten::relu, aten::sigmoid
   static Expected<TensorOutput> unaryOp(const MetaStack &variableMetas);
   // Shape inference for aten::add, aten::mul, aten::pow
-  static Expected<TensorOutput> binaryOp(const MetaStack &variableMetas);
+  static Expected<TensorOutput> binaryOp(const MetaStack &variableMetas,
+                                         const torch::jit::Node *ptNode);
+  // Shape inference for aten::add
+  static Expected<TensorOutput> add(const MetaStack &variableMetas,
+                                    const torch::jit::Node *ptNode);
+  // Shape inference for aten::mul
+  static Expected<TensorOutput> mul(const MetaStack &variableMetas,
+                                    const torch::jit::Node *ptNode);
   // Shape inference for aten::mm
   static Expected<TensorOutput> mm(const MetaStack &variableMetas);
   // Shape inference for aten::bmm
   static Expected<TensorOutput> bmm(const MetaStack &variableMetas);
   // Shape inference for aten::addmm
-  static Expected<TensorOutput> addmm(const MetaStack &variableMetas);
+  static Expected<TensorOutput> addmm(const MetaStack &variableMetas,
+                                      const torch::jit::Node *ptNode);
   // Shape inference for aten::t
   static Expected<TensorOutput> t(const MetaStack &variableMetas);
-  // Shape inference for aten::sum
-  static Expected<TensorOutput> sum(const MetaStack &variableMetas);
+  // Shape inference for aten::sum, aten::mean
+  static Expected<TensorOutput> reduceOp(const MetaStack &variableMetas);
   // Shape inference for prim::ConstantChunk
   static Expected<TensorListOutput>
   constantChunk(const MetaStack &variableMetas, const torch::jit::Node *node);
@@ -230,13 +250,14 @@ private:
                        const torch::jit::Node *node);
   // Shape inference for prim::ListConstruct
   static Expected<TensorListOutput>
-  listConstruct(const MetaStack &variableMetas);
+  listConstruct(const MetaStack &variableMetas, const torch::jit::Node *node);
   // Shape inference for aten::permute
   static Expected<TensorOutput> permute(const MetaStack &variableMetas);
   // Shape inference for aten::reshape
-  static Expected<TensorOutput> reshape(const MetaStack &variableMetas);
+  static Expected<TensorOutput> reshape(const MetaStack &variableMetas,
+                                        const torch::jit::Node *node);
   // Shape inference for aten::slice
-  static Expected<TensorOutput> slice(const MetaStack &variableMetas);
+  static Expected<ElemOutput> slice(const MetaStack &variableMetas);
   // Shape inference for aten::cat
   static Expected<TensorOutput> cat(const MetaStack &variableMetas);
   // Shape inference for aten::transpose
@@ -323,6 +344,34 @@ private:
   // Shape inference for fb::equally_split
   static Expected<TensorListOutput>
   equallySplit(const MetaStack &variableMetas);
+  // Shape inference for aten::squeeze
+  static Expected<TensorOutput> squeeze(const MetaStack &variableMetas);
+  // Shape inference for aten::narrow
+  static Expected<TensorOutput> narrow(const MetaStack &variableMetas);
+  // Shape inference for fb::index_hash
+  static Expected<TensorOutput> indexHash(const MetaStack &variableMetas);
+  // Shape inference for fb::bucketize
+  static Expected<TensorOutput> bucketize(const MetaStack &variableMetas);
+  // Shape inference for fb::expand_dims
+  static Expected<TensorOutput> expandDims(const MetaStack &variableMetas);
+  // Shape inference for aten::split_with_sizes
+  static Expected<TensorListOutput>
+  splitWithSizes(const MetaStack &variableMetas);
+  // Shape inference for aten::Int
+  static Expected<TensorOutput> inferInt(const MetaStack &variableMetas);
+  // Shape inference for prim::NumToTensor
+  static Expected<TensorOutput> numToTensor(const MetaStack &variableMetas,
+                                            const torch::jit::Node *node);
+  // Shape inference for aten::size
+  static Expected<TensorOutput> size(const MetaStack &variableMetas);
+  // Shape inference for fb::scale_gradient
+  static Expected<TensorOutput> scaleGradient(const MetaStack &variableMetas);
+  // Shape inference for aten::repeat
+  static Expected<TensorOutput> repeat(const MetaStack &variableMetas);
+  // Shape inference for aten::softmax
+  static Expected<TensorOutput> softmax(const MetaStack &variableMetas);
+  // Shape inference for aten::unsqueeze
+  static Expected<TensorOutput> unsqueeze(const MetaStack &variableMetas);
 };
 
 } // namespace glow

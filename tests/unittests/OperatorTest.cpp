@@ -5788,47 +5788,19 @@ TEST_P(OperatorTest, GatherDataInt8IdxInt64) {
 
 /// Helper for testing GatherND with different \p ITy / \p IndexType.
 template <typename DataType, typename IndexType>
-static void gatherNDFloatInputTest(glow::PlaceholderBindings &bindings,
-                                   glow::Module &mod, glow::Function *F,
-                                   glow::ExecutionEngine &EE, ElemKind DTy,
-                                   ElemKind ITy) {
-  /*
-    Data = [
-         [
-           [0.0,1.0],
-           [2.0,3.0]
-         ],
-         [
-           [4.0,5.0],
-           [6.0,7.0]
-         ]
-    ]
+static void gatherNDFloatTest(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind ITy,
+    std::vector<dim_t> dataDims, std::vector<DataType> dataVals,
+    std::vector<dim_t> indicesDims, std::vector<IndexType> indicesVals,
+    std::vector<dim_t> outputDims, std::vector<DataType> outputVals,
+    unsigned_t batchDims) {
 
-    INDICES = [
-            [0,1],
-            [1,0]
-    ]
-
-    OUTPUT = [
-            [2.0,3.0],
-            [4.0,5.0]
-    ]
-  */
-  auto *data = mod.createPlaceholder(DTy, {2, 2, 2}, "data", false);
-  auto *indices = mod.createPlaceholder(ITy, {2, 2}, "indices", false);
-
-  bindings.allocate(data)->getHandle<DataType>() = {
-      0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f,
-  };
-  bindings.allocate(indices)->getHandle<IndexType>() = {
-      0,
-      1,
-      1,
-      0,
-  };
-
-  auto *R = F->createGatherND("gatherND", data, indices);
-
+  auto *data = mod.createPlaceholder(DTy, dataDims, "data", false);
+  auto *indices = mod.createPlaceholder(ITy, indicesDims, "indices", false);
+  bindings.allocate(data)->getHandle<DataType>() = dataVals;
+  bindings.allocate(indices)->getHandle<IndexType>() = indicesVals;
+  auto *R = F->createGatherND("gatherND", data, indices, batchDims);
   auto *result = F->createSave("save", R);
   bindings.allocate(result->getPlaceholder());
 
@@ -5836,41 +5808,125 @@ static void gatherNDFloatInputTest(glow::PlaceholderBindings &bindings,
   EE.run(bindings);
 
   Tensor *resultT = bindings.get(result->getPlaceholder());
-  Tensor expectedT(DTy, {2, 2});
-  expectedT.getHandle<DataType>() = {2.0, 3.0, 4.0, 5.0};
-
+  Tensor expectedT(DTy, outputDims);
+  expectedT.getHandle<DataType>() = outputVals;
   EXPECT_TRUE(resultT->isEqual(expectedT));
 }
 
-/// Test that Gather works with Float data and Int32 indices.
-TEST_P(OperatorTest, GatherNDDataFloatIdxInt32) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest<float, int32_t>(bindings_, mod_, F_, EE_,
-                                         ElemKind::FloatTy, ElemKind::Int32ITy);
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest1(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 1
+  // batch_dims = 0
+  // data    = [[0,1],[2,3]]   # data_shape = [2, 2]
+  // indices = [[0,0],[1,1]]   # indices_shape = [2, 2]
+  // output  = [0,3]           # output_shape = [2]
+  gatherNDFloatTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2},
+                                         {0.0, 1.0, 2.0, 3.0}, {2, 2},
+                                         {0, 0, 1, 1}, {2}, {0.0, 3.0}, 0);
 }
+
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest2(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 2
+  // batch_dims = 0
+  // data    = [[0,1],[2,3]]  # data_shape = [2, 2]
+  // indices = [[1],[0]]      # indices_shape = [2, 1]
+  // output  = [[2,3],[0,1]]  # output_shape = [2, 2]
+  gatherNDFloatTest<DataType, IndexType>(bindings, mod, F, EE, DTy, ITy, {2, 2},
+                                         {0.0, 1.0, 2.0, 3.0}, {2, 1}, {1, 0},
+                                         {2, 2}, {2.0, 3.0, 0.0, 1.0}, 0);
+}
+
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest3(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 3
+  // batch_dims = 0
+  // data    = [[[0,1],[2,3]],[[4,5],[6,7]]] # data_shape = [2, 2, 2]
+  // indices = [[0,1],[1,0]]                 # indices_shape = [2, 2]
+  // output  = [[2,3],[4,5]]                 # output_shape = [2, 2]
+  gatherNDFloatTest<DataType, IndexType>(
+      bindings, mod, F, EE, DTy, ITy, {2, 2, 2},
+      {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 2}, {0, 1, 1, 0}, {2, 2},
+      {2.0, 3.0, 4.0, 5.0}, 0);
+}
+
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest4(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 4
+  // batch_dims = 0
+  // data    = [[[0,1],[2,3]],[[4,5],[6,7]]] # data_shape = [2, 2, 2]
+  // indices = [[[0,1]],[[1,0]]]             # indices_shape = [2, 1, 2]
+  // output  = [[[2,3]],[[4,5]]]             # output_shape = [2, 1, 2]
+  gatherNDFloatTest<DataType, IndexType>(
+      bindings, mod, F, EE, DTy, ITy, {2, 2, 2},
+      {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 1, 2}, {0, 1, 1, 0},
+      {2, 1, 2}, {2.0, 3.0, 4.0, 5.0}, 0);
+}
+
+template <typename DataType, typename IndexType>
+static void gatherNDFloatTest5(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               ElemKind ITy) {
+  // Example 5
+  // batch_dims = 1
+  // data    = [[[0,1],[2,3]],[[4,5],[6,7]]] # data_shape = [2, 2, 2]
+  // indices = [[1],[0]]                     # indices_shape = [2, 1]
+  // output  = [[2,3],[4,5]]                 # output_shape = [2, 2]
+  gatherNDFloatTest<DataType, IndexType>(
+      bindings, mod, F, EE, DTy, ITy, {2, 2, 2},
+      {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2, 1}, {1, 0}, {2, 2},
+      {2.0, 3.0, 4.0, 5.0}, 1);
+}
+
+#define TEST_GATHER_ND(N, DATA_KIND, INDEX_KIND, DATA_TYPE, INDEX_TYPE)        \
+  TEST_P(OperatorTest, GatherND_##DATA_KIND##_##INDEX_KIND##_Test##N) {        \
+    CHECK_IF_ENABLED();                                                        \
+    gatherNDFloatTest##N<DATA_TYPE, INDEX_TYPE>(                               \
+        bindings_, mod_, F_, EE_, ElemKind::DATA_KIND, ElemKind::INDEX_KIND);  \
+  }
+
+TEST_GATHER_ND(1, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(2, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(3, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(4, FloatTy, Int32ITy, float, int32_t)
+TEST_GATHER_ND(5, FloatTy, Int32ITy, float, int32_t)
 
 #if DIM_T_BITWIDTH >= 64
-/// Test that Gather works with Float data and Int64 indices.
-TEST_P(OperatorTest, GatherNDDataFloatIdxInt64) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest<float, int64_t>(bindings_, mod_, F_, EE_,
-                                         ElemKind::FloatTy, ElemKind::Int64ITy);
-}
+TEST_GATHER_ND(1, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(2, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(3, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(4, FloatTy, Int64ITy, float, int64_t)
+TEST_GATHER_ND(5, FloatTy, Int64ITy, float, int64_t)
 #endif
 
-/// Test that Gather works with Float16 data and Int32 indices.
-TEST_P(OperatorTest, GatherDataNDFloat16IdxInt32) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest<float16_t, int32_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
-}
+TEST_GATHER_ND(1, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(2, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(3, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(4, Float16Ty, Int32ITy, float16_t, int32_t)
+TEST_GATHER_ND(5, Float16Ty, Int32ITy, float16_t, int32_t)
 
-/// Test that Gather works with Float16 data and Int64 indices.
-TEST_P(OperatorTest, GatherNDDataFloat16IdxInt64) {
-  CHECK_IF_ENABLED();
-  gatherNDFloatInputTest<float16_t, int64_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
-}
+#if DIM_T_BITWIDTH >= 64
+TEST_GATHER_ND(1, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(2, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(3, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(4, Float16Ty, Int64ITy, float16_t, int64_t)
+TEST_GATHER_ND(5, Float16Ty, Int64ITy, float16_t, int64_t)
+#endif
+
+#undef TEST_GATHER_ND
 
 /// Helper for testing GatherND with different \p ITy / \p IndexType.
 template <typename IndexType>
@@ -14018,6 +14074,53 @@ TEST_P(OperatorTest, Sigmoid_BFloat16) {
                           0.01f);
 }
 
+/// Helper to test HardSigmoid using \p DTy.
+template <typename DataType>
+static void testHardSigmoid(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            float allowedError = 0.001f) {
+  constexpr dim_t size = 5;
+  float alpha = 0.2;
+  float beta = 0.5;
+  auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {-3., -1., 0., 1., 3.};
+  auto *hardsigmoid = F->createHardSigmoid("hardsigmoid", input, alpha, beta);
+  auto *save = F->createSave("save", hardsigmoid);
+  bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto saveH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
+  auto inH = bindings.get(input)->getHandle<DataType>();
+
+  for (dim_t i = 0; i < size; i++) {
+    DataType expectedResult = std::max<DataType>(
+        0,
+        std::min<DataType>(1, (DataType)alpha * inH.raw(i) + (DataType)beta));
+    EXPECT_NEAR((float)saveH.raw(i), (float)expectedResult, allowedError);
+  }
+}
+
+/// Verify that the HardSigmoid operator works correctly with FloatTy.
+TEST_P(OperatorTest, HardSigmoid_Float) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the HardSigmoid operator works correctly with Float16Ty.
+TEST_P(OperatorTest, HardSigmoid_Float16) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Verify that the HardSigmoid operator works correctly with BFloat16Ty.
+TEST_P(OperatorTest, HardSigmoid_BFloat16) {
+  CHECK_IF_ENABLED();
+  testHardSigmoid<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
 /// Helper to test Swish using \p DTy.
 template <typename DataType>
 static void testSwish(glow::PlaceholderBindings &bindings, glow::Module &mod,
@@ -15095,7 +15198,7 @@ TEST_P(OperatorTest, CumSum3D_bfloat16_t_Dim2) {
 }
 
 TEST_P(OperatorTest, CumSum2D_int32_t_Dim0) {
-  // Data: {1..24} arranged in 2 x 3 x 4
+  // Data: {1..12} arranged in 3 x 4
   // Answer sums ALONG the axis specified
   CHECK_IF_ENABLED();
   Tensor *dimSums =
@@ -15111,7 +15214,7 @@ TEST_P(OperatorTest, CumSum2D_int32_t_Dim0) {
 }
 
 TEST_P(OperatorTest, CumSum2D_int32_t_Dim1) {
-  // Data: {1..24} arranged in 2 x 3 x 4
+  // Data: {1..12} arranged in 3 x 4
   // Answer sums ALONG the axis specified
   CHECK_IF_ENABLED();
   Tensor *dimSums =
@@ -17718,101 +17821,6 @@ TEST_P(OperatorStatelessTest, SLSAllZeroLengths_Float16) {
                                       /* convertToRowwiseQuantization */ false),
 
                             ElemKind::Float16Ty, ElemKind::Float16Ty);
-}
-
-template <typename DataType, typename IndexType>
-static void testSparseToDense(glow::PlaceholderBindings &bindings,
-                              glow::Module &mod, glow::Function *F,
-                              glow::ExecutionEngine &EE, ElemKind DTy,
-                              ElemKind ITy) {
-
-  // Create and initialize inputs. Make input 3D to make sure
-  // multidimensional values are handled properly.
-  constexpr dim_t kNumIndices = 4;
-  constexpr dim_t kRows = 10;
-  constexpr dim_t kCols = 5;
-  constexpr dim_t kMaxIndex = 10;
-
-  auto *indices = mod.createPlaceholder(ITy, {kNumIndices}, "indices", false);
-  auto *values =
-      mod.createPlaceholder(DTy, {kNumIndices, kRows, kCols}, "data", false);
-  auto *dataToInferDim = mod.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
-                                               "dataToInferDim", false);
-
-  auto IH = bindings.allocate(indices)->getHandle<IndexType>();
-  auto VH = bindings.allocate(values)->getHandle<DataType>();
-
-  // Duplicate one index to test that the corresponding values are added.
-  IH = {1, 3, 1, 9};
-
-  auto *STDN = F->createSparseToDense("STDN", indices, values, dataToInferDim);
-  auto *S = F->createSave("save", STDN);
-  bindings.allocate(S->getPlaceholder());
-
-  EE.compile(CompilationMode::Infer);
-
-  VH.randomize(-3.0, 3.0, mod.getPRNG());
-  EE.run(bindings);
-
-  Tensor &result = *bindings.get(S->getPlaceholder());
-
-  // Compute expected output.
-  Tensor expected(DTy, {kMaxIndex, kRows, kCols});
-  auto EH = expected.getHandle<DataType>();
-
-  Tensor expectedFP32(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
-  auto EHFP32 = expectedFP32.getHandle<float>();
-  expectedFP32.zero();
-
-  expected.zero();
-  for (dim_t i = 0; i < kNumIndices; ++i) {
-    dim_t idx = IH.at({i});
-    for (dim_t j = 0; j < kRows; ++j) {
-      for (dim_t k = 0; k < kCols; ++k) {
-        if (std::is_same<DataType, float16_t>::value) {
-          EHFP32.at({idx, j, k}) += (float)VH.at({i, j, k});
-        } else {
-          EH.at({idx, j, k}) += VH.at({i, j, k});
-        }
-      }
-    }
-  }
-
-  if (std::is_same<DataType, float16_t>::value) {
-    for (dim_t i = 0; i < kMaxIndex; ++i) {
-      for (dim_t j = 0; j < kRows; ++j) {
-        for (dim_t k = 0; k < kCols; ++k) {
-          EH.at({i, j, k}) = (float16_t)EHFP32.at({i, j, k});
-        }
-      }
-    }
-  }
-
-  EXPECT_TRUE(expected.isEqual(result));
-}
-
-TEST_P(OperatorTest, SparseToDense_Float) {
-  CHECK_IF_ENABLED();
-  testSparseToDense<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                                    ElemKind::Int64ITy);
-}
-
-TEST_P(OperatorTest, SparseToDense_Float_Int32) {
-  CHECK_IF_ENABLED();
-  testSparseToDense<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                                    ElemKind::Int32ITy);
-}
-
-TEST_P(OperatorTest, SparseToDense_Float16_Int32) {
-  CHECK_IF_ENABLED();
-  testSparseToDense<float16_t, int32_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
-}
-
-TEST_P(OperatorTest, SparseToDense_Int64) {
-  CHECK_IF_ENABLED();
-  testSparseToDense<int64_t, int64_t>(bindings_, mod_, F_, EE_,
-                                      ElemKind::Int64ITy, ElemKind::Int64ITy);
 }
 
 template <typename DataType, typename LengthType, typename IndexType>
@@ -20883,6 +20891,48 @@ TEST_P(OperatorTest, RMSNorm) {
   }
 }
 
+TEST_P(OperatorTest, InstanceNormalization_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2, 2}, "inp", false);
+  // Initiliaze inp
+  auto inpH = bindings_.allocate(inp)->getHandle<float>();
+  inpH = {0.0,  1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
+          8.0,  9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+          16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0};
+  // Setting scale and bias
+  auto *scale = mod_.createConstant(ElemKind::FloatTy, {3}, "scale");
+  scale->getHandle() = {1.0, 1.5, 2.0};
+  auto *bias = mod_.createConstant(ElemKind::FloatTy, {3}, "bias");
+  bias->getHandle() = {0.0, 1.0, 2.0};
+
+  auto *node =
+      F_->createInstanceNormalization("instNorm", inp, bias, scale, 1, 1e-5);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  std::vector<float> mergedScale = {0.89442361, 1.34163542, 1.78884723,
+                                    0.89442361, 1.34163542, 1.78884723};
+  std::vector<float> mergedBias = {-1.34163542,  -6.37899481,  -14.99404865,
+                                   -12.07471878, -22.47861985, -36.46021537};
+
+  EXPECT_EQ(outH.size(), 24);
+  for (dim_t i = 0; i < 2; i++) {
+    for (dim_t j = 0; j < 3; j++) {
+      for (dim_t k = 0; k < 2; k++) {
+        for (dim_t l = 0; l < 2; l++) {
+          EXPECT_NEAR(outH.at({i, j, k, l}),
+                      inpH.at({i, j, k, l}) * mergedScale.at(i * 3 + j) +
+                          mergedBias.at(i * 3 + j),
+                      1e-5);
+        }
+      }
+    }
+  }
+}
+
 TEST_P(OperatorTest, SparseLabelSplit) {
   CHECK_IF_ENABLED();
 
@@ -20943,6 +20993,76 @@ TEST_P(OperatorTest, SparseLabelSplit) {
     EXPECT_EQ(expectedGradientOffsetMap[d],
               gradientOffsetMapT->getHandle<int32_t>().at(d));
   }
+}
+
+/// Test BatchedUnaryEmbeddingsBags
+template <typename DataTy>
+static void testBatchedUnaryEmbeddingsBags(glow::PlaceholderBindings &bindings,
+                                           glow::Module &mod, glow::Function *F,
+                                           glow::ExecutionEngine &EE,
+                                           ElemKind DTy, float allowedError) {
+  ShapeVector idims = {1, 38, 1};
+  ShapeVector odims = {1, 1, 3};
+
+  Tensor weightsTensorReal(DTy, idims);
+  Tensor indicesTensorReal(ElemKind::Int32ITy, {9});
+  Tensor offsetsTensorReal(ElemKind::Int32ITy, {4});
+  Tensor tableOffsetsTensorReal(ElemKind::Int32ITy, {4});
+
+  weightsTensorReal.getHandle<DataTy>() = {
+      0.4705, 0.0634, 0.8867, 0.3685, 0.0328, 0.1191, 0.1907, 0.9518,
+      0.3688, 0.5838, 0.0315, 0.3067, 0.0160, 0.3304, 0.2706, 0.4694,
+      0.0182, 0.9961, 0.5213, 0.4605, 0.6342, 0.5052, 0.9236, 0.2747,
+      0.3745, 0.9434, 0.5810, 0.5646, 0.5182, 0.9379, 0.0866, 0.0854,
+      0.1088, 0.4771, 0.0636, 0.5778, 0.5571, 0.3586};
+  indicesTensorReal.getHandle<int32_t>() = {1, 1, 3, 13, 14, 4, 15, 11, 16};
+  offsetsTensorReal.getHandle<int32_t>() = {0, 3, 5, 9};
+  tableOffsetsTensorReal.getHandle<int32_t>() = {0, 4, 21, 38};
+
+  auto weights = mod.createPlaceholder(DTy, idims, "weights", false);
+  auto indices =
+      mod.createPlaceholder(ElemKind::Int32ITy, {9}, "indices", false);
+  auto offsets =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "offsets", false);
+  auto tableOffsets =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "tableOffsets", false);
+
+  bindings.insert(weights, std::move(weightsTensorReal));
+  bindings.insert(indices, std::move(indicesTensorReal));
+  bindings.insert(offsets, std::move(offsetsTensorReal));
+  bindings.insert(tableOffsets, std::move(tableOffsetsTensorReal));
+
+  auto *R = F->createBatchedUnaryEmbeddingsBags(
+      "BatchedUnaryEmbeddingsBags", weights, tableOffsets, indices, offsets);
+  auto *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, odims);
+  expected.getHandle<DataTy>() = {
+      0.4953,
+      1.5174,
+      1.9679,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test that BatchedUnaryEmbeddingsBags is correctly supported in FloatTy.
+TEST_P(OperatorTest, BatchedUnaryEmbeddingsBags_Float) {
+  CHECK_IF_ENABLED();
+  testBatchedUnaryEmbeddingsBags<float>(bindings_, mod_, F_, EE_,
+                                        ElemKind::FloatTy, 0.0001);
+}
+
+/// Test that BatchedUnaryEmbeddingsBags is correctly supported in Float16Ty.
+TEST_P(OperatorTest, BatchedUnaryEmbeddingsBags_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchedUnaryEmbeddingsBags<float16_t>(bindings_, mod_, F_, EE_,
+                                            ElemKind::Float16Ty, 0.005);
 }
 
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);

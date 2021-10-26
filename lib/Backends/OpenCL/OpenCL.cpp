@@ -494,7 +494,7 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
                                &global[0], &local[0], 0, nullptr,
                                profile ? &event : nullptr);
   CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
-  kernelLaunches.push_back(KernelLaunch(kernel, name, kernelType, event));
+  kernelLaunches.push_back(KernelLaunch(kernel, name.str(), kernelType, event));
 }
 
 /// Enqueue a \p kernel for execution on the command queue \p commands on a
@@ -520,7 +520,7 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
                                profile ? &event : nullptr);
   CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
   kernelLaunches.push_back(
-      KernelLaunch(kernel, name, kernelType, profile ? event : nullptr));
+      KernelLaunch(kernel, name.str(), kernelType, profile ? event : nullptr));
 }
 
 void OpenCLFunction::executeNCHWConvolution(
@@ -1480,7 +1480,8 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
                                        srcOff, destOff, sizeInBytes, 0, nullptr,
                                        kernelProfiling_ ? &event : nullptr);
       if (kernelProfiling_) {
-        kernelLaunches.emplace_back(KernelLaunch(I.getName(), "copy", event));
+        kernelLaunches.emplace_back(
+            KernelLaunch(I.getName().str(), "copy", event));
       }
       CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueCopyBuffer.";
       continue;
@@ -1490,7 +1491,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
-      unsigned_t batchDims = GI->getBatchDims();
+      unsigned_t axis = GI->getBatchDims();
 
       auto *data = GI->getData();
 
@@ -1498,9 +1499,9 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       size_t numIndices = GI->getIndices()->size();
 
       // The size of the sample in the batch.
-      size_t sliceSize = dataType->getSliceSize(batchDims + 1);
+      size_t sliceSize = dataType->getSliceSize(axis + 1);
       // The size of the slices that we gather.
-      size_t srcSampleSize = dataType->getSliceSize(batchDims);
+      size_t srcSampleSize = dataType->getSliceSize(axis);
       // The size of the slices that we pack.
       size_t destSampleSize = numIndices * sliceSize;
       // The size of each sample in the batch.
@@ -1629,7 +1630,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
                                  &global[0], &local[0], 0, nullptr, &event);
       CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
       kernelLaunches.push_back(
-          KernelLaunch(kernel, TE->getName(), "checkpoint", event));
+          KernelLaunch(kernel, TE->getName().str(), "checkpoint", event));
       continue;
     }
 
@@ -1784,6 +1785,7 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
 bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::SplatNodeKind:
+  case Kinded::Kind::TouchNodeKind:
   case Kinded::Kind::TransposeNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy});
@@ -2139,7 +2141,7 @@ TraceInfo OCLBackend::buildManualTraceInfo(Function *F) const {
         type = TEN->getEventType()[0];
       }
       info.add(backing, TEN->getIndex(), TEN->getEventName(), type,
-               TEN->getName());
+               TEN->getName().str());
       info.enabled = true;
     }
   }

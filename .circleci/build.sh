@@ -88,6 +88,14 @@ fi
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
 if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo pip install cmake==3.17.3
+elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
+    mkdir ~/cmake-3.21.2
+    cd ~/cmake-3.21.2
+    mkdir install
+    wget https://github.com/Kitware/CMake/releases/download/v3.21.2/cmake-3.21.2-linux-x86_64.sh
+    echo "y" | sudo sh cmake-3.21.2-linux-x86_64.sh --prefix=${PWD}/install
+    export PATH=${PWD}/install/cmake-3.21.2-linux-x86_64/bin:${PATH}
+    cd -
 else
     sudo apt-get install cmake
 fi

@@ -41,6 +41,7 @@ extern bool EnableLoadBalancedPartitioning;
 extern bool SkipProvisioning;
 extern bool DisableLayoutVerifying;
 extern bool DisableFreeCompilationResource;
+extern bool SinkTanhBelowConcat;
 
 // FP16 Constants
 extern bool ConvertToFP16;
@@ -78,6 +79,8 @@ extern bool SparseNNPartitioningAddSLSConcats;
 extern bool SparseNNPartitioningBalancePerfModel;
 extern bool SparseNNPartitioningPairLNWithSLS;
 extern bool SparseNNPartitioningPairTileWithSLS;
+extern std::string SparseNNPartitioningPairSLSWith;
+extern int32_t SparseNNPartitioningConcatSplitSize;
 
 // Dag Optimizer Constants
 extern bool UseDAGOptimizer;

@@ -766,6 +766,10 @@ private:
   /// \return error on failure.
   Error loadQuantizedAddRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::leaky_relu node.
+  /// \return error on failure.
+  Error loadQuantizedLeakyRelu(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantized::mul node.
   /// \return error on failure.
   Error loadQuantizedMul(const torch::jit::Node *ptNode);
@@ -1030,6 +1034,46 @@ private:
   // Load a PyTorch fb::equally_split.
   // \returns error on failure.
   Error loadEquallySplit(const torch::jit::Node *ptNode);
+
+  /// Load PyTorch fb::expand_dims
+  /// \returns error on failure.
+  Error loadExpandDims(const torch::jit::Node *ptNode);
+
+  /// Load PyTorch aten::narrow
+  /// \returns error on failure.
+  Error loadNarrow(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::pixel_shuffle.
+  // \returns error on failure.
+  Error loadPixelShuffle(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::pixel_unshuffle.
+  // \returns error on failure.
+  Error loadPixelUnshuffle(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::square.
+  // \returns error on failure.
+  Error loadSquare(const torch::jit::Node *ptNode);
+
+  // Load fb::scale_gradient.
+  // \returns error on failure.
+  Error loadScaleGradient(const torch::jit::Node *ptNode);
+
+  // Load aten::erf.
+  // \returns error on failure.
+  Error loadErf(const torch::jit::Node *ptNode);
+
+  // Load fb::batched_unary_embeddings
+  // \returns error on failure.
+  Error loadBatchedUnaryEmbeddingsBags(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch aten::sign.
+  // \returns error on failure.
+  Error loadSign(const torch::jit::Node *ptNode);
+
+  // Load Pytorch aten::index_add
+  // \returns error on failure.
+  Error loadIndexAdd(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

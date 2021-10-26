@@ -45,6 +45,13 @@
 #include <unordered_set>
 #include <vector>
 
+// Utility macro to continue loop if given condition is not met.
+// This is intended to improve code readability and size.
+#define CONTINUE_IF_NOT(cond)                                                  \
+  if (!(cond)) {                                                               \
+    continue;                                                                  \
+  }
+
 llvm::cl::OptionCategory graphOptCat("Graph Optimizations Options");
 llvm::cl::opt<unsigned> constDedupSizeOpt(
     "const-dedup-size",
@@ -404,6 +411,32 @@ static ConcatNode *setupQuantDequantSinkBelowConcat(Function *F,
   return F->createConcat(CN->getName(), newInputs, CN->getDim());
 }
 
+/// Given \p CN from \p F, determines if all inputs are Tanh
+/// and if so creates and \returns a new concat with all
+/// inputs as the inputs from the Tanh inputs. Otherwise
+/// \returns nullptr.
+static ConcatNode *setupTanhSinkBelowConcat(Function *F, ConcatNode *CN) {
+  // Check if all inputs are Tanh
+  std::vector<TanhNode *> tanhNodes;
+  tanhNodes.reserve(CN->getInputs().size());
+  for (auto &concatInput : CN->getInputs()) {
+    TanhNode *T = dyn_cast<TanhNode>(concatInput);
+    if (!T) {
+      return nullptr;
+    }
+    tanhNodes.push_back(T);
+  }
+
+  // Gather all inputs of the nodes in tanhNodes.
+  std::vector<NodeValue> newInputs;
+  newInputs.reserve(tanhNodes.size());
+  for (size_t i = 0, e = tanhNodes.size(); i < e; i++) {
+    newInputs.emplace_back(tanhNodes[i]->getInput());
+  }
+  // Create and return a new ConcatNode with newInputs.
+  return F->createConcat(CN->getName(), newInputs, CN->getDim());
+}
+
 bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
@@ -452,6 +485,27 @@ bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
+
+    // Sink Tanh below Concat nodes.
+    if (cctx.optimizationOpts.sinkTanhBelowConcat) {
+      if (firstNode->getKind() == Kinded::Kind::TanhNodeKind) {
+        ConcatNode *newCN = setupTanhSinkBelowConcat(F, CN);
+        if (!newCN) {
+          continue;
+        }
+
+        const TypeRef TTy =
+            llvm::cast<TanhNode>(firstNode)->getResult().getType();
+        const TypeRef concatTy = F->getParent()->uniqueType(
+            TTy->getElementType(), newCN->getResult().dims());
+        TanhNode *newTanh =
+            F->createTanh(CN->getName().str() + "_tanh", concatTy, newCN);
+
+        CN->getResult().replaceAllUsesOfWith(newTanh->getResult());
+        changed = true;
+        continue;
+      }
+    }
   }
 
   return changed;
@@ -496,6 +550,28 @@ bool SinkConcatBelowQuantize::run(Function *F, const CompilationContext &cctx) {
   }
 
   return changed;
+}
+
+/// If \p N is a TransposeNode with all of the same node kind of users, then
+/// \returns that TransposeNode, else \returns nullptr. For example, if \p N is
+/// a TransposeNode with two QuantizeNode users, this will return the
+/// TransposeNode, but if it had one QuantizeNode and one MatMul node then it
+/// will return nullptr.
+static TransposeNode *getTransposeNodeWithAllSameUserKind(Node *N) {
+  auto *TN = dyn_cast<TransposeNode>(N);
+  if (!TN) {
+    return nullptr;
+  }
+  if (TN->getNumUsers() <= 1) {
+    return TN;
+  }
+  auto firstKind = N->getUsers().front().getUser()->getKind();
+  for (auto &U : N->getUsers()) {
+    if (U.getUser()->getKind() != firstKind) {
+      return nullptr;
+    }
+  }
+  return TN;
 }
 
 /// Code Sinking.
@@ -924,8 +1000,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
 
     if (auto *Q = dyn_cast<QuantizeNode>(node)) {
       // Sink TransposeNode below QuantizedNode.
-      // If it doesn't work out it will be re-sinked later.
-      if (auto *TR = dyn_cast<TransposeNode>(Q->getInput())) {
+      if (auto *TR = getTransposeNodeWithAllSameUserKind(Q->getInput())) {
         auto newQType = F->getParent()->uniqueTypeWithNewShape(
             Q->getResult().getType(), TR->getInput().dims());
         auto *newQ = F->createQuantize(Q->getName(), TR->getInput(), newQType);
@@ -1286,21 +1361,34 @@ bool FoldDilatedConv::run(Function *F, const CompilationContext &cctx) {
     }
 
     // 4. Convolution.
+    llvm::StringRef name;
+    llvm::ArrayRef<unsigned_t> kernels, strides, pads, dilation;
+    NodeValue convInput, convResult;
+    auto getConvParams = [&](auto *N) -> bool {
+      if (!N || !N->hasOneUse()) {
+        return false;
+      }
+      name = N->getName();
+      kernels = N->getKernels();
+      strides = N->getStrides();
+      pads = N->getPads();
+      dilation = N->getDilation();
+      convInput = N->getInput();
+      convResult = N->getResult();
+      return true;
+    };
     auto *CN = dyn_cast<ConvolutionNode>(T1->getInput());
-    if (!CN || !CN->hasOneUse()) {
+    auto *CQCN = dyn_cast<ChannelwiseQuantizedConvolutionNode>(T1->getInput());
+    if (!getConvParams(CN) && !getConvParams(CQCN)) {
       continue;
     }
-    llvm::StringRef name = CN->getName();
-    auto kernels = CN->getKernels();
-    auto strides = CN->getStrides();
-    auto pads = CN->getPads();
     if (!isUniformArray(strides, 1u) || !isUniformArray(pads, 0u) ||
-        !isUniformArray(CN->getDilation(), 1u)) {
+        !isUniformArray(dilation, 1u)) {
       continue;
     }
 
     // 5. Transpose CHWN2NHWC.
-    auto *T2 = dyn_cast<TransposeNode>(CN->getInput());
+    auto *T2 = dyn_cast<TransposeNode>(convInput);
     if (!T2 || T2->getShuffle() != llvm::makeArrayRef(CHWN2NHWC)) {
       continue;
     }
@@ -1325,14 +1413,25 @@ bool FoldDilatedConv::run(Function *F, const CompilationContext &cctx) {
     auto outHW = calculateConvPoolOutputDims(
         trOutDims[1], trOutDims[2], kernels, strides, pads, {block, block});
     auto convOutTy = F->getParent()->uniqueTypeWithNewShape(
-        CN->getResult().getType(),
-        {trOutDims[0], outHW.first, outHW.second, CN->getResult().dims()[3]});
-    auto *newCN = F->createConv(name, newT1->getResult(), CN->getFilter(),
-                                CN->getBias(), convOutTy, kernels, strides,
-                                pads, CN->getGroup(), {block, block});
+        convResult.getType(),
+        {trOutDims[0], outHW.first, outHW.second, convResult.dims()[3]});
+    Node *newCN;
+    if (CN) {
+      newCN = F->createConv(name, newT1->getResult(), CN->getFilter(),
+                            CN->getBias(), convOutTy, kernels, strides, pads,
+                            CN->getGroup(), {block, block});
+    } else if (CQCN) {
+      newCN = F->createChannelwiseQuantizedConv(
+          name, newT1->getResult(), CQCN->getFilter(), CQCN->getBias(),
+          CQCN->getFilterScales(), CQCN->getFilterOffsets(),
+          CQCN->getBiasScales(), CQCN->getBiasOffsets(), convOutTy, kernels,
+          strides, pads, CQCN->getGroup(), {block, block}, false, false);
+    } else {
+      llvm_unreachable("Convolution must be in the pattern");
+    }
 
-    auto *newT2 = F->createTranspose(name.str() + "_nhwc2chwn",
-                                     newCN->getResult(), NHWC2CHWN);
+    auto *newT2 =
+        F->createTranspose(name.str() + "_nhwc2chwn", newCN, NHWC2CHWN);
 
     idim = newT2->getResult().dims();
     odim = {idim[0], idim[1] / block, block, idim[2] / block, block, idim[3]};
@@ -1396,25 +1495,18 @@ static bool mayDependOnAny(llvm::ArrayRef<NodeValue> list, Node *N) {
   return false;
 }
 
-// Merge several two or more multiple matrix multiplications into a single
-// large matmul. The large matmul is more likely to utilize the hardware. The
-// result of the big matmul is the concatenated results.
-//
-//            ____      _________        _________
-//   ----    |    |    |         |     M|  A * C  |
-// M| A  |  T| B  | * K|    C    | =    |---------|
-//   ---- ,  |    |    |         |     T|  B * C  |
-//    K       ----      ---------        ---------
-//             K            R                R
-bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
-  LOG_SCOPE(F->getLogContext(), getName());
+/// Helper function to merge matmuls in \p F.
+/// If \p mergeOnLHS is true, it merges LHS operands of matmuls that have the
+/// same RHS. If \p mergeOnLHS is false, it merges RHS operands of matmuls that
+/// have the same LHS. \returns true if any matmuls are merged in the Function
+/// \p F.
+static bool mergeMatMuls(Function *F, bool mergeOnLHS) {
   bool changed = false;
   auto &nodes = F->getNodes();
 
-  // These two maps record the list of matrix multipliers that use each node
+  // A map to record the list of matrix multipliers that use each node
   // value either as a right-hand-side user or a left-hand-user.
-  llvm::DenseMap<Node *, std::vector<MatMulNode *>> rightMatrixUsers;
-  llvm::DenseMap<Node *, std::vector<MatMulNode *>> leftMatrixUsers;
+  llvm::DenseMap<Node *, std::vector<MatMulNode *>> matrixUsers;
 
   // Collect the list of nodes that are used by the matrix multiplier.
   for (auto &node : nodes) {
@@ -1426,50 +1518,105 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
         continue;
       }
 
-      rightMatrixUsers[MM->getRHS().getNode()].push_back(MM);
-      leftMatrixUsers[MM->getLHS().getNode()].push_back(MM);
+      if (!mergeOnLHS) {
+        matrixUsers[MM->getLHS().getNode()].push_back(MM);
+      } else {
+        matrixUsers[MM->getRHS().getNode()].push_back(MM);
+      }
     }
   }
 
-  // Merge RHS matrices.
-  for (auto &it : rightMatrixUsers) {
+  // Merge matrices.
+  for (auto &it : matrixUsers) {
     auto &MMs = it.second;
 
-    // Collects the LHS values to merge.
-    std::vector<NodeValue> LHS;
+    // Collects the LHS or RHS values to merge.
+    std::vector<NodeValue> lhsOrRhs;
 
-    // For each matmul that depends on the rhs matrix.
-    for (auto &MM : MMs) {
-      auto L = MM->getLHS();
+    // For each matmul that depends on the matrix.
+    std::unordered_set<MatMulNode *> skippedMMs;
+    std::string firstMMName;
+    std::string firstMatrixName;
+    for (auto *MM : MMs) {
+      auto I = mergeOnLHS ? MM->getLHS() : MM->getRHS();
       // The operands to the matrix multiplier should not depend on one another
       // or else we won't be able to get rid of the original matrix
       // multiplication.
-      if (mayDependOnAny(LHS, L.getNode())) {
+      if (mayDependOnAny(lhsOrRhs, I.getNode())) {
+        skippedMMs.insert(MM);
         continue;
       }
-      LHS.push_back(L);
+      lhsOrRhs.push_back(I);
+      if (firstMMName.empty()) {
+        firstMMName = MM->getName().str();
+      }
+      if (firstMatrixName.empty()) {
+        firstMatrixName = I.getNode()->getName().str();
+      }
     }
 
     // We need to have at least two matrices to merge.
-    if (LHS.size() < 2) {
+    if (lhsOrRhs.size() < 2) {
       continue;
     }
 
     // Merge the matmul:
-    auto *CC = F->createConcat("mergeLHS", LHS, 0);
-    auto *MM = F->createMatMul("bigMatMul", CC, it.first);
+    auto *CC = F->createConcat(firstMatrixName + "_merge", lhsOrRhs,
+                               mergeOnLHS ? 0 : 1);
+    auto *MM =
+        F->createMatMul(firstMMName + "_bigMatMul", mergeOnLHS ? CC : it.first,
+                        mergeOnLHS ? it.first : CC);
 
-    dim_t R = MM->getResult().dims()[1];
+    // Slice the output so that other nodes can consume each slice separately.
+    dim_t O = MM->getResult().dims()[mergeOnLHS ? 1 : 0];
     dim_t start = 0;
     for (auto *origMM : MMs) {
-      dim_t H = origMM->getResult().dims()[0];
-      auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
+      if (skippedMMs.count(origMM)) {
+        continue;
+      }
+      dim_t H = origMM->getResult().dims()[mergeOnLHS ? 0 : 1];
+      auto startIndices = mergeOnLHS ? std::array<dim_t, 2>({start, 0})
+                                     : std::array<dim_t, 2>({0, start});
+      auto endIndices = mergeOnLHS ? std::array<dim_t, 2>({start + H, O})
+                                   : std::array<dim_t, 2>({O, start + H});
+      auto *ex = F->createSlice(origMM->getName().str() + "_extract", MM,
+                                startIndices, endIndices);
       start += H;
       origMM->getResult().replaceAllUsesOfWith(ex);
       changed = true;
     }
   }
   return changed;
+}
+
+// Merge several two or more multiple matrix multiplications that share the same
+// RHS into a single large matmul. The large matmul is more likely to utilize
+// the hardware. The result of the big matmul is the concatenated results.
+//
+//            ____      _________        _________
+//   ----    |    |    |         |     M|  A * C  |
+// M| A  |  T| B  | * K|    C    | =    |---------|
+//   ---- ,  |    |    |         |     T|  B * C  |
+//    K       ----      ---------        ---------
+//             K            R                R
+bool MergeMatMulOnLHS::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  return mergeMatMuls(F, /* mergeOnLHS */ true);
+}
+
+// Merge several two or more multiple matrix multiplications that share the same
+// LHS into a single large matmul. The large matmul is more likely to utilize
+// the hardware. The result of the big matmul is the concatenated results.
+//
+//             ____      _________        _________
+//   ----     |    |    |         |      |  A | A  |
+// M| A  | * K| B  | , K|    C    | =   M|  * | *  |
+//   ----     |    |    |         |      |  B | C  |
+//    K        ----      ---------        ---------
+//              R            S              R   S
+bool MergeMatMulOnRHS::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  return mergeMatMuls(F, /* mergeOnLHS */ false);
 }
 
 /// Local utility to check whether the given convolution or pooling \p node has
@@ -2373,11 +2520,12 @@ static NodeValue collectArithmeticChain(Function *F, NodeValue start,
         scaleH.raw(i) *= toMerge[i];
         biasH.raw(i) *= toMerge[i];
       } else if (isa<SubNode>(user)) {
-        // TODO: Can we support Sub(Constant, Chain)?
         if (chainEnd == rhs) {
-          break;
+          scaleH.raw(i) *= -1;
+          biasH.raw(i) = toMerge[i] - biasH.raw(i);
+        } else {
+          biasH.raw(i) -= toMerge[i];
         }
-        biasH.raw(i) -= toMerge[i];
       } else if (isa<AddNode>(user)) {
         biasH.raw(i) += toMerge[i];
       } else {
@@ -2582,6 +2730,52 @@ bool FoldMatMulAddIntoFullyConnected::run(Function *F,
         matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(), bias,
         addNode->getResult().getType());
     addNode->getResult().replaceAllUsesOfWith(newFC);
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Convert MatMul into FullyConnected with null bias. This pass is used if
+/// we have an optimized implementation for FullyConnected but NOT for MatMul.
+/// Make sure you run this pass after the FoldMatMulAddIntoFullyConnected pass
+/// otherwise a MatMul followed by Add will be converted into a FullyConnected
+/// followed by Add and NOT a single FullyConnected instance.
+bool ConvertMatMulToFullyConnected::run(Function *F,
+                                        const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *matMulNode = dyn_cast<MatMulNode>(&node);
+    if (!matMulNode) {
+      continue;
+    }
+
+    // Create null bias.
+    Constant *bias = nullptr;
+    std::vector<dim_t> biasDims = {matMulNode->getResult().dims().back()};
+    std::string biasName = matMulNode->getName().str() + "bias";
+    if (matMulNode->getResult().getType()->isQuantizedType()) {
+      // Create null bias with offset 0 and a scale equal to the product
+      // between LHS scale and RHS scale.
+      float biasScale = matMulNode->getLHS().getType()->getScale() *
+                        matMulNode->getRHS().getType()->getScale();
+      int32_t biasOffset = 0;
+      ElemKind biasPrec = cctx.precisionConfig.quantConfig.precisionBias;
+      bias = F->getParent()->createConstant(biasPrec, biasDims, biasScale,
+                                            biasOffset, biasName);
+      bias->getPayloadMutable().zero();
+    } else {
+      // Create null FLOAT bias.
+      bias =
+          F->getParent()->createConstant(ElemKind::FloatTy, biasDims, biasName);
+      bias->getPayloadMutable().zero();
+    }
+
+    // Create a new FullyConnected node with null bias.
+    auto *newFC = F->createFullyConnected(
+        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(), bias,
+        matMulNode->getResult().getType());
+    matMulNode->getResult().replaceAllUsesOfWith(newFC);
     changed = true;
   }
 
@@ -3508,7 +3702,7 @@ bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
     }
 
     dim_t index = 0;
-    size_t bd = GN->getBatchDims();
+    size_t axis = GN->getBatchDims();
     auto elementKind = indices->getElementType();
     if (elementKind == ElemKind::Int64ITy) {
       index = (size_t)indices->getHandle<int64_t>().raw(0);
@@ -3521,7 +3715,7 @@ bool GatherToSlice::run(Function *F, const CompilationContext &cctx) {
     std::vector<dim_t> start;
     std::vector<dim_t> end;
     for (size_t i = 0; i < data.dims().size(); ++i) {
-      if (i == bd) {
+      if (i == axis) {
         start.push_back(index);
         end.push_back(index + 1);
       } else {
@@ -3722,6 +3916,96 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Helper to optimize Resize nodes.
+template <typename ResizeNodeType>
+static bool optimizeResize(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *resizeNode = dyn_cast<ResizeNodeType>(&node);
+    CONTINUE_IF_NOT(resizeNode);
+    // Remove identity resize (same input and output type).
+    auto inpType = resizeNode->getInput().getType();
+    auto outType = resizeNode->getResult().getType();
+    if (inpType->isEqual(outType)) {
+      resizeNode->getResult().replaceAllUsesOfWith(resizeNode->getInput());
+      changed = true;
+      continue;
+    }
+    // Dimensions which are resized from unitary sizes should use Tile nodes.
+    // We pull out Tile nodes from the Resize output such that the Resize node
+    // operates on smaller sizes thus reducing the complexity. We create Tile
+    // nodes in the decreasing order of the dimensions to increase locality.
+    auto inpDims = resizeNode->getInput().dims();
+    auto outDims = resizeNode->getResult().dims();
+    std::vector<dim_t> newOutDims = outDims.vec();
+    std::vector<unsigned_t> axes;
+    std::vector<unsigned_t> tiles;
+    for (ssize_t idx = outDims.size() - 1; idx >= 0; idx--) {
+      if ((inpDims[idx] == 1) && (outDims[idx] > 1)) {
+        newOutDims[idx] = 1;
+        axes.push_back(idx);
+        tiles.push_back(outDims[idx]);
+      }
+    }
+    CONTINUE_IF_NOT(axes.size());
+    auto newOutType =
+        F->getParent()->uniqueTypeWithNewShape(outType, newOutDims);
+    // Create Resize node.
+    NodeValue newOut = resizeNode->getInput();
+    if (!inpType->isEqual(newOutType)) {
+      if (std::is_same<ResizeNodeType, ResizeNearestNode>::value) {
+        newOut = F->createResizeNearest(node.getName(), newOut, newOutType);
+      } else if (std::is_same<ResizeNodeType, ResizeBilinearNode>::value) {
+        newOut = F->createResizeBilinear(node.getName(), newOut, newOutType);
+      } else {
+        llvm_unreachable("Resize node type not supported!");
+      }
+    }
+    // Create Tile nodes.
+    newOut =
+        F->createTile(node.getName().str() + "." + "Tile", newOut, tiles, axes);
+    resizeNode->getResult().replaceAllUsesOfWith(newOut);
+    changed = true;
+    continue;
+  }
+  return changed;
+}
+
+/// Optimize Resize nodes.
+bool OptimizeResize::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  changed |= optimizeResize<ResizeNearestNode>(F, cctx);
+  changed |= optimizeResize<ResizeBilinearNode>(F, cctx);
+  return changed;
+}
+
+/// Optimize Insert nodes.
+bool OptimizeInsert::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *insertNode = dyn_cast<InsertTensorNode>(&node);
+    CONTINUE_IF_NOT(insertNode);
+    // When the "Big" tensor is a Splat which is entirely filled by the
+    // "Small" tensor then we replace the Splat with a Touch node to remove
+    // the initialization overhead of the Splat which is not needed.
+    NodeValue big = insertNode->getBig();
+    NodeValue small = insertNode->getSmall();
+    auto bigDims = big.dims().vec();
+    auto smallDims = small.dims().vec();
+    smallDims[insertNode->getAxis()] *= insertNode->getCount();
+    CONTINUE_IF_NOT(isUniformArray(insertNode->getStart(), dim_t(0)) &&
+                    dyn_cast<SplatNode>(big) && (bigDims == smallDims));
+    NodeValue touch =
+        F->createTouch(node.getName().str() + "." + "Touch", big.getType());
+    node.setNthInput(InsertTensorNode::BigIdx, touch);
+    changed = true;
+    continue;
+  }
+  return changed;
+}
+
 /// Optimize: Max(Splat(), otherInput) or Max(otherInput, Splat()) for
 /// quantized operations.
 /// Splat and Max can be eliminated if Splat value cannot impact the result.
@@ -3821,6 +4105,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
           dstTy->getElementType());
       return constantToBeModified.getOutput();
     }
+    case ElemKind::Int64QTy:
     case ElemKind::Int32QTy:
     case ElemKind::Int16QTy:
     case ElemKind::Int8QTy: {
@@ -4848,6 +5133,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
+      case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
       case Kinded::Kind::FullyConnectedNodeKind:
       case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
         changed = true;
@@ -5730,6 +6016,154 @@ bool FoldExpSumDivIntoSoftmax::run(Function *F,
     DN->getResult().replaceAllUsesOfWith(SM);
     changed = true;
   }
+  return changed;
+}
+
+/// Local utility to remove identity Relu if fused into \p node.
+/// \returns true or false whether the Relu was removed or not.
+template <class NodeTy> static bool removeFusedIdentityRelu(Node *node) {
+  auto *RN = dyn_cast<NodeTy>(node);
+  if (!RN || RN->getFusedActivation() != FusedActivation::RELU) {
+    return false;
+  }
+  // The output type must be quantized.
+  auto outTy = RN->getResult().getType();
+  if (!outTy->isQuantizedType()) {
+    return false;
+  }
+  // The quantized 0.0f for Relu must match the min of the output type.
+  auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+  if (outTy->getOffset() != outRange.first) {
+    return false;
+  }
+  // Remove fused Relu.
+  RN->setFusedActivation(FusedActivation::NONE);
+  RN->setFusedActivationArgs({});
+  return true;
+}
+
+bool RemoveIdentityRelu::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  // Remove standalone Relu.
+  for (auto &N : F->getNodes()) {
+    auto *RN = dyn_cast<ReluNode>(&N);
+    if (!RN) {
+      continue;
+    }
+
+    // The input and output types must be quantized.
+    auto inpTy = RN->getInput().getType();
+    auto outTy = RN->getResult().getType();
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType())) {
+      continue;
+    }
+
+    // The quantized 0.0f for Relu must match the min of the output type.
+    auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+    if (outTy->getOffset() != outRange.first) {
+      continue;
+    }
+
+    // Remove Relu if input and output types are the same.
+    // Otherwise change it with a RescaleQuantized.
+    if (inpTy->isEqual(outTy)) {
+      RN->getResult().replaceAllUsesOfWith(RN->getInput());
+    } else {
+      // TODO: Uncomment this once #5729 gets fixed.
+      // auto *rescale =
+      //     F->createRescaleQuantized(RN->getName(), RN->getInput(), outTy);
+      // RN->getResult().replaceAllUsesOfWith(rescale);
+    }
+    changed = true;
+  }
+
+  // Remove fused Relu.
+  for (auto &N : F->getNodes()) {
+    changed |= removeFusedIdentityRelu<ConvolutionNode>(&N);
+    changed |= removeFusedIdentityRelu<ChannelwiseQuantizedConvolutionNode>(&N);
+  }
+
+  return changed;
+}
+
+/// Local utility to remove identity Clip if fused into \p node.
+/// \returns true or false whether the Clip was removed or not.
+template <class NodeTy> static bool removeFusedIdentityClip(Node *node) {
+  auto *CN = dyn_cast<NodeTy>(node);
+  if (!CN || CN->getFusedActivation() != FusedActivation::CLIP) {
+    return false;
+  }
+  // The output type must be quantized.
+  auto outTy = CN->getResult().getType();
+  if (!outTy->isQuantizedType()) {
+    return false;
+  }
+  // The quantized min/max for Clip must match the min/max of the output type.
+  TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
+  auto fMin = CN->getFusedActivationArgs()[0];
+  auto fMax = CN->getFusedActivationArgs()[1];
+  auto qMin = quantization::quantize(fMin, outTQP, outTy->getElementType());
+  auto qMax = quantization::quantize(fMax, outTQP, outTy->getElementType());
+  auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+  if (!(qMin == outRange.first && qMax == outRange.second)) {
+    return false;
+  }
+  // Remove fused Relu.
+  CN->setFusedActivation(FusedActivation::NONE);
+  CN->setFusedActivationArgs({});
+  return true;
+}
+
+bool RemoveIdentityClip::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  // Remove standalone Clip.
+  for (auto &N : F->getNodes()) {
+    auto *CN = dyn_cast<ClipNode>(&N);
+    if (!CN) {
+      continue;
+    }
+
+    // The input and output types must be quantized.
+    auto inpTy = CN->getInput().getType();
+    auto outTy = CN->getResult().getType();
+    if (!(inpTy->isQuantizedType() && outTy->isQuantizedType())) {
+      continue;
+    }
+
+    // The quantized min/max for Clip must match the min/max of the output type.
+    TensorQuantizationParams outTQP{outTy->getScale(), outTy->getOffset()};
+    auto fMin = CN->getMin();
+    auto fMax = CN->getMax();
+    auto qMin = quantization::quantize(fMin, outTQP, outTy->getElementType());
+    auto qMax = quantization::quantize(fMax, outTQP, outTy->getElementType());
+    auto outRange = quantization::getQuantizedRange(outTy->getElementType());
+    if (!(qMin == outRange.first && qMax == outRange.second)) {
+      continue;
+    }
+
+    // Remove Clip if input and output types are the same.
+    // Otherwise change it with a RescaleQuantized.
+    if (inpTy->isEqual(outTy)) {
+      CN->getResult().replaceAllUsesOfWith(CN->getInput());
+    } else {
+      // TODO: Uncomment this once #5729 gets fixed.
+      // auto *rescale =
+      //     F->createRescaleQuantized(CN->getName(), CN->getInput(), outTy);
+      // CN->getResult().replaceAllUsesOfWith(rescale);
+    }
+    changed = true;
+  }
+
+  // Remove fused Clip.
+  for (auto &N : F->getNodes()) {
+    changed |= removeFusedIdentityClip<ConvolutionNode>(&N);
+    changed |= removeFusedIdentityClip<ChannelwiseQuantizedConvolutionNode>(&N);
+  }
+
   return changed;
 }
 

@@ -42,7 +42,8 @@ class TestQuantizedEmbeddingBag(utils.TorchGlowTestCase):
 
     @utils.deterministic_expand(
         [
-            lambda: (
+            # explicit local param declaration required for lambda fn with loops for correct param generation
+            lambda num_lengths=num_lengths, is4bit=is4bit, is_weighted=is_weighted, use_fp16=use_fp16, per_sample_weights_fp16=per_sample_weights_fp16: (
                 "{len}{bits}{weighted}{fp16}{sample_weights}{backend}".format(
                     len=num_lengths,
                     bits="_4bit" if is4bit else "_byte",

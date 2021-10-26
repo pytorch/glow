@@ -25,17 +25,17 @@ class SimpleQuantizedLinearModel(torch.nn.Sequential):
         )
 
         weight_observer = (
-            torch.quantization.default_weight_observer
+            torch.ao.quantization.default_weight_observer
             if per_tensor
-            else torch.quantization.default_per_channel_weight_observer
+            else torch.ao.quantization.default_per_channel_weight_observer
         )
-        self.qconfig = torch.quantization.QConfig(
-            activation=torch.quantization.default_observer,
+        self.qconfig = torch.ao.quantization.QConfig(
+            activation=torch.ao.quantization.default_observer,
             weight=weight_observer,
         )
 
-        torch.quantization.prepare(self, inplace=True)
-        torch.quantization.convert(self, inplace=True)
+        torch.ao.quantization.prepare(self, inplace=True)
+        torch.ao.quantization.convert(self, inplace=True)
 
 
 def _make_input(size, duplications, shape, dtype=torch.float):

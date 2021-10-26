@@ -38,6 +38,14 @@ class TestRsub(utils.TorchGlowTestCase):
                 torch.randn(4, 2),
                 torch.randn(8, 3, 4, 2),
             ),
+        ]
+    )
+    def test_rsub_as_sub(self, _, module, tensor, other):
+        # aten::rsub is normalized as aten::sub
+        utils.compare_tracing_methods(module, tensor, other, fusible_ops={"aten::sub"})
+
+    @utils.deterministic_expand(
+        [
             lambda: ("float", SimpleRsubModel(), torch.randn(4), torch.tensor(13.293)),
             lambda: ("int", SimpleRsubModel(), torch.randn(4), torch.tensor(4)),
         ]

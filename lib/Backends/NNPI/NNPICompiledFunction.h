@@ -151,7 +151,7 @@ public:
 #if FACEBOOK_INTERNAL
   Error compileFX(const folly::dynamic &FXIR, const std::string &submod,
                   const llvm::StringMap<const void *> &constants,
-                  const BackendOptions &opts);
+                  const BackendOptions &opts, Module *glowModule);
 #endif
 
   NNPICompilationOptions getCompilationOptions() const {
@@ -174,6 +174,11 @@ public:
 
   const std::vector<std::string> &getIAExtensionPaths() const {
     return iaExtensionPaths_;
+  }
+
+  const std::vector<std::pair<std::string, std::vector<char>>> &
+  getIAExtensionLibs() const {
+    return iaExtensionLibs_;
   }
 
   const NNPICompilationInfo &getCompilationInfo() const {
@@ -201,6 +206,7 @@ private:
   std::vector<std::string> outputNames_;
   NNPIDeviceNetworkConfig devNetConfig_;
   std::vector<std::string> iaExtensionPaths_;
+  std::vector<std::pair<std::string, std::vector<char>>> iaExtensionLibs_;
   NNPICompilationInfo compilationInfo_;
 
   Error

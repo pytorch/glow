@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
       "numAsyncLaunches(Int) numCores(Int) backendStr(String) dev_id(Int)\n");
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
-  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
+  benchParseGlowOpts(argc, argv);
   assert(argc == 8 || argc == 9);
   if (argc > 8) {
     dev_id = argv[8];

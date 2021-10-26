@@ -39,6 +39,12 @@ using namespace glow;
  * end-to-end workloads.
  */
 
+llvm::cl::OptionCategory SLSBenchCat("SLSBench Category");
+llvm::cl::opt<bool> dumpOnnx("dump_onnx",
+                             llvm::cl::desc("dump onnx text format for model"),
+                             llvm::cl::Optional, llvm::cl::init(false),
+                             llvm::cl::cat(SLSBenchCat));
+
 enum SLSKind {
   NONQUANTIZED_UNWEIGHTED,
   NONQUANTIZED_WEIGHTED,
@@ -334,6 +340,8 @@ public:
 
     fn->dumpDAG("slsbench.dot");
     CompilationContext ctx;
+    ctx.dumpFinalGraph = true;
+    ctx.serializeCompiledDAG = dumpOnnx;
 
     if (convertFusedToFP32_) {
       ctx.precisionConfig.convert4BitFusedToFP32 = true;
@@ -519,7 +527,7 @@ int main(int argc, char *argv[]) {
   printf("\n");
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
-  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
+  benchParseGlowOpts(argc, argv);
 
   std::vector<SLSParam> params;
   std::string runHeader;

@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #ifndef GLOW_TORCH_GLOW_SRC_GLOW_COMPILE_SPEC_H
 #define GLOW_TORCH_GLOW_SRC_GLOW_COMPILE_SPEC_H
@@ -387,6 +401,7 @@ struct FuserSettings : public JsonSerializableCustomClass {
 
 struct CompilationGroupSettings : public JsonSerializableCustomClass {
   ADD_BOOL_FIELD(convert_to_fp16, false)
+  ADD_BOOL_FIELD(skip_bias_fp32tofp16_convert, false)
   // -1 indicates use all available devices
   ADD_INT_FIELD(num_devices_to_use, -1)
   ADD_INT_FIELD(replication_count, 1)
@@ -395,6 +410,7 @@ struct CompilationGroupSettings : public JsonSerializableCustomClass {
   Expected<folly::dynamic> toDynamicImpl() const override {
     folly::dynamic obj = folly::dynamic::object();
     obj["convert_to_fp16"] = convert_to_fp16;
+    obj["skip_bias_fp32tofp16_convert"] = skip_bias_fp32tofp16_convert;
     obj["num_devices_to_use"] = num_devices_to_use;
     obj["replication_count"] = replication_count;
     obj["backend_specific_opts"] = dynArrayFromMap(backend_specific_opts);
@@ -411,6 +427,11 @@ struct CompilationGroupSettings : public JsonSerializableCustomClass {
     if (dyn.count("convert_to_fp16")) {
       ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, convert_to_fp16,
                                                "convert_to_fp16");
+    }
+
+    if (dyn.count("skip_bias_fp32tofp16_convert")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, skip_bias_fp32tofp16_convert, "skip_bias_fp32tofp16_convert");
     }
 
     if (dyn.count("num_devices_to_use")) {
@@ -454,6 +475,7 @@ struct CompilationSpecSettings : public JsonSerializableCustomClass {
   ADD_BOOL_FIELD(use_dag_optimizer, false)
   ADD_STRING_FIELD(apl_parallelization_alg, "ParallelizeCVHeuristicData")
   ADD_INT_FIELD(apl_num_parallel_chunks, 2)
+  ADD_BOOL_FIELD(use_max_size_compilation, false)
 
   Expected<folly::dynamic> toDynamicImpl() const override {
     folly::dynamic obj = folly::dynamic::object();
@@ -464,6 +486,7 @@ struct CompilationSpecSettings : public JsonSerializableCustomClass {
     obj["enable_deserialize"] = enable_deserialize;
     obj["apl_parallelization_alg"] = apl_parallelization_alg;
     obj["apl_num_parallel_chunks"] = apl_num_parallel_chunks;
+    obj["use_max_size_compilation"] = use_max_size_compilation;
     return obj;
   }
 
@@ -505,6 +528,11 @@ struct CompilationSpecSettings : public JsonSerializableCustomClass {
     if (dyn.count("apl_num_parallel_chunks")) {
       ASSIGN_INT_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, apl_num_parallel_chunks,
                                               "apl_num_parallel_chunks");
+    }
+
+    if (dyn.count("use_max_size_compilation")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, use_max_size_compilation,
+                                               "use_max_size_compilation");
     }
 
     return Error::success();
@@ -806,13 +834,13 @@ struct GlowPyTorchLoaderSettings : public JsonSerializableCustomClass {
     folly::dynamic obj = folly::dynamic::object();
     obj["fusionPassEnabled"] = settings_.fusionPassEnabled;
     obj["dumpGlowDag"] = settings_.dumpGlowDag;
-    // In Glow serialization, we only use opBlacklistStrVec to save the op black
+    // In Glow serialization, we only use opBlocklistStrVec to save the op block
     // list to avoid duplication.
-    std::vector<std::string> opBlacklistStrVec;
-    for (const auto &op : settings_.opBlacklist) {
-      opBlacklistStrVec.emplace_back(op.toQualString());
+    std::vector<std::string> opBlocklistStrVec;
+    for (const auto &op : settings_.opBlocklist) {
+      opBlocklistStrVec.emplace_back(op.toQualString());
     }
-    obj["opBlacklistStrVec"] = dynArrayFromVec(opBlacklistStrVec);
+    obj["opBlocklistStrVec"] = dynArrayFromVec(opBlocklistStrVec);
     obj["minFusionGroupSize"] = settings_.minFusionGroupSize;
     obj["maxFusionMergeSize"] = settings_.maxFusionMergeSize;
     obj["fusionStartIndex"] = settings_.fusionStartIndex;
@@ -882,16 +910,16 @@ struct GlowPyTorchLoaderSettings : public JsonSerializableCustomClass {
       ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, settings_.dumpGlowDag,
                                                "dumpGlowDag");
     }
-    // In Glow deserialization, we first deserialize opBlacklistStrVec to get
-    // the op black list, then use the list to initialize opBlacklist attribute,
-    if (dyn.count("opBlacklistStrVec")) {
-      CHECK_DYN_CONTAINS_ARRAY(dyn, "opBlacklistStrVec");
-      std::vector<std::string> opBlacklistStrVec;
+    // In Glow deserialization, we first deserialize opBlocklistStrVec to get
+    // the op black list, then use the list to initialize opBlockList attribute,
+    if (dyn.count("opBlocklistStrVec")) {
+      CHECK_DYN_CONTAINS_ARRAY(dyn, "opBlocklistStrVec");
+      std::vector<std::string> opBlocklistStrVec;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          opBlacklistStrVec,
-          dynArrayToVec<std::string>(dyn.at("opBlacklistStrVec")));
-      for (const auto &opStr : opBlacklistStrVec) {
-        settings_.opBlacklist.insert(torch::jit::Symbol::fromQualString(opStr));
+          opBlocklistStrVec,
+          dynArrayToVec<std::string>(dyn.at("opBlocklistStrVec")));
+      for (const auto &opStr : opBlocklistStrVec) {
+        settings_.opBlocklist.insert(torch::jit::Symbol::fromQualString(opStr));
       }
     }
     if (dyn.count("minFusionGroupSize")) {

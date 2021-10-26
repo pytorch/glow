@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch
 import torch.nn as nn
 from tests import utils
-from torch.quantization import QConfig, observer
+from torch.ao.quantization import QConfig, observer
 
 
 my_qconfig = QConfig(
@@ -37,10 +37,10 @@ class TestQuantizedBatchNorm2D(utils.TorchGlowTestCase):
                 self.batchnorm.running_mean = running_mean
                 self.batchnorm.running_var = running_var
                 self.relu = torch.nn.ReLU()
-                self.q = torch.quantization.QuantStub()
+                self.q = torch.ao.quantization.QuantStub()
                 self.q.scale = in_scale
                 self.q.zero_point = in_zero_point
-                self.dq = torch.quantization.DeQuantStub()
+                self.dq = torch.ao.quantization.DeQuantStub()
 
             def forward(self, x):
                 qx = self.q(x)
@@ -103,10 +103,10 @@ class TestQuantizedBatchNorm2D(utils.TorchGlowTestCase):
                 self.batchnorm.running_mean = running_mean
                 self.batchnorm.running_var = running_var
                 self.relu = nn.ReLU()
-                self.q = torch.quantization.QuantStub()
+                self.q = torch.ao.quantization.QuantStub()
                 self.q.scale = in_scale
                 self.q.zero_point = in_zero_point
-                self.dq = torch.quantization.DeQuantStub()
+                self.dq = torch.ao.quantization.DeQuantStub()
 
             def forward(self, x):
                 qx = self.q(x)

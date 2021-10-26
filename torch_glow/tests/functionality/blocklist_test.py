@@ -7,15 +7,15 @@ from tests import utils
 from tests.utils import GLOW_FUSION_GROUP, SUBGRAPH_ATTR
 
 
-class TestBlackList(utils.TorchGlowTestCase):
-    def test_op_blacklist(self):
+class TestBlockList(utils.TorchGlowTestCase):
+    def test_op_blocklist(self):
         """Test Glow fuser op kind blacklisting mechanism."""
 
         def f(a, b):
             return (a + b) * (a - b)
 
         torch_glow.enableFusionPass_DO_NOT_USE_THIS()
-        torch_glow.setFusionBlacklist(["aten::add"])
+        torch_glow.setFusionBlocklist(["aten::add"])
 
         a = torch.randn(5, 5)
         b = torch.randn(5, 5)
@@ -38,9 +38,9 @@ class TestBlackList(utils.TorchGlowTestCase):
         assert not fused_add, "Expected aten::add to be blacklisted"
         assert fused_sub, "Expected aten::sub to not be blacklisted"
 
-        torch_glow.clearFusionBlacklist()
+        torch_glow.clearFusionBlocklist()
 
-    def test_op_index_blacklist(self):
+    def test_op_index_blocklist(self):
         """Test Glow fuser index blacklisting mechanism."""
 
         def f(a, b):

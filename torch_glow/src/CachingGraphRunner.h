@@ -191,7 +191,7 @@ private:
   /// contiguous. The new PyTorch tensor owns the memory used by the Glow tensor
   /// so much live at least as long as it.
   Expected<std::pair<glow::Tensor, torch::Tensor>>
-  convertPyTorchInputToGlowInput(torch::Tensor ptTensor,
+  convertPyTorchInputToGlowInput(torch::Tensor &&ptTensor,
                                  const glow::Placeholder *ph);
 
   /// Calls convertPyTorchInputToGlowInput for several \p inputs and \p
@@ -232,13 +232,23 @@ public:
   /// settings enable different settings for each compilation. If \p
   /// useMaxSizeCompilation , compile only a single Glow graph with an
   /// upper-bound on the input sizes (smaller inputs will be padded by Glow.)
-  Error
-  warmCache(const std::vector<InputMetaStack> &metaStacks,
-            const PyTorchLoaderSettings &settings,
-            runtime::DeferredWeightLoader *loader,
-            bool useMaxSizeCompilation = true, bool useDeserialize = false,
-            std::shared_ptr<std::unordered_map<std::string, std::vector<char>>>
-                nameToFunctions = nullptr);
+  /// \p glowAOTSerializationSpecStrPtr and \p glowAOTSerializationModelStrPtr
+  /// are used in offline Glow AOT compilation (i.e., Glow serialization), while
+  /// \p serializationSpec and \p onnxModelFile are used for online serving
+  /// (i.e., Glow deserialization)
+  Error warmCache(
+      const std::vector<InputMetaStack> &metaStacks,
+      const PyTorchLoaderSettings &settings,
+      runtime::DeferredWeightLoader *loader, bool useMaxSizeCompilation = true,
+      bool useDeserialize = false,
+      std::shared_ptr<std::unordered_map<std::string, std::vector<char>>>
+          nameToFunctions = nullptr,
+      std::shared_ptr<std::string> glowAOTSerializationSpecStrPtr = nullptr,
+      std::shared_ptr<std::string> glowAOTSerializationModelStrPtr = nullptr,
+      const std::string &serializationSpec = "",
+      const std::string &onnxModelFile = "",
+      const c10::optional<ModelCompilationConfigOverride>
+          &modelCompilationConfigOverride = c10::nullopt);
 
   /// Warmup Graphoutput shape Map by getting output value shapes for each
   /// batch size.

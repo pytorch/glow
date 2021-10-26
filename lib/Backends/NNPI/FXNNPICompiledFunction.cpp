@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "glow/Flags/Flags.h"
 #include "glow/fb/fx/nnpi_importer/Utils.h"
@@ -29,8 +43,8 @@ NNPICompiledFunction::NNPICompiledFunction(
 
 Error NNPICompiledFunction::compileFX(
     const folly::dynamic &FXIR, const std::string &submod,
-    const llvm::StringMap<const void *> &constants,
-    const BackendOptions &opts) {
+    const llvm::StringMap<const void *> &constants, const BackendOptions &opts,
+    Module *glowModule) {
   BackendOptions newOpts = opts;
   compilationOptions_ = NNPICompilationOptions(newOpts.backendSpecificOpts);
 
@@ -45,6 +59,18 @@ Error NNPICompiledFunction::compileFX(
 
   FXNNPIImporter importer(compilationOptions_, constants);
   network_ = importer.importFunction(FXIR, submod);
+
+  // Setup partial inputs and padded Placeholders based on parsing from FXIR.
+  for (const auto &str : importer.getAllowPartialPlaceholderNames()) {
+    if (auto *P = glowModule->getPlaceholderByNameSlow(str.getKey())) {
+      partialInputs_.insert(P);
+    }
+  }
+  for (const auto &str : importer.getRequiresPaddingPlaceholderNames()) {
+    if (auto *P = glowModule->getPlaceholderByNameSlow(str.getKey())) {
+      paddedInputs_.insert(P);
+    }
+  }
 
   LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
   // Setting the network name.

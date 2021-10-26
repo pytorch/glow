@@ -24,6 +24,7 @@
 #include "nnpi_transformer.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/raw_ostream.h"
 #include <folly/dynamic.h>
 #include <unordered_set>
@@ -123,6 +124,14 @@ public:
   bool isZeroes(const std::string &name, const utils::DTYPE &dtype,
                 const size_t &size) const;
 
+  /// \returns const references to allow partial and requires paddding names.
+  const llvm::StringSet<> &getAllowPartialPlaceholderNames() const {
+    return allowPartialPlaceholderNames_;
+  }
+  const llvm::StringSet<> &getRequiresPaddingPlaceholderNames() const {
+    return requiresPaddingPlaceholderNames_;
+  }
+
 private:
   /// NNPI network handle.
   NNPINetwork network_;
@@ -148,6 +157,10 @@ private:
 
   /// Set of tensors already defined.
   std::unordered_set<std::string> definedTensors_;
+
+  /// Sets of placeholder names that allow partial tensors or require padding.
+  llvm::StringSet<> allowPartialPlaceholderNames_;
+  llvm::StringSet<> requiresPaddingPlaceholderNames_;
 };
 
 /// Interface class for all node specific importers.

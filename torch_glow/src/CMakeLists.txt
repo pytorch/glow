@@ -19,7 +19,8 @@ target_compile_options(PyTorchShapeInference
 target_link_libraries(PyTorchShapeInference
                       PRIVATE
                         torch_cpu
-                        c10)
+                        c10
+                        folly_jemalloc)
 
 add_library(PyTorchModelLoader
                      CachingGraphRunner.cpp

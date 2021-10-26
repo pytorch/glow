@@ -294,6 +294,17 @@ int main(int argc, char **argv) {
                     "Momentum. Similar to Caffe2 SpatialBN, and ONNX "
                     "BatchNormalization operator.");
 
+  BB.newNode("InstanceNormalization")
+      .addInput("Input")
+      .addInput("Scale")
+      .addInput("Bias")
+      .addMember(MemberType::Unsigned, "ChannelIdx")
+      .addMember(MemberType::Float, "Epsilon")
+      .addResult("Input.getType()")
+      .setDocstring("Performs instance normalization on the Input tensor with "
+                    "the provided Scale, Bias, Epsilon. Similar to ONNX "
+                    "InstanceNormalization operator.");
+
   BB.newNode("MeanVarNormalization")
       .addInput("Input")
       .addInput("Mean")
@@ -962,19 +973,6 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Converts an input Lengths 1D vector into a range sequence.");
 
-  BB.newNode("SparseToDense")
-      .addInput("Indices")
-      .addInput("Values")
-      .addResultFromCtorArg()
-      .setDocstring(
-          "Converts the sparse representation specified by the pair "
-          "(Indices, Values) into a dense one. This dense "
-          "representation contains each value from Values at the "
-          "corresponding index specified in Indices. Unspecified indices "
-          "are filled with zeroes. Indices may contain duplicate values "
-          "and in this case, all of the corresponding values in Values "
-          "are added together.");
-
   BB.newNode("BatchSparseToDense")
       .addInput("Lengths")
       .addInput("Indices")
@@ -1052,6 +1050,14 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorNodeValue, "OriginalInputs")
       .setDocstring(
           "Performs the gradient operation for BatchedPairwiseDotProduct");
+
+  BB.newNode("BatchedUnaryEmbeddingsBags")
+      .addInput("Weights")
+      .addInput("TableOffsets")
+      .addInput("Offsets")
+      .addInput("Indices")
+      .addResultFromCtorArg()
+      .setDocstring("Sum weight embeddings according to offsets and indices");
 
   //===--------------------------------------------------------------------===//
   //                Fillers
@@ -1194,6 +1200,12 @@ int main(int argc, char **argv) {
                     "Small is inserted Count times along Axis. The resulting "
                     "Tensor will have the same type as the input Big tensor.");
 
+  // TODO: Rename "BatchDims" member to "Axis". This was attempted in #5565 but
+  // some internal FB tests failed. The member needs to be renamed because that
+  // is the true meaning of the member and that is what the implementation does
+  // according to both Caffe2, ONNX and TFLite operator definitions.
+  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#gather
+  // https://www.tensorflow.org/mlir/tfl_ops#tflgather_tflgatherop
   BB.newNode("Gather")
       .addInput("Data")
       .addInput("Indices")
@@ -1203,14 +1215,15 @@ int main(int argc, char **argv) {
                     "indexed by Indices, and concatenates them. Output tensor "
                     "will have dimensions: {I_0, I_1, ... I_n, D_1, D_2, ... "
                     "D_m}, where D_i and I_j denote Data and Indices "
-                    "dimensions respectively. If batchDims is not zero, the "
-                    "gather operator will treat the first batchDims as the "
+                    "dimensions respectively. If axis is not zero, the "
+                    "gather operator will treat the first axis as the "
                     "batch and will concat the result of the gather operation "
                     "on each sample in the batch.");
 
   BB.newNode("GatherND")
       .addInput("Data")
       .addInput("Indices")
+      .addMember(MemberType::Unsigned, "BatchDims")
       .addResultFromCtorArg()
       .setDocstring(
           "Given Data tensor of rank r >= 1, Indices tensor of rank q >= 1 "

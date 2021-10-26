@@ -96,6 +96,18 @@ static llvm::cl::opt<bool, true> GlowSparseNNPartitioningPairTileWithSLSOpt(
                    "for user embeddings into SLS partition"),
     llvm::cl::location(glow::flags::SparseNNPartitioningPairTileWithSLS));
 
+static llvm::cl::opt<std::string, true> GlowSparseNNPartitioningPairSLSWithOpt(
+    "glow_sparsenn_partitioning_pair_sls_with",
+    llvm::cl::desc("Place specified nodes immediately following SLS "
+                   "into SLS partition"),
+    llvm::cl::location(glow::flags::SparseNNPartitioningPairSLSWith));
+
+static llvm::cl::opt<int32_t, true> GlowSparseNNPartitioningConcatSplitSizeOpt(
+    "glow_sparsenn_partitioning_concat_split_size",
+    llvm::cl::desc("Split concat going into tanh sink into smaller concats of "
+                   "specified size to move into SLS partition"),
+    llvm::cl::location(glow::flags::SparseNNPartitioningConcatSplitSize));
+
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
@@ -226,6 +238,11 @@ onnxStatus HostManagerBackend::addNetwork(
   if (glow::flags::DumpCompilationLog) {
     cctx.compilationLogPrefix = "glow-onnxifi";
   }
+  if (glow::flags::SinkTanhBelowConcat) {
+    cctx.optimizationOpts.sinkTanhBelowConcat =
+        glow::flags::SinkTanhBelowConcat;
+    LOG(INFO) << "Sinking tanh below concat";
+  }
   if (glow::flags::UseSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
@@ -236,6 +253,10 @@ onnxStatus HostManagerBackend::addNetwork(
         glow::flags::SparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS =
         glow::flags::SparseNNPartitioningPairTileWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningPairSLSWith =
+        glow::flags::SparseNNPartitioningPairSLSWith;
+    cctx.optimizationOpts.sparseNNPartitioningConcatSplitSize =
+        glow::flags::SparseNNPartitioningConcatSplitSize;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =

@@ -113,6 +113,19 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("get_convert_to_fp16",
         []() { return getGlobalPyTorchLoaderSettingsMutable().convertToFP16; });
 
+  /// Enable skipping fp32 -> fp16 conversion for Bias in FC
+  m.def("enable_skip_bias_fp32tofp16_convert", []() {
+    getGlobalPyTorchLoaderSettingsMutable().skipBiasFp32tofp16Convert = true;
+  });
+  /// Disable skipping fp32 -> fp16 conversion for Bias in FC
+  m.def("disable_skip_bias_fp32tofp16_convert", []() {
+    getGlobalPyTorchLoaderSettingsMutable().skipBiasFp32tofp16Convert = false;
+  });
+  /// Get status of skipping fp32 -> fp16 conversion for Bias in FC
+  m.def("get_skip_bias_fp32tofp16_convert", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().skipBiasFp32tofp16Convert;
+  });
+
   /// Enable clipping of fp16.
   m.def("enable_clip_fp16",
         []() { getGlobalPyTorchLoaderSettingsMutable().clipFP16 = true; });
@@ -138,6 +151,30 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Get status of converting fp32 fused ops to fp16.
   m.def("get_convert_fused_to_fp16", []() {
     return getGlobalPyTorchLoaderSettingsMutable().convertFusedToFP16;
+  });
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  m.def("enable_convert_8bit_fused_to_fp32", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().convert8BitFusedToFP32 =
+               true;
+  });
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  m.def("disable_convert_8bit_fused_to_fp32", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().convert8BitFusedToFP32 =
+               false;
+  });
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  m.def("enable_convert_4bit_fused_to_fp32", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().convert4BitFusedToFP32 =
+               true;
+  });
+
+  // Enable conversion of fp16 scale and bias of embedding tables to fp32.
+  m.def("disable_convert_4bit_fused_to_fp32", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().convert4BitFusedToFP32 =
+               false;
   });
 
   /// Enable dumping the final Glow dag after compilation.
@@ -278,28 +315,28 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("enable_nnpi_custom_dsp_kernels",
         []() { glow::nnpi::flags::EnableCustomDSPKernels = true; });
 
-  /// Add all of the symbols in \p blacklist to the fusion blacklist so that
+  /// Add all of the symbols in \p blocklist to the fusion blocklist so that
   /// nodes with these symbols will not be fused to Glow.
-  m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {
-    auto &bl = getGlobalPyTorchLoaderSettingsMutable().opBlacklist;
+  m.def("setFusionBlocklist", [](const std::vector<std::string> &blocklist) {
+    auto &bl = getGlobalPyTorchLoaderSettingsMutable().opBlocklist;
     bl.clear();
-    for (const auto &kind : blacklist) {
+    for (const auto &kind : blocklist) {
       bl.insert(torch::jit::Symbol::fromQualString(kind));
     }
   });
 
-  /// Get the fusion blacklist.
-  m.def("getFusionBlacklist", []() {
-    auto &symbols = getGlobalPyTorchLoaderSettingsMutable().opBlacklist;
+  /// Get the fusion blocklist.
+  m.def("getFusionBlocklist", []() {
+    auto &symbols = getGlobalPyTorchLoaderSettingsMutable().opBlocklist;
     std::vector<std::string> strings;
     std::transform(symbols.begin(), symbols.end(), std::back_inserter(strings),
                    [](torch::jit::Symbol s) { return s.toQualString(); });
     return strings;
   });
 
-  /// Clear the fusion blacklist.
-  m.def("clearFusionBlacklist",
-        []() { getGlobalPyTorchLoaderSettingsMutable().opBlacklist.clear(); });
+  /// Clear the fusion blocklist.
+  m.def("clearFusionBlocklist",
+        []() { getGlobalPyTorchLoaderSettingsMutable().opBlocklist.clear(); });
 
   /// Set the index (inclusive) of the first node in the graph to fuse.
   m.def("setFusionStartIndex", [](int64_t startIndex) {

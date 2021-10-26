@@ -697,6 +697,7 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchedReduceMaxNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
+  case Kinded::Kind::InstanceNormalizationNodeKind:
   case Kinded::Kind::BatchNormalizationGradNodeKind:
   case Kinded::Kind::PadNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
@@ -709,6 +710,8 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::SGDNodeKind:
   case Kinded::Kind::BroadcastNodeKind:
   case Kinded::Kind::GaussianFillNodeKind:
+  case Kinded::Kind::SpaceToDepthNodeKind:
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
     return true;
   default:
     return false;

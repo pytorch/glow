@@ -64,9 +64,9 @@ class TestLinear(utils.TorchGlowTestCase):
         out_features = 4
 
         input = torch.randn(n, in_features, dtype=torch.float)
-        my_qconfig = torch.quantization.QConfig(
-            activation=torch.quantization.default_dynamic_quant_observer,
-            weight=torch.quantization.default_per_channel_weight_observer,
+        my_qconfig = torch.ao.quantization.QConfig(
+            activation=torch.ao.quantization.default_dynamic_quant_observer,
+            weight=torch.ao.quantization.default_per_channel_weight_observer,
         )
 
         utils.compare_tracing_methods(

@@ -15,8 +15,8 @@
  */
 
 #include "glow/Graph/FXIRUtils.h"
-#include "glow/IR/Instrs.h"
 
+#include "glow/Graph/FXIRWrapper.h"
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
@@ -31,7 +31,16 @@ const std::unordered_map<std::string, ElemKind> stringToElemKind = {
     {"torch.half", ElemKind::Float16Ty},
     // 64-bit int type
     {"torch.int64", ElemKind::Int64ITy},
+    // 64-bit int type
     {"torch.long", ElemKind::Int64ITy},
+    // Unsigned 8 bit Int type
+    {"torch.uint8", ElemKind::UInt8ITy},
+    // 32-bit int type
+    {"torch.int32", ElemKind::Int32ITy},
+    // 8-bit fused quantize type
+    {"acc.uint8fused", ElemKind::UInt8FusedQTy},
+    // 4-bit fused quantize type
+    {"acc.uint4fused", ElemKind::UInt4FusedQTy},
 };
 }
 

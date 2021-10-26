@@ -270,6 +270,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt16Ty();
   case ElemKind::Int32QTy:
     return builder.getInt32Ty();
+  case ElemKind::Int64QTy:
+    return builder.getInt64Ty();
   case ElemKind::UInt8ITy:
     return builder.getInt8Ty();
   case ElemKind::Int32ITy:
@@ -399,6 +401,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     break;
   case ElemKind::Int32QTy:
     T = llvm::Type::getInt32PtrTy(getLLVMContext());
+    break;
+  case ElemKind::Int64QTy:
+    T = llvm::Type::getInt64PtrTy(getLLVMContext());
     break;
   case ElemKind::Int64ITy:
     T = llvm::Type::getInt64PtrTy(getLLVMContext());
@@ -676,6 +681,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::UInt8ITy:
     return builder.getInt8(static_cast<uint8_t>(val));
+  case ElemKind::Int64QTy:
+    return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int32ITy:
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::UInt8FusedQTy:
@@ -1290,6 +1297,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_UNARY_OP_CASE(ElementCeil, "element_ceil");
     ARITHMETIC_UNARY_OP_CASE(ElementRound, "element_round");
     ARITHMETIC_UNARY_OP_CASE(ElementSqrt, "element_sqrt");
+    ARITHMETIC_UNARY_OP_CASE(ElementErf, "element_erf");
     ARITHMETIC_UNARY_OP_CASE(ElementRsqrt, "element_rsqrt");
     ARITHMETIC_UNARY_OP_CASE(ElementReciprocal, "element_reciprocal");
     ARITHMETIC_UNARY_OP_CASE(ElementSin, "element_sin");
@@ -3108,7 +3116,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dest = GI->getDest();
     auto *data = GI->getData();
     auto *indices = GI->getIndices();
-    unsigned batchDims = GI->getBatchDims();
+    unsigned axis = GI->getBatchDims();
 
     auto *destPtr = emitValueAddress(builder, dest);
     auto *dataPtr = emitValueAddress(builder, data);
@@ -3119,9 +3127,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataType = data->getType();
 
     // The size of the sample in the batch.
-    size_t sampleSize = dataType->getSliceSize(batchDims);
+    size_t sampleSize = dataType->getSliceSize(axis);
     // The size of the slices that we gather.
-    size_t sliceSize = dataType->getSliceSize(batchDims + 1);
+    size_t sliceSize = dataType->getSliceSize(axis + 1);
     // The size of each sample in the batch.
     size_t numSamples = dataType->size() / sampleSize;
 
@@ -3129,7 +3137,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numSamplesVal = emitConstDimT(builder, numSamples);
     auto *sampleSizeVal = emitConstDimT(builder, sampleSize);
 
-    // Dispatching function depeending on the input type of Indices.
+    // Dispatching function depending on the input type of Indices.
     llvm::Function *F = nullptr;
     if (indices->getElementType() == ElemKind::Int64ITy) {
       F = getFunction("gather64", dest->getElementType());
@@ -3143,6 +3151,74 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     createCall(builder, F,
                {destPtr, dataPtr, indicesPtr, indicesSize, sliceSizeVal,
                 numSamplesVal, sampleSizeVal});
+    break;
+  }
+
+  case Kinded::Kind::GatherNDInstKind: {
+    auto *GI = llvm::cast<GatherNDInst>(I);
+    auto *dest = GI->getDest();
+    auto *data = GI->getData();
+    auto *indices = GI->getIndices();
+    unsigned batchDims = GI->getBatchDims();
+
+    auto dataDims = data->dims();
+    auto indicesDims = indices->dims();
+    dim_t indicesDimLast = indicesDims.back();
+
+    // Compute batch count.
+    dim_t batchCount = 1;
+    for (size_t idx = 0; idx < batchDims; ++idx) {
+      batchCount *= dataDims[idx];
+    }
+
+    // Compute input slice count.
+    dim_t inpSliceCount = 1;
+    for (size_t idx = batchDims; idx < batchDims + indicesDimLast; ++idx) {
+      inpSliceCount *= dataDims[idx];
+    }
+
+    // Compute output slice count.
+    dim_t outSliceCount = 1;
+    for (size_t idx = batchDims; idx < indicesDims.size() - 1; ++idx) {
+      outSliceCount *= indicesDims[idx];
+    }
+
+    // Compute slice size (in bytes).
+    dim_t sliceSize = data->getType()->getElementSize();
+    for (size_t idx = batchDims + indicesDimLast; idx < dataDims.size();
+         idx++) {
+      sliceSize *= dataDims[idx];
+    }
+
+    // Get indices dimension products.
+    std::vector<dim_t> indicesDimProd(indicesDimLast);
+    indicesDimProd[indicesDimLast - 1] = 1;
+    for (ssize_t idx = static_cast<ssize_t>(indicesDimLast) - 2; idx >= 0;
+         idx--) {
+      indicesDimProd[idx] =
+          indicesDimProd[idx + 1] * dataDims[batchDims + idx + 1];
+    }
+
+    // Emit pointers.
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+
+    // Emit parameters.
+    auto *batchCountArg = emitConstDimT(builder, batchCount);
+    auto *inpSliceCountArg = emitConstDimT(builder, inpSliceCount);
+    auto *outSliceCountArg = emitConstDimT(builder, outSliceCount);
+    auto *sliceSizeArg = emitConstDimT(builder, sliceSize);
+    auto *indicesDimLastArg = emitConstDimT(builder, indicesDimLast);
+    auto *indicesDimProdArg =
+        emitConstDimTArray(builder, llvm::makeArrayRef(indicesDimProd));
+
+    llvm::Function *F = getFunction(
+        "gather_nd", {data->getElementType(), indices->getElementType()});
+    createCall(builder, F,
+               {destPtr, dataPtr, indicesPtr, batchCountArg, inpSliceCountArg,
+                outSliceCountArg, sliceSizeArg, indicesDimLastArg,
+                indicesDimProdArg});
     break;
   }
 
@@ -3425,31 +3501,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     createCall(builder, F,
                {destPtr, dataPtr, weightsPtr, indicesPtr, offsetsPtr, segments,
                 numIndices, inLineSize, outLineSize, hasEndOffset});
-    break;
-  }
-
-  case Kinded::Kind::SparseToDenseInstKind: {
-    auto *STDI = llvm::cast<SparseToDenseInst>(I);
-    auto *indices = STDI->getIndices();
-    auto *values = STDI->getValues();
-    auto *dest = STDI->getDest();
-
-    auto *indicesPtr = emitValueAddress(builder, indices);
-    auto *valuesPtr = emitValueAddress(builder, values);
-    auto *destPtr = emitValueAddress(builder, dest);
-
-    auto *indicesSize = emitConstDimT(builder, indices->size());
-    auto *destSize = emitConstDimT(builder, dest->size());
-
-    auto *valuesType = values->getType();
-    auto *valueSize =
-        emitConstDimT(builder, valuesType->size() / valuesType->dims()[0]);
-
-    auto *F = getFunction("sparse_to_dense",
-                          {dest->getElementType(), indices->getElementType()});
-    createCall(
-        builder, F,
-        {destPtr, indicesPtr, valuesPtr, indicesSize, destSize, valueSize});
     break;
   }
 

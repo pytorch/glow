@@ -24,12 +24,14 @@
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
+#include "torch_glow/src/GlowIValue.h"
 #include "torch_glow/src/ShapeInferenceEngine.h"
 
 #include <ATen/ATen.h>
 #include <ATen/core/dispatch/Dispatcher.h>
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
+#include <limits>
 #include <torch/csrc/jit/ir/ir.h>
 #include <type_traits>
 #include <unordered_map>
@@ -380,6 +382,8 @@ bool isQParamWeightNode(const torch::jit::Node *node) {
       torch::jit::Symbol::fromQualString("glow::unpacked_quantized_conv3d"),
       torch::jit::Symbol::fromQualString(
           "glow::unpacked_quantized_conv3d_relu"),
+      torch::jit::Symbol::fromQualString("fb::quantize_per_tensor"),
+      torch::jit::Symbol::fromQualString("fb::quantized_linear"),
   };
 
   const auto uses = node->output()->uses();
@@ -696,6 +700,17 @@ struct QuantizedAddReluInputs {
     rhs = 1,
     scale = 2,
     zero_point = 3,
+  };
+};
+
+/// Indexes of quantized::leaky_relu inputs.
+struct QuantizedLeakyReluInputs {
+  enum {
+    lhs = 0,
+    alpha = 1,
+    inplace = 2,
+    scale = 3,
+    zero_point = 4,
   };
 };
 
@@ -1071,6 +1086,7 @@ struct XLEmbeddingBagInputs {
     include_last_offset,
     num_embeddings,
     embedding_dim,
+    avg_length,
   };
 };
 
@@ -1125,6 +1141,7 @@ struct XLEmbeddingBagRowwiseOffsetsInputs {
     include_last_offset,
     num_embeddings,
     embedding_dim,
+    avg_length,
   };
 };
 /// Indexes used for glow::fused_split inputs.
@@ -1211,11 +1228,60 @@ struct IndexPutInputs {
   };
 };
 
+/// Indexes of aten::index_add inputs.
+struct IndexAddInputs {
+  enum {
+    input = 0,
+    dim,
+    index,
+    source,
+    alpha,
+  };
+};
+
 /// Indexes used for aten::repeat inputs
 struct RepeatInputs {
   enum {
     input = 0,
     repeats,
+  };
+};
+
+/// Indexes used for fb::expand_dims inputs
+struct ExpandDimsInputs {
+  enum {
+    input = 0,
+    dims,
+  };
+};
+
+/// Indexes used for aten::narrow inputs
+struct NarrowInputs {
+  enum { input = 0, dim, start, length };
+};
+
+///  Indexes used for aten::pixel_shuffle inputs
+struct PixelShuffleInputs {
+  enum {
+    input = 0,
+    upscale_factor,
+  };
+};
+
+///  Indexes used for aten::pixel_shuffle inputs
+struct PixelUnshuffleInputs {
+  enum {
+    input = 0,
+    downscale_factor,
+  };
+};
+
+struct BatchedUnaryEmbeddingsBagsInputs {
+  enum {
+    weights = 0,
+    tableOffsets,
+    offsets,
+    indices,
   };
 };
 
@@ -1447,6 +1513,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedAddRelu,
        &PyTorchModelLoader::getCorrectTypeFromInput<
            QuantizedAddReluInputs::lhs>},
+      {{"quantized::leaky_relu"},
+       &PyTorchModelLoader::loadQuantizedLeakyRelu,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           QuantizedLeakyReluInputs::lhs>},
       {{"quantized::mul"},
        &PyTorchModelLoader::loadQuantizedMul,
        &PyTorchModelLoader::getCorrectTypeFromInput<QuantizedMulInputs::lhs>},
@@ -1495,7 +1565,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::linear"},
        &PyTorchModelLoader::loadLinear,
        &PyTorchModelLoader::getCorrectTypeFromInput<LinearInput::input>},
-      {{"quantized::linear"},
+      {{"quantized::linear", "fb::quantized_linear"},
        &PyTorchModelLoader::loadQuantizedLinear,
        &PyTorchModelLoader::getCorrectTypeFromInput<
            QuantizedLinearInputs::input>},
@@ -1741,6 +1811,38 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"fb::equally_split"},
        &PyTorchModelLoader::loadEquallySplit,
        &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"fb::expand_dims"},
+       &PyTorchModelLoader::loadExpandDims,
+       &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"aten::narrow"},
+       &PyTorchModelLoader::loadNarrow,
+       &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"aten::pixel_shuffle"},
+       &PyTorchModelLoader::loadPixelShuffle,
+       &PyTorchModelLoader::getCorrectTypeFromInput<PixelShuffleInputs::input>},
+      {{"aten::pixel_unshuffle"},
+       &PyTorchModelLoader::loadPixelUnshuffle,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           PixelUnshuffleInputs::input>},
+      {{"aten::square"},
+       &PyTorchModelLoader::loadSquare,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"fb::scale_gradient"},
+       &PyTorchModelLoader::loadScaleGradient,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"aten::erf"},
+       &PyTorchModelLoader::loadErf,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"fb::batched_unary_embeddings"},
+       &PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           BatchedUnaryEmbeddingsBagsInputs::weights>},
+      {{"aten::sign"},
+       &PyTorchModelLoader::loadSign,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"aten::index_add_", "aten::index_add"},
+       &PyTorchModelLoader::loadIndexAdd,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
   });
 #undef UNARY_NODE_LOADER
 
@@ -2607,6 +2709,52 @@ Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
+Error PyTorchModelLoader::loadQuantizedLeakyRelu(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      lhs, getGlowNodeValueForValue(inputs[QuantizedLeakyReluInputs::lhs]));
+
+  // negative_slope
+  float alphaVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(alphaVal,
+                             iValToDouble(getGlowIValueForValue(
+                                 inputs[QuantizedLeakyReluInputs::alpha])));
+
+  // inplace
+  bool inplace;
+  ASSIGN_VALUE_OR_RETURN_ERR(inplace,
+                             iValToBool(getGlowIValueForValue(
+                                 inputs[QuantizedLeakyReluInputs::inplace])));
+
+  // scale
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale,
+                             iValToDouble(getGlowIValueForValue(
+                                 inputs[QuantizedLeakyReluInputs::scale])));
+
+  // zero_point
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outOffset, iValToInt(getGlowIValueForValue(
+                     inputs[QuantizedLeakyReluInputs::zero_point])));
+
+  TypeRef inputType = lhs.getType();
+  auto outDims = inputType->dims();
+  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                          outOffset - UINT8_TO_INT8_SHIFT);
+
+  glow::LeakyReluNode *qleakyrelu =
+      F_.createLeakyRELU("quantized_leaky_relu", lhs, alphaVal);
+  auto output = qleakyrelu->getResult();
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
 Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -3016,14 +3164,30 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   auto bias = biasConstant->getOutput();
 
   float outScale;
-  ASSIGN_VALUE_OR_RETURN_ERR(outScale,
-                             to32Bit(iValToDouble(getGlowIValueForValue(
-                                 inputs[QuantizedLinearInputs::scale]))));
+  if (hasGlowIValueForValue(inputs[QuantizedLinearInputs::scale])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(outScale,
+                               to32Bit(iValToDouble(getGlowIValueForValue(
+                                   inputs[QuantizedLinearInputs::scale]))));
+  } else {
+    float scaleConstant;
+    RETURN_IF_ERR(extractConstantFromNodeValue<float>(
+        inputs[QuantizedLinearInputs::scale], glow::ElemKind::FloatTy,
+        scaleConstant));
+    ASSIGN_VALUE_OR_RETURN_ERR(outScale, to32Bit((double)scaleConstant));
+  }
 
   int64_t outZeroPoint;
-  ASSIGN_VALUE_OR_RETURN_ERR(outZeroPoint,
-                             iValToInt(getGlowIValueForValue(
-                                 inputs[QuantizedLinearInputs::zero_point])));
+  if (hasGlowIValueForValue(inputs[QuantizedLinearInputs::zero_point])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(outZeroPoint,
+                               iValToInt(getGlowIValueForValue(
+                                   inputs[QuantizedLinearInputs::zero_point])));
+  } else {
+    int32_t zeroPointConstant;
+    RETURN_IF_ERR(extractConstantFromNodeValue<int32_t>(
+        inputs[QuantizedLinearInputs::zero_point], glow::ElemKind::Int32ITy,
+        zeroPointConstant));
+    outZeroPoint = (int64_t)zeroPointConstant;
+  }
 
   bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
                             ptWeightTensor.qscheme() == at::kPerChannelAffine;
@@ -3342,7 +3506,7 @@ PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
   }
 
   std::pair<NodeValue, at::ScalarType> pp = {
-      F_.createNodeWithBroadcast<GlowNode>(name, /*axis*/ -1, lhsInput,
+      F_.createNodeWithBroadcast<GlowNode>(name.str(), /*axis*/ -1, lhsInput,
                                            rhsInput)
           ->getNthResult(0),
       correctType};
@@ -3436,9 +3600,39 @@ Error PyTorchModelLoader::loadFmod(const torch::jit::Node *ptNode) {
                                          /* convertToDefaultType */
                                          true));
 
-  RETURN_IF_ERR(addValueMapping(outputs[0], nodeValueAndCorrectType.first));
-  RETURN_IF_ERR(
-      setCorrectTypeMapping(outputs[0], nodeValueAndCorrectType.second));
+  // if both input tensors are of type int/long
+  // then output tensor should have same data type as input
+  glow::NodeValue lhsInput;
+  at::ScalarType lhsType;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(inputs[0]));
+  ASSIGN_VALUE_OR_RETURN_ERR(lhsType, getCorrectTypeMapping(inputs[0]));
+
+  glow::NodeValue rhsInput;
+  at::ScalarType rhsType;
+  if (hasGlowNodeValueForValue(inputs[1])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(inputs[1]));
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsType, getCorrectTypeMapping(inputs[1]));
+  } else {
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, loadNodeValueOrBroadcastedIValue(
+                                             inputs[1], lhsInput.getType()));
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsType, getCorrectTypeMapping(inputs[0]));
+  }
+
+  if (isNonQuantizedIntElemKind(lhsInput.getElementType()) &&
+      isNonQuantizedIntElemKind(rhsInput.getElementType())) {
+    at::ScalarType resultType =
+        ((lhsType == rhsType) && (lhsType == at::kInt)) ? lhsType : at::kLong;
+    auto glowElemKind = scalarTypeToElemKind(resultType);
+    auto result = F_.createConvertTo(
+        "result_to", nodeValueAndCorrectType.first,
+        F_.getParent()->uniqueType(glowElemKind, lhsInput.getType()->dims()));
+    RETURN_IF_ERR(addValueMapping(outputs[0], result));
+    RETURN_IF_ERR(setCorrectTypeMapping(outputs[0], resultType));
+  } else {
+    RETURN_IF_ERR(addValueMapping(outputs[0], nodeValueAndCorrectType.first));
+    RETURN_IF_ERR(
+        setCorrectTypeMapping(outputs[0], nodeValueAndCorrectType.second));
+  }
   return Error::success();
 }
 
@@ -3970,12 +4164,18 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
   std::vector<bool> needBroadcast(inputs.size(), false);
   bool noBroadcastNeeded = true;
 
-  // Use mulitple vectors for hierarchical concats, the first vector is the
+  // Use multiple vectors for hierarchical concats, the first vector is the
   // final concat
   for (size_t i = 0; i < inputs.size(); ++i) {
     auto input = inputs[i];
-    RETURN_ERR_IF_NOT(numInputDims == input.dims().size(),
-                      "All inputs must have the same number of dimensions.");
+    if (numInputDims != input.dims().size()) {
+      std::ostringstream ss;
+      ss << "All inputs must have the same number of dimensions, but got";
+      for (const auto &inp : inputs) {
+        ss << " [" << folly::join(",", inp.dims()) << "]";
+      }
+      return MAKE_ERR(ss.str());
+    }
 
     // Record broadcast shapes to perform broadcasting
     for (int d = 0; d < input.dims().size(); ++d) {
@@ -4093,14 +4293,6 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
 
-  // In the case of a single input, just return it.
-  if (inputs.size() == 1) {
-    glow::NodeValue input;
-    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-    RETURN_IF_ERR(addValueMapping(outputs[0], input));
-    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
-    return Error::success();
-  }
   std::pair<NodeValue, at::ScalarType> concatAndHigherType;
   ASSIGN_VALUE_OR_RETURN_ERR(concatAndHigherType,
                              createConcatNode(this, F_, ptNode,
@@ -4229,15 +4421,6 @@ Error PyTorchModelLoader::loadFusedBroadcastStack(
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
-
-  // In the case of a single input, just return it.
-  if (inputs.size() == 1) {
-    glow::NodeValue input;
-    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-    RETURN_IF_ERR(addValueMapping(outputs[0], input));
-    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
-    return Error::success();
-  }
 
   std::pair<NodeValue, at::ScalarType> concatAndHigherType;
   ASSIGN_VALUE_OR_RETURN_ERR(concatAndHigherType,
@@ -4396,7 +4579,7 @@ Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
   dim_t input_len = intConstant->getPayload().size();
   RETURN_ERR_IF_NOT(
       input_len == 1,
-      strFormat("Expected input to have length 1, but found: %zu", input_len));
+      strFormat("Expected input to have length 1, but found: %lu", input_len));
   // Also need to check if intConstant is a scalar
   int value;
 
@@ -4744,7 +4927,7 @@ Error PyTorchModelLoader::loadRepeat(const torch::jit::Node *ptNode) {
                                           inputs[RepeatInputs::repeats])));
   std::vector<int64_t> repeatsCast = castVector<int64_t>(*repeats);
   RETURN_ERR_IF_NOT(repeatsCast.size() >= input.dims().size(),
-                    "The rank of the input tensor must be greater than or "
+                    "The rank of the input tensor must be less than or "
                     "equal to the size of repeats vector for aten::repeat");
 
   const bool needsExpand = input.dims().size() < repeatsCast.size();
@@ -4922,9 +5105,20 @@ Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
 
   glow::PowNode *PN = nullptr;
   if (hasGlowIValueForValue(inputs[1])) {
+    glow::GlowIValue *exponentIValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(exponentIValue,
+                               getGlowIValueForValue(inputs[1]));
+
     float exponent;
-    ASSIGN_VALUE_OR_RETURN_ERR(exponent,
-                               iValToDouble(getGlowIValueForValue(inputs[1])));
+    if (exponentIValue->isDouble()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(exponent, iValToDouble(exponentIValue));
+    } else if (exponentIValue->isInt()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(exponent, iValToInt(exponentIValue));
+    } else {
+      std::ostringstream ss;
+      ss << "Unsupported type for exponent in node " << *ptNode;
+      return MAKE_ERR(ss.str());
+    }
     PN = F_.createPow("pow", input, exponent);
   } else {
     NodeValue expNV;
@@ -6459,6 +6653,10 @@ Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
         axis, iValToIntList(getGlowIValueForValue(inputs[MeanInputs::axis])));
     std::sort(axis->begin(), axis->end(), std::greater<int64_t>());
     for (auto i : *axis) {
+      // Wrap dimension if it is negative.
+      if (i < 0) {
+        i += input.dims().size();
+      }
       input = F_.createBatchedReduceMean("mean", input, i);
     }
   } else {
@@ -6848,10 +7046,21 @@ Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
   int64_t dim, start, end, step = 1;
   ASSIGN_VALUE_OR_RETURN_ERR(
       dim, iValToInt(getGlowIValueForValue(inputs[SliceInputs::dim])));
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      start, iValToInt(getGlowIValueForValue(inputs[SliceInputs::start])));
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      end, iValToInt(getGlowIValueForValue(inputs[SliceInputs::end])));
+
+  if (hasGlowIValueForValue(inputs[SliceInputs::start], true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        start, iValToInt(getGlowIValueForValue(inputs[SliceInputs::start])));
+  } else {
+    start = 0;
+  }
+
+  if (hasGlowIValueForValue(inputs[SliceInputs::end], true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        end, iValToInt(getGlowIValueForValue(inputs[SliceInputs::end])));
+  } else {
+    end = std::numeric_limits<int64_t>::max();
+  }
+
   ASSIGN_VALUE_OR_RETURN_ERR(
       step, iValToInt(getGlowIValueForValue(inputs[SliceInputs::step])));
 
@@ -7861,7 +8070,7 @@ Error PyTorchModelLoader::loadGlowEmbeddingBag(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadXLEmbeddingBag(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 10, outputs, 4));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -10, outputs, 4));
   // get the shape (num_embeddings, embedding_dim) and qualName for the
   // embeddingBag, and create placeholder node
   glow::dim_t numEmbedding;
@@ -7914,9 +8123,22 @@ Error PyTorchModelLoader::loadXLEmbeddingBag(const torch::jit::Node *ptNode) {
       inputs[XLEmbeddingBagInputs::per_sample_weights], "EmbeddingBag.ones",
       glow::Type(ElemKind::FloatTy, {indices.dims()[0]}), 1.0);
 
-  auto *EB =
-      F_.createEmbeddingBag("XLEmbeddingBag", ph->getOutput(), perSampleWeights,
-                            indices, offsets, includeLastOffset);
+  float avgLength = NAN;
+  if (inputs.size() > XLEmbeddingBagInputs::avg_length) {
+    double avgLenValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(avgLenValue,
+                               iValToDouble(getGlowIValueForValue(
+                                   inputs[XLEmbeddingBagInputs::avg_length])));
+    LOG(INFO) << "Loading avg length " << avgLenValue
+              << " for xlEmbeddingBag with weightID " << legalizedWeightID;
+    if (avgLenValue >= 0) {
+      avgLength = avgLenValue;
+    }
+  }
+
+  auto *EB = F_.createEmbeddingBag(
+      "XLEmbeddingBag", ph->getOutput(), perSampleWeights, indices, offsets,
+      includeLastOffset, LengthsMode::Variable, avgLength);
   return addValueMapping(outputs[0], EB->getResult());
 }
 
@@ -8313,7 +8535,7 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
     const torch::jit::Node *ptNode, bool is4Bit) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 11, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -11, outputs, 1));
 
   glow::dim_t numEmbedding;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -8414,11 +8636,25 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
         glow::Type((ElemKind::FloatTy), {indices.dims()[0]}), 1.0);
   }
 
+  float avgLength = NAN;
+  if (inputs.size() > XLEmbeddingBagRowwiseOffsetsInputs::avg_length) {
+    double avgLenValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        avgLenValue,
+        iValToDouble(getGlowIValueForValue(
+            inputs[XLEmbeddingBagRowwiseOffsetsInputs::avg_length])));
+    LOG(INFO) << "Loading avg length " << avgLenValue
+              << " for quantized xlEmbeddingBag with weightID " << weightID;
+    if (avgLenValue >= 0) {
+      avgLength = avgLenValue;
+    }
+  }
+
   auto *EB = F_.createEmbeddingBagByteRowwiseOffsets(
       (is4Bit ? "EmbeddingBag4BitRowwiseOffsets"
               : "EmbeddingBagByteRowwiseOffsets"),
       ph->getOutput(), perSampleWeights, indices, offsets, false,
-      includeLastOffset);
+      includeLastOffset, LengthsMode::Variable, avgLength);
 
   // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output
   // type is Float16.
@@ -8445,17 +8681,21 @@ Error PyTorchModelLoader::loadSplit(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(
       checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
   glow::NodeValue input;
-  unsigned int dimension;
+  int64_t dimension;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
   ASSIGN_VALUE_OR_RETURN_ERR(
       dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+
+  unsigned int dimensionPositive;
+  ASSIGN_VALUE_OR_RETURN_ERR(dimensionPositive,
+                             getPositiveIndex(dimension, input.dims().size()));
 
   uint64_t chunkSize;
   ASSIGN_VALUE_OR_RETURN_ERR(
       chunkSize, iValToInt(getGlowIValueForValue(ptNode->input(1))));
   std::vector<glow::NodeValue> chunks;
-  ASSIGN_VALUE_OR_RETURN_ERR(chunks,
-                             loadSplitImpl(input, dimension, chunkSize));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      chunks, loadSplitImpl(input, dimensionPositive, chunkSize));
   size_t numChunks = chunks.size();
   glow::GlowIValue output;
   output.fromNodeValueList(chunks);
@@ -8476,10 +8716,15 @@ Error PyTorchModelLoader::loadSplitWithSizes(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(
       checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
   glow::NodeValue input;
-  unsigned int dimension;
+  int64_t dimension;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
   ASSIGN_VALUE_OR_RETURN_ERR(
       dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
+
+  unsigned int dimensionPositive;
+  ASSIGN_VALUE_OR_RETURN_ERR(dimensionPositive,
+                             getPositiveIndex(dimension, input.dims().size()));
+
   std::vector<int64_t> *signedSizes;
   ASSIGN_VALUE_OR_RETURN_ERR(
       signedSizes, iValToIntList(getGlowIValueForValue(ptNode->input(1))));
@@ -8488,7 +8733,8 @@ Error PyTorchModelLoader::loadSplitWithSizes(const torch::jit::Node *ptNode) {
     sizes.push_back(size);
   }
   std::vector<glow::NodeValue> chunks;
-  ASSIGN_VALUE_OR_RETURN_ERR(chunks, loadSplitImpl(input, dimension, sizes));
+  ASSIGN_VALUE_OR_RETURN_ERR(chunks,
+                             loadSplitImpl(input, dimensionPositive, sizes));
   size_t numChunks = chunks.size();
   glow::GlowIValue output;
   output.fromNodeValueList(chunks);
@@ -8563,6 +8809,11 @@ Error PyTorchModelLoader::loadFusedSplit(const torch::jit::Node *ptNode) {
   int dim;
   ASSIGN_VALUE_OR_RETURN_ERR(
       dim, iValToInt(getGlowIValueForValue(inputs[FusedSplitInputs::dim])));
+
+  // wrap if dim is negative
+  if (dim < 0) {
+    dim += input.dims().size();
+  }
 
   at::ScalarType inputCorrectType;
   ASSIGN_VALUE_OR_RETURN_ERR(inputCorrectType,
@@ -8798,6 +9049,379 @@ Error PyTorchModelLoader::loadBBoxTransform(const torch::jit::Node *ptNode) {
   return Error::success();
 }
 
+Error PyTorchModelLoader::loadExpandDims(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ExpandDimsInputs::input]));
+
+  std::vector<int64_t> *dimValues;
+  ASSIGN_VALUE_OR_RETURN_ERR(dimValues, iValToIntList(getGlowIValueForValue(
+                                            inputs[ExpandDimsInputs::dims])));
+  std::vector<dim_t> dims;
+  for (dim_t dim : *dimValues) {
+    dims.push_back(dim);
+  }
+  auto *g = F_.createExpandDims("ExpandDims", input, dims);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], g->getResult()));
+
+  RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadNarrow(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[NarrowInputs::input]));
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[NarrowInputs::dim])));
+  int64_t start;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      start, iValToInt(getGlowIValueForValue(inputs[NarrowInputs::start])));
+  int64_t length;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      length, iValToInt(getGlowIValueForValue(inputs[NarrowInputs::length])));
+
+  std::vector<dim_t> starts;
+  std::vector<dim_t> ends;
+  for (auto d : input.dims()) {
+    starts.push_back(0);
+    ends.push_back(d); // ends are exclusive
+  }
+  RETURN_ERR_IF_NOT(
+      starts.size() > dim,
+      strFormat("Expected input node to have at least %lu dims", dim + 1));
+  starts[dim] = start;
+
+  RETURN_ERR_IF_NOT(
+      ends.size() > dim,
+      strFormat("Expected input node to have at least %lu dims", dim + 1));
+  ends[dim] = start + length;
+
+  auto *g = F_.createSlice("Narrow", input, starts, ends);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], g->getResult()));
+
+  RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadPixelShuffle(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[PixelShuffleInputs::input]));
+
+  RETURN_ERR_IF_NOT(input.dims().size() > 3,
+                    "Input must have at least 3 dimensions");
+
+  dim_t upscaleFactor;
+  ASSIGN_VALUE_OR_RETURN_ERR(upscaleFactor,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[PixelShuffleInputs::upscale_factor])));
+
+  RETURN_ERR_IF_NOT(upscaleFactor > 0, "upscale_factor must be > 0");
+
+  const auto NUM_NON_BATCH_DIMS = 3;
+  const auto sizesBatchEnd = input.dims().end() - NUM_NON_BATCH_DIMS;
+
+  std::vector<dim_t> shape = input.dims().vec();
+
+  dim_t iC = shape[shape.size() - 3];
+  dim_t iH = shape[shape.size() - 2];
+  dim_t iW = shape[shape.size() - 1];
+
+  dim_t upscaleFactorSquared = upscaleFactor * upscaleFactor;
+
+  RETURN_ERR_IF_NOT(
+      iC % upscaleFactorSquared == 0,
+      "Channel dimension must be divisible by the square of upscale_factor");
+
+  dim_t oC = iC / upscaleFactorSquared;
+  dim_t oH = iH * upscaleFactor;
+  dim_t oW = iW * upscaleFactor;
+
+  // First, reshape to split the channels dim from c into 3 separate dims: (oC,
+  // upscaleFactor, upscaleFactor). This allows shuffling to be done next by
+  // permuting dims.
+  std::vector<dim_t> addedDimsShape(input.dims().begin(), sizesBatchEnd);
+  addedDimsShape.insert(addedDimsShape.end(),
+                        {oC, upscaleFactor, upscaleFactor, iH, iW});
+
+  auto *inputReshaped = F_.createReshape("reshape", input, addedDimsShape);
+
+  // Next, shuffle by permuting the new upscaleFactor dims alongside the height
+  // and width dims.
+  std::vector<dim_t> permutation(input.dims().begin(), sizesBatchEnd);
+  const auto idx = permutation.size();
+  std::iota(permutation.begin(), permutation.end(), 0);
+  permutation.insert(permutation.end(), {
+                                            idx,     /* oC */
+                                            idx + 3, /* iH */
+                                            idx + 1, /* upscaleFactor */
+                                            idx + 4, /* iW */
+                                            idx + 2  /* upscaleFactor */
+                                        });
+
+  const auto inputPermuted = F_.createTranspose(
+      "reshapeInput", inputReshaped, castVector<glow::unsigned_t>(permutation));
+
+  // Finally, upscale by collapsing (iH, upscaleFactor) -> a single dim (oH)
+  // and (iW, upscaleFactor) -> a single dim (oW).
+  std::vector<dim_t> finalShape(input.dims().begin(), sizesBatchEnd);
+  finalShape.insert(finalShape.end(), {oC, oH, oW});
+
+  auto output =
+      F_.createReshape("reshape", inputPermuted, finalShape)->getResult();
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadPixelUnshuffle(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[PixelUnshuffleInputs::input]));
+
+  RETURN_ERR_IF_NOT(input.dims().size() > 3,
+                    "Input must have at least 3 dimensions");
+
+  dim_t downscaleFactor;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      downscaleFactor, iValToInt(getGlowIValueForValue(
+                           inputs[PixelUnshuffleInputs::downscale_factor])));
+
+  RETURN_ERR_IF_NOT(downscaleFactor > 0, "downscale_factor must be > 0");
+
+  const auto NUM_NON_BATCH_DIMS = 3;
+  const auto sizesBatchEnd = input.dims().end() - NUM_NON_BATCH_DIMS;
+
+  std::vector<dim_t> shape = input.dims().vec();
+
+  dim_t iC = shape[shape.size() - 3];
+  dim_t iH = shape[shape.size() - 2];
+  dim_t iW = shape[shape.size() - 1];
+
+  RETURN_ERR_IF_NOT(iH % downscaleFactor == 0,
+                    "height must be evenly divisible by downscale_factor");
+
+  RETURN_ERR_IF_NOT(iW % downscaleFactor == 0,
+                    "width must be evenly divisible by downscale_factor");
+
+  dim_t downscaleFactorSquared = downscaleFactor * downscaleFactor;
+
+  dim_t oC = iC * downscaleFactorSquared;
+  dim_t oH = iH / downscaleFactor;
+  dim_t oW = iW / downscaleFactor;
+
+  // First, reshape to split height dim into (oH, downscaleFactor) dims and
+  // width dim into (oW, downscaleFactor) dims. This allows unshuffling to be
+  // done next by permuting dims.
+  std::vector<dim_t> addedDimsShape(input.dims().begin(), sizesBatchEnd);
+  addedDimsShape.insert(addedDimsShape.end(),
+                        {iC, oH, downscaleFactor, oW, downscaleFactor});
+
+  auto *inputReshaped = F_.createReshape("reshape", input, addedDimsShape);
+
+  // unshuffle by permuting the downscaleFactor dims alongside the channel dim.
+  std::vector<dim_t> permutation(input.dims().begin(), sizesBatchEnd);
+  const auto idx = permutation.size();
+  std::iota(permutation.begin(), permutation.end(), 0);
+  permutation.insert(permutation.end(), {
+                                            idx,     /* iC */
+                                            idx + 2, /* downscaleFactor */
+                                            idx + 4, /* downscaleFactor */
+                                            idx + 1, /* oH */
+                                            idx + 3  /* oW */
+                                        });
+
+  const auto inputPermuted = F_.createTranspose(
+      "reshapeInput", inputReshaped, castVector<glow::unsigned_t>(permutation));
+
+  // Finally, downscale by collapsing (iC, downscaleFactor, downscaleFactor) ->
+  // a single dim (oC), resulting in height=oH and width=oW.
+  std::vector<dim_t> finalShape(input.dims().begin(), sizesBatchEnd);
+  finalShape.insert(finalShape.end(), {oC, oH, oW});
+
+  auto output =
+      F_.createReshape("reshape", inputPermuted, finalShape)->getResult();
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadSquare(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto node = F_.createMul("square", input, input);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], node->getResult()));
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadScaleGradient(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  // Currently PyTorch importer only supports inference,
+  // therefore return the input as is.
+  RETURN_ERR(addValueMapping(outputs[0], input));
+}
+
+Error PyTorchModelLoader::loadErf(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto node = F_.createErf("erf", input)->getResult();
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], node));
+
+  return Error::success();
+}
+Error PyTorchModelLoader::loadSign(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto zeroes = F_.createSplat("zeroes", input.getType(), 0.f);
+
+  auto isPos = F_.createCmpLT("isPos", zeroes, input);
+  auto isNeg = F_.createCmpLT("isNeg", input, zeroes);
+
+  auto posOnes = F_.createSplat("posOnes", input.getType(), 1);
+  auto negOnes = F_.createSplat("negOnes", input.getType(), -1);
+
+  auto fillPositive = F_.createSelect("fillPos", isPos, posOnes, zeroes);
+  auto fillNegative = F_.createSelect("fillNeg", isNeg, negOnes, fillPositive);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], fillNegative->getResult()));
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
+
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weights, getGlowNodeValueForValue(
+                   inputs[BatchedUnaryEmbeddingsBagsInputs::weights]));
+  glow::NodeValue tableOffsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      tableOffsets,
+      getGlowNodeValueForValue(
+          inputs[BatchedUnaryEmbeddingsBagsInputs::tableOffsets]));
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(
+                   inputs[BatchedUnaryEmbeddingsBagsInputs::indices]));
+  glow::NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offsets, getGlowNodeValueForValue(
+                   inputs[BatchedUnaryEmbeddingsBagsInputs::offsets]));
+
+  auto *EB = F_.createBatchedUnaryEmbeddingsBags(
+      "BatchedUnaryEmbeddingsBags", weights, tableOffsets, indices, offsets);
+
+  RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+}
+
+Error PyTorchModelLoader::loadIndexAdd(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[IndexAddInputs::input]));
+
+  int dim = 0;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[IndexAddInputs::dim])));
+  RETURN_ERR_IF_NOT(dim == 0,
+                    "Only adding along dim = 0 is currently supported. ");
+  glow::NodeValue index;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      index, getGlowNodeValueForValue(inputs[IndexAddInputs::index]));
+
+  glow::NodeValue source;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      source, getGlowNodeValueForValue(inputs[IndexAddInputs::source]));
+
+  float alpha = 1.0;
+  if (hasGlowIValueForValue(inputs[IndexAddInputs::alpha])) {
+    GlowIValue *ival;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        ival, getGlowIValueForValue(inputs[IndexAddInputs::alpha]));
+    if (ival->isDouble()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(alpha, ival->toDouble());
+    } else if (ival->isInt()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(alpha,
+                                 static_cast_expected<float>(ival->toInt()));
+    } else if (!ival->isNone()) {
+      return MAKE_ERR("Unexpected scalar type");
+    }
+  }
+
+  RETURN_ERR_IF_NOT(index.dims().size() == 1,
+                    "Indices should be 1-dimensional");
+  RETURN_ERR_IF_NOT(source.dims().size() > dim,
+                    "dim must be less than the number of dims of source");
+  RETURN_ERR_IF_NOT(index.dims()[0] == source.dims()[dim],
+                    "The dim-th dimension of source must have the same size as "
+                    "the length of index");
+  for (auto i = 0; i < index.dims().size(); i++) {
+    RETURN_ERR_IF_NOT(
+        i != dim && input.dims()[i] != source.dims()[i],
+        "Every dimension of source has to match that of input other than dim");
+  }
+
+  auto scaleType =
+      F_.getParent()->uniqueType(ElemKind::FloatTy, {source.dims()});
+  auto scales = F_.createSplat("scales", scaleType, alpha);
+  Node *scaledSource = F_.createMul("scaledSource", source, scales);
+  auto indices2D = F_.createReshape("indices2D", index, {index.dims()[0], 1});
+  auto scatterNode =
+      F_.createScatterData("scatter", index, indices2D, scaledSource, true);
+  RETURN_ERR(addValueMapping(outputs[0], scatterNode));
+}
+
 Error PyTorchModelLoader::loadAttributes(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs) {
@@ -8934,7 +9558,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     LOG(INFO) << "Using settings: " << settings_.toString();
 
     if (settings_.dumpFinalGlowGraph || settings_.dumpGlowDag) {
-      const std::string fname = "preLoadGlowGraph.ir";
+      const std::string fname = "preLoadGlowGraph-" + F.getName().str() + "ir";
       LOG(INFO) << "Dumping pre load graph at " + fname;
       std::ofstream out;
       out.open(fname);

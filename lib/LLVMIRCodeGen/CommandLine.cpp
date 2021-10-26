@@ -87,6 +87,11 @@ llvm::cl::list<std::string> llvmCompilerOptions(
     llvm::cl::desc("Options to pass to the external LLVM compiler"),
     llvm::cl::ZeroOrMore);
 
+llvm::cl::opt<bool> llvmSaveAsm(
+    "llvm-save-asm",
+    llvm::cl::desc("Create and save asm file along with Bundle object file."),
+    llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
+
 llvm::cl::opt<llvm::FloatABI::ABIType>
     floatABI("float-abi", llvm::cl::desc("Option to set float ABI type"),
              llvm::cl::values(clEnumValN(llvm::FloatABI::Default, "default",

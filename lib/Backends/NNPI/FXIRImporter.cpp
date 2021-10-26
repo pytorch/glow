@@ -1,10 +1,25 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "glow/lib/Backends/NNPI/FXIRImporter.h"
 #include "glow/Flags/Flags.h"
 #include "glow/Support/Support.h"
 #include "glow/lib/Backends/NNPI/DebugMacros.h"
 #include "nnpi_transformer_types.h"
+#include <vector>
 
 using namespace utils;
 
@@ -111,8 +126,6 @@ public:
                           std::all_of(dilation.cbegin(), dilation.cend(),
                                       [](int i) { return i == 1; }),
                           "Dilation is not supported", NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR, groups == 1, "Group is not supported",
-                          NNPI_INVALID_PARAM);
 
     LOG_AND_RETURN_IF_NOT(ERROR, importer.isConstant(filterName),
                           "convolution (" + name + ") filter (" + filterName +
@@ -168,8 +181,8 @@ public:
     const auto &kwargs = node["kwargs"];
     const auto &inputName = importer.getInputNodeName(kwargs["input"]);
     const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
-    const auto &per_sample_weights =
-        importer.getInputNodeName(kwargs["per_sample_weights"]);
+    const auto &per_sample_weights = importer.getInputNodeName(
+        kwargs["per_sample_weights"], /* optional */ true);
     const auto &offsetsName = importer.getInputNodeName(kwargs["offsets"]);
 
     const auto &hasEndOffset = kwargs["include_last_offset"].asBool();
@@ -189,9 +202,41 @@ public:
         {name});
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
-        importer.getNetwork(), name.c_str(), weightName.c_str(), name.c_str(),
-        per_sample_weights.c_str(), inputName.c_str(), offsetsName.c_str(),
+        importer.getNetwork(), finalize(name), finalize(weightName),
+        finalize(name), finalize(per_sample_weights), finalize(inputName),
+        finalize(offsetsName),
         /* useFP32Accumulation */ 0, /* useLengthsAsOffsets */ 1,
+        /*avg length*/ NAN, NNPI_LENGTH_VARIABLE);
+  }
+};
+
+class EmbeddingBagByteRowwiseOffsetsNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode importNode(const folly::dynamic &node,
+                           const std::function<string(string)> &getQualName,
+                           FXNNPIImporter &importer) override {
+
+    const auto &name = node["name"].getString();
+    const auto &kwargs = node["kwargs"];
+    const auto &inputName = importer.getInputNodeName(kwargs["indices"]);
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &per_sample_weights = importer.getInputNodeName(
+        kwargs["per_sample_weights"], /* optional */ true);
+    const auto &offsetsName = importer.getInputNodeName(kwargs["offsets"]);
+
+    const auto &hasEndOffset = kwargs["include_last_offset"].asBool();
+    LOG_AND_RETURN_IF_NOT(ERROR, hasEndOffset,
+                          "[EmbeddingBag] hasEndOffset must be true",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {weightName, per_sample_weights, inputName, offsetsName}, {name});
+
+    return nnpiNetworkAddSparseLengthsWeightedSumOp(
+        importer.getNetwork(), finalize(name), finalize(weightName),
+        finalize(name), finalize(per_sample_weights), finalize(inputName),
+        finalize(offsetsName),
+        /* useFP32Accumulation */ true, /* useLengthsAsOffsets */ 1,
         /*avg length*/ NAN, NNPI_LENGTH_VARIABLE);
   }
 };
@@ -283,6 +328,51 @@ public:
   }
 };
 
+class SigmoidNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddSigmoidOp(importer.getNetwork(), finalize(name),
+                                   finalize(inputName), finalize(name));
+  }
+};
+
+class SumNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    auto dim = inputs.find("dim");
+    std::vector<uint32_t> axis;
+    if (dim != inputs.items().end()) {
+      auto dims = toIntegerArray<uint32_t>(inputs["dim"]);
+      for (auto &d : dims) {
+        axis.push_back(d);
+      }
+    }
+
+    return nnpiNetworkAddReduceOp(importer.getNetwork(), finalize(name),
+                                  finalize(inputName), finalize(name),
+                                  NNPI_REDUCE_SUM, axis.data(), axis.size(), 0);
+  }
+};
+
 class ReshapeNodeImporter : public INNPIFXNodeImporter {
 public:
   NNPIErrorCode
@@ -299,6 +389,50 @@ public:
     importer.setUsedTensors({inputName}, {name});
     return nnpiNetworkAddReshapeOp(importer.getNetwork(), finalize(name),
                                    finalize(inputName), finalize(name), &desc);
+  }
+};
+
+class SliceTensorNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &inputs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(inputs["input"]);
+    auto dims = toIntegerArray<uint32_t>(inputs["dims"]);
+    auto starts = toIntegerArray<uint32_t>(inputs["starts"]);
+    auto stops = toIntegerArray<uint32_t>(inputs["stops"]);
+    auto steps = toIntegerArray<uint32_t>(inputs["steps"]);
+    CHECK_EQ(dims.size(), 1) << "Only supporting single dim slice";
+    CHECK_EQ(starts.size(), 1) << "Only supporting single start slice";
+    CHECK_EQ(stops.size(), 1) << "Only supporting single stop slice";
+    CHECK_EQ(steps.size(), 1) << "Only supporting single step slice";
+    CHECK_EQ(steps[0], 1) << "Only supporting step == 1";
+
+    auto shape = toIntegerArray<glow::dim_t>(node["shape"].getString());
+
+    int32_t startOffset[NNPI_MAX_DIMS] = {0};
+    int32_t endOffset[NNPI_MAX_DIMS] = {0};
+
+    for (size_t i = 0, e = shape.size(); i < e; i++) {
+      if (i != dims[0]) {
+        startOffset[i] = 0;
+        endOffset[i] = shape[i];
+        continue;
+      }
+      startOffset[i] = starts[0];
+      endOffset[i] = stops[0];
+    }
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddSliceOp(importer.getNetwork(), finalize(name),
+                                 finalize(inputName), finalize(name),
+                                 startOffset, endOffset, nullptr,
+                                 uint32_t(shape.size()));
   }
 };
 
@@ -324,9 +458,34 @@ public:
 
     importer.setUsedTensors({inputName}, {name});
 
-    return nnpiNetworkAddTransposeOp(importer.getNetwork(), name.c_str(),
-                                     inputName.c_str(), name.c_str(), nnpiOrder,
-                                     dimSize.size());
+    return nnpiNetworkAddTransposeOp(importer.getNetwork(), finalize(name),
+                                     finalize(inputName), finalize(name),
+                                     nnpiOrder, dimSize.size());
+  }
+};
+
+class PermuteNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    auto dimSize = toIntegerArray<glow::dim_t>(node["shape"].getString());
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    auto dims = toIntegerArray<uint32_t>(kwargs["permutation"]);
+    uint32_t nnpiOrder[NNPI_MAX_DIMS];
+    for (size_t i = 0, e = dimSize.size(); i < e; i++) {
+      nnpiOrder[i] = dims[i];
+    }
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddTransposeOp(importer.getNetwork(), finalize(name),
+                                     finalize(inputName), finalize(name),
+                                     nnpiOrder, dimSize.size());
   }
 };
 
@@ -344,9 +503,9 @@ public:
 
     importer.setUsedTensors({inputName, otherName}, {name});
 
-    return nnpiNetworkAddMatMulOp(importer.getNetwork(), name.c_str(),
-                                  inputName.c_str(), otherName.c_str(),
-                                  name.c_str());
+    return nnpiNetworkAddMatMulOp(importer.getNetwork(), finalize(name),
+                                  finalize(inputName), finalize(otherName),
+                                  finalize(name));
   }
 };
 
@@ -370,9 +529,50 @@ public:
     }
 
     importer.setUsedTensors(inputTensors, {name});
-    return nnpiNetworkAddConcatOp(importer.getNetwork(), name.c_str(), inputs,
-                                  numInputs, name.c_str(),
+    return nnpiNetworkAddConcatOp(importer.getNetwork(), finalize(name), inputs,
+                                  numInputs, finalize(name),
                                   kwargs["dim"].getInt());
+  }
+};
+
+class LayerNormalizationNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+    const auto &weightName = importer.getInputNodeName(kwargs["weight"]);
+    const auto &biasName = importer.getInputNodeName(kwargs["bias"]);
+    auto eps = kwargs["eps"].getDouble();
+    auto shape = toIntegerArray<uint32_t>(kwargs["normalized_shape"]);
+
+    importer.setUsedTensors({inputName, weightName}, {biasName, name});
+
+    return nnpiNetworkAddLayerNormOp(importer.getNetwork(), finalize(name),
+                                     finalize(inputName), finalize(name),
+                                     finalize(weightName), finalize(biasName),
+                                     shape.data(), shape.size(), eps);
+  }
+};
+
+class TanhNodeImporter : public INNPIFXNodeImporter {
+public:
+  NNPIErrorCode
+  importNode(const folly::dynamic &node,
+             const std::function<string(string)> & /* getQualName */,
+             FXNNPIImporter &importer) override {
+    const auto &kwargs = node["kwargs"];
+    const auto &name = node["name"].getString();
+    const auto &inputName = importer.getInputNodeName(kwargs["input"]);
+
+    importer.setUsedTensors({inputName}, {name});
+
+    return nnpiNetworkAddTanhOp(importer.getNetwork(), finalize(name),
+                                finalize(inputName), finalize(name));
   }
 };
 
@@ -408,9 +608,13 @@ static std::unordered_map<
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_SUB>>()},
     {"acc_ops.mul",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
+    {"acc_ops.quantized_mul",
+     std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_MUL>>()},
     {"acc_ops.div",
      std::make_unique<BinaryEltwiseNodeImporter<NNPI_ELTWISE_DIV>>()},
     {"acc_ops.reshape", std::make_unique<ReshapeNodeImporter>()},
+    {"acc_ops.tanh", std::make_unique<TanhNodeImporter>()},
+    {"acc_ops.slice_tensor", std::make_unique<SliceTensorNodeImporter>()},
     {"acc_ops.linear", std::make_unique<LinearNodeImporter>()},
     {"acc_ops.quantized_linear", std::make_unique<LinearNodeImporter>()},
     {"acc_ops.conv2d", std::make_unique<ConvolutionNodeImporter<2>>()},
@@ -419,12 +623,18 @@ static std::unordered_map<
     {"acc_ops.batch_norm", std::make_unique<BatchNormalizationNodeImporter>()},
     {"acc_ops.quantized_batch_norm2d",
      std::make_unique<BatchNormalizationNodeImporter>()},
+    {"acc_ops.layer_norm", std::make_unique<LayerNormalizationNodeImporter>()},
     {"acc_ops.relu", std::make_unique<ReluNodeImporter>()},
+    {"acc_ops.sigmoid", std::make_unique<SigmoidNodeImporter>()},
     {"acc_ops.adaptive_avg_pool2d",
      std::make_unique<AdaptivePoolNodeImporter<NNPI_POOL_AVG>>()},
     {"acc_ops.embedding_bag", std::make_unique<EmbeddingBagNodeImporter>()},
+    {"acc_ops.embedding_bag_byte_rowwise_offsets",
+     std::make_unique<EmbeddingBagByteRowwiseOffsetsNodeImporter>()},
     {"acc_ops.cat", glow::make_unique<ConcatNodeImporter>()},
+    {"acc_ops.sum", glow::make_unique<SumNodeImporter>()},
     {"acc_ops.transpose", glow::make_unique<TransposeNodeImporter>()},
+    {"acc_ops.permute", glow::make_unique<PermuteNodeImporter>()},
     {"acc_ops.matmul", glow::make_unique<MatMulNodeImporter>()},
     {"acc_ops.max_pool2d",
      std::make_unique<PoolNodeImporter<NNPI_POOL_MAX, 2>>()},
@@ -520,6 +730,10 @@ void FXNNPIImporter::updateDescQuantFromFX(
         << "Scales and offsets provided for Float32";
     desc.quantParams.precision = NNPI_PRECISION_FLOAT32;
     desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case DTYPE::UINT8FUSED:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_FUSED;
     break;
   case DTYPE::FLOAT16:
     LOG_ERROR_IF_NOT((scaleTensor.empty() && offsetTensor.empty()))
@@ -830,6 +1044,14 @@ NNPINetwork FXNNPIImporter::importFunction(const folly::dynamic &FXIR,
                                                 "Failed to add placeholder");
       } else {
         DBG("[--IO--] Unused Placeholder: " << name);
+      }
+
+      // Gather Placeholders that allow partial input and require padding.
+      if (getValOrDefault(node, "allow_partial", false)) {
+        allowPartialPlaceholderNames_.insert(name);
+      }
+      if (getValOrDefault(node, "requires_padding", false)) {
+        requiresPaddingPlaceholderNames_.insert(name);
       }
     } else if (opCode == "output") {
       const auto &args = node["args"];

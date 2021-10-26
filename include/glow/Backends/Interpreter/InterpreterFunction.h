@@ -410,11 +410,8 @@ private:
                             int64_t padIdx, bool sparse, bool scale,
                             dim_t embedding_dim);
 
-  template <typename ElemTy>
+  template <typename ElemTy, typename IndexTy>
   void fwdEmbeddingBagInstFloatImpl(const EmbeddingBagInst *I);
-
-  template <typename ElemTy>
-  void fwdSparseToDenseInstImpl(const SparseToDenseInst *I);
 
   template <typename ElemTy, typename IndexTy>
   void fwdBatchSparseToDenseInstImpl1(const BatchSparseToDenseInst *I);
@@ -461,7 +458,7 @@ private:
   template <typename T>
   void fwdBBoxTransformInstFloatImpl(glow::BBoxTransformInst const *I);
 
-  template <typename T, typename AccumT>
+  template <typename T, typename AccumT, typename IndexT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(
       const EmbeddingBagByteRowwiseOffsetsInst *I);
 
@@ -476,6 +473,10 @@ private:
       const glow::BatchedPairwiseDotProductGradInst *I);
   void fwdAvgPool2DGradInst(const AvgPoolGradInst *I);
   void fwdAvgPool3DGradInst(const AvgPoolGradInst *I);
+
+  template <typename ElemTy, typename IndexTy>
+  void fwdBatchedUnaryEmbeddingsBagsInstImpl(
+      const BatchedUnaryEmbeddingsBagsInst *I);
 
   ///@}
 };

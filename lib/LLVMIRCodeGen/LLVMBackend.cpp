@@ -323,6 +323,14 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
            ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
             (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
 
+  case Kinded::Kind::GatherNDNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
+                ElemKind::Int32ITy},
+               {GatherNDNode::IndicesIdx}) &&
+           ((NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int32ITy) ||
+            (NI.getInElemTy(GatherNDNode::IndicesIdx) == ElemKind::Int64ITy));
+
   case Kinded::Kind::GatherRangesNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
@@ -363,6 +371,7 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
   case Kinded::Kind::SqrtNodeKind:
+  case Kinded::Kind::ErfNodeKind:
   case Kinded::Kind::RsqrtNodeKind:
   case Kinded::Kind::ReciprocalNodeKind:
   case Kinded::Kind::SinNodeKind:
@@ -475,14 +484,6 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
                 ElemKind::Int32QTy) &&
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
             ElemKind::Int8QTy);
-
-  case Kinded::Kind::SparseToDenseNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy}, {SparseToDenseNode::IndicesIdx}) &&
-           (NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
-                ElemKind::Int64ITy ||
-            NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
-                ElemKind::Int32ITy);
 
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

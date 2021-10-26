@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <ATen/WrapDimUtils.h>
 #include <iostream>
@@ -9,6 +23,8 @@
 
 #include "ShapeInferenceEngine.h"
 
+#include "folly/Overload.h"
+#include "folly/String.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
 
@@ -123,42 +139,69 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
 Error ShapeInferenceEngine::ShapeInference::infer(
     ShapeInferenceEngine *engine, const MetaStack &meta,
     const torch::jit::Node *node) const {
-
-  // TensorOutput or TensorListOutput?
-  if (addShapeFn.which() == 0) {
-    TensorOutput output;
-    auto add = boost::get<AddShapeFn0>(addShapeFn);
-    if (inferenceFn.which() == 0) {
-      ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 boost::get<InferenceFn0>(inferenceFn)(meta));
-    } else if (inferenceFn.which() == 1) {
-      ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 boost::get<InferenceFn1>(inferenceFn)(node));
-    } else if (inferenceFn.which() == 2) {
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          output, boost::get<InferenceFn2>(inferenceFn)(meta, node));
-    } else {
-      return MAKE_ERR("Shape inference misconfiguration");
-    }
-    (engine->*(add))(node, output);
-  } else {
-    TensorListOutput output;
-    auto add = boost::get<AddShapeFn1>(addShapeFn);
-    if (inferenceFn.which() == 3) {
-      ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 boost::get<InferenceFn3>(inferenceFn)(meta));
-    } else if (inferenceFn.which() == 4) {
-      ASSIGN_VALUE_OR_RETURN_ERR(output,
-                                 boost::get<InferenceFn4>(inferenceFn)(node));
-    } else if (inferenceFn.which() == 5) {
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          output, boost::get<InferenceFn5>(inferenceFn)(meta, node));
-    } else {
-      return MAKE_ERR("Shape inference misconfiguration");
-    }
-    (engine->*(add))(node, output);
-  }
-  return Error::success();
+  auto matchTensorOutputFn = folly::overload(
+      [&](const InferenceFn0 &metastackInferFn) -> Expected<TensorOutput> {
+        return metastackInferFn(meta);
+      },
+      [&](const InferenceFn1 &nodeInferFn) -> Expected<TensorOutput> {
+        return nodeInferFn(node);
+      },
+      [&](const InferenceFn2 &metastackNodeInferFn) -> Expected<TensorOutput> {
+        return metastackNodeInferFn(meta, node);
+      },
+      [&](const auto &) -> Expected<TensorOutput> {
+        return MAKE_ERR("Shape inference misconfiguration. Inference function "
+                        "expected to return a TensorOutput. ");
+      });
+  auto matchTensorListOutputFn = folly::overload(
+      [&](const InferenceFn3 &metastackInferFn) -> Expected<TensorListOutput> {
+        return metastackInferFn(meta);
+      },
+      [&](const InferenceFn4 &nodeInferFn) -> Expected<TensorListOutput> {
+        return nodeInferFn(node);
+      },
+      [&](const InferenceFn5 &metastackNodeInferFn)
+          -> Expected<TensorListOutput> {
+        return metastackNodeInferFn(meta, node);
+      },
+      [&](const auto &) -> Expected<TensorListOutput> {
+        return MAKE_ERR("Shape inference misconfiguration. Inference function "
+                        "expected to return a TensorListOutput.");
+      });
+  auto matchElemOutputFn = folly::overload(
+      [&](const InferenceFn6 &metastackInferFn) -> Expected<ElemOutput> {
+        return metastackInferFn(meta);
+      },
+      [&](const auto &) -> Expected<ElemOutput> {
+        return (MAKE_ERR("Shape inference misconfiguration. Inference function "
+                         "expected to return an ElemOutput."));
+      });
+  return folly::variant_match(
+      addShapeFn,
+      [&](const AddShapeFn0 &addTensorOutput) -> Error {
+        TensorOutput output;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            output, boost::apply_visitor(matchTensorOutputFn, inferenceFn));
+        (engine->*(addTensorOutput))(node, output);
+        return Error::success();
+      },
+      [&](const AddShapeFn1 &addTensorListOutput) -> Error {
+        TensorListOutput output;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            output, boost::apply_visitor(matchTensorListOutputFn, inferenceFn));
+        (engine->*(addTensorListOutput))(node, output);
+        return Error::success();
+      },
+      [&](const AddShapeFn2 &addElemOutput) -> Error {
+        ElemOutput output;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            output, boost::apply_visitor(matchElemOutputFn, inferenceFn));
+        (engine->*(addElemOutput))(node, output);
+        return Error::success();
+      },
+      [&](const auto &) {
+        return MAKE_ERR("Unsupported types for addShapeFn");
+      });
 }
 
 ShapeInferenceEngine::SymbolToFunctionMap
@@ -225,10 +268,12 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"aten::sign", ShapeInference(&unaryOp, &SI::addShapeDefault)},
       {"aten::abs", ShapeInference(&unaryOp, &SI::addShapeDefault)},
       {"aten::log1p", ShapeInference(&unaryOp, &SI::addShapeDefault)},
+      {"aten::square", ShapeInference(&unaryOp, &SI::addShapeDefault)},
+      {"aten::sqrt", ShapeInference(&unaryOp, &SI::addShapeDefault)},
       {"aten::sub", ShapeInference(&binaryOp, &SI::addShapeDefault)},
       {"aten::pow", ShapeInference(&binaryOp, &SI::addShapeDefault)},
-      {"aten::mul", ShapeInference(&binaryOp, &SI::addShapeDefault)},
-      {"aten::add", ShapeInference(&binaryOp, &SI::addShapeDefault)},
+      {"aten::mul", ShapeInference(&mul, &SI::addShapeDefault)},
+      {"aten::add", ShapeInference(&add, &SI::addShapeDefault)},
       {"aten::div", ShapeInference(&binaryOp, &SI::addShapeDefault)},
       {"aten::rsub", ShapeInference(&binaryOp, &SI::addShapeDefault)},
       {"aten::mm", ShapeInference(&mm, &SI::addShapeDefault)},
@@ -243,7 +288,7 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"aten::chunk", ShapeInference(&chunk, &SI::addShapeChunk)},
       {"prim::ListConstruct",
        ShapeInference(&listConstruct, &SI::addShapeListConstruct)},
-      {"aten::slice", ShapeInference(&slice, &SI::addShapeDefault)},
+      {"aten::slice", ShapeInference(&slice, &SI::addShapeSlice)},
       {"aten::reshape", ShapeInference(&reshape, &SI::addShapeDefault)},
       {"aten::cat", ShapeInference(&cat, &SI::addShapeDefault)},
       {"aten::permute", ShapeInference(&permute, &SI::addShapeDefault)},
@@ -253,11 +298,12 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"aten::linear", ShapeInference(&linear, &SI::addShapeDefault)},
       {"aten::stack", ShapeInference(&stack, &SI::addShapeDefault)},
       {"aten::to", ShapeInference(&to, &SI::addShapeDefault)},
-      {"aten::sum", ShapeInference(&sum, &SI::addShapeDefault)},
+      {"aten::sum", ShapeInference(&reduceOp, &SI::addShapeDefault)},
+      {"aten::mean", ShapeInference(&reduceOp, &SI::addShapeDefault)},
       {"prim::dtype", ShapeInference(&primDtype, &SI::addShapeConstant)},
       {"prim::ListUnpack",
        ShapeInference(&listUnpack, &SI::addShapeDefaultList)},
-      {"fb::Fused8BitRowwiseQuantizedToFloat",
+      {"fbgemm::Fused8BitRowwiseQuantizedToFloat",
        ShapeInference(&fused8BitRowwiseQuantizedToFloat, &SI::addShapeDefault)},
       {"fb::compressed_indices_remap",
        ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
@@ -269,6 +315,21 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&unsqueezeNTimes, &SI::addShapeDefault)},
       {"fb::equally_split",
        ShapeInference(&equallySplit, &SI::addShapeDefaultList)},
+      {"aten::squeeze", ShapeInference(&squeeze, &SI::addShapeDefault)},
+      {"aten::narrow", ShapeInference(&narrow, &SI::addShapeDefault)},
+      {"fb::index_hash", ShapeInference(&indexHash, &SI::addShapeDefault)},
+      {"fb::bucketize", ShapeInference(&bucketize, &SI::addShapeDefault)},
+      {"fb::expand_dims", ShapeInference(&expandDims, &SI::addShapeDefault)},
+      {"aten::split_with_sizes",
+       ShapeInference(&splitWithSizes, &SI::addShapeListConstruct)},
+      {"aten::Int", ShapeInference(&inferInt, &SI::addShapeDefault)},
+      {"prim::NumToTensor", ShapeInference(&numToTensor, &SI::addShapeDefault)},
+      {"aten::size", ShapeInference(&size, &SI::addShapeConstant)},
+      {"fb::scale_gradient",
+       ShapeInference(&scaleGradient, &SI::addShapeDefault)},
+      {"aten::repeat", ShapeInference(&repeat, &SI::addShapeDefault)},
+      {"aten::softmax", ShapeInference(&softmax, &SI::addShapeDefault)},
+      {"aten::unsqueeze", ShapeInference(&unsqueeze, &SI::addShapeDefault)},
   });
   return map;
 }
@@ -342,9 +403,16 @@ void ShapeInferenceEngine::addShapeChunk(const torch::jit::Node *node,
 
 void ShapeInferenceEngine::addShapeDefault(const torch::jit::Node *node,
                                            TensorOutput &output) {
-  shapeMap_[node->output()].listOfShape.emplace_back(
-      std::move(output.shapeOrIntValues));
-  shapeMap_[node->output()].dtype = output.dtype;
+  if (output.scalar) {
+    CHECK_EQ(output.shapeOrIntValues.size(), 1);
+    shapeMap_[node->output()].listOfShape.emplace_back((TensorShape){1});
+    shapeMap_[node->output()].intValue = std::move(output.shapeOrIntValues);
+    shapeMap_[node->output()].dtype = output.dtype;
+  } else {
+    shapeMap_[node->output()].listOfShape.emplace_back(
+        std::move(output.shapeOrIntValues));
+    shapeMap_[node->output()].dtype = output.dtype;
+  }
 }
 
 void ShapeInferenceEngine::addShapeDefaultList(const torch::jit::Node *node,
@@ -358,6 +426,18 @@ void ShapeInferenceEngine::addShapeDefaultList(const torch::jit::Node *node,
       shapeMap_[node->output(i)].dtype = output.dtype;
     }
   }
+}
+
+void ShapeInferenceEngine::addShapeSlice(const torch::jit::Node *node,
+                                         ElemOutput &output) {
+  folly::variant_match(
+      output,
+      [&](TensorOutput &tensorOutput) { addShapeDefault(node, tensorOutput); },
+      [&](TensorListOutput &tensorListOutput) {
+        shapeMap_[node->output()].listOfShape.emplace_back(
+            std::move(tensorListOutput.shape));
+        shapeMap_[node->output()].dtype = tensorListOutput.dtype;
+      });
 }
 
 Error ShapeInferenceEngine::runSubGraph(
@@ -376,7 +456,6 @@ Error ShapeInferenceEngine::runGraph(
     const at::ArrayRef<torch::jit::IValue> &inputs) {
   // Populate input shapes
   RETURN_IF_ERR(getGraphInputShapeType(graph, inputs));
-
   int totalFusionNodes = 0;
   for (auto *node : graph.nodes()) {
     if (node->kind().toQualString() == fusionNodeSymbol_) {
@@ -399,9 +478,15 @@ Error ShapeInferenceEngine::runGraph(
         CHECK(it != shapeMap_.end()) << "missing input " << i->debugName();
         // Only support tensor input for now
         // TODO Add support for other input types, e.g., tensor list
-        subgraphInputs.emplace_back(
-            torch::empty(it->second.shape<TensorShape>(),
-                         torch::TensorOptions().dtype(it->second.dtype)));
+        if (it->second.dtype == at::ScalarType::QUInt8) {
+          auto emptyTQ = at::_empty_affine_quantized(
+              it->second.shape<TensorShape>(), at::ScalarType::QUInt8, 0, 1);
+          subgraphInputs.emplace_back(emptyTQ);
+        } else {
+          subgraphInputs.emplace_back(
+              torch::empty(it->second.shape<TensorShape>(),
+                           torch::TensorOptions().dtype(it->second.dtype)));
+        }
       }
       const at::ArrayRef<torch::jit::IValue> inputRefs(subgraphInputs);
 
@@ -493,23 +578,23 @@ void ShapeInferenceEngine::findUnsupportedGraphSymbols(
 void ShapeInferenceEngine::printShapeMap() {
   for (auto elem : shapeMap_) {
     std::cout << elem.first->debugName() << ":[ ";
-    if (elem.second.listOfShape[0].type() == typeid(TensorShape)) {
-      const TensorShape &shape = elem.second.shape<TensorShape>();
-      for (auto value : shape) {
-        std::cout << value << " ";
-      }
-    } else if (elem.second.listOfShape[0].type() == typeid(TensorListShape)) {
-      const TensorListShape &shapes = elem.second.shape<TensorListShape>();
-      for (auto shape : shapes) {
-        std::cout << "[ ";
-        for (auto value : shape) {
-          std::cout << value << " ";
-        }
-        std::cout << "]";
-      }
-    } else {
-      std::cout << "Type doesn't support yet.";
-    }
+    folly::variant_match(
+        elem.second.listOfShape[0],
+        [&](const TensorShape &shape) {
+          for (auto value : shape) {
+            std::cout << value << " ";
+          }
+        },
+        [&](const TensorListShape &shapes) {
+          for (auto shape : shapes) {
+            std::cout << "[ ";
+            for (auto value : shape) {
+              std::cout << value << " ";
+            }
+            std::cout << "]";
+          }
+        },
+        [&](const auto &) { std::cout << "Type doesn't support yet."; });
     std::cout << "]" << std::endl;
   }
 }
@@ -573,7 +658,7 @@ Error ShapeInferenceEngine::getGraphInputShapeType(
     } else if (input.isNone()) {
       dtype = c10::ScalarType::Undefined;
     } else {
-      return MAKE_ERR("Input type doesn't support yet.");
+      return MAKE_ERR("Input type isn't supported yet.");
     }
     shapeMap_[gInName].listOfShape.emplace_back(std::move(shape));
     shapeMap_[gInName].intValue = intValue;
@@ -594,6 +679,12 @@ Error ShapeInferenceEngine::generateGraphOutputShape() {
     outputShape_.emplace_back(it->second);
   }
   return Error::success();
+}
+
+bool ShapeInferenceEngine::isScalarInt(const VariableMeta &vm) {
+  const auto &shape = vm.shape<TensorShape>();
+  return shape.size() == 1 && shape[0] == 1 && vm.intValue.size() == 1 &&
+         vm.dtype == c10::ScalarType::Int;
 }
 
 /// The \p prim::Constant may have multiple types of output, eg.
@@ -663,11 +754,11 @@ ShapeInferenceEngine::unaryOp(const MetaStack &variableMetas) {
 /**
  * aten::add(Tensor self, Tensor or Scalar other, Scalar alpha=1) -> Tensor
  * aten::pow(Tensor self, Tensor or Scalar other, Scalar alpha=1) -> Tensor
- * aten::mul(Tensor self, Tensor or Scalar other, Scalar alpha=1) -> Tensor
  * variableMetas: 0: self, 1: other
  */
 Expected<TensorOutput>
-ShapeInferenceEngine::binaryOp(const MetaStack &variableMetas) {
+ShapeInferenceEngine::binaryOp(const MetaStack &variableMetas,
+                               const torch::jit::Node *ptNode) {
 
   if (variableMetas.size() != 2 && variableMetas.size() != 3) {
     return MAKE_ERR("Expected two or three inputs shapes of this operation.");
@@ -699,10 +790,12 @@ ShapeInferenceEngine::binaryOp(const MetaStack &variableMetas) {
       shape[dim + j] = t0[d0 + j];
     } else {
       if (t1[d1 + j] != t0[d0 + j]) {
-        return MAKE_ERR(
-            strFormat("The size of tensor a (%zu) must match the size of "
-                      "tensor b (%zu)at non-singleton dimension 1.",
-                      t0[d0 + j], t1[d1 + j]));
+        std::ostringstream ss;
+        ss << *ptNode;
+        return MAKE_ERR(strFormat(
+            "The size of tensor a (%zu) must match the size of "
+            "tensor b (%zu)at non-singleton dimension 1. Offending op: %s",
+            t0[d0 + j], t1[d1 + j], ss.str().c_str()));
       }
 
       shape[dim + j] = t1[d1 + j];
@@ -711,6 +804,49 @@ ShapeInferenceEngine::binaryOp(const MetaStack &variableMetas) {
 
   output.shapeOrIntValues = shape;
   return output;
+}
+
+/**
+ * aten::add(Tensor self, Tensor or Scalar other, Scalar alpha=1) -> Tensor
+ * variableMetas: 0: self, 1: other
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::add(const MetaStack &variableMetas,
+                          const torch::jit::Node *ptNode) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2 || variableMetas.size() == 3,
+      strFormat("Expected 2 or 3 inputs, got %zu", variableMetas.size()));
+
+  if (isScalarInt(variableMetas[0]) && isScalarInt(variableMetas[1])) {
+    TensorOutput output;
+    output.shapeOrIntValues = {variableMetas[0].intValue[0] +
+                               variableMetas[1].intValue[0]};
+    output.dtype = c10::ScalarType::Int;
+    output.scalar = true;
+    return output;
+  }
+
+  return binaryOp(variableMetas, ptNode);
+}
+
+/**
+ * aten::mul(Tensor self, Tensor or Scalar other, Scalar alpha=1) -> Tensor
+ * variableMetas: 0: self, 1: other
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::mul(const MetaStack &variableMetas,
+                          const torch::jit::Node *ptNode) {
+  if (variableMetas.size() == 2 && isScalarInt(variableMetas[0]) &&
+      isScalarInt(variableMetas[1])) {
+    TensorOutput output;
+    output.shapeOrIntValues = {variableMetas[0].intValue[0] *
+                               variableMetas[1].intValue[0]};
+    output.dtype = c10::ScalarType::Int;
+    output.scalar = true;
+    return output;
+  }
+
+  return binaryOp(variableMetas, ptNode);
 }
 
 /**
@@ -784,7 +920,8 @@ ShapeInferenceEngine::bmm(const MetaStack &variableMetas) {
  * variableMetas: 0: self, 1: mat1, 2: mat2
  */
 Expected<TensorOutput>
-ShapeInferenceEngine::addmm(const MetaStack &variableMetas) {
+ShapeInferenceEngine::addmm(const MetaStack &variableMetas,
+                            const torch::jit::Node *ptNode) {
 
   RETURN_ERR_IF_NOT(variableMetas.size() >= 3,
                     strFormat("Expected at least three inputs shapes, got %zu.",
@@ -805,7 +942,7 @@ ShapeInferenceEngine::addmm(const MetaStack &variableMetas) {
     t.listOfShape.emplace_back(std::move(mmOutput.shapeOrIntValues));
   }
 
-  return binaryOp({t0, std::move(t)});
+  return binaryOp({t0, std::move(t)}, ptNode);
 }
 
 /**
@@ -840,22 +977,30 @@ Expected<TensorOutput> ShapeInferenceEngine::t(const MetaStack &variableMetas) {
 }
 
 Expected<TensorOutput>
-ShapeInferenceEngine::sum(const MetaStack &variableMetas) {
+ShapeInferenceEngine::reduceOp(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(
       variableMetas.size() == 4,
-      strFormat("Expected Four input, got %zu.", variableMetas.size()));
+      strFormat("Expected 4 inputs, got %zu.", variableMetas.size()));
   // TODO: @hwwang T80910607 Only support None dtype (4th argument)
-  RETURN_ERR_IF_NOT(variableMetas[3].intValue.size() == 0 and
-                        variableMetas[3].dtype == c10::ScalarType::Undefined,
-                    "Only support 4th arugment of aten::sum operator is None");
+  RETURN_ERR_IF_NOT(
+      variableMetas[3].intValue.size() == 0 &&
+          variableMetas[3].dtype == c10::ScalarType::Undefined,
+      "Only support 4th argument of aten::sum/aten::mean operator is None");
   const auto &t0 = variableMetas[0].shape<TensorShape>();
   auto dims = variableMetas[1].intValue;
-  bool include_dim = variableMetas[2].intValue[0];
+  bool includeDim = variableMetas[2].intValue[0];
+
+  RETURN_ERR_IF_NOT(dims.size() == 1,
+                    "Currently support only single axis for reduction");
+  int dim = dims[0];
+  if (dim < 0) {
+    dim += t0.size();
+  }
 
   TensorShape shape;
   for (int i = 0; i < t0.size(); i++) {
-    if (std::find(dims.begin(), dims.end(), i) != dims.end()) {
-      if (include_dim) {
+    if (dim == i) {
+      if (includeDim) {
         shape.push_back(1);
       } else {
         continue;
@@ -864,6 +1009,7 @@ ShapeInferenceEngine::sum(const MetaStack &variableMetas) {
       shape.push_back(t0[i]);
     }
   }
+
   TensorOutput output;
   output.dtype = variableMetas[0].dtype;
   output.shapeOrIntValues = shape;
@@ -933,7 +1079,8 @@ ShapeInferenceEngine::cat(const MetaStack &variableMetas) {
   dim = at::maybe_wrap_dim(dim, inDims);
 
   // Handle multiple input cases.
-  // Verify all inputs dimenions are the same execpt the dimension applies cat.
+  // Verify all inputs dimenions are the same except the dimension applies
+  // cat.
   for (int i = 1; i < tensorListShapes.size(); ++i) {
     RETURN_ERR_IF_NOT(inDims == tensorListShapes[i].size(),
                       "All inputs must have the same number of dimensions.");
@@ -1122,9 +1269,39 @@ ShapeInferenceEngine::fusedBroadcastConcat(const MetaStack &variableMetas,
     return output;
   }
 
-  /// Convert negtive dimension to positive, then check the dim range.
+  /// Convert negative dimension to positive, then check the dim range.
   int64_t inDims = output.shapeOrIntValues.size();
   dim = at::maybe_wrap_dim(dim, inDims);
+
+  /// Validating the input shapes
+  bool goodShapes = true;
+  for (int i = 1; i < variableMetas.size(); ++i) {
+    const auto &s = variableMetas[i].shape<TensorShape>();
+    if (output.shapeOrIntValues.size() != s.size()) {
+      goodShapes = false;
+    } else {
+      for (int j = 0; j < s.size(); ++j) {
+        if (j != dim && output.shapeOrIntValues[j] != s[j] &&
+            output.shapeOrIntValues[j] != 1 && s[j] != 1) {
+          goodShapes = false;
+          break;
+        }
+      }
+    }
+    if (!goodShapes) {
+      break;
+    }
+  }
+
+  if (!goodShapes) {
+    std::ostringstream ss;
+    ss << "Got bad input shapes:";
+    for (const auto &vm : variableMetas) {
+      ss << "  [" << folly::join(",", vm.shape<TensorShape>()) << "]";
+    }
+    ss << " at node " << *node;
+    return MAKE_ERR(ss.str());
+  }
 
   /// Handle multiple inputs cases
   for (int i = 1; i < variableMetas.size(); ++i) {
@@ -1143,63 +1320,126 @@ ShapeInferenceEngine::fusedBroadcastConcat(const MetaStack &variableMetas,
 
 /**
  * aten::slice(Tensor self, int dim, int start, int end, int step)
+ * aten::slice(t[] l, int start, int end, int step) -> t[]
  * variableMetas: 0: self, 1: dim, 2: start, 3: end, 4: step.
  */
-Expected<TensorOutput>
+Expected<ElemOutput>
 ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
 
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 5,
+      variableMetas.size() == 5 || variableMetas.size() == 4,
       strFormat("Expected 5 inputs, got %zu.", variableMetas.size()));
-
-  for (int i = 1; i < 5; i++) {
-    RETURN_ERR_IF_NOT(variableMetas[i].intValue.size() == 1,
-                      "Expected int in Slice.");
+  auto argSize = variableMetas.size();
+  for (int i = 1; i < argSize; i++) {
+    auto isNone = variableMetas[i].dtype == c10::ScalarType::Undefined;
+    auto isInt = variableMetas[i].intValue.size() == 1;
+    RETURN_ERR_IF_NOT(isNone || isInt, "Expected int in Slice.");
   }
+  RETURN_ERR_IF_NOT(variableMetas[argSize - 1].intValue.size() == 1,
+                    "Expected int in Slice.");
 
-  int64_t dim = variableMetas[1].intValue[0];
-  int64_t start = variableMetas[2].intValue[0];
-  int64_t end = variableMetas[3].intValue[0];
-  int64_t step = variableMetas[4].intValue[0];
+  int64_t dim = 0;
+  int64_t start = 0;
+  int64_t end = std::numeric_limits<long>::max();
+  int64_t step = 1;
+  ElemOutput output;
+  if (argSize == 5) {
+    dim = variableMetas[1].intValue[0];
+    if (variableMetas[2].intValue.size() == 1) {
+      start = variableMetas[2].intValue[0];
+    }
+    if (variableMetas[3].intValue.size() == 1) {
+      end = variableMetas[3].intValue[0];
+    }
+    step = variableMetas[4].intValue[0];
+    TensorOutput outputTensor;
+    TensorShape shape = variableMetas[0].shape<TensorShape>();
+    RETURN_ERR_IF_NOT(shape.size() > 0, "Shape expected to be nonempty.");
+    int64_t inDims = shape[dim];
+    outputTensor.dtype = variableMetas[0].dtype;
 
-  TensorShape shape = variableMetas[0].shape<TensorShape>();
-  int64_t inDims = shape[dim];
+    /// Check if the start or end dim out of the input dimension
+    if (start >= inDims || end <= -inDims) {
+      shape[dim] = 0;
+      outputTensor.shapeOrIntValues = shape;
+      return outputTensor;
+    }
 
-  TensorOutput output;
-  output.dtype = variableMetas[0].dtype;
+    /// Convert start dim into positive
+    if (start <= -inDims) {
+      start = 0;
+    } else if (start > -inDims && start < 0) {
+      start += inDims;
+    }
 
-  /// Check if the start or end dim out of the input dimension
-  if (start >= inDims || end <= -inDims) {
-    shape[dim] = 0;
-    output.shapeOrIntValues = shape;
-    return output;
+    /// Convert end dim into positive
+    if (end > inDims) {
+      end = inDims;
+    } else if (end > -inDims && end < 0) {
+      end += inDims;
+    }
+
+    if (start >= end) {
+      shape[dim] = 0;
+      outputTensor.shapeOrIntValues = shape;
+      return outputTensor;
+    }
+
+    shape[dim] = (end - start) / step;
+    if ((end - start) % step) {
+      shape[dim] += 1;
+    }
+    outputTensor.shapeOrIntValues = shape;
+    output = outputTensor;
+  } else if (argSize == 4) {
+    if (variableMetas[1].intValue.size() == 1) {
+      start = variableMetas[1].intValue[0];
+    }
+    if (variableMetas[2].intValue.size() == 1) {
+      end = variableMetas[2].intValue[0];
+    }
+    step = variableMetas[3].intValue[0];
+    TensorListShape shape = variableMetas[0].shape<TensorListShape>();
+    TensorListOutput outputTensorList;
+
+    outputTensorList.dtype = variableMetas[0].dtype;
+    int64_t inDims = shape.size();
+    /// Check if the start or end dim out of the input dimension
+    RETURN_ERR_IF_NOT(start < inDims && end > -inDims,
+                      strFormat("Invalid start or end dims. Start is %ld and "
+                                "end is %ld, while total dims are %ld",
+                                start, end, inDims));
+
+    /// Convert start dim into positive
+    if (start <= -inDims) {
+      start = 0;
+    } else if (start > -inDims && start < 0) {
+      start += inDims;
+    }
+
+    /// Convert end dim into positive
+    if (end > inDims) {
+      end = inDims;
+    } else if (end > -inDims && end < 0) {
+      end += inDims;
+    }
+
+    RETURN_ERR_IF_NOT(
+        start < end || (start == end && end < inDims),
+        strFormat("Invalid start and end dims. Start is %ld and end is %ld",
+                  start, end));
+
+    TensorListShape outShapes;
+    RETURN_ERR_IF_NOT(shape.size() >= end,
+                      strFormat("Expected the shape size to be at least end. "
+                                "Shape size is %ld and end is %ld",
+                                shape.size(), end));
+    for (auto i = start; i < end; i += step) {
+      outShapes.emplace_back(shape[i]);
+    }
+    outputTensorList.shape = outShapes;
+    output = outputTensorList;
   }
-
-  /// Convert start dim into positive
-  if (start <= -inDims) {
-    start = 0;
-  } else if (start > -inDims && start < 0) {
-    start += inDims;
-  }
-
-  /// Convert end dim into positive
-  if (end > inDims) {
-    end = inDims;
-  } else if (end > -inDims && end < 0) {
-    end += inDims;
-  }
-
-  if (start >= end) {
-    shape[dim] = 0;
-    output.shapeOrIntValues = shape;
-    return output;
-  }
-
-  shape[dim] = (end - start) / step;
-  if ((end - start) % step) {
-    shape[dim] += 1;
-  }
-  output.shapeOrIntValues = shape;
   return output;
 }
 
@@ -1208,40 +1448,48 @@ ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
  * variableMetas: 0: self, 1: shape
  */
 Expected<TensorOutput>
-ShapeInferenceEngine::reshape(const MetaStack &variableMetas) {
-
+ShapeInferenceEngine::reshape(const MetaStack &variableMetas,
+                              const torch::jit::Node *node) {
   RETURN_ERR_IF_NOT(
       variableMetas.size() == 2,
-      strFormat("Expected two inputs shapes, got %zu.", variableMetas.size()));
+      strFormat("Expected two inputs, got %zu.", variableMetas.size()));
 
   int64_t s0 = 1;
   int64_t s1 = 1;
 
   const TensorShape &t = variableMetas[0].shape<TensorShape>();
 
-  /// Flag for multiple negative index
-  int64_t negIndex = -1;
   for (auto i : t) {
     s0 *= i;
   }
 
+  int64_t negIndex = -1;
   for (int i = 0; i < variableMetas[1].intValue.size(); i++) {
-    s1 *= variableMetas[1].intValue[i];
     if (variableMetas[1].intValue[i] == -1) {
-      if (negIndex == -1) {
-        negIndex = i;
-      } else {
-        return MAKE_ERR("Unable to infer undetermined dimension");
+      if (negIndex != -1) {
+        std::ostringstream ss;
+        ss << "Found more than one negative index ["
+           << folly::join(",", variableMetas[1].intValue) << "] in node "
+           << *node;
+        return MAKE_ERR(ss.str());
       }
+      negIndex = i;
+    } else {
+      s1 *= variableMetas[1].intValue[i];
     }
   }
 
-  RETURN_ERR_IF_NOT(s0 % s1 == 0, "Reshape size is invalid for input size.");
+  if ((negIndex != -1 && s0 % s1 != 0) || (negIndex == -1 && s0 != s1)) {
+    std::ostringstream ss;
+    ss << "Invalid reshape from [" << folly::join(",", t) << "] to ["
+       << folly::join(",", variableMetas[1].intValue) << "] in node " << *node;
+    return MAKE_ERR(ss.str());
+  }
 
   TensorShape shape = variableMetas[1].intValue;
 
   if (negIndex != -1) {
-    shape[negIndex] = -s0 / s1;
+    shape[negIndex] = s0 / s1;
   }
 
   TensorOutput output;
@@ -1292,7 +1540,8 @@ ShapeInferenceEngine::permute(const MetaStack &variableMetas) {
  * variableMetas: 0: self, 1: v1, 2: v2, ...
  */
 Expected<TensorListOutput>
-ShapeInferenceEngine::listConstruct(const MetaStack &variableMetas) {
+ShapeInferenceEngine::listConstruct(const MetaStack &variableMetas,
+                                    const torch::jit::Node *node) {
 
   RETURN_ERR_IF_NOT(
       variableMetas.size() >= 1,
@@ -1303,7 +1552,10 @@ ShapeInferenceEngine::listConstruct(const MetaStack &variableMetas) {
     // scalar or bool
     for (auto ele : variableMetas) {
       RETURN_ERR_IF_NOT(ele.intValue.size() == 1,
-                        "Expected int type input in listConstruct.");
+                        strFormat("Expected int type input in listConstruct, "
+                                  "but got %zu on node %s",
+                                  ele.intValue.size(),
+                                  node->kind().toDisplayString()));
       listValueOrShape[0].emplace_back(ele.intValue[0]);
     }
   } else {
@@ -1374,8 +1626,35 @@ ShapeInferenceEngine::fusedBroadcastStack(const MetaStack &variableMetas,
   TensorOutput output;
   output.shapeOrIntValues = variableMetas[0].shape<TensorShape>();
   output.dtype = variableMetas[0].dtype;
-  if (variableMetas.size() == 1) {
-    return output;
+
+  /// Validating the input shapes
+  bool goodShapes = true;
+  for (int i = 1; i < variableMetas.size(); ++i) {
+    const auto &s = variableMetas[i].shape<TensorShape>();
+    if (output.shapeOrIntValues.size() != s.size()) {
+      goodShapes = false;
+    } else {
+      for (int j = 0; j < s.size(); ++j) {
+        if (j != dim && output.shapeOrIntValues[j] != s[j] &&
+            output.shapeOrIntValues[j] != 1 && s[j] != 1) {
+          goodShapes = false;
+          break;
+        }
+      }
+    }
+    if (!goodShapes) {
+      break;
+    }
+  }
+
+  if (!goodShapes) {
+    std::ostringstream ss;
+    ss << "Got bad input shapes:";
+    for (const auto &vm : variableMetas) {
+      ss << " [" << folly::join(",", vm.shape<TensorShape>()) << "]";
+    }
+    ss << " at node " << *node;
+    return MAKE_ERR(ss.str());
   }
 
   int64_t inDims = output.shapeOrIntValues.size();
@@ -1607,8 +1886,8 @@ Expected<TensorOutput>
 ShapeInferenceEngine::xlEmbeddingBag(const MetaStack &variableMetas) {
 
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 10,
-      strFormat("Expected 10 inputs, got %zu.", variableMetas.size()));
+      variableMetas.size() == 10 || variableMetas.size() == 11,
+      strFormat("Expected 10 or 11 inputs, got %zu.", variableMetas.size()));
 
   TensorShape shape;
 
@@ -1655,8 +1934,8 @@ ShapeInferenceEngine::quantizedXLEmbeddingBagByteRowwiseOffsets(
     const MetaStack &variableMetas) {
 
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 11,
-      strFormat("Expected 11 inputs, got %zu.", variableMetas.size()));
+      variableMetas.size() == 11 || variableMetas.size() == 12,
+      strFormat("Expected 11 or 12 inputs, got %zu.", variableMetas.size()));
 
   TensorShape shape;
 
@@ -1958,6 +2237,7 @@ ShapeInferenceEngine::primDtype(const MetaStack &variableMetas) {
   TensorOutput output;
   output.shapeOrIntValues = {dtype};
   output.dtype = c10::ScalarType::Int;
+  output.scalar = true;
   return output;
 }
 
@@ -2083,20 +2363,55 @@ ShapeInferenceEngine::matmul(const MetaStack &variableMetas) {
       strFormat("Expected 2 inputs, got %zu.", variableMetas.size()));
   const auto &inputOneShape = variableMetas[0].shape<TensorShape>();
   const auto &inputTwoShape = variableMetas[1].shape<TensorShape>();
-  RETURN_ERR_IF_NOT(inputOneShape.size() == 3,
-                    strFormat("Only support input as 3-d tensor, got %zu.",
-                              inputOneShape.size()));
-  RETURN_ERR_IF_NOT(inputTwoShape.size() == 3,
-                    strFormat("Only support input as 3-d tensor, got %zu.",
-                              inputTwoShape.size()));
-  RETURN_ERR_IF_NOT(inputOneShape[2] == inputTwoShape[1],
-                    "The 3rd dim of first input should be the same as 2nd dim "
-                    "of second input.");
+  RETURN_ERR_IF_NOT(
+      inputOneShape.size() == 3 || inputOneShape.size() == 4,
+      strFormat("Only support input as 3-d or 4-d tensor, got %zu.",
+                inputOneShape.size()));
+  RETURN_ERR_IF_NOT(
+      inputTwoShape.size() == 3 || inputTwoShape.size() == 4,
+      strFormat("Only support input as 3-d or 4-d tensor, got %zu.",
+                inputTwoShape.size()));
+  RETURN_ERR_IF_NOT(inputOneShape[inputOneShape.size() - 1] ==
+                        inputTwoShape[inputTwoShape.size() - 2],
+                    "The last dim of the first input should be the same as the "
+                    "second last dim "
+                    "of the second input.");
+
+  // Populating the shape in reverse order
   TensorShape shapes;
-  // TODO hwwang T81654300, add support for inputs with differnt dimensions.
-  shapes.emplace_back(std::max(inputOneShape[0], inputTwoShape[0]));
-  shapes.emplace_back(inputOneShape[1]);
-  shapes.emplace_back(inputTwoShape[2]);
+  shapes.push_back(inputTwoShape[inputTwoShape.size() - 1]);
+  shapes.push_back(inputOneShape[inputOneShape.size() - 2]);
+
+  int indexOne = inputOneShape.size() - 3;
+  int indexTwo = inputTwoShape.size() - 3;
+
+  while (indexOne >= 0 && indexTwo >= 0) {
+    auto dimOne = inputOneShape[indexOne];
+    auto dimTwo = inputTwoShape[indexTwo];
+
+    if (dimOne != 1 && dimTwo != 1 && dimOne != dimTwo) {
+      return MAKE_ERR(strFormat("Bad input shapes: [%s] and [%s]",
+                                folly::join(",", inputOneShape).c_str(),
+                                folly::join(",", inputTwoShape).c_str()));
+    }
+
+    shapes.push_back(std::max(dimOne, dimTwo));
+    --indexOne;
+    --indexTwo;
+  }
+
+  while (indexOne >= 0) {
+    shapes.push_back(inputOneShape[indexOne]);
+    --indexOne;
+  }
+
+  while (indexTwo >= 0) {
+    shapes.push_back(inputTwoShape[indexTwo]);
+    --indexTwo;
+  }
+
+  std::reverse(shapes.begin(), shapes.end());
+
   TensorOutput output;
   output.shapeOrIntValues = shapes;
   output.dtype = variableMetas[0].dtype;
@@ -2208,9 +2523,9 @@ ShapeInferenceEngine::embeddingBagByteUnpack(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(inputShape.size() > 0,
                     "Expected input shape size is larger than 0");
   TensorShape outputShape = inputShape;
-  // Quantized tensor contains zero_point and scale_size which are float number,
-  // Each of them is float number which equals to 4 of int8 number. Unpacking
-  // will remove these two numbers.
+  // Quantized tensor contains zero_point and scale_size which are float
+  // number, Each of them is float number which equals to 4 of int8 number.
+  // Unpacking will remove these two numbers.
   outputShape.back() -= (2 * 4);
   TensorOutput output;
   output.shapeOrIntValues = outputShape;
@@ -2274,6 +2589,318 @@ ShapeInferenceEngine::equallySplit(const MetaStack &variableMetas) {
 
   TensorListOutput output;
   output.shape = outputShape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::squeeze(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2 || variableMetas.size() == 1,
+      strFormat("Expected 1 or 2 input, got %zu.", variableMetas.size()));
+
+  const auto &t = variableMetas[0].shape<TensorShape>();
+  // Load dim parameter if provided
+  int64_t dim = 0;
+  bool dimProvided = false;
+  if (variableMetas.size() == 2) {
+    dimProvided = true;
+    dim = variableMetas[1].intValue[0];
+    if (dim < 0) {
+      dim += t.size();
+    }
+  }
+
+  TensorShape shape;
+  for (int i = 0; i < t.size(); i++) {
+    if (t[i] != 1 || (dimProvided && i != dim)) {
+      shape.push_back(t[i]);
+    }
+  }
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::narrow(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 4,
+      strFormat("Expected 4 input, got %zu.", variableMetas.size()));
+
+  TensorShape shape = variableMetas[0].shape<TensorShape>();
+  int64_t dim = variableMetas[1].intValue[0];
+  int64_t length = variableMetas[3].intValue[0];
+
+  TensorOutput output;
+  RETURN_ERR_IF_NOT(
+      shape.size() > dim,
+      strFormat("Expected shape does not have dimension %zu.", dim));
+  shape[dim] = length;
+  output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
+
+  return output;
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::indexHash(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected 3 input, got %zu.", variableMetas.size()));
+
+  TensorShape shape = variableMetas[0].shape<TensorShape>();
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
+
+  return output;
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::bucketize(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 input, got %zu.", variableMetas.size()));
+
+  TensorShape shape = variableMetas[0].shape<TensorShape>();
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = c10::ScalarType::Int;
+  return output;
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::expandDims(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 input, got %zu.", variableMetas.size()));
+
+  TensorShape shape = variableMetas[0].shape<TensorShape>();
+  std::vector<int64_t> dims = variableMetas[1].intValue;
+
+  TensorShape outputShape;
+  outputShape.resize(shape.size() + dims.size());
+  for (auto dim : dims) {
+    RETURN_ERR_IF_NOT(
+        outputShape.size() > dim,
+        strFormat("Output shape does not have dimension %zu.", dim));
+    outputShape[dim] = 1;
+  }
+
+  auto iter = shape.begin();
+  for (auto &i : outputShape) {
+    if (i == 1) {
+      continue;
+    }
+    i = *iter;
+    ++iter;
+  }
+  TensorOutput output;
+  output.shapeOrIntValues = outputShape;
+  output.dtype = variableMetas[0].dtype;
+
+  return output;
+}
+
+/*
+ * aten::split_with_sizes(Tensor input, int[] chunk_sizes, int dim) ->
+ * Tensor[]
+ */
+Expected<TensorListOutput>
+ShapeInferenceEngine::splitWithSizes(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected 3 inputs, got %zu", variableMetas.size()));
+
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+
+  const auto &chunkSizes = variableMetas[1].intValue;
+  RETURN_ERR_IF_NOT(chunkSizes.size() > 0,
+                    "Expected to have at least one chunk size");
+
+  auto dim = variableMetas[2].intValue[0];
+  // Convert dim to positive
+  dim = at::maybe_wrap_dim(dim, inputShape.size());
+
+  int64_t sumOfChunkSizes = 0;
+  TensorListShape outputShape;
+  for (auto chunkSize : chunkSizes) {
+    TensorShape shape{inputShape};
+    RETURN_ERR_IF_NOT(
+        shape.size() > dim,
+        strFormat("Expected shape does not have dimension %zu.", dim));
+    shape[dim] = chunkSize;
+    outputShape.push_back(std::move(shape));
+    sumOfChunkSizes += chunkSize;
+  }
+
+  RETURN_ERR_IF_NOT(
+      inputShape[dim] == sumOfChunkSizes,
+      strFormat("Expected dimension size should be equal to the sum of chunk "
+                "sizes, "
+                "got dimSize %long and sum of chunk sizes %long",
+                inputShape[dim], sumOfChunkSizes));
+
+  TensorListOutput output;
+  output.shape = outputShape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * aten::Int(Tensor input) -> int
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::inferInt(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(isScalarInt(variableMetas[0]),
+                    "Currently support only scalar int inputs");
+  TensorOutput output;
+  output.shapeOrIntValues = variableMetas[0].intValue;
+  output.dtype = variableMetas[0].dtype;
+  output.scalar = true;
+  return output;
+}
+
+/*
+ * prim::NumToTensor(int num) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::numToTensor(const MetaStack &variableMetas,
+                                  const torch::jit::Node *node) {
+  RETURN_ERR_IF_NOT(isScalarInt(variableMetas[0]),
+                    "Currently support only scalar int inputs");
+  TensorOutput output;
+  output.shapeOrIntValues = variableMetas[0].intValue;
+  output.dtype = variableMetas[0].dtype;
+  output.scalar = true;
+
+  return output;
+}
+
+/*
+ * aten::size(Tensor input, int dim) -> int
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::size(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 inputs, got %zu", variableMetas.size()));
+
+  const auto &inputShape = variableMetas[0].shape<TensorShape>();
+
+  auto dim = variableMetas[1].intValue[0];
+  // Convert dim to positive
+  dim = at::maybe_wrap_dim(dim, inputShape.size());
+
+  TensorOutput output;
+  output.shapeOrIntValues = {inputShape[dim]};
+  output.dtype = c10::ScalarType::Int;
+
+  return output;
+}
+
+/*
+ * fb::scale_gradient(Tensor input, float scale) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::scaleGradient(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 inputs, got %zu", variableMetas.size()));
+
+  TensorShape shape = variableMetas[0].shape<TensorShape>();
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * aten::repeat(Tensor input, int[] repeats) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::repeat(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 inputs, got %zu", variableMetas.size()));
+
+  const TensorShape &t = variableMetas[0].shape<TensorShape>();
+  auto repeats = variableMetas[1].intValue;
+
+  RETURN_ERR_IF_NOT(
+      repeats.size() >= t.size(),
+      strFormat("Number of dimensions of repeat dims can not be smaller "
+                "than number of dimensions of tensor: %zu vs %zu",
+                repeats.size(), t.size()));
+
+  std::vector<int64_t> resultShape;
+  size_t diff = repeats.size() - t.size();
+  for (int i = 0; i < repeats.size(); ++i) {
+    if (i < diff) {
+      resultShape.push_back(repeats[i]);
+    } else {
+      resultShape.push_back(repeats[i] * t[i - diff]);
+    }
+  }
+
+  TensorOutput output;
+  output.dtype = variableMetas[0].dtype;
+  output.shapeOrIntValues = resultShape;
+  return output;
+}
+
+/*
+ * aten::softmax(Tensor input, int dim, torch.dtype dtype) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::softmax(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2 || variableMetas.size() == 3,
+      strFormat("Expected 2 or 3 inputs, got %zu", variableMetas.size()));
+
+  TensorShape shape = variableMetas[0].shape<TensorShape>();
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * aten::unsqueeze(Tensor input, int dim) -> Tensor
+ *
+ * E.g. x.size() = torch.Size([2, 4])
+ * torch.unsqueeze(x, 0).size() = torch.Size([1, 2, 4])
+ * torch.unsqueeze(x, 1).size() = torch.Size([2, 1, 4])
+ * torch.unsqueeze(x, 2).size() = torch.Size([2, 4, 1])
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::unsqueeze(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 inputs, got %zu", variableMetas.size()));
+
+  const auto inputShape = variableMetas[0].shape<TensorShape>();
+
+  int dim = variableMetas[1].intValue[0];
+  // Wrapping for aten::unsqueeze works differently than for most of the ops.
+  if (dim < 0) {
+    dim += (inputShape.size() + 1);
+  }
+
+  // Add 1 at dim-th index.
+  // E.g. x.size() = torch.Size([2, 4]), dim = 1
+  // shapes = torch.Size([2, 1, 4])
+  TensorShape shape = inputShape;
+  shape.insert(shape.begin() + dim, 1);
+
+  TensorOutput output;
+  output.shapeOrIntValues = shape;
   output.dtype = variableMetas[0].dtype;
   return output;
 }

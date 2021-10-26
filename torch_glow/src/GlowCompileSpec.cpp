@@ -1,4 +1,18 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "GlowCompileSpec.h"
 #include "PyTorchCommon.h"
@@ -83,6 +97,8 @@ void registerPyTorchGlowCustomClasses() {
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, convert_to_fp16);
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings, skip_bias_fp32tofp16_convert);
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, num_devices_to_use);
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, replication_count);
@@ -109,6 +125,8 @@ void registerPyTorchGlowCustomClasses() {
                        CompilationSpecSettings, apl_parallelization_alg);
   ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
                        CompilationSpecSettings, apl_num_parallel_chunks);
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, use_max_size_compilation);
   addSerializationDefs<CompilationSpecSettings>(
       CompilationSpecSettings_registry);
 

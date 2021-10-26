@@ -210,7 +210,6 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
                                     inputNode->inputs(), /*num_outputs*/ 1);
 
     fusedNode->i_(torch::jit::attr::dim, dim);
-
     fusedNode->insertBefore(inputNode);
     fusedNode->output()->copyMetadata(node->output());
     node->output()->replaceAllUsesWith(fusedNode->output());
@@ -424,51 +423,235 @@ void fuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph) {
 } // namespace detail
 
 /// \returns true if none of the symbols in \p symbolNames are contained in \p
-/// opBlacklist
+/// opBlocklist
 static bool
-noneInBlacklist(const std::unordered_set<torch::jit::Symbol> &opBlacklist,
+noneInBlocklist(const std::unordered_set<torch::jit::Symbol> &opBlocklist,
                 std::vector<const char *> symbolNames) {
   for (const char *symbolName : symbolNames) {
-    if (opBlacklist.count(at::Symbol::fromQualString(symbolName))) {
+    if (opBlocklist.count(at::Symbol::fromQualString(symbolName))) {
       return false;
     }
   }
   return true;
 }
 
+// Unfuse glow::fused_linear
+void unfuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph) {
+  auto block = graph->block();
+  for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); it++) {
+    auto *node = *it;
+    if (node->kind() != c10::Symbol::fromQualString("glow::fused_linear")) {
+      continue;
+    }
+
+    auto *inputValue = node->inputs()[0];
+    auto *weightValue = node->inputs()[1];
+    auto *biasValue = node->inputs()[2];
+    auto *cValue = node->inputs()[3];
+    auto *dValue = node->inputs()[4];
+    auto *dimNode = graph->create(at::aten::dim, {inputValue});
+    auto *eqNode = graph->create(at::aten::eq, {dimNode->output(), cValue});
+    auto *ifNode = graph->create(at::prim::If, {eqNode->output()});
+
+    auto *block_0 = ifNode->addBlock();
+    auto *tNode_0 = graph->create(at::aten::t, {weightValue});
+    auto *cNode_0 = graph->create(at::prim::Constant)->i_(at::attr::value, 1);
+    cNode_0->output()->setType(at::IntType::get());
+    auto *mmNode_0 =
+        graph->create(at::aten::mm, {inputValue, tNode_0->output()});
+    auto *addNode_0 = graph->create(
+        at::aten::add, {biasValue, mmNode_0->output(), cNode_0->output()});
+    block_0->appendNode(tNode_0);
+    block_0->appendNode(cNode_0);
+    block_0->appendNode(mmNode_0);
+    block_0->appendNode(addNode_0);
+    block_0->insertOutput(0, addNode_0->output());
+
+    auto *block_1 = ifNode->addBlock();
+    auto *tNode_1 = graph->create(at::aten::t, {weightValue});
+    auto *matmulNode_1 =
+        graph->create(at::aten::matmul, {inputValue, tNode_1->output()});
+    auto *addNode_1 = graph->create(
+        at::aten::add_, {matmulNode_1->output(), biasValue, dValue});
+    block_1->appendNode(tNode_1);
+    block_1->appendNode(matmulNode_1);
+    block_1->appendNode(addNode_1);
+    block_1->insertOutput(0, addNode_1->output());
+
+    ifNode->insertAfter(node);
+    ifNode->output()->copyMetadata(node->output());
+    node->replaceAllUsesWith(ifNode);
+    dimNode->insertBefore(ifNode);
+    eqNode->insertBefore(ifNode);
+  }
+}
+
+// Unfuse glow::fused_stack, glow::fused_broadcast_cat,
+// glow::fused_broadcast_stack
+void unfuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
+  auto block = graph->block();
+  for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); it++) {
+    auto *node = *it;
+    const auto kind = node->kind();
+    if (kind != c10::Symbol::fromQualString("glow::fused_stack") &&
+        kind != c10::Symbol::fromQualString("glow::fused_broadcast_cat") &&
+        kind != c10::Symbol::fromQualString("glow::fused_broadcast_stack")) {
+      continue;
+    }
+    std::string symbolS;
+    if (kind == c10::Symbol::fromQualString("glow::fused_stack")) {
+      symbolS = "aten::stack";
+    } else if (kind ==
+               c10::Symbol::fromQualString("glow::fused_broadcast_cat")) {
+      symbolS = "fb::broadcast_cat";
+    } else {
+      // kind == c10::Symbol::fromQualString("glow::fused_broadcast_stack")
+      symbolS = "fb::broadcast_stack";
+    }
+    auto dim = node->i(at::attr::dim);
+    torch::jit::Value *dimVal = graph->create(at::prim::Constant)
+                                    ->output()
+                                    ->setType(at::IntType::get());
+    dimVal->node()->i_(at::attr::value, dim);
+    torch::jit::Value *inputs =
+        graph->create(at::prim::ListConstruct, node->inputs())
+            ->output()
+            ->setType(at::ListType::ofTensors());
+    inputs->node()->insertBefore(node);
+    dimVal->node()->insertBefore(node);
+    auto unfusedConcat = graph->create(
+        torch::jit::Symbol::fromQualString(symbolS), {inputs, dimVal}, 1);
+    unfusedConcat->insertBefore(node);
+    unfusedConcat->output()->copyMetadata(node->output());
+    node->output()->replaceAllUsesWith(unfusedConcat->output());
+  }
+}
+
+// Unfuse glow::fused_split
+void unfuseSplit(std::shared_ptr<torch::jit::Graph> &graph) {
+  auto block = graph->block();
+  for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); it++) {
+    auto *node = *it;
+    if (node->kind() != c10::Symbol::fromQualString("glow::fused_split")) {
+      continue;
+    }
+    auto *inputNode =
+        graph->create(torch::jit::Symbol::fromQualString("fb::equally_split"),
+                      node->inputs());
+    auto *unfusedSplit = graph->create(
+        c10::prim::ListUnpack, inputNode->output(), node->outputs().size());
+    inputNode->insertBefore(node);
+    unfusedSplit->insertBefore(node);
+    for (auto i = 0; i < node->outputs().size(); ++i) {
+      auto out = node->outputs()[i];
+      unfusedSplit->outputs()[i]->copyMetadata(out);
+      out->replaceAllUsesWith(unfusedSplit->outputs()[i]);
+    }
+  }
+}
+
+// Unfuse glow::unpacked_quantized_conv2d/glow::unpacked_quantized_conv3d
+void unfuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
+  std::string convPrepackPattern = R"IR(
+graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point):
+  %prepacked_weight : __torch__.torch.classes.quantized.Conv2dPackedParamsBase = quantized::conv2d_prepack(%w, %b, %stride, %padding, %dilation, %groups)
+  %res = quantized::conv2d(%input, %prepacked_weight, %scale, %zero_point)
+  return (%res))IR";
+
+  std::string convFused = R"IR(
+graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point):
+  %res = glow::unpacked_quantized_conv2d(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point)
+  return (%res))IR";
+
+  // Replace unpacked_quantized_conv2d with conv_prepack + conv2d
+  torch::jit::SubgraphRewriter unpackedConvToConv;
+  unpackedConvToConv.RegisterRewritePattern(convFused, convPrepackPattern);
+  unpackedConvToConv.runOnGraph(graph);
+
+  std::string conv3DPrepackPattern = R"IR(
+graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point):
+  %prepacked_weight : __torch__.torch.classes.quantized.Conv3dPackedParamsBase = quantized::conv3d_prepack(%w, %b, %stride, %padding, %dilation, %groups)
+  %res = quantized::conv3d(%input, %prepacked_weight, %scale, %zero_point)
+  return (%res))IR";
+
+  std::string conv3DFused = R"IR(
+graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point):
+  %res = glow::unpacked_quantized_conv3d(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point)
+  return (%res))IR";
+
+  // Replace unpacked_quantized_conv3d with conv_prepack + conv3d
+  torch::jit::SubgraphRewriter unpackedConv3DToConv3D;
+  unpackedConv3DToConv3D.RegisterRewritePattern(conv3DFused,
+                                                conv3DPrepackPattern);
+  unpackedConv3DToConv3D.runOnGraph(graph);
+}
+
+// Unfuse glow::unpacked_quantized_linear
+void unfuseLinearPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
+  std::string beforePattern = R"IR(
+graph(%input, %weights, %bias, %scale, %zero_point):
+  %res = glow::unpacked_quantized_linear(%input, %weights, %bias, %scale, %zero_point)
+  return (%res))IR";
+
+  std::string afterPattern = R"IR(
+graph(%input, %weights, %bias, %scale, %zero_point):
+  %packed_params = quantized::linear_prepack(%weights, %bias)
+  %res = quantized::linear(%input, %packed_params, %scale, %zero_point)
+  return (%res))IR";
+
+  // Replace glow::unpacked_quantized_linear w/ linear_prepack +
+  // quantized::linear to
+  torch::jit::SubgraphRewriter rewriter;
+  rewriter.RegisterRewritePattern(beforePattern, afterPattern);
+  rewriter.runOnGraph(graph);
+}
+
+// Unfuse dummy glow operators
+void unfuseDummyOperators(std::shared_ptr<torch::jit::Graph> &graph) {
+  unfuseConvPrepack(graph);
+
+  unfuseLinearPrepack(graph);
+
+  unfuseBranchedLinearPattern(graph);
+
+  unfuseConcat(graph);
+
+  unfuseSplit(graph);
+}
+
 void fuseKnownPatterns(
     std::shared_ptr<torch::jit::Graph> &graph,
-    const std::unordered_set<torch::jit::Symbol> &opBlacklist) {
+    const std::unordered_set<torch::jit::Symbol> &opBlockList) {
   detail::removeExceptions(graph);
   EliminateDeadCode(graph);
 
-  if (noneInBlacklist(opBlacklist, {"aten::dim", "aten::eq", "prim::If",
+  if (noneInBlocklist(opBlockList, {"aten::dim", "aten::eq", "prim::If",
                                     "aten::t", "aten::mm", "aten::add",
                                     "aten::matmul", "aten::add_"})) {
     detail::fuseBranchedLinearPattern(graph);
     EliminateDeadCode(graph);
   }
 
-  if (noneInBlacklist(opBlacklist,
+  if (noneInBlocklist(opBlockList,
                       {"aten::cat", "prim::ListConstruct", "aten::stack"})) {
     detail::fuseConcat(graph);
   }
 
-  if (noneInBlacklist(opBlacklist,
+  if (noneInBlocklist(opBlockList,
                       {"quantized::conv2d_prepack", "quantized::conv2d"})) {
     detail::fuseConvPrepack(graph);
   }
 
-  if (noneInBlacklist(opBlacklist,
+  if (noneInBlocklist(opBlockList,
                       {"quantized::linear_prepack", "quantized::linear"})) {
     detail::fuseLinearPrepack(graph);
   }
 
-  if (noneInBlacklist(opBlacklist, {"prim::NumToTensor", "aten::Int"})) {
+  if (noneInBlocklist(opBlockList, {"prim::NumToTensor", "aten::Int"})) {
     detail::fuseNumToTensorToNum(graph);
   }
 
-  if (noneInBlacklist(opBlacklist, {"prim::ListUnpack", "fb::equally_split"})) {
+  if (noneInBlocklist(opBlockList, {"prim::ListUnpack", "fb::equally_split"})) {
     detail::fuseSplit(graph);
   }
 

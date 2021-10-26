@@ -1,0 +1,168 @@
+ir_version: 3
+producer_name: "onnx-conv"
+graph {
+  node {
+    input: "data"
+    input: "W"
+    input: "B"
+    output: "y"
+    name: "conv1"
+    op_type: "Conv"
+    attribute {
+      name: "kernel_shape"
+      ints: 2
+      ints: 3
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "pads"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "strides"
+      ints: 1
+      ints: 1
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "dilations"
+      ints: 1
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+  }
+  name: "test-model"
+  initializer {
+    dims: 1
+    dims: 1
+    dims: 2
+    dims: 3
+    dims: 3
+    data_type: 1
+    float_data: 0.25
+    float_data: 0.5
+    float_data: 0.25
+    float_data: 0.5
+    float_data: 1.0
+    float_data: 0.5
+    float_data: 0.25
+    float_data: 0.5
+    float_data: 0.25
+    float_data: 0.25
+    float_data: 0.5
+    float_data: 0.25
+    float_data: 0.5
+    float_data: 1.0
+    float_data: 0.5
+    float_data: 0.25
+    float_data: 0.5
+    float_data: 0.25
+    name: "W"
+  }
+  initializer {
+    dims: 1
+    data_type: 1
+    float_data: 0.0
+    name: "B"
+  }
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "W"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "B"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 4
+}

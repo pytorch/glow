@@ -438,6 +438,7 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
         // If PH is static treat like a constant.
         if (ph->isStatic()) {
           ret.constMemSize += size;
+          ret.deferredConstMemSize += size;
         } else {
           // PlaceHolder for Input.
           ret.inMemSize += size;
@@ -511,6 +512,7 @@ GraphMemInfo getFunctionMemory(Function *func) {
   for (auto &place : func->findPlaceholders()) {
     if (place->isStatic()) {
       graphMem.constMemSize += place->getType()->getSizeInBytes();
+      graphMem.deferredConstMemSize += place->getType()->getSizeInBytes();
     } else {
       if (isInput(place, *func)) {
         graphMem.inMemSize += place->getType()->getSizeInBytes();
@@ -563,7 +565,13 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
               << "\t\t\t output size:\t"
               << partitions.getGraphMemInfo(subF).outMemSize << "\n"
               << "\t\t\t constant size:\t"
-              << partitions.getGraphMemInfo(subF).constMemSize << "\n";
+              << partitions.getGraphMemInfo(subF).constMemSize << "\n"
+              << "\t\t\t\t non-deferred constant size:\t"
+              << partitions.getGraphMemInfo(subF).constMemSize -
+                     partitions.getGraphMemInfo(subF).deferredConstMemSize
+              << "\n"
+              << "\t\t\t\t deferred constant size:\t"
+              << partitions.getGraphMemInfo(subF).deferredConstMemSize << "\n";
     // This may be called before logicalDevices are assigned so check before
     // printing.
     if (partitions.getLogicalDeviceIDList(subF).size()) {
@@ -629,13 +637,45 @@ void printSlsDeviceInfo(const std::vector<SLSDeviceInfo> &slsDevices,
   }
 }
 
+bool isSLSNode(const Node *node) {
+  return (
+      node->getKind() ==
+          glow::Kinded::Kind::
+              FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind ||
+      node->getKind() ==
+          glow::Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind ||
+      node->getKind() == glow::Kinded::Kind::
+                             RowwiseQuantizedSparseLengthsWeightedSumNodeKind ||
+      node->getKind() == glow::Kinded::Kind::SparseLengthsSumNodeKind ||
+      node->getKind() == glow::Kinded::Kind::SparseLengthsWeightedSumNodeKind ||
+      node->getKind() == glow::Kinded::Kind::EmbeddingBagNodeKind ||
+      node->getKind() ==
+          glow::Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind);
+}
+
+bool checkNodeInputsAllKind(const Node *node, glow::Kinded::Kind kind) {
+  bool allSameKind = true;
+  for (auto i = 0; i < node->getNumInputs(); i++) {
+    auto nodeInput = node->getNthInput(i);
+    allSameKind &= nodeInput.getNode()->getKind() == kind;
+  }
+  return allSameKind;
+}
+
 Error assignSlsTableToFirstAvailableDevice(
     SLSTableInfo &table, std::vector<SLSDeviceInfo> &slsDevices,
     std::vector<NodesSet> &nodesets,
     std::vector<std::unordered_set<NodeValue>> &frontierValues,
-    const unsigned contextCount) {
+    const unsigned contextCount,
+    std::unordered_map<Node *, size_t> &addedSLSNodes) {
   DCHECK(slsDevices.size() == nodesets.size() &&
          slsDevices.size() == frontierValues.size());
+  auto addedNodeDeviceId = addedSLSNodes.find(table.node);
+  if (addedNodeDeviceId != addedSLSNodes.end()) {
+    table.deviceId = addedNodeDeviceId->second;
+    return Error::success();
+  }
+
   bool deviceFound = false;
   for (auto &d : slsDevices) {
     const auto deviceId = d.deviceId;
@@ -651,6 +691,11 @@ Error assignSlsTableToFirstAvailableDevice(
       table.deviceId = deviceId;
       frontierValues[deviceId].insert(table.frontier.begin(),
                                       table.frontier.end());
+      for (auto &nb : table.neighbors) {
+        if (isSLSNode(nb)) {
+          addedSLSNodes.insert({nb, deviceId});
+        }
+      }
       nodesets[deviceId].swap(nodesSetd);
       deviceFound = true;
       break;
@@ -720,6 +765,7 @@ Error assignSlsTablesToDevices(
   VLOG(1) << "Large tables by size decreasing: ";
   printSlsTableInfo(slsTablesLeft, slsTableRight);
   std::vector<NodesSet> nodesets(slsDevices.size());
+  std::unordered_map<Node *, size_t> addedSLSNodes;
   while (slsTablesLeft < slsTableRight) {
     // Sort devices by size increasingly.
     std::sort(slsDevices.begin(), slsDevices.end(),
@@ -740,7 +786,8 @@ Error assignSlsTablesToDevices(
     // Pick the first that fits
     auto &table = *slsTablesLeft;
     RETURN_IF_ERR(assignSlsTableToFirstAvailableDevice(
-        table, slsDevices, nodesets, frontierValues, contextCount));
+        table, slsDevices, nodesets, frontierValues, contextCount,
+        addedSLSNodes));
     slsTablesLeft++;
   }
   VLOG(1) << "Done assigning large tables, devices info: ";
@@ -775,7 +822,8 @@ Error assignSlsTablesToDevices(
     // Pick the first that fits
     auto &table = *slsTablesLeft;
     RETURN_IF_ERR(assignSlsTableToFirstAvailableDevice(
-        table, slsDevices, nodesets, frontierValues, contextCount));
+        table, slsDevices, nodesets, frontierValues, contextCount,
+        addedSLSNodes));
     slsTablesLeft++;
   }
   // Print final device info
@@ -819,6 +867,7 @@ Error assignSlsTablesToDevicesGreedy(
 
   // Now assign SLS Nodes to devices
   std::vector<NodesSet> nodesets(slsDevices.size());
+  std::unordered_map<Node *, size_t> addedSLSNodes;
   for (auto &table : slsTables) {
 
     // Sort by cost increasing
@@ -833,7 +882,8 @@ Error assignSlsTablesToDevicesGreedy(
 
     // Pick the first that fits
     RETURN_IF_ERR(assignSlsTableToFirstAvailableDevice(
-        table, slsDevices, nodesets, frontierValues, contextCount));
+        table, slsDevices, nodesets, frontierValues, contextCount,
+        addedSLSNodes));
   }
   // Print final device info
   LOG(INFO) << "Devices sorted by cost increasing: ";
