@@ -152,7 +152,7 @@ source venv/bin/activate
 git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
 pushd pytorch
 pip install -r requirements.txt
-BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=0 USE_FBGEMM=ON python setup.py install
+BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=0 BUILD_CAFFE2=ON USE_FBGEMM=ON python setup.py install
 popd
 popd
 ```

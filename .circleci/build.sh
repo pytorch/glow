@@ -168,7 +168,7 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     cd pytorch
     pip install -r requirements.txt
     pip install parameterized
-    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=1 USE_FBGEMM=ON python setup.py install
+    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=1 BUILD_CAFFE2=ON USE_FBGEMM=ON python setup.py install
     cd ${GLOW_DIR}
     cd build
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
