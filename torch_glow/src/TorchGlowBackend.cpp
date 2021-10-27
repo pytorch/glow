@@ -775,7 +775,7 @@ compileImpl(const torch::jit::Module &origModule,
     RETURN_IF_ERR(
         applySettingsOverrideFlagsToPyTorchLoaderSettings(baseSettings));
 
-    auto graph = method.function().graph();
+    auto graph = toGraphFunction(method.function()).graph();
     graph = graph->copy();
 
     if (baseSettings.enableDebugFuser) {
