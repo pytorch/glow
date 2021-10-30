@@ -458,7 +458,9 @@ TEST(exporter, onnxModels) {
         name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
             std::string::npos ||
         name.find("sliceInvalidAxes.onnxtxt") != std::string::npos ||
-        name.find("sliceWithUnsupportedStep.onnxtxt") != std::string::npos) {
+        name.find("sliceWithUnsupportedStep.onnxtxt") != std::string::npos ||
+        name.find("simpleConv3DNonSquareDilation.onnxtxt") !=
+            std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.
       llvm::outs() << "Ignore invalid input files: " << name << "\n";
       continue;

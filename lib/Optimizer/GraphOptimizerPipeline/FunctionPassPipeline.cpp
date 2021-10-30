@@ -100,8 +100,8 @@ createDefaultGraphOptimizationPassPipeline() {
       {FunctionPassID::OptimizeSmallConv},
 
       // Merge multiple matmul nodes into a single large matmul.
-      {FunctionPassID::MergeMatMul},
-
+      {FunctionPassID::MergeMatMulOnLHS},
+      {FunctionPassID::MergeMatMulOnRHS},
       // Merge multiple batched adds into a larger batched add.
       {FunctionPassID::MergeBatchedAdd},
 

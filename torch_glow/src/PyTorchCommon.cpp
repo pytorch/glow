@@ -652,7 +652,8 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
 // API to cleanup the IR after IR rewrites.
 void modelPreprocessing(torch::jit::Module &model,
                         const std::string &method_name) {
-  auto graph = model.get_method(method_name).function().graph();
+  auto graph =
+      toGraphFunction(model.get_method(method_name).function()).graph();
 
   torch::jit::CanonicalizeOps(graph);
   detail::rewriteQuantizedLinear(graph);
@@ -675,7 +676,8 @@ void glowAOTFusionWithShapeInference(
     c10::optional<PostFusionProcessFn> postFusionProcessFn,
     const c10::optional<ModelCompilationConfigOverride>
         &modelCompilationConfigOverride) {
-  auto graph = model.get_method(method_name).function().graph();
+  auto graph =
+      toGraphFunction(model.get_method(method_name).function()).graph();
 
   // create some fake inputs to run shape inference.
   // Usually users provide one set of inputs for the entire
@@ -823,7 +825,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
 
   // We assume the model is flattened and only one graph will be lowered. In the
   // future we may need to support multiple graphs.
-  auto graph = model.get_method(method_name).function().graph();
+  auto graph =
+      toGraphFunction(model.get_method(method_name).function()).graph();
 
   c10::Symbol symbol = glow::getGlowSymbol(graph);
   glow::registerGlowOp(symbol);

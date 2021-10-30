@@ -1047,6 +1047,73 @@ static void convTestHelper(std::string &filename,
   }
 }
 
+/// Helper method to run the Conv operator test cases.
+/// \p filename contains the model .onnxtxt.
+/// \p expectedDims: output Tensor dimensions.
+/// \p expectedValues : output Tensor values expected.
+/// The input is N*C*H*W (1*1*2*3*3), the kernels is {2, 3, 3},
+/// strides is {1, 1, 1}, group is 1. Pads can vary.
+static void conv3DTestHelper(std::string &filename,
+                             llvm::ArrayRef<dim_t> inputDims,
+                             llvm::ArrayRef<dim_t> expectedDims,
+                             llvm::ArrayRef<float> expectedValues) {
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data;
+    getNCTHWData(&data, inputDims[0], inputDims[1], inputDims[2], inputDims[3],
+                 inputDims[4]);
+    ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
+    graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
+  }
+
+  // ONNX importer loads a conv node and converts it to 4 ops:
+  // Transpose (input)   -> Conv -> Transpose
+  // Transpose (filter) ->
+  // A save node is added in the network as well. Therefore there are 5 nodes:
+  // Transpose (input)   -> Conv -> Transpose -> Save
+  // Transpose (filter) ->
+  // Note that in case the convolution filter is a constant tensor, the filter
+  // transpose node will be later optimized out by the optimizer.
+  EXPECT_EQ(F->getNodes().size(), 5);
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  EXPECT_EQ(mod.getConstants().size(), 2);
+
+  auto *saveNode = getSaveNodeFromDest(graphOutputVar);
+  auto *node = saveNode->getInput().getNode();
+
+  EXPECT_TRUE(node->getKind() == Kinded::Kind::TransposeNodeKind);
+  auto *convNode = llvm::dyn_cast<TransposeNode>(node)->getInput().getNode();
+
+  EXPECT_TRUE(convNode->getKind() == Kinded::Kind::Convolution3DNodeKind);
+  auto *tInNode =
+      llvm::dyn_cast<Convolution3DNode>(convNode)->getInput().getNode();
+  auto *tFilterNode =
+      llvm::dyn_cast<Convolution3DNode>(convNode)->getFilter().getNode();
+  EXPECT_TRUE(tInNode->getKind() == Kinded::Kind::TransposeNodeKind);
+  EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  EXPECT_TRUE(result.dims() == expectedDims);
+  for (size_t i = 0, e = expectedValues.size(); i < e; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
@@ -1096,6 +1163,122 @@ TEST_F(OnnxImporterTest, importConvAutoPadSameLower) {
   std::vector<dim_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {2, 3, 5, 5, 10, 14, 11, 22, 26};
   convTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading conv 3D op from a ONNX model.
+/// The input is N*C*T*H*W (1*1*2*3*3), the kernels is {2, 3, 3},
+/// strides is {1, 1, 1}, pads is {1, 1, 1, 1, 1, 1}, group is 1.
+TEST_F(OnnxImporterTest, importConv3D) {
+  std::string filename("simpleConv3D.onnxtxt");
+  std::vector<dim_t> inputDims = {1, 1, 2, 3, 3};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 3, 3};
+  std::vector<float> expectedValues = {
+      3.0,   6.0,  6.0,   10.0, 16.0, 14.0, 12.0,  18.0, 15.0,
+      26.25, 39.0, 32.25, 47.0, 68.0, 55.0, 44.25, 63.0, 50.25,
+      23.25, 33.0, 26.25, 37.0, 52.0, 41.0, 32.25, 45.0, 35.25};
+  conv3DTestHelper(filename, inputDims, expectedDims, expectedValues);
+}
+
+/// Test loading conv 3D op from a ONNX model.
+/// The input is N*C*T*H*W (1*1*2*3*3), the kernels is {2, 3, 3},
+/// strides is {1, 1, 1}, pads is {1, 1, 1, 1, 1, 1}, group is 1.
+/// Dilation is {1, 2, 1}.
+// TEST_F(OnnxImporterTest, importConv3DNonSquareDilation) {
+//  std::string filename("simpleConv3D.onnxtxt");
+//  std::vector<dim_t> inputDims = {1, 1, 2, 3, 3};
+//  std::vector<dim_t> expectedDims = {1, 1, 3, 1, 3};
+//  std::vector<float> expectedValues = {
+//      5.0, 8.0, 7.0, 23.5, 34.0, 27.5, 18.5, 26.0, 20.5
+//  };
+//  conv3DTestHelper(filename, inputDims, expectedDims, expectedValues);
+//}
+
+/// Test loading conv 3D op from a ONNX model.
+/// The input is N*C*T*H*W (1*1*2*3*3), the kernels is {2, 3, 3},
+/// strides is {1, 1, 1}, auto_pad VALID (i.e. no padding), group is 1.
+TEST_F(OnnxImporterTest, importConv3DAutoPadValid) {
+  std::string filename("simpleConv3DAutoPadValid.onnxtxt");
+  std::vector<dim_t> inputDims = {1, 1, 2, 3, 3};
+  std::vector<dim_t> expectedDims = {1, 1, 1, 1, 1};
+  std::vector<float> expectedValues = {68.0};
+  conv3DTestHelper(filename, inputDims, expectedDims, expectedValues);
+}
+
+/// Test loading conv 3D op from a ONNX model.
+/// The input is N*C*T*H*W (1*1*2*3*3), the kernels is {2, 3, 3},
+/// strides is {1, 2, 2}, auto_pad SAME_LOWER, group is 1.
+TEST_F(OnnxImporterTest, importConv3DAutoPadSameLower) {
+  std::string filename("simpleConv3DAutoPadSameLower.onnxtxt");
+  std::vector<dim_t> inputDims = {1, 1, 2, 3, 3};
+  std::vector<dim_t> expectedDims = {1, 1, 2, 2, 2};
+  std::vector<float> expectedValues = {3.0,   6.0,   12.0,  15.0,
+                                       26.25, 32.25, 44.25, 50.25};
+  conv3DTestHelper(filename, inputDims, expectedDims, expectedValues);
+}
+
+/// Test loading conv 3D op from a ONNX model.
+/// The input is N*C*T*H*W (1*1*2*3*3), the kernels is {2, 3, 3},
+/// strides is {1, 2, 2}, auto_pad SAME_UPPER, group is 1.
+TEST_F(OnnxImporterTest, importConv3DAutoPadSameUpper) {
+  std::string filename("simpleConv3DAutoPadSameUpper.onnxtxt");
+  std::vector<dim_t> inputDims = {1, 1, 2, 3, 3};
+  std::vector<dim_t> expectedDims = {1, 1, 2, 2, 2};
+  std::vector<float> expectedValues = {26.25, 32.25, 44.25, 50.25,
+                                       23.25, 26.25, 32.25, 35.25};
+  conv3DTestHelper(filename, inputDims, expectedDims, expectedValues);
+}
+
+/// Test loading conv 3D op with non-cubic pads from a ONNX model.
+/// The input is N*C*T*H*W (1*1*3*3*3), kernels is {1, 1, 1},
+/// strides is {1, 1, 1}, pads is {1, 2, 3, 3, 1, 2}, group is 1.
+/// Filter is 1.0 so that output equals input + padding
+TEST_F(OnnxImporterTest, importConv3DNonCubicPads) {
+  std::string filename("simpleConv3DNonCubicPads.onnxtxt");
+  std::vector<dim_t> inputDims = {1, 1, 3, 3, 3};
+  std::vector<dim_t> expectedDims = {1, 1, 7, 6, 8};
+  std::vector<float> expectedValues = {
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,
+
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      1.00,  2.00,  0.00, 0.00, 0.00, 0.00,  0.00,  3.00,  4.00,  5.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 6.00,  7.00,  8.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,
+
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  9.00,
+      10.00, 11.00, 0.00, 0.00, 0.00, 0.00,  0.00,  12.00, 13.00, 14.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 15.00, 16.00, 17.00, 0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,
+
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  18.00,
+      19.00, 20.00, 0.00, 0.00, 0.00, 0.00,  0.00,  21.00, 22.00, 23.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 24.00, 25.00, 26.00, 0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,
+
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,
+
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,
+
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,
+      0.00,  0.00,  0.00, 0.00, 0.00, 0.00,  0.00,  0.00};
+  conv3DTestHelper(filename, inputDims, expectedDims, expectedValues);
 }
 
 /// Import conv1D

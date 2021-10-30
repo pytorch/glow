@@ -1228,6 +1228,17 @@ struct IndexPutInputs {
   };
 };
 
+/// Indexes of aten::index_add inputs.
+struct IndexAddInputs {
+  enum {
+    input = 0,
+    dim,
+    index,
+    source,
+    alpha,
+  };
+};
+
 /// Indexes used for aten::repeat inputs
 struct RepeatInputs {
   enum {
@@ -1262,6 +1273,15 @@ struct PixelUnshuffleInputs {
   enum {
     input = 0,
     downscale_factor,
+  };
+};
+
+struct BatchedUnaryEmbeddingsBagsInputs {
+  enum {
+    weights = 0,
+    tableOffsets,
+    offsets,
+    indices,
   };
 };
 
@@ -1812,6 +1832,16 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::erf"},
        &PyTorchModelLoader::loadErf,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"fb::batched_unary_embeddings"},
+       &PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags,
+       &PyTorchModelLoader::getCorrectTypeFromInput<
+           BatchedUnaryEmbeddingsBagsInputs::weights>},
+      {{"aten::sign"},
+       &PyTorchModelLoader::loadSign,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"aten::index_add_", "aten::index_add"},
+       &PyTorchModelLoader::loadIndexAdd,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
   });
 #undef UNARY_NODE_LOADER
@@ -5075,9 +5105,20 @@ Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
 
   glow::PowNode *PN = nullptr;
   if (hasGlowIValueForValue(inputs[1])) {
+    glow::GlowIValue *exponentIValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(exponentIValue,
+                               getGlowIValueForValue(inputs[1]));
+
     float exponent;
-    ASSIGN_VALUE_OR_RETURN_ERR(exponent,
-                               iValToDouble(getGlowIValueForValue(inputs[1])));
+    if (exponentIValue->isDouble()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(exponent, iValToDouble(exponentIValue));
+    } else if (exponentIValue->isInt()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(exponent, iValToInt(exponentIValue));
+    } else {
+      std::ostringstream ss;
+      ss << "Unsupported type for exponent in node " << *ptNode;
+      return MAKE_ERR(ss.str());
+    }
     PN = F_.createPow("pow", input, exponent);
   } else {
     NodeValue expNV;
@@ -9266,6 +9307,119 @@ Error PyTorchModelLoader::loadErf(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(addValueMapping(outputs[0], node));
 
   return Error::success();
+}
+Error PyTorchModelLoader::loadSign(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto zeroes = F_.createSplat("zeroes", input.getType(), 0.f);
+
+  auto isPos = F_.createCmpLT("isPos", zeroes, input);
+  auto isNeg = F_.createCmpLT("isNeg", input, zeroes);
+
+  auto posOnes = F_.createSplat("posOnes", input.getType(), 1);
+  auto negOnes = F_.createSplat("negOnes", input.getType(), -1);
+
+  auto fillPositive = F_.createSelect("fillPos", isPos, posOnes, zeroes);
+  auto fillNegative = F_.createSelect("fillNeg", isNeg, negOnes, fillPositive);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], fillNegative->getResult()));
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
+
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weights, getGlowNodeValueForValue(
+                   inputs[BatchedUnaryEmbeddingsBagsInputs::weights]));
+  glow::NodeValue tableOffsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      tableOffsets,
+      getGlowNodeValueForValue(
+          inputs[BatchedUnaryEmbeddingsBagsInputs::tableOffsets]));
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(
+                   inputs[BatchedUnaryEmbeddingsBagsInputs::indices]));
+  glow::NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offsets, getGlowNodeValueForValue(
+                   inputs[BatchedUnaryEmbeddingsBagsInputs::offsets]));
+
+  auto *EB = F_.createBatchedUnaryEmbeddingsBags(
+      "BatchedUnaryEmbeddingsBags", weights, tableOffsets, indices, offsets);
+
+  RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+}
+
+Error PyTorchModelLoader::loadIndexAdd(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[IndexAddInputs::input]));
+
+  int dim = 0;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[IndexAddInputs::dim])));
+  RETURN_ERR_IF_NOT(dim == 0,
+                    "Only adding along dim = 0 is currently supported. ");
+  glow::NodeValue index;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      index, getGlowNodeValueForValue(inputs[IndexAddInputs::index]));
+
+  glow::NodeValue source;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      source, getGlowNodeValueForValue(inputs[IndexAddInputs::source]));
+
+  float alpha = 1.0;
+  if (hasGlowIValueForValue(inputs[IndexAddInputs::alpha])) {
+    GlowIValue *ival;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        ival, getGlowIValueForValue(inputs[IndexAddInputs::alpha]));
+    if (ival->isDouble()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(alpha, ival->toDouble());
+    } else if (ival->isInt()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(alpha,
+                                 static_cast_expected<float>(ival->toInt()));
+    } else if (!ival->isNone()) {
+      return MAKE_ERR("Unexpected scalar type");
+    }
+  }
+
+  RETURN_ERR_IF_NOT(index.dims().size() == 1,
+                    "Indices should be 1-dimensional");
+  RETURN_ERR_IF_NOT(source.dims().size() > dim,
+                    "dim must be less than the number of dims of source");
+  RETURN_ERR_IF_NOT(index.dims()[0] == source.dims()[dim],
+                    "The dim-th dimension of source must have the same size as "
+                    "the length of index");
+  for (auto i = 0; i < index.dims().size(); i++) {
+    RETURN_ERR_IF_NOT(
+        i != dim && input.dims()[i] != source.dims()[i],
+        "Every dimension of source has to match that of input other than dim");
+  }
+
+  auto scaleType =
+      F_.getParent()->uniqueType(ElemKind::FloatTy, {source.dims()});
+  auto scales = F_.createSplat("scales", scaleType, alpha);
+  Node *scaledSource = F_.createMul("scaledSource", source, scales);
+  auto indices2D = F_.createReshape("indices2D", index, {index.dims()[0], 1});
+  auto scatterNode =
+      F_.createScatterData("scatter", index, indices2D, scaledSource, true);
+  RETURN_ERR(addValueMapping(outputs[0], scatterNode));
 }
 
 Error PyTorchModelLoader::loadAttributes(

@@ -508,10 +508,16 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
              (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
               ElemKind::Float16Ty);
     case ElemKind::UInt8FusedQTy:
-      return (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
-              ElemKind::FloatTy) &&
-             (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
-              ElemKind::FloatTy);
+      return (
+          (((NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                WeightsIdx) == ElemKind::FloatTy) &&
+            (NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 ResultIdx) == ElemKind::FloatTy))) ||
+          ((NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                               WeightsIdx) == ElemKind::Float16Ty) &&
+           (NI.getOutElemTy(
+                FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
+            ElemKind::Float16Ty)));
     default:
       return false;
     }
@@ -875,6 +881,26 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BucketizeNodeKind:
     return NI.getInElemTy(BucketizeNode::InputIdx) == ElemKind::FloatTy &&
            NI.getOutElemTy(BucketizeNode::ResultIdx) == ElemKind::Int32ITy;
+
+  case Kinded::Kind::BatchedUnaryEmbeddingsBagsNodeKind:
+    return (
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+            {BatchedUnaryEmbeddingsBagsNode::TableOffsetsIdx,
+             BatchedUnaryEmbeddingsBagsNode::IndicesIdx,
+             BatchedUnaryEmbeddingsBagsNode::OffsetsIdx}) &&
+        (((NI.getInElemTy(BatchedUnaryEmbeddingsBagsNode::TableOffsetsIdx) ==
+           ElemKind::Int64ITy) &&
+          (NI.getInElemTy(BatchedUnaryEmbeddingsBagsNode::IndicesIdx) ==
+           ElemKind::Int64ITy) &&
+          (NI.getInElemTy(BatchedUnaryEmbeddingsBagsNode::OffsetsIdx) ==
+           ElemKind::Int64ITy)) ||
+         ((NI.getInElemTy(BatchedUnaryEmbeddingsBagsNode::TableOffsetsIdx) ==
+           ElemKind::Int32ITy) &&
+          (NI.getInElemTy(BatchedUnaryEmbeddingsBagsNode::IndicesIdx) ==
+           ElemKind::Int32ITy) &&
+          (NI.getInElemTy(BatchedUnaryEmbeddingsBagsNode::OffsetsIdx) ==
+           ElemKind::Int32ITy))));
 
   default:
     return false;

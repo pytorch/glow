@@ -676,6 +676,9 @@ struct BlacklistInitializer {
       {"batchedReduceAdd_Int32ITy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"CollectRpnProposals/0", TestBlacklist::AnyDeviceAnyEngine},
       {"HardSigmoid_BFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BatchedUnaryEmbeddingsBags_Float/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BatchedUnaryEmbeddingsBags_Float16/0",
+       TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

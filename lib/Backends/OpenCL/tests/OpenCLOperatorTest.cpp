@@ -779,4 +779,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "CmpNEQ_Int16QTy/0",
     "less_int16Cases/0",
     "InstanceNormalization_FloatTy/0",
+    "BatchedUnaryEmbeddingsBags_Float/0",
+    "BatchedUnaryEmbeddingsBags_Float16/0",
 };

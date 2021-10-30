@@ -3256,6 +3256,20 @@ ClipNode *Function::createClipMinMaxBFloat16(llvm::StringRef name,
   return createClip(name, input, bfloat16Min, bfloat16Max);
 }
 
+BatchedUnaryEmbeddingsBagsNode *Function::createBatchedUnaryEmbeddingsBags(
+    llvm::StringRef name, NodeValue weights, NodeValue tableOffsets,
+    NodeValue indices, NodeValue offsets) {
+  auto inDims = weights.dims();
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  outDims[0] = weights.dims()[0];
+  outDims[2] = tableOffsets.dims()[0] - 1;
+  outDims[1] = (offsets.dims()[0] - 1) / outDims[2];
+
+  auto outTy = getParent()->uniqueTypeWithNewShape(weights.getType(), outDims);
+  return addNode(new BatchedUnaryEmbeddingsBagsNode(
+      name, outTy, weights, tableOffsets, offsets, indices));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Placeholder-builder methods.
 //===----------------------------------------------------------------------===//
