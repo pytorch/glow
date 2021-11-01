@@ -696,18 +696,23 @@ void BundleSaver::produceBundle() {
 /// absolute addressing whenever possible.
 void BundleSaver::emitBundleEntryFunction(
     BundleSaver::SavedIRFunction &savedF) {
-  // The bundle entry point has the following API:
-  // int entry(uint8_t *constantWeight,
-  //           uint8_t *mutableWeight,
-  //           uint8_t *activations);
-  auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_->getLLVMContext());
-  llvm::Type *retTy = llvm::Type::getIntNTy(irgen_->getLLVMContext(),
-                                            irgen_->getLibjitIntWidth());
-  llvm::FunctionType *bundleFuncTy =
-      llvm::FunctionType::get(retTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
-  auto *func =
-      llvm::Function::Create(bundleFuncTy, llvm::Function::ExternalLinkage,
-                             savedF.entryName, &irgen_->getModule());
+  auto *func = irgen_->getModule().getFunction(savedF.entryName);
+  if (!func) {
+    // The bundle entry point has the following API:
+    // int entry(uint8_t *constantWeight,
+    //           uint8_t *mutableWeight,
+    //           uint8_t *activations);
+    auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_->getLLVMContext());
+    llvm::Type *retTy = llvm::Type::getIntNTy(irgen_->getLLVMContext(),
+                                              irgen_->getLibjitIntWidth());
+    llvm::FunctionType *bundleFuncTy = llvm::FunctionType::get(
+        retTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
+    func = llvm::Function::Create(bundleFuncTy, llvm::Function::ExternalLinkage,
+                                  savedF.entryName, &irgen_->getModule());
+  }
+  CHECK(func->isDeclaration()) << "Function definition of " << savedF.entryName
+                               << " already exists in the LLVM module";
+
   llvm::BasicBlock *entry_bb =
       llvm::BasicBlock::Create(irgen_->getLLVMContext(), "entry", func);
   llvm::IRBuilder<> builder(entry_bb);
