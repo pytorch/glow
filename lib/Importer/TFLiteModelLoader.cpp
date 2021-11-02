@@ -649,7 +649,7 @@ TFLiteModelLoader::getOperatorCustomOpts(const tflite::Operator *op) {
   return flexbuffers::GetRoot(optsAddr, optsSize).AsMap();
 }
 
-Expected<size_t>
+Expected<int32_t>
 TFLiteModelLoader::getOperatorInputTensorIdx(const tflite::Operator *op,
                                              size_t inputIdx) {
   std::string opType;
@@ -662,7 +662,7 @@ TFLiteModelLoader::getOperatorInputTensorIdx(const tflite::Operator *op,
                     strFormat("TensorFlowLite: Operator '%s' input index %zu "
                               "is out of range! Operator has %d inputs!",
                               opType.c_str(), inputIdx, opInputs->size()));
-  return static_cast<size_t>((*opInputs)[inputIdx]);
+  return (*opInputs)[inputIdx];
 }
 
 Expected<size_t>
@@ -726,9 +726,13 @@ Error TFLiteModelLoader::setNodeValueByIndex(size_t index,
 Expected<NodeValue>
 TFLiteModelLoader::getInputNodeValue(const tflite::Operator *op,
                                      size_t inputIdx) {
-  size_t tensorIdx;
+  int32_t tensorIdx;
   ASSIGN_VALUE_OR_RETURN_ERR(tensorIdx,
                              getOperatorInputTensorIdx(op, inputIdx));
+  // If the tensor index is negative this means the operand does not exist.
+  if (tensorIdx < 0) {
+    return NodeValue(nullptr);
+  }
   return getNodeValueByIndex(tensorIdx);
 }
 
@@ -1040,9 +1044,9 @@ Expected<bool> TFLiteModelLoader::isConv2DPerAxisQuantized(
   ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
-  size_t filterTensorIdx;
+  int32_t filterTensorIdx;
   ASSIGN_VALUE_OR_RETURN_ERR(filterTensorIdx, getOperatorInputTensorIdx(op, 1));
-  size_t biasTensorIdx;
+  int32_t biasTensorIdx;
   ASSIGN_VALUE_OR_RETURN_ERR(biasTensorIdx, getOperatorInputTensorIdx(op, 2));
   const tflite::Tensor *filterTensor;
   ASSIGN_VALUE_OR_RETURN_ERR(filterTensor, getTensorByIndex(filterTensorIdx));
@@ -1888,6 +1892,25 @@ Error TFLiteModelLoader::loadFullyConnected(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(bias, getInputNodeValue(op, 2));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+
+  // If bias is not used we create one initialized with 0.
+  if (!bias.getNode()) {
+    if (input.getType()->isQuantizedType()) {
+      float biasScale =
+          input.getType()->getScale() * weights.getType()->getScale();
+      int32_t biasOffset = 0;
+      auto *biasC =
+          mod_.createConstant(ElemKind::Int32QTy, {weights.dims()[0]},
+                              biasScale, biasOffset, opInfo.name + ".bias");
+      biasC->getPayloadMutable().zero();
+      bias = biasC;
+    } else {
+      auto *biasC = mod_.createConstant(ElemKind::FloatTy, {weights.dims()[0]},
+                                        opInfo.name + ".bias");
+      biasC->getPayloadMutable().zero();
+      bias = biasC;
+    }
+  }
 
   RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, weights, bias));
 
