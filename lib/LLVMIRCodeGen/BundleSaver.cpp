@@ -767,10 +767,18 @@ void BundleSaver::emitBundleConfig() {
       llvm::StructType::get(irgen_->getLLVMContext(),
                             {uint64TType, uint64TType, uint64TType, uint64TType,
                              uint64TType, symbolTableEntryTy->getPointerTo()});
-  auto config = new llvm::GlobalVariable(
-      irgen_->getModule(), bundleConfigTy, /* isConst */ true,
-      llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
+  // Checking if LLVM module already has <bundle>_config otherwise creating new.
+  auto config = irgen_->getModule().getGlobalVariable(
       irgen_->getBundleName().str() + "_config");
+  if (!config) {
+    config = new llvm::GlobalVariable(
+        irgen_->getModule(), bundleConfigTy, /* isConst */ true,
+        llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
+        irgen_->getBundleName().str() + "_config");
+  }
+  CHECK(!config->hasInitializer())
+      << "Bundle config has already been initialized";
+
   config->setInitializer(llvm::ConstantStruct::get(
       bundleConfigTy,
       llvm::ConstantInt::get(
@@ -779,10 +787,8 @@ void BundleSaver::emitBundleConfig() {
           uint64TType, irgen_->getAllocationsInfo().mutableWeightVarsMemSize_),
       llvm::ConstantInt::get(uint64TType,
                              irgen_->getAllocationsInfo().activationsMemSize_),
-
       llvm::ConstantInt::get(uint64TType, TensorAlignment),
       llvm::ConstantInt::get(uint64TType, findPlaceholders().size()),
-
       symbolTable));
 }
 
