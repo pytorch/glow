@@ -129,7 +129,11 @@ bool parseIO(const std::string &filename, ::ONNX_NAMESPACE::GraphProto &g) {
   }
   google::protobuf::io::IstreamInputStream fileStream(&ff);
   google::protobuf::io::CodedInputStream codedStream(&fileStream);
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE);
+#else
   codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
+#endif
   bool yes = g.ParseFromCodedStream(&codedStream);
   if (!yes) {
     return false;
