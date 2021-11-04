@@ -253,7 +253,8 @@ Error NNPICompiledFunction::setupCompilationHints(
             (memoryLevel == "SRAM")  ? NNPI_ALLOCATION_SRAM
             : (memoryLevel == "LLC") ? NNPI_ALLOCATION_LLC
                                      : NNPI_ALLOCATION_DRAM;
-        hint.tensorPlacement.priority = 0.0f;
+        // positive priority is required to enforce the hints
+        hint.tensorPlacement.priority = 1.0f;
         hints.emplace_back(hint);
       }
     }
