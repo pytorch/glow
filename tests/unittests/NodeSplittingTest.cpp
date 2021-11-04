@@ -2384,3 +2384,44 @@ TEST_F(NodeSplitting, Recursive_OnlyFirstOutputOperand) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
   // Note: We do not run the inference since we do not support Relu for INT64.
 }
+
+/// Verify that identical Touch nodes to not get reused. The Touch node should
+/// be excepted from CSE because it is not safe to assume that identical Touch
+/// nodes produce same output because the output is not initialized. The
+/// presence of the Touch node in CSE tends to increase the lifetime of some
+/// buffers resulting in extra copy instructions (runtime overhead) and
+/// increased buffer lifetimes (memory overhead).
+TEST_F(NodeSplitting, DoNotShareTouchNodes) {
+  std::vector<dim_t> inputDims = {2, 2};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  Node *relu1 = F_->createRELU("relu1", input);
+  Node *relu2 = F_->createRELU("relu2", relu1);
+  SaveNode *result = F_->createSave("result", relu2);
+  bindings_.allocate(result->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  std::vector<Node *> splitNodes1;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes1, ::glow::splitNode(relu1, splitOption));
+  std::vector<Node *> splitNodes2;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes2, ::glow::splitNode(relu2, splitOption));
+
+  // Optimize function (this includes CSE).
+  ::glow::optimize(F_, cctx_);
+
+  // Check node count.
+  EXPECT_EQ(splitNodes1.size(), 2);
+  EXPECT_EQ(splitNodes2.size(), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 4);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 4);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 4);
+
+  // We should have 2 Touch nodes and not 1 because we should not reuse them.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 2);
+}

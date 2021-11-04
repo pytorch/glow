@@ -3479,7 +3479,7 @@ struct NodeEq {
 /// are identical. Such nodes include Touch nodes which allocate buffers without
 /// initialization or nodes which generate random data.
 static const std::vector<Kinded::Kind> CSENodeExceptions = {
-  Kinded::Kind::TouchNodeKind,
+    Kinded::Kind::TouchNodeKind,
 };
 
 /// This visitor is used to walk the graph and perform a common subexpression
@@ -3520,7 +3520,8 @@ struct CSEVisitor : NodeWalker {
     assert(N->isEqual(*foundN));
 
     // Skip CSE node exceptions.
-    if (std::find(CSENodeExceptions.begin(), CSENodeExceptions.end(), N->getKind()) != CSENodeExceptions.end()) {
+    if (std::find(CSENodeExceptions.begin(), CSENodeExceptions.end(),
+                  N->getKind()) != CSENodeExceptions.end()) {
       return;
     }
 
