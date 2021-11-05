@@ -92,6 +92,7 @@ bool SparseNNPartitioningPairLNWithSLS = false;
 bool SparseNNPartitioningPairTileWithSLS = false;
 std::string SparseNNPartitioningPairSLSWith = "";
 int32_t SparseNNPartitioningConcatSplitSize = 1;
+bool SparseNNParallelizeReshapeOnBatchDim = true;
 
 // Dag Optimizer Constants
 bool UseDAGOptimizer = false;
@@ -376,6 +377,14 @@ DEFINE_int32(glow_sparsenn_partitioning_concat_split_size,
 DEFINE_validator(glow_sparsenn_partitioning_concat_split_size,
                  [](const char *, const int32_t val) {
                    glow::flags::SparseNNPartitioningConcatSplitSize = val;
+                   return true;
+                 });
+DEFINE_bool(glow_sparsenn_parallelize_reshape_on_batch_dim,
+            glow::flags::SparseNNParallelizeReshapeOnBatchDim,
+            "Force parallelizing the reshape operators on the batch dimension");
+DEFINE_validator(glow_sparsenn_parallelize_reshape_on_batch_dim,
+                 [](const char *, bool val) {
+                   glow::flags::SparseNNParallelizeReshapeOnBatchDim = val;
                    return true;
                  });
 DEFINE_bool(glow_clip_fp16, glow::flags::ClipToFP16,

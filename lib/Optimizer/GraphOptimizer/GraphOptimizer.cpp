@@ -15,11 +15,13 @@
  */
 
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include <folly/String.h>
 
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/Float16Converter.h"
 #include "glow/Converter/FusedRowwiseConverter.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
@@ -6707,6 +6709,105 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
   return changed;
 }
 
+static Expected<ConcatNode *> parallelizeAndReplaceReshapeNode(
+    Function *F, Node *curNode, dim_t numOfChunksNode, dim_t inputBatchIdx,
+    dim_t resultIdx, llvm::ArrayRef<int> splitDims, size_t resultDim,
+    dim_t modelParallelSplitAlignment = 1) {
+  const int inputIdx = splitDims[inputBatchIdx];
+  RETURN_ERR_IF_NOT(inputIdx >= 0, "Input batch idx must be split");
+  RETURN_ERR_IF_NOT(modelParallelSplitAlignment == 1,
+                    "modelParallelSplitAlignment must be 1");
+  const dim_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
+  // We can only apply this parallelization when the input/output batch sizes
+  // can be divided by numOfChunksNode
+  if ((curNode->getNthResult(0).dims()[0] % numOfChunksNode != 0) ||
+      (batchSize % numOfChunksNode != 0)) {
+    return nullptr;
+  }
+  const dim_t elemPerChunk = batchSize / numOfChunksNode;
+
+  RETURN_ERR_IF_NOT(
+      batchSize >= numOfChunksNode,
+      strFormat("Invalid parallelization; batchSize %lu must be "
+                ">= numOfChunksNode %lu for node %s with kind %s",
+                (unsigned long)batchSize, (unsigned long)numOfChunksNode,
+                curNode->getName().str().c_str(), curNode->getKindName()));
+
+  std::vector<NodeValue> newNodes(numOfChunksNode);
+  for (dim_t i = 0; i < numOfChunksNode; ++i) {
+    // Calculate the out type of this chunk.
+    const dim_t sliceStart = i * elemPerChunk;
+    const dim_t sliceEnd =
+        (i < numOfChunksNode - 1) ? sliceStart + elemPerChunk : batchSize;
+    VLOG(1) << "\tChunk " << i << ": start: " << sliceStart
+            << " end: " << sliceEnd << "\n";
+    auto outDims = curNode->dims(resultIdx).vec();
+    VLOG(1) << "original out dims: [" << folly::join(", ", outDims) << "]";
+    RETURN_ERR_IF_NOT(resultDim < outDims.size(),
+                      "outDims access out of range");
+    outDims[resultDim] /= numOfChunksNode;
+    VLOG(1) << "modified out dims: [" << folly::join(", ", outDims) << "]";
+
+    // Clone the original Node, so that it keeps all of the inputs/members of
+    // the original Node. Then modify the output type so that its new shape is
+    // correct, and below change the inputs to the sliced inputs.
+    Node *clone = curNode->clone();
+    clone->getNthResult(resultIdx).setTypeUnsafe(
+        F->getParent()->uniqueTypeWithNewShape(curNode->getType(resultIdx),
+                                               outDims));
+    F->addNode(clone);
+
+    // Loop over all of the inputs and slice those inputs that need to be
+    // sliced, and set them on the clone.
+    for (int j = 0, e = curNode->getNumInputs(); j < e; j++) {
+      int dim = splitDims[j];
+      if (dim == -1) {
+        continue;
+      }
+
+      NodeValue currInput = curNode->getNthInput(j);
+      auto sliceDimsStart = std::vector<dim_t>(currInput.dims().size(), 0);
+      RETURN_ERR_IF_NOT(dim < sliceDimsStart.size(),
+                        "sliceDimsStart access out of range");
+      sliceDimsStart[dim] = sliceStart;
+      auto sliceDimsEnd = currInput.dims().vec();
+      RETURN_ERR_IF_NOT(dim < sliceDimsEnd.size(),
+                        "sliceDimsEnd access out of range");
+      sliceDimsEnd[dim] = sliceEnd;
+      VLOG(1) << "start: [" << folly::join(", ", sliceDimsStart) << "]";
+      VLOG(1) << "end: [" << folly::join(", ", sliceDimsEnd) << "]";
+      VLOG(1) << "Input name: " << currInput.getNode()->getName().str() << "\n";
+
+      auto *inputSlice =
+          F->createSlice("dp_slice." + currInput.getNode()->getName().str() +
+                             "." + std::to_string(i),
+                         currInput, sliceDimsStart, sliceDimsEnd);
+      clone->setNthInput(j, inputSlice);
+
+      newNodes[i] = NodeValue(clone, resultIdx);
+    }
+  }
+
+  std::vector<NodeValue> newNodesClip(numOfChunksNode);
+  int cnt = 0;
+  // Add extra Clip ops
+  // TODO: need to remove the Clip ops once the FC inputs can be put on SRAM
+  for (auto &node : newNodes) {
+    ClipNode *newCN = F->createClip(node.getNode()->getName().str() + "_clip_",
+                                    node.getNode(), kMinFP16, kMaxFP16);
+    newNodesClip[cnt] = newCN;
+    cnt++;
+  }
+
+  // Now that we have split the node into many, concat all of the pieces back
+  // together and replace the original by the concat.
+  VLOG(1) << "Creating Concat";
+  auto *concat = F->createConcat("concat." + curNode->getName().str(),
+                                 newNodesClip, resultDim);
+  curNode->getNthResult(resultIdx).replaceAllUsesOfWith(concat);
+  return concat;
+}
+
 /// Helper to parallelize a node \p curNode from \p F into \p numOfChunksNode
 /// Nodes by slicing its inputs, creating clones of it and changing the inputs
 /// of the clones to the slices, and then concatenating all of the clones
@@ -7014,10 +7115,17 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         splitDims[ReshapeNode::InputIdx] = 0;
         const dim_t batchSize =
             curNode->getNthInput(ReshapeNode::InputIdx).dims()[0];
-        // Do nothing if reshape applies to the first batch dimension
         if (batchSize != curNode->getNthResult(0).dims()[0]) {
-          LOG(INFO) << "Reshape changes batch dimension; Disabling data "
-                       "parallel split";
+          if (glow::flags::SparseNNParallelizeReshapeOnBatchDim) {
+            ASSIGN_VALUE_OR_RETURN_ERR(
+                CN, parallelizeAndReplaceReshapeNode(
+                        F, curNode, curNumOfChunks, ReshapeNode::InputIdx,
+                        ReshapeNode::ResultIdx, splitDims, 0));
+          } else {
+            // Do nothing if reshape applies to the first batch dimension
+            LOG(INFO) << "Reshape changes batch dimension; Disabling data "
+                         "parallel split";
+          }
           break;
         }
         ASSIGN_VALUE_OR_RETURN_ERR(

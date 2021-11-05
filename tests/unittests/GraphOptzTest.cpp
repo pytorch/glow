@@ -5916,10 +5916,11 @@ TEST_F(GraphOptz, ParallelizeData_Reshape) {
 }
 
 /// Test Splitting Reshape into multiple Reshapes when the batch
-/// dimension changes. This is not allowed.
+/// dimension changes. This is not allowed when the input or output batch size
+/// dim cannot be divided by the # of the parallel chunks.
 TEST_F(GraphOptz, ParallelizeData_Reshape_badcase) {
   auto *input1 =
-      mod_.createPlaceholder(ElemKind::FloatTy, {3, 64}, "input1", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 48}, "input1", false);
   bindings_.allocate(input1)->getHandle<float>().randomize(-1.0, 1.0,
                                                            mod_.getPRNG());
   auto *output =
