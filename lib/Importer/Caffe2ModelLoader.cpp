@@ -310,7 +310,11 @@ Caffe2ModelLoader::loadProtoFile(const std::string &filename) {
     google::protobuf::io::IstreamInputStream filestr(&ff);
     google::protobuf::io::CodedInputStream codedstr(&filestr);
     // Don't warn about large file sizes.
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+    codedstr.SetTotalBytesLimit(MAX_PROTO_SIZE);
+#else
     codedstr.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
+#endif
     parseNet = net.ParseFromCodedStream(&codedstr);
   }
 
@@ -325,7 +329,11 @@ Expected<caffe2::NetDef> Caffe2ModelLoader::loadProto(const void *c2Model,
   google::protobuf::io::CodedInputStream codedStream(&arrayStream);
 
   // Don't warn about large file sizes.
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE);
+#else
   codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
+#endif
   caffe2::NetDef MP;
   bool parseNet = MP.ParseFromCodedStream(&codedStream);
   RETURN_ERR_IF_NOT(parseNet, "Failed to parse NetDef");

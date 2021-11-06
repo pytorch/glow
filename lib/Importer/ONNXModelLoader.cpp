@@ -559,7 +559,11 @@ ONNX_NAMESPACE::GraphProto glow::parseOnnxFile(const std::string &fileName) {
   CHECK(inputFileStream) << "Can't find the input file for " << fileName;
   google::protobuf::io::IstreamInputStream protobufFileStream(&inputFileStream);
   google::protobuf::io::CodedInputStream codedStream(&protobufFileStream);
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE);
+#else
   codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
+#endif
   bool parsedSuccessfully = graphProto.ParseFromCodedStream(&codedStream);
   CHECK(parsedSuccessfully) << "Failed to parse GraphProto";
   return graphProto;
@@ -1126,7 +1130,11 @@ ONNXModelLoader::loadProto(google::protobuf::io::ZeroCopyInputStream &iStream) {
   google::protobuf::io::CodedInputStream codedStream(&iStream);
 
   // Don't warn about large file sizes.
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE);
+#else
   codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
+#endif
   ONNX_NAMESPACE::ModelProto MP;
   bool parseNet = MP.ParseFromCodedStream(&codedStream);
   RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto",
