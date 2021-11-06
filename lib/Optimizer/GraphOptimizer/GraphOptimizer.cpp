@@ -3476,6 +3476,14 @@ struct NodeEq {
   }
 };
 
+/// Array with node kinds which are excepted from CSE optimization, for example
+/// node kinds for which the output is not necessarily identical when the nodes
+/// are identical. Such nodes include Touch nodes which allocate buffers without
+/// initialization or nodes which generate random data.
+static const std::vector<Kinded::Kind> CSENodeExceptions = {
+    Kinded::Kind::TouchNodeKind,
+};
+
 /// This visitor is used to walk the graph and perform a common subexpression
 /// evaluation.
 struct CSEVisitor : NodeWalker {
@@ -3508,9 +3516,18 @@ struct CSEVisitor : NodeWalker {
 
     // Same node cannot be visited.
     assert(N != foundN);
+
     // Replace current node by a found node, which is
     // equivalent to it.
     assert(N->isEqual(*foundN));
+
+    // Skip CSE node exceptions.
+    if (std::find(CSENodeExceptions.begin(), CSENodeExceptions.end(),
+                  N->getKind()) != CSENodeExceptions.end()) {
+      return;
+    }
+
+    // Replace node.
     for (unsigned i = 0; i < N->getNumResults(); i++) {
       NodeValue FV(foundN, i);
       N->getNthResult(i).replaceAllUsesOfWith(FV);
