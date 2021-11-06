@@ -99,11 +99,18 @@ execute_process(COMMAND
   OUTPUT_VARIABLE GIT_DATE
   ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
 add_definitions("-DGIT_DATE=\"${GIT_DATE}\"")
+# Get the name of the most recent tag.
+execute_process(COMMAND
+  "${GIT_EXECUTABLE}" describe --tags --abbrev=0
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  OUTPUT_VARIABLE GIT_TAG
+  ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+add_definitions("-DGIT_TAG=\"${GIT_TAG}\"")
 
 # Compile definition for Glow build date in Y-M-D format.
 string(TIMESTAMP GLOW_BUILD_DATE "%Y-%m-%d")
 add_definitions("-DGLOW_BUILD_DATE=\"${GLOW_BUILD_DATE}\"")
-add_definitions("-DGLOW_VERSION=\"${GLOW_BUILD_DATE} (${GIT_SHA1})\"")
+add_definitions("-DGLOW_VERSION=\"${GLOW_BUILD_DATE} (${GIT_SHA1}) (${GIT_TAG})\"")
 
 if(GLOW_USE_PNG_IF_REQUIRED)
   find_package(PNG)
