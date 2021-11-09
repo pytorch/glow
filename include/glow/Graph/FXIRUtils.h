@@ -156,6 +156,12 @@ Value *valueForNode(
     const std::unordered_map<std::string, Value *> &storageNodeNameToDest,
     const std::unordered_map<std::string, Value *> &nonStorageNodeNameToDest);
 
+/// Get the scale for quantized node.
+double getNodeScale(const folly::dynamic &node);
+
+/// Get the zero point for quantized node.
+int getNodeZeroPoint(const folly::dynamic &node);
+
 } // namespace glow
 
 #endif // GLOW_IR_FXIRUTILS_H

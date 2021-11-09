@@ -35,6 +35,10 @@ const std::unordered_map<std::string, ElemKind> stringToElemKind = {
     {"torch.long", ElemKind::Int64ITy},
     // Unsigned 8 bit Int type
     {"torch.uint8", ElemKind::UInt8ITy},
+    // 8 bit Quantized int type
+    {"torch.qint8", ElemKind::Int8QTy},
+    // Unsigned 8 bit Quantized int type
+    {"torch.quint8", ElemKind::UInt8QTy},
     // 32-bit int type
     {"torch.int32", ElemKind::Int32ITy},
     // 8-bit fused quantize type
@@ -72,6 +76,18 @@ ElemKind glow::getNodeDataType(const folly::dynamic &node) {
   CHECK(node.find("dtype") != node.items().end())
       << "dtype field doesn't exist in node " << node;
   return getElemKind(node.at("dtype").getString());
+}
+
+double glow::getNodeScale(const folly::dynamic &node) {
+  CHECK(node.find("q_scale") != node.items().end())
+      << "q_scale field doesn't exist in node " << node;
+  return node.at("q_scale").getDouble();
+}
+
+int glow::getNodeZeroPoint(const folly::dynamic &node) {
+  CHECK(node.find("q_zero_point") != node.items().end())
+      << "q_scale field doesn't exist in node " << node;
+  return node.at("q_zero_point").getInt();
 }
 
 const folly::dynamic &glow::getNodeArgs(const folly::dynamic &node) {
