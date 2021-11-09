@@ -596,7 +596,7 @@ LLVMBackendOptions::LLVMBackendOptions() {
 LLVMBackend::LLVMBackend() {}
 
 std::string LLVMBackend::getHostTarget() {
-  return llvm::sys::getDefaultTargetTriple();
+  return llvm::sys::getProcessTriple();
 }
 
 std::string LLVMBackend::getHostCPU() {
