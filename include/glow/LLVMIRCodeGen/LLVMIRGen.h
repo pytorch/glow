@@ -27,6 +27,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 namespace glow {
 
@@ -480,6 +482,8 @@ public:
   /// \returns inlining mode to be used for a function \p F.
   virtual llvm::Attribute::AttrKind
   getInlinineAttr(const llvm::Function *F) const;
+  /// Configures a provided PassManagerBuilder \p PMB in a backend-specific way
+  virtual void populatePassManagerBuilderOptions(llvm::PassManagerBuilder &PMB);
   /// Update inline attributes of functions in the module \p M using a
   /// backend-specific logic.
   virtual void updateInlineAttributes(llvm::Module *M);
