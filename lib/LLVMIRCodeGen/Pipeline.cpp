@@ -38,12 +38,10 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/ForceFunctionAttrs.h"
 #include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/Transforms/IPO/InferFunctionAttrs.h"
 #include "llvm/Transforms/IPO/Internalize.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
@@ -66,6 +64,15 @@ bool LLVMIRGen::preserveSymbol(const llvm::GlobalValue &GV) {
 llvm::Attribute::AttrKind
 LLVMIRGen::getInlinineAttr(const llvm::Function *F) const {
   return llvm::Attribute::AttrKind::None;
+}
+
+void LLVMIRGen::populatePassManagerBuilderOptions(
+    llvm::PassManagerBuilder &PMB) {
+  PMB.OptLevel = 2;
+  PMB.SizeLevel = 0;
+  PMB.LoopVectorize = true;
+  PMB.SLPVectorize = false;
+  PMB.Inliner = llvm::createFunctionInliningPass();
 }
 
 void LLVMIRGen::updateInlineAttributes(llvm::Module *M) {
@@ -175,13 +182,6 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
   // else.
   performSpecialization();
 
-  llvm::PassManagerBuilder PMB;
-  PMB.OptLevel = 2;
-  PMB.SizeLevel = 0;
-  PMB.LoopVectorize = true;
-  PMB.SLPVectorize = false;
-  PMB.Inliner = llvm::createFunctionInliningPass();
-
   M->setTargetTriple(TM.getTargetTriple().normalize());
   M->setDataLayout(TM.createDataLayout());
 
@@ -208,9 +208,6 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
   // inlined.
   getLLVMFunction()->addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
 
-  llvm::legacy::FunctionPassManager FPM(M);
-  llvm::legacy::PassManager PM;
-
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
   llvm::TargetLibraryInfoImpl TLII(llvm::Triple(M->getTargetTriple()));
   // Disable optimizations of some builtin functions. They cause issues on some
@@ -221,6 +218,12 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
   }
 
   auto *TLIWP = new llvm::TargetLibraryInfoWrapperPass(TLII);
+
+  llvm::legacy::FunctionPassManager FPM(M);
+  llvm::legacy::PassManager PM;
+  llvm::PassManagerBuilder PMB;
+  populatePassManagerBuilderOptions(PMB);
+
   PM.add(TLIWP);
 
   // Add internal analysis passes from the target machine.
@@ -229,6 +232,7 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
 
   PMB.populateFunctionPassManager(FPM);
   PMB.populateModulePassManager(PM);
+
   FPM.doInitialization();
   PM.run(*M);
   for (auto &FF : *M) {
