@@ -84,6 +84,10 @@ public:
   }
   MemoryAllocator &getActivationsAllocator() { return activationsAllocator_; }
 
+  const glow::runtime::SymbolTableTy &getSymbolTable() const {
+    return symbolTable_;
+  }
+
 protected:
   /// Index to be used for a new value.
   size_t valueIdx_{0};

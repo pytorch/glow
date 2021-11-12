@@ -192,8 +192,8 @@ protected:
                                  llvm::DenseMap<Value *, int> &bufferToArgNum);
   /// Generates LLVM IR that computes the size of the tensor of \p val using
   /// \p builder. The size type is native to the machine (size_t).
-  llvm::Value *emitValueSize(llvm::IRBuilder<> &builder,
-                             const glow::Value *val);
+  virtual llvm::Value *emitValueSize(llvm::IRBuilder<> &builder,
+                                     const glow::Value *val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstF32(llvm::IRBuilder<> &builder, float val);
   /// Generates LLVM IR that materializes the constant \p val.
@@ -250,8 +250,8 @@ protected:
 
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
-  llvm::Value *emitValueDims(llvm::IRBuilder<> &builder,
-                             const glow::Value *val);
+  virtual llvm::Value *emitValueDims(llvm::IRBuilder<> &builder,
+                                     const glow::Value *val);
 
   /// Generates LLVM IR that materializes the float activation parameters for
   /// the instruction \p I.

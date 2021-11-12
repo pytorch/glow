@@ -42,13 +42,18 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
   allocateConstants(F->findConstants(), constantWeightVarsAllocator_,
                     symbolTable_);
   for (auto &c : F->findConstants()) {
-    assert(symbolTable_.find(std::string(c->getName())) != symbolTable_.end());
+    auto name = std::string(c->getName());
+    CHECK(symbolTable_.find(name) != symbolTable_.end())
+        << "Expected to find " << name << " in symbol table";
     auto *w = cast<WeightVar>(F->getWeightForNode(c));
     if (allocatedAddress_.count(c)) {
       allocatedAddress_[w] = allocatedAddress_[c];
       continue;
     }
-    auto addr = symbolTable_[std::string(c->getName())].offset;
+    auto &symb = symbolTable_[name];
+    CHECK(valueNumbers_.count(c)) << "Unexpected uncounted constant";
+    symb.index = valueNumbers_[c].second;
+    auto addr = symb.offset;
     allocatedAddress_[c] = addr;
     allocatedAddress_[w] = addr;
   }
@@ -64,12 +69,17 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
   for (auto it = contiguousPlaceholders.begin();
        it != contiguousPlaceholders.end(); it++) {
     auto &v = it->addr;
-    assert(symbolTable_.find(std::string(v->getName())) != symbolTable_.end());
+    auto name = std::string(v->getName());
+    CHECK(symbolTable_.find(name) != symbolTable_.end())
+        << "Expected to find " << name << " in symbol table";
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     if (allocatedAddress_.count(w)) {
       continue;
     }
-    auto addr = symbolTable_[std::string(v->getName())].offset;
+    auto &symb = symbolTable_[name];
+    CHECK(valueNumbers_.count(w)) << "Unexpected uncounted placeholder";
+    symb.index = valueNumbers_[w].second;
+    auto addr = symb.offset;
     allocatedAddress_[w] = addr;
   }
 
@@ -81,7 +91,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
                   : allocatedAddress_) {
     if (isa<AllocActivationInst>(A.first) || isa<TensorViewInst>(A.first))
       continue;
-    assert(valueNumbers_.count(A.first) && "Unknown weight");
+    CHECK(valueNumbers_.count(A.first)) << "Unknown weight";
     if (isa<Constant>(A.first))
       continue;
     auto *weight = dyn_cast<WeightVar>(A.first);
@@ -107,12 +117,15 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   // Assign device-space addresses to the activations.
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
-      assert(symbolTable_.find(std::string(A->getName())) !=
-             symbolTable_.end());
-      assert(!activationAddr.count(A) && "Allocation already made!");
-      auto addr = symbolTable_[std::string(A->getName())].offset;
+      auto name = std::string(A->getName());
+      CHECK(symbolTable_.find(name) != symbolTable_.end())
+          << "Expected to find " << name << " in symbol table";
+      auto &symb = symbolTable_[name];
+      CHECK(valueNumbers_.count(A)) << "Unexpected uncounted activation";
+      symb.index = valueNumbers_[A].second;
+      CHECK(!activationAddr.count(A)) << "Allocation already made!";
+      auto addr = symb.offset;
       activationAddr[A] = addr;
-      continue;
     }
   }
 
@@ -141,9 +154,9 @@ void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
   for (const auto &I : F->getInstrs()) {
     if (const auto *TVI = dyn_cast<TensorViewInst>(&I)) {
       auto *viewOrigin = getOrigin(TVI);
-      assert(allocatedAddress_.count(viewOrigin) &&
-             "Did not find original WeightVar or AllocActivation for a "
-             "TensorView.");
+      CHECK(allocatedAddress_.count(viewOrigin))
+          << "Did not find original WeightVar or AllocActivation for a "
+          << "TensorView.";
       size_t originAddr = allocatedAddress_[viewOrigin];
 
       // Calculate the offset into the underlying alloc activation.
@@ -151,8 +164,15 @@ void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
 
       // Calculate the correct address using this offset into the alloc
       // activation and map from the original TVI to it.
-      assert(!allocatedAddress_.count(TVI) && "Allocation already made!");
+      CHECK(!allocatedAddress_.count(TVI)) << "Allocation already made!";
       allocatedAddress_[TVI] = originAddr + offset;
+
+      auto name = std::string(TVI->getName());
+      CHECK(symbolTable_.count(name)) << "Unexpected tensorview symbol";
+      auto &symb = symbolTable_[name];
+      CHECK(valueNumbers_.count(TVI)) << "Unexpected uncounted tensorview";
+      symb.index = valueNumbers_[TVI].second;
+
       continue;
     }
   }
@@ -161,7 +181,8 @@ void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
 void AllocationsInfo::numberValues(const IRFunction *F) {
   // Assign numbers to all weights.
   for (auto &v : F->findConstants()) {
-    assert(isa<WeightVar>(F->getWeightForNode(v)));
+    CHECK(isa<WeightVar>(F->getWeightForNode(v)))
+        << "Expected a weight variable";
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     if (valueNumbers_.count(v)) {
       valueNumbers_[w] = valueNumbers_[v];
@@ -173,7 +194,8 @@ void AllocationsInfo::numberValues(const IRFunction *F) {
 
   // Assign numbers to all placeholders.
   for (auto &v : F->findPlaceholders()) {
-    assert(isa<WeightVar>(F->getWeightForNode(v)));
+    CHECK(isa<WeightVar>(F->getWeightForNode(v)))
+        << "Expected a weight variable";
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     if (valueNumbers_.count(w)) {
       continue;
@@ -184,8 +206,8 @@ void AllocationsInfo::numberValues(const IRFunction *F) {
   // Assign numbers to all activations and tensorviews.
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
-      assert(!valueNumbers_.count(A) &&
-             "Activation should be defined only once");
+      CHECK(!valueNumbers_.count(A))
+          << "Activation should be defined only once";
       valueNumbers_[A] = std::make_pair(ValueKind::Activation, valueIdx_++);
       continue;
     }
@@ -196,8 +218,8 @@ void AllocationsInfo::numberValues(const IRFunction *F) {
         kind = w->isConstant() ? ValueKind::ConstantWeight
                                : ValueKind::MutableWeight;
       }
-      assert(!valueNumbers_.count(A) &&
-             "TensorView should be defined only once");
+      CHECK(!valueNumbers_.count(A))
+          << "TensorView should be defined only once";
       valueNumbers_[A] = std::make_pair(kind, valueIdx_++);
       continue;
     }
