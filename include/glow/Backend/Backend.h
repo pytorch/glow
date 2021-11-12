@@ -99,7 +99,8 @@ public:
   virtual Expected<std::unique_ptr<CompiledResult>>
   compileFXToCompiledResults(const folly::dynamic &FXIR,
                              const llvm::StringMap<const void *> &constants,
-                             bool lowerToLLVMIR = true) const {
+                             bool /* lowerToLLVMIR */ = true,
+                             bool /* eagerMode */ = false) const {
     LOG(FATAL) << "Compiling FXIR is not supported by the backend";
   }
 #endif
