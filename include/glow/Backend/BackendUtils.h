@@ -47,6 +47,12 @@ struct RuntimeSymbolInfo {
   bool output{true};
   /// Indicates what category the symbol is.
   SymbolCategory symbolCategory;
+  /// Logical id assigned during the codegen (-1 if unused).
+  /// This id is used during the codegen to order the tensor
+  /// information in memory (e.g. is an index in the offsets array),
+  /// it is also used in runtime to generate tensor metadata,
+  /// when eager mode is enabled.
+  int index{-1};
 };
 
 using SymbolTableTy = std::map<std::string, RuntimeSymbolInfo>;
@@ -84,6 +90,9 @@ public:
   const RuntimeSymbolInfo &getSymbolInfo(const Named *v) const;
   /// Get a const reference to the symbol table.
   const SymbolTableTy &getSymbolTable() const { return symbolTable_; }
+  void updateSymbolTable(const SymbolTableTy &symbolTable) {
+    symbolTable_ = symbolTable;
+  }
   /// At compile time condense constants to a single block of memory.
   /// This allows the graph to go away after compile time.
   /// Allocates a block of memory of size \p constantMaxSize then walks the
