@@ -373,7 +373,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   // Setting the network name.
   std::string networkName = compilationFileName_;
   if (compilationFileName_.empty()) {
-    networkName = F->getName();
+    networkName = F->getName().str();
   }
   ASSERT_LOG_NNPI_ERROR(nnpiNetworkSetName(network_, networkName.c_str()),
                         "Failed to set NNPI network name");
