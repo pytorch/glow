@@ -352,6 +352,18 @@ add_glow_test(NAME ImageLoaderTest
                         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 endif()
 
+add_executable(NumpyRawTest
+        NumpyRawTest.cpp)
+target_link_libraries(NumpyRawTest
+        PRIVATE
+        Base
+        gtest
+        TestMain)
+add_glow_test(NumpyRawTest
+        ${GLOW_BINARY_DIR}/tests/NumpyRawTest
+        --gtest_output=xml:NumpyRawTest.xml
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 if(GLOW_WITH_CPU)
   add_executable(LLVMIRGenTest
                  LLVMIRGenTest.cpp)

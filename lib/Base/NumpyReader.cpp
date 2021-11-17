@@ -17,6 +17,7 @@
 #include "glow/Base/Image.h"
 #include "glow/Base/Tensor.h"
 
+#include <array>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -36,6 +37,11 @@ bool checkNumpyMagicHdr(uint8_t *header) {
 }
 
 enum class NpyType { I1, U1, I2, U2, I4, U4, I8, U8, F2, F4, F8 };
+
+static const std::array<std::string, 11> NpyTypeString{
+    "NpyType::I1", "NpyType::U1", "NpyType::I2", "NpyType::U2",
+    "NpyType::I4", "NpyType::U4", "NpyType::I8", "NpyType::U8",
+    "NpyType::F2", "NpyType::F4", "NpyType::F8"};
 
 struct NpyData {
   std::vector<char> data;
@@ -68,6 +74,40 @@ void convertNumpyToFloat(NpyData &dataNpy, std::vector<float> &data) {
     convertNumpyToFloatImpl<uint16_t>(dataNpy, data);
   } else {
     LOG(FATAL) << " Datatype not supported: " << (int)dataNpy.type;
+  }
+}
+
+/// Template providing conversion of numpy array to tensor by type.
+template <typename T>
+static void numpyToTensorImpl(NpyData &dataNpy, Tensor &tensor) {
+  T *databuf = dataNpy.getData<T>();
+  std::vector<T> data(dataNpy.nvals);
+  for (size_t i = 0; i < dataNpy.nvals; i++) {
+    data[i] = databuf[i];
+  }
+  tensor.template getHandle<T>() = data;
+}
+
+/// Convert Numpy array to Tensor.
+void numpyToTensor(NpyData &dataNpy, Tensor &tensor) {
+  if (dataNpy.type == NpyType::F4) {
+    tensor.reset(glow::ElemKind::FloatTy, dataNpy.shape);
+    numpyToTensorImpl<float>(dataNpy, tensor);
+  } else if (dataNpy.type == NpyType::F8) {
+    tensor.reset(glow::ElemKind::Float64Ty, dataNpy.shape);
+    numpyToTensorImpl<double>(dataNpy, tensor);
+  } else if (dataNpy.type == NpyType::U1) {
+    tensor.reset(glow::ElemKind::UInt8ITy, dataNpy.shape);
+    numpyToTensorImpl<uint8_t>(dataNpy, tensor);
+  } else if (dataNpy.type == NpyType::I4) {
+    tensor.reset(glow::ElemKind::Int32ITy, dataNpy.shape);
+    numpyToTensorImpl<int32_t>(dataNpy, tensor);
+  } else if (dataNpy.type == NpyType::I8) {
+    tensor.reset(glow::ElemKind::Int64ITy, dataNpy.shape);
+    numpyToTensorImpl<int64_t>(dataNpy, tensor);
+  } else {
+    LOG(FATAL) << "Numpy datatype not supported: "
+               << NpyTypeString[static_cast<int>(dataNpy.type)];
   }
 }
 
@@ -180,6 +220,7 @@ void numpyReader(const std::string &filename, NpyData &npyData) {
   delete[] buffer;
 }
 
+#ifdef WITH_PNG
 static void normalizeData(ImageLayout imageLayout, llvm::ArrayRef<float> mean,
                           llvm::ArrayRef<float> stddev,
                           ImageNormalizationMode imageNormMode,
@@ -334,6 +375,78 @@ void glow::loadNumpyImagesAndPreprocess(
       inputData.transpose(&transposed, NCHW2NHWC);
     }
     inputData = std::move(transposed);
+  }
+}
+#endif
+
+/// Convert a vector of tensors into a single tensor by inserting each input
+/// tensor into the output tensor as a slice.
+template <typename T>
+void vecTensorToTensor(std::vector<Tensor> &tensors, Tensor &t) {
+  auto handle = t.getHandle<T>();
+  for (dim_t n = 0, e = tensors.size(); n < e; n++) {
+    handle.template insertSlice<T>(tensors[n], n);
+  }
+}
+
+/// Return a tensor holding data from \p filenames. The shape of the numpy
+/// arrays in each file must match. By default, dimension 0 of the returned
+/// tensor will contain the file count. \p insertDim0 may be set to false to
+/// suppress adding dimension 0 when there is a single input file.
+void glow::loadNumpyRaw(const llvm::ArrayRef<std::string> &filenames,
+                        Tensor &inputData, bool insertDim0) {
+
+  dim_t numInputFiles = filenames.size();
+  std::vector<Tensor> tensors(numInputFiles);
+
+  // By default, dimension 0 is set to the number of files. This can be
+  // optionally suppressed when there is a single input file.
+  CHECK(insertDim0 || numInputFiles == 1);
+
+  // Load each input file into tensor and verify that dimensions of each input
+  // match.
+  for (dim_t n = 0; n < numInputFiles; n++) {
+    NpyData dataNpy;
+    numpyReader(filenames[n], dataNpy);
+    numpyToTensor(dataNpy, tensors[n]);
+    auto dimsT0 = tensors[0].dims();
+    auto dimsTn = tensors[n].dims();
+    CHECK_EQ(dimsT0.size(), dimsTn.size());
+    for (size_t i = 0; i < dimsT0.size(); i++) {
+      CHECK_EQ(tensors[0].dims()[i], tensors[n].dims()[i]);
+    }
+  }
+
+  std::vector<dim_t> dims{tensors[0].dims()};
+  // Set dimension 0 to the number of input files unless suppressed
+  if (insertDim0) {
+    dims.insert(dims.begin(), numInputFiles);
+  }
+
+  // Set output tensor type and shape
+  inputData.reset(tensors[0].getElementType(), dims);
+
+  // Insert each loaded file as a slice into inputData
+  switch (inputData.getElementType()) {
+  case ElemKind::Float64Ty:
+    vecTensorToTensor<double>(tensors, inputData);
+    break;
+  case ElemKind::FloatTy:
+    vecTensorToTensor<float>(tensors, inputData);
+    break;
+  case ElemKind::Int64ITy:
+    vecTensorToTensor<int64_t>(tensors, inputData);
+    break;
+  case ElemKind::Int32ITy:
+    vecTensorToTensor<int32_t>(tensors, inputData);
+    break;
+  case ElemKind::UInt8ITy:
+    vecTensorToTensor<uint8_t>(tensors, inputData);
+    break;
+  default:
+    LOG(FATAL) << "Numpy datatype not supported: "
+               << NpyTypeString[static_cast<int>(inputData.getElementType())];
+    break;
   }
 }
 

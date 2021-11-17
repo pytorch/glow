@@ -280,6 +280,13 @@ void loadNumpyImagesAndPreprocess(
     llvm::ArrayRef<float> mean, llvm::ArrayRef<float> stddev,
     ImgDataRange &range);
 
+/// Return a tensor holding data from \p filenames. The shape of the numpy
+/// arrays in each file must match. By default, dimension 0 of the returned
+/// tensor will contain the file count. \p insertDim0 may be set to false to
+/// suppress adding dimension 0 when there is a single input file.
+void loadNumpyRaw(const llvm::ArrayRef<std::string> &filenames,
+                  Tensor &outTensor, bool insertDim0 = true);
+
 } // namespace glow
 
 #endif // GLOW_BASE_IMAGE_H

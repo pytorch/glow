@@ -1365,6 +1365,21 @@ public:
     std::copy(slicePtr, slicePtr + sliceSize, base);
   }
 
+  /// Version of insertSlice that does not assume the tensor is float.
+  template <typename T> void insertSlice(const Tensor &slice, size_t idx) {
+    auto dims = tensor_->dims();
+    (void)dims;
+    assert(getElementType() == slice.getElementType());
+    assert(dims.size() > 1 && "Tensor must have at least two dimensions");
+    assert(idx < dims[0] && "Invalid first index");
+
+    auto sliceSize = sizeIntegral_[0];
+    size_t startIdx = sliceSize * idx;
+    ElemTy *base = &raw(startIdx);
+    const ElemTy *slicePtr = slice.getRawDataPointer<T>();
+    std::copy(slicePtr, slicePtr + sliceSize, base);
+  }
+
   /// Create a new copy of the current tensor.
   Tensor clone() const { return tensor_->clone(); }
 
