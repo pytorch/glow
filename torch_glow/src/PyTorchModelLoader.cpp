@@ -1833,7 +1833,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::erf"},
        &PyTorchModelLoader::loadErf,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
-      {{"fb::batched_unary_embeddings"},
+      {{"fbgemm::batched_unary_embeddings"},
        &PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags,
        &PyTorchModelLoader::getCorrectTypeFromInput<
            BatchedUnaryEmbeddingsBagsInputs::weights>},
