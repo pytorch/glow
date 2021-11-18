@@ -79,7 +79,7 @@ void ReproFXLib::load(const folly::dynamic &data,
 
   // Load all inputs tensors
   std::vector<at::IValue> tensors =
-      torch::pickle_load(input).toTuple()->elements();
+      torch::pickle_load(input).toTupleRef().elements();
 
   for (auto &i : tensors) {
     torch::Tensor tensor = i.toTensor();
