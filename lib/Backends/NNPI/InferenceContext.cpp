@@ -720,8 +720,8 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
   }
 
   LOG_EVERY_N(INFO, 1000) << "===== Sanitizing " << validateSLSInputs_->size()
-                          << " set of inputs at "
-                          << flags::SanitizeInputsPercent << " probability";
+                          << " sets of inputs at "
+                          << flags::SanitizeInputsPercent << "% probability";
   for (const auto &sls : *validateSLSInputs_) {
     size_t indicesLen, weightsLen, totalLensSum = 0;
     auto *indices = bindings.get(sls.indices);
@@ -762,6 +762,9 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
                         false);
     }
 
+    LOG_AND_RETURN_IF(ERROR, !ret, "Failed SLS sanitization on indices.",
+                      false);
+
     if (sls.isEmbeddingBag) {
       // EmbeddingBag case
       auto *offsets = bindings.get(sls.offsets);
@@ -795,7 +798,8 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
                           false);
       }
     }
-    LOG_AND_RETURN_IF(ERROR, !ret, "failed SLS sanitization", false);
+    LOG_AND_RETURN_IF(ERROR, !ret,
+                      "Failed SLS sanitization on offsets/lengths.", false);
   }
 
   return true;
