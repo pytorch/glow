@@ -3692,11 +3692,17 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     CHECK_EQ(RBI->getScale()[0], 1.0) << "Scaling batch not supported.";
     CHECK_EQ(RBI->getScale()[3], 1.0) << "Scaling channel not supported.";
 
+    CHECK_EQ(RBI->getOffset()[0], 0) << "batch offset not supported.";
+    CHECK_EQ(RBI->getOffset()[3], 0) << "channel offset not supported.";
+
     auto *scalePtr = emitConstFloatArray(builder, RBI->getScale());
+    auto *offsetPtr = emitConstFloatArray(builder, RBI->getOffset());
+
     auto *destDims = emitValueDims(builder, result);
     auto *srcDims = emitValueDims(builder, input);
     auto *F = getFunction("resizebilinear", input->getElementType());
-    createCall(builder, F, {resultPtr, inputPtr, scalePtr, srcDims, destDims});
+    createCall(builder, F,
+               {resultPtr, inputPtr, scalePtr, offsetPtr, srcDims, destDims});
     break;
   }
 

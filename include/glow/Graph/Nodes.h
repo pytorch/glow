@@ -277,6 +277,8 @@ enum PoolingMode { AVG = 0, MAX };
 enum ResizeCoorTransMode {
   ASYMMETRIC = 0,
   ALIGN_CORNERS,
+  HALF_PIXEL,
+  PYTORCH_HALF_PIXEL,
 };
 
 /// Activations fused into ConvolutionNode (not supported on all backends).

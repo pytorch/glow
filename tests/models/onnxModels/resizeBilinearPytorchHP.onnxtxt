@@ -1,4 +1,4 @@
-ir_version: 6
+ir_version: 8
 producer_name: "test4onnx"
 graph {
   node {
@@ -9,7 +9,7 @@ graph {
     op_type: "Resize"
     attribute {
       name: "coordinate_transformation_mode"
-      s: "align_corners"
+      s: "pytorch_half_pixel"
       type: STRING
     }
     attribute {
@@ -18,7 +18,7 @@ graph {
       type: STRING
     }
   }
-  name: "resizeBilinearAlignCorner"
+  name: "resizeBilinearPytorchHP"
   initializer {
     dims: 4
     data_type: 1
@@ -46,6 +46,16 @@ graph {
           dim {
             dim_value: 2
           }
+        }
+      }
+    }
+  }
+  input {
+    name: "roi"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
         }
       }
     }
@@ -96,5 +106,5 @@ graph {
   }
 }
 opset_import {
-  version: 11
+  version: 15
 }

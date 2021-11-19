@@ -3103,7 +3103,7 @@ Function::createResizeBilinear(llvm::StringRef name, NodeValue input,
                        << ", Scaled value needs to be larger than 0.";
     newDim.push_back(newD);
   }
-
+  std::vector<float> offset(scale.size(), 0);
   // input layout NHWC
   if (coordTransformMode == ResizeCoorTransMode::ALIGN_CORNERS) {
     DCHECK_EQ(newScale.size(), 4)
@@ -3112,11 +3112,17 @@ Function::createResizeBilinear(llvm::StringRef name, NodeValue input,
         inputDim[1] == 1 ? 1 : (newDim[1] - 1.0f) / (inputDim[1] - 1.0f);
     newScale[2] =
         inputDim[2] == 1 ? 1 : (newDim[2] - 1.0f) / (inputDim[2] - 1.0f);
+  } else if (coordTransformMode == ResizeCoorTransMode::PYTORCH_HALF_PIXEL) {
+    offset[1] = newDim[1] > 1 ? 0.5 / newScale[1] - 0.5 : 0;
+    offset[2] = newDim[2] > 1 ? 0.5 / newScale[2] - 0.5 : 0;
+  } else if (coordTransformMode == ResizeCoorTransMode::HALF_PIXEL) {
+    offset[1] = 0.5 / newScale[1] - 0.5;
+    offset[2] = 0.5 / newScale[2] - 0.5;
   }
 
   auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
-  return addNode(
-      new ResizeBilinearNode(name, outTy, input, newScale, coordTransformMode));
+  return addNode(new ResizeBilinearNode(name, outTy, input, newScale, offset,
+                                        coordTransformMode));
 }
 
 ResizeBilinearNode *
@@ -3136,6 +3142,8 @@ Function::createResizeBilinear(llvm::StringRef name, NodeValue input,
                           << ", Scale larger than 0 is expected.";
     scales.push_back(scale);
   }
+
+  std::vector<float> offset(scales.size(), 0);
   // input layout NHWC
   if (coordTransformMode == ResizeCoorTransMode::ALIGN_CORNERS) {
     DCHECK_EQ(scales.size(), 4)
@@ -3144,10 +3152,16 @@ Function::createResizeBilinear(llvm::StringRef name, NodeValue input,
         inputDim[1] == 1 ? 1 : (outputDim[1] - 1.0f) / (inputDim[1] - 1.0f);
     scales[2] =
         inputDim[2] == 1 ? 1 : (outputDim[2] - 1.0f) / (inputDim[2] - 1.0f);
+  } else if (coordTransformMode == ResizeCoorTransMode::PYTORCH_HALF_PIXEL) {
+    offset[1] = outputDim[1] > 1 ? 0.5 / scales[1] - 0.5 : 0;
+    offset[2] = outputDim[2] > 1 ? 0.5 / scales[2] - 0.5 : 0;
+  } else if (coordTransformMode == ResizeCoorTransMode::HALF_PIXEL) {
+    offset[1] = 0.5 / scales[1] - 0.5;
+    offset[2] = 0.5 / scales[2] - 0.5;
   }
 
-  return addNode(
-      new ResizeBilinearNode(name, outTy, input, scales, coordTransformMode));
+  return addNode(new ResizeBilinearNode(name, outTy, input, scales, offset,
+                                        coordTransformMode));
 }
 
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,

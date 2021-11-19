@@ -2419,57 +2419,42 @@ TEST_P(OperatorTest, ResizeNearest_Int32_outTy) {
 
 /// Helper to test ResizeNearest using \p DTy.
 template <typename DataType>
-static void testResizeBilinear(glow::PlaceholderBindings &bindings,
-                               glow::Module &mod, glow::Function *F,
-                               glow::ExecutionEngine &EE, ElemKind DTy,
-                               bool v11 = false) {
-  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 2, 1},
+static void testResizeBilinear(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, ElemKind DTy, bool v11 = false,
+    llvm::ArrayRef<float> expectedValue = {2.0, 3.333333, 4.0, 5.0, 8.333333,
+                                           10.0, 8.0, 13.33333, 16.0, 8.0,
+                                           13.33333, 16.0},
+    llvm::ArrayRef<dim_t> expectedShape = {1, 4, 3, 1},
+    llvm::ArrayRef<float> scale = {1.0f, 2.0f, 1.5f, 1.0f},
+    llvm::ArrayRef<dim_t> inputShape = {1, 2, 2, 1},
+    llvm::ArrayRef<DataType> inputValue = {2, 4, 8, 16},
+    ResizeCoorTransMode coordTransformMode = ResizeCoorTransMode::ASYMMETRIC) {
+  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, inputShape,
                                                         "input", false, "NHWC");
-  bindings.allocate(input)->getHandle<DataType>() = {2, 4, 8, 16};
-
-  std::vector<float> scaleUp = {1, 2.0f, 1.5f, 1};
-
-  ResizeBilinearNode *resizeUp = nullptr;
-  ResizeBilinearNode *resizeDown = nullptr;
+  bindings.allocate(input)->getHandle<DataType>() = inputValue;
+  ResizeBilinearNode *resize = nullptr;
 
   if (v11) {
-    dim_t newH = std::floor(2 * 2.0f);
-    dim_t newW = std::floor(2 * 1.5f);
+    dim_t newH = std::floor(inputShape[1] * scale[1]);
+    dim_t newW = std::floor(inputShape[2] * scale[2]);
     auto outTy =
         mod.uniqueTypeWithNewShape(input->getType(), {1, newH, newW, 1});
-    resizeUp = F->createResizeBilinear("resizeUp", input, outTy);
+    resize = F->createResizeBilinear("resizeBilinear", input, outTy,
+                                     coordTransformMode);
   } else {
-    resizeUp = F->createResizeBilinear("resizeUp", input, scaleUp);
+    resize = F->createResizeBilinear("resizeBilinear", input, scale,
+                                     coordTransformMode);
   }
 
-  auto *saveUp = F->createSave("saveUp", resizeUp);
+  auto *saveUp = F->createSave("save", resize);
   auto *resultUp = bindings.allocate(saveUp->getPlaceholder());
-
-  std::vector<float> scaleDown = {1, 0.9f, 0.6f, 1};
-
-  if (v11) {
-    dim_t newH = std::floor(2 * 0.9f);
-    dim_t newW = std::floor(2 * 0.6f);
-    auto outTy =
-        mod.uniqueTypeWithNewShape(input->getType(), {1, newH, newW, 1});
-    resizeDown = F->createResizeBilinear("resizeDown", input, outTy);
-  } else {
-    resizeDown = F->createResizeBilinear("resizeDown", input, scaleDown);
-  }
-
-  auto *saveDown = F->createSave("saveDown", resizeDown);
-  auto *resultDown = bindings.allocate(saveDown->getPlaceholder());
-
-  ::glow::convertPlaceholdersToConstants(
-      F, bindings,
-      {input, saveUp->getPlaceholder(), saveDown->getPlaceholder()});
 
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto resultUpH = resultUp->getHandle<DataType>();
-  std::vector<dim_t> expectedDimsUp = {1, 4, 3, 1};
-  ASSERT_TRUE(resultUpH.dims().vec() == expectedDimsUp);
+  auto resultH = resultUp->getHandle<DataType>();
+  ASSERT_TRUE(resultH.dims().equals(expectedShape));
 
 // use EXPECT_NEAR for float otherwise EXPECT_EQ. Optional third arg is
 // allowed error for EXPECT_NEAR. If not specified uses default.
@@ -2481,93 +2466,202 @@ static void testResizeBilinear(glow::PlaceholderBindings &bindings,
   } else {                                                                     \
     EXPECT_EQ(a, b);                                                           \
   }
-
-  EXPECT_EQF(resultUpH.at({0, 0, 0, 0}), static_cast<DataType>(2));
-  EXPECT_EQF(resultUpH.at({0, 0, 1, 0}), static_cast<DataType>(3.333333));
-  EXPECT_EQF(resultUpH.at({0, 0, 2, 0}), static_cast<DataType>(4));
-
-  EXPECT_EQF(resultUpH.at({0, 1, 0, 0}), static_cast<DataType>(5));
-  EXPECT_EQF(resultUpH.at({0, 1, 1, 0}), static_cast<DataType>(8.333333));
-  EXPECT_EQF(resultUpH.at({0, 1, 2, 0}), static_cast<DataType>(10));
-
-  EXPECT_EQF(resultUpH.at({0, 2, 0, 0}), static_cast<DataType>(8));
-  EXPECT_EQF(resultUpH.at({0, 2, 1, 0}), static_cast<DataType>(13.33333));
-  EXPECT_EQF(resultUpH.at({0, 2, 2, 0}), static_cast<DataType>(16));
-
-  EXPECT_EQF(resultUpH.at({0, 3, 0, 0}), static_cast<DataType>(8));
-  EXPECT_EQF(resultUpH.at({0, 3, 1, 0}), static_cast<DataType>(13.33333));
-  EXPECT_EQF(resultUpH.at({0, 3, 2, 0}), static_cast<DataType>(16));
-
-  auto resultDownH = resultDown->getHandle<DataType>();
-  std::vector<dim_t> expectedDimsDown = {1, 1, 1, 1};
-  ASSERT_TRUE(resultDownH.dims().vec() == expectedDimsDown);
-  EXPECT_EQF(resultDownH.at({0, 0, 0, 0}), static_cast<DataType>(2));
+  dim_t cur = 0;
+  for (dim_t b = 0; b < expectedShape[0]; ++b) {
+    for (dim_t i = 0; i < expectedShape[1]; ++i) {
+      for (dim_t j = 0; j < expectedShape[2]; ++j) {
+        for (dim_t n = 0; n < expectedShape[3]; ++n) {
+          EXPECT_EQF(resultH.at({b, i, j, n}),
+                     static_cast<DataType>(expectedValue[cur++]));
+        }
+      }
+    }
+  }
 }
 
 /// Verify that the ResizeNearest operator works correctly for Float.
-TEST_P(OperatorTest, ResizeBilinear_Float) {
+TEST_P(OperatorTest, ResizeBilinearUp_Float) {
   CHECK_IF_ENABLED();
+  // resize up
   testResizeBilinear<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Verify that the ResizeNearest operator works correctly for Float16.
-TEST_P(OperatorTest, ResizeBilinear_Float16) {
+TEST_P(OperatorTest, ResizeBilinearUp_Float16) {
   CHECK_IF_ENABLED();
+  // resize up
   testResizeBilinear<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Verify that the ResizeNearest operator works correctly for BFloat16.
-TEST_P(OperatorTest, ResizeBilinear_BFloat16) {
+TEST_P(OperatorTest, ResizeBilinearUp_BFloat16) {
   CHECK_IF_ENABLED();
+  // resize up
   testResizeBilinear<bfloat16_t>(bindings_, mod_, F_, EE_,
                                  ElemKind::BFloat16Ty);
 }
 
 /// Verify that the ResizeNearest operator works correctly for Int8Q.
-TEST_P(OperatorTest, ResizeBilinear_Int8) {
+TEST_P(OperatorTest, ResizeBilinearUp_Int8) {
   CHECK_IF_ENABLED();
   testResizeBilinear<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Verify that the ResizeNearest operator works correctly for Int16Q.
-TEST_P(OperatorTest, ResizeBilinear_Int16) {
+TEST_P(OperatorTest, ResizeBilinearUp_Int16) {
   CHECK_IF_ENABLED();
   testResizeBilinear<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy);
 }
 
 /// Verify that the ResizeNearest operator works correctly for Int32Q.
-TEST_P(OperatorTest, ResizeBilinear_Int32) {
+TEST_P(OperatorTest, ResizeBilinearUp_Int32) {
   CHECK_IF_ENABLED();
   testResizeBilinear<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
-TEST_P(OperatorTest, ResizeBilinear_Float_outTy) {
+TEST_P(OperatorTest, ResizeBilinearUp_Float_outTy) {
   CHECK_IF_ENABLED();
   testResizeBilinear<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, true);
 }
-TEST_P(OperatorTest, ResizeBilinear_Float16_outTy) {
+TEST_P(OperatorTest, ResizeBilinearUp_Float16_outTy) {
   CHECK_IF_ENABLED();
   testResizeBilinear<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                                 true);
 }
-TEST_P(OperatorTest, ResizeBilinear_BFloat16_outTy) {
+TEST_P(OperatorTest, ResizeBilinearUp_BFloat16_outTy) {
   CHECK_IF_ENABLED();
   testResizeBilinear<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
                                  true);
 }
-TEST_P(OperatorTest, ResizeBilinear_Int8_outTy) {
+TEST_P(OperatorTest, ResizeBilinearUp_Int8_outTy) {
   CHECK_IF_ENABLED();
   testResizeBilinear<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, true);
 }
-TEST_P(OperatorTest, ResizeBilinear_Int16_outTy) {
+TEST_P(OperatorTest, ResizeBilinearUp_Int16_outTy) {
   CHECK_IF_ENABLED();
   testResizeBilinear<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy,
                               true);
 }
-TEST_P(OperatorTest, ResizeBilinear_Int32_outTy) {
+TEST_P(OperatorTest, ResizeBilinearUp_Int32_outTy) {
   CHECK_IF_ENABLED();
   testResizeBilinear<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy,
                               true);
+}
+/// Verify that the ResizeNearest operator works correctly for Float.
+TEST_P(OperatorTest, ResizeBilinearDown_Float) {
+  CHECK_IF_ENABLED();
+  // resize down
+  testResizeBilinear<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, false,
+                            {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+
+/// Verify that the ResizeNearest operator works correctly for Float.
+TEST_P(OperatorTest, ResizeBilinearDown_Float_pytorchHalfPixel_1) {
+  CHECK_IF_ENABLED();
+  // resize down
+  testResizeBilinear<float>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, false,
+      {1.6666666, 7.0, 12.333333}, {1, 3, 1, 1}, {1, 0.75, 0.25, 1},
+      {1, 4, 4, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+      ResizeCoorTransMode::PYTORCH_HALF_PIXEL);
+}
+
+// PYTORCH_HALF_PIXEL corner case
+TEST_P(OperatorTest, ResizeBilinearDown_Float_pytorchHalfPixel_2) {
+  CHECK_IF_ENABLED();
+  // resize down
+  testResizeBilinear<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, false,
+                            {1}, {1, 1, 1, 1}, {1, 1, 0.25, 1}, {1, 1, 4, 1},
+                            {1, 2, 3, 4},
+                            ResizeCoorTransMode::PYTORCH_HALF_PIXEL);
+}
+
+TEST_P(OperatorTest, ResizeBilinearDown_Float_HalfPixel_1) {
+  CHECK_IF_ENABLED();
+  // resize down
+  testResizeBilinear<float>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, false,
+      {2.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 14.5}, {1, 8, 1, 1},
+      {1, 2, 0.25, 1}, {1, 4, 4, 1},
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+      ResizeCoorTransMode::HALF_PIXEL);
+}
+
+// half_pixel corner case
+TEST_P(OperatorTest, ResizeBilinearDown_Float_HalfPixel_2) {
+  CHECK_IF_ENABLED();
+  // resize down
+  testResizeBilinear<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, false,
+                            {2.5}, {1, 1, 1, 1}, {1, 1, 0.25, 1}, {1, 1, 4, 1},
+                            {1, 2, 3, 4}, ResizeCoorTransMode::HALF_PIXEL);
+}
+
+/// Verify that the ResizeNearest operator works correctly for Float16.
+TEST_P(OperatorTest, ResizeBilinearDown_Float16) {
+  CHECK_IF_ENABLED();
+  // resize down
+  testResizeBilinear<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                                false, {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+
+/// Verify that the ResizeNearest operator works correctly for BFloat16.
+TEST_P(OperatorTest, ResizeBilinearDown_BFloat16) {
+  CHECK_IF_ENABLED();
+  // resize down
+  testResizeBilinear<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                                 false, {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+
+/// Verify that the ResizeNearest operator works correctly for Int8Q.
+TEST_P(OperatorTest, ResizeBilinearDown_Int8) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, false,
+                             {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+
+/// Verify that the ResizeNearest operator works correctly for Int16Q.
+TEST_P(OperatorTest, ResizeBilinearDown_Int16) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy,
+                              false, {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+
+/// Verify that the ResizeNearest operator works correctly for Int32Q.
+TEST_P(OperatorTest, ResizeBilinearDown_Int32) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy,
+                              false, {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+
+TEST_P(OperatorTest, ResizeBilinearDown_Float_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, true,
+                            {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+TEST_P(OperatorTest, ResizeBilinearDown_Float16_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                                true, {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+TEST_P(OperatorTest, ResizeBilinearDown_BFloat16_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                                 true, {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+TEST_P(OperatorTest, ResizeBilinearDown_Int8_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, true,
+                             {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+TEST_P(OperatorTest, ResizeBilinearDown_Int16_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy,
+                              true, {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
+}
+TEST_P(OperatorTest, ResizeBilinearDown_Int32_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy,
+                              true, {2}, {1, 1, 1, 1}, {1, 0.9, 0.6, 1});
 }
 
 TEST_P(OperatorTest, pow) {

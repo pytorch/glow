@@ -5252,10 +5252,6 @@ static void importResizeBilinear(std::string filename,
   for (dim_t i = 0; i < 16; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
-
-  // Constant Folding Test.
-  FAIL_TEST_IF_ERR(checkConstFoldedOutput(netFilename, {"in"}, {&in},
-                                          {bindings.get(output)}));
 }
 
 TEST_F(OnnxImporterTest, importBoolFromInt) {
@@ -5319,6 +5315,26 @@ TEST(onnx, importResizeBilinearAlignCorner) {
       1.0,        1.33333333, 1.66666667, 2.0,        1.66666667, 2,
       2.33333333, 2.66666667, 2.33333333, 2.66666667, 3.0,        3.33333333,
       3.0,        3.33333333, 3.66666667, 4.0};
+  importResizeBilinear(netFilename, expectedValues);
+}
+
+/// Bilinear resize with expected output generated from pytorch for
+/// verification.
+TEST(onnx, importResizeBilinearPytorchHalfPixel) {
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/resizeBilinearPytorchHP.onnxtxt");
+  std::vector<float> expectedValues = {
+      1.0000, 1.2500, 1.7500, 2.0000, 1.5000, 1.7500, 2.2500, 2.5000,
+      2.5000, 2.7500, 3.2500, 3.5000, 3.0000, 3.2500, 3.7500, 4.0000};
+  importResizeBilinear(netFilename, expectedValues);
+}
+
+TEST(onnx, importResizeBilinearHalfPixel) {
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/resizeBilinearHalfPixel.onnxtxt");
+  std::vector<float> expectedValues = {
+      1.0000, 1.2500, 1.7500, 2.0000, 1.5000, 1.7500, 2.2500, 2.5000,
+      2.5000, 2.7500, 3.2500, 3.5000, 3.0000, 3.2500, 3.7500, 4.0000};
   importResizeBilinear(netFilename, expectedValues);
 }
 

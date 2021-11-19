@@ -1355,6 +1355,7 @@ int main(int argc, char **argv) {
   BB.newNode("ResizeBilinear")
       .addInput("Input")
       .addMember(MemberType::VectorFloat, "Scale")
+      .addMember(MemberType::VectorFloat, "Offset")
       .addMember(MemberType::Enum, "CoorTransMode")
       .addResultFromCtorArg()
       .setDocstring(

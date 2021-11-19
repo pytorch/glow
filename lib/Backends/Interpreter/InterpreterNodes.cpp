@@ -3077,6 +3077,7 @@ void BoundInterpreterFunction::fwdResizeBilinearInstImpl(
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
   auto scale = I->getScale();
   auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto offset = I->getOffset();
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
@@ -3084,12 +3085,15 @@ void BoundInterpreterFunction::fwdResizeBilinearInstImpl(
   CHECK_EQ(scale[0], 1.0) << "Scaling batch not supported.";
   CHECK_EQ(scale[3], 1.0) << "Scaling channel not supported.";
 
+  CHECK_EQ(offset[0], 0) << "Resizing batch not supported.";
+  CHECK_EQ(offset[3], 0) << "Resizing channel not supported.";
+
   for (dim_t ob = 0; ob < odim.n; ++ob) {
     for (dim_t oh = 0; oh < odim.h; ++oh) {
       for (dim_t ow = 0; ow < odim.w; ++ow) {
 
-        float ihf = oh / scale[1];
-        float iwf = ow / scale[2];
+        float ihf = std::max(0.0f, oh / scale[1] + offset[1]);
+        float iwf = std::max(0.0f, ow / scale[2] + offset[2]);
         dim_t ih = dim_t(ihf);
         dim_t iw = dim_t(iwf);
 

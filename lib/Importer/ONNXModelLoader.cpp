@@ -2775,6 +2775,10 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
           coordModeStr, loadStr(dict.at("coordinate_transformation_mode")));
       if (coordModeStr == "align_corners") {
         coordTransformMode = ResizeCoorTransMode::ALIGN_CORNERS;
+      } else if (coordModeStr == "pytorch_half_pixel") {
+        coordTransformMode = ResizeCoorTransMode::PYTORCH_HALF_PIXEL;
+      } else if (coordModeStr == "half_pixel") {
+        coordTransformMode = ResizeCoorTransMode::HALF_PIXEL;
       } else {
         RETURN_ERR_IF_NOT(
             coordModeStr == "asymmetric",
@@ -2782,11 +2786,6 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
                      "Resize coordinate transformation mode not supported."));
       }
     }
-    RETURN_ERR_IF_NOT(
-        coordTransformMode == "asymmetric",
-        opErrMsg(op, strFormat("Resize 'asymmetric' coordinate transformation "
-                               "mode supported only, but found %s",
-                               coordTransformMode.c_str())));
 
     // If no scales tensor, sizes tensor should be valid.
     if (scalesC->getPayload().getHandle().size() == 0) {
@@ -2859,6 +2858,11 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
     }
 
     if (modeStr == "nearest") {
+      RETURN_ERR_IF_NOT(
+          coordTransformMode == ResizeCoorTransMode::ASYMMETRIC,
+          opErrMsg(op, strFormat("coordinate transformation mode {%d} is not "
+                                 "supported in nearest mode ",
+                                 coordTransformMode)));
       outtr = G_->createResizeNearest(opName, in, scales);
     } else if (modeStr == "bilinear" || modeStr == "linear") {
       vectorReorder(scales, {NHWC2NCHW});
