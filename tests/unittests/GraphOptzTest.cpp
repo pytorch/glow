@@ -7117,6 +7117,49 @@ TEST_F(GraphOptz, SinkTanhBelowConcatTest) {
   checkNumericalEquivalence();
 }
 
+/// Test that if we have a Concat with all ConvertTo inputs,
+/// we can sink the ConvertTo's below the Concat.
+TEST_F(GraphOptz, SinkConvertToBelowConcatTest) {
+  std::array<NodeValue, 5> inputs;
+  for (dim_t i = 0; i < 5; i++) {
+    Placeholder *input = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                                {i + 1, 100}, "input", false);
+    bindings_.allocate(input)->getHandle<float16_t>().randomize(-100, 100,
+                                                                mod_.getPRNG());
+    ConvertToNode *convertTo =
+        F_->createConvertTo("convertToFP32", input, ElemKind::FloatTy);
+    inputs[i] = convertTo->getResult();
+  }
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+  SaveNode *SN = F_->createSave("ret", concat);
+  EXPECT_EQ(F_->getNodes().size(), 7);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConvertToNodeKind), 5);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 1);
+
+  CompilationContext cctx;
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::SinkConversions, getDCEPassConfig()}, cctx);
+
+  // Concat, converTo, save.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConvertToNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  ConvertToNode *optConvertTo =
+      llvm::dyn_cast<ConvertToNode>(optSN->getInput());
+  ASSERT_TRUE(optConvertTo);
+  NodeValue input = optConvertTo->getInput();
+  EXPECT_EQ(ElemKind::Float16Ty, input.getType()->getElementType());
+
+  checkNumericalEquivalence();
+}
+
 /// Test Clip(Relu) -> Clip'.
 TEST_F(GraphOptz, ClipReluTest) {
   Placeholder *input =

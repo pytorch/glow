@@ -363,6 +363,60 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
   return true;
 }
 
+/// Given \p CN from \p F, determines if all inputs are ConvertTo that use the
+/// same scale/offset/kind, and if so creates and \returns a new concat with all
+/// inputs as the inputs from the ConvertTo inputs. Otherwise \returns nullptr.
+static ConcatNode *setupConvertToSinkBelowConcat(Function *F, ConcatNode *CN) {
+  // Check if all inputs are ConvertTo.
+  std::vector<ConvertToNode *> inputNodes;
+  inputNodes.reserve(CN->getInputs().size());
+  for (auto &concatInput : CN->getInputs()) {
+    auto *CT = dyn_cast<ConvertToNode>(concatInput);
+    if (!CT) {
+      return nullptr;
+    }
+    inputNodes.push_back(CT);
+  }
+
+  // Gather all inputs of the nodes in inputNodes here.
+  std::vector<NodeValue> newInputs;
+  newInputs.reserve(inputNodes.size());
+  newInputs.push_back(inputNodes[0]->getInput());
+
+  // Get the CN's first input's result and input types to check against all
+  // other CN inputs.
+  const TypeRef firstResultTy = inputNodes[0]->getResult().getType();
+  const TypeRef firstInputTy = inputNodes[0]->getInput().getType();
+
+  // Check that all inputs have the same output and input element type.
+  for (size_t i = 1, e = inputNodes.size(); i < e; i++) {
+    const TypeRef currResultTy = inputNodes[i]->getResult().getType();
+    const TypeRef currInputTy = inputNodes[i]->getInput().getType();
+    if (currResultTy->getElementType() != firstResultTy->getElementType()) {
+      return nullptr;
+    }
+    if (firstResultTy->isQuantizedType()) {
+      if (currResultTy->getScale() != firstResultTy->getScale() ||
+          currResultTy->getOffset() != firstResultTy->getOffset()) {
+        return nullptr;
+      }
+    }
+    if (currInputTy->getElementType() != firstInputTy->getElementType()) {
+      return nullptr;
+    }
+    if (firstInputTy->isQuantizedType()) {
+      if (currInputTy->getScale() != firstInputTy->getScale() ||
+          currInputTy->getOffset() != firstInputTy->getOffset()) {
+        return nullptr;
+      }
+    }
+    newInputs.push_back(inputNodes[i]->getInput());
+  }
+
+  // Create and return a new ConcatNode with newInputs.
+  return F->createConcat(CN->getName(), newInputs, CN->getDim());
+}
+
 /// Given \p CN from \p F, determines if all inputs are either Quantize or
 /// Dequantize (depending on \p QuantNodeClass) that use the same
 /// scale/offset/kind, and if so creates and \returns a new concat with all
@@ -484,6 +538,20 @@ bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
           CN->getName().str() + "_quantize", newCN, concatQTy);
 
       CN->getResult().replaceAllUsesOfWith(newQuantize->getResult());
+      changed = true;
+      continue;
+    }
+
+    // Sink ConvertTo below Concat nodes.
+    if (firstNode->getKind() == Kinded::Kind::ConvertToNodeKind) {
+      ConcatNode *newCN = setupConvertToSinkBelowConcat(F, CN);
+      if (!newCN) {
+        continue;
+      }
+      auto *newConvertTo =
+          F->createConvertTo(CN->getName().str() + "_convert_to", newCN,
+                             CN->getResult().getType());
+      CN->getResult().replaceAllUsesOfWith(newConvertTo->getResult());
       changed = true;
       continue;
     }
