@@ -6,6 +6,7 @@ add_library(LLVMIRCodeGen
             DebugInfo.cpp
             JITFilePrinter.cpp
             FunctionSpecializer.cpp
+            DebugInstrumentation.cpp
             GlowJIT.cpp
             Pipeline.cpp
             LLVMIRGen.cpp

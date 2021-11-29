@@ -182,6 +182,9 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
   // else.
   performSpecialization();
 
+  // Add instrumentation into the code for better debugging experience.
+  performDebugInstrumentation();
+
   M->setTargetTriple(TM.getTargetTriple().normalize());
   M->setDataLayout(TM.createDataLayout());
 
