@@ -401,6 +401,8 @@ public:
   virtual void optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM);
   /// Performs specialization of operations based on constant parameters.
   virtual void performSpecialization();
+  /// Insert debug traces in appropriate places.
+  virtual void performDebugInstrumentation();
   /// \returns allocations info.
   virtual AllocationsInfo &getAllocationsInfo() { return allocationsInfo_; }
   /// \returns the name of the bundle, to be used for filename when saving.
