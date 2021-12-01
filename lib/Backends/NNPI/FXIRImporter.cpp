@@ -707,7 +707,10 @@ const std::string &FXNNPIImporter::getInputNodeName(const folly::dynamic &node,
     return empty;
   }
 
-  CHECK(node["is_node"].asBool()) << "Expected is_node";
+  CHECK(node.isObject()) << ": Expected Node object, but found "
+                         << node.typeName() << ": " << node;
+  CHECK(node.find("is_node") != node.items().end() && node["is_node"].asBool())
+      << "Expected is_node";
 
   const auto &name = node["name"].getString();
 

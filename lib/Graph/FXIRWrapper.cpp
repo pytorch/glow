@@ -45,6 +45,8 @@ const std::string &FXIRWrapper::getInputNodeName(const FXNode &node,
     return empty;
   }
 
+  CHECK(node.isObject()) << ": Expected Node object, but found "
+                         << node.typeName() << ": " << node;
   CHECK(node.find("is_node") != node.items().end() && node["is_node"].asBool())
       << "Expected is_node";
 
