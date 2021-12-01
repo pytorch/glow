@@ -19,6 +19,7 @@
 #include <map>
 #include <nnpi_ice_caps.h>
 #include <nnpi_inference.h>
+#include <string>
 #include <vector>
 
 struct NNPITraceEntry {
