@@ -3991,33 +3991,41 @@ Error PyTorchModelLoader::loadAmax(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], amax));
 }
 
+/*
+  aten::size(Tensor self, int dim) -> int"
+  aten::size(Tensor self) -> int[]
+*/
 Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[SizeInputs::input]));
-
-  int64_t dim;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dim, iValToInt(getGlowIValueForValue(inputs[SizeInputs::dim])));
-
-  // Convert negative dimension index into corresponding positive index
-  auto origDim = dim;
-  if (dim < 0) {
-    dim += input.dims().size();
-  }
-
-  RETURN_ERR_IF_NOT(dim < input.dims().size() && dim >= 0,
-                    strFormat("Dim value of %ld is out of range. Valid values "
-                              "are in the range [-%ld, %ld]",
-                              origDim, input.dims().size(),
-                              input.dims().size() - 1));
-
   GlowIValue glowIVal;
-  glowIVal.fromInt(input.dims()[dim]);
+  if (ptNode->inputs().size() > 1) {
+    int64_t dim;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dim, iValToInt(getGlowIValueForValue(inputs[SizeInputs::dim])));
+
+    // Convert negative dimension index into corresponding positive index
+    auto origDim = dim;
+    if (dim < 0) {
+      dim += input.dims().size();
+    }
+
+    RETURN_ERR_IF_NOT(
+        dim < input.dims().size() && dim >= 0,
+        strFormat("Dim value of %ld is out of range. Valid values "
+                  "are in the range [-%ld, %ld]",
+                  origDim, input.dims().size(), input.dims().size() - 1));
+
+    glowIVal.fromInt(input.dims()[dim]);
+  } else {
+    std::vector<int64_t> intList{input.dims().begin(), input.dims().end()};
+    glowIVal.fromIntList(intList);
+  }
 
   RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
 }
