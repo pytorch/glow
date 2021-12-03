@@ -15,6 +15,7 @@
  */
 #include "BackendTestUtils.h"
 
+#include "common/init/light.h"
 #include "glow/Base/TensorSerialization.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -31,7 +32,8 @@
 #include <future>
 #include <random>
 
-#include "gtest/gtest.h"
+#include <glog/logging.h>
+#include <gtest/gtest.h>
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"

@@ -260,6 +260,7 @@ int ImageClassifierProcessResult::processOutputs(
 }
 
 int main(int argc, char **argv) {
+  google::InitGoogleLogging(argv[0]);
 
   if (!expectedMatchingLabels.empty()) {
     // The number of category indices must match the number of files.
