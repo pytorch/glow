@@ -8375,9 +8375,12 @@ Error PyTorchModelLoader::loadEquallySplit(const torch::jit::Node *ptNode) {
       num_split,
       iValToInt(getGlowIValueForValue(inputs[FusedSplitInputs::num_split])));
 
-  int dim;
+  int dimRaw;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      dim, iValToInt(getGlowIValueForValue(inputs[FusedSplitInputs::dim])));
+      dimRaw, iValToInt(getGlowIValueForValue(inputs[FusedSplitInputs::dim])));
+  int dim = 0;
+  ASSIGN_VALUE_OR_RETURN_ERR(dim,
+                             getPositiveIndex(dimRaw, input.dims().size()));
 
   std::vector<glow::SliceNode *> splitOutputs;
   F_.createSplit("EquallySplit", input, num_split, dim, {}, splitOutputs);
