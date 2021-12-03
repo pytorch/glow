@@ -1290,7 +1290,7 @@ struct BatchedUnaryEmbeddingsBagsInputs {
 // static
 const PyTorchModelLoader::MappingOfMemberFunctions
 PyTorchModelLoader::buildSymbolsMapping() {
-  // First build mapping with standard PyTorch operators.
+// First build mapping with standard PyTorch operators.
 #define UNARY_NODE_LOADER(NODE)                                                \
   static_cast<MappingOfMemberFunctionsValue::LoadFn>(                          \
       &PyTorchModelLoader::loadUnaryNode<glow::NODE##Node,                     \
@@ -1842,6 +1842,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::index_add_", "aten::index_add"},
        &PyTorchModelLoader::loadIndexAdd,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"aten::amax"},
+       &PyTorchModelLoader::loadAmax,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
   });
 #undef UNARY_NODE_LOADER
@@ -3945,6 +3948,43 @@ Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
                    ->getResult();
     RETURN_ERR(addValueMapping(outputs[0], reshaped));
   }
+}
+
+Error PyTorchModelLoader::loadAmax(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  glow::GlowIValue *dimsIValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(dimsIValue, getGlowIValueForValue(inputs[1]));
+  std::vector<unsigned_t> glowAxes;
+
+  if (dimsIValue->isInt()) {
+    int64_t dimRaw;
+    ASSIGN_VALUE_OR_RETURN_ERR(dimRaw, iValToInt(dimsIValue));
+    int dim = 0;
+    ASSIGN_VALUE_OR_RETURN_ERR(dim,
+                               getPositiveIndex(dimRaw, input.dims().size()));
+    glowAxes.push_back(static_cast<unsigned_t>(dim));
+  } else { // dimsIValue->isIntList()
+    std::vector<int64_t> *axes;
+    ASSIGN_VALUE_OR_RETURN_ERR(axes,
+                               iValToIntList(getGlowIValueForValue(inputs[1])));
+
+    for (auto axisRaw : *axes) {
+      int axis = 0;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, getPositiveIndex(axisRaw, input.dims().size()));
+      glowAxes.push_back(static_cast<unsigned_t>(axis));
+    }
+  }
+  RETURN_ERR_IF_NOT(glowAxes.size() >= 1, "Empty dims for reduction");
+  auto amax = F_.createBatchedReduceMax("batched_reduce_max_for_unary_max",
+                                        input, glowAxes)
+                  ->getResult();
+  RETURN_ERR(addValueMapping(outputs[0], amax));
 }
 
 Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {

@@ -1074,6 +1074,10 @@ private:
   // Load Pytorch aten::index_add
   // \returns error on failure.
   Error loadIndexAdd(const torch::jit::Node *ptNode);
+
+  // Load Pytorch aten::amax
+  // \returns error on failure.
+  Error loadAmax(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
