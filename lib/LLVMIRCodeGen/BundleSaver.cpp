@@ -422,9 +422,13 @@ void BundleSaver::emitSymbolTable() {
   auto *charTy = llvm::Type::getInt8Ty(irgen_->getLLVMContext());
   auto *uint64TTy =
       llvm::Type::getIntNTy(irgen_->getLLVMContext(), sizeof(uint64_t) * 8);
-  auto symbolTableEntryTy = llvm::StructType::get(
-      irgen_->getLLVMContext(),
-      {charTy->getPointerTo(), uint64TTy, uint64TTy, charTy});
+  auto symbolTableEntryTy =
+      irgen_->getModule().getTypeByName("struct.SymbolTableEntry");
+  if (!symbolTableEntryTy) {
+    symbolTableEntryTy = llvm::StructType::get(
+        irgen_->getLLVMContext(),
+        {charTy->getPointerTo(), uint64TTy, uint64TTy, charTy});
+  }
   // Set of entries in the symbol table.
   llvm::SmallVector<llvm::Constant *, 128> entries;
   // Iterate over all Placeholders and record information about their names,
@@ -452,7 +456,6 @@ void BundleSaver::emitSymbolTable() {
   // Create a constant array with these entries.
   auto *arr = llvm::ConstantArray::get(
       llvm::ArrayType::get(symbolTableEntryTy, entries.size()), entries);
-  // Create a global variable and initialize it with the constructed array.
   new llvm::GlobalVariable(irgen_->getModule(), arr->getType(), true,
                            llvm::GlobalValue::InternalLinkage, arr,
                            irgen_->getBundleName() + "SymbolTable");
@@ -775,7 +778,21 @@ void BundleSaver::emitBundleConfig() {
         irgen_->getModule(), bundleConfigTy, /* isConst */ true,
         llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
         irgen_->getBundleName().str() + "_config");
+  } else {
+    bundleConfigTy = llvm::dyn_cast<llvm::StructType>(
+        config->getType()->getPointerElementType());
   }
+
+  // If symbolTable is not the same type as bundleConfig struct's symbolTable
+  // member, bitcast the pointer to the appropriate type.
+  llvm::Constant *symbolTableTyped = symbolTable;
+  llvm::Type *configSymbolTableType =
+      config->getValueType()->getStructElementType(5);
+  if (symbolTableEntryTy->getPointerTo() != configSymbolTableType) {
+    symbolTableTyped = llvm::ConstantExpr::getPointerCast(
+        symbolTable, config->getValueType()->getStructElementType(5));
+  }
+
   CHECK(!config->hasInitializer())
       << "Bundle config has already been initialized";
 
@@ -789,7 +806,7 @@ void BundleSaver::emitBundleConfig() {
                              irgen_->getAllocationsInfo().activationsMemSize_),
       llvm::ConstantInt::get(uint64TType, TensorAlignment),
       llvm::ConstantInt::get(uint64TType, findPlaceholders().size()),
-      symbolTable));
+      symbolTableTyped));
 }
 
 void BundleSaver::performBundleMemoryAllocation() {
