@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#include "glow/LLVMIRCodeGen/CommandLine.h"
-
 #include "glow/LLVMIRCodeGen/BundleSaver.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/Instrs.h"
+#include "glow/IR/LLVMAPIMacros.h"
 #include "glow/Support/Debug.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -423,7 +423,7 @@ void BundleSaver::emitSymbolTable() {
   auto *uint64TTy =
       llvm::Type::getIntNTy(irgen_->getLLVMContext(), sizeof(uint64_t) * 8);
   auto symbolTableEntryTy =
-      irgen_->getModule().getTypeByName("struct.SymbolTableEntry");
+      GET_TYPE_BY_NAME(irgen_->getModule(), "struct.SymbolTableEntry");
   if (!symbolTableEntryTy) {
     symbolTableEntryTy = llvm::StructType::get(
         irgen_->getLLVMContext(),
