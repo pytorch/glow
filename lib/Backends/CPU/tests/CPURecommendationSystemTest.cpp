@@ -31,6 +31,16 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RecSys_Partitioned_RWQuantizedFP16_SLWS_FP16/0",
     "RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS_FP16/0",
     "RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS_FP16_SNN_Partitioning/0",
+    "RecSys_RWQuantized_SLWS_FC_Deferred/0",
+    "RecSys_Partitioned_RWQuantized_SLWS_FC_Deferred/0",
+    "RecSys_RWQuantized_SLWS_FP16_Deferred/0",
+    "RecSys_RWQuantized_SLWS_Deferred/0",
+    "RecSys_Partitioned_RWQuantizedFP16_SLWS_Deferred/0",
+    "RecSys_FP32_Partitioned_Deferred/0",
+    "RecSys_Partitioned_RWQuantized_SLWS_FP16_Deferred/0",
+    "RecSys_Partitioned_RWQuantized_SLWS_Deferred/0",
+    "RecSys_FP32_Deferred/0",
+    "RecSys_SLS_Only_Deferred/0",
 };
 
 bool glow::useSymmetricRowwiseQuantFC = false;

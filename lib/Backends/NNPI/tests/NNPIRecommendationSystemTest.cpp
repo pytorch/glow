@@ -17,6 +17,16 @@
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {};
+std::set<std::string> glow::backendTestBlacklist = {
+    "RecSys_FP32_Partitioned_Deferred/0",
+    "RecSys_Partitioned_RWQuantizedFP16_SLWS_Deferred/0",
+    "RecSys_SLS_Only_Deferred/0",
+    "RecSys_RWQuantized_SLWS_FP16_Deferred/0",
+    "RecSys_Partitioned_RWQuantized_SLWS_FP16_Deferred/0",
+    "RecSys_Partitioned_RWQuantized_SLWS_Deferred/0",
+    "RecSys_RWQuantized_SLWS_Deferred/0",
+    "RecSys_RWQuantized_SLWS_FC_Deferred/0",
+    "RecSys_Partitioned_RWQuantized_SLWS_FC_Deferred/0",
+};
 
 bool glow::useSymmetricRowwiseQuantFC = true;
