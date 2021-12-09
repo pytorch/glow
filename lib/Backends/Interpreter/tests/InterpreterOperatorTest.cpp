@@ -46,4 +46,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "EmbeddingBagInputSanitizationFirstOffsetNonZero/0",
     "EmbeddingBagInputSanitizationDecreasingOffsets/0",
     "EmbeddingBagInputSanitizationLastOffsetGreaterThanIndicesNum/0",
+    "GatherInputSanitizationInt32/0",
+    "GatherInputSanitizationInt64/0",
+    "GatherInputSanitizationBadIndex/0",
 };

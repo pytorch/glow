@@ -280,6 +280,7 @@ Error InferencePoolEnv::init(NNPIAdapterContainer *adapter,
         nnpiCompiledFunction_->getCompilationConfig(), deviceNetwork_, adapter,
         device, nnpiCompiledFunction_->getPartialInputs(),
         nnpiCompiledFunction_->getValidateSLSInputs(),
+        nnpiCompiledFunction_->getValidateGatherInputs(),
         nnpiCompiledFunction_->getPaddedInputs(),
         nnpiCompiledFunction_->getStaticInputs(), staticPlaceholderMap_,
         deviceOptions_, functionName_, deviceId_);
@@ -368,6 +369,7 @@ InferencePoolEnv::createDetachedInferenceContext(PlaceholderUsageMap &phUsage) {
           nnpiCompiledFunction_->getCompilationConfig(), deviceNetwork_,
           pAdapter_, device_, nnpiCompiledFunction_->getPartialInputs(),
           nnpiCompiledFunction_->getValidateSLSInputs(),
+          nnpiCompiledFunction_->getValidateGatherInputs(),
           nnpiCompiledFunction_->getPaddedInputs(),
           nnpiCompiledFunction_->getStaticInputs(), staticPlaceholderMap_,
           deviceOptions_, functionName_, deviceId_, &phUsage)) {

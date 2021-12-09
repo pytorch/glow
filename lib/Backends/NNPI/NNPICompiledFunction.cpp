@@ -572,6 +572,10 @@ void NNPICompiledFunction::findSLSInputs(Function *F) {
           llvm::dyn_cast<Placeholder>(EBB->getIndices()),
           llvm::dyn_cast<Placeholder>(EBB->getWeights()), /* lengths */ nullptr,
           llvm::dyn_cast<Placeholder>(EBB->getOffsets()));
+    } else if (auto gatherNode = llvm::dyn_cast<GatherNode>(&node)) {
+      validateGatherInputs_.emplace_back(
+          gatherNode->getData(),
+          llvm::dyn_cast<Placeholder>(gatherNode->getIndices()));
     }
   }
 }

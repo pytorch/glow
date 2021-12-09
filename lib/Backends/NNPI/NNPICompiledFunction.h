@@ -84,6 +84,14 @@ struct ValidateSLSInfo {
         offsets(offsets_) {}
 };
 
+struct ValidateGatherInfo {
+  Node *data;
+  Placeholder *indices;
+
+  ValidateGatherInfo(Node *data_, Placeholder *indices_)
+      : data(data_), indices(indices_) {}
+};
+
 /// Function "compiled" for execution by the NNPI backend.
 class NNPICompiledFunction final : public CompiledFunction {
 public:
@@ -123,6 +131,10 @@ public:
   /// \returns a reference to the set SLS parameter Placeholders to validate.
   const std::vector<ValidateSLSInfo> &getValidateSLSInputs() const {
     return validateSLSInputs_;
+  }
+
+  const std::vector<ValidateGatherInfo> &getValidateGatherInputs() const {
+    return validateGatherInputs_;
   }
 
   /// \returns a reference to the set of Placeholders that needed to be padded.
@@ -198,6 +210,7 @@ private:
   std::mutex compiledStreamMutex_;
   std::unordered_set<const Placeholder *> partialInputs_;
   std::vector<ValidateSLSInfo> validateSLSInputs_;
+  std::vector<ValidateGatherInfo> validateGatherInputs_;
   std::unordered_set<const Placeholder *> paddedInputs_;
   std::unordered_set<const Placeholder *> staticInputs_;
   NNPICompilationOptions compilationOptions_;

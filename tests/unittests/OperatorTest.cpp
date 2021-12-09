@@ -16826,7 +16826,7 @@ TEST_P(OperatorTest, EmbeddingBagInputSanitizationBadIndex) {
       },
       /* shouldFail */ true,
       /* expectedErrorMsg */
-      "Error message: SLS indices sanitization failed in function main on "
+      "Error message: Indices sanitization failed in function main on "
       "tensor indices: index 2550 at pos 0 is out of range [0, 1275)");
 }
 
@@ -17127,6 +17127,116 @@ TEST_P(OperatorTest, GatherElementsQInt8Int32) {
     EXPECT_NEAR(expectedT.getHandle<float>().raw(i),
                 resultT->getHandle<float>().raw(i), 5e-2);
   }
+}
+
+static void testGatherInputSanitization(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, std::vector<Tensor> &unownedTensors,
+    llvm::StringRef backendName, ElemKind indicesTy, dim_t dataNum,
+    dim_t indicesNum, dim_t maxIndicesNum,
+    std::function<void(Tensor *)> tensorPopulateFun, bool shouldFail,
+    const std::string &expectedErrorMsg) {
+  // Turn on input sanitization
+  glow::runtime::flags::SanitizeInputsPercent = 100;
+
+  // This test is only meaningful if the backend supports partial tensors.
+  ASSERT_TRUE(EE.getBackend(backendName).supportsPartialTensors());
+
+  auto *data = mod.createConstant(ElemKind::FloatTy, {dataNum}, "data");
+  data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  auto *indices =
+      mod.createPlaceholder(indicesTy, {maxIndicesNum}, "indices", false);
+  auto *gather = F->createGather("gather", data, indices);
+  auto *save = F->createSave("save", gather);
+  auto *outPH = save->getPlaceholder();
+  EE.compile(CompilationMode::Infer);
+
+  Tensor indicesReal(indicesTy, {indicesNum});
+  tensorPopulateFun(&indicesReal);
+
+  Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
+                        indicesReal.getSizeInBytes());
+
+  bindings.insert(indices, std::move(indicesPartial));
+  bindings.allocate(outPH);
+
+  auto err = EE.runWithoutExitOnError(bindings, "main");
+  auto failed = static_cast<bool>(err);
+
+  if (shouldFail) {
+    CHECK(failed) << "Expected sanitization to fail";
+    auto errMsg = takeErrorValue(std::move(err))->logToString();
+    CHECK(errMsg.find(expectedErrorMsg) != std::string::npos)
+        << "Didn't find expected message: " << expectedErrorMsg
+        << "\nInstead got: " << errMsg;
+  } else {
+    if (failed) {
+      LOG(FATAL) << "Expected sanitization to pass, but got "
+                 << takeErrorValue(std::move(err))->logToString();
+    }
+  }
+
+  // Keep these around so their memory is not freed at the end of the
+  // test/scope. This is so that inside TearDown during import/export testing
+  // the data is still around.
+  unownedTensors.push_back(std::move(indicesReal));
+}
+
+TEST_P(OperatorTest, GatherInputSanitizationInt32) {
+  CHECK_IF_ENABLED();
+
+  const dim_t dataNum = 10;
+
+  testGatherInputSanitization(
+      bindings_, mod_, F_, EE_, unownedTensors_, getBackendName(),
+      ElemKind::Int32ITy,
+      /* dataNum */ dataNum,
+      /* indicesNum */ 100,
+      /* maxIndicesNum */ 20000,
+      [this](Tensor *indices) {
+        indices->getHandle<int32_t>().randomize(0, dataNum - 1, mod_.getPRNG());
+      },
+      /* shouldFail */ false,
+      /* expectedErrorMsg */ "");
+}
+
+TEST_P(OperatorTest, GatherInputSanitizationInt64) {
+  CHECK_IF_ENABLED();
+
+  const dim_t dataNum = 10;
+
+  testGatherInputSanitization(
+      bindings_, mod_, F_, EE_, unownedTensors_, getBackendName(),
+      ElemKind::Int64ITy,
+      /* dataNum */ dataNum,
+      /* indicesNum */ 100,
+      /* maxIndicesNum */ 20000,
+      [this](Tensor *indices) {
+        indices->getHandle<int64_t>().randomize(0, dataNum - 1, mod_.getPRNG());
+      },
+      /* shouldFail */ false,
+      /* expectedErrorMsg */ "");
+}
+
+TEST_P(OperatorTest, GatherInputSanitizationBadIndex) {
+  CHECK_IF_ENABLED();
+
+  skipSerializationOnTearDown_ = true;
+
+  const dim_t dataNum = 10;
+
+  testGatherInputSanitization(
+      bindings_, mod_, F_, EE_, unownedTensors_, getBackendName(),
+      ElemKind::Int32ITy,
+      /* dataNum */ dataNum,
+      /* indicesNum */ 100,
+      /* maxIndicesNum */ 20000,
+      [](Tensor *indices) { indices->getHandle<int32_t>().at(0) = dataNum; },
+      /* shouldFail */ true,
+      /* expectedErrorMsg */
+      "Error message: Indices sanitization failed in function main on tensor "
+      "indices: index 10 at pos 0 is out of range [0, 10)");
 }
 
 /// Helper to test FusedRowwiseQuantizedSparseLengthsWeightedSum using \p DTy.

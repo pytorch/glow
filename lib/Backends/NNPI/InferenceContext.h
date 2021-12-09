@@ -55,6 +55,8 @@ private:
   /// Mapping of inputs that belong to an SLS or EmbeddingBag operator
   const std::vector<ValidateSLSInfo> *validateSLSInputs_;
 
+  const std::vector<ValidateGatherInfo> *validateGatherInputs_;
+
   /// Set of inputs that requires non-zero paddings.
   const std::unordered_set<const Placeholder *> *paddedInputs_;
 
@@ -105,6 +107,7 @@ public:
             NNPIDeviceContext device,
             const std::unordered_set<const Placeholder *> &partialInputs,
             const std::vector<ValidateSLSInfo> &validateSLSInputs,
+            const std::vector<ValidateGatherInfo> &validateGatherInputs,
             const std::unordered_set<const Placeholder *> &paddedInputs,
             const std::unordered_set<const Placeholder *> &staticInputs,
             StaticPlaceholderMap *staticPlaceholderMap,

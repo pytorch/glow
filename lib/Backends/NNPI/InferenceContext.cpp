@@ -42,7 +42,7 @@ static Error sanitizeIndices(const Tensor *indicesTensor, size_t tableHeight,
   for (auto i = 0; i < indicesLen; i++) {
     RETURN_ERR_IF_NOT(
         indices.raw(i) >= 0 && indices.raw(i) < tableHeight,
-        "SLS indices sanitization failed in function " + functionName +
+        "Indices sanitization failed in function " + functionName +
             " on tensor " + tensorName.str() + ": index " +
             std::to_string(indices.raw(i)) + " at pos " + std::to_string(i) +
             " is out of range [0, " + std::to_string(tableHeight) + ")");
@@ -133,6 +133,7 @@ bool InferenceContext::init(
     NNPIDeviceContext device,
     const std::unordered_set<const Placeholder *> &partialInputs,
     const std::vector<ValidateSLSInfo> &validateSLSInputs,
+    const std::vector<ValidateGatherInfo> &validateGatherInputs,
     const std::unordered_set<const Placeholder *> &paddedInputs,
     const std::unordered_set<const Placeholder *> &staticInputs,
     StaticPlaceholderMap *staticPlaceholderMap,
@@ -146,6 +147,7 @@ bool InferenceContext::init(
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
   validateSLSInputs_ = &validateSLSInputs;
+  validateGatherInputs_ = &validateGatherInputs;
   paddedInputs_ = &paddedInputs;
   functionName_ = functionName;
 
@@ -820,6 +822,41 @@ Error InferenceContext::sanitize(PlaceholderBindings &bindings) {
             "SLS lengths sanitization failed in function %s on tensor %s: "
             "unsupported element type for indices",
             functionName_.c_str(), sls.lengths->getName().str().c_str()));
+      }
+    }
+  }
+
+  if (validateGatherInputs_->size() > 0) {
+    LOG_EVERY_N(INFO, 1000)
+        << "===== Sanitizing inputs for " << validateGatherInputs_->size()
+        << " Gather ops in function " << functionName_ << " at "
+        << flags::SanitizeInputsPercent << "% probability";
+    for (const auto &gatherInfo : *validateGatherInputs_) {
+      size_t dataLen = 0;
+      if (auto dataPH = llvm::dyn_cast<Placeholder>(gatherInfo.data)) {
+        auto data = bindings.get(dataPH);
+        dataLen = data->getRealNumElements();
+      } else if (auto dataC = llvm::dyn_cast<Constant>(gatherInfo.data)) {
+        dataLen = dataC->getType()->size();
+      } else {
+        continue;
+      }
+
+      auto indices = bindings.get(gatherInfo.indices);
+      if (indices == nullptr) {
+        continue;
+      }
+
+      if (indices->getElementType() == ElemKind::Int64ITy) {
+        RETURN_IF_ERR(sanitizeIndices<int64_t>(
+            indices, dataLen, gatherInfo.indices->getName(), functionName_));
+      } else if (indices->getElementType() == ElemKind::Int32ITy) {
+        RETURN_IF_ERR(sanitizeIndices<int32_t>(
+            indices, dataLen, gatherInfo.indices->getName(), functionName_));
+      } else {
+        return MAKE_ERR(strFormat("Gather indices sanitization failed on %s: "
+                                  "unsupported element type for indices",
+                                  gatherInfo.indices->getName().str().c_str()));
       }
     }
   }
