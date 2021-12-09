@@ -33,61 +33,77 @@ namespace runtime {
 namespace {
 
 template <class T>
-static bool sanitizeIndices(const Tensor *indicesTensor, size_t tableHeight) {
+static Error sanitizeIndices(const Tensor *indicesTensor, size_t tableHeight,
+                             llvm::StringRef tensorName,
+                             const std::string &functionName) {
   auto indices = indicesTensor->getHandle<T>();
   size_t indicesLen = indices.getRealNumElements();
-  // indices in [0, n)
+  // indices in [0, tableHeight)
   for (auto i = 0; i < indicesLen; i++) {
-    LOG_AND_RETURN_IF(
-        ERROR, indices.raw(i) < 0 || indices.raw(i) >= tableHeight,
-        "index out of range " + to_string(indices.raw(i)) + " at idx " +
-            to_string(i) + " tableHeight " + to_string(tableHeight),
-        false);
+    RETURN_ERR_IF_NOT(
+        indices.raw(i) >= 0 && indices.raw(i) < tableHeight,
+        "SLS indices sanitization failed in function " + functionName +
+            " on tensor " + tensorName.str() + ": index " +
+            std::to_string(indices.raw(i)) + " at pos " + std::to_string(i) +
+            " is out of range [0, " + std::to_string(tableHeight) + ")");
   }
 
-  return true;
+  return Error::success();
 }
 
 template <class T>
-static bool sanitizeLengths(const Tensor *lengthsTensor,
-                            const size_t indicesLen) {
+static Error
+sanitizeLengths(const Tensor *lengthsTensor, const size_t indicesLen,
+                llvm::StringRef tensorName, const std::string &functionName) {
   auto lengths = lengthsTensor->getHandle<T>();
 
   // sum(lens) = len(indices)
   size_t totalLensSum = std::accumulate(lengths.begin(), lengths.end(), 0U);
 
-  LOG_AND_RETURN_IF(
-      ERROR, indicesLen != totalLensSum,
-      "sanitization failed, indices length " + to_string(indicesLen) +
-          " different from sum of lengths " + to_string(totalLensSum),
-      false);
+  RETURN_ERR_IF_NOT(indicesLen == totalLensSum,
+                    strFormat("SLS lengths sanitization failed in function %s "
+                              "on tensor %s: indices "
+                              "length %lu is not equal to sum of lengths %lu",
+                              functionName.c_str(), tensorName.str().c_str(),
+                              indicesLen, totalLensSum));
 
-  return true;
+  return Error::success();
 }
 
 template <class T>
-static bool sanitizeOffsets(const Tensor *offsetsTensor,
-                            const size_t indicesLen) {
+static Error
+sanitizeOffsets(const Tensor *offsetsTensor, const size_t indicesLen,
+                llvm::StringRef tensorName, const std::string &functionName) {
   auto offsets = offsetsTensor->getHandle<T>();
+
+  RETURN_ERR_IF_NOT(offsets.raw(0) == 0,
+                    "SLS offsets sanitization failed in function " +
+                        functionName + " on tensor " + tensorName.str() +
+                        ": the first offset is not zero " +
+                        std::to_string(offsets.raw(0)));
 
   size_t offsetsLen = offsets.getRealNumElements();
   for (auto i = 0; i < offsetsLen - 1; i++) {
-    LOG_AND_RETURN_IF(ERROR, offsets.raw(i) > offsets.raw(i + 1),
-                      "offset should not be decreasing " +
-                          to_string(offsets.raw(i)) + " " +
-                          to_string(offsets.raw(i + 1)),
-                      false);
+    RETURN_ERR_IF_NOT(offsets.raw(i) <= offsets.raw(i + 1),
+                      "SLS offsets sanitization failed in function " +
+                          functionName + " on tensor " + tensorName.str() +
+                          ": decreasing offsets " +
+                          std::to_string(offsets.raw(i)) + " and " +
+                          std::to_string(offsets.raw(i + 1)) + " at pos " +
+                          std::to_string(i));
   }
-  // last offset = len(indices)
+
+  // The same precondition as here
+  // https://github.com/pytorch/pytorch/blob/fced51eaf7eab7c513b02c76cc44ef6b62b3b3ef/torch/csrc/api/include/torch/nn/functional/embedding.h#L105
   size_t lastOffset = offsets.raw(offsetsLen - 1);
+  RETURN_ERR_IF_NOT(lastOffset <= indicesLen,
+                    strFormat("SLS offsets sanitization failed in function %s "
+                              "on tensor %s: the last offset %lu is "
+                              "greater than the number of indices %lu",
+                              functionName.c_str(), tensorName.str().c_str(),
+                              lastOffset, indicesLen));
 
-  LOG_AND_RETURN_IF(
-      ERROR, indicesLen != lastOffset,
-      "sanitization failed, indices length " + std::to_string(indicesLen) +
-          " different from the last offset " + std::to_string(lastOffset),
-      false);
-
-  return true;
+  return Error::success();
 }
 
 } // namespace
@@ -442,8 +458,11 @@ void InferenceContext::execute(RunIdentifierTy runId,
                          tracePreProcessContextName_, attributes);
 
   // Sanitize inputs before running inference
-  LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-      ERROR, sanitize(bindings), "Failed santization.", runId, ctx, resultCB);
+  if (auto sanitizationError = sanitize(bindings)) {
+    LOG(ERROR) << "Failed SLS sanitization";
+    resultCB(runId, std::move(sanitizationError), std::move(ctx));
+    return;
+  }
 
   // Pre-inference
   std::vector<void *> rawInputs, rawOutputs;
@@ -713,14 +732,15 @@ void InferenceContext::dumpRuntime() const {
   }
 }
 
-bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
+Error InferenceContext::sanitize(PlaceholderBindings &bindings) {
   if (flags::SanitizeInputsPercent == 0 ||
       folly::Random::rand32() % 100 > flags::SanitizeInputsPercent) {
-    return true;
+    return Error::success();
   }
 
-  LOG_EVERY_N(INFO, 1000) << "===== Sanitizing " << validateSLSInputs_->size()
-                          << " sets of inputs at "
+  LOG_EVERY_N(INFO, 1000) << "===== Sanitizing inputs for "
+                          << validateSLSInputs_->size()
+                          << " SLS ops in function " << functionName_ << " at "
                           << flags::SanitizeInputsPercent << "% probability";
   for (const auto &sls : *validateSLSInputs_) {
     size_t indicesLen, weightsLen, totalLensSum = 0;
@@ -731,10 +751,6 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
       continue;
     }
 
-    // The indices tensor is not partial
-    if (indices->getSizeInBytes() == indices->getUnpaddedSizeInBytes()) {
-      continue;
-    }
     indicesLen = indices->getRealNumElements();
     if (sls.weights) {
       auto *weights = bindings.get(sls.weights);
@@ -742,28 +758,28 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
       // or internal to the function, then sanitize
       if (weights != nullptr) {
         weightsLen = weights->getRealNumElements();
-        LOG_AND_RETURN_IF(
-            ERROR, indicesLen != weightsLen,
-            "santize failed, indices length: " + std::to_string(indicesLen) +
-                " different from weights length: " + std::to_string(weightsLen),
-            false);
+        RETURN_ERR_IF_NOT(
+            indicesLen == weightsLen,
+            strFormat("SLS weights sanitization failed on %s: indices "
+                      "length: %lu is not equal to weights length %lu",
+                      sls.weights->getName().str().c_str(), indicesLen,
+                      weightsLen));
       }
     }
 
-    bool ret;
-
     // Sanitize indices
     if (indices->getElementType() == ElemKind::Int64ITy) {
-      ret = sanitizeIndices<int64_t>(indices, sls.tableHeight);
+      RETURN_IF_ERR(sanitizeIndices<int64_t>(
+          indices, sls.tableHeight, sls.indices->getName(), functionName_));
     } else if (indices->getElementType() == ElemKind::Int32ITy) {
-      ret = sanitizeIndices<int32_t>(indices, sls.tableHeight);
+      RETURN_IF_ERR(sanitizeIndices<int32_t>(
+          indices, sls.tableHeight, sls.indices->getName(), functionName_));
     } else {
-      LOG_AND_RETURN_IF(ERROR, true, "unsupported element type for indices",
-                        false);
+      return MAKE_ERR(strFormat(
+          "SLS indices sanitization failed in function %s on tensor %s: "
+          "unsupported element type for indices",
+          functionName_.c_str(), sls.indices->getName().str().c_str()));
     }
-
-    LOG_AND_RETURN_IF(ERROR, !ret, "Failed SLS sanitization on indices.",
-                      false);
 
     if (sls.isEmbeddingBag) {
       // EmbeddingBag case
@@ -774,12 +790,16 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
       }
 
       if (offsets->getElementType() == ElemKind::Int32ITy) {
-        ret = sanitizeOffsets<int32_t>(offsets, indicesLen);
+        RETURN_IF_ERR(sanitizeOffsets<int32_t>(
+            offsets, indicesLen, sls.offsets->getName(), functionName_));
       } else if (offsets->getElementType() == ElemKind::Int64ITy) {
-        ret = sanitizeOffsets<int64_t>(offsets, indicesLen);
+        RETURN_IF_ERR(sanitizeOffsets<int64_t>(
+            offsets, indicesLen, sls.offsets->getName(), functionName_));
       } else {
-        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type for offsets",
-                          false);
+        return MAKE_ERR(strFormat(
+            "SLS offsets sanitization failed in function %s on tensor %s: "
+            "unsupported element type for indices",
+            functionName_.c_str(), sls.offsets->getName().str().c_str()));
       }
     } else {
       // SLS case
@@ -790,19 +810,21 @@ bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
       }
 
       if (lengths->getElementType() == ElemKind::Int32ITy) {
-        ret = sanitizeLengths<int32_t>(lengths, indicesLen);
+        RETURN_IF_ERR(sanitizeLengths<int32_t>(
+            lengths, indicesLen, sls.lengths->getName(), functionName_));
       } else if (lengths->getElementType() == ElemKind::Int64ITy) {
-        ret = sanitizeLengths<int64_t>(lengths, indicesLen);
+        RETURN_IF_ERR(sanitizeLengths<int64_t>(
+            lengths, indicesLen, sls.lengths->getName(), functionName_));
       } else {
-        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type for lengths",
-                          false);
+        return MAKE_ERR(strFormat(
+            "SLS lengths sanitization failed in function %s on tensor %s: "
+            "unsupported element type for indices",
+            functionName_.c_str(), sls.lengths->getName().str().c_str()));
       }
     }
-    LOG_AND_RETURN_IF(ERROR, !ret,
-                      "Failed SLS sanitization on offsets/lengths.", false);
   }
 
-  return true;
+  return Error::success();
 }
 
 } // namespace runtime

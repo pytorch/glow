@@ -123,8 +123,8 @@ void glow::updateInputPlaceholdersByName(PlaceholderBindings &bindings,
   }
 }
 
-void ExecutionEngine::runInternal(ExecutionContext &context,
-                                  llvm::StringRef name) {
+Error ExecutionEngine::runInternal(ExecutionContext &context,
+                                   llvm::StringRef name, bool exitOnError) {
   std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::unique_ptr<ExecutionContext> contextOut;
   std::promise<void> runPromise;
@@ -145,7 +145,11 @@ void ExecutionEngine::runInternal(ExecutionContext &context,
   }
   // Don't delete context.
   contextOut.release();
-  EXIT_ON_ERR(std::move(runErr));
+
+  if (exitOnError) {
+    EXIT_ON_ERR(std::move(runErr));
+  }
+  return runErr;
 }
 
 void ExecutionEngine::run(ExecutionContext &context) {
@@ -174,6 +178,16 @@ void ExecutionEngine::run(PlaceholderBindings &bindings, llvm::StringRef name) {
   runInternal(context, name);
   // Don't delete bindings.
   context.movePlaceholderBindings().release();
+}
+
+Error ExecutionEngine::runWithoutExitOnError(PlaceholderBindings &bindings,
+                                             llvm::StringRef name) {
+  std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
+  ExecutionContext context(std::move(bindingsPtr));
+  auto error = runInternal(context, name, /* exitOnError */ false);
+  // Don't delete bindings.
+  context.movePlaceholderBindings().release();
+  return error;
 }
 
 void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,

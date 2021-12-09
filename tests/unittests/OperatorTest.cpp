@@ -50,9 +50,15 @@ protected:
   /// Use this for storing tensors that are unowned, i.e. if they would normally
   /// be stack local and so they cannot be read in TearDown.
   std::vector<Tensor> unownedTensors_;
+
+  /// In case when we don't expect tested function to succeed, there is no need
+  /// to serialize it afterwards and verify.
+  bool skipSerializationOnTearDown_;
+
   virtual void SetUp() override {
     glow::nnpi::flags::EnableCustomIAKernels = true;
     glow::nnpi::flags::EnableCustomDSPKernels = true;
+    skipSerializationOnTearDown_ = false;
 
     // Skip stripping the module so that we can inspect Constants after
     // compilation.
@@ -69,6 +75,10 @@ protected:
 
     ASSERT_TRUE(F_->verify(&EE_.getBackend()))
         << "Function must pass verification.";
+
+    if (skipSerializationOnTearDown_) {
+      return;
+    }
 
     // If the function contains custom kernels then skip the serialization
 #ifdef GLOW_WITH_NNPI
@@ -16527,9 +16537,6 @@ static void testRepeatedSLSWithPartialTensors(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
     glow::ExecutionEngine &EE, std::vector<Tensor> &unownedTensors,
     llvm::StringRef backendName, ElemKind ITy) {
-  // Turn on input sanitization
-  glow::runtime::flags::SanitizeInputsPercent = 100;
-
   // This test is only meaningful if the backend supports partial tensors.
   ASSERT_TRUE(EE.getBackend(backendName).supportsPartialTensors());
 
@@ -16688,6 +16695,219 @@ TEST_P(OperatorTest, RepeatedSLWSWithPartialTensors) {
   unownedTensors_.push_back(std::move(indicesReal));
   unownedTensors_.push_back(std::move(lengthsReal));
   unownedTensors_.push_back(std::move(weightsReal));
+}
+
+static void testEmbeddingBagInputSanitization(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, std::vector<Tensor> &unownedTensors,
+    llvm::StringRef backendName, ElemKind indicesTy, ElemKind offsetsTy,
+    dim_t embeddingRows, dim_t indicesNum, dim_t maxIndicesNum,
+    dim_t offsetsNum, std::function<void(Tensor *, Tensor *)> tensorPopulateFun,
+    bool shouldFail, const std::string &expectedErrorMsg) {
+  // Turn on input sanitization
+  glow::runtime::flags::SanitizeInputsPercent = 100;
+
+  // This test is only meaningful if the backend supports partial tensors.
+  ASSERT_TRUE(EE.getBackend(backendName).supportsPartialTensors());
+
+  auto *data =
+      mod.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
+  data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  auto *weights =
+      mod.createConstant(ElemKind::FloatTy, {maxIndicesNum}, "weights");
+  weights->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                            mod.getPRNG());
+  auto *indices =
+      mod.createPlaceholder(indicesTy, {maxIndicesNum}, "indices", false);
+  auto *offsets =
+      mod.createPlaceholder(offsetsTy, {offsetsNum}, "offsets", false);
+  auto *EBB =
+      F->createEmbeddingBag("EBB", data, weights, indices, offsets, true);
+  auto *save = F->createSave("save", EBB);
+  auto *outPH = save->getPlaceholder();
+  EE.compile(CompilationMode::Infer);
+
+  Tensor indicesReal(indicesTy, {indicesNum});
+  Tensor offsetsReal(offsetsTy, {offsetsNum});
+  tensorPopulateFun(&indicesReal, &offsetsReal);
+
+  Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
+                        indicesReal.getSizeInBytes());
+  Tensor offsetsPartial(offsetsReal.getUnsafePtr(), offsets->getType(),
+                        offsetsReal.getSizeInBytes());
+
+  bindings.insert(indices, std::move(indicesPartial));
+  bindings.insert(offsets, std::move(offsetsPartial));
+  bindings.allocate(outPH);
+
+  auto err = EE.runWithoutExitOnError(bindings, "main");
+  auto failed = static_cast<bool>(err);
+
+  if (shouldFail) {
+    CHECK(failed) << "Expected sanitization to fail";
+    auto errMsg = takeErrorValue(std::move(err))->logToString();
+    CHECK(errMsg.find(expectedErrorMsg) != std::string::npos)
+        << "Didn't find expected message: " << expectedErrorMsg
+        << "\nInstead got: " << errMsg;
+  } else {
+    if (failed) {
+      LOG(FATAL) << "Expected sanitization to pass, but got "
+                 << takeErrorValue(std::move(err))->logToString();
+    }
+  }
+
+  // Keep these around so their memory is not freed at the end of the
+  // test/scope. This is so that inside TearDown during import/export testing
+  // the data is still around.
+  unownedTensors.push_back(std::move(indicesReal));
+  unownedTensors.push_back(std::move(offsetsReal));
+}
+
+TEST_P(OperatorTest, EmbeddingBagInputSanitizationInt32) {
+  CHECK_IF_ENABLED();
+
+  const dim_t embeddingRows = 1275;
+
+  testEmbeddingBagInputSanitization(
+      bindings_, mod_, F_, EE_, unownedTensors_, getBackendName(),
+      ElemKind::Int32ITy, ElemKind::Int32ITy,
+      /* embeddingRows */ embeddingRows,
+      /* indicesNum */ 100,
+      /* maxIndicesNum */ 20000,
+      /* offsetsNum */ 20,
+      [this](Tensor *indices, Tensor *offsets) {
+        indices->getHandle<int32_t>().randomize(0, embeddingRows - 1,
+                                                mod_.getPRNG());
+        offsets->getHandle<int32_t>().clear(0);
+      },
+      /* shouldFail */ false,
+      /* expectedErrorMsg */ "");
+}
+
+TEST_P(OperatorTest, EmbeddingBagInputSanitizationInt64) {
+  CHECK_IF_ENABLED();
+
+  const dim_t embeddingRows = 1275;
+
+  testEmbeddingBagInputSanitization(
+      bindings_, mod_, F_, EE_, unownedTensors_, getBackendName(),
+      ElemKind::Int64ITy, ElemKind::Int64ITy,
+      /* embeddingRows */ embeddingRows,
+      /* indicesNum */ 100,
+      /* maxIndicesNum */ 20000,
+      /* offsetsNum */ 20,
+      [this](Tensor *indices, Tensor *offsets) {
+        indices->getHandle<int64_t>().randomize(0, embeddingRows - 1,
+                                                mod_.getPRNG());
+        offsets->getHandle<int64_t>().clear(0);
+      },
+      /* shouldFail */ false,
+      /* expectedErrorMsg */ "");
+}
+
+TEST_P(OperatorTest, EmbeddingBagInputSanitizationBadIndex) {
+  CHECK_IF_ENABLED();
+
+  skipSerializationOnTearDown_ = true;
+
+  const dim_t embeddingRows = 1275;
+
+  testEmbeddingBagInputSanitization(
+      bindings_, mod_, F_, EE_, unownedTensors_, getBackendName(),
+      ElemKind::Int32ITy, ElemKind::Int32ITy,
+      /* embeddingRows */ embeddingRows,
+      /* indicesNum */ 100,
+      /* maxIndicesNum */ 20000,
+      /* offsetsNum */ 20,
+      [](Tensor *indices, Tensor *offsets) {
+        indices->getHandle<int32_t>().at(0) = 2 * embeddingRows;
+        offsets->getHandle<int32_t>().clear(0);
+      },
+      /* shouldFail */ true,
+      /* expectedErrorMsg */
+      "Error message: SLS indices sanitization failed in function main on "
+      "tensor indices: index 2550 at pos 0 is out of range [0, 1275)");
+}
+
+TEST_P(OperatorTest, EmbeddingBagInputSanitizationFirstOffsetNonZero) {
+  CHECK_IF_ENABLED();
+
+  skipSerializationOnTearDown_ = true;
+
+  const dim_t embeddingRows = 1275;
+
+  testEmbeddingBagInputSanitization(
+      bindings_, mod_, F_, EE_, unownedTensors_, getBackendName(),
+      ElemKind::Int32ITy, ElemKind::Int32ITy,
+      /* embeddingRows */ embeddingRows,
+      /* indicesNum */ 100,
+      /* maxIndicesNum */ 20000,
+      /* offsetsNum */ 20,
+      [this](Tensor *indices, Tensor *offsets) {
+        indices->getHandle<int32_t>().randomize(0, embeddingRows - 1,
+                                                mod_.getPRNG());
+        offsets->getHandle<int32_t>().at(0) = 1;
+      },
+      /* shouldFail */ true,
+      /* expectedErrorMsg */
+      "Error message: SLS offsets sanitization failed in function main on "
+      "tensor offsets: the first offset is not zero 1");
+}
+
+TEST_P(OperatorTest, EmbeddingBagInputSanitizationDecreasingOffsets) {
+  CHECK_IF_ENABLED();
+
+  skipSerializationOnTearDown_ = true;
+
+  const dim_t embeddingRows = 1275;
+
+  testEmbeddingBagInputSanitization(
+      bindings_, mod_, F_, EE_, unownedTensors_, getBackendName(),
+      ElemKind::Int32ITy, ElemKind::Int32ITy,
+      /* embeddingRows */ embeddingRows,
+      /* indicesNum */ 100,
+      /* maxIndicesNum */ 20000,
+      /* offsetsNum */ 20,
+      [this](Tensor *indices, Tensor *offsets) {
+        indices->getHandle<int32_t>().randomize(0, embeddingRows - 1,
+                                                mod_.getPRNG());
+        offsets->getHandle<int32_t>().at(0) = 0;
+        offsets->getHandle<int32_t>().at(1) = 5;
+        offsets->getHandle<int32_t>().at(2) = 3;
+      },
+      /* shouldFail */ true,
+      /* expectedErrorMsg */
+      "Error message: SLS offsets sanitization failed in function main on "
+      "tensor offsets: decreasing offsets 5 and 3 at pos 1");
+}
+
+TEST_P(OperatorTest,
+       EmbeddingBagInputSanitizationLastOffsetGreaterThanIndicesNum) {
+  CHECK_IF_ENABLED();
+
+  skipSerializationOnTearDown_ = true;
+
+  const dim_t embeddingRows = 1275;
+
+  testEmbeddingBagInputSanitization(
+      bindings_, mod_, F_, EE_, unownedTensors_, getBackendName(),
+      ElemKind::Int32ITy, ElemKind::Int32ITy,
+      /* embeddingRows */ embeddingRows,
+      /* indicesNum */ 100,
+      /* maxIndicesNum */ 20000,
+      /* offsetsNum */ 20,
+      [this](Tensor *indices, Tensor *offsets) {
+        indices->getHandle<int32_t>().randomize(0, embeddingRows - 1,
+                                                mod_.getPRNG());
+        offsets->getHandle<int32_t>().clear(0);
+        offsets->getHandle<int32_t>().at(19) = 101;
+      },
+      /* shouldFail */ true,
+      /* expectedErrorMsg */
+      "Error message: SLS offsets sanitization failed in function main on "
+      "tensor offsets: the last offset 101 is greater than the number of "
+      "indices 100");
 }
 
 /// Helper to test gathers using partial inputs using \p ITy.

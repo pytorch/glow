@@ -73,7 +73,8 @@ class ExecutionEngine final {
 
   /// Single execution of the given function, \p name with the given context
   /// \bindings.
-  void runInternal(ExecutionContext &context, llvm::StringRef name);
+  Error runInternal(ExecutionContext &context, llvm::StringRef name,
+                    bool exitOnError = true);
 
 public:
   /// Constructor for an ExecutionEngine with \p backend and memory \p
@@ -143,6 +144,11 @@ public:
   /// Context aware single execution of a function with the given \p
   /// name.
   void run(PlaceholderBindings &bindings, llvm::StringRef name);
+
+  /// Context aware single execution of a function with the given \p
+  /// name. Doesn't exit if there was an error.
+  Error runWithoutExitOnError(PlaceholderBindings &bindings,
+                              llvm::StringRef name);
 
   /// \returns a reference to the backend with name \p backendName owned by the
   /// Provisioner inside of \ref hostManager_.
