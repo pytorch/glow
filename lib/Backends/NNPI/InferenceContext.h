@@ -90,7 +90,7 @@ private:
 
   /// Sanitize inputs before sending inferences to the device
   /// Currently doing SLS and EmbeddingBag OOB checks
-  bool sanitize(PlaceholderBindings &bindings);
+  Error sanitize(PlaceholderBindings &bindings);
 
 public:
   InferenceContext();

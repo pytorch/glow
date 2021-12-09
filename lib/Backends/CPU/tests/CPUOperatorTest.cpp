@@ -519,4 +519,10 @@ std::set<std::string> glow::backendTestBlacklist = {
     "InstanceNormalization_FloatTy/0",
     "BatchedUnaryEmbeddingsBags_Float/0",
     "BatchedUnaryEmbeddingsBags_Float16/0",
+    "EmbeddingBagInputSanitizationInt32/0",
+    "EmbeddingBagInputSanitizationInt64/0",
+    "EmbeddingBagInputSanitizationBadIndex/0",
+    "EmbeddingBagInputSanitizationFirstOffsetNonZero/0",
+    "EmbeddingBagInputSanitizationDecreasingOffsets/0",
+    "EmbeddingBagInputSanitizationLastOffsetGreaterThanIndicesNum/0",
 };
