@@ -103,6 +103,16 @@ const folly::dynamic &glow::getNodeKwargs(const folly::dynamic &node) {
   return node["kwargs"];
 }
 
+bool glow::isNodePadded(const folly::dynamic &node) {
+  auto shape = getNodeShape<glow::dim_t>(node);
+  auto stride = getNodeStride<glow::dim_t>(node);
+  if (stride.size() >= 2) {
+    CHECK_EQ(shape.size(), stride.size());
+    return stride[stride.size() - 2] > shape[shape.size() - 1];
+  }
+  return false;
+}
+
 Value *glow::valueForNode(
     const std::string &nodeName,
     const std::unordered_map<std::string, Value *> &storageNodeNameToDest,
