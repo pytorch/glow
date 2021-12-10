@@ -1118,6 +1118,8 @@ protected:
   /// Run on the Interpreter and compare the result to previous result.
   void compareAgainstInterpreter() {
     isInterpreter = true;
+    setupPrecisionConfigforInterpreter();
+
     ExecutionContext contextI;
     // Create a new module for the interpreter run.
     std::unique_ptr<Module> modI(new Module);
