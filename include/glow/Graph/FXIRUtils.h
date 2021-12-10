@@ -114,6 +114,9 @@ template <class T> std::vector<T> getNodeShape(const folly::dynamic &node) {
   return toIntegerArray<glow::dim_t>(node.at("shape").getString());
 }
 
+/// Checks if node's padded.
+bool isNodePadded(const folly::dynamic &node);
+
 /// Get the arg of the node.
 const folly::dynamic &getNodeArgs(const folly::dynamic &node);
 
