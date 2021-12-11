@@ -25,8 +25,8 @@ Inside the Glow Runtime we instrument the various stages in the execution pipeli
 
 There are two main categories of event we are interested in at this level:
 
-* Information about the timing (time cost or latency) of operators in the graph. When tracing is enabled each functional block in the final executable should have a start and end time that allows creating a timeline trace. 
-* Detailed information about important hardware events. The specific events will depend on hardware architecture, but in general we are interested particularly in events that increase latency but are not connected to the running of a particular operator (such as DRAM allocation, PCI transfers, or switching between execution units). 
+* Information about the timing (time cost or latency) of operators in the graph. When tracing is enabled each functional block in the final executable should have a start and end time that allows creating a timeline trace.
+* Detailed information about important hardware events. The specific events will depend on hardware architecture, but in general we are interested particularly in events that increase latency but are not connected to the running of a particular operator (such as DRAM allocation, PCI transfers, or switching between execution units).
 
 ![example trace of resnet50 running on the CPU backend](tracing-example.png)
 
@@ -34,7 +34,7 @@ There is a large surface are which these events could be pulled from, use your j
 
 ### When to Log
 
-Instrumenting or tracing execution can have overheads that may not be tolerated in all environments. For this reason we require a high level of configurability of when instrumentation and tracing occurs: 
+Instrumenting or tracing execution can have overheads that may not be tolerated in all environments. For this reason we require a high level of configurability of when instrumentation and tracing occurs:
 
 * Glow supports manual Trace Events with the **TraceEventNode** in the graph, which allows configuring more specific, coarse grained tracing information. This node should correspond to an instruction that takes a hardware timestamp when the appropriate point is reached in the execution of the network. Since these nodes do not produce outputs that are required by other nodes in the graph it is important to maintain the ordering of manual TraceEventNodes in the instruction scheduling process.
 * At the compile stage the **autoInstrument** flag in the CompilationOptions structure enables instrumenting the compile of a network so that it is able to produce per operator Trace Events. If this flag is not enabled, there is no expectation of events at that level of detail (coarser grained events may still be produced).
@@ -47,7 +47,7 @@ Instrumenting or tracing execution can have overheads that may not be tolerated 
 
 TraceLevel is a bitmask and levels can be combined. The common default is:
 
-    * `STANDARD` - currently equivalent to `RUNTIME | OPERATOR`. 
+    * `STANDARD` - currently equivalent to `RUNTIME | OPERATOR`.
 
 Often the device specific runtime components are capable of emitting a large amount of hardware events. Please keep Trace Event memory size reasonable: a good guideline is about 1-2 Kb per millisecond of execution time on the device.
 
@@ -96,7 +96,7 @@ A Manual Trace Event is a node like any other in the function graph, and event d
 size_t numEvents = 2;
 Placeholder *traceBacking = module.createPlaceholder(ElemKind::Int64Ty,
     {numEvents, 1}, "traceBacking", false);
-    
+
 F->createTraceEvent("functionName", "B", traceBacking, 0);
 
 // Contents of Function
@@ -111,7 +111,7 @@ Then, to examine the events emitted for a particular run create a TraceContext w
 
 ```
 ExecutionContext ctx;
-ctx.setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+ctx.setTraceContext(std::make_unique<TraceContext>(TraceLevel::STANDARD));
 
 // Run the compiled Function as usual
 executionEngine.run(ctx);
@@ -199,4 +199,3 @@ return;
 The first version creates two events, with the begin (“B”) and end (“E”) types, while the last is equivalent to a **ScopedTraceBlock**.
 
 There are versions which allow naming the event object (or **ScopedTraceBlock**) to support nesting of events.
-
