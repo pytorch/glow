@@ -303,7 +303,7 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"prim::dtype", ShapeInference(&primDtype, &SI::addShapeConstant)},
       {"prim::ListUnpack",
        ShapeInference(&listUnpack, &SI::addShapeDefaultList)},
-      {"fbgemm::Fused8BitRowwiseQuantizedToFloat",
+      {"fbgemm_gpu::Fused8BitRowwiseQuantizedToFloat",
        ShapeInference(&fused8BitRowwiseQuantizedToFloat, &SI::addShapeDefault)},
       {"fb::compressed_indices_remap",
        ShapeInference(&compressedIndicesRemap, &SI::addShapeDefaultList)},
