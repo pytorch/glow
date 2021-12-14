@@ -9408,7 +9408,7 @@ Error PyTorchModelLoader::loadIndexAdd(const torch::jit::Node *ptNode) {
                     "the length of index");
   for (auto i = 0; i < index.dims().size(); i++) {
     RETURN_ERR_IF_NOT(
-        i != dim && input.dims()[i] != source.dims()[i],
+        i == dim || input.dims()[i] == source.dims()[i],
         "Every dimension of source has to match that of input other than dim");
   }
 
