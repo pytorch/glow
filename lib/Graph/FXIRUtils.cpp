@@ -19,6 +19,8 @@
 #include "glow/Graph/FXIRWrapper.h"
 #include "llvm/Support/Casting.h"
 
+#include <folly/DynamicConverter.h>
+
 using namespace glow;
 
 namespace {
@@ -127,4 +129,17 @@ Value *glow::valueForNode(
   CHECK(value != nullptr) << "IR was not generated for the node with name: "
                           << nodeName;
   return value;
+}
+
+std::vector<dim_t> glow::getOffsets(const folly::dynamic &node) {
+  const auto &inputs = getNodeKwargs(node);
+  auto shape = node["shape"].asString();
+  auto count = std::count(shape.begin(), shape.end(), ',') + 1;
+  std::vector<dim_t> offsets(count, 0);
+  auto dims = folly::convertTo<std::vector<dim_t>>(inputs["dims"]);
+  auto starts = folly::convertTo<std::vector<dim_t>>(inputs["starts"]);
+  for (int i = 0; i < dims.size(); i++) {
+    offsets[dims[i]] = starts[i];
+  }
+  return offsets;
 }

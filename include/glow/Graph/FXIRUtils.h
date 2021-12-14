@@ -165,6 +165,9 @@ double getNodeScale(const folly::dynamic &node);
 /// Get the zero point for quantized node.
 int getNodeZeroPoint(const folly::dynamic &node);
 
+/// Get vector of offsets for Extract operations.
+std::vector<dim_t> getOffsets(const folly::dynamic &node);
+
 } // namespace glow
 
 #endif // GLOW_IR_FXIRUTILS_H
