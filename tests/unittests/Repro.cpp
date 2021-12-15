@@ -507,6 +507,11 @@ int run() {
     cctx.dumpFinalGraph = true;
     cctx.dumpGraphPath = glow::flags::DumpGraphPath;
   }
+  if (glow::flags::SinkTanhBelowConcat) {
+    cctx.optimizationOpts.sinkTanhBelowConcat =
+        glow::flags::SinkTanhBelowConcat;
+    LOG(INFO) << "Sinking tanh below concat";
+  }
 
   if (glow::flags::UseSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
