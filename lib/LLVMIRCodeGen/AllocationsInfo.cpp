@@ -91,7 +91,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
                   : allocatedAddress_) {
     if (isa<AllocActivationInst>(A.first) || isa<TensorViewInst>(A.first))
       continue;
-    CHECK(valueNumbers_.count(A.first)) << "Unknown weight";
+    (CHECK(valueNumbers_.count(A.first)) << "Unknown weight");
     if (isa<Constant>(A.first))
       continue;
     auto *weight = dyn_cast<WeightVar>(A.first);
