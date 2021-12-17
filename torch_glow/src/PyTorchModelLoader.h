@@ -1074,6 +1074,10 @@ private:
   // Load Pytorch aten::index_add
   // \returns error on failure.
   Error loadIndexAdd(const torch::jit::Node *ptNode);
+
+  // Load fb:int_nbit_split_embedding_codegen_lookup_function
+  // \returns error on failure.
+  Error loadIntNBitSplitEmbeddingBags(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

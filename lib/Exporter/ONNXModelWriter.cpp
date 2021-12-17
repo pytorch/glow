@@ -2483,6 +2483,8 @@ DEF_ALL_WRITER_NODE(ConvTranspose)
 DEF_ALL_WRITER_NODE(Logit)
 DEF_ALL_WRITER_NODE(Truncate)
 DEF_ALL_WRITER_NODE(BatchedUnaryEmbeddingsBags)
+DEF_ALL_WRITER_NODE(IntNBitSplitEmbeddingBags)
+DEF_ALL_WRITER_NODE(IntNBitSplitEmbeddingWeightedBags)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();

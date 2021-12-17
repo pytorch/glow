@@ -1276,12 +1276,36 @@ struct PixelUnshuffleInputs {
   };
 };
 
+///  Indexes used for fb::batched_unary_embeddings inputs
 struct BatchedUnaryEmbeddingsBagsInputs {
   enum {
     weights = 0,
     tableOffsets,
     offsets,
     indices,
+  };
+};
+
+/// Indexes used for fb::int_nbit_split_embedding_codegen_lookup_function inputs
+struct IntNBitSplitEmbeddingBagsInputs {
+  enum {
+    dev_weights = 0,
+    uvm_weights,
+    weights_placements,
+    weights_offsets,
+    weights_tys,
+    dimOffsets,
+    totalDims,
+    max_int2_D,
+    max_int4_D,
+    max_int8_D,
+    max_float16_D,
+    max_float32_D,
+    indices,
+    offsets,
+    pooling_mode,
+    indice_weights,
+    output_dtype,
   };
 };
 
@@ -1842,6 +1866,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::index_add_", "aten::index_add"},
        &PyTorchModelLoader::loadIndexAdd,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"fb::int_nbit_split_embedding_codegen_lookup_function"},
+       &PyTorchModelLoader::loadIntNBitSplitEmbeddingBags,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
   });
 #undef UNARY_NODE_LOADER
@@ -9360,6 +9387,94 @@ Error PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags(
       "BatchedUnaryEmbeddingsBags", weights, tableOffsets, indices, offsets);
 
   RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+}
+
+Error PyTorchModelLoader::loadIntNBitSplitEmbeddingBags(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -15, outputs, 1));
+
+  glow::NodeValue devWeights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      devWeights, getGlowNodeValueForValue(
+                      inputs[IntNBitSplitEmbeddingBagsInputs::dev_weights]));
+  glow::NodeValue uvmWeights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      uvmWeights, getGlowNodeValueForValue(
+                      inputs[IntNBitSplitEmbeddingBagsInputs::uvm_weights]));
+  glow::NodeValue weightsPlacements;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weightsPlacements,
+      getGlowNodeValueForValue(
+          inputs[IntNBitSplitEmbeddingBagsInputs::weights_placements]));
+  glow::NodeValue weightsOffsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weightsOffsets,
+      getGlowNodeValueForValue(
+          inputs[IntNBitSplitEmbeddingBagsInputs::weights_offsets]));
+  glow::NodeValue weightsTys;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weightsTys, getGlowNodeValueForValue(
+                      inputs[IntNBitSplitEmbeddingBagsInputs::weights_tys]));
+  glow::NodeValue dimOffsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimOffsets, getGlowNodeValueForValue(
+                      inputs[IntNBitSplitEmbeddingBagsInputs::dimOffsets]));
+  int64_t totalDims;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      totalDims, iValToInt(getGlowIValueForValue(
+                     inputs[IntNBitSplitEmbeddingBagsInputs::totalDims])));
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(
+                   inputs[IntNBitSplitEmbeddingBagsInputs::indices]));
+  glow::NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offsets, getGlowNodeValueForValue(
+                   inputs[IntNBitSplitEmbeddingBagsInputs::offsets]));
+  int64_t poolingMode;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      poolingMode, iValToInt(getGlowIValueForValue(
+                       inputs[IntNBitSplitEmbeddingBagsInputs::pooling_mode])));
+  if (poolingMode < 0 ||
+      poolingMode >=
+          static_cast<int64_t>(SplitEmbeddingPoolingMode::EP_TOTAL)) {
+    return MAKE_ERR(
+        "Invalid pooling mode when loading IntNBitSplitEmbeddingBags");
+  }
+  glow::NodeValue indiceWeights;
+  if (hasGlowNodeValueForValue(
+          inputs[IntNBitSplitEmbeddingBagsInputs::indice_weights])) {
+    auto indiceWeightsValue = getGlowNodeValueForValue(
+        inputs[IntNBitSplitEmbeddingBagsInputs::indice_weights]);
+    indiceWeights = std::move(indiceWeightsValue.get());
+  }
+  int64_t outputDType;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outputDType, iValToInt(getGlowIValueForValue(
+                       inputs[IntNBitSplitEmbeddingBagsInputs::output_dtype])));
+  if (outputDType < 0 ||
+      outputDType >=
+          static_cast<int64_t>(SplitEmbeddingSparseType::EST_TOTAL)) {
+    return MAKE_ERR(
+        "Invalid output data type when loading IntNBitSplitEmbeddingBags");
+  }
+  if (!indiceWeights) {
+    auto *EB = F_.createIntNBitSplitEmbeddingBags(
+        "IntNBitSplitEmbeddingBags", devWeights, uvmWeights, weightsPlacements,
+        weightsOffsets, weightsTys, dimOffsets, totalDims, indices, offsets,
+        static_cast<SplitEmbeddingPoolingMode>(poolingMode),
+        static_cast<SplitEmbeddingSparseType>(outputDType));
+    RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+  } else {
+    auto *EB = F_.createIntNBitSplitEmbeddingWeightedBags(
+        "IntNBitSplitEmbeddingWeightedBags", devWeights, uvmWeights,
+        weightsPlacements, weightsOffsets, weightsTys, dimOffsets, totalDims,
+        indices, offsets, static_cast<SplitEmbeddingPoolingMode>(poolingMode),
+        static_cast<SplitEmbeddingSparseType>(outputDType), indiceWeights);
+    RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+  }
 }
 
 Error PyTorchModelLoader::loadIndexAdd(const torch::jit::Node *ptNode) {

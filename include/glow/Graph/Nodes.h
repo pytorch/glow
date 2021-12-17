@@ -292,6 +292,28 @@ enum class LUTOperator {
   LEAKY_RELU,
 };
 
+enum SplitEmbeddingPoolingMode {
+  EP_SUM = 0,
+  EP_MEAN = 1,
+  EP_NONE = 2,
+  EP_TOTAL,
+};
+enum SplitEmbeddingSparseType {
+  EST_FLOAT = 0,
+  EST_FLOAT16 = 1,
+  EST_INT8 = 2,
+  EST_INT4 = 3,
+  EST_INT2 = 4,
+  EST_TOTAL,
+};
+
+enum WeightsPlacement {
+  DEVICE = 0,
+  MANAGED = 1,
+  MANAGED_CACHING = 2,
+  HOST = 3,
+};
+
 /// Define output operators.
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os,

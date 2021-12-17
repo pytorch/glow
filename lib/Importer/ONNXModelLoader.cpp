@@ -417,6 +417,48 @@ template <> struct AttributeRetriever<false, PaddingMode> {
   }
 };
 
+/// Specialization for SplitEmbeddingPoolingMode.
+template <> struct AttributeRetriever<false, SplitEmbeddingPoolingMode> {
+  static Expected<SplitEmbeddingPoolingMode>
+  get(const ONNX_NAMESPACE::AttributeProto *attr,
+      const ProtobufLoader & /* unused */) {
+    std::string poolingMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(poolingMode, loadStr(attr));
+    if (poolingMode == "0") {
+      return SplitEmbeddingPoolingMode::EP_SUM;
+    } else if (poolingMode == "1") {
+      return SplitEmbeddingPoolingMode::EP_MEAN;
+    } else if (poolingMode == "2") {
+      return SplitEmbeddingPoolingMode::EP_NONE;
+    } else {
+      return MAKE_ERR("Invalid SplitEmbeddingPoolingMode");
+    }
+  }
+};
+
+/// Specialization for SplitEmbeddingSparseType.
+template <> struct AttributeRetriever<false, SplitEmbeddingSparseType> {
+  static Expected<SplitEmbeddingSparseType>
+  get(const ONNX_NAMESPACE::AttributeProto *attr,
+      const ProtobufLoader & /* unused */) {
+    std::string str;
+    ASSIGN_VALUE_OR_RETURN_ERR(str, loadStr(attr));
+    if (str == "0") {
+      return SplitEmbeddingSparseType::EST_FLOAT;
+    } else if (str == "1") {
+      return SplitEmbeddingSparseType::EST_FLOAT16;
+    } else if (str == "2") {
+      return SplitEmbeddingSparseType::EST_INT8;
+    } else if (str == "3") {
+      return SplitEmbeddingSparseType::EST_INT4;
+    } else if (str == "4") {
+      return SplitEmbeddingSparseType::EST_INT2;
+    } else {
+      return MAKE_ERR("Invalid SplitEmbeddingSparseType");
+    }
+  }
+};
+
 /// Specialization for float.
 template <> struct AttributeRetriever<false, float> {
   static Expected<float> get(const ONNX_NAMESPACE::AttributeProto *attr,
