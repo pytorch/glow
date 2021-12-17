@@ -1018,6 +1018,47 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Offsets", "ElemKind::Int32ITy"});
 
+  BB.newInstr("IntNBitSplitEmbeddingBags")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("DevWeights", OperandKind::In)
+      .addOperand("UvmWeights", OperandKind::In)
+      .addOperand("WeightsPlacements", OperandKind::In)
+      .addOperand("WeightsOffsets", OperandKind::In)
+      .addOperand("WeightsTys", OperandKind::In)
+      .addOperand("DimOffsets", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::Int64, "TotalDims")
+      .addMember(MEMBER_TYPE_INFO(glow::SplitEmbeddingPoolingMode),
+                 "PoolingMode")
+      .addMember(MEMBER_TYPE_INFO(glow::SplitEmbeddingSparseType),
+                 "OutputDType")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int32ITy"});
+
+  BB.newInstr("IntNBitSplitEmbeddingWeightedBags")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("DevWeights", OperandKind::In)
+      .addOperand("UvmWeights", OperandKind::In)
+      .addOperand("WeightsPlacements", OperandKind::In)
+      .addOperand("WeightsOffsets", OperandKind::In)
+      .addOperand("WeightsTys", OperandKind::In)
+      .addOperand("DimOffsets", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addOperand("IndiceWeight", OperandKind::In)
+      .addMember(MemberType::Int64, "TotalDims")
+      .addMember(MemberType::Int64, "PoolingMode")
+      .addMember(MemberType::Int64, "OutputDType")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int32ITy"});
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//

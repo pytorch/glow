@@ -1059,6 +1059,44 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Sum weight embeddings according to offsets and indices");
 
+  BB.newNode("IntNBitSplitEmbeddingBags")
+      .addInput("DevWeights")
+      .addInput("UvmWeights")
+      .addInput("WeightsPlacements")
+      .addInput("WeightsOffsets")
+      .addInput("WeightsTys")
+      .addInput("DimOffsets")
+      .addInput("Indices")
+      .addInput("Offsets")
+      .addMember(MemberType::Int64, "TotalDims")
+      .addMember(MEMBER_TYPE_INFO(glow::SplitEmbeddingPoolingMode),
+                 "PoolingMode")
+      .addMember(MEMBER_TYPE_INFO(glow::SplitEmbeddingSparseType),
+                 "OutputDType")
+      .addResultFromCtorArg()
+      .setDocstring("Table based batched embeddingbags with quantization "
+                    "support. Experimental only and subject to change.");
+
+  BB.newNode("IntNBitSplitEmbeddingWeightedBags")
+      .addInput("DevWeights")
+      .addInput("UvmWeights")
+      .addInput("WeightsPlacements")
+      .addInput("WeightsOffsets")
+      .addInput("WeightsTys")
+      .addInput("DimOffsets")
+      .addInput("Indices")
+      .addInput("Offsets")
+      .addInput("IndiceWeight")
+      .addMember(MemberType::Int64, "TotalDims")
+      .addMember(MEMBER_TYPE_INFO(glow::SplitEmbeddingPoolingMode),
+                 "PoolingMode")
+      .addMember(MEMBER_TYPE_INFO(glow::SplitEmbeddingSparseType),
+                 "OutputDType")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Table based batched embeddingbags with quantization support and "
+          "indice weights. Experimental only and subject to change.");
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//

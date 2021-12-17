@@ -2988,6 +2988,50 @@ bool BatchedUnaryEmbeddingsBagsNode::verify() const {
                                           getIndices(), getOffsets());
 }
 
+static bool verifyIntNBitSplitEmbeddingBagsNode(NodeValue dest,
+                                                NodeValue devWeights,
+                                                NodeValue weightsOffsets,
+                                                NodeValue weightsPlacements,
+                                                NodeValue weightsTys) {
+  bool isValid = checkType(dest, devWeights.getElementType(), dest.getNode());
+  isValid &= checkType(devWeights, ElemKind::UInt8ITy, devWeights.getNode());
+  isValid &= checkSameShape(weightsPlacements, weightsTys,
+                            weightsPlacements.getNode());
+  isValid &= checkType(
+      weightsOffsets,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  return isValid;
+}
+
+bool IntNBitSplitEmbeddingBagsNode::verify() const {
+  return verifyIntNBitSplitEmbeddingBagsNode(
+      getResult(), getDevWeights(), getWeightsOffsets(), getWeightsPlacements(),
+      getWeightsTys());
+}
+
+static bool verifyIntNBitSplitEmbeddingWeightedBagsNode(
+    NodeValue dest, NodeValue devWeights, NodeValue weightsOffsets,
+    NodeValue weightsPlacements, NodeValue weightsTys, NodeValue indices,
+    NodeValue indiceWeights) {
+  bool isValid = checkType(dest, devWeights.getElementType(), dest.getNode());
+  isValid &= checkType(devWeights, ElemKind::UInt8ITy, devWeights.getNode());
+  isValid &= checkSameShape(weightsPlacements, weightsTys,
+                            weightsPlacements.getNode());
+  isValid &= checkType(
+      weightsOffsets,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &= checkSameShape(indices, indiceWeights, indiceWeights.getNode());
+  return isValid;
+}
+
+bool IntNBitSplitEmbeddingWeightedBagsNode::verify() const {
+  return verifyIntNBitSplitEmbeddingWeightedBagsNode(
+      getResult(), getDevWeights(), getWeightsOffsets(), getWeightsPlacements(),
+      getWeightsTys(), getIndices(), getIndiceWeight());
+}
+
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//

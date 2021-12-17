@@ -1882,6 +1882,25 @@ public:
                                    NodeValue tableOffsets, NodeValue indices,
                                    NodeValue offsets);
 
+  /// Create an IntNBitSplitEmbeddingBags node.
+  IntNBitSplitEmbeddingBagsNode *createIntNBitSplitEmbeddingBags(
+      llvm::StringRef name, NodeValue devWeights, NodeValue uvmWeights,
+      NodeValue weightsPlacements, NodeValue weightsOffsets,
+      NodeValue weightsTys, NodeValue dimOffsets, int64_t totalDims,
+      NodeValue indices, NodeValue offsets,
+      SplitEmbeddingPoolingMode poolingMode,
+      SplitEmbeddingSparseType outputDtype);
+
+  /// Create an IntNBitSplitEmbeddingWeightedBags node.
+  IntNBitSplitEmbeddingWeightedBagsNode *
+  createIntNBitSplitEmbeddingWeightedBags(
+      llvm::StringRef name, NodeValue devWeights, NodeValue uvmWeights,
+      NodeValue weightsPlacements, NodeValue weightsOffsets,
+      NodeValue weightsTys, NodeValue dimOffsets, int64_t totalDims,
+      NodeValue indices, NodeValue offsets,
+      SplitEmbeddingPoolingMode poolingMode,
+      SplitEmbeddingSparseType outputDtype, NodeValue indiceWeights);
+
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input. \p kernels defines the size of the height and width dimensions
   /// of the convolutional filters. \p stride defines the the number of steps

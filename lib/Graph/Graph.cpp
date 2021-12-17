@@ -3270,6 +3270,53 @@ BatchedUnaryEmbeddingsBagsNode *Function::createBatchedUnaryEmbeddingsBags(
       name, outTy, weights, tableOffsets, offsets, indices));
 }
 
+IntNBitSplitEmbeddingBagsNode *Function::createIntNBitSplitEmbeddingBags(
+    llvm::StringRef name, NodeValue devWeights, NodeValue uvmWeights,
+    NodeValue weightsPlacements, NodeValue weightsOffsets, NodeValue weightsTys,
+    NodeValue dimOffsets, int64_t totalDims, NodeValue indices,
+    NodeValue offsets, SplitEmbeddingPoolingMode poolingMode,
+    SplitEmbeddingSparseType outputDtype) {
+  ShapeVector outDims;
+  outDims.insert(outDims.end(),
+                 (offsets.dims()[0] - 1) / (dimOffsets.dims()[0] - 1));
+  int64_t totalSize = outputDtype == SplitEmbeddingSparseType::EST_FLOAT
+                          ? totalDims * sizeof(float)
+                          : totalDims * sizeof(float16_t);
+  outDims.insert(outDims.end(), totalSize);
+
+  auto outTy =
+      getParent()->uniqueTypeWithNewShape(devWeights.getType(), outDims);
+
+  return addNode(new IntNBitSplitEmbeddingBagsNode(
+      name, outTy, devWeights, uvmWeights, weightsPlacements, weightsOffsets,
+      weightsTys, dimOffsets, indices, offsets, totalDims, poolingMode,
+      outputDtype));
+}
+
+IntNBitSplitEmbeddingWeightedBagsNode *
+Function::createIntNBitSplitEmbeddingWeightedBags(
+    llvm::StringRef name, NodeValue devWeights, NodeValue uvmWeights,
+    NodeValue weightsPlacements, NodeValue weightsOffsets, NodeValue weightsTys,
+    NodeValue dimOffsets, int64_t totalDims, NodeValue indices,
+    NodeValue offsets, SplitEmbeddingPoolingMode poolingMode,
+    SplitEmbeddingSparseType outputDtype, NodeValue indiceWeights) {
+  ShapeVector outDims;
+  outDims.insert(outDims.end(),
+                 (offsets.dims()[0] - 1) / (dimOffsets.dims()[0] - 1));
+  int64_t totalSize = outputDtype == SplitEmbeddingSparseType::EST_FLOAT
+                          ? totalDims * sizeof(float)
+                          : totalDims * sizeof(float16_t);
+  outDims.insert(outDims.end(), totalSize);
+
+  auto outTy =
+      getParent()->uniqueTypeWithNewShape(devWeights.getType(), outDims);
+
+  return addNode(new IntNBitSplitEmbeddingWeightedBagsNode(
+      name, outTy, devWeights, uvmWeights, weightsPlacements, weightsOffsets,
+      weightsTys, dimOffsets, indices, offsets, indiceWeights, totalDims,
+      poolingMode, outputDtype));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Placeholder-builder methods.
 //===----------------------------------------------------------------------===//

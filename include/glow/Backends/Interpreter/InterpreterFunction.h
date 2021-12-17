@@ -478,6 +478,22 @@ private:
   void fwdBatchedUnaryEmbeddingsBagsInstImpl(
       const BatchedUnaryEmbeddingsBagsInst *I);
 
+  template <typename IndexTy, typename OutputTy>
+  void
+  fwdIntNBitSplitEmbeddingBagsInstImpl(const IntNBitSplitEmbeddingBagsInst *I);
+
+  template <typename IndexTy, typename OutputTy>
+  void fwdIntNBitSplitEmbeddingWeightedBagsInstImpl(
+      const IntNBitSplitEmbeddingWeightedBagsInst *I);
+
+  template <typename IndexTy, typename OutputTy>
+  void fwdIntNBitSplitEmbeddingWeightedBagsImpl(
+      Tensor *out, Tensor *devWeights, Tensor *uvmWeights,
+      Tensor *weightsPlacements, Tensor *weightsTys, Tensor *dimOffsets,
+      Tensor *indices, Tensor *offsets, Tensor *weightsOffsets,
+      int64_t poolingMode, Tensor *indiceWeights, int64_t totalDims,
+      int64_t outputDType);
+
   ///@}
 };
 
