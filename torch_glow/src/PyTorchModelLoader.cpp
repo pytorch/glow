@@ -21,6 +21,7 @@
 #include "c10/core/Scalar.h"
 #include "c10/core/ScalarType.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Importer/CommonOperatorLoader.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
@@ -1641,6 +1642,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::abs"},
        UNARY_NODE_LOADER(Abs),
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"aten::neg"},
+       UNARY_NODE_LOADER(Neg),
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::upsample_nearest3d"},
        &PyTorchModelLoader::loadUpsampleNearest,
