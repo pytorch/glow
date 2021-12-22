@@ -3875,8 +3875,8 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
     // Load torch.sum(input, axis, keepdim, dtype)
     ASSIGN_VALUE_OR_RETURN_ERR(axes,
                                iValToIntList(getGlowIValueForValue(inputs[1])));
-    RETURN_ERR_IF_NOT(axes->size() == 1,
-                      "Only a single axis is supported for aten::sum.");
+    RETURN_ERR_IF_NOT(axes->size() >= 1,
+                      "Must have at least one axis for aten::sum.");
 
     GlowIValue *keepDimIVal;
     ASSIGN_VALUE_OR_RETURN_ERR(
@@ -3898,8 +3898,9 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
   }
 
   const bool needsConvertTo = dtypeIVal->getTag() != GlowIValue::Tag::None;
-  ConvertToNode *toNode = nullptr;
   at::ScalarType correctType = elemKindToScalarType(input.getElementType());
+
+  glow::NodeValue batchedReduceAdd = input;
   if (needsConvertTo) {
     int32_t dtype;
     ASSIGN_VALUE_OR_RETURN_ERR(dtype, iValToInt(dtypeIVal));
@@ -3909,39 +3910,40 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
                             : scalarTypeToElemKind(correctType);
     auto toType =
         F_.getParent()->uniqueType(glowElemKind, input.getType()->dims());
-    toNode = F_.createConvertTo("to", input, toType);
+    batchedReduceAdd =
+        F_.createConvertTo("to", batchedReduceAdd, toType)->getResult();
   }
 
-  ReshapeNode *flattenNode = nullptr;
   if (needsFlatten) {
-    flattenNode = F_.createFlatten(
-        "flatten", needsConvertTo ? static_cast<NodeValue>(toNode) : input,
-        needsConvertTo ? toNode->getResult().getType()->dims().size()
-                       : input.dims().size());
-  }
-
-  auto batchedReduceAddNode = F_.createBatchedReduceAdd(
-      "sum",
-      needsFlatten     ? static_cast<NodeValue>(flattenNode)
-      : needsConvertTo ? static_cast<NodeValue>(toNode)
-                       : input,
-      glowAxes);
-
-  if (!keepDim) {
-    RETURN_IF_ERR(addValueMapping(outputs[0], batchedReduceAddNode));
+    auto flatten =
+        F_.createFlatten("flatten", batchedReduceAdd, input.dims().size())
+            ->getResult();
+    batchedReduceAdd =
+        F_.createBatchedReduceAdd("sum", flatten, glowAxes)->getResult();
   } else {
-    // If keepDim is true we need to insert the removed dimension(s) manually
-    // by reshaping
-    std::vector<dim_t> shape =
-        batchedReduceAddNode->getResult().getType()->dims();
+    auto inDims = input.dims();
+    std::vector<dim_t> outDims(inDims.begin(), inDims.end());
+    auto numReducedAxes = 0;
     std::sort(glowAxes.begin(), glowAxes.end());
-    for (const auto &axis : glowAxes) {
-      shape.insert(shape.begin() + axis, static_cast<dim_t>(1));
+    for (auto axis : glowAxes) {
+      batchedReduceAdd =
+          F_.createBatchedReduceAdd(strFormat("sum_axis%u", axis),
+                                    batchedReduceAdd, axis - numReducedAxes)
+              ->getResult();
+      RETURN_ERR_IF_NOT(axis < outDims.size(),
+                        strFormat("Axis %u is greater than num dims %lu", axis,
+                                  outDims.size()));
+      if (keepDim) {
+        outDims[axis] = 1;
+        batchedReduceAdd =
+            F_.createReshape("reshape", batchedReduceAdd, outDims);
+      } else {
+        numReducedAxes += 1;
+      }
     }
-    auto reshapeNode = F_.createReshape("reshape", batchedReduceAddNode, shape);
-    RETURN_IF_ERR(addValueMapping(outputs[0], reshapeNode));
   }
 
+  RETURN_IF_ERR(addValueMapping(outputs[0], batchedReduceAdd));
   RETURN_IF_ERR(setCorrectTypeMapping(outputs[0], correctType));
   return Error::success();
 }
