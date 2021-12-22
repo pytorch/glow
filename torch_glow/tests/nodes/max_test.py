@@ -34,6 +34,17 @@ class UnaryMaxModule(torch.nn.Module):
         return torch.max(a + a)
 
 
+class ReduceMaxModule(torch.nn.Module):
+    def __init__(self, dim, keep_dim):
+        super(ReduceMaxModule, self).__init__()
+        self.dim = dim
+        self.keep_dim = keep_dim
+
+    def forward(self, a):
+        values, index = torch.max(a + a, self.dim, self.keep_dim)
+        return torch.stack((values, index))
+
+
 class TestMax(utils.TorchGlowTestCase):
     def test_elementwise_max(self):
         """Test of the PyTorch max Node on Glow."""
@@ -65,5 +76,23 @@ class TestMax(utils.TorchGlowTestCase):
                 ),
                 dtype=torch.int,
             ),
+            fusible_ops={"aten::max"},
+        )
+
+    def test_reduce_max(self):
+        """Test of the PyTorch max Node reducing on a specified dim."""
+
+        utils.compare_tracing_methods(
+            ReduceMaxModule(2, False),
+            torch.randn(3, 4, 5),
+            fusible_ops={"aten::max"},
+        )
+
+    def test_reduce_max_keep_dim(self):
+        """Test of the PyTorch max Node reducing on a specified dim and keeping dim."""
+
+        utils.compare_tracing_methods(
+            ReduceMaxModule(2, True),
+            torch.randn(3, 4, 5),
             fusible_ops={"aten::max"},
         )
