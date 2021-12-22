@@ -1417,6 +1417,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::tanh", "aten::tanh_"},
        UNARY_NODE_LOADER(Tanh),
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"aten::softplus"},
+       &PyTorchModelLoader::loadSoftPlus,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::t", "aten::t_"},
        &PyTorchModelLoader::loadT,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
@@ -9419,6 +9422,53 @@ Error PyTorchModelLoader::loadSign(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(addValueMapping(outputs[0], fillNegative->getResult()));
 
   return Error::success();
+}
+
+Error PyTorchModelLoader::loadSoftPlus(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  GlowIValue *betaIValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(betaIValue, getGlowIValueForValue(inputs[1]));
+  float beta;
+  if (betaIValue->isInt()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(beta, iValToInt(betaIValue));
+  } else {
+    ASSIGN_VALUE_OR_RETURN_ERR(beta, iValToDouble(betaIValue));
+  }
+  GlowIValue *thresholdIValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(thresholdIValue, getGlowIValueForValue(inputs[2]));
+  float threshold;
+  if (thresholdIValue->isInt()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(threshold, iValToInt(thresholdIValue));
+  } else {
+    ASSIGN_VALUE_OR_RETURN_ERR(threshold, iValToDouble(thresholdIValue));
+  }
+
+  glow::NodeValue softplus;
+  glow::NodeValue linear;
+  if (beta == 1) {
+    softplus = F_.createSoftPlus("softplus", input)->getResult();
+    linear = input;
+  } else {
+    auto betaType =
+        F_.getParent()->uniqueType(ElemKind::FloatTy, {input.dims()});
+    auto betas = F_.createSplat("betas", betaType, beta);
+    linear = F_.createMul("mult", input, betas)->getResult();
+    auto exp = F_.createExp("exp", linear);
+    auto ones = F_.createSplat("ones", input.getType(), 1);
+    auto sum = F_.createAdd("sum", exp, ones);
+    auto log = F_.createLog("log", sum);
+    softplus = F_.createDiv("div", log, betas)->getResult();
+  }
+  auto thresholds = F_.createSplat("thresholds", input.getType(), threshold);
+  auto overThreshold = F_.createCmpLT("overThreshold", thresholds, linear);
+  auto linearOverThreshold =
+      F_.createSelect("linearOverThreshold", overThreshold, linear, softplus);
+  RETURN_ERR(addValueMapping(outputs[0], linearOverThreshold->getResult()));
 }
 
 Error PyTorchModelLoader::loadBatchedUnaryEmbeddingsBags(
