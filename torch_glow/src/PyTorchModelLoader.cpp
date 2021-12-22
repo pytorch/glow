@@ -4417,7 +4417,17 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
   if (inputs.size() == 1) {
     glow::NodeValue input;
     ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-    RETURN_IF_ERR(addValueMapping(outputs[0], input));
+
+    int64_t dimRaw = ptNode->i(at::attr::dim);
+    int64_t dim = 0;
+    auto inDims = input.dims();
+    ASSIGN_VALUE_OR_RETURN_ERR(dim, getPositiveIndex(dimRaw, inDims.size()));
+
+    std::vector<dim_t> outDims(inDims.begin(), inDims.end());
+    outDims.insert(outDims.begin() + dim, 1);
+    auto res = F_.createReshape("stack", input, outDims)->getResult();
+
+    RETURN_IF_ERR(addValueMapping(outputs[0], res));
     RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
     return Error::success();
   }
