@@ -1082,6 +1082,10 @@ private:
   // Load Pytorch aten::amax
   // \returns error on failure.
   Error loadAmax(const torch::jit::Node *ptNode);
+
+  // Load Pytorch aten::softplus
+  // \returns error on failure.
+  Error loadSoftPlus(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
