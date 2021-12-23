@@ -1434,7 +1434,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::max"},
        &PyTorchModelLoader::loadMax,
-       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+       &PyTorchModelLoader::correctTypeAlreadySet},
       {{"aten::exp"},
        UNARY_NODE_LOADER(Exp),
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
@@ -3954,7 +3954,7 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, -1));
 
   if (inputs.size() == 2) {
     // Binary elementwise max, return a tensor has same type to input
@@ -3965,7 +3965,40 @@ Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
 
     glow::MaxNode *glowNode =
         F_.createNodeWithBroadcast<MaxNode>("max", -1, lhs, rhs);
-    RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+    RETURN_IF_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
+  } else if (inputs.size() == 3) {
+    // aten::max(Tensor self, int dim, bool keepdim) -> (Tensor, Tensor)
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+    auto inDims = input.dims();
+
+    int64_t dimRaw;
+    ASSIGN_VALUE_OR_RETURN_ERR(dimRaw,
+                               iValToInt(getGlowIValueForValue(inputs[1])));
+    int dim = 0;
+    ASSIGN_VALUE_OR_RETURN_ERR(dim,
+                               getPositiveIndex(dimRaw, input.dims().size()));
+    bool keepDim = false;
+    ASSIGN_VALUE_OR_RETURN_ERR(keepDim,
+                               iValToBool(getGlowIValueForValue(inputs[2])));
+    glow::NodeValue max;
+    max = F_.createBatchedReduceMax("max", input, dim)->getResult();
+    if (keepDim) {
+      std::vector<dim_t> shape(inDims.begin(), inDims.end());
+      RETURN_ERR_IF_NOT(
+          dim < shape.size(),
+          strFormat("dim %d out of bounds for input shape of size %lu", dim,
+                    shape.size()));
+      shape[dim] = 1;
+      max = F_.createReshape("max_keep_dim", max, shape)->getResult();
+    }
+    auto argMax = F_.createArgMax("max_indices", input, dim, keepDim);
+
+    RETURN_IF_ERR(addValueMapping(outputs[0], max));
+    RETURN_IF_ERR(addValueMapping(outputs[1], argMax));
+    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
+    RETURN_IF_ERR(setCorrectTypeMapping(outputs[1], at::kLong));
   } else {
     // Unary max, return a scalar contains the biggest element in input
     glow::NodeValue input;
@@ -3981,8 +4014,10 @@ Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
     reshaped = F_.createBatchedReduceMax("batched_reduce_max_for_unary_max",
                                          reshaped, 0)
                    ->getResult();
-    RETURN_ERR(addValueMapping(outputs[0], reshaped));
+    RETURN_IF_ERR(addValueMapping(outputs[0], reshaped));
+    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
   }
+  return Error::success();
 }
 
 Error PyTorchModelLoader::loadAmax(const torch::jit::Node *ptNode) {
