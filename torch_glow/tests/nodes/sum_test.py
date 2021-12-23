@@ -72,6 +72,16 @@ class TestSumKeepdim(utils.TorchGlowTestCase):
                 KeepdimSumModule(-2, True),
                 torch.randn(3, 1, 2),
             ),
+            lambda: (
+                "multiple_axes",
+                KeepdimSumModule((0, 1), False, torch.float16),
+                torch.randn(3, 4, 2),
+            ),
+            lambda: (
+                "multiple_axes_keep_dim",
+                KeepdimSumModule((2, 1), True, torch.float16),
+                torch.randn(3, 4, 2),
+            ),
         ]
     )
     def test_sum(self, _, module, a):
