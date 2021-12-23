@@ -1078,6 +1078,10 @@ private:
   // Load fb:int_nbit_split_embedding_codegen_lookup_function
   // \returns error on failure.
   Error loadIntNBitSplitEmbeddingBags(const torch::jit::Node *ptNode);
+
+  // Load Pytorch aten::amax
+  // \returns error on failure.
+  Error loadAmax(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
