@@ -16527,9 +16527,6 @@ static void testRepeatedSLSWithPartialTensors(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
     glow::ExecutionEngine &EE, std::vector<Tensor> &unownedTensors,
     llvm::StringRef backendName, ElemKind ITy) {
-  // Turn on input sanitization
-  glow::runtime::flags::SanitizeInputsPercent = 100;
-
   // This test is only meaningful if the backend supports partial tensors.
   ASSERT_TRUE(EE.getBackend(backendName).supportsPartialTensors());
 

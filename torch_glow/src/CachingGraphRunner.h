@@ -20,6 +20,7 @@
 #include "PyTorchModelLoader.h"
 #include "glow/Backend/BlockStreamBase.h"
 #include "glow/Runtime/HostManager/HostManager.h"
+#include "glow/Runtime/InputSanitizer.h"
 #include "glow/Support/TensorPool.h"
 
 #include <torch/csrc/jit/ir/ir.h>
@@ -49,6 +50,10 @@ public:
     /// Input and output placeholders to the Glow function.
     std::vector<glow::Placeholder *> inputPlaceholders;
     std::vector<glow::Placeholder *> outputPlaceholders;
+
+    /// Input sanitizers that should help prevent passing invalid
+    /// inputs to the backend.
+    std::vector<runtime::InputSanitizerPtr> inputSanitizers;
 
     /// Name of the Glow function maintained by HostManager for this subgraph.
     std::string functionName;

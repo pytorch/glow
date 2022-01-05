@@ -6,6 +6,7 @@ add_library(Runtime
   ErrorReporter.cpp
   DeviceHealthMonitor.cpp
   DeferredWeightLoader.cpp
+  InputSanitizer.cpp
   TraceExporter.cpp
   StatsExporter.cpp)
 target_link_libraries(Runtime

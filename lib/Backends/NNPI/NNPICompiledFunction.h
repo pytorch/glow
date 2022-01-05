@@ -68,22 +68,6 @@ struct NNPICompilationInfo {
   }
 };
 
-/// SLS validation information
-struct ValidateSLSInfo {
-  bool isEmbeddingBag;
-  size_t tableHeight;
-  Placeholder *indices;
-  Placeholder *weights;
-  Placeholder *lengths;
-  Placeholder *offsets;
-  ValidateSLSInfo(bool isEmbeddingBag_, size_t tableHeight_,
-                  Placeholder *indices_, Placeholder *weights_,
-                  Placeholder *lengths_, Placeholder *offsets_)
-      : isEmbeddingBag(isEmbeddingBag_), tableHeight(tableHeight_),
-        indices(indices_), weights(weights_), lengths(lengths_),
-        offsets(offsets_) {}
-};
-
 /// Function "compiled" for execution by the NNPI backend.
 class NNPICompiledFunction final : public CompiledFunction {
 public:
@@ -120,11 +104,6 @@ public:
     return partialInputs_;
   }
 
-  /// \returns a reference to the set SLS parameter Placeholders to validate.
-  const std::vector<ValidateSLSInfo> &getValidateSLSInputs() const {
-    return validateSLSInputs_;
-  }
-
   /// \returns a reference to the set of Placeholders that needed to be padded.
   /// This set is introduced because we need to pad some tensors with its last
   /// element instead of zeros. In the future, we may introduce a flag to
@@ -145,8 +124,6 @@ public:
   virtual void freeCompilationResources() override;
 
   virtual Error compile(Function *F, const BackendOptions &opts);
-
-  void findSLSInputs(Function *F);
 
 #if FACEBOOK_INTERNAL
   Error compileFX(const folly::dynamic &FXIR, const std::string &submod,
@@ -197,7 +174,6 @@ private:
   BlockStream compiledStream_;
   std::mutex compiledStreamMutex_;
   std::unordered_set<const Placeholder *> partialInputs_;
-  std::vector<ValidateSLSInfo> validateSLSInputs_;
   std::unordered_set<const Placeholder *> paddedInputs_;
   std::unordered_set<const Placeholder *> staticInputs_;
   NNPICompilationOptions compilationOptions_;
