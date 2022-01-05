@@ -30,68 +30,6 @@
 namespace glow {
 namespace runtime {
 
-namespace {
-
-template <class T>
-static bool sanitizeIndices(const Tensor *indicesTensor, size_t tableHeight) {
-  auto indices = indicesTensor->getHandle<T>();
-  size_t indicesLen = indices.getRealNumElements();
-  // indices in [0, n)
-  for (auto i = 0; i < indicesLen; i++) {
-    LOG_AND_RETURN_IF(
-        ERROR, indices.raw(i) < 0 || indices.raw(i) >= tableHeight,
-        "index out of range " + to_string(indices.raw(i)) + " at idx " +
-            to_string(i) + " tableHeight " + to_string(tableHeight),
-        false);
-  }
-
-  return true;
-}
-
-template <class T>
-static bool sanitizeLengths(const Tensor *lengthsTensor,
-                            const size_t indicesLen) {
-  auto lengths = lengthsTensor->getHandle<T>();
-
-  // sum(lens) = len(indices)
-  size_t totalLensSum = std::accumulate(lengths.begin(), lengths.end(), 0U);
-
-  LOG_AND_RETURN_IF(
-      ERROR, indicesLen != totalLensSum,
-      "sanitization failed, indices length " + to_string(indicesLen) +
-          " different from sum of lengths " + to_string(totalLensSum),
-      false);
-
-  return true;
-}
-
-template <class T>
-static bool sanitizeOffsets(const Tensor *offsetsTensor,
-                            const size_t indicesLen) {
-  auto offsets = offsetsTensor->getHandle<T>();
-
-  size_t offsetsLen = offsets.getRealNumElements();
-  for (auto i = 0; i < offsetsLen - 1; i++) {
-    LOG_AND_RETURN_IF(ERROR, offsets.raw(i) > offsets.raw(i + 1),
-                      "offset should not be decreasing " +
-                          to_string(offsets.raw(i)) + " " +
-                          to_string(offsets.raw(i + 1)),
-                      false);
-  }
-  // last offset = len(indices)
-  size_t lastOffset = offsets.raw(offsetsLen - 1);
-
-  LOG_AND_RETURN_IF(
-      ERROR, indicesLen != lastOffset,
-      "sanitization failed, indices length " + std::to_string(indicesLen) +
-          " different from the last offset " + std::to_string(lastOffset),
-      false);
-
-  return true;
-}
-
-} // namespace
-
 InferenceContext::InferenceContext()
     : nnpiNetwork_(NNPI_INVALID_NNPIHANDLE), device_(NNPI_INVALID_NNPIHANDLE),
       inferCmd_(NNPI_INVALID_NNPIHANDLE), commandList_(NNPI_INVALID_NNPIHANDLE),
@@ -116,7 +54,6 @@ bool InferenceContext::init(
     NNPIDeviceNetwork deviceNetwork, NNPIAdapterContainer *adapter,
     NNPIDeviceContext device,
     const std::unordered_set<const Placeholder *> &partialInputs,
-    const std::vector<ValidateSLSInfo> &validateSLSInputs,
     const std::unordered_set<const Placeholder *> &paddedInputs,
     const std::unordered_set<const Placeholder *> &staticInputs,
     StaticPlaceholderMap *staticPlaceholderMap,
@@ -129,7 +66,6 @@ bool InferenceContext::init(
   device_ = device;
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
-  validateSLSInputs_ = &validateSLSInputs;
   paddedInputs_ = &paddedInputs;
   functionName_ = functionName;
 
@@ -441,10 +377,6 @@ void InferenceContext::execute(RunIdentifierTy runId,
   TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::COPY,
                          tracePreProcessContextName_, attributes);
 
-  // Sanitize inputs before running inference
-  LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-      ERROR, sanitize(bindings), "Failed santization.", runId, ctx, resultCB);
-
   // Pre-inference
   std::vector<void *> rawInputs, rawOutputs;
   unsigned idx = 0;
@@ -711,98 +643,6 @@ void InferenceContext::dumpRuntime() const {
     DotWriter::addEdge(functionName_ + ":" + out->getName(),
                        std::to_string(out->getDeviceResource()));
   }
-}
-
-bool InferenceContext::sanitize(PlaceholderBindings &bindings) {
-  if (flags::SanitizeInputsPercent == 0 ||
-      folly::Random::rand32() % 100 > flags::SanitizeInputsPercent) {
-    return true;
-  }
-
-  LOG_EVERY_N(INFO, 1000) << "===== Sanitizing " << validateSLSInputs_->size()
-                          << " sets of inputs at "
-                          << flags::SanitizeInputsPercent << "% probability";
-  for (const auto &sls : *validateSLSInputs_) {
-    size_t indicesLen, weightsLen, totalLensSum = 0;
-    auto *indices = bindings.get(sls.indices);
-
-    // Either a constant or some node internal to the function, skip
-    if (indices == nullptr) {
-      continue;
-    }
-
-    // The indices tensor is not partial
-    if (indices->getSizeInBytes() == indices->getUnpaddedSizeInBytes()) {
-      continue;
-    }
-    indicesLen = indices->getRealNumElements();
-    if (sls.weights) {
-      auto *weights = bindings.get(sls.weights);
-      // If this is a weigthed one and the placeholder is real (not a constant
-      // or internal to the function, then sanitize
-      if (weights != nullptr) {
-        weightsLen = weights->getRealNumElements();
-        LOG_AND_RETURN_IF(
-            ERROR, indicesLen != weightsLen,
-            "santize failed, indices length: " + std::to_string(indicesLen) +
-                " different from weights length: " + std::to_string(weightsLen),
-            false);
-      }
-    }
-
-    bool ret;
-
-    // Sanitize indices
-    if (indices->getElementType() == ElemKind::Int64ITy) {
-      ret = sanitizeIndices<int64_t>(indices, sls.tableHeight);
-    } else if (indices->getElementType() == ElemKind::Int32ITy) {
-      ret = sanitizeIndices<int32_t>(indices, sls.tableHeight);
-    } else {
-      LOG_AND_RETURN_IF(ERROR, true, "unsupported element type for indices",
-                        false);
-    }
-
-    LOG_AND_RETURN_IF(ERROR, !ret, "Failed SLS sanitization on indices.",
-                      false);
-
-    if (sls.isEmbeddingBag) {
-      // EmbeddingBag case
-      auto *offsets = bindings.get(sls.offsets);
-      // Either a constant or some node internal to the function, skip
-      if (offsets == nullptr) {
-        continue;
-      }
-
-      if (offsets->getElementType() == ElemKind::Int32ITy) {
-        ret = sanitizeOffsets<int32_t>(offsets, indicesLen);
-      } else if (offsets->getElementType() == ElemKind::Int64ITy) {
-        ret = sanitizeOffsets<int64_t>(offsets, indicesLen);
-      } else {
-        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type for offsets",
-                          false);
-      }
-    } else {
-      // SLS case
-      auto *lengths = bindings.get(const_cast<Placeholder *>(sls.lengths));
-      // Either a constant or some node internal to the function, skip
-      if (lengths == nullptr) {
-        continue;
-      }
-
-      if (lengths->getElementType() == ElemKind::Int32ITy) {
-        ret = sanitizeLengths<int32_t>(lengths, indicesLen);
-      } else if (lengths->getElementType() == ElemKind::Int64ITy) {
-        ret = sanitizeLengths<int64_t>(lengths, indicesLen);
-      } else {
-        LOG_AND_RETURN_IF(ERROR, true, "unsupported element type for lengths",
-                          false);
-      }
-    }
-    LOG_AND_RETURN_IF(ERROR, !ret,
-                      "Failed SLS sanitization on offsets/lengths.", false);
-  }
-
-  return true;
 }
 
 } // namespace runtime

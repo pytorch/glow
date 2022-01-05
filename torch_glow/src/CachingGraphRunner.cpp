@@ -566,6 +566,8 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   }
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
 
+  info->inputSanitizers = runtime::getInputSanitizers(*f);
+
   if (loadSettings.convertToFP16) {
     cctx.precisionConfig.precisionModeKindSet.insert(
         Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
@@ -1077,6 +1079,11 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     }
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setupOutput");
 
+    TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME,
+                      "runInputSanitization");
+    RETURN_IF_ERR(sanitizeInputs(info.inputSanitizers, *bindings));
+    TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runInputSanitization");
+
     TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runNetwork");
     int64_t glowRunStartTime, glowRunningTime;
     {
@@ -1484,6 +1491,7 @@ Error CachingGraphRunner::warmCache(
           RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
               *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
               outputCorrectTypes_, info->settings, {}, metaStack));
+          info->inputSanitizers = runtime::getInputSanitizers(*f);
           // Prepare GlowDeserializationSpec and cctx for serializing Glow IR
           if (settings.saveGlowIRIntoONNX) {
             GlowDeserializationSpec spec;

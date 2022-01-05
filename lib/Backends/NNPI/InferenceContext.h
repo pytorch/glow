@@ -52,9 +52,6 @@ private:
   /// Set of inputs that can be partial tensors.
   const std::unordered_set<const Placeholder *> *partialInputs_;
 
-  /// Mapping of inputs that belong to an SLS or EmbeddingBag operator
-  const std::vector<ValidateSLSInfo> *validateSLSInputs_;
-
   /// Set of inputs that requires non-zero paddings.
   const std::unordered_set<const Placeholder *> *paddedInputs_;
 
@@ -88,10 +85,6 @@ private:
   /// Dump the runtime resource graph.
   void dumpRuntime() const;
 
-  /// Sanitize inputs before sending inferences to the device
-  /// Currently doing SLS and EmbeddingBag OOB checks
-  bool sanitize(PlaceholderBindings &bindings);
-
 public:
   InferenceContext();
   ~InferenceContext();
@@ -104,7 +97,6 @@ public:
             NNPIDeviceNetwork deviceNetwork, NNPIAdapterContainer *adapter,
             NNPIDeviceContext device,
             const std::unordered_set<const Placeholder *> &partialInputs,
-            const std::vector<ValidateSLSInfo> &validateSLSInputs,
             const std::unordered_set<const Placeholder *> &paddedInputs,
             const std::unordered_set<const Placeholder *> &staticInputs,
             StaticPlaceholderMap *staticPlaceholderMap,
