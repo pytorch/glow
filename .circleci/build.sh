@@ -5,10 +5,10 @@
 set -ex
 
 # Add support for https apt sources.
-wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.32ubuntu0.2_amd64.deb
-echo "93475e4cc5e7a86de63fea0316f3f2cd8b791cf4d6ea50a6d63f5bd8e1da5726  apt-transport-https_1.2.32ubuntu0.2_amd64.deb" | sha256sum -c
-sudo dpkg -i apt-transport-https_1.2.32ubuntu0.2_amd64.deb
-rm apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+# wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+# echo "93475e4cc5e7a86de63fea0316f3f2cd8b791cf4d6ea50a6d63f5bd8e1da5726  apt-transport-https_1.2.32ubuntu0.2_amd64.deb" | sha256sum -c
+# sudo dpkg -i apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+# rm apt-transport-https_1.2.32ubuntu0.2_amd64.deb
 
 export MAX_JOBS=8
 if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
@@ -62,12 +62,12 @@ if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
 elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     # Install Glow dependencies
     sudo apt-get update
-    sudo apt-get install -y llvm-7
+    # sudo apt-get install -y llvm-7
     # Redirect clang
-    sudo ln -s /usr/bin/clang-7 /usr/bin/clang
-    sudo ln -s /usr/bin/clang++-7 /usr/bin/clang++
-    sudo ln -s /usr/bin/llvm-symbolizer-7 /usr/bin/llvm-symbolizer
-    sudo ln -s /usr/bin/llvm-config-7 /usr/bin/llvm-config-7.0
+    # sudo ln -s /usr/bin/clang-7 /usr/bin/clang
+    # sudo ln -s /usr/bin/clang++-7 /usr/bin/clang++
+    # sudo ln -s /usr/bin/llvm-symbolizer-7 /usr/bin/llvm-symbolizer
+    # sudo ln -s /usr/bin/llvm-config-7 /usr/bin/llvm-config-7.0
 
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
@@ -101,6 +101,7 @@ else
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
+sudo apt-get install -y python-pip
 sudo pip install ninja
 hash cmake ninja
 
@@ -154,21 +155,23 @@ elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-11 main"
     sudo apt-get update
     sudo apt-get install -y clang-format-11
+    pip install virtualenv
     cd /tmp
-    python3.6 -m virtualenv venv
+    python3.7 -m virtualenv venv
     source venv/bin/activate
     pip install black==20.8b1
     cd ${GLOW_DIR}
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
+    pip install virtualenv
     cd /tmp
-    python3.6 -m virtualenv venv
+    python3.7 -m virtualenv venv
     source venv/bin/activate
     git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
     cd pytorch
     pip install -r requirements.txt
     pip install parameterized
-    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=1 BUILD_CAFFE2=ON USE_FBGEMM=ON python setup.py install
+    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=1 BUILD_CAFFE2=ON USE_FBGEMM=ON USE_CUDA=OFF USE_DISTRIBUTED=OFF python setup.py install
     cd ${GLOW_DIR}
     cd build
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then

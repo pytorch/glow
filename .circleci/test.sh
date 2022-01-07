@@ -83,6 +83,8 @@ run_pytorch_tests() {
     fi
     source /tmp/venv/bin/activate
     pip install pytest-xdist
+    echo "Updating LIBJIT_LLVM_LINK_BIN to /usr/bin/llvm-link-9"
+    export CMAKE_ARGS="-DLIBJIT_LLVM_LINK_BIN=/usr/bin/llvm-link-9"
     python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
     cd -
     if hash sccache 2>/dev/null; then

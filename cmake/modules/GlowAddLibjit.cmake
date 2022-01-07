@@ -81,6 +81,8 @@ function(glow_add_libjit)
     endif()
   endif()
 
+  message(STATUS "LLVM_BINARY_DIR is ${LLVM_BINARY_DIR}")
+  message(STATUS "LIBJIT_LLVM_LINK_BIN is ${LIBJIT_LLVM_LINK_BIN}")
   # Find llvm-link if not explicitly given.
   if(NOT LIBJIT_LLVM_LINK_BIN)
     if(MSVC)
