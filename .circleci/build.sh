@@ -55,13 +55,23 @@ install_fmt() {
     popd
 }
 
+upgrade_python() {
+    sudo apt-get remove --purge -y python3.6 python3-pip libpython3-dev
+    sudo apt-get autoremove -y
+    sudo apt-get install -y python3.7 python3-pip libpython3.7-dev
+    sudo python3.7 -m pip install --upgrade pip
+    sudo pip3.7 install virtualenv
+}
+
 GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-dev libgflags-dev libjemalloc-dev libpthread-stubs0-dev libevent-dev libssl-dev"
 
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo apt-get update
+    upgrade_python
 elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     # Install Glow dependencies
     sudo apt-get update
+    upgrade_python
     sudo apt-get install -y llvm-7
     # Redirect clang
     sudo ln -s /usr/bin/clang-7 /usr/bin/clang
@@ -155,14 +165,14 @@ elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     sudo apt-get update
     sudo apt-get install -y clang-format-11
     cd /tmp
-    python3.6 -m virtualenv venv
+    python3.7 -m virtualenv venv
     source venv/bin/activate
     pip install black==20.8b1
     cd ${GLOW_DIR}
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
     cd /tmp
-    python3.6 -m virtualenv venv
+    python3.7 -m virtualenv venv
     source venv/bin/activate
     git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
     cd pytorch
