@@ -4142,7 +4142,7 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
                                  NodeValue WhR, NodeValue BxR, NodeValue BhR) {
   std::string nameBase = namePrefix.str();
   assert(input.dims().back() > 0 && "input dimensionality is zero");
-  assert((!isBidirectional || WxR != nullptr) &&
+  assert((!isBidirectional || WxR != NodeValue(nullptr)) &&
          "Bidirectional LSTM must provide reverse weights & biases");
   assert(Wx.size() > 0 && Wh.size() > 0 && Bx.size() > 0 && Bh.size() > 0 &&
          "Wx, Wh, Bx and Bh should be non empty vectors");
