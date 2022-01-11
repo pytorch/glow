@@ -256,11 +256,12 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
     return at::kQUInt8;
   case ElemKind::Float64Ty:
     return at::kDouble;
+  case ElemKind::UInt8ITy:
+    return at::kByte;
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
   case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::UInt4FusedQTy:
-  case ElemKind::UInt8ITy:
   case ElemKind::Int16QTy:
   case ElemKind::Int32QTy:
   case ElemKind::Int64QTy:
@@ -283,9 +284,7 @@ glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
   } else if (ty == at::kBool) {
     return ElemKind::BoolTy;
   } else if (ty == at::kByte) {
-    // We should have an 8-byte non-quantized integer type eventually
-    // Currently usage of Bool is fine
-    return ElemKind::BoolTy;
+    return ElemKind::UInt8ITy;
   } else if (ty == at::kQInt8) {
     return ElemKind::Int8QTy;
   } else if (ty == at::kQUInt8) {
