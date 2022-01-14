@@ -56,6 +56,9 @@ public:
   /// Dump Glow dot graph to file after model loading is finished.
   bool dumpGlowDag = false;
 
+  /// Dump JIT IR dot graph to file after fusion/shape inference.
+  bool dumpJitDag = false;
+
   /// A list of symbols for nodes that will be ignored by the Glow fuser and
   /// thus will not be fused to Glow.
   std::unordered_set<torch::jit::Symbol> opBlocklist;
