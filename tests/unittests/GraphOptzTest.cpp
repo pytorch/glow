@@ -794,7 +794,9 @@ TEST_F(GraphOptz, FoldArithmeticChainAfterConvIntoBatchNorm) {
   // Compile.
   EXPECT_EQ(F_->getNodes().size(), 6);
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunctionForTest(F_);
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+  CompilationContext cctx;
+  ::glow::fold(optimizedF_, cctx);
   EXPECT_EQ(optimizedF_->getNodes().size(), 3);
 
   auto *opt_res = findFunctionNodeByName<SaveNode>(optimizedF_, res->getName());

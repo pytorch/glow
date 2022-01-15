@@ -184,11 +184,6 @@ createDefaultGraphOptimizationPassPipeline() {
       {FunctionPassID::OptimizeReshape},
       {FunctionPassID::SinkCode, ConvergenceMode::UntilFixedPoint},
 
-      // Fold Arithmetic chain w/ constants into Batch Norm, when Conv preceeds.
-      {FunctionPassID::FoldArithmeticChainUnderConvIntoBN,
-       ConvergenceMode::OnePass,
-       {CompilationMode::Infer}},
-
       // Fold Arithmetic chain w/ constants into the preceding Batch Norm.
       {FunctionPassID::FoldBatchNormalizationWithArithmeticChain,
        ConvergenceMode::OnePass,
@@ -273,6 +268,11 @@ std::unique_ptr<FunctionPassPipeline> createDefaultFoldPassPipeline() {
 
       // Fold exp + reduce sum + div into softmax
       {FunctionPassID::FoldExpSumDivIntoSoftmax},
+
+      // Fold Arithmetic chain w/ constants into Batch Norm, when Conv preceeds.
+      {FunctionPassID::FoldArithmeticChainUnderConvIntoBN,
+       ConvergenceMode::OnePass,
+       {CompilationMode::Infer}},
 
       // Perform Dead Code Elimination.
       getDCEPassConfig(),
