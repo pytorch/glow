@@ -2435,6 +2435,11 @@ bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
+    // We cannot do this optimization if the conv has an activation fused in.
+    if (CV->getFusedActivation() != FusedActivation::NONE) {
+      continue;
+    }
+
     bool normalizationHappened = false;
     switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
     case ElemKind::FloatTy:
