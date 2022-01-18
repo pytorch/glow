@@ -94,6 +94,10 @@ public:
   /// %5: [2 4]
   void printShapeMap();
 
+  /// Save dump of JIT graph for debugging multiple fusion groups/shape
+  /// inference
+  void dumpGraph(const torch::jit::Graph &graph);
+
 private:
   /// Graph that needs to be run shape inference.
   const torch::jit::Graph &graph_;

@@ -27,6 +27,8 @@
 #include "folly/String.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/FileSystem.h"
 
 DEFINE_string(shapeInferenceOpBlocklist, "", "Ops to skip shape inference");
 DEFINE_int32(max_feature_length, -1, "max feature length");
@@ -36,6 +38,147 @@ DEFINE_bool(skipReferOperatorsOnCpu, false,
             "Skip referring shapes running on CPU");
 
 namespace glow {
+
+namespace {
+/* Print graph/shapes in GraphViz dot format for debugging */
+class GraphDrawer {
+public:
+  GraphDrawer(const torch::jit::Graph &graph,
+              const std::unordered_map<const torch::jit::Value *, VariableMeta>
+                  &shapeMap)
+      : graph_(graph), shapeMap_(shapeMap) {}
+
+  void dump(std::ostream &os) {
+    DCHECK(os) << "Failed to create file";
+    drawNodes();
+    os << "digraph DAG {\n\trankdir=TB;\n";
+    // Dump vertices:
+    for (auto &n : nodes_) {
+      os << n << "\n";
+    }
+
+    // Dump edges:
+    for (auto &e : edges_) {
+      os << e << ";\n";
+    }
+    os << "}";
+  }
+
+private:
+  void dumpShape(VariableMeta vm, std::ostream &os) {
+    os << "[";
+    DCHECK(vm.listOfShape.size() > 0);
+    folly::variant_match(
+        vm.listOfShape[0],
+        [&](const TensorShape &shape) {
+          for (auto i = 0; i < shape.size(); i++) {
+            if (i) {
+              os << ", ";
+            }
+            os << shape[i];
+          }
+        },
+        [&](const TensorListShape &shapes) {
+          for (auto shape : shapes) {
+            os << "[";
+            for (auto i = 0; i < shape.size(); i++) {
+              if (i) {
+                os << ", ";
+              }
+              os << shape[i];
+            }
+            os << "]";
+          }
+        },
+        [&](const auto &) { os << "Unsupported shape type"; });
+    os << "], ";
+    os << "dtype: " << vm.dtype;
+  }
+
+  void dumpInputsOutputs(const torch::jit::Node *node, bool dumpInputs,
+                         std::ostream &os) {
+    auto label = dumpInputs ? "\\lInputs" : "\\lOutputs";
+    auto values = dumpInputs ? node->inputs() : node->outputs();
+    auto first = true;
+    for (auto value : values) {
+      if (first) {
+        os << label << "\\l";
+        first = false;
+      } else {
+        os << "\\l";
+      }
+      os << value->debugName() << " : ";
+      if (shapeMap_.count(value)) {
+        auto vm = shapeMap_.find(value)->second;
+        if (vm.listOfShape.size() > 0) {
+          dumpShape(vm, os);
+        } else {
+          os << "Missing shape";
+        }
+      } else {
+        os << "Missing shape";
+      }
+      os << " (" << *value->type() << ")\\l";
+    }
+  }
+
+  void colorNode(const torch::jit::Node *node, std::ostream &ss) {
+    if (node->kind() == at::prim::Constant) {
+      ss << "\tfillcolor=grey\n";
+    } else {
+      size_t colorHash =
+          llvm::hash_value(llvm::StringRef(node->kind().toQualString()));
+      ss << "\tfillcolor=" << glow::getDotFileNodeColor(colorHash) << "\n";
+    }
+  }
+
+  void dumpNode(const torch::jit::Node *node, std::ostream &ss) {
+    if (node_id_map_.count(node)) {
+      return;
+    }
+    size_t node_id = node_id_map_.size();
+    node_id_map_.insert({node, node_id});
+    ss << node_id << "[\n";
+    ss << "\tlabel = \"{{<Kind>" << node->kind().toQualString() << "} | {";
+    dumpInputsOutputs(node, true, ss);
+    dumpInputsOutputs(node, false, ss);
+    for (auto *input : node->inputs()) {
+      std::ostringstream edge;
+      if (node_id_map_.count(input->node())) {
+        auto from_id = node_id_map_.find(input->node())->second;
+        edge << from_id << ":Result -> " << node_id << ":Kind";
+        edges_.insert(edge.str());
+      } else if (input->node()->kind() != at::prim::Param) {
+        LOG(INFO) << "Missing node " << input->node()->kind().toQualString();
+      }
+    }
+    ss << "}|{<Result>}}";
+    ss << "\"\n";
+    ss << "\tshape = \"record\"\n";
+    ss << "\tstyle=\"filled,rounded\"\n";
+    colorNode(node, ss);
+    ss << "penwidth = 2];\n";
+  }
+
+  void addNode(const torch::jit::Node *node) {
+    std::ostringstream ss;
+    dumpNode(node, ss);
+    nodes_.emplace_back(ss.str());
+  }
+
+  void drawNodes() {
+    for (auto *node : graph_.nodes()) {
+      addNode(node);
+    }
+  }
+
+private:
+  std::vector<std::string> nodes_;
+  std::unordered_set<std::string> edges_;
+  std::unordered_map<const torch::jit::Node *, int> node_id_map_;
+  const torch::jit::Graph &graph_;
+  const std::unordered_map<const torch::jit::Value *, VariableMeta> &shapeMap_;
+};
 
 static std::vector<std::string> splitStr(const std::string &s,
                                          const char delimiter = ',') {
@@ -61,6 +204,7 @@ static std::vector<std::string> splitStr(const std::string &s,
 
   return substrings;
 }
+} // namespace
 
 ShapeInferenceEngine::ShapeInferenceEngine(
     const torch::jit::Graph &graph, const at::ArrayRef<at::IValue> &inputs,
@@ -475,7 +619,10 @@ Error ShapeInferenceEngine::runGraph(
       std::vector<torch::jit::IValue> subgraphInputs;
       for (auto i : node->inputs()) {
         auto it = shapeMap_.find(i);
-        CHECK(it != shapeMap_.end()) << "missing input " << i->debugName();
+        if (it == shapeMap_.end()) {
+          dumpGraph(graph);
+          LOG(FATAL) << "missing input " << i->debugName().c_str();
+        }
         // Only support tensor input for now
         // TODO Add support for other input types, e.g., tensor list
         if (it->second.dtype == at::ScalarType::QUInt8) {
@@ -596,6 +743,37 @@ void ShapeInferenceEngine::printShapeMap() {
         },
         [&](const auto &) { std::cout << "Type doesn't support yet."; });
     std::cout << "]" << std::endl;
+  }
+}
+
+void ShapeInferenceEngine::dumpGraph(const torch::jit::Graph &graph) {
+  std::string graphPath = "debug_shapes.dot";
+  LOG(INFO) << "Dumping graph dot file to " << graphPath;
+  GraphDrawer GD(graph, shapeMap_);
+  std::ofstream file(graphPath);
+  if (file) {
+    GD.dump(file);
+  } else {
+    LOG(ERROR) << "Unable to open " << graphPath << "\n " << strerror(errno);
+  }
+  file.close();
+  auto group_id = 0;
+  for (auto *node : graph.nodes()) {
+    if (node->hasAttribute(torch::jit::attr::Subgraph)) {
+      GraphDrawer SGD(*node->g(torch::jit::attr::Subgraph), shapeMap_);
+      std::stringstream file_name;
+      file_name << "debug_shapes_fusion_group_" << group_id << ".dot";
+      LOG(INFO) << "Dumping fusion subgraph dot file to " << file_name.str();
+      std::ofstream subgraphFile(file_name.str());
+      if (subgraphFile) {
+        SGD.dump(subgraphFile);
+      } else {
+        LOG(ERROR) << "Unable to open " << file_name.str() << "\n "
+                   << strerror(errno);
+      }
+      subgraphFile.close();
+      group_id++;
+    }
   }
 }
 

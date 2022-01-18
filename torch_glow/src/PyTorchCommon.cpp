@@ -15,6 +15,7 @@
  */
 
 #include <fstream>
+#include <sstream>
 #include <string>
 
 #include "ATen/core/interned_strings.h"
@@ -56,6 +57,7 @@ DEFINE_bool(printJITIndex, false, "Enable printing of jit node indexes");
 DEFINE_bool(ignoreDivRoundingArgs, false,
             "Ignore the rounding argument to aten::div");
 DEFINE_bool(dumpGlowDag, false, "See PyTorchLoaderSettings");
+DEFINE_bool(dumpJitDag, false, "See PyTorchLoaderSettings");
 DEFINE_bool(jitVsGlowCompare, false, "Enable per-group error check");
 DEFINE_bool(dumpFinalGlowGraph, false, "See PyTorchLoaderSettings");
 DEFINE_bool(enableGlowTracing, false, "See PyTorchLoaderSettings");
@@ -341,6 +343,7 @@ static std::vector<std::string> splitString(const std::string &s,
 void PyTorchLoaderSettings::initSettings() {
   minFusionGroupSize = FLAGS_torch_glow_min_fusion_group_size;
   dumpGlowDag = FLAGS_dumpGlowDag;
+  dumpJitDag = FLAGS_dumpJitDag;
   jitVsGlowCompare = FLAGS_jitVsGlowCompare;
   printJITIndex = FLAGS_printJITIndex;
   ignoreDivRoundingArgs = FLAGS_ignoreDivRoundingArgs;
@@ -447,6 +450,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_VALUE_TO_STREAM(replicationCount, s);
   INSERT_BOOL_TO_STREAM(fusionPassEnabled, s);
   INSERT_BOOL_TO_STREAM(dumpGlowDag, s);
+  INSERT_BOOL_TO_STREAM(dumpJitDag, s);
   INSERT_BOOL_TO_STREAM(dumpOperatorInventory, s);
   INSERT_VALUE_TO_STREAM(minFusionGroupSize, s);
   INSERT_VALUE_TO_STREAM(maxFusionMergeSize, s);
@@ -712,6 +716,9 @@ void glowAOTFusionWithShapeInference(
   if (e) {
     LOG(ERROR) << ERR_TO_STRING(std::move(e));
   }
+  if (settings.dumpJitDag) {
+    shapeInf.dumpGraph(*graph);
+  }
 
   const auto &shapeMap = shapeInf.getVariableMap();
 
@@ -822,8 +829,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
         modelCompilationConfigOverride);
   }
 
-  // We assume the model is flattened and only one graph will be lowered. In the
-  // future we may need to support multiple graphs.
+  // We assume the model is flattened and only one graph will be lowered. In
+  // the future we may need to support multiple graphs.
   auto graph =
       toGraphFunction(model.get_method(method_name).function()).graph();
 
