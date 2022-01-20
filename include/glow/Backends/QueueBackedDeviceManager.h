@@ -33,8 +33,9 @@ protected:
   std::atomic<RunIdentifierTy> nextIdentifier_{1};
 
 public:
-  QueueBackedDeviceManager(const DeviceConfig &config)
-      : DeviceManager(config), workThread_(1) {}
+  explicit QueueBackedDeviceManager(const DeviceConfig &config,
+                                    unsigned numThreads = 1)
+      : DeviceManager(config), workThread_(numThreads) {}
 
   virtual ~QueueBackedDeviceManager() {
     ERR_TO_VOID(stop(true)); // will join workThread_
