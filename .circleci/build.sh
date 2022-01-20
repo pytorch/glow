@@ -56,11 +56,33 @@ install_fmt() {
 }
 
 upgrade_python() {
+    echo "Removing old python...";
     sudo apt-get remove --purge -y python3.6 python3-pip libpython3-dev
     sudo apt-get autoremove -y
-    sudo apt-get install -y python3.7 python3-pip libpython3.7-dev
-    sudo python3.7 -m pip install --upgrade pip
-    sudo pip3.7 install virtualenv
+
+    echo "Installing dependencies for new python..."
+    sudo apt-get update
+    sudo apt-get install -y libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev
+
+    echo "Installing new python..."
+    mkdir python-src
+    pushd python-src
+    wget https://www.python.org/ftp/python/3.9.0/Python-3.9.0.tgz
+    tar xvf Python-3.9.0.tgz
+    cd Python-3.9.0
+    ./configure --enable-shared
+    sudo make altinstall
+    popd
+
+    echo "Adjusting system to recognize new python..."
+    sudo touch /etc/ld.so.conf.d/glowDevLibs.conf
+    echo "/usr/local/lib/" | sudo tee -a /etc/ld.so.conf.d/glowDevLibs.conf
+    sudo ldconfig
+    sudo rm /usr/local/bin/pip
+    sudo ln -s /usr/local/bin/pip3.9 /usr/local/bin/pip
+
+    echo "Installing virtualenv..."
+    sudo pip3.9 install virtualenv
 }
 
 GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-dev libgflags-dev libjemalloc-dev libpthread-stubs0-dev libevent-dev libssl-dev"
@@ -165,14 +187,14 @@ elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     sudo apt-get update
     sudo apt-get install -y clang-format-11
     cd /tmp
-    python3.7 -m virtualenv venv
+    python3.9 -m virtualenv venv
     source venv/bin/activate
     pip install black==20.8b1
     cd ${GLOW_DIR}
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
     cd /tmp
-    python3.7 -m virtualenv venv
+    python3.9 -m virtualenv venv
     source venv/bin/activate
     git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
     cd pytorch
