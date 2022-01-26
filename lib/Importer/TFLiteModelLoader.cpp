@@ -1659,7 +1659,6 @@ Error TFLiteModelLoader::loadConcat(const tflite::Operator *op,
   return setOutputNodeValue(op, output);
 }
 
-
 Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
                                     const OperatorInfo &opInfo) {
   const auto *opts = op->builtin_options_as_Conv2DOptions();
@@ -1734,11 +1733,6 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
 
   // Create convolution node.
   NodeValue output;
-  Constant *filterC = llvm::dyn_cast<Constant>(filter);
-  auto filterScalesH = filterScales->getHandle<float>();
-  auto filtersH = filterC->getHandle<int8_t>();
-  auto biasScalesH = biasScales->getHandle<float>();
-
   if (isPerAxisQuantized) {
     // Check that filter and bias are constants.
     RETURN_ERR_IF_NOT(llvm::dyn_cast<Constant>(filter.getNode()),
@@ -1746,8 +1740,16 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
     RETURN_ERR_IF_NOT(llvm::dyn_cast<Constant>(bias.getNode()),
                       opErrMsg(opInfo, "Bias must be constant!"));
 
-    for (int idx = 0; idx < filterScalesH.size() &&
-         filterScalesH.size() == biasScalesH.size(); idx++) {
+    Constant *filterC = llvm::dyn_cast<Constant>(filter);
+    auto filterScalesH = filterScales->getHandle<float>();
+    auto filtersH = filterC->getHandle<int8_t>();
+    auto biasScalesH = biasScales->getHandle<float>();
+
+    RETURN_ERR_IF_NOT(filterScalesH.size() == biasScalesH.size(),
+                      opErrMsg(opInfo, "Number of filter scales must be equal with bias scales."));
+
+    // Modify quantization parameters, if the model is wring quantized.
+    for (int idx = 0; idx < filterScalesH.size(); idx++) {
       if (filterScalesH.raw(idx) == 0 && biasScalesH.raw(idx) == 0) {
         auto start = idx * filter.dims()[1] * filter.dims()[2] * filter.dims()[3];
         auto frame = filter.dims()[1] * filter.dims()[2] * filter.dims()[3];
@@ -1758,8 +1760,10 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
         biasScalesH.raw(idx) = input.getType()->getScale() * filterScalesH.raw(idx);
       } else {
         // Check whether the scale of filter or the scale of bias is zero.
-        RETURN_ERR_IF_NOT(filterScalesH.raw(idx) > 0, "Scale of the filter must be greater than 0.");
-        RETURN_ERR_IF_NOT(biasScalesH.raw(idx) > 0, "Scale of the bias must be greater than 0.");
+        RETURN_ERR_IF_NOT(filterScalesH.raw(idx) > 0,
+                          opErrMsg(opInfo, "Scale of the filter must be greater than 0."));
+        RETURN_ERR_IF_NOT(biasScalesH.raw(idx) > 0,
+                          opErrMsg(opInfo, "Scale of the bias must be greater than 0."));
       }
     }
 
@@ -1864,6 +1868,33 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
   if (isPerAxisQuantized) {
     Constant *filterC = llvm::dyn_cast<Constant>(filter.getNode());
     RETURN_ERR_IF_NOT(filterC, opErrMsg(opInfo, "Filter must be constant!"));
+
+    auto filterScalesH = filterScales->getHandle<float>();
+    auto filtersH = filterC->getHandle<int8_t>();
+    auto biasScalesH = biasScales->getHandle<float>();
+
+    RETURN_ERR_IF_NOT(filterScalesH.size() == biasScalesH.size(),
+                      opErrMsg(opInfo, "Number of filter scales must be equal with bias scales."));
+
+    // Modify quantization parameters, if the model is wring quantized.
+    for (int idx = 0; idx < filterScalesH.size(); idx++) {
+      if (filterScalesH.raw(idx) == 0 && biasScalesH.raw(idx) == 0) {
+        auto start = idx * filter.dims()[1] * filter.dims()[2] * filter.dims()[3];
+        auto frame = filter.dims()[1] * filter.dims()[2] * filter.dims()[3];
+        for (int jdx = start; jdx < (start + frame); jdx++) {
+          filtersH.raw(jdx) = 0;
+        }
+        filterScalesH.raw(idx) = 0.125;
+        biasScalesH.raw(idx) = input.getType()->getScale() * filterScalesH.raw(idx);
+      } else {
+        // Check whether the scale of filter or the scale of bias is zero.
+        RETURN_ERR_IF_NOT(filterScalesH.raw(idx) > 0,
+                          opErrMsg(opInfo, "Scale of the filter must be greater than 0."));
+        RETURN_ERR_IF_NOT(biasScalesH.raw(idx) > 0,
+                          opErrMsg(opInfo, "Scale of the bias must be greater than 0."));
+      }
+    }
+
     TypeRef filterTy = filterC->getType();
     auto filterDims = filterTy->dims();
     TypeRef newFilterTy = mod_.uniqueTypeWithNewShape(
