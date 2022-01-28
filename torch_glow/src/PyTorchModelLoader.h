@@ -631,6 +631,10 @@ private:
   /// \returns error on failure.
   Error loadLeakyRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch gelu node.
+  /// \returns error on failure.
+  Error loadGelu(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch sum node.
   /// \returns error on failure.
   Error loadSum(const torch::jit::Node *ptNode);
