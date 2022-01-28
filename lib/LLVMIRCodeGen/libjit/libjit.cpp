@@ -3077,15 +3077,13 @@ void libjit_softmax_f(const float *inW, float *outW, const dim_t *idim,
 
 void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
                        const uint32_t *expData, int32_t outputOffset,
-                       uint32_t invScale, uint32_t integerPart,
+                       uint32_t invScale, uint32_t integerPoint,
                        uint32_t invScalePoint) {
+  expData += 255;
   for (int j = 0; j < dims[0]; j++) {
-    uint32_t sum = 0;
-    int8_t max = std::numeric_limits<int8_t>::min();
-    uint32_t division;
-    int point, size;
 
     // Find max value.
+    int8_t max = std::numeric_limits<int8_t>::min();
     for (uint32_t i = 0; i < dims[1]; i++) {
       max = MAX(max, *inW);
       inW++;
@@ -3093,29 +3091,32 @@ void libjit_softmax_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
     inW -= dims[1];
 
     // Compute the sum of exponentials.
+    // The exponentials from the LookUp Table are in Q1.31 format.
+    uint32_t sum = 0;
     for (int i = 0; i < dims[1]; i++) {
-      sum += (expData[*inW++ + 255 - max] >> (integerPart - 1));
+      sum += (expData[*inW++ - max] >> (integerPoint - 1));
     }
     inW -= dims[1];
 
+    //  Reformat fixed point representation from Q32 to Q16 for sum.
+    uint32_t sumPoint = integerPoint;
+    while (!(sum & 0x80000000)) {
+      sum = sum << 1;
+      sumPoint--;
+    }
+    sum = sum >> 16;
+
     // Compute 1 / outputScale * 1 / sum, where sum is computed above
     // align point for both operands.
-    if ((32 - integerPart) >= (32 - invScalePoint)) {
-      division = ((uint64_t)invScale * (1 << (32 - invScalePoint))) /
-                 (sum >> (invScalePoint - integerPart));
-      size = (32 - invScalePoint);
-    } else {
-      division = ((uint64_t)(invScale >> (integerPart - invScalePoint))) *
-                 (1 << (32 - integerPart)) / sum;
-      size = (32 - integerPart);
-    }
+    uint32_t division = (invScale + sum / 2) / sum;
+    int size = (16 - invScalePoint + sumPoint);
+    int point = 31 + size;
 
-    point = size + 31;
     // Multiply with exp and bring the result into the right range.
+    uint64_t rnd = 1 << (point - 1);
     for (int i = 0; i < dims[1]; i++) {
-      uint32_t index = *inW++ + 255 - max;
-      uint64_t mul = (uint64_t)division * (uint64_t)expData[index];
-      int32_t res = (int32_t)(mul >> point) + outputOffset;
+      uint64_t mul = (uint64_t)division * (uint64_t)expData[*inW++ - max];
+      int32_t res = (int32_t)((mul + rnd) >> point) + outputOffset;
       *outW++ = MAX(MIN(res, 127), -128);
     }
   }
