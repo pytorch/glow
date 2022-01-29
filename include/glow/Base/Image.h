@@ -85,8 +85,6 @@ extern std::vector<ImgDataRange> imageDataRangeOpt;
 /// -image-layout flag.
 extern std::vector<ImageLayout> imageLayoutOpt;
 
-/// -input-layout flag
-extern ImageLayout inputLayout;
 
 /// -input-layout flag
 extern ImageLayout inputLayout;
