@@ -126,6 +126,8 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
   assert(TM_ && "Could not initialize the target machine");
 }
 
+void LLVMIRGen::performBackendOptimizations() { return; }
+
 llvm::StringRef LLVMIRGen::getBundleName() const { return bundleName_; }
 
 void LLVMIRGen::setBundleName(const std::string &name) {

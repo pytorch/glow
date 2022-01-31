@@ -242,5 +242,6 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
     FPM.run(FF);
   }
   FPM.doFinalization();
+  performBackendOptimizations();
   PM.run(*M);
 }
