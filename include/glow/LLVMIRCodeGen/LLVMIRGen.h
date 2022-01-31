@@ -401,6 +401,10 @@ public:
   virtual void optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM);
   /// Performs specialization of operations based on constant parameters.
   virtual void performSpecialization();
+  /// Performs any backend specific optimizations along with LLVM optimizations
+  /// passes These are any optimizations additional to LLVM Pass Manager
+  /// passes.
+  virtual void performBackendOptimizations();
   /// Insert debug traces in appropriate places.
   virtual void performDebugInstrumentation();
   /// \returns allocations info.
