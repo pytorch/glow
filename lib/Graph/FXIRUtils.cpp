@@ -136,10 +136,8 @@ std::vector<dim_t> glow::getOffsets(const folly::dynamic &node) {
   auto shape = node["shape"].asString();
   auto count = std::count(shape.begin(), shape.end(), ',') + 1;
   std::vector<dim_t> offsets(count, 0);
-  auto dims = folly::convertTo<std::vector<dim_t>>(inputs["dims"]);
-  auto starts = folly::convertTo<std::vector<dim_t>>(inputs["starts"]);
-  for (int i = 0; i < dims.size(); i++) {
-    offsets[dims[i]] = starts[i];
-  }
+  auto dim = inputs["dim"].asInt();
+  auto start = inputs["start"].asInt();
+  offsets[dim] = start;
   return offsets;
 }
