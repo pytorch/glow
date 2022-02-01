@@ -52,8 +52,10 @@ class TestToGlowSavePreprocessedModule(utils.TorchGlowTestCase):
 
             reloaded = utils.save_and_reload_model(glow_mod)
 
+            wrappername = "__loweredModule__"
             attrname = "__processed_module"
-            pp = getattr(reloaded._c, attrname)
+            wp = getattr(reloaded._c, wrappername)
+            pp = getattr(wp, attrname)
             pt_model = torch.jit._recursive.wrap_cpp_module(pp)
             graph = pt_model.graph_for(x)
             found = False

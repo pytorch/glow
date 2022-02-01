@@ -402,15 +402,11 @@ public:
     const auto &inputs = node["kwargs"];
     const auto &name = node["name"].getString();
     const auto &inputName = importer.getInputNodeName(inputs["input"]);
-    auto dims = toIntegerArray<uint32_t>(inputs["dims"]);
-    auto starts = toIntegerArray<uint32_t>(inputs["starts"]);
-    auto stops = toIntegerArray<uint32_t>(inputs["stops"]);
-    auto steps = toIntegerArray<uint32_t>(inputs["steps"]);
-    CHECK_EQ(dims.size(), 1) << "Only supporting single dim slice";
-    CHECK_EQ(starts.size(), 1) << "Only supporting single start slice";
-    CHECK_EQ(stops.size(), 1) << "Only supporting single stop slice";
-    CHECK_EQ(steps.size(), 1) << "Only supporting single step slice";
-    CHECK_EQ(steps[0], 1) << "Only supporting step == 1";
+    auto dim = inputs["dim"].asInt();
+    auto start = inputs["start"].asInt();
+    auto stop = inputs["stop"].asInt();
+    auto step = inputs["step"].asInt();
+    CHECK_EQ(step, 1) << "Only supporting step == 1";
 
     auto shape = toIntegerArray<glow::dim_t>(node["shape"].getString());
 
@@ -418,13 +414,13 @@ public:
     int32_t endOffset[NNPI_MAX_DIMS] = {0};
 
     for (size_t i = 0, e = shape.size(); i < e; i++) {
-      if (i != dims[0]) {
+      if (i != dim) {
         startOffset[i] = 0;
         endOffset[i] = shape[i];
         continue;
       }
-      startOffset[i] = starts[0];
-      endOffset[i] = stops[0];
+      startOffset[i] = start;
+      endOffset[i] = stop;
     }
 
     importer.setUsedTensors({inputName}, {name});
