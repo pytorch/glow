@@ -73,7 +73,24 @@ void ReproFXLib::load(const folly::dynamic &data,
 
   // Insert all pairs into TorchDict for passing into loadNetwork.
   for (auto &key : keys) {
-    torch::Tensor tensor = container.attr(key).toTensor();
+    auto keyRef = llvm::StringRef(key);
+    auto modPathAndWeightName = keyRef.rsplit(".");
+
+    // Attribute is in the base module, i.e. "." isn't found.
+    if (modPathAndWeightName.second == "") {
+      torch::Tensor tensor = container.attr(key).toTensor();
+      weights.insert(key, tensor);
+      continue;
+    }
+
+    // Attribute is inside some recursive module, e.g. "a.b.c".
+    llvm::SmallVector<llvm::StringRef, 4> modNames;
+    modPathAndWeightName.first.split(modNames, ".");
+    auto currMod = container;
+    for (const auto &modName : modNames) {
+      currMod = currMod.attr(modName).toModule();
+    }
+    torch::Tensor tensor = currMod.attr(modPathAndWeightName.second).toTensor();
     weights.insert(key, tensor);
   }
 
