@@ -1587,8 +1587,12 @@ std::unique_ptr<IRFunction> generateAndOptimizeIR(IRContainer *F,
 
 void optimize(IRFunction &M, bool shouldShareBuffers) {
   M.verify();
+  auto pipeline = createDefaultIRFunctionOptimizationPipeline();
+  if (!shouldShareBuffers) {
+    pipeline->removeAllInstancesOfPass(IRFunctionPassID::ShareBuffers);
+  }
   IRFunctionPassManager IRFPM("TargetIndependentIROptzFPM",
-                              createDefaultIRFunctionOptimizationPipeline());
+                              std::move(pipeline));
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   IRFPM.run(&M, cctx);
@@ -1596,8 +1600,12 @@ void optimize(IRFunction &M, bool shouldShareBuffers) {
 
 void optimize(IRFunction &M, const Backend &B, bool shouldShareBuffers) {
   M.verify();
+  auto pipeline = B.getIROptimizationPipeline();
+  if (!shouldShareBuffers) {
+    pipeline->removeAllInstancesOfPass(IRFunctionPassID::ShareBuffers);
+  }
   IRFunctionPassManager IRFPM("TargetIndependentIROptzFPM",
-                              B.getIROptimizationPipeline());
+                              std::move(pipeline));
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   IRFPM.run(&M, cctx);
