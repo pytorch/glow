@@ -840,7 +840,6 @@ TEST_F(NNPIOptPipelineTest, ParQuantizeFCReluRescaleSigmoidDequantize) {
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
       std::to_string(2);
   cloneAndCompile();
-  optimizedF_->dumpDAG("tmp1.dot");
 
 #define CHECK_PAR(NAME_, PRE_, POST_)                                          \
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::NAME_##NodeKind), PRE_);           \
