@@ -73,7 +73,24 @@ void ReproFXLib::load(const folly::dynamic &data,
 
   // Insert all pairs into TorchDict for passing into loadNetwork.
   for (auto &key : keys) {
-    torch::Tensor tensor = container.attr(key).toTensor();
+    auto keyRef = llvm::StringRef(key);
+    auto modPathAndWeightName = keyRef.rsplit(".");
+
+    // Attribute is in the base module, i.e. "." isn't found.
+    if (modPathAndWeightName.second == "") {
+      torch::Tensor tensor = container.attr(key).toTensor();
+      weights.insert(key, tensor);
+      continue;
+    }
+
+    // Attribute is inside some recursive module, e.g. "a.b.c".
+    llvm::SmallVector<llvm::StringRef, 4> modNames;
+    modPathAndWeightName.first.split(modNames, ".");
+    auto currMod = container;
+    for (const auto &modName : modNames) {
+      currMod = currMod.attr(modName).toModule();
+    }
+    torch::Tensor tensor = currMod.attr(modPathAndWeightName.second).toTensor();
     weights.insert(key, tensor);
   }
 
@@ -111,7 +128,7 @@ void ReproFXLib::parseCommandLine(int argc, char **argv) {
   load(data, container, input);
 }
 
-std::vector<torch::Tensor> ReproFXLib::run() {
+std::vector<torch::Tensor> ReproFXLib::run(bool fatalOnNotClose) {
   // Create FXGlowCompileSpec with NNPI backend.
   glow::FXGlowCompileSpec compileSpec;
   compileSpec.set_glow_backend("NNPI");
@@ -126,14 +143,19 @@ std::vector<torch::Tensor> ReproFXLib::run() {
 
   // Run network with input and save output to fx_output.pt.
   std::vector<torch::Tensor> out = binding.runNetwork(inputs);
-  torch::save(out, "fx_output.pt");
 
   // Check to see if user provided output file for comparison.
   if (!outputPathOpt.empty()) {
-    std::vector<torch::Tensor> outputFileTensors;
-    torch::load(outputFileTensors, outputPathOpt.c_str());
+    std::ifstream outputStream(outputPathOpt.c_str());
+    outputStream >> std::noskipws;
 
-    // Calculate cosine simlarity between user's output tensors and ReproFX's
+    std::vector<char> output;
+    output.insert(output.begin(), std::istream_iterator<char>(outputStream),
+                  std::istream_iterator<char>());
+    std::vector<at::IValue> outputFileTensors =
+        torch::pickle_load(output).toTupleRef().elements();
+
+    // Calculate cosine similarity between user's output tensors and ReproFX's
     // out.
     std::vector<torch::Tensor> cosSimilarity;
     torch::nn::CosineSimilarity cos(
@@ -141,10 +163,14 @@ std::vector<torch::Tensor> ReproFXLib::run() {
 
     for (int i = 0; i < out.size() && i < outputFileTensors.size(); i++) {
       torch::Tensor a = out[i].flatten();
-      torch::Tensor b = outputFileTensors[i].flatten();
-      cosSimilarity.push_back(cos(a, b));
+      torch::Tensor b = outputFileTensors[i].toTensor().flatten();
+      auto c = cos(a, b);
+      if (fatalOnNotClose && *c.data_ptr<float>() != 1) {
+        LOG(FATAL) << "Cosine Similarity failure.";
+      }
+      cosSimilarity.push_back(c);
     }
-    std::cout << "Cosine Similarity: " << cosSimilarity << std::endl;
+    LOG(INFO) << "Cosine Similarity: " << cosSimilarity;
   }
 
   return out;

@@ -31,4 +31,5 @@ int main(int argc, char **argv) {
   ReproFXLib repro;
   repro.parseCommandLine(argc, argv);
   std::vector<torch::Tensor> output = repro.run();
+  return 0;
 }

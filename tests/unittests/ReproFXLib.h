@@ -39,7 +39,7 @@ public:
             const torch::jit::script::Module &container,
             const std::vector<char> &input);
   void parseCommandLine(int argc, char **argv);
-  std::vector<torch::Tensor> run();
+  std::vector<torch::Tensor> run(bool fatalOnNotClose = true);
 };
 
 #endif // GLOW_TESTS_REPROFXLIB_H
