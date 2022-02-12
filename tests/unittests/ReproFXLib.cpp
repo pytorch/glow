@@ -37,9 +37,21 @@ llvm::cl::opt<std::string>
                    llvm::cl::value_desc("weights path"), llvm::cl::Required,
                    llvm::cl::cat(reproTestCat));
 llvm::cl::opt<std::string>
-    inputPathOpt("inputs", llvm::cl::desc("Path to dumped input file"),
-                 llvm::cl::value_desc("input path"), llvm::cl::Required,
+    inputPathOpt("inputs",
+                 llvm::cl::desc("Path to dumped input file; leave blank for "
+                                "when debugging lowering failures."),
+                 llvm::cl::value_desc("input path"),
                  llvm::cl::cat(reproTestCat));
+llvm::cl::opt<std::string>
+    backend("backend", llvm::cl::desc("Backend target for lowering."),
+            llvm::cl::value_desc("name of backend"), llvm::cl::init("NNPI"),
+            llvm::cl::cat(reproTestCat));
+llvm::cl::opt<bool> lower_to_llvm("lower_to_llvm",
+                                  llvm::cl::desc("Lower to LLVM"),
+                                  llvm::cl::value_desc("Boolean"),
+                                  llvm::cl::init(false),
+                                  llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<std::string> outputPathOpt(
     "output",
     llvm::cl::desc("Path to output file to be compared with reproFX output"),
@@ -94,13 +106,15 @@ void ReproFXLib::load(const folly::dynamic &data,
     weights.insert(key, tensor);
   }
 
-  // Load all inputs tensors
-  std::vector<at::IValue> tensors =
-      torch::pickle_load(input).toTupleRef().elements();
+  if (input.size() != 0) {
+    // Load all inputs tensors
+    std::vector<at::IValue> tensors =
+        torch::pickle_load(input).toTupleRef().elements();
 
-  for (auto &i : tensors) {
-    torch::Tensor tensor = i.toTensor();
-    inputs.push_back(tensor);
+    for (auto &i : tensors) {
+      torch::Tensor tensor = i.toTensor();
+      inputs.push_back(tensor);
+    }
   }
 }
 
@@ -118,12 +132,14 @@ void ReproFXLib::parseCommandLine(int argc, char **argv) {
       torch::jit::load(weightsPathOpt.c_str());
 
   // Load inputs file.
-  std::ifstream inputStream(inputPathOpt.c_str());
-  inputStream >> std::noskipws;
-
   std::vector<char> input;
-  input.insert(input.begin(), std::istream_iterator<char>(inputStream),
-               std::istream_iterator<char>());
+  if (!inputPathOpt.empty()) {
+    std::ifstream inputStream(inputPathOpt.c_str());
+    inputStream >> std::noskipws;
+
+    input.insert(input.begin(), std::istream_iterator<char>(inputStream),
+                 std::istream_iterator<char>());
+  }
 
   load(data, container, input);
 }
@@ -131,7 +147,9 @@ void ReproFXLib::parseCommandLine(int argc, char **argv) {
 std::vector<torch::Tensor> ReproFXLib::run(bool fatalOnNotClose) {
   // Create FXGlowCompileSpec with NNPI backend.
   glow::FXGlowCompileSpec compileSpec;
-  compileSpec.set_glow_backend("NNPI");
+  compileSpec.set_glow_backend(backend.c_str());
+  compileSpec.set_backend_option("lower_to_llvm",
+                                 std::to_string(lower_to_llvm));
 
   glow::FXGlow binding(
       c10::make_intrusive<glow::FXGlowCompileSpec>(compileSpec));
@@ -140,6 +158,12 @@ std::vector<torch::Tensor> ReproFXLib::run(bool fatalOnNotClose) {
   binding.setupHost();
   binding.loadNetwork(serializedGraphJson, weights, nodesJson, inputNames,
                       outputs);
+
+  if (inputs.empty()) {
+    std::cerr << "Did not receive a serialized input values file. Not "
+                 "executing the Neural Net.\n";
+    return {};
+  }
 
   // Run network with input and save output to fx_output.pt.
   std::vector<torch::Tensor> out = binding.runNetwork(inputs);
