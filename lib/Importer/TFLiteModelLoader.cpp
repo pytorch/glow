@@ -1740,7 +1740,11 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
     RETURN_ERR_IF_NOT(llvm::dyn_cast<Constant>(bias.getNode()),
                       opErrMsg(opInfo, "Bias must be constant!"));
 
-    // Modify quantization parameters, if the model is wrong quantized.
+    // If the channel quantization parameters are ill-defined (the scale is 0
+    // for filter/bias which is not properly handled by Glow) then we regularize
+    // them by choosing an appropriate value for the filter scale like 0.125 and
+    // an appropriate value for the bias scale to enforce the equality
+    // bias_scale = input_scale * filter_scale.
     Constant *filterC = llvm::dyn_cast<Constant>(filter);
     Constant *biasC = llvm::dyn_cast<Constant>(bias);
     auto filterScalesH = filterScales->getHandle<float>();
@@ -1877,7 +1881,11 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
     Constant *biasC = llvm::dyn_cast<Constant>(bias);
     RETURN_ERR_IF_NOT(filterC, opErrMsg(opInfo, "Filter must be constant!"));
 
-    // Modify quantization parameters, if the model is wrong quantized.
+    // If the channel quantization parameters are ill-defined (the scale is 0
+    // for filter/bias which is not properly handled by Glow) then we regularize
+    // them by choosing an appropriate value for the filter scale like 0.125 and
+    // an appropriate value for the bias scale to enforce the equality
+    // bias_scale = input_scale * filter_scale.
     auto filterScalesH = filterScales->getHandle<float>();
     auto filtersH = filterC->getHandle<int8_t>();
     auto biasScalesH = biasScales->getHandle<float>();
