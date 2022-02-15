@@ -425,6 +425,8 @@ Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input);
 /// \returns transformation parameters.
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset);
+QuantizationTransform32To8
+quantizeScaleOffsetGeneric(float scale, int32_t offset, ElemKind elemTy);
 
 /// Function to get the quantized range for a given precision type \p qTy.
 /// \returns the range as a (min, max) pair.

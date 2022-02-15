@@ -358,6 +358,65 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                     offset);
 }
 
+QuantizationTransform32To8
+quantizeScaleOffsetGeneric(float scale, int32_t offset, ElemKind elemTy) {
+  // Read more in comment of quantizeScaleOffset32To8
+  int preShift = 0;
+  int postShift = 0;
+
+  unsigned rangeSize = -1;
+  unsigned maxPostShift = 0;
+  if (elemTy == ElemKind::Int8QTy) {
+    rangeSize = 1 << 8;
+    maxPostShift = 15;
+  } else if (elemTy == ElemKind::Int16QTy) {
+    rangeSize = 1 << 16;
+    maxPostShift = 30;
+  } else if (elemTy == ElemKind::Int32QTy) {
+    rangeSize = (1 << 29); // 29 to safety fit int32_t range
+    maxPostShift = 30;
+  }
+
+  // We treat first the particular case when scale is a power of 2 (2 ^ exp,
+  // where exp is a signed integer exponent). The operation is specialized as:
+  // - for positive 2's exponent:
+  //     x * scale + offset (pre = 0, post = 0, scale = (int)scale).
+  // - for negative 2's exponent:
+  //     x >> post + offset (pre = 0, post = -exp, scale = 1).
+  if (isFloatPowerOf2(scale)) {
+    int exp = getFloat2Exp(scale);
+    if (exp > 0) {
+      return QuantizationTransform32To8(0,                       // pre
+                                        0,                       // post
+                                        static_cast<int>(scale), // scale
+                                        offset);                 // offset
+    } else {
+      return QuantizationTransform32To8(0,       // pre
+                                        -exp,    // post
+                                        1,       // scale
+                                        offset); // offset
+    }
+  }
+
+  // Calculate the post-shift value. It's always safe to increase scale as long
+  // as it's below one, and it's always legal to shift at least 15 bits for
+  // small scale values.
+  while (scale < 0.5 || (scale < rangeSize && postShift < maxPostShift)) {
+    scale *= 2;
+    postShift++;
+  }
+
+  // Calculate the pre-multiplication shift. Estimate how many bits we can take
+  // from the input number and pass to the integer scale.
+  while (scale < (rangeSize - 1) && preShift < (postShift / 2)) {
+    scale *= 2;
+    preShift++;
+  }
+
+  return QuantizationTransform32To8(preShift, postShift, std::round(scale),
+                                    offset);
+}
+
 QuantizedRange getQuantizedRange(ElemKind qTy) {
   // Pick int64_t in order to cover the uint32_t range.
   int64_t qmin;
