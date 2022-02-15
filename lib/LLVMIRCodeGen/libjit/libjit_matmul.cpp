@@ -251,7 +251,7 @@ libjit_matmul_outer(dim_t m, dim_t n, dim_t k, const float *a, dim_t lda,
 
 /// Generic template for FullyConnected. The template allows choosing the
 /// element type and bias type.
-template <typename ElemTy, typename BiasElemTy>
+template <typename ElemTy, typename BiasElemTy, typename AccTy = int32_t>
 void libjit_fc_generic(ElemTy *outW, const ElemTy *inW, const ElemTy *weightsW,
                        const BiasElemTy *biasW, const dim_t *outWdims,
                        const dim_t *inWdims, const dim_t *weightsWdims,
@@ -265,23 +265,23 @@ void libjit_fc_generic(ElemTy *outW, const ElemTy *inW, const ElemTy *weightsW,
   dim_t out_w = outWdims[1];
   for (size_t i = 0; i < out_h; i++) {
     for (size_t j = 0; j < out_w; j++) {
-      int32_t sum = libjit_scale<int32_t>(biasW[j] - biasOffset, biasPre,
-                                          biasPost, biasScale, 0);
+      AccTy sum = libjit_scale<int32_t, AccTy>(biasW[j] - biasOffset, biasPre,
+                                               biasPost, biasScale, 0);
       for (size_t k = 0; k < in_w; k++) {
-        int32_t I = inW[libjit_getXY(inWdims, i, k)];
-        int32_t W = weightsW[libjit_getXY(weightsWdims, k, j)];
+        AccTy I = inW[libjit_getXY(inWdims, i, k)];
+        AccTy W = weightsW[libjit_getXY(weightsWdims, k, j)];
         sum += (I - inOffset) * (W - weightsOffset);
       }
       int32_t scaledSum =
-          libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
-      outW[libjit_getXY(outWdims, i, j)] = libjit_clip<int8_t>(scaledSum);
+          libjit_scale<AccTy>(sum, outPre, outPost, outScale, outOffset);
+      outW[libjit_getXY(outWdims, i, j)] = libjit_clip<ElemTy>(scaledSum);
     }
   }
 }
 
 /// Generic template for rowwise quantized FullyConnected. The template allows
 /// choosing element type and bias type.
-template <typename ElemTy, typename BiasElemTy>
+template <typename ElemTy, typename BiasElemTy, typename AccTy = int32_t>
 void libjit_rowwise_quantized_fc_generic(
     ElemTy *outW, const ElemTy *inW, const ElemTy *weightsW,
     const BiasElemTy *biasW, const int32_t *weightsOffsets,
@@ -299,18 +299,18 @@ void libjit_rowwise_quantized_fc_generic(
   //                in(i, k) * weights(j, k) + bias(j);
   for (size_t i = 0; i < out_h; i++) {
     for (size_t j = 0; j < out_w; j++) {
-      int32_t sum = 0;
+      AccTy sum = 0;
       for (size_t k = 0; k < in_w; k++) {
-        int32_t W = weightsW[libjit_getXY(weightsWdims, j, k)];
-        int32_t I = inW[libjit_getXY(inWdims, i, k)];
+        AccTy W = weightsW[libjit_getXY(weightsWdims, j, k)];
+        AccTy I = inW[libjit_getXY(inWdims, i, k)];
         sum += (W - weightsOffsets[j]) * (I - inOffset);
       }
-      int32_t B = libjit_scale<int32_t>(biasW[j] - biasOffset, biasPre[j],
-                                        biasPost[j], biasScale[j], 0);
+      AccTy B = libjit_scale<int32_t, AccTy>(biasW[j] - biasOffset, biasPre[j],
+                                             biasPost[j], biasScale[j], 0);
       sum += B;
-      int32_t scaledSum = libjit_scale<int32_t>(sum, outPre[j], outPost[j],
-                                                outScale[j], outOffset);
-      outW[libjit_getXY(outWdims, i, j)] = libjit_clip<int8_t>(scaledSum);
+      int32_t scaledSum = libjit_scale<AccTy>(sum, outPre[j], outPost[j],
+                                              outScale[j], outOffset);
+      outW[libjit_getXY(outWdims, i, j)] = libjit_clip<ElemTy>(scaledSum);
     }
   }
 }
@@ -444,6 +444,64 @@ void libjit_rowwise_quantized_fc_i8_i8(
     const dim_t *inWdims, const dim_t *weightsWdims, const dim_t *biasWdims,
     dim_t rowNum, int32_t outOffset, int32_t inOffset, int32_t biasOffset) {
   libjit_rowwise_quantized_fc_generic<int8_t, int8_t>(
+      outW, inW, weightsW, biasW, weightsOffsets, biasPre, biasPost, biasScale,
+      outPre, outPost, outScale, outWdims, inWdims, weightsWdims, biasWdims,
+      rowNum, outOffset, inOffset, biasOffset);
+}
+
+/// FullyConnected with int16 precision and int32 bias.
+void libjit_fc_i16_i32(int16_t *outW, const int16_t *inW,
+                       const int16_t *weightsW, const int32_t *biasW,
+                       const dim_t *outWdims, const dim_t *inWdims,
+                       const dim_t *weightsWdims, const dim_t *biasWdims,
+                       int32_t outOffset, int32_t inOffset,
+                       int32_t weightsOffset, int32_t biasOffset,
+                       int32_t biasPre, int32_t biasPost, int32_t biasScale,
+                       int32_t outPre, int32_t outPost, int32_t outScale) {
+  libjit_fc_generic<int16_t, int32_t, int64_t>(
+      outW, inW, weightsW, biasW, outWdims, inWdims, weightsWdims, biasWdims,
+      outOffset, inOffset, weightsOffset, biasOffset, biasPre, biasPost,
+      biasScale, outPre, outPost, outScale);
+}
+
+/// FullyConnected with int16 precision and int16 bias.
+void libjit_fc_i16_i16(int16_t *outW, const int16_t *inW,
+                       const int16_t *weightsW, const int16_t *biasW,
+                       const dim_t *outWdims, const dim_t *inWdims,
+                       const dim_t *weightsWdims, const dim_t *biasWdims,
+                       int32_t outOffset, int32_t inOffset,
+                       int32_t weightsOffset, int32_t biasOffset,
+                       int32_t biasPre, int32_t biasPost, int32_t biasScale,
+                       int32_t outPre, int32_t outPost, int32_t outScale) {
+  libjit_fc_generic<int16_t, int16_t, int64_t>(
+      outW, inW, weightsW, biasW, outWdims, inWdims, weightsWdims, biasWdims,
+      outOffset, inOffset, weightsOffset, biasOffset, biasPre, biasPost,
+      biasScale, outPre, outPost, outScale);
+}
+
+/// Rowwise quantized FullyConnected with int16 precision and int32 bias.
+void libjit_rowwise_quantized_fc_i16_i32(
+    int16_t *outW, const int16_t *inW, const int16_t *weightsW,
+    const int32_t *biasW, const int32_t *weightsOffsets, const int32_t *biasPre,
+    const int32_t *biasPost, const int32_t *biasScale, const int32_t *outPre,
+    const int32_t *outPost, const int32_t *outScale, const dim_t *outWdims,
+    const dim_t *inWdims, const dim_t *weightsWdims, const dim_t *biasWdims,
+    dim_t rowNum, int32_t outOffset, int32_t inOffset, int32_t biasOffset) {
+  libjit_rowwise_quantized_fc_generic<int16_t, int32_t, int64_t>(
+      outW, inW, weightsW, biasW, weightsOffsets, biasPre, biasPost, biasScale,
+      outPre, outPost, outScale, outWdims, inWdims, weightsWdims, biasWdims,
+      rowNum, outOffset, inOffset, biasOffset);
+}
+
+/// Rowwise quantized FullyConnected with int16 precision and int16 bias.
+void libjit_rowwise_quantized_fc_i16_i16(
+    int16_t *outW, const int16_t *inW, const int16_t *weightsW,
+    const int16_t *biasW, const int32_t *weightsOffsets, const int32_t *biasPre,
+    const int32_t *biasPost, const int32_t *biasScale, const int32_t *outPre,
+    const int32_t *outPost, const int32_t *outScale, const dim_t *outWdims,
+    const dim_t *inWdims, const dim_t *weightsWdims, const dim_t *biasWdims,
+    dim_t rowNum, int32_t outOffset, int32_t inOffset, int32_t biasOffset) {
+  libjit_rowwise_quantized_fc_generic<int16_t, int16_t, int64_t>(
       outW, inW, weightsW, biasW, weightsOffsets, biasPre, biasPost, biasScale,
       outPre, outPost, outScale, outWdims, inWdims, weightsWdims, biasWdims,
       rowNum, outOffset, inOffset, biasOffset);

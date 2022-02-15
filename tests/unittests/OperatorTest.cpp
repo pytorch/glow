@@ -8031,20 +8031,20 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt32) {
 
 /// Test Int16 FullyConnected with Int16 bias.
 TEST_P(OperatorStatelessTest, FullyConnected_Int16_BiasInt16) {
-  ENABLED_BACKENDS("Interpreter");
+  ENABLED_BACKENDS("Interpreter", "CPU");
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
-      ElemKind::Int16QTy, 0.0005f, parCloneCountOpt,
+      ElemKind::Int16QTy, 0.01f, parCloneCountOpt,
       /* convertToRowwiseQuantization */ false,
       quantization::Schema::Asymmetric, ElemKind::Int16QTy);
 }
 
 /// Test Int16 FullyConnected with Int32 bias.
 TEST_P(OperatorStatelessTest, FullyConnected_Int16_BiasInt32) {
-  ENABLED_BACKENDS("Interpreter");
+  ENABLED_BACKENDS("Interpreter", "CPU");
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
-      ElemKind::Int16QTy, 0.0005f, parCloneCountOpt,
+      ElemKind::Int16QTy, 0.01f, parCloneCountOpt,
       /* convertToRowwiseQuantization */ false,
       quantization::Schema::Asymmetric, ElemKind::Int32QTy);
 }
