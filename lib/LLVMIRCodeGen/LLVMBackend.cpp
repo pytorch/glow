@@ -84,7 +84,7 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int16QTy}, {},
                {MaxPoolNode::ArgmaxIdx}) &&
            (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy ||
             NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int32ITy);

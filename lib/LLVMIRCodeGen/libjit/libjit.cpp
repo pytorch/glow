@@ -2590,6 +2590,14 @@ void libjit_max_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
                           pads, static_cast<int8_t>(outOffset));
 }
 
+void libjit_max_pool_i16(const int16_t *inW, int16_t *outW,
+                         const dim_t *inWdims, const dim_t *outWdims,
+                         dim_t *kernelSizes, dim_t *strides, dim_t *pads,
+                         int32_t outOffset) {
+  libjit_max_pool_generic(inW, outW, inWdims, outWdims, kernelSizes, strides,
+                          pads, static_cast<int16_t>(outOffset));
+}
+
 void libjit_max_pool_f(const float *inW, float *outW, const dim_t *inWdims,
                        const dim_t *outWdims, dim_t *kernelSizes,
                        dim_t *strides, dim_t *pads) {
@@ -2605,6 +2613,14 @@ void libjit_max_pool_argmax_i8_u(const int8_t *inW, int8_t *outW,
                                  strides, pads);
 }
 
+void libjit_max_pool_argmax_i16_u(const int16_t *inW, int16_t *outW,
+                                  int64_t *argmax, const dim_t *inWdims,
+                                  const dim_t *outWdims, dim_t *kernels,
+                                  dim_t *strides, dim_t *pads) {
+  libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
+                                 strides, pads);
+}
+
 void libjit_max_pool_argmax_f_u(const float *inW, float *outW, int64_t *argmax,
                                 const dim_t *inWdims, const dim_t *outWdims,
                                 dim_t *kernels, dim_t *strides, dim_t *pads) {
@@ -2613,6 +2629,14 @@ void libjit_max_pool_argmax_f_u(const float *inW, float *outW, int64_t *argmax,
 }
 
 void libjit_max_pool_argmax_i8_i32(const int8_t *inW, int8_t *outW,
+                                   int32_t *argmax, const dim_t *inWdims,
+                                   const dim_t *outWdims, dim_t *kernels,
+                                   dim_t *strides, dim_t *pads) {
+  libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
+                                 strides, pads);
+}
+
+void libjit_max_pool_argmax_i6_i32(const int16_t *inW, int16_t *outW,
                                    int32_t *argmax, const dim_t *inWdims,
                                    const dim_t *outWdims, dim_t *kernels,
                                    dim_t *strides, dim_t *pads) {
@@ -3160,8 +3184,8 @@ void libjit_transpose_i8(const int8_t *inW, int8_t *outW, const dim_t *idim,
 }
 
 void libjit_transpose_i16(const int16_t *inW, int16_t *outW, const dim_t *idim,
-                         const dim_t *odim, const dim_t *shuffle,
-                         dim_t numDims) {
+                          const dim_t *odim, const dim_t *shuffle,
+                          dim_t numDims) {
   libjit_transpose_generic(inW, outW, idim, odim, shuffle, numDims);
 }
 
