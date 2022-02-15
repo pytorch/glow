@@ -12401,6 +12401,26 @@ TEST_P(OperatorTest, Int8AvgPool) {
   }
 }
 
+TEST_P(OperatorTest, Int16AvgPool) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::Int16QTy, {1, 3, 3, 1}, 1, 0,
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<int16_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int16_t>();
+  Tensor out(ElemKind::Int16QTy, {2, 2}, 1, 0);
+  out.getHandle<int16_t>() = {2, 3, 5, 6};
+  for (size_t i = 0; i < 2 * 2; i++) {
+    EXPECT_EQ(result.raw(i), out.getHandle<int16_t>().raw(i));
+  }
+}
 TEST_P(OperatorTest, Int8AvgPoolCountExcludePads) {
   CHECK_IF_ENABLED();
 

@@ -2855,7 +2855,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       if (PA->getCountIncludePads()) {
         scale = scale / (PA->getKernels()[0] * PA->getKernels()[1]);
       }
-      auto outScaleParam = quantization::quantizeScaleOffset32To8(scale, 0);
+      auto outScaleParam = quantization::quantizeScaleOffsetGeneric(
+          scale, 0, destTy->getElementType());
       auto *outPre = emitConstI32(builder, outScaleParam.pre);
       auto *outPost = emitConstI32(builder, outScaleParam.post);
       auto *outScale = emitConstI32(builder, outScaleParam.scale);
