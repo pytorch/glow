@@ -3502,6 +3502,7 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   // Validate filter precision.
   auto filterElemKind = filter.getElementType();
   DCHECK(filterElemKind == ElemKind::Int8QTy ||
+         filterElemKind == ElemKind::Int16QTy ||
          filterElemKind == ElemKind::FloatTy)
       << "Unsupported element type for ChannelwiseQuantizedConvolution "
       << "filter: " << Type::getElementName(filterElemKind).str();

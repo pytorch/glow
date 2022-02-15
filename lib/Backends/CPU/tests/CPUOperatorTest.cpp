@@ -384,8 +384,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "BasicMaxNetFloatVsFloat16/0",
     "BasicMinNetFloatVsBFloat16/0",
     "BasicMinNetFloatVsFloat16/0",
-    "Int16ConvolutionDepth10/0",
-    "Int16ConvolutionDepth8/0",
     "BFloat16ConvolutionDepth10/0",
     "FP16ConvolutionDepth10/0",
     "BFloat16ConvolutionDepth8/0",

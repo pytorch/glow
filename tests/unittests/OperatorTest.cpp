@@ -7738,19 +7738,19 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt32) {
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt16) {
-  ENABLED_BACKENDS("Interpreter");
+  ENABLED_BACKENDS("Interpreter", "CPU");
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
-      ElemKind::Int16QTy, 0.0003f, parCloneCountOpt,
+      ElemKind::Int16QTy, 0.001f, parCloneCountOpt,
       /* convertToRowwiseQuantization */ false,
       quantization::Schema::Asymmetric, ElemKind::Int16QTy);
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt32) {
-  ENABLED_BACKENDS("Interpreter");
+  ENABLED_BACKENDS("Interpreter", "CPU");
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
-      ElemKind::Int16QTy, 0.0003f, parCloneCountOpt,
+      ElemKind::Int16QTy, 0.001f, parCloneCountOpt,
       /* convertToRowwiseQuantization */ false,
       quantization::Schema::Asymmetric, ElemKind::Int32QTy);
 }

@@ -46,7 +46,7 @@ void libjit_conv_init_output_with_bias(dim_t N, float *outW, const float *biasW,
 
 /// Generic template for quantized conv2d. The template allows choosing
 /// element type and bias type.
-template <typename ElemTy, typename BiasElemTy>
+template <typename ElemTy, typename BiasElemTy, typename AccTy = int32_t>
 void libjit_quantized_conv2d_generic(
     ElemTy *outW, const ElemTy *inW, const ElemTy *filterW,
     const BiasElemTy *biasW, const dim_t *outWdims, const dim_t *inWdims,
@@ -79,11 +79,12 @@ void libjit_quantized_conv2d_generic(
         for (size_t ax = 0; ax < outWdims[1]; x += stride_h, ax++) {
           ssize_t y = -(ssize_t)pad_l;
           for (size_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
-            int32_t sum[depthUnroll];
+            AccTy sum[depthUnroll];
 
             for (unsigned i = 0; i < depthUnroll; i++) {
               // Scale the bias to match the scale of the matrix multiplication.
-              sum[i] = libjit_scale<int32_t>((int32_t)biasW[d + i] - biasOffset,
+              sum[i] =
+                  libjit_scale<AccTy, AccTy>((AccTy)biasW[d + i] - biasOffset,
                                              biasPre, biasPost, biasScale, 0);
             }
 
@@ -109,7 +110,7 @@ void libjit_quantized_conv2d_generic(
                 // Perform the innermost loop of the convolution using 4 vector
                 // registers.
                 for (size_t fd = 0; fd < inCperG; fd++) {
-                  int32_t in = inW[inIdx + fd] - inOffset;
+                  AccTy in = (AccTy)inW[inIdx + fd] - inOffset;
                   for (unsigned i = 0; i < MIN(4, depthUnroll); i++) {
                     sum[i] += (filterW[filterIdx + (sliceSize * i) + fd] -
                                filterOffset) *
@@ -120,7 +121,7 @@ void libjit_quantized_conv2d_generic(
                 // And perform the innermost loop again with 4 more registers.
                 if (depthUnroll > 4)
                   for (size_t fd = 0; fd < inCperG; fd++) {
-                    int32_t in = inW[inIdx + fd] - inOffset;
+                    AccTy in = inW[inIdx + fd] - inOffset;
                     for (unsigned i = 4; i < MIN(8, depthUnroll); i++) {
                       sum[i] += (filterW[filterIdx + (sliceSize * i) + fd] -
                                  filterOffset) *
@@ -132,12 +133,12 @@ void libjit_quantized_conv2d_generic(
 
             for (unsigned i = 0; i < depthUnroll; i++) {
               // Scale the result back to the expected destination scale.
-              int32_t scaledSum = libjit_scale<int32_t>(sum[i], outPre, outPost,
-                                                        outScale, outOffset);
-              scaledSum =
-                  libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
+              int32_t scaledSum = libjit_scale<AccTy>(sum[i], outPre, outPost,
+                                                      outScale, outOffset);
+              scaledSum = libjit_activation_generic<int32_t>(
+                  scaledSum, outOffset, actType, actArgs);
               outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] =
-                  libjit_clip<int8_t>(scaledSum);
+                  libjit_clip<ElemTy>(scaledSum);
             }
           } // W
         }   // H
@@ -148,7 +149,7 @@ void libjit_quantized_conv2d_generic(
 
 /// Generic template for channelwise quantized conv2d. The template allows
 /// choosing the element type and bias type.
-template <typename ElemTy, typename BiasElemTy>
+template <typename ElemTy, typename BiasElemTy, typename AccTy = int32_t>
 void libjit_channelwise_quantized_conv2d_generic(
     ElemTy *outW, const ElemTy *inW, const ElemTy *filterW,
     const BiasElemTy *biasW, const dim_t *outWdims, const dim_t *inWdims,
@@ -195,9 +196,8 @@ void libjit_channelwise_quantized_conv2d_generic(
           for (dim_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
 
             // Scale the bias to match the scale of the matrix multiplication.
-            int32_t sum =
-                libjit_scale<int32_t>((int32_t)biasW[d] - biasOffset, biasPre,
-                                      biasPost, biasScale, 0);
+            AccTy sum = libjit_scale<AccTy, AccTy>(
+                (AccTy)biasW[d] - biasOffset, biasPre, biasPost, biasScale, 0);
 
             // For each element in the convolution-filter:
             for (dim_t fx = 0; fx < kernel_h; fx++) {
@@ -219,18 +219,18 @@ void libjit_channelwise_quantized_conv2d_generic(
                 // Accumulate along the filter depth.
                 for (dim_t fd = 0; fd < inCperG; fd++) {
                   sum += (filterW[filterIdx + fd] - filterOffset) *
-                         (inW[inIdx + fd] - inOffset);
+                         (AccTy)(inW[inIdx + fd] - inOffset);
                 }
               }
             }
 
             // Scale the result back to the expected destination scale.
-            int32_t scaledSum = libjit_scale<int32_t>(sum, outPre, outPost,
-                                                      outScale, outOffset);
-            scaledSum =
-                libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
+            int32_t scaledSum =
+                libjit_scale<AccTy>(sum, outPre, outPost, outScale, outOffset);
+            scaledSum = libjit_activation_generic<int32_t>(scaledSum, outOffset,
+                                                           actType, actArgs);
             outW[libjit_getXYZW(outWdims, n, ax, ay, d)] =
-                libjit_clip<int8_t>(scaledSum);
+                libjit_clip<ElemTy>(scaledSum);
           } // W
         }   // H
       }     // C
@@ -240,7 +240,7 @@ void libjit_channelwise_quantized_conv2d_generic(
 
 /// Generic template for channelwise quantized conv3d. The template allows
 /// choosing the element type and bias type.
-template <typename ElemTy, typename BiasElemTy>
+template <typename ElemTy, typename BiasElemTy, typename AccTy = int32_t>
 void libjit_channelwise_quantized_conv3d_generic(
     ElemTy *outW, const ElemTy *inW, const ElemTy *filterW,
     const BiasElemTy *biasW, const dim_t *outWdims, const dim_t *inWdims,
@@ -297,9 +297,9 @@ void libjit_channelwise_quantized_conv3d_generic(
             for (dim_t ay = 0; ay < outWdims[3]; y += stride_w, ay++) {
 
               // Scale the bias to match the scale of the matrix multiplication.
-              int32_t sum =
-                  libjit_scale<int32_t>((int32_t)biasW[d] - biasOffset, biasPre,
-                                        biasPost, biasScale, 0);
+              AccTy sum =
+                  libjit_scale<AccTy, AccTy>((AccTy)biasW[d] - biasOffset,
+                                             biasPre, biasPost, biasScale, 0);
 
               // For each element in the convolution-filter:
               for (dim_t ft = 0; ft < kernel_t; ft++) {
@@ -327,19 +327,19 @@ void libjit_channelwise_quantized_conv3d_generic(
                     // Accumulate along the filter depth.
                     for (dim_t fd = 0; fd < inCperG; fd++) {
                       sum += (filterW[filterIdx + fd] - filterOffset) *
-                             (inW[inIdx + fd] - inOffset);
+                             (AccTy)(inW[inIdx + fd] - inOffset);
                     }
                   }
                 }
               }
 
               // Scale the result back to the expected destination scale.
-              int32_t scaledSum = libjit_scale<int32_t>(sum, outPre, outPost,
-                                                        outScale, outOffset);
-              scaledSum =
-                  libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
+              int32_t scaledSum = libjit_scale<AccTy>(sum, outPre, outPost,
+                                                      outScale, outOffset);
+              scaledSum = libjit_activation_generic<int32_t>(
+                  scaledSum, outOffset, actType, actArgs);
               outW[libjit_getXYZWQ(outWdims, n, at, ax, ay, d)] =
-                  libjit_clip<int8_t>(scaledSum);
+                  libjit_clip<ElemTy>(scaledSum);
             } // W
           }   // H
         }     // T
@@ -376,7 +376,7 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
   // memory pressure and allows things to fit in cache, but require additional
   // compute (horizontal add) to sum the values in the block. This value is a
   // compromise between the two.
-  constexpr unsigned cbSize = 512;
+  constexpr unsigned cbSize = 4;
 
   // For each input in the batch:
   for (dim_t n = 0; n < inWdims[0]; n++) {
@@ -589,6 +589,107 @@ void libjit_channelwise_quantized_conv3d_i8_i8(
     const int32_t *outPostPtr, const int32_t *outScalePtr, int32_t actType,
     const int32_t *actArgs) {
   libjit_channelwise_quantized_conv3d_generic<int8_t, int8_t>(
+      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
+      kernels, strides, pads, group, dilation, outOffset, inOffset,
+      filterOffsetsPtr, biasOffsetsPtr, biasPrePtr, biasPostPtr, biasScalePtr,
+      outPrePtr, outPostPtr, outScalePtr, actType, actArgs);
+}
+
+// int16 quanti convolutions
+void libjit_conv2d_i16_i32(
+    int16_t *outW, const int16_t *inW, const int16_t *filterW,
+    const int32_t *biasW, const dim_t *outWdims, const dim_t *inWdims,
+    const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernelSizes,
+    const dim_t *strides, const dim_t *pads, dim_t group, int32_t outOffset,
+    int32_t inOffset, int32_t filterOffset, int32_t biasOffset, int32_t biasPre,
+    int32_t biasPost, int32_t biasScale, int32_t outPre, int32_t outPost,
+    int32_t outScale, unsigned depthUnroll, const dim_t *dilation,
+    int32_t actType, const int32_t *actArgs) {
+  libjit_quantized_conv2d_generic<int16_t, int32_t, int64_t>(
+      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
+      kernelSizes, strides, pads, group, outOffset, inOffset, filterOffset,
+      biasOffset, biasPre, biasPost, biasScale, outPre, outPost, outScale,
+      depthUnroll, dilation, actType, actArgs);
+}
+
+void libjit_conv2d_i16_i16(
+    int16_t *outW, const int16_t *inW, const int16_t *filterW,
+    const int16_t *biasW, const dim_t *outWdims, const dim_t *inWdims,
+    const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernelSizes,
+    const dim_t *strides, const dim_t *pads, dim_t group, int32_t outOffset,
+    int32_t inOffset, int32_t filterOffset, int32_t biasOffset, int32_t biasPre,
+    int32_t biasPost, int32_t biasScale, int32_t outPre, int32_t outPost,
+    int32_t outScale, unsigned depthUnroll, const dim_t *dilation,
+    int32_t actType, const int32_t *actArgs) {
+  libjit_quantized_conv2d_generic<int16_t, int16_t, int64_t>(
+      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
+      kernelSizes, strides, pads, group, outOffset, inOffset, filterOffset,
+      biasOffset, biasPre, biasPost, biasScale, outPre, outPost, outScale,
+      depthUnroll, dilation, actType, actArgs);
+}
+
+void libjit_channelwise_quantized_conv2d_i16_i32(
+    int16_t *outW, const int16_t *inW, const int16_t *filterW,
+    const int32_t *biasW, const dim_t *outWdims, const dim_t *inWdims,
+    const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernels,
+    const dim_t *strides, const dim_t *pads, dim_t group, const dim_t *dilation,
+    int32_t outOffset, int32_t inOffset, int32_t *filterOffsetsPtr,
+    int32_t *biasOffsetsPtr, const int32_t *biasPrePtr,
+    const int32_t *biasPostPtr, const int32_t *biasScalePtr,
+    const int32_t *outPrePtr, const int32_t *outPostPtr,
+    const int32_t *outScalePtr, int32_t actType, const int32_t *actArgs) {
+  libjit_channelwise_quantized_conv2d_generic<int16_t, int32_t, int64_t>(
+      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
+      kernels, strides, pads, group, dilation, outOffset, inOffset,
+      filterOffsetsPtr, biasOffsetsPtr, biasPrePtr, biasPostPtr, biasScalePtr,
+      outPrePtr, outPostPtr, outScalePtr, actType, actArgs);
+}
+
+void libjit_channelwise_quantized_conv2d_i16_i16(
+    int16_t *outW, const int16_t *inW, const int16_t *filterW,
+    const int16_t *biasW, const dim_t *outWdims, const dim_t *inWdims,
+    const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernels,
+    const dim_t *strides, const dim_t *pads, dim_t group, const dim_t *dilation,
+    int32_t outOffset, int32_t inOffset, int32_t *filterOffsetsPtr,
+    int32_t *biasOffsetsPtr, const int32_t *biasPrePtr,
+    const int32_t *biasPostPtr, const int32_t *biasScalePtr,
+    const int32_t *outPrePtr, const int32_t *outPostPtr,
+    const int32_t *outScalePtr, int32_t actType, const int32_t *actArgs) {
+  libjit_channelwise_quantized_conv2d_generic<int16_t, int16_t, int64_t>(
+      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
+      kernels, strides, pads, group, dilation, outOffset, inOffset,
+      filterOffsetsPtr, biasOffsetsPtr, biasPrePtr, biasPostPtr, biasScalePtr,
+      outPrePtr, outPostPtr, outScalePtr, actType, actArgs);
+}
+
+void libjit_channelwise_quantized_conv3d_i16_i32(
+    int16_t *outW, const int16_t *inW, const int16_t *filterW,
+    const int32_t *biasW, const dim_t *outWdims, const dim_t *inWdims,
+    const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernels,
+    const dim_t *strides, const dim_t *pads, dim_t group, const dim_t *dilation,
+    int32_t outOffset, int32_t inOffset, int32_t *filterOffsetsPtr,
+    int32_t *biasOffsetsPtr, const int32_t *biasPrePtr,
+    const int32_t *biasPostPtr, const int32_t *biasScalePtr,
+    const int32_t *outPrePtr, const int32_t *outPostPtr,
+    const int32_t *outScalePtr, int32_t actType, const int32_t *actArgs) {
+  libjit_channelwise_quantized_conv3d_generic<int16_t, int32_t, int64_t>(
+      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
+      kernels, strides, pads, group, dilation, outOffset, inOffset,
+      filterOffsetsPtr, biasOffsetsPtr, biasPrePtr, biasPostPtr, biasScalePtr,
+      outPrePtr, outPostPtr, outScalePtr, actType, actArgs);
+}
+
+void libjit_channelwise_quantized_conv3d_i16_i16(
+    int16_t *outW, const int16_t *inW, const int16_t *filterW,
+    const int16_t *biasW, const dim_t *outWdims, const dim_t *inWdims,
+    const dim_t *filterWdims, const dim_t *biasWdims, const dim_t *kernels,
+    const dim_t *strides, const dim_t *pads, dim_t group, const dim_t *dilation,
+    int32_t outOffset, int32_t inOffset, int32_t *filterOffsetsPtr,
+    int32_t *biasOffsetsPtr, const int32_t *biasPrePtr,
+    const int32_t *biasPostPtr, const int32_t *biasScalePtr,
+    const int32_t *outPrePtr, const int32_t *outPostPtr,
+    const int32_t *outScalePtr, int32_t actType, const int32_t *actArgs) {
+  libjit_channelwise_quantized_conv3d_generic<int16_t, int16_t, int64_t>(
       outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
       kernels, strides, pads, group, dilation, outOffset, inOffset,
       filterOffsetsPtr, biasOffsetsPtr, biasPrePtr, biasPostPtr, biasScalePtr,

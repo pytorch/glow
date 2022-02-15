@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -201,9 +202,10 @@ float libjit_activation_f(float input, int32_t actType, const float *actArgs) {
 /// the activation type \p actType and the activation arguments \p actArgs.
 /// NOTE: The type of the activation must be in sync with the FusedActivation
 /// enumeration in glow\include\glow\Graph\Nodes.h.
-LIBJIT_ALWAYS_INLINE
-int32_t libjit_activation_i32(int32_t input, int32_t offset, int32_t actType,
-                              const int32_t *actArgs) {
+template <typename SrcTy>
+LIBJIT_ALWAYS_INLINE SrcTy libjit_activation_generic(SrcTy input, SrcTy offset,
+                                                     int32_t actType,
+                                                     const int32_t *actArgs) {
   if (actType == 0) {
     // No activation.
     return input;
@@ -225,9 +227,15 @@ int32_t libjit_activation_i32(int32_t input, int32_t offset, int32_t actType,
     // LeakyRelu.
     return (input >= offset)
                ? input
-               : libjit_scale<int32_t>(input - offset, actArgs[0], actArgs[1],
-                                       actArgs[2], offset);
+               : libjit_scale<SrcTy>(input - offset, actArgs[0], actArgs[1],
+                                     actArgs[2], offset);
   }
+}
+
+LIBJIT_ALWAYS_INLINE
+int32_t libjit_activation_i32(int32_t input, int32_t offset, int32_t actType,
+                              const int32_t *actArgs) {
+  return libjit_activation_generic<int32_t>(input, offset, actType, actArgs);
 }
 
 /// Divides the 32-bit integer \p input with \p divider. The division is done
