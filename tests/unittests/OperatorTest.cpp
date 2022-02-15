@@ -6302,6 +6302,12 @@ TEST_P(OperatorTest, Transpose3Dims_Int8) {
   testTranspose3Dims<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
+/// Test Transpose3Dims with Int16.
+TEST_P(OperatorTest, Transpose3Dims_Int16) {
+  CHECK_IF_ENABLED();
+  testTranspose3Dims<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy);
+}
+
 /// Test that Transpose optimization into Reshape yields expected results.
 TEST_P(OperatorTest, TransposeIntoReshapeOptim) {
   CHECK_IF_ENABLED();
