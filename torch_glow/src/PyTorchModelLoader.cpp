@@ -1412,7 +1412,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadLeakyRelu,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::gelu"},
-       &PyTorchModelLoader::loadGelu,
+       UNARY_NODE_LOADER(Gelu),
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::tanh", "aten::tanh_"},
        UNARY_NODE_LOADER(Tanh),
@@ -5216,34 +5216,6 @@ Error PyTorchModelLoader::loadLeakyRelu(const torch::jit::Node *ptNode) {
                                  ptNode->namedInput("negative_slope")))));
 
   auto *output = F_.createLeakyRELU("leaky_relu", input, negativeSlope);
-  RETURN_ERR(addValueMapping(outputs[0], output->getResult()));
-}
-
-Error PyTorchModelLoader::loadGelu(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
-
-  if (inputs.size() == 2) {
-    // GELU approximations are not currently supported.
-    std::string *approximate;
-    ASSIGN_VALUE_OR_RETURN_ERR(approximate,
-                               iValToString(getGlowIValueForValue(inputs[1])));
-    if (*approximate != "none") {
-      return MAKE_ERR(
-          strFormat("GELU approximation not supported; found value: %s",
-                    approximate->c_str()));
-    }
-  } else if (inputs.size() > 2) {
-    return MAKE_ERR(
-        strFormat("Expected at most 2 inputs for GELU, but found: %d",
-                  int(inputs.size())));
-  }
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-
-  auto *output = F_.createGelu("gelu", input);
   RETURN_ERR(addValueMapping(outputs[0], output->getResult()));
 }
 
