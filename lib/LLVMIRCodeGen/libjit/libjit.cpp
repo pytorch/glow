@@ -1646,6 +1646,17 @@ void libjit_avg_pool_generic(const SrcDstTy *inW, SrcDstTy *outW,
   }
 }
 
+template <typename SrcDstTy>
+SrcDstTy libjit_element_relu_generic(dim_t idx, const SrcDstTy *src,
+                                     SrcDstTy srcOffset, SrcDstTy destOffset,
+                                     int32_t destPre, int32_t destPost,
+                                     int32_t destScale) {
+  int32_t reluVal = MAX(src[idx], srcOffset);
+  int32_t scaledVal = libjit_scale<int32_t>(reluVal - srcOffset, destPre,
+                                            destPost, destScale, destOffset);
+  return libjit_clip<SrcDstTy>(scaledVal);
+}
+
 } // namespace
 
 extern "C" {
@@ -1942,10 +1953,16 @@ float libjit_element_relu_f(dim_t idx, const float *src) {
 int8_t libjit_element_relu_i8(dim_t idx, const int8_t *src, int8_t srcOffset,
                               int8_t destOffset, int32_t destPre,
                               int32_t destPost, int32_t destScale) {
-  int32_t reluVal = MAX(src[idx], srcOffset);
-  int32_t scaledVal = libjit_scale<int32_t>(reluVal - srcOffset, destPre,
-                                            destPost, destScale, destOffset);
-  return libjit_clip<int8_t>(scaledVal);
+  return libjit_element_relu_generic<int8_t>(idx, src, srcOffset, destOffset,
+                                             destPre, destPost, destScale);
+}
+
+int16_t libjit_element_relu_i16(dim_t idx, const int16_t *src,
+                                int16_t srcOffset, int16_t destOffset,
+                                int32_t destPre, int32_t destPost,
+                                int32_t destScale) {
+  return libjit_element_relu_generic<int16_t>(idx, src, srcOffset, destOffset,
+                                              destPre, destPost, destScale);
 }
 
 float libjit_element_clip_f(dim_t idx, const float *src, float min, float max) {

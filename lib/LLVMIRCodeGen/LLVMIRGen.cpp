@@ -1330,6 +1330,19 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       stackedOpCall = createCall(builder, F,
                                  {loopCount, srcPtr, srcOffset, destOffset,
                                   destPre, destPost, destScale});
+    } else if (dest->getElementType() == ElemKind::Int16QTy) {
+      auto *srcOffset =
+          emitConstI16(builder, static_cast<int16_t>(srcTy->getOffset()));
+      auto *destOffset =
+          emitConstI16(builder, static_cast<int16_t>(destTy->getOffset()));
+      auto destScaleParams = quantization::quantizeScaleOffsetGeneric(
+          srcTy->getScale() / destTy->getScale(), 0, dest->getElementType());
+      auto *destPre = emitConstI32(builder, destScaleParams.pre);
+      auto *destPost = emitConstI32(builder, destScaleParams.post);
+      auto *destScale = emitConstI32(builder, destScaleParams.scale);
+      stackedOpCall = createCall(builder, F,
+                                 {loopCount, srcPtr, srcOffset, destOffset,
+                                  destPre, destPost, destScale});
     } else if (dest->getElementType() == ElemKind::FloatTy) {
       stackedOpCall = createCall(builder, F, {loopCount, srcPtr});
     } else {
