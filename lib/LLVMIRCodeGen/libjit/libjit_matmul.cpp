@@ -274,7 +274,7 @@ void libjit_fc_generic(ElemTy *outW, const ElemTy *inW, const ElemTy *weightsW,
       }
       int32_t scaledSum =
           libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
-      outW[libjit_getXY(outWdims, i, j)] = libjit_clip_i8(scaledSum);
+      outW[libjit_getXY(outWdims, i, j)] = libjit_clip<int8_t>(scaledSum);
     }
   }
 }
@@ -310,7 +310,7 @@ void libjit_rowwise_quantized_fc_generic(
       sum += B;
       int32_t scaledSum = libjit_scale<int32_t>(sum, outPre[j], outPost[j],
                                                 outScale[j], outOffset);
-      outW[libjit_getXY(outWdims, i, j)] = libjit_clip_i8(scaledSum);
+      outW[libjit_getXY(outWdims, i, j)] = libjit_clip<int8_t>(scaledSum);
     }
   }
 }
@@ -365,7 +365,7 @@ void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
       }
       int32_t s =
           libjit_scale<int32_t>(sum, outPre, outPost, outScale, outOffset);
-      outW[libjit_getXY(outWdims, x, y)] = libjit_clip_i8(s);
+      outW[libjit_getXY(outWdims, x, y)] = libjit_clip<int8_t>(s);
     }
   }
 }

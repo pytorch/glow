@@ -137,7 +137,7 @@ void libjit_quantized_conv2d_generic(
               scaledSum =
                   libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
               outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] =
-                  libjit_clip_i8(scaledSum);
+                  libjit_clip<int8_t>(scaledSum);
             }
           } // W
         }   // H
@@ -230,7 +230,7 @@ void libjit_channelwise_quantized_conv2d_generic(
             scaledSum =
                 libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
             outW[libjit_getXYZW(outWdims, n, ax, ay, d)] =
-                libjit_clip_i8(scaledSum);
+                libjit_clip<int8_t>(scaledSum);
           } // W
         }   // H
       }     // C
@@ -339,7 +339,7 @@ void libjit_channelwise_quantized_conv3d_generic(
               scaledSum =
                   libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
               outW[libjit_getXYZWQ(outWdims, n, at, ax, ay, d)] =
-                  libjit_clip_i8(scaledSum);
+                  libjit_clip<int8_t>(scaledSum);
             } // W
           }   // H
         }     // T
