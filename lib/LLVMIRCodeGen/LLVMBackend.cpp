@@ -464,26 +464,43 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
     if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
     }
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
-           (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int8QTy ||
-            NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int32QTy);
+    return (
+        (NI.allInputsAndOutputsHaveSameElemKind(
+             {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
+         (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int8QTy ||
+          NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int32QTy)) ||
+        (NI.allInputsAndOutputsHaveSameElemKind(
+             {ElemKind::Int16QTy}, {FullyConnectedNode::BiasIdx}) &&
+         (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int16QTy ||
+          NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int32QTy)));
 
   case Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind:
-    return (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::InputIdx) ==
-            ElemKind::Int8QTy) &&
-           (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::WeightsIdx) ==
-            ElemKind::Int8QTy) &&
-           (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::ScalesIdx) ==
+    return (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::ScalesIdx) ==
             ElemKind::FloatTy) &&
            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
             ElemKind::Int32ITy) &&
-           (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
-                ElemKind::Int8QTy ||
-            NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
-                ElemKind::Int32QTy) &&
-           (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
-            ElemKind::Int8QTy);
+           // int8 quant node
+           (((NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::InputIdx) ==
+              ElemKind::Int8QTy) &&
+             (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::WeightsIdx) ==
+              ElemKind::Int8QTy) &&
+             (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+                  ElemKind::Int8QTy ||
+              NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+                  ElemKind::Int32QTy) &&
+             (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
+              ElemKind::Int8QTy)) ||
+            // int16 quant node
+            ((NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::InputIdx) ==
+              ElemKind::Int16QTy) &&
+             (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::WeightsIdx) ==
+              ElemKind::Int16QTy) &&
+             (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+                  ElemKind::Int16QTy ||
+              NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+                  ElemKind::Int32QTy) &&
+             (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
+              ElemKind::Int16QTy)));
 
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
