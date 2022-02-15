@@ -136,8 +136,8 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::TransposeNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
-         ElemKind::BoolTy});
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int16QTy,
+         ElemKind::Int64ITy, ElemKind::BoolTy});
 
   case Kinded::Kind::FlipNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

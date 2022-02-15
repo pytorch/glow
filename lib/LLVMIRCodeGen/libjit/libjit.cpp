@@ -3159,6 +3159,12 @@ void libjit_transpose_i8(const int8_t *inW, int8_t *outW, const dim_t *idim,
   libjit_transpose_generic(inW, outW, idim, odim, shuffle, numDims);
 }
 
+void libjit_transpose_i16(const int16_t *inW, int16_t *outW, const dim_t *idim,
+                         const dim_t *odim, const dim_t *shuffle,
+                         dim_t numDims) {
+  libjit_transpose_generic(inW, outW, idim, odim, shuffle, numDims);
+}
+
 void libjit_transpose_f(const float *inW, float *outW, const dim_t *idim,
                         const dim_t *odim, const dim_t *shuffle,
                         dim_t numDims) {
