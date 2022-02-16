@@ -54,6 +54,7 @@ enum class VerifyKind : unsigned char {
   SameShape,
   SameType,
   SameElementType,
+  OneOfTypes,
   TypeCheck,
   NoVerify,
 };

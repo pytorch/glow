@@ -339,6 +339,18 @@ void InstrBuilder::emitClass(std::ostream &os) const {
         }
         break;
       }
+      // Generates a check that an operand of an instruction has one of provided
+      // types.
+      case VerifyKind::OneOfTypes: {
+        auto firstOp = getOpElementType(pair.second[0]);
+        os << "    assert((0 ";
+        for (size_t i = 1, e = pair.second.size(); i < e; i++) {
+          os << " || (" << firstOp << " == " << getOpElementType(pair.second[i])
+             << ")";
+        }
+        os << ") && \"Invalid Element Type\");\n";
+        break;
+      }
       // Generates a check that the type of an operand satisfies a specific
       // check performed by a predicate method on a type.
       case VerifyKind::TypeCheck: {
