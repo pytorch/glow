@@ -468,10 +468,10 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "AvgLength")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::Int32ITy"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Offsets", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::OneOfTypes,
+                  {"Indices", "ElemKind::Int32ITy", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::OneOfTypes,
+                  {"Offsets", "ElemKind::Int32ITy", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("RowwiseQuantizedSparseLengthsWeightedSum")
@@ -528,10 +528,10 @@ int main(int argc, char **argv) {
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .addMember(MemberType::Float, "AvgLength")
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::Int32ITy"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Offsets", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::OneOfTypes,
+                  {"Indices", "ElemKind::Int32ITy", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::OneOfTypes,
+                  {"Offsets", "ElemKind::Int32ITy", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("LengthsToRanges")
