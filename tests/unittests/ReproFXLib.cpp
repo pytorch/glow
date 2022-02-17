@@ -43,15 +43,13 @@ llvm::cl::opt<std::string>
                  llvm::cl::value_desc("input path"),
                  llvm::cl::cat(reproTestCat));
 llvm::cl::opt<std::string>
+    compileSpecPathOpt("compile_spec",
+                       llvm::cl::desc("Path to dumped compile spec."),
+                       llvm::cl::cat(reproTestCat));
+llvm::cl::opt<std::string>
     backend("backend", llvm::cl::desc("Backend target for lowering."),
             llvm::cl::value_desc("name of backend"), llvm::cl::init("NNPI"),
             llvm::cl::cat(reproTestCat));
-llvm::cl::opt<bool> lower_to_llvm("lower_to_llvm",
-                                  llvm::cl::desc("Lower to LLVM"),
-                                  llvm::cl::value_desc("Boolean"),
-                                  llvm::cl::init(false),
-                                  llvm::cl::cat(reproTestCat));
-
 llvm::cl::opt<std::string> outputPathOpt(
     "output",
     llvm::cl::desc("Path to output file to be compared with reproFX output"),
@@ -145,11 +143,13 @@ void ReproFXLib::parseCommandLine(int argc, char **argv) {
 }
 
 std::vector<torch::Tensor> ReproFXLib::run(bool fatalOnNotClose) {
-  // Create FXGlowCompileSpec with NNPI backend.
+  // Create FXGlowCompileSpec.
   glow::FXGlowCompileSpec compileSpec;
-  compileSpec.set_glow_backend(backend.c_str());
-  compileSpec.set_backend_option("lower_to_llvm",
-                                 std::to_string(lower_to_llvm));
+  if (!compileSpecPathOpt.empty()) {
+    compileSpec.read_from_file(compileSpecPathOpt.c_str());
+  } else {
+    compileSpec.set_glow_backend(backend.c_str());
+  }
 
   glow::FXGlow binding(
       c10::make_intrusive<glow::FXGlowCompileSpec>(compileSpec));
