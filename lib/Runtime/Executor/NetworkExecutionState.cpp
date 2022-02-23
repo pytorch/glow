@@ -71,6 +71,12 @@ void NetworkExecutionState::bind(std::unique_ptr<ExecutionContext> resultCtx,
       context.second->setTraceContext(nullptr);
     }
   }
+  // Configure to log perf data to the context if needed.
+  if (resultCtx_->getPerfData() != nullptr) {
+    for (auto &context : intermediateContexts_) {
+      context.second->setPerfData(resultCtx_->getPerfData());
+    }
+  }
   // Move inputs into tensors backing intermediate contexts.
   // Instead we point the tensors to the provided buffers to avoid copy in and
   // out. Once we have pinned allocations we will need to transfer.

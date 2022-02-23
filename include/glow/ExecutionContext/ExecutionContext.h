@@ -59,6 +59,9 @@ class ExecutionContext {
   /// Positional bindings for external inputs/outputs
   std::vector<std::pair<Placeholder *, Tensor>> externalIOBindings_;
 
+  /// Perf counters (optional) recorded during this run.
+  void *perfData_{nullptr};
+
 public:
   ExecutionContext()
       : placeholderBindings_(glow::make_unique<PlaceholderBindings>()) {}
@@ -111,6 +114,14 @@ public:
     return boundDeviceManager_;
   }
 
+  /// \returns a non-owning pointer to the perfData which should be
+  /// cast to the correct type by the caller.
+  void *getPerfData() { return perfData_; }
+
+  /// Sets the perfData pointer to storage for whatever object is used
+  /// for perf data.
+  void setPerfData(void *perfData) { perfData_ = perfData; }
+
   /// Sets which device this context is bound to. NOTE this should not be
   /// changed once set.
   void setBoundDeviceManager(runtime::DeviceManager *device) {
@@ -138,7 +149,8 @@ public:
     return traceContext;
   }
 
-  /// Clones this ExecutionContext, but does not clone underlying Tensors.
+  /// Clones this ExecutionContext, but does not clone underlying
+  /// Tensors or the TraceContext or PerfData.
   ExecutionContext clone() {
     if (deviceBindings_) {
       return ExecutionContext(
