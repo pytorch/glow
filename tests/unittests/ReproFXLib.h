@@ -27,6 +27,11 @@ class ReproFXLib {
 public:
   std::string serializedGraphJson;
   std::string nodesJson;
+  std::string jsonPathOpt;
+  std::string weightsPathOpt;
+  std::string inputPathOpt;
+  std::string compileSpecPathOpt;
+  std::string outputPathOpt;
   std::vector<std::string> inputNames;
   std::vector<std::string> outputs;
   std::vector<std::string> keys;

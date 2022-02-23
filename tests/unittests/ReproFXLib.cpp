@@ -17,6 +17,7 @@
 #include "glow/glow/tests/unittests/ReproFXLib.h"
 #include "glow/fb/fx/fx_glow/fx_glow.h"
 #include "glow/glow/torch_glow/src/GlowCompileSpec.h"
+#include <filesystem>
 #include <folly/dynamic.h>
 #include <folly/json.h>
 #include <fstream>
@@ -29,31 +30,16 @@
 
 llvm::cl::OptionCategory reproTestCat("Repro Category");
 llvm::cl::opt<std::string>
-    jsonPathOpt("json", llvm::cl::desc("Path to dumped JSON file"),
-                llvm::cl::value_desc("json path"), llvm::cl::Required,
-                llvm::cl::cat(reproTestCat));
-llvm::cl::opt<std::string>
-    weightsPathOpt("weights", llvm::cl::desc("Path to dumped weights file"),
-                   llvm::cl::value_desc("weights path"), llvm::cl::Required,
-                   llvm::cl::cat(reproTestCat));
-llvm::cl::opt<std::string>
-    inputPathOpt("inputs",
-                 llvm::cl::desc("Path to dumped input file; leave blank for "
-                                "when debugging lowering failures."),
-                 llvm::cl::value_desc("input path"),
-                 llvm::cl::cat(reproTestCat));
-llvm::cl::opt<std::string>
-    compileSpecPathOpt("compile_spec",
-                       llvm::cl::desc("Path to dumped compile spec."),
-                       llvm::cl::cat(reproTestCat));
+    reproPathOpt("repro_path", llvm::cl::desc("Path to Repro Base Directory."),
+                 llvm::cl::Required, llvm::cl::cat(reproTestCat));
 llvm::cl::opt<std::string>
     backend("backend", llvm::cl::desc("Backend target for lowering."),
             llvm::cl::value_desc("name of backend"), llvm::cl::init("NNPI"),
             llvm::cl::cat(reproTestCat));
-llvm::cl::opt<std::string> outputPathOpt(
-    "output",
-    llvm::cl::desc("Path to output file to be compared with reproFX output"),
-    llvm::cl::value_desc("output path"), llvm::cl::cat(reproTestCat));
+llvm::cl::opt<bool> useCosSimEval(
+    "use_cos_eval",
+    llvm::cl::value_desc("Use Cosine evaluation when comparing outputs"),
+    llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 // Parses JSON input, weights, and user inputs
 void ReproFXLib::load(const folly::dynamic &data,
@@ -116,10 +102,31 @@ void ReproFXLib::load(const folly::dynamic &data,
   }
 }
 
+static const std::string &checkPath(const std::string &path,
+                                    bool missingPathFatal = false) {
+  if (std::filesystem::exists(path)) {
+    return path;
+  }
+  if (!missingPathFatal) {
+    LOG(INFO) << "Didn't find " << path;
+    static const std::string empty = "";
+    return empty;
+  } else {
+    LOG(FATAL) << "Didn't find " << path;
+  }
+}
+
 void ReproFXLib::parseCommandLine(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
-  // Load model JSON file
+  // Load model data files.
+  std::cout << "repro_path flag set to '" << reproPathOpt
+            << "'; overriding other path flag values.";
+  jsonPathOpt = checkPath(reproPathOpt + "/fx_data.json", true);
+  weightsPathOpt = checkPath(reproPathOpt + "/fx_weights.pt", true);
+  inputPathOpt = checkPath(reproPathOpt + "/fx_inputs.pt");
+  compileSpecPathOpt = checkPath(reproPathOpt + "/fx_compile_spec.txt", true);
+  outputPathOpt = checkPath(reproPathOpt + "/fx_outputs.pt");
   std::ifstream jsonFile(jsonPathOpt.c_str());
   std::stringstream buffer;
   buffer << jsonFile.rdbuf();
@@ -178,24 +185,40 @@ std::vector<torch::Tensor> ReproFXLib::run(bool fatalOnNotClose) {
                   std::istream_iterator<char>());
     std::vector<at::IValue> outputFileTensors =
         torch::pickle_load(output).toTupleRef().elements();
+    if (useCosSimEval) {
+      // Calculate cosine similarity between user's output tensors and ReproFX's
+      // out.
+      std::vector<torch::Tensor> cosSimilarity;
+      torch::nn::CosineSimilarity cos(
+          torch::nn::CosineSimilarityOptions().dim(0));
 
-    // Calculate cosine similarity between user's output tensors and ReproFX's
-    // out.
-    std::vector<torch::Tensor> cosSimilarity;
-    torch::nn::CosineSimilarity cos(
-        torch::nn::CosineSimilarityOptions().dim(0));
-
-    for (int i = 0; i < out.size() && i < outputFileTensors.size(); i++) {
-      torch::Tensor a = out[i].flatten();
-      torch::Tensor b = outputFileTensors[i].toTensor().flatten();
-      auto c = cos(a, b);
-      if (fatalOnNotClose && *c.data_ptr<float>() != 1) {
-        LOG(FATAL) << "Cosine Similarity failure.";
+      for (int i = 0; i < out.size() && i < outputFileTensors.size(); i++) {
+        torch::Tensor a = out[i].flatten();
+        torch::Tensor b = outputFileTensors[i].toTensor().flatten();
+        auto c = cos(a, b);
+        if (fatalOnNotClose && *c.data_ptr<float>() != 1) {
+          LOG(FATAL) << "Cosine Similarity failure.";
+        }
+        cosSimilarity.push_back(c);
       }
-      cosSimilarity.push_back(c);
+      LOG(INFO) << "Cosine Similarity: " << cosSimilarity;
+    } else {
+      for (int i = 0; i < out.size() && i < outputFileTensors.size(); i++) {
+        torch::Tensor a = out[i].flatten();
+        torch::Tensor b = outputFileTensors[i].toTensor().flatten();
+        LOG(INFO) << "Checking " << b.dtype() << " vs " << a.dtype();
+        if (a.dtype() == torch::kFloat16 or a.dtype() == torch::kFloat32) {
+          if (!at::allclose(b.toType(torch::kFloat32),
+                            a.toType(torch::kFloat32), 0.0, 1e-05)) {
+            LOG(FATAL) << "Run Failed for output " << i;
+          }
+        } else {
+          if (!at::allclose(at::dequantize(b), at::dequantize(a), 0.0, 1e-05)) {
+            LOG(FATAL) << "Run Failed for output " << i;
+          }
+        }
+      }
     }
-    LOG(INFO) << "Cosine Similarity: " << cosSimilarity;
   }
-
   return out;
 }
