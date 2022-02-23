@@ -84,9 +84,10 @@ void ReproFXLib::load(const folly::dynamic &data,
     modPathAndWeightName.first.split(modNames, ".");
     auto currMod = container;
     for (const auto &modName : modNames) {
-      currMod = currMod.attr(modName).toModule();
+      currMod = currMod.attr(modName.str()).toModule();
     }
-    torch::Tensor tensor = currMod.attr(modPathAndWeightName.second).toTensor();
+    torch::Tensor tensor =
+        currMod.attr(modPathAndWeightName.second.str()).toTensor();
     weights.insert(key, tensor);
   }
 
