@@ -5823,6 +5823,9 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
     for (dim_t j = start; j < end; j++) {
       const float weight = static_cast<float>(WH.raw(j));
       const dim_t rowIdx = IH.raw(j);
+      // check if the rowIdx is valid
+      assert(rowIdx < data->dims()[0] &&
+             "invalid row index which is bigger than data's row count.");
       T scale, offset;
       std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
       for (dim_t k = 0; k < outLineSize; k++) {
