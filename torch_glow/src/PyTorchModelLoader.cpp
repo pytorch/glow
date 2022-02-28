@@ -1287,7 +1287,8 @@ struct BatchedUnaryEmbeddingsBagsInputs {
   };
 };
 
-/// Indexes used for fb::int_nbit_split_embedding_codegen_lookup_function inputs
+/// Indexes used for fbgemm::int_nbit_split_embedding_codegen_lookup_function
+/// inputs
 struct IntNBitSplitEmbeddingBagsInputs {
   enum {
     dev_weights = 0,
@@ -1875,7 +1876,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::index_add_", "aten::index_add"},
        &PyTorchModelLoader::loadIndexAdd,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
-      {{"fb::int_nbit_split_embedding_codegen_lookup_function"},
+      {{"fbgemm::int_nbit_split_embedding_codegen_lookup_function"},
        &PyTorchModelLoader::loadIntNBitSplitEmbeddingBags,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::amax"},
