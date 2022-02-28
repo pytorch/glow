@@ -206,7 +206,7 @@ TEST_F(NNPIOptPipelineTest, ReplaceInefficientConcatTest) {
     EXPECT_EQ(optRN->getResult().dims()[0], inputDim2);
     EXPECT_EQ(optRN->getResult().dims()[1], inputDim1);
 
-    EXPECT_EQ(optRN->getInput().getNode(), inputs[idx]);
+    EXPECT_EQ(NodeValue(optRN->getInput().getNode()), inputs[idx]);
   }
   checkNumericalEquivalence(0.f);
 }

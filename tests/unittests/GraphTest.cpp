@@ -1581,13 +1581,13 @@ TEST(Graph, PreOrderTest) {
   EXPECT_EQ(order[4], input1);
   EXPECT_EQ(order[5], mul2);
   EXPECT_EQ(order[6], input2);
-  EXPECT_EQ(order[7], ret1->getOutput());
+  EXPECT_EQ(NodeValue(order[7]), ret1->getOutput());
   EXPECT_EQ(order[8], add3);
   EXPECT_EQ(order[9], add2);
   EXPECT_EQ(order[10], add1);
   EXPECT_EQ(order[11], one);
   EXPECT_EQ(order[12], ret2);
-  EXPECT_EQ(order[13], ret2->getOutput());
+  EXPECT_EQ(NodeValue(order[13]), ret2->getOutput());
 }
 
 /// Verify that the post-order visitor works correctly.
@@ -1622,13 +1622,13 @@ TEST(Graph, PostOrderTest) {
   EXPECT_EQ(order[3], input2);
   EXPECT_EQ(order[4], mul2);
   EXPECT_EQ(order[5], mul3);
-  EXPECT_EQ(order[6], ret1->getOutput());
+  EXPECT_EQ(NodeValue(order[6]), ret1->getOutput());
   EXPECT_EQ(order[7], ret1);
   EXPECT_EQ(order[8], one);
   EXPECT_EQ(order[9], add1);
   EXPECT_EQ(order[10], add2);
   EXPECT_EQ(order[11], add3);
-  EXPECT_EQ(order[12], ret2->getOutput());
+  EXPECT_EQ(NodeValue(order[12]), ret2->getOutput());
   EXPECT_EQ(order[13], ret2);
 }
 

@@ -930,7 +930,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
   EXPECT_TRUE(llvm::isa<Placeholder>(optimizedF_filterSave->getInput()));
   auto *varFilter =
       llvm::dyn_cast<Placeholder>(optimizedF_filterSave->getInput());
-  EXPECT_EQ(varFilter, CV->getFilter());
+  EXPECT_EQ(NodeValue(varFilter), CV->getFilter());
   EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(optimizedF_ret->getInput()));
 
   BatchNormalizationNode *batchNorm =
@@ -2982,7 +2982,7 @@ TEST_F(GraphFold, foldLeakyReluFromSplat) {
   auto *newSplatNode = llvm::dyn_cast<SplatNode>(newPReluNode->getSlope());
   ASSERT_TRUE(newSplatNode);
   EXPECT_EQ(leakyAlpha, newSplatNode->getValue());
-  EXPECT_EQ(input, newPReluNode->getInput());
+  EXPECT_EQ(NodeValue(input), newPReluNode->getInput());
 }
 
 /// This test checks that a lowered LeakyRelu is corrected folded:
@@ -3014,7 +3014,7 @@ TEST_F(GraphFold, foldLeakyReluFromConst) {
   auto *newSplatNode = llvm::dyn_cast<SplatNode>(newPReluNode->getSlope());
   ASSERT_TRUE(newSplatNode);
   EXPECT_EQ(leakyAlpha, newSplatNode->getValue());
-  EXPECT_EQ(input, newPReluNode->getInput());
+  EXPECT_EQ(NodeValue(input), newPReluNode->getInput());
 }
 
 /// Test optimization of  Convolution nodes with small input tensors by reducing
@@ -3988,7 +3988,7 @@ TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
   EXPECT_TRUE(llvm::isa<AddNode>(newAN2->getLHS()));
   EXPECT_TRUE(llvm::isa<SplatNode>(newAN2->getRHS()));
 
-  EXPECT_EQ(newAN1, newAN2->getLHS());
+  EXPECT_EQ(NodeValue(newAN1), newAN2->getLHS());
 
   // input1 should still have a single user after optimization.
   EXPECT_EQ(I1->getUsers().size(), 1);
