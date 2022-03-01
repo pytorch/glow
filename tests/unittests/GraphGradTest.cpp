@@ -142,9 +142,9 @@ TEST(GraphAutoGrad, cloneAndDiff) {
     if (!SGD)
       continue;
     ++nbSGDs;
-    if (A == SGD->getWeight())
+    if (NodeValue(A) == SGD->getWeight())
       ++nbSGDA;
-    else if (B == SGD->getWeight())
+    else if (NodeValue(B) == SGD->getWeight())
       ++nbSGDB;
   }
   EXPECT_EQ(nbSGDs, 2);
