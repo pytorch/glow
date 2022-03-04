@@ -525,8 +525,8 @@ void InferenceContext::execute(RunIdentifierTy runId,
     TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
                            inferContext, attributes);
     LOG_AND_CALLBACK_EXECUTE_NNPI_IF_ERROR(
-        nnpiNetworkInferOnHost(nnpiNetwork_, &(rawInputs[0]), rawInputs.size(),
-                               &(rawOutputs[0]), rawOutputs.size(),
+        nnpiNetworkInferOnHost(nnpiNetwork_, rawInputs.data(), rawInputs.size(),
+                               rawOutputs.data(), rawOutputs.size(),
                                &compilationConfig_, NNPI_INVALID_NNPIHANDLE),
         "Failed NNPI infer (ICE-Ref)", runId, ctx, resultCB);
   } else //! UseInferenceAPI && UseIceT (compile without running).
