@@ -26,7 +26,6 @@
 #include "glow/Runtime/TraceExporter.h"
 #include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
-#include "lib/Backends/FBA/FBAPerfCounterUtils.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -295,7 +294,6 @@ struct InferenceResult {
   Error error = Error::empty();
   std::unique_ptr<ExecutionContext> ctx;
   int index = 0;
-  glow::fba::PerfCounterAccessor perfCounterAccessor;
   std::chrono::time_point<std::chrono::steady_clock> endTime;
 };
 
@@ -755,9 +753,6 @@ int run() {
                       runAccuracyChecks, enableGlowTrace]() {
         // Setup the inputs.
         auto ctx = glow::make_unique<ExecutionContext>();
-        if (ExecutionBackend == "FBAFreya") {
-          ctx->setPerfData(static_cast<void *>(&result.perfCounterAccessor));
-        }
 
         TraceContext *traceContext = nullptr;
         if (enableGlowTrace) {
@@ -924,11 +919,6 @@ int run() {
           std::string buffer;
           outputG.SerializeToString(&buffer);
           of << buffer;
-        }
-
-        if (ExecutionBackend == "FBAFreya") {
-          result.perfCounterAccessor.dumpPerfCountersToFiles(
-              /*perfStatsOutputBufferIdx=*/0, /*jobId=*/result.index);
         }
       }
     }
