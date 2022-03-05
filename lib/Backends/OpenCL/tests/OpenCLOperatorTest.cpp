@@ -375,6 +375,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "EmbeddingBagByteRowwiseOffsets_Float_End_Offset/0",
     "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat_End_Offset/0",
     "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16_End_Offset/0",
+    "EmbeddingBagByteRowwiseOffsets_Float16_FloatScaleOffset_AccumFloat_End_"
+    "Offset/0",
     "EmbeddingBagByteRowwiseOffsets_ConvertedFloat16_End_Offset/0",
     "EmbeddingBag4BitRowwiseOffsets_Float16/0",
     "EmbeddingBag4BitRowwiseOffsets_Float16_AccumFloat/0",

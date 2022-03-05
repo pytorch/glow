@@ -15629,6 +15629,11 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+template <typename DataType>
+static bool isFloat16OutputWithFloatScaleOffset(ElemKind DTy) {
+  return std::is_same<DataType, float16_t>::value && (DTy == ElemKind::FloatTy);
+}
+
 /// Helper function to construct indices/offsets pair for EmbeddingBag
 /// and EmbeddingBagByteRowwiseOffsets
 template <typename DataType>
@@ -15637,8 +15642,15 @@ static void addEmbeddingBagPartialInputs(
     Placeholder *&weights, Placeholder *&indices, Placeholder *&offsets,
     bool hasEndOffset, bool partialInput = false) {
 
+  // DataType could be different from DTy, for example: DataType is Float16,
+  // but DTy is Float.
+  ElemKind WDTy = DTy;
+  if (isFloat16OutputWithFloatScaleOffset<DataType>(DTy)) {
+    WDTy = ElemKind::Float16Ty;
+  }
+
   if (hasEndOffset) {
-    Tensor weightsTensorReal(DTy, {8});
+    Tensor weightsTensorReal(WDTy, {8});
     Tensor indicesTensorReal(ElemKind::Int32ITy, {8});
     Tensor offsetsTensorReal(ElemKind::Int32ITy, {5});
 
@@ -15654,7 +15666,7 @@ static void addEmbeddingBagPartialInputs(
     };
 
     if (partialInput) {
-      weights = mod.createPlaceholder(DTy, {20}, "weights", false);
+      weights = mod.createPlaceholder(WDTy, {20}, "weights", false);
       indices =
           mod.createPlaceholder(ElemKind::Int32ITy, {20}, "indices", false);
       offsets =
@@ -15682,7 +15694,7 @@ static void addEmbeddingBagPartialInputs(
       bindings.insert(indices, indicesTensorPartial.clone());
       bindings.insert(offsets, offsetsTensorPartial.clone());
     } else {
-      weights = mod.createPlaceholder(DTy, {8}, "weights", false);
+      weights = mod.createPlaceholder(WDTy, {8}, "weights", false);
       indices =
           mod.createPlaceholder(ElemKind::Int32ITy, {8}, "indices", false);
       offsets =
@@ -15706,7 +15718,7 @@ static void addEmbeddingBagPartialInputs(
     };
     offsetsTensorReal.getHandle<int32_t>() = {0, 3, 3, 6};
 
-    weights = mod.createPlaceholder(DTy, {8}, "weights", false);
+    weights = mod.createPlaceholder(WDTy, {8}, "weights", false);
     indices = mod.createPlaceholder(ElemKind::Int32ITy, {8}, "indices", false);
     offsets = mod.createPlaceholder(ElemKind::Int32ITy, {4}, "offsets", false);
 
@@ -15999,9 +16011,12 @@ static void testEmbeddingBagByteRowwiseOffsets(
   addEmbeddingBagPartialInputs<DataType>(bindings, mod, DTy, weights, indices,
                                          offsets, hasEndOffset, partialInput);
 
+  // By default, output data type from createEmbeddingBagByteRowwiseOffsets will
+  // be float (not float16) for UInt8FusedQTy and UInt4FusedQTy.
+  bool forceFP16Output = isFloat16OutputWithFloatScaleOffset<DataType>(DTy);
   auto *R = F->createEmbeddingBagByteRowwiseOffsets(
       "EBBRO", data, weights, indices, offsets, fusedDTy, useFP16Accumulation,
-      hasEndOffset);
+      hasEndOffset, LengthsMode::Variable, NAN, forceFP16Output);
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
@@ -16014,7 +16029,12 @@ static void testEmbeddingBagByteRowwiseOffsets(
   Tensor &result = *bindings.get(S->getPlaceholder());
   ShapeVector odims(2, 1);
   odims[0] = partialInput ? 5 : 4;
-  Tensor expected(DTy, odims);
+
+  ElemKind EDTy = DTy;
+  if (isFloat16OutputWithFloatScaleOffset<DataType>(DTy)) {
+    EDTy = ElemKind::Float16Ty;
+  }
+  Tensor expected(EDTy, odims);
   if (partialInput) {
     expected.getHandle<DataType>() = {
         0.5, 0, 0, 25, 0,
@@ -16073,6 +16093,17 @@ TEST_P(OperatorTest,
   CHECK_IF_ENABLED();
   testEmbeddingBagByteRowwiseOffsets<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ true);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float16 with Float scale/offset.
+/// Uses Float accumulation. Has end offset.
+TEST_P(
+    OperatorTest,
+    EmbeddingBagByteRowwiseOffsets_Float16_FloatScaleOffset_AccumFloat_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001,
       /* useFP16Accumulation */ false, /* hasEndOffset */ true);
 }
 

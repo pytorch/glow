@@ -2429,7 +2429,8 @@ Function::createRowwiseQuantizedSparseLengthsSum(
 /// type, using inputs \p data and \p segmentsDim to compute output dimensions.
 static TypeRef
 getOutputTypeOfFusedRowwiseQuantizedSLS(Function *F, NodeValue data,
-                                        llvm::ArrayRef<dim_t> segmentsDim) {
+                                        llvm::ArrayRef<dim_t> segmentsDim,
+                                        bool forceFP16Output = false) {
   ShapeVector outDims(data.dims().begin(), data.dims().end());
   outDims[0] = segmentsDim[0];
   // The output column count is the same as the input column count, but
@@ -2447,10 +2448,12 @@ getOutputTypeOfFusedRowwiseQuantizedSLS(Function *F, NodeValue data,
       data.getElementType() == ElemKind::UInt4FusedQTy) {
     outDims[1] *= 2;
   }
-  const ElemKind outputK = (data.getElementType() == ElemKind::UInt8FusedQTy ||
-                            data.getElementType() == ElemKind::UInt4FusedQTy)
-                               ? ElemKind::FloatTy
-                               : ElemKind::Float16Ty;
+  const ElemKind outputK =
+      forceFP16Output ? ElemKind::Float16Ty
+      : (data.getElementType() == ElemKind::UInt8FusedQTy ||
+         data.getElementType() == ElemKind::UInt4FusedQTy)
+          ? ElemKind::FloatTy
+          : ElemKind::Float16Ty;
   return F->getParent()->uniqueType(outputK, outDims);
 }
 
@@ -2602,27 +2605,29 @@ EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
     NodeValue offsets, ElemKind fusedElemKind, bool useFP16Accumulation,
-    bool hasEndOffset, LengthsMode lengthsMode, float avgLength) {
+    bool hasEndOffset, LengthsMode lengthsMode, float avgLength,
+    bool forceFP16Output) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return createEmbeddingBagByteRowwiseOffsets(
       name, rwqData, weights, indices, offsets, useFP16Accumulation,
-      hasEndOffset, lengthsMode, avgLength);
+      hasEndOffset, lengthsMode, avgLength, forceFP16Output);
 }
 
 EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
     NodeValue offsets, bool useFP16Accumulation, bool hasEndOffset,
-    LengthsMode lengthsMode, float avgLength) {
+    LengthsMode lengthsMode, float avgLength, bool forceFP16Output) {
   std::vector<dim_t> segmentDims(offsets.dims().begin(), offsets.dims().end());
   // If hasEndOffset the last offset is just for marking the end of the last
   // segment.
   if (hasEndOffset) {
     segmentDims[0] -= 1;
   }
-  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, segmentDims);
+  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, segmentDims,
+                                                       forceFP16Output);
   return addNode(new EmbeddingBagByteRowwiseOffsetsNode(
       name, outTy, data, weights, indices, offsets, useFP16Accumulation,
       hasEndOffset, lengthsMode, avgLength));

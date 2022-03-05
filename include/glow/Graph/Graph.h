@@ -1424,7 +1424,8 @@ public:
       llvm::StringRef name, NodeValue data, NodeValue weights,
       NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false,
       bool hasEndOffset = false,
-      LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
+      LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN,
+      bool forceFP16Output = false);
 
   /// Same as \ref createEmbeddingBagByteRowwiseOffsets(), but
   /// expects float input \p data, which is rowwise-quantized and fused
@@ -1436,7 +1437,8 @@ public:
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue offsets, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
       bool useFP16Accumulation = false, bool hasEndOffset = false,
-      LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
+      LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN,
+      bool forceFP16Output = false);
 
   /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
   /// specified.

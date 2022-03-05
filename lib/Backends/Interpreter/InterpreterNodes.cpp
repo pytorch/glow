@@ -5826,19 +5826,31 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
       // check if the rowIdx is valid
       assert(rowIdx < data->dims()[0] &&
              "invalid row index which is bigger than data's row count.");
-      T scale, offset;
-      std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
+
+      float scale, offset;
+      switch (
+          getScaleOffsetElemKindFromFused(data->getType().getElementType())) {
+      case ElemKind::FloatTy:
+        std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<float>(rowIdx);
+        break;
+      case ElemKind::Float16Ty:
+        std::tie(scale, offset) =
+            DH.getFusedScaleOffsetFromRow<float16_t>(rowIdx);
+        break;
+      default:
+        llvm_unreachable("Type is not supported");
+        break;
+      }
+
       for (dim_t k = 0; k < outLineSize; k++) {
         float d = 0.0f;
         if (!using4BitQuantization) {
           d = quantization::dequantizeWithFloatOffset(
-              DH.at({rowIdx, k}), static_cast<float>(scale),
-              static_cast<float>(offset));
+              DH.at({rowIdx, k}), scale, static_cast<float>(offset));
         } else {
           const bool isMSB = (k % 2 == 1);
           d = quantization::dequantize4BitWithFloatOffset(
-              DH.at({rowIdx, k / 2}), static_cast<float>(scale),
-              static_cast<float>(offset), isMSB);
+              DH.at({rowIdx, k / 2}), scale, static_cast<float>(offset), isMSB);
         }
         accum[k] += d * weight;
       }
