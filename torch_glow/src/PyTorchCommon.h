@@ -302,6 +302,7 @@ enum class GraphOutputType {
 
 using PostFusionProcessFn =
     std::function<void(std::shared_ptr<torch::jit::Graph> graph)>;
+using IsSupportedFn = std::function<bool(const torch::jit::Node *)>;
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
 ElemKind scalarTypeToElemKind(c10::ScalarType ty);
@@ -367,7 +368,8 @@ void glowAOTFusion(
     const std::string &onnxModelFile = "",
     c10::optional<PostFusionProcessFn> postFusionProcessFn = {},
     const c10::optional<ModelCompilationConfigOverride>
-        &modelCompilationConfigOverride = c10::nullopt);
+        &modelCompilationConfigOverride = c10::nullopt,
+    c10::optional<IsSupportedFn> supportFn = c10::nullopt);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
@@ -386,7 +388,8 @@ void glowAOTFusionWithShapeInference(
     const std::string &onnxModelFile = "",
     c10::optional<PostFusionProcessFn> postFusionProcessFn = {},
     const c10::optional<ModelCompilationConfigOverride>
-        &modelCompilationConfigOverride = c10::nullopt);
+        &modelCompilationConfigOverride = c10::nullopt,
+    c10::optional<IsSupportedFn> supportFn = {});
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in

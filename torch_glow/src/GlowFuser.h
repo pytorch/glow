@@ -20,6 +20,7 @@
 #include <torch/csrc/jit/ir/ir.h>
 
 #include "PyTorchCommon.h"
+#include "PyTorchModelLoader.h"
 
 namespace glow {
 /// Registers Glow's default symbol on the first call to this function.
@@ -29,13 +30,17 @@ void registDefaultGlowFusionSymbolOnce();
 /// Fuse nodes in \p graph that are supported by glow into a subgraph in a node
 /// with symbol \p kind. NOTE: kind must be registered with jit before calling
 /// this function.
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
-                    const PyTorchLoaderSettings &settings, at::Symbol kind);
+void glowCustomFuse(
+    std::shared_ptr<torch::jit::Graph> graph,
+    const PyTorchLoaderSettings &settings, at::Symbol kind,
+    IsSupportedFn isSupported = PyTorchModelLoader::isNodeSupported);
 
 /// Fuse nodes in \p graph that are supported by glow into a subgraph in Glow
 /// fusion group nodes using the settings in \p settings.
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
-                    const PyTorchLoaderSettings &settings);
+void glowCustomFuse(
+    std::shared_ptr<torch::jit::Graph> graph,
+    const PyTorchLoaderSettings &settings,
+    IsSupportedFn isSupported = PyTorchModelLoader::isNodeSupported);
 
 /// Fuse nodes in \p graph that have a kind in \p acceptableKinds into a
 /// subgraph in Glow fusion group nodes.

@@ -17,7 +17,6 @@
 #include "GlowFuser.h"
 
 #include "FuseKnownPatterns.h"
-#include "PyTorchModelLoader.h"
 #include "Registration.h"
 
 #include <glog/logging.h>
@@ -34,7 +33,6 @@
 
 namespace glow {
 namespace {
-using IsSupportFunc = std::function<bool(const torch::jit::Node *)>;
 
 torch::jit::value_list
 sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
@@ -53,13 +51,13 @@ sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
   return result;
 }
 
-bool isNodeSupportedForMerge(const torch::jit::Node *node, IsSupportFunc fn) {
+bool isNodeSupportedForMerge(const torch::jit::Node *node, IsSupportedFn fn) {
   return fn(node) || node->kind() == torch::jit::prim::Constant ||
          node->kind() == torch::jit::prim::GetAttr ||
          node->kind() == getGlowSymbol();
 }
 
-bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
+bool canMerge(torch::jit::Node *node, IsSupportedFn fn,
               torch::jit::Node *consumer) {
   if (node->kind() == torch::jit::prim::Param) {
     return false;
@@ -130,7 +128,7 @@ bool aliasChecks(torch::jit::Node *consumer, torch::jit::Node *producer,
 // Try to merge producer and consumer into a single fused node.
 torch::jit::Node *tryMerge(torch::jit::Node *consumer,
                            torch::jit::Node *producer,
-                           torch::jit::AliasDb &aliasDb, IsSupportFunc fn,
+                           torch::jit::AliasDb &aliasDb, IsSupportedFn fn,
                            at::Symbol kind) {
   // Check that producer can be merged
   if (!canMerge(producer, fn, consumer)) {
@@ -189,7 +187,7 @@ getSubgraph(const torch::jit::Node *n) {
 
 std::pair<torch::jit::graph_node_list::iterator, bool>
 getNewNode(torch::jit::Node *node, torch::jit::AliasDb &aliasDb,
-           torch::jit::Block *block, IsSupportFunc fn, at::Symbol kind,
+           torch::jit::Block *block, IsSupportedFn fn, at::Symbol kind,
            const size_t maxFusionMergeSize) {
   auto nodeInputs = sortReverseTopological(node->inputs(), block);
   auto consumerSize = node->hasAttribute(torch::jit::attr::Subgraph)
@@ -210,7 +208,7 @@ getNewNode(torch::jit::Node *node, torch::jit::AliasDb &aliasDb,
 }
 
 void fuseJITNodesToGlow(std::shared_ptr<torch::jit::Graph> graph,
-                        IsSupportFunc fn, at::Symbol kind,
+                        IsSupportedFn fn, at::Symbol kind,
                         const size_t maxFusionMergeSize) {
   torch::jit::AliasDb aliasDb(graph);
   auto block = graph->block();
@@ -285,7 +283,7 @@ struct GlowFuserStats {
 // Dumps per-kind counts of operators in the graph and whether they were
 // fused into a subgraph.
 static void dumpOperatorStats(const std::shared_ptr<torch::jit::Graph> graph,
-                              IsSupportFunc fn, at::Symbol kind) {
+                              IsSupportedFn fn, at::Symbol kind) {
   std::map<torch::jit::NodeKind, GlowFuserStats> fuserStats;
   for (const auto *node : graph->nodes()) {
     if (node->kind() == kind) {
@@ -306,7 +304,7 @@ static void dumpOperatorStats(const std::shared_ptr<torch::jit::Graph> graph,
   std::ostringstream out;
   out << "Dump of operator stats for graph:\n";
   out << "InstanceCount: count of operator in graph\n";
-  out << "FuseSupported: instances with IsSupportFunc returning true\n";
+  out << "FuseSupported: instances with IsSupportedFn returning true\n";
   out << "Fused: instances of operator that were merged into a subgraph\n";
   out << folly::stringPrintf("%45s %13s %13s %13s\n", "Operator",
                              "InstanceCount", "FuseSupported", "Fused");
@@ -393,7 +391,7 @@ void processTensorExprGroups(std::shared_ptr<torch::jit::Graph> &graph) {
 
 void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
                         at::Symbol kind, const PyTorchLoaderSettings &settings,
-                        IsSupportFunc fn) {
+                        IsSupportedFn fn) {
   // Set include_last_offset all embedding_bag-like operators to be compatible
   if (settings.setIncludeLastOffsets) {
     setIncludeLastOffsets(graph);
@@ -426,7 +424,7 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   const auto maxFusionMergeSize = settings.maxFusionMergeSize;
 
   // Wrap fn in function that first checks the blacklist.
-  IsSupportFunc nodeSupportedFn =
+  IsSupportedFn nodeSupportedFn =
       [indexBlacklist = std::move(indexBlacklistedNodes),
        opBlocklist = settings.opBlocklist, fn](const torch::jit::Node *ptNode) {
         if (indexBlacklist.count(ptNode)) {
@@ -485,17 +483,17 @@ void registDefaultGlowFusionSymbolOnce() {
 }
 
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
-                    const PyTorchLoaderSettings &settings) {
+                    const PyTorchLoaderSettings &settings,
+                    IsSupportedFn supportFn) {
   registDefaultGlowFusionSymbolOnce();
   auto symbol = getGlowSymbol();
-  return glowCustomFuseImpl(graph, symbol, settings,
-                            PyTorchModelLoader::isNodeSupported);
+  return glowCustomFuseImpl(graph, symbol, settings, supportFn);
 }
 
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
-                    const PyTorchLoaderSettings &settings, at::Symbol kind) {
-  return glowCustomFuseImpl(graph, kind, settings,
-                            PyTorchModelLoader::isNodeSupported);
+                    const PyTorchLoaderSettings &settings, at::Symbol kind,
+                    IsSupportedFn supportFn) {
+  return glowCustomFuseImpl(graph, kind, settings, supportFn);
 }
 
 void glowCustomFuseDebug(std::shared_ptr<torch::jit::Graph> graph,
