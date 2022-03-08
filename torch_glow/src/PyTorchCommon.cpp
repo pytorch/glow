@@ -682,6 +682,10 @@ void glowAOTFusionWithShapeInference(
     c10::optional<IsSupportedFn> supportFn) {
   auto graph =
       toGraphFunction(model.get_method(method_name).function()).graph();
+  if (settings.dumpJitDag) {
+    std::ofstream f{"incoming_glow_jit_module.txt"};
+    f << *graph;
+  }
 
   // create some fake inputs to run shape inference.
   // Usually users provide one set of inputs for the entire
@@ -838,6 +842,10 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
   // the future we may need to support multiple graphs.
   auto graph =
       toGraphFunction(model.get_method(method_name).function()).graph();
+  if (settings.dumpJitDag) {
+    std::ofstream f{"incoming_glow_jit_module.txt"};
+    f << *graph;
+  }
 
   c10::Symbol symbol = glow::getGlowSymbol(graph);
   glow::registerGlowOp(symbol);

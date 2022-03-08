@@ -908,8 +908,11 @@ ShapeInferenceEngine::primConstant(const torch::jit::Node *node) {
     shapeOrValue = {1};
     dtype = c10::ScalarType::Char;
   } else {
-    LOG(ERROR) << "Got " << *type;
-    return MAKE_ERR("Type not supported");
+    std::ostringstream ss;
+    ss << "Type '" << *type << "' is not supported.\nIt's coming from node "
+       << *node;
+    LOG(ERROR) << ss.str();
+    return MAKE_ERR(ss.str());
   }
   TensorOutput output;
   output.shapeOrIntValues = shapeOrValue;
