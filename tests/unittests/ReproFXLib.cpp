@@ -39,7 +39,7 @@ llvm::cl::opt<std::string>
 llvm::cl::opt<bool> useCosSimEval(
     "use_cos_eval",
     llvm::cl::value_desc("Use Cosine evaluation when comparing outputs"),
-    llvm::cl::init(true), llvm::cl::cat(reproTestCat));
+    llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
 // Parses JSON input, weights, and user inputs
 void ReproFXLib::load(const folly::dynamic &data,

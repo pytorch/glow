@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#include "glow/fb/fx/fx_glow/fx_glow.h"
 #include "glow/glow/tests/unittests/ReproFXLib.h"
 #include "glow/glow/torch_glow/src/GlowCompileSpec.h"
 #include <folly/dynamic.h>
