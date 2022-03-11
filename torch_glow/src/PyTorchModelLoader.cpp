@@ -30,8 +30,7 @@
 
 #include <ATen/ATen.h>
 #include <ATen/core/dispatch/Dispatcher.h>
-#include <ATen/native/quantized/cpu/conv_packed_params.h>
-#include <ATen/native/quantized/cpu/packed_params.h>
+#include <ATen/native/quantized/packed_params.h>
 #include <limits>
 #include <torch/csrc/jit/ir/ir.h>
 #include <type_traits>
