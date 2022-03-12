@@ -300,6 +300,8 @@ void InstrBuilder::emitClass(std::ostream &os) const {
   os << "\n  Instruction* clone() const;\n";
   os << "\n  void dump(llvm::raw_ostream &os) const;\n";
   os << "\n  llvm::StringRef getOperandName(unsigned idx) const;\n";
+  os << "\n  unsigned getNumFixedOperands() const { return " << operands_.size()
+     << "; }\n\n";
 
   // If there is no auto-verification then we assume verification is manually
   // provided.

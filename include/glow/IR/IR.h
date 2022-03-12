@@ -197,6 +197,10 @@ public:
   /// \returns the number of operands.
   unsigned getNumOperands() const { return ops_.size(); }
 
+  /// \returns the number of fixed operands known at the instructon
+  /// definition time.
+  unsigned getNumFixedOperands() const;
+
   /// \returns the number of input operands (includes In and InOut operands).
   unsigned getNumInputs() const;
 

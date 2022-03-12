@@ -103,6 +103,19 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
   return ops_[idx];
 }
 
+unsigned Instruction::getNumFixedOperands() const {
+  switch (getKind()) {
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->getNumFixedOperands();
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
+#define DEF_VALUE(CLASS, NAME)
+#include "glow/AutoGenInstr.def"
+  default:
+    llvm_unreachable("Unhandled instruction");
+  }
+}
+
 unsigned Instruction::getNumInputs() const {
   unsigned numInputs = 0;
   for (const auto &op : ops_) {
