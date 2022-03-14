@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <string>
 
 using namespace glow;
 
@@ -107,17 +108,25 @@ static bool performDebugInstrumentation(IRFunction &M) {
       debugInfoFile << "Name: " << instrName << "\n";
     }
 
+    auto getOperandName = [](const Instruction *I,
+                             unsigned opIdx) -> std::string {
+      if (opIdx < I->getNumFixedOperands()) {
+        return I->getOperandName(opIdx).str();
+      }
+      return "op_" + std::to_string(opIdx);
+    };
+
     // Get maximum operand name length for pretty print.
     size_t opNameLenMax = 0;
     for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
-      auto opNameLen = I->getOperandName(opIdx).size();
+      auto opNameLen = getOperandName(I, opIdx).size();
       opNameLenMax = std::max(opNameLen, opNameLenMax);
     }
 
     // Instrument debug operands for current instruction.
     for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
       const auto &op = I->getOperand(opIdx);
-      const std::string opName = I->getOperandName(opIdx).str();
+      const std::string opName = getOperandName(I, opIdx);
       const std::string opTypeName = op.first->getType()->toString();
 
       // DebugPrint instruction name for this operand.
