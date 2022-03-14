@@ -34,6 +34,15 @@ linux_default: &linux_default
   machine:
     image: ubuntu-2004:202010-01
   steps:
+  - run:
+      name: Install OpenSSH 8.1p1
+      command: |
+        sudo apt-get update;
+        mkdir ~/tempdownload;
+        cd ~/tempdownload;
+        wget https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-8.1p1.tar.gz;
+        tar zxvf openssh-8.1p1.tar.gz;
+        cd openssh-8.1p1 && ./configure && make && sudo make install;
   - checkout
   - run:
       <<: *merge_with_master
