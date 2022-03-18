@@ -73,6 +73,7 @@ bool CPUBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::LeakyReluNodeKind:
+  case Kinded::Kind::HardSwishNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:

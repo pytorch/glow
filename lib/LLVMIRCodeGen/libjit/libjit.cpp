@@ -1892,6 +1892,12 @@ int8_t libjit_element_leaky_relu_i8(dim_t idx, const int8_t *src,
   return libjit_clip_i8(scaledVal);
 }
 
+float libjit_element_hard_swish_f(dim_t idx, const float *src) {
+  float x = src[idx];
+  float relu6 = (x + 3) > 6 ? 6 : ((x + 3) < 0 ? 0 : (x + 3));
+  return x * relu6 / 6;
+}
+
 // When the LIBJIT compile option "-ffast-math" is enabled the intermediate
 // computation expf(x) for Sigmoid operator is not handled properly for very
 // large positive values which results in NaN values for the Sigmoid output.

@@ -1358,6 +1358,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_LEAKY_RELU) {
     return loadUnaryArithmetic(op, opInfo);
   }
+  if (opCode == tflite::BuiltinOperator_HARD_SWISH) {
+    return loadUnaryArithmetic(op, opInfo);
+  }
   if (opCode == tflite::BuiltinOperator_ABS) {
     return loadUnaryArithmetic(op, opInfo);
   }
@@ -1409,7 +1412,15 @@ Error TFLiteModelLoader::loadUnaryArithmetic(const tflite::Operator *op,
   if (opCode == tflite::BuiltinOperator_LOGISTIC) {
     output = F_->createSigmoid(opInfo.name, outTy, input);
   } else if (opCode == tflite::BuiltinOperator_HARD_SWISH) {
-    output = F_->createHardSwish(opInfo.name, outTy, input);
+    if (input.getType()->isQuantizedType()) {
+      auto hard_swish_lambda = [](float a) {
+        int x = a + 3;
+        return a * (x > 6 ? 6 : ((x < 0) ? 0 : x)) / 6;
+      };
+      output = F_->createIntLookupTable(opInfo.name, input, hard_swish_lambda, outTy);
+    } else {
+      output = F_->createHardSwish(opInfo.name, outTy, input);
+    }
   } else if (opCode == tflite::BuiltinOperator_RELU) {
     output = F_->createRELU(opInfo.name, input, outTy);
   } else if (opCode == tflite::BuiltinOperator_RELU_N1_TO_1) {
