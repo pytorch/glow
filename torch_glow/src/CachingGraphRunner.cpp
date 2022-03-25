@@ -1543,6 +1543,7 @@ Error CachingGraphRunner::warmCache(
       // There should be only one element in the map when model is precompiled.
       perGlowGraphInfoMap_.emplace(hash, info);
     }
+    VLOG(5) << cctx.dump();
 
     {
       TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");

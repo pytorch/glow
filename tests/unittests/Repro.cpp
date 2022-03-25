@@ -626,6 +626,7 @@ int run() {
            "true.";
   }
   cctx.saturateHost = glow::flags::SaturateHost;
+  VLOG(5) << cctx.dump();
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
   // Whether to collect results and check accuracy. If we're not checking

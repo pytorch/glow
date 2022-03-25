@@ -479,6 +479,10 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(enableDeviceTracing, s);
   INSERT_VALUE_TO_STREAM(debugLayers, s);
   INSERT_BOOL_TO_STREAM(useMaxSizeCompilation, s);
+  INSERT_BOOL_TO_STREAM(enableP2P, s);
+  INSERT_BOOL_TO_STREAM(enableDRT, s);
+  INSERT_BOOL_TO_STREAM(convert8BitFusedToFP32, s);
+  INSERT_BOOL_TO_STREAM(convert4BitFusedToFP32, s);
 
   if (opBlocklist.size() > 0) {
     s << "opBlocklist: [";
