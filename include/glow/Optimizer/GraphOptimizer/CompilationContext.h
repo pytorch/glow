@@ -142,6 +142,30 @@ struct PrecisionConfiguration {
       llvm_unreachable("Unknown float16 format");
     }
   }
+
+#define PRINT_VALUE(value, str)                                                \
+  (str).append(#value).append(strFormat(": %d\n", (value)));
+
+  std::string dump() const {
+    std::string dump_str;
+    PRINT_VALUE(convertToFP16, dump_str)
+    PRINT_VALUE(convertFusedToFP16, dump_str)
+    PRINT_VALUE(convert4BitFusedTo8Bit, dump_str)
+    PRINT_VALUE(convert4BitFusedToFP32, dump_str)
+    PRINT_VALUE(convert8BitFusedToFP32, dump_str)
+    PRINT_VALUE(convertIndicesToInt64, dump_str)
+    PRINT_VALUE(convertPlaceholdersToFP16, dump_str)
+    PRINT_VALUE(convertConstantsToFP16, dump_str)
+    PRINT_VALUE(skipBiasFp32tofp16Convert, dump_str)
+    PRINT_VALUE(clipFP16, dump_str)
+    PRINT_VALUE(clipFP16SkipInputs, dump_str)
+    PRINT_VALUE(forceFP16AccumSLS, dump_str)
+    PRINT_VALUE(zeroScaleFP16Clip, dump_str)
+    PRINT_VALUE(clipQuantRangeToFP16, dump_str)
+    return dump_str;
+  }
+
+#undef PRINT_VALUE
 };
 
 using QuantizationMode = PrecisionConfiguration::QuantizationMode;
@@ -270,6 +294,30 @@ struct OptimizationOptions {
     // optimizations such as BatchNorm fusion depend on it.
     materializeSplatsUsedBySet.insert(Kinded::Kind::ConvolutionNodeKind);
   }
+
+#define PRINT_VALUE(value, str)                                                \
+  (str).append(#value).append(strFormat(": %d\n", (value)));
+
+  std::string dump() const {
+    std::string dump_str;
+    PRINT_VALUE(enableConstantFolding, dump_str)
+    PRINT_VALUE(enableConstantDeduplication, dump_str)
+    PRINT_VALUE(delayAndRecordConstantModification, dump_str)
+    PRINT_VALUE(skipBackendSupportCheck, dump_str)
+    PRINT_VALUE(foldElemKindConversionIntoIO, dump_str)
+    PRINT_VALUE(foldStaticPlaceholderConversions, dump_str)
+    PRINT_VALUE(useSparseNNPartitioningScheme, dump_str)
+    if (enableAPLASAPPlacement.hasValue()) {
+      PRINT_VALUE(enableAPLASAPPlacement.getValue(), dump_str)
+    }
+    PRINT_VALUE(enableTypeDemotion, dump_str)
+    PRINT_VALUE(enableQuantParamChanges, dump_str)
+    PRINT_VALUE(skipConcatMerging, dump_str)
+    PRINT_VALUE(sinkTanhBelowConcat, dump_str)
+    return dump_str;
+  }
+
+#undef PRINT_VALUE
 };
 
 /// Meta information produced during the compilation. Whereas the compile
@@ -399,6 +447,25 @@ struct CompilationContext {
   /// Used in deserialization.
   std::unordered_map<std::string, std::shared_ptr<std::vector<char>>>
       nameToFunctions;
+
+#define PRINT_VALUE(value, str)                                                \
+  (str).append(#value).append(strFormat(": %d\n", (value)));
+  std::string dump() const {
+    std::string dump_str;
+    PRINT_VALUE(saturateHost, dump_str)
+    dump_str.append("backendOpts:\n");
+    dump_str.append(backendOpts.dump());
+    dump_str.append("precisionConfig:\n");
+    dump_str.append(precisionConfig.dump());
+    dump_str.append("optimizationOpts:\n");
+    dump_str.append(optimizationOpts.dump());
+    PRINT_VALUE(enableP2P, dump_str)
+    PRINT_VALUE(enableDRT, dump_str)
+    PRINT_VALUE(callDAGOptimizer, dump_str)
+    PRINT_VALUE(useDAGOptimizerAOTMode, dump_str)
+    return dump_str;
+  }
+#undef PRINT_VALUE
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

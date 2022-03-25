@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_BACKENDOPTIONS_H
 #define GLOW_BACKENDS_BACKENDOPTIONS_H
 
+#include "glow/Support/Support.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 
@@ -76,7 +77,27 @@ struct BackendOptions {
   /// pointers, so any changes of Nodes should be tracked and propagated into
   /// new Nodes once this is set.
   BackendSpecificNodeInfo backendSpecificNodeInfo;
+
+#define PRINT_VALUE(value, str)                                                \
+  (str).append(#value).append(strFormat(": %d\n", (value)));
+  std::string dump() const {
+    std::string dump_str;
+    PRINT_VALUE(collectConstants, dump_str)
+    PRINT_VALUE(autoInstrument, dump_str)
+    PRINT_VALUE(useDeserialize, dump_str)
+
+    dump_str.append("backendSpecificOpts:\n");
+    for (const auto &backendSpecificOpt : backendSpecificOpts) {
+      dump_str.append(strFormat("%s: %s\n", backendSpecificOpt.first.c_str(),
+                                backendSpecificOpt.second.c_str()));
+    }
+    dump_str.append("backendSpecificNodeInfo.size(): %d\n",
+                    backendSpecificNodeInfo.size());
+    return dump_str;
+  }
 };
+
+#undef PRINT_VALUE
 
 }; // namespace glow
 
