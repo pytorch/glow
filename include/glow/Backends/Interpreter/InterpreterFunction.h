@@ -478,15 +478,16 @@ private:
   void fwdBatchedUnaryEmbeddingsBagsInstImpl(
       const BatchedUnaryEmbeddingsBagsInst *I);
 
-  template <typename IndexTy, typename OutputTy>
+  template <typename IndexTy, typename OutputTy, typename WeightsOffsetTy>
   void
   fwdIntNBitSplitEmbeddingBagsInstImpl(const IntNBitSplitEmbeddingBagsInst *I);
 
-  template <typename IndexTy, typename OutputTy>
+  template <typename IndexTy, typename OutputTy, typename WeightsOffsetTy>
   void fwdIntNBitSplitEmbeddingWeightedBagsInstImpl(
       const IntNBitSplitEmbeddingWeightedBagsInst *I);
 
-  template <typename IndexTy, typename OutputTy>
+  template <typename IndexTy, typename OutputTy, typename WeightsOffsetTy,
+            typename IndiceWeightTy = float>
   void fwdIntNBitSplitEmbeddingWeightedBagsImpl(
       Tensor *out, Tensor *devWeights, Tensor *uvmWeights,
       Tensor *weightsPlacements, Tensor *weightsTys, Tensor *dimOffsets,

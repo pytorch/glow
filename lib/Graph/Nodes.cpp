@@ -2993,8 +2993,8 @@ static bool verifyIntNBitSplitEmbeddingBagsNode(NodeValue dest,
                                                 NodeValue weightsOffsets,
                                                 NodeValue weightsPlacements,
                                                 NodeValue weightsTys) {
-  bool isValid = checkType(dest, devWeights.getElementType(), dest.getNode());
-  isValid &= checkType(devWeights, ElemKind::UInt8ITy, devWeights.getNode());
+  bool isValid =
+      checkType(devWeights, ElemKind::UInt8ITy, devWeights.getNode());
   isValid &= checkSameShape(weightsPlacements, weightsTys,
                             weightsPlacements.getNode());
   isValid &= checkType(
@@ -3014,7 +3014,8 @@ static bool verifyIntNBitSplitEmbeddingWeightedBagsNode(
     NodeValue dest, NodeValue devWeights, NodeValue weightsOffsets,
     NodeValue weightsPlacements, NodeValue weightsTys, NodeValue indices,
     NodeValue indiceWeights) {
-  bool isValid = checkType(dest, devWeights.getElementType(), dest.getNode());
+  bool isValid =
+      checkType(devWeights, ElemKind::UInt8ITy, devWeights.getNode());
   isValid &= checkType(devWeights, ElemKind::UInt8ITy, devWeights.getNode());
   isValid &= checkSameShape(weightsPlacements, weightsTys,
                             weightsPlacements.getNode());

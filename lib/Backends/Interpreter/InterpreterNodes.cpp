@@ -98,15 +98,6 @@ SumTy add(SumTy a, const uint8_t *row, const uint8_t *data,
   llvm_unreachable("Unsuppored SplitEmbeddingSparseType");
 }
 
-template <typename DataTy>
-void save(DataTy a, uint8_t *data, SplitEmbeddingSparseType dataTy) {
-  if (dataTy == SplitEmbeddingSparseType::EST_FLOAT) {
-    *(reinterpret_cast<float *>(data)) = a;
-  } else if (dataTy == SplitEmbeddingSparseType::EST_FLOAT16) {
-    *(reinterpret_cast<float16_t *>(data)) = a;
-  }
-}
-
 } // namespace IntNBitSplitEmbeddingBagsHelper
 
 #define dispatchImpl(functionName, elemTy, ...)                                \
@@ -215,20 +206,37 @@ void save(DataTy a, uint8_t *data, SplitEmbeddingSparseType dataTy) {
     llvm_unreachable("Type is not supported");                                 \
   }
 
-#define dispatchIndexAndOutputTypeImpl(functionName, indexTy, outputTy, ...)   \
+#define dispatchSplitEmbeddingTypeImpl(functionName, indexTy, outputTy,        \
+                                       weightsOffsetTy, ...)                   \
   switch (indexTy) {                                                           \
   case ElemKind::Int32ITy:                                                     \
     if (outputTy == SplitEmbeddingSparseType::EST_FLOAT) {                     \
-      functionName<int32_t, float>(__VA_ARGS__);                               \
+      if (weightsOffsetTy == ElemKind::Int32ITy) {                             \
+        functionName<int32_t, float, int32_t>(__VA_ARGS__);                    \
+      } else if (weightsOffsetTy == ElemKind::Int64ITy) {                      \
+        functionName<int32_t, float, int64_t>(__VA_ARGS__);                    \
+      }                                                                        \
     } else if (outputTy == SplitEmbeddingSparseType::EST_FLOAT16) {            \
-      functionName<int32_t, float16>(__VA_ARGS__);                             \
+      if (weightsOffsetTy == ElemKind::Int32ITy) {                             \
+        functionName<int32_t, float16, int32_t>(__VA_ARGS__);                  \
+      } else if (weightsOffsetTy == ElemKind::Int64ITy) {                      \
+        functionName<int32_t, float16, int64_t>(__VA_ARGS__);                  \
+      }                                                                        \
     }                                                                          \
     break;                                                                     \
   case ElemKind::Int64ITy:                                                     \
     if (outputTy == SplitEmbeddingSparseType::EST_FLOAT) {                     \
-      functionName<int64_t, float>(__VA_ARGS__);                               \
+      if (weightsOffsetTy == ElemKind::Int32ITy) {                             \
+        functionName<int64_t, float, int32_t>(__VA_ARGS__);                    \
+      } else if (weightsOffsetTy == ElemKind::Int64ITy) {                      \
+        functionName<int64_t, float, int64_t>(__VA_ARGS__);                    \
+      }                                                                        \
     } else if (outputTy == SplitEmbeddingSparseType::EST_FLOAT16) {            \
-      functionName<int64_t, float16>(__VA_ARGS__);                             \
+      if (weightsOffsetTy == ElemKind::Int32ITy) {                             \
+        functionName<int64_t, float16, int32_t>(__VA_ARGS__);                  \
+      } else if (weightsOffsetTy == ElemKind::Int64ITy) {                      \
+        functionName<int64_t, float16, int64_t>(__VA_ARGS__);                  \
+      }                                                                        \
     }                                                                          \
     break;                                                                     \
   default:                                                                     \
@@ -6470,19 +6478,20 @@ void BoundInterpreterFunction::fwdBatchedUnaryEmbeddingsBagsInstImpl(
 
 void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingBagsInst(
     const IntNBitSplitEmbeddingBagsInst *I) {
-  dispatchIndexAndOutputTypeImpl(fwdIntNBitSplitEmbeddingBagsInstImpl,
-                                 I->getIndices()->getElementType(),
-                                 I->getOutputDType(), I);
+  dispatchSplitEmbeddingTypeImpl(
+      fwdIntNBitSplitEmbeddingBagsInstImpl, I->getIndices()->getElementType(),
+      I->getOutputDType(), I->getWeightsOffsets()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsInst(
     const IntNBitSplitEmbeddingWeightedBagsInst *I) {
-  dispatchIndexAndOutputTypeImpl(fwdIntNBitSplitEmbeddingWeightedBagsInstImpl,
+  dispatchSplitEmbeddingTypeImpl(fwdIntNBitSplitEmbeddingWeightedBagsInstImpl,
                                  I->getIndices()->getElementType(),
-                                 I->getOutputDType(), I);
+                                 I->getOutputDType(),
+                                 I->getWeightsOffsets()->getElementType(), I);
 }
 
-template <typename IndexTy, typename OutputTy>
+template <typename IndexTy, typename OutputTy, typename WeightsOffsetTy>
 void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingBagsInstImpl(
     const IntNBitSplitEmbeddingBagsInst *I) {
   auto out = getTensor(I->getDest());
@@ -6498,13 +6507,13 @@ void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingBagsInstImpl(
   auto totalDims = I->getTotalDims();
   auto outputDType = I->getOutputDType();
 
-  fwdIntNBitSplitEmbeddingWeightedBagsImpl<IndexTy, OutputTy>(
+  fwdIntNBitSplitEmbeddingWeightedBagsImpl<IndexTy, OutputTy, WeightsOffsetTy>(
       out, devWeights, uvmWeights, weightsPlacements, weightsTys, dimOffsets,
       indices, offsets, weightsOffsets, poolingMode,
       /* indiceWeights */ nullptr, totalDims, outputDType);
 }
 
-template <typename IndexTy, typename OutputTy>
+template <typename IndexTy, typename OutputTy, typename WeightsOffsetTy>
 void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsInstImpl(
     const IntNBitSplitEmbeddingWeightedBagsInst *I) {
   auto out = getTensor(I->getDest());
@@ -6521,19 +6530,31 @@ void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsInstImpl(
   auto outputDType = I->getOutputDType();
   auto indiceWeights = getTensor(I->getIndiceWeight());
 
-  fwdIntNBitSplitEmbeddingWeightedBagsImpl<IndexTy, OutputTy>(
-      out, devWeights, uvmWeights, weightsPlacements, weightsTys, dimOffsets,
-      indices, offsets, weightsOffsets, poolingMode, indiceWeights, totalDims,
-      outputDType);
+  if (I->getIndiceWeight()->getElementType() == ElemKind::FloatTy) {
+    fwdIntNBitSplitEmbeddingWeightedBagsImpl<IndexTy, OutputTy, WeightsOffsetTy,
+                                             float>(
+        out, devWeights, uvmWeights, weightsPlacements, weightsTys, dimOffsets,
+        indices, offsets, weightsOffsets, poolingMode, indiceWeights, totalDims,
+        outputDType);
+  } else if (I->getIndiceWeight()->getElementType() == ElemKind::Float16Ty) {
+    fwdIntNBitSplitEmbeddingWeightedBagsImpl<IndexTy, OutputTy, WeightsOffsetTy,
+                                             float16_t>(
+        out, devWeights, uvmWeights, weightsPlacements, weightsTys, dimOffsets,
+        indices, offsets, weightsOffsets, poolingMode, indiceWeights, totalDims,
+        outputDType);
+  } else {
+    assert(false && "IndiceWeight can be Float32 or Float16 only");
+  }
 }
 
-template <typename IndexTy, typename OutputTy>
+template <typename IndexTy, typename OutputTy, typename WeightsOffsetTy,
+          typename IndiceWeightTy>
 void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsImpl(
     Tensor *out, Tensor *devWeights, Tensor *uvmWeights,
     Tensor *weightsPlacements, Tensor *weightsTys, Tensor *dimOffsets,
     Tensor *indices, Tensor *offsets, Tensor *weightsOffsets,
     int64_t poolingMode, Tensor *indiceWeights, int64_t totalDims,
-    int64_t outputDType) {
+    int64_t /*outputDType*/) {
   out->zero();
 
   auto indicesH = indices->getHandle<IndexTy>();
@@ -6543,18 +6564,15 @@ void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsImpl(
   auto weightsPlacementH = weightsPlacements->getHandle<int32_t>();
   auto weightsTysH = weightsTys->getHandle<uint8_t>();
   auto dimOffsetsH = dimOffsets->getHandle<int32_t>();
-  auto weightsOffsetsH = weightsOffsets->getHandle<int32_t>();
-  llvm::Optional<Handle<float>> indiceWeightsH;
+  auto weightsOffsetsH = weightsOffsets->getHandle<WeightsOffsetTy>();
+  llvm::Optional<Handle<IndiceWeightTy>> indiceWeightsH;
   if (indiceWeights) {
-    indiceWeightsH = indiceWeights->getHandle<float>();
+    indiceWeightsH = indiceWeights->getHandle<IndiceWeightTy>();
   }
-  auto outH = out->getHandle<uint8_t>();
+  auto outH = out->getHandle<OutputTy>();
 
   size_t numTables = dimOffsets->size() - 1;
   size_t numBatches = (offsets->size() - 1) / numTables;
-  auto outputSparseType = static_cast<SplitEmbeddingSparseType>(outputDType);
-  auto numTotalBytes = IntNBitSplitEmbeddingBagsHelper::unpaddedRowSizeInBytes(
-      totalDims, outputSparseType);
   int64_t maxDevWeightsBytes = devWeights->getSizeInBytes();
   int64_t maxUvmWeightsBytes = uvmWeights->getSizeInBytes();
 
@@ -6590,20 +6608,16 @@ void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsImpl(
                  "Index shall be within weights boundary.");
           sum = IntNBitSplitEmbeddingBagsHelper::add(
               sum, &weightsH.raw(idxRow), &weightsH.raw(idxData), weightTy,
-              d % 2, indiceWeights ? indiceWeightsH->raw(i) : 1.0);
+              d % 2,
+              indiceWeights ? static_cast<float>(indiceWeightsH->raw(i)) : 1.0);
         }
-        int64_t idxOut =
-            b * numTotalBytes +
-            IntNBitSplitEmbeddingBagsHelper::unpaddedRowSizeInBytes(
-                dimStart + d, outputSparseType);
+        int64_t idxOut = b * totalDims + dimStart + d;
         if (poolingMode == SplitEmbeddingPoolingMode::EP_MEAN &&
             indicesEnd > indicesStart) {
           OutputTy scale = (indicesEnd - indicesStart);
-          IntNBitSplitEmbeddingBagsHelper::save(sum / scale, &outH.raw(idxOut),
-                                                outputSparseType);
+          outH.raw(idxOut) = sum / scale;
         } else {
-          IntNBitSplitEmbeddingBagsHelper::save(sum, &outH.raw(idxOut),
-                                                outputSparseType);
+          outH.raw(idxOut) = sum;
         }
       }
     }

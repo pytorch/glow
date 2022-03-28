@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "glow/Base/Type.h"
 #if defined(_MSC_VER)
 // Enable non-standard math constants (e.g. M_2_SQRTPI, M_SQRT1_2)
 #define _USE_MATH_DEFINES
@@ -21182,26 +21183,26 @@ static void testIntNBitSplitEmbeddingBags(
   Tensor indicesTensorReal(IdxTy, {157});
   Tensor offsetsTensorReal(IdxTy, {9});
   Tensor weightsOffsetsTensorReal = std::move(WeightsOffsets);
-  Tensor dimOffsetsTensorReal(ElemKind::Int32ITy, {5});
-  Tensor weightsPlacementReal(ElemKind::Int32ITy, {4});
-  Tensor weightsTysTensorReal(ElemKind::UInt8ITy, {4});
+  Tensor dimOffsetsTensorReal(ElemKind::Int32ITy, {3});
+  Tensor weightsPlacementReal(ElemKind::Int32ITy, {2});
+  Tensor weightsTysTensorReal(ElemKind::UInt8ITy, {2});
 
   indicesTensorReal.getHandle<IndexTy>() = {
-      5, 3, 6, 0, 0, 5, 6, 6, 5, 7, 1, 1, 7, 6, 3,  1, 4,  1,  3, 3, 6,  1, 1,
-      6, 7, 2, 5, 4, 6, 7, 1, 4, 1, 4, 4, 5, 4, 2,  3, 6,  4,  0, 4, 2,  6, 7,
-      5, 0, 1, 3, 1, 2, 1, 5, 9, 3, 8, 4, 1, 4, 10, 4, 1,  1,  1, 7, 4,  7, 2,
-      2, 4, 3, 4, 9, 8, 8, 5, 5, 5, 2, 6, 7, 4, 7,  6, 6,  10, 0, 3, 10, 5, 4,
-      3, 3, 3, 4, 4, 9, 9, 7, 2, 1, 7, 4, 2, 9, 6,  6, 10, 5,  1, 0, 6,  3, 6,
-      2, 9, 3, 9, 3, 1, 3, 2, 3, 1, 3, 7, 2, 3, 3,  8, 7,  4,  7, 8, 9,  2, 3,
-      3, 4, 4, 8, 3, 4, 1, 9, 2, 1, 9, 2, 6, 8, 3,  3, 4,  2,  9,
+      5, 3, 6, 0, 0, 5, 6, 6, 5, 4, 1, 1, 4, 6, 3, 1, 4, 1, 3, 3, 6, 1, 1,
+      6, 4, 2, 5, 4, 6, 4, 1, 4, 1, 4, 4, 5, 4, 2, 3, 6, 4, 0, 4, 2, 6, 4,
+      5, 0, 1, 3, 1, 2, 1, 5, 5, 3, 6, 4, 1, 4, 1, 4, 1, 1, 1, 4, 4, 4, 2,
+      2, 4, 3, 4, 5, 6, 6, 5, 5, 5, 2, 6, 4, 4, 4, 6, 6, 1, 0, 3, 1, 5, 4,
+      3, 3, 3, 4, 4, 5, 5, 4, 2, 1, 4, 4, 2, 5, 6, 6, 1, 5, 1, 0, 6, 3, 6,
+      2, 5, 3, 5, 3, 1, 3, 2, 3, 1, 3, 4, 2, 3, 3, 6, 4, 4, 4, 6, 5, 2, 3,
+      3, 4, 4, 6, 3, 4, 1, 5, 2, 1, 5, 2, 6, 6, 3, 3, 4, 2, 5,
   };
   offsetsTensorReal.getHandle<IndexTy>() = {0, 0, 1, 2, 3, 51, 92, 123, 157};
-  dimOffsetsTensorReal.getHandle<int32_t>() = {0, 8, 16, 20, 26};
-  weightsPlacementReal.getHandle<int32_t>() = {3, 1, 2, 3};
+  dimOffsetsTensorReal.getHandle<int32_t>() = {0, 4, 10};
+  weightsPlacementReal.getHandle<int32_t>() = {3, 1};
   if (std::is_same<WeightTy, float>::value) {
-    weightsTysTensorReal.getHandle<uint8_t>() = {0, 0, 0, 0};
+    weightsTysTensorReal.getHandle<uint8_t>() = {0, 0};
   } else {
-    weightsTysTensorReal.getHandle<uint8_t>() = {1, 1, 1, 1};
+    weightsTysTensorReal.getHandle<uint8_t>() = {1, 1};
   }
 
   auto devWeights = mod.createPlaceholder(ElemKind::UInt8ITy,
@@ -21210,16 +21211,16 @@ static void testIntNBitSplitEmbeddingBags(
   auto indices = mod.createPlaceholder(IdxTy, {157}, "indices", false);
   auto offsets = mod.createPlaceholder(IdxTy, {9}, "offsets", false);
   auto weightsOffsets =
-      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "weightsOffsets", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {2}, "weightsOffsets", false);
   auto dimOffsets =
-      mod.createPlaceholder(ElemKind::Int32ITy, {5}, "dimOffsets", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {3}, "dimOffsets", false);
   auto uvmWeights = mod.createPlaceholder(ElemKind::UInt8ITy,
                                           uvmWeightsTensorReal.getSizeInBytes(),
                                           "uvmWeights", false);
   auto weightsPlacement =
-      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "weightsPlacement", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {2}, "weightsPlacement", false);
   auto weightsTys =
-      mod.createPlaceholder(ElemKind::UInt8ITy, {4}, "weightsTys", false);
+      mod.createPlaceholder(ElemKind::UInt8ITy, {2}, "weightsTys", false);
   auto indiceWeights = NodeValue();
 
   bindings.insert(devWeights, std::move(devWeightsTensorReal));
@@ -21233,7 +21234,7 @@ static void testIntNBitSplitEmbeddingBags(
 
   auto *R = F->createIntNBitSplitEmbeddingBags(
       "IntNBitSplitEmbeddingBags", devWeights, uvmWeights, weightsPlacement,
-      weightsOffsets, weightsTys, dimOffsets, 26, indices, offsets, poolingMode,
+      weightsOffsets, weightsTys, dimOffsets, 10, indices, offsets, poolingMode,
       outputDType);
   auto *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
@@ -21247,136 +21248,59 @@ static void testIntNBitSplitEmbeddingBags(
 }
 
 static Tensor getIntNBitSplitEmbeddingBagsWeightsFloat() {
-  Tensor weights(ElemKind::UInt8ITy, 1024);
+  Tensor weights(ElemKind::UInt8ITy, 368);
+  // Mixture of floats:
+  // 1.7240260839, 6.89610433578, 10.344156265, -0.07635498
+  // -0.30541992187, 1.96484375, 7.859375, 11.7890625
   weights.getHandle<uint8_t>() = {
-      122, 49,  217, 65,  98,  154, 111, 224, 171, 33,  179, 80,  219, 246, 62,
-      36,  94,  80,  108, 33,  71,  149, 148, 130, 238, 154, 108, 236, 242, 144,
-      72,  152, 103, 0,   226, 107, 40,  232, 196, 50,  21,  205, 140, 139, 178,
-      100, 44,  74,  10,  116, 203, 228, 153, 102, 220, 160, 184, 187, 168, 201,
-      145, 43,  139, 36,  184, 195, 212, 245, 196, 128, 133, 219, 5,   211, 31,
-      144, 211, 63,  5,   104, 169, 237, 245, 52,  171, 136, 32,  191, 101, 174,
-      162, 10,  84,  4,   92,  183, 28,  171, 23,  65,  115, 28,  209, 250, 32,
-      31,  104, 0,   48,  37,  148, 163, 208, 94,  16,  182, 39,  225, 204, 211,
-      78,  234, 148, 37,  52,  140, 131, 85,  209, 45,  203, 183, 55,  201, 20,
-      75,  103, 132, 101, 2,   121, 82,  251, 110, 4,   3,   62,  237, 27,  106,
-      46,  86,  230, 49,  76,  85,  117, 18,  244, 176, 183, 8,   102, 32,  97,
-      138, 52,  64,  79,  73,  2,   159, 245, 48,  145, 72,  7,   180, 120, 108,
-      58,  114, 145, 150, 1,   81,  182, 133, 197, 75,  80,  34,  70,  30,  33,
-      44,  124, 227, 177, 0,   27,  52,  117, 73,  37,  103, 194, 179, 134, 188,
-      156, 10,  12,  167, 86,  103, 89,  224, 128, 87,  110, 183, 23,  208, 249,
-      224, 4,   63,  85,  135, 242, 206, 46,  68,  9,   127, 71,  24,  17,  181,
-      39,  156, 171, 92,  92,  131, 244, 95,  233, 226, 183, 22,  71,  38,  66,
-      93,  45,  85,  241, 9,   240, 48,  12,  41,  252, 190, 202, 191, 248, 170,
-      174, 157, 73,  67,  5,   247, 56,  21,  224, 150, 47,  65,  125, 143, 21,
-      194, 194, 142, 211, 36,  29,  196, 110, 77,  179, 235, 173, 237, 152, 18,
-      254, 2,   120, 254, 192, 18,  251, 113, 139, 105, 69,  83,  25,  230, 65,
-      116, 107, 107, 230, 105, 245, 133, 28,  88,  97,  47,  209, 6,   101, 157,
-      198, 153, 108, 197, 116, 183, 139, 32,  115, 237, 229, 146, 13,  30,  205,
-      234, 66,  108, 52,  83,  91,  81,  240, 4,   21,  131, 224, 142, 250, 6,
-      150, 159, 36,  220, 130, 178, 133, 187, 19,  221, 187, 198, 63,  236, 67,
-      166, 248, 151, 204, 148, 228, 176, 181, 128, 174, 118, 186, 214, 220, 199,
-      56,  160, 90,  173, 236, 124, 41,  109, 98,  231, 83,  160, 1,   92,  210,
-      110, 102, 68,  198, 84,  56,  187, 20,  68,  58,  147, 0,   0,   0,   0,
+      0,   160, 60,  65,  0,   128, 251, 63,  170, 129, 37,  65,  227, 172, 220,
+      63,  227, 172, 220, 63,  0,   128, 251, 63,  0,   160, 60,  65,  227, 172,
+      220, 63,  0,   128, 251, 63,  227, 172, 220, 63,  0,   144, 234, 190, 227,
+      172, 220, 63,  227, 172, 220, 63,  170, 129, 37,  65,  0,   144, 234, 190,
+      227, 172, 220, 63,  0,   144, 234, 190, 227, 172, 220, 63,  227, 172, 220,
+      64,  170, 129, 37,  65,  0,   96,  156, 190, 0,   144, 234, 190, 0,   96,
+      156, 189, 0,   128, 251, 64,  0,   160, 60,  65,  0,   128, 251, 63,  0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   227, 172, 220, 63,  0,   128, 251,
+      63,  227, 172, 220, 63,  0,   144, 234, 190, 0,   160, 60,  65,  227, 172,
+      220, 63,  227, 172, 220, 63,  227, 172, 220, 63,  170, 129, 37,  65,  227,
+      172, 220, 63,  170, 129, 37,  65,  227, 172, 220, 63,  0,   160, 60,  65,
+      227, 172, 220, 63,  227, 172, 220, 63,  0,   160, 60,  65,  0,   144, 234,
+      190, 227, 172, 220, 63,  227, 172, 220, 63,  0,   160, 60,  65,  0,   144,
+      234, 190, 227, 172, 220, 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   227, 172, 220, 63,  0,   128, 251, 63,
+      227, 172, 220, 63,  0,   144, 234, 190, 0,   160, 60,  65,  227, 172, 220,
+      63,  227, 172, 220, 63,  227, 172, 220, 63,  170, 129, 37,  65,  227, 172,
+      220, 63,  170, 129, 37,  65,  227, 172, 220, 63,  0,   160, 60,  65,  0,
       0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
       0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
       0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
       0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
       0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   108, 52,  136, 212, 17,  233, 188, 145, 127, 218, 92,  119, 131,
-      107, 11,  179, 73,  94,  231, 175, 54,  178, 116, 127, 212, 38,  175, 196,
-      145, 207, 204, 68,  135, 229, 94,  16,  167, 20,  189, 61,  252, 21,  21,
-      196, 245, 72,  230, 14,  94,  146, 3,   37,  213, 199, 19,  8,   244, 122,
-      174, 185, 2,   11,  42,  23,  7,   177, 185, 222, 90,  44,  220, 41,  53,
-      135, 46,  227, 41,  85,  183, 166, 250, 156, 10,  50,  100, 103, 120, 95,
-      105, 10,  6,   222, 233, 76,  147, 254, 251, 139, 36,  23,  71,  169, 228,
-      161, 174, 244, 71,  85,  118, 163, 126, 152, 9,   224, 98,  49,  66,  146,
-      77,  186, 218, 130, 112, 48,  20,  211, 141, 175, 145, 254, 217, 102, 22,
-      184, 213, 179, 204, 206, 151, 29,  209, 125, 236, 142, 217, 157, 243, 162,
-      163, 95,  227, 223, 0,   0,   0,   0,   0,   0,   0,   0,   187, 236, 246,
-      127, 92,  248, 2,   247, 7,   41,  108, 161, 66,  133, 134, 159, 55,  85,
-      161, 73,  108, 95,  106, 145, 0,   0,   0,   0,   0,   0,   0,   0,   221,
-      149, 198, 30,  206, 45,  150, 80,  172, 118, 29,  250, 196, 93,  39,  252,
-      118, 112, 62,  169, 170, 59,  99,  106, 0,   0,   0,   0,   0,   0,   0,
-      0,   238, 12,  93,  71,  43,  47,  86,  230, 138, 103, 125, 129, 129, 251,
-      207, 26,  249, 232, 50,  168, 156, 63,  238, 159, 0,   0,   0,   0,   0,
-      0,   0,   0,   68,  74,  234, 112, 127, 94,  155, 155, 178, 19,  153, 186,
-      137, 218, 13,  57,  243, 106, 99,  219, 153, 218, 174, 21,  0,   0,   0,
-      0,   0,   0,   0,   0,   12,  125, 32,  194, 118, 244, 208, 234, 21,  220,
-      101, 34,  150, 182, 102, 196, 161, 155, 235, 148, 120, 153, 161, 239, 0,
-      0,   0,   0,   0,   0,   0,   0,   175, 148, 182, 141, 251, 25,  127, 0,
-      33,  67,  236, 173, 100, 89,  67,  195, 11,  151, 96,  143, 136, 34,  61,
-      196, 0,   0,   0,   0,   0,   0,   0,   0,   193, 251, 231, 23,  174, 240,
-      116, 161, 6,   46,  49,  198, 175, 197, 131, 1,   233, 160, 33,  78,  254,
-      215, 103, 171, 0,   0,   0,   0,   0,   0,   0,   0,   6,   251, 197, 145,
-      64,  128, 52,  72,  55,  60,  21,  242, 33,  12,  252, 133, 165, 15,  65,
-      93,  237, 166, 204, 87,  0,   0,   0,   0,   0,   0,   0,   0,   202, 13,
-      100, 124, 139, 43,  180, 40,  165, 244, 228, 109, 9,   226, 55,  154, 88,
-      4,   122, 102, 185, 113, 165, 39,  0,   0,   0,   0,   0,   0,   0,   0,
-      212, 2,   67,  190, 101, 23,  80,  96,  123, 7,   43,  179, 114, 167, 149,
-      199, 5,   204, 192, 145, 236, 246, 143, 98,  0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,
   };
   return weights;
 }
 
 static Tensor getIntNBitSplitEmbeddingBagsWeightsFloat16() {
-  Tensor weights(ElemKind::UInt8ITy, 768);
+  Tensor weights(ElemKind::UInt8ITy, 192);
+  // Mixture of float16_ts:
+  // 1.7236,  6.8945, 10.3438, -0.0764, -0.3054,
+  // -0.4580,  7.8594, 11.7891, 1.9648
   weights.getHandle<uint8_t>() = {
-      194, 31,  91,  184, 11,  126, 172, 207, 244, 59,  98,  70,  26,  85,  30,
-      218, 102, 157, 91,  59,  133, 49,  3,   145, 241, 208, 68,  54,  13,  84,
-      249, 182, 16,  70,  152, 11,  184, 203, 220, 46,  119, 32,  168, 206, 63,
-      3,   108, 180, 73,  26,  10,  254, 201, 92,  243, 246, 143, 99,  186, 216,
-      51,  208, 131, 193, 182, 25,  242, 197, 170, 16,  60,  237, 170, 193, 87,
-      37,  140, 103, 55,  145, 242, 15,  118, 9,   33,  37,  103, 97,  241, 220,
-      99,  7,   69,  156, 185, 47,  94,  194, 135, 44,  54,  224, 135, 217, 160,
-      69,  253, 57,  58,  228, 53,  65,  201, 106, 105, 66,  157, 185, 19,  170,
-      141, 55,  55,  12,  114, 4,   113, 252, 32,  166, 127, 17,  228, 236, 23,
-      30,  17,  242, 236, 39,  215, 107, 187, 224, 246, 53,  26,  243, 120, 19,
-      26,  26,  22,  175, 181, 104, 194, 161, 192, 25,  176, 51,  100, 207, 137,
-      250, 125, 115, 231, 249, 14,  223, 31,  161, 194, 140, 226, 102, 210, 43,
-      146, 254, 251, 212, 4,   211, 138, 198, 62,  198, 174, 207, 0,   0,   0,
+      220, 63,  229, 73,  220, 71,  229, 62,  229, 70,  44,  73,  227, 172, 227,
+      180, 84,  183, 220, 71,  44,  73,  180, 84,  229, 70,  220, 71,  220, 63,
+      229, 62,  84,  183, 44,  73,  229, 70,  229, 62,  220, 63,  220, 71,  227,
+      180, 227, 180, 227, 172, 44,  73,  229, 70,  229, 62,  220, 63,  229, 73,
+      0,   0,   0,   0,   220, 73,  220, 71,  220, 63,  180, 84,  44,  73,  84,
+      183, 229, 62,  220, 63,  220, 71,  227, 180, 44,  73,  229, 70,  229, 62,
+      229, 70,  220, 63,  227, 180, 44,  73,  229, 70,  84,  183, 229, 73,  220,
+      71,  227, 172, 229, 62,  84,  183, 227, 180, 220, 63,  227, 172, 227, 180,
+      229, 70,  229, 62,  44,  73,  227, 172, 220, 63,  229, 70,  229, 62,  227,
+      172, 220, 63,  44,  73,  84,  183, 220, 71,  229, 62,  227, 172, 220, 63,
+      227, 172, 220, 63,  227, 172, 220, 63,  44,  73,  84,  183, 227, 172, 0,
       0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   11,  241, 92,  203, 12,  128, 247, 140, 60,  47,  141, 226, 212, 234,
-      32,  66,  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   117, 222, 214, 8,   99,  240,
-      40,  218, 0,   0,   0,   0,   0,   0,   0,   0,   204, 204, 221, 108, 194,
-      66,  233, 230, 0,   0,   0,   0,   0,   0,   0,   0,   164, 91,  127, 89,
-      51,  43,  87,  126, 0,   0,   0,   0,   0,   0,   0,   0,   103, 80,  249,
-      187, 217, 152, 133, 65,  0,   0,   0,   0,   0,   0,   0,   0,   164, 131,
-      158, 92,  37,  246, 208, 134, 0,   0,   0,   0,   0,   0,   0,   0,   28,
-      4,   211, 193, 186, 39,  7,   188, 0,   0,   0,   0,   0,   0,   0,   0,
-      64,  42,  121, 216, 118, 47,  242, 44,  0,   0,   0,   0,   0,   0,   0,
-      0,   248, 161, 215, 33,  60,  113, 206, 210, 0,   0,   0,   0,   0,   0,
-      0,   0,   205, 192, 81,  45,  132, 157, 201, 106, 183, 156, 198, 187, 0,
-      0,   0,   0,   254, 183, 131, 85,  139, 7,   245, 30,  230, 44,  243, 11,
-      0,   0,   0,   0,   24,  116, 161, 118, 240, 113, 161, 172, 26,  24,  150,
-      251, 0,   0,   0,   0,   43,  30,  81,  239, 141, 159, 216, 59,  77,  230,
-      199, 213, 0,   0,   0,   0,   36,  145, 99,  116, 147, 140, 90,  179, 237,
-      161, 251, 186, 0,   0,   0,   0,   13,  58,  154, 71,  196, 79,  206, 176,
-      140, 189, 1,   95,  0,   0,   0,   0,   48,  157, 37,  77,  93,  54,  180,
-      147, 237, 28,  11,  156, 0,   0,   0,   0,   203, 222, 181, 241, 46,  21,
-      120, 155, 207, 96,  100, 175, 0,   0,   0,   0,   41,  84,  184, 64,  8,
-      104, 228, 137, 228, 60,  147, 147, 0,   0,   0,   0,   88,  90,  35,  217,
-      195, 107, 117, 238, 122, 50,  107, 13,  0,   0,   0,   0,   21,  200, 244,
-      182, 240, 207, 181, 113, 105, 98,  30,  101, 0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
   };
   return weights;
 }
@@ -21385,12 +21309,13 @@ static Tensor getIntNBitSplitEmbeddingBagsWeightsFloat16() {
 /// feature with sum pooling
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Float) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 4});
+  Tensor expected(ElemKind::FloatTy, {2, 1});
   // 2 floats:
   // 6.896104335784912 = 1.724026083946228 * 4,
   // 10.344156265258789 = 1.724026083946228 * 6
-  expected.getHandle<uint8_t>() = {
-      227, 172, 220, 64, 170, 129, 37, 65,
+  expected.getHandle<float>() = {
+      6.896104335784912,
+      10.344156265258789,
   };
 
   testIntNBitSplitEmbeddingBagsSingle<float, int32_t, float>(
@@ -21404,11 +21329,12 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Float) {
 /// feature with mean pooling
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Float_MeanPooling) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 4});
+  Tensor expected(ElemKind::FloatTy, {2, 1});
 
   // 2 floats: 1.724026083946228, 1.724026083946228
-  expected.getHandle<uint8_t>() = {
-      227, 172, 220, 63, 227, 172, 220, 63,
+  expected.getHandle<float>() = {
+      1.724026083946228,
+      1.724026083946228,
   };
 
   testIntNBitSplitEmbeddingBagsSingle<float, int32_t, float>(
@@ -21422,19 +21348,20 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Float_MeanPooling) {
 /// feature with sum pooling in half floats
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Float16_SumPooling) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 4});
+  Tensor expected(ElemKind::Float16Ty, {2, 1});
 
   // 2 floats:
   // -0.305419921875 = -0.07635498 * 4
   // -0.4581298828125 = -0.07635498 * 6
-  expected.getHandle<uint8_t>() = {
-      0, 96, 156, 190, 0, 144, 234, 190,
+  expected.getHandle<float16_t>() = {
+      -0.3054,
+      -0.4582,
   };
 
   testIntNBitSplitEmbeddingBagsSingle<float16_t, int32_t, float>(
       bindings_, mod_, F_, EE_, SplitEmbeddingSparseType::EST_FLOAT16,
       ElemKind::Int32ITy, std::move(expected),
-      SplitEmbeddingPoolingMode::EP_SUM, SplitEmbeddingSparseType::EST_FLOAT,
+      SplitEmbeddingPoolingMode::EP_SUM, SplitEmbeddingSparseType::EST_FLOAT16,
       0.0001);
 }
 
@@ -21442,17 +21369,18 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Float16_SumPooling) {
 /// feature with mean pooling in half floats
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Float16_MeanPooling) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 4});
+  Tensor expected(ElemKind::Float16Ty, {2, 1});
 
   // 2 floats: -0.07635498, -0.07635498
-  expected.getHandle<uint8_t>() = {
-      0, 96, 156, 189, 0, 96, 156, 189,
+  expected.getHandle<float16_t>() = {
+      -0.07635498,
+      -0.07635498,
   };
 
   testIntNBitSplitEmbeddingBagsSingle<float16_t, int32_t, float>(
       bindings_, mod_, F_, EE_, SplitEmbeddingSparseType::EST_FLOAT16,
       ElemKind::Int32ITy, std::move(expected),
-      SplitEmbeddingPoolingMode::EP_MEAN, SplitEmbeddingSparseType::EST_FLOAT,
+      SplitEmbeddingPoolingMode::EP_MEAN, SplitEmbeddingSparseType::EST_FLOAT16,
       0.0001);
 }
 
@@ -21460,13 +21388,14 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Float16_MeanPooling) {
 /// feature with sum pooling in int8
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Int8_SumPooling) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 4});
+  Tensor expected(ElemKind::FloatTy, {2, 1});
 
   // 2 floats:
   // 7.859375 =  1.964840 * 4
   // 11.7890625 =  1.964840 * 6
-  expected.getHandle<uint8_t>() = {
-      0, 128, 251, 64, 0, 160, 60, 65,
+  expected.getHandle<float>() = {
+      7.859375,
+      11.7890625,
   };
 
   testIntNBitSplitEmbeddingBagsSingle<uint8_t, int32_t, float>(
@@ -21480,11 +21409,12 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Int8_SumPooling) {
 /// feature with mean pooling in int8
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Int8_MeanPooling) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 4});
+  Tensor expected(ElemKind::FloatTy, {2, 1});
 
   // 2 floats: 1.96484375, 1.96484375
-  expected.getHandle<uint8_t>() = {
-      0, 128, 251, 63, 0, 128, 251, 63,
+  expected.getHandle<float>() = {
+      1.96484375,
+      1.96484375,
   };
 
   testIntNBitSplitEmbeddingBagsSingle<uint8_t, int32_t, float>(
@@ -21498,13 +21428,14 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Int8_MeanPooling) {
 /// feature with sum pooling in int4
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Int4_SumPooling) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 4});
+  Tensor expected(ElemKind::FloatTy, {2, 1});
 
   // 2 floats:
   // 7.859375 =  1.964840 * 4
   // 11.7890625 =  1.964840 * 6
-  expected.getHandle<uint8_t>() = {
-      0, 128, 251, 64, 0, 160, 60, 65,
+  expected.getHandle<float>() = {
+      7.859375,
+      11.7890625,
   };
 
   testIntNBitSplitEmbeddingBagsSingle<uint8_t, int32_t, float>(
@@ -21518,11 +21449,12 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Int4_SumPooling) {
 /// feature with mean pooling in int4
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Int4_MeanPooling) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 4});
+  Tensor expected(ElemKind::FloatTy, {2, 1});
 
   // 2 floats: 1.96484375, 1.96484375
-  expected.getHandle<uint8_t>() = {
-      0, 128, 251, 63, 0, 128, 251, 63,
+  expected.getHandle<float>() = {
+      1.96484375,
+      1.96484375,
   };
 
   testIntNBitSplitEmbeddingBagsSingle<uint8_t, int32_t, float>(
@@ -21535,56 +21467,40 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBagsSingle_Int4_MeanPooling) {
 /// Test that IntNBitSplitEmbeddingBags is correctly supported in FloatTy.
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBags_Float) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 104});
-  expected.getHandle<uint8_t>() = {
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   12,  177, 57,  224, 0,   0,   128, 127, 127, 218, 92,
-      120, 0,   0,   128, 255, 187, 236, 246, 127, 138, 116, 196, 247, 172, 118,
-      29,  251, 196, 93,  39,  253, 182, 66,  156, 103, 219, 39,  161, 239, 183,
-      8,   102, 32,  97,  138, 52,  64,  79,  73,  2,   159, 245, 48,  145, 72,
-      7,   180, 120, 108, 58,  114, 145, 150, 1,   81,  182, 133, 197, 75,  80,
-      34,  7,   177, 185, 222, 90,  44,  220, 41,  53,  135, 46,  227, 41,  85,
-      183, 166, 250, 156, 10,  50,  100, 103, 120, 95,  105, 10,  6,   222, 233,
-      76,  147, 254, 187, 236, 246, 127, 0,   0,   128, 127, 127, 218, 92,  119,
-      0,   0,   128, 255, 187, 236, 246, 127, 138, 116, 196, 247, 236, 212, 68,
-      251, 53,  53,  81,  253, 131, 4,   122, 103, 74,  5,   142, 107,
+  Tensor expected(ElemKind::FloatTy, {4, 10});
+  expected.getHandle<float>() = {
+      0,       0,        0,       0,        131.376,  52.684,    258.604,
+      83.0115, 306.767,  44.258,  -0.30542, -0.45813, -0.076355, 7.85938,
+      103.333, 43.3415,  220.675, 87.0732,  233.571,  34.8302,   1.72403,
+      10.3442, -0.45813, 1.72403, 49.8883,  24.3772,  113.786,   75.9683,
+      120.902, 14.0333,  11.7891, 1.96484,  0,        0,         42.534,
+      27.5844, 137.922,  95.5932, 131.346,  14.8411,
   };
 
-  Tensor weightsOffsets(ElemKind::Int32ITy, {4});
-  weightsOffsets.getHandle<int32_t>() = {0, 384, 512, 640};
+  Tensor weightsOffsets(ElemKind::Int32ITy, {2});
+  weightsOffsets.getHandle<int32_t>() = {0, 128};
 
   testIntNBitSplitEmbeddingBags<float, int32_t, float>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy,
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy,
       getIntNBitSplitEmbeddingBagsWeightsFloat(), std::move(weightsOffsets),
       std::move(expected), SplitEmbeddingPoolingMode::EP_SUM,
-      SplitEmbeddingSparseType::EST_FLOAT, 0.0001);
+      SplitEmbeddingSparseType::EST_FLOAT, 0.001);
 }
 
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBags_Float_MeanPooling) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 104});
-  expected.getHandle<uint8_t>() = {
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   187, 150, 119, 221, 0,   0,   128, 127, 85,  60,  147,
-      117, 0,   0,   128, 255, 187, 236, 246, 127, 225, 202, 74,  245, 4,   139,
-      162, 248, 227, 195, 172, 250, 31,  77,  33,  101, 177, 90,  38,  237, 183,
-      8,   102, 32,  97,  138, 52,  64,  79,  73,  2,   159, 245, 48,  145, 72,
-      7,   180, 120, 108, 58,  114, 145, 150, 1,   81,  182, 133, 197, 75,  80,
-      34,  7,   177, 185, 222, 90,  44,  220, 41,  53,  135, 46,  227, 41,  85,
-      183, 166, 250, 156, 10,  50,  100, 103, 120, 95,  105, 10,  6,   222, 233,
-      76,  147, 254, 187, 236, 246, 127, 0,   0,   128, 127, 155, 95,  172, 116,
-      0,   0,   128, 255, 187, 236, 246, 127, 40,  230, 56,  245, 222, 64,  185,
-      248, 200, 230, 196, 250, 138, 79,  235, 100, 160, 170, 5,   105,
+  Tensor expected(ElemKind::FloatTy, {4, 10});
+  expected.getHandle<float>() = {
+      0,        0,        0,        0,        2.73699,  1.09758,   5.38758,
+      1.72941,  6.39097,  0.922043, -0.30542, -0.45813, -0.076355, 7.85938,
+      2.52032,  1.05711,  5.38233,  2.12374,  5.69685,  0.849516,  1.72403,
+      10.3442,  -0.45813, 1.72403,  1.6093,   0.786361, 3.67051,   2.45059,
+      3.90006,  0.452689, 11.7891,  1.96484,  0,        0,         1.251,
+      0.811306, 4.05653,  2.81156,  3.86312,  0.436503,
   };
 
-  Tensor weightsOffsets(ElemKind::Int32ITy, {4});
-  weightsOffsets.getHandle<int32_t>() = {0, 384, 512, 640};
+  Tensor weightsOffsets(ElemKind::Int32ITy, {2});
+  weightsOffsets.getHandle<int32_t>() = {0, 128};
   testIntNBitSplitEmbeddingBags<float, int32_t, float>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy,
       getIntNBitSplitEmbeddingBagsWeightsFloat(), std::move(weightsOffsets),
@@ -21596,19 +21512,18 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBags_Float_MeanPooling) {
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBags_Float16) {
   CHECK_IF_ENABLED();
 
-  Tensor expected(ElemKind::UInt8ITy, {2, 52});
-  expected.getHandle<uint8_t>() = {
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   76,  227, 74,  122, 0,   252, 0,   126, 0,   124, 0,   124, 0,
-      124, 94,  244, 131, 240, 0,   252, 242, 15,  118, 9,   33,  37,  103, 97,
-      241, 220, 99,  7,   69,  156, 185, 47,  0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   54,  122, 0,   124, 0,   252,
-      0,   126, 0,   124, 0,   124, 0,   124, 116, 246, 48,  242, 0,   252,
+  Tensor expected(ElemKind::Float16Ty, {4, 10});
+  expected.getHandle<float16_t>() = {
+      0,       0,       0,       0,       185.625,   147.5,   142,
+      402.25,  151.875, 209.625, 7.85938, -0.30542,  10.3438, 6.89453,
+      148.125, 120.625, 117.312, 175.375, 113.375,   183.375, -0.076355,
+      10.3438, 6.89453, 1.72363, 100.75,  81.6875,   61.4375, 147,
+      118.5,   90.375,  10.3438, 6.89453, -0.458008, 11.7891, 92.875,
+      105.688, 49.6875, 76,      130,     118.5,
   };
 
-  Tensor weightsOffsets(ElemKind::Int32ITy, {4});
-  weightsOffsets.getHandle<int32_t>() = {0, 256, 384, 512};
+  Tensor weightsOffsets(ElemKind::Int32ITy, {2});
+  weightsOffsets.getHandle<int32_t>() = {0, 64};
 
   testIntNBitSplitEmbeddingBags<float16_t, int32_t, float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy,
@@ -21619,18 +21534,17 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBags_Float16) {
 
 TEST_P(OperatorTest, IntNBitSplitEmbeddingBags_Float16_MeanPooling) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 52});
-  expected.getHandle<uint8_t>() = {
-      0,   0,   0,   0,   0,   0,   0,   0,   0,  0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,  0,   0,   0,   0,   0,   0,
-      0,   0,   221, 204, 49,  100, 0,   252, 0,  126, 0,   124, 0,   124, 0,
-      124, 130, 224, 168, 220, 0,   252, 242, 15, 118, 9,   33,  37,  103, 97,
-      241, 220, 99,  7,   69,  156, 185, 47,  0,  0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,  217, 100, 0,   124, 0,   252,
-      0,   126, 0,   124, 0,   124, 0,   124, 19, 226, 211, 221, 0,   252,
+  Tensor expected(ElemKind::Float16Ty, {4, 10});
+  expected.getHandle<float16_t>() = {
+      0,       0,       0,       0,       3.86719,   3.07227, 2.95898,
+      8.38281, 3.16406, 4.36719, 7.85938, -0.30542,  10.3438, 6.89453,
+      3.61328, 2.94141, 2.86133, 4.27734, 2.76562,   4.47266, -0.076355,
+      10.3438, 6.89453, 1.72363, 3.25,    2.63477,   1.98145, 4.74219,
+      3.82227, 2.91602, 10.3438, 6.89453, -0.458008, 11.7891, 2.73242,
+      3.10938, 1.46094, 2.23438, 3.82422, 3.48438,
   };
-  Tensor weightsOffsets(ElemKind::Int32ITy, {4});
-  weightsOffsets.getHandle<int32_t>() = {0, 256, 384, 512};
+  Tensor weightsOffsets(ElemKind::Int32ITy, {2});
+  weightsOffsets.getHandle<int32_t>() = {0, 64};
 
   testIntNBitSplitEmbeddingBags<float16_t, int32_t, float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy,
@@ -21640,40 +21554,42 @@ TEST_P(OperatorTest, IntNBitSplitEmbeddingBags_Float16_MeanPooling) {
 }
 
 /// Test IntNBitSplitEmbeddingWeightedBags
-template <typename WeightTy, typename IndexTy, typename OutputTy>
+template <typename WeightTy, typename IndexTy, typename OutputTy,
+          typename IndexWeightTy>
 static void testIntNBitSplitEmbeddingWeightedBags(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind IdxTy, Tensor Weights,
-    Tensor WeightsOffsets, Tensor expected,
-    SplitEmbeddingSparseType outputDType, float allowedError) {
+    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind IdxTy,
+    ElemKind IdxWeightTy, Tensor Weights, Tensor WeightsOffsets,
+    Tensor expected, SplitEmbeddingSparseType outputDType, float allowedError) {
   Tensor devWeightsTensorReal = Weights.clone();
   Tensor uvmWeightsTensorReal = Weights.clone();
   Tensor indicesTensorReal(IdxTy, {157});
   Tensor offsetsTensorReal(IdxTy, {9});
   Tensor weightsOffsetsTensorReal = std::move(WeightsOffsets);
-  Tensor dimOffsetsTensorReal(ElemKind::Int32ITy, {5});
-  Tensor weightsPlacementReal(ElemKind::Int32ITy, {4});
-  Tensor weightsTysTensorReal(ElemKind::UInt8ITy, {4});
-  Tensor indiceWeightsTensorReal(ElemKind::FloatTy, {157});
+  Tensor dimOffsetsTensorReal(ElemKind::Int32ITy, {3});
+  Tensor weightsPlacementReal(ElemKind::Int32ITy, {2});
+  Tensor weightsTysTensorReal(ElemKind::UInt8ITy, {2});
+  Tensor indiceWeightsTensorReal(IdxWeightTy, {157});
 
   indicesTensorReal.getHandle<IndexTy>() = {
-      5, 3, 6, 0, 0, 5, 6, 6, 5, 7, 1, 1, 7, 6, 3,  1, 4,  1,  3, 3, 6,  1, 1,
-      6, 7, 2, 5, 4, 6, 7, 1, 4, 1, 4, 4, 5, 4, 2,  3, 6,  4,  0, 4, 2,  6, 7,
-      5, 0, 1, 3, 1, 2, 1, 5, 9, 3, 8, 4, 1, 4, 10, 4, 1,  1,  1, 7, 4,  7, 2,
-      2, 4, 3, 4, 9, 8, 8, 5, 5, 5, 2, 6, 7, 4, 7,  6, 6,  10, 0, 3, 10, 5, 4,
-      3, 3, 3, 4, 4, 9, 9, 7, 2, 1, 7, 4, 2, 9, 6,  6, 10, 5,  1, 0, 6,  3, 6,
-      2, 9, 3, 9, 3, 1, 3, 2, 3, 1, 3, 7, 2, 3, 3,  8, 7,  4,  7, 8, 9,  2, 3,
-      3, 4, 4, 8, 3, 4, 1, 9, 2, 1, 9, 2, 6, 8, 3,  3, 4,  2,  9,
+      5, 3, 6, 0, 0, 5, 6, 6, 5, 4, 1, 1, 4, 6, 3, 1, 4, 1, 3, 3, 6, 1, 1,
+      6, 4, 2, 5, 4, 6, 4, 1, 4, 1, 4, 4, 5, 4, 2, 3, 6, 4, 0, 4, 2, 6, 4,
+      5, 0, 1, 3, 1, 2, 1, 5, 5, 3, 6, 4, 1, 4, 1, 4, 1, 1, 1, 4, 4, 4, 2,
+      2, 4, 3, 4, 5, 6, 6, 5, 5, 5, 2, 6, 4, 4, 4, 6, 6, 1, 0, 3, 1, 5, 4,
+      3, 3, 3, 4, 4, 5, 5, 4, 2, 1, 4, 4, 2, 5, 6, 6, 1, 5, 1, 0, 6, 3, 6,
+      2, 5, 3, 5, 3, 1, 3, 2, 3, 1, 3, 4, 2, 3, 3, 6, 4, 4, 4, 6, 5, 2, 3,
+      3, 4, 4, 6, 3, 4, 1, 5, 2, 1, 5, 2, 6, 6, 3, 3, 4, 2, 5,
   };
   offsetsTensorReal.getHandle<IndexTy>() = {0, 0, 1, 2, 3, 51, 92, 123, 157};
-  dimOffsetsTensorReal.getHandle<int32_t>() = {0, 8, 16, 20, 26};
-  weightsPlacementReal.getHandle<int32_t>() = {3, 1, 2, 3};
+  dimOffsetsTensorReal.getHandle<int32_t>() = {0, 4, 10};
+  weightsPlacementReal.getHandle<int32_t>() = {3, 1};
   if (std::is_same<WeightTy, float>::value) {
-    weightsTysTensorReal.getHandle<uint8_t>() = {0, 0, 0, 0};
+    weightsTysTensorReal.getHandle<uint8_t>() = {0, 0};
   } else {
-    weightsTysTensorReal.getHandle<uint8_t>() = {1, 1, 1, 1};
+    weightsTysTensorReal.getHandle<uint8_t>() = {1, 1};
   }
-  indiceWeightsTensorReal.getHandle<float>() = {
+
+  indiceWeightsTensorReal.getHandle<IndexWeightTy>() = {
       0.73059422, 0.09048918, 0.554031,   0.13158787, 0.23915586, 0.3018666,
       0.6207229,  0.57457829, 0.33964851, 0.02707603, 0.92231585, 0.64477818,
       0.67243994, 0.58562965, 0.30533718, 0.54483425, 0.53211636, 0.12025826,
@@ -21709,18 +21625,18 @@ static void testIntNBitSplitEmbeddingWeightedBags(
   auto indices = mod.createPlaceholder(IdxTy, {157}, "indices", false);
   auto offsets = mod.createPlaceholder(IdxTy, {9}, "offsets", false);
   auto weightsOffsets =
-      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "weightsOffsets", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {2}, "weightsOffsets", false);
   auto dimOffsets =
-      mod.createPlaceholder(ElemKind::Int32ITy, {5}, "dimOffsets", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {3}, "dimOffsets", false);
   auto uvmWeights = mod.createPlaceholder(ElemKind::UInt8ITy,
                                           uvmWeightsTensorReal.getSizeInBytes(),
                                           "uvmWeights", false);
   auto weightsPlacement =
-      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "weightsPlacement", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {2}, "weightsPlacement", false);
   auto weightsTys =
-      mod.createPlaceholder(ElemKind::UInt8ITy, {4}, "weightsTys", false);
+      mod.createPlaceholder(ElemKind::UInt8ITy, {2}, "weightsTys", false);
   auto indiceWeights =
-      mod.createPlaceholder(DTy, {157}, "indiceWeights", false);
+      mod.createPlaceholder(IdxWeightTy, {157}, "indiceWeights", false);
 
   bindings.insert(devWeights, std::move(devWeightsTensorReal));
   bindings.insert(uvmWeights, std::move(uvmWeightsTensorReal));
@@ -21734,7 +21650,7 @@ static void testIntNBitSplitEmbeddingWeightedBags(
 
   auto *R = F->createIntNBitSplitEmbeddingWeightedBags(
       "IntNBitSplitEmbeddingWeightedBags", devWeights, uvmWeights,
-      weightsPlacement, weightsOffsets, weightsTys, dimOffsets, 26, indices,
+      weightsPlacement, weightsOffsets, weightsTys, dimOffsets, 10, indices,
       offsets, SplitEmbeddingPoolingMode::EP_SUM, outputDType, indiceWeights);
   auto *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
@@ -21747,62 +21663,102 @@ static void testIntNBitSplitEmbeddingWeightedBags(
   EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
 
-/// Test that IntNBitSplitEmbeddingBags is correctly supported in FloatTy.
-TEST_P(OperatorTest, IntNBitSplitEmbeddingWeightedBags_Float) {
+/// Test that IntNBitSplitEmbeddingBags is correctly supported in FloatTy and
+/// IndiceWeights in FloatTy.
+TEST_P(OperatorTest,
+       IntNBitSplitEmbeddingWeightedBags_Float_IndiceWeights_Float) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 104});
-  expected.getHandle<uint8_t>() = {
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   245, 82,  136, 223, 0,   0,   128, 127, 102, 219, 64,
-      119, 110, 123, 32,  255, 187, 236, 246, 127, 35,  194, 76,  247, 98,  40,
-      181, 250, 241, 140, 192, 252, 49,  168, 12,  103, 94,  146, 78,  239, 193,
-      15,  40,  32,  225, 230, 3,   64,  120, 95,  190, 158, 218, 38,  84,  72,
-      126, 179, 53,  108, 57,  134, 84,  150, 7,   51,  133, 133, 10,  46,  24,
-      34,  250, 193, 77,  222, 51,  247, 115, 41,  85,  99,  193, 226, 218, 36,
-      75,  166, 142, 151, 153, 49,  154, 159, 9,   95,  127, 134, 148, 221, 208,
-      55,  35,  254, 187, 236, 246, 127, 0,   0,   128, 127, 57,  43,  23,  119,
-      54,  227, 62,  255, 187, 236, 246, 127, 190, 39,  91,  247, 241, 25,  220,
-      250, 195, 240, 233, 252, 185, 190, 52,  103, 119, 207, 30,  107,
+  Tensor expected(ElemKind::FloatTy, {4, 10});
+  expected.getHandle<float>() = {
+      0,          0,       0,        0,        61.9226,    22.7683,
+      115.951,    47.381,  127.662,  17.5864,  -0.223138,  -0.334707,
+      -0.0557845, 5.74201, 46.7649,  19.4092,  91.9671,    41.9401,
+      99.4286,    14.9898, 0.156006, 0.936034, -0.0414558, 0.156006,
+      24.7402,    11.5406, 51.9121,  41.8971,  54.7977,    5.50862,
+      6.53151,    1.08858, 0,        0,        23.7242,    15.4003,
+      76.0145,    52.3255, 72.332,   8.53166,
   };
 
-  Tensor weightsOffsets(ElemKind::Int32ITy, {4});
-  weightsOffsets.getHandle<int32_t>() = {0, 384, 512, 640};
-  testIntNBitSplitEmbeddingWeightedBags<float, int32_t, float>(
+  Tensor weightsOffsets(ElemKind::Int32ITy, {2});
+  weightsOffsets.getHandle<int32_t>() = {0, 128};
+  testIntNBitSplitEmbeddingWeightedBags<float, int32_t, float, float>(
       bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy,
-      getIntNBitSplitEmbeddingBagsWeightsFloat(), std::move(weightsOffsets),
-      std::move(expected), SplitEmbeddingSparseType::EST_FLOAT, 0.0001);
+      ElemKind::FloatTy, getIntNBitSplitEmbeddingBagsWeightsFloat(),
+      std::move(weightsOffsets), std::move(expected),
+      SplitEmbeddingSparseType::EST_FLOAT, 0.001);
 }
 
-/// Test that IntNBitSplitEmbeddingBags is correctly supported in Float16Ty.
-TEST_P(OperatorTest, IntNBitSplitEmbeddingWeightedBags_Float16) {
+/// Test that IntNBitSplitEmbeddingBags is correctly supported in FloatTy and
+/// IndiceWeights in Float16Ty.
+TEST_P(OperatorTest,
+       IntNBitSplitEmbeddingWeightedBags_Float_IndiceWeights_Float16) {
   CHECK_IF_ENABLED();
-  Tensor expected(ElemKind::UInt8ITy, {2, 104});
-  expected.getHandle<uint8_t>() = {
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   233, 171, 22,  67,  217, 126, 202, 70,  20,  86,  100,
-      199, 0,   224, 202, 127, 212, 222, 23,  71,  26,  97,  70,  71,  147, 61,
-      16,  71,  201, 211, 206, 197, 84,  56,  193, 197, 220, 5,   11,  200, 235,
-      192, 185, 57,  186, 87,  255, 56,  75,  209, 111, 60,  91,  154, 252, 67,
-      232, 12,  103, 195, 184, 177, 172, 56,  135, 162, 71,  187, 80,  140, 180,
-      61,  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
-      0,   0,   0,   134, 249, 209, 70,  188, 229, 86,  71,  208, 250, 17,  199,
-      0,   224, 202, 127, 189, 151, 54,  71,  140, 36,  117, 71,  17,  100, 68,
-      71,  212, 88,  149, 198, 30,  185, 186, 197, 163, 15,  42,  200,
+  Tensor expected(ElemKind::FloatTy, {4, 10});
+  expected.getHandle<float>() = {
+      0,        0,          0,       0,       61.9243,  22.7686,    115.953,
+      47.3805,  127.666,    17.5868, -0.2231, -0.33465, -0.0557749, 5.74103,
+      46.7738,  19.4116,    91.9785, 41.9441, 99.4417,  14.9919,    0.15605,
+      0.936303, -0.0414677, 0.15605, 24.7434, 11.5409,  51.9144,    41.895,
+      54.8012,  5.50936,    6.53349, 1.08891, 0,        0,          23.723,
+      15.401,   76.0192,    52.3262, 72.3363, 8.53239,
   };
 
-  Tensor weightsOffsets(ElemKind::Int32ITy, {4});
-  weightsOffsets.getHandle<int32_t>() = {0, 256, 384, 512};
-  testIntNBitSplitEmbeddingWeightedBags<float16_t, int32_t, float16_t>(
+  Tensor weightsOffsets(ElemKind::Int32ITy, {2});
+  weightsOffsets.getHandle<int32_t>() = {0, 128};
+  testIntNBitSplitEmbeddingWeightedBags<float, int32_t, float, float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy,
-      getIntNBitSplitEmbeddingBagsWeightsFloat16(), std::move(weightsOffsets),
-      std::move(expected), SplitEmbeddingSparseType::EST_FLOAT, 0.005);
+      ElemKind::Float16Ty, getIntNBitSplitEmbeddingBagsWeightsFloat(),
+      std::move(weightsOffsets), std::move(expected),
+      SplitEmbeddingSparseType::EST_FLOAT, 0.001);
+}
+
+/// Test that IntNBitSplitEmbeddingBags is correctly supported in Float16Ty and
+/// IndiceWeights in FloatTy.
+TEST_P(OperatorTest,
+       IntNBitSplitEmbeddingWeightedBags_Float16_IndiceWeights_Float) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::Float16Ty, {4, 10});
+  expected.getHandle<float16_t>() = {
+      0,        0,        0,        0,       81.9375,   60.2812, 66.1875,
+      123.125,  70.3125,  92.75,    5.74219, -0.223145, 7.55859, 5.03516,
+      75,       51.8438,  54.875,   102.688, 54.25,     73.1875, -0.00690842,
+      0.936035, 0.624023, 0.156006, 51.875,  38.7812,   30.2188, 76.25,
+      65.125,   39.1562,  5.73047,  3.82031, -0.253662, 6.53125, 53.1875,
+      57.9375,  29.0469,  42.5938,  70.1875, 64.9375,
+  };
+
+  Tensor weightsOffsets(ElemKind::Int32ITy, {2});
+  weightsOffsets.getHandle<int32_t>() = {0, 64};
+  testIntNBitSplitEmbeddingWeightedBags<float16_t, int32_t, float16_t, float>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy,
+      ElemKind::FloatTy, getIntNBitSplitEmbeddingBagsWeightsFloat16(),
+      std::move(weightsOffsets), std::move(expected),
+      SplitEmbeddingSparseType::EST_FLOAT16, 0.005);
+}
+
+/// Test that IntNBitSplitEmbeddingBags is correctly supported in Float16Ty and
+/// IndiceWeights in Float16Ty.
+TEST_P(OperatorTest,
+       IntNBitSplitEmbeddingWeightedBags_Float16_IndiceWeights_Float16) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::Float16Ty, {4, 10});
+  expected.getHandle<float16_t>() = {
+      0,        0,        0,        0,       81.9375,   60.2812, 66.1875,
+      123.125,  70.3125,  92.75,    5.74219, -0.223145, 7.55469, 5.03516,
+      75,       51.8438,  54.875,   102.688, 54.25,     73.1875, -0.00691223,
+      0.936035, 0.624023, 0.156006, 51.875,  38.7812,   30.2188, 76.25,
+      65.125,   39.1562,  5.73438,  3.82031, -0.253906, 6.53516, 53.1875,
+      57.9688,  29.0625,  42.5938,  70.1875, 65,
+  };
+
+  Tensor weightsOffsets(ElemKind::Int32ITy, {2});
+  weightsOffsets.getHandle<int32_t>() = {0, 64};
+  testIntNBitSplitEmbeddingWeightedBags<float16_t, int32_t, float16_t,
+                                        float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy,
+      ElemKind::Float16Ty, getIntNBitSplitEmbeddingBagsWeightsFloat16(),
+      std::move(weightsOffsets), std::move(expected),
+      SplitEmbeddingSparseType::EST_FLOAT16, 0.005);
 }
 
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
