@@ -920,8 +920,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            NI.getInElemTy(
                IntNBitSplitEmbeddingBagsNode::WeightsPlacementsIdx) ==
                ElemKind::Int32ITy &&
-           NI.getInElemTy(IntNBitSplitEmbeddingBagsNode::WeightsOffsetsIdx) ==
-               ElemKind::Int32ITy &&
+           (NI.getInElemTy(
+                IntNBitSplitEmbeddingWeightedBagsNode::WeightsOffsetsIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(
+                IntNBitSplitEmbeddingWeightedBagsNode::WeightsOffsetsIdx) ==
+                ElemKind::Int32ITy) &&
            NI.getInElemTy(IntNBitSplitEmbeddingBagsNode::DimOffsetsIdx) ==
                ElemKind::Int32ITy;
 
@@ -950,15 +954,21 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            NI.getInElemTy(
                IntNBitSplitEmbeddingWeightedBagsNode::WeightsPlacementsIdx) ==
                ElemKind::Int32ITy &&
-           NI.getInElemTy(
-               IntNBitSplitEmbeddingWeightedBagsNode::WeightsOffsetsIdx) ==
-               ElemKind::Int32ITy &&
+           (NI.getInElemTy(
+                IntNBitSplitEmbeddingWeightedBagsNode::WeightsOffsetsIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(
+                IntNBitSplitEmbeddingWeightedBagsNode::WeightsOffsetsIdx) ==
+                ElemKind::Int32ITy) &&
            NI.getInElemTy(
                IntNBitSplitEmbeddingWeightedBagsNode::DimOffsetsIdx) ==
                ElemKind::Int32ITy &&
-           NI.getInElemTy(
-               IntNBitSplitEmbeddingWeightedBagsNode::IndiceWeightIdx) ==
-               ElemKind::FloatTy;
+           (NI.getInElemTy(
+                IntNBitSplitEmbeddingWeightedBagsNode::IndiceWeightIdx) ==
+                ElemKind::FloatTy ||
+            NI.getInElemTy(
+                IntNBitSplitEmbeddingWeightedBagsNode::IndiceWeightIdx) ==
+                ElemKind::Float16Ty);
 
   default:
     return false;

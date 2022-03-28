@@ -3284,13 +3284,12 @@ IntNBitSplitEmbeddingBagsNode *Function::createIntNBitSplitEmbeddingBags(
   ShapeVector outDims;
   outDims.insert(outDims.end(),
                  (offsets.dims()[0] - 1) / (dimOffsets.dims()[0] - 1));
-  int64_t totalSize = outputDtype == SplitEmbeddingSparseType::EST_FLOAT
-                          ? totalDims * sizeof(float)
-                          : totalDims * sizeof(float16_t);
-  outDims.insert(outDims.end(), totalSize);
+  outDims.insert(outDims.end(), totalDims);
 
-  auto outTy =
-      getParent()->uniqueTypeWithNewShape(devWeights.getType(), outDims);
+  auto outTy = getParent()->uniqueType(
+      outputDtype == SplitEmbeddingSparseType::EST_FLOAT ? ElemKind::FloatTy
+                                                         : ElemKind::Float16Ty,
+      outDims);
 
   return addNode(new IntNBitSplitEmbeddingBagsNode(
       name, outTy, devWeights, uvmWeights, weightsPlacements, weightsOffsets,
@@ -3308,13 +3307,12 @@ Function::createIntNBitSplitEmbeddingWeightedBags(
   ShapeVector outDims;
   outDims.insert(outDims.end(),
                  (offsets.dims()[0] - 1) / (dimOffsets.dims()[0] - 1));
-  int64_t totalSize = outputDtype == SplitEmbeddingSparseType::EST_FLOAT
-                          ? totalDims * sizeof(float)
-                          : totalDims * sizeof(float16_t);
-  outDims.insert(outDims.end(), totalSize);
+  outDims.insert(outDims.end(), totalDims);
 
-  auto outTy =
-      getParent()->uniqueTypeWithNewShape(devWeights.getType(), outDims);
+  auto outTy = getParent()->uniqueType(
+      outputDtype == SplitEmbeddingSparseType::EST_FLOAT ? ElemKind::FloatTy
+                                                         : ElemKind::Float16Ty,
+      outDims);
 
   return addNode(new IntNBitSplitEmbeddingWeightedBagsNode(
       name, outTy, devWeights, uvmWeights, weightsPlacements, weightsOffsets,

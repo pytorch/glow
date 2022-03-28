@@ -1877,7 +1877,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"fbgemm::int_nbit_split_embedding_codegen_lookup_function"},
        &PyTorchModelLoader::loadIntNBitSplitEmbeddingBags,
-       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+       &PyTorchModelLoader::correctTypeAlreadySet},
       {{"aten::amax"},
        &PyTorchModelLoader::loadAmax,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
@@ -9626,31 +9626,41 @@ Error PyTorchModelLoader::loadIntNBitSplitEmbeddingBags(
         inputs[IntNBitSplitEmbeddingBagsInputs::indice_weights]);
     indiceWeights = std::move(indiceWeightsValue.get());
   }
+
   int64_t outputDType;
   ASSIGN_VALUE_OR_RETURN_ERR(
       outputDType, iValToInt(getGlowIValueForValue(
                        inputs[IntNBitSplitEmbeddingBagsInputs::output_dtype])));
-  if (outputDType < 0 ||
-      outputDType >=
-          static_cast<int64_t>(SplitEmbeddingSparseType::EST_TOTAL)) {
+  std::vector<at::ScalarType> correctTypes;
+  switch (outputDType) {
+  case SplitEmbeddingSparseType::EST_FLOAT:
+    correctTypes.push_back(at::kFloat);
+    break;
+  case SplitEmbeddingSparseType::EST_FLOAT16:
+    correctTypes.push_back(at::kHalf);
+    break;
+  default:
     return MAKE_ERR(
         "Invalid output data type when loading IntNBitSplitEmbeddingBags");
   }
+
   if (!indiceWeights) {
     auto *EB = F_.createIntNBitSplitEmbeddingBags(
         "IntNBitSplitEmbeddingBags", devWeights, uvmWeights, weightsPlacements,
         weightsOffsets, weightsTys, dimOffsets, totalDims, indices, offsets,
         static_cast<SplitEmbeddingPoolingMode>(poolingMode),
         static_cast<SplitEmbeddingSparseType>(outputDType));
-    RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+    RETURN_IF_ERR(addValueMapping(outputs[0], EB->getResult()));
   } else {
     auto *EB = F_.createIntNBitSplitEmbeddingWeightedBags(
         "IntNBitSplitEmbeddingWeightedBags", devWeights, uvmWeights,
         weightsPlacements, weightsOffsets, weightsTys, dimOffsets, totalDims,
         indices, offsets, static_cast<SplitEmbeddingPoolingMode>(poolingMode),
         static_cast<SplitEmbeddingSparseType>(outputDType), indiceWeights);
-    RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+    RETURN_IF_ERR(addValueMapping(outputs[0], EB->getResult()));
   }
+
+  RETURN_ERR(setCorrectTypesMapping(outputs[0], correctTypes));
 }
 
 Error PyTorchModelLoader::loadIndexAdd(const torch::jit::Node *ptNode) {
