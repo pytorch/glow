@@ -70,12 +70,14 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::LeakyReluNodeKind:
-  case Kinded::Kind::HardSwishNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::MatMulNodeKind:
+  case Kinded::Kind::HardSwishNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy});
   case Kinded::Kind::AvgPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});

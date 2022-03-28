@@ -1851,7 +1851,7 @@ UNARY_ARITHMETIC_FUN_DEF(Sin)
 UNARY_ARITHMETIC_FUN_DEF(Cos)
 UNARY_ARITHMETIC_FUN_DEF(Erf)
 UNARY_ARITHMETIC_FUN_DEF(Truncate)
-// UNARY_ARITHMETIC_FUN_DEF(HardSwish)
+UNARY_ARITHMETIC_FUN_DEF(HardSwish)
 #undef UNARY_ARITHMETIC_FUN_DEF
 
 #define ARITHMETIC_FUN_DEF(NODE_NAME_)                                         \
@@ -1993,15 +1993,6 @@ LeakyReluNode *Function::createLeakyRELU(llvm::StringRef name, NodeValue input,
 LeakyReluNode *Function::createLeakyRELU(llvm::StringRef name, TypeRef outTy,
                                          NodeValue input, float alpha) {
   return addNode(new LeakyReluNode(name, outTy, input, alpha));
-}
-
-HardSwishNode *Function::createHardSwish(llvm::StringRef name, NodeValue input) {
-  return addNode(new HardSwishNode(name, input.getType(), input));
-}
-
-HardSwishNode *Function::createHardSwish(llvm::StringRef name, TypeRef outTy,
-                                         NodeValue input) {
-  return addNode(new HardSwishNode(name, outTy, input));
 }
 
 IsNaNNode *Function::createIsNaN(llvm::StringRef name, NodeValue input) {

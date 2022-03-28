@@ -1439,33 +1439,10 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *dest = HI->getDest();
     auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
-    // auto srcTy = src->getType();
-    // auto destTy = dest->getType();
 
     auto *F = getFunction("element_hard_swish", dest->getElementType());
     llvm::CallInst *stackedOpCall = nullptr;
-    if (dest->getElementType() == ElemKind::Int8QTy) {
-      // auto *srcOffset =
-          // emitConstI8(builder, static_cast<int8_t>(srcTy->getOffset()));
-      // auto *destOffset =
-          // emitConstI8(builder, static_cast<int8_t>(destTy->getOffset()));
-      // Scale parameters for the positive input domain.
-      // auto posParams = quantization::quantizeScaleOffset32To8(
-          // srcTy->getScale() / destTy->getScale(), 0);
-      // auto *posPre = emitConstI32(builder, posParams.pre);
-      // auto *posPost = emitConstI32(builder, posParams.post);
-      // auto *posScale = emitConstI32(builder, posParams.scale);
-      // Scale parameters for the negative input domain.
-      // auto negParams = quantization::quantizeScaleOffset32To8(
-          // srcTy->getScale() * LI->getAlpha() / destTy->getScale(), 0);
-      // auto *negPre = emitConstI32(builder, negParams.pre);
-      // auto *negPost = emitConstI32(builder, negParams.post);
-      // auto *negScale = emitConstI32(builder, negParams.scale);
-      // stackedOpCall =
-          // createCall(builder, F,
-                     // {loopCount, srcPtr, srcOffset, destOffset, posPre, posPost,
-                      // posScale, negPre, negPost, negScale});
-    } else if (dest->getElementType() == ElemKind::FloatTy) {
+    if (dest->getElementType() == ElemKind::FloatTy) {
       stackedOpCall = createCall(builder, F, {loopCount, srcPtr});
     } else {
       LOG(FATAL) << "Type is not supported";
