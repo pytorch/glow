@@ -6454,7 +6454,8 @@ bool ReplaceZeroScaleFP16QuantNodes::run(Function *F,
   return changed;
 }
 
-bool ReplaceQuantizedHardSwishWithLookupTable::run(Function *F, const CompilationContext &cctx) {
+bool ReplaceQuantizedHardSwishWithLookupTable::run(
+    Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
   bool changed = false;
@@ -6465,7 +6466,7 @@ bool ReplaceQuantizedHardSwishWithLookupTable::run(Function *F, const Compilatio
     // Verify that input/output quantized.
     NodeValue input = HSN->getInput();
     NodeValue output = HSN->getResult();
-    
+
     CONTINUE_IF_NOT(input.getType()->isQuantizedType())
     CONTINUE_IF_NOT(output.getType()->isQuantizedType())
 
@@ -6474,7 +6475,8 @@ bool ReplaceQuantizedHardSwishWithLookupTable::run(Function *F, const Compilatio
       int x = a + 3;
       return a * (x > 6 ? 6 : ((x < 0) ? 0 : x)) / 6;
     };
-    auto lookupTable = F->createIntLookupTable(HSN->getName(), input, hard_swish_lambda, output.getType());
+    auto lookupTable = F->createIntLookupTable(
+        HSN->getName(), input, hard_swish_lambda, output.getType());
     HSN->getResult().replaceAllUsesOfWith(lookupTable);
     changed = true;
   }

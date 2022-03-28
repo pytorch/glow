@@ -158,9 +158,11 @@ bool CPUBackend::canDoIndexTypeDemotion(
   return fromTy == ElemKind::Int64ITy && toTy == ElemKind::Int32ITy;
 }
 
-std::unique_ptr<FunctionPassPipeline> CPUBackend::getOptimizationPipeline() const {
+std::unique_ptr<FunctionPassPipeline>
+CPUBackend::getOptimizationPipeline() const {
   auto pipeline = Backend::getOptimizationPipeline();
-  pipeline->pushFront({FunctionPassID::ReplaceQuantizedHardSwishWithLookupTable});
+  pipeline->pushFront(
+      {FunctionPassID::ReplaceQuantizedHardSwishWithLookupTable});
   return pipeline;
 }
 
