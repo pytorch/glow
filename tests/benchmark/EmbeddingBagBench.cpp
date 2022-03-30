@@ -30,9 +30,8 @@ using namespace glow;
 
 /*
  * This class implements embeddingbag microbenchmark. There are a number of
- * parallel FusedRowwiseQuantizedSparseLengthsWeightedSum,
- * FusedRowwiseQuantizedSparseLengthsSum, SparseLengthsWeightedSum, or
- * SparseLengthsSum nodes which are created.
+ * parallel nodes which are created from Fused8bitSLS,
+ * Fused4bitSLS, FusedBaseSLS
  *
  * Microbenchmarks are generally useful for understanding performance
  * through targeted experiementation and are not representative of
