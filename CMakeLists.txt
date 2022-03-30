@@ -222,11 +222,11 @@ elseif(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/folly/folly")
   message(FATAL_ERROR "No folly git submodule. Run: git submodule update --init --recursive")
 else()
   # Apple-specific definitions for folly.
-  if(APPLE)
-    set(FOLLY_HAVE_WEAK_SYMBOLS ON CACHE BOOL "Compiler supports weak symbols")
-    set(OPENSSL_ROOT_DIR /usr/local/opt/openssl)
-    find_package(OpenSSL REQUIRED)
-  endif()
+  # if(APPLE)
+  #   set(FOLLY_HAVE_WEAK_SYMBOLS ON CACHE BOOL "Compiler supports weak symbols")
+  #   set(OPENSSL_ROOT_DIR /usr/local/opt/openssl)
+  #   find_package(OpenSSL REQUIRED)
+  # endif()
 
   # Remove Glow-specific CMAKE_CXX_FLAGS to build folly.
   set(SAVE_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")

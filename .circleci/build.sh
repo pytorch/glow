@@ -33,7 +33,7 @@ install_pocl() {
    cd pocl && git checkout 4efafa82c087b5e846a9f8083d46b3cdac2f698b && cd ../
    mkdir build_pocl
    cd build_pocl
-   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-8 -DCMAKE_C_COMPILER=/usr/bin/clang-8 -DENABLE_ICD=ON ../pocl
+   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-12 -DCMAKE_C_COMPILER=/usr/bin/clang-12 -DENABLE_ICD=ON ../pocl
    make -j`nproc`
    sudo make install
 
@@ -94,12 +94,12 @@ elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     # Install Glow dependencies
     sudo apt-get update
     upgrade_python
-    sudo apt-get install -y llvm-7
+    sudo apt-get install -y llvm-12
     # Redirect clang
-    sudo ln -s /usr/bin/clang-7 /usr/bin/clang
-    sudo ln -s /usr/bin/clang++-7 /usr/bin/clang++
-    sudo ln -s /usr/bin/llvm-symbolizer-7 /usr/bin/llvm-symbolizer
-    sudo ln -s /usr/bin/llvm-config-7 /usr/bin/llvm-config-7.0
+    sudo ln -s /usr/bin/clang-12 /usr/bin/clang
+    sudo ln -s /usr/bin/clang++-12 /usr/bin/clang++
+    sudo ln -s /usr/bin/llvm-symbolizer-12 /usr/bin/llvm-symbolizer
+    sudo ln -s /usr/bin/llvm-config-12 /usr/bin/llvm-config-12.0
 
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
@@ -108,16 +108,47 @@ else
     sudo apt-get update
 
     # Redirect clang
-    sudo ln -s /usr/bin/clang-8 /usr/bin/clang
-    sudo ln -s /usr/bin/clang++-8 /usr/bin/clang++
-    sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
-    sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
+    sudo ln -s /usr/bin/clang-12 /usr/bin/clang
+    sudo ln -s /usr/bin/clang++-12 /usr/bin/clang++
+    sudo ln -s /usr/bin/llvm-symbolizer-12 /usr/bin/llvm-symbolizer
+    sudo ln -s /usr/bin/llvm-config-12 /usr/bin/llvm-config-12.0
 
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
 fi
 
-# Since we are using llvm-7 in these two branches, we cannot use pip install cmake
+# Install clang-12
+wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+sudo apt-add-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-12 main"
+sudo apt-get update
+sudo apt-get install -y llvm-12 llvm-12-dev clang-12 llvm-12-tools
+which clang
+clang -v
+
+# Upgrade openssl
+openssl version -a
+which openssl
+sudo mkdir /opt/openssl
+wget https://www.openssl.org/source/openssl-1.1.1n.tar.gz
+sudo tar xzvf openssl-1.1.1n.tar.gz --directory /opt/openssl
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/openssl/lib
+pushd /opt/openssl/openssl-1.1.1n
+sudo ./config --prefix=/opt/openssl --openssldir=/opt/openssl/ssl
+sudo make
+sudo make test
+sudo make install
+# sudo updatedb
+# locate openssl | grep /opt/openssl/bin
+/opt/openssl/bin/openssl version -a
+cd /usr/bin
+ls -l openssl
+sudo mv openssl openssl.old
+sudo ln -s /opt/openssl/bin/openssl /usr/bin/openssl
+export OPENSSL_ROOT_DIR=/opt/openssl
+openssl version -a
+popd
+
+# Since we are using llvm-12 in these two branches, we cannot use pip install cmake
 if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo pip install cmake==3.17.3
 elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
@@ -144,8 +175,8 @@ mkdir build && cd build
 CMAKE_ARGS=()
 # PYTORCH build are directly using the sccache wrappers
 if [[ "${CIRCLE_JOB}" != "PYTORCH" ]]; then
-    CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
-    CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
+    CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-12")
+    CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-12")
     CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
     CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 fi
@@ -176,16 +207,16 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
     sudo apt-get install -y lcov
     sudo pip install awscli --upgrade
     ../utils/install_protobuf.sh
-    CC=gcc-5 CXX=g++-5 cmake -G Ninja \
+    CC=gcc-11 CXX=g++-11 cmake -G Ninja \
           -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON \
-          -DLLVM_DIR=/usr/lib/llvm-7/cmake \
+          -DLLVM_DIR=/usr/lib/llvm-12/cmake \
           -DGLOW_USE_COVERAGE=ON \
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
     sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-11 main"
     sudo apt-get update
-    sudo apt-get install -y clang-format-11
+    sudo apt-get install -y clang-format-12
     cd /tmp
     python3.9 -m virtualenv venv
     source venv/bin/activate
