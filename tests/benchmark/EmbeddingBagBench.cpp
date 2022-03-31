@@ -163,6 +163,8 @@ public:
   }
 
   void addEBNode(std::unique_ptr<Module> &mod, Function *fn, EBParam param) {
+    // TODO(T115782297): Support non-quantized and weighted embedding bags.
+    CHECK_EQ(param.slsKind, QUANTIZED_UNWEIGHTED);
 
     // Constant needed for Non-quantized case
     Tensor dataConstantTensor;
@@ -185,8 +187,8 @@ public:
 
     // Create placeholders for weights, indices and offsets
     const dim_t maxNumIndicesWeights = param.numIndicesPerBatchPad * batchSize_;
-    auto *weights = mod->createPlaceholder(param.dtype, {maxNumIndicesWeights},
-                                           "weights", false);
+    auto *weights =
+        mod->createConstant(param.dtype, {maxNumIndicesWeights}, "weights");
 
     auto *indices = mod->createPlaceholder(ElemKind::Int64ITy,
                                            {maxNumIndicesWeights}, "indices",
@@ -252,7 +254,7 @@ public:
       }
       indicesReal_[i].push_back(std::move(indicesReal));
 
-      // Create weights
+      // Create and assign weights
       if (param.dtype == ElemKind::FloatTy) {
         Tensor weightsReal(ElemKind::FloatTy, {lengthsSum});
         weightsReal.getHandle<float>().clear(1.0f);
@@ -262,6 +264,7 @@ public:
         weightsReal.getHandle<float16_t>().clear(1.0f);
         weightsReal_[i].push_back(std::move(weightsReal));
       }
+      weights->assign(&weightsReal_[i].back());
 
       Tensor indicesPartial(indicesReal_[i].back().getUnsafePtr(),
                             indices->getType(),
@@ -269,12 +272,6 @@ public:
 
       contexts_[i]->getPlaceholderBindings()->insert(indices,
                                                      std::move(indicesPartial));
-
-      Tensor weightsPartial(weightsReal_[i].back().getUnsafePtr(),
-                            weights->getType(),
-                            weightsReal_[i].back().getSizeInBytes());
-      contexts_[i]->getPlaceholderBindings()->insert(weights,
-                                                     std::move(weightsPartial));
     } // i
 
     // Calculate the average length based on all of the lengths generated.
