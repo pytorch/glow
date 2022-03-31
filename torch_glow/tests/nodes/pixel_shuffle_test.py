@@ -43,6 +43,6 @@ class TestPixelShuffle(utils.TorchGlowTestCase):
 
             utils.compare_tracing_methods(
                 SimplePixelShuffleModel(r),
-                torch.randn(b, c * r ** 2, w, h),
+                torch.randn(b, c * r * r, w, h),
                 fusible_ops={"aten::pixel_shuffle"},
             )
